@@ -13,6 +13,7 @@ import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -21,6 +22,7 @@ import org.apache.avro.generic.GenericDatumWriter;
 import org.apache.avro.io.ByteBufferToHexFormatJsonEncoder;
 import org.apache.avro.io.Encoder;
 import org.apache.avro.util.Utf8;
+import org.apache.log4j.Logger;
 
 import static com.linkedin.venice.writer.VeniceWriter.*;
 
@@ -31,14 +33,13 @@ import static com.linkedin.venice.writer.VeniceWriter.*;
  * after rolling back a server release with new protocol version to an old server release with old protocol version.
  */
 public class OffsetRecord {
-
+  private static final Logger logger = Logger.getLogger(OffsetRecord.class);
   // Offset 0 is still a valid offset, Using that will cause a message to be skipped.
   public static final long LOWEST_OFFSET = -1;
   public static final long LOWEST_OFFSET_LAG = 0;
   public static final long DEFAULT_OFFSET_LAG = -1;
 
   private static final String PARTITION_STATE_STRING = "PartitionState";
-
   private final PartitionState partitionState;
   private final InternalAvroSpecificSerializer<PartitionState> serializer;
 
@@ -72,8 +73,7 @@ public class OffsetRecord {
     emptyPartitionState.databaseInfo = new HashMap<>();
     emptyPartitionState.previousStatuses = new HashMap<>();
     emptyPartitionState.leaderOffset = DEFAULT_UPSTREAM_OFFSET;
-    // Assign an empty map. Otherwise, NPE will be thrown during serialization.
-    emptyPartitionState.upstreamOffsetMap = new HashMap<>();
+    emptyPartitionState.upstreamOffsetMap = new VeniceConcurrentHashMap<>();
     return emptyPartitionState;
   }
 
@@ -219,15 +219,15 @@ public class OffsetRecord {
    *
    * TODO: rename "leaderOffset" field to "upstreamOffset" field.
    */
-  public void setLeaderConsumptionState(String topic, long startOffset) {
+  public void setLeaderConsumptionState(String kafkaURL, String topic, long startOffset) {
     this.partitionState.leaderTopic = topic;
     if (!Version.isVersionTopic(topic)) {
-      this.partitionState.leaderOffset = startOffset;
+      populatePartitionStateWithUpstreamOffset(this.partitionState, startOffset, kafkaURL);
     }
   }
 
-  public void setLeaderUpstreamOffset(long leaderOffset) {
-    this.partitionState.leaderOffset = leaderOffset;
+  public void setLeaderUpstreamOffset(String kafkaURL, long leaderOffset) {
+    populatePartitionStateWithUpstreamOffset(this.partitionState, leaderOffset, kafkaURL);
   }
 
   public void setLeaderGUID(GUID guid) {
@@ -248,11 +248,11 @@ public class OffsetRecord {
    * offset for VT; if leader is consuming some upstream topics rather than version topic, this API
    * will return the recorded upstream offset.
    */
-  public long getLeaderOffset() {
+  public long getLeaderOffset(String kafkaURL) {
     if (getLeaderTopic() == null || Version.isVersionTopic(getLeaderTopic())) {
       return getOffset();
     } else {
-      return this.partitionState.leaderOffset;
+      return getUpstreamOffsetFromPartitionState(this.partitionState, kafkaURL);
     }
   }
 
@@ -266,11 +266,11 @@ public class OffsetRecord {
    * Leader shouldn't act on the TS message the moment it consumes TS, but instead, it should consume
    * all the messages in the VT including all the existing real-time messages in VT, in order to resume
    * consumption from RT at the largest known upstream offset to avoid duplicate work. In this case,
-   * leader is still consuming VT, so {@link #getLeaderOffset()} would return VT offset; users should
+   * leader is still consuming VT, so {@link #getLeaderOffset(String kafkaURL)} would return VT offset; users should
    * call this API to get the latest upstream offset.
    */
-  public long getUpstreamOffset() {
-    return this.partitionState.leaderOffset;
+  public long getUpstreamOffset(String kafkaURL) {
+    return getUpstreamOffsetFromPartitionState(this.partitionState, kafkaURL);
   }
 
   public GUID getLeaderGUID() {
@@ -312,9 +312,17 @@ public class OffsetRecord {
         "offset=" + getOffset() +
         ", latestProducerProcessingTimeInMs=" + getLatestProducerProcessingTimeInMs() +
         ", isEndOfPushReceived=" + isEndOfPushReceived() +
-        ", upstreamOffset=" + getUpstreamOffset() +
+        ", upstreamOffset=" + getPartitionUpstreamOffsetString() +
         ", leaderTopic=" + getLeaderTopic() +
         '}';
+  }
+
+  private String getPartitionUpstreamOffsetString() {
+    if (this.partitionState.upstreamOffsetMap.isEmpty()) {
+      // Fall back to use the "leaderOffset" field
+      return Long.toString(this.partitionState.leaderOffset);
+    }
+    return this.partitionState.upstreamOffsetMap.toString();
   }
 
   /**
@@ -402,5 +410,24 @@ public class OffsetRecord {
    */
   public byte[] toBytes() {
     return serializer.serialize(PARTITION_STATE_STRING, partitionState);
+  }
+
+  private static void populatePartitionStateWithUpstreamOffset(
+      PartitionState partitionState,
+      final long upstreamOffset,
+      String upstreamKafkaClusterId
+  ) {
+    partitionState.upstreamOffsetMap.put(upstreamKafkaClusterId, upstreamOffset);
+    // Set this field as well so that we can rollback
+    partitionState.leaderOffset = upstreamOffset;
+  }
+
+  private long getUpstreamOffsetFromPartitionState(PartitionState partitionState, String upstreamKafkaClusterId) {
+    if (partitionState.upstreamOffsetMap.get(upstreamKafkaClusterId) == null) {
+      logger.warn("The PartitionState.upstreamOffsetMap is " + partitionState.upstreamOffsetMap + ". Fall back to use "
+          + "PartitionState.leaderOffset. Full partitionState value: " + partitionState);
+      return partitionState.leaderOffset;
+    }
+    return partitionState.upstreamOffsetMap.get(upstreamKafkaClusterId);
   }
 }

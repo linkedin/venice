@@ -59,6 +59,7 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -485,7 +486,7 @@ public class TestAdminConsumptionTask {
     partitionState.lastUpdate = System.currentTimeMillis();
     partitionState.producerStates = new HashMap<>();
     partitionState.databaseInfo = new HashMap<>();
-
+    partitionState.upstreamOffsetMap = new VeniceConcurrentHashMap<>();
     ProducerPartitionState ppState = new ProducerPartitionState();
     ppState.segmentNumber = 0;
     ppState.segmentStatus = SegmentStatus.IN_PROGRESS.getValue();
