@@ -40,6 +40,7 @@ import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.EndOfIncrementalPush;
 import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
+import com.linkedin.venice.kafka.protocol.LeaderMetadata;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.StartOfBufferReplay;
 import com.linkedin.venice.kafka.protocol.StartOfIncrementalPush;
@@ -82,6 +83,7 @@ import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import com.linkedin.venice.writer.LeaderMetadataWrapper;
 import java.io.Closeable;
 import java.nio.ByteBuffer;
 import java.time.Duration;
@@ -3068,7 +3070,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    */
   @FunctionalInterface
   interface ProduceToTopic {
-    Future<RecordMetadata> apply(Callback callback, long sourceTopicOffset);
+    Future<RecordMetadata> apply(Callback callback, LeaderMetadataWrapper leaderMetadataWrapper);
   }
 
   /**

@@ -29,6 +29,7 @@ import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.ApacheKafkaProducer;
 import com.linkedin.venice.writer.KafkaProducerWrapper;
+import com.linkedin.venice.writer.LeaderMetadataWrapper;
 import com.linkedin.venice.writer.VeniceWriter;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
@@ -228,8 +229,8 @@ public class ConsumerIntegrationTest {
     }
 
     @Override
-    protected KafkaMessageEnvelope getKafkaMessageEnvelope(MessageType messageType, boolean isEndOfSegment, int partition, boolean incrementSequenceNumber, long upstreamOffset, Optional<Long> logicalTs) {
-      KafkaMessageEnvelope normalKME = super.getKafkaMessageEnvelope(messageType, isEndOfSegment, partition, true, upstreamOffset, logicalTs);
+    protected KafkaMessageEnvelope getKafkaMessageEnvelope(MessageType messageType, boolean isEndOfSegment, int partition, boolean incrementSequenceNumber, LeaderMetadataWrapper leaderMetadataWrapper, Optional<Long> logicalTs) {
+      KafkaMessageEnvelope normalKME = super.getKafkaMessageEnvelope(messageType, isEndOfSegment, partition, true, leaderMetadataWrapper, logicalTs);
 
       NewKafkaMessageEnvelopeWithExtraField newKME = new NewKafkaMessageEnvelopeWithExtraField();
       for (int index = 0; index < newKME.newFieldIndex; index++) {
