@@ -25,6 +25,11 @@ public enum VeniceUserStoreType {
   HYBRID_OR_INCREMENTAL,
 
   /**
+   * These stores are system stores whose name starts with {@link Store#SYSTEM_STORE_NAME_PREFIX}.
+   */
+  SYSTEM,
+
+  /**
    * All user stores in Venice, excluding system stores.
    */
   ALL;
