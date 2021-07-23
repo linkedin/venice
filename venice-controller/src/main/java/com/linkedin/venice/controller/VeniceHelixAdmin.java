@@ -4945,22 +4945,25 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             boolean shouldUpdateNativeReplication = false;
             switch (storeType) {
                 case BATCH_ONLY:
-                    shouldUpdateNativeReplication = !originalStore.isHybrid() && !originalStore.isIncrementalPushEnabled();
+                    shouldUpdateNativeReplication = !originalStore.isHybrid() && !originalStore.isIncrementalPushEnabled() && !originalStore.isSystemStore();
                     break;
                 case HYBRID_ONLY:
-                    shouldUpdateNativeReplication = originalStore.isHybrid() && !originalStore.isIncrementalPushEnabled();
+                    shouldUpdateNativeReplication = originalStore.isHybrid() && !originalStore.isIncrementalPushEnabled() && !originalStore.isSystemStore();
                     break;
                 case INCREMENTAL_PUSH:
-                    shouldUpdateNativeReplication = originalStore.isIncrementalPushEnabled();
+                    shouldUpdateNativeReplication = originalStore.isIncrementalPushEnabled() && !originalStore.isSystemStore();
                     break;
                 case HYBRID_OR_INCREMENTAL:
-                    shouldUpdateNativeReplication = originalStore.isHybrid() || originalStore.isIncrementalPushEnabled();
+                    shouldUpdateNativeReplication = (originalStore.isHybrid() || originalStore.isIncrementalPushEnabled()) && !originalStore.isSystemStore();
+                    break;
+                case SYSTEM:
+                    shouldUpdateNativeReplication = originalStore.isSystemStore();
                     break;
                 case ALL:
                     shouldUpdateNativeReplication = true;
                     break;
                 default:
-                    break;
+                    throw new VeniceException("Unsupported store type." + storeType);
             }
             /**
              * If the command is trying to enable native replication, the store must have Leader/Follower state model enabled.
@@ -4979,39 +4982,41 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             /**
              * The batch update command hits child controller directly; all stores in the cluster will be updated
              */
-            List<Store> storeCandidates;
+            List<Store> storesToBeConfigured;
             switch (storeType) {
                 case BATCH_ONLY:
-                    storeCandidates = getAllStores(clusterName).stream()
-                        .filter(s -> (!s.isHybrid() && !s.isIncrementalPushEnabled()))
+                    storesToBeConfigured = getAllStores(clusterName).stream()
+                        .filter(s -> (!s.isHybrid() && !s.isIncrementalPushEnabled() && !s.isSystemStore()))
                         .collect(Collectors.toList());
                     break;
                 case HYBRID_ONLY:
-                    storeCandidates = getAllStores(clusterName).stream()
-                        .filter(s -> (s.isHybrid() && !s.isIncrementalPushEnabled()))
+                    storesToBeConfigured = getAllStores(clusterName).stream()
+                        .filter(s -> (s.isHybrid() && !s.isIncrementalPushEnabled() && !s.isSystemStore()))
                         .collect(Collectors.toList());
                     break;
                 case INCREMENTAL_PUSH:
-                    storeCandidates = getAllStores(clusterName).stream()
-                        .filter(Store::isIncrementalPushEnabled)
+                    storesToBeConfigured = getAllStores(clusterName).stream()
+                        .filter(s -> (s.isIncrementalPushEnabled() && !s.isSystemStore()))
                         .collect(Collectors.toList());
                     break;
                 case HYBRID_OR_INCREMENTAL:
-                    storeCandidates = getAllStores(clusterName).stream()
-                        .filter(store -> (store.isHybrid() || store.isIncrementalPushEnabled()))
+                    storesToBeConfigured = getAllStores(clusterName).stream()
+                        .filter(s -> ((s.isHybrid() || s.isIncrementalPushEnabled()) && !s.isSystemStore()))
+                        .collect(Collectors.toList());
+                    break;
+                case SYSTEM:
+                    storesToBeConfigured = getAllStores(clusterName).stream()
+                        .filter(Store::isSystemStore)
                         .collect(Collectors.toList());
                     break;
                 case ALL:
-                    storeCandidates = getAllStores(clusterName);
+                    storesToBeConfigured = getAllStores(clusterName);
                     break;
                 default:
                     throw new VeniceException("Unsupported store type." + storeType);
             }
 
-            // filter out all the system stores
-            storeCandidates = storeCandidates.stream().filter(store -> !store.isSystemStore()).collect(Collectors.toList());
-
-            storeCandidates.forEach(store -> {
+            storesToBeConfigured.forEach(store -> {
                 if (enableNativeReplicationForCluster && !(store.isLeaderFollowerModelEnabled() || clusterConfig.isLfModelDependencyCheckDisabled())) {
                     logger.info("Will not enable native replication for store " + store.getName()
                         + " since it doesn't have Leader/Follower state model enabled.");
