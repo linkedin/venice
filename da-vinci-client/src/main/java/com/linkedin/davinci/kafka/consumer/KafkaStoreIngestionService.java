@@ -120,7 +120,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
   private final AggLagStats aggLagStats;
 
-  private final KafkaClientStats kafkaClientStats;
   /**
    * Store buffer service to persist data into local bdb for all the stores.
    */
@@ -240,8 +239,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     VeniceWriterFactory veniceWriterFactoryForMetaStoreWriter = new VeniceWriterFactory(veniceWriterProperties);
 
     // Create Kafka client stats
-    this.kafkaClientStats = new KafkaClientStats(metricsRepository, "KafkaClientStats", Optional.ofNullable(sharedKafkaProducerService));
-
+    KafkaClientStats.registerKafkaClientStats(metricsRepository, "KafkaClientStats", Optional.ofNullable(sharedKafkaProducerService));
 
     EventThrottler bandwidthThrottler = new EventThrottler(
         serverConfig.getKafkaFetchQuotaBytesPerSecond(),

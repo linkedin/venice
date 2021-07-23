@@ -160,7 +160,7 @@ public class BrooklinTopicReplicator extends TopicReplicator {
   void beginReplicationInternal(String sourceTopic, String destinationTopic, int partitionCount,
       long rewindStartTimestamp, List<String> remoteKafkaUrls) {
 
-    Map<Integer, Long> startingOffsetsMap = getTopicManager().getOffsetsByTime(sourceTopic, rewindStartTimestamp);
+    Map<Integer, Long> startingOffsetsMap = getTopicManager().getTopicOffsetsByTime(sourceTopic, rewindStartTimestamp);
     logger.info("Get rewinding offset for topic: "+ sourceTopic + ", and rewind start timestamp: " + rewindStartTimestamp + ": " + startingOffsetsMap);
 
     List<Long> startingOffsets = startingOffsetsMap.entrySet().stream()

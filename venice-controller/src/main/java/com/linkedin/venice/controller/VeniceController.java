@@ -9,7 +9,6 @@ import com.linkedin.venice.controller.kafka.TopicCleanupService;
 import com.linkedin.venice.controller.kafka.TopicCleanupServiceForParentController;
 import com.linkedin.venice.controller.server.AdminSparkServer;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.stats.KafkaClientStats;
 import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.utils.PropertyBuilder;
@@ -46,7 +45,6 @@ public class VeniceController {
   private final Optional<DynamicAccessController> accessController;
   private final Optional<AuthorizerService> authorizerService;
   private final Optional<D2Client> d2Client;
-  private final KafkaClientStats kafkaClientStats;
 
   private final static String CONTROLLER_SERVICE_NAME = "venice-controller";
 
@@ -98,9 +96,8 @@ public class VeniceController {
     this.accessController = accessController;
     this.authorizerService = authorizerService;
     this.d2Client = d2Client;
-    // Create Kafka client stats
-    this.kafkaClientStats = new KafkaClientStats(metricsRepository, "KafkaClientStats", Optional.empty());
     createServices();
+    KafkaClientStats.registerKafkaClientStats(metricsRepository, "KafkaClientStats", Optional.empty());
   }
 
   private void createServices() {

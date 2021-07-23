@@ -328,7 +328,7 @@ public class TestTopicCleanupService {
     for (int i = 0; i < partitionCnt; ++i) {
       partitionInfoList.add(new PartitionInfo(versionTopic, i, null, null, null));
     }
-    doReturn(partitionInfoList).when(topicManager).getPartitions(versionTopic);
+    doReturn(partitionInfoList).when(topicManager).partitionsFor(versionTopic);
 
     MetaStoreWriter metaStoreWriter = mock(MetaStoreWriter.class);
     doReturn(metaStoreWriter).when(admin).getMetaStoreWriter();

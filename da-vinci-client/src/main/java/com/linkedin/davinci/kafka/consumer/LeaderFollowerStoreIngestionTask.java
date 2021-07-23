@@ -593,9 +593,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             if (upstreamStartOffset < 0) {
               if (topicSwitch.rewindStartTimestamp > 0) {
                 int newSourceTopicPartition = partitionConsumptionState.getSourceTopicPartition(newSourceTopicName);
-                upstreamStartOffset = getTopicManager(newSourceKafkaServer).getOffsetByTime(newSourceTopicName, newSourceTopicPartition, topicSwitch.rewindStartTimestamp);
+                upstreamStartOffset = getTopicManager(newSourceKafkaServer).getPartitionOffsetByTime(newSourceTopicName, newSourceTopicPartition, topicSwitch.rewindStartTimestamp);
                 /**
-                 * {@link com.linkedin.venice.kafka.TopicManager#getOffsetsByTime} will always return the next offset
+                 * {@link com.linkedin.venice.kafka.TopicManager#getPartitionOffsetByTime} will always return the next offset
                  * to consume, but {@link com.linkedin.venice.kafka.consumer.ApacheKafkaConsumer#subscribe} is always
                  * seeking the next offset, so we will deduct 1 from the returned offset here.
                  */
@@ -756,7 +756,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     long upstreamStartOffset = OffsetRecord.LOWEST_OFFSET;
     if (topicSwitch.rewindStartTimestamp > 0) {
       int newSourceTopicPartition = partitionConsumptionState.getSourceTopicPartition(newSourceTopicName);
-      upstreamStartOffset = getTopicManager(sourceKafkaServer).getOffsetByTime(newSourceTopicName, newSourceTopicPartition, topicSwitch.rewindStartTimestamp);
+      upstreamStartOffset = getTopicManager(sourceKafkaServer).getPartitionOffsetByTime(newSourceTopicName, newSourceTopicPartition, topicSwitch.rewindStartTimestamp);
       if (upstreamStartOffset != OffsetRecord.LOWEST_OFFSET) {
         upstreamStartOffset -= 1;
       }

@@ -14,6 +14,7 @@ import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.Closeable;
 import java.io.IOException;
+import java.time.Duration;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -71,8 +72,8 @@ public class TopicManager implements Closeable {
 
   // Immutable state
   private final String kafkaBootstrapServers;
-  private final int kafkaOperationTimeoutMs;
-  private final int topicDeletionStatusPollIntervalMs;
+  private final long kafkaOperationTimeoutMs;
+  private final long topicDeletionStatusPollIntervalMs;
   private final long topicMinLogCompactionLagMs;
   private final KafkaClientFactory kafkaClientFactory;
   private final boolean isConcurrentTopicDeleteRequestsEnabled;
@@ -89,8 +90,8 @@ public class TopicManager implements Closeable {
 
   //TODO: Consider adding a builder for this class as the number of constructors is getting high.
   public TopicManager(
-      int kafkaOperationTimeoutMs,
-      int topicDeletionStatusPollIntervalMs,
+      long kafkaOperationTimeoutMs,
+      long topicDeletionStatusPollIntervalMs,
       long topicMinLogCompactionLagMs,
       boolean isConcurrentTopicDeleteRequestsEnabled,
       KafkaClientFactory kafkaClientFactory,
@@ -122,8 +123,8 @@ public class TopicManager implements Closeable {
 
   // This constructor is used mostly for testing purpose
   public TopicManager(
-      int kafkaOperationTimeoutMs,
-      int topicDeletionStatusPollIntervalMs,
+      long kafkaOperationTimeoutMs,
+      long topicDeletionStatusPollIntervalMs,
       long topicMinLogCompactionLagMs,
       KafkaClientFactory kafkaClientFactory) {
     this(
@@ -295,7 +296,7 @@ public class TopicManager implements Closeable {
   }
 
   public int getReplicationFactor(String topicName) {
-    return getPartitions(topicName).iterator().next().replicas().length;
+    return partitionsFor(topicName).iterator().next().replicas().length;
   }
 
   /**
@@ -451,7 +452,7 @@ public class TopicManager implements Closeable {
    *
    * It is intentional to make this function to be non-synchronized since it could lock
    * {@link TopicManager} for a pretty long time (up to 30 seconds) if topic deletion is slow.
-   * When topic deletion slowness happens, it will cause other operations, such as {@link #getLatestOffsets(String)}
+   * When topic deletion slowness happens, it will cause other operations, such as {@link #getTopicLatestOffsets(String)}
    * to be blocked for a long time, and this could cause push job failure.
    *
    * Even with non-synchronized function, Venice could still guarantee there will be only one topic
@@ -499,7 +500,8 @@ public class TopicManager implements Closeable {
       return;
     }
     // Since topic deletion is async, we would like to poll until topic doesn't exist any more
-    int MAX_TIMES = kafkaOperationTimeoutMs / topicDeletionStatusPollIntervalMs;
+    long MAX_TIMES = topicDeletionStatusPollIntervalMs == 0 ?
+        kafkaOperationTimeoutMs : (kafkaOperationTimeoutMs / topicDeletionStatusPollIntervalMs);
     /**
      * In case we have bad config, MAX_TIMES can not be smaller than {@link #MINIMUM_TOPIC_DELETION_STATUS_POLL_TIMES}.
      */
@@ -648,12 +650,12 @@ public class TopicManager implements Closeable {
    * @param topic
    * @return a Map of partition to latest offset, or an empty map if there's any problem
    */
-  public Map<Integer, Long> getLatestOffsets(String topic) {
-    return partitionOffsetFetcher.getLatestOffsets(topic);
+  public Map<Integer, Long> getTopicLatestOffsets(String topic) {
+    return partitionOffsetFetcher.getTopicLatestOffsets(topic);
   }
 
-  public long getLatestOffsetAndRetry(String topic, int partition, int retries) {
-    return partitionOffsetFetcher.getLatestOffsetAndRetry(topic, partition, retries);
+  public long getPartitionLatestOffsetAndRetry(String topic, int partition, int retries) {
+    return partitionOffsetFetcher.getPartitionLatestOffsetAndRetry(topic, partition, retries);
   }
 
   public long getLatestProducerTimestampAndRetry(String topic, int partition, int retries) {
@@ -661,40 +663,38 @@ public class TopicManager implements Closeable {
   }
 
   /**
-   * This method is synchronized because it calls #getConsumer()
-   *
    * Here this function will only check whether the topic exists in Kafka Zookeeper or not.
    * If stronger check against Kafka broker is required, the caller should call {@link #containsTopicAndAllPartitionsAreOnline(String)}
    * before invoking this function. The reason of not checking topic existence by {@link #containsTopicAndAllPartitionsAreOnline(String)}
    * by default since this function will validate whether every topic partition has ISR, which could
-   * fail {@link #getLatestOffset(String, int)} since some transient non-ISR could happen randomly.
+   * fail {@link #getPartitionLatestOffset(String, int)} since some transient non-ISR could happen randomly.
    */
-  public long getLatestOffset(String topic, int partition) throws TopicDoesNotExistException {
-    return partitionOffsetFetcher.getLatestOffset(topic, partition);
+  public long getPartitionLatestOffset(String topic, int partition) throws TopicDoesNotExistException {
+    return partitionOffsetFetcher.getPartitionLatestOffset(topic, partition);
   }
 
   /**
    * Get offsets for all the partitions with a specific timestamp.
    * This function will always return the next offset to consume, which could be:
    * 1. Any existing offset in the current topic partition.
-   * 2. A future offset returned by {@link #getLatestOffset}: the last record offset + 1.
+   * 2. A future offset returned by {@link #getPartitionLatestOffset}: the last record offset + 1.
    */
-  public Map<Integer, Long> getOffsetsByTime(String topic, long timestamp) {
-    return partitionOffsetFetcher.getOffsetsByTime(topic, timestamp);
+  public Map<Integer, Long> getTopicOffsetsByTime(String topic, long timestamp) {
+    return partitionOffsetFetcher.getTopicOffsetsByTime(topic, timestamp);
   }
 
   /**
    * Get offsets for only one partition with a specific timestamp.
    */
-  public long getOffsetByTime(String topic, int partition, long timestamp) {
-    return partitionOffsetFetcher.getOffsetByTime(topic, partition, timestamp);
+  public long getPartitionOffsetByTime(String topic, int partition, long timestamp) {
+    return partitionOffsetFetcher.getPartitionOffsetByTime(topic, partition, timestamp);
   }
 
   /**
-   * Get offsets for the selected partitions in `timestampsToSearch` with a specific timestamp
+   * Get offsets for only one partition with a specific timestamp with retry.
    */
-  public Map<Integer, Long> getOffsetsByTime(String topic, Map<TopicPartition, Long> timestampsToSearch, long timestamp) {
-    return partitionOffsetFetcher.getOffsetsByTime(topic, timestampsToSearch, timestamp);
+  public long getPartitionOffsetByTimeWithRetry(String topic, int partition, long timestamp, int maxAttempt, Duration delay) {
+    return partitionOffsetFetcher.getPartitionOffsetByTimeWithRetry(topic, partition, timestamp, maxAttempt, delay);
   }
 
   /**
@@ -711,7 +711,7 @@ public class TopicManager implements Closeable {
    * @param topic
    * @return
    */
-  public List<PartitionInfo> getPartitions(String topic){
+  public List<PartitionInfo> partitionsFor(String topic) {
     return partitionOffsetFetcher.partitionsFor(topic);
   }
 
@@ -732,8 +732,10 @@ public class TopicManager implements Closeable {
 
   @Override
   public synchronized void close() throws IOException {
-    IOUtils.closeQuietly(partitionOffsetFetcher);
-    kafkaAdmin.ifPresent(IOUtils::closeQuietly);
+    IOUtils.closeQuietly(partitionOffsetFetcher, logger::error);
+    if (kafkaAdmin.isPresent()) {
+      IOUtils.closeQuietly(kafkaAdmin.get(), logger::error);
+    }
   }
 
   // For testing only

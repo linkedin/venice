@@ -157,8 +157,8 @@ public class PushTimeoutTest {
     TopicManagerRepository mockTopicManagerRepository = mock(TopicManagerRepository.class);
     TopicManager mockTopicManager = mock(TopicManager.class);
     // Return 0 as the max offset, so the CATCH_UP_BASE_TOPIC_OFFSET_LAG is guaranteed to be reported since lag is 0
-    doReturn(0L).when(mockTopicManager).getLatestOffsetAndRetry(eq(versionTopic), anyInt(), anyInt());
-    doReturn(1000L).when(mockTopicManager).getLatestOffsetAndRetry(eq(Version.composeRealTimeTopic(storeName)), anyInt(), anyInt());
+    doReturn(0L).when(mockTopicManager).getPartitionLatestOffsetAndRetry(eq(versionTopic), anyInt(), anyInt());
+    doReturn(1000L).when(mockTopicManager).getPartitionLatestOffsetAndRetry(eq(Version.composeRealTimeTopic(storeName)), anyInt(), anyInt());
     doReturn(mockTopicManager).when(mockTopicManagerRepository).getTopicManager();
 
     // Make the test store a hybrid store and build a high RT offset lag, so that to force the logic of checking base version topic

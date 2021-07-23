@@ -65,8 +65,8 @@ public class LeaderStorageNodeReplicatorTest {
     doReturn(REWIND_FROM_EOP).when(mockHybridConfig).getBufferReplayPolicy();
     doReturn(true).when(mockTopicManager).containsTopicAndAllPartitionsAreOnline(srcTopic);
     doReturn(true).when(mockTopicManager).containsTopicAndAllPartitionsAreOnline(destTopic);
-    doReturn(partitionInfos).when(mockTopicManager).getPartitions(srcTopic);
-    doReturn(partitionInfos).when(mockTopicManager).getPartitions(destTopic);
+    doReturn(partitionInfos).when(mockTopicManager).partitionsFor(srcTopic);
+    doReturn(partitionInfos).when(mockTopicManager).partitionsFor(destTopic);
     doReturn(mockVeniceWriter).when(mockVeniceWriterFactory).createBasicVeniceWriter(anyString(), any(Time.class));
 
 
@@ -94,8 +94,8 @@ public class LeaderStorageNodeReplicatorTest {
     doReturn(DataReplicationPolicy.AGGREGATE).when(mockHybridConfig).getDataReplicationPolicy();
     doReturn(true).when(mockTopicManager).containsTopicAndAllPartitionsAreOnline(srcTopic);
     doReturn(true).when(mockTopicManager).containsTopicAndAllPartitionsAreOnline(destTopic);
-    doReturn(partitionInfos).when(mockTopicManager).getPartitions(srcTopic);
-    doReturn(partitionInfos).when(mockTopicManager).getPartitions(destTopic);
+    doReturn(partitionInfos).when(mockTopicManager).partitionsFor(srcTopic);
+    doReturn(partitionInfos).when(mockTopicManager).partitionsFor(destTopic);
     doReturn(mockVeniceWriter).when(mockVeniceWriterFactory).createBasicVeniceWriter(anyString(), any(Time.class));
 
     leaderStorageNodeReplicator.prepareAndStartReplication(srcTopic, destTopic, mockStore, aggregateRealTimeSourceKafkaUrl, Collections.emptyList());

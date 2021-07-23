@@ -40,7 +40,7 @@ public class KafkaInputFormat implements InputFormat<BytesWritable, KafkaInputMa
     KafkaClientFactory consumerFactory = getConsumerFactory(config);
     try (TopicManager topicManager = new TopicManager(consumerFactory)) {
       String topic = config.get(KAFKA_INPUT_TOPIC);
-      Map<Integer, Long> latestOffsets = topicManager.getLatestOffsets(topic);
+      Map<Integer, Long> latestOffsets = topicManager.getTopicLatestOffsets(topic);
       Map<TopicPartition, Long> partitionOffsetMap = new HashMap<>(latestOffsets.size());
       latestOffsets.forEach((partitionId, latestOffset) -> partitionOffsetMap.put(new TopicPartition(topic, partitionId), latestOffset));
       return partitionOffsetMap;

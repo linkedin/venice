@@ -176,7 +176,7 @@ public class  TestPushJobWithNativeReplication {
             Assert.assertFalse(partitionIds.isEmpty());
             int partitionId = partitionIds.iterator().next();
             // Get the end offset of the selected partition from version topic
-            long latestOffsetInVersionTopic = childDataCenter.getRandomController().getVeniceAdmin().getTopicManager().getLatestOffset(versionTopic, partitionId);
+            long latestOffsetInVersionTopic = childDataCenter.getRandomController().getVeniceAdmin().getTopicManager().getPartitionLatestOffset(versionTopic, partitionId);
             // Get the offset metadata of the selected partition from storage node
             StorageMetadataService metadataService = serverInRemoteFabric.getStorageMetadataService();
             OffsetRecord offsetRecord = metadataService.getLastOffset(versionTopic, partitionId);

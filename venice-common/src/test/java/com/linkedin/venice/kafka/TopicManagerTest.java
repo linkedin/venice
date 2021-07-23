@@ -14,6 +14,7 @@ import com.linkedin.venice.systemstore.schemas.StoreProperties;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.io.IOException;
+import java.time.Duration;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -160,7 +161,7 @@ public class TopicManagerTest {
   @Test
   public void testGetLastOffsets() {
     String topic = getTopic();
-    Map<Integer, Long> lastOffsets = manager.getLatestOffsets(topic);
+    Map<Integer, Long> lastOffsets = manager.getTopicLatestOffsets(topic);
     TestUtils.waitForNonDeterministicAssertion(2, TimeUnit.SECONDS, () -> {
       Assert.assertTrue(lastOffsets.containsKey(0), "single partition topic has an offset for partition 0");
       Assert.assertEquals(lastOffsets.keySet().size(), 1, "single partition topic has only an offset for one partition");
@@ -172,7 +173,7 @@ public class TopicManagerTest {
   public void testListOffsetsOnEmptyTopic(){
     KafkaConsumer<byte[], byte[]> mockConsumer = mock(KafkaConsumer.class);
     doReturn(new HashMap<String, List<PartitionInfo>>()).when(mockConsumer).listTopics();
-    Map<Integer, Long> offsets = manager.getLatestOffsets("myTopic");
+    Map<Integer, Long> offsets = manager.getTopicLatestOffsets("myTopic");
     Assert.assertEquals(offsets.size(), 0);
   }
 
@@ -207,7 +208,7 @@ public class TopicManagerTest {
     }
 
     assertOffsetsByTime(topicName, 0, 0);
-    Map<Integer, Long> latestOffsets = manager.getLatestOffsets(topicName);
+    Map<Integer, Long> latestOffsets = manager.getTopicLatestOffsets(topicName);
     latestOffsets.forEach((partition, offset) -> Assert.assertTrue(offset >= NUMBER_OF_MESSAGES,
         "When asking the latest offsets, partition " + partition + " has an unexpected offset."));
 
@@ -239,7 +240,7 @@ public class TopicManagerTest {
 
   private void assertOffsetsByTime(String topicName, long time, long expectedOffset) {
     LOGGER.info("Asking for time: " + time + ", expecting offset: " + expectedOffset);
-    Map<Integer, Long> offsets = manager.getOffsetsByTime(topicName, time);
+    Map<Integer, Long> offsets = manager.getTopicOffsetsByTime(topicName, time);
     offsets.forEach((partition, offset) -> Assert.assertEquals(offset, new Long(expectedOffset),
         "When asking for timestamp " + time + ", partition " + partition + " has an unexpected offset."));
 
@@ -347,8 +348,8 @@ public class TopicManagerTest {
   @Test
   public void testGetLatestOffsetForNonExistingTopic() {
     String nonExistingTopic = TestUtils.getUniqueString("non-existing-topic");
-    Assert.assertThrows(TopicDoesNotExistException.class, () -> manager.getLatestOffset(nonExistingTopic, 0));
-    Assert.assertThrows(TopicDoesNotExistException.class, () -> manager.getLatestOffsetAndRetry(nonExistingTopic, 0, 10));
+    Assert.assertThrows(TopicDoesNotExistException.class, () -> manager.getPartitionLatestOffset(nonExistingTopic, 0));
+    Assert.assertThrows(TopicDoesNotExistException.class, () -> manager.getPartitionLatestOffsetAndRetry(nonExistingTopic, 0, 10));
   }
 
   @Test
@@ -385,7 +386,7 @@ public class TopicManagerTest {
     doReturn(mockKafkaConsumer).when(mockKafkaClientFactory).getKafkaConsumer(any());
 
     TopicManager topicManager = new TopicManager(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, MIN_COMPACTION_LAG, mockKafkaClientFactory);
-    Assert.assertThrows(VeniceOperationAgainstKafkaTimedOut.class, () -> topicManager.getLatestOffsetAndRetry(topic, 0, 10));
+    Assert.assertThrows(VeniceOperationAgainstKafkaTimedOut.class, () -> topicManager.getPartitionLatestOffsetAndRetry(topic, 0, 10));
   }
 
   @Test
@@ -425,5 +426,32 @@ public class TopicManagerTest {
 
     manager.createTopic(topic, 1, 1, true);
     Assert.assertTrue(manager.containsTopicAndAllPartitionsAreOnline(topic));
+  }
+
+  @Test
+  public void testGetPartitionOffsetByTimeWithRetrySucceeds() {
+    String topic = TestUtils.getUniqueString("topic");
+    manager.createTopic(topic, 1, 1, true);
+    int[] maxAttempts = {1, 3, 5};
+
+    for (int maxAttempt : maxAttempts) {
+      // Fetch the earliest offset which should be 0
+      Assert.assertEquals(manager.getPartitionOffsetByTimeWithRetry(topic, 0, 0, maxAttempt, Duration.ofMillis(1)), 0);
+    }
+  }
+
+  @Test
+  public void testGetPartitionOffsetByTimeWithRetryFails() {
+    String nonExistingTopic = TestUtils.getUniqueString("non-existing-topic");
+    int[] maxAttempts = {1, 3, 5};
+    // Create a new topic manager instance so that we can set the kafkaOperationTimeoutMs parameter to be shorter to make
+    // this test case run more efficiently.
+    TopicManager topicManager = new TopicManager(TimeUnit.SECONDS.toMillis(1), 100, MIN_COMPACTION_LAG, TestUtils.getVeniceConsumerFactory(kafka));
+
+    for (int maxAttempt : maxAttempts) {
+      // Still fail even with retry
+      Assert.assertThrows(org.apache.kafka.common.errors.TimeoutException.class,
+          () -> topicManager.getPartitionOffsetByTimeWithRetry(nonExistingTopic, 0, 0, maxAttempt, Duration.ofMillis(1)));
+    }
   }
 }

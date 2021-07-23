@@ -7,13 +7,16 @@ import com.linkedin.venice.kafka.admin.KafkaAdminWrapper;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.utils.Lazy;
+import com.linkedin.venice.utils.RetryUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import java.time.Duration;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
@@ -31,7 +34,9 @@ import static com.linkedin.venice.offsets.OffsetRecord.*;
 
 
 public class PartitionOffsetFetcherImpl implements PartitionOffsetFetcher {
-  private static final Logger LOGGER = Logger.getLogger(PartitionOffsetFetcherImpl.class);
+  private static final Logger logger = Logger.getLogger(PartitionOffsetFetcherImpl.class);
+  private static final List<Class<? extends Throwable>> KAFKA_RETRIABLE_FAILURES =
+      Collections.singletonList(org.apache.kafka.common.errors.RetriableException.class);
   public static final Duration DEFAULT_KAFKA_OFFSET_API_TIMEOUT = Duration.ofMinutes(1);
   private static final int KAFKA_POLLING_RETRY_ATTEMPT = 3;
 
@@ -57,11 +62,11 @@ public class PartitionOffsetFetcherImpl implements PartitionOffsetFetcher {
   }
 
   @Override
-  public Map<Integer, Long> getLatestOffsets(String topic) {
+  public Map<Integer, Long> getTopicLatestOffsets(String topic) {
     try (AutoCloseableLock ignore = new AutoCloseableLock(rawConsumerLock)) {
       List<PartitionInfo> partitionInfoList = kafkaRawBytesConsumer.get().partitionsFor(topic);
       if (null == partitionInfoList || partitionInfoList.isEmpty()) {
-        LOGGER.warn("Unexpected! Topic: " + topic + " has a null partition set, returning empty map for latest offsets");
+        logger.warn("Unexpected! Topic: " + topic + " has a null partition set, returning empty map for latest offsets");
         return Collections.emptyMap();
       }
       List<TopicPartition> topicPartitions = partitionInfoList.stream()
@@ -109,12 +114,12 @@ public class PartitionOffsetFetcherImpl implements PartitionOffsetFetcher {
   }
 
   @Override
-  public long getLatestOffset(String topic, int partition) throws TopicDoesNotExistException {
+  public long getPartitionLatestOffset(String topic, int partition) throws TopicDoesNotExistException {
     return getLatestOffset(topic, partition, true);
   }
 
   @Override
-  public long getLatestOffsetAndRetry(String topic, int partition, int retries) {
+  public long getPartitionLatestOffsetAndRetry(String topic, int partition, int retries) {
     if (retries < 1) {
       throw new IllegalArgumentException("Invalid retries. Got: " + retries);
     }
@@ -123,9 +128,9 @@ public class PartitionOffsetFetcherImpl implements PartitionOffsetFetcher {
     VeniceOperationAgainstKafkaTimedOut lastException = new VeniceOperationAgainstKafkaTimedOut("This exception should not be thrown");
     while (attempt < retries) {
       try {
-        return getLatestOffset(topic, partition);
+        return getPartitionLatestOffset(topic, partition);
       } catch (VeniceOperationAgainstKafkaTimedOut e){ // topic and partition is listed in the exception object
-        LOGGER.warn("Failed to get latest offset.  Retries remaining: " + (retries - attempt), e);
+        logger.warn("Failed to get latest offset.  Retries remaining: " + (retries - attempt), e);
         lastException = e;
         attempt ++;
       }
@@ -134,52 +139,7 @@ public class PartitionOffsetFetcherImpl implements PartitionOffsetFetcher {
   }
 
   @Override
-  public Map<Integer, Long> getOffsetsByTime(String topic, Map<TopicPartition, Long> timestampsToSearch, long timestamp) {
-    try (AutoCloseableLock ignore = new AutoCloseableLock(rawConsumerLock)) {
-      final int expectedPartitionNum = timestampsToSearch.size();
-      Map<Integer, Long> result = kafkaRawBytesConsumer.get().offsetsForTimes(timestampsToSearch)
-          .entrySet()
-          .stream()
-          .collect(Collectors.toMap(partitionToOffset -> Utils.notNull(partitionToOffset.getKey(),
-              "Got a null TopicPartition key out of the offsetsForTime API").partition(), partitionToOffset -> {
-            Optional<Long> offsetOptional = Optional.ofNullable(partitionToOffset.getValue()).map(offset -> offset.offset());
-            if (offsetOptional.isPresent()) {
-              return offsetOptional.get();
-            } else {
-              return getOffsetByTimeIfOutOfRange(partitionToOffset.getKey(), timestamp);
-            }
-          }));
-      // The given timestamp exceed the timestamp of the last message. So return the last offset.
-      if (result.isEmpty()) {
-        LOGGER.warn("Offsets result is empty. Will complement with the last offsets.");
-        result = kafkaRawBytesConsumer.get().endOffsets(timestampsToSearch.keySet())
-            .entrySet()
-            .stream()
-            .collect(Collectors.toMap(partitionToOffset -> Utils.notNull(partitionToOffset).getKey().partition(),
-                partitionToOffset -> partitionToOffset.getValue()));
-      } else if (result.size() != expectedPartitionNum) {
-        Map<TopicPartition, Long> endOffsets = kafkaRawBytesConsumer.get().endOffsets(timestampsToSearch.keySet());
-        // Get partial offsets result.
-        LOGGER.warn("Missing offsets for some partitions. Partition Number should be :" + expectedPartitionNum + " but only got: " + result.size()
-            + ". Will complement with the last offsets.");
-
-        for (TopicPartition topicPartition : timestampsToSearch.keySet()) {
-          int partitionId = topicPartition.partition();
-          if (!result.containsKey(partitionId)) {
-            result.put(partitionId, endOffsets.get(new TopicPartition(topic, partitionId)));
-          }
-        }
-      }
-      if (result.size() < expectedPartitionNum) {
-        throw new VeniceException(
-            "Failed to get offsets for all partitions. Got offsets for " + result.size() + " partitions, should be: " + expectedPartitionNum);
-      }
-      return result;
-    }
-  }
-
-  @Override
-  public Map<Integer, Long> getOffsetsByTime(String topic, long timestamp) {
+  public Map<Integer, Long> getTopicOffsetsByTime(String topic, long timestamp) {
     try (AutoCloseableLock ignore = new AutoCloseableLock(rawConsumerLock)) {
       int remainingAttempts = 5;
       List<PartitionInfo> partitionInfoList = kafkaRawBytesConsumer.get().partitionsFor(topic);
@@ -197,20 +157,130 @@ public class PartitionOffsetFetcherImpl implements PartitionOffsetFetcher {
         throw new VeniceException("Cannot get partition info for topic: " + topic + ", partitionInfoList: " + partitionInfoList);
       } else {
         Map<TopicPartition, Long> timestampsToSearch = partitionInfoList.stream()
-            .collect(Collectors.toMap(partitionInfo -> new TopicPartition(topic, partitionInfo.partition()),
+            .collect(Collectors.toMap(partitionInfo -> new TopicPartition(partitionInfo.topic(), partitionInfo.partition()),
                 ignoredParam -> timestamp));
-        return getOffsetsByTime(topic, timestampsToSearch, timestamp);
+
+        return convertKeyFromPartitionToPartitionId(
+            getOffsetsByTimeWithRetry(timestampsToSearch, 1, Duration.ofMillis(1)),
+            topic
+        );
       }
     }
   }
 
+  private Map<Integer, Long> convertKeyFromPartitionToPartitionId(Map<TopicPartition, Long> byPartitions, String expectTopicName) {
+    final Map<Integer, Long> byPartitionIds = new HashMap<>(byPartitions.size());
+    for (Map.Entry<TopicPartition, Long> entry : byPartitions.entrySet()) {
+      if (!Objects.equals(entry.getKey().topic(), expectTopicName)) {
+        throw new VeniceException(
+            String.format("Expected topic name is %s but the topic name in partition is %s", expectTopicName, entry.getKey().topic()));
+      }
+      byPartitionIds.put(entry.getKey().partition(), entry.getValue());
+    }
+    return byPartitionIds;
+  }
+
   @Override
-  public long getOffsetByTime(String topic, int partition, long timestamp) {
-    return getOffsetsByTime(
-        topic,
-        Collections.singletonMap(new TopicPartition(topic, partition), timestamp),
-        timestamp
-    ).get(partition);
+  public long getPartitionOffsetByTime(String topic, int partition, long timestamp) {
+    final TopicPartition topicPartition = new TopicPartition(topic, partition);
+    return getOffsetsByTimeWithRetry(
+            Collections.singletonMap(topicPartition, timestamp),
+            1,
+            Duration.ofMillis(1) // Placeholder
+    ).get(topicPartition);
+  }
+
+  @Override
+  public long getPartitionOffsetByTimeWithRetry(String topic, int partition, long timestamp, int maxAttempt, Duration delay) {
+    final TopicPartition topicPartition = new TopicPartition(topic, partition);
+    return getOffsetsByTimeWithRetry(
+            Collections.singletonMap(topicPartition, timestamp),
+            maxAttempt,
+            delay
+    ).get(topicPartition);
+  }
+
+  private Map<TopicPartition, Long> getOffsetsByTimeWithRetry(
+      Map<TopicPartition, Long> timestampsToSearch,
+      int maxAttempt,
+      Duration delay
+  ) {
+    try (AutoCloseableLock ignore = new AutoCloseableLock(rawConsumerLock)) {
+      final int expectedPartitionNum = timestampsToSearch.size();
+      Map<TopicPartition, Long> result = offsetsForTimesWithRetry(timestampsToSearch, maxAttempt, delay)
+              .entrySet()
+              .stream()
+              .collect(Collectors.toMap(
+                  partitionToOffset ->
+                      Utils.notNull(partitionToOffset.getKey(), "Got a null TopicPartition key out of the offsetsForTime API"),
+                  partitionToOffset -> {
+                    Optional<Long> offsetOptional = Optional.ofNullable(partitionToOffset.getValue()).map(OffsetAndTimestamp::offset);
+                    return offsetOptional.orElseGet(() -> getOffsetByTimeIfOutOfRange(
+                        partitionToOffset.getKey(),
+                        timestampsToSearch.get(partitionToOffset.getKey())
+                    ));
+                  }));
+      // The given timestamp exceed the timestamp of the last message. So return the last offset.
+      if (result.isEmpty()) {
+        logger.warn("Offsets result is empty. Will complement with the last offsets.");
+        result = endOffsetsWithRetry(timestampsToSearch.keySet(), maxAttempt, delay)
+                .entrySet()
+                .stream()
+                .collect(Collectors.toMap(
+                    partitionToOffset -> Utils.notNull(partitionToOffset).getKey(),
+                    partitionToOffset -> partitionToOffset.getValue() + 1
+                ));
+
+      } else if (result.size() != expectedPartitionNum) {
+        logger.warn("Missing offsets for some partitions. Partition Number should be :" + expectedPartitionNum + " but only got: " + result.size()
+                + ". Will complement with the last offsets.");
+        // Get partial offsets result.
+        Map<TopicPartition, Long> endOffsets = endOffsetsWithRetry(timestampsToSearch.keySet(), maxAttempt, delay);
+
+        for (TopicPartition topicPartition : timestampsToSearch.keySet()) {
+          if (!result.containsKey(topicPartition)) {
+            result.put(topicPartition, endOffsets.get(topicPartition) + 1);
+          }
+        }
+      }
+
+      if (result.size() < expectedPartitionNum) {
+        throw new VeniceException(
+                "Failed to get offsets for all partitions. Got offsets for " + result.size() + " partitions, should be: " + expectedPartitionNum);
+      }
+      return result;
+    }
+  }
+
+  private Map<TopicPartition, OffsetAndTimestamp> offsetsForTimesWithRetry(
+          Map<TopicPartition, Long> timestampsToSearch,
+          int maxAttempt,
+          Duration delay
+  ) {
+    try (AutoCloseableLock ignore = new AutoCloseableLock(rawConsumerLock)) {
+      return RetryUtils.executeWithMaxAttempt(
+          () -> kafkaRawBytesConsumer.get().offsetsForTimes(
+              timestampsToSearch, kafkaOperationTimeout),
+          maxAttempt,
+          delay,
+          KAFKA_RETRIABLE_FAILURES
+      );
+    }
+  }
+
+  private Map<TopicPartition, Long> endOffsetsWithRetry(
+          Collection<TopicPartition> partitions,
+          int maxAttempt,
+          Duration delay
+  ) {
+    try (AutoCloseableLock ignore = new AutoCloseableLock(rawConsumerLock)) {
+      return RetryUtils.executeWithMaxAttempt(
+          () -> kafkaRawBytesConsumer.get().endOffsets(partitions),
+          maxAttempt,
+          delay,
+          KAFKA_RETRIABLE_FAILURES
+      );
+    }
   }
 
   @Override
@@ -226,7 +296,7 @@ public class PartitionOffsetFetcherImpl implements PartitionOffsetFetcher {
         timestamp = getLatestProducerTimestamp(topic, partition);
         return timestamp;
       } catch (VeniceOperationAgainstKafkaTimedOut e){// topic and partition is listed in the exception object
-        LOGGER.warn("Failed to get latest offset.  Retries remaining: " + (retries - attempt), e);
+        logger.warn("Failed to get latest offset.  Retries remaining: " + (retries - attempt), e);
         lastException = e;
         attempt ++;
       }
@@ -276,7 +346,7 @@ public class PartitionOffsetFetcherImpl implements PartitionOffsetFetcher {
             ConsumerRecords records = ConsumerRecords.EMPTY;
             int attempts = 0;
             while (attempts++ < KAFKA_POLLING_RETRY_ATTEMPT && records.isEmpty()) {
-              LOGGER.info("Trying to get the last record from topic: " + topicPartition.toString() + " at offset: " + (
+              logger.info("Trying to get the last record from topic: " + topicPartition.toString() + " at offset: " + (
                   latestOffset - 1) + ". Attempt#" + attempts + "/" + KAFKA_POLLING_RETRY_ATTEMPT);
               records = kafkaRecordConsumer.get().poll(kafkaOperationTimeout);
             }
@@ -285,7 +355,7 @@ public class PartitionOffsetFetcherImpl implements PartitionOffsetFetcher {
                * Failed the job if we cannot get the last offset of the topic.
                */
               String errorMsg = "Failed to get the last record from topic: " + topicPartition.toString() + " after " + KAFKA_POLLING_RETRY_ATTEMPT + " attempts";
-              LOGGER.error(errorMsg);
+              logger.error(errorMsg);
               throw new VeniceException(errorMsg);
             }
 
@@ -317,7 +387,7 @@ public class PartitionOffsetFetcherImpl implements PartitionOffsetFetcher {
       long latestOffset = getLatestOffset(topicPartition.topic(), topicPartition.partition(), true);
       if (latestOffset <= 0) {
         long nextOffset = LOWEST_OFFSET + 1;
-        LOGGER.info("End offset for topic " + topicPartition + " is " + latestOffset + "; return offset " + nextOffset);
+        logger.info("End offset for topic " + topicPartition + " is " + latestOffset + "; return offset " + nextOffset);
         return nextOffset;
       }
 
@@ -326,7 +396,7 @@ public class PartitionOffsetFetcherImpl implements PartitionOffsetFetcher {
         /**
          * This topic/partition is empty or retention delete the entire partition
          */
-        LOGGER.info("Both beginning offset and end offset is " + latestOffset + " for topic " + topicPartition + "; it's empty; return offset " + latestOffset);
+        logger.info("Both beginning offset and end offset is " + latestOffset + " for topic " + topicPartition + "; it's empty; return offset " + latestOffset);
         return latestOffset;
       }
 
@@ -341,7 +411,7 @@ public class PartitionOffsetFetcherImpl implements PartitionOffsetFetcher {
          */
         int attempts = 0;
         while (attempts++ < KAFKA_POLLING_RETRY_ATTEMPT && records.isEmpty()) {
-          LOGGER.info("Trying to get the last record from topic: " + topicPartition.toString() + " at offset: " + (latestOffset
+          logger.info("Trying to get the last record from topic: " + topicPartition.toString() + " at offset: " + (latestOffset
               - 1) + ". Attempt#" + attempts + "/" + KAFKA_POLLING_RETRY_ATTEMPT);
           records = kafkaRawBytesConsumer.get().poll(kafkaOperationTimeout);
         }
@@ -350,7 +420,7 @@ public class PartitionOffsetFetcherImpl implements PartitionOffsetFetcher {
            * Failed the job if we cannot get the last offset of the topic.
            */
           String errorMsg = "Failed to get the last record from topic: " + topicPartition.toString() + " after " + KAFKA_POLLING_RETRY_ATTEMPT + " attempts";
-          LOGGER.error(errorMsg);
+          logger.error(errorMsg);
           throw new VeniceException(errorMsg);
         }
 
@@ -360,13 +430,13 @@ public class PartitionOffsetFetcherImpl implements PartitionOffsetFetcher {
         if (timestamp <= record.timestamp()) {
           /**
            * There could be a race condition in this function:
-           * 1. In function: {@link #getOffsetsByTime}, {@link KafkaConsumer#offsetsForTimes} is invoked.
+           * 1. In function: {@link #getPartitionsOffsetsByTime}, {@link KafkaConsumer#offsetsForTimes} is invoked.
            * 2. The asked timestamp is out of range.
            * 3. Some messages get produced to the topic.
            * 4. {@link #getOffsetByTimeIfOutOfRange} gets invoked, and it realizes that the latest message's timestamp
            * is higher than the seeking timestamp.
            *
-           * In this case, we should call {@link #getOffsetByTime} again, since the seeking timestamp will be in the range
+           * In this case, we should call {@link #getPartitionOffsetByTime} again, since the seeking timestamp will be in the range
            * instead of returning the earliest offset.
            */
           Map<TopicPartition, Long> timestampsToSearch = new HashMap<>();
@@ -375,7 +445,7 @@ public class PartitionOffsetFetcherImpl implements PartitionOffsetFetcher {
           if (result.containsKey(topicPartition) && result.get(topicPartition) != null) {
             OffsetAndTimestamp offsetAndTimestamp = result.get(topicPartition);
             long resultOffset = offsetAndTimestamp.offset();
-            LOGGER.info("Successfully return offset: " + resultOffset + " for topic: " + topicPartition.toString() + " for timestamp: " + timestamp);
+            logger.info("Successfully return offset: " + resultOffset + " for topic: " + topicPartition.toString() + " for timestamp: " + timestamp);
             return resultOffset;
           }
         }
@@ -385,7 +455,7 @@ public class PartitionOffsetFetcherImpl implements PartitionOffsetFetcher {
          * 2. Otherwise, return earlier offset to consume from the beginning.
          */
         long resultOffset = (timestamp > record.timestamp()) ? latestOffset : earliestOffset;
-        LOGGER.info("Successfully return offset: " + resultOffset + " for topic: " + topicPartition.toString() + " for timestamp: " + timestamp);
+        logger.info("Successfully return offset: " + resultOffset + " for topic: " + topicPartition.toString() + " for timestamp: " + timestamp);
         return resultOffset;
       } finally {
         kafkaRawBytesConsumer.get().assign(Collections.emptyList());
@@ -430,8 +500,14 @@ public class PartitionOffsetFetcherImpl implements PartitionOffsetFetcher {
 
   @Override
   public void close() {
-    kafkaRawBytesConsumer.ifPresent(IOUtils::closeQuietly);
-    kafkaRecordConsumer.ifPresent(IOUtils::closeQuietly);
-    kafkaAdminWrapper.ifPresent(IOUtils::closeQuietly);
+    if (kafkaRawBytesConsumer.isPresent()) {
+      IOUtils.closeQuietly(kafkaRawBytesConsumer.get(), logger::error);
+    }
+    if (kafkaRecordConsumer.isPresent()) {
+      IOUtils.closeQuietly(kafkaRecordConsumer.get(), logger::error);
+    }
+    if (kafkaAdminWrapper.isPresent()) {
+      IOUtils.closeQuietly(kafkaAdminWrapper.get(), logger::error);
+    }
   }
 }
