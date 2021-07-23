@@ -48,7 +48,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
-import org.apache.commons.io.IOUtils;
 import org.apache.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
@@ -154,9 +153,9 @@ public class TestStreaming {
 
   @AfterClass
   public void cleanUp() {
-    IOUtils.closeQuietly(veniceCluster);
-    IOUtils.closeQuietly(veniceWriter);
-    IOUtils.closeQuietly(compressorFactory);
+    Utils.closeQuietlyWithErrorLogged(veniceCluster);
+    Utils.closeQuietlyWithErrorLogged(veniceWriter);
+    Utils.closeQuietlyWithErrorLogged(compressorFactory);
   }
 
   private Properties getRouterProperties(boolean enableStreaming, boolean enableNettyClient, boolean enableClientCompression) {
@@ -320,8 +319,8 @@ public class TestStreaming {
         }
       }
     } finally {
-      IOUtils.closeQuietly(veniceRouterWrapperWithHttpAsyncClient);
-      IOUtils.closeQuietly(veniceRouterWrapperWithNettyClient);
+      Utils.closeQuietlyWithErrorLogged(veniceRouterWrapperWithHttpAsyncClient);
+      Utils.closeQuietlyWithErrorLogged(veniceRouterWrapperWithNettyClient);
     }
   }
 

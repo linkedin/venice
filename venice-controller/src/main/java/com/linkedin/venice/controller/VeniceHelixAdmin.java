@@ -4616,18 +4616,18 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     @Override
     public void close() {
         manager.disconnect();
-        IOUtils.closeQuietly(zkSharedSystemStoreRepository);
-        IOUtils.closeQuietly(zkSharedSchemaRepository);
+        Utils.closeQuietlyWithErrorLogged(zkSharedSystemStoreRepository);
+        Utils.closeQuietlyWithErrorLogged(zkSharedSchemaRepository);
         zkClient.close();
-        jobTrackingVeniceWriterMap.forEach( (k, v) -> IOUtils.closeQuietly(v));
+        jobTrackingVeniceWriterMap.forEach( (k, v) -> Utils.closeQuietlyWithErrorLogged(v));
         jobTrackingVeniceWriterMap.clear();
-        participantMessageWriterMap.forEach( (k, v) -> IOUtils.closeQuietly(v));
+        participantMessageWriterMap.forEach( (k, v) -> Utils.closeQuietlyWithErrorLogged(v));
         participantMessageWriterMap.clear();
         metadataStoreWriter.close();
-        IOUtils.closeQuietly(topicManagerRepository);
+        Utils.closeQuietlyWithErrorLogged(topicManagerRepository);
         pushStatusStoreReader.ifPresent(PushStatusStoreReader::close);
         pushStatusStoreDeleter.ifPresent(PushStatusStoreRecordDeleter::close);
-        clusterControllerClientPerColoMap.forEach((clusterName, controllerClientMap) -> controllerClientMap.values().forEach(c -> IOUtils.closeQuietly(c)));
+        clusterControllerClientPerColoMap.forEach((clusterName, controllerClientMap) -> controllerClientMap.values().forEach(c -> Utils.closeQuietlyWithErrorLogged(c)));
     }
 
     /**

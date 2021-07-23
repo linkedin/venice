@@ -25,7 +25,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import nonapi.io.github.classgraph.utils.JarUtils;
-import org.apache.commons.io.IOUtils;
 import org.apache.log4j.Logger;
 
 
@@ -210,9 +209,9 @@ public final class ForkedJavaProcess extends Process {
 
         Source: http://www.ryanchapin.com/fv-b-4-689/Too-Many-Open-Files-Errors-When-Using-Runtime-exec---or-ProcessBuilder-start---to-Execute-A-Process.html
        */
-      IOUtils.closeQuietly(process.getInputStream());
-      IOUtils.closeQuietly(process.getOutputStream());
-      IOUtils.closeQuietly(process.getErrorStream());
+      Utils.closeQuietlyWithErrorLogged(process.getInputStream());
+      Utils.closeQuietlyWithErrorLogged(process.getOutputStream());
+      Utils.closeQuietlyWithErrorLogged(process.getErrorStream());
 
       long elapsedTime = System.currentTimeMillis() - startTime;
       if (process.isAlive()) {

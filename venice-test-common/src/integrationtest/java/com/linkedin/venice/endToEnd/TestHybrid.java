@@ -133,8 +133,8 @@ public class TestHybrid {
 
   @AfterClass(alwaysRun=true)
   public void tearDown() {
-    IOUtils.closeQuietly(sharedVenice);
-    IOUtils.closeQuietly(ingestionIsolationEnabledSharedVenice);
+    Utils.closeQuietlyWithErrorLogged(sharedVenice);
+    Utils.closeQuietlyWithErrorLogged(ingestionIsolationEnabledSharedVenice);
   }
 
   @DataProvider(name = "isLeaderFollowerModelEnabled", parallel = false)

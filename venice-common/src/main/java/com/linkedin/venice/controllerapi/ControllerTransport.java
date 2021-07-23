@@ -6,6 +6,7 @@ import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
 
+import com.linkedin.venice.utils.Utils;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -17,7 +18,6 @@ import org.apache.commons.lang.StringUtils;
 import org.apache.http.entity.ByteArrayEntity;
 import org.apache.http.nio.conn.ssl.SSLIOSessionStrategy;
 import org.apache.log4j.Logger;
-import org.apache.commons.io.IOUtils;
 import org.apache.commons.httpclient.HttpStatus;
 
 import org.apache.http.impl.nio.client.HttpAsyncClients;
@@ -69,7 +69,7 @@ public class ControllerTransport implements AutoCloseable {
 
   @Override
   public void close() {
-    IOUtils.closeQuietly(this.httpClient);
+    Utils.closeQuietlyWithErrorLogged(this.httpClient);
   }
 
   public <T extends ControllerResponse> T request(String controllerUrl, ControllerRoute route, QueryParams params, Class<T> responseType)

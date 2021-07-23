@@ -82,7 +82,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
-import org.apache.commons.io.IOUtils;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.log4j.Logger;
@@ -553,7 +552,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
    */
   @Override
   public void stopInner() throws Exception {
-    IOUtils.closeQuietly(participantStoreConsumptionTask);
+    Utils.closeQuietlyWithErrorLogged(participantStoreConsumptionTask);
     shutdownExecutorService(participantStoreConsumerExecutorService, true, "participantStoreConsumerExecutorService");
 
     /*
@@ -564,22 +563,21 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     shutdownExecutorService(ingestionExecutorService, false, "ingestionExecutorService");
     shutdownExecutorService(cacheWarmingExecutorService, true, "cacheWarmingExecutorService");
 
-    IOUtils.closeQuietly(aggKafkaConsumerService);
+    Utils.closeQuietlyWithErrorLogged(aggKafkaConsumerService);
 
     onlineOfflineNotifiers.forEach(VeniceNotifier::close);
     leaderFollowerNotifiers.forEach(VeniceNotifier::close);
-    IOUtils.closeQuietly(metaStoreWriter);
+    Utils.closeQuietlyWithErrorLogged(metaStoreWriter);
 
     kafkaMessageEnvelopeSchemaReader.ifPresent(SchemaReader::close);
 
     //close it the very end to make sure all ingestion task have released the shared producers.
-    IOUtils.closeQuietly(sharedKafkaProducerService);
+    Utils.closeQuietlyWithErrorLogged(sharedKafkaProducerService);
 
     //close drainer service at the very end as it does not depend on any other service.
-    IOUtils.closeQuietly(storeBufferService);
-
-    IOUtils.closeQuietly(topicManagerRepository);
-    IOUtils.closeQuietly(topicManagerRepositoryJavaBased);
+    Utils.closeQuietlyWithErrorLogged(storeBufferService);
+    Utils.closeQuietlyWithErrorLogged(topicManagerRepository);
+    Utils.closeQuietlyWithErrorLogged(topicManagerRepositoryJavaBased);
   }
 
   /**

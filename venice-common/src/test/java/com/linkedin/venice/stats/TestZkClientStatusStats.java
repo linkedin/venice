@@ -8,7 +8,6 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.concurrent.TimeUnit;
-import org.apache.commons.io.IOUtils;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.zookeeper.WatchedEvent;
 import org.testng.Assert;
@@ -64,7 +63,7 @@ public class TestZkClientStatusStats {
       if (zkClient != null) {
         zkClient.close();
       }
-      IOUtils.closeQuietly(zkServer);
+      Utils.closeQuietlyWithErrorLogged(zkServer);
     }
   }
 

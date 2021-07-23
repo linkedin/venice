@@ -19,6 +19,7 @@ import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Utils;
 import io.netty.handler.codec.http.FullHttpResponse;
 import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
@@ -27,7 +28,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
-import org.apache.commons.io.IOUtils;
 import org.apache.log4j.Logger;
 import org.codehaus.jackson.map.ObjectMapper;
 import org.testng.Assert;
@@ -127,7 +127,7 @@ public class AvroGenericStoreClientImplTest {
   @AfterMethod
   public void closeStoreClient() {
     for (AvroGenericStoreClient<String, Object> storeClient : storeClients.values()) {
-      IOUtils.closeQuietly(storeClient);
+      Utils.closeQuietlyWithErrorLogged(storeClient);
     }
     storeClients.clear();
     if (d2Client != null) {

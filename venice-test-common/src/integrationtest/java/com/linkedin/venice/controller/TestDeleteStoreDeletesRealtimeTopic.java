@@ -15,15 +15,13 @@ import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
-import java.util.concurrent.CompletableFuture;
+import com.linkedin.venice.utils.Utils;
 import java.util.concurrent.TimeUnit;
 import org.apache.avro.util.Utf8;
-import org.apache.commons.io.IOUtils;
 import org.apache.log4j.Logger;
 import org.apache.samza.system.SystemProducer;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
-import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
@@ -57,10 +55,10 @@ public class TestDeleteStoreDeletesRealtimeTopic {
 
   @AfterClass
   public void cleanUp() {
-    IOUtils.closeQuietly(topicManager);
-    IOUtils.closeQuietly(client);
-    IOUtils.closeQuietly(venice);
-    IOUtils.closeQuietly(controllerClient);
+    Utils.closeQuietlyWithErrorLogged(topicManager);
+    Utils.closeQuietlyWithErrorLogged(client);
+    Utils.closeQuietlyWithErrorLogged(venice);
+    Utils.closeQuietlyWithErrorLogged(controllerClient);
   }
 
   @Test(timeOut = 60 * Time.MS_PER_SECOND)

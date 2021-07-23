@@ -7,10 +7,10 @@ import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.DictionaryUtils;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import org.apache.commons.io.IOUtils;
 import org.apache.hadoop.io.BytesWritable;
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapred.Mapper;
@@ -137,7 +137,7 @@ public abstract class AbstractVeniceMapper<INPUT_KEY, INPUT_VALUE>
       if (compressor.getCompressionStrategy() == CompressionStrategy.ZSTD_WITH_DICT) {
         compressorFactory.removeVersionSpecificCompressor(veniceRecordReader.topicName);
       } else {
-        IOUtils.closeQuietly(compressor);
+        Utils.closeQuietlyWithErrorLogged(compressor);
       }
     }
   }

@@ -30,6 +30,7 @@ import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -120,9 +121,9 @@ public class StorageNodeReadTest {
 
   @AfterClass(alwaysRun = true)
   public void cleanUp() {
-    IOUtils.closeQuietly(client);
-    IOUtils.closeQuietly(veniceWriter);
-    IOUtils.closeQuietly(veniceCluster);
+    Utils.closeQuietlyWithErrorLogged(client);
+    Utils.closeQuietlyWithErrorLogged(veniceWriter);
+    Utils.closeQuietlyWithErrorLogged(veniceCluster);
   }
 
   private int getPartitionId(byte[] key) {

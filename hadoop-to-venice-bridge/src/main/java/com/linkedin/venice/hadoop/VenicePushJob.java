@@ -903,7 +903,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
       }
       throwVeniceException(e);
     } finally {
-      IOUtils.closeQuietly(inputDataInfoProvider);
+      Utils.closeQuietlyWithErrorLogged(inputDataInfoProvider);
       if (pushJobHeartbeatSender != null) {
         pushJobHeartbeatSender.stop();
       }
@@ -2174,7 +2174,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
 
   private void closeClients() {
     closeVeniceWriter();
-    IOUtils.closeQuietly(controllerClient);
+    Utils.closeQuietlyWithErrorLogged(controllerClient);
   }
 
   private static class ErrorMessage {

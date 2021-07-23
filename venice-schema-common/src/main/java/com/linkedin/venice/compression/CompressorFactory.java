@@ -67,7 +67,7 @@ public class CompressorFactory implements Closeable, AutoCloseable {
   @Override
   public void close() {
     for (VeniceCompressor compressor : compressorMap.values()) {
-      IOUtils.closeQuietly(compressor);
+      IOUtils.closeQuietly(compressor, logger::error);
     }
 
     for (String topic : versionSpecificCompressorMap.keySet()) {

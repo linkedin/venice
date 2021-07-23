@@ -204,7 +204,7 @@ public class DaVinciClientTest {
     if (d2Client != null) {
       D2ClientUtils.shutdownClient(d2Client);
     }
-    IOUtils.closeQuietly(cluster);
+    Utils.closeQuietlyWithErrorLogged(cluster);
   }
 
   @AfterMethod

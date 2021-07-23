@@ -6,6 +6,7 @@ import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
+import java.io.Closeable;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
@@ -30,7 +31,6 @@ import java.util.TreeMap;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
-import java.util.stream.Collectors;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import org.apache.avro.Schema;
@@ -768,5 +768,9 @@ public class Utils {
 
   public static long calculateDurationMs(Time time, long startTimeMs) {
     return time.getMilliseconds() - startTimeMs;
+  }
+
+  public static void closeQuietlyWithErrorLogged(final Closeable closeables) {
+    IOUtils.closeQuietly(closeables, LOGGER::error);
   }
 }

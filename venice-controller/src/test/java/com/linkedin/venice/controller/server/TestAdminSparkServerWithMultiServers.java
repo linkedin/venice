@@ -23,7 +23,6 @@ import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
-import org.apache.commons.io.IOUtils;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -50,8 +49,8 @@ public class TestAdminSparkServerWithMultiServers {
 
   @AfterClass
   public void tearDown() {
-    IOUtils.closeQuietly(controllerClient);
-    IOUtils.closeQuietly(cluster);
+    Utils.closeQuietlyWithErrorLogged(controllerClient);
+    Utils.closeQuietlyWithErrorLogged(cluster);
   }
 
   @Test(timeOut = TEST_TIMEOUT)

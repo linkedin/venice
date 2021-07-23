@@ -706,11 +706,11 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
   @Override
   public void close() {
     boolean isHttp = transportClient instanceof HttpTransportClient;
-    IOUtils.closeQuietly(transportClient);
+    IOUtils.closeQuietly(transportClient, logger::error);
     if (isHttp) { // TODO make d2client close method idempotent.  d2client re-uses the transport client for the schema reader
-      IOUtils.closeQuietly(schemaReader);
+      IOUtils.closeQuietly(schemaReader, logger::error);
     }
-    IOUtils.closeQuietly(compressorFactory);
+    IOUtils.closeQuietly(compressorFactory, logger::error);
   }
 
   protected Optional<Schema> getReaderSchema() {

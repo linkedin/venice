@@ -11,7 +11,6 @@ import com.linkedin.venice.utils.Utils;
 import io.netty.channel.ChannelHandlerContext;
 import java.util.List;
 import java.util.Properties;
-import org.apache.commons.io.IOUtils;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -29,7 +28,7 @@ public class TestRouterAsyncStart {
 
   @AfterClass(alwaysRun = true)
   public void cleanUp() {
-    IOUtils.closeQuietly(veniceCluster);
+    Utils.closeQuietlyWithErrorLogged(veniceCluster);
   }
 
   @Test(timeOut = 120 * Time.MS_PER_SECOND)

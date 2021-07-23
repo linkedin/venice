@@ -75,7 +75,7 @@ public class TestHybridQuota {
 
   @AfterClass
   public void tearDown() {
-    IOUtils.closeQuietly(sharedVenice);
+    Utils.closeQuietlyWithErrorLogged(sharedVenice);
   }
 
   /**

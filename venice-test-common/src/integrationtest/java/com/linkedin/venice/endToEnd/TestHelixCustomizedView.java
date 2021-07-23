@@ -121,9 +121,9 @@ public class TestHelixCustomizedView {
 
   @AfterClass(alwaysRun = true)
   public void cleanUp() {
-    IOUtils.closeQuietly(veniceCluster);
-    IOUtils.closeQuietly(controllerClient);
-    IOUtils.closeQuietly(veniceWriter);
+    Utils.closeQuietlyWithErrorLogged(veniceCluster);
+    Utils.closeQuietlyWithErrorLogged(controllerClient);
+    Utils.closeQuietlyWithErrorLogged(veniceWriter);
     if (admin != null) {
       admin.close();
     }

@@ -19,8 +19,6 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
-
-import org.apache.commons.io.IOUtils;
 import org.apache.log4j.Logger;
 
 
@@ -170,11 +168,11 @@ public class VeniceController {
       logger.info("Stopped d2 announcer: " + d2Server);
     });
     //TODO: we may want a dependency structure so we ensure services are shutdown in the correct order.
-    IOUtils.closeQuietly(topicCleanupService);
-    storeBackupVersionCleanupService.ifPresent(IOUtils::closeQuietly);
-    IOUtils.closeQuietly(adminServer);
-    IOUtils.closeQuietly(secureAdminServer);
-    IOUtils.closeQuietly(controllerService);
+    Utils.closeQuietlyWithErrorLogged(topicCleanupService);
+    storeBackupVersionCleanupService.ifPresent(Utils::closeQuietlyWithErrorLogged);
+    Utils.closeQuietlyWithErrorLogged(adminServer);
+    Utils.closeQuietlyWithErrorLogged(secureAdminServer);
+    Utils.closeQuietlyWithErrorLogged(controllerService);
   }
 
   public VeniceControllerService getVeniceControllerService() {
