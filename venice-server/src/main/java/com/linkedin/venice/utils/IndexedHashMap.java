@@ -2,6 +2,7 @@ package com.linkedin.venice.utils;
 
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
+import java.net.BindException;
 import java.util.AbstractCollection;
 import java.util.AbstractMap;
 import java.util.AbstractSet;
@@ -20,10 +21,11 @@ import java.util.function.BiConsumer;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.function.Supplier;
 
 
 /**
- * This is a fork of the standard {@link HashMap} which implements
+ * This is a fork of the standard {@link java.util.HashMap} which implements
  * {@link IndexedMap}. It is composed of an {@link ArrayList} to keep
  * track of the insertion & iteration order of the entries. The p
  * erformance of the various operations should be as follows:
@@ -336,15 +338,15 @@ public class IndexedHashMap <K,V>
   /* ---------------- Public operations -------------- */
 
   /**
-   * Constructs an empty <tt>IndexedHashMap</tt> with the specified initial
-   * capacity and load factor.
+   * Constructs an empty {@link IndexedHashMap} using the provided list implementation.
    *
    * @param  initialCapacity the initial capacity
    * @param  loadFactor      the load factor
+   * @param  entryList       the list which backs the iteration functionality of the map
    * @throws IllegalArgumentException if the initial capacity is negative
    *         or the load factor is nonpositive
    */
-  public IndexedHashMap(int initialCapacity, float loadFactor) {
+  public IndexedHashMap(int initialCapacity, float loadFactor, List<Map.Entry<K, V>> entryList) {
     if (initialCapacity < 0)
       throw new IllegalArgumentException("Illegal initial capacity: " +
           initialCapacity);
@@ -355,7 +357,20 @@ public class IndexedHashMap <K,V>
           loadFactor);
     this.loadFactor = loadFactor;
     this.threshold = tableSizeFor(initialCapacity);
-    this.entryList = new ArrayList<>(initialCapacity);
+    this.entryList = entryList;
+  }
+
+  /**
+   * Constructs an empty <tt>IndexedHashMap</tt> with the specified initial
+   * capacity and load factor.
+   *
+   * @param  initialCapacity the initial capacity
+   * @param  loadFactor      the load factor
+   * @throws IllegalArgumentException if the initial capacity is negative
+   *         or the load factor is nonpositive
+   */
+  public IndexedHashMap(int initialCapacity, float loadFactor) {
+    this(initialCapacity, loadFactor, new ArrayList<>(initialCapacity));
   }
 
   /**
@@ -374,8 +389,19 @@ public class IndexedHashMap <K,V>
    * (16) and the default load factor (0.75).
    */
   public IndexedHashMap() {
-    this.loadFactor = DEFAULT_LOAD_FACTOR; // all other fields defaulted
-    this.entryList = new ArrayList<>(DEFAULT_INITIAL_CAPACITY);
+    this(DEFAULT_INITIAL_CAPACITY);
+  }
+
+  /**
+   * Constructs a new <tt>IndexedHashMap</tt> with the same mappings as the
+   * specified <tt>Map</tt>.
+   *
+   * @see     {@link #IndexedHashMap(Map, List)}
+   * @param   m the map whose mappings are to be placed in this map
+   * @throws  NullPointerException if the specified map is null
+   */
+  public IndexedHashMap(Map<? extends K, ? extends V> m) {
+    this(m, new ArrayList<>(m.size()));
   }
 
   /**
@@ -394,9 +420,8 @@ public class IndexedHashMap <K,V>
    * @param   m the map whose mappings are to be placed in this map
    * @throws  NullPointerException if the specified map is null
    */
-  public IndexedHashMap(Map<? extends K, ? extends V> m) {
-    this.loadFactor = DEFAULT_LOAD_FACTOR;
-    this.entryList = new ArrayList<>(m.size());
+  public IndexedHashMap(Map<? extends K, ? extends V> m, List<Map.Entry<K, V>> entryList) {
+    this(m.size(), DEFAULT_LOAD_FACTOR, entryList);
     putMapEntries(m, false);
   }
 
@@ -564,6 +589,8 @@ public class IndexedHashMap <K,V>
     if (entry != null) {
       entryList.add(newIndex, entry);
     }
+    fixIndices(Math.min(originalIndex, newIndex), Math.max(originalIndex, newIndex));
+    modCount++;
   }
 
   /**
@@ -851,6 +878,7 @@ public class IndexedHashMap <K,V>
       for (int i = 0; i < tab.length; ++i)
         tab[i] = null;
     }
+    entryList.clear();
   }
 
   /**
@@ -1322,12 +1350,7 @@ public class IndexedHashMap <K,V>
 
   // Create a regular (non-tree) node
   Node<K,V> newNode(int hash, K key, V value, Node<K,V> next, int index) {
-    if (index < 0) {
-      index = entryList.size();
-    }
-    Node<K, V> entry = new Node<>(hash, key, value, next, index);
-    entryList.add(index, entry);
-    return entry;
+    return newNode(index, i -> new Node<>(hash, key, value, next, i));
   }
 
   // For conversion from TreeNodes to plain nodes
@@ -1339,11 +1362,19 @@ public class IndexedHashMap <K,V>
 
   // Create a tree bin node
   TreeNode<K,V> newTreeNode(int hash, K key, V value, Node<K,V> next, int index) {
-    if (index < 0) {
+    return newNode(index, i -> new TreeNode<>(hash, key, value, next, i));
+  }
+
+  <N extends Node> N newNode(int index, Function<Integer, N> nodeConstructor) {
+    boolean append = index < 0;
+    if (append) {
       index = entryList.size();
     }
-    TreeNode<K, V> entry = new TreeNode<>(hash, key, value, next, index);
+    N entry = nodeConstructor.apply(index);
     entryList.add(index, entry);
+    if (!append) {
+      fixIndices(index, entryList.size());
+    }
     return entry;
   }
 
@@ -1359,7 +1390,11 @@ public class IndexedHashMap <K,V>
   void afterNodeInsertion(boolean evict) { }
   void afterNodeRemoval(Node<K,V> p) {
     entryList.remove(p.index);
-    for (int i = p.index; i < entryList.size(); i++) {
+    fixIndices(p.index, entryList.size());
+  }
+
+  private void fixIndices(int beginningIndex, int endingIndex) {
+    for (int i = beginningIndex; i < endingIndex; i++) {
       ((Node) entryList.get(i)).index = i;
     }
   }
