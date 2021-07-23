@@ -9,7 +9,7 @@ import org.apache.kafka.clients.consumer.ConsumerRecord;
 
 
 /**
- * This is a simple utlility class to wrap a {@link ConsumerRecord} into {@link VeniceConsumerRecordWrapper}
+ * This is a simple utility class to wrap a {@link ConsumerRecord} into {@link VeniceConsumerRecordWrapper}
  */
 
 public class KafkaRecordWrapper {
