@@ -1,10 +1,19 @@
-package com.linkedin.venice.replication;
+package com.linkedin.davinci.replication.merge;
 
+import com.linkedin.venice.utils.Lazy;
 import java.util.Map;
 import org.apache.avro.generic.GenericRecord;
 
 
 class MergeMap implements Merge<Map<CharSequence, Object>> {
+  private static final MergeMap INSTANCE = new MergeMap();
+
+  private MergeMap() {}
+
+  static MergeMap getMergeMap() {
+    return INSTANCE;
+  }
+
   @Override
   public ValueAndTimestampMetadata<Map<CharSequence, Object>> put(ValueAndTimestampMetadata<Map<CharSequence, Object>> oldValueAndTimestampMetadata,
       Map<CharSequence, Object> newValue, long writeOperationTimestamp) {
@@ -19,7 +28,7 @@ class MergeMap implements Merge<Map<CharSequence, Object>> {
 
   @Override
   public ValueAndTimestampMetadata<Map<CharSequence, Object>> update(ValueAndTimestampMetadata<Map<CharSequence, Object>> oldValueAndTimestampMetadata,
-      GenericRecord writeOperation, long writeOperationTimestamp) {
+      Lazy<GenericRecord> writeOperation, long writeOperationTimestamp) {
     return null;
   }
 }

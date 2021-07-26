@@ -1,5 +1,6 @@
-package com.linkedin.venice.replication;
+package com.linkedin.davinci.replication.merge;
 
+import com.linkedin.venice.utils.Lazy;
 import org.apache.avro.generic.GenericRecord;
 
 
@@ -37,7 +38,7 @@ import org.apache.avro.generic.GenericRecord;
  * different schemas) and it is therefore possible that new objects will be instantiated to replace the old ones,
  * rather than mutating them.
  */
-public interface Merge<T> {
+interface Merge<T> {
   /**
    * @param oldValueAndTimestampMetadata the old value and TSMD which are persisted in the server prior to the write operation
    * @param newValue a record with all fields populated and with one of the registered value schemas
@@ -59,5 +60,41 @@ public interface Merge<T> {
    * @param writeOperationTimestamp the timestamp of the incoming write operation
    * @return the resulting {@link ValueAndTimestampMetadata} after merging the old one with the incoming write operation
    */
-  ValueAndTimestampMetadata<T> update(ValueAndTimestampMetadata<T> oldValueAndTimestampMetadata, GenericRecord writeOperation, long writeOperationTimestamp);
+  ValueAndTimestampMetadata<T> update(ValueAndTimestampMetadata<T> oldValueAndTimestampMetadata, Lazy<GenericRecord> writeOperation, long writeOperationTimestamp);
+
+  /**
+   * Returns the type of union record given tsObject is. Right now it will be either root level long or
+   * generic record of per field timestamp.
+   * @param tsObject
+   * @return
+   */
+  static TSMDType getTSMDType(Object tsObject) {
+    if (tsObject instanceof Long) {
+      return TSMDType.ROOT_LEVEL_TS;
+    } else {
+      return TSMDType.PER_FIELD_TS;
+    }
+  }
+
+  static Object compareAndReturn(Object o1, Object o2) {
+    if (o1 == null) {
+      return o2;
+    } else if (o2 == null) {
+      return o1;
+    }
+    // for same object always return first object o1
+    if (o1.hashCode() >= o2.hashCode()) {
+      return o1;
+    } else {
+      return o2;
+    }
+  }
+
+   enum TSMDType {
+    ROOT_LEVEL_TS(0), PER_FIELD_TS(1);
+    int val;
+    TSMDType(int val) {
+      this.val = val;
+    }
+  }
 }
