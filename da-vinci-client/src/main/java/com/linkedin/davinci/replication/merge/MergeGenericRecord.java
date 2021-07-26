@@ -1,7 +1,8 @@
-package com.linkedin.venice.replication;
+package com.linkedin.davinci.replication.merge;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
+import com.linkedin.venice.utils.Lazy;
 import java.util.List;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
@@ -19,6 +20,13 @@ import static com.linkedin.venice.VeniceConstants.*;
  * 3. Assumes new value to be GenericRecord type, does not support non-record values.
  */
 class MergeGenericRecord implements Merge<GenericRecord> {
+  private static final MergeGenericRecord INSTANCE = new MergeGenericRecord();
+
+  private MergeGenericRecord() {}
+
+   static MergeGenericRecord getInstance() {
+    return INSTANCE;
+  }
 
   @Override
   public ValueAndTimestampMetadata<GenericRecord> put(ValueAndTimestampMetadata<GenericRecord> oldValueAndTimestampMetadata, GenericRecord newValue,
@@ -32,10 +40,10 @@ class MergeGenericRecord implements Merge<GenericRecord> {
     }
 
     Object tsObject = oldTimestampMetadata.get(TIMESTAMP_FIELD);
-    TSMDType tsmdType = getTSMDType(tsObject);
+    TSMDType tsmdType = Merge.getTSMDType(tsObject);
 
     switch (tsmdType) {
-      case RECORDLEVEL_TS:
+      case ROOT_LEVEL_TS:
         long oldTimeStamp = (long) tsObject;
         if (oldTimeStamp < writeOperationTimestamp) {
           oldValueAndTimestampMetadata.setValue(newValue);
@@ -46,12 +54,12 @@ class MergeGenericRecord implements Merge<GenericRecord> {
             oldValueAndTimestampMetadata.setValue(newValue);
           } else {
             // else let compare decide which one to store.
-            oldValueAndTimestampMetadata.setValue((GenericRecord) compareAndReturn(oldValue, newValue));
+            oldValueAndTimestampMetadata.setValue((GenericRecord) Merge.compareAndReturn(oldValue, newValue));
           }
         }
         return oldValueAndTimestampMetadata;
 
-      case PERFIELD_TS:
+      case PER_FIELD_TS:
         GenericRecord timestampRecordForOldValue = (GenericRecord) tsObject;
 
         // TODO: Support schema evolution, as the following assumes old/new schema are same.
@@ -72,7 +80,7 @@ class MergeGenericRecord implements Merge<GenericRecord> {
             Object o2 = newValue.get(field.name());
 
             // keep the old value in case of timestamp tie
-            newValue.put(field.name(), compareAndReturn(o1, o2));
+            newValue.put(field.name(), Merge.compareAndReturn(o1, o2));
             allFieldsNew = false;
           } else {
             // update the timestamp since writeOperationTimestamp wins
@@ -95,10 +103,10 @@ class MergeGenericRecord implements Merge<GenericRecord> {
     GenericRecord oldTimestampMetadata = oldValueAndTimestampMetadata.getTimestampMetadata();
 
     Object tsObject = oldTimestampMetadata.get(TIMESTAMP_FIELD);
-    TSMDType tsmdType = getTSMDType(tsObject);
+    TSMDType tsmdType = Merge.getTSMDType(tsObject);
 
     switch (tsmdType) {
-      case RECORDLEVEL_TS:
+      case ROOT_LEVEL_TS:
         long oldTimeStamp = (long)tsObject;
         // delete wins when old and new write operation timestamps are equal.
         if (oldTimeStamp <= writeOperationTimestamp) {
@@ -107,7 +115,7 @@ class MergeGenericRecord implements Merge<GenericRecord> {
         }
         return oldValueAndTimestampMetadata;
 
-      case PERFIELD_TS:
+      case PER_FIELD_TS:
         GenericRecord oldValue = oldValueAndTimestampMetadata.getValue();
         GenericRecord timestampRecord = (GenericRecord)tsObject;
         boolean newerField = false;
@@ -138,36 +146,7 @@ class MergeGenericRecord implements Merge<GenericRecord> {
 
   @Override
   public ValueAndTimestampMetadata<GenericRecord> update(ValueAndTimestampMetadata<GenericRecord> oldValueAndTimestampMetadata,
-      GenericRecord writeComputeRecord, long writeOperationTimestamp) {
+      Lazy<GenericRecord> writeComputeRecord, long writeOperationTimestamp) {
     throw new VeniceUnsupportedOperationException("update operation not yet supported.");
-  }
-
-  private TSMDType getTSMDType(Object tsObject) {
-    if (tsObject instanceof Long) {
-      return TSMDType.RECORDLEVEL_TS;
-    } else {
-      return TSMDType.PERFIELD_TS;
-    }
-  }
-
-  private Object compareAndReturn(Object o1, Object o2) {
-    if (o1 == null) {
-      return o2;
-    } else if (o2 == null) {
-      return o1;
-    }
-    if (o1.hashCode() >= o2.hashCode()) {
-      return o1;
-    } else {
-      return o2;
-    }
-  }
-
-  private enum TSMDType {
-    RECORDLEVEL_TS(0), PERFIELD_TS(1);
-    int val;
-    TSMDType(int val) {
-      this.val = val;
-    }
   }
 }

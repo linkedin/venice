@@ -1,4 +1,4 @@
-package com.linkedin.venice.replication;
+package com.linkedin.davinci.replication.merge;
 
 import org.apache.avro.generic.GenericRecord;
 
@@ -11,6 +11,7 @@ public class ValueAndTimestampMetadata<T> {
   private T value;
   private GenericRecord timestampMetadata;
   boolean updateIgnored; // Whether we should skip the incoming message since it could be a stale message.
+  int resolvedSchemaID;
 
   public ValueAndTimestampMetadata(T value, GenericRecord timestampMetadata) {
     this.value = value;
@@ -39,5 +40,13 @@ public class ValueAndTimestampMetadata<T> {
 
   public boolean isUpdateIgnored() {
     return updateIgnored;
+  }
+
+  public void setResolvedSchemaID(int schemaID) {
+    this.resolvedSchemaID = schemaID;
+  }
+
+  public int getResolvedSchemaID() {
+    return this.resolvedSchemaID;
   }
 }
