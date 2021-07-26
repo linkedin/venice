@@ -196,7 +196,11 @@ public enum Command {
   ENABLE_NATIVE_REPLICATION_FOR_CLUSTER("enable-native-replication-for-cluster", "enable native replication for certain stores (batch-only, hybrid-only, incremental-push, hybrid-or-incremental, all) in a cluster",
       new Arg[] {URL, CLUSTER, STORE_TYPE}, new Arg[] {REGIONS_FILTER, NATIVE_REPLICATION_SOURCE_FABRIC}),
   DISABLE_NATIVE_REPLICATION_FOR_CLUSTER("disable-native-replication-for-cluster", "disable native replication for certain stores (batch-only, hybrid-only, incremental-push, hybrid-or-incremental, all) in a cluster",
-      new Arg[] {URL, CLUSTER, STORE_TYPE}, new Arg[] {REGIONS_FILTER, NATIVE_REPLICATION_SOURCE_FABRIC});
+      new Arg[] {URL, CLUSTER, STORE_TYPE}, new Arg[] {REGIONS_FILTER, NATIVE_REPLICATION_SOURCE_FABRIC}),
+  ENABLE_ACTIVE_ACTIVE_REPLICATION_FOR_CLUSTER("enable-active-active-replication-for-cluster", "enable active active replication for certain stores (batch-only, hybrid-only, incremental-push, hybrid-or-incremental, all) in a cluster",
+      new Arg[] {URL, CLUSTER, STORE_TYPE}, new Arg[] {REGIONS_FILTER}),
+  DISABLE_ACTIVE_ACTIVE_REPLICATION_FOR_CLUSTER("disable-active-active-replication-for-cluster", "disable active active replication for certain stores (batch-only, hybrid-only, incremental-push, hybrid-or-incremental, all) in a cluster",
+      new Arg[] {URL, CLUSTER, STORE_TYPE}, new Arg[] {REGIONS_FILTER});
   private final String commandName;
   private final String description;
   private final Arg[] requiredArgs;

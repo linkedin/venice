@@ -2821,9 +2821,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         });
     }
 
-    public void setActiveActiveReplicationEnabled(String clusterName, String storeName,
-        boolean activeActiveReplicationEnabled) {
+    public void setActiveActiveReplicationEnabled(String clusterName, String storeName, boolean activeActiveReplicationEnabled) {
         storeMetadataUpdate(clusterName, storeName, store -> {
+            if (activeActiveReplicationEnabled != store.isActiveActiveReplicationEnabled() && store.isHybrid()) {
+                DataReplicationPolicy policy = activeActiveReplicationEnabled ? DataReplicationPolicy.ACTIVE_ACTIVE
+                    : DataReplicationPolicy.NON_AGGREGATE;
+                store.setHybridStoreConfig(VeniceHelixAdmin.mergeNewSettingsIntoOldHybridStoreConfig(store, Optional.empty(), Optional.empty(), Optional.empty(), Optional.of(policy), Optional.empty()));
+            }
             store.setActiveActiveReplicationEnabled(activeActiveReplicationEnabled);
             return store;
         });
@@ -5024,6 +5028,126 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                     logger.info("Will enable native replication for store " + store.getName());
                     setNativeReplicationEnabled(clusterName, store.getName(), enableNativeReplicationForCluster);
                     newSourceFabric.ifPresent(f -> setNativeReplicationSourceFabric(clusterName, storeName.get(), f));
+                }
+            });
+        }
+    }
+
+    @Override
+    public void configureActiveActiveReplication(String clusterName, VeniceUserStoreType storeType, Optional<String> storeName,
+        boolean enableActiveActiveReplicationForCluster, Optional<String> regionsFilter) {
+        /**
+         * Check whether the command affects this fabric.
+         */
+        if (regionsFilter.isPresent()) {
+            Set<String> fabrics = parseRegionsFilterList(regionsFilter.get());
+            if (!fabrics.contains(multiClusterConfigs.getRegionName())) {
+                logger.info("EnableActiveActiveReplicationForCluster command will be skipped for cluster " + clusterName
+                    + ", because the fabrics filter is " + fabrics.toString() + " which doesn't include the "
+                    + "current fabric: " + multiClusterConfigs.getRegionName());
+                return;
+            }
+
+        }
+
+        VeniceControllerClusterConfig clusterConfig = getVeniceHelixResource(clusterName).getConfig();
+        if (storeName.isPresent()) {
+            /**
+             * The function is invoked by {@link com.linkedin.venice.controller.kafka.consumer.AdminExecutionTask} if the
+             * storeName is present.
+             */
+            Store originalStore = getStore(clusterName, storeName.get());
+            if (null == originalStore) {
+                throw new VeniceException("The store '" + storeName.get() + "' in cluster '" + clusterName + "' does not exist, and thus cannot be updated.");
+            }
+            boolean shouldUpdateActiveActiveReplication = false;
+            switch (storeType) {
+                case BATCH_ONLY:
+                    shouldUpdateActiveActiveReplication = !originalStore.isHybrid() && !originalStore.isIncrementalPushEnabled() && !originalStore.isSystemStore();
+                    break;
+                case HYBRID_ONLY:
+                    shouldUpdateActiveActiveReplication = originalStore.isHybrid() && !originalStore.isIncrementalPushEnabled() && !originalStore.isSystemStore();
+                    break;
+                case INCREMENTAL_PUSH:
+                    shouldUpdateActiveActiveReplication = originalStore.isIncrementalPushEnabled() && !originalStore.isSystemStore();
+                    break;
+                case HYBRID_OR_INCREMENTAL:
+                    shouldUpdateActiveActiveReplication = (originalStore.isHybrid() || originalStore.isIncrementalPushEnabled()) && !originalStore.isSystemStore();
+                    break;
+                case SYSTEM:
+                    shouldUpdateActiveActiveReplication = originalStore.isSystemStore();
+                    break;
+                case ALL:
+                    shouldUpdateActiveActiveReplication = true;
+                    break;
+                default:
+                    break;
+            }
+            /**
+             * If the command is trying to enable active active replication, the store must have Leader/Follower state model enabled.
+             */
+            if (enableActiveActiveReplicationForCluster) {
+                shouldUpdateActiveActiveReplication &= (originalStore.isLeaderFollowerModelEnabled() || clusterConfig.isLfModelDependencyCheckDisabled());
+                // Filter out aggregate mode store explicitly.
+                if (originalStore.isHybrid() && originalStore.getHybridStoreConfig().getDataReplicationPolicy().equals(DataReplicationPolicy.AGGREGATE)) {
+                    shouldUpdateActiveActiveReplication = false;
+                }
+            }
+            if (shouldUpdateActiveActiveReplication) {
+                logger.info("Will enable active active replication for store " + storeName.get());
+                setActiveActiveReplicationEnabled(clusterName, storeName.get(), enableActiveActiveReplicationForCluster);
+            } else {
+                logger.info("Will not enable active active replication for store " + storeName.get());
+            }
+        } else {
+            /**
+             * The batch update command hits child controller directly; all stores in the cluster will be updated
+             */
+            List<Store> storesToBeConfigured;
+            switch (storeType) {
+                case BATCH_ONLY:
+                    storesToBeConfigured = getAllStores(clusterName).stream()
+                        .filter(s -> (!s.isHybrid() && !s.isIncrementalPushEnabled()))
+                        .collect(Collectors.toList());
+                    break;
+                case HYBRID_ONLY:
+                    storesToBeConfigured = getAllStores(clusterName).stream()
+                        .filter(s -> (s.isHybrid() && !s.isIncrementalPushEnabled()))
+                        .collect(Collectors.toList());
+                    break;
+                case INCREMENTAL_PUSH:
+                    storesToBeConfigured = getAllStores(clusterName).stream()
+                        .filter(Store::isIncrementalPushEnabled)
+                        .collect(Collectors.toList());
+                    break;
+                case HYBRID_OR_INCREMENTAL:
+                    storesToBeConfigured = getAllStores(clusterName).stream()
+                        .filter(store -> (store.isHybrid() || store.isIncrementalPushEnabled()))
+                        .collect(Collectors.toList());
+                    break;
+                case SYSTEM:
+                    storesToBeConfigured = getAllStores(clusterName).stream()
+                        .filter(Store::isSystemStore)
+                        .collect(Collectors.toList());
+                    break;
+                case ALL:
+                    storesToBeConfigured = getAllStores(clusterName);
+                    break;
+                default:
+                    throw new VeniceException("Unsupported store type." + storeType);
+            }
+
+            // Filter out aggregate mode store explicitly.
+            storesToBeConfigured = storesToBeConfigured.stream()
+                .filter(store -> !(store.isHybrid() && store.getHybridStoreConfig().getDataReplicationPolicy().equals(DataReplicationPolicy.AGGREGATE)))
+                .collect(Collectors.toList());
+            storesToBeConfigured.forEach(store -> {
+                if (enableActiveActiveReplicationForCluster && !(store.isLeaderFollowerModelEnabled() || clusterConfig.isLfModelDependencyCheckDisabled())) {
+                    logger.info("Will not enable active active replication for store " + store.getName()
+                        + " since it doesn't have Leader/Follower state model enabled.");
+                } else {
+                    logger.info("Will enable active active replication for store " + store.getName());
+                    setActiveActiveReplicationEnabled(clusterName, store.getName(), enableActiveActiveReplicationForCluster);
                 }
             });
         }

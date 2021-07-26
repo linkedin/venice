@@ -576,6 +576,35 @@ public class StoresRoutes extends AbstractRoute {
     };
   }
 
+  public Route enableActiveActiveReplicationForCluster(Admin admin) {
+    return new VeniceRouteHandler<ControllerResponse>(ControllerResponse.class) {
+      @Override
+      public void internalHandle(Request request, ControllerResponse veniceResponse) {
+        // Only allow whitelist users to run this command
+        if (!isWhitelistUsers(request)) {
+          veniceResponse.setError("Only admin users are allowed to run " + request.url());
+          return;
+        }
+
+        AdminSparkServer.validateParams(request, CONFIGURE_ACTIVE_ACTIVE_REPLICATION_FOR_CLUSTER.getParams(), admin);
+
+        VeniceUserStoreType storeType = VeniceUserStoreType.valueOf(request.queryParams(STORE_TYPE).toUpperCase());
+
+        String cluster = request.queryParams(CLUSTER);
+        boolean enableActiveActiveReplicationForCluster = Utils.parseBooleanFromString(request.queryParams(STATUS), STATUS);
+        String regionsFilterParams = request.queryParamOrDefault(REGIONS_FILTER, null);
+
+        admin.configureActiveActiveReplication(cluster,
+            storeType,
+            Optional.empty(),
+            enableActiveActiveReplicationForCluster,
+            (null == regionsFilterParams) ? Optional.empty() : Optional.of(regionsFilterParams));
+
+        veniceResponse.setCluster(cluster);
+      }
+    };
+  }
+
   public Route dematerializeMetadataStoreVersion(Admin admin) {
     return (request, response) -> {
       ControllerResponse responseObject = new ControllerResponse();

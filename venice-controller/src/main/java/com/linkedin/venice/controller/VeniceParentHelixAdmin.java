@@ -21,6 +21,7 @@ import com.linkedin.venice.controller.kafka.consumer.VeniceControllerConsumerFac
 import com.linkedin.venice.controller.kafka.protocol.admin.AbortMigration;
 import com.linkedin.venice.controller.kafka.protocol.admin.AddVersion;
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
+import com.linkedin.venice.controller.kafka.protocol.admin.ConfigureActiveActiveReplicationForCluster;
 import com.linkedin.venice.controller.kafka.protocol.admin.ConfigureNativeReplicationForCluster;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteAllVersions;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteOldVersion;
@@ -2772,6 +2773,27 @@ public class VeniceParentHelixAdmin implements Admin {
     }
   }
 
+  @Override
+  public void configureActiveActiveReplication(String clusterName, VeniceUserStoreType storeType, Optional<String> storeName,
+      boolean enableNativeReplicationForCluster, Optional<String> regionsFilter) {
+    acquireAdminMessageLock(clusterName, null);
+
+    try {
+      ConfigureActiveActiveReplicationForCluster migrateClusterToActiveActiveReplication
+          = (ConfigureActiveActiveReplicationForCluster) AdminMessageType.CONFIGURE_ACTIVE_ACTIVE_REPLICATION_FOR_CLUSTER.getNewInstance();
+      migrateClusterToActiveActiveReplication.clusterName = clusterName;
+      migrateClusterToActiveActiveReplication.storeType = storeType.toString();
+      migrateClusterToActiveActiveReplication.enabled = enableNativeReplicationForCluster;
+      migrateClusterToActiveActiveReplication.regionsFilter = regionsFilter.orElse(null);
+
+      AdminOperation message = new AdminOperation();
+      message.operationType = AdminMessageType.CONFIGURE_ACTIVE_ACTIVE_REPLICATION_FOR_CLUSTER.getValue();
+      message.payloadUnion = migrateClusterToActiveActiveReplication;
+      sendAdminMessageAndWaitForConsumed(clusterName, null, message);
+    } finally {
+      releaseAdminMessageLock(clusterName);
+    }
+  }
   /**
    * This function will check whether there are still resources left for the requested store in the requested
    * cluster.
