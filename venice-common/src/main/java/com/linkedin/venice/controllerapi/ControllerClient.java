@@ -769,6 +769,15 @@ public class ControllerClient implements Closeable {
     return request(ControllerRoute.CONFIGURE_NATIVE_REPLICATION_FOR_CLUSTER, params, ControllerResponse.class);
   }
 
+  public ControllerResponse configureActiveActiveReplicationForCluster(boolean enableActiveActiveReplication, String storeType, Optional<String> regionsFilter) {
+    // Verify the input storeType is valid
+    VeniceUserStoreType.valueOf(storeType.toUpperCase());
+    QueryParams params = newParams()
+        .add(STATUS, enableActiveActiveReplication)
+        .add(STORE_TYPE, storeType);
+    regionsFilter.ifPresent(f -> params.add(REGIONS_FILTER, f));
+    return request(ControllerRoute.CONFIGURE_ACTIVE_ACTIVE_REPLICATION_FOR_CLUSTER, params, ControllerResponse.class);
+  }
   public ControllerResponse checkResourceCleanupForStoreCreation(String storeName) {
     QueryParams params = newParams().add(NAME, storeName);
     return request(ControllerRoute.CHECK_RESOURCE_CLEANUP_FOR_STORE_CREATION, params, ControllerResponse.class);

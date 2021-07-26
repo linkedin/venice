@@ -3,6 +3,7 @@ package com.linkedin.venice.controller.kafka.protocol.enums;
 import com.linkedin.venice.controller.kafka.protocol.admin.AbortMigration;
 import com.linkedin.venice.controller.kafka.protocol.admin.AddVersion;
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
+import com.linkedin.venice.controller.kafka.protocol.admin.ConfigureActiveActiveReplicationForCluster;
 import com.linkedin.venice.controller.kafka.protocol.admin.ConfigureNativeReplicationForCluster;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteAllVersions;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteOldVersion;
@@ -48,7 +49,8 @@ public enum AdminMessageType {
   DERIVED_SCHEMA_CREATION(17, false),
   SUPERSET_SCHEMA_CREATION(18, false),
   CONFIGURE_NATIVE_REPLICATION_FOR_CLUSTER(19, true),
-  TIMESTAMP_METADATA_SCHEMA_CREATION(20, false);
+  TIMESTAMP_METADATA_SCHEMA_CREATION(20, false),
+  CONFIGURE_ACTIVE_ACTIVE_REPLICATION_FOR_CLUSTER(21, true);
 
   private final int value;
   private final boolean batchUpdate;
@@ -82,6 +84,7 @@ public enum AdminMessageType {
       case SUPERSET_SCHEMA_CREATION: return new SupersetSchemaCreation();
       case CONFIGURE_NATIVE_REPLICATION_FOR_CLUSTER: return new ConfigureNativeReplicationForCluster();
       case TIMESTAMP_METADATA_SCHEMA_CREATION: return new MetadataSchemaCreation();
+      case CONFIGURE_ACTIVE_ACTIVE_REPLICATION_FOR_CLUSTER: return new ConfigureActiveActiveReplicationForCluster();
       default: throw new VeniceException("Unsupported " + getClass().getSimpleName() + " value: " + value);
     }
   }

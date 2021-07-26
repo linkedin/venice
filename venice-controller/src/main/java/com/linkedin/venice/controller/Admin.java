@@ -614,6 +614,13 @@ public interface Admin extends AutoCloseable, Closeable {
         boolean enableNativeReplicationForCluster, Optional<String> newSourceFabric, Optional<String> fabricsFilter);
 
     /**
+     * Enable/disable active active replications for certain stores (batch only, hybrid only, incremental push, hybrid or incremental push,
+     * all) in a cluster. If storeName is not empty, only the specified store might be updated.
+     */
+    void configureActiveActiveReplication(String cluster, VeniceUserStoreType storeType, Optional<String> storeName,
+        boolean enableActiveActiveReplicationForCluster, Optional<String> fabricsFilter);
+
+    /**
      * Check whether there are any resource left for the store creation in cluster: {@param clusterName}
      * If there is any, this function should throw Exception.
      */

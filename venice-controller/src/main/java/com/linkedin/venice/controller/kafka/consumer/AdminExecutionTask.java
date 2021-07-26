@@ -8,6 +8,7 @@ import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controller.kafka.protocol.admin.AbortMigration;
 import com.linkedin.venice.controller.kafka.protocol.admin.AddVersion;
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
+import com.linkedin.venice.controller.kafka.protocol.admin.ConfigureActiveActiveReplicationForCluster;
 import com.linkedin.venice.controller.kafka.protocol.admin.ConfigureNativeReplicationForCluster;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteAllVersions;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteOldVersion;
@@ -213,6 +214,9 @@ public class AdminExecutionTask implements Callable<Void> {
           break;
         case CONFIGURE_NATIVE_REPLICATION_FOR_CLUSTER:
           handleEnableNativeReplicationForCluster((ConfigureNativeReplicationForCluster) adminOperation.payloadUnion);
+          break;
+        case CONFIGURE_ACTIVE_ACTIVE_REPLICATION_FOR_CLUSTER:
+          handleEnableActiveActiveReplicationForCluster((ConfigureActiveActiveReplicationForCluster) adminOperation.payloadUnion);
           break;
         case TIMESTAMP_METADATA_SCHEMA_CREATION:
           handleTimestampMetadataSchemaCreation((MetadataSchemaCreation) adminOperation.payloadUnion);
@@ -556,6 +560,15 @@ public class AdminExecutionTask implements Callable<Void> {
         ? Optional.empty() : Optional.of(message.regionsFilter.toString());
     admin.configureNativeReplication(clusterName, storeType, Optional.of(storeName), enableNativeReplication,
         nativeReplicationSourceFabric, regionsFilter);
+  }
+
+  private void handleEnableActiveActiveReplicationForCluster(ConfigureActiveActiveReplicationForCluster message) {
+    String clusterName = message.clusterName.toString();
+    VeniceUserStoreType storeType = VeniceUserStoreType.valueOf(message.storeType.toString().toUpperCase());
+    boolean enableActiveActiveReplication = message.enabled;
+    Optional<String> regionsFilter = (message.regionsFilter == null)
+        ? Optional.empty() : Optional.of(message.regionsFilter.toString());
+    admin.configureActiveActiveReplication(clusterName, storeType, Optional.empty(), enableActiveActiveReplication, regionsFilter);
   }
 
   private boolean checkPreConditionForReplicateAddVersion(String clusterName, String storeName) {

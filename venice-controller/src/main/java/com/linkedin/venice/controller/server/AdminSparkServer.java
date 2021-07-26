@@ -249,6 +249,7 @@ public class AdminSparkServer extends AbstractVeniceService {
     httpService.get(LIST_LF_STORES.getPath(), storesRoutes.getLFModelStores(admin));
     httpService.post(ENABLE_LF_MODEL.getPath(), storesRoutes.enableLFModelForStores(admin));
     httpService.post(CONFIGURE_NATIVE_REPLICATION_FOR_CLUSTER.getPath(), storesRoutes.enableNativeReplicationForCluster(admin));
+    httpService.post(CONFIGURE_ACTIVE_ACTIVE_REPLICATION_FOR_CLUSTER.getPath(), storesRoutes.enableActiveActiveReplicationForCluster(admin));
 
     httpService.post(NEW_ZK_SHARED_STORE_VERSION.getPath(), createVersion.newZkSharedStoreVersion(admin));
     httpService.post(MATERIALIZE_METADATA_STORE_VERSION.getPath(), createVersion.materializeMetadataStoreVersion(admin));

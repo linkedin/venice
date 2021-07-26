@@ -13,6 +13,7 @@ import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiColoMultiClusterWrapper;
 import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.samza.VeniceObjectWithTimestamp;
 import com.linkedin.venice.samza.VeniceSystemFactory;
@@ -23,6 +24,7 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
@@ -115,6 +117,87 @@ public class TestActiveActiveReplicationForHybrid {
   @AfterClass(alwaysRun = true)
   public void cleanUp() {
     multiColoMultiClusterWrapper.close();
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testEnableActiveActiveReplicationForCluster() {
+    String clusterName = CLUSTER_NAMES[0];
+    String storeName1 = TestUtils.getUniqueString("test-batch-store");
+    String storeName2 = TestUtils.getUniqueString("test-hybrid-agg-store");
+    String storeName3 = TestUtils.getUniqueString("test-hybrid-non-agg-store");
+    String storeName4 = TestUtils.getUniqueString("test-incremental-push-store");
+    VeniceControllerWrapper parentController =
+        parentControllers.stream().filter(c -> c.isMasterController(clusterName)).findAny().get();
+
+    try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentController.getControllerUrl());
+        ControllerClient dc0Client = new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
+        ControllerClient dc1Client = new ControllerClient(clusterName, childDatacenters.get(1).getControllerConnectString());
+        ControllerClient dc2Client = new ControllerClient(clusterName, childDatacenters.get(2).getControllerConnectString())) {
+      List<ControllerClient> dcControllerClientList = Arrays.asList(dc0Client, dc1Client, dc2Client);
+      createAndVerifyStoreInAllRegions(storeName1, parentControllerClient, dcControllerClientList);
+      createAndVerifyStoreInAllRegions(storeName2, parentControllerClient, dcControllerClientList);
+      createAndVerifyStoreInAllRegions(storeName3, parentControllerClient, dcControllerClientList);
+      createAndVerifyStoreInAllRegions(storeName4, parentControllerClient, dcControllerClientList);
+
+      Assert.assertFalse(parentControllerClient.updateStore(storeName1, new UpdateStoreQueryParams()
+          .setLeaderFollowerModel(true)
+      ).isError());
+
+      Assert.assertFalse(parentControllerClient.updateStore(storeName2, new UpdateStoreQueryParams()
+          .setLeaderFollowerModel(true)
+          .setHybridRewindSeconds(10)
+          .setHybridOffsetLagThreshold(2)
+          .setHybridDataReplicationPolicy(DataReplicationPolicy.AGGREGATE)
+      ).isError());
+
+      Assert.assertFalse(parentControllerClient.updateStore(storeName3, new UpdateStoreQueryParams()
+          .setLeaderFollowerModel(true)
+          .setHybridRewindSeconds(10)
+          .setHybridOffsetLagThreshold(2)
+      ).isError());
+
+      Assert.assertFalse(parentControllerClient.updateStore(storeName4, new UpdateStoreQueryParams()
+          .setIncrementalPushEnabled(true)
+          .setLeaderFollowerModel(true)
+      ).isError());
+
+      // Test batch
+      Assert.assertFalse(parentControllerClient.configureActiveActiveReplicationForCluster(true, VeniceUserStoreType.BATCH_ONLY.toString(), Optional.empty()).isError());
+      verifyDCConfigAARepl(parentControllerClient, storeName1, false, false,true);
+      verifyDCConfigAARepl(dc0Client, storeName1, false, false, true);
+      verifyDCConfigAARepl(dc1Client, storeName1, false, false, true);
+      verifyDCConfigAARepl(dc2Client, storeName1, false,false, true);
+      Assert.assertFalse(parentControllerClient.configureActiveActiveReplicationForCluster(false, VeniceUserStoreType.BATCH_ONLY.toString(), Optional.of("parent.parent,dc-0")).isError());
+      verifyDCConfigAARepl(parentControllerClient, storeName1, false, true, false);
+      verifyDCConfigAARepl(dc0Client, storeName1, false, true, false);
+      verifyDCConfigAARepl(dc1Client, storeName1, false, true, true);
+      verifyDCConfigAARepl(dc2Client, storeName1, false, true, true);
+
+      // Test hybrid - agg vs non-agg
+      Assert.assertFalse(parentControllerClient.configureActiveActiveReplicationForCluster(true, VeniceUserStoreType.HYBRID_ONLY.toString(), Optional.empty()).isError());
+      verifyDCConfigAARepl(parentControllerClient, storeName2, true, false, false);
+      verifyDCConfigAARepl(dc0Client, storeName2, true, false, false);
+      verifyDCConfigAARepl(dc1Client, storeName2, true, false,false);
+      verifyDCConfigAARepl(dc2Client, storeName2, true,false, false);
+      verifyDCConfigAARepl(parentControllerClient, storeName3, true, false, true);
+      verifyDCConfigAARepl(dc0Client, storeName3, true, false, true);
+      verifyDCConfigAARepl(dc1Client, storeName3, true, false,true);
+      verifyDCConfigAARepl(dc2Client, storeName3, true,false, true);
+      Assert.assertFalse(parentControllerClient.configureActiveActiveReplicationForCluster(false, VeniceUserStoreType.HYBRID_ONLY.toString(), Optional.empty()).isError());
+      verifyDCConfigAARepl(parentControllerClient, storeName3, true, true, false);
+      verifyDCConfigAARepl(dc0Client, storeName3, true, true, false);
+      verifyDCConfigAARepl(dc1Client, storeName3, true, true,false);
+      verifyDCConfigAARepl(dc2Client, storeName3, true,true, false);
+
+      // Test incremental
+      Assert.assertFalse(parentControllerClient.configureActiveActiveReplicationForCluster(true, VeniceUserStoreType.INCREMENTAL_PUSH.toString(), Optional.empty()).isError());
+      verifyDCConfigAARepl(parentControllerClient, storeName4, false, false, true);
+      verifyDCConfigAARepl(dc0Client, storeName4, false, false, true);
+      verifyDCConfigAARepl(dc1Client, storeName4, false, false,true);
+      verifyDCConfigAARepl(dc2Client, storeName4, false,false, true);
+
+
+    }
   }
 
   /**
@@ -357,5 +440,27 @@ public class TestActiveActiveReplicationForHybrid {
         Assert.assertEquals(valueObject1.toString(), value1, "DCR is not working properly");
       });
     }
+  }
+
+  public static void verifyDCConfigAARepl(ControllerClient controllerClient, String storeName, boolean isHybrid, boolean currentStatus, boolean expectedStatus) {
+    TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
+      StoreResponse storeResponse = controllerClient.getStore(storeName);
+      Assert.assertFalse(storeResponse.isError());
+      Assert.assertEquals(storeResponse.getStore().isActiveActiveReplicationEnabled(), expectedStatus, "The active active replication config does not match.");
+      if (isHybrid && (currentStatus != expectedStatus)) {
+        DataReplicationPolicy policy = storeResponse.getStore().getHybridStoreConfig().getDataReplicationPolicy();
+        DataReplicationPolicy targetPolicy = expectedStatus ? DataReplicationPolicy.ACTIVE_ACTIVE : DataReplicationPolicy.NON_AGGREGATE;
+        Assert.assertEquals(targetPolicy, policy, "The active active replication policy does not match.");
+      }
+    });
+  }
+
+  public static void createAndVerifyStoreInAllRegions(String storeName, ControllerClient parentControllerClient, List<ControllerClient> controllerClientList) {
+    Assert.assertFalse(parentControllerClient.createNewStore(storeName, "owner", STRING_SCHEMA, STRING_SCHEMA).isError());
+    TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
+      for (ControllerClient client : controllerClientList) {
+        Assert.assertFalse(client.getStore(storeName).isError());
+      }
+    });
   }
 }

@@ -400,6 +400,12 @@ public class AdminTool {
         case DISABLE_NATIVE_REPLICATION_FOR_CLUSTER:
           disableNativeReplicationForCluster(cmd);
           break;
+        case ENABLE_ACTIVE_ACTIVE_REPLICATION_FOR_CLUSTER:
+          enableActiveActiveReplicationForCluster(cmd);
+          break;
+        case DISABLE_ACTIVE_ACTIVE_REPLICATION_FOR_CLUSTER:
+          disableActiveActiveReplicationForCluster(cmd);
+          break;
         default:
           StringJoiner availableCommands = new StringJoiner(", ");
           for (Command c : Command.values()){
@@ -1829,11 +1835,11 @@ public class AdminTool {
     String sourceRegionParam = getOptionalArgument(cmd, Arg.NATIVE_REPLICATION_SOURCE_FABRIC);
     Optional<String> sourceRegion =
         Utils.isNullOrEmpty(sourceRegionParam) ? Optional.empty() : Optional.of(sourceRegionParam);
-    String fabricsFilterParam = getOptionalArgument(cmd, Arg.REGIONS_FILTER);
-    Optional<String> fabricsFilter =
-        Utils.isNullOrEmpty(fabricsFilterParam) ? Optional.empty() : Optional.of(fabricsFilterParam);
+    String regionsFilterParam = getOptionalArgument(cmd, Arg.REGIONS_FILTER);
+    Optional<String> regionsFilter =
+        Utils.isNullOrEmpty(regionsFilterParam) ? Optional.empty() : Optional.of(regionsFilterParam);
 
-    ControllerResponse response = controllerClient.configureNativeReplicationForCluster(true, storeType, sourceRegion, fabricsFilter);
+    ControllerResponse response = controllerClient.configureNativeReplicationForCluster(true, storeType, sourceRegion, regionsFilter);
     printObject(response);
   }
 
@@ -1842,11 +1848,32 @@ public class AdminTool {
     String sourceFabricParam = getOptionalArgument(cmd, Arg.NATIVE_REPLICATION_SOURCE_FABRIC);
     Optional<String> sourceFabric =
         Utils.isNullOrEmpty(sourceFabricParam) ? Optional.empty() : Optional.of(sourceFabricParam);
-    String fabricsFilterParam = getOptionalArgument(cmd, Arg.REGIONS_FILTER);
-    Optional<String> fabricsFilter =
-        Utils.isNullOrEmpty(fabricsFilterParam) ? Optional.empty() : Optional.of(fabricsFilterParam);
+    String regionsFilterParam = getOptionalArgument(cmd, Arg.REGIONS_FILTER);
+    Optional<String> regionsFilter =
+        Utils.isNullOrEmpty(regionsFilterParam) ? Optional.empty() : Optional.of(regionsFilterParam);
 
-    ControllerResponse response = controllerClient.configureNativeReplicationForCluster(false, storeType, sourceFabric, fabricsFilter);
+    ControllerResponse response = controllerClient.configureNativeReplicationForCluster(false, storeType, sourceFabric, regionsFilter);
+    printObject(response);
+  }
+
+
+  private static void enableActiveActiveReplicationForCluster(CommandLine cmd) {
+    String storeType = getRequiredArgument(cmd, Arg.STORE_TYPE);
+    String regionsFilterParam = getOptionalArgument(cmd, Arg.REGIONS_FILTER);
+    Optional<String> regionsFilter =
+        Utils.isNullOrEmpty(regionsFilterParam) ? Optional.empty() : Optional.of(regionsFilterParam);
+
+    ControllerResponse response = controllerClient.configureActiveActiveReplicationForCluster(true, storeType, regionsFilter);
+    printObject(response);
+  }
+
+  private static void disableActiveActiveReplicationForCluster(CommandLine cmd) {
+    String storeType = getRequiredArgument(cmd, Arg.STORE_TYPE);
+    String regionsFilterParam = getOptionalArgument(cmd, Arg.REGIONS_FILTER);
+    Optional<String> regionsFilter =
+        Utils.isNullOrEmpty(regionsFilterParam) ? Optional.empty() : Optional.of(regionsFilterParam);
+
+    ControllerResponse response = controllerClient.configureActiveActiveReplicationForCluster(false, storeType, regionsFilter);
     printObject(response);
   }
 
