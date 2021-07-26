@@ -92,7 +92,7 @@ FULL_CODE_GEN_PATH=(
   "${CODE_GEN_PATH[12]}/com/linkedin/venice/compute/protocol/request/*.java"
   "${CODE_GEN_PATH[13]}/com/linkedin/venice/compute/protocol/request/*.java"
   "${CODE_GEN_PATH[14]}/com/linkedin/venice/compute/protocol/request/*.java"
-  "${CODE_GEN_PATH[15]}/com/linkedin/venice/compute/protocol/response/*.java"
+  "${CODE_GEN_PATH[15]}/com/linkedin/venice/compute/protocol/request/*.java"
   "${CODE_GEN_PATH[16]}/com/linkedin/venice/compute/protocol/response/*.java"
   "${CODE_GEN_PATH[17]}/com/linkedin/venice/compute/protocol/request/router/*.java"
   "${CODE_GEN_PATH[18]}/com/linkedin/venice/read/protocol/response/streaming/*.java"
