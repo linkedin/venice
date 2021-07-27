@@ -7,8 +7,8 @@ import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.TreeMap;
-import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.BiFunction;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
@@ -24,12 +24,12 @@ import static org.testng.Assert.*;
 public class MapTest {
   @DataProvider
   Object[][] mapImplementations() {
-    return new Object[][]{{new HashMap()}, {new TreeMap()}, {new LinkedHashMap()}, {new IndexedHashMap()}};
+    return new Object[][]{{new HashMap<>()}, {new TreeMap<>()}, {new LinkedHashMap<>()}, {new IndexedHashMap<>()}};
   }
 
   @DataProvider
   Object[][] hashMapImplementations() {
-    return new Object[][]{{new HashMap()}, {new LinkedHashMap()}, {new IndexedHashMap()}};
+    return new Object[][]{{new HashMap<>()}, {new LinkedHashMap<>()}, {new IndexedHashMap<>()}};
   }
 
   @DataProvider
@@ -123,43 +123,73 @@ public class MapTest {
     };
   }
 
-  /**
-   * Class that will have specified hash code in a HashMap.
-   */
-  static class Key implements Comparable<Key> {
-    final int hash;
-
-    public Key(int desiredHash) {
-      // Account for processing done by HashMap
-      this.hash = desiredHash ^ (desiredHash >>> 16);
-    }
-
-    @Override public int hashCode() { return this.hash; }
-
-    @Override public boolean equals(Object o) {
-      return o.hashCode() == this.hashCode();
-    }
-
-    @Override public int compareTo(Key k) {
-      return Integer.compare(this.hash, k.hash);
+  private static class KeyWithSameHashCode implements Comparable<KeyWithSameHashCode> {
+    final int i;
+    KeyWithSameHashCode(int i) {
+      this.i = i;
     }
 
     @Override
+    public int hashCode() { return 0; } //Returning same hashcode so that all keys landup to same bucket
+
+    @Override
+    public int compareTo(KeyWithSameHashCode x) {
+      if(this.i == x.i){
+        return 0;
+      }
+      else {
+        return Integer.compare(this.i, x.i);
+      }
+    }
+    @Override
     public String toString() {
-      return "Key_" + hash;
+      return "Key_" + i;
+    }
+  }
+
+  private static class CollidingHash implements Comparable<CollidingHash> {
+
+    private final int value;
+
+    public CollidingHash(int value) {
+      this.value = value;
+    }
+
+    @Override
+    public int hashCode() {
+      // intentionally bad hashcode. Force into first bin.
+      return 0;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+      if (null == o) {
+        return false;
+      }
+
+      if (o.getClass() != CollidingHash.class) {
+        return false;
+      }
+
+      return value == ((CollidingHash) o).value;
+    }
+
+    @Override
+    public int compareTo(CollidingHash o) {
+      return value - o.value;
     }
   }
 
   @DataProvider
   Object[][] mapImplementationSupplier() {
-    class SupplierWithToString implements Supplier<Map> {
-      final Supplier<Map<Key, Object>> supplier;
-      SupplierWithToString(Supplier<Map<Key, Object>> supplier) {
+    class SupplierWithToString implements Supplier<Map<?, Object>> {
+      final Supplier<Map<?, Object>> supplier;
+      SupplierWithToString(Supplier<Map<?, Object>> supplier) {
         this.supplier = supplier;
       }
 
       @Override
-      public Map<Key, Object> get() {
+      public Map get() {
         return supplier.get();
       }
 
@@ -168,13 +198,12 @@ public class MapTest {
         return supplier.get().getClass().getSimpleName() + "Supplier";
       }
     }
-    Supplier<Map> hashMapSupplier = new SupplierWithToString(HashMap::new);
-    Supplier<Map> linkedHashMapSupplier = new SupplierWithToString(LinkedHashMap::new);
-    Supplier<Map> treeMapSupplier = new SupplierWithToString(TreeMap::new);
-    Supplier<Map> indexedHashMapSupplier = new SupplierWithToString(IndexedHashMap::new);
+    Supplier<Map<?, Object>> hashMapSupplier = new SupplierWithToString(HashMap::new);
+    Supplier<Map<?, Object>> linkedHashMapSupplier = new SupplierWithToString(LinkedHashMap::new);
+    Supplier<Map<?, Object>> treeMapSupplier = new SupplierWithToString(TreeMap::new);
+    Supplier<Map<?, Object>> indexedHashMapSupplier = new SupplierWithToString(IndexedHashMap::new);
     return new Object[][]{{hashMapSupplier}, {linkedHashMapSupplier}, {treeMapSupplier}, {indexedHashMapSupplier}};
   }
-
 
   /*
    * @test
@@ -183,7 +212,7 @@ public class MapTest {
    *          false if the Map previously mapped k to null.
    */
   @Test(dataProvider = "mapImplementations")
-  public void testKeySetRemove(Map m) {
+  public void testKeySetRemove(Map<String, Object> m) {
     m.put("bananas", null);
     if (!m.keySet().remove("bananas")) Assert.fail("Yes, we have no bananas: " + m.getClass().getSimpleName());
   }
@@ -196,7 +225,7 @@ public class MapTest {
    * @author zhangshj@linux.vnet.ibm.com
    */
   @Test(dataProvider = "notEmptyMapImplementations")
-  public void testOverrideIsEmpty(Map map) {
+  public void testOverrideIsEmpty(Map<Object, Object> map) {
     Object key = new Object();
     Object value = new Object();
     map.get(key);
@@ -217,44 +246,10 @@ public class MapTest {
    * insertion still works.
    */
   @Test(dataProvider = "hashMapImplementationsWithConfiguredCapacityAndLoadFactor")
-  public void testPutNullKey(Map map) {
+  public void testPutNullKey(Map<CollidingHash, Object> map) {
     // Maximum size of map
     // Should be > the treeify threshold, see HashMap/ConcurrentMap.TREEIFY_THRESHOLD
     final int SIZE = 256;
-
-    class CollidingHash implements Comparable<CollidingHash> {
-
-      private final int value;
-
-      public CollidingHash(int value) {
-        this.value = value;
-      }
-
-      @Override
-      public int hashCode() {
-        // intentionally bad hashcode. Force into first bin.
-        return 0;
-      }
-
-      @Override
-      public boolean equals(Object o) {
-        if (null == o) {
-          return false;
-        }
-
-        if (o.getClass() != CollidingHash.class) {
-          return false;
-        }
-
-        return value == ((CollidingHash) o).value;
-      }
-
-      @Override
-      public int compareTo(CollidingHash o) {
-        return value - o.value;
-      }
-    }
-
     IntStream.range(0, SIZE).mapToObj(value -> new CollidingHash(value)).forEach(e -> {
       map.put(e, e);
     });
@@ -272,7 +267,7 @@ public class MapTest {
    * @run main ReplaceExisting
    */
   @Test(dataProvider = "mapImplementations")
-  public void testReplaceExisting(Map map) {
+  public void testReplaceExisting(Map<Integer, Object> map) {
     /* Number of entries required to trigger a resize for cap=16, load=0.75*/
     int ENTRIES = 13;
 
@@ -366,108 +361,24 @@ public class MapTest {
    * Tests and extends the scenario reported in
    * https://bugs.openjdk.java.net/browse/JDK-8186171
    * HashMap: Entry.setValue may not work after Iterator.remove() called for previous entries
-   * Runs 1000 times as it is based on randomization.
-   */
-  @Test(dataProvider = "mapImplementationSupplier")
-  static void testBug8186171NonDeterministic(Supplier<Map> mapSupplier) {
-    for (int attempt = 0; attempt < 1000; attempt++) {
-      final ThreadLocalRandom rnd = ThreadLocalRandom.current();
-
-      final Object v1 = rnd.nextBoolean() ? null : 1;
-      final Object v2 = (rnd.nextBoolean() && v1 != null) ? null : 2;
-
-      /** If true, always lands in first bucket in hash tables. */
-      final boolean poorHash = rnd.nextBoolean();
-
-      class Key implements Comparable<Key> {
-        final int i;
-        Key(int i) { this.i = i; }
-        public int hashCode() { return poorHash ? 0 : super.hashCode(); }
-        public int compareTo(Key x) {
-          return Integer.compare(this.i, x.i);
-        }
-      }
-
-      // HashMap and ConcurrentHashMap have:
-      // TREEIFY_THRESHOLD = 8; UNTREEIFY_THRESHOLD = 6;
-      final int size = rnd.nextInt(1, 25);
-
-      List<Key> keys = new ArrayList<>();
-      for (int i = size; i-->0; ) keys.add(new Key(i));
-      Key keyToFrob = keys.get(rnd.nextInt(keys.size()));
-
-      Map<Key, Object> m = mapSupplier.get();
-
-      for (Key key : keys) m.put(key, v1);
-
-      for (Iterator<Map.Entry<Key, Object>> it = m.entrySet().iterator();
-          it.hasNext(); ) {
-        Map.Entry<Key, Object> entry = it.next();
-        if (entry.getKey() == keyToFrob)
-          entry.setValue(v2); // does this have the expected effect?
-        else
-          it.remove();
-      }
-
-      assertFalse(m.containsValue(v1));
-      assertTrue(m.containsValue(v2));
-      assertTrue(m.containsKey(keyToFrob));
-      assertEquals(1, m.size());
-    }
-  }
-
-
-  /**
-   * @test
-   * @bug 8186171
-   * @run testng Bug8186171Test
-   * @summary Verify the fix for scenario reported in JDK-8186171
-   * @author deepak.kejriwal@oracle.com
-   *
-   * Tests and extends the scenario reported in
-   * https://bugs.openjdk.java.net/browse/JDK-8186171
-   * HashMap: Entry.setValue may not work after Iterator.remove() called for previous entries
    * Runs single time by reproducing exact scenario for issue mentioned in 8186171
    */
   @Test(dataProvider = "mapImplementationSupplier")
-  static void testBug8186171Deterministic(Supplier<Map> mapSupplier) {
-    class Key implements Comparable<Key>
-    {
-      final int i;
-      Key(int i) { this.i = i; }
-
-      @Override
-      public int hashCode() { return 0; } //Returning same hashcode so that all keys landup to same bucket
-
-      @Override
-      public int compareTo(Key x) {
-        if(this.i == x.i){
-          return 0;
-        }
-        else {
-          return Integer.compare(this.i, x.i);
-        }
-      }
-      @Override
-      public String toString() {
-        return "Key_" + i;
-      }
-    }
-
+  static void testBug8186171(Supplier<Map<KeyWithSameHashCode, Object>> mapSupplier) {
     // HashMap have TREEIFY_THRESHOLD = 8; UNTREEIFY_THRESHOLD = 6;
     final int size = 11;
-    List<Key> keys = new ArrayList<>();
+    List<KeyWithSameHashCode> keys = new ArrayList<>();
 
     for (int i = 0; i < size; i++){
-      keys.add(new Key(i));
+      keys.add(new KeyWithSameHashCode(i));
     }
 
-    Key keyToFrob = keys.get(9);
-    Map<Key, Object> m = mapSupplier.get();
-    for (Key key : keys) m.put(key, null);
+    KeyWithSameHashCode keyToFrob = keys.get(9);
+    Map<KeyWithSameHashCode, Object> m = mapSupplier.get();
+    for (KeyWithSameHashCode key : keys) m.put(key, null);
 
-    for (Iterator<Map.Entry<Key, Object>> it = m.entrySet().iterator(); it.hasNext(); ){
-      Map.Entry<Key, Object> entry = it.next();
+    for (Iterator<Map.Entry<KeyWithSameHashCode, Object>> it = m.entrySet().iterator(); it.hasNext(); ){
+      Map.Entry<KeyWithSameHashCode, Object> entry = it.next();
       if (entry.getKey() == keyToFrob){
         entry.setValue(2);
       }
@@ -476,8 +387,21 @@ public class MapTest {
       }
     }
 
-    assertFalse(m.containsValue(null));
-    assertTrue(m.containsValue(2));
+    final String version = System.getProperty("java.version");
+    final String mapSupplierName = mapSupplier.toString();
+    final boolean isJdkMap =
+        Objects.equals(mapSupplierName, "HashMapSupplier") || Objects.equals(mapSupplierName, "LinkedHashMapSupplier");
+
+    if (version.startsWith("1.8") && isJdkMap) {
+      String failureMessage = "Expect to see JDK Bug-8186171 with JKD version " + version + " and " + mapSupplierName;
+      assertTrue(m.containsValue(null), failureMessage);
+      assertFalse(m.containsValue(2), failureMessage);
+
+    } else {
+      String failureMessage = "Not expect to see JDK Bug-8186171 with JKD version " + version + " and " + mapSupplierName;
+      assertFalse(m.containsValue(null), failureMessage);
+      assertTrue(m.containsValue(2), failureMessage);
+    }
     assertTrue(m.containsKey(keyToFrob));
     assertEquals(1, m.size());
   }
