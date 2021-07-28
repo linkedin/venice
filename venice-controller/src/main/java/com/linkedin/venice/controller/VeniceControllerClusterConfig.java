@@ -194,6 +194,11 @@ public class VeniceControllerClusterConfig {
    */
   private long leakedPushStatusCleanUpServiceSleepIntervalInMs;
 
+  /**
+   * Jetty config overrides for Spark server
+   */
+  private VeniceProperties jettyConfigOverrides;
+
   public VeniceControllerClusterConfig(VeniceProperties props) {
     try {
       this.props = props;
@@ -325,6 +330,8 @@ public class VeniceControllerClusterConfig {
       throw new ConfigurationException(ADMIN_TOPIC_REPLICATION_FACTOR + " cannot be less than 1.");
     }
     this.leakedPushStatusCleanUpServiceSleepIntervalInMs = props.getLong(LEAKED_PUSH_STATUS_CLEAN_UP_SERVICE_SLEEP_INTERVAL_MS, TimeUnit.MINUTES.toMillis(15));
+
+    this.jettyConfigOverrides = props.clipAndFilterNamespace(CONTROLLER_JETTY_CONFIG_OVERRIDE_PREFIX);
   }
 
   public VeniceProperties getProps() {
@@ -547,5 +554,9 @@ public class VeniceControllerClusterConfig {
 
   public String getNativeReplicationSourceFabricAsDefaultForIncremental() {
     return nativeReplicationSourceFabricAsDefaultForIncremental;
+  }
+
+  public VeniceProperties getJettyConfigOverrides() {
+    return jettyConfigOverrides;
   }
 }

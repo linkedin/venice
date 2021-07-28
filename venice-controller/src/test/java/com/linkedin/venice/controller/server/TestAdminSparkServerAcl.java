@@ -4,6 +4,7 @@ import com.linkedin.venice.controller.MockVeniceAuthorizer;
 import com.linkedin.venice.controllerapi.AclResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
 import java.util.Optional;
+import java.util.Properties;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -19,7 +20,7 @@ public class TestAdminSparkServerAcl extends AbstractTestAdminSparkServer {
   @BeforeClass
   public void setUp() {
     authorizerService = new MockVeniceAuthorizer();
-    super.setUp(true, Optional.of(authorizerService));
+    super.setUp(true, Optional.of(authorizerService), new Properties());
   }
 
   @AfterClass

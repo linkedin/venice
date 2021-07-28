@@ -4,6 +4,7 @@ import com.linkedin.venice.controller.server.AbstractTestAdminSparkServer;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.utils.TestUtils;
 import java.util.Optional;
+import java.util.Properties;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -15,7 +16,7 @@ import static com.linkedin.venice.meta.VeniceUserStoreType.*;
 public class TestBatchUpdateCommandForLeaderFollowerModel extends AbstractTestAdminSparkServer {
   @BeforeClass
   public void setUp() {
-    super.setUp(false, Optional.empty());
+    super.setUp(false, Optional.empty(), new Properties());
   }
 
   @AfterClass

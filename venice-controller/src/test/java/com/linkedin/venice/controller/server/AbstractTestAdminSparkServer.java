@@ -10,6 +10,7 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import java.util.Optional;
+import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 
 
@@ -25,8 +26,8 @@ public class AbstractTestAdminSparkServer {
   protected VeniceControllerWrapper parentController;
   protected ZkServerWrapper parentZk;
 
-  public void setUp(boolean useParentRestEndpoint, Optional<AuthorizerService> authorizerService) {
-    cluster = ServiceFactory.getVeniceCluster(1, STORAGE_NODE_COUNT, 0);
+  public void setUp(boolean useParentRestEndpoint, Optional<AuthorizerService> authorizerService, Properties extraProperties) {
+    cluster = ServiceFactory.getVeniceCluster(1, STORAGE_NODE_COUNT, 0, 1, 100, false, false, extraProperties);
 
     parentZk = ServiceFactory.getZkServer();
     parentController =

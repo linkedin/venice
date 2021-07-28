@@ -1640,4 +1640,10 @@ public class ConfigKeys {
    * By default it is set to true.
    */
   public static final String SERVER_SCHEMA_PRESENCE_CHECK_ENABLED = "server.schema.presence.check.enabled";
+
+  /**
+   * Prefix of configs to configure Jetty server in Controller.
+   */
+  public static final String CONTROLLER_JETTY_CONFIG_OVERRIDE_PREFIX = "controller.jetty.";
+
 }

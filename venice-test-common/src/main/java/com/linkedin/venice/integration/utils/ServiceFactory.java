@@ -289,7 +289,7 @@ public class ServiceFactory {
     return getService("MockAdminSparkServer", (serviceName) -> {
       Set<String> clusters = new HashSet<String>();
       clusters.add(cluster);
-      AdminSparkServer server = new AdminSparkServer(Utils.getFreePort(), admin, new MetricsRepository(), clusters, false, Optional.empty(), false, Optional.empty(), Collections.emptyList());
+      AdminSparkServer server = new AdminSparkServer(Utils.getFreePort(), admin, new MetricsRepository(), clusters, false, Optional.empty(), false, Optional.empty(), Collections.emptyList(), null);
       server.start();
       return server;
     });
@@ -299,7 +299,7 @@ public class ServiceFactory {
     return getService("MockAdminSparkServer", (serviceName) -> {
       Set<String> clusters = new HashSet<String>();
       clusters.add(cluster);
-      AdminSparkServer server = new AdminSparkServer(Utils.getFreePort(), admin, new MetricsRepository(), clusters, false, Optional.empty(), false, Optional.empty(), bannedRoutes);
+      AdminSparkServer server = new AdminSparkServer(Utils.getFreePort(), admin, new MetricsRepository(), clusters, false, Optional.empty(), false, Optional.empty(), bannedRoutes, null);
       server.start();
       return server;
     });
@@ -377,7 +377,7 @@ public class ServiceFactory {
    *
    * The reason to call this method instead of other {@link #getVeniceCluster()} methods is
    * when one wants to maximize its testing environment isolation.
-   * Example usage: {@link com.linkedin.venice.benchmark.IngestionBenchmarkWithTwoProcesses}
+   * Example usage: {@literal com.linkedin.venice.benchmark.IngestionBenchmarkWithTwoProcesses}
    *
    * @param clusterInfoFilePath works as IPC to pass back the needed information to the caller process
    */
@@ -390,7 +390,7 @@ public class ServiceFactory {
    *
    * The reason to call this method instead of other {@link #getVeniceCluster()} methods is
    * when one wants to maximize its testing environment isolation.
-   * Example usage: {@link com.linkedin.venice.benchmark.IngestionBenchmarkWithTwoProcesses}
+   * Example usage: {@literal com.linkedin.venice.benchmark.IngestionBenchmarkWithTwoProcesses}
    *
    * @param clusterInfoFilePath works as IPC to pass back the needed information to the caller process
    * @param waitTimeInSeconds gives some wait time to make sure all the services have been started in the other process.

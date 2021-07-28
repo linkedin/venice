@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller.server;
 
+import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.LastSucceedExecutionIdResponse;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controllerapi.AdminCommandExecution;
@@ -32,13 +33,17 @@ import com.linkedin.venice.meta.StoreStatus;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.router.httpclient.HttpClientUtils;
+import com.linkedin.venice.utils.ByteUtils;
+import com.linkedin.venice.utils.EncodingUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Properties;
 import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
@@ -65,7 +70,9 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
 
   @BeforeClass
   public void setUp() {
-    super.setUp(false, Optional.empty());
+    Properties extraProperties = new Properties();
+    extraProperties.put(ConfigKeys.CONTROLLER_JETTY_CONFIG_OVERRIDE_PREFIX + "org.eclipse.jetty.server.Request.maxFormContentSize", ByteUtils.BYTES_PER_MB);
+    super.setUp(false, Optional.empty(), extraProperties);
   }
 
   @AfterClass
@@ -782,6 +789,26 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
     } finally {
       deleteStore(storeName);
     }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void controllerCanHandleLargePayload() throws IOException {
+    String storeName = TestUtils.getUniqueString("controllerClientCanDiscoverCluster");
+    String pushId = TestUtils.getUniqueString("no-store-push");
+
+    byte[] largeDictionaryBytes = new byte[512 * ByteUtils.BYTES_PER_KB];
+    Arrays.fill(largeDictionaryBytes, (byte) 1);
+
+    String largeDictionary = EncodingUtils.base64EncodeToString(largeDictionaryBytes);
+
+    controllerClient.createNewStore(storeName, "test", "\"string\"", "\"string\"");
+
+    VersionCreationResponse vcr =
+        controllerClient.requestTopicForWrites(storeName, 1L, Version.PushType.BATCH, pushId,
+            false, true, false, Optional.empty(), Optional.of(largeDictionary), Optional.empty(), false, -1);
+    Assert.assertFalse(vcr.isError(),
+        "Controller should allow large payload: " + new ObjectMapper()
+            .writeValueAsString(vcr));
   }
 
   private void deleteStore(String storeName) {

@@ -11,6 +11,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.HashMap;
 import java.util.List;
@@ -24,6 +25,7 @@ import org.codehaus.jackson.map.ObjectMapper;
 import spark.Request;
 import spark.Response;
 import spark.Service;
+import spark.embeddedserver.EmbeddedServers;
 
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
 import static com.linkedin.venice.controllerapi.ControllerRoute.*;
@@ -59,7 +61,8 @@ public class AdminSparkServer extends AbstractVeniceService {
 
 
   public AdminSparkServer(int port, Admin admin, MetricsRepository metricsRepository, Set<String> clusters, boolean enforceSSL,
-      Optional<SSLConfig> sslConfig, boolean checkReadMethodForKafka, Optional<DynamicAccessController> accessController, List<ControllerRoute> disabledRoutes) {
+      Optional<SSLConfig> sslConfig, boolean checkReadMethodForKafka, Optional<DynamicAccessController> accessController,
+      List<ControllerRoute> disabledRoutes, VeniceProperties jettyConfigOverrides) {
     this.port = port;
     this.enforceSSL = enforceSSL;
     this.sslEnabled = sslConfig.isPresent();
@@ -75,6 +78,10 @@ public class AdminSparkServer extends AbstractVeniceService {
       statsMap.put(cluster, new SparkServerStats(metricsRepository, cluster + "." + statsPrefix + "controller_spark_server"));
     }
     nonclusterSpecificStats = new SparkServerStats(metricsRepository, "." + statsPrefix + "controller_spark_server");
+    EmbeddedServers.add(
+        EmbeddedServers.Identifiers.JETTY,
+        new VeniceSparkServerFactory(jettyConfigOverrides));
+
     httpService = Service.ignite();
     this.disabledRoutes = disabledRoutes;
   }
