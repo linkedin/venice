@@ -1429,9 +1429,11 @@ public class TestHybrid {
 
       // Create a new version with updated amplification factor
       cluster.createVersion(storeName, STRING_SCHEMA, STRING_SCHEMA, IntStream.range(0, keyCount).mapToObj(i -> new AbstractMap.SimpleEntry<>(String.valueOf(i), String.valueOf(i))));
-      for (Integer i = 0; i < keyCount; i++) {
-        assertEquals(client.get(String.valueOf(i)).get().toString(), String.valueOf(i));
-      }
+      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
+          for (Integer i = 0; i < keyCount; i++) {
+            assertEquals(client.get(String.valueOf(i)).get().toString(), String.valueOf(i));
+          }
+      });
 
       // Produce Large Streaming Record
       SystemProducer producer = TestPushUtils.getSamzaProducer(cluster, storeName, Version.PushType.STREAM);
