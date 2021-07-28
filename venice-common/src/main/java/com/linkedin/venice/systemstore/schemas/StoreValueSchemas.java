@@ -6,10 +6,10 @@
 package com.linkedin.venice.systemstore.schemas;
 
 @SuppressWarnings("all")
-/** This type describes the value schemas of the store.  */
+/** This type describes the value schemas of the store. */
 public class StoreValueSchemas extends org.apache.avro.specific.SpecificRecordBase implements org.apache.avro.specific.SpecificRecord {
-  public static final org.apache.avro.Schema SCHEMA$ = org.apache.avro.Schema.parse("{\"type\":\"record\",\"name\":\"StoreValueSchemas\",\"namespace\":\"com.linkedin.venice.systemstore.schemas\",\"fields\":[{\"name\":\"valueSchemaMap\",\"type\":{\"type\":\"map\",\"values\":\"string\"},\"doc\":\"A string to string map representing the mapping from schema id to value schema string.\"}]}");
-  /** A string to string map representing the mapping from schema id to value schema string. */
+  public static final org.apache.avro.Schema SCHEMA$ = org.apache.avro.Schema.parse("{\"type\":\"record\",\"name\":\"StoreValueSchemas\",\"namespace\":\"com.linkedin.venice.systemstore.schemas\",\"fields\":[{\"name\":\"valueSchemaMap\",\"type\":{\"type\":\"map\",\"values\":\"string\"},\"doc\":\"A string to string map representing the mapping from schema id to value schema string. The value could be an empty string indicating the value schema is stored in another field.\"}]}");
+  /** A string to string map representing the mapping from schema id to value schema string. The value could be an empty string indicating the value schema is stored in another field. */
   public java.util.Map<java.lang.CharSequence,java.lang.CharSequence> valueSchemaMap;
   public org.apache.avro.Schema getSchema() { return SCHEMA$; }
   // Used by DatumWriter.  Applications should not call. 

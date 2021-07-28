@@ -40,11 +40,11 @@ import com.linkedin.venice.meta.systemstore.schemas.StoreMetadataValue;
 import com.linkedin.venice.meta.systemstore.schemas.StoreProperties;
 import com.linkedin.venice.meta.systemstore.schemas.StoreValueSchemas;
 import com.linkedin.venice.meta.systemstore.schemas.StoreVersionState;
-import com.linkedin.venice.schema.TimestampMetadataSchemaEntry;
 import com.linkedin.venice.schema.DerivedSchemaEntry;
-import com.linkedin.venice.schema.TimestampMetadataVersionId;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
+import com.linkedin.venice.schema.TimestampMetadataSchemaEntry;
+import com.linkedin.venice.schema.TimestampMetadataVersionId;
 import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.system.store.MetaStoreDataType;
 import com.linkedin.venice.systemstore.schemas.StoreClusterConfig;
@@ -58,6 +58,7 @@ import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -358,7 +359,8 @@ public abstract class NativeMetadataRepository
   }
 
   @Override
-  public TimestampMetadataSchemaEntry getTimestampMetadataSchema(String storeName, int valueSchemaId, int timestampMetadataVersionId) {
+  public TimestampMetadataSchemaEntry getTimestampMetadataSchema(String storeName, int valueSchemaId,
+      int timestampMetadataVersionId) {
     throw new VeniceException("Function: getTimestampMetadataSchemas is not supported!");
   }
 
@@ -446,8 +448,25 @@ public abstract class NativeMetadataRepository
         new SchemaEntry(Integer.parseInt(keySchemaEntry.getKey().toString()), keySchemaEntry.getValue().toString()));
     Map<CharSequence, CharSequence> valueSchemaMap =
         getStoreMetaValue(storeName, valueSchemaKey).storeValueSchemas.valueSchemaMap;
-    valueSchemaMap.forEach(
-        (k, v) -> schemaData.addValueSchema(new SchemaEntry(Integer.parseInt(k.toString()), v.toString())));
+    // Check the value schema string, if it's empty then try to query the other key space for individual value schema.
+    for (Map.Entry<CharSequence, CharSequence> entry : valueSchemaMap.entrySet()) {
+      if (entry.getValue().toString().isEmpty()) {
+        // The value schemas might be too large to be stored in a single K/V.
+        StoreMetaKey individualValueSchemaKey =
+            MetaStoreDataType.STORE_VALUE_SCHEMA.getStoreMetaKey(new HashMap<String, String>() {{
+              put(KEY_STRING_STORE_NAME, storeName);
+              put(KEY_STRING_SCHEMA_ID, entry.getKey().toString());
+            }});
+        // Empty string is not a valid value schema therefore it's safe to throw exceptions if we also cannot find it in
+        // the individual value schema key space.
+        String valueSchema =
+            getStoreMetaValue(storeName, individualValueSchemaKey).storeValueSchema.valueSchema.toString();
+        schemaData.addValueSchema(new SchemaEntry(Integer.parseInt(entry.getKey().toString()), valueSchema));
+      } else {
+        schemaData.addValueSchema(
+            new SchemaEntry(Integer.parseInt(entry.getKey().toString()), entry.getValue().toString()));
+      }
+    }
     return schemaData;
   }
 
@@ -529,9 +548,7 @@ public abstract class NativeMetadataRepository
           // DataReplicationPolicy and BufferReplayPolicy are not added to metadata value schema as metadata system
           // store is deprecating and da-vinci does not need these fields. Create hybridStoreConfig with default
           // dataReplicationPolicy and bufferReplayPolicy.
-          DataReplicationPolicy.NON_AGGREGATE,
-          BufferReplayPolicy.REWIND_FROM_EOP
-      );
+          DataReplicationPolicy.NON_AGGREGATE, BufferReplayPolicy.REWIND_FROM_EOP);
     }
 
     PartitionerConfig partitionerConfig = null;

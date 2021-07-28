@@ -93,6 +93,10 @@ public class TestUtils {
     return base + "-" + System.nanoTime() + "-" + RandomGenUtils.getRandomIntWithIn(Integer.MAX_VALUE);
   }
 
+  public static String getUniqueAlphanumericString(String base) {
+    return base + System.nanoTime() + RandomGenUtils.getRandomIntWithIn(Integer.MAX_VALUE);
+  }
+
   public static String getUniqueTempPath() {
     return getUniqueTempPath("");
   }
