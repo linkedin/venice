@@ -36,7 +36,7 @@ AVRO_SCHEMAS_PATH=(
   "venice-common/src/main/resources/avro/StoreMetadata/StoreMetadataKey/*"
   "venice-common/src/main/resources/avro/StoreMetadata/StoreMetadataValue/v2/*"
   "venice-common/src/main/resources/avro/StoreMeta/StoreMetaKey/*"
-  "venice-common/src/main/resources/avro/StoreMeta/StoreMetaValue/v4/*"
+  "venice-common/src/main/resources/avro/StoreMeta/StoreMetaValue/v5/*"
   "venice-common/src/main/resources/avro/PushStatus/PushStatusKey/v1/*"
   "venice-common/src/main/resources/avro/PushStatus/PushStatusValue/v1/*"
   "venice-common/src/main/resources/avro/AdminResponseRecord/v1/*"

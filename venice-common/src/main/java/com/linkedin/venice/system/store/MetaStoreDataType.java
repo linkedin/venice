@@ -4,6 +4,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
@@ -15,10 +16,11 @@ import static com.linkedin.venice.system.store.MetaStoreWriter.*;
  */
 public enum MetaStoreDataType {
   STORE_PROPERTIES(0, Arrays.asList(KEY_STRING_STORE_NAME, KEY_STRING_CLUSTER_NAME)),
-  STORE_KEY_SCHEMAS(1, Arrays.asList(KEY_STRING_STORE_NAME)),
-  STORE_VALUE_SCHEMAS(2, Arrays.asList(KEY_STRING_STORE_NAME)),
+  STORE_KEY_SCHEMAS(1, Collections.singletonList(KEY_STRING_STORE_NAME)),
+  STORE_VALUE_SCHEMAS(2, Collections.singletonList(KEY_STRING_STORE_NAME)),
   STORE_REPLICA_STATUSES(3, Arrays.asList(KEY_STRING_STORE_NAME, KEY_STRING_CLUSTER_NAME, KEY_STRING_VERSION_NUMBER, KEY_STRING_PARTITION_ID)),
-  STORE_CLUSTER_CONFIG(4, Arrays.asList(KEY_STRING_STORE_NAME));
+  STORE_CLUSTER_CONFIG(4, Collections.singletonList(KEY_STRING_STORE_NAME)),
+  STORE_VALUE_SCHEMA(5, Arrays.asList(KEY_STRING_STORE_NAME, KEY_STRING_SCHEMA_ID));
 
   private final int value;
   private final List<String> requiredKeys;

@@ -5349,7 +5349,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         keySchemas.add(getKeySchema(clusterName, regularStoreName));
         metaStoreWriter.get().writeStoreKeySchemas(regularStoreName, keySchemas);
         logger.info("Wrote key schema to meta system store for venice store: " + regularStoreName + " in cluster: " + clusterName);
-        metaStoreWriter.get().writeStoreValueSchemas(regularStoreName, getValueSchemas(clusterName, regularStoreName));
+        Collection<SchemaEntry> valueSchemas = getValueSchemas(clusterName, regularStoreName);
+        metaStoreWriter.get().writeStoreValueSchemas(regularStoreName, valueSchemas);
         logger.info("Wrote value schemas to meta system store for venice store: " + regularStoreName + " in cluster: " + clusterName);
         // replica status for all the available versions
         List<Version> versions = store.getVersions();

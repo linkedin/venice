@@ -38,8 +38,10 @@ import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.AbstractMap;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -304,8 +306,9 @@ public class MetaSystemStoreTest {
     String metaSystemStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(regularVeniceStoreName);
     VersionCreationResponse metaSystemStoreNewVersionResponse =
         controllerClient.emptyPush(metaSystemStoreName, "test_meta_system_store_push2", 10000);
-    TestUtils.waitForNonDeterministicPushCompletion(Version.composeKafkaTopic(metaSystemStoreName,
-        metaSystemStoreNewVersionResponse.getVersion()), controllerClient, 30, TimeUnit.SECONDS, Optional.of(LOGGER));
+    TestUtils.waitForNonDeterministicPushCompletion(
+        Version.composeKafkaTopic(metaSystemStoreName, metaSystemStoreNewVersionResponse.getVersion()),
+        controllerClient, 30, TimeUnit.SECONDS, Optional.of(LOGGER));
     D2Client d2Client = null;
     NativeMetadataRepository nativeMetadataRepository = null;
     try {
@@ -389,6 +392,59 @@ public class MetaSystemStoreTest {
     }
   }
 
+  @Test(timeOut = 60 * Time.MS_PER_SECOND)
+  public void testThinClientMetaStoreBasedRepositoryWithLargeValueSchemas() throws InterruptedException {
+    String regularVeniceStoreName = TestUtils.getUniqueString("venice_store");
+    // 1500 fields generate a schema that's roughly 150KB.
+    int numberOfLargeSchemaVersions = 15;
+    List<String> schemas = generateLargeValueSchemas(1500, numberOfLargeSchemaVersions);
+    addStoreAndMaterializeMetaSystemStore(regularVeniceStoreName, schemas.get(0));
+    controllerClient.addValueSchema(regularVeniceStoreName, schemas.get(1));
+    D2Client d2Client = null;
+    NativeMetadataRepository nativeMetadataRepository = null;
+    try {
+      d2Client = D2TestUtils.getAndStartD2Client(venice.getZk().getAddress());
+      ClientConfig<StoreMetaValue> clientConfig = getClientConfig(regularVeniceStoreName, d2Client);
+      // Not providing a CLIENT_META_SYSTEM_STORE_VERSION_MAP, should use the default value of 1 for system store current version.
+      VeniceProperties backendConfig = new PropertyBuilder().put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
+          .put(CLIENT_USE_META_SYSTEM_STORE_REPOSITORY, true)
+          .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
+          .build();
+      nativeMetadataRepository = NativeMetadataRepository.getInstance(clientConfig, backendConfig);
+      // ThinClientMetaStoreBasedRepository implementation should be used since CLIENT_USE_META_SYSTEM_STORE_REPOSITORY is set to true without enabling other feature flags.
+      Assert.assertTrue(nativeMetadataRepository instanceof ThinClientMetaStoreBasedRepository);
+      nativeMetadataRepository.subscribe(regularVeniceStoreName);
+      Collection<SchemaEntry> metaStoreSchemaEntries = nativeMetadataRepository.getValueSchemas(regularVeniceStoreName);
+      assertEquals(metaStoreSchemaEntries.size(), venice.getMasterVeniceController()
+          .getVeniceAdmin()
+          .getValueSchemas(venice.getClusterName(), regularVeniceStoreName)
+          .size(), "Number of value schemas should be the same between meta system store and controller");
+      for (int i = 2; i < numberOfLargeSchemaVersions; i++) {
+        controllerClient.addValueSchema(regularVeniceStoreName, schemas.get(i));
+      }
+      NativeMetadataRepository finalNativeMetadataRepository = nativeMetadataRepository;
+      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS,
+          () -> assertEquals(finalNativeMetadataRepository.getValueSchemas(regularVeniceStoreName).size(),
+              numberOfLargeSchemaVersions,
+              "There should be " + numberOfLargeSchemaVersions + " versions of value schemas in total"));
+      SchemaEntry latestValueSchema = nativeMetadataRepository.getLatestValueSchema(regularVeniceStoreName);
+      assertEquals(latestValueSchema, venice.getMasterVeniceController()
+              .getVeniceAdmin()
+              .getValueSchema(venice.getClusterName(), regularVeniceStoreName, latestValueSchema.getId()),
+          "NativeMetadataRepository is not returning the right schema id and/or schema pair");
+    } finally {
+      if (d2Client != null) {
+        D2ClientUtils.shutdownClient(d2Client);
+      }
+      if (nativeMetadataRepository != null) {
+        // Calling clear explicitly here because if the NativeMetadataRepository implementation used happens to initialize
+        // a new DaVinciBackend then calling clear will trigger the cleanup logic to ensure the DaVinciBackend is not leaked
+        // into other tests.
+        nativeMetadataRepository.clear();
+      }
+    }
+  }
+
   private ClientConfig<StoreMetaValue> getClientConfig(String storeName, D2Client d2Client) {
     return ClientConfig.defaultSpecificClientConfig(storeName, StoreMetaValue.class)
         .setD2ServiceName(ClientConfig.DEFAULT_D2_SERVICE_NAME)
@@ -464,5 +520,32 @@ public class MetaSystemStoreTest {
     } else if (!ExecutionStatus.COMPLETED.toString().equals(metaSystemStoreStatus)) {
       fail("Unexpected meta system store status: " + metaSystemStoreStatus);
     }
+  }
+
+  private List<String> generateLargeValueSchemas(int baseNumberOfFields, int numberOfVersions) {
+    List<String> schemas = new ArrayList<>();
+    if (baseNumberOfFields < 1) {
+      throw new UnsupportedOperationException("Can only generate value schemas with one or more fields");
+    }
+    StringBuilder valueSchemaBuilder = new StringBuilder();
+    valueSchemaBuilder.append("{\"type\": \"record\", \"name\": \"TestValue\", \"fields\": [");
+    for (int i = 0; i < baseNumberOfFields; i++) {
+      if (valueSchemaBuilder.charAt(valueSchemaBuilder.length() - 1) == '}') {
+        valueSchemaBuilder.append(",");
+      }
+      valueSchemaBuilder.append(generateFieldBlock());
+    }
+    schemas.add(valueSchemaBuilder.toString() + "]}");
+    for (int v = 1; v < numberOfVersions; v++) {
+      valueSchemaBuilder.append(",");
+      valueSchemaBuilder.append(generateFieldBlock());
+      schemas.add(valueSchemaBuilder.toString() + "]}");
+    }
+    return schemas;
+  }
+
+  private String generateFieldBlock() {
+    return "{\"name\": \"" + TestUtils.getUniqueAlphanumericString("largeSchema")
+        + "\", \"type\": \"string\", \"default\": \"\"}";
   }
 }
