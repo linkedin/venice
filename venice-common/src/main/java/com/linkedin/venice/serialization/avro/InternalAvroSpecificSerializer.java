@@ -44,8 +44,8 @@ public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends SpecificReco
   public static final String VENICE_SCHEMA_READER_CONFIG = "venice.schema-reader";
 
   private static final Logger logger = Logger.getLogger(InternalAvroSpecificSerializer.class);
-  private static final int MAX_ATTEMPTS_FOR_SCHEMA_READER = 60;
-  private static final int WAIT_TIME_BETWEEN_SCHEMA_READER_ATTEMPTS_IN_MS = 1000;
+  public static final int MAX_ATTEMPTS_FOR_SCHEMA_READER = 60;
+  public static final int WAIT_TIME_BETWEEN_SCHEMA_READER_ATTEMPTS_IN_MS = 1000;
   public static final int SENTINEL_PROTOCOL_VERSION_USED_FOR_UNDETECTABLE_COMPILED_SCHEMA = -1;
   public static final int SENTINEL_PROTOCOL_VERSION_USED_FOR_UNVERSIONED_PROTOCOL = 0;
 
