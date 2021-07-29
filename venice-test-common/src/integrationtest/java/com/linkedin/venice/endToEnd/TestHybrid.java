@@ -385,7 +385,7 @@ public class TestHybrid {
         // But not old streaming record (because we waited the rewind time)
         assertEquals(client.get("2").get().toString(), "test_name_2");
 
-        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
           StoreResponse storeResponse = controllerClient.getStore(storeName);
           assertFalse(storeResponse.isError());
           List<Integer> versions =
@@ -428,7 +428,7 @@ public class TestHybrid {
         //Stop one server
         int port = venice.getVeniceServers().get(0).getPort();
         venice.stopVeniceServer(port);
-        TestUtils.waitForNonDeterministicAssertion(15, TimeUnit.SECONDS, true, () -> {
+        TestUtils.waitForNonDeterministicAssertion(15, TimeUnit.SECONDS, true, true, () -> {
           // Make sure Helix knows the instance is shutdown
           Map<String, String> storeStatus = controllerClient.listStoresStatuses().getStoreStatusMap();
           Assert.assertTrue(storeStatus.get(storeName).equals(StoreStatus.UNDER_REPLICATED.toString()),
@@ -444,7 +444,7 @@ public class TestHybrid {
 
         //Restart one server
         venice.restartVeniceServer(port);
-        TestUtils.waitForNonDeterministicAssertion(15, TimeUnit.SECONDS, true, () -> {
+        TestUtils.waitForNonDeterministicAssertion(15, TimeUnit.SECONDS, true, true, () -> {
           // Make sure Helix knows the instance has recovered
           Map<String, String> storeStatus = controllerClient.listStoresStatuses().getStoreStatusMap();
           Assert.assertTrue(storeStatus.get(storeName).equals(StoreStatus.FULLLY_REPLICATED.toString()),
@@ -504,7 +504,7 @@ public class TestHybrid {
                                                       .setHybridOffsetLagThreshold(streamingMessageLag)
                                                       .setLeaderFollowerModel(isLeaderFollowerModelEnabled)
         );
-        TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+        TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, true, () -> {
           Assert.assertFalse(admin.getStore(clusterName, storeName).containsVersion(1));
           Assert.assertEquals(admin.getStore(clusterName, storeName).getCurrentVersion(), 0);
         });
@@ -525,7 +525,7 @@ public class TestHybrid {
           sendStreamingRecord(veniceBatchProducer, storeName, i);
         }
 
-        TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+        TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, true, () -> {
           Assert.assertTrue(admin.getStore(clusterName, storeName).containsVersion(1));
           Assert.assertEquals(admin.getStore(clusterName, storeName).getCurrentVersion(), 0);
         });
@@ -541,14 +541,14 @@ public class TestHybrid {
           String resourceName = Version.composeKafkaTopic(storeName, 1);
           HelixBaseRoutingRepository routingDataRepo =
               veniceClusterWrapper.getRandomVeniceRouter().getRoutingDataRepository();
-          TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, false, true, () -> {
+          TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, true, () -> {
               Instance leaderNode = routingDataRepo.getLeaderInstance(resourceName, 0);
               Assert.assertNotNull(leaderNode);
           });
           Instance oldLeaderNode = routingDataRepo.getLeaderInstance(resourceName, 0);
 
           veniceClusterWrapper.stopVeniceServer(oldLeaderNode.getPort());
-          TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, true, () -> {
+          TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
             Instance newLeaderNode = routingDataRepo.getLeaderInstance(resourceName, 0);
             Assert.assertNotNull(newLeaderNode);
             Assert.assertNotEquals(oldLeaderNode.getPort(), newLeaderNode.getPort());
@@ -571,7 +571,7 @@ public class TestHybrid {
          */
         ((VeniceSystemProducer)veniceBatchProducer).getInternalProducer().broadcastEndOfPush(new HashMap<>());
 
-        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, true, () -> {
+        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
           Assert.assertTrue(admin.getStore(clusterName, storeName).containsVersion(1));
           Assert.assertEquals(admin.getStore(clusterName, storeName).getCurrentVersion(), 1);
           if (isLeaderFollowerModelEnabled) {
@@ -583,7 +583,7 @@ public class TestHybrid {
         SystemProducer veniceStreamProducer = getSamzaProducer(veniceClusterWrapper, storeName, Version.PushType.STREAM);
         try (AvroGenericStoreClient client = ClientFactory.getAndStartGenericAvroClient(
             ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(veniceClusterWrapper.getRandomRouterURL()))) {
-          TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, true, () -> {
+          TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
             // Verify data, note only 1-10 have been pushed so far
             for (int i = 1; i <= 10; i++) {
               String key = Integer.toString(i);
@@ -696,7 +696,7 @@ public class TestHybrid {
       Utils.sleep(500);
       veniceClusterWrapper.useControllerClient(c -> {
         c.writeEndOfPush(storeName1, 1);
-        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
           Assert.assertTrue(admin.getStore(clusterName, storeName1).containsVersion(1));
           Assert.assertEquals(admin.getStore(clusterName, storeName1).getCurrentVersion(), 1);
           // The second SystemProducer should still be active
@@ -704,7 +704,7 @@ public class TestHybrid {
         });
 
         c.writeEndOfPush(storeName2, 1);
-        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
           Assert.assertTrue(admin.getStore(clusterName, storeName2).containsVersion(1));
           Assert.assertEquals(admin.getStore(clusterName, storeName2).getCurrentVersion(), 1);
           // There should be no active SystemProducer any more.
@@ -783,7 +783,7 @@ public class TestHybrid {
         }
 
         // Wait for up to 10 seconds
-        TestUtils.waitForNonDeterministicAssertion(10 * 1000, TimeUnit.MILLISECONDS, () -> {
+        TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, true, () -> {
           StoreResponse store = controllerClient.getStore(storeName);
           Assert.assertEquals(store.getStore().getCurrentVersion(), 1);
         });
@@ -791,10 +791,12 @@ public class TestHybrid {
         //Verify some records (note, records 1-100 have been pushed)
         try (AvroGenericStoreClient client =
             ClientFactory.getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(venice.getRandomRouterURL()))) {
-          for (int i = 1; i <= 10; i++){
-            String key = "key_" + i;
-            assertEquals(client.get(key).get().toString(), "value_" + i);
-          }
+          TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
+            for (int i = 1; i <= 10; i++) {
+              String key = "key_" + i;
+              assertEquals(client.get(key).get().toString(), "value_" + i);
+            }
+          });
         }
 
         // And real-time topic should not exist since buffer replay is skipped.
@@ -879,7 +881,7 @@ public class TestHybrid {
       /**
        * Wait for leader to switch over to real-time topic
        */
-      TestUtils.waitForNonDeterministicAssertion(20 * 1000, TimeUnit.MILLISECONDS, () -> {
+      TestUtils.waitForNonDeterministicAssertion(20 * 1000, TimeUnit.MILLISECONDS, true, true, () -> {
         StoreResponse store = TestUtils.assertCommand(controllerClient.getStore(storeName));
         Assert.assertEquals(store.getStore().getCurrentVersion(), 1);
       });
@@ -894,7 +896,7 @@ public class TestHybrid {
         realTimeTopicWriter.broadcastTopicSwitch(Collections.singletonList(venice.getKafka().getAddress()), tmpTopic1, -1L, null);
         realTimeTopicWriter.broadcastTopicSwitch(Collections.singletonList(venice.getKafka().getAddress()), tmpTopic2, -1L, null);
 
-        TestUtils.waitForNonDeterministicAssertion(30 * 1000, TimeUnit.MILLISECONDS, () -> {
+        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
           // All messages from tmpTopic2 should exist
           try {
             for (int i = 10; i < 20; i++) {
@@ -948,7 +950,7 @@ public class TestHybrid {
       //make sure the v1 is online and all the writes have been consumed by the SN
       try (AvroGenericStoreClient client = ClientFactory.getAndStartGenericAvroClient(
           ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(veniceClusterWrapper.getRandomRouterURL()))) {
-        TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () ->
+        TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, true, () ->
           Assert.assertEquals(admin.getStore(clusterName, storeName).getCurrentVersion(), 1));
 
         TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
@@ -977,7 +979,7 @@ public class TestHybrid {
 
         String resourceName = Version.composeKafkaTopic(storeName, 1);
         HelixBaseRoutingRepository routingDataRepo = veniceClusterWrapper.getRandomVeniceRouter().getRoutingDataRepository();
-        TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () ->
+        TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, true, () ->
           Assert.assertNotNull(routingDataRepo.getLeaderInstance(resourceName, 0)));
 
         TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
@@ -1021,7 +1023,7 @@ public class TestHybrid {
     cluster.createVersion(storeName, DEFAULT_KEY_SCHEMA, DEFAULT_VALUE_SCHEMA, IntStream.range(0, keyCount).mapToObj(i -> new AbstractMap.SimpleEntry<>(i, i)));
     try (AvroGenericStoreClient client = ClientFactory.getAndStartGenericAvroClient(
         ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(cluster.getRandomRouterURL()))) {
-      TestUtils.waitForNonDeterministicAssertion(20, TimeUnit.SECONDS, () -> {
+      TestUtils.waitForNonDeterministicAssertion(20, TimeUnit.SECONDS, true, true, () -> {
         for (Integer i = 0; i < keyCount; i++) {
           assertEquals(client.get(i).get(), i);
         }
@@ -1032,15 +1034,15 @@ public class TestHybrid {
       }
       producer.stop();
 
-      TestUtils.waitForNonDeterministicAssertion(20, TimeUnit.SECONDS, () -> {
-        for (Integer i = 0; i < keyCount; i++) {
-          assertEquals(client.get(i).get(), new Integer(i + 1));
+      TestUtils.waitForNonDeterministicAssertion(20, TimeUnit.SECONDS, true, true, () -> {
+        for (int i = 0; i < keyCount; i++) {
+          assertEquals(client.get(i).get(), i + 1);
         }
       });
       cluster.createVersion(storeName, DEFAULT_KEY_SCHEMA, DEFAULT_VALUE_SCHEMA, IntStream.range(0, keyCount).mapToObj(i -> new AbstractMap.SimpleEntry<>(i, i + 2)));
-      TestUtils.waitForNonDeterministicAssertion(20, TimeUnit.SECONDS, () -> {
-        for (Integer i = 0; i < keyCount; i++) {
-          assertEquals(client.get(i).get(), new Integer(i + 1));
+      TestUtils.waitForNonDeterministicAssertion(20, TimeUnit.SECONDS, true, true, () -> {
+        for (int i = 0; i < keyCount; i++) {
+          assertEquals(client.get(i).get(), i + 1);
         }
       });
     }
@@ -1085,7 +1087,7 @@ public class TestHybrid {
         runH2V(h2vProperties, 1, controllerClient);
 
         //Verify some records (note, records 1-100 have been pushed)
-        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
           try {
             for (int i = 1; i < 100; i++) {
               String key = Integer.toString(i);
@@ -1108,7 +1110,7 @@ public class TestHybrid {
             sendCustomSizeStreamingRecord(veniceProducer, storeName, i, STREAMING_RECORD_SIZE);
           }
 
-          TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+          TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
             try {
               checkLargeRecord(client, 2);
             } catch (Exception e) {
@@ -1126,7 +1128,7 @@ public class TestHybrid {
         // partition from BOOTSTRAP to ONLINE.
         Utils.sleep(5000);
         if (!isRealTimeTopicEmpty) {
-          TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+          TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
             try {
               checkLargeRecord(client, 2);
             } catch (Exception e) {
@@ -1135,7 +1137,7 @@ public class TestHybrid {
           });
         } else {
           //Verify some records (note, records 1-100 have been pushed)
-          TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+          TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
             try {
               for (int i = 1; i < 100; i++) {
                 String key = Integer.toString(i);
@@ -1236,7 +1238,7 @@ public class TestHybrid {
           storageNodeClient.start();
           Base64.Encoder encoder = Base64.getUrlEncoder();
           // Check both leader and follower hosts
-          TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
+          TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, true, () -> {
             for (VeniceServerWrapper server : venice.getVeniceServers()) {
               /**
                * Check key2=value1 first, it means all messages sent to RT has been consumed already
@@ -1412,10 +1414,13 @@ public class TestHybrid {
     }
     cluster.createVersion(storeName, STRING_SCHEMA, STRING_SCHEMA, IntStream.range(0, keyCount).mapToObj(i -> new AbstractMap.SimpleEntry<>(String.valueOf(i), String.valueOf(i))));
     try (AvroGenericStoreClient client = ClientFactory.getAndStartGenericAvroClient(
-        ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(cluster.getRandomRouterURL()))) {
-      for (int i = 0; i < keyCount; i++) {
-        assertEquals(client.get(String.valueOf(i)).get().toString(), String.valueOf(i));
-      }
+        ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(cluster.getRandomRouterURL()));
+        ControllerClient controllerClient = new ControllerClient(cluster.getClusterName(), cluster.getAllControllersURLs())) {
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
+        for (int i = 0; i < keyCount; i++) {
+          assertEquals(client.get(String.valueOf(i)).get().toString(), String.valueOf(i));
+        }
+      });
 
       // Update Amp Factor and turn store into a hybrid store
       params = new UpdateStoreQueryParams()
@@ -1423,13 +1428,12 @@ public class TestHybrid {
           // set hybridRewindSecond to a big number so following versions won't ignore old records in RT
           .setHybridRewindSeconds(2000000)
           .setHybridOffsetLagThreshold(10);
-      try (ControllerClient controllerClient = cluster.getControllerClient()) {
-        TestUtils.assertCommand(controllerClient.updateStore(storeName, params));
-      }
+
+      TestUtils.assertCommand(controllerClient.updateStore(storeName, params));
 
       // Create a new version with updated amplification factor
       cluster.createVersion(storeName, STRING_SCHEMA, STRING_SCHEMA, IntStream.range(0, keyCount).mapToObj(i -> new AbstractMap.SimpleEntry<>(String.valueOf(i), String.valueOf(i))));
-      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
+      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, true, () -> {
           for (Integer i = 0; i < keyCount; i++) {
             assertEquals(client.get(String.valueOf(i)).get().toString(), String.valueOf(i));
           }
@@ -1442,7 +1446,7 @@ public class TestHybrid {
       }
       producer.stop();
 
-      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
+      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, true, () -> {
         for (int i = 0; i < keyCount; i++) {
           checkLargeRecord(client, i);
         }
