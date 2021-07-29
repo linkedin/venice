@@ -119,7 +119,10 @@ public interface Admin extends AutoCloseable, Closeable {
         int numberOfPartitions, Version.PushType pushType, String remoteKafkaBootstrapServers,
         long rewindTimeInSecondsOverride, int timestampMetadataVersionId);
 
-    default boolean hasWritePermissionToBatchJobHeartbeatStore(X509Certificate requesterCert) throws AclException {
+    default boolean hasWritePermissionToBatchJobHeartbeatStore(
+        X509Certificate requesterCert,
+        String batchJobHeartbeatStoreName
+    ) throws AclException {
         return false;
     }
 
