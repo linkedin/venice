@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller;
 
+import com.linkedin.security.datavault.common.principal.PrincipalBuilder;
 import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.acl.AclException;
 import com.linkedin.venice.acl.DynamicAccessController;
@@ -871,13 +872,23 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
-  public boolean hasWritePermissionToBatchJobHeartbeatStore(X509Certificate requesterCert) throws AclException {
+  public boolean hasWritePermissionToBatchJobHeartbeatStore(
+      X509Certificate requesterCert,
+      String batchJobHeartbeatStoreName
+  ) throws AclException {
     if (!accessController.isPresent()) {
-      throw new VeniceException("Cannot check write permission since the access controller does not present for " +
-              "cert " + requesterCert);
+      throw new VeniceException(String.format("Cannot check write permission on store %s since the access controller "
+          + "does not present for cert %s", batchJobHeartbeatStoreName, requesterCert));
     }
-    return accessController.get().
-            hasAccess(requesterCert, VeniceSystemStoreType.BATCH_JOB_HEARTBEAT_STORE.getPrefix(), Method.Write.name());
+    final String accessMethodName = Method.Write.name();
+    final boolean hasAccess = accessController.get().hasAccess(requesterCert, batchJobHeartbeatStoreName, accessMethodName);
+
+    StringBuilder sb = new StringBuilder();
+    sb.append(PrincipalBuilder.builderForCertificate(requesterCert));
+    sb.append(hasAccess ? " has " : "does not have ");
+    sb.append(accessMethodName + " on " + batchJobHeartbeatStoreName);
+    logger.info(sb.toString());
+    return hasAccess;
   }
 
   @Override

@@ -1,6 +1,7 @@
 package com.linkedin.venice.controller.lingeringjob;
 
 import com.linkedin.venice.acl.AclException;
+import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Store;
@@ -79,7 +80,7 @@ public class TestHeartbeatBasedLingeringStoreVersionChecker {
     );
     Admin admin = mock(Admin.class);
     X509Certificate cert = mock(X509Certificate.class);
-    when(admin.hasWritePermissionToBatchJobHeartbeatStore(cert)).thenReturn(false);
+    when(admin.hasWritePermissionToBatchJobHeartbeatStore(cert, VeniceSystemStoreType.BATCH_JOB_HEARTBEAT_STORE.getPrefix())).thenReturn(false);
     Assert.assertFalse(checker.isStoreVersionLingering(store, version, time, admin, Optional.of(cert)));
     // Expect fallback to use the default checker
     verify(defaultLingeringStoreVersionChecker, times(1)).isStoreVersionLingering(any(), any(), any(), any(), any());
@@ -116,7 +117,7 @@ public class TestHeartbeatBasedLingeringStoreVersionChecker {
     );
     Admin admin = mock(Admin.class);
     X509Certificate cert = mock(X509Certificate.class);
-    when(admin.hasWritePermissionToBatchJobHeartbeatStore(cert)).thenReturn(true);
+    when(admin.hasWritePermissionToBatchJobHeartbeatStore(cert, VeniceSystemStoreType.BATCH_JOB_HEARTBEAT_STORE.getPrefix())).thenReturn(true);
     when(admin.getPushJobDetails(any())).thenReturn(expectedReturnValue);
     Assert.assertFalse(checker.isStoreVersionLingering(store, version, time, admin, Optional.of(cert)));
     // Expect fallback to use the default checker
@@ -194,7 +195,7 @@ public class TestHeartbeatBasedLingeringStoreVersionChecker {
   private Admin createCheckBatchJobHasHeartbeatAdmin() throws AclException {
     Admin admin = mock(Admin.class);
     X509Certificate cert = mock(X509Certificate.class);
-    when(admin.hasWritePermissionToBatchJobHeartbeatStore(DEFAULT_REQUEST_CERT)).thenReturn(true);
+    when(admin.hasWritePermissionToBatchJobHeartbeatStore(DEFAULT_REQUEST_CERT, VeniceSystemStoreType.BATCH_JOB_HEARTBEAT_STORE.getPrefix())).thenReturn(true);
     PushJobDetails pushJobDetails = new PushJobDetails();
     pushJobDetails.pushJobConfigs = Collections.singletonMap(HEARTBEAT_ENABLED_CONFIG.getConfigName(), "true");
     when(admin.getPushJobDetails(any())).thenReturn(pushJobDetails);

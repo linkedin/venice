@@ -1,5 +1,7 @@
 package com.linkedin.venice.controller.lingeringjob;
 
+import com.linkedin.security.datavault.common.principal.PrincipalBuilder;
+import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
@@ -97,7 +99,11 @@ public class HeartbeatBasedLingeringStoreVersionChecker implements LingeringStor
   ) {
     if (!canRequesterAccessHeartbeatStore(controllerAdmin, requesterCert)) {
       LOGGER.warn(String.format("Assume the batch job heartbeat is not enabled since it does not have write access to the "
-          + "heartbeat store %s with version %s for requester: %s", store.getName(), version.getNumber(), requesterCert.orElse(null)));
+          + "heartbeat store. Requested store %s with version %s for requester: %s",
+          store.getName(),
+          version.getNumber(),
+          requesterCert.isPresent() ? PrincipalBuilder.builderForCertificate(requesterCert.get()) : "unknown (no cert)")
+      );
       heartbeatBasedCheckerStats.recordCheckJobHasHeartbeatFailed();
       return false;
     }
@@ -144,7 +150,10 @@ public class HeartbeatBasedLingeringStoreVersionChecker implements LingeringStor
       return false;
     }
     try {
-      return controllerAdmin.hasWritePermissionToBatchJobHeartbeatStore(requesterCert.get());
+      return controllerAdmin.hasWritePermissionToBatchJobHeartbeatStore(
+          requesterCert.get(),
+          VeniceSystemStoreType.BATCH_JOB_HEARTBEAT_STORE.getPrefix()
+      );
     } catch (Exception e) {
       LOGGER.warn("Cannot check access permission. Assume no access permission.", e);
     }
