@@ -21,7 +21,7 @@ public class SchemaPresenceChecker {
   /** Used to fetch and verify a schema version is present in ZK. */
   private SchemaReader schemaReader = null;
 
-  AvroProtocolDefinition avroProtocolDefinition;
+  private AvroProtocolDefinition avroProtocolDefinition;
 
   public SchemaPresenceChecker(SchemaReader schemaReader, AvroProtocolDefinition avroProtocolDefinition) {
     this.schemaReader = schemaReader;
@@ -63,6 +63,8 @@ public class SchemaPresenceChecker {
     int version = protocolVersion.isPresent() ? protocolVersion.get() : avroProtocolDefinition.getCurrentProtocolVersion();
     try {
       verifySchemaIsPresent(version, retry);
+      logger.info("SchemaPresenceChecker: The schema " + avroProtocolDefinition.name() + " current version " + version
+          + " is found");
     } catch (VeniceException e) {
       String errorMsg = "SchemaVersionNotFound: The schema " + avroProtocolDefinition.name() + " current version " + version
           + " is not present in ZK, exiting application";

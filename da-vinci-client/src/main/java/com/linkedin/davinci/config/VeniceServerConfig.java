@@ -256,6 +256,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final int numSchemaFastClassWarmup;
   private final long fastClassSchemaWarmupTimeout;
 
+  private final boolean schemaPresenceCheckEnabled;
 
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     super(serverProperties);
@@ -396,6 +397,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     debugLoggingEnabled = serverProperties.getBoolean(SERVER_DEBUG_LOGGING_ENABLED, false);
     numSchemaFastClassWarmup = serverProperties.getInt(SERVER_NUM_SCHEMA_FAST_CLASS_WARMUP,10);
     fastClassSchemaWarmupTimeout = serverProperties.getLong(SERVER_SCHEMA_FAST_CLASS_WARMUP_TIMEOUT, 2*Time.MS_PER_MINUTE);
+    schemaPresenceCheckEnabled = serverProperties.getBoolean(SERVER_SCHEMA_PRESENCE_CHECK_ENABLED, true);
   }
 
   public int getListenerPort() {
@@ -765,4 +767,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   public long getFastClassSchemaWarmupTimeout() {
     return fastClassSchemaWarmupTimeout;
   }
+
+  public boolean isSchemaPresenceCheckEnabled() { return schemaPresenceCheckEnabled;}
+
 }

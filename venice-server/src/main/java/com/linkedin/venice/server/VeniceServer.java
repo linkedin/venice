@@ -153,6 +153,7 @@ public class VeniceServer {
     /* Services are created in the order they must be started */
     List<AbstractVeniceService> services = new ArrayList<AbstractVeniceService>();
 
+    VeniceServerConfig serverConfig = veniceConfigLoader.getVeniceServerConfig();
     // Create jvm metrics object
     jvmStats = new VeniceJVMStats(metricsRepository, "VeniceJVMStats");
 
@@ -166,13 +167,13 @@ public class VeniceServer {
     storeVersionStateSchemaReader.ifPresent(r -> storeVersionStateSerializer.setSchemaReader(r));
 
     //verify the current version of the PARTITION_STATE schema is registered in ZK before moving ahead
-    if (partitionStateSchemaReader.isPresent()) {
+    if (serverConfig.isSchemaPresenceCheckEnabled() && partitionStateSchemaReader.isPresent()) {
       new SchemaPresenceChecker(partitionStateSchemaReader.get(),
           AvroProtocolDefinition.PARTITION_STATE).verifySchemaVersionPresentOrExit();
     }
 
     //verify the current version of the STORE_VERSION_STATE schema is registered in ZK before moving ahead
-    if (storeVersionStateSchemaReader.isPresent()) {
+    if (serverConfig.isSchemaPresenceCheckEnabled() &&  storeVersionStateSchemaReader.isPresent()) {
       new SchemaPresenceChecker(storeVersionStateSchemaReader.get(),
           AvroProtocolDefinition.STORE_VERSION_STATE).verifySchemaVersionPresentOrExit();
     }
@@ -218,7 +219,7 @@ public class VeniceServer {
         cc.setStoreName(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getSystemStoreName())));
 
     //verify the current version of the KAFKA_MESSAGE_ENVELOPE schema is registered in ZK before moving ahead
-    if (kafkaMessageEnvelopeSchemaReader.isPresent()) {
+    if (serverConfig.isSchemaPresenceCheckEnabled() && kafkaMessageEnvelopeSchemaReader.isPresent()) {
       new SchemaPresenceChecker(kafkaMessageEnvelopeSchemaReader.get(),
           AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE).verifySchemaVersionPresentOrExit();
     }
@@ -245,7 +246,6 @@ public class VeniceServer {
         Optional.empty());
     this.kafkaStoreIngestionService.addMetaSystemStoreReplicaStatusNotifier();
 
-    VeniceServerConfig serverConfig = veniceConfigLoader.getVeniceServerConfig();
     this.diskHealthCheckService = new DiskHealthCheckService(
         serverConfig.isDiskHealthCheckServiceEnabled(),
         serverConfig.getDiskHealthCheckIntervalInMS(),
