@@ -1622,4 +1622,9 @@ public class ConfigKeys {
    */
   public static final String SERVER_KAFKA_CLUSTER_ID_TO_URL = "server.kafka.cluster.id.to.url";
 
+  /**
+   * This indicates if server will perform the schema presence check or not.
+   * By default it is set to true.
+   */
+  public static final String SERVER_SCHEMA_PRESENCE_CHECK_ENABLED = "server.schema.presence.check.enabled";
 }
