@@ -41,6 +41,7 @@ import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.StaticClusterInfoProvider;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
+import com.linkedin.venice.serialization.avro.SchemaPresenceChecker;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.stats.AggRocksDBStats;
@@ -164,6 +165,18 @@ public class VeniceServer {
     final InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer = AvroProtocolDefinition.STORE_VERSION_STATE.getSerializer();
     storeVersionStateSchemaReader.ifPresent(r -> storeVersionStateSerializer.setSchemaReader(r));
 
+    //verify the current version of the PARTITION_STATE schema is registered in ZK before moving ahead
+    if (partitionStateSchemaReader.isPresent()) {
+      new SchemaPresenceChecker(partitionStateSchemaReader.get(),
+          AvroProtocolDefinition.PARTITION_STATE).verifySchemaVersionPresentOrExit();
+    }
+
+    //verify the current version of the STORE_VERSION_STATE schema is registered in ZK before moving ahead
+    if (storeVersionStateSchemaReader.isPresent()) {
+      new SchemaPresenceChecker(storeVersionStateSchemaReader.get(),
+          AvroProtocolDefinition.STORE_VERSION_STATE).verifySchemaVersionPresentOrExit();
+    }
+
     // Create and add Offset Service.
     VeniceClusterConfig clusterConfig = veniceConfigLoader.getVeniceClusterConfig();
 
@@ -203,6 +216,12 @@ public class VeniceServer {
 
     Optional<SchemaReader> kafkaMessageEnvelopeSchemaReader = clientConfigForConsumer.map(cc -> ClientFactory.getSchemaReader(
         cc.setStoreName(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getSystemStoreName())));
+
+    //verify the current version of the KAFKA_MESSAGE_ENVELOPE schema is registered in ZK before moving ahead
+    if (kafkaMessageEnvelopeSchemaReader.isPresent()) {
+      new SchemaPresenceChecker(kafkaMessageEnvelopeSchemaReader.get(),
+          AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE).verifySchemaVersionPresentOrExit();
+    }
 
     compressorFactory = new StorageEngineBackedCompressorFactory(storageMetadataService);
 

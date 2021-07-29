@@ -466,6 +466,15 @@ public class ServiceFactory {
             sslToKafka, isKafkaOpenSSLEnabled, new Properties()));
   }
 
+  public static VeniceClusterWrapper getVeniceCluster(String clusterName, int numberOfControllers, int numberOfServers, int numberOfRouters,
+      int replicaFactor, int partitionSize, boolean enableWhitelist, boolean enableAutoJoinWhitelist,
+      long delayToRebalanceMS, int minActiveReplica, boolean sslToStorageNodes, boolean sslToKafka, boolean isKafkaOpenSSLEnabled, Properties extraProperties) {
+    return getService(VeniceClusterWrapper.SERVICE_NAME,
+        VeniceClusterWrapper.generateService(clusterName, numberOfControllers, numberOfServers, numberOfRouters, replicaFactor,
+            partitionSize, enableWhitelist, enableAutoJoinWhitelist, delayToRebalanceMS, minActiveReplica, sslToStorageNodes,
+            sslToKafka, isKafkaOpenSSLEnabled, extraProperties));
+  }
+
   protected static VeniceClusterWrapper getVeniceClusterWrapperForMultiCluster(
       String coloName,
       ZkServerWrapper zkServerWrapper,
