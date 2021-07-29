@@ -365,8 +365,8 @@ public class KafkaConsumerService extends AbstractVeniceService {
     } else {
       for (int partitionsNum : consumerPartitionsNumSubscribed) {
         totalPartitions += partitionsNum;
-        minPartitionsPerConsumer = Math.max(minPartitionsPerConsumer, partitionsNum);
-        maxPartitionsPerConsumer = Math.min(minPartitionsPerConsumer, partitionsNum);
+        minPartitionsPerConsumer = Math.min(minPartitionsPerConsumer, partitionsNum);
+        maxPartitionsPerConsumer = Math.max(maxPartitionsPerConsumer, partitionsNum);
       }
       avgPartitionsPerConsumer = totalPartitions / consumerPartitionsNumSubscribed.size();
     }
