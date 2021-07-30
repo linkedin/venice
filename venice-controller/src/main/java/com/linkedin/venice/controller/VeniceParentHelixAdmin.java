@@ -49,6 +49,8 @@ import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
 import com.linkedin.venice.controller.kafka.protocol.enums.SchemaType;
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
 import com.linkedin.venice.controller.lingeringjob.DefaultLingeringStoreVersionChecker;
+import com.linkedin.venice.controller.lingeringjob.IdentityParser;
+import com.linkedin.venice.controller.lingeringjob.IdentityParserImpl;
 import com.linkedin.venice.controller.lingeringjob.LingeringStoreVersionChecker;
 import com.linkedin.venice.controller.migration.MigrationPushStrategyZKAccessor;
 import com.linkedin.venice.controllerapi.AdminCommandExecution;
@@ -112,6 +114,7 @@ import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
+import java.security.cert.CertificateParsingException;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -874,7 +877,8 @@ public class VeniceParentHelixAdmin implements Admin {
   @Override
   public boolean hasWritePermissionToBatchJobHeartbeatStore(
       X509Certificate requesterCert,
-      String batchJobHeartbeatStoreName
+      String batchJobHeartbeatStoreName,
+      IdentityParser identityParser
   ) throws AclException {
     if (!accessController.isPresent()) {
       throw new VeniceException(String.format("Cannot check write permission on store %s since the access controller "
@@ -882,11 +886,12 @@ public class VeniceParentHelixAdmin implements Admin {
     }
     final String accessMethodName = Method.Write.name();
     final boolean hasAccess = accessController.get().hasAccess(requesterCert, batchJobHeartbeatStoreName, accessMethodName);
-
     StringBuilder sb = new StringBuilder();
-    sb.append(PrincipalBuilder.builderForCertificate(requesterCert));
-    sb.append(hasAccess ? " has " : "does not have ");
-    sb.append(accessMethodName + " on " + batchJobHeartbeatStoreName);
+    sb.append("Requester");
+    sb.append(hasAccess ? " has " : " does not have ");
+    sb.append(accessMethodName + " access on " + batchJobHeartbeatStoreName);
+    sb.append(" with identity: ");
+    sb.append(identityParser.parseIdentityFromCert(requesterCert));
     logger.info(sb.toString());
     return hasAccess;
   }
@@ -910,7 +915,8 @@ public class VeniceParentHelixAdmin implements Admin {
       if (existingPushJobId.equals(pushJobId)) {
          return version.get();
       }
-      if (lingeringStoreVersionChecker.isStoreVersionLingering(store, version.get(), timer, this, requesterCert)) {
+      if (lingeringStoreVersionChecker.isStoreVersionLingering(
+          store, version.get(), timer, this, requesterCert, new IdentityParserImpl())) {
         if (pushType.isIncremental()) {
           /**
            * Incremental push shouldn't kill the previous full push, there could be a transient issue that parents couldn't

@@ -20,6 +20,7 @@ public interface LingeringStoreVersionChecker {
         Version version,
         Time time,
         Admin controllerAdmin,
-        Optional<X509Certificate> requesterCert
+        Optional<X509Certificate> requesterCert,
+        IdentityParser identityParser
     );
 }
