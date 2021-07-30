@@ -422,12 +422,11 @@ public class OffsetRecord {
     partitionState.leaderOffset = upstreamOffset;
   }
 
-  private long getUpstreamOffsetFromPartitionState(PartitionState partitionState, String upstreamKafkaClusterId) {
-    if (partitionState.upstreamOffsetMap.get(upstreamKafkaClusterId) == null) {
-      logger.warn("The PartitionState.upstreamOffsetMap is " + partitionState.upstreamOffsetMap + ". Fall back to use "
-          + "PartitionState.leaderOffset. Full partitionState value: " + partitionState);
+  private long getUpstreamOffsetFromPartitionState(PartitionState partitionState, String upstreamKafkaClusterURL) {
+    Long upstreamOffset = partitionState.upstreamOffsetMap.get(upstreamKafkaClusterURL);
+    if (upstreamOffset == null) {
       return partitionState.leaderOffset;
     }
-    return partitionState.upstreamOffsetMap.get(upstreamKafkaClusterId);
+    return upstreamOffset;
   }
 }
