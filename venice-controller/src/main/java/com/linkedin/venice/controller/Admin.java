@@ -3,12 +3,17 @@ package com.linkedin.venice.controller;
 import com.linkedin.venice.acl.AclException;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.controller.kafka.consumer.VeniceControllerConsumerFactory;
+import com.linkedin.venice.controller.lingeringjob.IdentityParser;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
 import com.linkedin.venice.helix.HelixReadOnlyZKSharedSchemaRepository;
 import com.linkedin.venice.helix.HelixReadOnlyZKSharedSystemStoreRepository;
 import com.linkedin.venice.helix.Replica;
-import com.linkedin.venice.meta.*;
+import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.Instance;
+import com.linkedin.venice.meta.RoutersClusterConfig;
+import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.schema.TimestampMetadataSchemaEntry;
@@ -121,7 +126,8 @@ public interface Admin extends AutoCloseable, Closeable {
 
     default boolean hasWritePermissionToBatchJobHeartbeatStore(
         X509Certificate requesterCert,
-        String batchJobHeartbeatStoreName
+        String batchJobHeartbeatStoreName,
+        IdentityParser identityParser
     ) throws AclException {
         return false;
     }

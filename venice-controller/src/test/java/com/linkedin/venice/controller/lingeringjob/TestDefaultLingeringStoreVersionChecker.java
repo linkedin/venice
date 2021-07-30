@@ -37,7 +37,7 @@ public class TestDefaultLingeringStoreVersionChecker {
     when(version.getCreatedTime()).thenReturn(1L);
     when(store.getBootstrapToOnlineTimeoutInHours()).thenReturn(1);
     when(time.getMilliseconds()).thenReturn(TimeUnit.HOURS.toMillis(1) + 2);
-    Assert.assertTrue(checker.isStoreVersionLingering(store, version, time, admin, Optional.of(DEFAULT_REQUEST_CERT)));
+    Assert.assertTrue(checker.isStoreVersionLingering(store, version, time, admin, Optional.of(DEFAULT_REQUEST_CERT), (certificate) -> "whatever identity"));
   }
 
   @Test
@@ -45,6 +45,6 @@ public class TestDefaultLingeringStoreVersionChecker {
     when(version.getCreatedTime()).thenReturn(3L);
     when(store.getBootstrapToOnlineTimeoutInHours()).thenReturn(1);
     when(time.getMilliseconds()).thenReturn(TimeUnit.HOURS.toMillis(1) + 2);
-    Assert.assertFalse(checker.isStoreVersionLingering(store, version, time, admin, Optional.of(DEFAULT_REQUEST_CERT)));
+    Assert.assertFalse(checker.isStoreVersionLingering(store, version, time, admin, Optional.of(DEFAULT_REQUEST_CERT), (certificate) -> "whatever identity"));
   }
 }

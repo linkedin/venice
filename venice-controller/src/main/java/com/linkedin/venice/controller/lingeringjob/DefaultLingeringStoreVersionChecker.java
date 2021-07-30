@@ -19,7 +19,8 @@ public class DefaultLingeringStoreVersionChecker implements LingeringStoreVersio
         Version version,
         Time time,
         Admin controllerAdmin,
-        Optional<X509Certificate> requesterCert
+        Optional<X509Certificate> requesterCert,
+        IdentityParser identityParser
     ) {
         final long bootstrapDeadlineMs = version.getCreatedTime() + TimeUnit.HOURS.toMillis(store.getBootstrapToOnlineTimeoutInHours());
         return time.getMilliseconds() > bootstrapDeadlineMs;

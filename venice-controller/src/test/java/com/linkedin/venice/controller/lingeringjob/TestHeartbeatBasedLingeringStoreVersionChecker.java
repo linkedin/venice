@@ -29,6 +29,7 @@ public class TestHeartbeatBasedLingeringStoreVersionChecker {
   private static final int VERSION_NUMBER = 1;
   private static final Instant NOW = Instant.now();
   private static final X509Certificate DEFAULT_REQUEST_CERT = mock(X509Certificate.class);
+  private static final IdentityParser DEFAULT_IDENTITY_PARSER = (certificate) -> "Whatever identity";
 
   private Store store;
   private Version version;
@@ -52,7 +53,12 @@ public class TestHeartbeatBasedLingeringStoreVersionChecker {
     Duration heartbeatTimeout = Duration.ofMinutes(10);
     Duration initialHeartbeatBufferTime = Duration.ofMinutes(3);
     DefaultLingeringStoreVersionChecker defaultLingeringStoreVersionChecker = mock(DefaultLingeringStoreVersionChecker.class);
-    when(defaultLingeringStoreVersionChecker.isStoreVersionLingering(any(), any(), any(), any(), any())). thenReturn(false);
+
+    Admin mockAdmin = mock(Admin.class);
+    Optional<X509Certificate> emptyRequesterCert = Optional.empty();
+    IdentityParser mockIdentityParser = mock(IdentityParser.class);
+
+    when(defaultLingeringStoreVersionChecker.isStoreVersionLingering(store, version, time, mockAdmin, emptyRequesterCert, mockIdentityParser)).thenReturn(false);
 
     HeartbeatBasedLingeringStoreVersionChecker checker = new HeartbeatBasedLingeringStoreVersionChecker(
         heartbeatTimeout,
@@ -60,9 +66,9 @@ public class TestHeartbeatBasedLingeringStoreVersionChecker {
         defaultLingeringStoreVersionChecker,
         mock(HeartbeatBasedCheckerStats.class)
     );
-    Assert.assertFalse(checker.isStoreVersionLingering(store, version, time, mock(Admin.class), Optional.empty()));
+    Assert.assertFalse(checker.isStoreVersionLingering(store, version, time, mockAdmin, emptyRequesterCert, mockIdentityParser));
     // Expect fallback to use the default checker
-    verify(defaultLingeringStoreVersionChecker, times(1)).isStoreVersionLingering(any(), any(), any(), any(), any());
+    verify(defaultLingeringStoreVersionChecker, times(1)).isStoreVersionLingering(store, version, time, mockAdmin, emptyRequesterCert, mockIdentityParser);
   }
 
   @Test
@@ -70,7 +76,7 @@ public class TestHeartbeatBasedLingeringStoreVersionChecker {
     Duration heartbeatTimeout = Duration.ofMinutes(10);
     Duration initialHeartbeatBufferTime = Duration.ofMinutes(3);
     DefaultLingeringStoreVersionChecker defaultLingeringStoreVersionChecker = mock(DefaultLingeringStoreVersionChecker.class);
-    when(defaultLingeringStoreVersionChecker.isStoreVersionLingering(any(), any(), any(), any(), any())). thenReturn(false);
+    when(defaultLingeringStoreVersionChecker.isStoreVersionLingering(any(), any(), any(), any(), any(), any())).thenReturn(false);
 
     HeartbeatBasedLingeringStoreVersionChecker checker = new HeartbeatBasedLingeringStoreVersionChecker(
         heartbeatTimeout,
@@ -80,10 +86,13 @@ public class TestHeartbeatBasedLingeringStoreVersionChecker {
     );
     Admin admin = mock(Admin.class);
     X509Certificate cert = mock(X509Certificate.class);
-    when(admin.hasWritePermissionToBatchJobHeartbeatStore(cert, VeniceSystemStoreType.BATCH_JOB_HEARTBEAT_STORE.getPrefix())).thenReturn(false);
-    Assert.assertFalse(checker.isStoreVersionLingering(store, version, time, admin, Optional.of(cert)));
+    when(admin.hasWritePermissionToBatchJobHeartbeatStore(
+        cert,
+        VeniceSystemStoreType.BATCH_JOB_HEARTBEAT_STORE.getPrefix(), (certificate) -> "Whatever identity"
+    )).thenReturn(false);
+    Assert.assertFalse(checker.isStoreVersionLingering(store, version, time, admin, Optional.of(cert), (certificate) -> "whatever identity"));
     // Expect fallback to use the default checker
-    verify(defaultLingeringStoreVersionChecker, times(1)).isStoreVersionLingering(any(), any(), any(), any(), any());
+    verify(defaultLingeringStoreVersionChecker, times(1)).isStoreVersionLingering(any(), any(), any(), any(), any(), any());
   }
 
   @Test
@@ -107,7 +116,7 @@ public class TestHeartbeatBasedLingeringStoreVersionChecker {
     Duration heartbeatTimeout = Duration.ofMinutes(10);
     Duration initialHeartbeatBufferTime = Duration.ofMinutes(3);
     DefaultLingeringStoreVersionChecker defaultLingeringStoreVersionChecker = mock(DefaultLingeringStoreVersionChecker.class);
-    when(defaultLingeringStoreVersionChecker.isStoreVersionLingering(any(), any(), any(), any(), any())). thenReturn(false);
+    when(defaultLingeringStoreVersionChecker.isStoreVersionLingering(any(), any(), any(), any(), any(), any())). thenReturn(false);
 
     HeartbeatBasedLingeringStoreVersionChecker checker = new HeartbeatBasedLingeringStoreVersionChecker(
         heartbeatTimeout,
@@ -117,11 +126,15 @@ public class TestHeartbeatBasedLingeringStoreVersionChecker {
     );
     Admin admin = mock(Admin.class);
     X509Certificate cert = mock(X509Certificate.class);
-    when(admin.hasWritePermissionToBatchJobHeartbeatStore(cert, VeniceSystemStoreType.BATCH_JOB_HEARTBEAT_STORE.getPrefix())).thenReturn(true);
+    when(admin.hasWritePermissionToBatchJobHeartbeatStore(
+        cert,
+        VeniceSystemStoreType.BATCH_JOB_HEARTBEAT_STORE.getPrefix(),
+        (certificate) -> "Whatever identity")
+    ).thenReturn(true);
     when(admin.getPushJobDetails(any())).thenReturn(expectedReturnValue);
-    Assert.assertFalse(checker.isStoreVersionLingering(store, version, time, admin, Optional.of(cert)));
+    Assert.assertFalse(checker.isStoreVersionLingering(store, version, time, admin, Optional.of(cert), (certificate) -> "whatever identity"));
     // Expect fallback to use the default checker
-    verify(defaultLingeringStoreVersionChecker, times(1)).isStoreVersionLingering(any(), any(), any(), any(), any());
+    verify(defaultLingeringStoreVersionChecker, times(1)).isStoreVersionLingering(any(), any(), any(), any(), any(), any());
   }
 
   @Test
@@ -136,7 +149,8 @@ public class TestHeartbeatBasedLingeringStoreVersionChecker {
         Duration.ofMinutes(10),
         Duration.ofMinutes(0),
         mockAdmin,
-        true
+        false,
+        0
     );
   }
 
@@ -152,7 +166,8 @@ public class TestHeartbeatBasedLingeringStoreVersionChecker {
         Duration.ofMinutes(10),
         Duration.ofMinutes(0),
         mockAdmin,
-        false // No/null heartbeat means the job is not alive
+        true, // No/null heartbeat means the job is not alive. Hence the job is lingering
+        0
     );
   }
 
@@ -170,7 +185,8 @@ public class TestHeartbeatBasedLingeringStoreVersionChecker {
         Duration.ofMinutes(10),
         Duration.ofMinutes(0),
         mockAdmin,
-        true
+        false, // Not lingering
+        0
     );
   }
 
@@ -188,14 +204,19 @@ public class TestHeartbeatBasedLingeringStoreVersionChecker {
         Duration.ofMinutes(10),
         Duration.ofMinutes(0),
         mockAdmin,
-        false
+        true, // Lingering
+        0
     );
   }
 
   private Admin createCheckBatchJobHasHeartbeatAdmin() throws AclException {
     Admin admin = mock(Admin.class);
     X509Certificate cert = mock(X509Certificate.class);
-    when(admin.hasWritePermissionToBatchJobHeartbeatStore(DEFAULT_REQUEST_CERT, VeniceSystemStoreType.BATCH_JOB_HEARTBEAT_STORE.getPrefix())).thenReturn(true);
+    when(admin.hasWritePermissionToBatchJobHeartbeatStore(
+        DEFAULT_REQUEST_CERT,
+        VeniceSystemStoreType.BATCH_JOB_HEARTBEAT_STORE.getPrefix(),
+        DEFAULT_IDENTITY_PARSER
+        )).thenReturn(true);
     PushJobDetails pushJobDetails = new PushJobDetails();
     pushJobDetails.pushJobConfigs = Collections.singletonMap(HEARTBEAT_ENABLED_CONFIG.getConfigName(), "true");
     when(admin.getPushJobDetails(any())).thenReturn(pushJobDetails);
@@ -206,10 +227,11 @@ public class TestHeartbeatBasedLingeringStoreVersionChecker {
       Duration heartbeatTimeout,
       Duration initialHeartbeatBufferTime,
       Admin mockControllerAdmin,
-      boolean expectedCheckResult
+      boolean expectedCheckResult,
+      int expectedInteractionCountWithDefaultChecker
   ) {
     DefaultLingeringStoreVersionChecker defaultLingeringStoreVersionChecker = mock(DefaultLingeringStoreVersionChecker.class);
-    when(defaultLingeringStoreVersionChecker.isStoreVersionLingering(any(), any(), any(), any(), any())). thenReturn(false);
+    when(defaultLingeringStoreVersionChecker.isStoreVersionLingering(any(), any(), any(), any(), any(), any())). thenReturn(false);
 
     HeartbeatBasedLingeringStoreVersionChecker checker = new HeartbeatBasedLingeringStoreVersionChecker(
         heartbeatTimeout,
@@ -218,10 +240,10 @@ public class TestHeartbeatBasedLingeringStoreVersionChecker {
         mock(HeartbeatBasedCheckerStats.class)
     );
     Assert.assertEquals(
-        checker.isStoreVersionLingering(store, version, time, mockControllerAdmin, Optional.of(DEFAULT_REQUEST_CERT)),
+        checker.isStoreVersionLingering(store, version, time, mockControllerAdmin, Optional.of(DEFAULT_REQUEST_CERT), DEFAULT_IDENTITY_PARSER),
         expectedCheckResult
     );
     // Expect no fallback to use the default checker
-    verify(defaultLingeringStoreVersionChecker, times(0)).isStoreVersionLingering(any(), any(), any(), any(), any());
+    verify(defaultLingeringStoreVersionChecker, times(expectedInteractionCountWithDefaultChecker)).isStoreVersionLingering(any(), any(), any(), any(), any(), any());
   }
 }
