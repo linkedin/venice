@@ -438,6 +438,13 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       Optional<DeleteMetadata> deleteMetadata) {
     byte[] serializedKey = keySerializer.serialize(topicName, key);
     isChunkingFlagInvoked = true;
+
+    int replicationMetadataPayloadSize = deleteMetadata.isPresent() ? deleteMetadata.get().getSerializedSize() : 0;
+    if (serializedKey.length + replicationMetadataPayloadSize > maxSizeForUserPayloadPerMessageInBytes) {
+        throw new RecordTooLargeException("This record exceeds the maximum size. " +
+            getSizeReport(serializedKey.length, 0, replicationMetadataPayloadSize));
+    }
+
     if (isChunkingEnabled) {
       serializedKey = keyWithChunkingSuffixSerializer.serializeNonChunkedKey(serializedKey);
     }
@@ -553,14 +560,15 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     byte[] serializedValue = valueSerializer.serialize(topicName, value);
     int partition = getPartition(serializedKey);
 
+    int replicationMetadataPayloadSize = putMetadata.isPresent() ? putMetadata.get().getSerializedSize() : 0;
     isChunkingFlagInvoked = true;
-    if (serializedKey.length + serializedValue.length > maxSizeForUserPayloadPerMessageInBytes) {
+    if (serializedKey.length + serializedValue.length + replicationMetadataPayloadSize > maxSizeForUserPayloadPerMessageInBytes) {
       if (isChunkingEnabled) {
         return putLargeValue(serializedKey, serializedValue, valueSchemaId, callback, partition, leaderMetadataWrapper,
             logicalTs, putMetadata);
       } else {
         throw new RecordTooLargeException("This record exceeds the maximum size. " +
-            getSizeReport(serializedKey, serializedValue));
+            getSizeReport(serializedKey.length, serializedValue.length, replicationMetadataPayloadSize));
       }
     }
 
@@ -632,7 +640,9 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
 
     //large value is not supported for "update" yet
     if (serializedKey.length + serializedUpdate.length > DEFAULT_MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES) {
-      throw new RecordTooLargeException("This partial update exceeds the maximum size. " + getSizeReport(serializedKey, serializedUpdate));
+      throw new RecordTooLargeException(
+          "This partial update exceeds the maximum size. " + getSizeReport(serializedKey.length,
+              serializedUpdate.length, 0));
     }
 
     KafkaKey kafkaKey = new KafkaKey((MessageType.UPDATE), serializedKey);
@@ -892,6 +902,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    */
   private Future<RecordMetadata> putLargeValue(byte[] serializedKey, byte[] serializedValue, int valueSchemaId,
       Callback callback, int partition, LeaderMetadataWrapper leaderMetadataWrapper, long logicalTs, Optional<PutMetadata> putMetadata) {
+    int replicationMetadataPayloadSize = putMetadata.isPresent() ? putMetadata.get().getSerializedSize() : 0;
     int sizeAvailablePerMessage = maxSizeForUserPayloadPerMessageInBytes - serializedKey.length;
     if (sizeAvailablePerMessage < maxSizeForUserPayloadPerMessageInBytes / 2) {
       /**
@@ -906,7 +917,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
        * TODO: Implement a proper key size (and value size) quota mechanism.
        */
       throw new VeniceException("Chunking cannot support this use case. The key is too large. "
-          + getSizeReport(serializedKey, serializedValue));
+          + getSizeReport(serializedKey.length, serializedValue.length, replicationMetadataPayloadSize));
     }
     int numberOfChunks = (int) Math.ceil((double) serializedValue.length / (double) sizeAvailablePerMessage);
 
@@ -988,8 +999,10 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
          */
         sendMessage(keyProvider, MessageType.PUT, putPayload, partition, null, DEFAULT_LEADER_METADATA_WRAPPER, Optional.empty()).get();
       } catch (Exception e) {
-        throw new VeniceException("Caught an exception while attempting to produce a chunk of a large value into Kafka... "
-            + getDetailedSizeReport(chunkIndex, numberOfChunks, sizeAvailablePerMessage, serializedKey, serializedValue), e);
+        throw new VeniceException(
+            "Caught an exception while attempting to produce a chunk of a large value into Kafka... "
+                + getDetailedSizeReport(chunkIndex, numberOfChunks, sizeAvailablePerMessage, serializedKey.length,
+                serializedValue.length, replicationMetadataPayloadSize), e);
       }
     }
 
@@ -1001,10 +1014,11 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     putPayload.putValue = ByteBuffer.wrap(chunkedValueManifestSerializer.serialize(topicName, chunkedValueManifest));
     putPayload.schemaId = AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion();
 
-    if (putPayload.putValue.capacity() > sizeAvailablePerMessage) {
+    if (putPayload.putValue.remaining() + replicationMetadataPayloadSize > sizeAvailablePerMessage) {
       // This is a very desperate edge case...
       throw new VeniceException("This message cannot be chunked, because even its manifest is too big to go through. "
-          + "Please reconsider your life choices. " + getSizeReport(serializedKey, serializedValue));
+          + "Please reconsider your life choices. " + getSizeReport(serializedKey.length, serializedValue.length,
+          replicationMetadataPayloadSize));
     }
 
     if (chunkAwareCallback) {
@@ -1025,17 +1039,19 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     return sendMessage(manifestKeyProvider, MessageType.PUT, putPayload, partition, callback, leaderMetadataWrapper, Optional.of(logicalTs));
   }
 
-  private String getDetailedSizeReport(int chunkIndex, int numberOfChunks, int sizeAvailablePerMessage, byte[] serializedKey, byte[] serializedValue) {
+  private String getDetailedSizeReport(int chunkIndex, int numberOfChunks, int sizeAvailablePerMessage,
+      int serializedKeySize, int serializedValueSize, int replicationMeatadataPayloadSize) {
     return "Current chunk index: " + chunkIndex + ", "
         + "Number of chunks: " + numberOfChunks + ", "
         + "Size available per message: " + sizeAvailablePerMessage + ", "
-        + getSizeReport(serializedKey, serializedValue);
+        + getSizeReport(serializedKeySize, serializedValueSize, replicationMeatadataPayloadSize);
   }
 
-  private String getSizeReport(byte[] serializedKey, byte[] serializedValue) {
-    return "Key size: " + serializedKey.length + " bytes, "
-        + "Value size: " + serializedValue.length + " bytes, "
-        + "Total payload size: " + (serializedKey.length + serializedValue.length) + " bytes, "
+  private String getSizeReport(int serializedKeySize, int serializedValueSize, int replicationMetadataPayloadSize) {
+    return "Key size: " + serializedKeySize + " bytes, "
+        + "Value size: " + serializedValueSize + " bytes, "
+        + "Replication Metadata size: " + replicationMetadataPayloadSize + " bytes, "
+        + "Total payload size: " + (serializedKeySize + serializedValueSize + replicationMetadataPayloadSize) + " bytes, "
         + "Max available payload size: " + maxSizeForUserPayloadPerMessageInBytes + " bytes.";
   }
 
