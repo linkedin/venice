@@ -1,14 +1,15 @@
 #!/bin/bash
 
-mkdir -p avro_tools
-avro_tools=`ls avro_tools | sort -rV | head -n 1`
+DEFAULT_AVRO_TOOLS_DIR_NAME="avro_tools"
+DEFAULT_AVRO_TOOLS_JAR_VERSION="1.4.0"
+DEFAULT_AVRO_TOOLS_JAR_NAME="avro-tools-$DEFAULT_AVRO_TOOLS_JAR_VERSION.jar"
+DEFAULT_AVRO_TOOLS_JAR="$DEFAULT_AVRO_TOOLS_DIR_NAME/$DEFAULT_AVRO_TOOLS_JAR_NAME"
 
-if [ -z $avro_tools ]; then
-  wget "https://artifactory.corp.linkedin.com:8083/artifactory/ext-libraries/org/apache/avro/avro-tools/1.4.0/avro-tools-1.4.0.jar" -P avro_tools --no-check-certificate
-  avro_tools=`ls avro_tools | sort -rV | head -n 1`
+mkdir -p "$DEFAULT_AVRO_TOOLS_DIR_NAME"
+
+if [ ! -f "$DEFAULT_AVRO_TOOLS_JAR" ]; then
+  wget "https://artifactory.corp.linkedin.com:8083/artifactory/ext-libraries/org/apache/avro/avro-tools/$DEFAULT_AVRO_TOOLS_JAR_VERSION/avro-tools-$DEFAULT_AVRO_TOOLS_JAR_VERSION.jar" -P "$DEFAULT_AVRO_TOOLS_DIR_NAME" --no-check-certificate
 fi
-
-DEFAULT_AVRO_TOOLS_JAR="avro_tools/$avro_tools"
 
 AVRO_SCHEMAS_PATH=(
   "venice-common/src/main/resources/avro/KafkaMessageEnvelope/v9/*"
@@ -113,7 +114,7 @@ FULL_CODE_GEN_PATH=(
 if [[ $1 = "-h" ]]; then
   echo "Usage: $0 [avro_tools_path]"
   echo ""
-  echo "    avro_tools_path: full path to the avro-tools-1.4.x.jar file. If you don't specify a value or use 'default', it will take:"
+  echo "    avro_tools_path: full path to the avro-tools jar file. If you don't specify a value or use 'default', it will take:"
   echo ""
   echo "$DEFAULT_AVRO_TOOLS_JAR"
   echo ""
@@ -140,7 +141,12 @@ else
   AVRO_TOOLS_JAR=$AVRO_TOOLS_PATH_PARAM
 fi
 
-echo "Using AVRO_TOOLS_JAR=$AVRO_TOOLS_JAR"
+if [ ! -f "$AVRO_TOOLS_JAR" ]; then
+  echo "$AVRO_TOOLS_JAR doesn't exist. Exiting."
+  exit 1
+else
+  echo "Using AVRO_TOOLS_JAR=$AVRO_TOOLS_JAR"
+fi
 
 for path in ${FULL_CODE_GEN_PATH[@]}; do
   rm $path
