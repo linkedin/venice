@@ -1,5 +1,6 @@
 package com.linkedin.venice.writer;
 
+import com.linkedin.venice.utils.ByteUtils;
 import java.nio.ByteBuffer;
 import java.util.Optional;
 import org.apache.kafka.clients.producer.Callback;
@@ -7,7 +8,7 @@ import org.apache.kafka.clients.producer.Callback;
 
 /**
  * This is a simple container class to hold timestamp metadata related fields together to be passed on to the Delete api in VeniceWriter
- * {@link VeniceWriter#delete(Object, Callback, long, long, Optional)}. Caller should construct an instance of this object by properly
+ * {@link VeniceWriter#delete(Object, Callback, LeaderMetadataWrapper, long, Optional)}. Caller should construct an instance of this object by properly
  * filling up all the fields of this object.
  */
 public class DeleteMetadata {
@@ -31,5 +32,9 @@ public class DeleteMetadata {
 
   public ByteBuffer getTimestampMetadataPayload() {
     return timestampMetadataPayload;
+  }
+
+  public int getSerializedSize() {
+    return 2 * ByteUtils.SIZE_OF_INT + timestampMetadataPayload.remaining();
   }
 }
