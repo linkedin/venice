@@ -114,16 +114,11 @@ public class ApacheKafkaConsumer implements KafkaConsumerWrapper {
   }
 
   @Override
-  public void batchUnsubscribe(String topic, List<Integer> partitionList) {
-    Set<TopicPartition> topicPartitionSet = kafkaConsumer.assignment();
-    Set<TopicPartition> toUnsub = new HashSet<>();
+  public void batchUnsubscribe(Set<TopicPartition> topicPartitionSet) {
+    Set<TopicPartition> newTopicPartitionAssignment = new HashSet<>(kafkaConsumer.assignment());
 
-    for (int partition : partitionList) {
-      toUnsub.add(new TopicPartition(topic, partition));
-    }
-    topicPartitionSet.removeAll(toUnsub);
-    List<TopicPartition> topicPartitionList = new ArrayList<>(topicPartitionSet);
-    kafkaConsumer.assign(topicPartitionList);
+    newTopicPartitionAssignment.removeAll(topicPartitionSet);
+    kafkaConsumer.assign(newTopicPartitionAssignment);
   }
 
   @Override

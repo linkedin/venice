@@ -16,7 +16,7 @@ public interface KafkaConsumerWrapper extends AutoCloseable {
 
   void unSubscribe(String topic, int partition);
 
-  void batchUnsubscribe(String topic, List<Integer> partitionList);
+  void batchUnsubscribe(Set<TopicPartition> topicPartitionSet);
 
   void resetOffset(String topic, int partition) throws UnsubscribedTopicPartitionException;
 

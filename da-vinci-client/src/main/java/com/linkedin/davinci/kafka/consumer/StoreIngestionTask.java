@@ -121,6 +121,7 @@ import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.producer.Callback;
 import org.apache.kafka.clients.producer.RecordMetadata;
+import org.apache.kafka.common.TopicPartition;
 import org.apache.log4j.Logger;
 
 import static java.util.concurrent.TimeUnit.*;
@@ -1204,16 +1205,16 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     if (!hybridStoreConfig.isPresent() && serverConfig.isUnsubscribeAfterBatchpushEnabled()) {
       // unsubscribe completed backup version and batch-store versions.
       if (versionNumber <= store.getCurrentVersion()) {
-        List<Integer> partitionList = new ArrayList<>();
+        Set<TopicPartition> topicPartitions = new HashSet<>();
         for (PartitionConsumptionState state : partitionConsumptionStateMap.values()) {
           if (state.isCompletionReported() && !state.isIncrementalPushEnabled()) {
             logger.info("Unsubscribing completed partitions " + state.getPartition() + " of store : " + store.getName() + " version : "  + versionNumber + " current version: " + store.getCurrentVersion());
-            partitionList.add(state.getPartition());
+            topicPartitions.add(new TopicPartition(kafkaVersionTopic, state.getPartition()));
             forceUnSubscribedCount++;
           }
         }
-        if (partitionList.size() != 0) {
-          consumerBatchUnsubscribe(kafkaVersionTopic, partitionList);
+        if (topicPartitions.size() != 0) {
+          consumerBatchUnsubscribe(topicPartitions);
         }
       }
     }
@@ -2601,11 +2602,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         topic, partitionConsumptionState.getPartition(), Instant.now().toEpochMilli() - startTime.toEpochMilli()));
   }
 
-  public void consumerBatchUnsubscribe(String topic, List<Integer> partitionList) {
+  public void consumerBatchUnsubscribe(Set<TopicPartition> topicPartitionSet) {
     Instant startTime = Instant.now();
-    consumerMap.values().forEach(consumer -> consumer.batchUnsubscribe(topic, partitionList));
-    logger.info(String.format("Consumer unsubscribed topic %s partitions %s. Took %d ms",
-        topic, partitionList, Instant.now().toEpochMilli() - startTime.toEpochMilli()));
+    consumerMap.values().forEach(consumer -> consumer.batchUnsubscribe(topicPartitionSet));
+    logger.info(String.format("Consumer unsubscribed %d partitions. Took %d ms",
+        topicPartitionSet.size(), Instant.now().toEpochMilli() - startTime.toEpochMilli()));
   }
 
   public abstract void consumerUnSubscribeAllTopics(PartitionConsumptionState partitionConsumptionState);
