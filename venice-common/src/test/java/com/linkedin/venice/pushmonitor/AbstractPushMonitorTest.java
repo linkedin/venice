@@ -60,12 +60,12 @@ public abstract class AbstractPushMonitorTest {
   private int replicationFactor = 3;
 
   protected AbstractPushMonitor getPushMonitor() {
-    return getPushMonitor(false, mock(TopicReplicator.class));
+    return getPushMonitor(mock(TopicReplicator.class));
   }
 
   protected abstract AbstractPushMonitor getPushMonitor(StoreCleaner storeCleaner);
 
-  protected abstract AbstractPushMonitor getPushMonitor(boolean skipBufferReplayForHybrid, TopicReplicator mockReplicator);
+  protected abstract AbstractPushMonitor getPushMonitor(TopicReplicator mockReplicator);
 
   @BeforeMethod
   public void setup() {
@@ -339,57 +339,6 @@ public abstract class AbstractPushMonitorTest {
     monitor.onPartitionStatusChange(topic, new ReadOnlyPartitionStatus(0, replicaStatuses));
     Assert.assertEquals(monitor.getPushStatus(topic, Optional.of(incrementalPushVersion)),
         ExecutionStatus.ERROR);
-  }
-
-  @Test
-  public void testDisableBufferReplayForHybrid() {
-    String topic = "hybridTestStore_v1";
-    // Prepare a hybrid store.
-    Store store = prepareMockStore(topic);
-    store.setHybridStoreConfig(new HybridStoreConfigImpl(100, 100, HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD,
-        DataReplicationPolicy.NON_AGGREGATE, BufferReplayPolicy.REWIND_FROM_EOP));
-    // Prepare a mock topic replicator
-    TopicReplicator mockReplicator = mock(TopicReplicator.class);
-    AbstractPushMonitor testMonitor = getPushMonitor(true, mockReplicator);
-    // Start a push
-    testMonitor.startMonitorOfflinePush(topic, numberOfPartition, replicationFactor,
-        OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
-
-    // Prepare the new partition status
-    List<ReplicaStatus> replicaStatuses = new ArrayList<>();
-    for (int i = 0; i < replicationFactor; i++) {
-      ReplicaStatus replicaStatus = new ReplicaStatus("test" + i);
-      replicaStatuses.add(replicaStatus);
-    }
-    // All replicas are in STARTED status
-    ReadOnlyPartitionStatus partitionStatus = new ReadOnlyPartitionStatus(0, replicaStatuses);
-
-    // External view exists
-    doReturn(true).when(mockRoutingDataRepo).containsKafkaTopic(topic);
-
-    // Check hybrid push status
-    testMonitor.onPartitionStatusChange(topic, partitionStatus);
-    // Not ready to send SOBR
-    verify(mockReplicator, never()).prepareAndStartReplication(any(), any(), any(), any(), anyList());
-    Assert.assertEquals(testMonitor.getOfflinePushOrThrow(topic).getCurrentStatus(), ExecutionStatus.STARTED,
-        "Hybrid push is not ready to send SOBR.");
-
-    // One replica received end of push
-    replicaStatuses.get(0).updateStatus(ExecutionStatus.END_OF_PUSH_RECEIVED);
-    testMonitor.onPartitionStatusChange(topic, partitionStatus);
-    // no buffer replay should be sent
-    verify(mockReplicator, never())
-        .prepareAndStartReplication(eq(Version.composeRealTimeTopic(store.getName())), eq(topic), eq(store), eq(aggregateRealTimeSourceKafkaUrl), anyList());
-    Assert.assertEquals(testMonitor.getOfflinePushOrThrow(topic).getCurrentStatus(), ExecutionStatus.END_OF_PUSH_RECEIVED,
-        "At least one replica already received end_of_push, so we send SOBR and update push status to END_OF_PUSH_RECEIVED");
-
-    // Another replica received end of push
-    replicaStatuses.get(1).updateStatus(ExecutionStatus.END_OF_PUSH_RECEIVED);
-    mockReplicator = mock(TopicReplicator.class);
-    testMonitor.setTopicReplicator(Optional.of(mockReplicator));
-    testMonitor.onPartitionStatusChange(topic, partitionStatus);
-    // Should not send SOBR again
-    verify(mockReplicator, never()).prepareAndStartReplication(any(), any(), any(), any(), anyList());
   }
 
   @Test

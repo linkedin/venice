@@ -1560,12 +1560,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                     if (version.isLeaderFollowerModelEnabled()) {
                         isLeaderFollowerStateModel = true;
                     }
-                    // Disable buffer replay for hybrid according to cluster config
-                    if (store.isHybrid() && clusterConfig.isSkipBufferRelayForHybrid()) {
-                        store.setBufferReplayForHybridForVersion(version.getNumber(), false);
-                        logger.info("Disabled buffer replay for store: " + storeName + " and version: " +
-                            version.getNumber() + " in cluster: " + clusterName);
-                    }
                     // Apply cluster-level native replication configs
                     if (version.isLeaderFollowerModelEnabled()) {
                         boolean nativeReplicationEnabled = version.isNativeReplicationEnabled();

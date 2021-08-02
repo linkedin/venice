@@ -56,7 +56,6 @@ public abstract class AbstractPushMonitor
   private final RoutingDataRepository routingDataRepository;
   private final StoreCleaner storeCleaner;
   private final AggPushHealthStats aggPushHealthStats;
-  private final boolean skipBufferReplayForHybrid;
   private final Map<String, OfflinePushStatus> topicToPushMap = new VeniceConcurrentHashMap<>();
   private Optional<TopicReplicator> topicReplicator;
   private final MetadataStoreWriter metadataStoreWriter;
@@ -66,7 +65,7 @@ public abstract class AbstractPushMonitor
 
   public AbstractPushMonitor(String clusterName, OfflinePushAccessor offlinePushAccessor, StoreCleaner storeCleaner,
       ReadWriteStoreRepository metadataRepository, RoutingDataRepository routingDataRepository,
-      AggPushHealthStats aggPushHealthStats, boolean skipBufferReplayForHybrid, Optional<TopicReplicator> topicReplicator,
+      AggPushHealthStats aggPushHealthStats, Optional<TopicReplicator> topicReplicator,
       MetadataStoreWriter metadataStoreWriter, ClusterLockManager clusterLockManager, String aggregateRealTimeSourceKafkaUrl,
       List<String> activeActiveRealTimeSourceKafkaURLs) {
     this.clusterName = clusterName;
@@ -75,7 +74,6 @@ public abstract class AbstractPushMonitor
     this.metadataRepository = metadataRepository;
     this.routingDataRepository = routingDataRepository;
     this.aggPushHealthStats = aggPushHealthStats;
-    this.skipBufferReplayForHybrid = skipBufferReplayForHybrid;
     this.topicReplicator = topicReplicator;
     this.metadataStoreWriter = metadataStoreWriter;
     this.clusterLockManager = clusterLockManager;
@@ -504,21 +502,16 @@ public abstract class AbstractPushMonitor
       if (offlinePushStatus.isReadyToStartBufferReplay()) {
         logger.info(offlinePushStatus.getKafkaTopic()+" is ready to start buffer replay.");
         Optional<TopicReplicator> topicReplicatorOptional = getTopicReplicator();
-        if (topicReplicatorOptional.isPresent() || skipBufferReplayForHybrid) {
+        if (topicReplicatorOptional.isPresent()) {
           try {
             String newStatusDetails;
-            if (skipBufferReplayForHybrid) {
-              newStatusDetails = "skipped buffer replay";
-              logger.info("Skip buffer replay for hybrid store version: " + offlinePushStatus.getKafkaTopic());
-            } else {
-              topicReplicatorOptional.get().prepareAndStartReplication(
-                  Version.composeRealTimeTopic(storeName),
-                  offlinePushStatus.getKafkaTopic(),
-                  store,
-                  aggregateRealTimeSourceKafkaUrl,
-                  activeActiveRealTimeSourceKafkaURLs);
-              newStatusDetails = "kicked off buffer replay";
-            }
+            topicReplicatorOptional.get().prepareAndStartReplication(
+                Version.composeRealTimeTopic(storeName),
+                offlinePushStatus.getKafkaTopic(),
+                store,
+                aggregateRealTimeSourceKafkaUrl,
+                activeActiveRealTimeSourceKafkaURLs);
+            newStatusDetails = "kicked off buffer replay";
             updatePushStatus(offlinePushStatus, ExecutionStatus.END_OF_PUSH_RECEIVED, Optional.of(newStatusDetails));
             logger.info("Successfully " + newStatusDetails + " for offlinePushStatus: " + offlinePushStatus.toString());
           } catch (Exception e) {

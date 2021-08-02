@@ -128,8 +128,8 @@ public class VeniceHelixResources implements VeniceResource {
 
     this.pushMonitor = new PushMonitorDelegator(config.getPushMonitorType(), clusterName, routingDataRepository,
         offlinePushMonitorAccessor, admin, metadataRepository, new AggPushHealthStats(clusterName, metricsRepository),
-        config.isSkipBufferRelayForHybrid(), onlineOfflineTopicReplicator, leaderFollowerTopicReplicator,
-        metadataStoreWriter, clusterLockManager, aggregateRealTimeSourceKafkaUrl, getActiveActiveRealTimeSourceKafkaURLs(config));
+        onlineOfflineTopicReplicator, leaderFollowerTopicReplicator, metadataStoreWriter, clusterLockManager,
+        aggregateRealTimeSourceKafkaUrl, getActiveActiveRealTimeSourceKafkaURLs(config));
 
     this.leakedPushStatusCleanUpService = new LeakedPushStatusCleanUpService(clusterName, offlinePushMonitorAccessor, metadataRepository,
         new AggPushStatusCleanUpStats(clusterName, metricsRepository), this.config.getLeakedPushStatusCleanUpServiceSleepIntervalInMs());

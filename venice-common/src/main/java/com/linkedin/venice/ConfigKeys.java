@@ -1237,11 +1237,6 @@ public class ConfigKeys {
   public static final String CONTROLLER_ADD_VERSION_VIA_ADMIN_PROTOCOL = "controller.add.version.via.admin.protocol";
 
   public static final String CONTROLLER_EARLY_DELETE_BACKUP_ENABLED = "controller.early.delete.backup.enabled";
-  /**
-   * Flag to skip buffer replay for hybrid store.
-   * For some scenario, buffer replay might not be necessary since the store version topic has already included all the data.
-   */
-  public static final String CONTROLLER_SKIP_BUFFER_REPLAY_FOR_HYBRID = "controller.skip.buffer.replay.for.hybrid";
 
   /**
    * Flag to indicate which push monitor controller will pick up for an upcoming push

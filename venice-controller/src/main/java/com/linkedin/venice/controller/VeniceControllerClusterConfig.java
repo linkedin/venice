@@ -61,7 +61,6 @@ public class VeniceControllerClusterConfig {
   private boolean enableOfflinePushSSLWhitelist;
   private boolean enableNearlinePushSSLWhitelist;
   private List<String> pushSSLWhitelist;
-  private boolean skipBufferRelayForHybrid;
 
   /**
    * TODO: the follower 3 cluster level configs remains in the code base in case the new cluster level configs are not
@@ -318,9 +317,6 @@ public class VeniceControllerClusterConfig {
     if (adminTopicReplicationFactor < 1) {
       throw new ConfigurationException(ADMIN_TOPIC_REPLICATION_FACTOR + " cannot be less than 1.");
     }
-
-    this.skipBufferRelayForHybrid = props.getBoolean(CONTROLLER_SKIP_BUFFER_REPLAY_FOR_HYBRID, false);
-
     this.leakedPushStatusCleanUpServiceSleepIntervalInMs = props.getLong(LEAKED_PUSH_STATUS_CLEAN_UP_SERVICE_SLEEP_INTERVAL_MS, TimeUnit.MINUTES.toMillis(15));
   }
 
@@ -472,10 +468,6 @@ public class VeniceControllerClusterConfig {
 
   public long getKafkaMinLogCompactionLagInMs() {
     return kafkaMinLogCompactionLagInMs;
-  }
-
-  public boolean isSkipBufferRelayForHybrid() {
-    return skipBufferRelayForHybrid;
   }
 
   public boolean isNativeReplicationEnabledForBatchOnly() {

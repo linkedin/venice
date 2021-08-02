@@ -184,7 +184,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       VeniceStoreConfig storeConfig,
       DiskUsage diskUsage,
       RocksDBMemoryStats rocksDBMemoryStats,
-      boolean bufferReplayEnabledForHybrid,
       AggKafkaConsumerService aggKafkaConsumerService,
       VeniceServerConfig serverConfig,
       boolean isNativeReplicationEnabled,
@@ -225,7 +224,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         storeConfig,
         diskUsage,
         rocksDBMemoryStats,
-        bufferReplayEnabledForHybrid,
         aggKafkaConsumerService,
         serverConfig,
         partitionId,
@@ -446,25 +444,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           break;
 
         case IN_TRANSITION_FROM_STANDBY_TO_LEADER:
-          /**
-           * If buffer replay is disabled, all replica are just consuming from version topic;
-           * promote to leader immediately.
-           */
-          if (!bufferReplayEnabledForHybrid) {
-            partitionConsumptionState.setLeaderState(LEADER);
-            OffsetRecord offsetRecord = partitionConsumptionState.getOffsetRecord();
-            offsetRecord.setLeaderConsumptionState(
-                getSourceKafkaAddress(partitionConsumptionState),
-                this.kafkaVersionTopic,
-                offsetRecord.getOffset()
-            );
-
-            logger.info(consumerTaskId + " promoted to leader for partition " + partition);
-
-            defaultReadyToServeChecker.apply(partitionConsumptionState);
-            return;
-          }
-
           /**
            * Potential risk: it's possible that Kafka consumer would starve one of the partitions for a long
            * time even though there are new messages in it, so it's possible that the old leader is still producing
@@ -738,9 +717,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    * If buffer replay is disable, all replicas will stick to version topic, no one is going to produce any message.
    */
   private boolean shouldProduceToVersionTopic(PartitionConsumptionState partitionConsumptionState) {
-    if (!bufferReplayEnabledForHybrid) {
-      return false;
-    }
     if (!Objects.equals(partitionConsumptionState.getLeaderState(), LEADER)) {
       return false; // Not leader
     }
@@ -813,24 +789,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
        * there could be more than one TopicSwitch message in VT, we should honor the last one during re-balance; so
        * don't update the consumption state like leader topic until actually switching topic. The leaderTopic field
        * should be used to track the topic that leader is actually consuming.
-       */
-      if (!bufferReplayEnabledForHybrid) {
-        /**
-         * If buffer replay is disabled, everyone sticks to the version topic
-         * and only consumes from version topic.
-         */
-        logger.info(consumerTaskId + " receives TopicSwitch message: new source topic: " + newSourceTopicName
-            + "; start offset: " + upstreamStartOffset + "; source kafka servers " + kafkaServerUrls
-            + "; however buffer replay is disabled, consumer will stick to " + kafkaVersionTopic);
-        partitionConsumptionState.getOffsetRecord().setLeaderConsumptionState(
-            getSourceKafkaAddress(partitionConsumptionState),
-            newSourceTopicName,
-            upstreamStartOffset
-        );
-        return;
-      }
-      /**
-       * Update the latest upstream offset.
        */
       partitionConsumptionState.getOffsetRecord().setLeaderUpstreamOffset(
           getSourceKafkaAddress(partitionConsumptionState),
@@ -1042,71 +1000,56 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
      * with this strategy, it is possible that partition could become 'ONLINE' at most
      * {@link CachedKafkaMetadataGetter#ttlMs} earlier.
      */
-    if (bufferReplayEnabledForHybrid) {
-      String leaderTopic = offsetRecord.getLeaderTopic();
-      if (null == leaderTopic || !Version.isRealTimeTopic(leaderTopic)) {
-        /**
-         * 1. Usually there is a batch-push or empty push for the hybrid store before replaying messages from real-time
-         *    topic; since we need to wait for at least 5 minutes of inactivity since the last successful consumed message
-         *    before promoting a replica to leader, the leader topic metadata may not be initialized yet (the first time
-         *    when we initialize the leader topic is either when a replica is promoted to leader successfully or encounter
-         *    TopicSwitch control message.), so leader topic can be null during the 5 minutes inactivity.
-         * 2. It's also possible that the replica is promoted to leader already but haven't received the TopicSwitch
-         *    command from controllers to start consuming from real-time topic (for example, grandfathering Samza job has
-         *    finished producing the batch input to the transient grandfathering topic, but user haven't sent END_OF_PUSH
-         *    so controllers haven't sent TopicSwitch).
-         */
-        return Long.MAX_VALUE;
-      }
-
-      // leaderTopic is the real-time topic now
-      long leaderOffset;
-      long lastOffsetInRealTimeTopic;
-      String sourceKafkaServer = getRealTimeDataSourceKafkaAddress(partitionConsumptionState);
-      if (amplificationFactor != 1) {
-        /**
-         * When amplificationFactor enabled, the RT topic and VT topics have different number of partition.
-         * eg. if amplificationFactor == 10 and partitionCount == 2,
-         *     the RT topic will have 2 partitions and VT topics will have 20 partitions.
-         * No 1-to-1 mapping between the RT topic and VT topics partition, we can not calculate the offset difference.
-         * To measure the offset difference between 2 types of topics, we go through leaderOffset in corresponding
-         * sub-partitions and pick up the maximum value which means picking up the offset of the sub-partition seeing the most recent records in RT,
-         * then use this value to compare against the offset in the RT topic.
-         */
-        int userPartition = PartitionUtils.getUserPartition(partition, amplificationFactor);
-        lastOffsetInRealTimeTopic = cachedKafkaMetadataGetter.getOffset(sourceKafkaServer, leaderTopic, userPartition);
-        leaderOffset = -1;
-        for (int subPartition : PartitionUtils.getSubPartitions(userPartition, amplificationFactor)) {
-          if (partitionConsumptionStateMap.get(subPartition) != null
-              && partitionConsumptionStateMap.get(subPartition).getOffsetRecord() != null
-              && partitionConsumptionStateMap.get(subPartition).getOffsetRecord().getUpstreamOffset(sourceKafkaServer) >= 0) {
-            leaderOffset = Math.max(leaderOffset, partitionConsumptionStateMap.get(subPartition).getOffsetRecord().getUpstreamOffset(sourceKafkaServer));
-          }
-        }
-      } else {
-        leaderOffset = offsetRecord.getLeaderOffset(sourceKafkaServer);
-        lastOffsetInRealTimeTopic = cachedKafkaMetadataGetter.getOffset(sourceKafkaServer, leaderTopic, partition);
-      }
-      long lag = lastOffsetInRealTimeTopic - leaderOffset;
-      if (shouldLogLag) {
-        logger.info(String.format("%s partition %d real-time buffer lag offset is: " + "(Last RT offset [%d] - Last leader consumed offset [%d]) = Lag [%d]",
-            consumerTaskId, partition, lastOffsetInRealTimeTopic, leaderOffset, lag));
-      }
-
-      return lag;
-    } else {
+    String leaderTopic = offsetRecord.getLeaderTopic();
+    if (null == leaderTopic || !Version.isRealTimeTopic(leaderTopic)) {
       /**
-       * If buffer replay is disabled, all replicas are consuming from version topic, so check the lag in version topic.
+       * 1. Usually there is a batch-push or empty push for the hybrid store before replaying messages from real-time
+       *    topic; since we need to wait for at least 5 minutes of inactivity since the last successful consumed message
+       *    before promoting a replica to leader, the leader topic metadata may not be initialized yet (the first time
+       *    when we initialize the leader topic is either when a replica is promoted to leader successfully or encounter
+       *    TopicSwitch control message.), so leader topic can be null during the 5 minutes inactivity.
+       * 2. It's also possible that the replica is promoted to leader already but haven't received the TopicSwitch
+       *    command from controllers to start consuming from real-time topic (for example, grandfathering Samza job has
+       *    finished producing the batch input to the transient grandfathering topic, but user haven't sent END_OF_PUSH
+       *    so controllers haven't sent TopicSwitch).
        */
-      long versionTopicConsumedOffset = offsetRecord.getOffset();
-      long storeVersionTopicLatestOffset = cachedKafkaMetadataGetter.getOffset(localKafkaServer, kafkaVersionTopic, partition);
-      long lag = storeVersionTopicLatestOffset - versionTopicConsumedOffset;
-      if (shouldLogLag) {
-        logger.info(String.format("Store buffer replay was disabled, and %s partition %d lag offset is: (Last VT offset [%d] - Last VT consumed offset [%d]) = Lag [%d]",
-            consumerTaskId, partition, storeVersionTopicLatestOffset, versionTopicConsumedOffset, lag));
-      }
-      return lag;
+      return Long.MAX_VALUE;
     }
+
+    // leaderTopic is the real-time topic now
+    long leaderOffset;
+    long lastOffsetInRealTimeTopic;
+    String sourceKafkaServer = getRealTimeDataSourceKafkaAddress(partitionConsumptionState);
+    if (amplificationFactor != 1) {
+      /**
+       * When amplificationFactor enabled, the RT topic and VT topics have different number of partition.
+       * eg. if amplificationFactor == 10 and partitionCount == 2,
+       *     the RT topic will have 2 partitions and VT topics will have 20 partitions.
+       * No 1-to-1 mapping between the RT topic and VT topics partition, we can not calculate the offset difference.
+       * To measure the offset difference between 2 types of topics, we go through leaderOffset in corresponding
+       * sub-partitions and pick up the maximum value which means picking up the offset of the sub-partition seeing the most recent records in RT,
+       * then use this value to compare against the offset in the RT topic.
+       */
+      int userPartition = PartitionUtils.getUserPartition(partition, amplificationFactor);
+      lastOffsetInRealTimeTopic = cachedKafkaMetadataGetter.getOffset(sourceKafkaServer, leaderTopic, userPartition);
+      leaderOffset = -1;
+      for (int subPartition : PartitionUtils.getSubPartitions(userPartition, amplificationFactor)) {
+        if (partitionConsumptionStateMap.get(subPartition) != null
+            && partitionConsumptionStateMap.get(subPartition).getOffsetRecord() != null
+            && partitionConsumptionStateMap.get(subPartition).getOffsetRecord().getUpstreamOffset(sourceKafkaServer) >= 0) {
+          leaderOffset = Math.max(leaderOffset, partitionConsumptionStateMap.get(subPartition).getOffsetRecord().getUpstreamOffset(sourceKafkaServer));
+        }
+      }
+    } else {
+      leaderOffset = offsetRecord.getLeaderOffset(sourceKafkaServer);
+      lastOffsetInRealTimeTopic = cachedKafkaMetadataGetter.getOffset(sourceKafkaServer, leaderTopic, partition);
+    }
+    long lag = lastOffsetInRealTimeTopic - leaderOffset;
+    if (shouldLogLag) {
+      logger.info(String.format("%s partition %d real-time buffer lag offset is: " + "(Last RT offset [%d] - Last leader consumed offset [%d]) = Lag [%d]",
+          consumerTaskId, partition, lastOffsetInRealTimeTopic, leaderOffset, lag));
+    }
+    return lag;
   }
 
   @Override

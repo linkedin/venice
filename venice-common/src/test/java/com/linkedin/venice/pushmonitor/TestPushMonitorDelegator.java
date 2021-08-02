@@ -28,7 +28,7 @@ public class TestPushMonitorDelegator {
   @Test
   public void testDelegatorCanCleanupLegacyStatus() {
     PushMonitorDelegator delegator = new PushMonitorDelegator(pushMonitorType, clusterName, routingDataRepository,
-        offlinePushAccessor, storeCleaner, metadataRepo, aggPushHealthStats, false,
+        offlinePushAccessor, storeCleaner, metadataRepo, aggPushHealthStats,
         Optional.empty(), Optional.empty(), metadataStoreWriter, clusterLockManager, aggregateRealTimeSourceKafkaUrl, Collections.emptyList());
 
     OfflinePushStatus legacyStatus = new OfflinePushStatus("legacy_v1", 1, 1,

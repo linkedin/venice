@@ -22,11 +22,11 @@ import java.util.Optional;
 public class HelixEVBasedPushMonitor extends AbstractPushMonitor implements RoutingDataRepository.RoutingDataChangedListener {
   public HelixEVBasedPushMonitor(String clusterName, RoutingDataRepository routingDataRepository,
       OfflinePushAccessor offlinePushAccessor, StoreCleaner storeCleaner, ReadWriteStoreRepository metadataRepository,
-      AggPushHealthStats aggPushHealthStats, boolean skipBufferReplayForHybrid, Optional<TopicReplicator> topicReplicator,
+      AggPushHealthStats aggPushHealthStats, Optional<TopicReplicator> topicReplicator,
       MetadataStoreWriter metadataStoreWriter, ClusterLockManager clusterLockManager, String aggregateRealTimeSourceKafkaUrl,
       List<String> activeActiveRealTimeSourceKafkaURLs) {
     super(clusterName, offlinePushAccessor, storeCleaner, metadataRepository, routingDataRepository, aggPushHealthStats,
-        skipBufferReplayForHybrid, topicReplicator, metadataStoreWriter, clusterLockManager, aggregateRealTimeSourceKafkaUrl,
+        topicReplicator, metadataStoreWriter, clusterLockManager, aggregateRealTimeSourceKafkaUrl,
         activeActiveRealTimeSourceKafkaURLs);
   }
   /**

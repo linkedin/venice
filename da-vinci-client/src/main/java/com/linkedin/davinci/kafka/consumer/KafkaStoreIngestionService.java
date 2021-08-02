@@ -508,7 +508,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         version.isUseVersionLevelIncrementalPushEnabled() ? version.isIncrementalPushEnabled() : store.isIncrementalPushEnabled(),
         version.getIncrementalPushPolicy(),
         veniceStoreConfig,
-        version.isBufferReplayEnabledForHybrid(),
         version.isNativeReplicationEnabled(),
         version.getPushStreamSourceAddress(),
         partitionId,

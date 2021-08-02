@@ -263,10 +263,6 @@ public class ReadOnlyStore implements Store {
       throw new UnsupportedOperationException();
     }
     @Override
-    public boolean isBufferReplayEnabledForHybrid() {
-      return this.delegate.isBufferReplayEnabledForHybrid();
-    }
-    @Override
     public void setBufferReplayEnabledForHybrid(boolean bufferReplayEnabledForHybrid) {
       throw new UnsupportedOperationException();
     }

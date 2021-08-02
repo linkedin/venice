@@ -48,20 +48,19 @@ public class PushMonitorDelegator implements PushMonitor {
   public PushMonitorDelegator(PushMonitorType pushMonitorType, String clusterName,
       RoutingDataRepository routingDataRepository, OfflinePushAccessor offlinePushAccessor,
       StoreCleaner storeCleaner, ReadWriteStoreRepository metadataRepository,
-      AggPushHealthStats aggPushHealthStats, boolean skipBufferReplayForHybrid,
-      Optional<TopicReplicator> onlineOfflineTopicReplicator, Optional<TopicReplicator> leaderFollowerTopicReplicator,
-      MetadataStoreWriter metadataStoreWriter, ClusterLockManager clusterLockManager, String aggregateRealTimeSourceKafkaUrl,
-      List<String> activeActiveRealTimeSourceKafkaURLs) {
+      AggPushHealthStats aggPushHealthStats, Optional<TopicReplicator> onlineOfflineTopicReplicator,
+      Optional<TopicReplicator> leaderFollowerTopicReplicator, MetadataStoreWriter metadataStoreWriter,
+      ClusterLockManager clusterLockManager, String aggregateRealTimeSourceKafkaUrl, List<String> activeActiveRealTimeSourceKafkaURLs) {
     this.clusterName = clusterName;
     this.pushMonitorType = pushMonitorType;
     this.metadataRepository = metadataRepository;
     this.offlinePushAccessor = offlinePushAccessor;
 
     this.helixEVPushMonitor = new HelixEVBasedPushMonitor(clusterName, routingDataRepository, offlinePushAccessor,
-        storeCleaner, metadataRepository, aggPushHealthStats, skipBufferReplayForHybrid, onlineOfflineTopicReplicator,
+        storeCleaner, metadataRepository, aggPushHealthStats, onlineOfflineTopicReplicator,
         metadataStoreWriter, clusterLockManager, aggregateRealTimeSourceKafkaUrl, activeActiveRealTimeSourceKafkaURLs);
     this.partitionStatusBasedPushStatusMonitor = new PartitionStatusBasedPushMonitor(clusterName, offlinePushAccessor,
-        storeCleaner, metadataRepository, routingDataRepository, aggPushHealthStats, skipBufferReplayForHybrid,
+        storeCleaner, metadataRepository, routingDataRepository, aggPushHealthStats,
         leaderFollowerTopicReplicator, metadataStoreWriter, clusterLockManager, aggregateRealTimeSourceKafkaUrl, activeActiveRealTimeSourceKafkaURLs);
     this.clusterLockManager = clusterLockManager;
 
