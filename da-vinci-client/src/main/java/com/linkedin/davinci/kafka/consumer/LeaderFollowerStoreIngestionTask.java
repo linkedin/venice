@@ -1660,7 +1660,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
   }
 
-  //calculate the the replication once per partition, checking Leader instance will make sure we calculate it just once per partiton.
+  //calculate the the replication once per partition, checking Leader instance will make sure we calculate it just once per partition.
   private static final Predicate<? super PartitionConsumptionState> BATCH_REPLICATION_LAG_FILTER =
       pcs -> !pcs.isEndOfPushReceived() && pcs.consumeRemotely() && pcs.getLeaderState().equals(LEADER);
 
@@ -1758,8 +1758,13 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           }
 
           // Fall back to calculate offset lag in the original approach
-          return (cachedKafkaMetadataGetter.getOffset(kafkaSourceAddress, currentLeaderTopic, pcs.getPartition()) - 1)
-                  - pcs.getOffsetRecord().getOffset();
+          if (Version.isRealTimeTopic(currentLeaderTopic)) {
+            return (cachedKafkaMetadataGetter.getOffset(kafkaSourceAddress, currentLeaderTopic, pcs.getPartition()) - 1)
+                - pcs.getOffsetRecord().getLeaderOffset(kafkaSourceAddress);
+          } else {
+            return (cachedKafkaMetadataGetter.getOffset(kafkaSourceAddress, currentLeaderTopic, pcs.getPartition()) - 1)
+                - pcs.getOffsetRecord().getOffset();
+          }
         }).sum();
 
     return minZeroLag(offsetLag);

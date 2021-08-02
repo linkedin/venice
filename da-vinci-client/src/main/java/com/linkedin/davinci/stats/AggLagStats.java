@@ -1,17 +1,11 @@
 package com.linkedin.davinci.stats;
 
-import com.linkedin.davinci.kafka.consumer.StoreBufferService;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionService;
 import com.linkedin.venice.stats.AbstractVeniceStats;
 import com.linkedin.venice.stats.Gauge;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Time;
-import com.linkedin.venice.writer.ApacheKafkaProducer;
 import io.tehuti.metrics.MetricsRepository;
-import io.tehuti.metrics.Sensor;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.concurrent.atomic.AtomicLong;
 import org.apache.log4j.Logger;
 
 
@@ -23,6 +17,8 @@ public class AggLagStats extends AbstractVeniceStats {
   private long aggBatchReplicationLagFuture;
   private long aggLeaderOffsetLagFuture;
   private long aggFollowerOffsetLagFuture;
+  private long aggHybridLeaderOffsetLag;
+  private long aggHybridFollowerOffsetLag;
 
   private long lastLagUpdateTsMs = 0;
 
@@ -30,16 +26,11 @@ public class AggLagStats extends AbstractVeniceStats {
     super(metricsRepository, "AggLagStats");
     this.storeIngestionService = storeIngestionService;
 
-    registerSensor("agg_batch_replication_lag_future", new Gauge(
-        () -> this.getAggBatchReplicationLagFuture()
-    ));
-    registerSensor("agg_leader_offset_lag_future", new Gauge(
-        () -> this.getAggLeaderOffsetLagFuture()
-    ));
-    registerSensor("agg_follower_offset_lag_future", new Gauge(
-        () -> this.getAggFollowerOffsetLagFuture()
-    ));
-
+    registerSensor("agg_batch_replication_lag_future", new Gauge(this::getAggBatchReplicationLagFuture));
+    registerSensor("agg_leader_offset_lag_future", new Gauge(this::getAggLeaderOffsetLagFuture));
+    registerSensor("agg_follower_offset_lag_future", new Gauge(this::getAggFollowerOffsetLagFuture));
+    registerSensor("agg_hybrid_leader_offset_lag", new Gauge(this::getAggHybridLeaderOffsetLag));
+    registerSensor("agg_hybrid_follower_offset_lag", new Gauge(this::getAggHybridFollowerOffsetLag));
   }
 
   private synchronized void mayCollectAllLags() {
@@ -52,6 +43,8 @@ public class AggLagStats extends AbstractVeniceStats {
     aggBatchReplicationLagFuture = 0;
     aggLeaderOffsetLagFuture = 0;
     aggFollowerOffsetLagFuture = 0;
+    aggHybridLeaderOffsetLag = 0;
+    aggHybridFollowerOffsetLag = 0;
 
     storeIngestionService.traverseAllIngestionTasksAndApply((ingestionTask) -> {
       if (ingestionTask.isFutureVersion()) {
@@ -59,6 +52,9 @@ public class AggLagStats extends AbstractVeniceStats {
         aggLeaderOffsetLagFuture += ingestionTask.getBatchLeaderOffsetLag();
         aggFollowerOffsetLagFuture += ingestionTask.getBatchFollowerOffsetLag();
       }
+
+      aggHybridLeaderOffsetLag += ingestionTask.getHybridLeaderOffsetLag();
+      aggHybridFollowerOffsetLag += ingestionTask.getHybridFollowerOffsetLag();
     });
 
     lastLagUpdateTsMs = System.currentTimeMillis();
@@ -77,5 +73,15 @@ public class AggLagStats extends AbstractVeniceStats {
   public long getAggFollowerOffsetLagFuture() {
     mayCollectAllLags();
     return aggFollowerOffsetLagFuture;
+  }
+
+  public long getAggHybridLeaderOffsetLag() {
+    mayCollectAllLags();
+    return aggHybridLeaderOffsetLag;
+  }
+
+  public long getAggHybridFollowerOffsetLag() {
+    mayCollectAllLags();
+    return aggHybridFollowerOffsetLag;
   }
 }
