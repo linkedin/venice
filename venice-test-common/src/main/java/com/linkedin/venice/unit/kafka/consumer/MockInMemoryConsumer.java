@@ -49,10 +49,10 @@ public class MockInMemoryConsumer implements KafkaConsumerWrapper {
   }
 
   @Override
-  public void batchUnsubscribe(String topic, List<Integer> partitionList) {
-    delegate.batchUnsubscribe(topic, partitionList);
-    for (int partition : partitionList) {
-      offsets.remove(new TopicPartition(topic, partition));
+  public void batchUnsubscribe(Set<TopicPartition> topicPartitionSet) {
+    delegate.batchUnsubscribe(topicPartitionSet);
+    for (TopicPartition partition : topicPartitionSet) {
+      offsets.remove(partition);
     }
   }
 

@@ -161,7 +161,9 @@ public class SharedKafkaConsumerTest {
     doReturn(store).when(repository).getStoreOrThrow("existingTopic1");
     doThrow(new VeniceNoStoreException(nonExistingTopic1)).when(repository).getStoreOrThrow("nonExistingTopic1");
 
-    SharedKafkaConsumer sharedConsumer = new SharedKafkaConsumer(consumer, consumerService, 1, nonExistingTopicCleanupDelayMS, mockTime, topicExistenceChecker);
+    SharedKafkaConsumer sharedConsumer =
+        new SharedKafkaConsumer(consumer, consumerService, 1, nonExistingTopicCleanupDelayMS, mockTime,
+            topicExistenceChecker);
     Map<String, List<PartitionInfo>> staledTopicListReturnedByConsumer = new HashMap<>();
     staledTopicListReturnedByConsumer.put(existingTopic1, Collections.emptyList());
     Map<String, List<PartitionInfo>> topicListReturnedByConsumer = new HashMap<>(staledTopicListReturnedByConsumer);
@@ -201,5 +203,4 @@ public class SharedKafkaConsumerTest {
     verify(consumerServiceStats, times(2)).recordDetectedDeletedTopicNum(1);
     verify(ingestionTaskForNonExistingTopic1, never()).setLastConsumerException(any());
   }
-
 }

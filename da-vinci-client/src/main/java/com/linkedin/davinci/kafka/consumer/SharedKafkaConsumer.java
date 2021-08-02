@@ -155,13 +155,13 @@ public class SharedKafkaConsumer implements KafkaConsumerWrapper {
   }
 
   @Override
-  public synchronized void batchUnsubscribe(String topic, List<Integer> partitionList) {
+  public synchronized void batchUnsubscribe(Set<TopicPartition> topicPartitionSet) {
     long currentPollTimes = pollTimes;
     long startTime = System.currentTimeMillis();
-    this.delegate.batchUnsubscribe(topic, partitionList);
+    this.delegate.batchUnsubscribe(topicPartitionSet);
 
-    LOGGER.info(String.format("Shared consumer %s unsubscribed topic %s partitions %s: . Took %d ms.",
-        this, topic, partitionList, System.currentTimeMillis() - startTime));
+    LOGGER.info(String.format("Shared consumer %s unsubscribed %d partitions. Took %d ms.",
+        this, topicPartitionSet.size(), System.currentTimeMillis() - startTime));
     updateCurrentAssignment(false);
     waitAfterUnsubscribe(currentPollTimes);
   }
