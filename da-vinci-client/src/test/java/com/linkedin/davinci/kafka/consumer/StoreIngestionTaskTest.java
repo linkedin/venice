@@ -493,7 +493,7 @@ public class StoreIngestionTaskTest {
         .build();
     int leaderSubPartition = PartitionUtils.getLeaderSubPartition(PARTITION_FOO, amplificationFactor);
     storeIngestionTaskUnderTest = ingestionTaskFactory.getNewIngestionTask(isLeaderFollowerModelEnabled, kafkaProps,
-        isCurrentVersion, hybridStoreConfig, incrementalPushEnabled, IncrementalPushPolicy.PUSH_TO_VERSION_TOPIC, storeConfig, true,
+        isCurrentVersion, hybridStoreConfig, incrementalPushEnabled, IncrementalPushPolicy.PUSH_TO_VERSION_TOPIC, storeConfig,
         false, "", leaderSubPartition, false, getVenicePartitioner(amplificationFactor), version.getPartitionCount(), false, amplificationFactor,
         new StorageEngineBackedCompressorFactory(mockStorageMetadataService), Optional.empty());
     doReturn(new DeepCopyStorageEngine(mockAbstractStorageEngine)).when(mockStorageEngineRepository).getLocalStorageEngine(topic);

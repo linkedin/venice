@@ -22,14 +22,14 @@ public class HelixEVBasedPushMonitorTest extends AbstractPushMonitorTest {
   @Override
   protected AbstractPushMonitor getPushMonitor(StoreCleaner storeCleaner) {
     return new HelixEVBasedPushMonitor(getClusterName(), getMockRoutingDataRepo(), getMockAccessor(), storeCleaner,
-        getMockStoreRepo(), getMockPushHealthStats(), false, Optional.of(mock(TopicReplicator.class)),
+        getMockStoreRepo(), getMockPushHealthStats(), Optional.of(mock(TopicReplicator.class)),
         getMockMetadataStoreWriter(), getClusterLockManager(), getAggregateRealTimeSourceKafkaUrl(), Collections.emptyList());
   }
 
   @Override
-  protected AbstractPushMonitor getPushMonitor(boolean skipBufferReplayForHybrid, TopicReplicator mockReplicator) {
+  protected AbstractPushMonitor getPushMonitor(TopicReplicator mockReplicator) {
     return new HelixEVBasedPushMonitor(getClusterName(), getMockRoutingDataRepo(), getMockAccessor(), getMockStoreCleaner(),
-        getMockStoreRepo(), getMockPushHealthStats(), skipBufferReplayForHybrid, Optional.of(mockReplicator),
+        getMockStoreRepo(), getMockPushHealthStats(), Optional.of(mockReplicator),
         getMockMetadataStoreWriter(), getClusterLockManager(), getAggregateRealTimeSourceKafkaUrl(), Collections.emptyList());
   }
 

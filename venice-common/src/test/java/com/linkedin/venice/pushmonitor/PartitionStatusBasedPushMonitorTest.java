@@ -22,15 +22,15 @@ public class PartitionStatusBasedPushMonitorTest extends AbstractPushMonitorTest
   protected AbstractPushMonitor getPushMonitor(StoreCleaner storeCleaner) {
     return new PartitionStatusBasedPushMonitor(getClusterName(), getMockAccessor(),
         storeCleaner, getMockStoreRepo(), getMockRoutingDataRepo(), getMockPushHealthStats(),
-        false, Optional.of(mock(TopicReplicator.class)), getMockMetadataStoreWriter(),
+        Optional.of(mock(TopicReplicator.class)), getMockMetadataStoreWriter(),
         getClusterLockManager(), getAggregateRealTimeSourceKafkaUrl(), Collections.emptyList());
   }
 
   @Override
-  protected AbstractPushMonitor getPushMonitor(boolean skipBufferReplayForHybrid, TopicReplicator mockReplicator) {
+  protected AbstractPushMonitor getPushMonitor(TopicReplicator mockReplicator) {
     return new PartitionStatusBasedPushMonitor(getClusterName(), getMockAccessor(),
         getMockStoreCleaner(), getMockStoreRepo(), getMockRoutingDataRepo(), getMockPushHealthStats(),
-        skipBufferReplayForHybrid, Optional.of(mockReplicator), getMockMetadataStoreWriter(), getClusterLockManager(),
+        Optional.of(mockReplicator), getMockMetadataStoreWriter(), getClusterLockManager(),
         getAggregateRealTimeSourceKafkaUrl(), Collections.emptyList());
   }
 

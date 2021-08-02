@@ -137,11 +137,6 @@ public class VersionImpl implements Version {
   }
 
   @Override
-  public boolean isBufferReplayEnabledForHybrid() {
-    return this.storeVersion.bufferReplayEnabledForHybrid;
-  }
-
-  @Override
   public void setBufferReplayEnabledForHybrid(boolean bufferReplayEnabledForHybrid) {
     this.storeVersion.bufferReplayEnabledForHybrid = bufferReplayEnabledForHybrid;
   }
@@ -317,7 +312,6 @@ public class VersionImpl implements Version {
         ", pushJobId='" + getPushJobId() + '\'' +
         ", compressionStrategy='" + getCompressionStrategy() + '\'' +
         ", leaderFollowerModelEnabled=" + isLeaderFollowerModelEnabled() +
-        ", bufferReplayEnabledForHybrid=" + isBufferReplayEnabledForHybrid() +
         ", pushType=" + getPushType() +
         ", partitionCount=" + getPartitionCount() +
         ", partitionerConfig=" + getPartitionerConfig() +
@@ -372,7 +366,6 @@ public class VersionImpl implements Version {
     clonedVersion.setStatus(getStatus());
     clonedVersion.setCompressionStrategy(getCompressionStrategy());
     clonedVersion.setLeaderFollowerModelEnabled(isLeaderFollowerModelEnabled());
-    clonedVersion.setBufferReplayEnabledForHybrid(isBufferReplayEnabledForHybrid());
     clonedVersion.setChunkingEnabled(isChunkingEnabled());
     clonedVersion.setPushType(getPushType());
     clonedVersion.setNativeReplicationEnabled(isNativeReplicationEnabled());

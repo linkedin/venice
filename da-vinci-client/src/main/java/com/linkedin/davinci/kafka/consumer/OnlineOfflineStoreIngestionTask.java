@@ -69,7 +69,6 @@ public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
       VeniceStoreConfig storeConfig,
       DiskUsage diskUsage,
       RocksDBMemoryStats rocksDBMemoryStats,
-      boolean bufferReplayEnabledForHybrid,
       AggKafkaConsumerService aggKafkaConsumerService,
       VeniceServerConfig serverConfig,
       int partitionId,
@@ -106,7 +105,6 @@ public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
         storeConfig,
         diskUsage,
         rocksDBMemoryStats,
-        bufferReplayEnabledForHybrid,
         aggKafkaConsumerService,
         serverConfig,
         partitionId,
@@ -200,34 +198,22 @@ public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
      * with this strategy, it is possible that partition could become 'ONLINE' at most
      * {@link CachedKafkaMetadataGetter#ttlMs} earlier.
      */
-    if (bufferReplayEnabledForHybrid) {
-      StartOfBufferReplay sobr = storeVersionStateOptional.get().startOfBufferReplay;
-      long sourceTopicMaxOffset = cachedKafkaMetadataGetter.getOffset(localKafkaServer, sobr.sourceTopicName.toString(), partition);
-      long sobrSourceOffset = sobr.sourceOffsets.get(partition);
+    StartOfBufferReplay sobr = storeVersionStateOptional.get().startOfBufferReplay;
+    long sourceTopicMaxOffset = cachedKafkaMetadataGetter.getOffset(localKafkaServer, sobr.sourceTopicName.toString(), partition);
+    long sobrSourceOffset = sobr.sourceOffsets.get(partition);
 
-      if (!partitionConsumptionState.getOffsetRecord().getStartOfBufferReplayDestinationOffset().isPresent()) {
-        throw new IllegalArgumentException("SOBR DestinationOffset is not presented.");
-      }
-
-      long sobrDestinationOffset = partitionConsumptionState.getOffsetRecord().getStartOfBufferReplayDestinationOffset().get();
-
-      long lag = (sourceTopicMaxOffset - sobrSourceOffset) - (currentOffset - sobrDestinationOffset);
-
-      if (shouldLogLag) {
-        logger.info(String.format("%s partition %d real-time buffer lag offset is: " + "(Source Max [%d] - SOBR Source [%d]) - (Dest Current [%d] - SOBR Dest [%d]) = Lag [%d]",
-            consumerTaskId, partition, sourceTopicMaxOffset, sobrSourceOffset, currentOffset, sobrDestinationOffset, lag));
-      }
-
-      return lag;
-    } else {
-      long storeVersionTopicLatestOffset = cachedKafkaMetadataGetter.getOffset(localKafkaServer, kafkaVersionTopic, partition);
-      long lag = storeVersionTopicLatestOffset - currentOffset;
-      if (shouldLogLag) {
-        logger.info(String.format("Store buffer replay was disabled, and %s partition %d lag offset is: (Dest Latest [%d] - Dest Current [%d]) = Lag [%d]",
-            consumerTaskId, partition, storeVersionTopicLatestOffset, currentOffset, lag));
-      }
-      return lag;
+    if (!partitionConsumptionState.getOffsetRecord().getStartOfBufferReplayDestinationOffset().isPresent()) {
+      throw new IllegalArgumentException("SOBR DestinationOffset is not presented.");
     }
+
+    long sobrDestinationOffset = partitionConsumptionState.getOffsetRecord().getStartOfBufferReplayDestinationOffset().get();
+    long lag = (sourceTopicMaxOffset - sobrSourceOffset) - (currentOffset - sobrDestinationOffset);
+
+    if (shouldLogLag) {
+      logger.info(String.format("%s partition %d real-time buffer lag offset is: " + "(Source Max [%d] - SOBR Source [%d]) - (Dest Current [%d] - SOBR Dest [%d]) = Lag [%d]",
+          consumerTaskId, partition, sourceTopicMaxOffset, sobrSourceOffset, currentOffset, sobrDestinationOffset, lag));
+    }
+    return lag;
   }
 
   @Override

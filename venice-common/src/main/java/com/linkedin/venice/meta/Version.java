@@ -93,8 +93,6 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
 
   void setPushStreamSourceAddress(String address);
 
-  boolean isBufferReplayEnabledForHybrid();
-
   void setBufferReplayEnabledForHybrid(boolean bufferReplayEnabledForHybrid);
 
   boolean isChunkingEnabled();

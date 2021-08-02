@@ -243,13 +243,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final IncrementalPushPolicy incrementalPushPolicy;
 
   protected final boolean readOnlyForBatchOnlyStoreEnabled;
-
-  /**
-   * When buffer replay is disabled, {@link #measureHybridOffsetLag(PartitionConsumptionState, boolean)}
-   * won't consider the real-time topic offset.
-   */
-  protected final boolean bufferReplayEnabledForHybrid;
-
   protected final VeniceServerConfig serverConfig;
 
   /** Used for reporting error when the {@link #partitionConsumptionStateMap} is empty */
@@ -403,7 +396,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       VeniceStoreConfig storeConfig,
       DiskUsage diskUsage,
       RocksDBMemoryStats rocksDBMemoryStats,
-      boolean bufferReplayEnabledForHybrid,
       AggKafkaConsumerService kafkaConsumerService,
       VeniceServerConfig serverConfig,
       int errorPartitionId,
@@ -471,8 +463,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     );
 
     this.readOnlyForBatchOnlyStoreEnabled = storeConfig.isReadOnlyForBatchOnlyStoreEnabled();
-
-    this.bufferReplayEnabledForHybrid = bufferReplayEnabledForHybrid;
 
     this.serverConfig = serverConfig;
 
@@ -831,7 +821,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
 
     if (lagIsAcceptable) {
-      if (hybridStoreConfig.isPresent() && bufferReplayEnabledForHybrid && amplificationFactor != 1) {
+      if (hybridStoreConfig.isPresent() && amplificationFactor != 1) {
         // mark all sub-partitions in this user-partition to avoid duplicate calculations
         for (int subPartition : PartitionUtils
             .getSubPartitions(partitionConsumptionState.getUserPartition(), amplificationFactor)) {

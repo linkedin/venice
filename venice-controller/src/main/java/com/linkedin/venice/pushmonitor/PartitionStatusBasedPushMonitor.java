@@ -20,11 +20,11 @@ import java.util.Optional;
 public class PartitionStatusBasedPushMonitor extends AbstractPushMonitor {
   public PartitionStatusBasedPushMonitor(String clusterName, OfflinePushAccessor offlinePushAccessor,
       StoreCleaner storeCleaner, ReadWriteStoreRepository metadataRepository, RoutingDataRepository routingDataRepository,
-      AggPushHealthStats aggPushHealthStats, boolean skipBufferReplayForHybrid, Optional<TopicReplicator> topicReplicator,
+      AggPushHealthStats aggPushHealthStats, Optional<TopicReplicator> topicReplicator,
       MetadataStoreWriter metadataStoreWriter, ClusterLockManager clusterLockManager, String aggregateRealTimeSourceKafkaUrl,
       List<String> childDataCenterKafkaUrls) {
     super(clusterName, offlinePushAccessor, storeCleaner, metadataRepository, routingDataRepository, aggPushHealthStats,
-        skipBufferReplayForHybrid, topicReplicator, metadataStoreWriter, clusterLockManager, aggregateRealTimeSourceKafkaUrl,
+        topicReplicator, metadataStoreWriter, clusterLockManager, aggregateRealTimeSourceKafkaUrl,
         childDataCenterKafkaUrls);
   }
 

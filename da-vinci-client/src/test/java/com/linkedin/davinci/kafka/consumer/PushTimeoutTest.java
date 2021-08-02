@@ -90,7 +90,7 @@ public class PushTimeoutTest {
         mock(TopicManagerRepository.class), mock(AggStoreIngestionStats.class), mock(AggVersionedDIVStats.class),
         mock(AggVersionedStorageIngestionStats.class), mock(StoreBufferService.class), mock(BooleanSupplier.class),
         Optional.empty(), false, IncrementalPushPolicy.PUSH_TO_VERSION_TOPIC, mockVeniceStoreConfig, mock(DiskUsage.class),
-        mock(RocksDBMemoryStats.class), true, mock(AggKafkaConsumerService.class), mockVeniceServerConfig,
+        mock(RocksDBMemoryStats.class), mock(AggKafkaConsumerService.class), mockVeniceServerConfig,
         false, null, 0, mock(ExecutorService.class), 0,
         mock(InternalAvroSpecificSerializer.class), false, mock(VenicePartitioner.class), 1, false, 1,
         mock(StorageEngineBackedCompressorFactory.class), Optional.empty());
@@ -175,7 +175,7 @@ public class PushTimeoutTest {
         mock(TopicManagerRepository.class), mock(AggStoreIngestionStats.class), mock(AggVersionedDIVStats.class),
         mock(AggVersionedStorageIngestionStats.class), mock(StoreBufferService.class), () -> true,
         Optional.of(hybridStoreConfig), false, IncrementalPushPolicy.PUSH_TO_VERSION_TOPIC, mockVeniceStoreConfig, mock(DiskUsage.class),
-        mock(RocksDBMemoryStats.class), true, mock(AggKafkaConsumerService.class), mockVeniceServerConfig,
+        mock(RocksDBMemoryStats.class), mock(AggKafkaConsumerService.class), mockVeniceServerConfig,
         false, null, 0, mock(ExecutorService.class), 0,
         mock(InternalAvroSpecificSerializer.class), false, mock(VenicePartitioner.class), 1, false, 1,
         mock(StorageEngineBackedCompressorFactory.class), Optional.empty());
