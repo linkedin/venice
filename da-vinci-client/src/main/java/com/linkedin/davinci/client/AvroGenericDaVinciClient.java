@@ -61,6 +61,7 @@ import org.apache.log4j.Logger;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.*;
 import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.client.store.ClientFactory.*;
+import static org.apache.avro.Schema.Type.*;
 
 
 public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, AvroGenericReadComputeStoreClient<K,V> {
@@ -467,13 +468,18 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
   }
 
   @Override
-  public void computeWithKeyPrefixFilter(byte[] prefixBytes, ComputeRequestWrapper computeRequestWrapper, StreamingCallback<K, GenericRecord> callback) {
+  public void computeWithKeyPrefixFilter(byte[] prefixBytes, ComputeRequestWrapper computeRequestWrapper, StreamingCallback<GenericRecord, GenericRecord> callback) {
     throwIfNotReady();
     try(ReferenceCounted<VersionBackend> versionRef = storeBackend.getCurrentVersion()){
       VersionBackend versionBackend = versionRef.get();
       if (null == versionBackend) {
         storeBackend.getStats().recordBadRequest();
         callback.onCompletion(Optional.of(new VeniceClientException("Da Vinci client is not subscribed, storeName=" + getStoreName())));
+        return;
+      }
+
+      if (RECORD != getKeySchema().getType()){
+        callback.onCompletion(Optional.of(new VeniceClientException("Key schema must be of type Record to execute with a filter on key fields")));
         return;
       }
 
@@ -489,7 +495,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
         if (isPartitionReadyToServe(versionBackend, currPartition)) {
           try {
             versionBackend.computeWithKeyPrefixFilter(prefixBytes, currPartition, callback, computeRequestWrapper,
-                getGenericRecordChunkingAdapter(), keyDeserializer, reuseValueRecord, reusableObjects.binaryDecoder,
+                getGenericRecordChunkingAdapter(), (RecordDeserializer<GenericRecord>) keyDeserializer, reuseValueRecord, reusableObjects.binaryDecoder,
                 globalContext, computeResultSchema);
           } catch (VeniceException e) {
             callback.onCompletion(Optional.of(e));

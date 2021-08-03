@@ -4,6 +4,7 @@ import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.listener.response.ReadResponse;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.record.ValueRecord;
+import com.linkedin.venice.client.store.streaming.StreamingCallback;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -16,6 +17,7 @@ import com.linkedin.venice.utils.LatencyUtils;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
+import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.BinaryDecoder;
 import org.apache.avro.io.DecoderFactory;
 
@@ -191,6 +193,37 @@ public abstract class AbstractAvroChunkingAdapter<T> implements ChunkingAdapter<
       subPartition = userPartition * amplificationFactor + subPartitionOffset;
     }
     return get(storeName, store, subPartition, key, reusedRawValue, reusedValue, reusedDecoder, isChunked, compressionStrategy, fastAvroEnabled, schemaRepo, response, compressorFactory);
+  }
+
+  public void getByPartialKey(
+      String storeName,
+      AbstractStorageEngine store,
+      int userPartition,
+      PartitionerConfig partitionerConfig,
+      byte[] keyPrefixBytes,
+      T reusedValue,
+      BinaryDecoder reusedDecoder,
+      RecordDeserializer<GenericRecord> keyRecordDeserializer,
+      boolean isChunked,
+      CompressionStrategy compressionStrategy,
+      boolean fastAvroEnabled,
+      ReadOnlySchemaRepository schemaRepo,
+      ReadResponse response,
+      StorageEngineBackedCompressorFactory compressorFactory,
+      StreamingCallback<GenericRecord, GenericRecord> computingCallback) {
+
+    if (isChunked) {
+      throw new VeniceException("Filtering by key prefix is not supported when chunking is enabled.");
+    }
+
+    int subPartition;
+    int amplificationFactor = partitionerConfig == null ? 1 : partitionerConfig.getAmplificationFactor();
+
+    int subPartitionCount = (userPartition + 1) * amplificationFactor;
+    for (subPartition = userPartition * amplificationFactor; subPartition < subPartitionCount; subPartition++){
+      ChunkingUtils.getFromStorageByPartialKey(this, store, subPartition, keyPrefixBytes, reusedValue, keyRecordDeserializer,
+          reusedDecoder, response, compressionStrategy, fastAvroEnabled, schemaRepo, storeName, compressorFactory, computingCallback);
+    }
   }
 
   /**

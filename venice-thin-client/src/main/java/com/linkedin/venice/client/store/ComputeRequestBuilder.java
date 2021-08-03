@@ -105,7 +105,7 @@ public interface ComputeRequestBuilder<K> {
    * @throws VeniceClientException
    */
   @Experimental
-  default void executeWithFilter(Predicate predicate, StreamingCallback<K, GenericRecord> callback) throws VeniceClientException {
+  default void executeWithFilter(Predicate predicate, StreamingCallback<GenericRecord, GenericRecord> callback) throws VeniceClientException {
     throw new VeniceClientException("Please use AvroGenericStoreClient#compute() to generate a Compute Request Builder");
   }
 }
