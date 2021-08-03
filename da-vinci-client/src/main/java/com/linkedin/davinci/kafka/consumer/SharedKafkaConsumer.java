@@ -5,6 +5,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -123,17 +124,21 @@ public class SharedKafkaConsumer implements KafkaConsumerWrapper {
    * If {@param isClosed} is true, this function will update the {@link #currentAssignment} to be empty.
    */
   private void updateCurrentAssignment(boolean isClosed) {
+    long updateCurrentAssignmentStartTime = System.currentTimeMillis();
     if (isClosed) {
       this.currentAssignment = Collections.emptySet();
     } else {
       this.currentAssignment = this.delegate.getAssignment();
     }
     kafkaConsumerService.setPartitionsNumSubscribed(this, this.currentAssignment.size());
+    kafkaConsumerService.getStats().recordUpdateCurrentAssignmentLatency(LatencyUtils.getElapsedTimeInMs(updateCurrentAssignmentStartTime));
   }
 
   @Override
   public synchronized void subscribe(String topic, int partition, long lastReadOffset) {
+    long delegateSubscribeStartTime = System.currentTimeMillis();
     this.delegate.subscribe(topic, partition, lastReadOffset);
+    kafkaConsumerService.getStats().recordDelegateSubscribeLatency(LatencyUtils.getElapsedTimeInMs(delegateSubscribeStartTime));
     updateCurrentAssignment(false);
   }
 

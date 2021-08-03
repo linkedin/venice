@@ -13,7 +13,9 @@ import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricConfig;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
+import io.tehuti.metrics.stats.Avg;
 import io.tehuti.metrics.stats.Count;
+import io.tehuti.metrics.stats.Max;
 import io.tehuti.metrics.stats.Rate;
 import java.util.function.Supplier;
 import org.apache.log4j.Logger;
@@ -40,6 +42,11 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
   private static final String LEADER_RECORDS_PRODUCED_METRIC_NAME = "leader_records_produced";
   private static final String LEADER_BYTES_PRODUCED_METRIC_NAME = "leader_bytes_produced";
   private static final String STALE_PARTITIONS_WITHOUT_INGESTION_TASK_METRIC_NAME = "stale_partitions_without_ingestion_task";
+  private static final String SUBSCRIBE_ACTION_PREP_LATENCY = "subscribe_action_prep_latency";
+  private static final String SUBSCRIBE_ACTION_GET_CONSUMER_LATENCY = "subscribe_action_get_consumer_latency";
+  private static final String SUBSCRIBE_SUBSCRIBE_ACTION_CONSUMER_SUBSCRIBE_LATENCY = "subscribe_action_consumer_subscribe_latency";
+  private static final String MAX = "_max";
+  private static final String AVG = "_avg";
 
   public AggVersionedStorageIngestionStats(MetricsRepository metricsRepository, ReadOnlyStoreRepository storeRepository) {
     super(metricsRepository, storeRepository, StorageIngestionStats::new, StorageIngestionStatsReporter::new);
@@ -141,6 +148,21 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
     Utils.computeIfNotNull(getStats(storeName, version), StorageIngestionStats::recordStalePartitionsWithoutIngestionTask);
   }
 
+  public void recordSubscribePrepLatency(String storeName, int version, double value) {
+    Utils.computeIfNotNull(getTotalStats(storeName), stat -> stat.recordSubscribePrepLatency(value));
+    Utils.computeIfNotNull(getStats(storeName, version), stat -> stat.recordSubscribePrepLatency(value));
+  }
+
+  public void recordSubscribeGetConsumerLatency(String storeName, int version, double value) {
+    Utils.computeIfNotNull(getTotalStats(storeName), stat -> stat.recordSubscribeGetConsumerLatency(value));
+    Utils.computeIfNotNull(getStats(storeName, version), stat -> stat.recordSubscribeGetConsumerLatency(value));
+  }
+
+  public void recordSubscribeConsumerSubscribeLatency(String storeName, int version, double value) {
+    Utils.computeIfNotNull(getTotalStats(storeName), stat -> stat.recordSubscribeConsumerSubscribeLatency(value));
+    Utils.computeIfNotNull(getStats(storeName, version), stat -> stat.recordSubscribeConsumerSubscribeLatency(value));
+  }
+
   static class StorageIngestionStats {
     private static final MetricConfig METRIC_CONFIG = new MetricConfig();
     private final MetricsRepository localMetricRepository = new MetricsRepository(METRIC_CONFIG);
@@ -159,6 +181,12 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
     private final Rate leaderRecordsProducedRate;
     private final Rate leaderBytesProducedRate;
     private final Count stalePartitionsWithoutIngestionTaskCount;
+    private final Avg subscribePrepLatencyAvg;
+    private final Avg subscribeGetConsumerLatencyAvg;
+    private final Avg subscribeConsumerSubscribeLatencyAvg;
+    private final Max subscribePrepLatencyMax;
+    private final Max subscribeGetConsumerLatencyMax;
+    private final Max subscribeConsumerSubscribeLatencyMax;
 
     private final Sensor recordsConsumedSensor;
     private final Sensor bytesConsumedSensor;
@@ -169,6 +197,9 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
     private final Sensor leaderRecordsProducedSensor;
     private final Sensor leaderBytesProducedSensor;
     private final Sensor stalePartitionsWithoutIngestionTaskSensor;
+    private final Sensor subscribePrepLatencySensor;
+    private final Sensor subscribeGetConsumerLatencySensor;
+    private final Sensor subscribeConsumerSubscribeLatencySensor;
 
     public StorageIngestionStats()  {
       recordsConsumedRate = new Rate();
@@ -208,6 +239,31 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
           STALE_PARTITIONS_WITHOUT_INGESTION_TASK_METRIC_NAME);
       stalePartitionsWithoutIngestionTaskSensor.add(STALE_PARTITIONS_WITHOUT_INGESTION_TASK_METRIC_NAME
           + stalePartitionsWithoutIngestionTaskCount.getClass().getSimpleName(), stalePartitionsWithoutIngestionTaskCount);
+
+      subscribePrepLatencyAvg = new Avg();
+      subscribePrepLatencyMax = new Max();
+      subscribePrepLatencySensor = localMetricRepository.sensor(SUBSCRIBE_ACTION_PREP_LATENCY);
+      subscribePrepLatencySensor.add(SUBSCRIBE_ACTION_PREP_LATENCY
+          + subscribePrepLatencyMax.getClass().getSimpleName(), subscribePrepLatencyMax);
+      subscribePrepLatencySensor.add(SUBSCRIBE_ACTION_PREP_LATENCY
+          + subscribePrepLatencyAvg,getClass().getSimpleName(), subscribePrepLatencyAvg);
+
+      subscribeGetConsumerLatencyAvg = new Avg();
+      subscribeGetConsumerLatencyMax = new Max();
+      subscribeGetConsumerLatencySensor = localMetricRepository.sensor(SUBSCRIBE_ACTION_GET_CONSUMER_LATENCY);
+      subscribeGetConsumerLatencySensor.add(SUBSCRIBE_ACTION_GET_CONSUMER_LATENCY
+          + subscribeGetConsumerLatencyMax.getClass().getSimpleName(), subscribeGetConsumerLatencyMax);
+      subscribeGetConsumerLatencySensor.add(SUBSCRIBE_ACTION_GET_CONSUMER_LATENCY
+          + subscribeGetConsumerLatencyAvg.getClass().getSimpleName(), subscribeGetConsumerLatencyAvg);
+
+      subscribeConsumerSubscribeLatencyAvg = new Avg();
+      subscribeConsumerSubscribeLatencyMax = new Max();
+      subscribeConsumerSubscribeLatencySensor = localMetricRepository.sensor(
+          SUBSCRIBE_SUBSCRIBE_ACTION_CONSUMER_SUBSCRIBE_LATENCY);
+      subscribeConsumerSubscribeLatencySensor.add(SUBSCRIBE_SUBSCRIBE_ACTION_CONSUMER_SUBSCRIBE_LATENCY
+          + subscribeConsumerSubscribeLatencyMax.getClass().getSimpleName(), subscribeConsumerSubscribeLatencyMax);
+      subscribeConsumerSubscribeLatencySensor.add(SUBSCRIBE_SUBSCRIBE_ACTION_CONSUMER_SUBSCRIBE_LATENCY
+          + subscribeConsumerSubscribeLatencyAvg.getClass().getSimpleName(), subscribeConsumerSubscribeLatencyAvg);
     }
 
     public void setIngestionTask(StoreIngestionTask ingestionTask) { this.ingestionTask = ingestionTask; }
@@ -318,8 +374,43 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
       return stalePartitionsWithoutIngestionTaskCount.measure(METRIC_CONFIG, System.currentTimeMillis());
     }
 
+    public double getSubscribePrepLatencyAvg() {
+      return subscribePrepLatencyAvg.measure(METRIC_CONFIG, System.currentTimeMillis());
+    }
+    public double getSubscribePrepLatencyMax() {
+      return subscribePrepLatencyMax.measure(METRIC_CONFIG, System.currentTimeMillis());
+    }
+
+    public double getSubscribeGetConsumerLatencyAvg() {
+      return subscribeGetConsumerLatencyAvg.measure(METRIC_CONFIG, System.currentTimeMillis());
+    }
+
+    public double getSubscribeGetConsumerLatencyMax() {
+      return subscribeGetConsumerLatencyMax.measure(METRIC_CONFIG, System.currentTimeMillis());
+    }
+
+    public double getSubscribeConsumerSubscribeLatencyAvg() {
+      return subscribeConsumerSubscribeLatencyAvg.measure(METRIC_CONFIG, System.currentTimeMillis());
+    }
+
+    public double getSubscribeConsumerSubscribeLatencyMax() {
+      return subscribeConsumerSubscribeLatencyMax.measure(METRIC_CONFIG, System.currentTimeMillis());
+    }
+
     public void recordStalePartitionsWithoutIngestionTask() {
       stalePartitionsWithoutIngestionTaskSensor.record();
+    }
+
+    public void recordSubscribePrepLatency(double value) {
+      subscribePrepLatencySensor.record(value);
+    }
+
+    public void recordSubscribeGetConsumerLatency(double value) {
+      subscribeGetConsumerLatencySensor.record(value);
+    }
+
+    public void recordSubscribeConsumerSubscribeLatency(double value) {
+      subscribeConsumerSubscribeLatencySensor.record(value);
     }
 
     public double getRecordsConsumed() {
@@ -445,6 +536,18 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
           new IngestionStatsGauge(this, () -> getStats().getLeaderBytesProduced(), 0));
       registerSensor(STALE_PARTITIONS_WITHOUT_INGESTION_TASK_METRIC_NAME,
           new IngestionStatsGauge(this, () -> getStats().getStalePartitionsWithoutIngestionTaskCount(), 0));
+      registerSensor(SUBSCRIBE_ACTION_PREP_LATENCY + AVG,
+          new IngestionStatsGauge(this, () -> getStats().getSubscribePrepLatencyAvg(), 0));
+      registerSensor(SUBSCRIBE_ACTION_PREP_LATENCY + MAX,
+          new IngestionStatsGauge(this, () -> getStats().getSubscribePrepLatencyMax(), 0));
+      registerSensor(SUBSCRIBE_ACTION_GET_CONSUMER_LATENCY + AVG,
+          new IngestionStatsGauge(this, () -> getStats().getSubscribeGetConsumerLatencyAvg(), 0));
+      registerSensor(SUBSCRIBE_ACTION_GET_CONSUMER_LATENCY + MAX,
+          new IngestionStatsGauge(this, () -> getStats().getSubscribeGetConsumerLatencyMax(), 0));
+      registerSensor(SUBSCRIBE_SUBSCRIBE_ACTION_CONSUMER_SUBSCRIBE_LATENCY + AVG,
+          new IngestionStatsGauge(this, () -> getStats().getSubscribeConsumerSubscribeLatencyAvg(), 0));
+      registerSensor(SUBSCRIBE_SUBSCRIBE_ACTION_CONSUMER_SUBSCRIBE_LATENCY + MAX,
+          new IngestionStatsGauge(this, () -> getStats().getSubscribeConsumerSubscribeLatencyMax(), 0));
     }
 
     // Only register these stats if the store is hybrid.
