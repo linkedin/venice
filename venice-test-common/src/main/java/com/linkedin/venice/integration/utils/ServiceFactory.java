@@ -212,10 +212,9 @@ public class ServiceFactory {
       properties.put(TopicReplicator.TOPIC_REPLICATOR_CONFIG_PREFIX + "brooklin.application.id", TestUtils.getUniqueString("venice"));
 
     }
-    VeniceProperties extraProperties = new VeniceProperties(properties);
     return getStatefulService(VeniceControllerWrapper.SERVICE_NAME,
         VeniceControllerWrapper.generateService(clusterNames, kafkaBrokerWrapper.getZkAddress(), kafkaBrokerWrapper, false, replicationFactor, partitionSize,
-            delayToRebalanceMS, minActiveReplica, null, extraProperties, clusterToD2, sslToKafka, d2Enabled));
+            delayToRebalanceMS, minActiveReplica, null, properties, clusterToD2, sslToKafka, d2Enabled));
   }
 
   /**
@@ -259,12 +258,11 @@ public class ServiceFactory {
      */
     Properties props = properties.toProperties();
     props.setProperty(LOCAL_REGION_NAME, "parent");
-    final VeniceProperties finalProperties = new VeniceProperties(props);
     return getStatefulService(
         VeniceControllerWrapper.SERVICE_NAME,
         VeniceControllerWrapper.generateService(clusterNames, zkAddress, kafkaBrokerWrapper, true, replicationFactor,
             DEFAULT_PARTITION_SIZE_BYTES, DEFAULT_DELAYED_TO_REBALANCE_MS, replicationFactor > 1 ? replicationFactor - 1: replicationFactor,
-            childControllers, finalProperties, clusterToD2, sslToKafka, (clusterToD2 != null), authorizerService));
+            childControllers, props, clusterToD2, sslToKafka, (clusterToD2 != null), authorizerService));
   }
 
   /**

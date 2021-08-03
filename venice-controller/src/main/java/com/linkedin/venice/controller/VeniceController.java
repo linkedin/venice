@@ -5,10 +5,13 @@ import com.linkedin.d2.server.factory.D2Server;
 import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.authorization.AuthorizerService;
+import com.linkedin.venice.client.schema.SchemaReader;
+import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.controller.kafka.TopicCleanupService;
 import com.linkedin.venice.controller.kafka.TopicCleanupServiceForParentController;
 import com.linkedin.venice.controller.server.AdminSparkServer;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.stats.KafkaClientStats;
 import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.utils.PropertyBuilder;
@@ -20,6 +23,8 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import org.apache.log4j.Logger;
+
+import static com.linkedin.venice.client.store.ClientFactory.*;
 
 
 /**
@@ -43,7 +48,7 @@ public class VeniceController {
   private final Optional<DynamicAccessController> accessController;
   private final Optional<AuthorizerService> authorizerService;
   private final Optional<D2Client> d2Client;
-
+  private final Optional<ClientConfig> routerClientConfig;
   private final static String CONTROLLER_SERVICE_NAME = "venice-controller";
 
   // This constructor is being used in local mode
@@ -53,7 +58,7 @@ public class VeniceController {
 
   // This constructor is being used in integration test
   public VeniceController(List<VeniceProperties> propertiesList, List<D2Server> d2ServerList, Optional<AuthorizerService> authorizerService, Optional<D2Client> d2Client) {
-    this(propertiesList, TehutiUtils.getMetricsRepository(CONTROLLER_SERVICE_NAME), d2ServerList, Optional.empty(), authorizerService, d2Client);
+    this(propertiesList, TehutiUtils.getMetricsRepository(CONTROLLER_SERVICE_NAME), d2ServerList, Optional.empty(), authorizerService, d2Client, Optional.empty());
   }
 
   public VeniceController(VeniceProperties props, MetricsRepository metricsRepository, List<D2Server> d2ServerList,
@@ -64,14 +69,14 @@ public class VeniceController {
 
   public VeniceController(VeniceProperties props, MetricsRepository metricsRepository, List<D2Server> d2ServerList,
       Optional<DynamicAccessController> accessController, Optional<AuthorizerService> authorizerService) {
-    this(props, metricsRepository, d2ServerList, accessController, authorizerService, Optional.empty());
+    this(props, metricsRepository, d2ServerList, accessController, authorizerService, Optional.empty(), Optional.empty());
   }
 
   public VeniceController(VeniceProperties props, MetricsRepository metricsRepository, List<D2Server> d2ServerList,
       Optional<DynamicAccessController> accessController, Optional<AuthorizerService> authorizerService,
-      Optional<D2Client> d2Client) {
+      Optional<D2Client> d2Client,  Optional<ClientConfig> routerClientConfig) {
     this(Arrays.asList(new VeniceProperties[]{props}), metricsRepository, d2ServerList, accessController,
-        authorizerService, d2Client);
+        authorizerService, d2Client, routerClientConfig);
   }
 
   public VeniceController(List<VeniceProperties> propertiesList, MetricsRepository metricsRepository,
@@ -81,11 +86,12 @@ public class VeniceController {
 
   public VeniceController(List<VeniceProperties> propertiesList, MetricsRepository metricsRepository, List<D2Server> d2ServerList,
       Optional<DynamicAccessController> accessController, Optional<AuthorizerService> authorizerService) {
-    this(propertiesList, metricsRepository, d2ServerList, accessController, authorizerService, Optional.empty());
+    this(propertiesList, metricsRepository, d2ServerList, accessController, authorizerService, Optional.empty(), Optional.empty());
   }
 
   public VeniceController(List<VeniceProperties> propertiesList, MetricsRepository metricsRepository, List<D2Server> d2ServerList,
-      Optional<DynamicAccessController> accessController, Optional<AuthorizerService> authorizerService, Optional<D2Client> d2Client) {
+      Optional<DynamicAccessController> accessController, Optional<AuthorizerService> authorizerService, Optional<D2Client> d2Client,
+      Optional<ClientConfig> routerClientConfig) {
     this.multiClusterConfigs = new VeniceControllerMultiClusterConfig(propertiesList);
     this.metricsRepository = metricsRepository;
     this.d2ServerList = d2ServerList;
@@ -94,12 +100,15 @@ public class VeniceController {
     this.accessController = accessController;
     this.authorizerService = authorizerService;
     this.d2Client = d2Client;
+    this.routerClientConfig = routerClientConfig;
+
     createServices();
     KafkaClientStats.registerKafkaClientStats(metricsRepository, "KafkaClientStats", Optional.empty());
   }
 
   private void createServices() {
-    controllerService = new VeniceControllerService(multiClusterConfigs, metricsRepository, sslEnabled, multiClusterConfigs.getSslConfig(), accessController, authorizerService, d2Client);
+    controllerService = new VeniceControllerService(multiClusterConfigs, metricsRepository, sslEnabled,
+        multiClusterConfigs.getSslConfig(), accessController, authorizerService, d2Client, routerClientConfig);
     adminServer = new AdminSparkServer(
         multiClusterConfigs.getAdminPort(),
         controllerService.getVeniceHelixAdmin(),
