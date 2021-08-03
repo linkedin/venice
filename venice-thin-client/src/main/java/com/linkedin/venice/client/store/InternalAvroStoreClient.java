@@ -60,8 +60,8 @@ public abstract class InternalAvroStoreClient<K, V> implements AvroGenericReadCo
   }
 
   @Override
-  public void computeWithKeyPrefixFilter(byte[] prefixBytes, ComputeRequestWrapper computeRequestWrapper, StreamingCallback<K,
-      GenericRecord>callback) {
+  public void computeWithKeyPrefixFilter(byte[] prefixBytes, ComputeRequestWrapper computeRequestWrapper, StreamingCallback<GenericRecord,
+      GenericRecord> callback) {
     throw new VeniceClientException("ComputeWithKeyPrefixFilter is not supported by Venice Avro Store Client");
   }
 }

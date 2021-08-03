@@ -62,7 +62,7 @@ public class AvroComputeRequestBuilderV2<K> extends AbstractAvroComputeRequestBu
   }
 
   @Override
-  public void executeWithFilter(Predicate predicate, StreamingCallback<K, GenericRecord> callback) {
+  public void executeWithFilter(Predicate predicate, StreamingCallback<GenericRecord, GenericRecord> callback) {
     throw new VeniceException("ExecuteWithFilter is not supported in V2 compute request.");
   }
 }

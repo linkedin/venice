@@ -1,10 +1,8 @@
 package com.linkedin.davinci;
 
-import com.linkedin.davinci.callback.BytesStreamingCallback;
 import com.linkedin.davinci.config.VeniceStoreConfig;
 import com.linkedin.davinci.storage.chunking.AbstractAvroChunkingAdapter;
 import com.linkedin.davinci.store.AbstractStorageEngine;
-import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.venice.VeniceConstants;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
 import com.linkedin.venice.compute.ComputeRequestWrapper;
@@ -27,6 +25,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
@@ -223,51 +222,50 @@ public class VersionBackend {
         computeRequestWrapper.getComputeRequestVersion(), computeResultSchema);
   }
 
-  public <K> void computeWithKeyPrefixFilter(
+  public void computeWithKeyPrefixFilter(
       byte[] prefixBytes,
       int partition,
-      StreamingCallback<K, GenericRecord> callback,
+      StreamingCallback<GenericRecord, GenericRecord> callback,
       ComputeRequestWrapper computeRequestWrapper,
       AbstractAvroChunkingAdapter<GenericRecord> chunkingAdaptor,
-      RecordDeserializer<K> keyRecordDeserializer,
+      RecordDeserializer<GenericRecord> keyRecordDeserializer,
       GenericRecord reusableValueRecord,
       BinaryDecoder reusableBinaryDecoder,
       Map<String, Object> globalContext,
       Schema computeResultSchema){
 
-    if (version.isChunkingEnabled()){
-      throw new VeniceException("Filtering by key prefix is not supported when chunking is enabled.");
-    }
-
-    AbstractStorageEngine store = getStorageEngineOrThrow();
-
-    BytesStreamingCallback computingCallback = new BytesStreamingCallback() {
-      GenericRecord deserializedValueRecord;
+    StreamingCallback<GenericRecord, GenericRecord> computingCallback = new StreamingCallback<GenericRecord, GenericRecord>() {
       @Override
-      public void onRecordReceived(byte[] key, byte[] value) {
-        K deserializedKey = keyRecordDeserializer.deserialize(key);
-
-        deserializedValueRecord = chunkingAdaptor.constructValue(ValueRecord.parseSchemaId(value), value, value.length,
-            reusableValueRecord, reusableBinaryDecoder, null, version.getCompressionStrategy(), true,
-            backend.getSchemaRepository(), version.getStoreName(), backend.getCompressorFactory(), store.getName());
-
-        GenericRecord computeResult = getResultOfComputeOperations(computeRequestWrapper.getOperations(), deserializedValueRecord, globalContext,
+      public void onRecordReceived(GenericRecord key, GenericRecord value) {
+        GenericRecord computeResult = getResultOfComputeOperations(computeRequestWrapper.getOperations(), value, globalContext,
             computeRequestWrapper.getComputeRequestVersion(), computeResultSchema);
-
-        callback.onRecordReceived(deserializedKey, computeResult);
+        callback.onRecordReceived(key, computeResult);
       }
 
       @Override
-      public void onCompletion() {
-        /**
-         * Nothing to do here. We only invoke {@link StreamingCallback#onCompletion} in
-         * {@link com.linkedin.davinci.client.AvroGenericDaVinciClient#computeWithKeyPrefixFilter} after querying all
-         * partitions.
-         */
+      public void onCompletion(Optional<Exception> exception) {
+        if (exception.isPresent()) {
+          throw new VeniceException(exception.get().getMessage());
+        }
       }
     };
 
-    store.getByKeyPrefix(partition, prefixBytes, computingCallback);
+    chunkingAdaptor.getByPartialKey(
+        version.getStoreName(),
+        getStorageEngineOrThrow(),
+        partition,
+        version.getPartitionerConfig(),
+        prefixBytes,
+        reusableValueRecord,
+        reusableBinaryDecoder,
+        keyRecordDeserializer,
+        version.isChunkingEnabled(),
+        version.getCompressionStrategy(),
+        true,
+        backend.getSchemaRepository(),
+        null,
+        backend.getCompressorFactory(),
+        computingCallback);
   }
 
   private GenericRecord getResultOfComputeOperations(List<ComputeOperation> operations, GenericRecord valueRecord,

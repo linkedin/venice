@@ -55,7 +55,6 @@ public class AvroComputeRequestBuilderV4<K> extends AvroComputeRequestBuilderV3<
     // Generate ComputeRequestWrapper object
     ComputeRequestWrapper computeRequestWrapper = new ComputeRequestWrapper(computeRequestVersion);
     computeRequestWrapper.setResultSchemaStr(resultSchemaStr);
-    computeRequestWrapper.setResultSchemaStr(resultSchemaStr);
     computeRequestWrapper.setOperations(getComputeRequestOperations());
     computeRequestWrapper.setValueSchema(latestValueSchema);
 
@@ -63,7 +62,7 @@ public class AvroComputeRequestBuilderV4<K> extends AvroComputeRequestBuilderV3<
   }
 
   @Override
-  public void executeWithFilter(Predicate requiredPrefixFields, StreamingCallback<K, GenericRecord> callback) {
+  public void executeWithFilter(Predicate requiredPrefixFields, StreamingCallback<GenericRecord, GenericRecord> callback) {
     byte[] prefixBytes = extractKeyPrefixBytesFromPredicate(requiredPrefixFields, storeClient.getKeySchema());
     Pair<Schema,String> resultSchema = getResultSchema();
     ComputeRequestWrapper computeRequestWrapper = generateComputeRequest(resultSchema.getSecond());

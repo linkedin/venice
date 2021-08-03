@@ -1,9 +1,11 @@
 package com.linkedin.davinci.storage.chunking;
 
+import com.linkedin.davinci.callback.BytesStreamingCallback;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.listener.response.ReadResponse;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.record.ValueRecord;
+import com.linkedin.venice.client.store.streaming.StreamingCallback;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.Put;
@@ -11,6 +13,7 @@ import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.serialization.KeyWithChunkingSuffixSerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.ChunkedValueManifestSerializer;
+import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.storage.protocol.ChunkedKeySuffix;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.LatencyUtils;
@@ -108,6 +111,62 @@ public class ChunkingUtils {
         reusedValue, reusedDecoder, compressionStrategy, fastAvroEnabled, schemaRepo, storeName, compressorFactory);
   }
 
+  static <CHUNKS_CONTAINER, VALUE> void getFromStorageByPartialKey(
+      ChunkingAdapter<CHUNKS_CONTAINER, VALUE> adapter,
+      AbstractStorageEngine store,
+      int partition,
+      byte[] keyPrefixBytes,
+      VALUE reusedValue,
+      RecordDeserializer<GenericRecord> keyRecordDeserializer,
+      BinaryDecoder reusedDecoder,
+      ReadResponse response,
+      CompressionStrategy compressionStrategy,
+      boolean fastAvroEnabled,
+      ReadOnlySchemaRepository schemaRepo,
+      String storeName,
+      StorageEngineBackedCompressorFactory compressorFactory,
+      StreamingCallback<GenericRecord, GenericRecord> computingCallback) {
+
+    long databaseLookupStartTimeInNS = (null != response) ? System.nanoTime() : 0;
+
+    BytesStreamingCallback callback = new BytesStreamingCallback() {
+      GenericRecord deserializedValueRecord;
+      @Override
+      public void onRecordReceived(byte[] key, byte[] value) {
+        if (null == key || null == value) {
+          return;
+        }
+
+        int schemaId = ValueRecord.parseSchemaId(value);
+
+        if (schemaId > 0) {
+          // User-defined schema, thus not a chunked value.
+
+          if (null != response) {
+            response.addDatabaseLookupLatency(LatencyUtils.getLatencyInMS(databaseLookupStartTimeInNS));
+          }
+
+          GenericRecord deserializedKey = keyRecordDeserializer.deserialize(key);
+
+          deserializedValueRecord = (GenericRecord) adapter.constructValue(schemaId, value, value.length, reusedValue,
+              reusedDecoder, response, compressionStrategy, fastAvroEnabled, schemaRepo, storeName, compressorFactory, store.getName());
+
+          computingCallback.onRecordReceived(deserializedKey, deserializedValueRecord);
+        } else if (schemaId != AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion()) {
+          throw new VeniceException("Found a record with invalid schema ID: " + schemaId);
+        } else {
+          throw new VeniceException("Filtering by key prefix is not supported when chunking is enabled.");
+        }
+      }
+
+      @Override
+      public void onCompletion() {
+        /* Nothing to do here. */
+      }
+    };
+
+    store.getByKeyPrefix(partition, keyPrefixBytes, callback);
+  }
 
   /**
    * Fetches the value associated with the given key, and potentially re-assembles it, if it is
