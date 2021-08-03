@@ -41,7 +41,6 @@ import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.EndOfIncrementalPush;
 import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
-import com.linkedin.venice.kafka.protocol.LeaderMetadata;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.StartOfBufferReplay;
 import com.linkedin.venice.kafka.protocol.StartOfIncrementalPush;
@@ -1657,8 +1656,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             }
         );
 
+        long consumptionStatePrepTimeStart = System.currentTimeMillis();
         checkConsumptionStateWhenStart(record, newPartitionConsumptionState);
         reportIfCatchUpBaseTopicOffset(newPartitionConsumptionState);
+        versionedStorageIngestionStats.recordSubscribePrepLatency(storeName, versionNumber,
+            LatencyUtils.getElapsedTimeInMs(consumptionStatePrepTimeStart));
         /**
          * If it is already elected to LEADER, we should subscribe to leader topic in the offset record, instead of VT.
          * For now, this will only be triggered by ingestion isolation, as it is passing LEADER state from forked process
@@ -2612,9 +2614,15 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   public abstract void consumerUnSubscribeAllTopics(PartitionConsumptionState partitionConsumptionState);
 
   public void consumerSubscribe(String topic, PartitionConsumptionState partitionConsumptionState, long offset) {
+    long getConsumerTimeStart = System.currentTimeMillis();
     KafkaConsumerWrapper consumer = getConsumer(partitionConsumptionState);
+    versionedStorageIngestionStats.recordSubscribeGetConsumerLatency(storeName, versionNumber,
+        LatencyUtils.getElapsedTimeInMs(getConsumerTimeStart));
     // only the first subPartition takes care of consuming from RT topic to prevent duplicate process of a single record
+    long consumerSubscribeTimeStart = System.currentTimeMillis();
     subscribe(consumer, topic, partitionConsumptionState.getSourceTopicPartition(topic), offset);
+    versionedStorageIngestionStats.recordSubscribeConsumerSubscribeLatency(storeName, versionNumber,
+        LatencyUtils.getElapsedTimeInMs(consumerSubscribeTimeStart));
   }
 
   public void consumerResetOffset(String topic, PartitionConsumptionState partitionConsumptionState) {
