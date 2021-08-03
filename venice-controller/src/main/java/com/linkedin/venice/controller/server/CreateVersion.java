@@ -199,6 +199,28 @@ public class CreateVersion extends AbstractRoute {
             if (pushType.isIncremental() && (isWriteComputeEnabled || store.getIncrementalPushPolicy()
                 .equals(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME))) {
               admin.getRealTimeTopic(clusterName, storeName);
+              int targetVersion;
+              if (admin.isParent()) {
+                Map<String, Integer> regionToCurrentVersions = admin.getCurrentVersionsForMultiColos(clusterName, storeName);
+                if (regionToCurrentVersions == null || regionToCurrentVersions.isEmpty()) {
+                  throw new VeniceException("Failed to get current versions from different regions in parent controller "
+                      + "for store " + storeName + " during incremental push");
+                }
+                targetVersion = regionToCurrentVersions.entrySet().iterator().next().getValue();
+                for (Map.Entry<String, Integer> regionToCurrentVersion : regionToCurrentVersions.entrySet()) {
+                  if (regionToCurrentVersion.getValue() != targetVersion) {
+                    throw new VeniceException("Current version for store " + storeName + " is " + regionToCurrentVersion.getValue()
+                        + " in region " + regionToCurrentVersion.getKey() + ", which is different from other regions. "
+                        + "Failing the incremental push until there is a consistent current version across all regions");
+                  }
+                }
+              } else {
+                targetVersion = store.getCurrentVersion();
+              }
+              /**
+               * Set the store's current version into the response object.
+               */
+              responseObject.setCurrentVersion(targetVersion);
             }
 
             final Optional<X509Certificate> certInRequest = isAclEnabled() ? Optional.of(getCertificate(request)) : Optional.empty();
