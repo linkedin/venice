@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller.kafka.consumer;
 
+import com.linkedin.venice.client.schema.SchemaReader;
 import com.linkedin.venice.controller.VeniceControllerConfig;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controller.stats.AdminConsumptionStats;
@@ -8,6 +9,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
 import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
+import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.DaemonThreadFactory;
@@ -40,8 +42,11 @@ public class AdminConsumerService extends AbstractVeniceService {
   private ThreadFactory threadFactory = new DaemonThreadFactory("AdminTopicConsumer");
   private Thread consumerThread;
 
+  private final Optional<SchemaReader> kafkaMessageEnvelopeSchemaReader;
 
-  public AdminConsumerService(VeniceHelixAdmin admin, VeniceControllerConfig config, MetricsRepository metricsRepository) {
+
+  public AdminConsumerService(VeniceHelixAdmin admin, VeniceControllerConfig config, MetricsRepository metricsRepository,
+      Optional<SchemaReader> kafkaMessageEnvelopeSchemaReader) {
     this.config = config;
     this.admin = admin;
     this.adminTopicMetadataAccessor = new ZkAdminTopicMetadataAccessor(admin.getZkClient(), admin.getAdapterSerializer());
@@ -57,6 +62,7 @@ public class AdminConsumerService extends AbstractVeniceService {
       remoteKafkaServerUrl = Optional.empty();
       remoteKafkaZkAddress = Optional.empty();
     }
+    this.kafkaMessageEnvelopeSchemaReader = kafkaMessageEnvelopeSchemaReader;
   }
 
   @Override
@@ -148,6 +154,9 @@ public class AdminConsumerService extends AbstractVeniceService {
     kafkaConsumerProperties.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, KafkaKeySerializer.class);
     kafkaConsumerProperties.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, KafkaValueSerializer.class);
 
+    if (kafkaMessageEnvelopeSchemaReader.isPresent()) {
+      kafkaConsumerProperties.put(InternalAvroSpecificSerializer.VENICE_SCHEMA_READER_CONFIG, kafkaMessageEnvelopeSchemaReader.get());
+    }
     return consumerFactory.getConsumer(kafkaConsumerProperties);
   }
 

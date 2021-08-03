@@ -1,6 +1,7 @@
 package com.linkedin.venice.integration.utils;
 
 import com.linkedin.venice.authorization.AuthorizerService;
+import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.VeniceController;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
@@ -21,6 +22,7 @@ import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.d2.server.factory.D2Server;
 
 import io.tehuti.metrics.MetricsRepository;
+import java.util.Properties;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.common.protocol.SecurityProtocol;
 import org.apache.log4j.Logger;
@@ -84,7 +86,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
       long rebalanceDelayMs,
       int minActiveReplica,
       VeniceControllerWrapper[] childControllers,
-      VeniceProperties extraProps,
+      Properties extraProperties,
       String clusterToD2,
       boolean sslToKafka,
       boolean d2Enabled,
@@ -95,6 +97,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
       int adminSecurePort = Utils.getFreePort();
       List<VeniceProperties> propertiesList = new ArrayList<>();
 
+      VeniceProperties extraProps = new VeniceProperties(extraProperties);
       for(String clusterName : clusterNames) {
         VeniceProperties clusterProps =
             IntegrationTestUtils.getClusterProps(clusterName, dataDirectory, zkAddress, kafkaBroker, sslToKafka);
@@ -221,7 +224,14 @@ public class VeniceControllerWrapper extends ProcessWrapper {
 
       D2Client d2Client = D2TestUtils.getAndStartD2Client(zkAddress);
       MetricsRepository metricsRepository =  TehutiUtils.getMetricsRepository(CONTROLLER_SERVICE_NAME);
-      VeniceController veniceController = new VeniceController(propertiesList, metricsRepository, d2ServerList, Optional.empty(), authorizerService, Optional.of(d2Client));
+
+      Optional<ClientConfig> consumerClientConfig = Optional.empty();
+      Object clientConfig = extraProperties.get(VeniceServerWrapper.CLIENT_CONFIG_FOR_CONSUMER);
+      if (clientConfig != null && clientConfig instanceof ClientConfig) {
+        consumerClientConfig = Optional.of((ClientConfig) clientConfig);
+      }
+
+      VeniceController veniceController = new VeniceController(propertiesList, metricsRepository, d2ServerList, Optional.empty(), authorizerService, Optional.of(d2Client), consumerClientConfig);
       return new VeniceControllerWrapper(serviceName, dataDirectory, veniceController, adminPort, adminSecurePort, propertiesList, d2ServerList, zkAddress, metricsRepository);
     };
   }
@@ -233,9 +243,9 @@ public class VeniceControllerWrapper extends ProcessWrapper {
   static StatefulServiceProvider<VeniceControllerWrapper> generateService(String[] clusterNames, String zkAddress,
       KafkaBrokerWrapper kafkaBrokerWrapper, boolean isParent, int replicationFactor, int partitionSize,
       long rebalanceDelayMs, int minActiveReplica, VeniceControllerWrapper[] childControllers,
-      VeniceProperties extraProps, String clusterToD2, boolean sslToKafka, boolean d2Enable) {
+      Properties extraProperties, String clusterToD2, boolean sslToKafka, boolean d2Enable) {
     return generateService(clusterNames, zkAddress, kafkaBrokerWrapper, isParent, replicationFactor, partitionSize,
-        rebalanceDelayMs, minActiveReplica, childControllers, extraProps, clusterToD2, sslToKafka, d2Enable,
+        rebalanceDelayMs, minActiveReplica, childControllers, extraProperties, clusterToD2, sslToKafka, d2Enable,
         Optional.empty());
   }
 

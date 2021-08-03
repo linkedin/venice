@@ -38,6 +38,7 @@ public class D2TestUtils {
   public static final String CONTROLLER_CLUSTER_NAME = "VeniceController";
   public static final String CONTROLLER_SERVICE_NAME = "VeniceController";
 
+
   public static void setupD2Config(String zkHosts, boolean https){
     setupD2Config(zkHosts, https, DEFAULT_TEST_CLUSTER_NAME, DEFAULT_TEST_SERVICE_NAME, false);
   }

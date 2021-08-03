@@ -172,6 +172,13 @@ public class VeniceClusterWrapper extends ProcessWrapper {
       String zkAddress = zkServerWrapper.getAddress();
       D2TestUtils.setupD2Config(zkAddress, false, D2TestUtils.CONTROLLER_CLUSTER_NAME, D2TestUtils.CONTROLLER_SERVICE_NAME, false);
       for (int i = 0; i < numberOfControllers; i++) {
+        if (numberOfRouters > 0) {
+          ClientConfig clientConfig = new ClientConfig().setVeniceURL(zkAddress)
+              .setD2ServiceName(D2TestUtils.getD2ServiceName(clusterToD2, clusterName))
+              .setSslEngineComponentFactory(SslUtils.getLocalSslFactory())
+              .setStoreName("dummy");
+          extraProperties.put(CLIENT_CONFIG_FOR_CONSUMER, clientConfig);
+        }
         VeniceControllerWrapper veniceControllerWrapper =
             ServiceFactory.getVeniceController(new String[]{clusterName}, kafkaBrokerWrapper, replicationFactor, partitionSize,
                 rebalanceDelayMs, minActiveReplica, brooklinWrapper, clusterToD2, sslToKafka, true, extraProperties);

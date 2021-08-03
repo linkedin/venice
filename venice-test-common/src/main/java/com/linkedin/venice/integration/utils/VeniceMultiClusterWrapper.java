@@ -1,7 +1,9 @@
 package com.linkedin.venice.integration.utils;
 
 import com.linkedin.venice.ConfigKeys;
+import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -17,6 +19,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.integration.utils.VeniceServerWrapper.*;
 
 
 public class VeniceMultiClusterWrapper extends ProcessWrapper {
@@ -84,6 +87,7 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
       if (coloName != null) {
         controllerProperties.setProperty(LOCAL_REGION_NAME, coloName);
       }
+
       // Setup D2 for controller
       String zkAddress = zkServerWrapper.getAddress();
       D2TestUtils.setupD2Config(zkAddress, false, D2TestUtils.CONTROLLER_CLUSTER_NAME, D2TestUtils.CONTROLLER_SERVICE_NAME, false);

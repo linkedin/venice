@@ -4,17 +4,22 @@ import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.authorization.AuthorizerService;
+import com.linkedin.venice.client.schema.SchemaReader;
+import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.controller.lingeringjob.DefaultLingeringStoreVersionChecker;
 import com.linkedin.venice.controller.lingeringjob.HeartbeatBasedCheckerStats;
 import com.linkedin.venice.controller.lingeringjob.HeartbeatBasedLingeringStoreVersionChecker;
 import com.linkedin.venice.controller.lingeringjob.LingeringStoreVersionChecker;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.service.AbstractVeniceService;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import org.apache.log4j.Logger;
+
+import static com.linkedin.venice.client.store.ClientFactory.*;
 
 
 /**
@@ -29,7 +34,8 @@ public class VeniceControllerService extends AbstractVeniceService {
 
   public VeniceControllerService(VeniceControllerMultiClusterConfig multiClusterConfigs,
       MetricsRepository metricsRepository, boolean sslEnabled, Optional<SSLConfig> sslConfig,
-      Optional<DynamicAccessController> accessController, Optional<AuthorizerService> authorizerService, Optional<D2Client> d2Client) {
+      Optional<DynamicAccessController> accessController, Optional<AuthorizerService> authorizerService, Optional<D2Client> d2Client,
+      Optional<ClientConfig> routerClientConfig) {
     this.mutliClusterConfigs = multiClusterConfigs;
     VeniceHelixAdmin internalAdmin = new VeniceHelixAdmin(multiClusterConfigs, metricsRepository, sslEnabled, sslConfig, accessController, d2Client);
     if (multiClusterConfigs.isParent()) {
@@ -41,11 +47,18 @@ public class VeniceControllerService extends AbstractVeniceService {
       this.admin = internalAdmin;
       logger.info("Controller works as a normal controller.");
     }
+    Optional<SchemaReader> kafkaMessageEnvelopeSchemaReader = Optional.empty();
+    try {
+      kafkaMessageEnvelopeSchemaReader = routerClientConfig.isPresent() ? Optional.of(
+          getSchemaReader(ClientConfig.cloneConfig(routerClientConfig.get()).setStoreName(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getSystemStoreName()))) : Optional.empty();
+    } catch (Exception e) {
+      logger.error("Exception in initializing KME schema reader", e);
+    }
     // The admin consumer needs to use VeniceHelixAdmin to update Zookeeper directly
     consumerServices = new HashMap<>(multiClusterConfigs.getClusters().size());
     for (String cluster : multiClusterConfigs.getClusters()) {
       AdminConsumerService adminConsumerService =
-          new AdminConsumerService(internalAdmin, multiClusterConfigs.getConfigForCluster(cluster), metricsRepository);
+          new AdminConsumerService(internalAdmin, multiClusterConfigs.getConfigForCluster(cluster), metricsRepository, kafkaMessageEnvelopeSchemaReader);
       this.consumerServices.put(cluster, adminConsumerService);
 
       this.admin.setAdminConsumerService(cluster, adminConsumerService);

@@ -158,6 +158,9 @@ public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends SpecificReco
 
     if (configMap.containsKey(VENICE_SCHEMA_READER_CONFIG)) {
       this.schemaReader = (SchemaReader) configMap.get(VENICE_SCHEMA_READER_CONFIG);
+      logger.info("Serializer has schemaReader: " + schemaReader);
+    } else {
+      logger.info("Serializer doesn't have schemaReader");
     }
   }
 
