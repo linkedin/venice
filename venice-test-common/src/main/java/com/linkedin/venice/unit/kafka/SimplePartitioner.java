@@ -1,7 +1,9 @@
 package com.linkedin.venice.unit.kafka;
 
 import com.linkedin.venice.partitioner.VenicePartitioner;
+import com.linkedin.venice.utils.VeniceProperties;
 import java.nio.ByteBuffer;
+import org.apache.avro.Schema;
 
 
 /**
@@ -16,6 +18,18 @@ import java.nio.ByteBuffer;
  * {@link com.linkedin.venice.partitioner.DefaultVenicePartitioner}.
  */
 public class SimplePartitioner extends VenicePartitioner {
+
+  public SimplePartitioner() {
+    super();
+  }
+
+  public SimplePartitioner(VeniceProperties props) {
+    this(props, null);
+  }
+
+  public SimplePartitioner(VeniceProperties props, Schema schema) {
+    super(props, schema);
+  }
 
   private int getPartitionId(byte firstByte, int numPartitions) {
     if (numPartitions <= 0) {

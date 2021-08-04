@@ -480,16 +480,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     if (version == null) {
       throw new VeniceException("Version " + veniceStoreConfig.getStoreName() + " does not exist.");
     }
-    int amplificationFactor;
-    VenicePartitioner partitioner;
-    PartitionerConfig partitionerConfig = version.getPartitionerConfig();
-    if (partitionerConfig == null) {
-      partitioner = new DefaultVenicePartitioner();
-      amplificationFactor = 1;
-    } else {
-      partitioner = PartitionUtils.getVenicePartitioner(partitionerConfig);
-      amplificationFactor = partitionerConfig.getAmplificationFactor();
-    }
 
     BooleanSupplier isVersionCurrent = () -> {
       try {
@@ -501,21 +491,13 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     };
 
     return ingestionTaskFactory.getNewIngestionTask(
-        version.isLeaderFollowerModelEnabled(),
+        store,
+        version,
         getKafkaConsumerProperties(veniceStoreConfig),
         isVersionCurrent,
-        Optional.ofNullable(version.isUseVersionLevelHybridConfig() ? version.getHybridStoreConfig() : store.getHybridStoreConfig()),
-        version.isUseVersionLevelIncrementalPushEnabled() ? version.isIncrementalPushEnabled() : store.isIncrementalPushEnabled(),
-        version.getIncrementalPushPolicy(),
         veniceStoreConfig,
-        version.isNativeReplicationEnabled(),
-        version.getPushStreamSourceAddress(),
         partitionId,
-        store.isWriteComputationEnabled(),
-        partitioner,
-        version.getPartitionCount(),
         isIsolatedIngestion,
-        amplificationFactor,
         compressorFactory,
         cacheBackend);
   }

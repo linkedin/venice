@@ -14,7 +14,7 @@ import org.apache.avro.generic.GenericRecord;
 
 
 /**
- * Utils class that handles operations related to write compute in {@link StoreIngestionTask}.
+ * Utils class that handles operations related to write compute in {@link LeaderFollowerStoreIngestionTask}.
  * TODO: We make a couple of additional copies here. Optimize the process to reduce the footprint.
  */
 public class IngestionTaskWriteComputeAdapter {
@@ -57,8 +57,7 @@ public class IngestionTaskWriteComputeAdapter {
       originalValueSchema = getValueSchema(valueSchemaId);
     }
 
-    GenericRecord writeComputeRecord = getWriteComputeUpdateDeserializer(valueSchemaId, derivedSchemaId)
-        .deserialize(writeComputeBytes);
+    GenericRecord writeComputeRecord = deserializeWriteComputeRecord(writeComputeBytes, valueSchemaId, derivedSchemaId);
     GenericRecord updatedValue = getWriteComputeAdapter(valueSchemaId, derivedSchemaId)
         .updateRecord(originalValue, writeComputeRecord);
 
@@ -68,6 +67,12 @@ public class IngestionTaskWriteComputeAdapter {
     }
 
     return getValueSerializer(originalValueSchema).serialize(updatedValue);
+  }
+
+  public GenericRecord deserializeWriteComputeRecord(ByteBuffer writeComputeBytes, int valueSchemaId,
+      int derivedSchemaId) {
+    return getWriteComputeUpdateDeserializer(valueSchemaId, derivedSchemaId)
+        .deserialize(writeComputeBytes);
   }
 
   private WriteComputeAdapter getWriteComputeAdapter(int valueSchemaId, int derivedSchemaId) {

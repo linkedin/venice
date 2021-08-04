@@ -14,11 +14,10 @@ import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
 import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.TopicManagerRepository;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
-import com.linkedin.venice.meta.HybridStoreConfig;
-import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
-import com.linkedin.venice.partitioner.VenicePartitioner;
+import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.DiskUsage;
@@ -42,26 +41,20 @@ public class StoreIngestionTaskFactory {
   }
 
   public StoreIngestionTask getNewIngestionTask(
-      boolean isLeaderFollowerModelEnabled,
+      Store store,
+      Version version,
       Properties kafkaConsumerProperties,
       BooleanSupplier isCurrentVersion,
-      Optional<HybridStoreConfig> hybridStoreConfig,
-      boolean isIncrementalPushEnabled,
-      IncrementalPushPolicy incrementalPushPolicy,
       VeniceStoreConfig storeConfig,
-      boolean isNativeReplicationEnabled,
-      String nativeReplicationSourceAddress,
       int partitionId,
-      boolean isWriteComputationEnabled,
-      VenicePartitioner venicePartitioner,
-      int storeVersionPartitionCount,
       boolean isIsolatedIngestion,
-      int amplificationFactor,
       StorageEngineBackedCompressorFactory compressorFactory,
       Optional<ObjectCacheBackend> cacheBackend
   ) {
-    if (isLeaderFollowerModelEnabled) {
+    if (version.isLeaderFollowerModelEnabled()) {
       return new LeaderFollowerStoreIngestionTask(
+          store,
+          version,
           builder.veniceWriterFactory,
           builder.kafkaClientFactory,
           kafkaConsumerProperties,
@@ -81,29 +74,22 @@ public class StoreIngestionTaskFactory {
           builder.versionedStorageIngestionStats,
           builder.storeBufferService,
           isCurrentVersion,
-          hybridStoreConfig,
-          isIncrementalPushEnabled,
-          incrementalPushPolicy,
           storeConfig,
           builder.diskUsage,
           builder.rocksDBMemoryStats,
           builder.aggKafkaConsumerService,
           builder.serverConfig,
-          isNativeReplicationEnabled,
-          nativeReplicationSourceAddress,
           partitionId,
           builder.cacheWarmingThreadPool,
           builder.startReportingReadyToServeTimestamp,
           builder.partitionStateSerializer,
-          isWriteComputationEnabled,
-          venicePartitioner,
-          storeVersionPartitionCount,
           isIsolatedIngestion,
-          amplificationFactor,
           compressorFactory,
           cacheBackend);
     } else {
       return new OnlineOfflineStoreIngestionTask(
+          store,
+          version,
           builder.kafkaClientFactory,
           kafkaConsumerProperties,
           builder.storageEngineRepository,
@@ -122,9 +108,6 @@ public class StoreIngestionTaskFactory {
           builder.versionedStorageIngestionStats,
           builder.storeBufferService,
           isCurrentVersion,
-          hybridStoreConfig,
-          isIncrementalPushEnabled,
-          incrementalPushPolicy,
           storeConfig,
           builder.diskUsage,
           builder.rocksDBMemoryStats,
@@ -134,10 +117,7 @@ public class StoreIngestionTaskFactory {
           builder.cacheWarmingThreadPool,
           builder.startReportingReadyToServeTimestamp,
           builder.partitionStateSerializer,
-          venicePartitioner,
-          storeVersionPartitionCount,
           isIsolatedIngestion,
-          amplificationFactor,
           cacheBackend);
     }
   }

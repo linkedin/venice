@@ -365,14 +365,14 @@ public class StoreIngestionTaskTest {
   }
 
   private void runTest(Set<Integer> partitions,
-                       Runnable beforeStartingConsumption,
-                       Runnable assertions,
-                       boolean isLeaderFollowerModelEnabled) throws Exception {
+      Runnable beforeStartingConsumption,
+      Runnable assertions,
+      boolean isLeaderFollowerModelEnabled) throws Exception {
     runTest(new RandomPollStrategy(), partitions, beforeStartingConsumption, assertions, isLeaderFollowerModelEnabled);
   }
 
   private void runTest(PollStrategy pollStrategy, Set<Integer> partitions, Runnable beforeStartingConsumption,
-                       Runnable assertions, boolean isLeaderFollowerModelEnabled) throws Exception {
+      Runnable assertions, boolean isLeaderFollowerModelEnabled) throws Exception {
     runTest(pollStrategy, partitions, beforeStartingConsumption, assertions, this.hybridStoreConfig, Optional.empty(), isLeaderFollowerModelEnabled);
   }
 
@@ -442,17 +442,57 @@ public class StoreIngestionTaskTest {
     doReturn(500L).when(veniceServerConfig).getServerPromotionToLeaderReplicaDelayMs();
     doReturn(inMemoryKafkaBroker.getKafkaBootstrapServer()).when(veniceServerConfig).getKafkaBootstrapServers();
     doReturn(false).when(veniceServerConfig).isHybridQuotaEnabled();
-    Store mockStore = mock(Store.class);
-    Version version = new VersionImpl(storeNameWithoutVersionInfo, 1, "1", PARTITION_COUNT / amplificationFactor);
+
+    int partitionCount = PARTITION_COUNT / amplificationFactor;
+    VenicePartitioner partitioner = getVenicePartitioner(1); // Only get base venice partitioner
     PartitionerConfig partitionerConfig = new PartitionerConfigImpl();
+    partitionerConfig.setPartitionerClass(partitioner.getClass().getName());
     partitionerConfig.setAmplificationFactor(amplificationFactor);
+    boolean isHybrid = hybridStoreConfig.isPresent();
+    HybridStoreConfig hybridSoreConfigValue = null;
+    if (isHybrid) {
+      hybridSoreConfigValue = hybridStoreConfig.get();
+    }
+
+    Store mockStore = mock(Store.class);
+    Version version = new VersionImpl(storeNameWithoutVersionInfo, 1, "1", partitionCount);
+
     version.setPartitionerConfig(partitionerConfig);
-    doReturn(Optional.of(version)).when(mockStore).getVersion(anyInt());
-    doReturn(mockStore).when(mockMetadataRepo).getStoreOrThrow(storeNameWithoutVersionInfo);
-    doReturn(mockStore).when(mockMetadataRepo).getStore(storeNameWithoutVersionInfo);
+    doReturn(partitionerConfig).when(mockStore).getPartitionerConfig();
+
+    version.setLeaderFollowerModelEnabled(isLeaderFollowerModelEnabled);
+    doReturn(isLeaderFollowerModelEnabled).when(mockStore).isLeaderFollowerModelEnabled();
+
+    version.setIncrementalPushEnabled(incrementalPushEnabled);
+    doReturn(incrementalPushEnabled).when(mockStore).isIncrementalPushEnabled();
+
+    version.setIncrementalPushPolicy(IncrementalPushPolicy.PUSH_TO_VERSION_TOPIC);
+    doReturn(IncrementalPushPolicy.PUSH_TO_VERSION_TOPIC).when(mockStore).getIncrementalPushPolicy();
+
+    version.setHybridStoreConfig(hybridSoreConfigValue);
+    doReturn(hybridSoreConfigValue).when(mockStore).getHybridStoreConfig();
+    doReturn(isHybrid).when(mockStore).isHybrid();
+
+    version.setBufferReplayEnabledForHybrid(true);
+
+    version.setNativeReplicationEnabled(false);
+    doReturn(false).when(mockStore).isNativeReplicationEnabled();
+
+    version.setPushStreamSourceAddress("");
+    doReturn("").when(mockStore).getPushStreamSourceAddress();
+
+    doReturn(false).when(mockStore).isWriteComputationEnabled();
+
+    doReturn(partitionCount).when(mockStore).getPartitionCount();
+
     doReturn(false).when(mockStore).isHybridStoreDiskQuotaEnabled();
     doReturn(-1).when(mockStore).getCurrentVersion();
     doReturn(1).when(mockStore).getBootstrapToOnlineTimeoutInHours();
+
+    doReturn(Optional.of(version)).when(mockStore).getVersion(anyInt());
+    doReturn(mockStore).when(mockMetadataRepo).getStoreOrThrow(storeNameWithoutVersionInfo);
+    doReturn(mockStore).when(mockMetadataRepo).getStore(storeNameWithoutVersionInfo);
+
     doReturn(databaseChecksumVerificationEnabled).when(veniceServerConfig).isDatabaseChecksumVerificationEnabled();
     doReturn(new VeniceProperties()).when(veniceServerConfig).getKafkaConsumerConfigsForLocalConsumption();
     doReturn(new VeniceProperties()).when(veniceServerConfig).getKafkaConsumerConfigsForRemoteConsumption();
@@ -488,9 +528,8 @@ public class StoreIngestionTaskTest {
         .setPartitionStateSerializer(partitionStateSerializer)
         .build();
     int leaderSubPartition = PartitionUtils.getLeaderSubPartition(PARTITION_FOO, amplificationFactor);
-    storeIngestionTaskUnderTest = ingestionTaskFactory.getNewIngestionTask(isLeaderFollowerModelEnabled, kafkaProps,
-        isCurrentVersion, hybridStoreConfig, incrementalPushEnabled, IncrementalPushPolicy.PUSH_TO_VERSION_TOPIC, storeConfig,
-        false, "", leaderSubPartition, false, getVenicePartitioner(amplificationFactor), version.getPartitionCount(), false, amplificationFactor,
+    storeIngestionTaskUnderTest = ingestionTaskFactory.getNewIngestionTask(mockStore, version, kafkaProps,
+        isCurrentVersion, storeConfig, leaderSubPartition, false,
         new StorageEngineBackedCompressorFactory(mockStorageMetadataService), Optional.empty());
     doReturn(new DeepCopyStorageEngine(mockAbstractStorageEngine)).when(mockStorageEngineRepository).getLocalStorageEngine(topic);
 
@@ -599,7 +638,7 @@ public class StoreIngestionTaskTest {
             verify(mockAbstractStorageEngine, timeout(100000))
                 .put(targetPartition, putKeyFoo, ByteBuffer.wrap(ValueRecord.create(SCHEMA_ID, putValue).serialize()));
             // Verify StorageEngine#Delete is invoked only once and with appropriate key.
-           verify(mockAbstractStorageEngine, timeout(100000)).delete(targetPartition, deleteKeyFoo);
+            verify(mockAbstractStorageEngine, timeout(100000)).delete(targetPartition, deleteKeyFoo);
           } catch (Exception e) {
             e.printStackTrace();
           }
@@ -697,12 +736,12 @@ public class StoreIngestionTaskTest {
       // Verify that after retrying 3 times, record with 'NON_EXISTING_SCHEMA_ID' was put into BDB.
       verify(mockSchemaRepo, timeout(TEST_TIMEOUT).atLeast(3)).hasValueSchema(storeNameWithoutVersionInfo, NON_EXISTING_SCHEMA_ID);
       verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT)).
-        put(PARTITION_FOO, putKeyFoo, ByteBuffer.wrap(ValueRecord.create(NON_EXISTING_SCHEMA_ID, putValue).serialize()));
+          put(PARTITION_FOO, putKeyFoo, ByteBuffer.wrap(ValueRecord.create(NON_EXISTING_SCHEMA_ID, putValue).serialize()));
 
       //Verify that the following record is consumed well.
       verify(mockSchemaRepo, timeout(TEST_TIMEOUT)).hasValueSchema(storeNameWithoutVersionInfo, EXISTING_SCHEMA_ID);
       verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT))
-        .put(PARTITION_FOO, putKeyFoo, ByteBuffer.wrap(ValueRecord.create(EXISTING_SCHEMA_ID, putValue).serialize()));
+          .put(PARTITION_FOO, putKeyFoo, ByteBuffer.wrap(ValueRecord.create(EXISTING_SCHEMA_ID, putValue).serialize()));
 
       OffsetRecord expected = getOffsetRecord(existingSchemaOffset);
       verify(mockStorageMetadataService, timeout(TEST_TIMEOUT)).put(topic, PARTITION_FOO, expected);
@@ -1095,7 +1134,7 @@ public class StoreIngestionTaskTest {
               args[0].equals(topic)
                   && args[1].equals(PARTITION_BAR)
                   && ((String)args[2]).length() > 0
-          && args[3] instanceof CorruptDataException);
+                  && args[3] instanceof CorruptDataException);
         }
 
       }, isLeaderFollowerModelEnabled);
@@ -1222,7 +1261,7 @@ public class StoreIngestionTaskTest {
           doReturn(Optional.of(new VersionImpl("storeName", 1))).when(mockStore).getVersion(1);
           doReturn(mockStore).when(mockMetadataRepo).getStoreOrThrow(storeNameWithoutVersionInfo);
           doReturn(getOffsetRecord(offset, true)).when(mockStorageMetadataService).getLastOffset(topic, PARTITION_FOO);
-      },
+        },
         () -> {
           verify(mockLogNotifier, timeout(TEST_TIMEOUT)).completed(topic, PARTITION_FOO, offset);
           verify(mockKafkaConsumer).batchUnsubscribe(Collections.singleton(new TopicPartition(topic, PARTITION_FOO)));
