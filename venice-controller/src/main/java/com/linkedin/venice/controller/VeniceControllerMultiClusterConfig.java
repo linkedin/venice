@@ -244,4 +244,8 @@ public class VeniceControllerMultiClusterConfig {
   public String getRegionName() {
     return getCommonConfig().getRegionName();
   }
+
+  public String getEmergencySourceFabric() {
+    return getCommonConfig().getEmergencySourceFabric();
+  }
 }

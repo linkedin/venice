@@ -141,6 +141,9 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
    */
   private final int timestampMetadataVersionId;
 
+  private final String emergencySourceFabric;
+
+
   public VeniceControllerConfig(VeniceProperties props) {
     super(props);
     this.adminPort = props.getInt(ADMIN_PORT);
@@ -292,6 +295,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     this.isAutoMaterializeMetaSystemStoreEnabled = props.getBoolean(CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE, false);
 
     this.timestampMetadataVersionId = props.getInt(TIMESTAMP_METADATA_VERSION_ID, 1);
+    this.emergencySourceFabric = props.getString(EMERGENCY_SOURCE_FABRIC, "");
   }
 
   private void validateActiveActiveConfigs() {
@@ -571,6 +575,10 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   }
 
   public int getTimestampMetadataVersionId() { return timestampMetadataVersionId; }
+
+  public String getEmergencySourceFabric() {
+    return emergencySourceFabric;
+  }
 
   /**
    * The config should follow the format below:
