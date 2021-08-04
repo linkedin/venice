@@ -1,6 +1,5 @@
 package com.linkedin.venice.controller;
 
-import com.linkedin.security.datavault.common.principal.PrincipalBuilder;
 import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.acl.AclException;
 import com.linkedin.venice.acl.DynamicAccessController;
@@ -89,11 +88,11 @@ import com.linkedin.venice.participant.protocol.ParticipantMessageValue;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreRecordDeleter;
 import com.linkedin.venice.schema.DerivedSchemaEntry;
+import com.linkedin.venice.schema.SchemaData;
+import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.TimestampMetadataSchemaAdapter;
 import com.linkedin.venice.schema.TimestampMetadataSchemaEntry;
 import com.linkedin.venice.schema.TimestampMetadataVersionId;
-import com.linkedin.venice.schema.SchemaData;
-import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.status.protocol.BatchJobHeartbeatKey;
@@ -114,7 +113,7 @@ import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
-import java.security.cert.CertificateParsingException;
+import java.security.cert.X509Certificate;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -147,7 +146,6 @@ import org.codehaus.jackson.map.ObjectMapper;
 import org.codehaus.jackson.node.ArrayNode;
 import org.codehaus.jackson.node.JsonNodeFactory;
 import org.codehaus.jackson.node.ObjectNode;
-import java.security.cert.X509Certificate;
 
 import static com.linkedin.venice.VeniceConstants.*;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
@@ -896,6 +894,30 @@ public class VeniceParentHelixAdmin implements Admin {
     return hasAccess;
   }
 
+  private boolean validateAAReplicationEnabledInAllColos(String clusterName, String storeName, String property) {
+    Map<String, ControllerClient> controllerClients = veniceHelixAdmin.getControllerClientMap(clusterName);
+    Store store = veniceHelixAdmin.getStore(clusterName, storeName);
+
+    if (!store.isActiveActiveReplicationEnabled()) {
+      logger.info(property + " specified, yet " + storeName + " store is not enabled for Active/Active in parent colo");
+      return false;
+    }
+    Set<String> colos = controllerClients.keySet();
+    for (String colo : colos) {
+      StoreResponse response = controllerClients.get(colo).getStore(storeName);
+      if (response.isError()) {
+        logger.error("Could not query store from colo: " + colo + " for cluster: " + clusterName + ". " + response.getError());
+        return false;
+      } else {
+        if (!response.getStore().isActiveActiveReplicationEnabled()) {
+          logger.info(property + " specified, yet " + storeName + " store is not enabled for Active/Active in colo: " + colo);
+          return false;
+        }
+      }
+    }
+    return true;
+  }
+
   @Override
   public Version incrementVersionIdempotent(String clusterName, String storeName, String pushJobId,
       int numberOfPartitions, int replicationFactor, Version.PushType pushType, boolean sendStartOfPush,
@@ -903,6 +925,12 @@ public class VeniceParentHelixAdmin implements Admin {
       Optional<X509Certificate> requesterCert, long rewindTimeInSecondsOverride) {
 
     Optional<String> currentPushTopic = getTopicForCurrentPushJob(clusterName, storeName, pushType.isIncremental());
+
+    if (batchStartingFabric.isPresent() && !validateAAReplicationEnabledInAllColos(clusterName, storeName, BATCH_STARTING_FABRIC)) {
+      logger.info("Ignoring config " + BATCH_STARTING_FABRIC + " : " + batchStartingFabric.get() + ", as store " + storeName + " is not set up for Active/Active replication");
+      batchStartingFabric = Optional.empty();
+    }
+
     if (currentPushTopic.isPresent()) {
       int currentPushVersion = Version.parseVersionFromKafkaTopicName(currentPushTopic.get());
       Store store = getStore(clusterName, storeName);
