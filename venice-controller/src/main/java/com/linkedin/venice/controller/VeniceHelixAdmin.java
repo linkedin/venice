@@ -1590,8 +1590,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                              * 1. Cluster level config
                              * 2. Push job config which can identify where the push starts from, which has a higher
                              *    priority than cluster level config
-                             * 3. Store level config which has the highest priority; by default, it's not used unless
-                             *    specified. Store level config has the highest priority because it can be used to fail
+                             * 3. Store level config
+                             * 4. Emergency source fabric config in parent controller config, which has the highest priority;
+                             *    By default, it's not used unless specified. It has the highest priority because it can be used to fail
                              *    over a push.
                              */
                             String sourceFabric = getNativeReplicationSourceFabric(clusterName, store, batchStartingFabric);
@@ -4057,8 +4058,16 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     @Override
     public String getNativeReplicationSourceFabric(String clusterName, Store store, Optional<String> batchStartingFabric) {
-        //Store level source fabric config has higher priority over cluster level source fabric config.
-        String sourceFabric = store.getNativeReplicationSourceFabric();
+        /**
+         * Source fabric selection priority:
+         * 1. Parent controller emergency source fabric config.
+         * 2. Store level source fabric config.
+         * 3. H2V plugin batch starting fabric config.
+         * 4. Cluster level source fabric config.
+         */
+        String sourceFabric = multiClusterConfigs.getEmergencySourceFabric().equals("") ?
+            store.getNativeReplicationSourceFabric() : multiClusterConfigs.getEmergencySourceFabric();
+
         if (batchStartingFabric.isPresent() && (sourceFabric == null || sourceFabric.isEmpty())) {
             sourceFabric = batchStartingFabric.get();
         }

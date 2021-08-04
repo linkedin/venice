@@ -1067,6 +1067,10 @@ public class ConfigKeys {
   public static final String NATIVE_REPLICATION_SOURCE_FABRIC = "native.replication.source.fabric";
 
   /**
+   * The highest priority source fabric selection config, specified in parent controller.
+   */
+  public static final String EMERGENCY_SOURCE_FABRIC = "emergency.source.fabric";
+  /**
    * Only required when controller.parent.mode=true
    * This is a comma-separated whitelist of cluster names used in the keys with the child.cluster.url prefix.
    *
