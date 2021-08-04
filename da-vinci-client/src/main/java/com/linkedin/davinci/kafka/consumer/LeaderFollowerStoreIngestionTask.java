@@ -159,6 +159,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    */
 
   public LeaderFollowerStoreIngestionTask(
+      Store store,
+      Version version,
       VeniceWriterFactory writerFactory,
       KafkaClientFactory consumerFactory,
       Properties kafkaConsumerProperties,
@@ -178,28 +180,21 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       AggVersionedStorageIngestionStats versionedStorageIngestionStats,
       AbstractStoreBufferService storeBufferService,
       BooleanSupplier isCurrentVersion,
-      Optional<HybridStoreConfig> hybridStoreConfig,
-      boolean isIncrementalPushEnabled,
-      IncrementalPushPolicy incrementalPushPolicy,
       VeniceStoreConfig storeConfig,
       DiskUsage diskUsage,
       RocksDBMemoryStats rocksDBMemoryStats,
       AggKafkaConsumerService aggKafkaConsumerService,
       VeniceServerConfig serverConfig,
-      boolean isNativeReplicationEnabled,
-      String nativeReplicationSourceAddress,
       int partitionId,
       ExecutorService cacheWarmingThreadPool,
       long startReportingReadyToServeTimestamp,
       InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer,
-      boolean isWriteComputationEnabled,
-      VenicePartitioner venicePartitioner,
-      int storeVersionPartitionCount,
       boolean isIsolatedIngestion,
-      int amplificationFactor,
       StorageEngineBackedCompressorFactory compressorFactory,
       Optional<ObjectCacheBackend> cacheBackend) {
     super(
+        store,
+        version,
         consumerFactory,
         kafkaConsumerProperties,
         storageEngineRepository,
@@ -218,9 +213,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         versionedStorageIngestionStats,
         storeBufferService,
         isCurrentVersion,
-        hybridStoreConfig,
-        isIncrementalPushEnabled,
-        incrementalPushPolicy,
         storeConfig,
         diskUsage,
         rocksDBMemoryStats,
@@ -230,11 +222,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         cacheWarmingThreadPool,
         startReportingReadyToServeTimestamp,
         partitionStateSerializer,
-        isWriteComputationEnabled,
-        venicePartitioner,
-        storeVersionPartitionCount,
         isIsolatedIngestion,
-        amplificationFactor,
         cacheBackend);
     /**
      * We are going to apply fast leader failover for {@link com.linkedin.venice.common.VeniceSystemStoreType#META_STORE}
@@ -247,8 +235,11 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     } else {
       newLeaderInactiveTime = serverConfig.getServerPromotionToLeaderReplicaDelayMs();
     }
-    this.isNativeReplicationEnabled = isNativeReplicationEnabled;
-    this.nativeReplicationSourceAddress = nativeReplicationSourceAddress;
+
+    this.ingestionTaskWriteComputeAdapter = new IngestionTaskWriteComputeAdapter(storeName, schemaRepository);
+
+    this.isNativeReplicationEnabled = version.isNativeReplicationEnabled();
+    this.nativeReplicationSourceAddress = version.getPushStreamSourceAddress();
 
     this.compressorFactory = compressorFactory;
 
@@ -1069,7 +1060,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
          *
          * 1. Helix rebalances the leader replica of a partition; old leader shuts down,
          * so no one is replicating data from RT topic to VT;
-         * 2. New leader is block while transisting to follower; after consuming the end
+         * 2. New leader is block while transitioning to follower; after consuming the end
          * of VT, the latch releases; new leader replica quickly transits to leader role
          * from Helix's point of view; but actually it's waiting for 5 minutes before switching
          * to RT;
@@ -1198,7 +1189,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    * This function should be called as one of the first steps in processing pipeline for all messages consumed from any kafka topic.
    *
    * The caller {@link StoreIngestionTask#produceToStoreBufferServiceOrKafka(Iterable, boolean)} of this function should
-   * not process this consumerRecord any further if it was produced to kafka (returnd true),
+   * not process this consumerRecord any further if it was produced to kafka (returns true),
    * Otherwise it should continute to process the message as it would.
    *
    * This function assumes {@link #shouldProcessRecord(ConsumerRecord)} has been called which happens in
@@ -1954,11 +1945,11 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         //produce to drainer buffer service for further processing.
         try {
           /**
-           * queue the producedRecord to drainer service as is in case the value was not chnuked.
+           * queue the producedRecord to drainer service as is in case the value was not chunked.
            * Otherwise queue the chunks and manifest individually to drainer service.
            */
           if (chunkedValueManifest == null) {
-            //update the keybytes for the ProducedRecord in case it was changed due to isChunkingEnabled flag in VeniceWriter.
+            //update the keyBytes for the ProducedRecord in case it was changed due to isChunkingEnabled flag in VeniceWriter.
             if (key != null) {
               producedRecord.setKeyBytes(key);
             }

@@ -9,6 +9,8 @@ import org.apache.avro.Schema;
  */
 
 public class TimestampMetadataSchemaAdapter {
+  private static final TimestampMetadataSchemaAdapterV1 V1_REPLICATION_METADATA_SCHEMA_ADAPTER = new TimestampMetadataSchemaAdapterV1();
+
   private TimestampMetadataSchemaAdapter() {}
 
   public static Schema parse(String schemaStr, int version) {
@@ -18,7 +20,7 @@ public class TimestampMetadataSchemaAdapter {
   public static Schema parse(Schema schema, int version) {
     switch (version) {
       case 1:
-        return new TimestampMetadataSchemaAdapterV1().parse(schema);
+        return V1_REPLICATION_METADATA_SCHEMA_ADAPTER.parse(schema);
       default:
         throw new VeniceException("Unknown timestamp metadata version id");
     }

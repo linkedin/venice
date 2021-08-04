@@ -21,11 +21,15 @@ import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.IncrementalPushPolicy;
+import com.linkedin.venice.meta.PartitionerConfig;
+import com.linkedin.venice.meta.PartitionerConfigImpl;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.throttle.EventThrottler;
@@ -83,16 +87,55 @@ public class PushTimeoutTest {
     ExceptionCaptorNotifier exceptionCaptorNotifier = new ExceptionCaptorNotifier();
     Queue<VeniceNotifier> notifiers = new ArrayDeque<>();
     notifiers.add(exceptionCaptorNotifier);
-    LeaderFollowerStoreIngestionTask leaderFollowerStoreIngestionTask = new LeaderFollowerStoreIngestionTask(mock(
+
+    int partitionCount = 1;
+    VenicePartitioner partitioner = new DefaultVenicePartitioner();
+    PartitionerConfig partitionerConfig = new PartitionerConfigImpl();
+    partitionerConfig.setPartitionerClass(partitioner.getClass().getName());
+    partitionerConfig.setAmplificationFactor(1);
+
+    Version version = new VersionImpl(storeName, 1, "1", partitionCount);
+
+    version.setPartitionerConfig(partitionerConfig);
+    doReturn(partitionerConfig).when(mockStore).getPartitionerConfig();
+
+    version.setLeaderFollowerModelEnabled(true);
+    doReturn(true).when(mockStore).isLeaderFollowerModelEnabled();
+
+    version.setIncrementalPushEnabled(false);
+    doReturn(false).when(mockStore).isIncrementalPushEnabled();
+
+    version.setIncrementalPushPolicy(IncrementalPushPolicy.PUSH_TO_VERSION_TOPIC);
+    doReturn(IncrementalPushPolicy.PUSH_TO_VERSION_TOPIC).when(mockStore).getIncrementalPushPolicy();
+
+    version.setHybridStoreConfig(null);
+    doReturn(null).when(mockStore).getHybridStoreConfig();
+    doReturn(false).when(mockStore).isHybrid();
+
+    version.setBufferReplayEnabledForHybrid(true);
+
+    version.setNativeReplicationEnabled(false);
+    doReturn(false).when(mockStore).isNativeReplicationEnabled();
+
+    version.setPushStreamSourceAddress("");
+    doReturn("").when(mockStore).getPushStreamSourceAddress();
+
+    doReturn(false).when(mockStore).isWriteComputationEnabled();
+
+    doReturn(partitionCount).when(mockStore).getPartitionCount();
+
+    doReturn(-1).when(mockStore).getCurrentVersion();
+
+    doReturn(Optional.of(version)).when(mockStore).getVersion(anyInt());
+
+    LeaderFollowerStoreIngestionTask leaderFollowerStoreIngestionTask = new LeaderFollowerStoreIngestionTask(mockStore, version, mock(
         VeniceWriterFactory.class), mockKafkaClientFactory, mockKafkaConsumerProperties, mock(StorageEngineRepository.class),
         mockStorageMetadataService, notifiers, mock(EventThrottler.class), mock(EventThrottler.class), mock(EventThrottler.class),
         mock(EventThrottler.class), mock(ReadOnlySchemaRepository.class), mockReadOnlyStoreRepository, mock(TopicManagerRepository.class),
         mock(TopicManagerRepository.class), mock(AggStoreIngestionStats.class), mock(AggVersionedDIVStats.class),
         mock(AggVersionedStorageIngestionStats.class), mock(StoreBufferService.class), mock(BooleanSupplier.class),
-        Optional.empty(), false, IncrementalPushPolicy.PUSH_TO_VERSION_TOPIC, mockVeniceStoreConfig, mock(DiskUsage.class),
-        mock(RocksDBMemoryStats.class), mock(AggKafkaConsumerService.class), mockVeniceServerConfig,
-        false, null, 0, mock(ExecutorService.class), 0,
-        mock(InternalAvroSpecificSerializer.class), false, mock(VenicePartitioner.class), 1, false, 1,
+        mockVeniceStoreConfig, mock(DiskUsage.class), mock(RocksDBMemoryStats.class), mock(AggKafkaConsumerService.class),
+        mockVeniceServerConfig, 0, mock(ExecutorService.class), 0, mock(InternalAvroSpecificSerializer.class), false,
         mock(StorageEngineBackedCompressorFactory.class), Optional.empty());
     leaderFollowerStoreIngestionTask.subscribePartition(versionTopic, 0);
     leaderFollowerStoreIngestionTask.run();
@@ -168,17 +211,57 @@ public class PushTimeoutTest {
     ExceptionCaptorNotifier exceptionCaptorNotifier = new ExceptionCaptorNotifier();
     Queue<VeniceNotifier> notifiers = new ArrayDeque<>();
     notifiers.add(exceptionCaptorNotifier);
-    LeaderFollowerStoreIngestionTask leaderFollowerStoreIngestionTask = new LeaderFollowerStoreIngestionTask(mock(
+
+    int partitionCount = 1;
+    VenicePartitioner partitioner = new DefaultVenicePartitioner();
+    PartitionerConfig partitionerConfig = new PartitionerConfigImpl();
+    partitionerConfig.setPartitionerClass(partitioner.getClass().getName());
+    partitionerConfig.setAmplificationFactor(1);
+
+    Version version = new VersionImpl(storeName, 1, "1", partitionCount);
+
+    version.setPartitionerConfig(partitionerConfig);
+    doReturn(partitionerConfig).when(mockStore).getPartitionerConfig();
+
+    version.setLeaderFollowerModelEnabled(true);
+    doReturn(true).when(mockStore).isLeaderFollowerModelEnabled();
+
+    version.setIncrementalPushEnabled(false);
+    doReturn(false).when(mockStore).isIncrementalPushEnabled();
+
+    version.setIncrementalPushPolicy(IncrementalPushPolicy.PUSH_TO_VERSION_TOPIC);
+    doReturn(IncrementalPushPolicy.PUSH_TO_VERSION_TOPIC).when(mockStore).getIncrementalPushPolicy();
+
+    version.setHybridStoreConfig(hybridStoreConfig);
+    doReturn(hybridStoreConfig).when(mockStore).getHybridStoreConfig();
+    doReturn(true).when(mockStore).isHybrid();
+
+    version.setBufferReplayEnabledForHybrid(true);
+
+    version.setNativeReplicationEnabled(false);
+    doReturn(false).when(mockStore).isNativeReplicationEnabled();
+
+    version.setPushStreamSourceAddress("");
+    doReturn("").when(mockStore).getPushStreamSourceAddress();
+
+    doReturn(false).when(mockStore).isWriteComputationEnabled();
+
+    doReturn(partitionCount).when(mockStore).getPartitionCount();
+
+    doReturn(-1).when(mockStore).getCurrentVersion();
+
+    doReturn(Optional.of(version)).when(mockStore).getVersion(anyInt());
+
+    LeaderFollowerStoreIngestionTask leaderFollowerStoreIngestionTask = new LeaderFollowerStoreIngestionTask(mockStore, version, mock(
         VeniceWriterFactory.class), mockKafkaClientFactory, mockKafkaConsumerProperties, mock(StorageEngineRepository.class),
         mockStorageMetadataService, notifiers, mock(EventThrottler.class), mock(EventThrottler.class), mock(EventThrottler.class),
         mock(EventThrottler.class), mock(ReadOnlySchemaRepository.class), mockReadOnlyStoreRepository, mockTopicManagerRepository,
         mock(TopicManagerRepository.class), mock(AggStoreIngestionStats.class), mock(AggVersionedDIVStats.class),
         mock(AggVersionedStorageIngestionStats.class), mock(StoreBufferService.class), () -> true,
-        Optional.of(hybridStoreConfig), false, IncrementalPushPolicy.PUSH_TO_VERSION_TOPIC, mockVeniceStoreConfig, mock(DiskUsage.class),
-        mock(RocksDBMemoryStats.class), mock(AggKafkaConsumerService.class), mockVeniceServerConfig,
-        false, null, 0, mock(ExecutorService.class), 0,
-        mock(InternalAvroSpecificSerializer.class), false, mock(VenicePartitioner.class), 1, false, 1,
+        mockVeniceStoreConfig, mock(DiskUsage.class), mock(RocksDBMemoryStats.class), mock(AggKafkaConsumerService.class),
+        mockVeniceServerConfig, 0, mock(ExecutorService.class), 0, mock(InternalAvroSpecificSerializer.class), false,
         mock(StorageEngineBackedCompressorFactory.class), Optional.empty());
+
     leaderFollowerStoreIngestionTask.subscribePartition(versionTopic, 0);
     /**
      * Since the mock consumer would show 0 subscription, the ingestion task will close after a few iteration.

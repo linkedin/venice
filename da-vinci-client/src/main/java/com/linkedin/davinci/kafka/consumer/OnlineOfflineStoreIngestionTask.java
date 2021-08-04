@@ -8,7 +8,6 @@ import com.linkedin.davinci.stats.AggStoreIngestionStats;
 import com.linkedin.davinci.stats.AggVersionedDIVStats;
 import com.linkedin.davinci.stats.AggVersionedStorageIngestionStats;
 import com.linkedin.davinci.stats.RocksDBMemoryStats;
-import com.linkedin.venice.stats.StatsErrorCode;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
@@ -22,13 +21,13 @@ import com.linkedin.venice.kafka.protocol.StartOfBufferReplay;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.message.KafkaKey;
-import com.linkedin.venice.meta.HybridStoreConfig;
-import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
+import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
-import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
+import com.linkedin.venice.stats.StatsErrorCode;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.DiskUsage;
 import java.util.Optional;
@@ -45,6 +44,8 @@ public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
   private static final Logger logger = Logger.getLogger(OnlineOfflineStoreIngestionTask.class);
 
   public OnlineOfflineStoreIngestionTask(
+      Store store,
+      Version version,
       KafkaClientFactory consumerFactory,
       Properties kafkaConsumerProperties,
       StorageEngineRepository storageEngineRepository,
@@ -63,9 +64,6 @@ public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
       AggVersionedStorageIngestionStats versionedStorageIngestionStats,
       AbstractStoreBufferService storeBufferService,
       BooleanSupplier isCurrentVersion,
-      Optional<HybridStoreConfig> hybridStoreConfig,
-      boolean isIncrementalPushEnabled,
-      IncrementalPushPolicy incrementalPushPolicy,
       VeniceStoreConfig storeConfig,
       DiskUsage diskUsage,
       RocksDBMemoryStats rocksDBMemoryStats,
@@ -75,12 +73,11 @@ public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
       ExecutorService cacheWarmingThreadPool,
       long startReportingReadyToServeTimestamp,
       InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer,
-      VenicePartitioner venicePartitioner,
-      int storeVersionPartitionCount,
       boolean isIsolatedIngestion,
-      int amplificationFactor,
       Optional<ObjectCacheBackend> cacheBackend) {
     super(
+        store,
+        version,
         consumerFactory,
         kafkaConsumerProperties,
         storageEngineRepository,
@@ -99,9 +96,6 @@ public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
         versionedStorageIngestionStats,
         storeBufferService,
         isCurrentVersion,
-        hybridStoreConfig,
-        isIncrementalPushEnabled,
-        incrementalPushPolicy,
         storeConfig,
         diskUsage,
         rocksDBMemoryStats,
@@ -111,11 +105,7 @@ public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
         cacheWarmingThreadPool,
         startReportingReadyToServeTimestamp,
         partitionStateSerializer,
-        false,
-        venicePartitioner,
-        storeVersionPartitionCount,
         isIsolatedIngestion,
-        amplificationFactor,
         cacheBackend);
     if (amplificationFactor != 1) {
       throw new VeniceException("amplificationFactor is not supported in Online/Offline state model");

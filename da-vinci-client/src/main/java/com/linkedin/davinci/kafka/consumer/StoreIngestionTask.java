@@ -57,12 +57,14 @@ import com.linkedin.venice.kafka.validation.ProducerTracker;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.IncrementalPushPolicy;
+import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.pushmonitor.SubPartitionStatus;
 import com.linkedin.venice.schema.SchemaEntry;
@@ -369,9 +371,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final AmplificationAdapter amplificationAdapter;
 
   protected final String localKafkaServer;
-  protected int valueSchemaId = -1;
+  private int valueSchemaId = -1;
 
   public StoreIngestionTask(
+      Store store,
+      Version version,
       KafkaClientFactory consumerFactory,
       Properties kafkaConsumerProperties,
       StorageEngineRepository storageEngineRepository,
@@ -390,9 +394,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       AggVersionedStorageIngestionStats versionedStorageIngestionStats,
       AbstractStoreBufferService storeBufferService,
       BooleanSupplier isCurrentVersion,
-      Optional<HybridStoreConfig> hybridStoreConfig,
-      boolean isIncrementalPushEnabled,
-      IncrementalPushPolicy incrementalPushPolicy,
       VeniceStoreConfig storeConfig,
       DiskUsage diskUsage,
       RocksDBMemoryStats rocksDBMemoryStats,
@@ -402,11 +403,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       ExecutorService cacheWarmingThreadPool,
       long startReportingReadyToServeTimestamp,
       InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer,
-      boolean isWriteComputationEnabled,
-      VenicePartitioner venicePartitioner,
-      int storeVersionPartitionCount,
       boolean isIsolatedIngestion,
-      int amplificationFactor,
       Optional<ObjectCacheBackend> cacheBackend) {
     this.readCycleDelayMs = storeConfig.getKafkaReadCycleDelayMs();
     this.emptyPollSleepMs = storeConfig.getKafkaEmptyPollSleepMs();
@@ -448,9 +445,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     this.storeBufferService = storeBufferService;
     this.isCurrentVersion = isCurrentVersion;
-    this.hybridStoreConfig = hybridStoreConfig;
-    this.isIncrementalPushEnabled = isIncrementalPushEnabled;
-    this.incrementalPushPolicy = incrementalPushPolicy;
+    this.hybridStoreConfig = Optional.ofNullable(version.isUseVersionLevelHybridConfig() ? version.getHybridStoreConfig() : store.getHybridStoreConfig());
+    this.isIncrementalPushEnabled = version.isUseVersionLevelIncrementalPushEnabled() ? version.isIncrementalPushEnabled() : store.isIncrementalPushEnabled();
+    this.incrementalPushPolicy = version.getIncrementalPushPolicy();
 
     this.divErrorMetricCallback = Optional.of(e -> versionedDIVStats.recordException(storeName, versionNumber, e));
 
@@ -468,8 +465,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     this.defaultReadyToServeChecker = getDefaultReadyToServeChecker();
 
-    this.ingestionTaskWriteComputeAdapter = new IngestionTaskWriteComputeAdapter(storeName, schemaRepository);
-
     this.hybridQuotaEnforcer = Optional.empty();
 
     this.subscribedPartitionToSize = Optional.empty();
@@ -484,21 +479,18 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.cacheWarmingThreadPool = cacheWarmingThreadPool;
     this.startReportingReadyToServeTimestamp = startReportingReadyToServeTimestamp;
 
-    this.isWriteComputationEnabled = isWriteComputationEnabled;
-
     buildRocksDBMemoryEnforcer();
 
     this.partitionStateSerializer = partitionStateSerializer;
 
     this.suppressLiveUpdates = serverConfig.freezeIngestionIfReadyToServeOrLocalDataExists();
 
-    this.venicePartitioner = venicePartitioner;
     /**
      * The reason to use a different field name here is that the naming convention will be consistent with RocksDB.
      */
     this.disableAutoCompactionForSamzaReprocessingJob = !serverConfig.isEnableAutoCompactionForSamzaReprocessingJob();
 
-    this.storeVersionPartitionCount = storeVersionPartitionCount;
+    this.storeVersionPartitionCount = version.getPartitionCount();
 
     long pushTimeoutInMs;
     try {
@@ -510,7 +502,16 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
     this.bootstrapTimeoutInMs = pushTimeoutInMs;
     this.isIsolatedIngestion = isIsolatedIngestion;
-    this.amplificationFactor = amplificationFactor;
+
+    PartitionerConfig partitionerConfig = version.getPartitionerConfig();
+    if (partitionerConfig == null) {
+      this.venicePartitioner = new DefaultVenicePartitioner();
+      this.amplificationFactor = 1;
+    } else {
+      this.venicePartitioner = PartitionUtils.getVenicePartitioner(partitionerConfig);
+      this.amplificationFactor = partitionerConfig.getAmplificationFactor();
+    }
+
     this.subPartitionCount = storeVersionPartitionCount * amplificationFactor;
     this.reportStatusAdapter = new ReportStatusAdapter(new IngestionNotificationDispatcher(notifiers, kafkaVersionTopic, isCurrentVersion));
     this.amplificationAdapter = new AmplificationAdapter(amplificationFactor);
@@ -2528,7 +2529,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * in order to insert the {@param schemaId} there. This avoids a byte array copy, which can be beneficial in terms
    * of GC.
    */
-  protected void prependHeaderAndWriteToStorageEngine(String topic, int partition, byte[] keyBytes, ByteBuffer putValue, int schemaId) {
+  private void prependHeaderAndWriteToStorageEngine(String topic, int partition, byte[] keyBytes, ByteBuffer putValue, int schemaId) {
     /**
      * Since {@link com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer} reuses the original byte
      * array, which is big enough to pre-append schema id, so we just reuse it to avoid unnecessary byte array allocation.

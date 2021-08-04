@@ -54,7 +54,7 @@ public enum AvroProtocolDefinition {
    * Used to persist state related to a store-version, including Start of Buffer Replay
    * offsets and whether the input is sorted.
    */
-  STORE_VERSION_STATE(25, 5, StoreVersionState.class),
+  STORE_VERSION_STATE(25, 6, StoreVersionState.class),
 
   /**
    * Used to encode push job details records to be written to the PushJobDetails system store.

@@ -1,0 +1,101 @@
+{
+  "name": "StoreVersionState",
+  "namespace": "com.linkedin.venice.kafka.protocol.state",
+  "doc": "This record maintains store-version level state, such as the StartOfBufferReplay Control Message, in the case of Hybrid Stores.",
+  "type": "record",
+  "fields": [
+    {
+      "name": "sorted",
+      "doc": "Whether the messages inside the current store-version, between the 'StartOfPush' and 'EndOfPush' control messages, are lexicographically sorted by key bytes. N.B.: This field used to be stored in v2 of the PartitionState schema, but it has now been removed from there.",
+      "type": "boolean"
+    }, {
+      "name": "startOfBufferReplay",
+      "doc": "If a StartOfBufferReplay has been consumed, then it is stored in its entirety here, otherwise, this field is null.",
+      "type": [
+        "null",
+        {
+          "name": "StartOfBufferReplay",
+          "namespace": "com.linkedin.venice.kafka.protocol",
+          "doc": "This ControlMessage is sent by the Controller, once per partition, after the EndOfPush ControlMessage, in Hybrid Stores that ingest from both offline and nearline sources. It contains information about the the offsets from which the Buffer Replay Service started replaying data from the real-time buffer topic onto the store-version topic. This can be used as a synchronization marker between the real-time buffer topic and the store-version topic, akin to how a clapperboard is used to synchronize sound and image in filmmaking. This synchronization marker can in turn be used by the consumer to compute an offset lag.",
+          "type": "record",
+          "fields": [
+            {
+              "name": "sourceOffsets",
+              "doc": "Array of offsets from the real-time buffer topic at which the Buffer Replay Service started replaying data. The index position of the array corresponds to the partition number in the real-time buffer.",
+              "type": {
+                "type": "array",
+                "items": "long"
+              }
+            }, {
+              "name": "sourceKafkaCluster",
+              "doc": "Kafka bootstrap servers URL of the cluster where the source buffer exists.",
+              "type": "string"
+            }, {
+              "name": "sourceTopicName",
+              "doc": "Name of the source buffer topic.",
+              "type": "string"
+            }
+          ]
+        }
+      ]
+    }, {
+      "name": "chunked",
+      "doc": "Whether the messages inside current store-version are encoded with chunking support. If true, this means keys will be prefixed with ChunkId, and values may contain a ChunkedValueManifest (if schema is defined as -1).",
+      "type": "boolean",
+      "default": false
+    }, {
+      "name": "compressionStrategy",
+      "doc": "What type of compression strategy the current push are used. Using int because Avro Enums are not evolvable. The mapping is the following: 0 => NO_OP, 1 => GZIP",
+      "type": "int",
+      "default": 0
+    }, {
+      "name": "topicSwitch",
+      "doc": "If a TopicSwitch has been consumed, then it is stored in its entirety here, otherwise, this field is null.",
+      "type": [
+        "null",
+        {
+          "name": "TopicSwitch",
+          "namespace": "com.linkedin.venice.kafka.protocol",
+          "doc": "This ControlMessage is sent by the Controller, once per partition; it will only be used in leader/follower state transition model; this control message will indicate the leader to switch to a new source topic and start consuming from offset with a specific timestamp.",
+          "type": "record",
+          "fields": [
+            {
+              "name": "sourceKafkaServers",
+              "doc": "A list of Kafka bootstrap servers URLs where the new source topic exists; currently there will be only one URL in the list, but the list opens up the possibility for leader to consume from different fabrics in active-active replication mode.",
+              "type": {
+                "type": "array",
+                "items": "string"
+              }
+            }, {
+              "name": "sourceTopicName",
+              "doc": "Name of new the source topic.",
+              "type": "string"
+            }, {
+              "name": "rewindStartTimestamp",
+              "doc": "The creation time of this control message in parent controller minus the rewind time of the corresponding store; leaders in different fabrics will get the offset of the source topic by the same start timestamp and start consuming from there; if timestamp is 0, leader will start consuming from the beginning of the source topic.",
+              "type": "long"
+            }
+          ]
+        }
+      ],
+      "default": null
+    }, {
+      "name": "compressionDictionary",
+      "doc": "The raw bytes of dictionary used to compress/decompress records.",
+      "type": ["null", "bytes"],
+      "default": null
+    },
+    {
+      "name": "batchConflictResolutionPolicy",
+      "doc": "The policy to determine timestamps of batch push records. 0 => no per record replication metadata is stored, hybrid writes always win over batch, 1 => no per record replication metadata is stored, Start-Of-Push Control message's timestamp is treated as the last update replication timestamp for all batch records, and hybrid writes wins only when their own logicalTimestamp are higher, 2 => per record replication metadata is provided by the push job and stored for each key, enabling full conflict resolution granularity on a per field basis, just like when merging concurrent update operations.",
+      "type": "int",
+      "default": 0
+    },
+    {
+      "name": "startOfPushTimestamp",
+      "doc": "The messageTimestamp from the producerMetadata of StartOfPush control message.",
+      "type": "long",
+      "default": 0
+    }
+  ]
+}

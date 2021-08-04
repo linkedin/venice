@@ -220,12 +220,26 @@ public class ByteUtils {
       // We could safely use the backed array.
       return byteBuffer.array();
     } else {
-      byte[] value = new byte[byteBuffer.remaining()];
-      byteBuffer.mark();
-      byteBuffer.get(value);
-      byteBuffer.reset();
+      final int dataSize = byteBuffer.remaining();
+      byte[] value = new byte[dataSize];
+      extractByteArray(byteBuffer, value, 0, dataSize);
       return value;
     }
+  }
+
+  /**
+   * Extract the data in the ByteBuffer into the destination array by copying "length" bytes from the source
+   * buffer into the given array, starting at the current position of the source buffer and at the given offset in the
+   * destination array.
+   * @param src The src buffer to copy data from
+   * @param destination The destination array to copy data into
+   * @param offset The position in destination where to start copying to
+   * @param length The number of bytes to copy
+   */
+  public static void extractByteArray(ByteBuffer src, byte[] destination, int offset, int length) {
+    src.mark();
+    src.get(destination, offset, length);
+    src.reset();
   }
 
   /**
@@ -249,5 +263,65 @@ public class ByteUtils {
     }
     value *= Long.signum(bytes);
     return String.format("%.1f %ciB", value / 1024.0, ci.current());
+  }
+
+  /**
+   * This function is to simulate the deserialization logic in {@literal com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer}
+   * to leave some room at the beginning of byte buffer of 'byteBuffer'
+   * @param byteBuffer The ByteBuffer whose size needs to be expanded.
+   * @return
+   */
+  public static ByteBuffer enlargeByteBufferForIntHeader(ByteBuffer byteBuffer) {
+    ByteBuffer enlargedByteBuffer = ByteBuffer.allocate(ByteUtils.SIZE_OF_INT + byteBuffer.remaining());
+    enlargedByteBuffer.position(ByteUtils.SIZE_OF_INT);
+    enlargedByteBuffer.put(byteBuffer);
+    enlargedByteBuffer.position(ByteUtils.SIZE_OF_INT);
+
+    return enlargedByteBuffer;
+  }
+
+  /**
+   * Extract an integer header from the ByteBuffer provided. The header is extracted from the bytes immediately
+   * preceding the current position are extracted.
+   * @param originalBuffer The buffer which contains the header.
+   * @return The integer header that is extracted from the ByteBuffer provided.
+   */
+  public static int getIntHeaderFromByteBuffer(ByteBuffer originalBuffer) {
+    if (originalBuffer.position() < SIZE_OF_INT) {
+      throw new VeniceException("Start position of 'putValue' ByteBuffer shouldn't be less than " + SIZE_OF_INT);
+    }
+
+    originalBuffer.position(originalBuffer.position() - SIZE_OF_INT);
+    return originalBuffer.getInt();
+  }
+
+  /**
+   * This function will return a ByteBuffer that has the integer prepended as a header from the current position. The
+   * position of the buffer will be the same as that of the input.
+   * @param originalBuffer The buffer to which the header should be prepended.
+   * @param header The header value to prepend to the buffer provided.
+   * @param reuseOriginalBuffer If the original ByteBuffer should be reused.
+   * @return The ByteBuffer that has the header prepended. If {@param reuseOriginalBuffer} is true, then return value is
+   * the same as original buffer.
+   */
+  public static ByteBuffer prependIntHeaderToByteBuffer(ByteBuffer originalBuffer, int header, boolean reuseOriginalBuffer) {
+    if (reuseOriginalBuffer) {
+      if (originalBuffer.position() < SIZE_OF_INT) {
+        throw new VeniceException("Start position of 'originalBuffer' ByteBuffer shouldn't be less than " + SIZE_OF_INT);
+      }
+
+      originalBuffer.position(originalBuffer.position() - SIZE_OF_INT);
+      originalBuffer.putInt(header);
+      return originalBuffer;
+    } else {
+      int originalBufferPosition = originalBuffer.position();
+      ByteBuffer byteBufferWithHeader = ByteBuffer.allocate(SIZE_OF_INT + originalBuffer.remaining())
+          .putInt(header)
+          .put(originalBuffer);
+      originalBuffer.position(originalBufferPosition);
+      byteBufferWithHeader.flip();
+      byteBufferWithHeader.position(SIZE_OF_INT);
+      return byteBufferWithHeader;
+    }
   }
 }

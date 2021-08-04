@@ -5,12 +5,10 @@ import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
-import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.unit.kafka.InMemoryKafkaBroker;
 import com.linkedin.venice.unit.kafka.InMemoryKafkaMessage;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.Pair;
-import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -18,7 +16,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.common.TopicPartition;
@@ -44,21 +41,6 @@ public abstract class AbstractPollStrategy implements PollStrategy {
   }
 
   protected abstract Pair<TopicPartition, Long> getNextPoll(Map<TopicPartition, Long> offsets);
-
-  /**
-   * This function is to simulate the deserialization logic in {@link com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer}
-   * to leave some room at the beginning of byte buffer of 'putValue'
-   * @param putValue
-   * @return
-   */
-  public static ByteBuffer enlargePutValueByteBuffer(ByteBuffer putValue) {
-    ByteBuffer enlargedByteBuffer = ByteBuffer.allocate(ByteUtils.SIZE_OF_INT + putValue.remaining());
-    enlargedByteBuffer.position(ByteUtils.SIZE_OF_INT);
-    enlargedByteBuffer.put(putValue);
-    enlargedByteBuffer.position(ByteUtils.SIZE_OF_INT);
-
-    return enlargedByteBuffer;
-  }
 
   public synchronized ConsumerRecords poll(InMemoryKafkaBroker broker, Map<TopicPartition, Long> offsets, long timeout) {
     drainedPartitions.stream().forEach(topicPartition -> offsets.remove(topicPartition));
@@ -100,7 +82,7 @@ public abstract class AbstractPollStrategy implements PollStrategy {
              * to leave some room in {@link Put#putValue} byte buffer.
              */
             Put put = (Put) kafkaMessageEnvelope.payloadUnion;
-            put.putValue = enlargePutValueByteBuffer(put.putValue);
+            put.putValue = ByteUtils.enlargeByteBufferForIntHeader(put.putValue);
             message.get().putValueChanged();
           }
         }
