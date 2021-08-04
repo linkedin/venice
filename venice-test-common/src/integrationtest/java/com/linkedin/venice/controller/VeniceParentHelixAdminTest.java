@@ -118,7 +118,7 @@ public class VeniceParentHelixAdminTest {
 
         // Test add version without rewind time override
         parentControllerResponse = parentControllerClient.requestTopicForWrites(storeName, 1000, Version.PushType.BATCH,
-            Version.numberBasedDummyPushId(1), false, true, false, Optional.empty(), Optional.empty(), Optional.empty(),
+            Version.numberBasedDummyPushId(1), false, true, false, Optional.empty(), Optional.empty(), Optional.of("dc-1"),
             false, -1);
         Assert.assertFalse(parentControllerResponse.isError());
         // Check version-level rewind time config
