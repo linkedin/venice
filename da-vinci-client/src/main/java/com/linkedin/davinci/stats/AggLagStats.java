@@ -15,10 +15,10 @@ public class AggLagStats extends AbstractVeniceStats {
   private final StoreIngestionService storeIngestionService;
 
   private long aggBatchReplicationLagFuture;
-  private long aggLeaderOffsetLagFuture;
-  private long aggFollowerOffsetLagFuture;
-  private long aggHybridLeaderOffsetLag;
-  private long aggHybridFollowerOffsetLag;
+  private long aggBatchLeaderOffsetLagFuture;
+  private long aggBatchFollowerOffsetLagFuture;
+  private long aggHybridLeaderOffsetLagTotal;
+  private long aggHybridFollowerOffsetLagTotal;
 
   private long lastLagUpdateTsMs = 0;
 
@@ -27,10 +27,10 @@ public class AggLagStats extends AbstractVeniceStats {
     this.storeIngestionService = storeIngestionService;
 
     registerSensor("agg_batch_replication_lag_future", new Gauge(this::getAggBatchReplicationLagFuture));
-    registerSensor("agg_leader_offset_lag_future", new Gauge(this::getAggLeaderOffsetLagFuture));
-    registerSensor("agg_follower_offset_lag_future", new Gauge(this::getAggFollowerOffsetLagFuture));
-    registerSensor("agg_hybrid_leader_offset_lag", new Gauge(this::getAggHybridLeaderOffsetLag));
-    registerSensor("agg_hybrid_follower_offset_lag", new Gauge(this::getAggHybridFollowerOffsetLag));
+    registerSensor("agg_batch_leader_offset_lag_future", new Gauge(this::getAggBatchLeaderOffsetLagFuture));
+    registerSensor("agg_batch_follower_offset_lag_future", new Gauge(this::getAggBatchFollowerOffsetLagFuture));
+    registerSensor("agg_hybrid_leader_offset_lag_total", new Gauge(this::getAggHybridLeaderOffsetLagTotal));
+    registerSensor("agg_hybrid_follower_offset_lag_total", new Gauge(this::getAggHybridFollowerOffsetLagTotal));
   }
 
   private synchronized void mayCollectAllLags() {
@@ -41,20 +41,20 @@ public class AggLagStats extends AbstractVeniceStats {
       return;
     }
     aggBatchReplicationLagFuture = 0;
-    aggLeaderOffsetLagFuture = 0;
-    aggFollowerOffsetLagFuture = 0;
-    aggHybridLeaderOffsetLag = 0;
-    aggHybridFollowerOffsetLag = 0;
+    aggBatchLeaderOffsetLagFuture = 0;
+    aggBatchFollowerOffsetLagFuture = 0;
+    aggHybridLeaderOffsetLagTotal = 0;
+    aggHybridFollowerOffsetLagTotal = 0;
 
     storeIngestionService.traverseAllIngestionTasksAndApply((ingestionTask) -> {
       if (ingestionTask.isFutureVersion()) {
         aggBatchReplicationLagFuture += ingestionTask.getBatchReplicationLag();
-        aggLeaderOffsetLagFuture += ingestionTask.getBatchLeaderOffsetLag();
-        aggFollowerOffsetLagFuture += ingestionTask.getBatchFollowerOffsetLag();
+        aggBatchLeaderOffsetLagFuture += ingestionTask.getBatchLeaderOffsetLag();
+        aggBatchFollowerOffsetLagFuture += ingestionTask.getBatchFollowerOffsetLag();
       }
 
-      aggHybridLeaderOffsetLag += ingestionTask.getHybridLeaderOffsetLag();
-      aggHybridFollowerOffsetLag += ingestionTask.getHybridFollowerOffsetLag();
+      aggHybridLeaderOffsetLagTotal += ingestionTask.getHybridLeaderOffsetLag();
+      aggHybridFollowerOffsetLagTotal += ingestionTask.getHybridFollowerOffsetLag();
     });
 
     lastLagUpdateTsMs = System.currentTimeMillis();
@@ -65,23 +65,23 @@ public class AggLagStats extends AbstractVeniceStats {
     return aggBatchReplicationLagFuture;
   }
 
-  public long getAggLeaderOffsetLagFuture() {
+  public long getAggBatchLeaderOffsetLagFuture() {
     mayCollectAllLags();
-    return aggLeaderOffsetLagFuture;
+    return aggBatchLeaderOffsetLagFuture;
   }
 
-  public long getAggFollowerOffsetLagFuture() {
+  public long getAggBatchFollowerOffsetLagFuture() {
     mayCollectAllLags();
-    return aggFollowerOffsetLagFuture;
+    return aggBatchFollowerOffsetLagFuture;
   }
 
-  public long getAggHybridLeaderOffsetLag() {
+  public long getAggHybridLeaderOffsetLagTotal() {
     mayCollectAllLags();
-    return aggHybridLeaderOffsetLag;
+    return aggHybridLeaderOffsetLagTotal;
   }
 
-  public long getAggHybridFollowerOffsetLag() {
+  public long getAggHybridFollowerOffsetLagTotal() {
     mayCollectAllLags();
-    return aggHybridFollowerOffsetLag;
+    return aggHybridFollowerOffsetLagTotal;
   }
 }
