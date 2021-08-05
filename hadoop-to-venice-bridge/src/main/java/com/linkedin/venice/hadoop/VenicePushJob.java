@@ -1195,7 +1195,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
       updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.RECORD_TOO_LARGE_FAILED);
       String errorMessage = String.format("Input data has at least %d records that exceed the maximum record limit of %s",
           recordTooLargeFailureCount,
-          generateHumanReadableByteCountString(veniceWriter.getMaxSizeForUserPayloadPerMessageInBytes()));
+          generateHumanReadableByteCountString(getVeniceWriter(kafkaTopicInfo).getMaxSizeForUserPayloadPerMessageInBytes()));
       return Optional.of(new ErrorMessage(errorMessage));
     }
     return Optional.empty();
