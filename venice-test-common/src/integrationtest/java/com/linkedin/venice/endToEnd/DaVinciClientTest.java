@@ -31,7 +31,6 @@ import com.linkedin.venice.ingestion.protocol.IngestionStorageMetadata;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.meta.IngestionMetadataUpdateType;
-import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.partitioner.ConstantVenicePartitioner;
@@ -82,8 +81,8 @@ import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.commons.io.FileUtils;
-import org.apache.commons.io.IOUtils;
 import org.apache.samza.system.SystemProducer;
+import org.omg.CORBA.TIMEOUT;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.AfterMethod;
@@ -99,6 +98,7 @@ import static com.linkedin.venice.meta.IngestionMode.*;
 import static com.linkedin.venice.meta.PersistenceType.*;
 import static com.linkedin.venice.utils.TestPushUtils.*;
 import static org.testng.Assert.*;
+
 
 public class DaVinciClientTest {
   @DataProvider(name = "LF-And-CompressionStrategy")
@@ -515,7 +515,7 @@ public class DaVinciClientTest {
     metricsRepository = new MetricsRepository();
     try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(d2Client, metricsRepository, backendConfig)) {
       DaVinciClient<Integer, Integer> client = factory.getAndStartGenericAvroClient(storeName, new DaVinciConfig());
-      TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
+      TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, false, true, () -> {
         for (Integer i = 0; i < KEY_COUNT; i++) {
           assertEquals(client.get(i).get(), i);
         }
@@ -537,7 +537,6 @@ public class DaVinciClientTest {
 
   @Test(dataProvider = "L/F-and-AmplificationFactor-and-ObjectCache", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT)
   public void testHybridStoreWithoutIngestionIsolation(boolean isLeaderFollowerModelEnabled, boolean isAmplificationFactorEnabled, DaVinciConfig daVinciConfig) throws Exception {
-
     // Create store
     final int partition = 1;
     final int partitionCount = 2;
@@ -715,7 +714,41 @@ public class DaVinciClientTest {
       client.subscribeAll().get();
     }
 
-    // Create a new version, so that old local version is removed during bootstrap and the access will fail.
+
+    VersionCreationResponse newVersion = cluster.getNewVersion(storeName, 1024);
+    String topic = newVersion.getKafkaTopic();
+    VeniceWriterFactory vwFactory = TestUtils.getVeniceWriterFactory(cluster.getKafka().getAddress());
+    VeniceKafkaSerializer keySerializer = new VeniceAvroKafkaSerializer(DEFAULT_KEY_SCHEMA);
+    VeniceKafkaSerializer valueSerializer = new VeniceAvroKafkaSerializer(DEFAULT_VALUE_SCHEMA);
+
+    VeniceWriter<Object, Object, byte[]> batchProducer = vwFactory.createVeniceWriter(topic, keySerializer, valueSerializer, false);
+    int valueSchemaId = HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID;
+    batchProducer.broadcastStartOfPush(Collections.emptyMap());
+    Future[] writerFutures = new Future[KEY_COUNT];
+    for (int i = 0; i < KEY_COUNT; i++) {
+      writerFutures[i] = batchProducer.put(i, i, valueSchemaId);
+    }
+    for (int i = 0; i < KEY_COUNT; i++) {
+      writerFutures[i].get();
+    }
+
+    /**
+     * Creating a stuck VPJ here so the new version will not be fully ingested. Da Vinci bootstrap should continue to
+     * subscribe to existing CURRENT VERSION pushed before.
+     */
+    try (DaVinciClient<Integer, Integer> client = ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster, baseDataPath, daVinciConfig)) {
+      TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, false, true, () -> {
+        for (int i = 0; i < KEY_COUNT; i++) {
+          int value = client.get(i).get();
+          assertEquals(value, 1);
+        }
+      });
+    }
+    batchProducer.broadcastEndOfPush(Collections.emptyMap());
+
+    /**
+     * Push a new version as the CURRENT VERSION, so that old local version is removed during bootstrap and the access will fail.
+     */
     cluster.createVersion(storeName, KEY_COUNT);
     try (DaVinciClient<Integer, Integer> client = ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster, baseDataPath, daVinciConfig)) {
       assertThrows(VeniceException.class, () -> client.get(0).get());

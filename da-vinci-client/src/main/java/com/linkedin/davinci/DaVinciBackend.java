@@ -16,7 +16,6 @@ import com.linkedin.davinci.stats.AggVersionedStorageEngineStats;
 import com.linkedin.davinci.stats.MetadataUpdateStats;
 import com.linkedin.davinci.stats.RocksDBMemoryStats;
 import com.linkedin.davinci.storage.StorageEngineMetadataService;
-import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.store.AbstractStorageEngine;
@@ -44,8 +43,6 @@ import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.utils.ComplementSet;
-import com.linkedin.venice.utils.PartitionUtils;
-import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -56,6 +53,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -180,44 +178,18 @@ public class DaVinciBackend implements Closeable {
     ingestionService.start();
     ingestionService.addCommonNotifier(ingestionListener);
 
-    /**
-     * In order to make bootstrap logic compatible with ingestion isolation, we first scan all local storage engines,
-     * record all store versions that are up-to-date and close all storage engines. This will make sure child process
-     * can open RocksDB stores.
-     */
-    Map<Version, List<Integer>> bootstrapVersions = new HashMap<>();
-
-    if (configLoader.getVeniceServerConfig().getIngestionMode().equals(IngestionMode.ISOLATED)) {
-      if (cacheConfig.isPresent()) {
-        // TODO: There are 'some' cases where this mix might be ok, (like a batch only store, or with certain TTL settings),
-        // could add further validation.  If the process isn't ingesting data, then it can't maintain the object cache with
-        // a correct view of the data.
-        throw new IllegalArgumentException("Ingestion isolated and Cache are incompatible configs!!  Aborting start up!");
-      }
+    if (isIsolatedIngestion() && cacheConfig.isPresent()) {
+      // TODO: There are 'some' cases where this mix might be ok, (like a batch only store, or with certain TTL settings),
+      // could add further validation.  If the process isn't ingesting data, then it can't maintain the object cache with
+      // a correct view of the data.
+      throw new IllegalArgumentException("Ingestion isolated and Cache are incompatible configs!!  Aborting start up!");
     }
 
-    if (configLoader.getVeniceServerConfig().getIngestionMode().equals(IngestionMode.BUILT_IN)) {
-      ingestionBackend = new DefaultIngestionBackend(storageMetadataService, ingestionService, storageService);
-      ingestionBackend.addIngestionNotifier(ingestionListener);
-      bootstrap(managedClients, bootstrapVersions);
-    } else {
-      bootstrap(managedClients, bootstrapVersions);
-      // We will close all storage engines only when live update suppression is NOT turned on.
-      if (!configLoader.getVeniceServerConfig().freezeIngestionIfReadyToServeOrLocalDataExists()) {
-        // Close all opened store engines so child process can open them.
-        StorageEngineRepository engineRepository = storageService.getStorageEngineRepository();
-        logger.info("Storage service has " + engineRepository.getAllLocalStorageEngines().size() + " storage engines before cleanup.");
-        for (AbstractStorageEngine storageEngine : engineRepository.getAllLocalStorageEngines()) {
-          storageService.closeStorageEngine(storageEngine.getName());
-        }
-        logger.info("Storage service has " + engineRepository.getAllLocalStorageEngines().size() + " storage engines after cleanup.");
-      }
+    ingestionBackend = isIsolatedIngestion() ? new IsolatedIngestionBackend(configLoader, metricsRepository, storageMetadataService, ingestionService, storageService) :
+        new DefaultIngestionBackend(storageMetadataService, ingestionService, storageService);
+    ingestionBackend.addIngestionNotifier(ingestionListener);
 
-      ingestionBackend = new IsolatedIngestionBackend(configLoader, metricsRepository, storageMetadataService, ingestionService, storageService);
-      ingestionBackend.addIngestionNotifier(ingestionListener);
-      // Send out subscribe requests to child process to complete bootstrap process.
-      completeBootstrapRemotely(bootstrapVersions);
-    }
+    bootstrap(managedClients);
 
     storeRepository.registerStoreDataChangedListener(storeChangeListener);
     cacheBackend.ifPresent(objectCacheBackend -> storeRepository.registerStoreDataChangedListener(objectCacheBackend.getCacheInvalidatingStoreChangeListener()));
@@ -225,20 +197,28 @@ public class DaVinciBackend implements Closeable {
     logger.info("Finished initialization of Da Vinci backend");
   }
 
-  protected synchronized void bootstrap(Optional<Set<String>> managedClients, Map<Version, List<Integer>> bootstrapVersions) {
+  protected synchronized void bootstrap(Optional<Set<String>> managedClients) {
     List<AbstractStorageEngine> storageEngines = storageService.getStorageEngineRepository().getAllLocalStorageEngines();
     logger.info("Starting bootstrap, storageEngines=" + storageEngines + ", managedClients=" + managedClients);
+    Map<String, Set<Integer>> expectedBootstrapVersions = new HashMap<>();
+    Map<String, Version> storeNameToBootstrapVersionMap = new HashMap<>();
+    Map<String, List<Integer>> storeNameToPartitionListMap = new HashMap<>();
     for (AbstractStorageEngine storageEngine : storageEngines) {
       String kafkaTopicName = storageEngine.getName();
       String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopicName);
 
-      if (storeByNameMap.containsKey(storeName)) {
-        // The latest version has been already discovered, so all other local versions will be deleted.
-        logger.info("Deleting obsolete local version " + kafkaTopicName);
-        storageService.removeStorageEngine(kafkaTopicName);
-        continue;
+      // If the store is not-managed, all its versions will be removed.
+      StoreBackend storeBackend = getStoreOrThrow(storeName);
+      if (managedClients.isPresent()) {
+        if (storeBackend.isManaged() && !managedClients.get().contains(storeName)) {
+          logger.info("Deleting unused managed version " + kafkaTopicName);
+          deleteStore(storeName);
+          storageService.removeStorageEngine(kafkaTopicName);
+          continue;
+        }
       }
 
+      // If the store does not exist in Venice system anymore, remove all of its versions.
       try {
         storeRepository.subscribe(storeName);
       } catch (VeniceNoStoreException e) {
@@ -251,51 +231,65 @@ public class DaVinciBackend implements Closeable {
         currentThread().interrupt();
       }
 
-      Version version = getLatestVersion(storeName, Collections.emptySet()).orElse(null);
-      if (version == null || !version.kafkaTopicName().equals(kafkaTopicName)) {
-        // The version is not the latest, so it will be deleted.
+      // Initialize expected version numbers for each store.
+      if (!expectedBootstrapVersions.containsKey(storeName)) {
+        Set<Integer> validVersionNumbers = new HashSet<>();
+        Optional<Version> latestVersion = getLatestVersion(storeName, Collections.emptySet());
+        Optional<Version> currentVersion = getCurrentVersion(storeName, Collections.emptySet());
+        currentVersion.ifPresent(version -> validVersionNumbers.add(version.getNumber()));
+        latestVersion.ifPresent(version -> validVersionNumbers.add(version.getNumber()));
+        expectedBootstrapVersions.put(storeName, validVersionNumbers);
+      }
+
+      int versionNumber = Version.parseVersionFromKafkaTopicName(kafkaTopicName);
+      // The version is no longer valid (stale version), it will be deleted.
+      if (!expectedBootstrapVersions.get(storeName).contains(versionNumber)) {
         logger.info("Deleting obsolete local version " + kafkaTopicName);
-        storeRepository.unsubscribe(storeName);
         storageService.removeStorageEngine(kafkaTopicName);
         continue;
       }
 
-      StoreBackend storeBackend = getStoreOrThrow(storeName);
-      if (managedClients.isPresent()) {
-        if (storeBackend.isManaged() && !managedClients.get().contains(storeName)) {
-          logger.info("Deleting unused managed version " + kafkaTopicName);
-          deleteStore(storeName);
-          storageService.removeStorageEngine(kafkaTopicName);
-          continue;
-        }
-      }
+      Version version = storeRepository.getStoreOrThrow(storeName).getVersion(versionNumber)
+          .orElseThrow(() -> new VeniceException("Could not find version: " + versionNumber + " for store: "  + storeName + " in storeRepository!"));
 
-      int amplificationFactor = version.getPartitionerConfig().getAmplificationFactor();
-      List<Integer> partitions = PartitionUtils.getUserPartitions(storageEngine.getPartitionIds(), amplificationFactor);
-      logger.info("Bootstrapping partitions " + partitions + " of " + kafkaTopicName);
-
-      if (configLoader.getVeniceServerConfig().getIngestionMode().equals(IngestionMode.ISOLATED)) {
-        // If ingestion isolation is turned on, we will not subscribe to versions immediately, but instead save all versions of interest.
-        bootstrapVersions.put(version, partitions);
-      } else {
-        storeBackend.subscribe(ComplementSet.newSet(partitions), Optional.of(version));
+      /**
+       * Set the target bootstrap version for the store in the below order:
+       * 1. CURRENT_VERSION: store's CURRENT_VERSION exists locally.
+       * 2. FUTURE_VERSION: store's CURRENT_VERSION does not exist locally, but FUTURE_VERSION exists locally.
+       * In most case, we will choose 1, as the CURRENT_VERSION will always exists locally regardless of the FUTURE_VERSION
+       * Case 2 will only exist when store version retention policy is > 2, and rollback happens on Venice side.
+       */
+      if (!(storeNameToBootstrapVersionMap.containsKey(storeName) && (storeNameToBootstrapVersionMap.get(storeName).getNumber() < versionNumber))) {
+        storeNameToBootstrapVersionMap.put(storeName, version);
+        storeNameToPartitionListMap.put(storeName, storageService.getUserPartitions(kafkaTopicName));
       }
     }
 
+    // Cleanup stale StaleBackendConfig
     String baseDataPath = configLoader.getVeniceServerConfig().getDataBasePath();
     for (String storeName : StoreBackendConfig.listConfigs(baseDataPath)) {
       if (!storeByNameMap.containsKey(storeName)) {
         new StoreBackendConfig(baseDataPath, storeName).delete();
       }
     }
-  }
 
-  protected synchronized void completeBootstrapRemotely(Map<Version, List<Integer>> bootstrapVersions) {
-    bootstrapVersions.forEach((version, partitions) -> {
-      logger.info("Bootstrapping partitions " + partitions + " of " + version.kafkaTopicName() + " via isolated ingestion service.");
+    /**
+     * In order to make bootstrap logic compatible with ingestion isolation, we first scan all local storage engines,
+     * record all store versions that are up-to-date and close all storage engines. This will make sure child process
+     * can open RocksDB stores.
+     */
+    if (isIsolatedIngestion() && (!configLoader.getVeniceServerConfig().freezeIngestionIfReadyToServeOrLocalDataExists())) {
+      storageService.closeAllStorageEngines();
+    }
+
+    // Subscribe all bootstrap version partitions.
+    storeNameToBootstrapVersionMap.forEach((storeName, version) -> {
+      List<Integer> partitions = storeNameToPartitionListMap.get(storeName);
+      logger.info("Bootstrapping partitions " + partitions + " for " + version.kafkaTopicName());
       StoreBackend storeBackend = getStoreOrThrow(version.getStoreName());
       storeBackend.subscribe(ComplementSet.newSet(partitions), Optional.of(version));
     });
+
   }
 
   @Override
@@ -462,6 +456,10 @@ public class DaVinciBackend implements Closeable {
     if (storeBackend != null) {
       storeBackend.delete();
     }
+  }
+
+  protected boolean isIsolatedIngestion() {
+    return configLoader.getVeniceServerConfig().getIngestionMode().equals(IngestionMode.ISOLATED);
   }
 
   private final StoreDataChangedListener storeChangeListener = new StoreDataChangedListener() {
