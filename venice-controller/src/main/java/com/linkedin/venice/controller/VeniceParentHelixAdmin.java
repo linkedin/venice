@@ -883,7 +883,8 @@ public class VeniceParentHelixAdmin implements Admin {
           + "does not present for cert %s", batchJobHeartbeatStoreName, requesterCert));
     }
     final String accessMethodName = Method.Write.name();
-    final boolean hasAccess = accessController.get().hasAccess(requesterCert, batchJobHeartbeatStoreName, accessMethodName);
+    // Currently write access on a Venice store needs to be checked using this hasAccessToTopic method
+    final boolean hasAccess = accessController.get().hasAccessToTopic(requesterCert, batchJobHeartbeatStoreName, accessMethodName);
     StringBuilder sb = new StringBuilder();
     sb.append("Requester");
     sb.append(hasAccess ? " has " : " does not have ");
