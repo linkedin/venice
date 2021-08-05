@@ -25,6 +25,7 @@ import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.Utils;
 import java.io.File;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -284,6 +285,24 @@ public class StorageService extends AbstractVeniceService {
       logger.info("Deleted store: " + storeName);
     });
     logger.info("Done cleaning up all the stores persisted previously");
+  }
+
+  public List<Integer> getUserPartitions(String kafkaTopicName) {
+    int amplificationFactor = PartitionUtils.getAmplificationFactor(storeRepository, kafkaTopicName);
+    AbstractStorageEngine storageEngine = storageEngineRepository.getLocalStorageEngine(kafkaTopicName);
+    if (storageEngine == null) {
+      logger.warn("Local storage engine does not exist for topic: " + kafkaTopicName);
+      return Collections.emptyList();
+    }
+    return PartitionUtils.getUserPartitions(storageEngine.getPartitionIds(), amplificationFactor);
+  }
+
+  public void closeAllStorageEngines() {
+    logger.info("Storage service has " + storageEngineRepository.getAllLocalStorageEngines().size() + " storage engines before cleanup.");
+    for (AbstractStorageEngine storageEngine : storageEngineRepository.getAllLocalStorageEngines()) {
+      closeStorageEngine(storageEngine.getName());
+    }
+    logger.info("Storage service has " + storageEngineRepository.getAllLocalStorageEngines().size() + " storage engines after cleanup.");
   }
 
   public StorageEngineRepository getStorageEngineRepository() {
