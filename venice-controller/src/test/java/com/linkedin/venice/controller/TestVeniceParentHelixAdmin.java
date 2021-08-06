@@ -21,6 +21,7 @@ import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
+import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
@@ -391,8 +392,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     parentAdmin.initVeniceControllerClusterResource(clusterName);
     parentAdmin.addStore(clusterName, storeName, owner, keySchemaStr, valueSchemaStr);
     parentAdmin.setStorePartitionCount(clusterName, storeName, MAX_PARTITION_NUM);
-    Assert.assertThrows(VeniceHttpException.class, () -> parentAdmin.setStorePartitionCount(clusterName, storeName, MAX_PARTITION_NUM + 1));
-    Assert.assertThrows(VeniceHttpException.class, () -> parentAdmin.setStorePartitionCount(clusterName, storeName, -1));
+    Assert.assertThrows(ConfigurationException.class, () -> parentAdmin.setStorePartitionCount(clusterName, storeName, MAX_PARTITION_NUM + 1));
+    Assert.assertThrows(ConfigurationException.class, () -> parentAdmin.setStorePartitionCount(clusterName, storeName, -1));
   }
 
   @Test

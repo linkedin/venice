@@ -909,7 +909,7 @@ public class ControllerClient implements Closeable {
     logger.error(message, exception);
     try {
       T response = responseType.newInstance();
-      response.setError(message + ", " +  exception.getMessage());
+      response.setError(message, exception);
       return response;
     } catch (InstantiationException | IllegalAccessException e) {
       logger.error("Unable to instantiate controller response " + responseType.getName(), e);

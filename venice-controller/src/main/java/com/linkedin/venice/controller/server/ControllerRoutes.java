@@ -32,7 +32,7 @@ public class ControllerRoutes extends AbstractRoute {
         responseObject.setCluster(cluster);
         responseObject.setUrl(admin.getLeaderController(cluster).getUrl(isAclEnabled()));
       } catch (Throwable e) {
-        responseObject.setError(e.getMessage());
+        responseObject.setError(e);
         AdminSparkServer.handleError(e, request, response);
       }
       response.type(HttpConstants.JSON);

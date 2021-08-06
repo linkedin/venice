@@ -59,6 +59,7 @@ import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.MultiStoreStatusResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
+import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
@@ -1244,11 +1245,11 @@ public class VeniceParentHelixAdmin implements Admin {
 
       int maxPartitionNum = veniceHelixAdmin.getHelixVeniceClusterResources(clusterName).getConfig().getMaxNumberOfPartition();
       if (partitionCount > maxPartitionNum) {
-        throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, "Partition count: "
+        throw new ConfigurationException("Partition count: "
             + partitionCount + " should be less than max: " + maxPartitionNum);
       }
       if (partitionCount < 0) {
-        throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, "Partition count: "
+        throw new ConfigurationException("Partition count: "
             + partitionCount + " should NOT be negative");
       }
 
