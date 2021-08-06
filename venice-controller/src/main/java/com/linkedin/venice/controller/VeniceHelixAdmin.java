@@ -31,6 +31,8 @@ import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionResponse;
+import com.linkedin.venice.exceptions.ConfigurationException;
+import com.linkedin.venice.exceptions.InvalidVeniceSchemaException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.exceptions.VeniceNoClusterException;
@@ -2548,16 +2550,16 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         VeniceControllerClusterConfig clusterConfig = getHelixVeniceClusterResources(clusterName).getConfig();
         storeMetadataUpdate(clusterName, storeName, store -> {
             if (store.getPartitionCount() != partitionCount && store.isHybrid()) {
-                throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, "Cannot change partition count for a hybrid store");
+                throw new ConfigurationException("Cannot change partition count for a hybrid store");
             }
 
             int maxPartitionNum = clusterConfig.getMaxNumberOfPartition();
             if (partitionCount > maxPartitionNum) {
-                throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, "Partition count: "
+                throw new ConfigurationException("Partition count: "
                     + partitionCount + " should be less than max: " + maxPartitionNum);
             }
             if (partitionCount < 0) {
-                throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, "Partition count: "
+                throw new ConfigurationException("Partition count: "
                     + partitionCount + " should NOT be negative");
             }
 
@@ -3528,7 +3530,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                         logger.warn("Found incompatible avro schema with bad union branch for store " + storeName, e);
                         continue;
                     }
-                    throw new VeniceException("Error while trying to add new schema: " + schemaStr + "  for store " + storeName + " as it is incompatible with existing schema: " + existingSchema, e);
+                    throw new InvalidVeniceSchemaException("Error while trying to add new schema: " + schemaStr + "  for store " + storeName + " as it is incompatible with existing schema: " + existingSchema, e);
                 }
             }
         }
@@ -3553,7 +3555,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                         logger.warn("Found incompatible avro schema with bad union branch for store " + storeName, e);
                         continue;
                     }
-                    throw new VeniceException("Error while trying to add new schema: " + schemaStr + "  for store " + storeName + " as it is incompatible with existing schema: " + existingSchema, e);
+                    throw new InvalidVeniceSchemaException("Error while trying to add new schema: " + schemaStr + "  for store " + storeName + " as it is incompatible with existing schema: " + existingSchema, e);
                 }
             }
         }

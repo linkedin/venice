@@ -2,6 +2,8 @@ package com.linkedin.venice.exceptions;
 
 public class VeniceHttpException extends VeniceException {
   private final int statusCode;
+  protected ExceptionType exceptionType = ExceptionType.CONNECTION_ERROR;
+
 
   public VeniceHttpException(int statusCode) {
     super();

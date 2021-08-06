@@ -1,5 +1,7 @@
 package com.linkedin.venice.controllerapi;
 
+import com.linkedin.venice.exceptions.ExceptionType;
+import com.linkedin.venice.exceptions.VeniceException;
 import org.codehaus.jackson.annotate.JsonIgnore;
 import org.codehaus.jackson.annotate.JsonProperty;
 
@@ -12,6 +14,7 @@ public class ControllerResponse { /* Uses Json Reflective Serializer, get withou
   private String cluster;
   private String name;
   private String error;
+  private ExceptionType exceptionType = ExceptionType.GENERAL_ERROR;
 
   /**
    * Starting with Jackson 1.9, if this is the only annotation: {@link JsonIgnore}
@@ -39,6 +42,10 @@ public class ControllerResponse { /* Uses Json Reflective Serializer, get withou
     return name;
   }
 
+  public ExceptionType getExceptionType() {
+    return exceptionType;
+  }
+
   public void setName(String name) {
     this.name = name;
   }
@@ -53,10 +60,31 @@ public class ControllerResponse { /* Uses Json Reflective Serializer, get withou
     this.error = error;
   }
 
+  public void setError(String error, Throwable e) {
+    if (e instanceof VeniceException) {
+      exceptionType = ((VeniceException) e).getExceptionType();
+    }
+    this.error = error + "," + e.getMessage();
+  }
+
+  public void setError(Throwable e) {
+    if (e instanceof VeniceException) {
+      exceptionType = ((VeniceException) e).getExceptionType();
+    }
+    this.error = e.getMessage();
+  }
+
+  @JsonProperty
+  public void setExceptionType(ExceptionType exceptionType) {
+    this.exceptionType = exceptionType;
+  }
+
   @JsonIgnore
   public String toString() {
     return ControllerResponse.class.getSimpleName() + "(cluster: " + cluster +
         ", name: " + name +
-        ", error: " + error + ")";
+        ", error: " + error +
+        ", exceptionType: " + exceptionType +
+        ")";
   }
 }

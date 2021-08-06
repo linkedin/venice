@@ -6,6 +6,7 @@ import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controllerapi.ControllerApiConstants;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
+import com.linkedin.venice.exceptions.InvalidVeniceSchemaException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.schema.DerivedSchemaEntry;
@@ -82,7 +83,7 @@ public class SchemaRoutes extends AbstractRoute {
         responseObject.setId(valueSchemaEntry.getId());
         responseObject.setSchemaStr(valueSchemaEntry.getSchema().toString());
       } catch (Throwable e) {
-        responseObject.setError(e.getMessage());
+        responseObject.setError(e);
         AdminSparkServer.handleError(new VeniceException(e), request, response);
       }
       return AdminSparkServer.mapper.writeValueAsString(responseObject);
@@ -176,7 +177,7 @@ public class SchemaRoutes extends AbstractRoute {
         int valueSchemaId = admin.getValueSchemaId(cluster, store, schemaStr);
 
         if (SchemaData.INVALID_VALUE_SCHEMA_ID == valueSchemaId) {
-          throw new VeniceException("Can not find any registered value schema for the store " + store
+          throw new InvalidVeniceSchemaException("Can not find any registered value schema for the store " + store
               + " that matches the schema of data being pushed.\n" + schemaStr);
         }
 

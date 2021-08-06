@@ -70,7 +70,7 @@ public class AdminCommandExecutionRoutes extends AbstractRoute {
       try {
         responseObject.setLastSucceedExecutionId(admin.getLastSucceedExecutionId(cluster));
       } catch (Throwable e) {
-        responseObject.setError(e.getMessage());
+        responseObject.setError(e);
         AdminSparkServer.handleError(e, request, response);
       }
       return AdminSparkServer.mapper.writeValueAsString(responseObject);
