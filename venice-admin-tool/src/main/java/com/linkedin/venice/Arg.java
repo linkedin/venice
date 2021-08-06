@@ -82,7 +82,7 @@ public enum Arg {
   REGULAR_VERSION_ETL_ENABLED("regular-version-etl-enabled", "rve", true, "whether or not to enable regular version etl for this store."),
   FUTURE_VERSION_ETL_ENABLED("future-version-etl-enabled", "fve", true, "whether or not to enable future version etl for this store."),
   ETLED_PROXY_USER_ACCOUNT("etled-proxy-user-account", "epu", true, "if enabled ETL, the proxy user account for HDFS file directory where the ETLed snapshots will go."),
-  BACKUP_VERSION_RETENTION_MS("backup-version-retention-ms", "bvrm", true, "Backup version retention time after a new version is promoted to the current version, if not specified, Venice will use the configured retention as the default policy"),
+  BACKUP_VERSION_RETENTION_DAY("backup-version-retention-day", "bvrd", true, "Backup version retention time in day after a new version is promoted to the current version, if not specified, Venice will use the configured retention as the default policy"),
   REPLICATION_FACTOR("replication-factor", "rf", true, "the number of replica each store version will have"),
 
   FILTER_JSON("filter-json", "ftj", true, "Comma-delimited list of fields to display from the json output.  Omit to display all fields"),
