@@ -1,69 +1,34 @@
 package com.linkedin.davinci.ingestion.isolated;
 
-import com.linkedin.d2.balancer.D2Client;
-import com.linkedin.d2.balancer.D2ClientBuilder;
-import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
-import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceStoreConfig;
-import com.linkedin.davinci.ingestion.DefaultIngestionBackend;
 import com.linkedin.davinci.ingestion.main.MainIngestionStorageMetadataService;
 import com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
-import com.linkedin.davinci.notifier.VeniceNotifier;
-import com.linkedin.davinci.repository.VeniceMetadataRepositoryBuilder;
-import com.linkedin.davinci.stats.AggVersionedStorageEngineStats;
-import com.linkedin.davinci.stats.RocksDBMemoryStats;
-import com.linkedin.davinci.storage.StorageEngineMetadataService;
-import com.linkedin.davinci.storage.StorageMetadataService;
-import com.linkedin.davinci.storage.StorageService;
-import com.linkedin.venice.CommonConfigKeys;
-import com.linkedin.venice.client.schema.SchemaReader;
-import com.linkedin.venice.client.store.ClientConfig;
-import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.helix.HelixReadOnlyZKSharedSchemaRepository;
 import com.linkedin.venice.ingestion.protocol.IngestionMetricsReport;
 import com.linkedin.venice.ingestion.protocol.IngestionStorageMetadata;
 import com.linkedin.venice.ingestion.protocol.IngestionTaskCommand;
 import com.linkedin.venice.ingestion.protocol.IngestionTaskReport;
-import com.linkedin.venice.ingestion.protocol.InitializationConfigs;
 import com.linkedin.venice.ingestion.protocol.ProcessShutdownCommand;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionAction;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionCommandType;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionComponentType;
-import com.linkedin.venice.ingestion.protocol.enums.IngestionReportType;
-import com.linkedin.venice.kafka.protocol.state.PartitionState;
-import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
-import com.linkedin.venice.meta.ClusterInfoProvider;
 import com.linkedin.venice.meta.IngestionMetadataUpdateType;
-import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.SubscriptionBasedReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
-import com.linkedin.venice.security.DefaultSSLFactory;
-import com.linkedin.venice.security.SSLFactory;
-import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
-import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
-import com.linkedin.venice.stats.AbstractVeniceStats;
-import com.linkedin.venice.utils.PropertyBuilder;
-import com.linkedin.venice.utils.ReflectUtils;
-import com.linkedin.venice.utils.VeniceProperties;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.codec.http.FullHttpRequest;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpResponseStatus;
-import io.tehuti.metrics.MetricsRepository;
 import java.net.URI;
 import java.util.HashMap;
-import java.util.Optional;
 import org.apache.log4j.Logger;
 
 import static com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils.*;
-import static com.linkedin.venice.ConfigKeys.*;
-import static com.linkedin.venice.client.store.ClientFactory.*;
 
 
 /**
@@ -108,11 +73,10 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
       if (logger.isDebugEnabled()) {
         logger.debug("Received " + action.name() + " message: " + msg);
       }
+      if (!isolatedIngestionServer.isInitiated()) {
+        throw new VeniceException("Isolated ingestion server is not initialized yet!");
+      }
       switch (action) {
-        case INIT:
-          InitializationConfigs initializationConfigs = deserializeIngestionActionRequest(action, readHttpRequestContent(msg));
-          handleIngestionInitialization(initializationConfigs);
-          break;
         case COMMAND:
           IngestionTaskCommand ingestionTaskCommand = deserializeIngestionActionRequest(action, readHttpRequestContent(msg));
           IngestionTaskReport report = handleIngestionTaskCommand(ingestionTaskCommand);
@@ -151,156 +115,6 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
     logger.error("Encounter exception " + cause.getMessage(), cause);
     ctx.writeAndFlush(buildHttpResponse(HttpResponseStatus.INTERNAL_SERVER_ERROR, cause.getMessage()));
     ctx.close();
-  }
-
-  private void handleIngestionInitialization(InitializationConfigs initializationConfigs) {
-    logger.info("Received aggregated configs: " + initializationConfigs.aggregatedConfigs);
-
-    // Put all configs in aggregated configs into the VeniceConfigLoader.
-    PropertyBuilder propertyBuilder = new PropertyBuilder();
-    initializationConfigs.aggregatedConfigs.forEach((key, value) -> propertyBuilder.put(key.toString(), value));
-    VeniceProperties veniceProperties = propertyBuilder.build();
-    VeniceConfigLoader configLoader = new VeniceConfigLoader(veniceProperties, veniceProperties);
-    isolatedIngestionServer.setConfigLoader(configLoader);
-    isolatedIngestionServer.setStopConsumptionWaitRetriesNum(configLoader.getCombinedProperties().getInt(
-        SERVER_STOP_CONSUMPTION_WAIT_RETRIES_NUM, 180));
-
-    // Initialize D2Client.
-    SSLFactory sslFactory;
-    D2Client d2Client;
-    String d2ZkHosts = veniceProperties.getString(D2_CLIENT_ZK_HOSTS_ADDRESS);
-    if (veniceProperties.getBoolean(CommonConfigKeys.SSL_ENABLED, false)) {
-      try {
-        /**
-         * TODO: DefaultSSLFactory is a copy of the ssl factory implementation in a version of container lib,
-         * we should construct the same SSL Factory being used in the main process with help of ReflectionUtils.
-         */
-        sslFactory = new DefaultSSLFactory(veniceProperties.toProperties());
-      } catch (Exception e) {
-        throw new VeniceException("Encounter exception in constructing DefaultSSLFactory", e);
-      }
-      d2Client = new D2ClientBuilder()
-          .setZkHosts(d2ZkHosts)
-          .setIsSSLEnabled(true)
-          .setSSLParameters(sslFactory.getSSLParameters())
-          .setSSLContext(sslFactory.getSSLContext())
-          .build();
-    } else {
-      d2Client = new D2ClientBuilder().setZkHosts(d2ZkHosts).build();
-    }
-    startD2Client(d2Client);
-
-    // Create the client config.
-    ClientConfig clientConfig = new ClientConfig()
-        .setD2Client(d2Client)
-        .setD2ServiceName(ClientConfig.DEFAULT_D2_SERVICE_NAME);
-    String clusterName = configLoader.getVeniceClusterConfig().getClusterName();
-
-    // Create MetricsRepository
-    MetricsRepository metricsRepository = new MetricsRepository();
-    isolatedIngestionServer.setMetricsRepository(metricsRepository);
-
-    // Initialize store/schema repositories.
-    VeniceMetadataRepositoryBuilder veniceMetadataRepositoryBuilder = new VeniceMetadataRepositoryBuilder(
-        configLoader,
-        clientConfig,
-        metricsRepository,
-        null,
-        true);
-    ReadOnlyStoreRepository storeRepository = veniceMetadataRepositoryBuilder.getStoreRepo();
-    ReadOnlySchemaRepository schemaRepository = veniceMetadataRepositoryBuilder.getSchemaRepo();
-    Optional<HelixReadOnlyZKSharedSchemaRepository> helixReadOnlyZKSharedSchemaRepository = veniceMetadataRepositoryBuilder.getReadOnlyZKSharedSchemaRepository();
-    ClusterInfoProvider clusterInfoProvider = veniceMetadataRepositoryBuilder.getClusterInfoProvider();
-    isolatedIngestionServer.setStoreRepository(storeRepository);
-
-    SchemaReader partitionStateSchemaReader = ClientFactory.getSchemaReader(
-        ClientConfig.cloneConfig(clientConfig).setStoreName(AvroProtocolDefinition.PARTITION_STATE.getSystemStoreName()));
-    SchemaReader storeVersionStateSchemaReader = ClientFactory.getSchemaReader(
-        ClientConfig.cloneConfig(clientConfig).setStoreName(AvroProtocolDefinition.STORE_VERSION_STATE.getSystemStoreName()));
-    InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer = AvroProtocolDefinition.PARTITION_STATE.getSerializer();
-    partitionStateSerializer.setSchemaReader(partitionStateSchemaReader);
-    isolatedIngestionServer.setPartitionStateSerializer(partitionStateSerializer);
-    InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer = AvroProtocolDefinition.STORE_VERSION_STATE.getSerializer();
-    storeVersionStateSerializer.setSchemaReader(storeVersionStateSchemaReader);
-    isolatedIngestionServer.setStoreVersionStateSerializer(storeVersionStateSerializer);
-
-    // Create RocksDBMemoryStats. For now RocksDBMemoryStats cannot work with SharedConsumerPool.
-    RocksDBMemoryStats rocksDBMemoryStats = ((configLoader.getVeniceServerConfig().isDatabaseMemoryStatsEnabled())
-        && (!configLoader.getVeniceServerConfig().isSharedConsumerPoolEnabled()))?
-        new RocksDBMemoryStats(metricsRepository, "RocksDBMemoryStats", configLoader.getVeniceServerConfig().getRocksDBServerConfig().isRocksDBPlainTableFormatEnabled()) : null;
-
-    /**
-     * Using reflection to create all the stats classes related to ingestion isolation. All these classes extends
-     * {@link AbstractVeniceStats} class and takes {@link MetricsRepository} as the only parameter in its constructor.
-     */
-    for (String ingestionIsolationStatsClassName : veniceProperties.getString(SERVER_INGESTION_ISOLATION_STATS_CLASS_LIST, "").split(",")) {
-      if (ingestionIsolationStatsClassName.length() != 0) {
-        Class<? extends AbstractVeniceStats> ingestionIsolationStatsClass = ReflectUtils.loadClass(ingestionIsolationStatsClassName);
-        if (!AbstractVeniceStats.class.isAssignableFrom(ingestionIsolationStatsClass)) {
-          throw new VeniceException("Class: " + ingestionIsolationStatsClassName + " does not extends AbstractVeniceStats");
-        }
-        AbstractVeniceStats ingestionIsolationStats =
-            ReflectUtils.callConstructor(ingestionIsolationStatsClass, new Class<?>[]{MetricsRepository.class}, new Object[]{metricsRepository});
-        logger.info("Created Ingestion Isolation stats: " + ingestionIsolationStats.getName());
-      } else {
-        logger.info("Ingestion isolation stats class name is empty, will skip it.");
-      }
-    }
-
-    // Create StorageService
-    AggVersionedStorageEngineStats storageEngineStats = new AggVersionedStorageEngineStats(metricsRepository, storeRepository);
-    /**
-     * The reason of not to restore the data partitions during initialization of storage service is:
-     * 1. During first fresh start up with no data on disk, we don't need to restore anything
-     * 2. During fresh start up with data on disk (aka bootstrap), we will receive messages to subscribe to the partition
-     * and it will re-open the partition on demand.
-     * 3. During crash recovery restart, partitions that are already ingestion will be opened by parent process and we
-     * should not try to open it. The remaining ingestion tasks will open the storage engines.
-     */
-    StorageService storageService = new StorageService(configLoader, storageEngineStats, rocksDBMemoryStats, storeVersionStateSerializer, partitionStateSerializer, storeRepository, false, true);
-    storageService.start();
-    isolatedIngestionServer.setStorageService(storageService);
-
-    // Create SchemaReader
-    SchemaReader kafkaMessageEnvelopeSchemaReader = getSchemaReader(
-        ClientConfig.cloneConfig(clientConfig).setStoreName(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getSystemStoreName())
-    );
-
-    StorageMetadataService storageMetadataService = new StorageEngineMetadataService(storageService.getStorageEngineRepository(), partitionStateSerializer);
-    isolatedIngestionServer.setStorageMetadataService(storageMetadataService);
-
-    StorageEngineBackedCompressorFactory compressorFactory = new StorageEngineBackedCompressorFactory(storageMetadataService);
-
-    // Create KafkaStoreIngestionService
-    KafkaStoreIngestionService storeIngestionService = new KafkaStoreIngestionService(
-        storageService.getStorageEngineRepository(),
-        configLoader,
-        storageMetadataService,
-        clusterInfoProvider,
-        storeRepository,
-        schemaRepository,
-        metricsRepository,
-        rocksDBMemoryStats,
-        Optional.of(kafkaMessageEnvelopeSchemaReader),
-        veniceMetadataRepositoryBuilder.isDaVinciClient() ? Optional.empty() : Optional.of(clientConfig),
-        partitionStateSerializer,
-        helixReadOnlyZKSharedSchemaRepository,
-        null,
-        true,
-        compressorFactory,
-        Optional.empty());
-    storeIngestionService.start();
-    storeIngestionService.addCommonNotifier(ingestionListener);
-    isolatedIngestionServer.setStoreIngestionService(storeIngestionService);
-    isolatedIngestionServer.setIngestionBackend(new DefaultIngestionBackend(storageMetadataService, storeIngestionService, storageService));
-
-    logger.info("Starting report client with target application port: " + configLoader.getVeniceServerConfig().getIngestionApplicationPort());
-    // Create Netty client to report status back to application.
-    IsolatedIngestionRequestClient reportClient = new IsolatedIngestionRequestClient(configLoader.getVeniceServerConfig().getIngestionApplicationPort());
-    isolatedIngestionServer.setReportClient(reportClient);
-
-    // Mark the IsolatedIngestionServer as initiated.
-    isolatedIngestionServer.setInitiated(true);
   }
 
   private IngestionTaskReport handleIngestionTaskCommand(IngestionTaskCommand ingestionTaskCommand) {
@@ -490,66 +304,4 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
       throw new VeniceException("Only able to parse POST requests for actions: init, command, report.  Cannot support action: " + requestParts[1], e);
     }
   }
-
-  private final VeniceNotifier ingestionListener = new VeniceNotifier() {
-    @Override
-    public void completed(String kafkaTopic, int partitionId, long offset, String message) {
-      IngestionTaskReport report = createIngestionTaskReport(IngestionReportType.COMPLETED, kafkaTopic, partitionId, offset, message);
-      isolatedIngestionServer.reportIngestionStatus(report);
-    }
-
-    @Override
-    public void error(String kafkaTopic, int partitionId, String message, Exception e) {
-      IngestionTaskReport report = createIngestionTaskReport(IngestionReportType.ERROR, kafkaTopic, partitionId, e.getClass().getSimpleName() + "_" + e.getMessage());
-      isolatedIngestionServer.reportIngestionStatus(report);
-    }
-
-    @Override
-    public void started(String kafkaTopic, int partitionId, String message) {
-      IngestionTaskReport report = createIngestionTaskReport(IngestionReportType.STARTED, kafkaTopic, partitionId, message);
-      isolatedIngestionServer.reportIngestionStatus(report);
-    }
-
-    @Override
-    public void restarted(String kafkaTopic, int partitionId, long offset, String message) {
-      IngestionTaskReport report = createIngestionTaskReport(IngestionReportType.RESTARTED, kafkaTopic, partitionId, offset, message);
-      isolatedIngestionServer.reportIngestionStatus(report);
-    }
-
-    @Override
-    public void endOfPushReceived(String kafkaTopic, int partitionId, long offset, String message) {
-      IngestionTaskReport report = createIngestionTaskReport(IngestionReportType.END_OF_PUSH_RECEIVED, kafkaTopic, partitionId, offset, message);
-      isolatedIngestionServer.reportIngestionStatus(report);
-    }
-
-    @Override
-    public void startOfBufferReplayReceived(String kafkaTopic, int partitionId, long offset, String message) {
-      IngestionTaskReport report = createIngestionTaskReport(IngestionReportType.START_OF_BUFFER_REPLAY_RECEIVED, kafkaTopic, partitionId, offset, message);
-      isolatedIngestionServer.reportIngestionStatus(report);
-    }
-
-    @Override
-    public void startOfIncrementalPushReceived(String kafkaTopic, int partitionId, long offset, String incrementalPushVersion) {
-      IngestionTaskReport report = createIngestionTaskReport(IngestionReportType.START_OF_INCREMENTAL_PUSH_RECEIVED, kafkaTopic, partitionId, offset, incrementalPushVersion);
-      isolatedIngestionServer.reportIngestionStatus(report);
-    }
-
-    @Override
-    public void endOfIncrementalPushReceived(String kafkaTopic, int partitionId, long offset, String incrementalPushVersion) {
-      IngestionTaskReport report = createIngestionTaskReport(IngestionReportType.END_OF_INCREMENTAL_PUSH_RECEIVED, kafkaTopic, partitionId, offset, incrementalPushVersion);
-      isolatedIngestionServer.reportIngestionStatus(report);
-    }
-
-    @Override
-    public void topicSwitchReceived(String kafkaTopic, int partitionId, long offset, String message) {
-      IngestionTaskReport report = createIngestionTaskReport(IngestionReportType.TOPIC_SWITCH_RECEIVED, kafkaTopic, partitionId, offset, message);
-      isolatedIngestionServer.reportIngestionStatus(report);
-    }
-
-    @Override
-    public void progress(String kafkaTopic, int partitionId, long offset, String message) {
-      IngestionTaskReport report = createIngestionTaskReport(IngestionReportType.PROGRESS, kafkaTopic, partitionId, offset, message);
-      isolatedIngestionServer.reportIngestionStatus(report);
-    }
-  };
 }

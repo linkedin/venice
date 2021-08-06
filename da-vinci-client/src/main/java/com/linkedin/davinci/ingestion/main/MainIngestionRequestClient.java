@@ -11,7 +11,6 @@ import com.linkedin.venice.ingestion.protocol.IngestionMetricsReport;
 import com.linkedin.venice.ingestion.protocol.IngestionStorageMetadata;
 import com.linkedin.venice.ingestion.protocol.IngestionTaskCommand;
 import com.linkedin.venice.ingestion.protocol.IngestionTaskReport;
-import com.linkedin.venice.ingestion.protocol.InitializationConfigs;
 import com.linkedin.venice.ingestion.protocol.ProcessShutdownCommand;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionAction;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionCommandType;
@@ -23,7 +22,6 @@ import com.linkedin.venice.utils.Utils;
 import java.io.Closeable;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Optional;
 import org.apache.log4j.Logger;
@@ -51,36 +49,41 @@ public class MainIngestionRequestClient implements Closeable {
     int currentAttempt = 0;
     int totalAttempts = 3;
     Process forkedIngestionProcess = null;
+
+    List<String> jvmArgs = new ArrayList<>();
+    for (String jvmArg : configLoader.getCombinedProperties()
+        .getString(ConfigKeys.SERVER_FORKED_PROCESS_JVM_ARGUMENT_LIST, "")
+        .split(",")) {
+      if (jvmArg.length() != 0) {
+        jvmArgs.add(jvmArg);
+      }
+    }
+
+    // Prepare initialization config
+    String configFilePath = buildAndSaveConfigsForForkedIngestionProcess(configLoader);
+
     while (currentAttempt < totalAttempts) {
       try {
         // Add blocking call to release target port binding.
         IsolatedIngestionUtils.releaseTargetPortBinding(ingestionServicePort);
-        List<String> jvmArgs = new ArrayList<>();
-        for (String jvmArg : configLoader.getCombinedProperties()
-            .getString(ConfigKeys.SERVER_FORKED_PROCESS_JVM_ARGUMENT_LIST, "")
-            .split(",")) {
-          if (jvmArg.length() != 0) {
-            jvmArgs.add(jvmArg);
-          }
-        }
-        // Start forking child ingestion process.
-        long heartbeatTimeoutMs = configLoader.getCombinedProperties().getLong(SERVER_INGESTION_ISOLATION_HEARTBEAT_TIMEOUT_MS, 60 * Time.MS_PER_SECOND);
+
         /**
          * Do not register shutdown hook for forked ingestion process, as it will be taken care of by graceful shutdown of
          * Da Vinci client and server.
          * In the worst case that above graceful shutdown does not happen, forked ingestion process should also shut itself
          * down after specified timeout SERVER_INGESTION_ISOLATION_HEARTBEAT_TIMEOUT_MS (By default 1 min.)
          */
-        forkedIngestionProcess = ForkedJavaProcess.exec(IsolatedIngestionServer.class, Arrays.asList(String.valueOf(ingestionServicePort),
-            String.valueOf(heartbeatTimeoutMs)), jvmArgs, Optional.empty(), false);
+        forkedIngestionProcess = ForkedJavaProcess.exec(
+            IsolatedIngestionServer.class,
+            Arrays.asList(String.valueOf(ingestionServicePort), configFilePath),
+            jvmArgs,
+            Optional.empty(),
+            false
+        );
         // Wait for server in forked child process to bind the listening port.
         IsolatedIngestionUtils.waitPortBinding(ingestionServicePort, 100);
         // Wait for server in forked child process to pass health check.
-        waitHealthCheck(100);
-
-        InitializationConfigs initializationConfigs = buildInitializationConfig(configLoader);
-        logger.info("Sending initialization aggregatedConfigs to child process: " + initializationConfigs.aggregatedConfigs);
-        httpClientTransport.sendRequest(IngestionAction.INIT, initializationConfigs, 60 * Time.MS_PER_SECOND);
+        waitHealthCheck();
       } catch (Exception e) {
         currentAttempt++;
         if (currentAttempt == totalAttempts) {
@@ -264,24 +267,15 @@ public class MainIngestionRequestClient implements Closeable {
     httpClientTransport.close();
   }
 
-  public InitializationConfigs buildInitializationConfig(VeniceConfigLoader configLoader) {
-    InitializationConfigs initializationConfigs = new InitializationConfigs();
-    initializationConfigs.aggregatedConfigs = new HashMap<>();
-    // Put all configs into request payload.
-    configLoader.getCombinedProperties().toProperties().forEach((key, value) -> initializationConfigs.aggregatedConfigs.put(key.toString(), value.toString()));
-    // Override ingestion isolation's customized configs.
-    configLoader.getCombinedProperties().clipAndFilterNamespace(INGESTION_ISOLATION_CONFIG_PREFIX).toProperties()
-        .forEach((key, value) -> initializationConfigs.aggregatedConfigs.put(key.toString(), value.toString()));
-    return initializationConfigs;
-  }
-
-  private void waitHealthCheck(int maxAttempt) {
-    long waitTime = 100;
+  private void waitHealthCheck() {
+    long waitTime = 1000;
+    int maxAttempt = 100;
     int retryCount = 0;
+    long startTimeInMs = System.currentTimeMillis();
     while (true) {
       try {
         if (sendHeartbeatRequest()) {
-          logger.info("Ingestion service server health check passed.");
+          logger.info("Ingestion service server health check passed in " + (System.currentTimeMillis() - startTimeInMs) + " ms.");
           break;
         } else {
           throw new VeniceException("Got non-OK response from ingestion service.");

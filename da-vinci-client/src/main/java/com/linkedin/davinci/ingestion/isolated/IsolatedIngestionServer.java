@@ -1,5 +1,8 @@
 package com.linkedin.davinci.ingestion.isolated;
 
+import com.linkedin.d2.balancer.D2Client;
+import com.linkedin.d2.balancer.D2ClientBuilder;
+import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceStoreConfig;
 import com.linkedin.davinci.helix.LeaderFollowerParticipantModel;
@@ -10,19 +13,37 @@ import com.linkedin.davinci.ingestion.main.MainIngestionRequestClient;
 import com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType;
+import com.linkedin.davinci.repository.VeniceMetadataRepositoryBuilder;
+import com.linkedin.davinci.stats.AggVersionedStorageEngineStats;
+import com.linkedin.davinci.stats.RocksDBMemoryStats;
+import com.linkedin.davinci.storage.StorageEngineMetadataService;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
+import com.linkedin.venice.CommonConfigKeys;
+import com.linkedin.venice.client.schema.SchemaReader;
+import com.linkedin.venice.client.store.ClientConfig;
+import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.helix.HelixReadOnlyZKSharedSchemaRepository;
 import com.linkedin.venice.ingestion.protocol.IngestionTaskReport;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionReportType;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
+import com.linkedin.venice.meta.ClusterInfoProvider;
+import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
+import com.linkedin.venice.security.DefaultSSLFactory;
+import com.linkedin.venice.security.SSLFactory;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.service.AbstractVeniceService;
+import com.linkedin.venice.stats.AbstractVeniceStats;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
+import com.linkedin.venice.utils.ReflectUtils;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.ChannelFuture;
@@ -32,6 +53,8 @@ import io.netty.channel.ServerChannel;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.tehuti.metrics.MetricsRepository;
+import java.io.File;
+import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.Collections;
@@ -47,7 +70,9 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import org.apache.log4j.Logger;
 
-import static com.linkedin.venice.utils.Time.*;
+import static com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils.*;
+import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.client.store.ClientFactory.*;
 import static java.lang.Thread.*;
 
 
@@ -111,9 +136,10 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
   private int stopConsumptionWaitRetriesNum;
   private DefaultIngestionBackend ingestionBackend;
 
-  public IsolatedIngestionServer(int servicePort, long heartbeatTimeoutMs) {
+  public IsolatedIngestionServer(int servicePort, String configPath) {
     this.servicePort = servicePort;
-    this.heartbeatTimeoutMs = heartbeatTimeoutMs;
+    this.configLoader = loadInitializationConfig(configPath);
+    this.heartbeatTimeoutMs = configLoader.getCombinedProperties().getLong(SERVER_INGESTION_ISOLATION_HEARTBEAT_TIMEOUT_MS, 60 * Time.MS_PER_SECOND);
 
     // Initialize Netty server.
     Class<? extends ServerChannel> serverSocketChannelClass = NioServerSocketChannel.class;
@@ -126,16 +152,12 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
         .childOption(ChannelOption.SO_KEEPALIVE, true)
         .option(ChannelOption.SO_REUSEADDR, true)
         .childOption(ChannelOption.TCP_NODELAY, true);
-    logger.info("IsolatedIngestionServer created");
-  }
-
-  public IsolatedIngestionServer(int servicePort) {
-    this(servicePort, 60 * MS_PER_SECOND);
   }
 
   @Override
   public boolean startInner() {
     int maxAttempt = 100;
+    long waitTime = 500;
     int retryCount = 0;
     while (true) {
       try {
@@ -146,10 +168,14 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
         if (retryCount > maxAttempt) {
           throw new VeniceException("Ingestion Service is unable to bind to target port " + servicePort  + " after " + maxAttempt + " retries.");
         }
+        Utils.sleep(waitTime);
       }
-      Utils.sleep(100);
     }
     logger.info("Listener service started on port: " + servicePort);
+
+    initializeIsolatedIngestionServer();
+    logger.info("All ingestion components are initialized.");
+
     heartbeatCheckScheduler.scheduleAtFixedRate(this::checkHeartbeatTimeout, 0, 5, TimeUnit.SECONDS);
     // There is no async process in this function, so we are completely finished with the start up process.
     return true;
@@ -219,10 +245,6 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
     this.storageMetadataService = storageMetadataService;
   }
 
-  public void setReportClient(IsolatedIngestionRequestClient reportClient) {
-    this.reportClient = reportClient;
-  }
-
   public void setMetricsRepository(MetricsRepository metricsRepository) {
     this.metricsRepository = metricsRepository;
   }
@@ -236,16 +258,8 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
     this.storeVersionStateSerializer = storeVersionStateSerializer;
   }
 
-  public void setStopConsumptionWaitRetriesNum(int numRetries) {
-    this.stopConsumptionWaitRetriesNum = numRetries;
-  }
-
   public void setIngestionBackend(DefaultIngestionBackend ingestionBackend) {
     this.ingestionBackend = ingestionBackend;
-  }
-
-  public IsolatedIngestionRequestClient getReportClient() {
-    return reportClient;
   }
 
   public void setInitiated(boolean initiated) {
@@ -451,18 +465,160 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
     }
   }
 
+  private VeniceConfigLoader loadInitializationConfig(String configPath) {
+    if (!(new File(configPath).exists())) {
+      throw new VeniceException("Initialization config for forked process does not exist.");
+    }
+    try {
+      VeniceProperties loadedVeniceProperties = Utils.parseProperties(configPath);
+      return new VeniceConfigLoader(loadedVeniceProperties, loadedVeniceProperties);
+    } catch (IOException e) {
+      throw new VeniceException(e);
+    }
+  }
+
+  private void initializeIsolatedIngestionServer() {
+    stopConsumptionWaitRetriesNum = configLoader.getCombinedProperties().getInt(SERVER_STOP_CONSUMPTION_WAIT_RETRIES_NUM, 180);
+
+    // Initialize D2Client.
+    SSLFactory sslFactory;
+    D2Client d2Client;
+    String d2ZkHosts = configLoader.getCombinedProperties().getString(D2_CLIENT_ZK_HOSTS_ADDRESS);
+    if (configLoader.getCombinedProperties().getBoolean(CommonConfigKeys.SSL_ENABLED, false)) {
+      try {
+        /**
+         * TODO: DefaultSSLFactory is a copy of the ssl factory implementation in a version of container lib,
+         * we should construct the same SSL Factory being used in the main process with help of ReflectionUtils.
+         */
+        sslFactory = new DefaultSSLFactory(configLoader.getCombinedProperties().toProperties());
+      } catch (Exception e) {
+        throw new VeniceException("Encounter exception in constructing DefaultSSLFactory", e);
+      }
+      d2Client = new D2ClientBuilder()
+          .setZkHosts(d2ZkHosts)
+          .setIsSSLEnabled(true)
+          .setSSLParameters(sslFactory.getSSLParameters())
+          .setSSLContext(sslFactory.getSSLContext())
+          .build();
+    } else {
+      d2Client = new D2ClientBuilder().setZkHosts(d2ZkHosts).build();
+    }
+    startD2Client(d2Client);
+
+    // Create the client config.
+    ClientConfig clientConfig = new ClientConfig()
+        .setD2Client(d2Client)
+        .setD2ServiceName(ClientConfig.DEFAULT_D2_SERVICE_NAME);
+
+    // Create MetricsRepository
+    metricsRepository = new MetricsRepository();
+
+    // Initialize store/schema repositories.
+    VeniceMetadataRepositoryBuilder veniceMetadataRepositoryBuilder = new VeniceMetadataRepositoryBuilder(
+        configLoader,
+        clientConfig,
+        metricsRepository,
+        null,
+        true);
+    storeRepository = veniceMetadataRepositoryBuilder.getStoreRepo();
+    ReadOnlySchemaRepository schemaRepository = veniceMetadataRepositoryBuilder.getSchemaRepo();
+    Optional<HelixReadOnlyZKSharedSchemaRepository> helixReadOnlyZKSharedSchemaRepository = veniceMetadataRepositoryBuilder.getReadOnlyZKSharedSchemaRepository();
+    ClusterInfoProvider clusterInfoProvider = veniceMetadataRepositoryBuilder.getClusterInfoProvider();
+
+    SchemaReader partitionStateSchemaReader = ClientFactory.getSchemaReader(
+        ClientConfig.cloneConfig(clientConfig).setStoreName(AvroProtocolDefinition.PARTITION_STATE.getSystemStoreName()));
+    SchemaReader storeVersionStateSchemaReader = ClientFactory.getSchemaReader(
+        ClientConfig.cloneConfig(clientConfig).setStoreName(AvroProtocolDefinition.STORE_VERSION_STATE.getSystemStoreName()));
+    partitionStateSerializer = AvroProtocolDefinition.PARTITION_STATE.getSerializer();
+    partitionStateSerializer.setSchemaReader(partitionStateSchemaReader);
+    storeVersionStateSerializer = AvroProtocolDefinition.STORE_VERSION_STATE.getSerializer();
+    storeVersionStateSerializer.setSchemaReader(storeVersionStateSchemaReader);
+
+    // Create RocksDBMemoryStats. For now RocksDBMemoryStats cannot work with SharedConsumerPool.
+    RocksDBMemoryStats rocksDBMemoryStats = ((configLoader.getVeniceServerConfig().isDatabaseMemoryStatsEnabled())
+        && (!configLoader.getVeniceServerConfig().isSharedConsumerPoolEnabled()))?
+        new RocksDBMemoryStats(metricsRepository, "RocksDBMemoryStats", configLoader.getVeniceServerConfig().getRocksDBServerConfig().isRocksDBPlainTableFormatEnabled()) : null;
+
+    /**
+     * Using reflection to create all the stats classes related to ingestion isolation. All these classes extends
+     * {@link AbstractVeniceStats} class and takes {@link MetricsRepository} as the only parameter in its constructor.
+     */
+    for (String ingestionIsolationStatsClassName : configLoader.getCombinedProperties().getString(SERVER_INGESTION_ISOLATION_STATS_CLASS_LIST, "").split(",")) {
+      if (ingestionIsolationStatsClassName.length() != 0) {
+        Class<? extends AbstractVeniceStats> ingestionIsolationStatsClass = ReflectUtils.loadClass(ingestionIsolationStatsClassName);
+        if (!AbstractVeniceStats.class.isAssignableFrom(ingestionIsolationStatsClass)) {
+          throw new VeniceException("Class: " + ingestionIsolationStatsClassName + " does not extends AbstractVeniceStats");
+        }
+        AbstractVeniceStats ingestionIsolationStats =
+            ReflectUtils.callConstructor(ingestionIsolationStatsClass, new Class<?>[]{MetricsRepository.class}, new Object[]{metricsRepository});
+        logger.info("Created Ingestion Isolation stats: " + ingestionIsolationStats.getName());
+      } else {
+        logger.info("Ingestion isolation stats class name is empty, will skip it.");
+      }
+    }
+
+    // Create StorageService
+    AggVersionedStorageEngineStats storageEngineStats = new AggVersionedStorageEngineStats(metricsRepository, storeRepository);
+    /**
+     * The reason of not to restore the data partitions during initialization of storage service is:
+     * 1. During first fresh start up with no data on disk, we don't need to restore anything
+     * 2. During fresh start up with data on disk (aka bootstrap), we will receive messages to subscribe to the partition
+     * and it will re-open the partition on demand.
+     * 3. During crash recovery restart, partitions that are already ingestion will be opened by parent process and we
+     * should not try to open it. The remaining ingestion tasks will open the storage engines.
+     */
+    storageService = new StorageService(configLoader, storageEngineStats, rocksDBMemoryStats,
+        storeVersionStateSerializer, partitionStateSerializer, storeRepository, false, true);
+    storageService.start();
+
+    // Create SchemaReader
+    SchemaReader kafkaMessageEnvelopeSchemaReader = getSchemaReader(
+        ClientConfig.cloneConfig(clientConfig).setStoreName(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getSystemStoreName())
+    );
+
+    storageMetadataService = new StorageEngineMetadataService(storageService.getStorageEngineRepository(), partitionStateSerializer);
+
+    StorageEngineBackedCompressorFactory compressorFactory = new StorageEngineBackedCompressorFactory(storageMetadataService);
+
+    // Create KafkaStoreIngestionService
+    storeIngestionService = new KafkaStoreIngestionService(
+        storageService.getStorageEngineRepository(),
+        configLoader,
+        storageMetadataService,
+        clusterInfoProvider,
+        storeRepository,
+        schemaRepository,
+        metricsRepository,
+        rocksDBMemoryStats,
+        Optional.of(kafkaMessageEnvelopeSchemaReader),
+        veniceMetadataRepositoryBuilder.isDaVinciClient() ? Optional.empty() : Optional.of(clientConfig),
+        partitionStateSerializer,
+        helixReadOnlyZKSharedSchemaRepository,
+        null,
+        true,
+        compressorFactory,
+        Optional.empty());
+    storeIngestionService.start();
+    storeIngestionService.addCommonNotifier(new IsolatedIngestionNotifier(this));
+    ingestionBackend = new DefaultIngestionBackend(storageMetadataService, storeIngestionService, storageService);
+
+    logger.info("Starting report client with target application port: " + configLoader.getVeniceServerConfig().getIngestionApplicationPort());
+    // Create Netty client to report status back to application.
+    reportClient = new IsolatedIngestionRequestClient(configLoader.getVeniceServerConfig().getIngestionApplicationPort());
+
+    // Mark the IsolatedIngestionServer as initiated.
+    isInitiated = true;
+  }
+
+
+
   public static void main(String[] args) throws Exception {
     logger.info("Capture arguments: " + Arrays.toString(args));
     if (args.length < 1) {
       throw new VeniceException("Expected at least one arguments: port. Got " + args.length);
     }
     int port = Integer.parseInt(args[0]);
-    IsolatedIngestionServer isolatedIngestionServer;
-    if (args.length == 2) {
-      isolatedIngestionServer = new IsolatedIngestionServer(port, Long.parseLong(args[1]));
-    } else {
-      isolatedIngestionServer = new IsolatedIngestionServer(port);
-    }
+    IsolatedIngestionServer isolatedIngestionServer = new IsolatedIngestionServer(port, args[1]);
     isolatedIngestionServer.start();
   }
 }
