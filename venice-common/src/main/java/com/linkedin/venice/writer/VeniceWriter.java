@@ -479,12 +479,12 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     Delete delete = new Delete();
     if (deleteMetadata.isPresent()) {
       delete.schemaId = deleteMetadata.get().getValueSchemaId();
-      delete.timestampMetadataVersionId = deleteMetadata.get().getTimestampMetadataVersionId();
-      delete.timestampMetadataPayload = deleteMetadata.get().getTimestampMetadataPayload();
+      delete.replicationMetadataVersionId = deleteMetadata.get().getTimestampMetadataVersionId();
+      delete.replicationMetadataPayload = deleteMetadata.get().getTimestampMetadataPayload();
     } else {
       delete.schemaId = VENICE_DEFAULT_VALUE_SCHEMA_ID;
-      delete.timestampMetadataVersionId = VENICE_DEFAULT_TIMESTAMP_METADATA_VERSION_ID;
-      delete.timestampMetadataPayload = EMPTY_BYTE_BUFFER;
+      delete.replicationMetadataVersionId = VENICE_DEFAULT_TIMESTAMP_METADATA_VERSION_ID;
+      delete.replicationMetadataPayload = EMPTY_BYTE_BUFFER;
     }
 
     return sendMessage(producerMetadata -> kafkaKey, MessageType.DELETE, delete, partition, callback, leaderMetadataWrapper, Optional.of(logicalTs));
@@ -630,11 +630,11 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     putPayload.schemaId = valueSchemaId;
 
     if (putMetadata.isPresent()) {
-      putPayload.timestampMetadataVersionId = putMetadata.get().getTimestampMetadataVersionId();
-      putPayload.timestampMetadataPayload = putMetadata.get().getTimestampMetadataPayload();
+      putPayload.replicationMetadataVersionId = putMetadata.get().getTimestampMetadataVersionId();
+      putPayload.replicationMetadataPayload = putMetadata.get().getTimestampMetadataPayload();
     } else {
-      putPayload.timestampMetadataVersionId = VENICE_DEFAULT_TIMESTAMP_METADATA_VERSION_ID;
-      putPayload.timestampMetadataPayload = EMPTY_BYTE_BUFFER;
+      putPayload.replicationMetadataVersionId = VENICE_DEFAULT_TIMESTAMP_METADATA_VERSION_ID;
+      putPayload.replicationMetadataPayload = EMPTY_BYTE_BUFFER;
     }
 
     return sendMessage(producerMetadata -> kafkaKey, MessageType.PUT, putPayload, partition, callback, leaderMetadataWrapper, Optional.of(logicalTs));
@@ -1021,8 +1021,8 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       Put putPayload = new Put();
       putPayload.putValue = chunk;
       putPayload.schemaId = AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion();
-      putPayload.timestampMetadataVersionId = VENICE_DEFAULT_TIMESTAMP_METADATA_VERSION_ID;
-      putPayload.timestampMetadataPayload = EMPTY_BYTE_BUFFER;
+      putPayload.replicationMetadataVersionId = VENICE_DEFAULT_TIMESTAMP_METADATA_VERSION_ID;
+      putPayload.replicationMetadataPayload = EMPTY_BYTE_BUFFER;
 
       chunkedKeySuffix.chunkId.chunkIndex = chunkIndex;
       if (0 == chunkIndex) {
@@ -1070,11 +1070,11 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     }
 
     if (putMetadata.isPresent()) {
-      putPayload.timestampMetadataVersionId = putMetadata.get().getTimestampMetadataVersionId();
-      putPayload.timestampMetadataPayload = putMetadata.get().getTimestampMetadataPayload();
+      putPayload.replicationMetadataVersionId = putMetadata.get().getTimestampMetadataVersionId();
+      putPayload.replicationMetadataPayload = putMetadata.get().getTimestampMetadataPayload();
     } else {
-      putPayload.timestampMetadataVersionId = VENICE_DEFAULT_TIMESTAMP_METADATA_VERSION_ID;
-      putPayload.timestampMetadataPayload = EMPTY_BYTE_BUFFER;
+      putPayload.replicationMetadataVersionId = VENICE_DEFAULT_TIMESTAMP_METADATA_VERSION_ID;
+      putPayload.replicationMetadataPayload = EMPTY_BYTE_BUFFER;
     }
 
     // We only return the last future (the one for the manifest) and assume that once this one is finished,

@@ -213,21 +213,21 @@ public class VeniceWriterTest {
     //verify default values for timestampMetadata are written correctly
     Put put = (Put)value1.payloadUnion;
     Assert.assertEquals(put.schemaId, 1);
-    Assert.assertEquals(put.timestampMetadataVersionId, VeniceWriter.VENICE_DEFAULT_TIMESTAMP_METADATA_VERSION_ID);
-    Assert.assertEquals(put.timestampMetadataPayload, ByteBuffer.wrap(new byte[0]));
+    Assert.assertEquals(put.replicationMetadataVersionId, VeniceWriter.VENICE_DEFAULT_TIMESTAMP_METADATA_VERSION_ID);
+    Assert.assertEquals(put.replicationMetadataPayload, ByteBuffer.wrap(new byte[0]));
 
     Delete delete = (Delete)value4.payloadUnion;
     Assert.assertEquals(delete.schemaId, VeniceWriter.VENICE_DEFAULT_VALUE_SCHEMA_ID);
-    Assert.assertEquals(delete.timestampMetadataVersionId, VeniceWriter.VENICE_DEFAULT_TIMESTAMP_METADATA_VERSION_ID);
-    Assert.assertEquals(delete.timestampMetadataPayload, ByteBuffer.wrap(new byte[0]));
+    Assert.assertEquals(delete.replicationMetadataVersionId, VeniceWriter.VENICE_DEFAULT_TIMESTAMP_METADATA_VERSION_ID);
+    Assert.assertEquals(delete.replicationMetadataPayload, ByteBuffer.wrap(new byte[0]));
 
     //verify timestampMetadata is encoded correctly for Put.
     KafkaMessageEnvelope value2 = kafkaMessageEnvelopeArgumentCaptor.getAllValues().get(2);
     Assert.assertEquals(value2.messageType, MessageType.PUT.getValue());
     put = (Put)value2.payloadUnion;
     Assert.assertEquals(put.schemaId, 1);
-    Assert.assertEquals(put.timestampMetadataVersionId, 1);
-    Assert.assertEquals(put.timestampMetadataPayload, ByteBuffer.wrap(new byte[]{0xa, 0xb}));
+    Assert.assertEquals(put.replicationMetadataVersionId, 1);
+    Assert.assertEquals(put.replicationMetadataPayload, ByteBuffer.wrap(new byte[]{0xa, 0xb}));
     Assert.assertEquals(value2.producerMetadata.logicalTimestamp, VeniceWriter.APP_DEFAULT_LOGICAL_TS);
 
     //verify timestampMetadata is encoded correctly for Delete.
@@ -235,8 +235,8 @@ public class VeniceWriterTest {
     Assert.assertEquals(value5.messageType, MessageType.DELETE.getValue());
     delete = (Delete)value5.payloadUnion;
     Assert.assertEquals(delete.schemaId, 1);
-    Assert.assertEquals(delete.timestampMetadataVersionId, 1);
-    Assert.assertEquals(delete.timestampMetadataPayload, ByteBuffer.wrap(new byte[]{0xa, 0xb}));
+    Assert.assertEquals(delete.replicationMetadataVersionId, 1);
+    Assert.assertEquals(delete.replicationMetadataPayload, ByteBuffer.wrap(new byte[]{0xa, 0xb}));
     Assert.assertEquals(value5.producerMetadata.logicalTimestamp, VeniceWriter.APP_DEFAULT_LOGICAL_TS);
 
     //verify default logical_ts is encoded correctly

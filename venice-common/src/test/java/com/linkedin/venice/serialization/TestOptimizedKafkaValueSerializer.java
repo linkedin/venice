@@ -67,8 +67,8 @@ public class TestOptimizedKafkaValueSerializer {
     put.schemaId = AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION;
     byte[] putValueBytes = "put_value".getBytes();
     put.putValue = ByteBuffer.wrap(putValueBytes);
-    put.timestampMetadataVersionId = VeniceWriter.VENICE_DEFAULT_TIMESTAMP_METADATA_VERSION_ID;
-    put.timestampMetadataPayload = ByteBuffer.wrap(new byte[0]);
+    put.replicationMetadataVersionId = VeniceWriter.VENICE_DEFAULT_TIMESTAMP_METADATA_VERSION_ID;
+    put.replicationMetadataPayload = ByteBuffer.wrap(new byte[0]);
     record.payloadUnion = put;
 
     OptimizedKafkaValueSerializer valueSerializer = new OptimizedKafkaValueSerializer();

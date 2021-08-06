@@ -6,22 +6,22 @@
 package com.linkedin.venice.kafka.protocol;
 
 @SuppressWarnings("all")
-/** Delete payloads contain fields related to timestamp metadata of the record. */
+/** Delete payloads contain fields related to replication metadata of the record. */
 public class Delete extends org.apache.avro.specific.SpecificRecordBase implements org.apache.avro.specific.SpecificRecord {
-  public static final org.apache.avro.Schema SCHEMA$ = org.apache.avro.Schema.parse("{\"type\":\"record\",\"name\":\"Delete\",\"namespace\":\"com.linkedin.venice.kafka.protocol\",\"fields\":[{\"name\":\"schemaId\",\"type\":\"int\",\"doc\":\"An identifier used, in conjunction with the timestampMetadataVersionId, to deserialize the timestampMetadataPayload.\",\"default\":-1},{\"name\":\"timestampMetadataVersionId\",\"type\":\"int\",\"doc\":\"The A/A timestamp metadata schema version ID that will be used to deserialize timestampMetadataPayload.\",\"default\":-1},{\"name\":\"timestampMetadataPayload\",\"type\":\"bytes\",\"doc\":\"The serialized value of the timestamp metadata schema.\",\"default\":\"\"}]}");
-  /** An identifier used, in conjunction with the timestampMetadataVersionId, to deserialize the timestampMetadataPayload. */
+  public static final org.apache.avro.Schema SCHEMA$ = org.apache.avro.Schema.parse("{\"type\":\"record\",\"name\":\"Delete\",\"namespace\":\"com.linkedin.venice.kafka.protocol\",\"fields\":[{\"name\":\"schemaId\",\"type\":\"int\",\"doc\":\"An identifier used, in conjunction with the replicationMetadataVersionId, to deserialize the replicationMetadataPayload.\",\"default\":-1},{\"name\":\"replicationMetadataVersionId\",\"type\":\"int\",\"doc\":\"The A/A replication metadata schema version ID that will be used to deserialize replicationMetadataPayload.\",\"default\":-1},{\"name\":\"replicationMetadataPayload\",\"type\":\"bytes\",\"doc\":\"The serialized value of the replication metadata schema.\",\"default\":\"\"}]}");
+  /** An identifier used, in conjunction with the replicationMetadataVersionId, to deserialize the replicationMetadataPayload. */
   public int schemaId;
-  /** The A/A timestamp metadata schema version ID that will be used to deserialize timestampMetadataPayload. */
-  public int timestampMetadataVersionId;
-  /** The serialized value of the timestamp metadata schema. */
-  public java.nio.ByteBuffer timestampMetadataPayload;
+  /** The A/A replication metadata schema version ID that will be used to deserialize replicationMetadataPayload. */
+  public int replicationMetadataVersionId;
+  /** The serialized value of the replication metadata schema. */
+  public java.nio.ByteBuffer replicationMetadataPayload;
   public org.apache.avro.Schema getSchema() { return SCHEMA$; }
   // Used by DatumWriter.  Applications should not call. 
   public java.lang.Object get(int field$) {
     switch (field$) {
     case 0: return schemaId;
-    case 1: return timestampMetadataVersionId;
-    case 2: return timestampMetadataPayload;
+    case 1: return replicationMetadataVersionId;
+    case 2: return replicationMetadataPayload;
     default: throw new org.apache.avro.AvroRuntimeException("Bad index");
     }
   }
@@ -30,8 +30,8 @@ public class Delete extends org.apache.avro.specific.SpecificRecordBase implemen
   public void put(int field$, java.lang.Object value$) {
     switch (field$) {
     case 0: schemaId = (java.lang.Integer)value$; break;
-    case 1: timestampMetadataVersionId = (java.lang.Integer)value$; break;
-    case 2: timestampMetadataPayload = (java.nio.ByteBuffer)value$; break;
+    case 1: replicationMetadataVersionId = (java.lang.Integer)value$; break;
+    case 2: replicationMetadataPayload = (java.nio.ByteBuffer)value$; break;
     default: throw new org.apache.avro.AvroRuntimeException("Bad index");
     }
   }
