@@ -156,6 +156,7 @@ public class SharedKafkaConsumer implements KafkaConsumerWrapper {
 
     LOGGER.info(String.format("Shared consumer %s unsubscribed topic %s partition %d: . Took %d ms.",
         this, topic, partition, Instant.now().toEpochMilli() - startTime.toEpochMilli()));
+    updateCurrentAssignment(false);
     waitAfterUnsubscribe(currentPollTimes);
   }
 
