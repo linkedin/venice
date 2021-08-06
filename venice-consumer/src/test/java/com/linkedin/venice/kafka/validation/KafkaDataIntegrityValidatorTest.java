@@ -104,8 +104,8 @@ public class KafkaDataIntegrityValidatorTest {
     Put putPayload = new Put();
     putPayload.putValue = ByteBuffer.wrap("value".getBytes());
     putPayload.schemaId = 0;
-    putPayload.timestampMetadataVersionId = VeniceWriter.VENICE_DEFAULT_TIMESTAMP_METADATA_VERSION_ID;
-    putPayload.timestampMetadataPayload = ByteBuffer.wrap(new byte[0]);
+    putPayload.replicationMetadataVersionId = VeniceWriter.VENICE_DEFAULT_TIMESTAMP_METADATA_VERSION_ID;
+    putPayload.replicationMetadataPayload = ByteBuffer.wrap(new byte[0]);
     messageEnvelope.payloadUnion = putPayload;
 
     return new ConsumerRecord<>(kafkaTopic, partition, offset, brokerTimestamp, TimestampType.CREATE_TIME,

@@ -77,8 +77,8 @@ public class TestKafkaSerializer {
     Put put = new Put();
     put.schemaId = -1; // TODO: Use valid schema ID.
     put.putValue = ByteBuffer.wrap(val1);
-    put.timestampMetadataVersionId = VeniceWriter.VENICE_DEFAULT_TIMESTAMP_METADATA_VERSION_ID;
-    put.timestampMetadataPayload = ByteBuffer.wrap(new byte[0]);
+    put.replicationMetadataVersionId = VeniceWriter.VENICE_DEFAULT_TIMESTAMP_METADATA_VERSION_ID;
+    put.replicationMetadataPayload = ByteBuffer.wrap(new byte[0]);
     expectedKafkaValue1.payloadUnion = put;
 
     // TODO: Populate producer metadata properly
@@ -110,8 +110,8 @@ public class TestKafkaSerializer {
     expectedKafkaValue2.messageType = MessageType.DELETE.getValue();
     Delete delete = new Delete();
     delete.schemaId = VENICE_DEFAULT_VALUE_SCHEMA_ID;
-    delete.timestampMetadataVersionId = VENICE_DEFAULT_TIMESTAMP_METADATA_VERSION_ID;
-    delete.timestampMetadataPayload = ByteBuffer.wrap(new byte[0]);
+    delete.replicationMetadataVersionId = VENICE_DEFAULT_TIMESTAMP_METADATA_VERSION_ID;
+    delete.replicationMetadataPayload = ByteBuffer.wrap(new byte[0]);
     expectedKafkaValue2.payloadUnion = delete;
 
     // TODO: Populate producer metadata properly

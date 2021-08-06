@@ -28,6 +28,7 @@ import static org.mockito.Mockito.*;
 public class ConsumerTest {
   private static final String PRODUCER_METADATA_FIELD = "producerMetadata";
   private static final String MESSAGE_TYPE_FIELD = "messageType";
+  private static final String TARGET_VERSION_FIELD = "targetVersion";
   private static final String PAYLOAD_UNION_FIELD = "payloadUnion";
   private static final String NEW_FIELD = "newField";
   private static final KafkaValueSerializer REGULAR_KAFKA_VALUE_SERIALIZER = new KafkaValueSerializer();
@@ -95,11 +96,12 @@ public class ConsumerTest {
     producerMetadata.messageSequenceNumber = 0;
     messageFromNewProtocol.put(PRODUCER_METADATA_FIELD, producerMetadata);
     messageFromNewProtocol.put(MESSAGE_TYPE_FIELD, MessageType.PUT.getValue());
+    messageFromNewProtocol.put(TARGET_VERSION_FIELD, -1);
     Put put = new Put();
     put.schemaId = 1;
     put.putValue = ByteBuffer.allocate(1);
-    put.timestampMetadataVersionId = VeniceWriter.VENICE_DEFAULT_TIMESTAMP_METADATA_VERSION_ID;
-    put.timestampMetadataPayload = ByteBuffer.wrap(new byte[0]);
+    put.replicationMetadataVersionId = VeniceWriter.VENICE_DEFAULT_TIMESTAMP_METADATA_VERSION_ID;
+    put.replicationMetadataPayload = ByteBuffer.wrap(new byte[0]);
     messageFromNewProtocol.put(PAYLOAD_UNION_FIELD, put);
     messageFromNewProtocol.put(NEW_FIELD, 1);
 

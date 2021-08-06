@@ -49,6 +49,11 @@
         ]
       }
     }, {
+      "name": "targetVersion",
+      "doc": "This field is used in incremental pushes only - the current version of the target store when the inc push starts.",
+      "type": "int",
+      "default": -1
+    }, {
       "name": "payloadUnion",
       "doc": "This contains the main payload of the message. Which branch of the union is present is based on the previously-defined MessageType field.",
       "type": [
@@ -75,11 +80,6 @@
               "doc": "The serialized value of the replication metadata schema.",
               "type": "bytes",
               "default": ""
-            }, {
-              "name": "targetVersion",
-              "doc": "This field is used in incremental pushes only - the current version of the target store when the inc push starts.",
-              "type": "int",
-              "default": -1
             }
           ]
         }, {
@@ -99,11 +99,6 @@
               "name": "updateValue",
               "doc": "New value(s) for parts of the record that need to be updated.",
               "type": "bytes"
-            }, {
-              "name": "targetVersion",
-              "doc": "This field is used in incremental pushes only - the current version of the target store when the inc push starts.",
-              "type": "int",
-              "default": -1
             }
           ]
         }, {
@@ -126,11 +121,6 @@
               "doc": "The serialized value of the replication metadata schema.",
               "type": "bytes",
               "default": ""
-            }, {
-              "name": "targetVersion",
-              "doc": "This field is used in incremental pushes only - the current version of the target store when the inc push starts.",
-              "type": "int",
-              "default": -1
             }
           ]
         }, {

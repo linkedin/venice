@@ -140,7 +140,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       Put put) {
     // TODO: Honor BatchConflictResolutionPolicy and maybe persist RMD for batch push records.
     if (partitionConsumptionStateMap.get(partition).isEndOfPushReceived()) {
-      byte[] metadataBytesWithValueSchemaId = prependReplicationMetadataBytesWithValueSchemaId(put.timestampMetadataPayload, put.schemaId);
+      byte[] metadataBytesWithValueSchemaId = prependReplicationMetadataBytesWithValueSchemaId(put.replicationMetadataPayload, put.schemaId);
       storageEngine.putWithReplicationMetadata(partition, keyBytes, put.putValue, metadataBytesWithValueSchemaId);
     } else {
       storageEngine.put(partition, keyBytes, put.putValue);
@@ -152,7 +152,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       Delete delete) {
     // TODO: Honor BatchConflictResolutionPolicy and maybe persist RMD for batch push records.
     if (partitionConsumptionStateMap.get(partition).isEndOfPushReceived()) {
-      byte[] metadataBytesWithValueSchemaId = prependReplicationMetadataBytesWithValueSchemaId(delete.timestampMetadataPayload, delete.schemaId);
+      byte[] metadataBytesWithValueSchemaId = prependReplicationMetadataBytesWithValueSchemaId(delete.replicationMetadataPayload, delete.schemaId);
       storageEngine.deleteWithReplicationMetadata(partition, keyBytes, metadataBytesWithValueSchemaId);
     } else {
       storageEngine.delete(partition, keyBytes);
@@ -321,8 +321,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       Put updatedPut = new Put();
       updatedPut.putValue = ByteUtils.prependIntHeaderToByteBuffer(updatedValueBytes, valueSchemaId, doesResultReuseInput);
       updatedPut.schemaId = valueSchemaId;
-      updatedPut.timestampMetadataVersionId = replicationMetadataVersionId;
-      updatedPut.timestampMetadataPayload = updatedReplicationMetadataBytes;
+      updatedPut.replicationMetadataVersionId = replicationMetadataVersionId;
+      updatedPut.replicationMetadataPayload = updatedReplicationMetadataBytes;
 
       byte[] updatedKeyBytes = key;
       if (isChunkedTopic) {
