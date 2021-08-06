@@ -3,20 +3,22 @@ package com.linkedin.davinci.ingestion.utils;
 import com.linkedin.common.callback.Callback;
 import com.linkedin.common.util.None;
 import com.linkedin.d2.balancer.D2Client;
+import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.ingestion.isolated.IsolatedIngestionServer;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.ingestion.protocol.IngestionMetricsReport;
 import com.linkedin.venice.ingestion.protocol.IngestionStorageMetadata;
 import com.linkedin.venice.ingestion.protocol.IngestionTaskCommand;
 import com.linkedin.venice.ingestion.protocol.IngestionTaskReport;
-import com.linkedin.venice.ingestion.protocol.InitializationConfigs;
 import com.linkedin.venice.ingestion.protocol.ProcessShutdownCommand;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionAction;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionReportType;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
+import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.VeniceProperties;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
@@ -29,12 +31,15 @@ import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioSocketChannel;
 import io.netty.handler.codec.http.DefaultFullHttpResponse;
 import io.netty.handler.codec.http.FullHttpRequest;
-import io.netty.handler.codec.http.FullHttpResponse;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpResponse;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpVersion;
+import java.io.File;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.AbstractMap;
 import java.util.Collections;
 import java.util.Map;
@@ -46,6 +51,7 @@ import org.apache.avro.specific.SpecificRecordBase;
 import org.apache.commons.io.IOUtils;
 import org.apache.log4j.Logger;
 
+import static com.linkedin.parseq.Task.*;
 import static com.linkedin.venice.ingestion.protocol.enums.IngestionAction.*;
 
 
@@ -58,8 +64,6 @@ public class IsolatedIngestionUtils {
   private static final Logger logger = Logger.getLogger(IsolatedIngestionUtils.class);
   private static final int D2_STARTUP_TIMEOUT = 60000;
 
-  private static final InternalAvroSpecificSerializer<InitializationConfigs> initializationConfigSerializer =
-          AvroProtocolDefinition.INITIALIZATION_CONFIGS.getSerializer();
   private static final InternalAvroSpecificSerializer<IngestionTaskCommand> ingestionTaskCommandSerializer =
           AvroProtocolDefinition.INGESTION_TASK_COMMAND.getSerializer();
   private static final InternalAvroSpecificSerializer<IngestionTaskReport> ingestionTaskReportSerializer =
@@ -78,7 +82,6 @@ public class IsolatedIngestionUtils {
 
   private static final Map<IngestionAction, InternalAvroSpecificSerializer> ingestionActionToRequestSerializerMap =
       Stream.of(
-          new AbstractMap.SimpleEntry<>(INIT, initializationConfigSerializer),
           new AbstractMap.SimpleEntry<>(COMMAND, ingestionTaskCommandSerializer),
           new AbstractMap.SimpleEntry<>(REPORT, ingestionTaskReportSerializer),
           // TODO: The request of metric is dummy
@@ -91,8 +94,6 @@ public class IsolatedIngestionUtils {
 
   private static final Map<IngestionAction, InternalAvroSpecificSerializer> ingestionActionToResponseSerializerMap =
       Stream.of(
-          // TODO: The response of init is dummy
-          new AbstractMap.SimpleEntry<>(INIT, ingestionDummyContentSerializer),
           new AbstractMap.SimpleEntry<>(COMMAND, ingestionTaskReportSerializer),
           // TODO: The response of report is dummy
           new AbstractMap.SimpleEntry<>(REPORT, ingestionDummyContentSerializer),
@@ -153,12 +154,6 @@ public class IsolatedIngestionUtils {
     HttpResponse httpResponse = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, status, contentBuf);
     httpResponse.headers().set(HttpHeaderNames.CONTENT_LENGTH, contentBuf.readableBytes());
     return httpResponse;
-  }
-
-  public static byte[] readHttpResponseContent(FullHttpResponse response) {
-    byte[] responseContent = new byte[response.content().readableBytes()];
-    response.content().readBytes(responseContent);
-    return responseContent;
   }
 
   public static byte[] readHttpRequestContent(FullHttpRequest response) {
@@ -321,5 +316,39 @@ public class IsolatedIngestionUtils {
 
   public static IngestionTaskReport createIngestionTaskReport(IngestionReportType ingestionReportType, String kafkaTopic, int partitionId, String message) {
     return createIngestionTaskReport(ingestionReportType, kafkaTopic, partitionId, 0, message);
+  }
+
+  public static String buildAndSaveConfigsForForkedIngestionProcess(VeniceConfigLoader configLoader) {
+    String configFileName = "ForkedIngestionProcess.conf";
+    PropertyBuilder propertyBuilder = new PropertyBuilder();
+    configLoader.getCombinedProperties().toProperties().forEach((key, value) -> propertyBuilder.put(key.toString(), value.toString()));
+    // Override ingestion isolation's customized configs.
+    configLoader.getCombinedProperties().clipAndFilterNamespace(INGESTION_ISOLATION_CONFIG_PREFIX).toProperties()
+        .forEach((key, value) -> propertyBuilder.put(key.toString(), value.toString()));
+    VeniceProperties veniceProperties = propertyBuilder.build();
+
+    String configBasePath = configLoader.getVeniceServerConfig().getDataBasePath();
+    try {
+      // Make sure the base path exists so we can store the config file in the path.
+      Files.createDirectories(Paths.get(configBasePath));
+    } catch (IOException e) {
+      throw new VeniceException(e);
+    }
+
+    String configFilePath = Paths.get(configBasePath, configFileName).toAbsolutePath().toString();
+    File initializationConfig = new File(configFilePath);
+    if (initializationConfig.exists()) {
+      LOGGER.warn("Initialization config file already exists, will delete the old configs.");
+      if (!initializationConfig.delete()) {
+        throw new VeniceException("Unable to delete config file at path: " + configFilePath);
+      }
+    }
+    try {
+      veniceProperties.storeFlattened(initializationConfig);
+      logger.info("Forked process configs are stored into: " + configFilePath);
+    } catch (IOException e) {
+      throw new VeniceException(e);
+    }
+    return configFilePath;
   }
 }

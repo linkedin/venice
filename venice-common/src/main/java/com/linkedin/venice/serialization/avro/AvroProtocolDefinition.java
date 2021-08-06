@@ -7,7 +7,6 @@ import com.linkedin.venice.ingestion.protocol.IngestionMetricsReport;
 import com.linkedin.venice.ingestion.protocol.IngestionStorageMetadata;
 import com.linkedin.venice.ingestion.protocol.IngestionTaskCommand;
 import com.linkedin.venice.ingestion.protocol.IngestionTaskReport;
-import com.linkedin.venice.ingestion.protocol.InitializationConfigs;
 import com.linkedin.venice.ingestion.protocol.ProcessShutdownCommand;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
@@ -93,11 +92,6 @@ public enum AvroProtocolDefinition {
    * This protocol is actually un-evolvable.
    */
   CHUNKED_KEY_SUFFIX(ChunkedKeySuffix.class),
-
-  /**
-   * Used to encode configs needed to initialize child process of ingestion isolation.
-   */
-  INITIALIZATION_CONFIGS(27,1, InitializationConfigs.class),
 
   /**
    * Used to encode various kinds of ingestion task commands, which are used to control ingestion task in child process.
