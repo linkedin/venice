@@ -152,6 +152,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private static final int EXCEPTION_BLOCKING_QUEUE_NOTIFY_IN_BYTE = 1000;
   private static final String EXCEPTION_GROUP_DRAINER = "drainer";
   private static final String EXCEPTION_GROUP_PRODUCER = "producer";
+  private static final String EXCEPTION_GROUP_CONSUMER = "consumer";
 
   // Final stuff
   /** storage destination for consumption */
@@ -213,6 +214,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       new MemoryBoundBlockingQueue<>(EXCEPTION_BLOCKING_QUEUE_SIZE_IN_BYTE, EXCEPTION_BLOCKING_QUEUE_NOTIFY_IN_BYTE);
   /** Persists the exception thrown by kafka producer callback for L/F mode */
   private final BlockingQueue<PartitionExceptionInfo> producerExceptions =
+      new MemoryBoundBlockingQueue<>(EXCEPTION_BLOCKING_QUEUE_SIZE_IN_BYTE, EXCEPTION_BLOCKING_QUEUE_NOTIFY_IN_BYTE);
+  /**
+   * Current it captures some of the exceptions that are thrown after consumption but before producing to local version topic.
+   */
+  private final BlockingQueue<PartitionExceptionInfo> consumerExceptions =
       new MemoryBoundBlockingQueue<>(EXCEPTION_BLOCKING_QUEUE_SIZE_IN_BYTE, EXCEPTION_BLOCKING_QUEUE_NOTIFY_IN_BYTE);
   /** Persists the exception thrown by {@link KafkaConsumerService}. */
   private Exception lastConsumerException = null;
@@ -1130,10 +1136,21 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       try {
         PartitionExceptionInfo exceptionPartitionPair = exceptionQueue.take();
         int exceptionPartition = exceptionPartitionPair.getPartitionId();
-        reportError(exceptionPartitionPair.getException().getMessage(), exceptionPartition,
-            exceptionPartitionPair.getException());
-        if (partitionConsumptionStateMap.containsKey(exceptionPartition)) {
-          unSubscribePartition(kafkaVersionTopic, exceptionPartition);
+        PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(exceptionPartition);
+        if (partitionConsumptionState == null) {
+          logger.warn("Ignoring exception for partition " + exceptionPartition + " for store version " + kafkaVersionTopic
+              + " since this partition has been unsubscribed already.", exceptionPartitionPair.getException());
+          continue;
+        }
+
+        if (!partitionConsumptionState.isCompletionReported()) {
+          reportError(exceptionPartitionPair.getException().getMessage(), exceptionPartition, exceptionPartitionPair.getException());
+          if (partitionConsumptionStateMap.containsKey(exceptionPartition)) {
+            unSubscribePartition(kafkaVersionTopic, exceptionPartition);
+          }
+        } else {
+          logger.error("Ignoring exception for partition " + exceptionPartition + " for store version " + kafkaVersionTopic
+              + " since this partition is already online. Please engage Venice DEV team immediately.", exceptionPartitionPair.getException());
         }
       } catch (InterruptedException e) {
         Thread.currentThread().interrupt();
@@ -1159,6 +1176,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      */
     drainExceptionQueue(drainerExceptions, EXCEPTION_GROUP_DRAINER);
     drainExceptionQueue(producerExceptions, EXCEPTION_GROUP_PRODUCER);
+    drainExceptionQueue(consumerExceptions, EXCEPTION_GROUP_CONSUMER);
 
     errorPartitions.clear();
 
@@ -2032,6 +2050,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   public void offerProducerException(Exception e, int partitionId) {
     offerExceptionToQueue(e, partitionId, producerExceptions);
+  }
+
+  public void offerConsumerException(Exception e, int partitionId) {
+    offerExceptionToQueue(e, partitionId, consumerExceptions);
   }
 
   public void setLastConsumerException(Exception e) {
