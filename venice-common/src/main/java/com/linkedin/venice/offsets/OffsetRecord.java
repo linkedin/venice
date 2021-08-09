@@ -13,7 +13,6 @@ import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -40,6 +39,7 @@ public class OffsetRecord {
   public static final long DEFAULT_OFFSET_LAG = -1;
 
   private static final String PARTITION_STATE_STRING = "PartitionState";
+  private static final String NATIVE_REPLICATION_UPSTREAM_OFFSET_MAP_KEY = "";
   private final PartitionState partitionState;
   private final InternalAvroSpecificSerializer<PartitionState> serializer;
 
@@ -219,15 +219,15 @@ public class OffsetRecord {
    *
    * TODO: rename "leaderOffset" field to "upstreamOffset" field.
    */
-  public void setLeaderConsumptionState(String kafkaURL, String topic, long startOffset) {
+  public void setLeaderConsumptionState(String topic, long startOffset) {
     this.partitionState.leaderTopic = topic;
     if (!Version.isVersionTopic(topic)) {
-      populatePartitionStateWithUpstreamOffset(this.partitionState, startOffset, kafkaURL);
+      populatePartitionStateWithUpstreamOffset(this.partitionState, startOffset);
     }
   }
 
-  public void setLeaderUpstreamOffset(String kafkaURL, long leaderOffset) {
-    populatePartitionStateWithUpstreamOffset(this.partitionState, leaderOffset, kafkaURL);
+  public void setLeaderUpstreamOffset(long leaderOffset) {
+    populatePartitionStateWithUpstreamOffset(this.partitionState, leaderOffset);
   }
 
   public void setLeaderGUID(GUID guid) {
@@ -248,11 +248,11 @@ public class OffsetRecord {
    * offset for VT; if leader is consuming some upstream topics rather than version topic, this API
    * will return the recorded upstream offset.
    */
-  public long getLeaderOffset(String kafkaURL) {
+  public long getLeaderOffset() {
     if (getLeaderTopic() == null || Version.isVersionTopic(getLeaderTopic())) {
       return getOffset();
     } else {
-      return getUpstreamOffsetFromPartitionState(this.partitionState, kafkaURL);
+      return getUpstreamOffsetFromPartitionState(this.partitionState);
     }
   }
 
@@ -266,11 +266,11 @@ public class OffsetRecord {
    * Leader shouldn't act on the TS message the moment it consumes TS, but instead, it should consume
    * all the messages in the VT including all the existing real-time messages in VT, in order to resume
    * consumption from RT at the largest known upstream offset to avoid duplicate work. In this case,
-   * leader is still consuming VT, so {@link #getLeaderOffset(String kafkaURL)} would return VT offset; users should
+   * leader is still consuming VT, so {@link #getLeaderOffset()} would return VT offset; users should
    * call this API to get the latest upstream offset.
    */
-  public long getUpstreamOffset(String kafkaURL) {
-    return getUpstreamOffsetFromPartitionState(this.partitionState, kafkaURL);
+  public long getUpstreamOffset() {
+    return getUpstreamOffsetFromPartitionState(this.partitionState);
   }
 
   public GUID getLeaderGUID() {
@@ -412,18 +412,24 @@ public class OffsetRecord {
     return serializer.serialize(PARTITION_STATE_STRING, partitionState);
   }
 
-  private static void populatePartitionStateWithUpstreamOffset(
-      PartitionState partitionState,
-      final long upstreamOffset,
-      String upstreamKafkaClusterId
-  ) {
-    partitionState.upstreamOffsetMap.put(upstreamKafkaClusterId, upstreamOffset);
+  /**
+   * Native replication has only one source kafka at a time. Keep only one entry in upstreamOffsetMap.
+   * The key can be be anything (does not matter for native replication)
+   * TODO: keep multiple entries once A/A is supported.
+   */
+  private void populatePartitionStateWithUpstreamOffset(PartitionState partitionState, long upstreamOffset) {
+    partitionState.upstreamOffsetMap.put(NATIVE_REPLICATION_UPSTREAM_OFFSET_MAP_KEY, upstreamOffset);
+
     // Set this field as well so that we can rollback
     partitionState.leaderOffset = upstreamOffset;
   }
 
-  private long getUpstreamOffsetFromPartitionState(PartitionState partitionState, String upstreamKafkaClusterURL) {
-    Long upstreamOffset = partitionState.upstreamOffsetMap.get(upstreamKafkaClusterURL);
+  /**
+   * Return the single entry value from upstreamOffsetMap in native replication.
+   * TODO: get value by key once A/A is supported.
+   */
+  private long getUpstreamOffsetFromPartitionState(PartitionState partitionState) {
+    Long upstreamOffset = partitionState.upstreamOffsetMap.get(NATIVE_REPLICATION_UPSTREAM_OFFSET_MAP_KEY);
     if (upstreamOffset == null) {
       return partitionState.leaderOffset;
     }

@@ -142,7 +142,7 @@ public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
   }
 
   @Override
-  protected String getSourceKafkaAddress(PartitionConsumptionState partitionConsumptionState) {
+  protected String getConsumptionSourceKafkaAddress(PartitionConsumptionState partitionConsumptionState) {
     return localKafkaServer;
   }
 
