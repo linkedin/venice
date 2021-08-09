@@ -1113,6 +1113,16 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             }
           }
         }
+        String currentLeaderTopic = partitionConsumptionState.getOffsetRecord().getLeaderTopic();
+        if (!record.topic().equals(currentLeaderTopic)) {
+          String errorMsg = "Leader receives a Kafka record that doesn't belong to leader topic. Store version: " + this.kafkaVersionTopic
+              + ", partition: " + partitionConsumptionState.getPartition() + ", leader topic: " + currentLeaderTopic
+              + ", topic of incoming message: " + record.topic();
+          if (!REDUNDANT_LOGGING_FILTER.isRedundantException(errorMsg)) {
+            logger.error(errorMsg);
+          }
+          return false;
+        }
         break;
       default:
         String recordTopic = record.topic();
@@ -1133,6 +1143,44 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
 
     return super.shouldProcessRecord(record);
+  }
+
+  /**
+   * Additional safeguards in Leader/Follower ingestion:
+   * 1. Check whether the incoming messages are from the expected source topics
+   */
+  @Override
+  protected boolean shouldPersistRecord(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record,
+      PartitionConsumptionState partitionConsumptionState) {
+    if (!super.shouldPersistRecord(record, partitionConsumptionState)) {
+      return false;
+    }
+
+    switch (partitionConsumptionState.getLeaderState()) {
+      case LEADER:
+        String currentLeaderTopic = partitionConsumptionState.getOffsetRecord().getLeaderTopic();
+        if (!record.topic().equals(currentLeaderTopic)) {
+          String errorMsg = "Leader receives a Kafka record that doesn't belong to leader topic. Store version: " + this.kafkaVersionTopic
+              + ", partition: " + partitionConsumptionState.getPartition() + ", leader topic: " + currentLeaderTopic
+              + ", topic of incoming message: " + record.topic();
+          if (!REDUNDANT_LOGGING_FILTER.isRedundantException(errorMsg)) {
+            logger.error(errorMsg);
+          }
+          return false;
+        }
+        break;
+      default:
+        if (!record.topic().equals(this.kafkaVersionTopic)) {
+          String errorMsg = partitionConsumptionState.getLeaderState().toString() + " replica receives a Kafka record that doesn't belong to version topic. Store version: "
+              + this.kafkaVersionTopic + ", partition: " + partitionConsumptionState.getPartition() + ", topic of incoming message: " + record.topic();
+          if (!REDUNDANT_LOGGING_FILTER.isRedundantException(errorMsg)) {
+            logger.error(errorMsg);
+          }
+          return false;
+        }
+        break;
+    }
+    return true;
   }
 
   @Override
@@ -1242,6 +1290,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       //If we are here the message must be produced to local kafka or silently consumed.
       byte[] keyBytes = kafkaKey.getKey();
       ProducedRecord producedRecord = null;
+
+      validateRecordBeforeProducingToLocalKafka(consumerRecordWrapper, partitionConsumptionState);
 
       /**
        * DIV pass-through mode is enabled for all messages received before EOP (from VT,SR topics) but
@@ -1647,6 +1697,25 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         partitionConsumptionState.setLastLeaderPersistFuture(null);
         //No need to fail the push job; just record the failure.
         versionedDIVStats.recordBenignLeaderProducerFailure(storeName, versionNumber);
+      }
+    }
+  }
+
+  /**
+   * Checks before producing local version topic.
+   *
+   * Extend this function when there is new check needed.
+   */
+  private void validateRecordBeforeProducingToLocalKafka(VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope> consumerRecordWrapper,
+      PartitionConsumptionState partitionConsumptionState) {
+    // Check whether the message is from local version topic; leader shouldn't consume from local VT and then produce back to VT again
+    if (consumerRecordWrapper.kafkaUrl().equals(this.localKafkaServer) && consumerRecordWrapper.consumerRecord().topic().equals(this.kafkaVersionTopic)) {
+      try {
+        int partitionId = partitionConsumptionState.getPartition();
+        offerConsumerException(new VeniceException("Store version " + this.kafkaVersionTopic + " partition " + partitionId
+            + " is consuming from local version topic and producing back to local version topic"), partitionId);
+      } catch (VeniceException offerToQueueException) {
+        setLastStoreIngestionException(offerToQueueException);
       }
     }
   }
