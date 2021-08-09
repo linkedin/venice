@@ -103,6 +103,10 @@ public class VeniceControllerClusterConfig {
    */
   private boolean nativeReplicationEnabledAsDefaultForHybrid;
 
+  private String nativeReplicationSourceFabricAsDefaultForBatchOnly;
+  private String nativeReplicationSourceFabricAsDefaultForHybrid;
+  private String nativeReplicationSourceFabricAsDefaultForIncremental;
+
   /**
    * When this option is enabled, all new hybrid stores will have active-active replication enabled in store config so long
    * as the store has leader follower also enabled.
@@ -255,6 +259,9 @@ public class VeniceControllerClusterConfig {
     nativeReplicationEnabledAsDefaultForIncremental = props.getBoolean(ENABLE_NATIVE_REPLICATION_AS_DEFAULT_FOR_INCREMENTAL_PUSH, false);
     nativeReplicationEnabledForHybrid = props.getBoolean(ENABLE_NATIVE_REPLICATION_FOR_HYBRID, false);
     nativeReplicationEnabledAsDefaultForHybrid = props.getBoolean(ENABLE_NATIVE_REPLICATION_AS_DEFAULT_FOR_HYBRID, false);
+    nativeReplicationSourceFabricAsDefaultForBatchOnly = props.getString(NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_BATCH_ONLY_STORES, "");
+    nativeReplicationSourceFabricAsDefaultForHybrid = props.getString(NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_HYBRID_STORES, "");
+    nativeReplicationSourceFabricAsDefaultForIncremental = props.getString(NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_INCREMENTAL_PUSH_STORES, "");
     activeActiveReplicationEnabledAsDefaultForHybrid = props.getBoolean(ENABLE_ACTIVE_ACTIVE_REPLICATION_AS_DEFAULT_FOR_HYBRID_STORE, false);
     activeActiveReplicationEnabledAsDefaultForIncremental = props.getBoolean(ENABLE_ACTIVE_ACTIVE_REPLICATION_AS_DEFAULT_FOR_INCREMENTAL_PUSH_STORE, false);
     leaderFollowerEnabledForHybridStores = props.getBoolean(ENABLE_LEADER_FOLLOWER_AS_DEFAULT_FOR_HYBRID_STORES, false);
@@ -528,5 +535,17 @@ public class VeniceControllerClusterConfig {
 
   public long getLeakedPushStatusCleanUpServiceSleepIntervalInMs() {
     return leakedPushStatusCleanUpServiceSleepIntervalInMs;
+  }
+
+  public String getNativeReplicationSourceFabricAsDefaultForBatchOnly() {
+    return nativeReplicationSourceFabricAsDefaultForBatchOnly;
+  }
+
+  public String getNativeReplicationSourceFabricAsDefaultForHybrid() {
+    return nativeReplicationSourceFabricAsDefaultForHybrid;
+  }
+
+  public String getNativeReplicationSourceFabricAsDefaultForIncremental() {
+    return nativeReplicationSourceFabricAsDefaultForIncremental;
   }
 }

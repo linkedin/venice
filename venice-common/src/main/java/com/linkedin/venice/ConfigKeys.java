@@ -1067,6 +1067,20 @@ public class ConfigKeys {
   public static final String NATIVE_REPLICATION_SOURCE_FABRIC = "native.replication.source.fabric";
 
   /**
+   * The default source fabric used for native replication for batch only stores.
+   */
+  public static final String NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_BATCH_ONLY_STORES = "native.replication.source.fabric.as.default.for.batch.only.stores";
+
+  /**
+   * The default source fabric used for native replication for hybrid stores.
+   */
+  public static final String NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_HYBRID_STORES = "native.replication.source.fabric.as.default.for.hybrid.stores";
+
+  /**
+   * The default source fabric used for native replication for incremental push stores.
+   */
+  public static final String NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_INCREMENTAL_PUSH_STORES = "native.replication.source.fabric.as.default.for.incremental.push.stores";
+  /**
    * The highest priority source fabric selection config, specified in parent controller.
    */
   public static final String EMERGENCY_SOURCE_FABRIC = "emergency.source.fabric";
