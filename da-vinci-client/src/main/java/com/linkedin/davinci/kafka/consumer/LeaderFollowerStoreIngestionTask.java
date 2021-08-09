@@ -38,14 +38,12 @@ import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.kafka.validation.OffsetRecordTransformer;
 import com.linkedin.venice.message.KafkaKey;
-import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
-import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.stats.StatsErrorCode;
@@ -460,11 +458,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                * This replica is ready to actually switch to LEADER role, but it has been consuming from version topic
                * all the time, so set the leader consumption state to its version topic consumption state.
                */
-              offsetRecord.setLeaderConsumptionState(
-                  getSourceKafkaAddress(partitionConsumptionState),
-                  kafkaVersionTopic,
-                  offsetRecord.getOffset()
-              );
+              offsetRecord.setLeaderConsumptionState(kafkaVersionTopic, offsetRecord.getOffset());
             }
 
             /**
@@ -496,16 +490,12 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             }
 
             // subscribe to the new upstream
-            consumerSubscribe(
-                offsetRecord.getLeaderTopic(),
-                partitionConsumptionState,
-                offsetRecord.getLeaderOffset(getSourceKafkaAddress(partitionConsumptionState))
-            );
+            consumerSubscribe(offsetRecord.getLeaderTopic(), partitionConsumptionState, offsetRecord.getLeaderOffset());
             partitionConsumptionState.setLeaderState(LEADER);
 
             logger.info(consumerTaskId + " promoted to leader for partition " + partition
                 + "; start consuming from " + offsetRecord.getLeaderTopic() + " offset " +
-                offsetRecord.getLeaderOffset(getSourceKafkaAddress(partitionConsumptionState)));
+                offsetRecord.getLeaderOffset());
 
             /**
              * The topic switch operation will be recorded but the actual topic switch happens only after the replica
@@ -571,7 +561,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           if (LatencyUtils.getElapsedTimeInMs(lastTimestamp) > newLeaderInactiveTime
               || (Version.isStreamReprocessingTopic(currentLeaderTopic) && !Version.isStreamReprocessingTopic(newSourceTopicName))) {
             // leader switch local or remote topic, depending on the sourceKafkaServers specified in TS
-            long upstreamStartOffset = partitionConsumptionState.getOffsetRecord().getUpstreamOffset(newSourceKafkaServer);
+            long upstreamStartOffset = partitionConsumptionState.getOffsetRecord().getUpstreamOffset();
             if (upstreamStartOffset < 0) {
               if (topicSwitch.rewindStartTimestamp > 0) {
                 int newSourceTopicPartition = partitionConsumptionState.getSourceTopicPartition(newSourceTopicName);
@@ -609,11 +599,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
               partitionConsumptionState.setConsumeRemotely(true);
               logger.info(consumerTaskId + " enabled remote consumption from topic " + newSourceTopicName + " partition " + partition);
             }
-            partitionConsumptionState.getOffsetRecord().setLeaderConsumptionState(
-                getSourceKafkaAddress(partitionConsumptionState),
-                newSourceTopicName,
-                upstreamStartOffset
-            );
+            partitionConsumptionState.getOffsetRecord().setLeaderConsumptionState(newSourceTopicName, upstreamStartOffset);
             consumerSubscribe(newSourceTopicName, partitionConsumptionState, upstreamStartOffset);
 
             logger.info(consumerTaskId + " leader successfully switch feed topic from " + currentLeaderTopic + " to "
@@ -644,7 +630,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   }
 
   @Override
-  protected String getSourceKafkaAddress(PartitionConsumptionState partitionConsumptionState) {
+  protected String getConsumptionSourceKafkaAddress(PartitionConsumptionState partitionConsumptionState) {
     if (partitionConsumptionState.consumeRemotely()) {
       return Version.isRealTimeTopic(partitionConsumptionState.getOffsetRecord().getLeaderTopic())
           ? getRealTimeDataSourceKafkaAddress(partitionConsumptionState)
@@ -781,19 +767,12 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
        * don't update the consumption state like leader topic until actually switching topic. The leaderTopic field
        * should be used to track the topic that leader is actually consuming.
        */
-      partitionConsumptionState.getOffsetRecord().setLeaderUpstreamOffset(
-          getSourceKafkaAddress(partitionConsumptionState),
-          upstreamStartOffset
-      );
+      partitionConsumptionState.getOffsetRecord().setLeaderUpstreamOffset(upstreamStartOffset);
     } else {
       /**
        * For follower, just keep track of what leader is doing now.
        */
-      partitionConsumptionState.getOffsetRecord().setLeaderConsumptionState(
-          getSourceKafkaAddress(partitionConsumptionState),
-          newSourceTopicName,
-          upstreamStartOffset
-      );
+      partitionConsumptionState.getOffsetRecord().setLeaderConsumptionState(newSourceTopicName, upstreamStartOffset);
 
       /**
        * We need to measure offset lag here for follower; if real-time topic is empty and never gets any new message,
@@ -830,7 +809,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         final long newUpstreamOffset =
             kafkaValue.leaderMetadataFooter == null ? kafkaValue.producerMetadata.upstreamOffset : kafkaValue.leaderMetadataFooter.upstreamOffset;
 
-        long previousUpstreamOffset = offsetRecord.getUpstreamOffset(getSourceKafkaAddress(partitionConsumptionState));
+        long previousUpstreamOffset = offsetRecord.getUpstreamOffset();
 
         /**
          * If upstream offset is rewound and it's from a different producer, we encounter a split-brain
@@ -929,7 +908,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
          * Keep updating the upstream offset no matter whether there is a rewind or not; rewind could happen
          * to the true leader when the old leader doesn't stop producing.
          */
-        offsetRecord.setLeaderUpstreamOffset(getSourceKafkaAddress(partitionConsumptionState), newUpstreamOffset);
+        offsetRecord.setLeaderUpstreamOffset(newUpstreamOffset);
       }
       // update leader producer GUID
       offsetRecord.setLeaderGUID(kafkaValue.producerMetadata.producerGUID);
@@ -948,7 +927,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         }
 
         if (producedRecord.getConsumedOffset() >= 0) {
-          offsetRecord.setLeaderUpstreamOffset(getSourceKafkaAddress(partitionConsumptionState), producedRecord.getConsumedOffset());
+          offsetRecord.setLeaderUpstreamOffset(producedRecord.getConsumedOffset());
         }
       } else {
         //Ideally this should never happen.
@@ -1027,12 +1006,12 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       for (int subPartition : PartitionUtils.getSubPartitions(userPartition, amplificationFactor)) {
         if (partitionConsumptionStateMap.get(subPartition) != null
             && partitionConsumptionStateMap.get(subPartition).getOffsetRecord() != null
-            && partitionConsumptionStateMap.get(subPartition).getOffsetRecord().getUpstreamOffset(sourceKafkaServer) >= 0) {
-          leaderOffset = Math.max(leaderOffset, partitionConsumptionStateMap.get(subPartition).getOffsetRecord().getUpstreamOffset(sourceKafkaServer));
+            && partitionConsumptionStateMap.get(subPartition).getOffsetRecord().getUpstreamOffset() >= 0) {
+          leaderOffset = Math.max(leaderOffset, partitionConsumptionStateMap.get(subPartition).getOffsetRecord().getUpstreamOffset());
         }
       }
     } else {
-      leaderOffset = offsetRecord.getLeaderOffset(sourceKafkaServer);
+      leaderOffset = offsetRecord.getLeaderOffset();
       lastOffsetInRealTimeTopic = cachedKafkaMetadataGetter.getOffset(sourceKafkaServer, leaderTopic, partition);
     }
     long lag = lastOffsetInRealTimeTopic - leaderOffset;
@@ -1750,7 +1729,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             currentLeaderTopic = kafkaVersionTopic;
           }
 
-          KafkaConsumerWrapper kafkaConsumer = consumerMap.get(getSourceKafkaAddress(pcs));
+          KafkaConsumerWrapper kafkaConsumer = consumerMap.get(getConsumptionSourceKafkaAddress(pcs));
           // Consumer might not existed in the map after the consumption state is created, but before attaching the
           // corresponding consumer in consumerMap.
           if (kafkaConsumer != null) {
@@ -1806,7 +1785,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           if (currentLeaderTopic == null || currentLeaderTopic.isEmpty()) {
             currentLeaderTopic = kafkaVersionTopic;
           }
-          final String kafkaSourceAddress = getSourceKafkaAddress(pcs);
+          final String kafkaSourceAddress = getConsumptionSourceKafkaAddress(pcs);
           KafkaConsumerWrapper kafkaConsumer = consumerMap.get(kafkaSourceAddress);
           // Consumer might not existed in the map after the consumption state is created, but before attaching the
           // corresponding consumer in consumerMap.
@@ -1820,7 +1799,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           // Fall back to calculate offset lag in the original approach
           if (Version.isRealTimeTopic(currentLeaderTopic)) {
             return (cachedKafkaMetadataGetter.getOffset(kafkaSourceAddress, currentLeaderTopic, pcs.getPartition()) - 1)
-                - pcs.getOffsetRecord().getLeaderOffset(kafkaSourceAddress);
+                - pcs.getOffsetRecord().getLeaderOffset();
           } else {
             return (cachedKafkaMetadataGetter.getOffset(kafkaSourceAddress, currentLeaderTopic, pcs.getPartition()) - 1)
                 - pcs.getOffsetRecord().getOffset();
@@ -1846,11 +1825,11 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   }
 
   private final Predicate<? super PartitionConsumptionState> FOLLOWER_OFFSET_LAG_FILTER = pcs ->
-      pcs.getOffsetRecord().getUpstreamOffset(getSourceKafkaAddress(pcs)) != -1  && !pcs.getLeaderState().equals(LEADER);
+      pcs.getOffsetRecord().getUpstreamOffset() != -1  && !pcs.getLeaderState().equals(LEADER);
   private final Predicate<? super PartitionConsumptionState> BATCH_FOLLOWER_OFFSET_LAG_FILTER = pcs ->
-      !pcs.isEndOfPushReceived() && pcs.getOffsetRecord().getUpstreamOffset(getSourceKafkaAddress(pcs)) != -1  && !pcs.getLeaderState().equals(LEADER);
+      !pcs.isEndOfPushReceived() && pcs.getOffsetRecord().getUpstreamOffset() != -1  && !pcs.getLeaderState().equals(LEADER);
   private final Predicate<? super PartitionConsumptionState> HYBRID_FOLLOWER_OFFSET_LAG_FILTER = pcs ->
-      pcs.isEndOfPushReceived() && pcs.isHybrid() && pcs.getOffsetRecord().getUpstreamOffset(getSourceKafkaAddress(pcs)) != -1  && !pcs.getLeaderState().equals(LEADER);
+      pcs.isEndOfPushReceived() && pcs.isHybrid() && pcs.getOffsetRecord().getUpstreamOffset() != -1  && !pcs.getLeaderState().equals(LEADER);
 
   private long getFollowerOffsetLag(Predicate<? super PartitionConsumptionState> partitionConsumptionStateFilter) {
     Optional<StoreVersionState> svs = storageMetadataService.getStoreVersionState(kafkaVersionTopic);
@@ -1876,7 +1855,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         .filter(partitionConsumptionStateFilter)
         //the lag is (latest VT offset - consumed VT offset)
         .mapToLong((pcs) -> {
-          String kafkaSourceAddress = getSourceKafkaAddress(pcs);
+          String kafkaSourceAddress = getConsumptionSourceKafkaAddress(pcs);
           KafkaConsumerWrapper kafkaConsumer = consumerMap.get(kafkaSourceAddress);
           // Consumer might not existed in the map after the consumption state is created, but before attaching the
           // corresponding consumer in consumerMap.

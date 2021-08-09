@@ -1778,7 +1778,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   protected abstract void checkLongRunningTaskState() throws InterruptedException;
   protected abstract void processConsumerAction(ConsumerAction message) throws InterruptedException;
-  protected abstract String getSourceKafkaAddress(PartitionConsumptionState partitionConsumptionState);
+  protected abstract String getConsumptionSourceKafkaAddress(PartitionConsumptionState partitionConsumptionState);
 
   protected String getRealTimeDataSourceKafkaAddress(PartitionConsumptionState partitionConsumptionState) {
     return localKafkaServer;
@@ -2672,7 +2672,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   public KafkaConsumerWrapper getConsumer(PartitionConsumptionState partitionConsumptionState) {
-    String kafkaSourceAddress = getSourceKafkaAddress(partitionConsumptionState);
+    String kafkaSourceAddress = getConsumptionSourceKafkaAddress(partitionConsumptionState);
     return consumerMap.computeIfAbsent(kafkaSourceAddress, source -> {
       Properties consumerProps = updateKafkaConsumerProperties(kafkaProps, kafkaSourceAddress, partitionConsumptionState.consumeRemotely());
       if (serverConfig.isSharedConsumerPoolEnabled()) {
