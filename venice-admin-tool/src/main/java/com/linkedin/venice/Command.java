@@ -200,7 +200,9 @@ public enum Command {
   ENABLE_ACTIVE_ACTIVE_REPLICATION_FOR_CLUSTER("enable-active-active-replication-for-cluster", "enable active active replication for certain stores (batch-only, hybrid-only, incremental-push, hybrid-or-incremental, all) in a cluster",
       new Arg[] {URL, CLUSTER, STORE_TYPE}, new Arg[] {REGIONS_FILTER}),
   DISABLE_ACTIVE_ACTIVE_REPLICATION_FOR_CLUSTER("disable-active-active-replication-for-cluster", "disable active active replication for certain stores (batch-only, hybrid-only, incremental-push, hybrid-or-incremental, all) in a cluster",
-      new Arg[] {URL, CLUSTER, STORE_TYPE}, new Arg[] {REGIONS_FILTER});
+      new Arg[] {URL, CLUSTER, STORE_TYPE}, new Arg[] {REGIONS_FILTER}),
+  GET_DELETABLE_STORE_TOPICS("get-deletable-store-topics", "Get a list of deletable store topics in the fabric that belongs to the controller handling the request",
+      new Arg[] {URL});
   private final String commandName;
   private final String description;
   private final Arg[] requiredArgs;

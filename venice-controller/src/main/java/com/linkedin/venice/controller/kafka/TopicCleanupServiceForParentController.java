@@ -38,7 +38,7 @@ public class TopicCleanupServiceForParentController extends TopicCleanupService 
   }
 
   protected void cleanupVeniceTopics(TopicManager topicManager) {
-    Map<String, Map<String, Long>> allStoreTopics = getAllVeniceStoreTopics(topicManager);
+    Map<String, Map<String, Long>> allStoreTopics = getAllVeniceStoreTopicsRetentions(topicManager);
     allStoreTopics.forEach((storeName, topics) -> {
       topics.forEach((topic, retention) -> {
         if (getAdmin().isTopicTruncatedBasedOnRetention(retention)) {

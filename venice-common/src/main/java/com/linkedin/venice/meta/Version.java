@@ -238,12 +238,27 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
     return kafkaTopic.substring(0, kafkaTopic.length() - REAL_TIME_TOPIC_SUFFIX.length());
   }
 
+  static String parseStoreFromStreamReprocessingTopic(String kafkaTopic) {
+    if (!isStreamReprocessingTopic(kafkaTopic)) {
+      throw new VeniceException("Kafka topic: " + kafkaTopic + " is not a stream reprocessing topic");
+    }
+    return kafkaTopic.substring(0, kafkaTopic.length() - STREAM_REPROCESSING_TOPIC_SUFFIX.length());
+  }
+
+  /**
+   * Parse the store name of the given topic accordingly depending on the type of the kafka topic.
+   * @param kafkaTopic to parse.
+   * @return the store name or an empty string if the topic format doesn't match any of the known Venice topic formats.
+   */
   static String parseStoreFromKafkaTopicName(String kafkaTopic) {
     if (isRealTimeTopic(kafkaTopic)) {
       return parseStoreFromRealTimeTopic(kafkaTopic);
-    } else {
+    } else if (isStreamReprocessingTopic(kafkaTopic)) {
+      return parseStoreFromStreamReprocessingTopic(kafkaTopic);
+    } else if (isVersionTopic(kafkaTopic)) {
       return parseStoreFromVersionTopic(kafkaTopic);
     }
+    return "";
   }
 
   static boolean isRealTimeTopic(String kafkaTopic) {

@@ -1,6 +1,7 @@
 package com.linkedin.venice;
 
 import com.linkedin.venice.controllerapi.MultiReplicaResponse;
+import com.linkedin.venice.controllerapi.MultiStoreTopicsResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import java.util.ArrayList;
 import java.util.List;

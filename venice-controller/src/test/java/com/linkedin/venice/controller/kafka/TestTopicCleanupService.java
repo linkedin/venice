@@ -29,17 +29,21 @@ import static org.testng.Assert.*;
 
 public class TestTopicCleanupService {
   private Admin admin;
+  private HelixReadOnlyStoreConfigRepository storeConfigRepository;
   private TopicManager topicManager;
   private TopicCleanupService topicCleanupService;
 
   @BeforeMethod
   public void setup() {
     admin = mock(Admin.class);
+    storeConfigRepository = mock(HelixReadOnlyStoreConfigRepository.class);
+    doReturn(storeConfigRepository).when(admin).getStoreConfigRepo();
     topicManager = mock(TopicManager.class);
     doReturn(topicManager).when(admin).getTopicManager();
     VeniceControllerMultiClusterConfig config = mock(VeniceControllerMultiClusterConfig.class);
     doReturn(0l).when(config).getTopicCleanupSleepIntervalBetweenTopicListFetchMs();
     doReturn(1).when(config).getMinNumberOfUnusedKafkaTopicsToPreserve();
+    doReturn(1).when(admin).getMinNumberOfUnusedKafkaTopicsToPreserve();
     topicCleanupService = new TopicCleanupService(admin, config);
   }
 
@@ -61,7 +65,7 @@ public class TestTopicCleanupService {
 
     doReturn(storeTopics).when(topicManager).getAllTopicRetentions();
 
-    Map<String, Map<String, Long>> filteredStoreTopics = topicCleanupService.getAllVeniceStoreTopics();
+    Map<String, Map<String, Long>> filteredStoreTopics = TopicCleanupService.getAllVeniceStoreTopicsRetentions(admin.getTopicManager());
     Assert.assertEquals(filteredStoreTopics.size(), 2);
     Assert.assertEquals(filteredStoreTopics.get("store1").size(), 4);
     Assert.assertEquals(filteredStoreTopics.get("store2").size(), 2);
@@ -85,7 +89,8 @@ public class TestTopicCleanupService {
     topicRetentions1.put("store1_v3", HIGH_RETENTION_POLICY);
     topicRetentions1.put("store1_v4", HIGH_RETENTION_POLICY);
     List<String> expectedResult1 = Arrays.asList("store1_v1", "store1_v2");
-    List<String> actualResult1 = topicCleanupService.extractVeniceTopicsToCleanup(topicRetentions1);
+    List<String> actualResult1 = TopicCleanupService.extractVeniceTopicsToCleanup(admin, topicRetentions1,
+        admin.getMinNumberOfUnusedKafkaTopicsToPreserve());
     actualResult1.sort(String::compareTo);
     Assert.assertEquals(actualResult1, expectedResult1);
 
@@ -95,7 +100,8 @@ public class TestTopicCleanupService {
     topicRetentions2.put("store1_v3", LOW_RETENTION_POLICY);
     topicRetentions2.put("store1_v4", LOW_RETENTION_POLICY);
     List<String> expectedResult2 = Arrays.asList("store1_v3");
-    List<String> actualResult2 = topicCleanupService.extractVeniceTopicsToCleanup(topicRetentions2);
+    List<String> actualResult2 = TopicCleanupService.extractVeniceTopicsToCleanup(admin, topicRetentions2,
+        admin.getMinNumberOfUnusedKafkaTopicsToPreserve());
     actualResult2.sort(String::compareTo);
     Assert.assertEquals(actualResult2, expectedResult2);
 
@@ -105,7 +111,8 @@ public class TestTopicCleanupService {
     topicRetentions3.put("store1_v3", LOW_RETENTION_POLICY);
     topicRetentions3.put("store1_v4", HIGH_RETENTION_POLICY);
     List<String> expectedResult3 = Arrays.asList("store1_v1", "store1_v3");
-    List<String> actualResult3 = topicCleanupService.extractVeniceTopicsToCleanup(topicRetentions3);
+    List<String> actualResult3 = TopicCleanupService.extractVeniceTopicsToCleanup(admin, topicRetentions3,
+        admin.getMinNumberOfUnusedKafkaTopicsToPreserve());
     actualResult3.sort(String::compareTo);
     Assert.assertEquals(actualResult3, expectedResult3);
 
@@ -116,7 +123,8 @@ public class TestTopicCleanupService {
     topicRetentions4.put("store1_v3", LOW_RETENTION_POLICY);
     topicRetentions4.put("store1_v4", LOW_RETENTION_POLICY);
     List<String> expectedResult4 = Arrays.asList("store1_v1", "store1_v2", "store1_v3");
-    List<String> actualResult4 = topicCleanupService.extractVeniceTopicsToCleanup(topicRetentions4);
+    List<String> actualResult4 = TopicCleanupService.extractVeniceTopicsToCleanup(admin, topicRetentions4,
+        admin.getMinNumberOfUnusedKafkaTopicsToPreserve());
     actualResult4.sort(String::compareTo);
     Assert.assertEquals(actualResult4, expectedResult4);
 
@@ -126,7 +134,8 @@ public class TestTopicCleanupService {
     topicRetentions5.put(Version.composeKafkaTopic(systemStoreName, 2), LOW_RETENTION_POLICY);
     List<String> expectedResult5 = Arrays.asList(Version.composeKafkaTopic(systemStoreName, 1),
         Version.composeKafkaTopic(systemStoreName, 2));
-    List<String> actualResult5 = topicCleanupService.extractVeniceTopicsToCleanup(topicRetentions5);
+    List<String> actualResult5 = TopicCleanupService.extractVeniceTopicsToCleanup(admin, topicRetentions5,
+        admin.getMinNumberOfUnusedKafkaTopicsToPreserve());
     actualResult5.sort(String::compareTo);
     Assert.assertEquals(actualResult5, expectedResult5);
   }
@@ -145,6 +154,7 @@ public class TestTopicCleanupService {
     doReturn(storeTopics).when(topicManager).getAllTopicRetentions();
     doReturn(false).when(admin).isTopicTruncatedBasedOnRetention(Long.MAX_VALUE);
     doReturn(true).when(admin).isTopicTruncatedBasedOnRetention(1000l);
+    doReturn(Optional.of(new StoreConfig(storeName1))).when(storeConfigRepository).getStoreConfig(storeName1);
 
     topicCleanupService.cleanupVeniceTopics();
 
@@ -166,6 +176,10 @@ public class TestTopicCleanupService {
     String storeName1 = TestUtils.getUniqueString("store1");
     String storeName2 = TestUtils.getUniqueString("store2");
     String storeName3 = TestUtils.getUniqueString("store3");
+    doReturn(Optional.of(new StoreConfig(storeName1))).when(storeConfigRepository).getStoreConfig(storeName1);
+    doReturn(Optional.of(new StoreConfig(storeName2))).when(storeConfigRepository).getStoreConfig(storeName2);
+    doReturn(Optional.of(new StoreConfig(storeName3))).when(storeConfigRepository).getStoreConfig(storeName3);
+
     Map<String, Long> storeTopics1 = new HashMap<>();
     storeTopics1.put(storeName1 + "_v1", 1000l);
     storeTopics1.put(storeName1 + "_v2", 1000l);
@@ -214,6 +228,7 @@ public class TestTopicCleanupService {
   @Test
   public void testRunWhenCurrentControllerChangeFromMasterToSlave() throws Exception {
     String storeName1 = TestUtils.getUniqueString("store1");
+    doReturn(Optional.of(new StoreConfig(storeName1))).when(storeConfigRepository).getStoreConfig(storeName1);
     Map<String, Long> storeTopics1 = new HashMap<>();
     storeTopics1.put(storeName1 + "_v1", 1000l);
     storeTopics1.put(storeName1 + "_v2", 1000l);
@@ -244,6 +259,7 @@ public class TestTopicCleanupService {
   @Test
   public void testRunWhenCurrentControllerChangeFromSlaveToMaster() throws Exception {
     String storeName1 = TestUtils.getUniqueString("store1");
+    doReturn(Optional.of(new StoreConfig(storeName1))).when(storeConfigRepository).getStoreConfig(storeName1);
     Map<String, Long> storeTopics1 = new HashMap<>();
     storeTopics1.put(storeName1 + "_v1", 1000l);
     storeTopics1.put(storeName1 + "_v2", 1000l);
@@ -290,6 +306,7 @@ public class TestTopicCleanupService {
   public void testCleanupReplicaStatusesFromMetaSystemStoreWhenMetaSystemStoreRTTopicNotExist() {
     doReturn(false).when(admin).isParent();
     String storeName = TestUtils.getUniqueString("test_store");
+    doReturn(Optional.of(new StoreConfig(storeName))).when(storeConfigRepository).getStoreConfig(storeName);
     int version = 1;
     String versionTopic = Version.composeKafkaTopic(storeName, version);
     HelixReadOnlyStoreConfigRepository repository = mock(HelixReadOnlyStoreConfigRepository.class);
@@ -309,6 +326,7 @@ public class TestTopicCleanupService {
   public void testCleanupReplicaStatusesFromMetaSystemStoreWhenMetaSystemStoreRTTopicExist() {
     doReturn(false).when(admin).isParent();
     String storeName = TestUtils.getUniqueString("test_store");
+    doReturn(Optional.of(new StoreConfig(storeName))).when(storeConfigRepository).getStoreConfig(storeName);
     int version = 1;
     String versionTopic = Version.composeKafkaTopic(storeName, version);
     HelixReadOnlyStoreConfigRepository repository = mock(HelixReadOnlyStoreConfigRepository.class);

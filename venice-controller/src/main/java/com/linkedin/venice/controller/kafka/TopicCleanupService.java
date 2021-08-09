@@ -140,38 +140,6 @@ public class TopicCleanupService extends AbstractVeniceService {
     return admin;
   }
 
-  protected Map<String, Map<String, Long>> getAllVeniceStoreTopics() {
-    return getAllVeniceStoreTopics(getTopicManager());
-  }
-
-  protected Map<String, Map<String, Long>> getAllVeniceStoreTopics(TopicManager topicManager) {
-    Map<String, Long> topicRetentions = topicManager.getAllTopicRetentions();
-    Map<String, Map<String, Long>> allStoreTopics = new HashMap<>();
-
-    for (Map.Entry<String, Long> entry : topicRetentions.entrySet()) {
-      String topic = entry.getKey();
-      long retention = entry.getValue();
-      Optional<String> storeName = Optional.empty();
-      if (Version.isRealTimeTopic(topic)) {
-        storeName = Optional.of(Version.parseStoreFromRealTimeTopic(topic));
-      } else if (Version.isVersionTopicOrStreamReprocessingTopic(topic)) {
-        storeName = Optional.of(Version.parseStoreFromKafkaTopicName(topic));
-      }
-      if (!storeName.isPresent()) {
-        // TODO: check whether Venice needs to cleanup topics not belonging to Venice.
-        continue;
-      }
-      allStoreTopics.compute(storeName.get(), (s, topics) -> {
-        if (null == topics) {
-          topics = new HashMap<>();
-        }
-        topics.put(topic, retention);
-        return topics;
-      });
-    }
-    return allStoreTopics;
-  }
-
   /**
    * The following will delete topics based on their priority. Real-time topics are given higher priority than version topics.
    * If version topic deletion takes more than certain time it refreshes the entire topic list and start deleting from RT topics again.
@@ -224,7 +192,7 @@ public class TopicCleanupService extends AbstractVeniceService {
   }
 
   private void populateDeprecatedTopicQueue(PriorityQueue<String> topics) {
-    Map<String, Map<String, Long>> allStoreTopics = getAllVeniceStoreTopics();
+    Map<String, Map<String, Long>> allStoreTopics = getAllVeniceStoreTopicsRetentions(getTopicManager());
     allStoreTopics.forEach((storeName, topicRetentions) -> {
       String realTimeTopic = Version.composeRealTimeTopic(storeName);
       if (topicRetentions.containsKey(realTimeTopic)) {
@@ -233,14 +201,50 @@ public class TopicCleanupService extends AbstractVeniceService {
         }
         topicRetentions.remove(realTimeTopic);
       }
-      List<String> oldTopicsToDelete = extractVeniceTopicsToCleanup(topicRetentions);
+      List<String> oldTopicsToDelete = extractVeniceTopicsToCleanup(admin, topicRetentions,
+          minNumberOfUnusedKafkaTopicsToPreserve);
       if (!oldTopicsToDelete.isEmpty()) {
         topics.addAll(oldTopicsToDelete);
       }
     });
   }
 
-  protected List<String> extractVeniceTopicsToCleanup(Map<String, Long> topicRetentions) {
+  public static Map<String, Map<String, Long>> getAllVeniceStoreTopicsRetentions(TopicManager topicManager) {
+    Map<String, Long> topicsWithRetention = topicManager.getAllTopicRetentions();
+    Map<String, Map<String, Long>> allStoreTopics = new HashMap<>();
+
+    for (Map.Entry<String, Long> entry : topicsWithRetention.entrySet()) {
+      String topic = entry.getKey();
+      long retention = entry.getValue();
+      String storeName = Version.parseStoreFromKafkaTopicName(topic);
+      if (storeName.isEmpty()) {
+        // TODO: check whether Venice needs to cleanup topics not belonging to Venice.
+        continue;
+      }
+      allStoreTopics.compute(storeName, (s, topics) -> {
+        if (null == topics) {
+          topics = new HashMap<>();
+        }
+        topics.put(topic, retention);
+        return topics;
+      });
+    }
+    return allStoreTopics;
+  }
+
+  public static List<String> extractVeniceTopicsToCleanup(Admin admin, Map<String, Long> topicRetentions,
+      int minNumberOfUnusedKafkaTopicsToPreserve) {
+    return extractVeniceTopicsToCleanup(admin, topicRetentions, minNumberOfUnusedKafkaTopicsToPreserve, true);
+  }
+
+  // TODO Remove the parameter preserveTopicsForDeletedStore once we move away from KMM. This parameter controls whether
+  // to respect the minNumberOfUnusedKafkaTopicsToPreserve when store is deleted. We'd like to get ALL topics for a
+  // deleted store regardless of minNumberOfUnusedKafkaTopicsToPreserve when queried from the controller endpoint by a
+  // SRE/DEV but not when TopicCleanupService is fetching them for auto delete. This is because topic deletion is async
+  // and we can/might crash the KMM if the topic in child fabric is deleted before the parent fabric while KMM is
+  // performing copying messages.
+  public static List<String> extractVeniceTopicsToCleanup(Admin admin, Map<String, Long> topicRetentions,
+      int minNumberOfUnusedKafkaTopicsToPreserve, boolean preserveTopicsForDeletedStore) {
     if (topicRetentions.isEmpty()) {
       return Collections.emptyList();
     }
@@ -252,8 +256,12 @@ public class TopicCleanupService extends AbstractVeniceService {
 
     String storeName = Version.parseStoreFromKafkaTopicName(veniceTopics.iterator().next());
     VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(storeName);
-    // Do not preserve any VT for zk shared system stores. TODO revisit the behavior after multi version support.
-    final long maxVersionNumberToDelete = systemStoreType != null && systemStoreType.isStoreZkShared() ?
+    boolean isStoreZkShared = systemStoreType != null && systemStoreType.isStoreZkShared();
+    boolean isStoreDeleted = !preserveTopicsForDeletedStore && !isStoreZkShared && !admin.getStoreConfigRepo()
+        .getStoreConfig(storeName).isPresent();
+    // Do not preserve any VT for deleted user stores or zk shared system stores.
+    // TODO revisit the behavior if we'd like to support rollback for zk shared system stores.
+    final long maxVersionNumberToDelete = isStoreDeleted || isStoreZkShared ?
         maxVersion : maxVersion - minNumberOfUnusedKafkaTopicsToPreserve;
 
     return veniceTopics.stream()

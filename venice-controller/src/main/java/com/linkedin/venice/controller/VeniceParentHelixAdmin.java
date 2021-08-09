@@ -2413,6 +2413,11 @@ public class VeniceParentHelixAdmin implements Admin {
     return veniceHelixAdmin.isTopicTruncatedBasedOnRetention(retention);
   }
 
+  @Override
+  public int getMinNumberOfUnusedKafkaTopicsToPreserve() {
+    return veniceHelixAdmin.getMinNumberOfUnusedKafkaTopicsToPreserve();
+  }
+
   public boolean truncateKafkaTopic(String kafkaTopicName) {
     return veniceHelixAdmin.truncateKafkaTopic(kafkaTopicName);
   }

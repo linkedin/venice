@@ -13,6 +13,7 @@ import com.linkedin.venice.controllerapi.MultiNodesStatusResponse;
 import com.linkedin.venice.controllerapi.MultiReplicaResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.MultiStoreStatusResponse;
+import com.linkedin.venice.controllerapi.MultiStoreTopicsResponse;
 import com.linkedin.venice.controllerapi.MultiVersionResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.OwnerResponse;
@@ -804,11 +805,21 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
     controllerClient.createNewStore(storeName, "test", "\"string\"", "\"string\"");
 
     VersionCreationResponse vcr =
-        controllerClient.requestTopicForWrites(storeName, 1L, Version.PushType.BATCH, pushId,
-            false, true, false, Optional.empty(), Optional.of(largeDictionary), Optional.empty(), false, -1);
+        controllerClient.requestTopicForWrites(storeName, 1L, Version.PushType.BATCH, pushId, false, true, false,
+            Optional.empty(), Optional.of(largeDictionary), Optional.empty(), false, -1);
     Assert.assertFalse(vcr.isError(),
-        "Controller should allow large payload: " + new ObjectMapper()
-            .writeValueAsString(vcr));
+        "Controller should allow large payload: " + new ObjectMapper().writeValueAsString(vcr));
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void controllerCanGetDeletableStoreTopics() {
+    String storeName = TestUtils.getUniqueString("canGetDeletableStoreTopics");
+    Assert.assertFalse(controllerClient.createNewStore(storeName, "test", "\"string\"", "\"string\"").isError());
+    Assert.assertFalse(controllerClient.emptyPush(storeName, "push-1", 1024000L).isError());
+    Assert.assertFalse(controllerClient.disableAndDeleteStore(storeName).isError());
+    MultiStoreTopicsResponse multiStoreTopicResponse = controllerClient.getDeletableStoreTopics();
+    Assert.assertFalse(multiStoreTopicResponse.isError());
+    Assert.assertTrue(multiStoreTopicResponse.getTopics().contains(Version.composeKafkaTopic(storeName, 1)));
   }
 
   private void deleteStore(String storeName) {
