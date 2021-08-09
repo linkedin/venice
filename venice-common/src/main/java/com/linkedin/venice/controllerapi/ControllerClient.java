@@ -792,6 +792,10 @@ public class ControllerClient implements Closeable {
         .add(NAME, storeName);
   }
 
+  public MultiStoreTopicsResponse getDeletableStoreTopics() {
+    return request(ControllerRoute.GET_DELETABLE_STORE_TOPICS, newParams(), MultiStoreTopicsResponse.class);
+  }
+
   public static D2ServiceDiscoveryResponse discoverCluster(String discoveryUrls, String storeName) {
     return discoverCluster(discoveryUrls, storeName, Optional.empty());
   }

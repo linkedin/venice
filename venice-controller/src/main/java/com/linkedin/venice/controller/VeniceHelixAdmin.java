@@ -2276,6 +2276,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         return getTopicManager().isRetentionBelowTruncatedThreshold(retention, deprecatedJobTopicMaxRetentionMs);
     }
 
+    @Override
+    public int getMinNumberOfUnusedKafkaTopicsToPreserve() {
+        return multiClusterConfigs.getCommonConfig().getMinNumberOfUnusedKafkaTopicsToPreserve();
+    }
+
     /**
      * We don't actually truncate any Kafka topic here; we just update the retention time.
      * @param kafkaTopicName

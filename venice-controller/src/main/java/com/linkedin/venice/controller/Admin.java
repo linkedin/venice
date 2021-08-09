@@ -38,6 +38,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import javax.swing.text.html.Option;
 
 
 public interface Admin extends AutoCloseable, Closeable {
@@ -490,7 +491,8 @@ public interface Admin extends AutoCloseable, Closeable {
     boolean isTopicTruncated(String topicName);
 
     boolean isTopicTruncatedBasedOnRetention(long retention);
-
+    
+    int getMinNumberOfUnusedKafkaTopicsToPreserve();
     /**
      *
      * @param topicName

@@ -4,9 +4,11 @@ import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.AdminCommandExecutionTracker;
+import com.linkedin.venice.controller.kafka.TopicCleanupService;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.MultiStoreResponse;
 import com.linkedin.venice.controllerapi.MultiStoreStatusResponse;
+import com.linkedin.venice.controllerapi.MultiStoreTopicsResponse;
 import com.linkedin.venice.controllerapi.MultiVersionResponse;
 import com.linkedin.venice.controllerapi.OwnerResponse;
 import com.linkedin.venice.controllerapi.PartitionResponse;
@@ -17,13 +19,13 @@ import com.linkedin.venice.controllerapi.TrackableControllerResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionResponse;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.kafka.TopicDoesNotExistException;
 import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.Utils;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -34,7 +36,6 @@ import spark.Route;
 
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
 import static com.linkedin.venice.controllerapi.ControllerRoute.*;
-import static com.linkedin.venice.meta.VeniceUserStoreType.*;
 
 
 public class StoresRoutes extends AbstractRoute {
@@ -643,6 +644,30 @@ public class StoresRoutes extends AbstractRoute {
           veniceResponse.setName(request.queryParams(TOPIC));
         } catch (TopicDoesNotExistException e){
           veniceResponse.setError("Topic does not exist!! Message: " + e.getMessage());
+        }
+      }
+    };
+  }
+
+  public Route getDeletableStoreTopics(Admin admin) {
+    return new VeniceRouteHandler<MultiStoreTopicsResponse>(MultiStoreTopicsResponse.class) {
+      @Override
+      public void internalHandle(Request request, MultiStoreTopicsResponse veniceResponse) {
+        AdminSparkServer.validateParams(request, GET_DELETABLE_STORE_TOPICS.getParams(), admin);
+        try {
+          Map<String, Map<String, Long>> allStoreTopics = TopicCleanupService.getAllVeniceStoreTopicsRetentions(admin.getTopicManager());
+          List<String> deletableTopicsList = new ArrayList<>();
+          int minNumberOfUnusedKafkaTopicsToPreserve = admin.getMinNumberOfUnusedKafkaTopicsToPreserve();
+          allStoreTopics.forEach((storeName, topicsWithRetention) -> {
+            List<String> deletableTopicsForThisStore = TopicCleanupService.extractVeniceTopicsToCleanup(admin, topicsWithRetention,
+                minNumberOfUnusedKafkaTopicsToPreserve, false);
+            if (!deletableTopicsForThisStore.isEmpty()) {
+              deletableTopicsList.addAll(deletableTopicsForThisStore);
+            }
+          });
+          veniceResponse.setTopics(deletableTopicsList);
+        } catch (Exception e){
+          veniceResponse.setError("Failed to list deletable store topics. Message: " + e.getMessage());
         }
       }
     };

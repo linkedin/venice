@@ -16,6 +16,7 @@ import com.linkedin.venice.controllerapi.MultiReplicaResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.MultiStoreResponse;
 import com.linkedin.venice.controllerapi.MultiStoreStatusResponse;
+import com.linkedin.venice.controllerapi.MultiStoreTopicsResponse;
 import com.linkedin.venice.controllerapi.MultiVersionResponse;
 import com.linkedin.venice.controllerapi.MultiVersionStatusResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
@@ -405,6 +406,9 @@ public class AdminTool {
           break;
         case DISABLE_ACTIVE_ACTIVE_REPLICATION_FOR_CLUSTER:
           disableActiveActiveReplicationForCluster(cmd);
+          break;
+        case GET_DELETABLE_STORE_TOPICS:
+          getDeletableStoreTopics(cmd);
           break;
         default:
           StringJoiner availableCommands = new StringJoiner(", ");
@@ -1875,6 +1879,11 @@ public class AdminTool {
         Utils.isNullOrEmpty(regionsFilterParam) ? Optional.empty() : Optional.of(regionsFilterParam);
 
     ControllerResponse response = controllerClient.configureActiveActiveReplicationForCluster(false, storeType, regionsFilter);
+    printObject(response);
+  }
+
+  private static void getDeletableStoreTopics(CommandLine cmd) {
+    MultiStoreTopicsResponse response = controllerClient.getDeletableStoreTopics();
     printObject(response);
   }
 
