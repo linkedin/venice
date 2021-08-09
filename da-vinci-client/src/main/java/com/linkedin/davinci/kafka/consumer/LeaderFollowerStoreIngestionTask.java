@@ -1077,7 +1077,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             && !(partitionConsumptionState.isIncrementalPushEnabled() && partitionConsumptionState.getIncrementalPushPolicy()
                 .equals(IncrementalPushPolicy.PUSH_TO_VERSION_TOPIC) && !isWriteComputationEnabled)) {
           if (partitionConsumptionState.skipKafkaMessage()) {
-            logger.info("Skipping messages after EOP in remote version topic. Topic: " + kafkaVersionTopic + " Partition Id: " + subPartition);
+            String msg = "Skipping messages after EOP in remote version topic. Topic: " + kafkaVersionTopic + " Partition Id: " + subPartition;
+            if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
+              logger.info(msg);
+            }
             return false;
           }
           if (record.key().isControlMessage()) {
