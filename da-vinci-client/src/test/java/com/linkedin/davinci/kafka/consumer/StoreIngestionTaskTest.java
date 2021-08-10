@@ -83,6 +83,7 @@ import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.DiskUsage;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.PartitionUtils;
+import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
@@ -132,6 +133,7 @@ import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
+import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.utils.TestUtils.*;
 import static org.mockito.Mockito.*;
 import static org.testng.Assert.*;
@@ -144,7 +146,6 @@ import static org.testng.Assert.*;
  */
 @Test(singleThreaded = true)
 public class StoreIngestionTaskTest {
-
   private static final Logger logger = Logger.getLogger(StoreIngestionTaskTest.class);
 
   private static final long TEST_TIMEOUT;
@@ -166,7 +167,7 @@ public class StoreIngestionTaskTest {
   private StorageEngineRepository mockStorageEngineRepository;
   private VeniceNotifier mockLogNotifier, mockPartitionStatusNotifier, mockLeaderFollowerStateModelNotifier, mockOnlineOfflineStateModelNotifier;
   private List<Object[]> mockNotifierProgress;
-  private List<Object[]> mockNotifierEOPReveived;
+  private List<Object[]> mockNotifierEOPReceived;
   private List<Object[]> mockNotifierCompleted;
   private List<Object[]> mockNotifierError;
   private StorageMetadataService mockStorageMetadataService;
@@ -250,10 +251,10 @@ public class StoreIngestionTaskTest {
       mockNotifierProgress.add(args);
       return null;
     }).when(mockLogNotifier).progress(anyString(), anyInt(), anyLong());
-    mockNotifierEOPReveived = new ArrayList<>();
+    mockNotifierEOPReceived = new ArrayList<>();
     doAnswer(invocation -> {
       Object[] args = invocation.getArguments();
-      mockNotifierEOPReveived.add(args);
+      mockNotifierEOPReceived.add(args);
       return null;
     }).when(mockLogNotifier).endOfPushReceived(anyString(), anyInt(), anyLong());
     mockNotifierCompleted = new ArrayList<>();
@@ -356,24 +357,29 @@ public class StoreIngestionTaskTest {
         Optional.empty(), isLeaderFollowerModelEnabled);
   }
 
-  private void runHybridTest(Set<Integer> partitions, Runnable assertions, boolean isLeaderFollowerModelEnabled, int amplificationFactor) throws Exception {
-    runTest(new RandomPollStrategy(), partitions, () -> {}, assertions,
-        Optional.of(new HybridStoreConfigImpl(100, 100,
-            HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD, DataReplicationPolicy.NON_AGGREGATE,
-            BufferReplayPolicy.REWIND_FROM_EOP)),
-        false, Optional.empty(), true, isLeaderFollowerModelEnabled, amplificationFactor);
+  private void runTest(Set<Integer> partitions,
+      Runnable beforeStartingConsumption,
+      Runnable assertions,
+      boolean isLeaderFollowerModelEnabled) throws Exception {
+    runTest(partitions, beforeStartingConsumption, assertions, isLeaderFollowerModelEnabled, Collections.emptyMap());
   }
 
   private void runTest(Set<Integer> partitions,
       Runnable beforeStartingConsumption,
       Runnable assertions,
-      boolean isLeaderFollowerModelEnabled) throws Exception {
-    runTest(new RandomPollStrategy(), partitions, beforeStartingConsumption, assertions, isLeaderFollowerModelEnabled);
+      boolean isLeaderFollowerModelEnabled,
+      Map<String, Object> extraServerProperties) throws Exception {
+    runTest(new RandomPollStrategy(), partitions, beforeStartingConsumption, assertions, isLeaderFollowerModelEnabled, extraServerProperties);
   }
 
   private void runTest(PollStrategy pollStrategy, Set<Integer> partitions, Runnable beforeStartingConsumption,
       Runnable assertions, boolean isLeaderFollowerModelEnabled) throws Exception {
-    runTest(pollStrategy, partitions, beforeStartingConsumption, assertions, this.hybridStoreConfig, Optional.empty(), isLeaderFollowerModelEnabled);
+    runTest(pollStrategy, partitions, beforeStartingConsumption, assertions, this.hybridStoreConfig, Optional.empty(), isLeaderFollowerModelEnabled, Collections.emptyMap());
+  }
+
+  private void runTest(PollStrategy pollStrategy, Set<Integer> partitions, Runnable beforeStartingConsumption,
+      Runnable assertions, boolean isLeaderFollowerModelEnabled, Map<String, Object> extraServerProperties) throws Exception {
+    runTest(pollStrategy, partitions, beforeStartingConsumption, assertions, this.hybridStoreConfig, Optional.empty(), isLeaderFollowerModelEnabled, extraServerProperties);
   }
 
   private void runTest(PollStrategy pollStrategy,
@@ -382,8 +388,9 @@ public class StoreIngestionTaskTest {
       Runnable assertions,
       Optional<HybridStoreConfig> hybridStoreConfig,
       Optional<DiskUsage> diskUsageForTest,
-      boolean isLeaderFollowerModelEnabled) throws Exception{
-    runTest(pollStrategy, partitions, beforeStartingConsumption, assertions, hybridStoreConfig, false, diskUsageForTest, true, isLeaderFollowerModelEnabled, 1);
+      boolean isLeaderFollowerModelEnabled) throws Exception {
+    runTest(pollStrategy, partitions, beforeStartingConsumption, assertions, hybridStoreConfig, false, diskUsageForTest,
+        isLeaderFollowerModelEnabled, 1, Collections.emptyMap());
   }
 
   private void runTest(PollStrategy pollStrategy,
@@ -391,11 +398,16 @@ public class StoreIngestionTaskTest {
       Runnable beforeStartingConsumption,
       Runnable assertions,
       Optional<HybridStoreConfig> hybridStoreConfig,
-      boolean incrementalPushEnabled,
       Optional<DiskUsage> diskUsageForTest,
-      boolean isAutoCompactionEnabledForSamzaReprocessingJob,
       boolean isLeaderFollowerModelEnabled,
-      int amplificationFactor) throws Exception {
+      Map<String, Object> extraServerProperties) throws Exception {
+    runTest(pollStrategy, partitions, beforeStartingConsumption, assertions, hybridStoreConfig, false, diskUsageForTest,
+        isLeaderFollowerModelEnabled, 1, extraServerProperties);
+  }
+
+  private void runTest(PollStrategy pollStrategy, Set<Integer> partitions, Runnable beforeStartingConsumption,
+      Runnable assertions, Optional<HybridStoreConfig> hybridStoreConfig, boolean incrementalPushEnabled,
+      Optional<DiskUsage> diskUsageForTest, boolean isLeaderFollowerModelEnabled, int amplificationFactor, Map<String, Object> extraServerProperties) throws Exception {
     MockInMemoryConsumer inMemoryKafkaConsumer = new MockInMemoryConsumer(inMemoryKafkaBroker, pollStrategy, mockKafkaConsumer);
     Properties kafkaProps = new Properties();
     kafkaProps.put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, inMemoryKafkaBroker.getKafkaBootstrapServer());
@@ -403,16 +415,15 @@ public class StoreIngestionTaskTest {
     doReturn(inMemoryKafkaConsumer).when(mockFactory).getConsumer(any());
     mockWriterFactory = mock(VeniceWriterFactory.class);
     doReturn(null).when(mockWriterFactory).createBasicVeniceWriter(any());
-    // doReturn(amplificationFactor).when(PartitionUtils.getAmplificationFactor(any(), any()));
     StorageMetadataService offsetManager;
     logger.info("mockStorageMetadataService: " + mockStorageMetadataService.getClass().getName());
     final InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer = AvroProtocolDefinition.PARTITION_STATE.getSerializer();
     if (mockStorageMetadataService.getClass() != InMemoryStorageMetadataService.class) {
       for (int partition : PartitionUtils.getSubPartitions(partitions, amplificationFactor)) {
         doReturn(new OffsetRecord(partitionStateSerializer)).when(mockStorageMetadataService).getLastOffset(topic, partition);
-        if(hybridStoreConfig.isPresent()){
+        if (hybridStoreConfig.isPresent()) {
           doReturn(Optional.of(new StoreVersionState())).when(mockStorageMetadataService).getStoreVersionState(topic);
-        }else {
+        } else {
           doReturn(Optional.empty()).when(mockStorageMetadataService).getStoreVersionState(topic);
         }
       }
@@ -438,10 +449,6 @@ public class StoreIngestionTaskTest {
     doReturn(databaseSyncBytesIntervalForDeferredWriteMode).when(storeConfig).getDatabaseSyncBytesIntervalForDeferredWriteMode();
     doReturn(false).when(storeConfig).isReadOnlyForBatchOnlyStoreEnabled();
 
-    veniceServerConfig = mock(VeniceServerConfig.class);
-    doReturn(500L).when(veniceServerConfig).getServerPromotionToLeaderReplicaDelayMs();
-    doReturn(inMemoryKafkaBroker.getKafkaBootstrapServer()).when(veniceServerConfig).getKafkaBootstrapServers();
-    doReturn(false).when(veniceServerConfig).isHybridQuotaEnabled();
 
     int partitionCount = PARTITION_COUNT / amplificationFactor;
     VenicePartitioner partitioner = getVenicePartitioner(1); // Only get base venice partitioner
@@ -493,11 +500,7 @@ public class StoreIngestionTaskTest {
     doReturn(mockStore).when(mockMetadataRepo).getStoreOrThrow(storeNameWithoutVersionInfo);
     doReturn(mockStore).when(mockMetadataRepo).getStore(storeNameWithoutVersionInfo);
 
-    doReturn(databaseChecksumVerificationEnabled).when(veniceServerConfig).isDatabaseChecksumVerificationEnabled();
-    doReturn(new VeniceProperties()).when(veniceServerConfig).getKafkaConsumerConfigsForLocalConsumption();
-    doReturn(new VeniceProperties()).when(veniceServerConfig).getKafkaConsumerConfigsForRemoteConsumption();
-    doReturn(rocksDBServerConfig).when(veniceServerConfig).getRocksDBServerConfig();
-    doReturn(isAutoCompactionEnabledForSamzaReprocessingJob).when(veniceServerConfig).isEnableAutoCompactionForSamzaReprocessingJob();
+    veniceServerConfig = buildVeniceServerConfig(extraServerProperties);
 
     AggKafkaConsumerService aggKafkaConsumerService = mock(AggKafkaConsumerService.class);
     doReturn(inMemoryKafkaConsumer).when(aggKafkaConsumerService).getConsumer(any(), any());
@@ -617,11 +620,19 @@ public class StoreIngestionTaskTest {
     mockStorageMetadataService = new InMemoryStorageMetadataService();
     VeniceWriter vtWriter = getVeniceWriter(topic, () -> new MockInMemoryProducer(inMemoryKafkaBroker), amplificationFactor);
     VeniceWriter rtWriter = getVeniceWriter(Version.composeRealTimeTopic(storeNameWithoutVersionInfo), () -> new MockInMemoryProducer(inMemoryKafkaBroker), 1);
-    runHybridTest(getSet(PARTITION_FOO), () -> {
-          vtWriter.broadcastStartOfPush(new HashMap<>());
+    HybridStoreConfig hybridStoreConfig = new HybridStoreConfigImpl(100,
+        100,
+        HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD,
+        DataReplicationPolicy.NON_AGGREGATE,
+        BufferReplayPolicy.REWIND_FROM_EOP
+    );
+
+    runTest(new RandomPollStrategy(),
+        getSet(PARTITION_FOO),
+        ()-> {},
+        () -> { vtWriter.broadcastStartOfPush(new HashMap<>());
           vtWriter.broadcastEndOfPush(new HashMap<>());
           doReturn(vtWriter).when(mockWriterFactory).createBasicVeniceWriter(anyString(), anyBoolean(), any(), any());
-          doReturn(3L).when(veniceServerConfig).getServerPromotionToLeaderReplicaDelayMs();
           verify(mockLogNotifier, never()).completed(anyString(), anyInt(), anyLong());
           vtWriter.broadcastTopicSwitch(Arrays.asList(inMemoryKafkaBroker.getKafkaBootstrapServer()),
               Version.composeRealTimeTopic(storeNameWithoutVersionInfo),
@@ -643,8 +654,11 @@ public class StoreIngestionTaskTest {
             e.printStackTrace();
           }
         },
-        true,
-        amplificationFactor
+        Optional.of(hybridStoreConfig),
+        false,
+        Optional.empty(), true,
+        amplificationFactor,
+        Collections.singletonMap(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 3L)
     );
   }
 
@@ -1250,11 +1264,12 @@ public class StoreIngestionTaskTest {
   public void testSubscribeCompletedPartitionUnsubscribe(boolean isLeaderFollowerModelEnabled) throws Exception {
     final int offset = 100;
     veniceWriter.broadcastStartOfPush(new HashMap<>());
+    Map<String, Object> extraServerProperties = new HashMap<>();
+    extraServerProperties.put(SERVER_SHARED_CONSUMER_POOL_ENABLED, true);
+    extraServerProperties.put(SERVER_UNSUB_AFTER_BATCHPUSH, true);
 
     runTest(getSet(PARTITION_FOO),
         () -> {
-          doReturn(true).when(veniceServerConfig).isSharedConsumerPoolEnabled();
-          doReturn(true).when(veniceServerConfig).isUnsubscribeAfterBatchpushEnabled();
           doReturn(true).when(mockKafkaConsumer).hasSubscription(anySet());
           Store mockStore = mock(Store.class);
           doReturn(1).when(mockStore).getCurrentVersion();
@@ -1267,7 +1282,8 @@ public class StoreIngestionTaskTest {
           verify(mockKafkaConsumer).batchUnsubscribe(Collections.singleton(new TopicPartition(topic, PARTITION_FOO)));
           verify(mockKafkaConsumer, never()).unSubscribe(topic, PARTITION_BAR);
         },
-        isLeaderFollowerModelEnabled
+        isLeaderFollowerModelEnabled,
+        extraServerProperties
     );
   }
 
@@ -1278,18 +1294,17 @@ public class StoreIngestionTaskTest {
 
     runTest(getSet(PARTITION_FOO),
         () -> {
-          doReturn(false).when(veniceServerConfig).isUnsubscribeAfterBatchpushEnabled();
           Store mockStore = mock(Store.class);
           storeIngestionTaskUnderTest.unSubscribePartition(topic, PARTITION_FOO);
           doReturn(1).when(mockStore).getCurrentVersion();
-          doReturn(Optional.of(new VersionImpl("storeName", 1))).when(mockStore).getVersion(1);
+          doReturn(Optional.of(new VersionImpl("storeName", 1, Version.numberBasedDummyPushId(1)))).when(mockStore).getVersion(1);
           doReturn(mockStore).when(mockMetadataRepo).getStoreOrThrow(storeNameWithoutVersionInfo);
           doReturn(getOffsetRecord(offset, true)).when(mockStorageMetadataService).getLastOffset(topic, PARTITION_FOO);
         },
         () -> {
           verify(mockLogNotifier, timeout(TEST_TIMEOUT)).completed(topic, PARTITION_FOO, offset);
           waitForNonDeterministicCompletion(TEST_TIMEOUT, TimeUnit.MILLISECONDS,
-              () -> storeIngestionTaskUnderTest.isRunning() == false);
+              () -> !storeIngestionTaskUnderTest.isRunning());
         },
         isLeaderFollowerModelEnabled
     );
@@ -1697,7 +1712,7 @@ public class StoreIngestionTaskTest {
 
         // If the partition already got EndOfPushReceived, then all errors will be suppressed and not reported.
         // The speed for a partition to get EOP is non-deterministic, adds the if check here to make this test not flaky.
-        if (mockNotifierEOPReveived.isEmpty()) {
+        if (mockNotifierEOPReceived.isEmpty()) {
           Assert.assertFalse(mockNotifierError.isEmpty(), "Disk Usage should have triggered an ingestion error");
           String errorMessages = mockNotifierError.stream().map(o -> ((Exception) o[3]).getMessage()) //elements in object array are 0:store name (String), 1: partition (int), 2: message (String), 3: cause (Exception)
               .collect(Collectors.joining());
@@ -1738,7 +1753,7 @@ public class StoreIngestionTaskTest {
         verify(mockLogNotifier, atLeastOnce()).endOfPushReceived(topic, PARTITION_FOO, fooOffset);
         verify(mockLogNotifier, atLeastOnce()).endOfIncrementalPushReceived(topic, PARTITION_FOO, fooNewOffset, version);
       });
-    }, Optional.empty(), true, Optional.empty(), true, isLeaderFollowerModelEnabled, 1);
+    }, Optional.empty(), true, Optional.empty(), isLeaderFollowerModelEnabled, 1, Collections.emptyMap());
   }
 
 
@@ -1748,28 +1763,27 @@ public class StoreIngestionTaskTest {
     long fooOffset = getOffset(veniceWriter.put(putKeyFoo, putValue, SCHEMA_ID));
     veniceWriter.broadcastEndOfPush(new HashMap<>());
 
+    Map<String, Object> extraServerProperties = new HashMap<>();
+    extraServerProperties.put(SERVER_CACHE_WARMING_STORE_LIST, storeNameWithoutVersionInfo);
+    extraServerProperties.put(SERVER_CACHE_WARMING_BEFORE_READY_TO_SERVE_ENABLED, true);
+
     //Records order are: StartOfSeg, StartOfPush, data, EndOfPush, EndOfSeg
     runTest(new RandomPollStrategy(), getSet(PARTITION_FOO),
-        () -> {
-          doReturn(true).when(veniceServerConfig).isCacheWarmingBeforeReadyToServeEnabled();
-          doReturn(true).when(veniceServerConfig).isCacheWarmingEnabledForStore(anyString());
-        },
-        () -> {
-          waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-            //sync the offset when receiving EndOfPush
-            verify(mockStorageMetadataService, timeout(TEST_TIMEOUT).atLeastOnce())
-                .put(eq(topic), eq(PARTITION_FOO), eq(getOffsetRecord(fooOffset + 1, true)));
+        () -> {},
+        () -> waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+          //sync the offset when receiving EndOfPush
+          verify(mockStorageMetadataService, timeout(TEST_TIMEOUT).atLeastOnce())
+              .put(eq(topic), eq(PARTITION_FOO), eq(getOffsetRecord(fooOffset + 1, true)));
 
-            verify(mockLogNotifier, atLeastOnce()).started(topic, PARTITION_FOO);
-            //since notifier reporting happens before offset update, it actually reports previous offsets
-            verify(mockLogNotifier, atLeastOnce()).endOfPushReceived(topic, PARTITION_FOO, fooOffset);
-            // Since the completion report will be async, the completed offset could be `END_OF_PUSH` or `END_OF_SEGMENT` for batch push job.
-            verify(mockLogNotifier).completed(eq(topic), eq(PARTITION_FOO),
-                longThat(completionOffset ->  (completionOffset == fooOffset + 1) || (completionOffset == fooOffset + 2))
-            );
-            verify(mockAbstractStorageEngine).warmUpStoragePartition(PARTITION_FOO);
-          });
-        }, Optional.empty(), false, Optional.empty(), true, isLeaderFollowerModelEnabled, 1
+          verify(mockLogNotifier, atLeastOnce()).started(topic, PARTITION_FOO);
+          //since notifier reporting happens before offset update, it actually reports previous offsets
+          verify(mockLogNotifier, atLeastOnce()).endOfPushReceived(topic, PARTITION_FOO, fooOffset);
+          // Since the completion report will be async, the completed offset could be `END_OF_PUSH` or `END_OF_SEGMENT` for batch push job.
+          verify(mockLogNotifier).completed(eq(topic), eq(PARTITION_FOO),
+              longThat(completionOffset ->  (completionOffset == fooOffset + 1) || (completionOffset == fooOffset + 2))
+          );
+          verify(mockAbstractStorageEngine).warmUpStoragePartition(PARTITION_FOO);
+        }), Optional.empty(), false, Optional.empty(), isLeaderFollowerModelEnabled, 1, extraServerProperties
     );
   }
 
@@ -1782,7 +1796,6 @@ public class StoreIngestionTaskTest {
     //Records order are: StartOfSeg, StartOfPush, data, EndOfPush, EndOfSeg
     runTest(new RandomPollStrategy(), getSet(PARTITION_FOO),
         () -> {
-          doReturn(1).when(veniceServerConfig).getNumSchemaFastClassWarmup();
           Store mockStore = mock(Store.class);
           doReturn(true).when(mockStore).isReadComputationEnabled();
           doReturn(true).when(mockSchemaRepo).hasValueSchema(storeNameWithoutVersionInfo, EXISTING_SCHEMA_ID);
@@ -1790,17 +1803,16 @@ public class StoreIngestionTaskTest {
           doReturn(schemaEntry).when(mockSchemaRepo).getValueSchema(anyString(), anyInt());
           doReturn(Optional.of(new VersionImpl("storeName", 1))).when(mockStore).getVersion(1);
         },
-        () -> {
-          waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-            verify(mockLogNotifier, atLeastOnce()).started(topic, PARTITION_FOO);
-            //since notifier reporting happens before offset update, it actually reports previous offsets
-            verify(mockLogNotifier, atLeastOnce()).endOfPushReceived(topic, PARTITION_FOO, fooOffset);
-            // Since the completion report will be async, the completed offset could be `END_OF_PUSH` or `END_OF_SEGMENT` for batch push job.
-            verify(mockLogNotifier).completed(eq(topic), eq(PARTITION_FOO),
-                longThat(completionOffset ->  (completionOffset == fooOffset + 1) || (completionOffset == fooOffset + 2))
-            );
-          });
-        }, Optional.empty(), false, Optional.empty(), true, isLeaderFollowerModelEnabled, 1
+        () -> waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+          verify(mockLogNotifier, atLeastOnce()).started(topic, PARTITION_FOO);
+          //since notifier reporting happens before offset update, it actually reports previous offsets
+          verify(mockLogNotifier, atLeastOnce()).endOfPushReceived(topic, PARTITION_FOO, fooOffset);
+          // Since the completion report will be async, the completed offset could be `END_OF_PUSH` or `END_OF_SEGMENT` for batch push job.
+          verify(mockLogNotifier).completed(eq(topic), eq(PARTITION_FOO),
+              longThat(completionOffset ->  (completionOffset == fooOffset + 1) || (completionOffset == fooOffset + 2))
+          );
+        }), Optional.empty(), false, Optional.empty(),
+        isLeaderFollowerModelEnabled, 1, Collections.singletonMap(SERVER_NUM_SCHEMA_FAST_CLASS_WARMUP, 1)
     );
   }
 
@@ -1819,30 +1831,27 @@ public class StoreIngestionTaskTest {
     //Records order are: StartOfSeg, StartOfPush, data, EndOfPush, EndOfSeg
     runTest(new RandomPollStrategy(), getSet(PARTITION_FOO),
         () -> {
-          doReturn(false).when(veniceServerConfig).isEnableAutoCompactionForSamzaReprocessingJob();
           mockAbstractStorageEngine.addStoragePartition(PARTITION_FOO);
           AbstractStoragePartition mockPartition = mock(AbstractStoragePartition.class);
           mockStoragePartitionWrapper.complete(mockPartition);
           doReturn(mockPartition).when(mockAbstractStorageEngine).getPartitionOrThrow(PARTITION_FOO);
           doReturn(CompletableFuture.completedFuture(null)).when(mockPartition).compactDB();
         },
-        () -> {
-          waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-            // Consumer should pause the consumption before EOP
-            verify(mockKafkaConsumer).pause(topic, PARTITION_FOO);
-            verify(mockStoragePartitionWrapper.get()).compactDB();
-            // Consumer should resume the consumption right before EOP
-            verify(mockKafkaConsumer).subscribe(eq(topic), eq(PARTITION_FOO), eq(fooOffset));
+        () -> waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+          // Consumer should pause the consumption before EOP
+          verify(mockKafkaConsumer).pause(topic, PARTITION_FOO);
+          verify(mockStoragePartitionWrapper.get()).compactDB();
+          // Consumer should resume the consumption right before EOP
+          verify(mockKafkaConsumer).subscribe(eq(topic), eq(PARTITION_FOO), eq(fooOffset));
 
-            verify(mockLogNotifier, atLeastOnce()).started(topic, PARTITION_FOO);
-            //since notifier reporting happens before offset update, it actually reports previous offsets
-            verify(mockLogNotifier, atLeastOnce()).endOfPushReceived(topic, PARTITION_FOO, fooOffset);
-            // Since the completion report will be async, the completed offset could be `END_OF_PUSH` or `END_OF_SEGMENT` for batch push job.
-            verify(mockLogNotifier).completed(eq(topic), eq(PARTITION_FOO),
-                longThat(completionOffset ->  (completionOffset == fooOffset + 1) || (completionOffset == fooOffset + 2))
-            );
-          });
-        }, Optional.empty(), false, Optional.empty(), false, isLeaderFollowerModelEnabled, 1
+          verify(mockLogNotifier, atLeastOnce()).started(topic, PARTITION_FOO);
+          //since notifier reporting happens before offset update, it actually reports previous offsets
+          verify(mockLogNotifier, atLeastOnce()).endOfPushReceived(topic, PARTITION_FOO, fooOffset);
+          // Since the completion report will be async, the completed offset could be `END_OF_PUSH` or `END_OF_SEGMENT` for batch push job.
+          verify(mockLogNotifier).completed(eq(topic), eq(PARTITION_FOO),
+              longThat(completionOffset ->  (completionOffset == fooOffset + 1) || (completionOffset == fooOffset + 2))
+          );
+        }), Optional.empty(), false, Optional.empty(), isLeaderFollowerModelEnabled, 1, Collections.singletonMap(SERVER_AUTO_COMPACTION_FOR_SAMZA_REPROCESSING_JOB_ENABLED, false)
     );
   }
 
@@ -1890,4 +1899,19 @@ public class StoreIngestionTaskTest {
     }
   }
 
+  private VeniceServerConfig buildVeniceServerConfig(Map<String, Object> extraProperties) {
+    PropertyBuilder propertyBuilder = new PropertyBuilder();
+    propertyBuilder.put(CLUSTER_NAME, "");
+    propertyBuilder.put(ZOOKEEPER_ADDRESS, "");
+    propertyBuilder.put(KAFKA_ZK_ADDRESS, "");
+    propertyBuilder.put(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 500L);
+    propertyBuilder.put(KAFKA_BOOTSTRAP_SERVERS, inMemoryKafkaBroker.getKafkaBootstrapServer());
+    propertyBuilder.put(HYBRID_QUOTA_ENFORCEMENT_ENABLED, false);
+    propertyBuilder.put(SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED, databaseChecksumVerificationEnabled);
+    propertyBuilder.put(SERVER_LOCAL_CONSUMER_CONFIG_PREFIX, new VeniceProperties());
+    propertyBuilder.put(SERVER_REMOTE_CONSUMER_CONFIG_PREFIX, new VeniceProperties());
+    propertyBuilder.put(SERVER_AUTO_COMPACTION_FOR_SAMZA_REPROCESSING_JOB_ENABLED, true);
+    extraProperties.forEach(propertyBuilder::put);
+    return new VeniceServerConfig(propertyBuilder.build());
+  }
 }
