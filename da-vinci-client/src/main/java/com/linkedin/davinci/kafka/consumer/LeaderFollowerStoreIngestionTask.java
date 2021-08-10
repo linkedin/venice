@@ -1494,26 +1494,34 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             Update update = (Update) kafkaValue.payloadUnion;
             int valueSchemaId = update.schemaId;
             int derivedSchemaId = update.updateSchemaId;
-            GenericRecord originalValue = null;
+            GenericRecord originalValue;
             boolean isChunkedTopic = storageMetadataService.isStoreVersionChunked(kafkaVersionTopic);
 
             /**
              *  Few Notes:
-             *  Currently we support chunking only for messages produced on VT topic during batch part of the ingestion
-             *  for hybrid stores. Chunking is NOT supported for messages produced to RT topics during streamign ingestion.
-             *  Also we dont support compression at all for hybrid store.
-             *  So the assumption here is that the PUT/UPDATE messages stored in transientRecord should always be a full value
-             *  (non chunked) and non-compressed. Decoding should succeed using the the simplified API
-             *  {@link ChunkingAdapter#constructValue(int, byte[], int, boolean, ReadOnlySchemaRepository, String)}
+             *  1. Currently we support chunking only for messages produced on VT topic during batch part of the ingestion
+             *     for hybrid stores. Chunking is NOT supported for messages produced to RT topics during streaming ingestion.
+             *     Also we dont support compression at all for hybrid store.
+             *     So the assumption here is that the PUT/UPDATE messages stored in transientRecord should always be a full value
+             *     (non chunked) and non-compressed. Decoding should succeed using the the simplified API
+             *     {@link ChunkingAdapter#constructValue(int, byte[], int, boolean, ReadOnlySchemaRepository, String)}
+             *
+             *  2. It's debatable if we'd like to the latest value schema or the value schema associated in the UPDATE message
+             *     as the reader schema. Either one has pro and cons. The former is appealing when the schema has been devolved
+             *     but hasn't been caught up by the write-compute pipeline. It prevents records which are originally serialized
+             *     by the later schema get "reverted" to the old schema. However, this can go the opposite way as well. If the
+             *     users register a "bad" schema unintentionally. The "latest value schema" approach will force the value
+             *     record being upgraded even if the latest value schema hasn't been used by users yet.
+             *
+             *     As for now, we're using the value schema associated in the UPDATE message as the reader schema.
              */
             //Find the existing value. If a value for this key is found from the transient map then use that value, otherwise get it from DB.
-            PartitionConsumptionState.TransientRecord transientRecord =
-                partitionConsumptionState.getTransientRecord(keyBytes);
+            PartitionConsumptionState.TransientRecord transientRecord = partitionConsumptionState.getTransientRecord(keyBytes);
             if (transientRecord == null) {
               try {
                 long lookupStartTimeInNS = System.nanoTime();
                 originalValue = GenericRecordChunkingAdapter.INSTANCE.get(
-                    storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic),
+                    storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic), valueSchemaId,
                     amplificationFactor != 1 && Version.isRealTimeTopic(consumerRecord.topic()) ?
                         venicePartitioner.getPartitionId(keyBytes, subPartitionCount) : consumerRecord.partition(),
                     ByteBuffer.wrap(keyBytes), isChunkedTopic, null, null, null,
@@ -1530,9 +1538,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
               //construct originalValue from this transient record only if it's not null.
               if (transientRecord.getValue() != null) {
                 try {
-                  originalValue = GenericRecordChunkingAdapter.INSTANCE.constructValue(transientRecord.getValueSchemaId(), transientRecord.getValue(),
-                      transientRecord.getValueOffset(), transientRecord.getValueLen(),
-                      serverConfig.isComputeFastAvroEnabled(), schemaRepository, storeName);
+                  originalValue = GenericRecordChunkingAdapter.INSTANCE.constructValue(transientRecord.getValueSchemaId(),
+                      valueSchemaId, transientRecord.getValue(), transientRecord.getValueOffset(),
+                      transientRecord.getValueLen(), serverConfig.isComputeFastAvroEnabled(), schemaRepository, storeName);
                 } catch (Exception e) {
                   writeComputeFailureCode = StatsErrorCode.WRITE_COMPUTE_DESERIALIZATION_FAILURE.code;
                   throw e;

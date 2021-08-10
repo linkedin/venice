@@ -28,7 +28,12 @@ import org.apache.avro.io.DecoderFactory;
 public abstract class AbstractAvroChunkingAdapter<T> implements ChunkingAdapter<ChunkedValueInputStream, T> {
   private static final int UNUSED_INPUT_BYTES_LENGTH = -1;
 
-  protected abstract RecordDeserializer<T> getDeserializer(String storeName, int schemaId, ReadOnlySchemaRepository schemaRepo, boolean fastAvroEnabled);
+  protected RecordDeserializer<T> getDeserializer(String storeName, int writerSchemaId,
+      ReadOnlySchemaRepository schemaRepo, boolean fastAvroEnabled) {
+    return getDeserializer(storeName, writerSchemaId, schemaRepo.getLatestValueSchema(storeName).getId(), schemaRepo, fastAvroEnabled);
+  }
+
+  protected abstract RecordDeserializer<T> getDeserializer(String storeName, int writerSchemaId, int readerSchemaId, ReadOnlySchemaRepository schemaRepo, boolean fastAvroEnabled);
 
   /**
    * The default {@link DecoderFactory} will allocate 8k buffer by default for every input stream, which seems to be
@@ -50,7 +55,8 @@ public abstract class AbstractAvroChunkingAdapter<T> implements ChunkingAdapter<
 
   @Override
   public T constructValue(
-      int schemaId,
+      int writerSchemaId,
+      int readerSchemaId,
       byte[] fullBytes,
       int bytesLength,
       T reusedValue,
@@ -68,7 +74,7 @@ public abstract class AbstractAvroChunkingAdapter<T> implements ChunkingAdapter<
         bytesLength,
         reusedValue,
         compressionStrategy,
-        getDeserializer(storeName, schemaId, schemaRepo, fastAvroEnabled),
+        getDeserializer(storeName, writerSchemaId, readerSchemaId, schemaRepo, fastAvroEnabled),
         response,
         compressorFactory,
         versionTopic);
@@ -76,7 +82,21 @@ public abstract class AbstractAvroChunkingAdapter<T> implements ChunkingAdapter<
 
   @Override
   public T constructValue(
-      int schemaId,
+      int writerSchemaId,
+      byte[] valueOnlyBytes,
+      int offset,
+      int bytesLength,
+      boolean fastAvroEnabled,
+      ReadOnlySchemaRepository schemaRepo,
+      String storeName) {
+    return constructValue(writerSchemaId, schemaRepo.getLatestValueSchema(storeName).getId(), valueOnlyBytes, offset,
+        bytesLength, fastAvroEnabled, schemaRepo, storeName);
+  }
+
+  @Override
+  public T constructValue(
+      int writerSchemaId,
+      int readerSchemaId,
       byte[] valueOnlyBytes,
       int offset,
       int bytesLength,
@@ -90,7 +110,7 @@ public abstract class AbstractAvroChunkingAdapter<T> implements ChunkingAdapter<
         bytesLength,
         null,
         null,
-        getDeserializer(storeName, schemaId, schemaRepo, fastAvroEnabled),
+        getDeserializer(storeName, writerSchemaId, readerSchemaId, schemaRepo, fastAvroEnabled),
         null);
   }
 
@@ -142,10 +162,28 @@ public abstract class AbstractAvroChunkingAdapter<T> implements ChunkingAdapter<
       ReadOnlySchemaRepository schemaRepo,
       String storeName,
       StorageEngineBackedCompressorFactory compressorFactory) {
+    return get(store, schemaRepo.getLatestValueSchema(storeName).getId(), partition, key, isChunked, reusedValue,
+        reusedDecoder, response, compressionStrategy, fastAvroEnabled, schemaRepo, storeName, compressorFactory);
+  }
+
+  public T get(
+      AbstractStorageEngine store,
+      int readerSchema,
+      int partition,
+      ByteBuffer key,
+      boolean isChunked,
+      T reusedValue,
+      BinaryDecoder reusedDecoder,
+      ReadResponse response,
+      CompressionStrategy compressionStrategy,
+      boolean fastAvroEnabled,
+      ReadOnlySchemaRepository schemaRepo,
+      String storeName,
+      StorageEngineBackedCompressorFactory compressorFactory) {
     if (isChunked) {
       key = ByteBuffer.wrap(ChunkingUtils.KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(key));
     }
-    return ChunkingUtils.getFromStorage(this, store, partition, key, response, reusedValue,
+    return ChunkingUtils.getFromStorage(this, store, readerSchema, partition, key, response, reusedValue,
         reusedDecoder, compressionStrategy, fastAvroEnabled, schemaRepo, storeName, compressorFactory);
   }
 

@@ -615,6 +615,10 @@ public class StoreIngestionTaskTest {
     int amplificationFactor = 2;
     inMemoryKafkaBroker.createTopic(Version.composeRealTimeTopic(storeNameWithoutVersionInfo), PARTITION_COUNT / amplificationFactor);
     mockStorageMetadataService = new InMemoryStorageMetadataService();
+
+    SchemaEntry schemaEntry = new SchemaEntry(1, "\"string\"");
+    doReturn(schemaEntry).when(mockSchemaRepo).getLatestValueSchema(storeNameWithoutVersionInfo);
+
     VeniceWriter vtWriter = getVeniceWriter(topic, () -> new MockInMemoryProducer(inMemoryKafkaBroker), amplificationFactor);
     VeniceWriter rtWriter = getVeniceWriter(Version.composeRealTimeTopic(storeNameWithoutVersionInfo), () -> new MockInMemoryProducer(inMemoryKafkaBroker), 1);
     runHybridTest(getSet(PARTITION_FOO), () -> {
