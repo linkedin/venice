@@ -56,14 +56,14 @@ public class StoreBufferService extends AbstractStoreBufferService {
     private final VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope> consumerRecordWrapper;
     private final ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord;
     private final StoreIngestionTask ingestionTask;
-    private final ProducedRecord producedRecord;
+    private final LeaderProducedRecordContext leaderProducedRecordContext;
     private final Optional<CompletableFuture<Void>> queuedRecordPersistedFuture;
 
     public QueueNode(VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope> consumerRecordWrapper, StoreIngestionTask ingestionTask,
-        ProducedRecord producedRecord, Optional<CompletableFuture<Void>> queuedRecordPersistedFuture) {
+        LeaderProducedRecordContext leaderProducedRecordContext, Optional<CompletableFuture<Void>> queuedRecordPersistedFuture) {
       this.consumerRecordWrapper = consumerRecordWrapper;
       this.ingestionTask = ingestionTask;
-      this.producedRecord = producedRecord;
+      this.leaderProducedRecordContext = leaderProducedRecordContext;
       this.queuedRecordPersistedFuture = queuedRecordPersistedFuture;
       this.consumerRecord = consumerRecordWrapper.consumerRecord();
     }
@@ -76,7 +76,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
       return this.ingestionTask;
     }
 
-    public ProducedRecord getProducedRecord() { return this.producedRecord; }
+    public LeaderProducedRecordContext getLeaderProducedRecordContext() { return this.leaderProducedRecordContext; }
 
     public Optional<CompletableFuture<Void>> getQueuedRecordPersistedFuture() {
       return queuedRecordPersistedFuture;
@@ -105,7 +105,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
 
     @Override
     public int getSize() {
-      //TODO:This should not be a big issue but ideally it should calculate the size from producedRecord if present.
+      //TODO:This should not be a big issue but ideally it should calculate the size from leaderProducedRecordContext if present.
       return this.consumerRecord.serializedKeySize() +
           this.consumerRecord.serializedValueSize() +
           this.consumerRecord.topic().length() +
@@ -119,7 +119,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
   };
 
   /**
-   * Worker thread, which will invoke {@link StoreIngestionTask#processConsumerRecord(VeniceConsumerRecordWrapper, ProducedRecord)} to process
+   * Worker thread, which will invoke {@link StoreIngestionTask#processConsumerRecord(VeniceConsumerRecordWrapper, LeaderProducedRecordContext)} to process
    * each {@link VeniceConsumerRecordWrapper} buffered in {@link BlockingQueue}.
    */
   private static class StoreBufferDrainer implements Runnable {
@@ -142,7 +142,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
       LOGGER.info("Starting StoreBufferDrainer Thread for drainer: " + drainerIndex + "....");
       QueueNode node = null;
       ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord = null;
-      ProducedRecord producedRecord = null;
+      LeaderProducedRecordContext leaderProducedRecordContext = null;
       StoreIngestionTask ingestionTask = null;
       Optional<CompletableFuture<Void>> recordPersistedFuture = null;
       while (isRunning.get()) {
@@ -151,17 +151,17 @@ public class StoreBufferService extends AbstractStoreBufferService {
 
           VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope> consumerRecordWrapper = node.getConsumerRecordWrapper();
           consumerRecord = consumerRecordWrapper.consumerRecord();
-          producedRecord = node.getProducedRecord();
+          leaderProducedRecordContext = node.getLeaderProducedRecordContext();
           ingestionTask = node.getIngestionTask();
           recordPersistedFuture = node.getQueuedRecordPersistedFuture();
 
           long startTime = System.currentTimeMillis();
 
-          ingestionTask.processConsumerRecord(consumerRecordWrapper, producedRecord);
+          ingestionTask.processConsumerRecord(consumerRecordWrapper, leaderProducedRecordContext);
 
-          //complete the producedRecord future as processing for this producedRecord is done here.
-          if (producedRecord != null) {
-            producedRecord.completePersistedToDBFuture(null);
+          //complete the leaderProducedRecordContext future as processing for this leaderProducedRecordContext is done here.
+          if (leaderProducedRecordContext != null) {
+            leaderProducedRecordContext.completePersistedToDBFuture(null);
           }
 
           /**
@@ -205,8 +205,8 @@ public class StoreBufferService extends AbstractStoreBufferService {
                 ingestionTask.recordChecksumVerificationFailure();
               }
             }
-            if (producedRecord != null) {
-              producedRecord.completePersistedToDBFuture(processConsumerRecordException);
+            if (leaderProducedRecordContext != null) {
+              leaderProducedRecordContext.completePersistedToDBFuture(processConsumerRecordException);
             }
             if (recordPersistedFuture != null && recordPersistedFuture.isPresent()) {
               recordPersistedFuture.get().completeExceptionally(processConsumerRecordException);
@@ -251,21 +251,21 @@ public class StoreBufferService extends AbstractStoreBufferService {
 
   @Override
   public void putConsumerRecord(VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope> consumerRecordWrapper,
-      StoreIngestionTask ingestionTask, ProducedRecord producedRecord) throws InterruptedException {
+      StoreIngestionTask ingestionTask, LeaderProducedRecordContext leaderProducedRecordContext) throws InterruptedException {
     ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord = consumerRecordWrapper.consumerRecord();
     int drainerIndex = getDrainerIndexForConsumerRecord(consumerRecordWrapper);
     Optional<CompletableFuture<Void>> recordFuture = Optional.empty();
-    if (producedRecord == null) {
+    if (leaderProducedRecordContext == null) {
       /**
-       * The last queued record persisted future will only be setup when {@param producedRecord} is 'null',
-       * since {@link ProducedRecord#persistedToDBFuture} is a superset of this, which is tracking the
+       * The last queued record persisted future will only be setup when {@param leaderProducedRecordContext} is 'null',
+       * since {@link LeaderProducedRecordContext#persistedToDBFuture} is a superset of this, which is tracking the
        * end-to-end completeness when producing to local Kafka is needed.
        */
       recordFuture = Optional.of(new CompletableFuture<>());
     }
 
     blockingQueueArr.get(drainerIndex)
-        .put(new QueueNode(consumerRecordWrapper, ingestionTask, producedRecord, recordFuture));
+        .put(new QueueNode(consumerRecordWrapper, ingestionTask, leaderProducedRecordContext, recordFuture));
     // Setup the last queued record's future
     Optional<PartitionConsumptionState> partitionConsumptionState = ingestionTask.getPartitionConsumptionState(consumerRecord.partition());
     if (partitionConsumptionState.isPresent() && recordFuture.isPresent()) {
@@ -311,7 +311,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
   }
 
   @Override
-  public boolean startInner() throws Exception {
+  public boolean startInner() {
     this.executorService = Executors.newFixedThreadPool(drainerNum, new DaemonThreadFactory("Store-writer"));
 
     // Submit all the buffer drainers

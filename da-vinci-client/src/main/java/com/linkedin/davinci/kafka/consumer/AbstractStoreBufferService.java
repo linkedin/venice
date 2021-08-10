@@ -11,8 +11,7 @@ import com.linkedin.venice.service.AbstractVeniceService;
 public abstract class AbstractStoreBufferService extends AbstractVeniceService {
 
   public abstract void putConsumerRecord(VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope> consumerRecordWrapper,
-      StoreIngestionTask ingestionTask, ProducedRecord producedRecord)
-      throws InterruptedException;
+      StoreIngestionTask ingestionTask, LeaderProducedRecordContext leaderProducedRecordContext) throws InterruptedException;
 
   public abstract void drainBufferedRecordsFromTopicPartition(String topic, int partition) throws InterruptedException;
 

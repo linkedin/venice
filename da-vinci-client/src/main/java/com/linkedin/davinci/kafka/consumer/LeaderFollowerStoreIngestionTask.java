@@ -787,17 +787,17 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   }
 
   @Override
-  protected void updateOffset(PartitionConsumptionState partitionConsumptionState, OffsetRecord offsetRecord,
-      VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope> consumerRecordWrapper, ProducedRecord producedRecord) {
+  protected void updateOffsetRecord(PartitionConsumptionState partitionConsumptionState, OffsetRecord offsetRecord,
+      VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope> consumerRecordWrapper, LeaderProducedRecordContext leaderProducedRecordContext) {
 
     ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord = consumerRecordWrapper.consumerRecord();
     // Only update the metadata if this replica should NOT produce to version topic.
     if (!shouldProduceToVersionTopic(partitionConsumptionState)) {
       /**
-       * If either (1) this is a follower replica or (2) this is a leader replica who is consuming from version topic,
-       * we can update the offset metadata in offset record right after consuming a message; otherwise, if the leader
-       * is consuming from real-time topic or grandfathering topic, it should update offset metadata after successfully
-       * produce a corresponding message.
+       * If either (1) this is a follower replica or (2) this is a leader replica who is consuming from version topic
+       * in a local Kafka cluster, we can update the offset metadata in offset record right after consuming a message;
+       * otherwise, if the leader is consuming from real-time topic or grandfathering topic, it should update offset
+       * metadata after successfully produce a corresponding message.
        */
       KafkaMessageEnvelope kafkaValue = consumerRecord.value();
       offsetRecord.setOffset(consumerRecord.offset());
@@ -809,106 +809,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         final long newUpstreamOffset =
             kafkaValue.leaderMetadataFooter == null ? kafkaValue.producerMetadata.upstreamOffset : kafkaValue.leaderMetadataFooter.upstreamOffset;
 
-        long previousUpstreamOffset = offsetRecord.getUpstreamOffset();
-
-        /**
-         * If upstream offset is rewound and it's from a different producer, we encounter a split-brain
-         * issue (multiple leaders producing to the same partition at the same time)
-         *
-         * The condition is a little messy here. This is due to the fact that we have 2 mechanisms to detect the issue.
-         * 1. (old) we identify a Venice writer by checking message's GUID.
-         * 2. We identify a Venice writer by checking message's "leaderMetadataFooter.hostName".
-         *
-         * We would need the second mechanism because once "pass-through" message reproducing is enabled (and it's the
-         * enabled by default in latest code base), leader will re-use the same GUID as the one that's passed from the
-         * upstream message.
-         *
-         * TODO:Remove old condition check once every SN is bumped to have "pass-through" mode enabled.
-         */
-        if (newUpstreamOffset < previousUpstreamOffset) {
-          if ((offsetRecord.getLeaderGUID() != null && !kafkaValue.producerMetadata.producerGUID.equals(offsetRecord.getLeaderGUID()))
-              || (kafkaValue.leaderMetadataFooter != null && offsetRecord.getLeaderHostId() != null
-              && !kafkaValue.leaderMetadataFooter.hostName.toString().equals(offsetRecord.getLeaderHostId()))) {
-            /**
-             * Check whether the data inside rewind message is the same the data inside storage engine; if so,
-             * we don't consider it as lossy rewind; otherwise, report potentially lossy upstream rewind.
-             *
-             * Fail the job if it's lossy and it's during the GF job (before END_OF_PUSH received);
-             * otherwise, don't fail the push job, it's streaming ingestion now so it's serving online traffic already.
-             */
-            String logMsg = String.format(consumerTaskId + " partition %d received message with upstreamOffset: %d;"
-                    + " but recorded upstreamOffset is: %d. New GUID: %s; previous producer GUID: %s."
-                    + " Multiple leaders are producing.", consumerRecord.partition(), newUpstreamOffset,
-                previousUpstreamOffset,
-                GuidUtils.getHexFromGuid(kafkaValue.producerMetadata.producerGUID),
-                GuidUtils.getHexFromGuid(offsetRecord.getLeaderGUID()));
-
-          boolean lossy = true;
-          try {
-            KafkaKey key = consumerRecord.key();
-            KafkaMessageEnvelope envelope = consumerRecord.value();
-            AbstractStorageEngine storageEngine = storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic);
-            switch (MessageType.valueOf(envelope)) {
-              case PUT:
-                // Issue an read to get the current value of the key
-                byte[] actualValue = storageEngine.get(consumerRecord.partition(), key.getKey());
-                if (actualValue != null) {
-                  int actualSchemaId = ByteUtils.readInt(actualValue, 0);
-                  Put put = (Put) envelope.payloadUnion;
-                  if (actualSchemaId == put.schemaId) {
-                    // continue if schema Id is the same
-                    if (ByteUtils.equals(put.putValue.array(), put.putValue.position(), actualValue,
-                        ValueRecord.SCHEMA_HEADER_LENGTH)) {
-                      lossy = false;
-                      logMsg +=
-                          "\nBut this rewound PUT is not lossy because the data in the rewind message is the same as the data inside Venice";
-                    }
-                  }
-                }
-                break;
-              case DELETE:
-                /**
-                 * Lossy if the key/value pair is added back to the storage engine after the first DELETE message.
-                 */
-                actualValue = storageEngine.get(consumerRecord.partition(), key.getKey());
-                if (actualValue == null) {
-                  lossy = false;
-                  logMsg +=
-                      "\nBut this rewound DELETE is not lossy because the data in the rewind message is deleted already";
-                }
-                break;
-              default:
-                // Consider lossy for both control message and PartialUpdate
-                break;
-            }
-          } catch (Exception e) {
-            logger.warn(consumerTaskId + " failed comparing the rewind message with the actual value in Venice", e);
-          }
-
-            if (lossy) {
-              if (!partitionConsumptionState.isEndOfPushReceived()) {
-                logMsg += "\nFailing the job because lossy rewind happens during Grandfathering job";
-                logger.error(logMsg);
-                versionedDIVStats.recordPotentiallyLossyLeaderOffsetRewind(storeName, versionNumber);
-                VeniceException e = new VeniceException(logMsg);
-                reportStatusAdapter.reportError(Arrays.asList(partitionConsumptionState), logMsg, e);
-                throw e;
-              } else {
-                logMsg += "\nDon't fail the job during streaming ingestion";
-                logger.error(logMsg);
-                versionedDIVStats.recordPotentiallyLossyLeaderOffsetRewind(storeName, versionNumber);
-              }
-            } else {
-              logger.info(logMsg);
-              versionedDIVStats.recordBenignLeaderOffsetRewind(storeName, versionNumber);
-            }
-          }
-        }
-        /**
-         * Keep updating the upstream offset no matter whether there is a rewind or not; rewind could happen
-         * to the true leader when the old leader doesn't stop producing.
-         */
-        offsetRecord.setLeaderUpstreamOffset(newUpstreamOffset);
+        updateUpstreamOffset(newUpstreamOffset, partitionConsumptionState, offsetRecord, consumerRecordWrapper);
       }
       // update leader producer GUID
       offsetRecord.setLeaderGUID(kafkaValue.producerMetadata.producerGUID);
@@ -916,18 +817,18 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         offsetRecord.setLeaderHostId(kafkaValue.leaderMetadataFooter.hostName.toString());
       }
     } else {
-      //leader will only update the offset from producedRecord in VT.
-      if (producedRecord != null) {
+      //leader will only update the offset from leaderProducedRecordContext in VT.
+      if (leaderProducedRecordContext != null) {
         /**
          * producedOffset and consumedOffset both are set to -1 when producing individual chunks
          * see {@link LeaderProducerMessageCallback#onCompletion(RecordMetadata, Exception)}
          */
-        if (producedRecord.getProducedOffset() >= 0) {
-          offsetRecord.setOffset(producedRecord.getProducedOffset());
+        if (leaderProducedRecordContext.getProducedOffset() >= 0) {
+          offsetRecord.setOffset(leaderProducedRecordContext.getProducedOffset());
         }
 
-        if (producedRecord.getConsumedOffset() >= 0) {
-          offsetRecord.setLeaderUpstreamOffset(producedRecord.getConsumedOffset());
+        if (leaderProducedRecordContext.getConsumedOffset() >= 0) {
+          offsetRecord.setLeaderUpstreamOffset(leaderProducedRecordContext.getConsumedOffset());
         }
       } else {
         //Ideally this should never happen.
@@ -940,8 +841,117 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
   }
 
+  private void updateUpstreamOffset(
+      final long newUpstreamOffset,
+      PartitionConsumptionState partitionConsumptionState,
+      OffsetRecord offsetRecord,
+      VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope> consumerRecordWrapper
+  ) {
+    final long previousUpstreamOffset = offsetRecord.getUpstreamOffset();
+    final ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord = consumerRecordWrapper.consumerRecord();
+    final KafkaMessageEnvelope kafkaValue = consumerRecord.value();
+    /**
+     * If upstream offset is rewound and it's from a different producer, we encounter a split-brain
+     * issue (multiple leaders producing to the same partition at the same time)
+     *
+     * The condition is a little messy here. This is due to the fact that we have 2 mechanisms to detect the issue.
+     * 1. (old) we identify a Venice writer by checking message's GUID.
+     * 2. We identify a Venice writer by checking message's "leaderMetadataFooter.hostName".
+     *
+     * We would need the second mechanism because once "pass-through" message reproducing is enabled (and it's the
+     * enabled by default in latest code base), leader will re-use the same GUID as the one that's passed from the
+     * upstream message.
+     *
+     * TODO:Remove old condition check once every SN is bumped to have "pass-through" mode enabled.
+     */
+    if (newUpstreamOffset < previousUpstreamOffset) {
+      if ((offsetRecord.getLeaderGUID() != null && !kafkaValue.producerMetadata.producerGUID.equals(offsetRecord.getLeaderGUID()))
+          || (kafkaValue.leaderMetadataFooter != null && offsetRecord.getLeaderHostId() != null
+          && !kafkaValue.leaderMetadataFooter.hostName.toString().equals(offsetRecord.getLeaderHostId()))) {
+        /**
+         * Check whether the data inside rewind message is the same the data inside storage engine; if so,
+         * we don't consider it as lossy rewind; otherwise, report potentially lossy upstream rewind.
+         *
+         * Fail the job if it's lossy and it's during the GF job (before END_OF_PUSH received);
+         * otherwise, don't fail the push job, it's streaming ingestion now so it's serving online traffic already.
+         */
+        String logMsg = String.format(consumerTaskId + " partition %d received message with upstreamOffset: %d;"
+                + " but recorded upstreamOffset is: %d. New GUID: %s; previous producer GUID: %s."
+                + " Multiple leaders are producing.", consumerRecord.partition(), newUpstreamOffset,
+            previousUpstreamOffset,
+            GuidUtils.getHexFromGuid(kafkaValue.producerMetadata.producerGUID),
+            GuidUtils.getHexFromGuid(offsetRecord.getLeaderGUID()));
+
+        boolean lossy = true;
+        try {
+          KafkaKey key = consumerRecord.key();
+          KafkaMessageEnvelope envelope = consumerRecord.value();
+          AbstractStorageEngine storageEngine = storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic);
+          switch (MessageType.valueOf(envelope)) {
+            case PUT:
+              // Issue an read to get the current value of the key
+              byte[] actualValue = storageEngine.get(consumerRecord.partition(), key.getKey());
+              if (actualValue != null) {
+                int actualSchemaId = ByteUtils.readInt(actualValue, 0);
+                Put put = (Put) envelope.payloadUnion;
+                if (actualSchemaId == put.schemaId) {
+                  // continue if schema Id is the same
+                  if (ByteUtils.equals(put.putValue.array(), put.putValue.position(), actualValue,
+                      ValueRecord.SCHEMA_HEADER_LENGTH)) {
+                    lossy = false;
+                    logMsg +=
+                        "\nBut this rewound PUT is not lossy because the data in the rewind message is the same as the data inside Venice";
+                  }
+                }
+              }
+              break;
+            case DELETE:
+              /**
+               * Lossy if the key/value pair is added back to the storage engine after the first DELETE message.
+               */
+              actualValue = storageEngine.get(consumerRecord.partition(), key.getKey());
+              if (actualValue == null) {
+                lossy = false;
+                logMsg +=
+                    "\nBut this rewound DELETE is not lossy because the data in the rewind message is deleted already";
+              }
+              break;
+            default:
+              // Consider lossy for both control message and PartialUpdate
+              break;
+          }
+        } catch (Exception e) {
+          logger.warn(consumerTaskId + " failed comparing the rewind message with the actual value in Venice", e);
+        }
+
+        if (lossy) {
+          if (!partitionConsumptionState.isEndOfPushReceived()) {
+            logMsg += "\nFailing the job because lossy rewind happens during Grandfathering job";
+            logger.error(logMsg);
+            versionedDIVStats.recordPotentiallyLossyLeaderOffsetRewind(storeName, versionNumber);
+            VeniceException e = new VeniceException(logMsg);
+            reportStatusAdapter.reportError(Arrays.asList(partitionConsumptionState), logMsg, e);
+            throw e;
+          } else {
+            logMsg += "\nDon't fail the job during streaming ingestion";
+            logger.error(logMsg);
+            versionedDIVStats.recordPotentiallyLossyLeaderOffsetRewind(storeName, versionNumber);
+          }
+        } else {
+          logger.info(logMsg);
+          versionedDIVStats.recordBenignLeaderOffsetRewind(storeName, versionNumber);
+        }
+      }
+    }
+    /**
+     * Keep updating the upstream offset no matter whether there is a rewind or not; rewind could happen
+     * to the true leader when the old leader doesn't stop producing.
+     */
+    offsetRecord.setLeaderUpstreamOffset(newUpstreamOffset);
+  }
+
   private void produceToLocalKafka(VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope> consumerRecordWrapper,
-      PartitionConsumptionState partitionConsumptionState, ProducedRecord producedRecord, ProduceToTopic produceFunction) {
+      PartitionConsumptionState partitionConsumptionState, LeaderProducedRecordContext leaderProducedRecordContext, ProduceToTopic produceFunction) {
     ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord = consumerRecordWrapper.consumerRecord();
     int partition = consumerRecord.partition();
     String leaderTopic = consumerRecord.topic();
@@ -949,8 +959,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     int sourceKafkaClusterId = kafkaClusterUrlToIdMap.getOrDefault(consumerRecordWrapper.kafkaUrl(), -1);
     LeaderMetadataWrapper leaderMetadataWrapper = new LeaderMetadataWrapper(sourceTopicOffset, sourceKafkaClusterId);
     LeaderProducerMessageCallback callback = new LeaderProducerMessageCallback(this, consumerRecordWrapper, partitionConsumptionState, leaderTopic,
-        kafkaVersionTopic, partition, versionedDIVStats, logger, producedRecord, System.nanoTime());
-    partitionConsumptionState.setLastLeaderPersistFuture(producedRecord.getPersistedToDBFuture());
+        kafkaVersionTopic, partition, versionedDIVStats, logger, leaderProducedRecordContext, System.nanoTime());
+    partitionConsumptionState.setLastLeaderPersistFuture(leaderProducedRecordContext.getPersistedToDBFuture());
     produceFunction.apply(callback, leaderMetadataWrapper);
   }
 
@@ -1271,7 +1281,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
       //If we are here the message must be produced to local kafka or silently consumed.
       byte[] keyBytes = kafkaKey.getKey();
-      ProducedRecord producedRecord = null;
+      LeaderProducedRecordContext leaderProducedRecordContext;
 
       validateRecordBeforeProducingToLocalKafka(consumerRecordWrapper, partitionConsumptionState);
 
@@ -1288,7 +1298,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
        * Just to note this code is getting executed in Leader only.
        *
        * For more details
-       * please see {@link StoreIngestionTask#internalProcessConsumerRecord(VeniceConsumerRecordWrapper, PartitionConsumptionState, ProducedRecord)}
+       * please see {@link StoreIngestionTask#internalProcessConsumerRecord(VeniceConsumerRecordWrapper, PartitionConsumptionState, LeaderProducedRecordContext)}
        */
       if (Version.isRealTimeTopic(consumerRecord.topic())) {
         try {
@@ -1296,8 +1306,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
            * validate messages after EOP is received. It shouldn't be able to catch any fatal exceptions.
            * TODO: An improvement can be made to fail all future versions for fatal DIV exceptions after EOP.
            */
-          Optional<OffsetRecordTransformer> offsetRecordTransformer =
-              validateMessage(consumerRecord, true);
+          Optional<OffsetRecordTransformer> offsetRecordTransformer = validateMessage(consumerRecord, true);
           versionedDIVStats.recordSuccessMsg(storeName, versionNumber);
           if (offsetRecordTransformer.isPresent()) {
             OffsetRecord offsetRecord = partitionConsumptionState.getOffsetRecord();
@@ -1324,8 +1333,11 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         boolean producedFinally = true;
         ControlMessage controlMessage = (ControlMessage) kafkaValue.payloadUnion;
         ControlMessageType controlMessageType = ControlMessageType.valueOf(controlMessage);
-        producedRecord =
-            ProducedRecord.newControlMessageRecord(consumerRecord.offset(), kafkaKey.getKey(), controlMessage);
+        leaderProducedRecordContext = LeaderProducedRecordContext.newControlMessageRecord(
+            consumerRecord.offset(),
+            kafkaKey.getKey(),
+            controlMessage
+        );
         switch (controlMessageType) {
           case START_OF_PUSH:
             /**
@@ -1351,7 +1363,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
              * Simply produce this EOP to local VT. It will be processed in order in the drainer queue later
              * after successfully producing to kafka.
              */
-            produceToLocalKafka(consumerRecordWrapper, partitionConsumptionState, producedRecord,
+            produceToLocalKafka(consumerRecordWrapper, partitionConsumptionState, leaderProducedRecordContext,
                 (callback, leaderMetadataWrapper) -> veniceWriter.get().put(consumerRecord.key(), consumerRecord.value(),
                     callback, consumerRecord.partition(), leaderMetadataWrapper));
             break;
@@ -1371,7 +1383,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
              *        incremental push to VT)
              */
             if (!Version.isRealTimeTopic(consumerRecord.topic())) {
-              produceToLocalKafka(consumerRecordWrapper, partitionConsumptionState, producedRecord,
+              produceToLocalKafka(consumerRecordWrapper, partitionConsumptionState, leaderProducedRecordContext,
                   (callback, leaderMetadataWrapper) -> veniceWriter.get().put(consumerRecord.key(), consumerRecord.value(),
                       callback, consumerRecord.partition(), leaderMetadataWrapper));
             } else {
@@ -1384,7 +1396,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                * Usually following processing in Leader for other control message.
                *    1. DIV:
                *    2. updateOffset:
-               *    3. stats maintenance as in {@link StoreIngestionTask#processVeniceMessage(VeniceConsumerRecordWrapper, PartitionConsumptionState, ProducedRecord)}
+               *    3. stats maintenance as in {@link StoreIngestionTask#processVeniceMessage(VeniceConsumerRecordWrapper, PartitionConsumptionState, LeaderProducedRecordContext)}
                *
                * For #1 Since we have moved the DIV validation in this function, We are good with DIV part which is the most critical one.
                * For #2 Leader will not update the offset for SOS/EOS. From Server restart point of view this is tolerable. This was the case in previous design also. So there is no change in behaviour.
@@ -1409,7 +1421,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
              * to calculate DIV for this message but keeping the ControlMessage content unchanged. {@link VeniceWriter#put()} does not
              * allow that.
              */
-            produceToLocalKafka(consumerRecordWrapper, partitionConsumptionState, producedRecord,
+            produceToLocalKafka(consumerRecordWrapper, partitionConsumptionState, leaderProducedRecordContext,
                 (callback, leaderMetadataWrapper) -> veniceWriter.get().asyncSendControlMessage(controlMessage, consumerRecord.partition(),
                     new HashMap<>(), callback, leaderMetadataWrapper));
             break;
@@ -1419,8 +1431,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
              * setLeaderUpstreamOffset in {@link updateOffset()}.
              * The leaderUpstreamOffset is set from the TS message config itself. We should not override it.
              */
-            producedRecord = ProducedRecord.newControlMessageRecord(-1, kafkaKey.getKey(), controlMessage);
-            produceToLocalKafka(consumerRecordWrapper, partitionConsumptionState, producedRecord,
+            leaderProducedRecordContext = LeaderProducedRecordContext.newControlMessageRecord(-1, kafkaKey.getKey(), controlMessage);
+            produceToLocalKafka(consumerRecordWrapper, partitionConsumptionState, leaderProducedRecordContext,
                 (callback, leaderMetadataWrapper) -> veniceWriter.get().asyncSendControlMessage(controlMessage, consumerRecord.partition(),
                     new HashMap<>(), callback, DEFAULT_LEADER_METADATA_WRAPPER));
             break;
@@ -1455,8 +1467,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                   putValue.position(), putValue.remaining(), put.schemaId);
             }
 
-            producedRecord = ProducedRecord.newPutRecord(consumerRecord.offset(), keyBytes, put);
-            produceToLocalKafka(consumerRecordWrapper, partitionConsumptionState, producedRecord,
+            leaderProducedRecordContext = LeaderProducedRecordContext.newPutRecord(consumerRecord.offset(), keyBytes, put);
+            produceToLocalKafka(consumerRecordWrapper, partitionConsumptionState, leaderProducedRecordContext,
                 (callback, leaderMetadataWrapper) -> {
                   /**
                    * 1. Unfortunately, Kafka does not support fancy array manipulation via {@link ByteBuffer} or otherwise,
@@ -1559,8 +1571,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             //finally produce and update the transient record map.
             if (updatedValueBytes == null) {
               partitionConsumptionState.setTransientRecord(consumerRecord.offset(), keyBytes);
-              producedRecord = ProducedRecord.newDeleteRecord(consumerRecord.offset(), keyBytes);
-              produceToLocalKafka(consumerRecordWrapper, partitionConsumptionState, producedRecord,
+              leaderProducedRecordContext = LeaderProducedRecordContext.newDeleteRecord(consumerRecord.offset(), keyBytes);
+              produceToLocalKafka(consumerRecordWrapper, partitionConsumptionState, leaderProducedRecordContext,
                   (callback, leaderMetadataWrapper) -> veniceWriter.get().delete(keyBytes, callback, leaderMetadataWrapper));
             } else {
               int valueLen = updatedValueBytes.length;
@@ -1584,8 +1596,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                 // to der-se of keys a couple of times.
                 updatedKeyBytes = ChunkingUtils.KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(keyBytes);
               }
-              producedRecord = ProducedRecord.newPutRecord(consumerRecord.offset(), updatedKeyBytes, updatedPut);
-              produceToLocalKafka(consumerRecordWrapper, partitionConsumptionState, producedRecord,
+              leaderProducedRecordContext = LeaderProducedRecordContext.newPutRecord(consumerRecord.offset(), updatedKeyBytes, updatedPut);
+              produceToLocalKafka(consumerRecordWrapper, partitionConsumptionState, leaderProducedRecordContext,
                   (callback, leaderMetadataWrapper) -> veniceWriter.get().put(keyBytes, updatedValueBytes, valueSchemaId,
                       callback, leaderMetadataWrapper));
             }
@@ -1598,8 +1610,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             if (isWriteComputationEnabled && partitionConsumptionState.isEndOfPushReceived()) {
               partitionConsumptionState.setTransientRecord(consumerRecord.offset(), keyBytes);
             }
-            producedRecord = ProducedRecord.newDeleteRecord(consumerRecord.offset(), keyBytes);
-            produceToLocalKafka(consumerRecordWrapper, partitionConsumptionState, producedRecord,
+            leaderProducedRecordContext = LeaderProducedRecordContext.newDeleteRecord(consumerRecord.offset(), keyBytes);
+            produceToLocalKafka(consumerRecordWrapper, partitionConsumptionState, leaderProducedRecordContext,
                 (callback, leaderMetadataWrapper) -> veniceWriter.get().delete(keyBytes, callback, leaderMetadataWrapper));
             break;
 
@@ -1922,13 +1934,13 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     private StoreIngestionTask ingestionTask;
     private final VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope> sourceConsumerRecordWrapper;
     private final PartitionConsumptionState partitionConsumptionState;
-    private final String feedTopic;
+    private final String leaderTopic;
     private final String versionTopic;
     private final int partition;
     private final AggVersionedDIVStats versionedDIVStats;
     private final Logger logger;
-    private final ProducedRecord producedRecord;
-    private final long produceTime;
+    private final LeaderProducedRecordContext leaderProducedRecordContext;
+    private final long produceTimeNs;
 
     /**
      * The three mutable fields below are determined by the {@link com.linkedin.venice.writer.VeniceWriter},
@@ -1942,24 +1954,24 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     public LeaderProducerMessageCallback(StoreIngestionTask ingestionTask,
         VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope> sourceConsumerRecordWrapper,
         PartitionConsumptionState partitionConsumptionState,
-        String feedTopic, String versionTopic, int partition, AggVersionedDIVStats versionedDIVStats, Logger logger,
-        ProducedRecord producedRecord, long produceTime) {
+        String leaderTopic, String versionTopic, int partition, AggVersionedDIVStats versionedDIVStats, Logger logger,
+        LeaderProducedRecordContext leaderProducedRecordContext, long produceTimeNs) {
       this.ingestionTask = ingestionTask;
       this.sourceConsumerRecordWrapper = sourceConsumerRecordWrapper;
       this.partitionConsumptionState = partitionConsumptionState;
-      this.feedTopic = feedTopic;
+      this.leaderTopic = leaderTopic;
       this.versionTopic = versionTopic;
       this.partition = partition;
       this.versionedDIVStats = versionedDIVStats;
       this.logger = logger;
-      this.producedRecord = producedRecord;
-      this.produceTime = produceTime;
+      this.leaderProducedRecordContext = leaderProducedRecordContext;
+      this.produceTimeNs = produceTimeNs;
     }
 
     @Override
     public void onCompletion(RecordMetadata recordMetadata, Exception e) {
       if (e != null) {
-        logger.error("Leader failed to send out message to version topic when consuming " + feedTopic + " partition "
+        logger.error("Leader failed to send out message to version topic when consuming " + leaderTopic + " partition "
             + partition, e);
         String storeName = Version.parseStoreFromKafkaTopicName(versionTopic);
         int version = Version.parseVersionFromKafkaTopicName(versionTopic);
@@ -1971,7 +1983,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         // followers consuming from VTs. So it is safe to skip adding the record to leader's StorageBufferService
         if (partitionConsumptionState.getLeaderState() == LEADER
             && recordMetadata.partition() != partitionConsumptionState.getPartition()) {
-          producedRecord.completePersistedToDBFuture(null);
+          leaderProducedRecordContext.completePersistedToDBFuture(null);
           return;
         }
         /**
@@ -1989,23 +2001,23 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
         //record just the time it took for this callback to be invoked before we do further processing here such as queuing to drainer.
         //this indicates how much time kafka took to deliver the message to broker.
-        versionedDIVStats.recordLeaderProducerCompletionTime(storeName, versionNumber, LatencyUtils.getLatencyInMS(produceTime));
+        versionedDIVStats.recordLeaderProducerCompletionTime(storeName, versionNumber, LatencyUtils.getLatencyInMS(produceTimeNs));
 
         int producedRecordNum = 0;
         int producedRecordSize = 0;
         //produce to drainer buffer service for further processing.
         try {
           /**
-           * queue the producedRecord to drainer service as is in case the value was not chunked.
+           * queue the leaderProducedRecordContext to drainer service as is in case the value was not chunked.
            * Otherwise queue the chunks and manifest individually to drainer service.
            */
           if (chunkedValueManifest == null) {
             //update the keyBytes for the ProducedRecord in case it was changed due to isChunkingEnabled flag in VeniceWriter.
             if (key != null) {
-              producedRecord.setKeyBytes(key);
+              leaderProducedRecordContext.setKeyBytes(key);
             }
-            producedRecord.setProducedOffset(recordMetadata.offset());
-            ingestionTask.produceToStoreBufferService(sourceConsumerRecordWrapper, producedRecord);
+            leaderProducedRecordContext.setProducedOffset(recordMetadata.offset());
+            ingestionTask.produceToStoreBufferService(sourceConsumerRecordWrapper, leaderProducedRecordContext);
 
             producedRecordNum++;
             producedRecordSize = Math.max(0, recordMetadata.serializedKeySize()) + Math.max(0, recordMetadata.serializedValueSize());
@@ -2019,7 +2031,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
               chunkPut.putValue = chunkValue;
               chunkPut.schemaId = schemaId;
 
-              ProducedRecord producedRecordForChunk = ProducedRecord.newPutRecord(-1, ByteUtils.extractByteArray(chunkKey), chunkPut);
+              LeaderProducedRecordContext
+                  producedRecordForChunk = LeaderProducedRecordContext.newPutRecord(-1, ByteUtils.extractByteArray(chunkKey), chunkPut);
               producedRecordForChunk.setProducedOffset(-1);
               ingestionTask.produceToStoreBufferService(sourceConsumerRecordWrapper, producedRecordForChunk);
 
@@ -2041,8 +2054,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             manifestPut.putValue = manifest;
             manifestPut.schemaId = schemaId;
 
-            ProducedRecord producedRecordForManifest = ProducedRecord.newPutRecordWithFuture(producedRecord.getConsumedOffset(),
-                key, manifestPut, producedRecord.getPersistedToDBFuture());
+            LeaderProducedRecordContext producedRecordForManifest = LeaderProducedRecordContext.newPutRecordWithFuture(
+                leaderProducedRecordContext.getConsumedOffset(),
+                key, manifestPut, leaderProducedRecordContext.getPersistedToDBFuture());
             producedRecordForManifest.setProducedOffset(recordMetadata.offset());
             ingestionTask.produceToStoreBufferService(sourceConsumerRecordWrapper, producedRecordForManifest);
 

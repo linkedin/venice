@@ -1,6 +1,5 @@
 package com.linkedin.davinci.kafka.consumer;
 
-import com.linkedin.davinci.kafka.consumer.ProducedRecord;
 import com.linkedin.venice.exceptions.VeniceMessageException;
 import com.linkedin.venice.kafka.protocol.Put;
 import java.nio.ByteBuffer;
@@ -20,7 +19,7 @@ public class ProducedRecordTest {
     put1.putValue = ByteBuffer.wrap(value1);
     put1.schemaId = 5;
 
-    ProducedRecord pr1 = ProducedRecord.newPutRecord(1, key1, put1);
+    LeaderProducedRecordContext pr1 = LeaderProducedRecordContext.newPutRecord(1, key1, put1);
     new Thread(() -> {
       pr1.completePersistedToDBFuture(null);
     }).run();
@@ -36,7 +35,7 @@ public class ProducedRecordTest {
     put1.putValue = ByteBuffer.wrap(value1);
     put1.schemaId = 5;
 
-    ProducedRecord pr1 = ProducedRecord.newPutRecord(1, key1, put1);
+    LeaderProducedRecordContext pr1 = LeaderProducedRecordContext.newPutRecord(1, key1, put1);
     new Thread(() -> {
       pr1.completePersistedToDBFuture(new VeniceMessageException("test exception"));
     }).run();

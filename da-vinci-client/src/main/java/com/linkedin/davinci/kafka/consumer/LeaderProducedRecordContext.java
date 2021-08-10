@@ -18,7 +18,7 @@ import java.util.concurrent.CompletableFuture;
  * drainer thread completes the persistedToDBFuture.
  */
 
-public class ProducedRecord {
+public class LeaderProducedRecordContext {
   /**
    * This is the offset of the source kafka consumer record from upstream kafka
    * topic ( which could be either Real-Time or Stream-Reprocessing topic or remote VT topic).
@@ -54,26 +54,27 @@ public class ProducedRecord {
    */
   private CompletableFuture<Void> persistedToDBFuture = null;
 
-  public static ProducedRecord newControlMessageRecord(long consumedOffset, byte[] keyBytes, Object valueUnion) {
-    return new ProducedRecord(consumedOffset, MessageType.CONTROL_MESSAGE, keyBytes, valueUnion, true);
+  public static LeaderProducedRecordContext newControlMessageRecord(long consumedOffset, byte[] keyBytes, Object valueUnion) {
+    return new LeaderProducedRecordContext(consumedOffset, MessageType.CONTROL_MESSAGE, keyBytes, valueUnion, true);
   }
 
-  public static ProducedRecord newPutRecord(long consumedOffset, byte[] keyBytes, Object valueUnion) {
-    return new ProducedRecord(consumedOffset, MessageType.PUT, keyBytes, valueUnion, true);
+  public static LeaderProducedRecordContext newPutRecord(long consumedOffset, byte[] keyBytes, Object valueUnion) {
+    return new LeaderProducedRecordContext(consumedOffset, MessageType.PUT, keyBytes, valueUnion, true);
   }
 
-  public static ProducedRecord newPutRecordWithFuture(long consumedOffset, byte[] keyBytes, Object valueUnion,
+  public static LeaderProducedRecordContext newPutRecordWithFuture(long consumedOffset, byte[] keyBytes, Object valueUnion,
       CompletableFuture<Void> persistedToDBFuture) {
-    ProducedRecord producedRecord = new ProducedRecord(consumedOffset, MessageType.PUT, keyBytes, valueUnion, false);
-    producedRecord.persistedToDBFuture = persistedToDBFuture;
-    return producedRecord;
+    LeaderProducedRecordContext
+        leaderProducedRecordContext = new LeaderProducedRecordContext(consumedOffset, MessageType.PUT, keyBytes, valueUnion, false);
+    leaderProducedRecordContext.persistedToDBFuture = persistedToDBFuture;
+    return leaderProducedRecordContext;
   }
 
-  public static ProducedRecord newDeleteRecord(long consumedOffset, byte[] keyBytes) {
-    return new ProducedRecord(consumedOffset, MessageType.DELETE, keyBytes, null, true);
+  public static LeaderProducedRecordContext newDeleteRecord(long consumedOffset, byte[] keyBytes) {
+    return new LeaderProducedRecordContext(consumedOffset, MessageType.DELETE, keyBytes, null, true);
   }
 
-  private ProducedRecord(long consumedOffset, MessageType messageType, byte[] keyBytes, Object valueUnion,
+  private LeaderProducedRecordContext(long consumedOffset, MessageType messageType, byte[] keyBytes, Object valueUnion,
       boolean createFuture) {
     this.consumedOffset = consumedOffset;
     this.messageType = messageType;
