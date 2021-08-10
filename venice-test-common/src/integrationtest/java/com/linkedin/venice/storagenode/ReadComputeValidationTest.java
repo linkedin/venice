@@ -186,14 +186,17 @@ public class ReadComputeValidationTest {
           veniceWriter2, pushVersion2, valueSchemaForCompute2, valueSerializer2, true, 2);
       veniceCluster.stopAndRestartVeniceServer(veniceCluster.getVeniceServers().get(0).getPort());
 
-      Map<Integer, GenericRecord> computeResult = storeClient.compute()
-          .cosineSimilarity("companiesEmbedding", pymkCosineSimilarityEmbedding, "companiesEmbedding_score")
-          .cosineSimilarity("member_feature", pymkCosineSimilarityEmbedding, "member_feature_score")
-          .execute(keySet).get();
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
+        Map<Integer, GenericRecord> computeResult = storeClient.compute()
+            .cosineSimilarity("companiesEmbedding", pymkCosineSimilarityEmbedding, "companiesEmbedding_score")
+            .cosineSimilarity("member_feature", pymkCosineSimilarityEmbedding, "member_feature_score")
+            .execute(keySet)
+            .get();
 
-      for (Map.Entry<Integer, GenericRecord> entry : computeResult.entrySet()) {
-        Assert.assertEquals(((HashMap<String, String>)entry.getValue().get(VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME)).size(), 1);
-      }
+        for (Map.Entry<Integer, GenericRecord> entry : computeResult.entrySet()) {
+          Assert.assertEquals(((HashMap<String, String>) entry.getValue().get(VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME)).size(), 1);
+        }
+      });
     }
   }
 

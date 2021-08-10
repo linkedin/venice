@@ -662,6 +662,9 @@ public class StoreIngestionTaskTest {
 
     doReturn(putKeyFooReplicationMetadataWithValueSchemaIdBytes).when(mockPartition).getTimestampMetadata(putKeyFoo);
     doReturn(deleteKeyFooReplicationMetadataWithValueSchemaIdBytes).when(mockPartition).getTimestampMetadata(deleteKeyFoo);
+    
+    SchemaEntry schemaEntry = new SchemaEntry(1, "\"string\"");
+    doReturn(schemaEntry).when(mockSchemaRepo).getLatestValueSchema(storeNameWithoutVersionInfo);
 
     VeniceWriter vtWriter = getVeniceWriter(topic, () -> new MockInMemoryProducer(inMemoryKafkaBroker), amplificationFactor);
     VeniceWriter rtWriter = getVeniceWriter(Version.composeRealTimeTopic(storeNameWithoutVersionInfo), () -> new MockInMemoryProducer(inMemoryKafkaBroker), 1);
@@ -1979,8 +1982,6 @@ public class StoreIngestionTaskTest {
       verify(mockAbstractStorageEngine, never())
           .deleteWithReplicationMetadata(targetPartitionDeleteKeyFoo, deleteKeyFoo, deleteKeyFooReplicationMetadataWithValueSchemaIdBytes);
     }
-
-
   }
 
 }

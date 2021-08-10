@@ -21,7 +21,8 @@ public interface ChunkingAdapter<CHUNKS_CONTAINER, VALUE> {
    * of {@param VALUE} class needed by the query code.
    *
    * The following parameters are mandatory:
-   * @param schemaId of the user's value
+   * @param writerSchemaId schema used to serialize the value
+   * @param readerSchemaId schema used to deserialize the bytes
    * @param fullBytes includes both the schema ID header and the payload
    *
    * The following parameters can be ignored, by implementing {@link #constructValue(int, byte[])}:
@@ -36,24 +37,22 @@ public interface ChunkingAdapter<CHUNKS_CONTAINER, VALUE> {
 *
 * TODO: Consider whether we really need this API. We could instead always use the chunked approach,
    */
-  default VALUE constructValue(int schemaId, byte[] fullBytes, int bytesLength, VALUE reusedValue,
+  default VALUE constructValue(int writerSchemaId, int readerSchemaId, byte[] fullBytes, int bytesLength, VALUE reusedValue,
       BinaryDecoder reusedDecoder, ReadResponse response, CompressionStrategy compressionStrategy,
       boolean fastAvroEnabled, ReadOnlySchemaRepository schemaRepo, String storeName,
       StorageEngineBackedCompressorFactory compressorFactory, String versionTopic) {
-    return constructValue(schemaId, fullBytes);
+    return constructValue(writerSchemaId, fullBytes);
   }
 
   /**
    * This is a simplified version which decodes only the value bytes and assumes the value is not compressed.
-   * @param schemaId
-   * @param valueOnlyBytes
-   * @param bytesLength
-   * @param fastAvroEnabled
-   * @param schemaRepo
-   * @param storeName
-   * @return
    */
-  default VALUE constructValue(int schemaId, byte[] valueOnlyBytes, int offset, int bytesLength, boolean fastAvroEnabled,
+  default VALUE constructValue(int writerSchemaId, byte[] valueOnlyBytes, int offset, int bytesLength, boolean fastAvroEnabled,
+      ReadOnlySchemaRepository schemaRepo, String storeName) {
+    throw new VeniceException("Not implemented.");
+  }
+
+  default VALUE constructValue(int writerSchemaId, int readerSchemaId, byte[] valueOnlyBytes, int offset, int bytesLength, boolean fastAvroEnabled,
       ReadOnlySchemaRepository schemaRepo, String storeName) {
     throw new VeniceException("Not implemented.");
   }
@@ -61,7 +60,8 @@ public interface ChunkingAdapter<CHUNKS_CONTAINER, VALUE> {
   /**
    * This function can be implemented by the adapters which need fewer parameters.
    *
-   * @see #constructValue(int, byte[], int, Object, BinaryDecoder, ReadResponse, CompressionStrategy, boolean, ReadOnlySchemaRepository, String, StorageEngineBackedCompressorFactory, String)
+   * @see #constructValue(int, int, byte[], int, Object, BinaryDecoder, ReadResponse, CompressionStrategy, boolean,
+   * ReadOnlySchemaRepository, String, StorageEngineBackedCompressorFactory, String)
    */
   default VALUE constructValue(int schemaId, byte[] fullBytes) {
     throw new VeniceException("Not implemented.");

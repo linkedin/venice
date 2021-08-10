@@ -18,15 +18,15 @@ public class GenericChunkingAdapter<V extends GenericRecord> extends AbstractAvr
   protected GenericChunkingAdapter() {}
 
   @Override
-  protected RecordDeserializer<V> getDeserializer(String storeName, int schemaId, ReadOnlySchemaRepository schemaRepo, boolean fastAvroEnabled) {
-    Schema writerSchema = schemaRepo.getValueSchema(storeName, schemaId).getSchema();
-    Schema latestValueSchema = schemaRepo.getLatestValueSchema(storeName).getSchema();
+  protected RecordDeserializer<V> getDeserializer(String storeName, int writerSchemaId, int readerSchemaId, ReadOnlySchemaRepository schemaRepo, boolean fastAvroEnabled) {
+    Schema writerSchema = schemaRepo.getValueSchema(storeName, writerSchemaId).getSchema();
+    Schema readerSchema = schemaRepo.getValueSchema(storeName, readerSchemaId).getSchema();
 
     // TODO: Remove support for slow-avro
     if (fastAvroEnabled) {
-      return FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(writerSchema, latestValueSchema);
+      return FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(writerSchema, readerSchema);
     } else {
-      return ComputableSerializerDeserializerFactory.getComputableAvroGenericDeserializer(writerSchema, latestValueSchema);
+      return ComputableSerializerDeserializerFactory.getComputableAvroGenericDeserializer(writerSchema, readerSchema);
     }
   }
 }

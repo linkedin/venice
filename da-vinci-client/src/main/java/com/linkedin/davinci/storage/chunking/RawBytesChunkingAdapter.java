@@ -17,8 +17,12 @@ public class RawBytesChunkingAdapter extends AbstractAvroChunkingAdapter<ByteBuf
     super();
   }
 
+  /**
+   * Both writer and reader schema are ignored here
+   */
   @Override
-  protected RecordDeserializer<ByteBuffer> getDeserializer(String storeName, int schemaId, ReadOnlySchemaRepository schemaRepo, boolean fastAvroEnabled) {
+  protected RecordDeserializer<ByteBuffer> getDeserializer(String storeName, int writerSchemaId, int readerSchemaId,
+      ReadOnlySchemaRepository schemaRepo, boolean fastAvroEnabled) {
     return IdentityRecordDeserializer.getInstance();
   }
 }

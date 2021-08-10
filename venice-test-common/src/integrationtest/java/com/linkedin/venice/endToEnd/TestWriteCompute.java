@@ -5,6 +5,7 @@ import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
+import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.VenicePushJob;
@@ -25,6 +26,7 @@ import java.util.Arrays;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import org.apache.avro.Schema;
+import org.apache.avro.SchemaCompatibility;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.samza.system.SystemProducer;
@@ -95,6 +97,13 @@ public class TestWriteCompute {
 
         Assert.assertFalse(response.isError());
 
+        // Add a new value schema v2 to store
+        SchemaResponse schemaResponse = controllerClient.addValueSchema(storeName, NESTED_SCHEMA_STRING_V2);
+
+        // Add derived schema associated to v2
+        Schema writeComputeSchema = WriteComputeSchemaAdapter.parse(NESTED_SCHEMA_STRING_V2).getTypes().get(0);
+        controllerClient.addDerivedSchema(storeName, schemaResponse.getId(), writeComputeSchema.toString());
+
         // H2V push
         runH2V(h2vProperties, 1, controllerClient);
 
@@ -107,6 +116,7 @@ public class TestWriteCompute {
               assertNotNull(value, "Key " + key + " should not be missing!");
               assertEquals(value.get("firstName").toString(), "first_name_" + key);
               assertEquals(value.get("lastName").toString(), "last_name_" + key);
+              assertEquals(value.get("age"), -1);
             }
           } catch (Exception e) {
             throw new VeniceException(e);
@@ -155,10 +165,6 @@ public class TestWriteCompute {
           }
         });
 
-        // Add derived schema
-        Schema writeComputeSchema = WriteComputeSchemaAdapter.parse(NESTED_SCHEMA_STRING).getTypes().get(0);
-        controllerClient.addDerivedSchema(storeName, 1, writeComputeSchema.toString());
-
         Schema noOpSchema = writeComputeSchema.getField("lastName").schema().getTypes().get(0);
         GenericData.Record noOpRecord = new GenericData.Record(noOpSchema);
 
@@ -168,6 +174,7 @@ public class TestWriteCompute {
         String updatedFirstName = new String(chars);
         partialUpdateRecord.put("firstName", updatedFirstName);
         partialUpdateRecord.put("lastName", noOpRecord);
+        partialUpdateRecord.put("age", 1);
         sendStreamingRecord(veniceProducer, storeName, key, partialUpdateRecord);
         // Verify the update
         TestUtils.waitForNonDeterministicAssertion(15, TimeUnit.SECONDS, () -> {
@@ -176,6 +183,7 @@ public class TestWriteCompute {
             assertNotNull(retrievedValue, "Key " + key + " should not be missing!");
             assertEquals(retrievedValue.get("firstName").toString(), updatedFirstName);
             assertEquals(retrievedValue.get("lastName").toString(), lastName);
+            assertEquals(retrievedValue.get("age"), 1);
           } catch (Exception e) {
             throw new VeniceException(e);
           }
@@ -187,6 +195,7 @@ public class TestWriteCompute {
         String updatedFirstName1 = new String(chars);
         partialUpdateRecord1.put("firstName", updatedFirstName1);
         partialUpdateRecord1.put("lastName", noOpRecord);
+        partialUpdateRecord1.put("age", noOpRecord);
         sendStreamingRecord(veniceProducer, storeName, key, partialUpdateRecord1);
         // Verify the update
         TestUtils.waitForNonDeterministicAssertion(15, TimeUnit.SECONDS, () -> {
@@ -220,6 +229,7 @@ public class TestWriteCompute {
         String updatedLastName = new String(chars);
         partialUpdateRecord2.put("firstName", updatedFirstName2);
         partialUpdateRecord2.put("lastName", updatedLastName);
+        partialUpdateRecord2.put("age", 2);
         sendStreamingRecord(veniceProducer, storeName, key, partialUpdateRecord2);
         // Verify the update
         TestUtils.waitForNonDeterministicAssertion(15, TimeUnit.SECONDS, () -> {
@@ -228,6 +238,7 @@ public class TestWriteCompute {
             assertNotNull(retrievedValue, "Key " + key + " should not be missing!");
             assertEquals(retrievedValue.get("firstName").toString(), updatedFirstName2);
             assertEquals(retrievedValue.get("lastName").toString(), updatedLastName);
+            assertEquals(retrievedValue.get("age"), 2);
           } catch (Exception e) {
             throw new VeniceException(e);
           }
@@ -239,6 +250,7 @@ public class TestWriteCompute {
         String updatedFirstName3 = new String(chars);
         partialUpdateRecord3.put("firstName", updatedFirstName3);
         partialUpdateRecord3.put("lastName", noOpRecord);
+        partialUpdateRecord3.put("age", noOpRecord);
         sendStreamingRecord(veniceProducer, storeName, key, partialUpdateRecord3);
         // Verify the update
         TestUtils.waitForNonDeterministicAssertion(15, TimeUnit.SECONDS, () -> {
