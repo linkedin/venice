@@ -14,9 +14,13 @@ public class SpecificRecordChunkingAdapter<V extends SpecificRecord> extends Abs
     this.valueClass = c;
   }
 
+  /**
+   * Reader schema will be ignored as the specific record deserializer will use "valueClass" instead
+   */
   @Override
-  protected RecordDeserializer<V> getDeserializer(String storeName, int schemaId, ReadOnlySchemaRepository schemaRepo, boolean fastAvroEnabled) {
-    Schema writerSchema = schemaRepo.getValueSchema(storeName, schemaId).getSchema();
+  protected RecordDeserializer<V> getDeserializer(String storeName, int writerSchemaId, int readerSchemaId,
+      ReadOnlySchemaRepository schemaRepo, boolean fastAvroEnabled) {
+    Schema writerSchema = schemaRepo.getValueSchema(storeName, writerSchemaId).getSchema();
 
     // TODO: Remove support for slow-avro
     if (fastAvroEnabled) {

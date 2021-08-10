@@ -36,10 +36,8 @@ public class IngestionTaskWriteComputeAdapter {
    * Apply write-compute operation on top of original value. A few of different schemas are used here
    * and should be handled carefully.
    *
-   * @param originalValue original value read from DB. It can be null if the value is not existent. original
-   *                      value is read via {@link GenericRecordChunkingAdapter#INSTANCE#get()}}
-   *                      and deserialized by the latest value schema. In some cases, this can be different
-   *                      from "valueSchemaId"/"derivedSchemaId".
+   * @param originalValue value schema associated within UPDATE message. Notice that this can be different
+   *                      from which original schema was serialized. 
    * @param writeComputeBytes serialized write-compute operation.
    * @param valueSchemaId value schema id that this write-compute operation is associated with.
    *                      It's read from Kafka record.
@@ -48,15 +46,6 @@ public class IngestionTaskWriteComputeAdapter {
    */
   public byte[] getUpdatedValueBytes(GenericRecord originalValue, ByteBuffer writeComputeBytes, int valueSchemaId,
       int derivedSchemaId) {
-    //If original value is not null, extracts schema and use it to serialize the updated record back to disk.
-    // We want to make serialization schema consistent
-    Schema originalValueSchema;
-    if (originalValue != null) {
-      originalValueSchema = originalValue.getSchema();
-    } else {
-      originalValueSchema = getValueSchema(valueSchemaId);
-    }
-
     GenericRecord writeComputeRecord = deserializeWriteComputeRecord(writeComputeBytes, valueSchemaId, derivedSchemaId);
     GenericRecord updatedValue = getWriteComputeAdapter(valueSchemaId, derivedSchemaId)
         .updateRecord(originalValue, writeComputeRecord);
@@ -66,7 +55,7 @@ public class IngestionTaskWriteComputeAdapter {
       return null;
     }
 
-    return getValueSerializer(originalValueSchema).serialize(updatedValue);
+    return getValueSerializer(getValueSchema(valueSchemaId)).serialize(updatedValue);
   }
 
   public GenericRecord deserializeWriteComputeRecord(ByteBuffer writeComputeBytes, int valueSchemaId,

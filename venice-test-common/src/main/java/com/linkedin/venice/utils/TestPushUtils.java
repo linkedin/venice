@@ -156,6 +156,16 @@ public class TestPushUtils {
       "       { \"name\": \"lastName\", \"type\": \"string\", \"default\": \"\" }  " +
       "  ]" +
       " } ";
+  public static final String NESTED_SCHEMA_STRING_V2 = "{" +
+      "  \"namespace\" : \"example.avro\",  " +
+      "  \"type\": \"record\",   " +
+      "  \"name\": \"nameRecord\",     " +
+      "  \"fields\": [           " +
+      "       { \"name\": \"firstName\", \"type\": \"string\", \"default\": \"\" },  " +
+      "       { \"name\": \"lastName\", \"type\": \"string\", \"default\": \"\" },  " +
+      "       { \"name\": \"age\", \"type\": \"int\", \"default\": -1 }  " +
+      "  ]" +
+      " } ";
 
   public static final String STRING_RECORD_SCHEMA_STRING = "{" +
       "  \"namespace\" : \"example.avro\",  " +

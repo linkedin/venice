@@ -75,6 +75,7 @@ public class ChunkingUtils {
     return getFromStorage(
         adapter,
         store,
+        -1,
         partition,
         keyBuffer,
         response,
@@ -107,8 +108,9 @@ public class ChunkingUtils {
       return null;
     }
     return getFromStorage(
-        reusedRawValue.array(), reusedRawValue.limit(), databaseLookupStartTimeInNS, adapter, store, partition, response,
-        reusedValue, reusedDecoder, compressionStrategy, fastAvroEnabled, schemaRepo, storeName, compressorFactory);
+        reusedRawValue.array(), reusedRawValue.limit(), databaseLookupStartTimeInNS, adapter, store,
+        schemaRepo.getLatestValueSchema(storeName).getId(), partition, response, reusedValue, reusedDecoder,
+        compressionStrategy, fastAvroEnabled, schemaRepo, storeName, compressorFactory);
   }
 
   static <CHUNKS_CONTAINER, VALUE> void getFromStorageByPartialKey(
@@ -137,9 +139,9 @@ public class ChunkingUtils {
           return;
         }
 
-        int schemaId = ValueRecord.parseSchemaId(value);
+        int writerSchemaId = ValueRecord.parseSchemaId(value);
 
-        if (schemaId > 0) {
+        if (writerSchemaId > 0) {
           // User-defined schema, thus not a chunked value.
 
           if (null != response) {
@@ -148,12 +150,13 @@ public class ChunkingUtils {
 
           GenericRecord deserializedKey = keyRecordDeserializer.deserialize(key);
 
-          deserializedValueRecord = (GenericRecord) adapter.constructValue(schemaId, value, value.length, reusedValue,
-              reusedDecoder, response, compressionStrategy, fastAvroEnabled, schemaRepo, storeName, compressorFactory, store.getName());
+          deserializedValueRecord = (GenericRecord) adapter.constructValue(writerSchemaId,
+              schemaRepo.getLatestValueSchema(storeName).getId(), value, value.length, reusedValue, reusedDecoder,
+              response, compressionStrategy, fastAvroEnabled, schemaRepo, storeName, compressorFactory, store.getName());
 
           computingCallback.onRecordReceived(deserializedKey, deserializedValueRecord);
-        } else if (schemaId != AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion()) {
-          throw new VeniceException("Found a record with invalid schema ID: " + schemaId);
+        } else if (writerSchemaId != AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion()) {
+          throw new VeniceException("Found a record with invalid schema ID: " + writerSchemaId);
         } else {
           throw new VeniceException("Filtering by key prefix is not supported when chunking is enabled.");
         }
@@ -179,11 +182,12 @@ public class ChunkingUtils {
    *
    * @see SingleGetChunkingAdapter#get(AbstractStorageEngine, int, byte[], boolean, ReadResponse)
    * @see BatchGetChunkingAdapter#get(AbstractStorageEngine, int, ByteBuffer, boolean, ReadResponse)
-   * @see GenericChunkingAdapter#get(AbstractStorageEngine, int, ByteBuffer, boolean, GenericRecord, BinaryDecoder, ReadResponse, CompressionStrategy, boolean, ReadOnlySchemaRepository, String)
+   * @see GenericChunkingAdapter#get(AbstractStorageEngine, int, int, ByteBuffer, boolean, Object, BinaryDecoder, ReadResponse, CompressionStrategy, boolean, ReadOnlySchemaRepository, String, StorageEngineBackedCompressorFactory)
    */
   static <VALUE, CHUNKS_CONTAINER> VALUE getFromStorage(
       ChunkingAdapter<CHUNKS_CONTAINER, VALUE> adapter,
       AbstractStorageEngine store,
+      int readerSchemaId,
       int partition,
       ByteBuffer keyBuffer,
       ReadResponse response,
@@ -198,7 +202,7 @@ public class ChunkingUtils {
     byte[] value = store.get(partition, keyBuffer);
 
     return getFromStorage(
-        value, (null == value ? 0 : value.length), databaseLookupStartTimeInNS, adapter, store, partition,
+        value, (null == value ? 0 : value.length), databaseLookupStartTimeInNS, adapter, store, readerSchemaId, partition,
         response, reusedValue, reusedDecoder, compressionStrategy, fastAvroEnabled, schemaRepo, storeName, compressorFactory);
   }
 
@@ -221,6 +225,7 @@ public class ChunkingUtils {
       long databaseLookupStartTimeInNS,
       ChunkingAdapter<CHUNKS_CONTAINER, VALUE> adapter,
       AbstractStorageEngine store,
+      int readerSchemaId,
       int partition,
       ReadResponse response,
       VALUE reusedValue,
@@ -234,24 +239,24 @@ public class ChunkingUtils {
     if (null == value) {
       return null;
     }
-    int schemaId = ValueRecord.parseSchemaId(value);
+    int writerSchemaId = ValueRecord.parseSchemaId(value);
 
-    if (schemaId > 0) {
+    if (writerSchemaId > 0) {
       // User-defined schema, thus not a chunked value. Early termination.
 
       if (null != response) {
         response.addDatabaseLookupLatency(LatencyUtils.getLatencyInMS(databaseLookupStartTimeInNS));
       }
 
-      return adapter.constructValue(schemaId, value, valueLength, reusedValue, reusedDecoder, response, compressionStrategy,
-          fastAvroEnabled, schemaRepo, storeName, compressorFactory, store.getName());
-    } else if (schemaId != AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion()) {
-      throw new VeniceException("Found a record with invalid schema ID: " + schemaId);
+      return adapter.constructValue(writerSchemaId, readerSchemaId, value, valueLength, reusedValue, reusedDecoder,
+          response, compressionStrategy, fastAvroEnabled, schemaRepo, storeName, compressorFactory, store.getName());
+    } else if (writerSchemaId != AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion()) {
+      throw new VeniceException("Found a record with invalid schema ID: " + writerSchemaId);
     }
 
     // End of initial sanity checks. We have a chunked value, so we need to fetch all chunks
 
-    ChunkedValueManifest chunkedValueManifest = CHUNKED_VALUE_MANIFEST_SERIALIZER.deserialize(value, schemaId);
+    ChunkedValueManifest chunkedValueManifest = CHUNKED_VALUE_MANIFEST_SERIALIZER.deserialize(value, writerSchemaId);
     CHUNKS_CONTAINER assembledValueContainer = adapter.constructChunksContainer(chunkedValueManifest);
     int actualSize = 0;
 
