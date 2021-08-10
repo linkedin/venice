@@ -858,13 +858,16 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   /**
    * This function will produce a pair of consumer record and a it's derived produced record to the writer buffers maintained by {@link StoreBufferService}.
-   * @param consumedrecordWrapper : received consumer record
-   * @param producedRecord : derived produced record
+   * @param consumedRecordWrapper : received consumer record
+   * @param leaderProducedRecordContext : derived leaderProducedRecordContext
    * @throws InterruptedException
    */
-  protected void produceToStoreBufferService(VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope> consumedrecordWrapper, ProducedRecord producedRecord) throws InterruptedException {
+  protected void produceToStoreBufferService(
+      VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope> consumedRecordWrapper,
+      LeaderProducedRecordContext leaderProducedRecordContext
+  ) throws InterruptedException {
     long queuePutStartTimeInNS = System.nanoTime();
-    storeBufferService.putConsumerRecord(consumedrecordWrapper, this, producedRecord); // blocking call
+    storeBufferService.putConsumerRecord(consumedRecordWrapper, this, leaderProducedRecordContext); // blocking call
     storeIngestionStats.recordProduceToDrainQueueRecordNum(storeName, 1);
     if (emitMetrics.get()) {
       storeIngestionStats.recordConsumerRecordsQueuePutLatency(storeName, LatencyUtils.getLatencyInMS(queuePutStartTimeInNS));
@@ -881,7 +884,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       boolean whetherToApplyThrottling) throws InterruptedException {
     long totalBytesRead = 0;
     double elapsedTimeForPuttingIntoQueue = 0;
-    List<VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope>> processedRecord = new LinkedList<>();
+    List<VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope>> processedRecords = new LinkedList<>();
     long beforeProcessingTimestamp = System.currentTimeMillis();
     int recordQueuedToDrainer = 0;
     int recordProducedToKafka = 0;
@@ -894,7 +897,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     Set<Integer> compactingPartitions = new HashSet<>();
 
     for (VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope> recordWrapper : records) {
-      ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record = recordWrapper.consumerRecord();
+      final ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record = recordWrapper.consumerRecord();
       if (!shouldProcessRecord(record)) {
         continue;
       }
@@ -1031,10 +1034,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         }
       }
 
-
       // Check schema id availability before putting consumer record to drainer queue
       waitReadyToProcessRecord(record);
-      processedRecord.add(recordWrapper);
+      processedRecords.add(recordWrapper);
       long kafkaProduceStartTimeInNS = System.nanoTime();
       switch (delegateConsumerRecord(recordWrapper)) {
         case QUEUED_TO_DRAINER:
@@ -1079,7 +1081,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       buildHybridQuotaEnforcer();
     }
     if (isHybridQuotaEnabled && hybridQuotaEnforcer.isPresent()) {
-      refillPartitionToSizeMap(processedRecord);
+      refillPartitionToSizeMap(processedRecords);
       hybridQuotaEnforcer.get().checkPartitionQuota(subscribedPartitionToSize.get());
     }
     if (emitMetrics.get()) {
@@ -1219,20 +1221,20 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     idleCounter = 0;
 
-    Store store = storeRepository.getStoreOrThrow(storeName);
     if (!hybridStoreConfig.isPresent() && serverConfig.isUnsubscribeAfterBatchpushEnabled()) {
+      Store store = storeRepository.getStoreOrThrow(storeName);
       // unsubscribe completed backup version and batch-store versions.
       if (versionNumber <= store.getCurrentVersion()) {
-        Set<TopicPartition> topicPartitions = new HashSet<>();
+        Set<TopicPartition> topicPartitionsToUnsubscribe = new HashSet<>();
         for (PartitionConsumptionState state : partitionConsumptionStateMap.values()) {
           if (state.isCompletionReported() && !state.isIncrementalPushEnabled()) {
             logger.info("Unsubscribing completed partitions " + state.getPartition() + " of store : " + store.getName() + " version : "  + versionNumber + " current version: " + store.getCurrentVersion());
-            topicPartitions.add(new TopicPartition(kafkaVersionTopic, state.getPartition()));
+            topicPartitionsToUnsubscribe.add(new TopicPartition(kafkaVersionTopic, state.getPartition()));
             forceUnSubscribedCount++;
           }
         }
-        if (topicPartitions.size() != 0) {
-          consumerBatchUnsubscribe(topicPartitions);
+        if (topicPartitionsToUnsubscribe.size() != 0) {
+          consumerBatchUnsubscribe(topicPartitionsToUnsubscribe);
         }
       }
     }
@@ -1260,10 +1262,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     long beforePollingTimestamp = System.currentTimeMillis();
 
     boolean wasIdle = (recordCount == 0);
-    Map<String, ConsumerRecords<KafkaKey, KafkaMessageEnvelope>> records = consumerPoll(readCycleDelayMs);
+    Map<String, ConsumerRecords<KafkaKey, KafkaMessageEnvelope>> recordsByKafkaURLs = consumerPoll(readCycleDelayMs);
     recordCount = 0;
     long estimatedSize = 0;
-    for (ConsumerRecords<KafkaKey, KafkaMessageEnvelope> consumerRecords : records.values()) {
+    for (ConsumerRecords<KafkaKey, KafkaMessageEnvelope> consumerRecords : recordsByKafkaURLs.values()) {
       recordCount += ((consumerRecords == null) ? 0 : consumerRecords.count());
       for (ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record : consumerRecords) {
         estimatedSize += Math.max(0, record.serializedKeySize()) + Math.max(0, record.serializedValueSize());
@@ -1296,7 +1298,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       return;
     }
 
-    for (Map.Entry<String, ConsumerRecords<KafkaKey, KafkaMessageEnvelope>> entry : records.entrySet()) {
+    for (Map.Entry<String, ConsumerRecords<KafkaKey, KafkaMessageEnvelope>> entry : recordsByKafkaURLs.entrySet()) {
       Iterable<VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope>> veniceConsumerRecords = KafkaRecordWrapper.wrap(entry.getKey(), entry.getValue());
       produceToStoreBufferServiceOrKafka(veniceConsumerRecords, true);
     }
@@ -1808,9 +1810,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       return false;
     }
 
-    if (partitionConsumptionState.isEndOfPushReceived() &&
-        partitionConsumptionState.isBatchOnly()) {
-
+    if (partitionConsumptionState.isEndOfPushReceived() && partitionConsumptionState.isBatchOnly()) {
       KafkaKey key = record.key();
       KafkaMessageEnvelope value = record.value();
       if (key.isControlMessage() &&
@@ -1902,7 +1902,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * This function will be invoked in {@link StoreBufferService} to process buffered {@link VeniceConsumerRecordWrapper}.
    * @param recordWrapper
    */
-  public void processConsumerRecord(VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope> recordWrapper, ProducedRecord producedRecord) throws InterruptedException {
+  public void processConsumerRecord(
+      VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope> recordWrapper,
+      LeaderProducedRecordContext leaderProducedRecordContext
+  ) throws InterruptedException {
     ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record = recordWrapper.consumerRecord();
     int subPartition = PartitionUtils.getSubPartition(record.topic(), record.partition(), amplificationFactor);
     // The partitionConsumptionStateMap can be modified by other threads during consumption (for example when unsubscribing)
@@ -1915,7 +1918,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     int recordSize = 0;
     try {
-      recordSize = internalProcessConsumerRecord(recordWrapper, partitionConsumptionState, producedRecord);
+      recordSize = internalProcessConsumerRecord(recordWrapper, partitionConsumptionState, leaderProducedRecordContext);
     } catch (FatalDataValidationException e) {
       int faultyPartition = record.partition();
       String errorMessage;
@@ -2330,11 +2333,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   /**
-   * Update the metadata in OffsetRecord, including "offset" which indicates the last successfully consumed message offset
-   * of version topic, "leaderOffset" which indicates the last successfully consumed message offset from leader topic.
+   * Update the metadata in OffsetRecord accordingly.
    */
-  protected abstract void updateOffset(PartitionConsumptionState partitionConsumptionState, OffsetRecord offsetRecord,
-      VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope> consumerRecordWrapper, ProducedRecord producedRecord);
+  protected abstract void updateOffsetRecord(
+      PartitionConsumptionState partitionConsumptionState,
+      OffsetRecord offsetRecord,
+      VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope> consumerRecordWrapper,
+      LeaderProducedRecordContext leaderProducedRecordContext
+  );
 
   /**
    * Process the message consumed from Kafka by de-serializing it and persisting it with the storage engine.
@@ -2342,8 +2348,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * @param consumerRecordWrapper {@link VeniceConsumerRecordWrapper} consumed from Kafka.
    * @return the size of the data written to persistent storage.
    */
-  private int internalProcessConsumerRecord(VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope> consumerRecordWrapper,
-                                            PartitionConsumptionState partitionConsumptionState, ProducedRecord producedRecord) throws InterruptedException {
+  private int internalProcessConsumerRecord(
+      VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope> consumerRecordWrapper,
+      PartitionConsumptionState partitionConsumptionState,
+      LeaderProducedRecordContext leaderProducedRecordContext
+  ) throws InterruptedException {
     // De-serialize payload into Venice Message format
     ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord = consumerRecordWrapper.consumerRecord();
     KafkaKey kafkaKey = consumerRecord.key();
@@ -2369,16 +2378,16 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
        *
        *  Specific notes for Leader:
        *  1.  For DIV pass through mode we are doing DIV in drainer thread with ConsumerRecord only ( ProducedRecord will NOT be null,
-       *      and there is 1-1 mapping between consumerRecord and producedRecord). This will implicitely verify all kafka callbacks were
-       *      executed properly and in order becuase we queue this pair <consumerRecord, producerRecord> from kafka callback thread only.
-       *      If there were any problems with callback thread then that will be caught by this DIV here.
+       *      and there is 1-1 mapping between consumerRecord and leaderProducedRecordContext). This will implicitely verify all kafka
+       *      callbacks were executed properly and in order becuase we queue this pair <consumerRecord, producerRecord> from kafka
+       *      callback thread only. If there were any problems with callback thread then that will be caught by this DIV here.
        *
        *  2. For DIV non pass-through mode (RT messages) we are doing DIV in {@link LeaderFollowerStoreIngestionTask#delegateConsumerRecord(VeniceConsumerRecordWrapper)}
-       *      in consumer thread and no further DIV happens for the producedRecord. The main challenege to do DIV for producedRecord
-       *      here is that VeniceWriter internally produces SOS/EOS for non-passthrough mode which is not fed into our DIV pipiline currently.
+       *      in consumer thread and no further DIV happens for the leaderProducedRecordContext. The main challenge to do DIV for leaderProducedRecordContext
+       *      here is that VeniceWriter internally produces SOS/EOS for non-passthrough mode which is not fed into our DIV pipeline currently.
        *      TODO: Explore DIV check for produced record in non pass-through mode which also validates the kafka producer calllback like pass through mode.
        */
-      if (producedRecord == null || !Version.isRealTimeTopic(consumerRecord.topic())) {
+      if (leaderProducedRecordContext == null || !Version.isRealTimeTopic(consumerRecord.topic())) {
         try {
           offsetRecordTransformer = validateMessage(consumerRecord, endOfPushReceived);
           versionedDIVStats.recordSuccessMsg(storeName, versionNumber);
@@ -2393,7 +2402,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         }
       }
       if (kafkaKey.isControlMessage()) {
-        ControlMessage controlMessage = (producedRecord == null ? (ControlMessage) kafkaValue.payloadUnion : (ControlMessage) producedRecord.getValueUnion());
+        ControlMessage controlMessage = (leaderProducedRecordContext == null ? (ControlMessage) kafkaValue.payloadUnion : (ControlMessage) leaderProducedRecordContext.getValueUnion());
         ControlMessageType controlMessageType = processControlMessage(controlMessage, consumerRecord.partition(),
             consumerRecord.offset(), partitionConsumptionState);
         /**
@@ -2420,7 +2429,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         throw new VeniceMessageException(consumerTaskId + " : Given null Venice Message. Partition " +
               consumerRecord.partition() + " Offset " + consumerRecord.offset());
       } else {
-        Pair<Integer, Integer> kvSize = processVeniceMessage(consumerRecordWrapper, partitionConsumptionState, producedRecord);
+        Pair<Integer, Integer> kvSize = processKafkaDataMessage(consumerRecordWrapper, partitionConsumptionState, leaderProducedRecordContext);
         int keySize = kvSize.getFirst();
         int valueSize = kvSize.getSecond();
         if (emitMetrics.get()) {
@@ -2476,7 +2485,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       } /** else, {@link #validateMessage(int, KafkaKey, KafkaMessageEnvelope)} threw a {@link com.linkedin.venice.exceptions.validation.DataValidationException} */
 
       // Potentially update the offset metadata in the OffsetRecord
-      updateOffset(partitionConsumptionState, offsetRecord, consumerRecordWrapper, producedRecord);
+      updateOffsetRecord(partitionConsumptionState, offsetRecord, consumerRecordWrapper, leaderProducedRecordContext);
 
       partitionConsumptionState.setOffsetRecord(offsetRecord);
       if (syncOffset) {
@@ -2653,22 +2662,30 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     consumer.resetOffset(topic, partitionConsumptionState.getSourceTopicPartition(topic));
   }
 
-  public Map<String, ConsumerRecords<KafkaKey, KafkaMessageEnvelope>> consumerPoll(long pollTimeout) {
+  /**
+   * Poll consumer(s) to get a map from Kafka URLs to consumed records from that Kafka URL.
+   * @param pollTimeoutMs
+   * @return
+   */
+  public Map<String, ConsumerRecords<KafkaKey, KafkaMessageEnvelope>> consumerPoll(long pollTimeoutMs) {
     if (!storeRepository.getStoreOrThrow(storeName).getVersion(versionNumber).isPresent()) {
       //If the version is not found, it must have been retired/deleted by controller, Let's kill this ingestion task.
       throw new VeniceIngestionTaskKilledException("Version " + versionNumber + " does not exist. Should not poll.");
     }
-    Map<String, ConsumerRecords<KafkaKey, KafkaMessageEnvelope>> records = new HashMap<>();
-    consumerMap.entrySet().forEach(entry -> {
-      KafkaConsumerWrapper consumer = entry.getValue();
+    /**
+     * Since the number of entries in the consumerMap is practically always much smaller than the default map size (16),
+     * creating a map with a size of the key set size of consumerMap is more memory efficient.
+     */
+    final Map<String, ConsumerRecords<KafkaKey, KafkaMessageEnvelope>> recordsByKafkaURLs = new HashMap<>(consumerMap.keySet().size());
+    consumerMap.forEach((kafkaURL, consumer) -> {
       if (consumer.hasSubscription()) {
-        ConsumerRecords<KafkaKey, KafkaMessageEnvelope> consumerRecords = consumer.poll(pollTimeout);
+        ConsumerRecords<KafkaKey, KafkaMessageEnvelope> consumerRecords = consumer.poll(pollTimeoutMs);
         if (consumerRecords != null) {
-          records.put(entry.getKey(), consumerRecords);
+          recordsByKafkaURLs.put(kafkaURL, consumerRecords);
         }
       }
     });
-    return records;
+    return recordsByKafkaURLs;
   }
 
   public KafkaConsumerWrapper getConsumer(PartitionConsumptionState partitionConsumptionState) {
@@ -2686,10 +2703,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   /**
    * @return the size of the data which was written to persistent storage.
    */
-  private Pair<Integer, Integer> processVeniceMessage(
+  private Pair<Integer, Integer> processKafkaDataMessage(
       VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope> consumerRecordWrapper,
-      PartitionConsumptionState partitionConsumptionState, ProducedRecord producedRecord) {
-
+      PartitionConsumptionState partitionConsumptionState, LeaderProducedRecordContext leaderProducedRecordContext
+  ) {
     ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord = consumerRecordWrapper.consumerRecord();
     int keyLen = 0;
     int valueLen = 0;
@@ -2707,18 +2724,18 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     byte[] keyBytes;
 
     MessageType messageType =
-        (producedRecord == null ? MessageType.valueOf(kafkaValue) : producedRecord.getMessageType());
+        (leaderProducedRecordContext == null ? MessageType.valueOf(kafkaValue) : leaderProducedRecordContext.getMessageType());
 
     switch (messageType) {
       case PUT:
         // If single-threaded, we can re-use (and clobber) the same Put instance. // TODO: explore GC tuning later.
         Put put;
-        if (producedRecord == null) {
+        if (leaderProducedRecordContext == null) {
           keyBytes = kafkaKey.getKey();
           put = (Put) kafkaValue.payloadUnion;
         } else {
-          keyBytes = producedRecord.getKeyBytes();
-          put = (Put) producedRecord.getValueUnion();
+          keyBytes = leaderProducedRecordContext.getKeyBytes();
+          put = (Put) leaderProducedRecordContext.getValueUnion();
         }
         ByteBuffer putValue = put.putValue;
         valueLen = putValue.remaining();
@@ -2739,10 +2756,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         break;
 
       case DELETE:
-        if (producedRecord == null) {
+        if (leaderProducedRecordContext == null) {
           keyBytes = kafkaKey.getKey();
         } else {
-          keyBytes = producedRecord.getKeyBytes();
+          keyBytes = leaderProducedRecordContext.getKeyBytes();
         }
         keyLen = keyBytes.length;
 
@@ -2775,9 +2792,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      * produced to drainer queue from kafka callback thread {@link LeaderFollowerStoreIngestionTask#LeaderProducerMessageCallback}
      */
     if (purgeTransientRecordCache && isWriteComputationEnabled && partitionConsumptionState.isEndOfPushReceived()
-        && producedRecord != null && producedRecord.getConsumedOffset() != -1) {
+        && leaderProducedRecordContext != null && leaderProducedRecordContext.getConsumedOffset() != -1) {
       PartitionConsumptionState.TransientRecord transientRecord =
-          partitionConsumptionState.mayRemoveTransientRecord(producedRecord.getConsumedOffset(), kafkaKey.getKey());
+          partitionConsumptionState.mayRemoveTransientRecord(leaderProducedRecordContext.getConsumedOffset(), kafkaKey.getKey());
       if (transientRecord != null) {
         //This is perfectly fine, logging to see how often it happens where we get mulitple put/update/delete for same key in quick succession.
         String msg =
