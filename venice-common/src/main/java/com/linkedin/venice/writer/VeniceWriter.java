@@ -28,7 +28,6 @@ import com.linkedin.venice.kafka.validation.Segment;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.serialization.KeyWithChunkingSuffixSerializer;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
@@ -176,6 +175,8 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
 
   public static final LeaderMetadataWrapper DEFAULT_LEADER_METADATA_WRAPPER = new LeaderMetadataWrapper(DEFAULT_UPSTREAM_OFFSET, DEFAULT_UPSTREAM_KAFKA_CLUSTER_ID);
 
+  private static final int DEFAULT_TARGET_VERSION = (int)AvroCompatibilityHelper.getSpecificDefaultValue(KafkaMessageEnvelope.SCHEMA$.getField("targetVersion"));
+
   // Immutable state
   private final VeniceKafkaSerializer<K> keySerializer;
   private final VeniceKafkaSerializer<V> valueSerializer;
@@ -218,6 +219,8 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   private volatile boolean isChunkingEnabled;
   private volatile boolean isChunkingFlagInvoked;
 
+  private final Optional<Integer> targetStoreVersionForIncPush;
+
   protected VeniceWriter(
       VeniceProperties props,
       String topicName,
@@ -227,6 +230,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       VenicePartitioner partitioner,
       Time time,
       Optional<Integer> topicPartitionCount,
+      Optional<Integer> targetStoreVersionForIncPush,
       Supplier<KafkaProducerWrapper> producerWrapperSupplier) {
     super(topicName);
 
@@ -235,6 +239,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     this.writeComputeSerializer = writeComputeSerializer;
     this.time = time;
     this.partitioner = partitioner;
+    this.targetStoreVersionForIncPush = targetStoreVersionForIncPush;
     this.closeTimeOut = props.getInt(CLOSE_TIMEOUT_MS, DEFAULT_CLOSE_TIMEOUT_MS);
     this.checkSumType = CheckSumType.valueOf(props.getString(CHECK_SUM_TYPE, DEFAULT_CHECK_SUM_TYPE));
     this.isChunkingEnabled = props.getBoolean(ENABLE_CHUNKING, false);
@@ -283,25 +288,6 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     } catch (Exception e) {
       throw new VeniceException("Error while constructing VeniceWriter for store name: " + topicName + ", props: " + props.toString(), e);
     }
-  }
-
-  protected VeniceWriter(
-      VeniceProperties props,
-      String topicName,
-      VeniceKafkaSerializer<K> keySerializer,
-      VeniceKafkaSerializer<V> valueSerializer,
-      VeniceKafkaSerializer<U> writeComputeSerializer,
-      Time time) {
-    this(
-        props,
-        topicName,
-        keySerializer,
-        valueSerializer,
-        writeComputeSerializer,
-        new DefaultVenicePartitioner(props),
-        time,
-        Optional.empty(),
-        () -> new ApacheKafkaProducer(props));
   }
 
   /**
@@ -1316,6 +1302,9 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       producerMetadata.logicalTimestamp = VENICE_DEFAULT_LOGICAL_TS;
     }
     kafkaValue.producerMetadata = producerMetadata;
+
+    kafkaValue.targetVersion = targetStoreVersionForIncPush.orElse(DEFAULT_TARGET_VERSION);
+
     kafkaValue.leaderMetadataFooter = new LeaderMetadata();
     kafkaValue.leaderMetadataFooter.hostName = writerId;
     kafkaValue.leaderMetadataFooter.upstreamOffset = leaderMetadataWrapper.getUpstreamOffset();

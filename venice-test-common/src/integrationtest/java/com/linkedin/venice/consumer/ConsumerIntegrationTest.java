@@ -225,7 +225,7 @@ public class ConsumerIntegrationTest {
         Time time,
         Supplier<KafkaProducerWrapper> producerWrapperSupplier) {
       super(props, topicName, keySerializer, valueSerializer, new DefaultSerializer(), partitioner, time, Optional.empty(),
-          producerWrapperSupplier);
+          Optional.empty(), producerWrapperSupplier);
     }
 
     @Override

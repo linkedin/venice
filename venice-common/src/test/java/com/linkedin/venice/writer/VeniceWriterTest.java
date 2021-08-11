@@ -146,7 +146,7 @@ public class VeniceWriterTest {
     String testTopic = "test";
     VeniceWriter<Object, Object, Object> writer =
         new VeniceWriter(new VeniceProperties(writerProperties), testTopic, serializer, serializer, serializer,
-            new DefaultVenicePartitioner(), SystemTime.INSTANCE, Optional.empty(), () -> mockedProducer);
+            new DefaultVenicePartitioner(), SystemTime.INSTANCE, Optional.empty(), Optional.empty(), () -> mockedProducer);
     for (int i = 0; i < 1000; i++) {
       writer.put(Integer.toString(i), Integer.toString(i), 1, null);
     }
@@ -177,7 +177,7 @@ public class VeniceWriterTest {
     String testTopic = "test";
     VeniceWriter<Object, Object, Object> writer =
         new VeniceWriter(new VeniceProperties(writerProperties), testTopic, serializer, serializer, serializer,
-            new DefaultVenicePartitioner(), SystemTime.INSTANCE, Optional.empty(), () -> mockedProducer);
+            new DefaultVenicePartitioner(), SystemTime.INSTANCE, Optional.empty(), Optional.empty(), () -> mockedProducer);
 
     //verify the new veniceWriter API's are able to encode the A/A metadat info correctly.
     long ctime = System.currentTimeMillis();

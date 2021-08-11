@@ -1210,7 +1210,7 @@ public class TestAdminConsumptionTask {
     protected TestVeniceWriter(VeniceProperties props, String topicName, VeniceKafkaSerializer keySerializer,
         VeniceKafkaSerializer valueSerializer, VeniceKafkaSerializer updateSerializer, VenicePartitioner partitioner,
         Time time, Supplier supplier) {
-      super(props, topicName, keySerializer, valueSerializer, updateSerializer, partitioner, time, Optional.empty(), supplier);
+      super(props, topicName, keySerializer, valueSerializer, updateSerializer, partitioner, time, Optional.empty(), Optional.empty(), supplier);
     }
   }
 }
