@@ -231,7 +231,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
         consumerClientConfig = Optional.of((ClientConfig) clientConfig);
       }
 
-      VeniceController veniceController = new VeniceController(propertiesList, metricsRepository, d2ServerList, Optional.empty(), authorizerService, Optional.of(d2Client), consumerClientConfig);
+      VeniceController veniceController = new VeniceController(propertiesList, metricsRepository, d2ServerList, Optional.empty(), authorizerService, d2Client, consumerClientConfig);
       return new VeniceControllerWrapper(serviceName, dataDirectory, veniceController, adminPort, adminSecurePort, propertiesList, d2ServerList, zkAddress, metricsRepository);
     };
   }
@@ -314,7 +314,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
       d2ServerList.add(createD2Server(zkAddress, port));
     }
     D2Client d2Client = D2TestUtils.getAndStartD2Client(zkAddress);
-    service = new VeniceController(configs, d2ServerList, Optional.empty(), Optional.of(d2Client));
+    service = new VeniceController(configs, d2ServerList, Optional.empty(), d2Client);
   }
 
   /***

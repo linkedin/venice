@@ -1,6 +1,8 @@
 package com.linkedin.venice.controller;
 
+import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
+import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.TopicManagerRepository;
 import com.linkedin.venice.meta.Version;
@@ -52,7 +54,9 @@ public class TestClusterLevelConfigForActiveActiveReplication extends AbstractTe
     Properties properties = getActiveActiveControllerProperties(clusterName, enableActiveActiveForHybrid, enableActiveActiveForIncrementalPush);
     veniceAdmin = new VeniceHelixAdmin(
         TestUtils.getMultiClusterConfigFromOneCluster(new VeniceControllerConfig(new VeniceProperties(properties))),
-        new MetricsRepository());
+        new MetricsRepository(),
+        D2TestUtils.getAndStartD2Client(zkAddress)
+    );
 
     veniceAdmin.start(clusterName);
     TopicManagerRepository originalTopicManagerRepository = veniceAdmin.getTopicManagerRepository();
