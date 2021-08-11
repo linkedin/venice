@@ -40,7 +40,7 @@ public class AdminChannelWithSSL {
 
       try (ControllerClient controllerClient = new ControllerClient(clusterName, secureControllerUrl, Optional.of(SslUtils.getVeniceLocalSslFactory()))) {
         controllerClient.createNewStore(storeName, owner, keySchemaStr, valueSchemaStr);
-        TestUtils.waitForNonDeterministicAssertion(1000, TimeUnit.MILLISECONDS, () -> {
+        TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
           MultiStoreResponse response = controllerClient.queryStoreList(false);
           Assert.assertFalse(response.isError());
           String[] stores = response.getStores();
@@ -52,7 +52,7 @@ public class AdminChannelWithSSL {
       try (ControllerClient childControllerClient = new ControllerClient(clusterName, childControllerWrapper.getSecureControllerUrl(),
           Optional.of(SslUtils.getVeniceLocalSslFactory()))) {
         // Child controller is talking SSL to Kafka
-        TestUtils.waitForNonDeterministicAssertion(1000, TimeUnit.MILLISECONDS, () -> {
+        TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
           MultiStoreResponse response = childControllerClient.queryStoreList(false);
           Assert.assertFalse(response.isError());
           String[] stores = response.getStores();
