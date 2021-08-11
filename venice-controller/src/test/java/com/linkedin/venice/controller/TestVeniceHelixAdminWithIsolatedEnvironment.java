@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller;
 
+import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -7,6 +8,7 @@ import com.linkedin.venice.exceptions.VeniceNoClusterException;
 import com.linkedin.venice.helix.HelixExternalViewRepository;
 import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.helix.ResourceAssignment;
+import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.RoutingDataRepository;
@@ -32,6 +34,8 @@ import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
+
+import static org.mockito.Mockito.*;
 
 
 /**
@@ -59,7 +63,11 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
     PropertyBuilder builder = new PropertyBuilder().put(controllerProps.toProperties()).put("admin.port", newAdminPort);
     VeniceProperties newControllerProps = builder.build();
     VeniceControllerConfig newConfig = new VeniceControllerConfig(newControllerProps);
-    VeniceHelixAdmin newAdmin= new VeniceHelixAdmin(TestUtils.getMultiClusterConfigFromOneCluster(newConfig), new MetricsRepository());
+    VeniceHelixAdmin newAdmin= new VeniceHelixAdmin(
+        TestUtils.getMultiClusterConfigFromOneCluster(newConfig),
+        new MetricsRepository(),
+        D2TestUtils.getAndStartD2Client(zkAddress)
+    );
     //Start stand by controller
     newAdmin.start(clusterName);
     List<VeniceHelixAdmin> allAdmins = new ArrayList<>();
@@ -257,7 +265,11 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
       PropertyBuilder builder = new PropertyBuilder().put(controllerProps.toProperties()).put("admin.port", newAdminPort);
       VeniceProperties newControllerProps = builder.build();
       VeniceControllerConfig newConfig = new VeniceControllerConfig(newControllerProps);
-      VeniceHelixAdmin newMasterAdmin = new VeniceHelixAdmin(TestUtils.getMultiClusterConfigFromOneCluster(newConfig), new MetricsRepository());
+      VeniceHelixAdmin newMasterAdmin = new VeniceHelixAdmin(
+          TestUtils.getMultiClusterConfigFromOneCluster(newConfig),
+          new MetricsRepository(),
+          D2TestUtils.getAndStartD2Client(zkAddress)
+      );
       List<VeniceHelixAdmin> admins = new ArrayList<>();
       admins.add(veniceAdmin);
       admins.add(newMasterAdmin);
@@ -299,7 +311,9 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
 
     veniceAdmin = new VeniceHelixAdmin(
         TestUtils.getMultiClusterConfigFromOneCluster(new VeniceControllerConfig(new VeniceProperties(properties))),
-        new MetricsRepository());
+        new MetricsRepository(),
+        D2TestUtils.getAndStartD2Client(zkAddress)
+    );
 
     veniceAdmin.start(clusterName);
 
@@ -332,8 +346,10 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
     properties.put(ConfigKeys.ENABLE_LEADER_FOLLOWER_AS_DEFAULT_FOR_INCREMENTAL_PUSH_STORES, true);
 
     veniceAdmin = new VeniceHelixAdmin(
-            TestUtils.getMultiClusterConfigFromOneCluster(new VeniceControllerConfig(new VeniceProperties(properties))),
-            new MetricsRepository());
+        TestUtils.getMultiClusterConfigFromOneCluster(new VeniceControllerConfig(new VeniceProperties(properties))),
+        new MetricsRepository(),
+        D2TestUtils.getAndStartD2Client(zkAddress)
+    );
     veniceAdmin.start(clusterName);
     TestUtils.waitForNonDeterministicCompletion(5000, TimeUnit.MILLISECONDS, ()->veniceAdmin.isMasterController(clusterName));
     veniceAdmin.addStore(clusterName, storeName1, "test", KEY_SCHEMA, VALUE_SCHEMA);
@@ -359,8 +375,10 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
     properties.put(ConfigKeys.ENABLE_LEADER_FOLLOWER_AS_DEFAULT_FOR_ALL_STORES, true);
 
     veniceAdmin = new VeniceHelixAdmin(
-            TestUtils.getMultiClusterConfigFromOneCluster(new VeniceControllerConfig(new VeniceProperties(properties))),
-            new MetricsRepository());
+        TestUtils.getMultiClusterConfigFromOneCluster(new VeniceControllerConfig(new VeniceProperties(properties))),
+        new MetricsRepository(),
+        D2TestUtils.getAndStartD2Client(zkAddress)
+    );
     veniceAdmin.start(clusterName);
     TestUtils.waitForNonDeterministicCompletion(5000, TimeUnit.MILLISECONDS, ()->veniceAdmin.isMasterController(clusterName));
     // Store3 is a batch store

@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller;
 
+import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
@@ -12,6 +13,7 @@ import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.helix.HelixStatusMessageChannel;
 import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.helix.ZkStoreConfigAccessor;
+import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.TopicManagerRepository;
 import com.linkedin.venice.kafka.VeniceOperationAgainstKafkaTimedOut;
@@ -111,7 +113,11 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
 
     VeniceProperties newControllerProps = builder.build();
     VeniceControllerConfig newConfig = new VeniceControllerConfig(newControllerProps);
-    VeniceHelixAdmin newMasterAdmin = new VeniceHelixAdmin(TestUtils.getMultiClusterConfigFromOneCluster(newConfig), new MetricsRepository());
+    VeniceHelixAdmin newMasterAdmin = new VeniceHelixAdmin(
+        TestUtils.getMultiClusterConfigFromOneCluster(newConfig),
+        new MetricsRepository(),
+        D2TestUtils.getAndStartD2Client(zkAddress)
+    );
     //Start stand by controller
     newMasterAdmin.start(clusterName);
     Assert.assertFalse(veniceAdmin.isMasterController(clusterName) && newMasterAdmin.isMasterController(clusterName),

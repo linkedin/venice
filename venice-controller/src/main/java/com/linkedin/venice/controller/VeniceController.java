@@ -47,50 +47,24 @@ public class VeniceController {
   private final List<D2Server> d2ServerList;
   private final Optional<DynamicAccessController> accessController;
   private final Optional<AuthorizerService> authorizerService;
-  private final Optional<D2Client> d2Client;
+  private final D2Client d2Client;
   private final Optional<ClientConfig> routerClientConfig;
   private final static String CONTROLLER_SERVICE_NAME = "venice-controller";
 
-  // This constructor is being used in local mode
-  public VeniceController(VeniceProperties props) {
-    this(props, TehutiUtils.getMetricsRepository(CONTROLLER_SERVICE_NAME), Collections.emptyList(), Optional.empty(), Optional.empty());
-  }
-
   // This constructor is being used in integration test
-  public VeniceController(List<VeniceProperties> propertiesList, List<D2Server> d2ServerList, Optional<AuthorizerService> authorizerService, Optional<D2Client> d2Client) {
+  public VeniceController(List<VeniceProperties> propertiesList, List<D2Server> d2ServerList, Optional<AuthorizerService> authorizerService, D2Client d2Client) {
     this(propertiesList, TehutiUtils.getMetricsRepository(CONTROLLER_SERVICE_NAME), d2ServerList, Optional.empty(), authorizerService, d2Client, Optional.empty());
   }
 
   public VeniceController(VeniceProperties props, MetricsRepository metricsRepository, List<D2Server> d2ServerList,
-      Optional<DynamicAccessController> accessController) {
-    this(Arrays.asList(new VeniceProperties[]{props}), metricsRepository, d2ServerList, accessController,
-        Optional.empty());
-  }
-
-  public VeniceController(VeniceProperties props, MetricsRepository metricsRepository, List<D2Server> d2ServerList,
-      Optional<DynamicAccessController> accessController, Optional<AuthorizerService> authorizerService) {
-    this(props, metricsRepository, d2ServerList, accessController, authorizerService, Optional.empty(), Optional.empty());
-  }
-
-  public VeniceController(VeniceProperties props, MetricsRepository metricsRepository, List<D2Server> d2ServerList,
       Optional<DynamicAccessController> accessController, Optional<AuthorizerService> authorizerService,
-      Optional<D2Client> d2Client,  Optional<ClientConfig> routerClientConfig) {
-    this(Arrays.asList(new VeniceProperties[]{props}), metricsRepository, d2ServerList, accessController,
+      D2Client d2Client,  Optional<ClientConfig> routerClientConfig) {
+    this(Collections.singletonList(props), metricsRepository, d2ServerList, accessController,
         authorizerService, d2Client, routerClientConfig);
   }
 
-  public VeniceController(List<VeniceProperties> propertiesList, MetricsRepository metricsRepository,
-      List<D2Server> d2ServerList, Optional<DynamicAccessController> accessController) {
-    this(propertiesList, metricsRepository, d2ServerList, accessController, Optional.empty());
-  }
-
   public VeniceController(List<VeniceProperties> propertiesList, MetricsRepository metricsRepository, List<D2Server> d2ServerList,
-      Optional<DynamicAccessController> accessController, Optional<AuthorizerService> authorizerService) {
-    this(propertiesList, metricsRepository, d2ServerList, accessController, authorizerService, Optional.empty(), Optional.empty());
-  }
-
-  public VeniceController(List<VeniceProperties> propertiesList, MetricsRepository metricsRepository, List<D2Server> d2ServerList,
-      Optional<DynamicAccessController> accessController, Optional<AuthorizerService> authorizerService, Optional<D2Client> d2Client,
+      Optional<DynamicAccessController> accessController, Optional<AuthorizerService> authorizerService, D2Client d2Client,
       Optional<ClientConfig> routerClientConfig) {
     this.multiClusterConfigs = new VeniceControllerMultiClusterConfig(propertiesList);
     this.metricsRepository = metricsRepository;
@@ -189,44 +163,4 @@ public class VeniceController {
   public VeniceControllerService getVeniceControllerService() {
     return controllerService;
   }
-
-  public static void main(String args[]) {
-    if(args.length < 2) {
-      Utils.exit("USAGE: java " + VeniceController.class.getName()
-          + " [cluster_config_file_path] [controller_config_file_path] ");
-    }
-    VeniceProperties controllerProps = null;
-    try {
-      VeniceProperties clusterProps = Utils.parseProperties(args[0]);
-      VeniceProperties controllerBaseProps = Utils.parseProperties(args[1]);
-
-      controllerProps = new PropertyBuilder()
-              .put(clusterProps.toProperties())
-              .put(controllerBaseProps.toProperties())
-              .build();
-    } catch (Exception e) {
-      String errorMessage = "Can not load configuration from file.";
-      logger.error(errorMessage, e);
-      Utils.exit(errorMessage+e.getMessage());
-    }
-
-    VeniceController controller = new VeniceController(controllerProps);
-    controller.start();
-    addShutdownHook(controller);
-  }
-
-  private static void addShutdownHook(VeniceController controller) {
-    Runtime.getRuntime().addShutdownHook(new Thread() {
-      @Override
-      public void run() {
-        controller.stop();
-      }
-    });
-    try {
-      Thread.currentThread().join();
-    } catch (InterruptedException e) {
-      logger.error("Unable to join thread in shutdown hook. ", e);
-    }
-  }
-
 }

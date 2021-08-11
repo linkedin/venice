@@ -34,10 +34,10 @@ public class VeniceControllerService extends AbstractVeniceService {
 
   public VeniceControllerService(VeniceControllerMultiClusterConfig multiClusterConfigs,
       MetricsRepository metricsRepository, boolean sslEnabled, Optional<SSLConfig> sslConfig,
-      Optional<DynamicAccessController> accessController, Optional<AuthorizerService> authorizerService, Optional<D2Client> d2Client,
+      Optional<DynamicAccessController> accessController, Optional<AuthorizerService> authorizerService, D2Client d2Client,
       Optional<ClientConfig> routerClientConfig) {
     this.mutliClusterConfigs = multiClusterConfigs;
-    VeniceHelixAdmin internalAdmin = new VeniceHelixAdmin(multiClusterConfigs, metricsRepository, sslEnabled, sslConfig, accessController, d2Client);
+    VeniceHelixAdmin internalAdmin = new VeniceHelixAdmin(multiClusterConfigs, metricsRepository, sslEnabled, d2Client, sslConfig, accessController);
     if (multiClusterConfigs.isParent()) {
 
       this.admin = new VeniceParentHelixAdmin(internalAdmin, multiClusterConfigs, sslEnabled, sslConfig, accessController,

@@ -3,6 +3,7 @@ package com.linkedin.venice.controller;
 import com.linkedin.avroutil1.compatibility.AvroIncompatibleSchemaException;
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.ConfigKeys;
+import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.VeniceStateModel;
 import com.linkedin.venice.acl.DynamicAccessController;
@@ -272,6 +273,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     private final SharedHelixReadOnlyZKSharedSystemStoreRepository zkSharedSystemStoreRepository;
     private final SharedHelixReadOnlyZKSharedSchemaRepository zkSharedSchemaRepository;
     private final MetaStoreWriter metaStoreWriter;
+    private final D2Client d2Client;
     private AvroSpecificStoreClient<PushJobStatusRecordKey, PushJobDetails> pushJobDetailsStoreClient;
 
     /**
@@ -303,14 +305,23 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     private VeniceDistClusterControllerStateModelFactory controllerStateModelFactory;
 
-    public VeniceHelixAdmin(VeniceControllerMultiClusterConfig multiClusterConfigs, MetricsRepository metricsRepository) {
-        this(multiClusterConfigs, metricsRepository, false, Optional.empty(), Optional.empty(), Optional.empty());
+    public VeniceHelixAdmin(
+        VeniceControllerMultiClusterConfig multiClusterConfigs,
+        MetricsRepository metricsRepository,
+        D2Client d2Client
+    ) {
+        this(multiClusterConfigs, metricsRepository, false, d2Client, Optional.empty(), Optional.empty());
     }
 
     //TODO Use different configs for different clusters when creating helix admin.
-    public VeniceHelixAdmin(VeniceControllerMultiClusterConfig multiClusterConfigs, MetricsRepository metricsRepository,
-        boolean sslEnabled, Optional<SSLConfig> sslConfig, Optional<DynamicAccessController> accessController,
-        Optional<D2Client> d2Client) {
+    public VeniceHelixAdmin(
+        VeniceControllerMultiClusterConfig multiClusterConfigs,
+        MetricsRepository metricsRepository,
+        boolean sslEnabled,
+        D2Client d2Client,
+        Optional<SSLConfig> sslConfig,
+        Optional<DynamicAccessController> accessController
+    ) {
         this.multiClusterConfigs = multiClusterConfigs;
         VeniceControllerConfig commonConfig = multiClusterConfigs.getCommonConfig();
         this.controllerName = Utils.getHelixNodeIdentifier(multiClusterConfigs.getAdminPort());
@@ -323,6 +334,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
         this.minNumberOfUnusedKafkaTopicsToPreserve = multiClusterConfigs.getMinNumberOfUnusedKafkaTopicsToPreserve();
         this.minNumberOfStoreVersionsToPreserve = multiClusterConfigs.getMinNumberOfStoreVersionsToPreserve();
+        this.d2Client = Utils.notNull(d2Client, "D2 client cannot be null.");
 
         if (sslEnabled) {
             try {
@@ -386,11 +398,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         pushJobStatusStoreClusterName = commonConfig.getPushJobStatusStoreClusterName();
         metadataStoreWriter = new MetadataStoreWriter(topicManagerRepository.getTopicManager(), veniceWriterFactory, this);
         if (commonConfig.isDaVinciPushStatusStoreEnabled()) {
-            if (!d2Client.isPresent()) {
-                throw new VeniceException("D2Client must present when push status store enabled.");
-            }
-            pushStatusStoreReader = Optional.of(new PushStatusStoreReader(d2Client.get(),
-                commonConfig.getPushStatusStoreHeartbeatExpirationTimeInSeconds()));
+            pushStatusStoreReader = Optional.of(
+                new PushStatusStoreReader(d2Client, commonConfig.getPushStatusStoreHeartbeatExpirationTimeInSeconds())
+            );
             pushStatusStoreDeleter = Optional.of(new PushStatusStoreRecordDeleter(getVeniceWriterFactory()));
         } else {
             pushStatusStoreReader = Optional.empty();
@@ -877,13 +887,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         return readValue(batchJobHeartbeatKey, storeName, d2Service, BatchJobHeartbeatValue.class);
     }
 
-    private static <K, V extends SpecificRecord> V readValue(K key, String storeName, String d2Service,  Class<V> specificValueClass) {
+    private <K, V extends SpecificRecord> V readValue(K key, String storeName, String d2Service,  Class<V> specificValueClass) {
         // TODO: we may need to use the ICProvider interface to avoid missing IC warning logs when making these client calls
         try (AvroSpecificStoreClient<K, V> client = ClientFactory.getAndStartSpecificAvroClient(
                 ClientConfig.defaultSpecificClientConfig(
                     storeName,
                     specificValueClass
-                ).setD2ServiceName(d2Service))
+                ).setD2ServiceName(d2Service).setD2Client(this.d2Client))
         ) {
             return client.get(key).get();
         } catch (Exception e) {
@@ -4665,6 +4675,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         pushStatusStoreReader.ifPresent(PushStatusStoreReader::close);
         pushStatusStoreDeleter.ifPresent(PushStatusStoreRecordDeleter::close);
         clusterControllerClientPerColoMap.forEach((clusterName, controllerClientMap) -> controllerClientMap.values().forEach(c -> Utils.closeQuietlyWithErrorLogged(c)));
+        D2ClientUtils.shutdownClient(d2Client);
     }
 
     /**

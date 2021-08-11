@@ -1,11 +1,13 @@
 package com.linkedin.venice.controller;
 
+import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.VeniceStateModel;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.SafeHelixManager;
+import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
@@ -32,6 +34,7 @@ import org.apache.log4j.Logger;
 import org.testng.Assert;
 
 import static com.linkedin.venice.ConfigKeys.*;
+import static org.mockito.Mockito.*;
 
 
 class AbstractTestVeniceHelixAdmin {
@@ -76,7 +79,7 @@ class AbstractTestVeniceHelixAdmin {
     helixMessageChannelStats = new HelixMessageChannelStats(new MetricsRepository(), clusterName);
     config = new VeniceControllerConfig(controllerProps);
     multiClusterConfig = TestUtils.getMultiClusterConfigFromOneCluster(config);
-    veniceAdmin = new VeniceHelixAdmin(multiClusterConfig, new MetricsRepository());
+    veniceAdmin = new VeniceHelixAdmin(multiClusterConfig, new MetricsRepository(), D2TestUtils.getAndStartD2Client(zkAddress));
     veniceAdmin.start(clusterName);
     startParticipant();
     waitUntilIsMaster(veniceAdmin, clusterName, MASTER_CHANGE_TIMEOUT);
