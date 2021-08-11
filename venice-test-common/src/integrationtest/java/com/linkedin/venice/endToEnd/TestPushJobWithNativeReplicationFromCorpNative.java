@@ -35,6 +35,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.stream.IntStream;
 import org.apache.avro.Schema;
 import org.apache.commons.io.IOUtils;
+import org.apache.log4j.Logger;
 import org.apache.samza.config.MapConfig;
 import org.apache.samza.system.SystemProducer;
 import org.testng.Assert;
@@ -80,7 +81,11 @@ import static com.linkedin.venice.utils.TestPushUtils.*;
 
 
 public class TestPushJobWithNativeReplicationFromCorpNative {
+  public static final Logger LOGGER = Logger.getLogger(TestPushJobWithNativeReplicationFromCorpNative.class);
+
   private static final int TEST_TIMEOUT = 90_000; // ms
+  private static final int TEST_TIMEOUT_LARGE = 120_000; // ms
+
 
   private static final int NUMBER_OF_CHILD_DATACENTERS = 3;
   private static final int NUMBER_OF_CLUSTERS = 1;
@@ -93,6 +98,7 @@ public class TestPushJobWithNativeReplicationFromCorpNative {
   private VeniceTwoLayerMultiColoMultiClusterWrapper multiColoMultiClusterWrapper;
 
   KafkaBrokerWrapper corpVeniceNativeKafka;
+  KafkaBrokerWrapper corpDefaultParentKafka;
 
   @DataProvider(name = "storeSize")
   public static Object[][] storeSize() {
@@ -153,7 +159,7 @@ public class TestPushJobWithNativeReplicationFromCorpNative {
     //setup an additional MirrorMaker between corp-native-kafka and dc-1 and dc-2.
     multiColoMultiClusterWrapper.addMirrorMakerBetween(corpVeniceNativeKafka, childDatacenters.get(1).getKafkaBrokerWrapper(), MirrorMakerWrapper.DEFAULT_TOPIC_WHITELIST);
     multiColoMultiClusterWrapper.addMirrorMakerBetween(corpVeniceNativeKafka, childDatacenters.get(2).getKafkaBrokerWrapper(), MirrorMakerWrapper.DEFAULT_TOPIC_WHITELIST);
-
+    corpDefaultParentKafka = multiColoMultiClusterWrapper.getParentKafkaBrokerWrapper();
   }
 
   @AfterClass(alwaysRun = true)
@@ -414,6 +420,193 @@ public class TestPushJobWithNativeReplicationFromCorpNative {
         String actual = client.get(Integer.toString(i)).get().toString();
         Assert.assertEquals(actual, expected);
       }
+    }
+  }
+
+  private void verifyIncrementalPushData(String clusterName, String storeName) throws Exception {
+    //Verify the data in the first child fabric which consumes remotely
+    for (VeniceMultiClusterWrapper childDataCenter : childDatacenters) {
+      String routerUrl = childDataCenter.getClusters().get(clusterName).getRandomRouterURL();
+      try (AvroGenericStoreClient<String, Object> client = ClientFactory.getAndStartGenericAvroClient(
+          ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerUrl))) {
+        for (int i = 1; i <= 150; ++i) {
+          String expected = i <= 50 ? "test_name_" + i : "test_name_" + (i * 2);
+          String actual = client.get(Integer.toString(i)).get().toString();
+          Assert.assertEquals(actual, expected);
+        }
+      }
+    }
+  }
+
+  /**
+   * The objective of this test is to verify the full rollout/migration of an Incremental push to RT policy store from without NR
+   * to NR mode following through the 3 phases of rollout.
+   * This test is a bit time consuming a it runs many push jobs. So timeout is increased.
+   * @throws Exception
+   */
+  @Test(enabled=true, timeOut = TEST_TIMEOUT_LARGE)
+  public void testNativeReplicationForIncrementalPushRTRollout() throws Exception {
+    String clusterName = CLUSTER_NAMES[0];
+    File inputDirBatch = getTempDataDirectory();
+    File inputDirInc = getTempDataDirectory();
+    VeniceControllerWrapper parentController =
+        parentControllers.stream().filter(c -> c.isMasterController(clusterName)).findAny().get();
+    String inputDirPathBatch = "file:" + inputDirBatch.getAbsolutePath();
+    String inputDirPathInc = "file:" + inputDirInc.getAbsolutePath();
+
+    ControllerClient parentControllerClient = new ControllerClient(clusterName, parentController.getControllerUrl());
+    ControllerClient dc0ControllerClient = new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
+    ControllerClient dc1ControllerClient = new ControllerClient(clusterName, childDatacenters.get(1).getControllerConnectString());
+    ControllerClient dc2ControllerClient = new ControllerClient(clusterName, childDatacenters.get(2).getControllerConnectString());
+    String storeName = TestUtils.getUniqueString("store");
+
+    try {
+      Properties propsBatch = defaultH2VProps(parentController.getControllerUrl(), inputDirPathBatch, storeName);
+      propsBatch.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
+      Properties propsInc = defaultH2VProps(parentController.getControllerUrl(), inputDirPathInc, storeName);
+      propsInc.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
+
+      Schema recordSchema = TestPushUtils.writeSimpleAvroFileWithUserSchema(inputDirBatch, true, 100);
+      String keySchemaStr =
+          recordSchema.getField(propsBatch.getProperty(VenicePushJob.KEY_FIELD_PROP)).schema().toString();
+      String valueSchemaStr =
+          recordSchema.getField(propsBatch.getProperty(VenicePushJob.VALUE_FIELD_PROP)).schema().toString();
+
+      propsInc.setProperty(INCREMENTAL_PUSH, "true");
+      TestPushUtils.writeSimpleAvroFileWithUserSchema2(inputDirInc);
+
+      UpdateStoreQueryParams updateStoreParams = new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
+          .setPartitionCount(2)
+          .setHybridOffsetLagThreshold(TEST_TIMEOUT_LARGE)
+          .setHybridRewindSeconds(2L)
+          .setIncrementalPushEnabled(true)
+          .setIncrementalPushPolicy(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME);
+      createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, propsBatch, updateStoreParams).close();
+
+      UpdateStoreQueryParams enableNativeRepl =
+          new UpdateStoreQueryParams().setLeaderFollowerModel(true).setNativeReplicationEnabled(true);
+
+      //Print all the kafka cluster URL's
+      LOGGER.info("KafkaURL dc-0:" + childDatacenters.get(0).getKafkaBrokerWrapper().getAddress());
+      LOGGER.info("KafkaURL dc-1:" + childDatacenters.get(1).getKafkaBrokerWrapper().getAddress());
+      LOGGER.info("KafkaURL dc-2:" + childDatacenters.get(2).getKafkaBrokerWrapper().getAddress());
+      LOGGER.info("KafkaURL Parent Corp:" + corpDefaultParentKafka.getAddress());
+      LOGGER.info("KafkaURL Venice Native Corp:" + corpVeniceNativeKafka.getAddress());
+
+      //Base state, Store in not in NR mode, batch push and inc push should succeed.
+      try (VenicePushJob job = new VenicePushJob("Test push job batch without NR", propsBatch)) {
+        job.run();
+        Assert.assertEquals(job.getKafkaUrl(), parentController.getKafkaBootstrapServers(false));
+      }
+      try (VenicePushJob job = new VenicePushJob("Test push job incremental without NR", propsInc)) {
+        job.run();
+        Assert.assertEquals(job.getKafkaUrl(), corpDefaultParentKafka.getAddress());
+      }
+      verifyIncrementalPushData(clusterName, storeName);
+
+
+      /**
+       * Phase1 Rollout
+       */
+      //Setup:
+      //configure NR and L/F in parent and dc-0
+      enableNativeRepl.setRegionsFilter("dc-0,parent.parent");
+      TestPushUtils.updateStore(clusterName, storeName, parentControllerClient, enableNativeRepl);
+      TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(dc0ControllerClient, storeName, true);
+      TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(dc1ControllerClient, storeName, false);
+      TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(dc2ControllerClient, storeName, false);
+
+      //Test
+      try (VenicePushJob job = new VenicePushJob("Test push job batch with NR phase 1", propsBatch)) {
+        job.run();
+        Assert.assertEquals(job.getKafkaUrl(), corpVeniceNativeKafka.getAddress());
+      }
+      try (VenicePushJob job = new VenicePushJob("Test push job incremental phase 1", propsInc)) {
+        job.run();
+        Assert.assertEquals(job.getKafkaUrl(), corpDefaultParentKafka.getAddress());
+      }
+
+      //Verify
+      for (VeniceMultiClusterWrapper childDataCenter : childDatacenters) {
+        //Verify version level incremental push config is set correctly. The current version should be 1.
+        Optional<Version> version =
+            childDataCenter.getRandomController().getVeniceAdmin().getStore(clusterName, storeName).getVersion(2);
+        Assert.assertTrue(version.get().isIncrementalPushEnabled());
+      }
+      verifyIncrementalPushData(clusterName, storeName);
+
+
+      /**
+       * Phase2 Rollout
+       */
+      //Setup
+      UpdateStoreQueryParams changeSourceFabric = new UpdateStoreQueryParams().setNativeReplicationSourceFabric("dc-2");
+      enableNativeRepl.setRegionsFilter("dc-1");
+      TestPushUtils.updateStore(clusterName, storeName, parentControllerClient, enableNativeRepl);
+      TestPushUtils.updateStore(clusterName, storeName, parentControllerClient, changeSourceFabric);
+      // Verify all the datacenter is configured correctly.
+      TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(dc0ControllerClient, storeName, true);
+      TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(dc1ControllerClient, storeName, true);
+      TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(dc2ControllerClient, storeName, false);
+
+      //Test
+      try (VenicePushJob job = new VenicePushJob("Test push job batch with NR phase 2", propsBatch)) {
+        job.run();
+        Assert.assertEquals(job.getKafkaUrl(), childDatacenters.get(2).getKafkaBrokerWrapper().getAddress());
+      }
+      try (VenicePushJob job = new VenicePushJob("Test push job incremental phase 2", propsInc)) {
+        job.run();
+        Assert.assertEquals(job.getKafkaUrl(), corpDefaultParentKafka.getAddress());
+      }
+
+      //Verify
+      for (VeniceMultiClusterWrapper childDataCenter : childDatacenters) {
+        //Verify version level incremental push config is set correctly. The current version should be 1.
+        Optional<Version> version =
+            childDataCenter.getRandomController().getVeniceAdmin().getStore(clusterName, storeName).getVersion(3);
+        Assert.assertTrue(version.get().isIncrementalPushEnabled());
+      }
+      verifyIncrementalPushData(clusterName, storeName);
+
+
+      /**
+       * Phase3 Rollout
+       */
+      //Setup
+      enableNativeRepl.setRegionsFilter("dc-2");
+      TestPushUtils.updateStore(clusterName, storeName, parentControllerClient, enableNativeRepl);
+      TestPushUtils.updateStore(clusterName, storeName, parentControllerClient, changeSourceFabric);
+      // Verify all the datacenter is configured correctly.
+      TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(dc0ControllerClient, storeName, true);
+      TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(dc1ControllerClient, storeName, true);
+      TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(dc2ControllerClient, storeName, true);
+
+      //Test
+      try (VenicePushJob job = new VenicePushJob("Test push job batch with NR phase 3", propsBatch)) {
+        job.run();
+        Assert.assertEquals(job.getKafkaUrl(), childDatacenters.get(2).getKafkaBrokerWrapper().getAddress());
+      }
+      try (VenicePushJob job = new VenicePushJob("Test push job incremental phase 3", propsInc)) {
+        job.run();
+        Assert.assertEquals(job.getKafkaUrl(), corpDefaultParentKafka.getAddress());
+      }
+
+      //Verify
+      for (VeniceMultiClusterWrapper childDataCenter : childDatacenters) {
+        //Verify version level incremental push config is set correctly. The current version should be 4.
+        Optional<Version> version =
+            childDataCenter.getRandomController().getVeniceAdmin().getStore(clusterName, storeName).getVersion(4);
+        Assert.assertTrue(version.get().isIncrementalPushEnabled());
+      }
+      verifyIncrementalPushData(clusterName, storeName);
+    } finally {
+      ControllerResponse deleteStoreResponse = parentControllerClient.disableAndDeleteStore(storeName);
+      Assert.assertFalse(deleteStoreResponse.isError(),
+          "Failed to delete the test store: " + deleteStoreResponse.getError());
+      IOUtils.closeQuietly(parentControllerClient);
+      IOUtils.closeQuietly(dc0ControllerClient);
+      IOUtils.closeQuietly(dc1ControllerClient);
+      IOUtils.closeQuietly(dc2ControllerClient);
     }
   }
 

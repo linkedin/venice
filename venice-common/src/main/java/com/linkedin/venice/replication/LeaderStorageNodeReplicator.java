@@ -4,6 +4,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
+import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.Utils;
@@ -56,8 +57,10 @@ public class LeaderStorageNodeReplicator extends TopicReplicator {
 
     if (version.get().isActiveActiveReplicationEnabled()) {
       remoteKafkaUrls.addAll(activeActiveRealTimeSourceKafkaURLs);
-    } else if (version.get().isNativeReplicationEnabled()
-            && store.getHybridStoreConfig().getDataReplicationPolicy() == DataReplicationPolicy.AGGREGATE) {
+    } else if (version.get().isNativeReplicationEnabled() && ((store.getHybridStoreConfig().getDataReplicationPolicy()
+        == DataReplicationPolicy.AGGREGATE)
+        || (version.get().isIncrementalPushEnabled()
+        && version.get().getIncrementalPushPolicy().equals(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME)))) {
       remoteKafkaUrls.add(aggregateRealTimeSourceKafkaUrl);
     }
     logger.info("Starting buffer replay for topic: " + finalDestTopicName

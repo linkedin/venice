@@ -234,12 +234,21 @@ public class CreateVersion extends AbstractRoute {
               responseObject.setPartitions(version.getPartitionCount());
             }
             String responseTopic;
-            if(pushType.isStreamReprocessing()) {
+            boolean overrideSourceFabric = true;
+            if (pushType.isStreamReprocessing()) {
               responseTopic = Version.composeStreamReprocessingTopic(storeName, version.getNumber());
             } else if (pushType.isIncremental() && version.getIncrementalPushPolicy().equals(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME)) {
               responseTopic = Version.composeRealTimeTopic(storeName);
               // disable amplificationFactor logic on real-time topic
               responseObject.setAmplificationFactor(1);
+
+              if (version.isNativeReplicationEnabled()) {
+                /**
+                 * For incremental push with RT policy store the push job produces to parent corp kafka cluster. We should not override the
+                 * source fabric in such cases with NR source fabric.
+                 */
+                overrideSourceFabric = false;
+              }
             } else if (pushType.isIncremental() && store.isHybrid()) {
               /** We want to check if the current version has both incremental push and buffer replay enabled but a full push has
                *  not been made. There are three possible cases of config updates that could lead to this:
@@ -261,13 +270,12 @@ public class CreateVersion extends AbstractRoute {
             responseObject.setVersion(version.getNumber());
             responseObject.setKafkaTopic(responseTopic);
             responseObject.setCompressionStrategy(version.getCompressionStrategy());
-            if (version.isNativeReplicationEnabled()) {
+            if (version.isNativeReplicationEnabled() && overrideSourceFabric) {
               String childDataCenterKafkaBootstrapServer = version.getPushStreamSourceAddress();
               if (childDataCenterKafkaBootstrapServer != null) {
                 responseObject.setKafkaBootstrapServers(childDataCenterKafkaBootstrapServer);
               }
             }
-
             /*
               The conditions for topic switching to a real time topic are only
               when write compute is enabled and the push type is incremental. If
