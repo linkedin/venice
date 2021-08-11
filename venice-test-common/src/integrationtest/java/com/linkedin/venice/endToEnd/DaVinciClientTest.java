@@ -82,7 +82,6 @@ import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.commons.io.FileUtils;
 import org.apache.samza.system.SystemProducer;
-import org.omg.CORBA.TIMEOUT;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.AfterMethod;
@@ -208,7 +207,7 @@ public class DaVinciClientTest {
   }
 
   @AfterMethod
-  public void verifyPostconditions(Method method) {
+  public void verifyPostConditions(Method method) {
     try {
       assertThrows(NullPointerException.class, AvroGenericDaVinciClient::getBackend);
     } catch (AssertionError e) {
@@ -377,7 +376,7 @@ public class DaVinciClientTest {
     }
   }
 
-  @Test(timeOut = TEST_TIMEOUT * 2)
+  @Test(groups = {"flaky"}, timeOut = TEST_TIMEOUT * 2)
   public void testUnstableIngestionIsolation() throws Exception {
     final String storeName = TestUtils.getUniqueString( "store");
     cluster.useControllerClient(client -> {
