@@ -24,7 +24,6 @@ import org.apache.avro.util.Utf8;
 
 import static com.linkedin.venice.writer.VeniceWriter.*;
 
-
 /**
  * If OffsetRecord is initialized with a serializer that contains SchemaReader, old version of server codes
  * will be able to deserialize OffsetRecord that is serialized with a newer protocol version, which can happen
@@ -240,16 +239,17 @@ public class OffsetRecord {
   }
 
   /**
-   * The caller of this API should be interested in which offset currently leader is actually on;
-   * if leader is consuming version topic right now, this API will return the latest record consumed
-   * offset for VT; if leader is consuming some upstream topics rather than version topic, this API
-   * will return the recorded upstream offset.
+   * The caller of this API should be interested in which offset currently leader is actually on.
+   * If leader is consuming from a remote Kafka cluster, or RT/SR topic locally, upstream offset will be updated;
+   * therefore, if the upstream offset is positive, or leader topic is pointing to any topic other than version topic,
+   * upstream offset should be returned to reflect the current consumption state of leader; otherwise,
+   * return local version topic checkpoint offset, since leader has been consuming from the local version topic.
    */
   public long getLeaderOffset(String kafkaURL) {
-    if (getLeaderTopic() == null || Version.isVersionTopic(getLeaderTopic())) {
-      return getOffset();
+    if (getLeaderTopic() != null && (!Version.isVersionTopic(getLeaderTopic()) || getUpstreamOffset(kafkaURL) > 0)) {
+      return getUpstreamOffset(kafkaURL);
     } else {
-      return getUpstreamOffsetFromPartitionState(this.partitionState, kafkaURL);
+      return getOffset();
     }
   }
 
