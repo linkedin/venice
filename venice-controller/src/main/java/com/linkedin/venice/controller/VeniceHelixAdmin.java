@@ -1604,8 +1604,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                             version.setPushStreamSourceAddress(sourceKafkaBootstrapServers);
                             version.setNativeReplicationSourceFabric(sourceFabric);
                         }
-                        if (isParent() && store.isHybrid()
-                            && store.getHybridStoreConfig().getDataReplicationPolicy() == DataReplicationPolicy.AGGREGATE) {
+                        if (isParent() && ((store.isHybrid()
+                            && store.getHybridStoreConfig().getDataReplicationPolicy() == DataReplicationPolicy.AGGREGATE) ||
+                            (store.isIncrementalPushEnabled() && store.getIncrementalPushPolicy().equals(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME)))) {
                             // Create rt topic in parent colo if the store is aggregate mode hybrid store
                             String realTimeTopic = Version.composeRealTimeTopic(storeName);
                             if (!getTopicManager().containsTopic(realTimeTopic)) {
