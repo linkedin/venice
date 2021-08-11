@@ -81,9 +81,9 @@ public class SharedKafkaProducerServiceTest {
     VeniceWriterFactory veniceWriterFactory = TestUtils.getVeniceWriterFactoryWithSharedProducer(properties, Optional.of(sharedKafkaProducerService));
 
     VeniceWriter<KafkaKey, byte[], byte[]> veniceWriter1 = veniceWriterFactory.createVeniceWriter(existingTopic, new KafkaKeySerializer(), new DefaultSerializer(), new DefaultSerializer(),
-        Optional.empty(), SystemTime.INSTANCE, new DefaultVenicePartitioner(), Optional.of(1));
+        Optional.empty(), SystemTime.INSTANCE, new DefaultVenicePartitioner(), Optional.of(1), Optional.empty());
     VeniceWriter<KafkaKey, byte[], byte[]> veniceWriter2 = veniceWriterFactory.createVeniceWriter(nonExistingTopic, new KafkaKeySerializer(), new DefaultSerializer(), new DefaultSerializer(),
-        Optional.empty(), SystemTime.INSTANCE, new DefaultVenicePartitioner(), Optional.of(1));
+        Optional.empty(), SystemTime.INSTANCE, new DefaultVenicePartitioner(), Optional.of(1), Optional.empty());
 
 
     AtomicInteger producedTopicPresent = new AtomicInteger();

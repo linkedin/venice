@@ -9,9 +9,11 @@ import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.hadoop.utils.HadoopUtils;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.partitioner.VenicePartitioner;
+import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.PartitionUtils;
+import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -146,6 +148,11 @@ public class VeniceReducer
    * task will be scheduled to keep reporting progress every 5 minutes until there is error from producer.
    */
   private final ScheduledExecutorService reducerProgressHeartbeatScheduler = Executors.newScheduledThreadPool(1);
+
+  /**
+   * For incremental push to RT jobs, current version of the store will be embedded into every messages from inc push.
+   */
+  private Optional<Integer> targetStoreVersionForIncPush = Optional.empty();
 
   @Override
   public void reduce(
@@ -318,7 +325,8 @@ public class VeniceReducer
     VeniceWriterFactory veniceWriterFactoryFactory = new VeniceWriterFactory(writerProps);
     boolean chunkingEnabled = props.getBoolean(VeniceWriter.ENABLE_CHUNKING);
     VenicePartitioner partitioner = PartitionUtils.getVenicePartitioner(props);
-    return veniceWriterFactoryFactory.createBasicVeniceWriter(props.getString(TOPIC_PROP), chunkingEnabled, partitioner);
+    return veniceWriterFactoryFactory.createVeniceWriter(props.getString(TOPIC_PROP), new DefaultSerializer(), new DefaultSerializer(),
+        new DefaultSerializer(), Optional.of(chunkingEnabled), SystemTime.INSTANCE, partitioner, Optional.empty(), this.targetStoreVersionForIncPush);
   }
 
   private void telemetry() {
@@ -390,6 +398,8 @@ public class VeniceReducer
     this.duplicateKeyPrinter = initDuplicateKeyPrinter(job);
     this.telemetryMessageInterval = props.getInt(TELEMETRY_MESSAGE_INTERVAL, 10000);
     this.kafkaMetricsToReportAsMrCounters = props.getList(KAFKA_METRICS_TO_REPORT_AS_MR_COUNTERS, Collections.emptyList());
+    this.targetStoreVersionForIncPush = props.containsKey(TARGET_VERSION_FOR_INCREMENTAL_PUSH)
+        ? Optional.of(props.getInt(TARGET_VERSION_FOR_INCREMENTAL_PUSH)) : Optional.empty();
     initStorageQuotaFields(props, job);
     /**
      * A dummy background task that reports progress every 5 minutes.

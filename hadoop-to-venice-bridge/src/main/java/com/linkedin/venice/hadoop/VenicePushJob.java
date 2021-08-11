@@ -133,6 +133,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
   public final static String SEND_CONTROL_MESSAGES_DIRECTLY = "send.control.messages.directly";
   public final static String SOURCE_ETL = "source.etl";
   public final static String ETL_VALUE_SCHEMA_TRANSFORMATION = "etl.value.schema.transformation";
+  public final static String TARGET_VERSION_FOR_INCREMENTAL_PUSH = "target.version.for.incremental.push";
 
   /**
    * Configs used to enable Kafka Input.
@@ -381,6 +382,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
     String partitionerClass;
     Map<String, String> partitionerParams;
     int amplificationFactor;
+    int targetStoreVersion;
   }
 
   private VersionTopicInfo kafkaTopicInfo;
@@ -1522,6 +1524,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
     kafkaTopicInfo.partitionerParams = versionCreationResponse.getPartitionerParams();
     kafkaTopicInfo.amplificationFactor = versionCreationResponse.getAmplificationFactor();
     kafkaTopicInfo.daVinciPushStatusStoreEnabled = versionCreationResponse.isDaVinciPushStatusStoreEnabled();
+    kafkaTopicInfo.targetStoreVersion = versionCreationResponse.getCurrentVersion();
 
     if (pushJobSetting.isSourceKafka) {
       /**
@@ -1577,7 +1580,8 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
               versionTopicInfo.amplificationFactor,
               new VeniceProperties(partitionerProperties));
       VeniceWriter<KafkaKey, byte[], byte[]> newVeniceWriter =
-          veniceWriterFactory.createVeniceWriter(versionTopicInfo.topic, venicePartitioner);
+          veniceWriterFactory.createVeniceWriter(versionTopicInfo.topic, venicePartitioner,
+              (kafkaTopicInfo.targetStoreVersion > 0) ? Optional.of(kafkaTopicInfo.targetStoreVersion) : Optional.empty());
       LOGGER.info("Created VeniceWriter: " + newVeniceWriter.toString());
       veniceWriter = newVeniceWriter;
     }
@@ -1833,6 +1837,10 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
     conf.setBoolean(VeniceWriter.ENABLE_CHUNKING, storeSetting.isChunkingEnabled);
 
     conf.set(STORAGE_QUOTA_PROP, Long.toString(storeSetting.storeStorageQuota));
+
+    if (pushJobSetting.isIncrementalPush) {
+      conf.setInt(TARGET_VERSION_FOR_INCREMENTAL_PUSH, kafkaTopicInfo.targetStoreVersion);
+    }
 
     /** Allow overriding properties if their names start with {@link HADOOP_PREFIX}.
      *  Allow overriding properties if their names start with {@link VeniceWriter.VENICE_WRITER_CONFIG_PREFIX}
