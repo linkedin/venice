@@ -922,14 +922,14 @@ public class VeniceParentHelixAdmin implements Admin {
   @Override
   public Version incrementVersionIdempotent(String clusterName, String storeName, String pushJobId,
       int numberOfPartitions, int replicationFactor, Version.PushType pushType, boolean sendStartOfPush,
-      boolean sorted, String compressionDictionary, Optional<String> batchStartingFabric,
+      boolean sorted, String compressionDictionary, Optional<String> sourceGridFabric,
       Optional<X509Certificate> requesterCert, long rewindTimeInSecondsOverride) {
 
     Optional<String> currentPushTopic = getTopicForCurrentPushJob(clusterName, storeName, pushType.isIncremental());
 
-    if (batchStartingFabric.isPresent() && !validateAAReplicationEnabledInAllColos(clusterName, storeName, BATCH_STARTING_FABRIC)) {
-      logger.info("Ignoring config " + BATCH_STARTING_FABRIC + " : " + batchStartingFabric.get() + ", as store " + storeName + " is not set up for Active/Active replication");
-      batchStartingFabric = Optional.empty();
+    if (sourceGridFabric.isPresent() && !validateAAReplicationEnabledInAllColos(clusterName, storeName, SOURCE_GRID_FABRIC)) {
+      logger.info("Ignoring config " + SOURCE_GRID_FABRIC + " : " + sourceGridFabric.get() + ", as store " + storeName + " is not set up for Active/Active replication");
+      sourceGridFabric = Optional.empty();
     }
 
     if (currentPushTopic.isPresent()) {
@@ -976,7 +976,7 @@ public class VeniceParentHelixAdmin implements Admin {
       int timestampMetadataVersionId = multiClusterConfigs.getCommonConfig().getTimestampMetadataVersionId();
       Pair<Boolean, Version> result = veniceHelixAdmin.addVersionAndTopicOnly(clusterName, storeName, pushJobId,
           numberOfPartitions, replicationFactor, sendStartOfPush, sorted, pushType, compressionDictionary,
-          null, batchStartingFabric, rewindTimeInSecondsOverride, timestampMetadataVersionId);
+          null, sourceGridFabric, rewindTimeInSecondsOverride, timestampMetadataVersionId);
       newVersion = result.getSecond();
       if (result.getFirst()) {
         if (newVersion.isActiveActiveReplicationEnabled()) {
@@ -2144,8 +2144,8 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
-  public String getNativeReplicationSourceFabric(String clusterName, Store store, Optional<String> batchStartingFabric) {
-    return veniceHelixAdmin.getNativeReplicationSourceFabric(clusterName, store, batchStartingFabric);
+  public String getNativeReplicationSourceFabric(String clusterName, Store store, Optional<String> sourceGridFabric) {
+    return veniceHelixAdmin.getNativeReplicationSourceFabric(clusterName, store, sourceGridFabric);
   }
 
   @Override

@@ -147,7 +147,7 @@ public interface Admin extends AutoCloseable, Closeable {
 
     Version incrementVersionIdempotent(String clusterName, String storeName, String pushJobId, int numberOfPartitions,
         int replicationFactor, Version.PushType pushType, boolean sendStartOfPush, boolean sorted, String compressionDictionary,
-        Optional<String> batchStartingFabric, Optional<X509Certificate> requesterCert, long rewindTimeInSecondsOverride);
+        Optional<String> sourceGridFabric, Optional<X509Certificate> requesterCert, long rewindTimeInSecondsOverride);
 
     String getRealTimeTopic(String clusterName, String storeName);
 
@@ -314,7 +314,7 @@ public interface Admin extends AutoCloseable, Closeable {
 
     Pair<String, String> getNativeReplicationKafkaBootstrapServerAndZkAddress(String sourceFabric);
 
-    String getNativeReplicationSourceFabric(String clusterName, Store store, Optional<String> batchStartingFabric);
+    String getNativeReplicationSourceFabric(String clusterName, Store store, Optional<String> sourceGridFabric);
 
     /**
      * Return whether ssl is enabled for the given store for push.

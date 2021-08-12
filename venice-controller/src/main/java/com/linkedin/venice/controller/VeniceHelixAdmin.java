@@ -65,7 +65,6 @@ import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.InstanceStatus;
-import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.PartitionAssignment;
@@ -81,6 +80,7 @@ import com.linkedin.venice.meta.StoreCleaner;
 import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.StoreGraveyard;
 import com.linkedin.venice.meta.StoreInfo;
+import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.VersionStatus;
@@ -100,11 +100,11 @@ import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreRecordDeleter;
 import com.linkedin.venice.replication.LeaderStorageNodeReplicator;
 import com.linkedin.venice.replication.TopicReplicator;
-import com.linkedin.venice.schema.TimestampMetadataSchemaEntry;
 import com.linkedin.venice.schema.DerivedSchemaEntry;
-import com.linkedin.venice.schema.TimestampMetadataVersionId;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
+import com.linkedin.venice.schema.TimestampMetadataSchemaEntry;
+import com.linkedin.venice.schema.TimestampMetadataVersionId;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -158,7 +158,6 @@ import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 import org.apache.avro.specific.SpecificRecord;
-import org.apache.commons.io.IOUtils;
 import org.apache.helix.HelixAdmin;
 import org.apache.helix.HelixManagerFactory;
 import org.apache.helix.InstanceType;
@@ -184,7 +183,6 @@ import org.apache.log4j.Logger;
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.*;
 import static com.linkedin.venice.meta.Version.*;
 import static com.linkedin.venice.meta.VersionStatus.*;
-import static com.linkedin.venice.meta.VersionStatus.ERROR;
 
 
 /**
@@ -1375,11 +1373,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
      */
     public Pair<Boolean, Version> addVersionAndTopicOnly(String clusterName, String storeName, String pushJobId, int numberOfPartitions,
         int replicationFactor, boolean sendStartOfPush, boolean sorted, Version.PushType pushType,
-        String compressionDictionary, String remoteKafkaBootstrapServers, Optional<String> batchStartingFabric,
+        String compressionDictionary, String remoteKafkaBootstrapServers, Optional<String> sourceGridFabric,
         long rewindTimeInSecondsOverride, int timestampMetadataVersionId) {
         return addVersion(clusterName, storeName, pushJobId, VERSION_ID_UNSET, numberOfPartitions, replicationFactor,
             false, sendStartOfPush, sorted, false, pushType,
-            compressionDictionary, remoteKafkaBootstrapServers, batchStartingFabric, rewindTimeInSecondsOverride,
+            compressionDictionary, remoteKafkaBootstrapServers, sourceGridFabric, rewindTimeInSecondsOverride,
             timestampMetadataVersionId);
     }
 
@@ -1473,7 +1471,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     private Pair<Boolean, Version> addVersion(String clusterName, String storeName, String pushJobId, int versionNumber,
         int numberOfPartitions, int replicationFactor, boolean startIngestion, boolean sendStartOfPush,
         boolean sorted, boolean useFastKafkaOperationTimeout, Version.PushType pushType, String compressionDictionary,
-        String remoteKafkaBootstrapServers, Optional<String> batchStartingFabric, long rewindTimeInSecondsOverride,
+        String remoteKafkaBootstrapServers, Optional<String> sourceGridFabric, long rewindTimeInSecondsOverride,
         int timestampMetadataVersionId) {
         if (isClusterInMaintenanceMode(clusterName)) {
             throw new HelixClusterMaintenanceModeException(clusterName);
@@ -1616,7 +1614,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                              *    By default, it's not used unless specified. It has the highest priority because it can be used to fail
                              *    over a push.
                              */
-                            String sourceFabric = getNativeReplicationSourceFabric(clusterName, store, batchStartingFabric);
+                            String sourceFabric = getNativeReplicationSourceFabric(clusterName, store, sourceGridFabric);
                             sourceKafkaBootstrapServersAndZk = getNativeReplicationKafkaBootstrapServerAndZkAddress(sourceFabric);
                             String sourceKafkaBootstrapServers = sourceKafkaBootstrapServersAndZk.getFirst();
                             if (sourceKafkaBootstrapServers == null) {
@@ -1839,14 +1837,14 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     @Override
     public Version incrementVersionIdempotent(String clusterName, String storeName, String pushJobId,
         int numberOfPartitions, int replicationFactor, Version.PushType pushType, boolean sendStartOfPush, boolean sorted,
-        String compressionDictionary, Optional<String> batchStartingFabric, Optional<X509Certificate> requesterCert,
+        String compressionDictionary, Optional<String> sourceGridFabric, Optional<X509Certificate> requesterCert,
         long rewindTimeInSecondsOverride) {
         checkControllerMastership(clusterName);
 
         return pushType.isIncremental() ? getIncrementalPushVersion(clusterName, storeName)
             : addVersion(clusterName, storeName, pushJobId, VERSION_ID_UNSET, numberOfPartitions, replicationFactor,
                 true, sendStartOfPush, sorted, false, pushType,
-                compressionDictionary, null, batchStartingFabric, rewindTimeInSecondsOverride,
+                compressionDictionary, null, sourceGridFabric, rewindTimeInSecondsOverride,
                 TIMESTAMP_METADATA_VERSION_ID_UNSET).getSecond();
     }
 
@@ -4086,19 +4084,19 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
     @Override
-    public String getNativeReplicationSourceFabric(String clusterName, Store store, Optional<String> batchStartingFabric) {
+    public String getNativeReplicationSourceFabric(String clusterName, Store store, Optional<String> sourceGridFabric) {
         /**
          * Source fabric selection priority:
          * 1. Parent controller emergency source fabric config.
          * 2. Store level source fabric config.
-         * 3. H2V plugin batch starting fabric config.
+         * 3. H2V plugin source grid fabric config.
          * 4. Cluster level source fabric config.
          */
         String sourceFabric = multiClusterConfigs.getEmergencySourceFabric().equals("") ?
             store.getNativeReplicationSourceFabric() : multiClusterConfigs.getEmergencySourceFabric();
 
-        if (batchStartingFabric.isPresent() && (sourceFabric == null || sourceFabric.isEmpty())) {
-            sourceFabric = batchStartingFabric.get();
+        if (sourceGridFabric.isPresent() && (sourceFabric == null || sourceFabric.isEmpty())) {
+            sourceFabric = sourceGridFabric.get();
         }
 
         if (sourceFabric == null || sourceFabric.isEmpty()) {

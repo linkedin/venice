@@ -68,7 +68,6 @@ import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.mapred.AvroInputFormat;
 import org.apache.avro.mapred.AvroJob;
-import org.apache.commons.io.IOUtils;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
@@ -188,7 +187,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
    */
   public static final String VENICE_DISCOVER_URL_PROP = "venice.discover.urls";
 
-  public static final String BATCH_STARTING_FABRIC = "batch.starting.fabric";
+  public static final String SOURCE_GRID_FABRIC = "source.grid.fabric";
 
   public static final String ENABLE_WRITE_COMPUTE = "venice.write.compute.enable";
   public static final String ENABLE_PUSH = "venice.push.enable";
@@ -339,7 +338,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
     String veniceControllerUrl;
     String veniceRouterUrl;
     String storeName;
-    String batchStartingFabric;
+    String sourceGridFabric;
     int batchNumBytes;
     boolean enablePBNJ;
     boolean pbnjFailFast;
@@ -536,8 +535,8 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
      */
     pushJobSetting.enableSsl = props.getBoolean(ENABLE_SSL, false);
     pushJobSetting.sslFactoryClassName = props.getString(SSL_FACTORY_CLASS_NAME, DEFAULT_SSL_FACTORY_CLASS_NAME);
-    if (props.containsKey(BATCH_STARTING_FABRIC)) {
-      pushJobSetting.batchStartingFabric = props.getString(BATCH_STARTING_FABRIC);
+    if (props.containsKey(SOURCE_GRID_FABRIC)) {
+      pushJobSetting.sourceGridFabric = props.getString(SOURCE_GRID_FABRIC);
     }
     pushJobSetting.batchNumBytes = props.getInt(BATCH_NUM_BYTES_PROP, DEFAULT_BATCH_BYTES_SIZE);
     pushJobSetting.enablePBNJ = props.getBoolean(PBNJ_ENABLE, false);
@@ -1502,7 +1501,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
         setting.controllerRetries,
         c -> c.requestTopicForWrites(setting.storeName, inputFileDataSize, pushType, pushId,
             askControllerToSendControlMessage, SORTED, finalWriteComputeEnabled, partitioners, dictionary,
-            Optional.ofNullable(setting.batchStartingFabric), jobLivenessHeartbeatEnabled, setting.rewindTimeInSecondsOverride)
+            Optional.ofNullable(setting.sourceGridFabric), jobLivenessHeartbeatEnabled, setting.rewindTimeInSecondsOverride)
     );
     if (versionCreationResponse.isError()) {
       throw new VeniceException("Failed to create new store version with urls: " + setting.veniceControllerUrl
