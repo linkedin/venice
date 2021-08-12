@@ -1,5 +1,6 @@
 package com.linkedin.venice.pushmonitor;
 
+import com.linkedin.venice.controller.HelixVeniceClusterResources;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
@@ -22,7 +23,7 @@ import static com.linkedin.venice.pushmonitor.PushStatusCleanUpServiceState.*;
  * status ZNodes on Zookeeper that belong to the specified cluster, without scanning through the replica statuses, find
  * all leaked push status and delete them on Zookeeper.
  *
- * The life cycle of LeakedPushStatusCleanUpService matches the life cycle of {@link com.linkedin.venice.controller.VeniceHelixResources},
+ * The life cycle of LeakedPushStatusCleanUpService matches the life cycle of {@link HelixVeniceClusterResources},
  * meaning that there is one clean up service for each cluster, and it's built when the controller is promoted to leader
  * role for the cluster.
  *

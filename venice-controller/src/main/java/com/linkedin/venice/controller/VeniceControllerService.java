@@ -29,17 +29,18 @@ public class VeniceControllerService extends AbstractVeniceService {
   private static final Logger logger = Logger.getLogger(VeniceControllerService.class);
 
   private final Admin admin;
-  private final VeniceControllerMultiClusterConfig mutliClusterConfigs;
-  private final Map<String, AdminConsumerService> consumerServices;
+  private final VeniceControllerMultiClusterConfig multiClusterConfigs;
+  private final Map<String, AdminConsumerService> consumerServicesByClusters;
 
   public VeniceControllerService(VeniceControllerMultiClusterConfig multiClusterConfigs,
       MetricsRepository metricsRepository, boolean sslEnabled, Optional<SSLConfig> sslConfig,
       Optional<DynamicAccessController> accessController, Optional<AuthorizerService> authorizerService, D2Client d2Client,
       Optional<ClientConfig> routerClientConfig) {
-    this.mutliClusterConfigs = multiClusterConfigs;
-    VeniceHelixAdmin internalAdmin = new VeniceHelixAdmin(multiClusterConfigs, metricsRepository, sslEnabled, d2Client, sslConfig, accessController);
-    if (multiClusterConfigs.isParent()) {
 
+    this.multiClusterConfigs = multiClusterConfigs;
+    VeniceHelixAdmin internalAdmin = new VeniceHelixAdmin(multiClusterConfigs, metricsRepository, sslEnabled, d2Client, sslConfig, accessController);
+
+    if (multiClusterConfigs.isParent()) {
       this.admin = new VeniceParentHelixAdmin(internalAdmin, multiClusterConfigs, sslEnabled, sslConfig, accessController,
           authorizerService, createLingeringStoreVersionChecker(multiClusterConfigs, metricsRepository));
       logger.info("Controller works as a parent controller.");
@@ -55,11 +56,11 @@ public class VeniceControllerService extends AbstractVeniceService {
       logger.error("Exception in initializing KME schema reader", e);
     }
     // The admin consumer needs to use VeniceHelixAdmin to update Zookeeper directly
-    consumerServices = new HashMap<>(multiClusterConfigs.getClusters().size());
+    consumerServicesByClusters = new HashMap<>(multiClusterConfigs.getClusters().size());
     for (String cluster : multiClusterConfigs.getClusters()) {
       AdminConsumerService adminConsumerService =
           new AdminConsumerService(internalAdmin, multiClusterConfigs.getConfigForCluster(cluster), metricsRepository, kafkaMessageEnvelopeSchemaReader);
-      this.consumerServices.put(cluster, adminConsumerService);
+      this.consumerServicesByClusters.put(cluster, adminConsumerService);
 
       this.admin.setAdminConsumerService(cluster, adminConsumerService);
     }
@@ -85,26 +86,24 @@ public class VeniceControllerService extends AbstractVeniceService {
 
   @Override
   public boolean startInner() {
-    for (String clusterName : mutliClusterConfigs.getClusters()) {
-      admin.start(clusterName);
-      consumerServices.get(clusterName).start();
+    for (String clusterName : multiClusterConfigs.getClusters()) {
+      admin.initVeniceControllerClusterResource(clusterName);
+      consumerServicesByClusters.get(clusterName).start();
       logger.info("started cluster: " + clusterName);
     }
-
     logger.info("Started Venice controller.");
-
     // There is no async process in this function, so we are completely finished with the start up process.
     return true;
   }
 
   @Override
   public void stopInner() {
-    for (String clusterName : mutliClusterConfigs.getClusters()) {
+    for (String clusterName : multiClusterConfigs.getClusters()) {
       // We don't need to lock resources here, as we will acquire the lock during the ST leader->standby, which would
       // prevent the partial updates.
       admin.stop(clusterName);
       try {
-        consumerServices.get(clusterName).stop();
+        consumerServicesByClusters.get(clusterName).stop();
       } catch (Exception e) {
         logger.error("Got exception when stop AdminConsumerService", e);
       }
@@ -127,6 +126,6 @@ public class VeniceControllerService extends AbstractVeniceService {
    * @return the admin consumer service for the cluster
    */
   public AdminConsumerService getAdminConsumerServiceByCluster(String cluster) {
-    return consumerServices.get(cluster);
+    return consumerServicesByClusters.get(cluster);
   }
 }

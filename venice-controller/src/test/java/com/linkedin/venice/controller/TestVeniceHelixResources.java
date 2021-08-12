@@ -24,11 +24,11 @@ import org.testng.annotations.Test;
 public class TestVeniceHelixResources {
   private static final Logger LOGGER = Logger.getLogger(TestVeniceHelixResources.class);
 
-  private VeniceHelixResources getVeniceHelixResources(String cluster) {
+  private HelixVeniceClusterResources getVeniceHelixResources(String cluster) {
     return getVeniceHelixResources(cluster, new MetricsRepository());
   }
 
-  private VeniceHelixResources getVeniceHelixResources(String cluster, MetricsRepository metricsRepository) {
+  private HelixVeniceClusterResources getVeniceHelixResources(String cluster, MetricsRepository metricsRepository) {
     ZkServerWrapper zk = ServiceFactory.getZkServer();
     ZkClient zkClient = ZkClientFactory.newZkClient(zk.getAddress());
     ZKHelixManager controller = new ZKHelixManager(cluster, "localhost_1234", InstanceType.CONTROLLER, zk.getAddress());
@@ -38,7 +38,7 @@ public class TestVeniceHelixResources {
     doReturn(mock(MetaStoreWriter.class)).when(veniceHelixAdmin).getMetaStoreWriter();
     doReturn(mock(HelixReadOnlyZKSharedSystemStoreRepository.class)).when(veniceHelixAdmin).getReadOnlyZKSharedSystemStoreRepository();
     doReturn(mock(HelixReadOnlyZKSharedSchemaRepository.class)).when(veniceHelixAdmin).getReadOnlyZKSharedSchemaRepository();
-    return new VeniceHelixResources(cluster, zkClient, new HelixAdapterSerializer(), new SafeHelixManager(controller),
+    return new HelixVeniceClusterResources(cluster, zkClient, new HelixAdapterSerializer(), new SafeHelixManager(controller),
         mock(VeniceControllerConfig.class), veniceHelixAdmin, metricsRepository, Optional.empty(),
         Optional.empty(), Optional.empty(), mock(MetadataStoreWriter.class), mock(HelixAdminClient.class));
   }
@@ -46,7 +46,7 @@ public class TestVeniceHelixResources {
   @Test
   public void testShutdownLock()
       throws Exception {
-    final VeniceHelixResources rs = getVeniceHelixResources("test");
+    final HelixVeniceClusterResources rs = getVeniceHelixResources("test");
     int[] test = new int[]{0};
     try (AutoCloseableLock ignore1 = rs.getClusterLockManager().createStoreWriteLock("store")) {
       test[0] = 1;

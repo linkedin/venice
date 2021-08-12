@@ -85,7 +85,7 @@ public interface Admin extends AutoCloseable, Closeable {
         }
     }
 
-    void start(String clusterName);
+    void initVeniceControllerClusterResource(String clusterName);
 
     boolean isClusterValid(String clusterName);
 
@@ -370,7 +370,7 @@ public interface Admin extends AutoCloseable, Closeable {
      * Get instance of master controller. If there is no master controller for the given cluster, throw a
      * VeniceException.
      */
-    Instance getMasterController(String clusterName);
+    Instance getLeaderController(String clusterName);
 
     void addInstanceToWhitelist(String clusterName, String helixNodeId);
 

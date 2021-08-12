@@ -28,7 +28,7 @@ import org.testng.annotations.Test;
 import static org.mockito.Mockito.*;
 
 public class TestInstanceStatusDecider {
-  private VeniceHelixResources resources;
+  private HelixVeniceClusterResources resources;
   private String clusterName;
   private SafeHelixDataAccessor accessor;
   private HelixExternalViewRepository routingDataRepository;
@@ -41,7 +41,7 @@ public class TestInstanceStatusDecider {
   @BeforeMethod
   public void setup() {
     clusterName = TestUtils.getUniqueString("TestInstanceStatusDecider");
-    resources = mock(VeniceHelixResources.class);
+    resources = mock(HelixVeniceClusterResources.class);
     routingDataRepository = mock(HelixExternalViewRepository.class);
     readWriteStoreRepository = mock(HelixReadWriteStoreRepository.class);
     mockMonitor = mock(PushMonitorDelegator.class);
@@ -59,7 +59,7 @@ public class TestInstanceStatusDecider {
     doReturn(routingDataRepository).when(resources).getRoutingDataRepository();
     doReturn(readWriteStoreRepository).when(resources).getMetadataRepository();
     doReturn(mockMonitor).when(resources).getPushMonitor();
-    doReturn(manager).when(resources).getController();
+    doReturn(manager).when(resources).getHelixManager();
     doReturn(accessor).when(manager).getHelixDataAccessor();
     doReturn(new LiveInstance("test")).when(accessor).getProperty(any(PropertyKey.class));
   }

@@ -45,15 +45,15 @@ import org.apache.log4j.Logger;
 
 
 /**
- * Aggregate all of essentials resources which is required by controller in one place.
+ * Aggregate all of essentials resources which is required by controller to manage a Venice cluster.
  * <p>
  * All resources in this class is dedicated for one Venice cluster.
  */
-public class VeniceHelixResources implements VeniceResource {
-  private static final Logger LOGGER = Logger.getLogger(VeniceHelixResources.class);
+public class HelixVeniceClusterResources implements VeniceResource {
+  private static final Logger LOGGER = Logger.getLogger(HelixVeniceClusterResources.class);
 
   private final String clusterName;
-  private final SafeHelixManager controller;
+  private final SafeHelixManager helixManager;
   private final ClusterLockManager clusterLockManager;
   private final ReadWriteStoreRepository metadataRepository;
   private final HelixExternalViewRepository routingDataRepository;
@@ -71,7 +71,7 @@ public class VeniceHelixResources implements VeniceResource {
   private ErrorPartitionResetTask errorPartitionResetTask = null;
   private final Optional<MetaStoreWriter> metaStoreWriter;
 
-  public VeniceHelixResources(String clusterName,
+  public HelixVeniceClusterResources(String clusterName,
       ZkClient zkClient,
       HelixAdapterSerializer adapterSerializer,
       SafeHelixManager helixManager,
@@ -85,7 +85,7 @@ public class VeniceHelixResources implements VeniceResource {
       HelixAdminClient helixAdminClient) {
     this.clusterName = clusterName;
     this.config = config;
-    this.controller = helixManager;
+    this.helixManager = helixManager;
     /**
      * So far, Meta system store doesn't support write from parent cluster.
      */
@@ -111,10 +111,10 @@ public class VeniceHelixResources implements VeniceResource {
     );
 
     SafeHelixManager spectatorManager;
-    if (controller.getInstanceType() == InstanceType.SPECTATOR) {
+    if (this.helixManager.getInstanceType() == InstanceType.SPECTATOR) {
       // HAAS is enabled for storage clusters therefore the helix manager is connected as a spectator and it can be
       // used directly for external view purposes.
-      spectatorManager = controller;
+      spectatorManager = this.helixManager;
     } else {
       // Use a separate helix manger for listening on the external view to prevent it from blocking state transition and messages.
       spectatorManager = getSpectatorManager(clusterName, zkClient.getServers());
@@ -273,8 +273,8 @@ public class VeniceHelixResources implements VeniceResource {
     return messageChannel;
   }
 
-  public SafeHelixManager getController() {
-    return controller;
+  public SafeHelixManager getHelixManager() {
+    return helixManager;
   }
 
   public VeniceControllerClusterConfig getConfig() {
