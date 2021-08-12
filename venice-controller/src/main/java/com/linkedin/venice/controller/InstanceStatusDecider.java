@@ -29,7 +29,7 @@ import org.apache.log4j.Logger;
 public class InstanceStatusDecider {
   private static final Logger logger = Logger.getLogger(InstanceStatusDecider.class);
 
-  protected static List<Replica> getReplicasForInstance(VeniceHelixResources resources, String instanceId) {
+  protected static List<Replica> getReplicasForInstance(HelixVeniceClusterResources resources, String instanceId) {
     RoutingDataRepository routingDataRepository = resources.getRoutingDataRepository();
     ResourceAssignment resourceAssignment = routingDataRepository.getResourceAssignment();
     List<Replica> replicas = new ArrayList<>();
@@ -52,7 +52,7 @@ public class InstanceStatusDecider {
     return replicas;
   }
 
-  protected static NodeRemovableResult isRemovable(VeniceHelixResources resources, String clusterName,
+  protected static NodeRemovableResult isRemovable(HelixVeniceClusterResources resources, String clusterName,
       String instanceId) {
 
     return isRemovable(resources, clusterName, instanceId, false);
@@ -67,11 +67,11 @@ public class InstanceStatusDecider {
    * 3. For each ongoing version(during the push) exists in this instance:
    *  3.1 Push will not fail after removing this node from the cluster.
    */
-  protected static NodeRemovableResult isRemovable(VeniceHelixResources resources, String clusterName, String instanceId,
+  protected static NodeRemovableResult isRemovable(HelixVeniceClusterResources resources, String clusterName, String instanceId,
       boolean isInstanceView) {
     try {
       // If instance is not alive, it's removable.
-      if (!HelixUtils.isLiveInstance(clusterName, instanceId, resources.getController())) {
+      if (!HelixUtils.isLiveInstance(clusterName, instanceId, resources.getHelixManager())) {
         return NodeRemovableResult.removableResult();
       }
 

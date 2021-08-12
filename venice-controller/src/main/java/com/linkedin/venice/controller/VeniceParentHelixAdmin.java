@@ -292,8 +292,8 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
-  public synchronized void start(String clusterName) {
-    veniceHelixAdmin.start(clusterName);
+  public synchronized void initVeniceControllerClusterResource(String clusterName) {
+    veniceHelixAdmin.initVeniceControllerClusterResource(clusterName);
     asyncSetupEnabledMap.put(clusterName, true);
     // We might not be able to call a lot of functions of veniceHelixAdmin since
     // current controller might not be the master controller for the given clusterName
@@ -432,7 +432,7 @@ public class VeniceParentHelixAdmin implements Admin {
       // Verify that the store is indeed created by another controller. This is to prevent if the initial master fails
       // or when the cluster happens to be leaderless for a bit.
       try (ControllerClient controllerClient =
-          new ControllerClient(clusterName, getMasterController(clusterName).getUrl(false), sslFactory)) {
+          new ControllerClient(clusterName, getLeaderController(clusterName).getUrl(false), sslFactory)) {
         StoreResponse storeResponse = controllerClient.getStore(storeName);
         if (storeResponse.isError()) {
           logger.info("Failed to verify " + storeDescriptor + " from the controller with URL: " +
@@ -665,7 +665,7 @@ public class VeniceParentHelixAdmin implements Admin {
    * the store version creation history.
    */
   protected void cleanupHistoricalVersions(String clusterName, String storeName) {
-    VeniceHelixResources resources = veniceHelixAdmin.getVeniceHelixResource(clusterName);
+    HelixVeniceClusterResources resources = veniceHelixAdmin.getHelixVeniceClusterResources(clusterName);
     try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
       ReadWriteStoreRepository storeRepo = resources.getMetadataRepository();
       Store store = storeRepo.getStore(storeName);
@@ -1247,7 +1247,7 @@ public class VeniceParentHelixAdmin implements Admin {
     try {
       veniceHelixAdmin.checkPreConditionForUpdateStoreMetadata(clusterName, storeName);
 
-      int maxPartitionNum = veniceHelixAdmin.getVeniceHelixResource(clusterName).getConfig().getMaxNumberOfPartition();
+      int maxPartitionNum = veniceHelixAdmin.getHelixVeniceClusterResources(clusterName).getConfig().getMaxNumberOfPartition();
       if (partitionCount > maxPartitionNum) {
         throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, "Partition count: "
             + partitionCount + " should be less than max: " + maxPartitionNum);
@@ -1431,7 +1431,7 @@ public class VeniceParentHelixAdmin implements Admin {
 
       if (partitionCount.isPresent()) {
         setStore.partitionNum = partitionCount.get();
-        int maxPartitionNum = veniceHelixAdmin.getVeniceHelixResource(clusterName).getConfig().getMaxNumberOfPartition();
+        int maxPartitionNum = veniceHelixAdmin.getHelixVeniceClusterResources(clusterName).getConfig().getMaxNumberOfPartition();
         if (setStore.partitionNum > maxPartitionNum) {
           throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, "Partition count: "
               + partitionCount + " should be less than max: " + maxPartitionNum);
@@ -1453,7 +1453,7 @@ public class VeniceParentHelixAdmin implements Admin {
        */
       boolean isLeaderFollowerModelEnabled = (!leaderFollowerModelEnabled.isPresent() && store.isLeaderFollowerModelEnabled())
                                              || (leaderFollowerModelEnabled.isPresent() && leaderFollowerModelEnabled.get());
-      boolean isLfModelDependencyCheckDisabled = veniceHelixAdmin.getVeniceHelixResource(clusterName).getConfig().isLfModelDependencyCheckDisabled();
+      boolean isLfModelDependencyCheckDisabled = veniceHelixAdmin.getHelixVeniceClusterResources(clusterName).getConfig().isLfModelDependencyCheckDisabled();
       if(nativeReplicationEnabled.isPresent() && nativeReplicationEnabled.get() && !isLeaderFollowerModelEnabled && !isLfModelDependencyCheckDisabled)  {
         throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, "Native Replication cannot be enabled for store " + storeName + " since it's not on L/F state model");
       }
@@ -1504,7 +1504,7 @@ public class VeniceParentHelixAdmin implements Admin {
           .orElseGet(store::isEnableWrites);
 
       if (readQuotaInCU.isPresent()) {
-        VeniceHelixResources resources = veniceHelixAdmin.getVeniceHelixResource(clusterName);
+        HelixVeniceClusterResources resources = veniceHelixAdmin.getHelixVeniceClusterResources(clusterName);
         ZkRoutersClusterManager routersClusterManager = resources.getRoutersClusterManager();
         int routerCount = routersClusterManager.getLiveRoutersCount();
         if (Math.max(DEFAULT_PER_ROUTER_READ_QUOTA, routerCount * DEFAULT_PER_ROUTER_READ_QUOTA) < readQuotaInCU.get()) {
@@ -2204,8 +2204,8 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
-  public Instance getMasterController(String clusterName) {
-    return veniceHelixAdmin.getMasterController(clusterName);
+  public Instance getLeaderController(String clusterName) {
+    return veniceHelixAdmin.getLeaderController(clusterName);
   }
 
   @Override
@@ -2743,7 +2743,7 @@ public class VeniceParentHelixAdmin implements Admin {
 
   @Override
   public void updateAclForStore(String clusterName, String storeName, String accessPermissions) {
-    VeniceHelixResources resources = veniceHelixAdmin.getVeniceHelixResource(clusterName);
+    HelixVeniceClusterResources resources = veniceHelixAdmin.getHelixVeniceClusterResources(clusterName);
     try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
       logger.info("ACLProvisioning: UpdateAcl:" + storeName + " in cluster: " + clusterName);
       if (!authorizerService.isPresent()) {
@@ -2755,7 +2755,7 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   public void updateSystemStoreAclForStore(String clusterName, String regularStoreName, AclBinding systemStoreAclBinding) {
-    VeniceHelixResources resources = veniceHelixAdmin.getVeniceHelixResource(clusterName);
+    HelixVeniceClusterResources resources = veniceHelixAdmin.getHelixVeniceClusterResources(clusterName);
     try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(regularStoreName)) {
       if (!authorizerService.isPresent()) {
         throw new VeniceUnsupportedOperationException("updateAclForStore is not supported yet!");
@@ -2767,7 +2767,7 @@ public class VeniceParentHelixAdmin implements Admin {
 
   @Override
   public String getAclForStore(String clusterName, String storeName) {
-    VeniceHelixResources resources = veniceHelixAdmin.getVeniceHelixResource(clusterName);
+    HelixVeniceClusterResources resources = veniceHelixAdmin.getHelixVeniceClusterResources(clusterName);
     try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreReadLock(storeName)) {
       logger.info("ACLProvisioning: GetAcl:" + storeName + " in cluster: " + clusterName);
       if (!authorizerService.isPresent()) {
@@ -2781,7 +2781,7 @@ public class VeniceParentHelixAdmin implements Admin {
 
   @Override
   public void deleteAclForStore(String clusterName, String storeName) {
-    VeniceHelixResources resources = veniceHelixAdmin.getVeniceHelixResource(clusterName);
+    HelixVeniceClusterResources resources = veniceHelixAdmin.getHelixVeniceClusterResources(clusterName);
     try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
       logger.info("ACLProvisioning: DeleteAcl:" + storeName + " in cluster: " + clusterName);
       if (!authorizerService.isPresent()) {

@@ -58,7 +58,7 @@ public class AbstractTestVeniceParentHelixAdmin {
   ZkClient zkClient;
   VeniceWriter veniceWriter;
   VeniceParentHelixAdmin parentAdmin = null;
-  VeniceHelixResources resources;
+  HelixVeniceClusterResources resources;
   Store store;
   ParentHelixOfflinePushAccessor accessor;
   HelixReadOnlyStoreConfigRepository readOnlyStoreConfigRepository;
@@ -168,10 +168,10 @@ public class AbstractTestVeniceParentHelixAdmin {
     return config;
   }
 
-  VeniceHelixResources mockResources(VeniceControllerConfig config, String clusterName) {
-    VeniceHelixResources resources = mock(VeniceHelixResources.class);
+  HelixVeniceClusterResources mockResources(VeniceControllerConfig config, String clusterName) {
+    HelixVeniceClusterResources resources = mock(HelixVeniceClusterResources.class);
     doReturn(config).when(resources).getConfig();
-    doReturn(resources).when(internalAdmin).getVeniceHelixResource(any());
+    doReturn(resources).when(internalAdmin).getHelixVeniceClusterResources(any());
     return resources;
   }
 

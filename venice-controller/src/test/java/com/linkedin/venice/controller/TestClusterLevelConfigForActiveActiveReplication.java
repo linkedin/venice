@@ -1,6 +1,5 @@
 package com.linkedin.venice.controller;
 
-import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.kafka.TopicManager;
@@ -58,7 +57,7 @@ public class TestClusterLevelConfigForActiveActiveReplication extends AbstractTe
         D2TestUtils.getAndStartD2Client(zkAddress)
     );
 
-    veniceAdmin.start(clusterName);
+    veniceAdmin.initVeniceControllerClusterResource(clusterName);
     TopicManagerRepository originalTopicManagerRepository = veniceAdmin.getTopicManagerRepository();
 
     TopicManager mockedTopicManager = mock(TopicManager.class);

@@ -49,8 +49,8 @@ public class VeniceDistClusterControllerStateModel extends StateModel {
   private final HelixAdminClient helixAdminClient;
 
   private VeniceControllerConfig clusterConfig;
-  private SafeHelixManager controller;
-  private VeniceHelixResources resources;
+  private SafeHelixManager helixManager;
+  private HelixVeniceClusterResources clusterResources;
 
   private final Optional<TopicReplicator> onlineOfflineTopicReplicator;
   private final Optional<TopicReplicator> leaderFollowerTopicReplicator;
@@ -125,28 +125,64 @@ public class VeniceDistClusterControllerStateModel extends StateModel {
       if (clusterConfig == null) {
         throw new VeniceException("No configuration exists for " + clusterName);
       }
-      boolean isStorageClusterHAAS = clusterConfig.isVeniceClusterLeaderHAAS();
       String controllerName = message.getTgtName();
       logger.info(controllerName + " becoming leader from standby for " + clusterName);
-      if (controller == null || !controller.isConnected()) {
-        InstanceType instanceType = isStorageClusterHAAS ? InstanceType.SPECTATOR : InstanceType.CONTROLLER;
-        controller = new SafeHelixManager(
-            HelixManagerFactory.getZKHelixManager(clusterName, controllerName, instanceType, zkClient.getServers()));
-        controller.connect();
-        controller.startTimerTasks();
-        resources = new VeniceHelixResources(clusterName, zkClient, adapterSerializer, controller, clusterConfig, admin, metricsRepository, onlineOfflineTopicReplicator, leaderFollowerTopicReplicator,
-            accessController, metadataStoreWriter, helixAdminClient);
-        resources.refresh();
-        resources.startErrorPartitionResetTask();
-        resources.startLeakedPushStatusCleanUpService();
-        logger.info(controllerName + " is the leader of " + clusterName);
-      } else {
+
+      if (helixManagerInitialized()) {
         // TODO: It seems like this should throw an exception.  Otherwise the case would be you'd have an instance be leader
         // in Helix that hadn't subscribed to any resource.  This could happen if a state transition thread timed out and ERROR'd
         // and the partition was 'reset' instead of bouncing the process.
-        logger.error("controller already exists:" + controller.getInstanceName() + " for " + clusterName);
+        logger.error(
+            String.format("Helix manager already exists for instance %s on cluster %s and received controller name %s",
+                helixManager.getInstanceName(),
+                clusterName,
+                controllerName
+            ));
+
+      } else {
+        initHelixManager(controllerName);
+        initClusterResources();
+        logger.info(String.format("Controller %s with instance %s is the leader of cluster %s", controllerName, helixManager.getInstanceName(), clusterName));
       }
     });
+  }
+
+  private boolean helixManagerInitialized() {
+    return helixManager != null && helixManager.isConnected();
+  }
+
+  private void initHelixManager(String controllerName) throws Exception {
+    if (helixManagerInitialized()) {
+      throw new VeniceException(
+          String.format("Helix manager has been initialized with instance %s for cluster %s", helixManager.getInstanceName(), clusterName));
+    }
+    InstanceType instanceType = clusterConfig.isVeniceClusterLeaderHAAS() ? InstanceType.SPECTATOR : InstanceType.CONTROLLER;
+    helixManager = new SafeHelixManager(HelixManagerFactory.getZKHelixManager(clusterName, controllerName, instanceType, zkClient.getServers()));
+    helixManager.connect();
+    helixManager.startTimerTasks();
+  }
+
+  private void initClusterResources() {
+    if (!helixManagerInitialized()) {
+      throw new VeniceException("Helix manager should have been initialized for " + clusterName);
+    }
+    clusterResources = new HelixVeniceClusterResources(
+        clusterName,
+        zkClient,
+        adapterSerializer,
+        helixManager,
+        clusterConfig,
+        admin,
+        metricsRepository,
+        onlineOfflineTopicReplicator,
+        leaderFollowerTopicReplicator,
+        accessController,
+        metadataStoreWriter,
+        helixAdminClient
+    );
+    clusterResources.refresh();
+    clusterResources.startErrorPartitionResetTask();
+    clusterResources.startLeakedPushStatusCleanUpService();
   }
 
   @Transition(to = HelixState.STANDBY_STATE, from = HelixState.LEADER_STATE)
@@ -157,7 +193,7 @@ public class VeniceDistClusterControllerStateModel extends StateModel {
       logger.info(controllerName + " becoming standby from leader for " + clusterName);
       // We have to create a snapshot of resources here, as the resources will be set to null during the reset. So this
       // snapshot will let us unlock successfully.
-      VeniceHelixResources snapshot = resources;
+      HelixVeniceClusterResources snapshot = clusterResources;
       // Lock to prevent the partial result of admin operation.
       try (AutoCloseableLock ignore = snapshot.lockForShutdown()) {
         reset();
@@ -169,7 +205,6 @@ public class VeniceDistClusterControllerStateModel extends StateModel {
   public void onBecomeOfflineFromStandby(Message message, NotificationContext context) {
     executeStateTransition(message, () -> {
       String controllerName = message.getTgtName();
-
       logger.info(controllerName + " becoming offline from standby for " + clusterName);
     });
   }
@@ -207,7 +242,6 @@ public class VeniceDistClusterControllerStateModel extends StateModel {
   @Override
   public void rollbackOnError(Message message, NotificationContext context, StateTransitionError error) {
     String controllerName = message.getTgtName();
-
     logger.error(controllerName + " rollbacks on error for " + clusterName);
     reset();
   }
@@ -215,24 +249,24 @@ public class VeniceDistClusterControllerStateModel extends StateModel {
   @Override
   public synchronized void reset() {
     clearResources();
-    closeController();
+    closeHelixManager();
   }
 
   /** synchronized because concurrent calls could cause a NPE */
-  private synchronized void closeController() {
-    if (controller != null) {
-      controller.disconnect();
-      controller = null;
+  private synchronized void closeHelixManager() {
+    if (helixManager != null) {
+      helixManager.disconnect();
+      helixManager = null;
     }
   }
 
   /** synchronized because concurrent calls could cause a NPE */
   private synchronized void clearResources() {
-    if (resources != null) {
-      resources.clear();
-      resources.stopErrorPartitionResetTask();
-      resources.stopLeakedPushStatusCleanUpService();
-      resources = null;
+    if (clusterResources != null) {
+      clusterResources.clear();
+      clusterResources.stopErrorPartitionResetTask();
+      clusterResources.stopLeakedPushStatusCleanUpService();
+      clusterResources = null;
     }
   }
 
@@ -248,11 +282,11 @@ public class VeniceDistClusterControllerStateModel extends StateModel {
     return veniceClusterName + PARTITION_SUFFIX;
   }
 
-  public Optional<VeniceHelixResources> getResources() {
-    if (resources == null) {
+  public Optional<HelixVeniceClusterResources> getResources() {
+    if (clusterResources == null) {
       return Optional.empty();
     } else {
-      return Optional.of(resources);
+      return Optional.of(clusterResources);
     }
   }
 

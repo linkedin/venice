@@ -1,6 +1,5 @@
 package com.linkedin.venice.controller;
 
-import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.VeniceStateModel;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
@@ -34,18 +33,17 @@ import org.apache.log4j.Logger;
 import org.testng.Assert;
 
 import static com.linkedin.venice.ConfigKeys.*;
-import static org.mockito.Mockito.*;
 
 
 class AbstractTestVeniceHelixAdmin {
-  static final long MASTER_CHANGE_TIMEOUT = 10 * Time.MS_PER_SECOND;
-  static final long TOTAL_TIMEOUT_FOR_LONG_TEST = 30 * Time.MS_PER_SECOND;
-  static final long TOTAL_TIMEOUT_FOR_SHORT_TEST = 10 * Time.MS_PER_SECOND;
+  static final long MASTER_CHANGE_TIMEOUT_MS = 10 * Time.MS_PER_SECOND;
+  static final long TOTAL_TIMEOUT_FOR_LONG_TEST_MS = 60 * Time.MS_PER_SECOND;
+  static final long TOTAL_TIMEOUT_FOR_SHORT_TEST_MS = 10 * Time.MS_PER_SECOND;
   static final int DEFAULT_REPLICA_COUNT = 1;
 
   static final String KEY_SCHEMA = "\"string\"";
   static final String VALUE_SCHEMA = "\"string\"";
-  static final int MAX_NUMBER_OF_PARTITION = 10;
+  static final int MAX_NUMBER_OF_PARTITION = 16;
   static String NODE_ID = "localhost_9985";
   static int SERVER_LISTENING_PORT = 9985;
 
@@ -54,18 +52,18 @@ class AbstractTestVeniceHelixAdmin {
   VeniceHelixAdmin veniceAdmin;
   String clusterName;
   String storeOwner = "Doge of Venice";
-  VeniceControllerConfig config;
+  VeniceControllerConfig controllerConfig;
 
   String zkAddress;
   String kafkaZkAddress;
 
   ZkServerWrapper zkServerWrapper;
   KafkaBrokerWrapper kafkaBrokerWrapper;
-  SafeHelixManager manager;
-  Map<String, SafeHelixManager> participants = new HashMap<>();
+  SafeHelixManager helixManager;
+  Map<String, SafeHelixManager> helixManagerByNodeID = new HashMap<>();
 
   VeniceProperties controllerProps;
-  Map<String,MockTestStateModelFactory> stateModelFactories = new HashMap<>();
+  Map<String,MockTestStateModelFactory> stateModelFactoryByNodeID = new HashMap<>();
   HelixMessageChannelStats helixMessageChannelStats;
   VeniceControllerMultiClusterConfig multiClusterConfig;
 
@@ -77,20 +75,21 @@ class AbstractTestVeniceHelixAdmin {
     clusterName = TestUtils.getUniqueString("test-cluster");
     controllerProps = new VeniceProperties(getControllerProperties(clusterName));
     helixMessageChannelStats = new HelixMessageChannelStats(new MetricsRepository(), clusterName);
-    config = new VeniceControllerConfig(controllerProps);
-    multiClusterConfig = TestUtils.getMultiClusterConfigFromOneCluster(config);
+    controllerConfig = new VeniceControllerConfig(controllerProps);
+    multiClusterConfig = TestUtils.getMultiClusterConfigFromOneCluster(controllerConfig);
     veniceAdmin = new VeniceHelixAdmin(multiClusterConfig, new MetricsRepository(), D2TestUtils.getAndStartD2Client(zkAddress));
-    veniceAdmin.start(clusterName);
+    veniceAdmin.initVeniceControllerClusterResource(clusterName);
     startParticipant();
-    waitUntilIsMaster(veniceAdmin, clusterName, MASTER_CHANGE_TIMEOUT);
+    waitUntilIsMaster(veniceAdmin, clusterName, MASTER_CHANGE_TIMEOUT_MS);
   }
 
   public void cleanupCluster() {
-    stopParticipants();
+    stopAllParticipants();
     try {
       veniceAdmin.stop(clusterName);
       veniceAdmin.close();
     } catch (Exception e) {
+      logger.warn(e);
     }
     zkServerWrapper.close();
     kafkaBrokerWrapper.close();
@@ -101,40 +100,40 @@ class AbstractTestVeniceHelixAdmin {
   }
 
   void delayParticipantJobCompletion(boolean isDelay) {
-    for (String nodeId : stateModelFactories.keySet()) {
-      stateModelFactories.get(nodeId).setBlockTransition(isDelay);
+    for (String nodeId : stateModelFactoryByNodeID.keySet()) {
+      stateModelFactoryByNodeID.get(nodeId).setBlockTransition(isDelay);
     }
   }
 
   void startParticipant(boolean isDelay, String nodeId) throws Exception {
     MockTestStateModelFactory stateModelFactory;
-    if (stateModelFactories.containsKey(nodeId)) {
-      stateModelFactory = stateModelFactories.get(nodeId);
+    if (stateModelFactoryByNodeID.containsKey(nodeId)) {
+      stateModelFactory = stateModelFactoryByNodeID.get(nodeId);
     } else {
       stateModelFactory = new MockTestStateModelFactory();
-      stateModelFactories.put(nodeId, stateModelFactory);
+      stateModelFactoryByNodeID.put(nodeId, stateModelFactory);
     }
     stateModelFactory.setBlockTransition(isDelay);
-    manager = TestUtils.getParticipant(clusterName, nodeId, zkAddress, SERVER_LISTENING_PORT, stateModelFactory,
+    helixManager = TestUtils.getParticipant(clusterName, nodeId, zkAddress, SERVER_LISTENING_PORT, stateModelFactory,
         VeniceStateModel.PARTITION_ONLINE_OFFLINE_STATE_MODEL);
-    participants.put(nodeId, manager);
-    manager.connect();
+    helixManager.connect();
+    helixManagerByNodeID.put(nodeId, helixManager);
     HelixUtils.setupInstanceConfig(clusterName, nodeId, zkAddress);
   }
 
-  void stopParticipants() {
-    for (String nodeId : participants.keySet()) {
-      participants.get(nodeId).disconnect();
+  void stopAllParticipants() {
+    for (String nodeId : helixManagerByNodeID.keySet()) {
+      helixManagerByNodeID.get(nodeId).disconnect();
     }
-    participants.clear();
-    stateModelFactories.clear();
+    helixManagerByNodeID.clear();
+    stateModelFactoryByNodeID.clear();
   }
 
   void stopParticipant(String nodeId) {
-    if (participants.containsKey(nodeId)) {
-      participants.get(nodeId).disconnect();
-      participants.remove(nodeId);
-      stateModelFactories.remove(nodeId);
+    if (helixManagerByNodeID.containsKey(nodeId)) {
+      helixManagerByNodeID.get(nodeId).disconnect();
+      helixManagerByNodeID.remove(nodeId);
+      stateModelFactoryByNodeID.remove(nodeId);
     }
   }
 
@@ -162,7 +161,7 @@ class AbstractTestVeniceHelixAdmin {
     properties.put(ADMIN_HELIX_MESSAGING_CHANNEL_ENABLED, false);
     properties.put(PARTICIPANT_MESSAGE_STORE_ENABLED, true);
     properties.put(TOPIC_CLEANUP_SEND_CONCURRENT_DELETES_REQUESTS, true);
-
+    properties.put(CONTROLLER_SYSTEM_SCHEMA_CLUSTER_NAME, clusterName);
     return properties;
   }
 

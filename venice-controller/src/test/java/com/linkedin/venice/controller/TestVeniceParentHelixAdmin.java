@@ -16,7 +16,6 @@ import com.linkedin.venice.controller.kafka.protocol.admin.UpdateStore;
 import com.linkedin.venice.controller.kafka.protocol.admin.ValueSchemaCreation;
 import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
-import com.linkedin.venice.controllerapi.ControllerApiConstants;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
@@ -29,7 +28,6 @@ import com.linkedin.venice.exceptions.VeniceStoreAlreadyExistsException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.helix.HelixReadWriteStoreRepository;
 import com.linkedin.venice.kafka.TopicManager;
-import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
@@ -62,7 +60,6 @@ import org.mockito.ArgumentCaptor;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
-import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 import java.util.ArrayList;
@@ -97,7 +94,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
   @Test
   public void testStartWithTopicExists() {
-    parentAdmin.start(clusterName);
+    parentAdmin.initVeniceControllerClusterResource(clusterName);
     verify(internalAdmin).getTopicManager();
     verify(topicManager, never()).createTopic(topicName, AdminTopicUtils.PARTITION_NUM_FOR_ADMIN_TOPIC,
         KAFKA_REPLICA_FACTOR);
@@ -106,7 +103,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   @Test
   public void testStartWhenTopicNotExists() {
     doReturn(false).when(topicManager).containsTopicAndAllPartitionsAreOnline(topicName);
-    parentAdmin.start(clusterName);
+    parentAdmin.initVeniceControllerClusterResource(clusterName);
     verify(internalAdmin).getTopicManager();
     verify(topicManager).createTopic(topicName, AdminTopicUtils.PARTITION_NUM_FOR_ADMIN_TOPIC, KAFKA_REPLICA_FACTOR);
   }
@@ -206,7 +203,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     mockVeniceParentHelixAdmin.setVeniceWriterForCluster(arbitraryCluster, veniceWriter);
     mockVeniceParentHelixAdmin.setTimer(new MockTime());
     try {
-      mockVeniceParentHelixAdmin.start(arbitraryCluster);
+      mockVeniceParentHelixAdmin.initVeniceControllerClusterResource(arbitraryCluster);
       String[] systemStoreNames = {PUSH_JOB_DETAILS_STORE_NAME, participantStoreName};
       for (String systemStore : systemStoreNames) {
         TestUtils.waitForNonDeterministicCompletion(1, TimeUnit.SECONDS, () -> {
@@ -232,7 +229,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         .thenReturn(null)
         .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, -1, 1));
 
-    parentAdmin.start(clusterName);
+    parentAdmin.initVeniceControllerClusterResource(clusterName);
 
     String storeName = "test-store";
     String owner = "test-owner";
@@ -289,7 +286,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
       // Need to bypass VeniceWriter initialization
       parentAdmin.setVeniceWriterForCluster(cluster, veniceWriter);
       writerMap.put(cluster,veniceWriter);
-      parentAdmin.start(cluster);
+      parentAdmin.initVeniceControllerClusterResource(cluster);
     }
 
     for(String cluster : configMap.keySet()) {
@@ -355,7 +352,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         .when(internalAdmin).checkPreConditionForAddStore(clusterName, storeName, keySchemaStr, valueSchemaStr, false, false);
 
     when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(null);
-    parentAdmin.start(clusterName);
+    parentAdmin.initVeniceControllerClusterResource(clusterName);
 
     Assert.assertThrows(VeniceStoreAlreadyExistsException.class, () -> parentAdmin.addStore(clusterName, storeName, owner, keySchemaStr, valueSchemaStr));
   }
@@ -372,7 +369,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     String owner = "test-owner";
     String keySchemaStr = "\"string\"";
     String valueSchemaStr = "\"string\"";
-    parentAdmin.start(clusterName);
+    parentAdmin.initVeniceControllerClusterResource(clusterName);
     parentAdmin.addStore(clusterName, storeName, owner, keySchemaStr, valueSchemaStr);
 
     // Add store again now with an existing exception
@@ -391,7 +388,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     String owner = "test-owner";
     String keySchemaStr = "\"string\"";
     String valueSchemaStr = "\"string\"";
-    parentAdmin.start(clusterName);
+    parentAdmin.initVeniceControllerClusterResource(clusterName);
     parentAdmin.addStore(clusterName, storeName, owner, keySchemaStr, valueSchemaStr);
     parentAdmin.setStorePartitionCount(clusterName, storeName, MAX_PARTITION_NUM);
     Assert.assertThrows(VeniceHttpException.class, () -> parentAdmin.setStorePartitionCount(clusterName, storeName, MAX_PARTITION_NUM + 1));
@@ -419,7 +416,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         .thenReturn(null)
         .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, -1, 1));
 
-    parentAdmin.start(clusterName);
+    parentAdmin.initVeniceControllerClusterResource(clusterName);
     parentAdmin.addValueSchema(clusterName, storeName, valueSchemaStr, DirectionalSchemaCompatibilityType.FULL);
 
     verify(internalAdmin)
@@ -470,7 +467,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         .thenReturn(null)
         .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, -1, 1));
 
-    parentAdmin.start(clusterName);
+    parentAdmin.initVeniceControllerClusterResource(clusterName);
     parentAdmin.addDerivedSchema(clusterName, storeName, valueSchemaId, derivedSchemaStr);
 
     ArgumentCaptor<byte[]> valueCaptor = ArgumentCaptor.forClass(byte[].class);
@@ -498,7 +495,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
 
     String storeName = "test-store";
-    parentAdmin.start(clusterName);
+    parentAdmin.initVeniceControllerClusterResource(clusterName);
     parentAdmin.setStoreReadability(clusterName, storeName, false);
 
     verify(internalAdmin)
@@ -537,7 +534,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, -1, 1));
 
     String storeName = "test-store";
-    parentAdmin.start(clusterName);
+    parentAdmin.initVeniceControllerClusterResource(clusterName);
     parentAdmin.setStoreWriteability(clusterName, storeName, false);
 
     verify(internalAdmin)
@@ -578,7 +575,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         .thenReturn(new OffsetRecord(AvroProtocolDefinition.PARTITION_STATE.getSerializer()))
         .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, -1, 1));
 
-    parentAdmin.start(clusterName);
+    parentAdmin.initVeniceControllerClusterResource(clusterName);
     Assert.assertThrows(VeniceNoStoreException.class, () -> parentAdmin.setStoreWriteability(clusterName, storeName, false));
   }
 
@@ -592,7 +589,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, -1, 1));
 
     String storeName = "test-store";
-    parentAdmin.start(clusterName);
+    parentAdmin.initVeniceControllerClusterResource(clusterName);
     parentAdmin.setStoreReadability(clusterName, storeName, true);
 
     verify(internalAdmin)
@@ -631,7 +628,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, -1, 1));
 
     String storeName = "test-store";
-    parentAdmin.start(clusterName);
+    parentAdmin.initVeniceControllerClusterResource(clusterName);
     parentAdmin.setStoreWriteability(clusterName, storeName, true);
 
     verify(internalAdmin)
@@ -676,7 +673,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     doReturn(store)
         .when(internalAdmin).getStore(clusterName, Version.parseStoreFromKafkaTopicName(kafkaTopic));
 
-    parentAdmin.start(clusterName);
+    parentAdmin.initVeniceControllerClusterResource(clusterName);
     parentAdmin.killOfflinePush(clusterName, kafkaTopic, false);
 
     verify(internalAdmin)
@@ -1221,7 +1218,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(null)
         .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, -1, 1));
 
-    parentAdmin.start(clusterName);
+    parentAdmin.initVeniceControllerClusterResource(clusterName);
     parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setIncrementalPushEnabled(true));
 
     verify(zkClient, times(1)).readData(zkMetadataNodePath, null);
@@ -1330,7 +1327,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(null)
         .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, -1, 1));
 
-    parentAdmin.start(clusterName);
+    parentAdmin.initVeniceControllerClusterResource(clusterName);
     parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setNativeReplicationSourceFabric("dc1"));
 
     ArgumentCaptor<byte[]> keyCaptor = ArgumentCaptor.forClass(byte[].class);
@@ -1360,7 +1357,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(null)
         .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, -1, 1));
 
-    parentAdmin.start(clusterName);
+    parentAdmin.initVeniceControllerClusterResource(clusterName);
     Assert.assertThrows(() -> parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams()
         .setPartitionerClass("com.linkedin.im.a.bad.man")
         .setAmplificationFactor(-1)));
@@ -1381,7 +1378,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         .thenReturn(null)
         .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, -1, 1));
 
-    parentAdmin.start(clusterName);
+    parentAdmin.initVeniceControllerClusterResource(clusterName);
     parentAdmin.deleteStore(clusterName, storeName, 0, true);
 
     verify(veniceWriter)
@@ -1767,7 +1764,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         .thenReturn(null)
         .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, -1, 1));
 
-    parentAdmin.start(clusterName);
+    parentAdmin.initVeniceControllerClusterResource(clusterName);
     parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setHybridOffsetLagThreshold(20000).setHybridRewindSeconds(60));
 
     verify(zkClient, times(1)).readData(zkMetadataNodePath, null);
