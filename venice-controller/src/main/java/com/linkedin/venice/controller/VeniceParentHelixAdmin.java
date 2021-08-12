@@ -90,7 +90,7 @@ import com.linkedin.venice.pushstatushelper.PushStatusStoreRecordDeleter;
 import com.linkedin.venice.schema.DerivedSchemaEntry;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
-import com.linkedin.venice.schema.TimestampMetadataSchemaAdapter;
+import com.linkedin.venice.schema.ReplicationMetadataSchemaAdapter;
 import com.linkedin.venice.schema.TimestampMetadataSchemaEntry;
 import com.linkedin.venice.schema.TimestampMetadataVersionId;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
@@ -1955,7 +1955,7 @@ public class VeniceParentHelixAdmin implements Admin {
 
   private void updateActiveActiveSchema(String clusterName, String storeName, Schema valueSchema, int valueSchemaId) {
     int timestampMetadataVersionId = multiClusterConfigs.getCommonConfig().getTimestampMetadataVersionId();
-    String timestampMetadataSchema = TimestampMetadataSchemaAdapter.parse(valueSchema, timestampMetadataVersionId).toString();
+    String timestampMetadataSchema = ReplicationMetadataSchemaAdapter.parse(valueSchema, timestampMetadataVersionId).toString();
     addTimestampMetadataSchema(clusterName, storeName, valueSchemaId, timestampMetadataVersionId, timestampMetadataSchema);
   }
 
