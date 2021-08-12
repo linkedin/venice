@@ -131,7 +131,7 @@ public class ControllerClient implements Closeable {
    * @param wcEnabled Whether write compute is enabled for this push job or not
    * @param partitioners partitioner class names in a string seperated by comma
    * @param compressionDictionary Base64 encoded dictionary to be used to perform dictionary compression
-   * @param batchStartingFabric An identifier of the data center which is used in native replication to determine
+   * @param sourceGridFabric An identifier of the data center which is used in native replication to determine
    *                       the Kafka URL
    * @param batchJobHeartbeatEnabled whether batch push job enables the heartbeat
    * @param rewindTimeInSecondsOverride if a valid value is specified (>=0) for hybrid store, this param will override
@@ -142,7 +142,7 @@ public class ControllerClient implements Closeable {
   public VersionCreationResponse requestTopicForWrites(
           String storeName, long storeSize, PushType pushType, String pushJobId, boolean sendStartOfPush,
           boolean sorted, boolean wcEnabled, Optional<String> partitioners, Optional<String> compressionDictionary,
-          Optional<String> batchStartingFabric, boolean batchJobHeartbeatEnabled, long rewindTimeInSecondsOverride
+          Optional<String> sourceGridFabric, boolean batchJobHeartbeatEnabled, long rewindTimeInSecondsOverride
   ) {
     QueryParams params = newParams()
         .add(NAME, storeName)
@@ -154,7 +154,7 @@ public class ControllerClient implements Closeable {
         .add(IS_WRITE_COMPUTE_ENABLED, wcEnabled)
         .add(PARTITIONERS, partitioners)
         .add(COMPRESSION_DICTIONARY, compressionDictionary)
-        .add(BATCH_STARTING_FABRIC, batchStartingFabric)
+        .add(SOURCE_GRID_FABRIC, sourceGridFabric)
         .add(BATCH_JOB_HEARTBEAT_ENABLED, batchJobHeartbeatEnabled)
         .add(REWIND_TIME_IN_SECONDS_OVERRIDE, rewindTimeInSecondsOverride);
 

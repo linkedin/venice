@@ -172,7 +172,7 @@ public class CreateVersion extends AbstractRoute {
           isWriteComputeEnabled = Utils.parseBooleanFromString(wcEnabledParam, IS_WRITE_COMPUTE_ENABLED);
         }
 
-        Optional<String> batchStartingFabric = Optional.ofNullable(request.queryParams(BATCH_STARTING_FABRIC));
+        Optional<String> sourceGridFabric = Optional.ofNullable(request.queryParams(SOURCE_GRID_FABRIC));
 
         /**
          * Version-level rewind time override, and it is only valid for hybrid stores.
@@ -226,7 +226,7 @@ public class CreateVersion extends AbstractRoute {
             final Optional<X509Certificate> certInRequest = isAclEnabled() ? Optional.of(getCertificate(request)) : Optional.empty();
             final Version version =
                 admin.incrementVersionIdempotent(clusterName, storeName, pushJobId, partitionCount, replicationFactor,
-                   pushType, sendStartOfPush, sorted, dictionaryStr, batchStartingFabric, certInRequest, rewindTimeInSecondsOverride);
+                   pushType, sendStartOfPush, sorted, dictionaryStr, sourceGridFabric, certInRequest, rewindTimeInSecondsOverride);
 
             // If Version partition count different from calculated partition count use the version count as store count
             // may have been updated later.

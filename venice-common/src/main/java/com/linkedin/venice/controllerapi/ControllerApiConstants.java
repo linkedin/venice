@@ -6,7 +6,7 @@ public class ControllerApiConstants {
   public static final String CLUSTER = "cluster_name";
   public static final String CLUSTER_SRC = "cluster_name_src";
   public static final String CLUSTER_DEST = "cluster_name_dest";
-  public static final String BATCH_STARTING_FABRIC = "batch_starting_fabric";
+  public static final String SOURCE_GRID_FABRIC = "source_grid_fabric";
   public static final String BATCH_JOB_HEARTBEAT_ENABLED = "batch_job_heartbeat_enabled";
 
   public static final String NAME = "store_name";
