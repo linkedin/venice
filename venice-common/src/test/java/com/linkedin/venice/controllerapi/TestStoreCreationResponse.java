@@ -25,7 +25,7 @@ public class TestStoreCreationResponse {
     obj.setName(STORENAME);
     obj.setKafkaBootstrapServers(KAFKA);
     obj.setKafkaTopic(TOPIC);
-    obj.setCurrentVersion(CURRENT_VERSION);
+    obj.setTargetVersionForIncPush(CURRENT_VERSION);
 
     String serialized = mapper.writeValueAsString(obj);
 
@@ -35,6 +35,6 @@ public class TestStoreCreationResponse {
     Assert.assertEquals(deserialized.getKafkaBootstrapServers(), KAFKA);
     Assert.assertEquals(deserialized.getKafkaTopic(), TOPIC);
     Assert.assertFalse(deserialized.isError());
-    Assert.assertEquals(deserialized.getCurrentVersion(), CURRENT_VERSION);
+    Assert.assertEquals(deserialized.getTargetVersionForIncPush(), CURRENT_VERSION);
   }
 }

@@ -652,6 +652,16 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
   }
 
   @Override
+  public boolean applyTargetVersionFilterForIncPush() {
+    return this.storeProperties.applyTargetVersionFilterForIncPush;
+  }
+
+  @Override
+  public void setApplyTargetVersionFilterForIncPush(boolean applyTargetVersionFilterForIncPush) {
+    this.storeProperties.applyTargetVersionFilterForIncPush = applyTargetVersionFilterForIncPush;
+  }
+
+  @Override
   public Map<String, SystemStoreAttributes> getSystemStores() {
     Map<String, SystemStoreAttributes> systemStoreMap = new HashMap<>();
     this.storeProperties.systemStores.forEach( (k, v) -> systemStoreMap.put(k.toString(), new SystemStoreAttributesImpl(v)));

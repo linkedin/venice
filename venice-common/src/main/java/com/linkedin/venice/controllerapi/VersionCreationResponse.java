@@ -25,7 +25,7 @@ public class VersionCreationResponse extends VersionResponse {
 
   private boolean daVinciPushStatusStoreEnabled = false;
 
-  private int currentVersion = -1;
+  private int targetVersionForIncPush = -1;
 
   public void setPartitions(int partitions) {
     this.partitions = partitions;
@@ -107,12 +107,12 @@ public class VersionCreationResponse extends VersionResponse {
     return this.daVinciPushStatusStoreEnabled;
   }
 
-  public void setCurrentVersion(int currentVersion) {
-    this.currentVersion = currentVersion;
+  public void setTargetVersionForIncPush(int targetVersionForIncPush) {
+    this.targetVersionForIncPush = targetVersionForIncPush;
   }
 
-  public int getCurrentVersion() {
-    return this.currentVersion;
+  public int getTargetVersionForIncPush() {
+    return this.targetVersionForIncPush;
   }
 
   @JsonIgnore
@@ -127,7 +127,7 @@ public class VersionCreationResponse extends VersionResponse {
         ", partitionerParams: " + partitionerParams +
         ", amplificationFactor: " + amplificationFactor +
         ", daVinciPushStatusStoreEnabled: " + daVinciPushStatusStoreEnabled +
-        ", currentVersion: " + currentVersion +
+        ", targetVersionForIncPush: " + targetVersionForIncPush +
         ", super: " + super.toString() + ")";
   }
 }

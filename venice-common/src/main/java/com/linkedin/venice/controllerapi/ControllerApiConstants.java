@@ -130,4 +130,6 @@ public class ControllerApiConstants {
   public static final String REWIND_TIME_IN_SECONDS_OVERRIDE = "rewind_time_in_seconds_override";
 
   public static final String TIMESTAMP_METADATA_VERSION_ID = "timestamp_metadata_version_id";
+
+  public static final String APPLY_TARGET_VERSION_FILTER_FOR_INC_PUSH = "apply_target_version_filter_for_inc_push";
 }

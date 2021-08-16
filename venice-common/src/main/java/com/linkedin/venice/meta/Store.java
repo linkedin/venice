@@ -303,6 +303,10 @@ public interface Store {
 
   void setActiveActiveReplicationEnabled(boolean activeActiveReplicationEnabled);
 
+  boolean applyTargetVersionFilterForIncPush();
+
+  void setApplyTargetVersionFilterForIncPush(boolean applyTargetVersionFilterForIncPush);
+
   Map<String, SystemStoreAttributes> getSystemStores();
 
   void setSystemStores(Map<String, SystemStoreAttributes> systemStores);

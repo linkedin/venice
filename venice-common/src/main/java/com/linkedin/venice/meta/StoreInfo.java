@@ -58,6 +58,7 @@ public class StoreInfo {
     storeInfo.setStoreMetaSystemStoreEnabled(store.isStoreMetaSystemStoreEnabled());
     storeInfo.setDaVinciPushStatusStoreEnabled(store.isDaVinciPushStatusStoreEnabled());
     storeInfo.setActiveActiveReplicationEnabled(store.isActiveActiveReplicationEnabled());
+    storeInfo.setApplyTargetVersionFilterForIncPush(store.applyTargetVersionFilterForIncPush());
     return storeInfo;
   }
   /**
@@ -279,6 +280,11 @@ public class StoreInfo {
    * Whether or not active/active replication is currently enabled for this store.
    */
   private boolean activeActiveReplicationEnabled;
+
+  /**
+   * Whether or not to apply target version filter for incremental pushes
+   */
+  private boolean applyTargetVersionFilterForIncPush;
 
   public StoreInfo() {
   }
@@ -682,5 +688,13 @@ public class StoreInfo {
 
   public void setActiveActiveReplicationEnabled(boolean activeActiveReplicationEnabled) {
     this.activeActiveReplicationEnabled = activeActiveReplicationEnabled;
+  }
+
+  public boolean isApplyTargetVersionFilterForIncPush() {
+    return applyTargetVersionFilterForIncPush;
+  }
+
+  public void setApplyTargetVersionFilterForIncPush(boolean applyTargetVersionFilterForIncPush) {
+    this.applyTargetVersionFilterForIncPush = applyTargetVersionFilterForIncPush;
   }
 }

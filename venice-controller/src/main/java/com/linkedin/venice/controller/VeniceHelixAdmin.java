@@ -2853,6 +2853,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         });
     }
 
+    public void setApplyTargetVersionFilterForIncPush(String clusterName, String storeName, boolean applyTargetVersionFilterForIncPush) {
+        storeMetadataUpdate(clusterName, storeName, store -> {
+            store.setApplyTargetVersionFilterForIncPush(applyTargetVersionFilterForIncPush);
+            return store;
+        });
+    }
+
     /**
      * This function will check whether the store update will cause the case that a store can not have the specified
      * hybrid store and incremental push configs.
@@ -2964,6 +2971,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         Optional<Boolean> migrationDuplicateStore = params.getMigrationDuplicateStore();
         Optional<String> nativeReplicationSourceFabric = params.getNativeReplicationSourceFabric();
         Optional<Boolean> activeActiveReplicationEnabled = params.getActiveActiveReplicationEnabled();
+        Optional<Boolean> applyTargetVersionFilterForIncPush = params.applyTargetVersionFilterForIncPush();
 
         Optional<HybridStoreConfig> hybridStoreConfig;
         if (hybridRewindSeconds.isPresent() || hybridOffsetLagThreshold.isPresent()
@@ -3219,6 +3227,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 setNativeReplicationSourceFabric(clusterName, storeName, nativeReplicationSourceFabric.get());
             }
 
+            if (applyTargetVersionFilterForIncPush.isPresent()) {
+                setApplyTargetVersionFilterForIncPush(clusterName, storeName, applyTargetVersionFilterForIncPush.get());
+            }
             logger.info("Finished updating store: " + storeName + " in cluster: " + clusterName);
         } catch (VeniceException e) {
             logger.error("Caught exception during update to store '" + storeName + "' in cluster: '" + clusterName

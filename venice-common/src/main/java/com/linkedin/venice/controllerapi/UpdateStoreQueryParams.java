@@ -436,6 +436,14 @@ public class UpdateStoreQueryParams extends QueryParams {
     return getBoolean(ACTIVE_ACTIVE_REPLICATION_ENABLED);
   }
 
+  public UpdateStoreQueryParams setApplyTargetVersionFilterForIncPush(boolean applyTargetVersionFilterForIncPush) {
+    return putBoolean(APPLY_TARGET_VERSION_FILTER_FOR_INC_PUSH, applyTargetVersionFilterForIncPush);
+  }
+
+  public Optional<Boolean> applyTargetVersionFilterForIncPush() {
+    return getBoolean(APPLY_TARGET_VERSION_FILTER_FOR_INC_PUSH);
+  }
+
   public void cloneConfig(String configKey, UpdateStoreQueryParams sourceParams) {
     this.params.put(configKey, sourceParams.params.get(configKey));
   }
