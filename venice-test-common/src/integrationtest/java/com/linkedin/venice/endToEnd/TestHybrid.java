@@ -1404,6 +1404,7 @@ public class TestHybrid {
     producerMetadata.segmentNumber = segmentNumber;
     producerMetadata.messageSequenceNumber = sequenceNumber;
     producerMetadata.messageTimestamp = System.currentTimeMillis();
+    producerMetadata.upstreamOffset = -1; // This field has been deprecated
     kafkaValue.producerMetadata = producerMetadata;
     kafkaValue.leaderMetadataFooter = new LeaderMetadata();
     kafkaValue.leaderMetadataFooter.upstreamOffset = upstreamOffset;
