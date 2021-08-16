@@ -555,6 +555,16 @@ public class SystemStore extends AbstractStore {
   }
 
   @Override
+  public boolean applyTargetVersionFilterForIncPush() {
+    return zkSharedStore.applyTargetVersionFilterForIncPush();
+  }
+
+  @Override
+  public void setApplyTargetVersionFilterForIncPush(boolean applyTargetVersionFilterForIncPush) {
+    throwUnsupportedOperationException("setApplyTargetVersionFilterForIncPush");
+  }
+
+  @Override
   public Map<String, SystemStoreAttributes> getSystemStores() {
     throw new VeniceException("Method: 'getSystemStores' is not supported inside SystemStore");
   }

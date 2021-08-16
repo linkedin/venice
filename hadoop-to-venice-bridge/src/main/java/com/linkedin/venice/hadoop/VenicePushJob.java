@@ -382,7 +382,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
     String partitionerClass;
     Map<String, String> partitionerParams;
     int amplificationFactor;
-    int targetStoreVersion;
+    int targetStoreVersionForIncPush;
   }
 
   private VersionTopicInfo kafkaTopicInfo;
@@ -1524,7 +1524,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
     kafkaTopicInfo.partitionerParams = versionCreationResponse.getPartitionerParams();
     kafkaTopicInfo.amplificationFactor = versionCreationResponse.getAmplificationFactor();
     kafkaTopicInfo.daVinciPushStatusStoreEnabled = versionCreationResponse.isDaVinciPushStatusStoreEnabled();
-    kafkaTopicInfo.targetStoreVersion = versionCreationResponse.getCurrentVersion();
+    kafkaTopicInfo.targetStoreVersionForIncPush = versionCreationResponse.getTargetVersionForIncPush();
 
     if (pushJobSetting.isSourceKafka) {
       /**
@@ -1581,7 +1581,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
               new VeniceProperties(partitionerProperties));
       VeniceWriter<KafkaKey, byte[], byte[]> newVeniceWriter =
           veniceWriterFactory.createVeniceWriter(versionTopicInfo.topic, venicePartitioner,
-              (kafkaTopicInfo.targetStoreVersion > 0) ? Optional.of(kafkaTopicInfo.targetStoreVersion) : Optional.empty());
+              (kafkaTopicInfo.targetStoreVersionForIncPush > 0) ? Optional.of(kafkaTopicInfo.targetStoreVersionForIncPush) : Optional.empty());
       LOGGER.info("Created VeniceWriter: " + newVeniceWriter.toString());
       veniceWriter = newVeniceWriter;
     }
@@ -1839,7 +1839,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
     conf.set(STORAGE_QUOTA_PROP, Long.toString(storeSetting.storeStorageQuota));
 
     if (pushJobSetting.isIncrementalPush) {
-      conf.setInt(TARGET_VERSION_FOR_INCREMENTAL_PUSH, kafkaTopicInfo.targetStoreVersion);
+      conf.setInt(TARGET_VERSION_FOR_INCREMENTAL_PUSH, kafkaTopicInfo.targetStoreVersionForIncPush);
     }
 
     /** Allow overriding properties if their names start with {@link HADOOP_PREFIX}.

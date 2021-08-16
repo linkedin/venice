@@ -945,6 +945,16 @@ public class ReadOnlyStore implements Store {
   }
 
   @Override
+  public boolean applyTargetVersionFilterForIncPush() {
+    return this.delegate.applyTargetVersionFilterForIncPush();
+  }
+
+  @Override
+  public void setApplyTargetVersionFilterForIncPush(boolean applyTargetVersionFilterForIncPush) {
+    throw new UnsupportedOperationException("setApplyTargetVersionFilterForIncPush");
+  }
+
+  @Override
   public Map<String, SystemStoreAttributes> getSystemStores() {
     Map<String, SystemStoreAttributes> systemStores = new HashMap<>();
     this.delegate.getSystemStores().forEach( (name, systemStore) -> systemStores.put(name, new ReadOnlySystemStoreAttributes(systemStore)));

@@ -1394,6 +1394,7 @@ public class VeniceParentHelixAdmin implements Admin {
       Optional<String> nativeReplicationSourceFabric = params.getNativeReplicationSourceFabric();
       Optional<Boolean> activeActiveReplicationEnabled = params.getActiveActiveReplicationEnabled();
       Optional<String> regionsFilter = params.getRegionsFilter();
+      Optional<Boolean> applyTargetStoreFilterForIncPush = params.applyTargetVersionFilterForIncPush();
 
       /**
        * Check whether parent controllers will only propagate the update configs to child controller, or all unchanged
@@ -1623,6 +1624,10 @@ public class VeniceParentHelixAdmin implements Admin {
       setStore.nativeReplicationSourceFabric = nativeReplicationSourceFabric
           .map(addToUpdatedConfigList(updatedConfigsList, NATIVE_REPLICATION_SOURCE_FABRIC))
           .orElseGet((store::getNativeReplicationSourceFabric));
+
+      setStore.applyTargetVersionFilterForIncPush = applyTargetStoreFilterForIncPush
+          .map(addToUpdatedConfigList(updatedConfigsList, APPLY_TARGET_VERSION_FILTER_FOR_INC_PUSH))
+          .orElseGet(store::applyTargetVersionFilterForIncPush);
 
       /**
        * By default, parent controllers will not try to replicate the unchanged store configs to child controllers;
