@@ -1864,6 +1864,17 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       }
       return false;
     }
+
+    if (isIncrementalPushEnabled && incrementalPushPolicy.equals(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME)) {
+      KafkaMessageEnvelope value = record.value();
+      /**
+       * For inc push to RT, filter out the messages if the target version embedded in the message doesn't match the version
+       * of this ingestion task.
+       */
+      if (value.targetVersion > 0 && value.targetVersion != this.versionNumber) {
+        return false;
+      }
+    }
     return true;
   }
 
