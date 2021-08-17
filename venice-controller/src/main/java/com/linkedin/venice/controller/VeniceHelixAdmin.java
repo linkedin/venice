@@ -4109,15 +4109,18 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         /**
          * Source fabric selection priority:
          * 1. Parent controller emergency source fabric config.
-         * 2. Store level source fabric config.
-         * 3. H2V plugin source grid fabric config.
+         * 2. H2V plugin source grid fabric config.
+         * 3. Store level source fabric config.
          * 4. Cluster level source fabric config.
          */
-        String sourceFabric = multiClusterConfigs.getEmergencySourceFabric().equals("") ?
-            store.getNativeReplicationSourceFabric() : multiClusterConfigs.getEmergencySourceFabric();
+        String sourceFabric = multiClusterConfigs.getEmergencySourceFabric();
 
         if (sourceGridFabric.isPresent() && (sourceFabric == null || sourceFabric.isEmpty())) {
             sourceFabric = sourceGridFabric.get();
+        }
+
+        if (sourceFabric == null || sourceFabric.isEmpty()) {
+            sourceFabric = store.getNativeReplicationSourceFabric();
         }
 
         if (sourceFabric == null || sourceFabric.isEmpty()) {
@@ -4126,6 +4129,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
         return sourceFabric;
     }
+
     @Override
     public boolean isSSLEnabledForPush(String clusterName, String storeName) {
         if (isSslToKafka()) {
