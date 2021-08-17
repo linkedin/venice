@@ -2,7 +2,6 @@ package com.linkedin.venice.controller;
 
 import com.linkedin.avroutil1.compatibility.AvroIncompatibleSchemaException;
 import com.linkedin.d2.balancer.D2Client;
-import com.linkedin.espresso.schema.impl.SchemaUtil;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.SSLConfig;
@@ -19,6 +18,7 @@ import com.linkedin.venice.controller.helix.SharedHelixReadOnlyZKSharedSchemaRep
 import com.linkedin.venice.controller.helix.SharedHelixReadOnlyZKSharedSystemStoreRepository;
 import com.linkedin.venice.controller.init.ClusterLeaderInitializationManager;
 import com.linkedin.venice.controller.init.ClusterLeaderInitializationRoutine;
+import com.linkedin.venice.controller.init.LatestVersionPromoteToCurrentTimestampCorrectionRoutine;
 import com.linkedin.venice.controller.init.SystemSchemaInitializationRoutine;
 import com.linkedin.venice.controller.kafka.StoreStatusDecider;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
@@ -457,6 +457,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 multiClusterConfigs, this, Optional.of(AvroProtocolDefinition.PUSH_STATUS_SYSTEM_SCHEMA_STORE_KEY.getCurrentProtocolVersionSchema()),
                 Optional.of(daVinciPushStatusSystemStoreUpdate), true));
         }
+
+        // TODO: Remove this latest version promote to current timestamp update logic in the future.
+        initRoutines.add(new LatestVersionPromoteToCurrentTimestampCorrectionRoutine(this));
         ClusterLeaderInitializationRoutine controllerInitialization = new ClusterLeaderInitializationManager(initRoutines);
 
         // Create the controller cluster if required.
