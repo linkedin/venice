@@ -192,10 +192,12 @@ public class TestAvroSchemaUtils {
     String schemaStr = "{\"type\":\"record\",\"name\":\"KeyRecord\",\"fields\":[{\"name\":\"name\",\"type\":\"string\",\"doc\":\"name field\"},{\"name\":\"experience\",\"type\":[\"int\", \"float\", \"null\"], \"default\" : 32},{\"name\":\"company\",\"type\":\"string\"}]}";
 
     AvroSchemaUtils.validateAvroSchemaStr(schemaStr);
+    Assert.assertTrue(AvroSchemaUtils.isValidAvroSchema(Schema.parse(schemaStr)));
 
     schemaStr = "{\"type\":\"record\",\"name\":\"KeyRecord\",\"fields\":[{\"name\":\"name\",\"type\":\"string\",\"doc\":\"name field\"},{\"name\":\"experience\",\"type\":[\"int\", \"float\", \"null\"], \"default\" : null},{\"name\":\"company\",\"type\":\"string\"}]}";
 
     try {
+      Assert.assertFalse(AvroSchemaUtils.isValidAvroSchema(Schema.parse(schemaStr)));
       AvroSchemaUtils.validateAvroSchemaStr(schemaStr);
       Assert.fail("Default null should fail with int first union field");
     } catch (AvroIncompatibleSchemaException e) {

@@ -184,6 +184,7 @@ import static com.linkedin.venice.meta.HybridStoreConfigImpl.*;
 import static com.linkedin.venice.meta.Version.*;
 import static com.linkedin.venice.meta.VersionStatus.*;
 import static com.linkedin.venice.meta.VersionStatus.ERROR;
+import static com.linkedin.venice.utils.AvroSchemaUtils.*;
 
 
 /**
@@ -3461,6 +3462,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             for (SchemaEntry schemaEntry : schemaEntries) {
                 try {
                     existingSchema = schemaEntry.getSchema();
+                    if (!isValidAvroSchema(existingSchema)) {
+                        logger.warn("Skip validating ill-formed schema " + existingSchema + " for store " + storeName);
+                        continue;
+                    }
                     RecordDeserializer<Object> deserializer = SerializerDeserializerFactory.getAvroGenericDeserializer(newSchema, existingSchema);
                     deserializer.deserialize(bytes);
                 } catch (Exception e) {
@@ -3482,6 +3487,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                     serializer = new AvroSerializer(schemaEntry.getSchema());
                     byte[] bytes = serializer.serialize(record);
                     existingSchema = schemaEntry.getSchema();
+                    if (!isValidAvroSchema(existingSchema)) {
+                        logger.warn("Skip validating ill-formed schema " + existingSchema + " for store " + storeName);
+                        continue;
+                    }
                     RecordDeserializer<Object> deserializer = SerializerDeserializerFactory.getAvroGenericDeserializer(existingSchema, newSchema);
                     deserializer.deserialize(bytes);
                 } catch (Exception e) {
