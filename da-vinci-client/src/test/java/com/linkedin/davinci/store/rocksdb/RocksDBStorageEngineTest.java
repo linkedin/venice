@@ -97,9 +97,9 @@ public class RocksDBStorageEngineTest extends AbstractStorageEngineTest {
     Assert.assertEquals(testStorageEngine.getType(), PersistenceType.ROCKS_DB);
     RocksDBStorageEngine rocksDBStorageEngine = (RocksDBStorageEngine)testStorageEngine;
     OffsetRecord offsetRecord = new OffsetRecord(AvroProtocolDefinition.PARTITION_STATE.getSerializer());
-    offsetRecord.setOffset(666L);
+    offsetRecord.setLocalVersionTopicOffset(666L);
     rocksDBStorageEngine.putPartitionOffset(PARTITION_ID, offsetRecord);
-    Assert.assertEquals(rocksDBStorageEngine.getPartitionOffset(PARTITION_ID).get().getOffset(), 666L);
+    Assert.assertEquals(rocksDBStorageEngine.getPartitionOffset(PARTITION_ID).get().getLocalVersionTopicOffset(), 666L);
     rocksDBStorageEngine.clearPartitionOffset(PARTITION_ID);
     Assert.assertEquals(rocksDBStorageEngine.getPartitionOffset(PARTITION_ID).isPresent(), false);
   }

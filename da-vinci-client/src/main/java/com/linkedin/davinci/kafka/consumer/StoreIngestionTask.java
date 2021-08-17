@@ -741,7 +741,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      * TODO: find a better solution
      */
       lagIsAcceptable = cachedKafkaMetadataGetter.getOffset(localKafkaServer, kafkaVersionTopic, partitionId) <=
-        partitionConsumptionState.getOffsetRecord().getOffset() + SLOPPY_OFFSET_CATCHUP_THRESHOLD;
+        partitionConsumptionState.getOffsetRecord().getLocalVersionTopicOffset() + SLOPPY_OFFSET_CATCHUP_THRESHOLD;
     } else {
       // Looks like none of the short-circuitry fired, so we need to measure lag!
       long offsetThreshold = hybridStoreConfig.get().getOffsetLagThresholdToGoOnline();
@@ -1588,7 +1588,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     // Once storage node restart, send the "START" status to controller to rebuild the task status.
     // If this storage node has never consumed data from this topic, instead of sending "START" here, we send it
     // once START_OF_PUSH message has been read.
-    if (record.getOffset() > 0) {
+    if (record.getLocalVersionTopicOffset() > 0) {
       Optional<StoreVersionState> storeVersionState = storageMetadataService.getStoreVersionState(kafkaVersionTopic);
       if (storeVersionState.isPresent()) {
         boolean sorted = storeVersionState.get().sorted;
@@ -1688,7 +1688,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         PartitionConsumptionState newPartitionConsumptionState = new PartitionConsumptionState(partition, amplificationFactor, record,
             hybridStoreConfig.isPresent(), isIncrementalPushEnabled, incrementalPushPolicy);
 
-        newPartitionConsumptionState.setLeaderState(leaderState);
+        newPartitionConsumptionState.setLeaderFollowerState(leaderState);
 
         partitionConsumptionStateMap.put(partition,  newPartitionConsumptionState);
         record.getProducerPartitionStateMap().entrySet().stream().forEach(entry -> {
@@ -1709,10 +1709,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
          * to main process when it completed ingestion in the forked process.
          */
         String topicToSubscribe = leaderState.equals(LeaderFollowerStateType.LEADER) ? newPartitionConsumptionState.getOffsetRecord().getLeaderTopic() : topic;
-        consumerSubscribe(topicToSubscribe, newPartitionConsumptionState, record.getOffset());
+        consumerSubscribe(topicToSubscribe, newPartitionConsumptionState, record.getLocalVersionTopicOffset());
         partitionConsumptionSizeMap.put(partition, new StoragePartitionDiskUsage(partition, storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic)));
         logger.info(consumerTaskId + " subscribed to: Topic " + topicToSubscribe + " Partition Id " + partition + " Offset "
-            + record.getOffset());
+            + record.getLocalVersionTopicOffset());
         break;
       case UNSUBSCRIBE:
         logger.info(consumerTaskId + " UnSubscribed to: Topic " + topic + " Partition Id " + partition);
@@ -2049,7 +2049,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     ps.resetProcessedRecordSizeSinceLastSync();
     String msg = "Offset synced for partition " + partition + " of topic " + topic + ": ";
     if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
-      logger.info(msg + offsetRecord.getOffset());
+      logger.info(msg + offsetRecord.getLocalVersionTopicOffset());
     }
   }
 
@@ -2313,7 +2313,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * In this method, we pass both offset and partitionConsumptionState(ps). The reason behind it is that ps's
    * offset is stale and is not updated until the very end
    */
-  private ControlMessageType processControlMessage(KafkaMessageEnvelope kafkaMessageEnvelope, ControlMessage controlMessage, int partition, long offset,
+  private void processControlMessage(KafkaMessageEnvelope kafkaMessageEnvelope, ControlMessage controlMessage, int partition, long offset,
       PartitionConsumptionState partitionConsumptionState)
       throws InterruptedException {
     /**
@@ -2323,7 +2323,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      * model will not encounter START_OF_BUFFER_REPLAY because TOPIC_SWITCH will replace it in L/F
      * model; incremental push is also a mutually exclusive feature with hybrid stores.
      */
-    ControlMessageType type = ControlMessageType.valueOf(controlMessage);
+    final ControlMessageType type = ControlMessageType.valueOf(controlMessage);
     if (!isSegmentControlMsg(type)) {
       logger.info(consumerTaskId + " : Received " + type.name() + " control message. Partition: " + partition + ", Offset: " + offset);
     }
@@ -2355,8 +2355,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       default:
         throw new UnsupportedMessageTypeException("Unrecognized Control message type " + controlMessage.controlMessageType);
     }
-
-    return type;
   }
 
   /**
@@ -2430,8 +2428,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       }
       if (kafkaKey.isControlMessage()) {
         ControlMessage controlMessage = (leaderProducedRecordContext == null ? (ControlMessage) kafkaValue.payloadUnion : (ControlMessage) leaderProducedRecordContext.getValueUnion());
-        ControlMessageType controlMessageType = processControlMessage(kafkaValue, controlMessage, consumerRecord.partition(),
-            consumerRecord.offset(), partitionConsumptionState);
+        processControlMessage(kafkaValue, controlMessage, consumerRecord.partition(), consumerRecord.offset(), partitionConsumptionState);
+        final ControlMessageType controlMessageType = ControlMessageType.valueOf(controlMessage);
         /**
          * We don't want to sync offset/database for every control message since it could trigger RocksDB to generate
          * a lot of small level-0 SST files, which will make the compaction very inefficient.
@@ -3043,7 +3041,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     if (null == consumptionState) {
       return Optional.empty();
     }
-    return Optional.of(consumptionState.getOffsetRecord().getOffset());
+    return Optional.of(consumptionState.getOffsetRecord().getLocalVersionTopicOffset());
   }
 
   /**
@@ -3132,7 +3130,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           if (partitionConsumptionState.isCompletionReported()) {
             // Completion has been reported so extraDisjunctionCondition must be true to enter here.
             logger.info(consumerTaskId + " Partition " + partition + " synced offset: "
-                + partitionConsumptionState.getOffsetRecord().getOffset());
+                + partitionConsumptionState.getOffsetRecord().getLocalVersionTopicOffset());
           } else {
             /**
              * Check whether we need to warm-up cache here.
@@ -3747,7 +3745,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     public LeaderFollowerStateType getLeaderState(int partition) {
       int leaderSubPartition = PartitionUtils.getLeaderSubPartition(partition, amplificationFactor);
       if (partitionConsumptionStateMap.containsKey(leaderSubPartition)) {
-        return partitionConsumptionStateMap.get(leaderSubPartition).getLeaderState();
+        return partitionConsumptionStateMap.get(leaderSubPartition).getLeaderFollowerState();
       }
       // By default L/F state is STANDBY
       return LeaderFollowerStateType.STANDBY;

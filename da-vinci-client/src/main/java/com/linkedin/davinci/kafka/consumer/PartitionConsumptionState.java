@@ -36,7 +36,7 @@ public class PartitionConsumptionState {
   private boolean lagCaughtUp;
   private boolean completionReported;
   private boolean isSubscribed;
-  private LeaderFollowerStateType leaderState;
+  private LeaderFollowerStateType leaderFollowerState;
 
   /**
    * Only used in L/F model. Check if the partition has released the latch.
@@ -138,7 +138,7 @@ public class PartitionConsumptionState {
     this.processedRecordNum = 0;
     this.processedRecordSize = 0;
     this.processedRecordSizeSinceLastSync = 0;
-    this.leaderState = LeaderFollowerStateType.STANDBY;
+    this.leaderFollowerState = LeaderFollowerStateType.STANDBY;
     this.expectedSSTFileChecksum = Optional.empty();
     /**
      * Initialize the latest consumption time with current time; otherwise, it's 0 by default
@@ -175,7 +175,7 @@ public class PartitionConsumptionState {
     return this.deferredWrite;
   }
   public boolean isStarted() {
-    return this.offsetRecord.getOffset() > 0;
+    return this.offsetRecord.getLocalVersionTopicOffset() > 0;
   }
   public boolean isEndOfPushReceived() {
     return this.offsetRecord.isEndOfPushReceived();
@@ -269,7 +269,7 @@ public class PartitionConsumptionState {
         .append(", processedRecordNum=").append(processedRecordNum)
         .append(", processedRecordSize=").append(processedRecordSize)
         .append(", processedRecordSizeSinceLastSync=").append(processedRecordSizeSinceLastSync)
-        .append(", leaderFollowerState=").append(leaderState)
+        .append(", leaderFollowerState=").append(leaderFollowerState)
         .append(", isIncrementalPushEnabled=").append(isIncrementalPushEnabled)
         .append(", incrementalPushPolicy=").append(incrementalPushPolicy)
         .append("}").toString();
@@ -291,12 +291,12 @@ public class PartitionConsumptionState {
 
   public IncrementalPushPolicy getIncrementalPushPolicy() { return incrementalPushPolicy; }
 
-  public void setLeaderState(LeaderFollowerStateType state) {
-    this.leaderState = state;
+  public void setLeaderFollowerState(LeaderFollowerStateType state) {
+    this.leaderFollowerState = state;
   }
 
-  public LeaderFollowerStateType getLeaderState() {
-    return this.leaderState;
+  public LeaderFollowerStateType getLeaderFollowerState() {
+    return this.leaderFollowerState;
   }
 
   public void setLastLeaderPersistFuture(Future<Void> future) {

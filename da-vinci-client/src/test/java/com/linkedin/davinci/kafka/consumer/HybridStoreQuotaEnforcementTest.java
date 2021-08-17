@@ -169,7 +169,7 @@ public class HybridStoreQuotaEnforcementTest {
       PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
       // The version is online but completion is not reported. We should expect the enforcer report completion.
       when(pcs.isCompletionReported()).thenReturn(false);
-      when(pcs.getLeaderState()).thenReturn(LeaderFollowerStateType.STANDBY);
+      when(pcs.getLeaderFollowerState()).thenReturn(LeaderFollowerStateType.STANDBY);
       partitionConsumptionStateMap.put(i, pcs);
     }
     runTest(() -> {

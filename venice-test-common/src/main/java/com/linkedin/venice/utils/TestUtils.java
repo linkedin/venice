@@ -325,7 +325,7 @@ public class TestUtils {
 
   public static OffsetRecord getOffsetRecord(long currentOffset, Optional<Long> endOfPushOffset) {
     OffsetRecord offsetRecord = new OffsetRecord(partitionStateSerializer);
-    offsetRecord.setOffset(currentOffset);
+    offsetRecord.setLocalVersionTopicOffset(currentOffset);
     if (endOfPushOffset.isPresent()) {
       offsetRecord.endOfPushReceived(endOfPushOffset.get());
     }

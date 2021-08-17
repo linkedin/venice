@@ -191,7 +191,7 @@ public class PushTimeoutTest {
      * Return 0 as the max offset for VT and 1 as the overall consume progress, so reportIfCatchUpBaseTopicOffset()
      * will determine that base topic is caught up.
      */
-    doReturn(1L).when(mockOffsetRecord).getOffset();
+    doReturn(1L).when(mockOffsetRecord).getLocalVersionTopicOffset();
     doReturn(mockOffsetRecord).when(mockStorageMetadataService).getLastOffset(eq(versionTopic), eq(0));
 
     Properties mockKafkaConsumerProperties = mock(Properties.class);

@@ -21,9 +21,11 @@ import com.linkedin.venice.exceptions.VeniceMessageException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.TopicManagerRepository;
+import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.Delete;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
+import com.linkedin.venice.kafka.protocol.TopicSwitch;
 import com.linkedin.venice.kafka.protocol.Update;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
@@ -32,6 +34,7 @@ import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.ByteUtils;
@@ -343,5 +346,32 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
               valueSchemaId, newCallback, sourceTopicOffset, new PutMetadata(replicationMetadataVersionId, updatedReplicationMetadataBytes));
         });
     }
+  }
+
+  @Override
+  protected void startConsumingAsLeaderInTransitionFromStandby(PartitionConsumptionState partitionConsumptionState) {
+    // TODO: provide its own A/A-specific implementation
+    super.startConsumingAsLeaderInTransitionFromStandby(partitionConsumptionState);
+  }
+
+  @Override
+  protected void leaderExecuteTopicSwitch(PartitionConsumptionState partitionConsumptionState, TopicSwitch topicSwitch) {
+    // TODO: provide its own A/A-specific implementation
+    super.leaderExecuteTopicSwitch(partitionConsumptionState, topicSwitch);
+  }
+
+  @Override
+  protected void processTopicSwitch(ControlMessage controlMessage, int partition, long offset,
+      PartitionConsumptionState partitionConsumptionState) {
+    // TODO: provide its own A/A-specific implementation
+    super.processTopicSwitch(controlMessage, partition, offset, partitionConsumptionState);
+  }
+
+  @Override
+  protected void updateOffsetRecord(PartitionConsumptionState partitionConsumptionState, OffsetRecord offsetRecord,
+      VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope> consumerRecordWrapper, LeaderProducedRecordContext leaderProducedRecordContext) {
+
+    // TODO: provide its own A/A-specific implementation
+    super.updateOffsetRecord(partitionConsumptionState, offsetRecord, consumerRecordWrapper, leaderProducedRecordContext);
   }
 }
