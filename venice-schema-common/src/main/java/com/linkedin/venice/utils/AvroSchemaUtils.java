@@ -3,6 +3,7 @@ package com.linkedin.venice.utils;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
+import com.linkedin.avroutil1.compatibility.AvroIncompatibleSchemaException;
 import com.linkedin.avroutil1.compatibility.AvroSchemaVerifier;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.schema.SchemaEntry;
@@ -54,6 +55,15 @@ public class AvroSchemaUtils {
   public static void validateAvroSchemaStr(String str) {
     Schema schema = Schema.parse(str);
     validateAvroSchemaStr(schema);
+  }
+
+  public static boolean isValidAvroSchema(Schema schema) {
+    try {
+      validateAvroSchemaStr(schema);
+    } catch (AvroIncompatibleSchemaException exception) {
+      return false;
+    }
+    return true;
   }
 
   public static void validateAvroSchemaStr(Schema schema) {
