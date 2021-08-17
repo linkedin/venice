@@ -7,7 +7,6 @@ import com.linkedin.venice.controller.exception.HelixClusterMaintenanceModeExcep
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.helix.HelixStatusMessageChannel;
@@ -1053,8 +1052,14 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
         stateModelFactory.makeTransitionCompleted(Version.composeKafkaTopic(storeName, 1), 0));
     // Wait version 1 become online.
     // TOTAL_TIMEOUT_FOR_SHORT_TEST
+    Long initialPromotionTimestamp = veniceAdmin.getStore(clusterName, storeName).getLatestVersionPromoteToCurrentTimestamp();
+
     TestUtils.waitForNonDeterministicCompletion(TOTAL_TIMEOUT_FOR_LONG_TEST_MS *100, TimeUnit.MILLISECONDS,
         () -> veniceAdmin.getCurrentVersion(clusterName, storeName) == 1);
+
+    Long version1PromotionTimestamp = veniceAdmin.getStore(clusterName, storeName).getLatestVersionPromoteToCurrentTimestamp();
+    Assert.assertNotEquals(initialPromotionTimestamp, version1PromotionTimestamp);
+
     futureVersion = veniceAdmin.getFutureVersion(clusterName, storeName);
     Assert.assertEquals(futureVersion, Store.NON_EXISTING_VERSION, "Expected future version number of 0!!");
     veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1);
@@ -1064,6 +1069,10 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
         stateModelFactory.makeTransitionCompleted(Version.composeKafkaTopic(storeName, 2), 0));
     TestUtils.waitForNonDeterministicCompletion(TOTAL_TIMEOUT_FOR_LONG_TEST_MS *100, TimeUnit.MILLISECONDS,
         () -> veniceAdmin.getCurrentVersion(clusterName, storeName) == 2);
+
+    Long version2PromotionTimestamp = veniceAdmin.getStore(clusterName, storeName).getLatestVersionPromoteToCurrentTimestamp();
+    Assert.assertNotEquals(version1PromotionTimestamp, version2PromotionTimestamp);
+
     futureVersion = veniceAdmin.getFutureVersion(clusterName, storeName);
     Assert.assertEquals(futureVersion, Store.NON_EXISTING_VERSION, "Expected future version number of 0!!");
     delayParticipantJobCompletion(false);

@@ -181,6 +181,8 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
   @Override
   public void setCurrentVersion(int currentVersion) {
     checkDisableStoreWrite("setStoreCurrentVersion", currentVersion);
+    // Update the latest version promotion to current timestamp, which is useful for backup version retention.
+    setLatestVersionPromoteToCurrentTimestamp(System.currentTimeMillis());
     setCurrentVersionWithoutCheck(currentVersion);
   }
 
