@@ -41,12 +41,12 @@ public class TestRocksDBOffsetStore {
     String storeName = veniceCluster.createStore(keyCount);
     String storeTopicName = storeName + "_v1";
     StorageMetadataService storageMetadataService = serverWrapper.getVeniceServer().getStorageMetadataService();
-    Assert.assertTrue(storageMetadataService.getLastOffset(storeTopicName, 0).getOffset() != -1);
+    Assert.assertTrue(storageMetadataService.getLastOffset(storeTopicName, 0).getLocalVersionTopicOffset() != -1);
     veniceCluster.stopVeniceServer(serverWrapper.getPort());
     TestUtils.waitForNonDeterministicCompletion(30, TimeUnit.SECONDS, () -> veniceCluster.getRandomVeniceRouter()
         .getRoutingDataRepository().getPartitionAssignments(storeTopicName).getAssignedNumberOfPartitions() == 0);    veniceCluster.restartVeniceServer(serverWrapper.getPort());
     storageMetadataService = veniceCluster.getVeniceServers().get(0).getVeniceServer().getStorageMetadataService();
-    Assert.assertTrue(storageMetadataService.getLastOffset(storeTopicName, 0).getOffset() != -1);
+    Assert.assertTrue(storageMetadataService.getLastOffset(storeTopicName, 0).getLocalVersionTopicOffset() != -1);
     try (AvroGenericStoreClient<Integer, Integer> client = ClientFactory.getAndStartGenericAvroClient(
         ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(veniceCluster.getRandomRouterURL()))) {
       for (int i = 0; i < keyCount; ++i) {

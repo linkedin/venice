@@ -31,7 +31,7 @@ public class RocksDBMemoryEnforcement implements StoreDataChangedListener {
     String consumingTopic = task.kafkaVersionTopic;
     if (task.partitionConsumptionStateMap.containsKey(partition)) {
       PartitionConsumptionState partitionConsumptionState = task.partitionConsumptionStateMap.get(partition);
-      if (partitionConsumptionState.getLeaderState().equals(LEADER)) {
+      if (partitionConsumptionState.getLeaderFollowerState().equals(LEADER)) {
         OffsetRecord offsetRecord = partitionConsumptionState.getOffsetRecord();
         if (offsetRecord.getLeaderTopic() != null) {
           consumingTopic = offsetRecord.getLeaderTopic();

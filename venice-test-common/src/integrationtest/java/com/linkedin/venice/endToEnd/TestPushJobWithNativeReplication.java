@@ -181,7 +181,7 @@ public class  TestPushJobWithNativeReplication {
             StorageMetadataService metadataService = serverInRemoteFabric.getStorageMetadataService();
             OffsetRecord offsetRecord = metadataService.getLastOffset(versionTopic, partitionId);
 
-            Assert.assertTrue(offsetRecord.getOffset() <= latestOffsetInVersionTopic);
+            Assert.assertTrue(offsetRecord.getLocalVersionTopicOffset() <= latestOffsetInVersionTopic);
           });
         });
   }

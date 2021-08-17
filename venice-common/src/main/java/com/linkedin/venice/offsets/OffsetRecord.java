@@ -96,11 +96,11 @@ public class OffsetRecord {
     offsetRecordTransformers.clear();
   }
 
-  public long getOffset() {
+  public long getLocalVersionTopicOffset() {
     return this.partitionState.offset;
   }
 
-  public void setOffset(long offset) {
+  public void setLocalVersionTopicOffset(long offset) {
     this.partitionState.offset = offset;
   }
 
@@ -209,21 +209,19 @@ public class OffsetRecord {
     return this.partitionState.incrementalPushInfo;
   }
 
-  /**
-   * "leaderOffset" will be used to track the upstream offset only; the "offset" field
-   * in {@link PartitionState} will be used to track the consumption offset in version topic.
-   *
-   * TODO: rename "leaderOffset" field to "upstreamOffset" field.
-   */
-  public void setLeaderConsumptionState(String kafkaURL, String topic, long startOffset) {
-    this.partitionState.leaderTopic = topic;
-    if (!Version.isVersionTopic(topic)) {
-      populatePartitionStateWithUpstreamOffset(this.partitionState, startOffset, kafkaURL);
-    }
+  public void setLeaderTopic(String leaderTopic) {
+    this.partitionState.leaderTopic = leaderTopic;
   }
 
-  public void setLeaderUpstreamOffset(String kafkaURL, long leaderOffset) {
-    populatePartitionStateWithUpstreamOffset(this.partitionState, leaderOffset, kafkaURL);
+  public void setLeaderUpstreamOffset(String upstreamKafkaURL, long leaderOffset) {
+    /**
+     * Native replication has only one source kafka at a time. Keep only one entry in upstreamOffsetMap.
+     * The key can be be anything (does not matter for native replication)
+     * TODO: keep multiple entries once A/A is supported.
+     */
+    partitionState.upstreamOffsetMap.put(upstreamKafkaURL, leaderOffset);
+    // Set this field as well so that we can rollback
+    partitionState.leaderOffset = leaderOffset;
   }
 
   public void setLeaderGUID(GUID guid) {
@@ -249,7 +247,7 @@ public class OffsetRecord {
     if (getLeaderTopic() != null && (!Version.isVersionTopic(getLeaderTopic()) || getUpstreamOffset(kafkaURL) > 0)) {
       return getUpstreamOffset(kafkaURL);
     } else {
-      return getOffset();
+      return getLocalVersionTopicOffset();
     }
   }
 
@@ -269,8 +267,6 @@ public class OffsetRecord {
   public long getUpstreamOffset(String kafkaURL) {
     return getUpstreamOffsetFromPartitionState(this.partitionState, kafkaURL);
   }
-
-
 
   public GUID getLeaderGUID() {
     return this.partitionState.leaderGUID;
@@ -293,7 +289,7 @@ public class OffsetRecord {
   @Override
   public String toString() {
     return "OffsetRecord{" +
-        "offset=" + getOffset() +
+        "localVersionTopicOffset=" + getLocalVersionTopicOffset() +
         ", offsetLag=" + getOffsetLag() +
         ", eventTimeEpochMs=" + getEventTimeEpochMs() +
         ", latestProducerProcessingTimeInMs=" + getLatestProducerProcessingTimeInMs() +
@@ -308,7 +304,7 @@ public class OffsetRecord {
    */
   public String toSimplifiedString() {
     return "OffsetRecord{" +
-        "offset=" + getOffset() +
+        "localVersionTopicOffset=" + getLocalVersionTopicOffset() +
         ", latestProducerProcessingTimeInMs=" + getLatestProducerProcessingTimeInMs() +
         ", isEndOfPushReceived=" + isEndOfPushReceived() +
         ", upstreamOffset=" + getPartitionUpstreamOffsetString() +
@@ -409,21 +405,6 @@ public class OffsetRecord {
    */
   public byte[] toBytes() {
     return serializer.serialize(PARTITION_STATE_STRING, partitionState);
-  }
-
-  /**
-   * Native replication has only one source kafka at a time. Keep only one entry in upstreamOffsetMap.
-   * The key can be be anything (does not matter for native replication)
-   * TODO: keep multiple entries once A/A is supported.
-   */
-  private void populatePartitionStateWithUpstreamOffset(
-      PartitionState partitionState,
-      long upstreamOffset,
-      String upstreamKafkaClusterURL
-  ) {
-    partitionState.upstreamOffsetMap.put(upstreamKafkaClusterURL, upstreamOffset);
-    // Set this field as well so that we can rollback
-    partitionState.leaderOffset = upstreamOffset;
   }
 
   /**

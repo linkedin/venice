@@ -239,7 +239,7 @@ public class HybridStoreQuotaEnforcement implements StoreDataChangedListener {
    */
   private String getConsumingTopic(PartitionConsumptionState pcs) {
     String consumingTopic = versionTopic;
-    if (pcs != null && pcs.getLeaderState().equals(LEADER)) {
+    if (pcs != null && pcs.getLeaderFollowerState().equals(LEADER)) {
       OffsetRecord offsetRecord = pcs.getOffsetRecord();
       if (offsetRecord.getLeaderTopic() != null) {
         consumingTopic = offsetRecord.getLeaderTopic();

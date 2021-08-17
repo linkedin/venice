@@ -51,7 +51,7 @@ public class AdminResponse {
     snapshot.errorReported = state.isErrorReported();
     snapshot.lagCaughtUp = !state.isWaitingForReplicationLag();
     snapshot.completionReported = state.isCompletionReported();
-    snapshot.leaderState = state.getLeaderState().toString().toUpperCase();
+    snapshot.leaderState = state.getLeaderFollowerState().toString().toUpperCase();
     snapshot.isLatchReleased = state.isLatchReleased();
     snapshot.processedRecordNum = state.getProcessedRecordNum();
     snapshot.processedRecordSize = state.getProcessedRecordSize();
