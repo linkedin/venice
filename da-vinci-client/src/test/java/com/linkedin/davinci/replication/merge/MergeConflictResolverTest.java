@@ -3,7 +3,7 @@ package com.linkedin.davinci.replication.merge;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.schema.SchemaEntry;
-import com.linkedin.venice.schema.ReplicationMetadataSchemaAdapter;
+import com.linkedin.venice.schema.TimestampMetadataSchemaAdapter;
 import com.linkedin.venice.schema.TimestampMetadataSchemaEntry;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
@@ -57,7 +57,7 @@ public class MergeConflictResolverTest {
     this.storeName = "store";
     this.schemaRepository = mock(ReadOnlySchemaRepository.class);
     this.recordSchema = Schema.parse(recordSchemaStr);
-    this.aaSchema = ReplicationMetadataSchemaAdapter.parse(recordSchema, replicationMetadataVersionId);
+    this.aaSchema = TimestampMetadataSchemaAdapter.parse(recordSchema, replicationMetadataVersionId);
     this.serializer = FastSerializerDeserializerFactory.getFastAvroGenericSerializer(recordSchema);
     this.deserializer = FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(recordSchema, recordSchema);
     this.rmdSerializer = FastSerializerDeserializerFactory.getFastAvroGenericSerializer(aaSchema);
