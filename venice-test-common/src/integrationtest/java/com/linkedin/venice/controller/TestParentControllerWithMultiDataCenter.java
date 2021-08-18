@@ -14,7 +14,7 @@ import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiColoMultiCluster
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.schema.ReplicationMetadataSchemaAdapter;
+import com.linkedin.venice.schema.TimestampMetadataSchemaAdapter;
 import com.linkedin.venice.schema.TimestampMetadataSchemaEntry;
 import com.linkedin.venice.utils.TestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
@@ -250,9 +250,9 @@ public class TestParentControllerWithMultiDataCenter {
     String recordSchemaStr2 = TestPushUtils.USER_SCHEMA_STRING_SIMPLE_WITH_DEFAULT;
     String recordSchemaStr3 = TestPushUtils.USER_SCHEMA_STRING_WITH_DEFAULT;
 
-    Schema timestampMetadataSchema1 = ReplicationMetadataSchemaAdapter.parse(recordSchemaStr1, 1);
-    Schema timestampMetadataSchema2 = ReplicationMetadataSchemaAdapter.parse(recordSchemaStr2, 1);
-    Schema timestampMetadataSchema3 = ReplicationMetadataSchemaAdapter.parse(recordSchemaStr3, 1);
+    Schema timestampMetadataSchema1 = TimestampMetadataSchemaAdapter.parse(recordSchemaStr1, 1);
+    Schema timestampMetadataSchema2 = TimestampMetadataSchemaAdapter.parse(recordSchemaStr2, 1);
+    Schema timestampMetadataSchema3 = TimestampMetadataSchemaAdapter.parse(recordSchemaStr3, 1);
 
     VeniceControllerWrapper parentController =
         parentControllers.stream().filter(c -> c.isMasterController(clusterName)).findAny().get();

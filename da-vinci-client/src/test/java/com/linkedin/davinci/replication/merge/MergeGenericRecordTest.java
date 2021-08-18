@@ -1,7 +1,7 @@
 package com.linkedin.davinci.replication.merge;
 
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.schema.ReplicationMetadataSchemaAdapter;
+import com.linkedin.venice.schema.TimestampMetadataSchemaAdapter;
 import com.linkedin.venice.schema.WriteComputeSchemaAdapter;
 import com.linkedin.venice.utils.Lazy;
 import java.util.ArrayList;
@@ -68,7 +68,7 @@ public class MergeGenericRecordTest {
   @Test
   public void testDelete() throws Exception {
     Schema schema = Schema.parse(recordSchemaStr);
-    Schema aaSchema = ReplicationMetadataSchemaAdapter.parse(schema, 1);
+    Schema aaSchema = TimestampMetadataSchemaAdapter.parse(schema, 1);
     GenericRecord valueRecord = new GenericData.Record(schema);
     valueRecord.put("id", "id1");
     valueRecord.put("name", "name1");
@@ -123,7 +123,7 @@ public class MergeGenericRecordTest {
   @Test
   public void testPut() throws Exception {
     Schema schema = Schema.parse(recordSchemaStr);
-    Schema aaSchema = ReplicationMetadataSchemaAdapter.parse(schema, 1);
+    Schema aaSchema = TimestampMetadataSchemaAdapter.parse(schema, 1);
     GenericRecord valueRecord = new GenericData.Record(schema);
     valueRecord.put("id", "id1");
     valueRecord.put("name", "name1");
@@ -169,7 +169,7 @@ public class MergeGenericRecordTest {
   @Test(enabled = false)
   public void testUpdate() throws Exception {
     Schema schema = Schema.parse(recordSchemaStr);
-    Schema aaSchema = ReplicationMetadataSchemaAdapter.parse(schema, 1);
+    Schema aaSchema = TimestampMetadataSchemaAdapter.parse(schema, 1);
     GenericRecord valueRecord = new GenericData.Record(schema);
     valueRecord.put("id", "id1");
     valueRecord.put("name", "name1");
@@ -235,7 +235,7 @@ public class MergeGenericRecordTest {
     List<GenericRecord> payload = new ArrayList<>();
     List<Long> writeTs = new ArrayList<>();
     GenericRecord origRecord = new GenericData.Record(schema);
-    Schema aaSchema = ReplicationMetadataSchemaAdapter.parse(schema, 1);
+    Schema aaSchema = TimestampMetadataSchemaAdapter.parse(schema, 1);
     GenericRecord timeStampRecord = new GenericData.Record(aaSchema);
 
     GenericRecord ts = new GenericData.Record(aaSchema.getFields().get(0).schema().getTypes().get(1));

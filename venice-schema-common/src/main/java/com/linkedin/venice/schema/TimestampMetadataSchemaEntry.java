@@ -6,7 +6,7 @@ import org.apache.avro.Schema;
 /**
  * This holds the schema to perform conflict resolution on records when samza produces data in
  * active active replication mode.
- * More information can be found here {@link ReplicationMetadataSchemaAdapter} about the structure of the schema.
+ * More information can be found here {@link TimestampMetadataSchemaAdapter} about the structure of the schema.
  */
 public class TimestampMetadataSchemaEntry extends GeneratedSchemaEntry {
 
