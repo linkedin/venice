@@ -23,7 +23,7 @@ public class BatchJobHeartbeatConfigs {
     );
     public static final Utils.ConfigEntity<Long> HEARTBEAT_CONTROLLER_INITIAL_DELAY_CONFIG = new Utils.ConfigEntity<>(
         "controller.batch.job.heartbeat.initial.delay.ms",
-        Duration.ofMinutes(15).toMillis(),
+        Duration.ofMinutes(2).toMillis(),
         "The amount of time the controller waits after a store creation before it enables the heartbeat-based lingering push job checking feature."
     );
     public static final Utils.ConfigEntity<Long> HEARTBEAT_INITIAL_DELAY_CONFIG = new Utils.ConfigEntity<>(

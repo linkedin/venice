@@ -1,6 +1,6 @@
 package com.linkedin.venice.controller.lingeringjob;
 
-import com.linkedin.security.datavault.common.principal.PrincipalBuilder;
+import clojure.lang.MapEntry;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.meta.Store;
@@ -11,7 +11,6 @@ import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.status.protocol.PushJobStatusRecordKey;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
-import java.security.cert.CertificateParsingException;
 import java.security.cert.X509Certificate;
 import java.time.Duration;
 import java.util.Map;
@@ -49,7 +48,7 @@ public class HeartbeatBasedLingeringStoreVersionChecker implements LingeringStor
   ) {
     if (isBatchJobHeartbeatEnabled(store, version, time, controllerAdmin, requesterCert, identityParser)) {
       LOGGER.info(String.format("Batch job heartbeat is enabled for store %s with version %d", store.getName(), version.getNumber()));
-      return !batchJobHasHeartbeat(store, version, time, controllerAdmin); // No heartbeat means job is lingering
+      return !isBatchJobAlive(store, version, time, controllerAdmin); // A not-alive job is lingering
     }
     LOGGER.info(String.format("Batch job heartbeat is not enabled for store %s with version %d. "
         + "Fall back to the default behavior.", store.getName(), version.getNumber()));
@@ -63,7 +62,7 @@ public class HeartbeatBasedLingeringStoreVersionChecker implements LingeringStor
     );
   }
 
-  private boolean batchJobHasHeartbeat(Store store, Version version, Time time, Admin controllerAdmin) {
+  private boolean isBatchJobAlive(Store store, Version version, Time time, Admin controllerAdmin) {
     BatchJobHeartbeatKey batchJobHeartbeatKey = new BatchJobHeartbeatKey();
     batchJobHeartbeatKey.storeName = store.getName();
     batchJobHeartbeatKey.storeVersion = version.getNumber();
@@ -78,17 +77,32 @@ public class HeartbeatBasedLingeringStoreVersionChecker implements LingeringStor
       return true; // Assume the job has heartbeat to avoid falsely terminating a running job
     }
     if (lastSeenHeartbeatValue == null) {
+      final long timeSinceJobStartedMs = time.getMilliseconds() - version.getCreatedTime();
+      if (timeSinceJobStartedMs < initialHeartbeatBufferTime.toMillis()) {
+        // Even if there is no heartbeat for this store version, we still check the initial heartbeat buffer time.
+        // It is to handle the case where the initial heartbeat takes time to propagate/travel to the heartbeat store.
+        // In other words, there could be no heartbeat since the first of its heartbeat is on its way to the heartbeat store.
+        // So, we assume that the batch job is alive to avoid falsely killing an alive and heart beating job.
+        LOGGER.info(String.format("No heartbeat found for store %s with version %d. However, still assume it is alive, "
+            + "because this store version was created %d ms ago and this duration is shorter than the buffer time %d ms.",
+            store.getName(), version.getNumber(), timeSinceJobStartedMs, initialHeartbeatBufferTime.toMillis()));
+        return true;
+      }
+      LOGGER.info(String.format("No heartbeat found for store %s with version %d with created time %d ms",
+          store.getName(), version.getNumber(), version.getCreatedTime()));
       return false;
     }
     final long timeSinceLastHeartbeatMs = time.getMilliseconds() - lastSeenHeartbeatValue.timestamp;
     if (timeSinceLastHeartbeatMs > heartbeatTimeout.toMillis()) {
-      LOGGER.info(String.format("Heartbeat timed out for store %s with version %d. Timeout is %s and time" + " since last heartbeat in ms is: %d", store.getName(), version.getNumber(), heartbeatTimeout,
-          timeSinceLastHeartbeatMs));
+      LOGGER.info(String.format("Heartbeat timed out for store %s with version %d. Timeout threshold is %d ms and time"
+                      + " since last heartbeat in ms is: %d",
+              store.getName(), version.getNumber(), heartbeatTimeout.toMillis(), timeSinceLastHeartbeatMs));
       heartbeatBasedCheckerStats.recordTimeoutHeartbeatCheck();
       return false;
     }
-    LOGGER.info(String.format("Heartbeat detected for store %s with version %d and time since last heartbeat in ms " + "is: %d",
-        store.getName(), version.getNumber(), timeSinceLastHeartbeatMs));
+    LOGGER.info(String.format("Heartbeat detected for store %s with version %d and time since last heartbeat is: %d ms " +
+                    "and the timeout threshold is %s ms",
+        store.getName(), version.getNumber(), timeSinceLastHeartbeatMs, heartbeatTimeout.toMillis()));
     heartbeatBasedCheckerStats.recordNoTimeoutHeartbeatCheck();
     return true;
   }
@@ -141,15 +155,16 @@ public class HeartbeatBasedLingeringStoreVersionChecker implements LingeringStor
       heartbeatBasedCheckerStats.recordCheckJobHasHeartbeatFailed();
       return false;
     }
-    boolean heartbeatEnabledInConfig = Boolean.parseBoolean(
-        (String) pushJobConfigs.getOrDefault(HEARTBEAT_ENABLED_CONFIG.getConfigName(), "false"));
-    if (!heartbeatEnabledInConfig) {
-      return false;
+    LOGGER.info("For store " + store.getName() + " with version " + version.getNumber() + ", found pushJobConfigs: " + pushJobConfigs);
+    Optional<CharSequence> heartbeatEnableConfigValue = Utils.getValueFromCharSequenceMapWithStringKey(
+            pushJobConfigs,
+            HEARTBEAT_ENABLED_CONFIG.getConfigName()
+    );
+    if (heartbeatEnableConfigValue.isPresent()) {
+      return Boolean.parseBoolean(heartbeatEnableConfigValue.get().toString());
+    } else {
+      return false; // No config given on this property. Assume not enabled to be safe.
     }
-    // Even if config says heartbeat is enabled, we still check the initial heartbeat buffer time. It is to handle
-    // the case where the initial heartbeat takes time to propagate/travel to the heartbeat store
-    final long timeSinceJobStartedMs = time.getMilliseconds() - version.getCreatedTime();
-    return timeSinceJobStartedMs >= initialHeartbeatBufferTime.toMillis();
   }
 
   private boolean canRequesterAccessHeartbeatStore(
