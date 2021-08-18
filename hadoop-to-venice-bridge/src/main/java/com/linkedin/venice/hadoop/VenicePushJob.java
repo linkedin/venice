@@ -829,8 +829,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
            * sending these types of CM. If/when we add support for that in the controller, then we'll be able
            * to completely stop using the {@link VeniceWriter} from this class.
            */
-          pushJobSetting.incrementalPushVersion = Optional.of(
-              String.valueOf(System.currentTimeMillis()) + "_" + props.getString(JOB_SERVER_NAME, "unknown_job_server")
+          pushJobSetting.incrementalPushVersion = Optional.of(System.currentTimeMillis() + "_" + props.getString(JOB_SERVER_NAME, "unknown_job_server")
                   + "_" + props.getString(JOB_EXEC_ID, "unknown_exec_id"));
           LOGGER.info("Incremental Push Version: " + pushJobSetting.incrementalPushVersion.get());
           getVeniceWriter(kafkaTopicInfo).broadcastStartOfIncrementalPush(pushJobSetting.incrementalPushVersion.get(), new HashMap<>());

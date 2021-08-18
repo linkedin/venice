@@ -25,6 +25,8 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.TreeMap;
@@ -758,6 +760,31 @@ public class Utils {
     public String getDoc() {
       return doc;
     }
+  }
+
+  /**
+   * Given a key with type {@link String} and get a value (if there is one) from a map of type {@link Map<CharSequence, CharSequence>}
+   * which has one of key's toString value equals to the given String key. Note that the worst case runtime of this function
+   * is O(n) since the given map is iterated to find the value.
+   *
+   * The reason why this function exists is that the specific implementation of the {@link CharSequence} interface might
+   * not be {@link String} for the map key type. So, when users try to get a value from such a map with a String key, they
+   * might not get the value even when the value of the key which has the same toString representation as the user-given
+   * String key since the specific implementation of the {@link CharSequence} interface has a different hash function than
+   * String's hash function.
+   *
+   * @return a Value in the CharSequence map or {@link null}
+   */
+  public static Optional<CharSequence> getValueFromCharSequenceMapWithStringKey(
+          Map<CharSequence, CharSequence> charSequenceMap,
+          String stringKey
+  ) {
+    for (Map.Entry<CharSequence, CharSequence> entry : charSequenceMap.entrySet()) {
+      if (Objects.equals(entry.getKey().toString(), stringKey)) {
+        return Optional.ofNullable(entry.getValue()); // Value can be null
+      }
+    }
+    return Optional.empty();
   }
 
   // TODO (lcli): Remove it when Java 9+ is used since Set.of is supported in Java 9+
