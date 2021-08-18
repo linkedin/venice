@@ -2,6 +2,7 @@ package com.linkedin.venice.controller;
 
 import com.linkedin.avroutil1.compatibility.AvroIncompatibleSchemaException;
 import com.linkedin.d2.balancer.D2Client;
+import com.linkedin.espresso.schema.impl.SchemaUtil;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.SSLConfig;
@@ -3450,14 +3451,26 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     public int getValueSchemaId(String clusterName, String storeName, String valueSchemaStr) {
         checkControllerMastership(clusterName);
         ReadWriteSchemaRepository schemaRepo = getHelixVeniceClusterResources(clusterName).getSchemaRepository();
-        return schemaRepo.getValueSchemaId(storeName, valueSchemaStr);
+        int schemaId = schemaRepo.getValueSchemaId(storeName, valueSchemaStr);
+        // validate the schema as VPJ uses this method to fetch the value schema. Fail loudly if the schema user trying
+        // to push is bad.
+        if (schemaId != SchemaData.INVALID_VALUE_SCHEMA_ID) {
+            AvroSchemaUtils.validateAvroSchemaStr(valueSchemaStr);
+        }
+        return schemaId;
     }
 
     @Override
     public Pair<Integer, Integer> getDerivedSchemaId(String clusterName, String storeName, String schemaStr) {
         checkControllerMastership(clusterName);
         ReadWriteSchemaRepository schemaRepo = getHelixVeniceClusterResources(clusterName).getSchemaRepository();
-        return schemaRepo.getDerivedSchemaId(storeName, schemaStr);
+        Pair<Integer, Integer> schamaID = schemaRepo.getDerivedSchemaId(storeName, schemaStr);
+        // validate the schema as VPJ uses this method to fetch the value schema. Fail loudly if the schema user trying
+        // to push is bad.
+        if (schamaID.getFirst() != SchemaData.INVALID_VALUE_SCHEMA_ID) {
+            AvroSchemaUtils.validateAvroSchemaStr(schemaStr);
+        }
+        return schamaID;
     }
 
     @Override
