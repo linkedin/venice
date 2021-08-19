@@ -1183,7 +1183,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   protected boolean shouldProcessRecord(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record) {
     int subPartition = PartitionUtils.getSubPartition(record.topic(), record.partition(), amplificationFactor);
     PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(subPartition);
-    if(null == partitionConsumptionState) {
+    if (null == partitionConsumptionState) {
       logger.info("Skipping message as partition is no longer actively subscribed. Topic: " + kafkaVersionTopic + " Partition Id: " + subPartition);
       return false;
     }
@@ -2174,7 +2174,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                 key, manifestPut, leaderProducedRecordContext.getPersistedToDBFuture());
             producedRecordForManifest.setProducedOffset(recordMetadata.offset());
             ingestionTask.produceToStoreBufferService(sourceConsumerRecordWrapper, producedRecordForManifest);
-
             producedRecordNum++;
             producedRecordSize += key.length + manifest.remaining();
           }
@@ -2182,7 +2181,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         } catch (Exception oe) {
           boolean endOfPushReceived = partitionConsumptionState.isEndOfPushReceived();
           logger.error(consumerTaskId + " received exception in kafka callback thread; EOP received: " + endOfPushReceived + " Topic: " + sourceConsumerRecordWrapper.consumerRecord().topic() + " Partition: "
-              + sourceConsumerRecordWrapper.consumerRecord().partition() + ", Offset: " + sourceConsumerRecordWrapper.consumerRecord().offset() + " exception: ", e);
+              + sourceConsumerRecordWrapper.consumerRecord().partition() + ", Offset: " + sourceConsumerRecordWrapper.consumerRecord().offset() + " exception: ", oe);
           //If EOP is not received yet, set the ingestion task exception so that ingestion will fail eventually.
           if (!endOfPushReceived) {
             try {

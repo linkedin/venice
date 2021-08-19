@@ -1330,7 +1330,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
 
     for (Map.Entry<String, ConsumerRecords<KafkaKey, KafkaMessageEnvelope>> entry : recordsByKafkaURLs.entrySet()) {
-      Iterable<VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope>> veniceConsumerRecords = KafkaRecordWrapper.wrap(entry.getKey(), entry.getValue());
+      Iterable<VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope>> veniceConsumerRecords = KafkaRecordWrapper.wrap(entry.getKey(), entry.getValue(), amplificationFactor);
       produceToStoreBufferServiceOrKafka(veniceConsumerRecords, true);
     }
   }
@@ -2539,6 +2539,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       if (syncOffset) {
         syncOffset(kafkaVersionTopic, partitionConsumptionState);
       }
+
     }
     return sizeOfPersistedData;
   }
@@ -2785,7 +2786,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     // #subPartitionins in StorageEngine should be consistent with #subPartitionins in VTs.
     int producedPartition = partitionConsumptionState.getPartition();
     AbstractStorageEngine storageEngine = storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic);
-
     byte[] keyBytes;
 
     MessageType messageType =
@@ -3276,6 +3276,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   public void reportQuotaNotViolated(int subPartitionId) {
     PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(subPartitionId);
     reportStatusAdapter.reportQuotaNotViolated(partitionConsumptionState);
+  }
+
+  public int getAmplificationFactor() {
+    return amplificationFactor;
   }
 
   protected ReportStatusAdapter getReportStatusAdapter() {

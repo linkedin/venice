@@ -1,9 +1,7 @@
 package com.linkedin.davinci.kafka.consumer;
 
-import java.util.Optional;
+import com.linkedin.venice.utils.PartitionUtils;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
-import org.apache.kafka.common.header.Headers;
-import org.apache.kafka.common.record.TimestampType;
 
 
 /**
@@ -14,14 +12,20 @@ public final class VeniceConsumerRecordWrapper<K,V> {
 
   private final String kafkaUrl;
   private final ConsumerRecord<K, V> consumerRecord;
+  private int subPartition;
 
   public VeniceConsumerRecordWrapper(ConsumerRecord<K,V> consumerRecord) {
     this(null, consumerRecord);
   }
 
   public VeniceConsumerRecordWrapper(String kafkaUrl, ConsumerRecord<K,V> consumerRecord) {
+    this(kafkaUrl, consumerRecord, 1);
+  }
+
+  public VeniceConsumerRecordWrapper(String kafkaUrl, ConsumerRecord<K,V> consumerRecord, int amplificationFactor) {
     this.kafkaUrl = kafkaUrl;
     this.consumerRecord = consumerRecord;
+    this.subPartition = PartitionUtils.getSubPartition(consumerRecord.topic(), consumerRecord.partition(), amplificationFactor);
   }
 
   /**
@@ -38,4 +42,12 @@ public final class VeniceConsumerRecordWrapper<K,V> {
     return consumerRecord;
   }
 
+  /**
+   * Return the SubPartition of the consumerRecord.
+   * If the consumer record's topic is RT, it's coming from leader consumption and we will multiply it with AMP factor.
+   * If topic is VT, then the record's partition id is already correct, we will simply return it.
+   */
+  public int getSubPartition() {
+    return subPartition;
+  }
 }
