@@ -793,6 +793,11 @@ public class Utils {
     return Collections.unmodifiableSet(new HashSet<>(Arrays.asList(objs)));
   }
 
+  @SafeVarargs
+  public static <T> Set<T> mutableSetOf(T... objs) {
+    return new HashSet<>(Arrays.asList(objs));
+  }
+
   public static long calculateDurationMs(Time time, long startTimeMs) {
     return time.getMilliseconds() - startTimeMs;
   }

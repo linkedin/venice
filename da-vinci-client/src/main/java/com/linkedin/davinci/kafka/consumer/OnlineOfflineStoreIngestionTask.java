@@ -30,9 +30,11 @@ import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.stats.StatsErrorCode;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.DiskUsage;
+import java.util.Collections;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Queue;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.function.BooleanSupplier;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
@@ -142,8 +144,8 @@ public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
   }
 
   @Override
-  protected String getConsumptionSourceKafkaAddress(PartitionConsumptionState partitionConsumptionState) {
-    return localKafkaServer;
+  protected Set<String> getConsumptionSourceKafkaAddress(PartitionConsumptionState partitionConsumptionState) {
+    return Collections.singleton(localKafkaServer);
   }
 
   @Override

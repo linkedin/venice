@@ -252,6 +252,14 @@ public class OffsetRecord {
    * call this API to get the latest upstream offset.
    */
   public long getUpstreamOffset(String kafkaURL) {
+    Long upstreamOffset = getUpstreamOffsetFromPartitionState(this.partitionState, kafkaURL);
+    if (upstreamOffset == null) {
+      return partitionState.leaderOffset;
+    }
+    return upstreamOffset;
+  }
+
+  public Long getUpstreamOffsetWithNoDefault(String kafkaURL) {
     return getUpstreamOffsetFromPartitionState(this.partitionState, kafkaURL);
   }
 
@@ -396,13 +404,8 @@ public class OffsetRecord {
 
   /**
    * Return the single entry value from upstreamOffsetMap in native replication.
-   * TODO: get value by key once A/A is supported.
    */
-  private long getUpstreamOffsetFromPartitionState(PartitionState partitionState, String kafkaURL) {
-    Long upstreamOffset = partitionState.upstreamOffsetMap.get(kafkaURL);
-    if (upstreamOffset == null) {
-      return partitionState.leaderOffset;
-    }
-    return upstreamOffset;
+  private Long getUpstreamOffsetFromPartitionState(PartitionState partitionState, String kafkaURL) {
+    return partitionState.upstreamOffsetMap.get(kafkaURL);
   }
 }
