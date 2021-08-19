@@ -80,7 +80,7 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
   private final AggHostHealthStats aggHostHealthStats;
   private final long routerUnhealthyPendingConnThresholdPerRoute;
 
-  private boolean isStateFullHealthCheckEnabled;
+  private final boolean isStatefulHealthCheckEnabled;
 
   private final LeakedCompletableFutureCleanupService leakedCompletableFutureCleanupService;
 
@@ -89,15 +89,15 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
   public VeniceDispatcher(
       VeniceRouterConfig config,
       ReadOnlyStoreRepository storeRepository,
-      RouterStats perStoreStatsByType,
+      RouterStats<AggRouterHttpRequestStats> perStoreStatsByType,
       MetricsRepository metricsRepository,
       StorageNodeClient storageNodeClient,
       RouteHttpRequestStats routeHttpRequestStats,
       AggHostHealthStats aggHostHealthStats,
-      RouterStats<AggRouterHttpRequestStats> routetrStats) {
+      RouterStats<AggRouterHttpRequestStats> routerStats) {
     this.routerConfig = config;
     this.routerUnhealthyPendingConnThresholdPerRoute = routerConfig.getRouterUnhealthyPendingConnThresholdPerRoute();
-    this.isStateFullHealthCheckEnabled = routerConfig.isStatefulRouterHealthCheckEnabled();
+    this.isStatefulHealthCheckEnabled = routerConfig.isStatefulRouterHealthCheckEnabled();
     this.storeRepository = storeRepository;
     this.routeHttpRequestStats = routeHttpRequestStats;
     this.perRouteStatsByType = new RouterStats<>(requestType -> new RouteHttpStats(metricsRepository, requestType));
@@ -108,7 +108,7 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
 
     this.leakedCompletableFutureCleanupService = new LeakedCompletableFutureCleanupService();
     this.leakedCompletableFutureCleanupService.start();
-    this.routerStats = routetrStats;
+    this.routerStats = routerStats;
   }
 
   @Override
@@ -166,7 +166,6 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
         }
 
         responseFuture.setSuccess(Collections.singletonList(buildResponse(path, response)));
-
       } catch (Throwable e) {
         responseFuture.setFailure(e);
       }
@@ -206,7 +205,7 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
     try {
       long pendingRequestCount = routeHttpRequestStats.getPendingRequestCount(storageNode.getNodeId());
 
-      if (isStateFullHealthCheckEnabled && pendingRequestCount > routerUnhealthyPendingConnThresholdPerRoute) {
+      if (isStatefulHealthCheckEnabled && pendingRequestCount > routerUnhealthyPendingConnThresholdPerRoute) {
         isRequestThrottled = true;
         // try to trigger error retry if its not cancelled already. if retry is cancelled throw exception which increases the unhealthy request metric.
         if (!retryFuture.isCancelled()) {
@@ -249,10 +248,9 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
     }
   }
 
-  protected FullHttpResponse buildResponse(VenicePath path, PortableHttpResponse serverResponse) throws IOException {
+  protected VeniceFullHttpResponse buildResponse(VenicePath path, PortableHttpResponse serverResponse) throws IOException {
     int statusCode = serverResponse.getStatusCode();
     ByteBuf content = serverResponse.getContentInByteBuf();
-
 
     if (PASS_THROUGH_ERROR_CODES.contains(statusCode)) {
       return buildPlainTextResponse(HttpResponseStatus.valueOf(statusCode), content);
@@ -261,33 +259,57 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
     CompressionStrategy contentCompression =
         VeniceResponseDecompressor.getCompressionStrategy(serverResponse.getFirstHeader(VENICE_COMPRESSION_STRATEGY));
 
-    if (statusCode == HttpStatus.SC_OK && path.isStreamingRequest()) {
-      VeniceChunkedResponse chunkedResponse = path.getChunkedResponse().get();
-      if (path.getRequestType().equals(RequestType.MULTI_GET_STREAMING)) {
-        Pair<ByteBuf, CompressionStrategy> chunk =
-            path.getResponseDecompressor().processMultiGetResponseForStreaming(contentCompression, content);
-        chunkedResponse.write(chunk.getFirst(), chunk.getSecond());
-      } else {
-        chunkedResponse.write(content);
-      }
-      content = Unpooled.EMPTY_BUFFER;
-    }
+    long decompressionTimeInNs = 0;
 
     if (statusCode != HttpStatus.SC_OK && statusCode != HttpStatus.SC_NOT_FOUND) {
       statusCode = HttpStatus.SC_BAD_GATEWAY;
     }
 
-    FullHttpResponse response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.valueOf(statusCode), content);
+    if (statusCode == HttpStatus.SC_OK) {
+      VeniceResponseDecompressor responseDecompressor = path.getResponseDecompressor();
+      if (path.isStreamingRequest()) {
+        VeniceChunkedResponse chunkedResponse = path.getChunkedResponse().get();
+        if (path.getRequestType().equals(RequestType.MULTI_GET_STREAMING)) {
+          Pair<ByteBuf, CompressionStrategy> chunk =
+              responseDecompressor.processMultiGetResponseForStreaming(contentCompression, content);
+          chunkedResponse.write(chunk.getFirst(), chunk.getSecond());
+        } else {
+          chunkedResponse.write(content);
+        }
+        content = Unpooled.EMPTY_BUFFER;
+      } else {
+        final ContentDecompressResult contentDecompressResult;
+        switch (path.getRequestType()) {
+          case SINGLE_GET:
+            contentDecompressResult = responseDecompressor.decompressSingleGetContent(contentCompression, content);
+            break;
+          case MULTI_GET:
+            contentDecompressResult = responseDecompressor.decompressMultiGetContent(contentCompression, content);
+            break;
+          case COMPUTE:
+            // Compute requests are decompressed on the SN
+            contentDecompressResult = new ContentDecompressResult(content, CompressionStrategy.NO_OP, 0);
+            break;
+          default:
+            throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(Optional.empty(), Optional.empty(),
+                INTERNAL_SERVER_ERROR, "Unknown request type: " + path.getRequestType());
+        }
+
+        content = contentDecompressResult.getContent();
+        contentCompression = contentDecompressResult.getCompressionStrategy();
+        decompressionTimeInNs = contentDecompressResult.getDecompressionTimeInNs();
+      }
+    } else {
+      contentCompression = CompressionStrategy.NO_OP;
+    }
+
+    VeniceFullHttpResponse response = new VeniceFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.valueOf(statusCode), content, decompressionTimeInNs);
     response.headers()
         .set(HttpHeaderNames.CONTENT_TYPE, serverResponse.getFirstHeader(HttpHeaders.CONTENT_TYPE))
-        .set(HttpHeaderNames.CONTENT_LENGTH, response.content().readableBytes())
+        .set(HttpHeaderNames.CONTENT_LENGTH, content.readableBytes())
         .set(HttpConstants.VENICE_SCHEMA_ID, serverResponse.getFirstHeader(HttpConstants.VENICE_SCHEMA_ID))
         .set(HttpConstants.VENICE_COMPRESSION_STRATEGY, contentCompression.getValue());
     return response;
-  }
-
-  protected FullHttpResponse buildPlainTextResponse(HttpResponseStatus status, byte[] content) {
-    return buildPlainTextResponse(status, Unpooled.wrappedBuffer(content));
   }
 
   /**
@@ -304,8 +326,8 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
     return pendingRequestThrottler;
   }
 
-  protected FullHttpResponse buildPlainTextResponse(HttpResponseStatus status, ByteBuf content) {
-    FullHttpResponse response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, status, content);
+  protected VeniceFullHttpResponse buildPlainTextResponse(HttpResponseStatus status, ByteBuf content) {
+    VeniceFullHttpResponse response = new VeniceFullHttpResponse(HttpVersion.HTTP_1_1, status, content, 0L);
     response.headers()
         .set(HttpHeaderNames.CONTENT_TYPE, HttpConstants.TEXT_PLAIN)
         .set(HttpHeaderNames.CONTENT_LENGTH, content.readableBytes());

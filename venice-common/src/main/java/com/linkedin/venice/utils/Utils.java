@@ -30,7 +30,6 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.TreeMap;
-import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 import javax.annotation.Nonnull;
@@ -673,54 +672,6 @@ public class Utils {
     debugInfo.put("user", getCurrentUser());
 
     return debugInfo;
-  }
-
-  // This class is defined so that we can give a name to the thread which is used by the executor service
-  static public class NamedThreadFactory implements ThreadFactory {
-    private static final Logger LOGGER = Logger.getLogger(NamedThreadFactory.class);
-    private String threadName;
-    private final Runnable uncaughtExceptionHook;
-    private int threadSequenceNum;
-
-    /**
-     * This constructor is used when the thread name is unknown (or do not need to be set at construct time)
-     */
-    public NamedThreadFactory() {
-      this(null);
-    }
-
-    public NamedThreadFactory(String threadName) {
-      this(threadName, null);
-    }
-
-    public NamedThreadFactory(String threadName, Runnable uncaughtExceptionHook) {
-      this.threadName = threadName;
-      this.uncaughtExceptionHook = uncaughtExceptionHook;
-      this.threadSequenceNum = 0;
-    }
-
-    public Thread newThreadWithName(Runnable runnable, String threadName) {
-      Utils.notNull(runnable);
-      Utils.notNull(threadName);
-      this.threadName = threadName;
-      return newThread(runnable);
-    }
-
-    @Override
-    public Thread newThread(Runnable runnable) {
-      Thread thread = new Thread(runnable, this.threadName + "-" + this.threadSequenceNum);
-      thread.setUncaughtExceptionHandler(new Thread.UncaughtExceptionHandler() {
-        public void uncaughtException(Thread t, Throwable e) {
-          LOGGER.error("Thread " + t.getName() + " throws uncaught exception. ", e);
-          if (uncaughtExceptionHook != null) {
-            uncaughtExceptionHook.run();
-          }
-        }
-      });
-      thread.setDaemon(true);
-      this.threadSequenceNum++;
-      return thread;
-    }
   }
 
   /**

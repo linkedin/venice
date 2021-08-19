@@ -114,6 +114,8 @@ public class VeniceRouterConfig {
   private boolean routerHeartBeatEnabled;
   private int routerHTTPMaxResponseSize;
   private boolean routerHTTP2R2ClientEnabled;
+  private int routerMultiGetDecompressionThreads;
+  private int routerMultiGetDecompressionBatchSize;
 
   public VeniceRouterConfig(VeniceProperties props) {
     try {
@@ -170,9 +172,9 @@ public class VeniceRouterConfig {
     computeTardyLatencyThresholdMs = props.getLong(ROUTER_COMPUTE_TARDY_LATENCY_MS, TimeUnit.MILLISECONDS.convert(10, TimeUnit.SECONDS));
 
     readThrottlingEnabled = props.getBoolean(ROUTER_ENABLE_READ_THROTTLING, true);
-    maxPendingRequest = props.getLong(ROUTER_MAX_PENDING_REQUEST, 2500l * 12l);
+    maxPendingRequest = props.getLong(ROUTER_MAX_PENDING_REQUEST, 2500L * 12L);
 
-    storageNodeClientType = StorageNodeClientType.valueOf(props.getString(ROUTER_STORAGE_NODE_CLIENT_TYPE, StorageNodeClientType.APACHE_HTTP_ASYNC_CLIENT.name())); // Use ApacheHttpAsynClient by default
+    storageNodeClientType = StorageNodeClientType.valueOf(props.getString(ROUTER_STORAGE_NODE_CLIENT_TYPE, StorageNodeClientType.APACHE_HTTP_ASYNC_CLIENT.name())); // Use ApacheHttpAsyncClient by default
     // TODO: what is the best setting? 5*NUMBER_OF_CORES?
     nettyClientEventLoopThreads = props.getInt(ROUTER_NETTY_CLIENT_EVENT_LOOP_THREADS, 24); // 24 threads by default
     nettyClientChannelPoolAcquireTimeoutMs = props.getLong(ROUTER_NETTY_CLIENT_CHANNEL_POOL_ACQUIRE_TIMEOUT_MS, 10); // 10ms by default
@@ -266,6 +268,9 @@ public class VeniceRouterConfig {
     routerHeartBeatEnabled = props.getBoolean(ROUTER_HEART_BEAT_ENABLED, true);
     routerHTTPMaxResponseSize = props.getInt(ROUTER_HTTP_MAX_RESPONSE_SIZE, 32000000);
     routerHTTP2R2ClientEnabled = props.getBoolean(ROUTER_HTTP2_R2_CLIENT_ENABLED, false);
+
+    routerMultiGetDecompressionThreads = props.getInt(ROUTER_MULTI_KEY_DECOMPRESSION_THREADS, 10);
+    routerMultiGetDecompressionBatchSize = props.getInt(ROUTER_MULTI_KEY_DECOMPRESSION_BATCH_SIZE, 5);
   }
 
   public String getClusterName() {
@@ -695,5 +700,13 @@ public class VeniceRouterConfig {
 
   public boolean isRouterHTTP2R2ClientEnabled() {
     return routerHTTP2R2ClientEnabled;
+  }
+
+  public int getRouterMultiGetDecompressionThreads() {
+    return routerMultiGetDecompressionThreads;
+  }
+
+  public int getRouterMultiGetDecompressionBatchSize() {
+    return routerMultiGetDecompressionBatchSize;
   }
 }

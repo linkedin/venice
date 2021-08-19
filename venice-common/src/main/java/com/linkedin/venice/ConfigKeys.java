@@ -1651,4 +1651,13 @@ public class ConfigKeys {
    */
   public static final String CONTROLLER_JETTY_CONFIG_OVERRIDE_PREFIX = "controller.jetty.";
 
+  /**
+   * The number of threads that will be used to decompress multi-get records in routers.
+   */
+  public static final String ROUTER_MULTI_KEY_DECOMPRESSION_THREADS = "router.multi.key.decompression.threads";
+
+  /**
+   * The number of records per batch of records that will be decompressed in a multi-get request in routers.
+   */
+  public static final String ROUTER_MULTI_KEY_DECOMPRESSION_BATCH_SIZE = "router.multi.key.decompression.batch.size";
 }

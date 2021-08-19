@@ -52,7 +52,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import org.apache.log4j.Logger;
 
-import static com.linkedin.venice.router.api.VeniceResponseDecompressor.*;
+import static com.linkedin.venice.router.api.VeniceResponseAggregator.*;
 import static com.linkedin.venice.streaming.StreamingConstants.*;
 
 

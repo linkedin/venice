@@ -23,11 +23,14 @@ import com.linkedin.venice.router.stats.RouterStats;
 import com.linkedin.venice.router.streaming.VeniceChunkedWriteHandler;
 import com.linkedin.venice.router.utils.VeniceRouterUtils;
 import com.linkedin.venice.streaming.StreamingUtils;
+import com.linkedin.venice.utils.NamedThreadFactory;
 import com.linkedin.venice.utils.Utils;
 import io.netty.channel.ChannelHandlerContext;
 import java.util.Collection;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -83,6 +86,8 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
   private final ReadOnlyStoreRepository storeRepository;
   private final VeniceRouterConfig routerConfig;
   private final CompressorFactory compressorFactory;
+  private final ExecutorService decompressionExecutor;
+  private final int multiGetDecompressionBatchSize;
 
   public VenicePathParser(VeniceVersionFinder versionFinder, VenicePartitionFinder partitionFinder,
       RouterStats<AggRouterHttpRequestStats> routerStats, ReadOnlyStoreRepository storeRepository,
@@ -93,6 +98,8 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
     this.storeRepository = storeRepository;
     this.routerConfig = routerConfig;
     this.compressorFactory = compressorFactory;
+    this.decompressionExecutor = Executors.newFixedThreadPool(routerConfig.getRouterMultiGetDecompressionThreads(), new NamedThreadFactory("multi-get-decompressor"));
+    this.multiGetDecompressionBatchSize = routerConfig.getRouterMultiGetDecompressionBatchSize();
   };
 
   @Override
@@ -182,7 +189,7 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
       // TODO: maybe we should use the builder pattern here??
       // Setup decompressor
       VeniceResponseDecompressor responseDecompressor =
-          new VeniceResponseDecompressor(decompressOnClient, routerStats, fullHttpRequest, storeName, version, compressorFactory);
+          new VeniceResponseDecompressor(decompressOnClient, routerStats, fullHttpRequest, storeName, version, compressorFactory, decompressionExecutor, multiGetDecompressionBatchSize);
       path.setResponseDecompressor(responseDecompressor);
 
       AggRouterHttpRequestStats stats = routerStats.getStatsByType(requestType);

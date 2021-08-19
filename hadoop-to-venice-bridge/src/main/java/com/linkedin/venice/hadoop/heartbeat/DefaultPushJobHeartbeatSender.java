@@ -3,6 +3,7 @@ package com.linkedin.venice.hadoop.heartbeat;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.status.protocol.BatchJobHeartbeatKey;
 import com.linkedin.venice.status.protocol.BatchJobHeartbeatValue;
+import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.time.Duration;
@@ -14,8 +15,8 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import javax.annotation.Nonnull;
-import org.apache.avro.Schema;
 import javax.annotation.concurrent.NotThreadSafe;
+import org.apache.avro.Schema;
 import org.apache.kafka.clients.producer.Callback;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.log4j.Logger;
@@ -59,7 +60,7 @@ class DefaultPushJobHeartbeatSender implements PushJobHeartbeatSender {
     this.keySerializer = new VeniceAvroKafkaSerializer(heartbeatKeySchema);
     this.valueSerializer = new VeniceAvroKafkaSerializer(BatchJobHeartbeatValue.SCHEMA$);
     this.running = false;
-    this.executorService = Executors.newSingleThreadScheduledExecutor(new Utils.NamedThreadFactory("push-job-heartbeat-thread"));
+    this.executorService = Executors.newSingleThreadScheduledExecutor(new DaemonThreadFactory("push-job-heartbeat-thread"));
     this.successfulHeartbeatCount = 0;
     this.failedHeartbeatCount = 0;
   }

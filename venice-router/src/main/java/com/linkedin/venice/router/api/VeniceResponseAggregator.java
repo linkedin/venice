@@ -5,6 +5,8 @@ import com.linkedin.ddsstorage.base.misc.Metrics;
 import com.linkedin.ddsstorage.base.misc.TimeValue;
 import com.linkedin.ddsstorage.netty4.misc.BasicFullHttpRequest;
 import com.linkedin.ddsstorage.router.api.ResponseAggregatorFactory;
+import com.linkedin.venice.HttpConstants;
+import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceStoreIsMigratedException;
 import com.linkedin.venice.read.RequestType;
@@ -14,18 +16,24 @@ import com.linkedin.venice.router.api.routing.helix.HelixGroupSelector;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
 import com.linkedin.venice.router.stats.RouterStats;
 import com.linkedin.venice.router.streaming.SuccessfulStreamingResponse;
-import com.linkedin.venice.router.streaming.VeniceChunkedResponse;
+import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Utils;
+import io.netty.buffer.CompositeByteBuf;
+import io.netty.buffer.Unpooled;
+import io.netty.handler.codec.http.DefaultFullHttpResponse;
 import io.netty.handler.codec.http.FullHttpResponse;
 import io.netty.handler.codec.http.HttpHeaderNames;
+import io.netty.handler.codec.http.HttpResponse;
 import io.netty.handler.codec.http.HttpResponseStatus;
+import io.netty.handler.codec.http.HttpVersion;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -34,6 +42,7 @@ import javax.annotation.Nonnull;
 import org.apache.log4j.Logger;
 
 import static com.linkedin.ddsstorage.router.api.MetricNames.*;
+import static com.linkedin.venice.HttpConstants.*;
 import static io.netty.handler.codec.http.HttpResponseStatus.*;
 
 public class VeniceResponseAggregator implements ResponseAggregatorFactory<BasicFullHttpRequest, FullHttpResponse> {
@@ -45,15 +54,29 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
 
   private HelixGroupSelector helixGroupSelector;
 
-  private static final RecordSerializer<MultiGetResponseRecordV1> recordSerializer =
-      SerializerDeserializerFactory.getAvroGenericSerializer(MultiGetResponseRecordV1.SCHEMA$);;
-  private static final RecordDeserializer<MultiGetResponseRecordV1> recordDeserializer =
-      SerializerDeserializerFactory.getAvroSpecificDeserializer(MultiGetResponseRecordV1.class);
-
   //timeout is configurable and should be overwritten elsewhere
   private long singleGetTardyThresholdInMs = TimeUnit.MILLISECONDS.convert(10, TimeUnit.SECONDS);
   private long multiGetTardyThresholdInMs = TimeUnit.MILLISECONDS.convert(10, TimeUnit.SECONDS);
   private long computeTardyThresholdInMs = TimeUnit.MILLISECONDS.convert(10, TimeUnit.SECONDS);
+
+  // Headers expected in each storage node multi-get response
+  public static final Map<CharSequence, String> MULTI_GET_VALID_HEADER_MAP = new HashMap<>();
+  public static final Map<CharSequence, String> COMPUTE_VALID_HEADER_MAP = new HashMap<>();
+  static {
+    MULTI_GET_VALID_HEADER_MAP.put(HttpHeaderNames.CONTENT_TYPE, HttpConstants.AVRO_BINARY);
+    /**
+     * TODO: need to revisit this logic if there are multiple response versions for batch-get are available.
+     */
+    MULTI_GET_VALID_HEADER_MAP.put(HttpConstants.VENICE_SCHEMA_ID,
+        Integer.toString(ReadAvroProtocolDefinition.MULTI_GET_RESPONSE_V1.getProtocolVersion()));
+
+    COMPUTE_VALID_HEADER_MAP.put(HttpHeaderNames.CONTENT_TYPE, HttpConstants.AVRO_BINARY);
+    /**
+     * TODO: need to revisit this logic if there are multiple response versions for read compute are available.
+     */
+    COMPUTE_VALID_HEADER_MAP.put(HttpConstants.VENICE_SCHEMA_ID,
+        Integer.toString(ReadAvroProtocolDefinition.COMPUTE_RESPONSE_V1.getProtocolVersion()));
+  }
 
   public VeniceResponseAggregator(RouterStats<AggRouterHttpRequestStats> routerStats) {
     this.routerStats = routerStats;
@@ -137,6 +160,7 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
     RequestType requestType = venicePath.getRequestType();
     AggRouterHttpRequestStats stats = routerStats.getStatsByType(requestType);
     String storeName = venicePath.getStoreName();
+    int versionNumber = venicePath.getVersionNumber();
 
     VeniceResponseDecompressor responseDecompressor = venicePath.getResponseDecompressor();
     FullHttpResponse finalResponse = null;
@@ -145,17 +169,17 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
        * All the request with type: {@link RequestType.MULTI_GET_STREAMING} and {@link RequestType.COMPUTE_STREAMING}
        * will be handled here.
        */
-      finalResponse = buildStreamingResponse(gatheredResponses, responseDecompressor);
+      finalResponse = buildStreamingResponse(gatheredResponses, storeName, versionNumber);
     } else {
       switch (requestType) {
         case SINGLE_GET:
-          finalResponse = responseDecompressor.processSingleGetResponse(gatheredResponses.get(0));
+          finalResponse = gatheredResponses.get(0);
           break;
         case MULTI_GET:
-          finalResponse = responseDecompressor.processMultiGetResponses(gatheredResponses);
+          finalResponse = processMultiGetResponses(gatheredResponses, storeName, versionNumber);
           break;
         case COMPUTE:
-          finalResponse = responseDecompressor.processComputeResponses(gatheredResponses);
+          finalResponse = processComputeResponses(gatheredResponses, storeName);
           break;
         default:
           throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(Optional.empty(), Optional.empty(),
@@ -212,12 +236,12 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
     return finalResponse;
   }
 
-  private FullHttpResponse buildStreamingResponse(List<FullHttpResponse> gatheredResponses, VeniceResponseDecompressor responseDecompressor) {
+  private FullHttpResponse buildStreamingResponse(List<FullHttpResponse> gatheredResponses, String storeName, int version) {
     // Validate the consistency of compression strategy across all the gathered responses
-    responseDecompressor.validateAndExtractCompressionStrategy(gatheredResponses);
+    validateAndExtractCompressionStrategy(gatheredResponses, storeName, version);
     /**
-     * If every sub-response is good, here will return {@link VeniceChunkedResponse.DummyFullHttpResponse} to
-     * indicate that, otherwise, here will return the first error response.
+     * If every sub-response is good, return {@link SuccessfulStreamingResponse} to indicate that,
+     * otherwise, return the first error response.
      */
     for (FullHttpResponse subResponse : gatheredResponses) {
       if (! subResponse.status().equals(OK)) {
@@ -240,5 +264,134 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
       default:
         throw new VeniceException("Unknown request type: " + requestType);
     }
+  }
+
+  private static CompressionStrategy getCompressionStrategy(String compressionHeader) {
+    if (null == compressionHeader) {
+      return CompressionStrategy.NO_OP;
+    }
+    return CompressionStrategy.valueOf(Integer.parseInt(compressionHeader));
+  }
+
+  private static CompressionStrategy getResponseCompressionStrategy(HttpResponse response) {
+    return getCompressionStrategy(response.headers().get(VENICE_COMPRESSION_STRATEGY));
+  }
+
+  private CompressionStrategy validateAndExtractCompressionStrategy(List<FullHttpResponse> responses, String storeName, int version) {
+    CompressionStrategy compressionStrategy = null;
+    for (FullHttpResponse response : responses) {
+      CompressionStrategy responseCompression = getResponseCompressionStrategy(response);
+      if (compressionStrategy == null) {
+        compressionStrategy = responseCompression;
+      }
+      if (responseCompression != compressionStrategy) {
+        // Compression strategy should be consistent across all records for a specific store version
+        String errorMsg = String.format("Inconsistent compression strategy returned. Store: %s; Version: %d, ExpectedCompression: %d, ResponseCompression: %d",
+            storeName, version, compressionStrategy.getValue(), responseCompression.getValue());
+        throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(Optional.of(storeName), Optional.of(RequestType.MULTI_GET),
+            BAD_GATEWAY, errorMsg);
+      }
+    }
+    return compressionStrategy;
+  }
+
+  protected FullHttpResponse processComputeResponses(List<FullHttpResponse> responses, String storeName) {
+    /**
+     * Here we will check the consistency of the following headers among all the responses:
+     * 1. {@link HttpHeaderNames.CONTENT_TYPE}
+     * 2. {@link HttpConstants.VENICE_SCHEMA_ID}
+     */
+    CompositeByteBuf content = Unpooled.compositeBuffer();
+    for (FullHttpResponse response : responses) {
+      if (response.status() != OK) {
+        // Return error response directly.
+        return response;
+      }
+      COMPUTE_VALID_HEADER_MAP.forEach((headerName, headerValue) -> {
+        String currentValue = response.headers().get(headerName);
+        if (null == currentValue) {
+          throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(Optional.of(storeName), Optional.of(RequestType.COMPUTE),
+              BAD_GATEWAY, "Header: " + headerName + " is expected in compute sub-response");
+        }
+        if (!headerValue.equals(currentValue)) {
+          throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(Optional.of(storeName), Optional.of(RequestType.COMPUTE),
+              BAD_GATEWAY,
+              "Incompatible header received for " + headerName + ", values: " + headerValue + ", " + currentValue);
+        }
+      });
+
+      content.addComponent(true, response.content());
+    }
+
+    FullHttpResponse computeResponse = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, OK, content);
+    COMPUTE_VALID_HEADER_MAP.forEach((headerName, headerValue) -> {
+      computeResponse.headers().add(headerName, headerValue);
+    });
+    computeResponse.headers().add(HttpHeaderNames.CONTENT_LENGTH, content.readableBytes());
+    computeResponse.headers().add(VENICE_COMPRESSION_STRATEGY, CompressionStrategy.NO_OP.getValue());
+    return computeResponse;
+  }
+
+  /**
+   * If a part of a multi-get request fails, the entire request should fail from the client's perspective.
+   * @param responses Subset of responses from the SN to be concatenated to form the response to the client.
+   * @return The concatenated response that should be sent to the client along with some content-related headers.
+   */
+  protected FullHttpResponse processMultiGetResponses(List<FullHttpResponse> responses, String storeName, int version) {
+    long decompressedSize = 0;
+    long decompressionTimeInNs = 0;
+    CompositeByteBuf content = Unpooled.compositeBuffer();
+    // Venice only supports either compression of the whole database or no compression at all.
+    CompressionStrategy responseCompression = validateAndExtractCompressionStrategy(responses, storeName, version);
+
+    for (FullHttpResponse response : responses) {
+      if (response.status() != OK) {
+        response.headers().set(HttpConstants.VENICE_COMPRESSION_STRATEGY, CompressionStrategy.NO_OP.getValue());
+        // Return error response directly for now.
+        return response;
+      }
+
+      content.addComponent(true, response.content());
+
+      /**
+       * Here we will check the consistency of the following headers among all the responses:
+       * 1. {@link HttpHeaderNames.CONTENT_TYPE}
+       * 2. {@link HttpConstants.VENICE_SCHEMA_ID}
+       */
+      MULTI_GET_VALID_HEADER_MAP.forEach((headerName, headerValue) -> {
+        String currentValue = response.headers().get(headerName);
+        if (null == currentValue) {
+          throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(Optional.of(storeName), Optional.of(RequestType.MULTI_GET),
+              BAD_GATEWAY, "Header: " + headerName + " is expected in multi-get sub-response");
+        }
+        if (!headerValue.equals(currentValue)) {
+          throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(Optional.of(storeName), Optional.of(RequestType.MULTI_GET),
+              BAD_GATEWAY, "Incompatible header received for " + headerName + ", values: " + headerValue + ", " +  currentValue);
+        }
+      });
+
+      decompressedSize += response.content().readableBytes();
+      if (response instanceof VeniceFullHttpResponse) {
+        decompressionTimeInNs += ((VeniceFullHttpResponse) response).getDecompressionTimeInNs();
+      }
+    }
+
+    if (decompressedSize > 0 && decompressionTimeInNs > 0) {
+      AggRouterHttpRequestStats stats = routerStats.getStatsByType(RequestType.MULTI_GET);
+      stats.recordCompressedResponseSize(storeName, decompressedSize);
+      /**
+       * The following metric is actually measuring the deserialization/decompression/re-serialization.
+       * Since all the overhead is introduced by the value compression, it might be fine to track them altogether.
+       */
+      stats.recordDecompressionTime(storeName, LatencyUtils.convertLatencyFromNSToMS(decompressionTimeInNs));
+    }
+
+    FullHttpResponse multiGetResponse = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, OK, content);
+    MULTI_GET_VALID_HEADER_MAP.forEach((headerName, headerValue) -> {
+      multiGetResponse.headers().add(headerName, headerValue);
+    });
+    multiGetResponse.headers().add(HttpHeaderNames.CONTENT_LENGTH, content.readableBytes());
+    multiGetResponse.headers().add(VENICE_COMPRESSION_STRATEGY, responseCompression.getValue());
+    return multiGetResponse;
   }
 }
