@@ -152,6 +152,11 @@ public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
     offsetRecord.setLocalVersionTopicOffset(consumerRecordWrapper.consumerRecord().offset());
   }
 
+  @Override
+  protected boolean isRealTimeBufferReplayStarted(PartitionConsumptionState partitionConsumptionState) {
+    return partitionConsumptionState.getOffsetRecord().getStartOfBufferReplayDestinationOffset().isPresent();
+  }
+
   /**
    * For Online/Offline state model, we use the StartOfBufferReplay message to calculate the lag.
    */

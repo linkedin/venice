@@ -147,15 +147,15 @@ import static org.testng.Assert.*;
 /**
  * Unit tests for the KafkaPerStoreConsumptionTask.
  *
- * Be ware that most of the test cases in this suite depend on {@link StoreIngestionTaskTest#TEST_TIMEOUT}
+ * Be ware that most of the test cases in this suite depend on {@link StoreIngestionTaskTest#TEST_TIMEOUT_MS}
  * Adjust it based on environment if timeout failure occurs.
  */
 @Test(singleThreaded = true)
 public class StoreIngestionTaskTest {
   private static final Logger logger = Logger.getLogger(StoreIngestionTaskTest.class);
 
-  private static final long TEST_TIMEOUT;
-  private static final int RUN_TEST_FUNCTION_TIMEOUT = 10;
+  private static final long TEST_TIMEOUT_MS;
+  private static final int RUN_TEST_FUNCTION_TIMEOUT_SECONDS = 10;
   private static final long READ_CYCLE_DELAY_MS = 5;
   private static final long EMPTY_POLL_SLEEP_MS = 0;
 
@@ -164,7 +164,7 @@ public class StoreIngestionTaskTest {
     IngestionNotificationDispatcher.PROGRESS_REPORT_INTERVAL = -1; // Report all the time.
     // Report progress/throttling for every message
     StoreIngestionTask.OFFSET_REPORTING_INTERVAL = 1;
-    TEST_TIMEOUT = 1000 * READ_CYCLE_DELAY_MS;
+    TEST_TIMEOUT_MS = 1000 * READ_CYCLE_DELAY_MS;
   }
 
   private InMemoryKafkaBroker inMemoryKafkaBroker;
@@ -592,7 +592,7 @@ public class StoreIngestionTaskTest {
     } finally {
       storeIngestionTaskUnderTest.close();
       if (testSubscribeTaskFuture != null) {
-        testSubscribeTaskFuture.get(RUN_TEST_FUNCTION_TIMEOUT, TimeUnit.SECONDS);
+        testSubscribeTaskFuture.get(RUN_TEST_FUNCTION_TIMEOUT_SECONDS, TimeUnit.SECONDS);
       }
     }
   }
@@ -637,13 +637,13 @@ public class StoreIngestionTaskTest {
 
     runTest(pollStrategy, getSet(PARTITION_FOO), () -> {}, () -> {
       // Verify it retrieves the offset from the OffSet Manager
-      verify(mockStorageMetadataService, timeout(TEST_TIMEOUT)).getLastOffset(topic, PARTITION_FOO);
+      verify(mockStorageMetadataService, timeout(TEST_TIMEOUT_MS)).getLastOffset(topic, PARTITION_FOO);
 
       verifyPutAndDelete(1, isActiveActiveReplicationEnabled, true);
 
       // Verify it commits the offset to Offset Manager
       OffsetRecord expectedOffsetRecordForDeleteMessage = getOffsetRecord(deleteMetadata.offset());
-      verify(mockStorageMetadataService, timeout(TEST_TIMEOUT))
+      verify(mockStorageMetadataService, timeout(TEST_TIMEOUT_MS))
           .put(topic, PARTITION_FOO, expectedOffsetRecordForDeleteMessage);
     }, isLeaderFollowerModelEnabled, isActiveActiveReplicationEnabled);
   }
@@ -728,18 +728,18 @@ public class StoreIngestionTaskTest {
 
     runTest(pollStrategy, getSet(PARTITION_FOO), () -> {}, () -> {
       // Verify it retrieves the offset from the OffSet Manager
-      verify(mockStorageMetadataService, timeout(TEST_TIMEOUT)).getLastOffset(topic, PARTITION_FOO);
+      verify(mockStorageMetadataService, timeout(TEST_TIMEOUT_MS)).getLastOffset(topic, PARTITION_FOO);
 
       // Verify StorageEngine#put is invoked only once and with appropriate key & value.
-      verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT))
+      verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT_MS))
           .put(PARTITION_FOO, putKeyFoo, ByteBuffer.wrap(ValueRecord.create(SCHEMA_ID, putValue).serialize()));
 
-      verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT))
+      verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT_MS))
           .put(PARTITION_FOO, putKeyFoo2, ByteBuffer.wrap(ValueRecord.create(SCHEMA_ID, putValue).serialize()));
 
       // Verify it commits the offset to Offset Manager
       OffsetRecord expectedOffsetRecordForLastMessage = getOffsetRecord(putMetadata4.offset());
-      verify(mockStorageMetadataService, timeout(TEST_TIMEOUT))
+      verify(mockStorageMetadataService, timeout(TEST_TIMEOUT_MS))
           .put(topic, PARTITION_FOO, expectedOffsetRecordForLastMessage);
     }, isLeaderFollowerModelEnabled, isActiveActiveReplicationEnabled);
   }
@@ -753,16 +753,16 @@ public class StoreIngestionTaskTest {
 
     runTest(getSet(PARTITION_FOO), () -> {
       // Verify it retrieves the offset from the OffSet Manager
-      verify(mockStorageMetadataService, timeout(TEST_TIMEOUT)).getLastOffset(topic, PARTITION_FOO);
+      verify(mockStorageMetadataService, timeout(TEST_TIMEOUT_MS)).getLastOffset(topic, PARTITION_FOO);
 
       // Verify StorageEngine#put is invoked only once and with appropriate key & value.
-      verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT))
+      verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT_MS))
           .put(PARTITION_FOO, putKeyFoo, ByteBuffer.wrap(ValueRecord.create(EXISTING_SCHEMA_ID, putValue).serialize()));
-      verify(mockSchemaRepo, timeout(TEST_TIMEOUT)).hasValueSchema(storeNameWithoutVersionInfo, EXISTING_SCHEMA_ID);
+      verify(mockSchemaRepo, timeout(TEST_TIMEOUT_MS)).hasValueSchema(storeNameWithoutVersionInfo, EXISTING_SCHEMA_ID);
 
       // Verify it commits the offset to Offset Manager
       OffsetRecord expected = getOffsetRecord(fooLastOffset);
-      verify(mockStorageMetadataService, timeout(TEST_TIMEOUT)).put(topic, PARTITION_FOO, expected);
+      verify(mockStorageMetadataService, timeout(TEST_TIMEOUT_MS)).put(topic, PARTITION_FOO, expected);
     }, isLeaderFollowerModelEnabled, isActiveActiveReplicationEnabled);
   }
 
@@ -782,20 +782,20 @@ public class StoreIngestionTaskTest {
 
     runTest(getSet(PARTITION_FOO), () -> {}, () -> {
       // Verify it retrieves the offset from the OffSet Manager
-      verify(mockStorageMetadataService, timeout(TEST_TIMEOUT)).getLastOffset(topic, PARTITION_FOO);
+      verify(mockStorageMetadataService, timeout(TEST_TIMEOUT_MS)).getLastOffset(topic, PARTITION_FOO);
 
       // Verify that after retrying 3 times, record with 'NON_EXISTING_SCHEMA_ID' was put into BDB.
-      verify(mockSchemaRepo, timeout(TEST_TIMEOUT).atLeast(3)).hasValueSchema(storeNameWithoutVersionInfo, NON_EXISTING_SCHEMA_ID);
-      verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT)).
+      verify(mockSchemaRepo, timeout(TEST_TIMEOUT_MS).atLeast(3)).hasValueSchema(storeNameWithoutVersionInfo, NON_EXISTING_SCHEMA_ID);
+      verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT_MS)).
           put(PARTITION_FOO, putKeyFoo, ByteBuffer.wrap(ValueRecord.create(NON_EXISTING_SCHEMA_ID, putValue).serialize()));
 
       //Verify that the following record is consumed well.
-      verify(mockSchemaRepo, timeout(TEST_TIMEOUT)).hasValueSchema(storeNameWithoutVersionInfo, EXISTING_SCHEMA_ID);
-      verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT))
+      verify(mockSchemaRepo, timeout(TEST_TIMEOUT_MS)).hasValueSchema(storeNameWithoutVersionInfo, EXISTING_SCHEMA_ID);
+      verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT_MS))
           .put(PARTITION_FOO, putKeyFoo, ByteBuffer.wrap(ValueRecord.create(EXISTING_SCHEMA_ID, putValue).serialize()));
 
       OffsetRecord expected = getOffsetRecord(existingSchemaOffset);
-      verify(mockStorageMetadataService, timeout(TEST_TIMEOUT)).put(topic, PARTITION_FOO, expected);
+      verify(mockStorageMetadataService, timeout(TEST_TIMEOUT_MS)).put(topic, PARTITION_FOO, expected);
     }, isLeaderFollowerModelEnabled, isActiveActiveReplicationEnabled);
   }
 
@@ -813,11 +813,11 @@ public class StoreIngestionTaskTest {
 
     runTest(getSet(PARTITION_FOO), () -> {
       // Verify it retrieves the offset from the OffSet Manager
-      verify(mockStorageMetadataService, timeout(TEST_TIMEOUT)).getLastOffset(topic, PARTITION_FOO);
+      verify(mockStorageMetadataService, timeout(TEST_TIMEOUT_MS)).getLastOffset(topic, PARTITION_FOO);
 
       //StoreIngestionTask#checkValueSchemaAvail will keep polling for 'NON_EXISTING_SCHEMA_ID'. It blocks the
       //#putConsumerRecord and will not enter drainer queue
-      verify(mockSchemaRepo, after(TEST_TIMEOUT).never()).hasValueSchema(storeNameWithoutVersionInfo, EXISTING_SCHEMA_ID);
+      verify(mockSchemaRepo, after(TEST_TIMEOUT_MS).never()).hasValueSchema(storeNameWithoutVersionInfo, EXISTING_SCHEMA_ID);
       verify(mockSchemaRepo, atLeastOnce()).hasValueSchema(storeNameWithoutVersionInfo, NON_EXISTING_SCHEMA_ID);
       verify(mockAbstractStorageEngine, never()).put(eq(PARTITION_FOO), any(), any(byte[].class));
 
@@ -850,25 +850,25 @@ public class StoreIngestionTaskTest {
        * Considering that the {@link VeniceWriter} will send an {@link ControlMessageType#END_OF_PUSH},
        * we need to add 1 to last data message offset.
        */
-      verify(mockLogNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).completed(topic, PARTITION_FOO, fooLastOffset + 1);
-      verify(mockLogNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).completed(topic, PARTITION_BAR, barLastOffset  + 1);
-      verify(mockPartitionStatusNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).completed(topic, PARTITION_FOO,
+      verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS).atLeastOnce()).completed(topic, PARTITION_FOO, fooLastOffset + 1);
+      verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS).atLeastOnce()).completed(topic, PARTITION_BAR, barLastOffset  + 1);
+      verify(mockPartitionStatusNotifier, timeout(TEST_TIMEOUT_MS).atLeastOnce()).completed(topic, PARTITION_FOO,
           fooLastOffset + 1);
-      verify(mockPartitionStatusNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).completed(topic, PARTITION_BAR,
+      verify(mockPartitionStatusNotifier, timeout(TEST_TIMEOUT_MS).atLeastOnce()).completed(topic, PARTITION_BAR,
           barLastOffset  + 1);
       if (isLeaderFollowerModelEnabled) {
-        verify(mockLeaderFollowerStateModelNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).catchUpBaseTopicOffsetLag(topic, PARTITION_FOO);
-        verify(mockLeaderFollowerStateModelNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).catchUpBaseTopicOffsetLag(topic, PARTITION_BAR);
-        verify(mockLeaderFollowerStateModelNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).completed(topic, PARTITION_FOO,
+        verify(mockLeaderFollowerStateModelNotifier, timeout(TEST_TIMEOUT_MS).atLeastOnce()).catchUpBaseTopicOffsetLag(topic, PARTITION_FOO);
+        verify(mockLeaderFollowerStateModelNotifier, timeout(TEST_TIMEOUT_MS).atLeastOnce()).catchUpBaseTopicOffsetLag(topic, PARTITION_BAR);
+        verify(mockLeaderFollowerStateModelNotifier, timeout(TEST_TIMEOUT_MS).atLeastOnce()).completed(topic, PARTITION_FOO,
             fooLastOffset + 1);
-        verify(mockLeaderFollowerStateModelNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).completed(topic, PARTITION_BAR,
+        verify(mockLeaderFollowerStateModelNotifier, timeout(TEST_TIMEOUT_MS).atLeastOnce()).completed(topic, PARTITION_BAR,
             barLastOffset  + 1);
         verify(mockOnlineOfflineStateModelNotifier, never()).completed(topic, PARTITION_FOO, fooLastOffset + 1);
         verify(mockOnlineOfflineStateModelNotifier, never()).completed(topic, PARTITION_BAR, barLastOffset  + 1);
       } else {
-        verify(mockOnlineOfflineStateModelNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).completed(topic, PARTITION_FOO,
+        verify(mockOnlineOfflineStateModelNotifier, timeout(TEST_TIMEOUT_MS).atLeastOnce()).completed(topic, PARTITION_FOO,
             fooLastOffset + 1);
-        verify(mockOnlineOfflineStateModelNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).completed(topic, PARTITION_BAR,
+        verify(mockOnlineOfflineStateModelNotifier, timeout(TEST_TIMEOUT_MS).atLeastOnce()).completed(topic, PARTITION_BAR,
             barLastOffset  + 1);
         verify(mockLeaderFollowerStateModelNotifier, never()).completed(topic, PARTITION_FOO, fooLastOffset + 1);
         verify(mockLeaderFollowerStateModelNotifier, never()).completed(topic, PARTITION_BAR, barLastOffset  + 1);
@@ -915,7 +915,7 @@ public class StoreIngestionTaskTest {
         },
         () -> {
           verify(mockAbstractStorageEngine, never()).preparePartitionForReading(PARTITION_BAR);
-          verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT)).preparePartitionForReading(PARTITION_FOO);
+          verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT_MS)).preparePartitionForReading(PARTITION_FOO);
         },
         isLeaderFollowerModelEnabled, isActiveActiveReplicationEnabled);
   }
@@ -966,12 +966,12 @@ public class StoreIngestionTaskTest {
     veniceWriter.put(putKeyFoo, putValue, SCHEMA_ID).get();
 
     runTest(getSet(PARTITION_FOO), () -> {
-      verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT))
+      verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT_MS))
           .put(PARTITION_FOO, putKeyFoo, ByteBuffer.wrap(ValueRecord.create(SCHEMA_ID, putValue).serialize()));
 
       storeIngestionTaskUnderTest.resetPartitionConsumptionOffset(topic, PARTITION_FOO);
 
-      verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT).times(2))
+      verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT_MS).times(2))
           .put(PARTITION_FOO, putKeyFoo, ByteBuffer.wrap(ValueRecord.create(SCHEMA_ID, putValue).serialize()));
     }, isLeaderFollowerModelEnabled, isActiveActiveReplicationEnabled);
   }
@@ -982,7 +982,7 @@ public class StoreIngestionTaskTest {
     veniceWriter.put(putKeyFoo, putValue, SCHEMA_ID).get();
 
     runTest(getSet(PARTITION_FOO), () -> {
-      verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT))
+      verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT_MS))
           .put(PARTITION_FOO, putKeyFoo, ByteBuffer.wrap(ValueRecord.create(SCHEMA_ID, putValue).serialize()));
 
       storeIngestionTaskUnderTest.unSubscribePartition(topic, PARTITION_FOO);
@@ -990,10 +990,10 @@ public class StoreIngestionTaskTest {
           .when(mockKafkaConsumer).resetOffset(topic, PARTITION_FOO);
       // Reset should be able to handle the scenario, when the topic partition has been unsubscribed.
       storeIngestionTaskUnderTest.resetPartitionConsumptionOffset(topic, PARTITION_FOO);
-      verify(mockKafkaConsumer, timeout(TEST_TIMEOUT)).unSubscribe(topic, PARTITION_FOO);
+      verify(mockKafkaConsumer, timeout(TEST_TIMEOUT_MS)).unSubscribe(topic, PARTITION_FOO);
       // StoreIngestionTask won't invoke consumer.resetOffset() if it already unsubscribe from that topic/partition
-      verify(mockKafkaConsumer, timeout(TEST_TIMEOUT).times(0)).resetOffset(topic, PARTITION_FOO);
-      verify(mockStorageMetadataService, timeout(TEST_TIMEOUT)).clearOffset(topic, PARTITION_FOO);
+      verify(mockKafkaConsumer, timeout(TEST_TIMEOUT_MS).times(0)).resetOffset(topic, PARTITION_FOO);
+      verify(mockStorageMetadataService, timeout(TEST_TIMEOUT_MS)).clearOffset(topic, PARTITION_FOO);
     }, isLeaderFollowerModelEnabled, isActiveActiveReplicationEnabled);
   }
 
@@ -1014,8 +1014,8 @@ public class StoreIngestionTaskTest {
         getSet(new Pair(new TopicPartition(topic, PARTITION_BAR), barOffsetToSkip)));
 
     runTest(pollStrategy, getSet(PARTITION_FOO, PARTITION_BAR), () -> {}, () -> {
-      verify(mockLogNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).endOfPushReceived(topic, PARTITION_FOO, fooLastOffset);
-      verify(mockLogNotifier, timeout(TEST_TIMEOUT)).error(
+      verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS).atLeastOnce()).endOfPushReceived(topic, PARTITION_FOO, fooLastOffset);
+      verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS)).error(
           eq(topic), eq(PARTITION_BAR), argThat(new NonEmptyStringMatcher()),
           argThat(new ExceptionClassMatcher(MissingDataException.class)));
 
@@ -1041,9 +1041,9 @@ public class StoreIngestionTaskTest {
         getSet(new Pair(new TopicPartition(topic, PARTITION_BAR), barOffsetToDupe)));
 
     runTest(pollStrategy, getSet(PARTITION_FOO, PARTITION_BAR), () -> {}, () -> {
-      verify(mockLogNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).endOfPushReceived(topic, PARTITION_FOO, fooLastOffset);
-      verify(mockLogNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).endOfPushReceived(topic, PARTITION_BAR, barOffsetToDupe);
-      verify(mockLogNotifier, after(TEST_TIMEOUT).never()).endOfPushReceived(topic, PARTITION_BAR, barOffsetToDupe + 1);
+      verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS).atLeastOnce()).endOfPushReceived(topic, PARTITION_FOO, fooLastOffset);
+      verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS).atLeastOnce()).endOfPushReceived(topic, PARTITION_BAR, barOffsetToDupe);
+      verify(mockLogNotifier, after(TEST_TIMEOUT_MS).never()).endOfPushReceived(topic, PARTITION_BAR, barOffsetToDupe + 1);
 
       // After we verified that completed() is called, the rest should be guaranteed to be finished, so no need for timeouts
 
@@ -1060,8 +1060,8 @@ public class StoreIngestionTaskTest {
 
     runTest(new RandomPollStrategy(1), getSet(PARTITION_FOO), () -> {}, () -> {
       // START_OF_SEGMENT, START_OF_PUSH, PUT, DELETE
-      verify(mockBandwidthThrottler, timeout(TEST_TIMEOUT).times(4)).maybeThrottle(anyDouble());
-      verify(mockRecordsThrottler, timeout(TEST_TIMEOUT).times(4)).maybeThrottle(1);
+      verify(mockBandwidthThrottler, timeout(TEST_TIMEOUT_MS).times(4)).maybeThrottle(anyDouble());
+      verify(mockRecordsThrottler, timeout(TEST_TIMEOUT_MS).times(4)).maybeThrottle(1);
     }, isLeaderFollowerModelEnabled, isActiveActiveReplicationEnabled);
   }
 
@@ -1124,11 +1124,11 @@ public class StoreIngestionTaskTest {
     veniceWriter.put(putKeyBar, putValue, SCHEMA_ID);
 
     runTest(getSet(PARTITION_FOO, PARTITION_BAR), () -> {
-      verify(mockLogNotifier, timeout(TEST_TIMEOUT)).error(
+      verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS)).error(
           eq(topic), eq(PARTITION_FOO), argThat(new NonEmptyStringMatcher()),
           argThat(new ExceptionClassMatcher(VeniceException.class)));
 
-      verify(mockLogNotifier, timeout(TEST_TIMEOUT)).error(
+      verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS)).error(
           eq(topic), eq(PARTITION_BAR), argThat(new NonEmptyStringMatcher()),
           argThat(new ExceptionClassMatcher(VeniceException.class)));
     }, isLeaderFollowerModelEnabled, isActiveActiveReplicationEnabled);
@@ -1162,7 +1162,7 @@ public class StoreIngestionTaskTest {
     try {
       runTest(getSet(PARTITION_BAR), () -> {
 
-        TestUtils.waitForNonDeterministicCompletion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
+        TestUtils.waitForNonDeterministicCompletion(TEST_TIMEOUT_MS, TimeUnit.MILLISECONDS, () -> {
           for (Object[] args : mockNotifierProgress) {
             if (args[0].equals(topic) && args[1].equals(PARTITION_BAR) && ((long) args[2]) >= lastOffsetBeforeEOP) {
               return true;
@@ -1171,7 +1171,7 @@ public class StoreIngestionTaskTest {
           return false;
         });
 
-        TestUtils.waitForNonDeterministicCompletion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
+        TestUtils.waitForNonDeterministicCompletion(TEST_TIMEOUT_MS, TimeUnit.MILLISECONDS, () -> {
           for (Object[] args : mockNotifierCompleted) {
             if (args[0].equals(topic) && args[1].equals(PARTITION_BAR) && ((long) args[2]) > lastOffsetBeforeEOP) {
               return true;
@@ -1264,10 +1264,10 @@ public class StoreIngestionTaskTest {
     veniceWriter.broadcastEndOfPush(new HashMap<>());
 
     runTest(getSet(PARTITION_FOO, PARTITION_BAR), () -> {
-      verify(mockLogNotifier, timeout(TEST_TIMEOUT))
+      verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS))
           .completed(eq(topic), eq(PARTITION_FOO), LongEqualOrGreaterThanMatcher.get(fooLastOffset));
 
-      verify(mockLogNotifier, timeout(TEST_TIMEOUT)).error(
+      verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS)).error(
           eq(topic), eq(PARTITION_BAR), argThat(new NonEmptyStringMatcher()),
           argThat(new ExceptionClassMatcher(CorruptDataException.class)));
 
@@ -1291,7 +1291,7 @@ public class StoreIngestionTaskTest {
     runTest(getSet(PARTITION_FOO),
         () -> doReturn(getOffsetRecord(offset, true)).when(mockStorageMetadataService).getLastOffset(topic, PARTITION_FOO),
         () -> {
-          verify(mockLogNotifier, timeout(TEST_TIMEOUT)).completed(topic, PARTITION_FOO, offset);
+          verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS)).completed(topic, PARTITION_FOO, offset);
         },
         isLeaderFollowerModelEnabled, isActiveActiveReplicationEnabled
     );
@@ -1315,7 +1315,7 @@ public class StoreIngestionTaskTest {
           doReturn(getOffsetRecord(offset, true)).when(mockStorageMetadataService).getLastOffset(topic, PARTITION_FOO);
         },
         () -> {
-          verify(mockLogNotifier, timeout(TEST_TIMEOUT)).completed(topic, PARTITION_FOO, offset);
+          verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS)).completed(topic, PARTITION_FOO, offset);
           verify(mockKafkaConsumer).batchUnsubscribe(Collections.singleton(new TopicPartition(topic, PARTITION_FOO)));
           verify(mockKafkaConsumer, never()).unSubscribe(topic, PARTITION_BAR);
         },
@@ -1340,8 +1340,8 @@ public class StoreIngestionTaskTest {
           doReturn(getOffsetRecord(offset, true)).when(mockStorageMetadataService).getLastOffset(topic, PARTITION_FOO);
         },
         () -> {
-          verify(mockLogNotifier, timeout(TEST_TIMEOUT)).completed(topic, PARTITION_FOO, offset);
-          waitForNonDeterministicCompletion(TEST_TIMEOUT, TimeUnit.MILLISECONDS,
+          verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS)).completed(topic, PARTITION_FOO, offset);
+          waitForNonDeterministicCompletion(TEST_TIMEOUT_MS, TimeUnit.MILLISECONDS,
               () -> !storeIngestionTaskUnderTest.isRunning());
         },
         isLeaderFollowerModelEnabled, isActiveActiveReplicationEnabled
@@ -1354,10 +1354,10 @@ public class StoreIngestionTaskTest {
     veniceWriter.put(putKeyFoo, putValue, SCHEMA_ID);
 
     runTest(getSet(PARTITION_FOO), () -> {
-      verify(mockLogNotifier, timeout(TEST_TIMEOUT)).started(topic, PARTITION_FOO);
+      verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS)).started(topic, PARTITION_FOO);
       //Start of push has already been consumed. Stop consumption
       storeIngestionTaskUnderTest.unSubscribePartition(topic, PARTITION_FOO);
-      waitForNonDeterministicCompletion(TEST_TIMEOUT, TimeUnit.MILLISECONDS,
+      waitForNonDeterministicCompletion(TEST_TIMEOUT_MS, TimeUnit.MILLISECONDS,
           () -> storeIngestionTaskUnderTest.isRunning() == false);
     }, isLeaderFollowerModelEnabled, isActiveActiveReplicationEnabled);
   }
@@ -1381,20 +1381,20 @@ public class StoreIngestionTaskTest {
         veniceWriter.broadcastStartOfPush(new HashMap<>());
         writingThread.start();
       }, () -> {
-        verify(mockLogNotifier, timeout(TEST_TIMEOUT)).started(topic, PARTITION_FOO);
-        verify(mockLogNotifier, timeout(TEST_TIMEOUT)).started(topic, PARTITION_BAR);
+        verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS)).started(topic, PARTITION_FOO);
+        verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS)).started(topic, PARTITION_BAR);
 
         //Start of push has already been consumed. Stop consumption
         storeIngestionTaskUnderTest.kill();
         // task should report an error to notifier that it's killed.
-        verify(mockLogNotifier, timeout(TEST_TIMEOUT)).error(
+        verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS)).error(
             eq(topic), eq(PARTITION_FOO), argThat(new NonEmptyStringMatcher()),
             argThat(new ExceptionClassMatcher(VeniceIngestionTaskKilledException.class)));
-        verify(mockLogNotifier, timeout(TEST_TIMEOUT)).error(
+        verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS)).error(
             eq(topic), eq(PARTITION_BAR), argThat(new NonEmptyStringMatcher()),
             argThat(new ExceptionClassMatcher(VeniceIngestionTaskKilledException.class)));
 
-        waitForNonDeterministicCompletion(TEST_TIMEOUT, TimeUnit.MILLISECONDS,
+        waitForNonDeterministicCompletion(TEST_TIMEOUT_MS, TimeUnit.MILLISECONDS,
             () -> storeIngestionTaskUnderTest.isRunning() == false);
       }, isLeaderFollowerModelEnabled, isActiveActiveReplicationEnabled);
     } finally {
@@ -1413,8 +1413,8 @@ public class StoreIngestionTaskTest {
       storeIngestionTaskUnderTest.kill();
     }, () -> {
       // verify subscribe has not been processed. Because consumption task should process kill action at first
-      verify(mockStorageMetadataService, after(TEST_TIMEOUT).never()).getLastOffset(topic, PARTITION_FOO);
-      waitForNonDeterministicCompletion(TEST_TIMEOUT, TimeUnit.MILLISECONDS,
+      verify(mockStorageMetadataService, after(TEST_TIMEOUT_MS).never()).getLastOffset(topic, PARTITION_FOO);
+      waitForNonDeterministicCompletion(TEST_TIMEOUT_MS, TimeUnit.MILLISECONDS,
           () -> storeIngestionTaskUnderTest.getConsumer() != null);
       Collection<KafkaConsumerWrapper> consumers = (storeIngestionTaskUnderTest.getConsumer());
       /**
@@ -1426,9 +1426,9 @@ public class StoreIngestionTaskTest {
 
       // Verify offset has not been processed. Because consumption task should process kill action at first.
       // offSetManager.clearOffset should only be invoked one time during clean up after killing this task.
-      verify(mockStorageMetadataService, timeout(TEST_TIMEOUT)).clearOffset(topic, PARTITION_FOO);
+      verify(mockStorageMetadataService, timeout(TEST_TIMEOUT_MS)).clearOffset(topic, PARTITION_FOO);
 
-      waitForNonDeterministicCompletion(TEST_TIMEOUT, TimeUnit.MILLISECONDS,
+      waitForNonDeterministicCompletion(TEST_TIMEOUT_MS, TimeUnit.MILLISECONDS,
           () -> storeIngestionTaskUnderTest.isRunning() == false);
     }, isLeaderFollowerModelEnabled, isActiveActiveReplicationEnabled);
   }
@@ -1492,7 +1492,7 @@ public class StoreIngestionTaskTest {
             int partition = entry.getKey();
             long offset = entry.getValue();
             logger.info("Verifying completed was called for partition " + partition + " and offset " + offset + " or greater.");
-            verify(mockLogNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).completed(eq(topic), eq(partition), LongEqualOrGreaterThanMatcher.get(offset));
+            verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS).atLeastOnce()).completed(eq(topic), eq(partition), LongEqualOrGreaterThanMatcher.get(offset));
           }
       );
 
@@ -1542,11 +1542,11 @@ public class StoreIngestionTaskTest {
     veniceWriter.broadcastEndOfPush(new HashMap<>());
 
     runTest(getSet(PARTITION_FOO), () -> {
-      verify(mockLogNotifier, after(TEST_TIMEOUT).never()).error(eq(topic), eq(PARTITION_FOO), anyString(), any());
-      verify(mockLogNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).started(topic, PARTITION_FOO);
+      verify(mockLogNotifier, after(TEST_TIMEOUT_MS).never()).error(eq(topic), eq(PARTITION_FOO), anyString(), any());
+      verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS).atLeastOnce()).started(topic, PARTITION_FOO);
 
       storeIngestionTaskUnderTest.kill();
-      verify(mockLogNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).endOfPushReceived(topic, PARTITION_FOO, fooLastOffset);
+      verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS).atLeastOnce()).endOfPushReceived(topic, PARTITION_FOO, fooLastOffset);
     }, isLeaderFollowerModelEnabled, isActiveActiveReplicationEnabled);
   }
 
@@ -1556,12 +1556,12 @@ public class StoreIngestionTaskTest {
     veniceWriter.broadcastStartOfPush(new HashMap<>());
     // Read one message for each poll.
     runTest(new RandomPollStrategy(1), getSet(PARTITION_FOO), () -> {}, () -> {
-      verify(mockLogNotifier, after(TEST_TIMEOUT).never()).progress(topic, PARTITION_FOO, 0);
-      verify(mockLogNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).started(topic, PARTITION_FOO);
+      verify(mockLogNotifier, after(TEST_TIMEOUT_MS).never()).progress(topic, PARTITION_FOO, 0);
+      verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS).atLeastOnce()).started(topic, PARTITION_FOO);
       // The current behavior is only to sync offset/report progress after processing a pre-configured amount
       // of messages in bytes, since control message is being counted as 0 bytes (no data persisted in disk),
       // then no progress will be reported during start, but only for processed messages.
-      verify(mockLogNotifier, after(TEST_TIMEOUT).never()).progress(any(), anyInt(), anyInt());
+      verify(mockLogNotifier, after(TEST_TIMEOUT_MS).never()).progress(any(), anyInt(), anyInt());
     }, isLeaderFollowerModelEnabled, isActiveActiveReplicationEnabled);
   }
 
@@ -1585,7 +1585,7 @@ public class StoreIngestionTaskTest {
       runHybridTest(
           getSet(PARTITION_FOO),
           () -> {
-            verify(mockStorageMetadataService, timeout(TEST_TIMEOUT).times(3)).put(eq(topic), eq(PARTITION_FOO), any());
+            verify(mockStorageMetadataService, timeout(TEST_TIMEOUT_MS).times(3)).put(eq(topic), eq(PARTITION_FOO), any());
           },
           isLeaderFollowerModelEnabled, isActiveActiveReplicationEnabled);
     }finally {
@@ -1603,13 +1603,13 @@ public class StoreIngestionTaskTest {
 
     runTest(getSet(PARTITION_FOO), () -> {
       // Verify it retrieves the offset from the Offset Manager
-      verify(mockStorageMetadataService, timeout(TEST_TIMEOUT)).getLastOffset(topic, PARTITION_FOO);
+      verify(mockStorageMetadataService, timeout(TEST_TIMEOUT_MS)).getLastOffset(topic, PARTITION_FOO);
 
       verifyPutAndDelete(1, isActiveActiveReplicationEnabled, true);
 
       // Verify it commits the offset to Offset Manager after receiving EOP control message
       OffsetRecord expectedOffsetRecordForDeleteMessage = getOffsetRecord(deleteMetadata.offset() + 1, true);
-      verify(mockStorageMetadataService, timeout(TEST_TIMEOUT))
+      verify(mockStorageMetadataService, timeout(TEST_TIMEOUT_MS))
           .put(topic, PARTITION_FOO, expectedOffsetRecordForDeleteMessage);
       // Deferred write is not going to commit offset for every message, but will commit offset for every control message
       // The following verification is for START_OF_PUSH control message
@@ -1642,10 +1642,10 @@ public class StoreIngestionTaskTest {
 
     runTest(getSet(PARTITION_FOO), () -> {
       // Verify it retrieves the offset from the Offset Manager
-      verify(mockStorageMetadataService, timeout(TEST_TIMEOUT)).getLastOffset(topic, PARTITION_FOO);
+      verify(mockStorageMetadataService, timeout(TEST_TIMEOUT_MS)).getLastOffset(topic, PARTITION_FOO);
 
       // Verify StorageEngine#put is invoked only once and with appropriate key & value.
-      verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT))
+      verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT_MS))
           .put(PARTITION_FOO, putKeyFoo, ByteBuffer.wrap(ValueRecord.create(SCHEMA_ID, putValue).serialize()));
 
 
@@ -1677,7 +1677,7 @@ public class StoreIngestionTaskTest {
         HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD, DataReplicationPolicy.NON_AGGREGATE,
         BufferReplayPolicy.REWIND_FROM_EOP));
     runTest(ALL_PARTITIONS, () -> {
-          veniceWriter.broadcastStartOfPush(new HashMap<>());
+          veniceWriter.broadcastStartOfPush(Collections.emptyMap());
           for (int i = 0; i < MESSAGES_BEFORE_EOP; i++) {
             try {
               veniceWriter.put(getNumberedKey(i), getNumberedValue(i), SCHEMA_ID).get();
@@ -1685,21 +1685,21 @@ public class StoreIngestionTaskTest {
               throw new VeniceException(e);
             }
           }
-          veniceWriter.broadcastEndOfPush(new HashMap<>());
+          veniceWriter.broadcastEndOfPush(Collections.emptyMap());
 
         }, () -> {
-          verify(mockLogNotifier, timeout(TEST_TIMEOUT).atLeast(ALL_PARTITIONS.size())).started(eq(topic), anyInt());
+          verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS).atLeast(ALL_PARTITIONS.size())).started(eq(topic), anyInt());
           verify(mockLogNotifier, never()).completed(anyString(), anyInt(), anyLong());
 
           if (isLeaderFollowerModelEnabled) {
-            veniceWriter.broadcastTopicSwitch(Arrays.asList(inMemoryKafkaBroker.getKafkaBootstrapServer()),
+            veniceWriter.broadcastTopicSwitch(Collections.singletonList(inMemoryKafkaBroker.getKafkaBootstrapServer()),
                 Version.composeRealTimeTopic(storeNameWithoutVersionInfo),
                 System.currentTimeMillis() - TimeUnit.SECONDS.toMillis(10),
-                new HashMap<>());
+                Collections.emptyMap());
           } else {
-            List<Long> offsets = new ArrayList<>();
+            List<Long> offsets = new ArrayList<>(PARTITION_COUNT);
             for (int i = 0; i < PARTITION_COUNT; i++) {
-              offsets.add(5l);
+              offsets.add(5L);
             }
             veniceWriter.broadcastStartOfBufferReplay(offsets, "source K cluster", "source K topic", new HashMap<>());
           }
@@ -1712,7 +1712,7 @@ public class StoreIngestionTaskTest {
             }
           }
 
-          verify(mockLogNotifier, timeout(TEST_TIMEOUT).atLeast(ALL_PARTITIONS.size())).completed(anyString(), anyInt(), anyLong());
+          verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS).atLeast(ALL_PARTITIONS.size())).completed(anyString(), anyInt(), anyLong());
         },
         isLeaderFollowerModelEnabled, isActiveActiveReplicationEnabled
     );
@@ -1767,12 +1767,12 @@ public class StoreIngestionTaskTest {
     runTest(new RandomPollStrategy(), getSet(PARTITION_FOO), () -> {}, () -> {
       waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
         //sync the offset when receiving EndOfPush
-        verify(mockStorageMetadataService, timeout(TEST_TIMEOUT).atLeastOnce())
+        verify(mockStorageMetadataService, timeout(TEST_TIMEOUT_MS).atLeastOnce())
             .put(eq(topic), eq(PARTITION_FOO), eq(getOffsetRecord(fooOffset + 1, true)));
         //sync the offset when receiving StartOfIncrementalPush and EndOfIncrementalPush
-        verify(mockStorageMetadataService, timeout(TEST_TIMEOUT).atLeastOnce())
+        verify(mockStorageMetadataService, timeout(TEST_TIMEOUT_MS).atLeastOnce())
             .put(eq(topic), eq(PARTITION_FOO), eq(getOffsetRecord(fooNewOffset - 1, true, version)));
-        verify(mockStorageMetadataService, timeout(TEST_TIMEOUT).atLeastOnce())
+        verify(mockStorageMetadataService, timeout(TEST_TIMEOUT_MS).atLeastOnce())
             .put(eq(topic), eq(PARTITION_FOO), eq(getOffsetRecord(fooNewOffset + 1, true, version)));
 
         verify(mockLogNotifier, atLeastOnce()).started(topic, PARTITION_FOO);
@@ -1800,7 +1800,7 @@ public class StoreIngestionTaskTest {
         () -> {},
         () -> waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
           //sync the offset when receiving EndOfPush
-          verify(mockStorageMetadataService, timeout(TEST_TIMEOUT).atLeastOnce())
+          verify(mockStorageMetadataService, timeout(TEST_TIMEOUT_MS).atLeastOnce())
               .put(eq(topic), eq(PARTITION_FOO), eq(getOffsetRecord(fooOffset + 1, true)));
 
           verify(mockLogNotifier, atLeastOnce()).started(topic, PARTITION_FOO);
@@ -1891,7 +1891,7 @@ public class StoreIngestionTaskTest {
     doThrow(new VeniceException("fake exception")).when(mockVersionedStorageIngestionStats).resetIngestionTaskErroredGauge(anyString(), anyInt());
 
     runTest(getSet(PARTITION_FOO), () -> {
-      verify(mockLogNotifier, timeout(TEST_TIMEOUT)).error(eq(topic), eq(PARTITION_FOO), anyString(), any());
+      verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS)).error(eq(topic), eq(PARTITION_FOO), anyString(), any());
     }, isLeaderFollowerModelEnabled, isActiveActiveReplicationEnabled);
   }
 
@@ -1906,13 +1906,13 @@ public class StoreIngestionTaskTest {
         any(), any(ByteBuffer.class));
 
     runTest(getSet(PARTITION_FOO, PARTITION_BAR), () -> {
-      verify(mockLogNotifier, timeout(TEST_TIMEOUT))
+      verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS))
           .completed(eq(topic), eq(PARTITION_BAR), LongEqualOrGreaterThanMatcher.get(barLastOffset));
 
-      verify(mockLogNotifier, timeout(TEST_TIMEOUT)).error(eq(topic), eq(PARTITION_FOO), anyString(), any());
+      verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS)).error(eq(topic), eq(PARTITION_FOO), anyString(), any());
       verify(mockLogNotifier, never()).completed(eq(topic), eq(PARTITION_FOO), anyLong());
       // Error partition should be unsubscribed
-      verify(mockLogNotifier, timeout(TEST_TIMEOUT)).stopped(eq(topic), eq(PARTITION_FOO), anyLong());
+      verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS)).stopped(eq(topic), eq(PARTITION_FOO), anyLong());
       verify(mockLogNotifier, never()).error(eq(topic), eq(PARTITION_BAR), anyString(), any());
       assertTrue(storeIngestionTaskUnderTest.isRunning(), "The StoreIngestionTask should still be running");
     }, isLeaderFollowerModelEnabled, isActiveActiveReplicationEnabled);
