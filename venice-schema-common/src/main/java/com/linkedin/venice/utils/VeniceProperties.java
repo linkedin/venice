@@ -48,6 +48,14 @@ public class VeniceProperties {
     props = Collections.unmodifiableMap(tmpProps);
   }
 
+  public Properties getPropertiesCopy() {
+    Properties propertiesCopy = new Properties();
+    props.forEach((key, value) -> {
+      propertiesCopy.put(key, value);
+    });
+    return propertiesCopy;
+  }
+
   public Set<String> keySet() {
     return props.keySet();
   }
@@ -367,18 +375,25 @@ public class VeniceProperties {
       throw new UndefinedPropertyException(key);
     }
     Map<String, String> map = new HashMap<>();
-    List<String> pairs = this.getList(key);
+    List<String> keyValuePairs = this.getList(key);
 
-    for (String pair : pairs) {
-      String[] pairAy = pair.split(":", 2);
-      if (pairAy.length != 2) {
-        throw new VeniceException("Invalid config. Each pair should be $first:$second. But what we get is: " + pair);
-      }
-      String first = pairAy[0];
-      String second = pairAy[1];
-      map.put(first, second);
+    for (String pair : keyValuePairs) {
+      Pair<String, String> keyValuePair = splitAnEntryToKeyValuePair(pair);
+      map.put(keyValuePair.getFirst(), keyValuePair.getSecond());
     }
     return map;
+  }
+
+  private Pair<String, String> splitAnEntryToKeyValuePair(String entry) {
+    if (!entry.contains(":")) {
+      throw new VeniceException("Invalid config. Expect each entry to contain at least one \":\". Got: " + entry);
+    }
+    // One entry could have multiple ":". For example, "<ID>:<Kafka URL>:<port>". In this case, we split the String by
+    // its first ":" so that we get key=<ID> and value=<Kafka URL>:<port>
+    int indexOfFirstColon = entry.indexOf(':');
+    String key = entry.substring(0, indexOfFirstColon);
+    String value = entry.substring(indexOfFirstColon + 1);
+    return new Pair<>(key, value);
   }
 
   public Map<Integer, String> getIntegerToStringMap(String key, Map<Integer, String> defaultValue) {

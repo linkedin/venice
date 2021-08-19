@@ -17,6 +17,7 @@ import com.linkedin.davinci.storage.chunking.ChunkingUtils;
 import com.linkedin.davinci.storage.chunking.RawBytesChunkingAdapter;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceMessageException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.kafka.KafkaClientFactory;
@@ -46,24 +47,29 @@ import com.linkedin.venice.writer.PutMetadata;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.nio.ByteBuffer;
 import java.util.List;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Queue;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.function.BooleanSupplier;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.producer.Callback;
 import org.apache.log4j.Logger;
 
+import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.*;
+
 
 /**
  * This class contains logic that SNs must perform if a store-version is running in Active/Active mode.
  */
 public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestionTask {
-
+  private static final Logger logger = Logger.getLogger(ActiveActiveStoreIngestionTask.class);
   private final int replicationMetadataVersionId;
   private final MergeConflictResolver mergeConflictResolver;
-  private static final Logger logger = Logger.getLogger(ActiveActiveStoreIngestionTask.class);
 
 
   public ActiveActiveStoreIngestionTask(
@@ -395,28 +401,244 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
 
   @Override
   protected void startConsumingAsLeaderInTransitionFromStandby(PartitionConsumptionState partitionConsumptionState) {
-    // TODO: provide its own A/A-specific implementation
-    super.startConsumingAsLeaderInTransitionFromStandby(partitionConsumptionState);
+    if (partitionConsumptionState.getLeaderFollowerState() != IN_TRANSITION_FROM_STANDBY_TO_LEADER) {
+      throw new VeniceException(String.format("Expect state %s but got %s",
+          IN_TRANSITION_FROM_STANDBY_TO_LEADER, partitionConsumptionState.toString()
+      ));
+    }
+    final int partition = partitionConsumptionState.getPartition();
+    final OffsetRecord offsetRecord = partitionConsumptionState.getOffsetRecord();
+
+    /**
+     * Note that this function is called after the new leader has waited for 5 minutes of inactivity on the local VT topic.
+     * The new leader might NOT need to switch to remote consumption in a case where map-reduce jobs of a batch job stuck
+     * on producing to the local VT so that there is no activity in the local VT.
+     */
+    if (shouldNewLeaderSwitchToRemoteConsumption(partitionConsumptionState)) {
+      partitionConsumptionState.setConsumeRemotely(true);
+      logger.info(consumerTaskId + " enabled remote consumption from topic " + offsetRecord.getLeaderTopic() + " partition " + partition);
+    }
+
+    // subscribe to the new upstream
+    final String leaderTopic = offsetRecord.getLeaderTopic();
+    Set<String> leaderSourceKafkaURLs = getConsumptionSourceKafkaAddress(partitionConsumptionState);
+    Map<String, Long> leaderOffsetByKafkaURL = new HashMap<>(leaderSourceKafkaURLs.size());
+    leaderSourceKafkaURLs.forEach(kafkaURL -> {
+      final long leaderStartOffset = offsetRecord.getLeaderOffset(kafkaURL);
+      consumerSubscribe(
+              leaderTopic,
+              partitionConsumptionState.getSourceTopicPartition(leaderTopic),
+              leaderStartOffset,
+              kafkaURL
+      );
+      leaderOffsetByKafkaURL.put(kafkaURL, leaderStartOffset);
+    });
+
+    partitionConsumptionState.setLeaderFollowerState(LEADER);
+    logger.info(consumerTaskId + " promoted to leader for partition " + partition
+            + "; start consuming from " + offsetRecord.getLeaderTopic() + " with offset by Kafka URL mapping " + leaderOffsetByKafkaURL);
   }
 
   @Override
   protected void leaderExecuteTopicSwitch(PartitionConsumptionState partitionConsumptionState, TopicSwitch topicSwitch) {
-    // TODO: provide its own A/A-specific implementation
-    super.leaderExecuteTopicSwitch(partitionConsumptionState, topicSwitch);
+    if (partitionConsumptionState.getLeaderFollowerState() != LEADER) {
+      throw new VeniceException(String.format("Expect state %s but got %s", LEADER, partitionConsumptionState.toString()));
+    }
+    if (topicSwitch.sourceKafkaServers.isEmpty()) {
+      throw new VeniceException("In the A/A mode, source Kafka URL list cannot be empty in Topic Switch control message.");
+    }
+
+    final int partition = partitionConsumptionState.getPartition();
+    final String currentLeaderTopic = partitionConsumptionState.getOffsetRecord().getLeaderTopic();
+    final String newSourceTopicName = topicSwitch.sourceTopicName.toString();
+    final int sourceTopicPartition = partitionConsumptionState.getSourceTopicPartition(newSourceTopicName);
+    Map<String, Long> upstreamOffsetsByKafkaURLs = new HashMap<>(topicSwitch.sourceKafkaServers.size());
+
+    topicSwitch.sourceKafkaServers.forEach(sourceKafkaURL -> {
+      Long upstreamStartOffset = partitionConsumptionState.getOffsetRecord().getUpstreamOffsetWithNoDefault(sourceKafkaURL.toString());
+      if (upstreamStartOffset == null || upstreamStartOffset < 0) {
+        if (topicSwitch.rewindStartTimestamp > 0) {
+          upstreamStartOffset = getTopicPartitionOffsetByKafkaURL(
+                  sourceKafkaURL,
+                  newSourceTopicName,
+                  sourceTopicPartition,
+                  topicSwitch.rewindStartTimestamp
+          );
+        } else {
+          upstreamStartOffset = OffsetRecord.LOWEST_OFFSET;
+        }
+      }
+      upstreamOffsetsByKafkaURLs.put(sourceKafkaURL.toString(), upstreamStartOffset);
+    });
+
+    // unsubscribe the old source and subscribe to the new source
+    consumerUnSubscribe(currentLeaderTopic, partitionConsumptionState);
+    waitForLastLeaderPersistFuture(
+            partitionConsumptionState,
+            String.format(
+                    "Leader failed to produce the last message to version topic before switching feed topic from %s to %s on partition %s",
+                    currentLeaderTopic, newSourceTopicName, partition)
+    );
+
+    if (topicSwitch.sourceKafkaServers.size() != 1
+            || (!Objects.equals(topicSwitch.sourceKafkaServers.get(0).toString(), localKafkaServer))) {
+      partitionConsumptionState.setConsumeRemotely(true);
+      logger.info(String.format("%s enabled remote consumption and switch to topic %s partition %d with offset " +
+                      "by Kafka URL mapping %s", consumerTaskId, newSourceTopicName, sourceTopicPartition, upstreamOffsetsByKafkaURLs));
+    }
+
+    partitionConsumptionState.getOffsetRecord().setLeaderTopic(newSourceTopicName);
+    upstreamOffsetsByKafkaURLs.forEach((upstreamKafkaURL, upstreamStartOffset) -> {
+      partitionConsumptionState.getOffsetRecord().setLeaderUpstreamOffset(
+              upstreamKafkaURL,
+              upstreamStartOffset
+      );
+    });
+
+    upstreamOffsetsByKafkaURLs.forEach((kafkaURL, upstreamStartOffset) -> {
+      consumerSubscribe(
+              newSourceTopicName,
+              partitionConsumptionState.getSourceTopicPartition(newSourceTopicName),
+              upstreamStartOffset,
+              kafkaURL
+      );
+    });
+    logger.info(String.format("%s leader successfully switch feed topic from %s to %s on partition %d with offset by " +
+            "Kafka URL mapping %s", consumerTaskId, currentLeaderTopic, newSourceTopicName, partition, upstreamOffsetsByKafkaURLs));
+
+    // In case new topic is empty and leader can never become online
+    defaultReadyToServeChecker.apply(partitionConsumptionState);
   }
 
   @Override
   protected void processTopicSwitch(ControlMessage controlMessage, int partition, long offset,
       PartitionConsumptionState partitionConsumptionState) {
-    // TODO: provide its own A/A-specific implementation
-    super.processTopicSwitch(controlMessage, partition, offset, partitionConsumptionState);
+
+    TopicSwitch topicSwitch = (TopicSwitch) controlMessage.controlMessageUnion;
+    reportStatusAdapter.reportTopicSwitchReceived(partitionConsumptionState);
+
+    // Calculate the start offset based on start timestamp
+    final String newSourceTopicName = topicSwitch.sourceTopicName.toString();
+    Map<String, Long> upstreamStartOffsetByKafkaURL = new HashMap<>(topicSwitch.sourceKafkaServers.size());
+    final int newSourceTopicPartition = partitionConsumptionState.getSourceTopicPartition(newSourceTopicName);
+    topicSwitch.sourceKafkaServers.forEach(sourceKafkaURL -> {
+      if (topicSwitch.rewindStartTimestamp > 0) {
+        long upstreamStartOffset = getTopicManager(sourceKafkaURL.toString())
+            .getPartitionOffsetByTime(newSourceTopicName, newSourceTopicPartition, topicSwitch.rewindStartTimestamp);
+        if (upstreamStartOffset != OffsetRecord.LOWEST_OFFSET) {
+          upstreamStartOffset -= 1;
+        }
+        upstreamStartOffsetByKafkaURL.put(sourceKafkaURL.toString(), upstreamStartOffset);
+      } else {
+        upstreamStartOffsetByKafkaURL.put(sourceKafkaURL.toString(), OffsetRecord.LOWEST_OFFSET);
+      }
+    });
+
+    syncTopicSwitchToIngestionMetadataService(
+        topicSwitch,
+        partitionConsumptionState,
+        upstreamStartOffsetByKafkaURL
+    );
+
+    upstreamStartOffsetByKafkaURL.forEach((sourceKafkaURL, upstreamStartOffset) -> {
+      partitionConsumptionState.getOffsetRecord().setLeaderUpstreamOffset(sourceKafkaURL, upstreamStartOffset);
+    });
+    if (!isLeader(partitionConsumptionState)) {
+      partitionConsumptionState.getOffsetRecord().setLeaderTopic(newSourceTopicName);
+      this.defaultReadyToServeChecker.apply(partitionConsumptionState);
+    }
   }
 
   @Override
   protected void updateOffsetRecord(PartitionConsumptionState partitionConsumptionState, OffsetRecord offsetRecord,
       VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope> consumerRecordWrapper, LeaderProducedRecordContext leaderProducedRecordContext) {
 
-    // TODO: provide its own A/A-specific implementation
-    super.updateOffsetRecord(partitionConsumptionState, offsetRecord, consumerRecordWrapper, leaderProducedRecordContext);
+    ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord = consumerRecordWrapper.consumerRecord();
+    // Only update the metadata if this replica should NOT produce to version topic.
+    if (!shouldProduceToVersionTopic(partitionConsumptionState)) {
+      /**
+       * If either (1) this is a follower replica or (2) this is a leader replica who is consuming from version topic
+       * in a local Kafka cluster, we can update the offset metadata in offset record right after consuming a message;
+       * otherwise, if the leader is consuming from real-time topic or grandfathering topic, it should update offset
+       * metadata after successfully produce a corresponding message.
+       */
+      KafkaMessageEnvelope kafkaValue = consumerRecord.value();
+      offsetRecord.setLocalVersionTopicOffset(consumerRecord.offset());
+
+      // also update the leader topic offset using the upstream offset in ProducerMetadata
+      if (kafkaValue.producerMetadata.upstreamOffset >= 0
+          || (kafkaValue.leaderMetadataFooter != null && kafkaValue.leaderMetadataFooter.upstreamOffset >= 0)) {
+
+        final long newUpstreamOffset =
+            kafkaValue.leaderMetadataFooter == null ? kafkaValue.producerMetadata.upstreamOffset : kafkaValue.leaderMetadataFooter.upstreamOffset;
+        final String upstreamKafkaURL;
+        if (isLeader(partitionConsumptionState)) {
+          upstreamKafkaURL = consumerRecordWrapper.kafkaUrl(); // Wherever leader consumes from is considered as "upstream"
+        } else {
+          if (kafkaValue.leaderMetadataFooter == null) {
+            /**
+             * This "leaderMetadataFooter" field do not get populated in 2 cases:
+             *
+             * 1. The source fabric is the same as the local fabric since the VT source will be one of the prod fabric after
+             *    batch NR is fully ramped.
+             *
+             * 2. Leader/Follower stores that have not ramped to NR yet. KMM mirrors data to local VT.
+             *
+             * In both 2 above cases, the leader replica consumes from local Kafka URL. Hence, from a follower's perspective,
+             * the upstream Kafka cluster which the leader consumes from should be the local Kafka URL.
+             */
+            upstreamKafkaURL = localKafkaServer;
+          } else {
+            upstreamKafkaURL = getUpstreamKafkaUrlFromKafkaValue(kafkaValue);
+          }
+        }
+
+        final long previousUpstreamOffset = offsetRecord.getUpstreamOffset(upstreamKafkaURL);
+        checkAndHandleUpstreamOffsetRewind(
+            partitionConsumptionState, offsetRecord, consumerRecordWrapper.consumerRecord(), newUpstreamOffset, previousUpstreamOffset);
+        /**
+         * Keep updating the upstream offset no matter whether there is a rewind or not; rewind could happen
+         * to the true leader when the old leader doesn't stop producing.
+         */
+        offsetRecord.setLeaderUpstreamOffset(upstreamKafkaURL, newUpstreamOffset);
+      }
+      // update leader producer GUID
+      offsetRecord.setLeaderGUID(kafkaValue.producerMetadata.producerGUID);
+      if (kafkaValue.leaderMetadataFooter != null) {
+        offsetRecord.setLeaderHostId(kafkaValue.leaderMetadataFooter.hostName.toString());
+      }
+    } else {
+      updateOffsetRecordAsRemoteConsumeLeader(
+              leaderProducedRecordContext,
+              offsetRecord,
+              consumerRecordWrapper.kafkaUrl(),
+              consumerRecord
+      );
+    }
+  }
+
+  @Override
+  protected boolean isRealTimeBufferReplayStarted(PartitionConsumptionState partitionConsumptionState) {
+    TopicSwitch topicSwitch = partitionConsumptionState.getTopicSwitch();
+    if (topicSwitch == null) {
+      return false;
+    }
+    if (topicSwitch.sourceKafkaServers.isEmpty()) {
+      throw new VeniceException("Got empty source Kafka URLs in Topic Switch.");
+    }
+    return Version.isRealTimeTopic(topicSwitch.sourceTopicName.toString());
+  }
+
+  private String getUpstreamKafkaUrlFromKafkaValue(KafkaMessageEnvelope kafkaValue) {
+    if (kafkaValue.leaderMetadataFooter == null) {
+      throw new VeniceException("leaderMetadataFooter field in KME should have been set.");
+    }
+    String upstreamKafkaURL = this.kafkaClusterIdToUrlMap.get(kafkaValue.leaderMetadataFooter.upstreamKafkaClusterId);
+    if (upstreamKafkaURL == null) {
+      throw new VeniceException(String.format("No Kafka cluster ID found in the cluster ID to Kafka URL map. " +
+              "Got cluster ID %d and ID to cluster URL map %s",
+              kafkaValue.leaderMetadataFooter.upstreamKafkaClusterId, kafkaClusterIdToUrlMap));
+    }
+    return upstreamKafkaURL;
   }
 }
