@@ -132,7 +132,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   private final IngestionTaskWriteComputeAdapter ingestionTaskWriteComputeAdapter;
 
   private final boolean isNativeReplicationEnabled;
-  private final String nativeReplicationSourceAddress;
+  private final String nativeReplicationSourceVersionTopicKafkaURL;
 
   private final VeniceWriterFactory veniceWriterFactory;
 
@@ -240,7 +240,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     this.ingestionTaskWriteComputeAdapter = new IngestionTaskWriteComputeAdapter(storeName, schemaRepository);
 
     this.isNativeReplicationEnabled = version.isNativeReplicationEnabled();
-    this.nativeReplicationSourceAddress = version.getPushStreamSourceAddress();
+    this.nativeReplicationSourceVersionTopicKafkaURL = version.getPushStreamSourceAddress();
 
     this.compressorFactory = compressorFactory;
 
@@ -577,7 +577,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     final OffsetRecord offsetRecord = partitionConsumptionState.getOffsetRecord();
 
     if (isNativeReplicationEnabled) {
-      if (null == nativeReplicationSourceAddress || nativeReplicationSourceAddress.length() == 0) {
+      if (null == nativeReplicationSourceVersionTopicKafkaURL || nativeReplicationSourceVersionTopicKafkaURL.isEmpty()) {
         throw new VeniceException("Native replication is enabled but remote source address is not found");
       }
       if (shouldLeaderSwitchToRemoteConsumption(partitionConsumptionState)) {
@@ -678,20 +678,30 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   @Override
   protected String getConsumptionSourceKafkaAddress(PartitionConsumptionState partitionConsumptionState) {
     if (partitionConsumptionState.consumeRemotely()) {
-      return Version.isRealTimeTopic(partitionConsumptionState.getOffsetRecord().getLeaderTopic())
-          ? getRealTimeDataSourceKafkaAddress(partitionConsumptionState)
-          : nativeReplicationSourceAddress;
+      if (Version.isRealTimeTopic(partitionConsumptionState.getOffsetRecord().getLeaderTopic())) {
+        Optional<String> realTimeDataSourceKafkaURL = getRealTimeDataSourceKafkaAddress(partitionConsumptionState);
+        if (realTimeDataSourceKafkaURL.isPresent()) {
+          return realTimeDataSourceKafkaURL.get();
+        } else {
+          throw new VeniceException("Expect RT Kafka URL when leader topic is a real-time topic. Got: " + partitionConsumptionState);
+        }
+      } else {
+        return nativeReplicationSourceVersionTopicKafkaURL;
+      }
     }
-
     return localKafkaServer;
   }
 
   @Override
-  protected String getRealTimeDataSourceKafkaAddress(PartitionConsumptionState partitionConsumptionState) {
-    if (partitionConsumptionState.getTopicSwitch() != null) {
-      return partitionConsumptionState.getTopicSwitch().sourceKafkaServers.get(0).toString();
+  protected Optional<String> getRealTimeDataSourceKafkaAddress(PartitionConsumptionState partitionConsumptionState) {
+    if (!isNativeReplicationEnabled) {
+      return Optional.of(localKafkaServer);
     }
-    return localKafkaServer;
+    TopicSwitch topicSwitch = partitionConsumptionState.getTopicSwitch();
+    if (topicSwitch == null || topicSwitch.sourceKafkaServers == null || topicSwitch.sourceKafkaServers.isEmpty()) {
+      return Optional.empty();
+    }
+    return Optional.of(topicSwitch.sourceKafkaServers.get(0).toString());
   }
 
   /**
@@ -714,9 +724,19 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     return (!partitionConsumptionState.isEndOfPushReceived()
             && !isCurrentVersion.getAsBoolean()
             // Do not enable remote consumption for the source fabric leader. Otherwise, it will produce extra messages.
-            && !nativeReplicationSourceAddress.equals(localKafkaServer))
-        || (Version.isRealTimeTopic(partitionConsumptionState.getOffsetRecord().getLeaderTopic())
-            && !getRealTimeDataSourceKafkaAddress(partitionConsumptionState).equals(localKafkaServer));
+            && !nativeReplicationSourceVersionTopicKafkaURL.equals(localKafkaServer))
+        || isLeaderConsumingRemoteRealTimeTopic(partitionConsumptionState);
+  }
+
+  private boolean isLeaderConsumingRemoteRealTimeTopic(PartitionConsumptionState partitionConsumptionState) {
+    if (!Version.isRealTimeTopic(partitionConsumptionState.getOffsetRecord().getLeaderTopic())) {
+      return false; // Not consuming a RT at all
+    }
+    String realTimeTopicKafkaURL = getRealTimeDataSourceKafkaAddress(partitionConsumptionState).orElse(null);
+    if (realTimeTopicKafkaURL == null) {
+      throw new VeniceException("Expect a Kafka URL for " + partitionConsumptionState);
+    }
+    return !Objects.equals(realTimeTopicKafkaURL, localKafkaServer);
   }
 
   /**
@@ -1034,6 +1054,18 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     produceFunction.apply(callback, leaderMetadataWrapper);
   }
 
+  @Override
+  protected boolean isRealTimeBufferReplayStarted(PartitionConsumptionState partitionConsumptionState) {
+    TopicSwitch topicSwitch = partitionConsumptionState.getTopicSwitch();
+    if (topicSwitch == null) {
+      return false;
+    }
+    if (topicSwitch.sourceKafkaServers.size() != 1) {
+      throw new VeniceException("Expect only one source Kafka URLs in Topic Switch. Got: " + topicSwitch.sourceKafkaServers);
+    }
+    return Version.isRealTimeTopic(topicSwitch.sourceTopicName.toString());
+  }
+
   /**
    * For Leader/Follower state model, we already keep track of the consumption progress in leader, so directly calculate
    * the lag with the real-time topic and the leader consumption offset.
@@ -1067,9 +1099,13 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
 
     // leaderTopic is the real-time topic now
+    String sourceRealTimeTopicKafkaURL = getRealTimeDataSourceKafkaAddress(partitionConsumptionState).orElse(null);
+    if (sourceRealTimeTopicKafkaURL == null) {
+      throw new VeniceException("Expect a real-time source Kafka URL for " + partitionConsumptionState);
+    }
+
     long latestLeaderOffset;
     long lastOffsetInRealTimeTopic;
-    String sourceKafkaServer = getRealTimeDataSourceKafkaAddress(partitionConsumptionState);
     if (amplificationFactor != 1) {
       /**
        * When amplificationFactor enabled, the RT topic and VT topics have different number of partition.
@@ -1081,7 +1117,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
        * then use this value to compare against the offset in the RT topic.
        */
       int userPartition = PartitionUtils.getUserPartition(partition, amplificationFactor);
-      lastOffsetInRealTimeTopic = cachedKafkaMetadataGetter.getOffset(sourceKafkaServer, leaderTopic, userPartition);
+      lastOffsetInRealTimeTopic = cachedKafkaMetadataGetter.getOffset(sourceRealTimeTopicKafkaURL, leaderTopic, userPartition);
       latestLeaderOffset = -1;
       for (int subPartition : PartitionUtils.getSubPartitions(userPartition, amplificationFactor)) {
         long upstreamOffset = -1;
@@ -1093,7 +1129,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       }
     } else {
       latestLeaderOffset = offsetRecord.getLeaderOffset(OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY);
-      lastOffsetInRealTimeTopic = cachedKafkaMetadataGetter.getOffset(sourceKafkaServer, leaderTopic, partition);
+      lastOffsetInRealTimeTopic = cachedKafkaMetadataGetter.getOffset(sourceRealTimeTopicKafkaURL, leaderTopic, partition);
     }
     long lag = lastOffsetInRealTimeTopic - latestLeaderOffset;
     if (shouldLogLag) {
@@ -1653,7 +1689,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             currentLeaderTopic = kafkaVersionTopic;
           }
 
-          KafkaConsumerWrapper kafkaConsumer = consumerMap.get(getConsumptionSourceKafkaAddress(pcs));
+          String sourceKafkaURL = getConsumptionSourceKafkaAddress(pcs);
+          KafkaConsumerWrapper kafkaConsumer = consumerMap.get(sourceKafkaURL);
           // Consumer might not existed in the map after the consumption state is created, but before attaching the
           // corresponding consumer in consumerMap.
           if (kafkaConsumer != null) {
@@ -1663,7 +1700,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             }
           }
           // Fall back to use the old way
-          return (cachedKafkaMetadataGetter.getOffset(nativeReplicationSourceAddress, currentLeaderTopic, pcs.getPartition()) - 1)
+          return (cachedKafkaMetadataGetter.getOffset(nativeReplicationSourceVersionTopicKafkaURL, currentLeaderTopic, pcs.getPartition()) - 1)
               - (cachedKafkaMetadataGetter.getOffset(localKafkaServer, currentLeaderTopic, pcs.getPartition()) - 1);
         }).sum();
 
@@ -1779,7 +1816,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         .filter(partitionConsumptionStateFilter)
         //the lag is (latest VT offset - consumed VT offset)
         .mapToLong((pcs) -> {
-          String kafkaSourceAddress = getConsumptionSourceKafkaAddress(pcs);
+          final String kafkaSourceAddress = getConsumptionSourceKafkaAddress(pcs);
           KafkaConsumerWrapper kafkaConsumer = consumerMap.get(kafkaSourceAddress);
           // Consumer might not existed in the map after the consumption state is created, but before attaching the
           // corresponding consumer in consumerMap.

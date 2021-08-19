@@ -47,6 +47,7 @@ import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.StartOfBufferReplay;
 import com.linkedin.venice.kafka.protocol.StartOfIncrementalPush;
 import com.linkedin.venice.kafka.protocol.StartOfPush;
+import com.linkedin.venice.kafka.protocol.TopicSwitch;
 import com.linkedin.venice.kafka.protocol.Update;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
@@ -731,6 +732,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       return true;
     }
 
+    if (partitionConsumptionState.isHybrid() && !isRealTimeBufferReplayStarted(partitionConsumptionState)) {
+      return false;
+    }
+
     int partitionId = partitionConsumptionState.getPartition();
     boolean lagIsAcceptable = false;
 
@@ -800,14 +805,17 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         if (!timestampLagIsAcceptable) {
           String msgIdentifier = this.kafkaVersionTopic + "_" + partitionId + "_ignore_time_lag";
           String realTimeTopic = Version.composeRealTimeTopic(storeName);
-          String realTimeKafkaServer = getRealTimeDataSourceKafkaAddress(partitionConsumptionState);
-          if (!cachedKafkaMetadataGetter.containsTopic(realTimeKafkaServer, realTimeTopic)) {
+          String realTimeTopicKafkaURL = getRealTimeDataSourceKafkaAddress(partitionConsumptionState).orElse(null);
+          if (realTimeTopicKafkaURL == null) {
+            throw new VeniceException("Expect a real-time topic Kafka URL for store " + storeName);
+          }
+          if (!cachedKafkaMetadataGetter.containsTopic(realTimeTopicKafkaURL, realTimeTopic)) {
             timestampLagIsAcceptable = true;
             if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msgIdentifier)) {
               logger.info(String.format("%s [Time lag] Real-time topic %s doesn't exist; ignoring time lag.", consumerTaskId, realTimeTopic));
             }
           } else {
-            long latestProducerTimestampInRT = cachedKafkaMetadataGetter.getProducerTimestampOfLastMessage(realTimeKafkaServer, realTimeTopic, partitionId);
+            long latestProducerTimestampInRT = cachedKafkaMetadataGetter.getProducerTimestampOfLastMessage(realTimeTopicKafkaURL, realTimeTopic, partitionId);
             if (latestProducerTimestampInRT < 0 || latestProducerTimestampInRT <= latestProducerTimestamp) {
               timestampLagIsAcceptable = true;
               if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msgIdentifier)) {
@@ -850,6 +858,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     return lagIsAcceptable;
   }
+
+  protected abstract boolean isRealTimeBufferReplayStarted(PartitionConsumptionState partitionConsumptionState);
 
   /**
    * Measure the hybrid offset lag for partition being tracked in `partitionConsumptionState`.
@@ -1583,19 +1593,21 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
   }
 
-  private void checkConsumptionStateWhenStart(OffsetRecord record, PartitionConsumptionState newPartitionConsumptionState) {
+  private void checkConsumptionStateWhenStart(OffsetRecord offsetRecord, PartitionConsumptionState newPartitionConsumptionState) {
     int partition = newPartitionConsumptionState.getPartition();
     // Once storage node restart, send the "START" status to controller to rebuild the task status.
     // If this storage node has never consumed data from this topic, instead of sending "START" here, we send it
     // once START_OF_PUSH message has been read.
-    if (record.getLocalVersionTopicOffset() > 0) {
+    if (offsetRecord.getLocalVersionTopicOffset() > 0) {
       Optional<StoreVersionState> storeVersionState = storageMetadataService.getStoreVersionState(kafkaVersionTopic);
       if (storeVersionState.isPresent()) {
         boolean sorted = storeVersionState.get().sorted;
         /**
          * Put TopicSwitch message into in-memory state.
          */
-        newPartitionConsumptionState.setTopicSwitch(storeVersionState.get().topicSwitch);
+        TopicSwitch topicSwitch = storeVersionState.get().topicSwitch;
+        newPartitionConsumptionState.setTopicSwitch(topicSwitch);
+
         /**
          * Notify the underlying store engine about starting batch push.
          */
@@ -1680,18 +1692,18 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         // Drain the buffered message by last subscription.
         storeBufferService.drainBufferedRecordsFromTopicPartition(topic, partition);
         subscribedCount++;
-        OffsetRecord record = storageMetadataService.getLastOffset(topic, partition);
+        OffsetRecord offsetRecord = storageMetadataService.getLastOffset(topic, partition);
 
         // Initialize partition status;
         reportStatusAdapter.initializePartitionStatus(partition);
         // First let's try to restore the state retrieved from the OffsetManager
-        PartitionConsumptionState newPartitionConsumptionState = new PartitionConsumptionState(partition, amplificationFactor, record,
+        PartitionConsumptionState newPartitionConsumptionState = new PartitionConsumptionState(partition, amplificationFactor, offsetRecord,
             hybridStoreConfig.isPresent(), isIncrementalPushEnabled, incrementalPushPolicy);
 
         newPartitionConsumptionState.setLeaderFollowerState(leaderState);
 
         partitionConsumptionStateMap.put(partition,  newPartitionConsumptionState);
-        record.getProducerPartitionStateMap().entrySet().stream().forEach(entry -> {
+        offsetRecord.getProducerPartitionStateMap().entrySet().stream().forEach(entry -> {
               GUID producerGuid = GuidUtils.getGuidFromCharSequence(entry.getKey());
               ProducerTracker producerTracker = kafkaDataIntegrityValidator.registerProducer(producerGuid);
               producerTracker.setPartitionState(partition, entry.getValue());
@@ -1699,7 +1711,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         );
 
         long consumptionStatePrepTimeStart = System.currentTimeMillis();
-        checkConsumptionStateWhenStart(record, newPartitionConsumptionState);
+        checkConsumptionStateWhenStart(offsetRecord, newPartitionConsumptionState);
         reportIfCatchUpBaseTopicOffset(newPartitionConsumptionState);
         versionedStorageIngestionStats.recordSubscribePrepLatency(storeName, versionNumber,
             LatencyUtils.getElapsedTimeInMs(consumptionStatePrepTimeStart));
@@ -1709,10 +1721,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
          * to main process when it completed ingestion in the forked process.
          */
         String topicToSubscribe = leaderState.equals(LeaderFollowerStateType.LEADER) ? newPartitionConsumptionState.getOffsetRecord().getLeaderTopic() : topic;
-        consumerSubscribe(topicToSubscribe, newPartitionConsumptionState, record.getLocalVersionTopicOffset());
+        consumerSubscribe(topicToSubscribe, newPartitionConsumptionState, offsetRecord.getLocalVersionTopicOffset());
         partitionConsumptionSizeMap.put(partition, new StoragePartitionDiskUsage(partition, storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic)));
         logger.info(consumerTaskId + " subscribed to: Topic " + topicToSubscribe + " Partition Id " + partition + " Offset "
-            + record.getLocalVersionTopicOffset());
+            + offsetRecord.getLocalVersionTopicOffset());
         break;
       case UNSUBSCRIBE:
         logger.info(consumerTaskId + " UnSubscribed to: Topic " + topic + " Partition Id " + partition);
@@ -1806,8 +1818,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected abstract void processConsumerAction(ConsumerAction message) throws InterruptedException;
   protected abstract String getConsumptionSourceKafkaAddress(PartitionConsumptionState partitionConsumptionState);
 
-  protected String getRealTimeDataSourceKafkaAddress(PartitionConsumptionState partitionConsumptionState) {
-    return localKafkaServer;
+  protected Optional<String> getRealTimeDataSourceKafkaAddress(PartitionConsumptionState partitionConsumptionState) {
+    return Optional.of(localKafkaServer);
   }
 
   public Optional<PartitionConsumptionState> getPartitionConsumptionState(int partitionId) {
@@ -2738,7 +2750,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   public KafkaConsumerWrapper getConsumer(PartitionConsumptionState partitionConsumptionState) {
-    String kafkaSourceAddress = getConsumptionSourceKafkaAddress(partitionConsumptionState);
+    final String kafkaSourceAddress = getConsumptionSourceKafkaAddress(partitionConsumptionState);
+    if (kafkaSourceAddress == null) {
+      throw new VeniceException("Expect a source Kafka URL for " + partitionConsumptionState);
+    }
+
     return consumerMap.computeIfAbsent(kafkaSourceAddress, source -> {
       Properties consumerProps = updateKafkaConsumerProperties(kafkaProps, kafkaSourceAddress, partitionConsumptionState.consumeRemotely());
       if (serverConfig.isSharedConsumerPoolEnabled()) {
@@ -3129,13 +3145,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           int partition = partitionConsumptionState.getPartition();
           Store store = storeRepository.getStoreOrThrow(storeName);
 
-          AbstractStorageEngine<?> engine = storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic);
+          AbstractStorageEngine<?> storageEngine = storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic);
           if (store.isHybrid()) {
-            if (engine == null) {
+            if (storageEngine == null) {
               logger.warn("Storage engine " + kafkaVersionTopic + " was removed before reopening");
             } else {
               logger.info("Reopen partition " + kafkaVersionTopic + "_" + partition + " for reading after ready-to-serve.");
-              engine.preparePartitionForReading(partition);
+              storageEngine.preparePartitionForReading(partition);
             }
           }
           if (partitionConsumptionState.isCompletionReported()) {
@@ -3146,7 +3162,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             /**
              * Check whether we need to warm-up cache here.
              */
-            if (engine != null
+            if (storageEngine != null
                 && serverConfig.isCacheWarmingBeforeReadyToServeEnabled()
                 && serverConfig.isCacheWarmingEnabledForStore(storeName) // Only warm up configured stores
                 && store.getCurrentVersion() <= versionNumber) { // Only warm up current version or future version
@@ -3161,7 +3177,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
                   cacheWarmingThreadPool.submit(() -> {
                     logger.info("Start warming up store: " + kafkaVersionTopic + ", partition: " + partition);
                     try {
-                      engine.warmUpStoragePartition(partition);
+                      storageEngine.warmUpStoragePartition(partition);
                       logger.info("Finished warming up store: " + kafkaVersionTopic + ", partition: " + partition);
                     } catch (Exception e) {
                       logger.error("Received exception while warming up cache for store: " + kafkaVersionTopic + ", partition: " + partition);
