@@ -38,7 +38,7 @@ import static com.linkedin.venice.utils.TestPushUtils.*;
 
 
 public class TestPushJobWithSourceGridFabricSelection {
-  private static final int TEST_TIMEOUT = 90_000; // ms
+  private static final int TEST_TIMEOUT_MS = 90_000; // 90 seconds
 
   private static final int NUMBER_OF_CHILD_DATACENTERS = 2;
   private static final int NUMBER_OF_CLUSTERS = 1;
@@ -101,7 +101,7 @@ public class TestPushJobWithSourceGridFabricSelection {
   /**
    * Verify that grid source fabric config overrides the store level NR source fabric
    */
-  @Test(timeOut = TEST_TIMEOUT, dataProvider = "storeSize")
+  @Test(timeOut = TEST_TIMEOUT_MS, dataProvider = "storeSize")
   public void TestPushJobWithSourceGridFabricSelection(int recordCount, int partitionCount) throws Exception {
     String clusterName = CLUSTER_NAMES[0];
     File inputDir = getTempDataDirectory();

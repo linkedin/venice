@@ -26,7 +26,6 @@ public class DataProviderUtils {
    * To use these data providers, add (dataProvider = "<provider_name>", dataProviderClass = DataProviderUtils.class)
    * into the @Test annotation.
    */
-
   @DataProvider(name = "True-and-False")
   public static Object[][] trueAndFalseProvider() {
     return new Object[][] {
