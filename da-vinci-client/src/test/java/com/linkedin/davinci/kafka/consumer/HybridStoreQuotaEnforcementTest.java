@@ -196,7 +196,7 @@ public class HybridStoreQuotaEnforcementTest {
     KafkaConsumerWrapper consumer = mock(KafkaConsumerWrapper.class);
     List<KafkaConsumerWrapper> consumerList = new ArrayList<>();
     consumerList.add(consumer);
-    when(storeIngestionTask.getConsumer()).thenReturn(consumerList);
+    when(storeIngestionTask.getConsumers()).thenReturn(consumerList);
     when(version.getStatus()).thenReturn(VersionStatus.ONLINE);
     quotaEnforcer.handleStoreChanged(store);
   }
