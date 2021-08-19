@@ -193,6 +193,15 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
 
   // This function may modify the original record in KME and it is unsafe to use the payload from KME directly after this function.
   protected void processMessageAndMaybeProduceToKafka(VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope> consumerRecordWrapper, PartitionConsumptionState partitionConsumptionState, int subPartition) {
+    /**
+     * With {@link com.linkedin.davinci.replication.BatchConflictResolutionPolicy.BATCH_WRITE_LOSES} there is no need
+     * to perform DCR before EOP and L/F DIV passthrough mode should be used.
+     * TODO. We need to refactor this logic when we support other batch conflict resolution policy.
+     */
+    if (!partitionConsumptionState.isEndOfPushReceived()) {
+      super.processMessageAndMaybeProduceToKafka(consumerRecordWrapper, partitionConsumptionState, subPartition);
+      return;
+    }
     ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord = consumerRecordWrapper.consumerRecord();
     KafkaKey kafkaKey = consumerRecord.key();
     KafkaMessageEnvelope kafkaValue = consumerRecord.value();
