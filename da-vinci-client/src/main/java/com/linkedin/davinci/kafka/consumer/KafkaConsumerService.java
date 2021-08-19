@@ -304,7 +304,7 @@ public class KafkaConsumerService extends AbstractVeniceService {
                  *
                  */
                 Iterable<VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope>> veniceConsumerRecords = KafkaRecordWrapper
-                    .wrap(kafkaUrl, topicRecords);
+                    .wrap(kafkaUrl, topicRecords, ingestionTask.getAmplificationFactor());
                 ingestionTask.produceToStoreBufferServiceOrKafka(veniceConsumerRecords, false);
               } catch (Exception e) {
                 LOGGER.error("Received exception when StoreIngestionTask is processing the polled consumer record for topic: " + topic, e);

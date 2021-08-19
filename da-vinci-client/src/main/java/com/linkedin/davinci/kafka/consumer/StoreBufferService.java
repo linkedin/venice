@@ -246,7 +246,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
      * positive for most of time to guarantee even partition assignment.
      */
     int topicHash = Math.abs(topic.hashCode() / 2);
-    return Math.abs((topicHash + consumerRecord.partition()) % this.drainerNum);
+    return Math.abs((topicHash + consumerRecordWrapper.getSubPartition()) % this.drainerNum);
   }
 
   @Override

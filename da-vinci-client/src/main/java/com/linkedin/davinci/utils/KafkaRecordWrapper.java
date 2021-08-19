@@ -13,14 +13,14 @@ import org.apache.kafka.clients.consumer.ConsumerRecord;
  */
 
 public class KafkaRecordWrapper {
-  public static VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope> wrap(String kafkaUrl, ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord) {
-    return new VeniceConsumerRecordWrapper<>(kafkaUrl, consumerRecord);
+  public static VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope> wrap(String kafkaUrl, ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord, int amplificationFactor) {
+    return new VeniceConsumerRecordWrapper<>(kafkaUrl, consumerRecord, amplificationFactor);
   }
 
-  public static Iterable<VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope>> wrap(String kafkaUrl, Iterable<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>> records) {
+  public static Iterable<VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope>> wrap(String kafkaUrl, Iterable<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>> records, int amplificationFactor) {
     List<VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope>> veniceRecords = new LinkedList<>();
     for (ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord : records) {
-      veniceRecords.add(wrap(kafkaUrl, consumerRecord));
+      veniceRecords.add(wrap(kafkaUrl, consumerRecord, amplificationFactor));
     }
     return veniceRecords;
   }

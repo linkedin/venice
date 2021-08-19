@@ -1342,7 +1342,7 @@ public class TestHybrid {
       TestUtils.assertCommand(controllerClient.updateStore(storeName, params));
     }
     cluster.createVersion(storeName, STRING_SCHEMA, STRING_SCHEMA, IntStream.range(0, keyCount).mapToObj(i -> new AbstractMap.SimpleEntry<>(String.valueOf(i), String.valueOf(i))));
-    try (AvroGenericStoreClient client = ClientFactory.getAndStartGenericAvroClient(
+    try (AvroGenericStoreClient<String, Object> client = ClientFactory.getAndStartGenericAvroClient(
         ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(cluster.getRandomRouterURL()));
         ControllerClient controllerClient = new ControllerClient(cluster.getClusterName(), cluster.getAllControllersURLs())) {
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
@@ -1375,6 +1375,15 @@ public class TestHybrid {
       }
       producer.stop();
 
+      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, true, () -> {
+        for (int i = 0; i < keyCount; i++) {
+          checkLargeRecord(client, i);
+        }
+      });
+
+      TestUtils.assertCommand(controllerClient.updateStore(storeName, params));
+      // Create a new version with updated amplification factor
+      cluster.createVersion(storeName, STRING_SCHEMA, STRING_SCHEMA, IntStream.range(0, keyCount).mapToObj(i -> new AbstractMap.SimpleEntry<>(String.valueOf(i), String.valueOf(i))));
       TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, true, () -> {
         for (int i = 0; i < keyCount; i++) {
           checkLargeRecord(client, i);

@@ -139,15 +139,6 @@ public class OffsetRecord {
     this.partitionState.endOfPush = true;
   }
 
-  public boolean hasSubPartitionStatus(SubPartitionStatus status) {
-    for (CharSequence previousStatus : partitionState.previousStatuses.keySet()) {
-      if (status.name().equals(previousStatus.toString())) {
-        return true;
-      }
-    }
-    return false;
-  }
-
   public void recordSubPartitionStatus(SubPartitionStatus status) {
     partitionState.previousStatuses.put(status.name(), status.name());
   }
@@ -166,10 +157,6 @@ public class OffsetRecord {
 
   public Map<CharSequence, ProducerPartitionState> getProducerPartitionStateMap() {
     return this.partitionState.producerStates;
-  }
-
-  public void setProducerPartitionStateMap(Map<CharSequence, ProducerPartitionState> producerStates) {
-    this.partitionState.producerStates = producerStates;
   }
 
   public ProducerPartitionState getProducerPartitionState(GUID producerGuid) {

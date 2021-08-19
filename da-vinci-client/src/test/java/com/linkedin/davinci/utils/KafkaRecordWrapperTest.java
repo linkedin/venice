@@ -24,7 +24,7 @@ public class KafkaRecordWrapperTest {
     recordList.add(r2);
     recordList.add(r3);
 
-    Iterable<VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope>> wrappedRecordList = KafkaRecordWrapper.wrap("kafka-url1", recordList);
+    Iterable<VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope>> wrappedRecordList = KafkaRecordWrapper.wrap("kafka-url1", recordList, 1);
 
     Iterator<VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope>> iter = wrappedRecordList.iterator();
     VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope> wrappedRecord1 = iter.next();
