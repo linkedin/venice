@@ -1381,6 +1381,7 @@ public class TestHybrid {
         }
       });
 
+      params = new UpdateStoreQueryParams().setAmplificationFactor(5);
       TestUtils.assertCommand(controllerClient.updateStore(storeName, params));
       // Create a new version with updated amplification factor
       cluster.createVersion(storeName, STRING_SCHEMA, STRING_SCHEMA, IntStream.range(0, keyCount).mapToObj(i -> new AbstractMap.SimpleEntry<>(String.valueOf(i), String.valueOf(i))));

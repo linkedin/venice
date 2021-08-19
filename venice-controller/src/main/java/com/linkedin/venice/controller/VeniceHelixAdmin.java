@@ -151,6 +151,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Random;
@@ -2577,8 +2578,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     public void setStorePartitionerConfig(String clusterName, String storeName, PartitionerConfig partitionerConfig) {
         storeMetadataUpdate(clusterName, storeName, store -> {
-            // Cannot change the partitioner config if store is a hybrid store.
-            if (!store.getPartitionerConfig().equals(partitionerConfig) && store.isHybrid()) {
+            // Only amplification factor is allowed to be changed if the store is a hybrid store.
+            if (store.isHybrid() && !(Objects.equals(store.getPartitionerConfig(), partitionerConfig) || isAmplificationFactorUpdateOnly(store.getPartitionerConfig(), partitionerConfig))) {
                 throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, "Partitioner config change from "
                     + store.getPartitionerConfig() + " to " + partitionerConfig + " in hybrid store is not supported except amplification factor.");
             } else {
@@ -5371,5 +5372,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             logger.info("Wrote replica status snapshot for version: " + versionNumber + " to meta system store for venice store: "
                 + regularStoreName + " in cluster: " + clusterName);
         }
+    }
+
+    private boolean isAmplificationFactorUpdateOnly(PartitionerConfig originalPartitionerConfig, PartitionerConfig newPartitionerConfig) {
+        if (newPartitionerConfig == null) {
+            throw new VeniceException("New partitioner config is null, in theory it will never happen as we should pre-fill new partitioner config.");
+        }
+        // We verify if only amp factor is changed by updating original partition config's amp factor and compare it with given partitioner config.
+        PartitionerConfig ampFactorUpdatedPartitionerConfig = originalPartitionerConfig == null ? new PartitionerConfigImpl() : originalPartitionerConfig.clone();
+        ampFactorUpdatedPartitionerConfig.setAmplificationFactor(newPartitionerConfig.getAmplificationFactor());
+        return Objects.equals(ampFactorUpdatedPartitionerConfig, newPartitionerConfig);
     }
 }
