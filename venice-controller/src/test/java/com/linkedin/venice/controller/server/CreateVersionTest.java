@@ -212,7 +212,7 @@ public class CreateVersionTest {
     Version version = new VersionImpl(storeName, 1, pushJobId1);
     version.setIncrementalPushPolicy(IncrementalPushPolicy.PUSH_TO_VERSION_TOPIC);
     doReturn(version).when(admin).incrementVersionIdempotent(clusterName, storeName, pushJobId1, 0, 0,
-        Version.PushType.INCREMENTAL, false, false, null, Optional.empty(), Optional.of(certificate), -1);
+        Version.PushType.INCREMENTAL, false, false, null, Optional.empty(), Optional.of(certificate), -1, Optional.empty());
 
     // Mock a spark response
     Response response = mock(Response.class);

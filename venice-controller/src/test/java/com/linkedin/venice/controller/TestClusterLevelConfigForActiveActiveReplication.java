@@ -83,7 +83,7 @@ public class TestClusterLevelConfigForActiveActiveReplication extends AbstractTe
      * Add a version
      */
     veniceAdmin.addVersionAndTopicOnly(clusterName, storeNameHybrid, pushJobId1, 1, 1,
-        false, true, Version.PushType.STREAM, null, null, Optional.empty(), -1, 1);
+        false, true, Version.PushType.STREAM, null, null, Optional.empty(), -1, 1, Optional.empty());
     // Version 1 should exist.
 
     Assert.assertEquals(veniceAdmin.getStore(clusterName, storeNameHybrid).getVersions().size(), 1);
@@ -114,7 +114,7 @@ public class TestClusterLevelConfigForActiveActiveReplication extends AbstractTe
      * Add a version
      */
     veniceAdmin.addVersionAndTopicOnly(clusterName, storeNameIncremental, pushJobId1, 1, 1,
-        false, true, Version.PushType.STREAM, null, null, Optional.empty(), -1, 1);
+        false, true, Version.PushType.STREAM, null, null, Optional.empty(), -1, 1, Optional.empty());
     // Version 1 should exist.
     Assert.assertEquals(veniceAdmin.getStore(clusterName, storeNameIncremental).getVersions().size(), 1);
     // L/F should be enabled by cluster-level config

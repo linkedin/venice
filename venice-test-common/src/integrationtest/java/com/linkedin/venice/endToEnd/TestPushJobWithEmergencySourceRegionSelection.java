@@ -23,6 +23,7 @@ import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.IntStream;
 import org.apache.avro.Schema;
+import org.apache.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -36,7 +37,13 @@ import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.*;
 import static com.linkedin.venice.utils.TestPushUtils.*;
 
 
-public class TestPushJobWithEmergencySourceFabricSelection {
+/**
+ * This test case enables A/A config flag for a store in all regions and then verifies that emergency source fabric takes
+ * precedence over other configs.
+ */
+public class TestPushJobWithEmergencySourceRegionSelection {
+  public static final Logger LOGGER = Logger.getLogger(TestPushJobWithEmergencySourceRegionSelection.class);
+
   private static final int TEST_TIMEOUT = 90_000; // ms
 
   private static final int NUMBER_OF_CHILD_DATACENTERS = 3;
@@ -71,12 +78,13 @@ public class TestPushJobWithEmergencySourceFabricSelection {
 
     Properties controllerProps = new Properties();
     controllerProps.put(DEFAULT_MAX_NUMBER_OF_PARTITIONS, 1000);
+    controllerProps.put(NATIVE_REPLICATION_SOURCE_FABRIC, "dc-0");
     controllerProps.put(LF_MODEL_DEPENDENCY_CHECK_DISABLED, "true");
     controllerProps.put(AGGREGATE_REAL_TIME_SOURCE_REGION, DEFAULT_PARENT_DATA_CENTER_REGION_NAME);
     controllerProps.put(NATIVE_REPLICATION_FABRIC_WHITELIST, DEFAULT_PARENT_DATA_CENTER_REGION_NAME);
     int parentKafkaPort = Utils.getFreePort();
     controllerProps.put(CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + DEFAULT_PARENT_DATA_CENTER_REGION_NAME, "localhost:" + parentKafkaPort);
-    controllerProps.put(EMERGENCY_SOURCE_FABRIC, "dc-2");
+    controllerProps.put(EMERGENCY_SOURCE_REGION, "dc-2");
 
     multiColoMultiClusterWrapper =
         ServiceFactory.getVeniceTwoLayerMultiColoMultiClusterWrapper(
@@ -127,24 +135,28 @@ public class TestPushJobWithEmergencySourceFabricSelection {
             .setLeaderFollowerModel(true)
             .setNativeReplicationEnabled(true)
             .setNativeReplicationSourceFabric("dc-1")
-            .setRegionsFilter("dc-0,dc-1,parent.parent");
+            .setActiveActiveReplicationEnabled(true);
 
     createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, updateStoreParams).close();
+
+    //Print all the kafka cluster URL's
+    LOGGER.info("KafkaURL dc-0:" + childDatacenters.get(0).getKafkaBrokerWrapper().getAddress());
+    LOGGER.info("KafkaURL dc-1:" + childDatacenters.get(1).getKafkaBrokerWrapper().getAddress());
+    LOGGER.info("KafkaURL dc-2:" + childDatacenters.get(2).getKafkaBrokerWrapper().getAddress());
 
     try (ControllerClient dc0Client = new ControllerClient(clusterName,
         childDatacenters.get(0).getControllerConnectString());
         ControllerClient dc1Client = new ControllerClient(clusterName,
-            childDatacenters.get(1).getControllerConnectString())) {
+            childDatacenters.get(1).getControllerConnectString());
+        ControllerClient dc2Client = new ControllerClient(clusterName,
+            childDatacenters.get(2).getControllerConnectString())) {
       /**
        * Check the update store command in parent controller has been propagated into child controllers, before
        * sending any commands directly into child controllers, which can help avoid race conditions.
        */
-      TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(dc0Client, storeName, true);
-      TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(dc1Client, storeName, true);
-
-      //verify all the datacenter is configured correctly.
-      TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(dc0Client, storeName, true);
-      TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(dc1Client, storeName, true);
+      TestActiveActiveReplicationForHybrid.verifyDCConfigNativeAndActiveRepl(dc0Client, storeName, true, true);
+      TestActiveActiveReplicationForHybrid.verifyDCConfigNativeAndActiveRepl(dc1Client, storeName, true, true);
+      TestActiveActiveReplicationForHybrid.verifyDCConfigNativeAndActiveRepl(dc2Client, storeName, true, true);
     }
 
     try (VenicePushJob job = new VenicePushJob("Test push job", props)) {

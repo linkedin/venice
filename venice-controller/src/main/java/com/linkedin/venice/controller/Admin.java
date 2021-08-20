@@ -142,12 +142,13 @@ public interface Admin extends AutoCloseable, Closeable {
     default Version incrementVersionIdempotent(String clusterName, String storeName, String pushJobId,
         int numberOfPartitions, int replicationFactor) {
         return incrementVersionIdempotent(clusterName, storeName, pushJobId, numberOfPartitions, replicationFactor,
-            Version.PushType.BATCH, false, false, null, Optional.empty(), Optional.empty(), -1);
+            Version.PushType.BATCH, false, false, null, Optional.empty(), Optional.empty(), -1, Optional.empty());
     }
 
     Version incrementVersionIdempotent(String clusterName, String storeName, String pushJobId, int numberOfPartitions,
         int replicationFactor, Version.PushType pushType, boolean sendStartOfPush, boolean sorted, String compressionDictionary,
-        Optional<String> sourceGridFabric, Optional<X509Certificate> requesterCert, long rewindTimeInSecondsOverride);
+        Optional<String> sourceGridFabric, Optional<X509Certificate> requesterCert, long rewindTimeInSecondsOverride,
+        Optional<String> emergencySourceRegion);
 
     String getRealTimeTopic(String clusterName, String storeName);
 
@@ -314,7 +315,7 @@ public interface Admin extends AutoCloseable, Closeable {
 
     Pair<String, String> getNativeReplicationKafkaBootstrapServerAndZkAddress(String sourceFabric);
 
-    String getNativeReplicationSourceFabric(String clusterName, Store store, Optional<String> sourceGridFabric);
+    String getNativeReplicationSourceFabric(String clusterName, Store store, Optional<String> sourceGridFabric, Optional<String> emergencySourceRegion);
 
     /**
      * Return whether ssl is enabled for the given store for push.
@@ -634,4 +635,15 @@ public interface Admin extends AutoCloseable, Closeable {
      * If there is any, this function should throw Exception.
      */
     void checkResourceCleanupBeforeStoreCreation(String clusterName, String storeName);
+
+    /**
+     * Return the emergency source region configuration.
+     */
+    public Optional<String> getEmergencySourceRegion();
+
+    /**
+     * Returns true if A/A replication is enabled in all child controller and parent controller. This is implemented only in parent controller.
+     * Otherwise return false.
+     */
+    public boolean isActiveActiveReplicationEnabledInAllRegion(String clusterName, String storeName);
 }

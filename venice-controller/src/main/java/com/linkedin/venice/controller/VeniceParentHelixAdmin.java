@@ -895,23 +895,24 @@ public class VeniceParentHelixAdmin implements Admin {
     return hasAccess;
   }
 
-  private boolean validateAAReplicationEnabledInAllColos(String clusterName, String storeName, String property) {
+  @Override
+  public boolean isActiveActiveReplicationEnabledInAllRegion(String clusterName, String storeName) {
     Map<String, ControllerClient> controllerClients = veniceHelixAdmin.getControllerClientMap(clusterName);
     Store store = veniceHelixAdmin.getStore(clusterName, storeName);
 
     if (!store.isActiveActiveReplicationEnabled()) {
-      logger.info(property + " specified, yet " + storeName + " store is not enabled for Active/Active in parent colo");
+      logger.info("isActiveActiveReplicationEnabledInAllRegion: " + storeName + " store is not enabled for Active/Active in parent region");
       return false;
     }
-    Set<String> colos = controllerClients.keySet();
-    for (String colo : colos) {
-      StoreResponse response = controllerClients.get(colo).getStore(storeName);
+    Set<String> regions = controllerClients.keySet();
+    for (String region : regions) {
+      StoreResponse response = controllerClients.get(region).getStore(storeName);
       if (response.isError()) {
-        logger.error("Could not query store from colo: " + colo + " for cluster: " + clusterName + ". " + response.getError());
+        logger.error("isActiveActiveReplicationEnabledInAllRegion: Could not query store from region: " + region + " for cluster: " + clusterName + ". " + response.getError());
         return false;
       } else {
         if (!response.getStore().isActiveActiveReplicationEnabled()) {
-          logger.info(property + " specified, yet " + storeName + " store is not enabled for Active/Active in colo: " + colo);
+          logger.info("isActiveActiveReplicationEnabledInAllRegion:" + storeName + " store is not enabled for Active/Active in region: " + region);
           return false;
         }
       }
@@ -923,15 +924,9 @@ public class VeniceParentHelixAdmin implements Admin {
   public Version incrementVersionIdempotent(String clusterName, String storeName, String pushJobId,
       int numberOfPartitions, int replicationFactor, Version.PushType pushType, boolean sendStartOfPush,
       boolean sorted, String compressionDictionary, Optional<String> sourceGridFabric,
-      Optional<X509Certificate> requesterCert, long rewindTimeInSecondsOverride) {
+      Optional<X509Certificate> requesterCert, long rewindTimeInSecondsOverride, Optional<String> emergencySourceRegion) {
 
     Optional<String> currentPushTopic = getTopicForCurrentPushJob(clusterName, storeName, pushType.isIncremental());
-
-    if (sourceGridFabric.isPresent() && !validateAAReplicationEnabledInAllColos(clusterName, storeName, SOURCE_GRID_FABRIC)) {
-      logger.info("Ignoring config " + SOURCE_GRID_FABRIC + " : " + sourceGridFabric.get() + ", as store " + storeName + " is not set up for Active/Active replication");
-      sourceGridFabric = Optional.empty();
-    }
-
     if (currentPushTopic.isPresent()) {
       int currentPushVersion = Version.parseVersionFromKafkaTopicName(currentPushTopic.get());
       Store store = getStore(clusterName, storeName);
@@ -976,7 +971,7 @@ public class VeniceParentHelixAdmin implements Admin {
       int timestampMetadataVersionId = multiClusterConfigs.getCommonConfig().getTimestampMetadataVersionId();
       Pair<Boolean, Version> result = veniceHelixAdmin.addVersionAndTopicOnly(clusterName, storeName, pushJobId,
           numberOfPartitions, replicationFactor, sendStartOfPush, sorted, pushType, compressionDictionary,
-          null, sourceGridFabric, rewindTimeInSecondsOverride, timestampMetadataVersionId);
+          null, sourceGridFabric, rewindTimeInSecondsOverride, timestampMetadataVersionId, emergencySourceRegion);
       newVersion = result.getSecond();
       if (result.getFirst()) {
         if (newVersion.isActiveActiveReplicationEnabled()) {
@@ -2144,8 +2139,8 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
-  public String getNativeReplicationSourceFabric(String clusterName, Store store, Optional<String> sourceGridFabric) {
-    return veniceHelixAdmin.getNativeReplicationSourceFabric(clusterName, store, sourceGridFabric);
+  public String getNativeReplicationSourceFabric(String clusterName, Store store, Optional<String> sourceGridFabric, Optional<String> emergencySourceRegion) {
+    return veniceHelixAdmin.getNativeReplicationSourceFabric(clusterName, store, sourceGridFabric, emergencySourceRegion);
   }
 
   @Override
@@ -2902,6 +2897,11 @@ public class VeniceParentHelixAdmin implements Admin {
   @Override
   public Optional<PushStatusStoreRecordDeleter> getPushStatusStoreRecordDeleter() {
     return veniceHelixAdmin.getPushStatusStoreRecordDeleter();
+  }
+
+  @Override
+  public Optional<String> getEmergencySourceRegion() {
+    return multiClusterConfigs.getEmergencySourceRegion().equals("") ? Optional.empty() : Optional.of(multiClusterConfigs.getEmergencySourceRegion());
   }
 
   public List<String> getClustersLeaderOf() {

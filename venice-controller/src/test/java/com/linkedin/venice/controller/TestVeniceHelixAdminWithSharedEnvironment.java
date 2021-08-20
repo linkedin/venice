@@ -1328,7 +1328,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
      * Add version 1 without remote Kafka bootstrap servers.
      */
     veniceAdmin.addVersionAndTopicOnly(clusterName, storeName, pushJobId1, 1, 1,
-        false, true, Version.PushType.BATCH, null, null, Optional.empty(), -1, 1);
+        false, true, Version.PushType.BATCH, null, null, Optional.empty(), -1, 1, Optional.empty());
     // Version 1 should exist.
     Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getVersions().size(), 1);
 
@@ -1338,7 +1338,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     String remoteKafkaBootstrapServers = "localhost:9092";
     String pushJobId2 = "test-push-job-id-2";
     veniceAdmin.addVersionAndTopicOnly(clusterName, storeName, pushJobId2, 2, 1,
-        false, true, Version.PushType.BATCH, null, remoteKafkaBootstrapServers, Optional.empty(), -1, 1);
+        false, true, Version.PushType.BATCH, null, remoteKafkaBootstrapServers, Optional.empty(), -1, 1, Optional.empty());
     // Version 2 should exist and remote Kafka bootstrap servers info should exist in version 2.
     Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getVersions().size(), 2);
     Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getVersion(2).get().getPushStreamSourceAddress(), remoteKafkaBootstrapServers);
@@ -1536,7 +1536,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
      * Add version 1
      */
     veniceAdmin.addVersionAndTopicOnly(clusterName, storeName, pushJobId1, 1, 1,
-        false, true, Version.PushType.BATCH, null, null, Optional.empty(), -1, 1);
+        false, true, Version.PushType.BATCH, null, null, Optional.empty(), -1, 1, Optional.empty());
     // Version 1 should exist.
     Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getVersions().size(), 1);
     // A/A version level config should be true
