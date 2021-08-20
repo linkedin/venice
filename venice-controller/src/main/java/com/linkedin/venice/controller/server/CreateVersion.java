@@ -16,6 +16,8 @@ import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.utils.Lazy;
+import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.security.cert.X509Certificate;
@@ -27,6 +29,7 @@ import org.apache.http.HttpStatus;
 import org.apache.log4j.Logger;
 import spark.Route;
 
+import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
 import static com.linkedin.venice.controllerapi.ControllerRoute.*;
 import static com.linkedin.venice.meta.Version.*;
@@ -175,6 +178,30 @@ public class CreateVersion extends AbstractRoute {
         Optional<String> sourceGridFabric = Optional.ofNullable(request.queryParams(SOURCE_GRID_FABRIC));
 
         /**
+         * We can't honor source grid fabric and emergency source region config untill the store is A/A enabled in all regions. This is because
+         * if push job start producing to a different prod region then non A/A enabled region will not have the capability to consume from that region.
+         * This resets this config in such cases.
+         */
+        Lazy<Boolean> isActiveActiveReplicationEnabledInAllRegion = Lazy.of(() -> {
+          if (admin.isParent() && store.isActiveActiveReplicationEnabled()) {
+            return admin.isActiveActiveReplicationEnabledInAllRegion(clusterName, storeName);
+          } else {
+            return false;
+          }
+        });
+
+        if (sourceGridFabric.isPresent() && !isActiveActiveReplicationEnabledInAllRegion.get()) {
+          LOGGER.info("Ignoring config " + SOURCE_GRID_FABRIC + " : " + sourceGridFabric.get() + ", as store " + storeName + " is not set up for Active/Active replication in all regions");
+          sourceGridFabric = Optional.empty();
+        }
+        Optional<String> emergencySourceRegion = admin.getEmergencySourceRegion();
+        if (emergencySourceRegion.isPresent() && !isActiveActiveReplicationEnabledInAllRegion.get()) {
+          LOGGER.info("Ignoring config " + EMERGENCY_SOURCE_REGION + " : " + emergencySourceRegion.get() + ", as store " + storeName + " is not set up for Active/Active replication in all regions");
+          emergencySourceRegion = Optional.empty();
+        }
+        LOGGER.info("requestTopicForPushing: source grid fabric: " + sourceGridFabric.orElse("") + ", emergency source region: " + emergencySourceRegion.orElse(""));
+
+        /**
          * Version-level rewind time override, and it is only valid for hybrid stores.
          */
         Optional<String> rewindTimeInSecondsOverrideOptional = Optional.ofNullable(request.queryParams(REWIND_TIME_IN_SECONDS_OVERRIDE));
@@ -226,7 +253,7 @@ public class CreateVersion extends AbstractRoute {
             final Optional<X509Certificate> certInRequest = isAclEnabled() ? Optional.of(getCertificate(request)) : Optional.empty();
             final Version version =
                 admin.incrementVersionIdempotent(clusterName, storeName, pushJobId, partitionCount, replicationFactor,
-                   pushType, sendStartOfPush, sorted, dictionaryStr, sourceGridFabric, certInRequest, rewindTimeInSecondsOverride);
+                   pushType, sendStartOfPush, sorted, dictionaryStr, sourceGridFabric, certInRequest, rewindTimeInSecondsOverride, emergencySourceRegion);
 
             // If Version partition count different from calculated partition count use the version count as store count
             // may have been updated later.
@@ -276,6 +303,34 @@ public class CreateVersion extends AbstractRoute {
                 responseObject.setKafkaBootstrapServers(childDataCenterKafkaBootstrapServer);
               }
             }
+
+            /**
+             * Override the source fabric for H2V incremental push job for A/A replication. Following is the order of priority.
+             * 1. Parent controller emergency source fabric config.
+             * 2. H2V plugin source grid fabric config.
+             * 3. parent corp kafka cluster.
+             *
+             * At this point parent corp cluster is already set in the responseObject.setKafkaBootstrapServers().
+             * So we only need to override for 1 and 2.
+             */
+            if (pushType.isIncremental() && version.getIncrementalPushPolicy().equals(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME) &&
+                admin.isParent() && isActiveActiveReplicationEnabledInAllRegion.get() ) {
+              Optional<String> overRideSourceRegion = emergencySourceRegion.isPresent() ? emergencySourceRegion : Optional.empty();
+              if (!overRideSourceRegion.isPresent() && sourceGridFabric.isPresent()) {
+                overRideSourceRegion = sourceGridFabric;
+              }
+              if (overRideSourceRegion.isPresent()) {
+                Pair<String, String> sourceKafkaBootstrapServersAndZk = admin.getNativeReplicationKafkaBootstrapServerAndZkAddress(overRideSourceRegion.get());
+                String sourceKafkaBootstrapServers = sourceKafkaBootstrapServersAndZk.getFirst();
+                if (sourceKafkaBootstrapServers == null) {
+                  throw new VeniceException("Failed to get the kafka URL for the source region: " + overRideSourceRegion.get());
+                }
+                responseObject.setKafkaBootstrapServers(sourceKafkaBootstrapServers);
+                LOGGER.info("Incremental Push to RT Policy job source region is being overridden with: " + overRideSourceRegion.get() + " address:" + sourceKafkaBootstrapServers);
+              }
+              LOGGER.info("Incremental Push to RT Policy job final source region address is: " + responseObject.getKafkaBootstrapServers());
+            }
+
             /*
               The conditions for topic switching to a real time topic are only
               when write compute is enabled and the push type is incremental. If

@@ -141,7 +141,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
    */
   private final int timestampMetadataVersionId;
 
-  private final String emergencySourceFabric;
+  private final String emergencySourceRegion;
 
 
   public VeniceControllerConfig(VeniceProperties props) {
@@ -295,7 +295,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     this.isAutoMaterializeMetaSystemStoreEnabled = props.getBoolean(CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE, false);
 
     this.timestampMetadataVersionId = props.getInt(TIMESTAMP_METADATA_VERSION_ID, 1);
-    this.emergencySourceFabric = props.getString(EMERGENCY_SOURCE_FABRIC, "");
+    this.emergencySourceRegion = props.getString(EMERGENCY_SOURCE_REGION, "");
   }
 
   private void validateActiveActiveConfigs() {
@@ -576,8 +576,8 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   public int getTimestampMetadataVersionId() { return timestampMetadataVersionId; }
 
-  public String getEmergencySourceFabric() {
-    return emergencySourceFabric;
+  public String getEmergencySourceRegion() {
+    return emergencySourceRegion;
   }
 
   /**
