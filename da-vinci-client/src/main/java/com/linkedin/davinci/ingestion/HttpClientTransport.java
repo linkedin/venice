@@ -4,8 +4,10 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.exceptions.VeniceTimeoutException;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionAction;
+import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
+import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import org.apache.avro.specific.SpecificRecordBase;
@@ -17,6 +19,7 @@ import org.apache.http.entity.ByteArrayEntity;
 import org.apache.http.impl.nio.client.CloseableHttpAsyncClient;
 import org.apache.http.impl.nio.client.HttpAsyncClients;
 import org.apache.http.impl.nio.reactor.IOReactorConfig;
+import org.apache.http.nio.conn.ssl.SSLIOSessionStrategy;
 import org.apache.http.util.EntityUtils;
 import org.apache.log4j.Logger;
 
@@ -42,15 +45,18 @@ public class HttpClientTransport implements AutoCloseable {
   private final CloseableHttpAsyncClient httpClient;
   private final String forkedProcessRequestUrl;
 
-  public HttpClientTransport(int port) {
+  public HttpClientTransport(Optional<SSLFactory> sslFactory, int port) {
     this.forkedProcessRequestUrl = "http://localhost:" + port;
     IOReactorConfig ioReactorConfig = IOReactorConfig.custom().setIoThreadCount(DEFAULT_IO_THREAD_COUNT).build();
     this.httpClient = HttpAsyncClients.custom()
         .setDefaultIOReactorConfig(ioReactorConfig)
         .setDefaultRequestConfig(requestConfig)
+        .setSSLStrategy(sslFactory.isPresent() ? new SSLIOSessionStrategy(sslFactory.get().getSSLContext()) : null)
         .build();
     this.httpClient.start();
   }
+
+
 
   @Override
   public void close() {

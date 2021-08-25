@@ -19,7 +19,6 @@ import com.linkedin.davinci.stats.RocksDBMemoryStats;
 import com.linkedin.davinci.storage.StorageEngineMetadataService;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
-import com.linkedin.venice.CommonConfigKeys;
 import com.linkedin.venice.client.schema.SchemaReader;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
@@ -32,7 +31,6 @@ import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.ClusterInfoProvider;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
-import com.linkedin.venice.security.DefaultSSLFactory;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
@@ -70,7 +68,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import org.apache.log4j.Logger;
 
-import static com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils.*;
 import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.client.store.ClientFactory.*;
 import static java.lang.Thread.*;
@@ -140,14 +137,13 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
     this.servicePort = servicePort;
     this.configLoader = loadInitializationConfig(configPath);
     this.heartbeatTimeoutMs = configLoader.getCombinedProperties().getLong(SERVER_INGESTION_ISOLATION_HEARTBEAT_TIMEOUT_MS, 60 * Time.MS_PER_SECOND);
-
     // Initialize Netty server.
     Class<? extends ServerChannel> serverSocketChannelClass = NioServerSocketChannel.class;
     bossGroup = new NioEventLoopGroup();
     workerGroup = new NioEventLoopGroup();
     bootstrap = new ServerBootstrap();
     bootstrap.group(bossGroup, workerGroup).channel(serverSocketChannelClass)
-        .childHandler(new IsolatedIngestionServerChannelInitializer(this))
+        .childHandler(new IsolatedIngestionServerChannelInitializer(this, IsolatedIngestionUtils.getSSLEngineComponentFactory(configLoader)))
         .option(ChannelOption.SO_BACKLOG, 1000)
         .childOption(ChannelOption.SO_KEEPALIVE, true)
         .option(ChannelOption.SO_REUSEADDR, true)
@@ -481,19 +477,11 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
     stopConsumptionWaitRetriesNum = configLoader.getCombinedProperties().getInt(SERVER_STOP_CONSUMPTION_WAIT_RETRIES_NUM, 180);
 
     // Initialize D2Client.
-    SSLFactory sslFactory;
+    SSLFactory sslFactory = null;
     D2Client d2Client;
     String d2ZkHosts = configLoader.getCombinedProperties().getString(D2_CLIENT_ZK_HOSTS_ADDRESS);
-    if (configLoader.getCombinedProperties().getBoolean(CommonConfigKeys.SSL_ENABLED, false)) {
-      try {
-        /**
-         * TODO: DefaultSSLFactory is a copy of the ssl factory implementation in a version of container lib,
-         * we should construct the same SSL Factory being used in the main process with help of ReflectionUtils.
-         */
-        sslFactory = new DefaultSSLFactory(configLoader.getCombinedProperties().toProperties());
-      } catch (Exception e) {
-        throw new VeniceException("Encounter exception in constructing DefaultSSLFactory", e);
-      }
+    sslFactory = IsolatedIngestionUtils.getSSLFactoryForIngestion(configLoader).orElse(null);
+    if (sslFactory != null) {
       d2Client = new D2ClientBuilder()
           .setZkHosts(d2ZkHosts)
           .setIsSSLEnabled(true)
@@ -503,7 +491,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
     } else {
       d2Client = new D2ClientBuilder().setZkHosts(d2ZkHosts).build();
     }
-    startD2Client(d2Client);
+    IsolatedIngestionUtils.startD2Client(d2Client);
 
     // Create the client config.
     ClientConfig clientConfig = new ClientConfig()
@@ -606,7 +594,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
 
     logger.info("Starting report client with target application port: " + configLoader.getVeniceServerConfig().getIngestionApplicationPort());
     // Create Netty client to report status back to application.
-    reportClient = new IsolatedIngestionRequestClient(configLoader.getVeniceServerConfig().getIngestionApplicationPort());
+    reportClient = new IsolatedIngestionRequestClient(IsolatedIngestionUtils.getSSLFactoryForInterProcessCommunication(configLoader), configLoader.getVeniceServerConfig().getIngestionApplicationPort());
 
     // Mark the IsolatedIngestionServer as initiated.
     isInitiated = true;

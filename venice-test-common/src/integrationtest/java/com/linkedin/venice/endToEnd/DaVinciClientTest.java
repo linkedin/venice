@@ -439,7 +439,7 @@ public class DaVinciClientTest {
       dummyOffsetMetadata.topicName = Version.composeKafkaTopic(storeName, 1);
       dummyOffsetMetadata.partitionId = 0;
       dummyOffsetMetadata.payload = ByteBuffer.wrap(new OffsetRecord(AvroProtocolDefinition.PARTITION_STATE.getSerializer()).toBytes());
-      MainIngestionRequestClient requestClient = new MainIngestionRequestClient(servicePort);
+      MainIngestionRequestClient requestClient = new MainIngestionRequestClient(Optional.empty(), servicePort);
       TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
         assertTrue(requestClient.updateMetadata(dummyOffsetMetadata));
       });

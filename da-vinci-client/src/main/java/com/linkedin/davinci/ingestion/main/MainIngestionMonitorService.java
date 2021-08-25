@@ -8,6 +8,7 @@ import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.stats.IsolatedIngestionProcessHeartbeatStats;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -24,6 +25,7 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -74,13 +76,15 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
   private KafkaStoreIngestionService storeIngestionService;
 
   private VeniceConfigLoader configLoader;
+  private Optional<SSLFactory> sslFactory;
   private volatile long latestHeartbeatTimestamp = -1;
   private long heartbeatTimeoutMs;
 
-  public MainIngestionMonitorService(IsolatedIngestionBackend ingestionBackend, int applicationPort, int servicePort) {
+  public MainIngestionMonitorService(IsolatedIngestionBackend ingestionBackend, int applicationPort, int servicePort, Optional<SSLFactory> sslFactory) {
     this.applicationPort = applicationPort;
     this.servicePort = servicePort;
     this.ingestionBackend = ingestionBackend;
+    this.sslFactory = sslFactory;
 
     // Initialize Netty server.
     Class<? extends ServerChannel> serverSocketChannelClass = NioServerSocketChannel.class;
@@ -94,8 +98,8 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
             .option(ChannelOption.SO_REUSEADDR, true)
             .childOption(ChannelOption.TCP_NODELAY, true);
 
-    heartbeatClient = new MainIngestionRequestClient(this.servicePort);
-    metricsClient = new MainIngestionRequestClient(this.servicePort);
+    heartbeatClient = new MainIngestionRequestClient(this.sslFactory, this.servicePort);
+    metricsClient = new MainIngestionRequestClient(this.sslFactory, this.servicePort);
 
   }
 
@@ -252,7 +256,7 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
     }
     logger.warn("Lost connection to forked ingestion process since timestamp " + latestHeartbeatTimestamp + ", restarting forked process.");
     heartbeatStats.recordForkedProcessRestart();
-    try (MainIngestionRequestClient client = new MainIngestionRequestClient(servicePort)) {
+    try (MainIngestionRequestClient client = new MainIngestionRequestClient(sslFactory, servicePort)) {
       /**
        * We need to destroy the previous isolated ingestion process first.
        * The previous isolated ingestion process might have released the port binding, but it might still taking up all
@@ -272,7 +276,7 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
   }
 
   private void resumeOngoingIngestionTasks() {
-    try (MainIngestionRequestClient client = new MainIngestionRequestClient(servicePort)) {
+    try (MainIngestionRequestClient client = new MainIngestionRequestClient(sslFactory, servicePort)) {
       logger.info("Start to recover ongoing ingestion tasks: " + topicNameToPartitionSetMap);
       // Open metadata partitions in child process for all previously subscribed topics.
       topicNameToPartitionSetMap.keySet().forEach(client::openStorageEngine);

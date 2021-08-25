@@ -5,6 +5,9 @@ import com.linkedin.common.util.None;
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.ingestion.isolated.IsolatedIngestionServer;
+import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
+import com.linkedin.security.ssl.access.control.SSLEngineComponentFactoryImpl;
+import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.ingestion.protocol.IngestionMetricsReport;
 import com.linkedin.venice.ingestion.protocol.IngestionStorageMetadata;
@@ -14,6 +17,8 @@ import com.linkedin.venice.ingestion.protocol.ProcessShutdownCommand;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionAction;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionReportType;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
+import com.linkedin.venice.security.DefaultSSLFactory;
+import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.utils.PropertyBuilder;
@@ -43,15 +48,19 @@ import java.nio.file.Paths;
 import java.util.AbstractMap;
 import java.util.Collections;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import javax.swing.text.html.Option;
 import org.apache.avro.specific.SpecificRecordBase;
 import org.apache.commons.io.IOUtils;
 import org.apache.log4j.Logger;
 
 import static com.linkedin.parseq.Task.*;
+import static com.linkedin.venice.CommonConfigKeys.*;
+import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.ingestion.protocol.enums.IngestionAction.*;
 
 
@@ -350,5 +359,60 @@ public class IsolatedIngestionUtils {
       throw new VeniceException(e);
     }
     return configFilePath;
+  }
+  
+  public static Optional<SSLEngineComponentFactory> getSSLEngineComponentFactory(VeniceConfigLoader configLoader) {
+    try {
+      if (configLoader.getCombinedProperties().getBoolean(SERVER_INGESTION_ISOLATION_SSL_ENABLED, false)) {
+        // If SSL communication is enabled but SSL configs are missing, we should fail fast here.
+        if (!configLoader.getCombinedProperties().getBoolean(SSL_ENABLED, false)) {
+          throw new VeniceException("Ingestion isolation SSL is enabled for communication, but SSL configs are missing.");
+        }
+        logger.info("SSL is enabled, will create SSLEngineComponentFactory");
+        SSLConfig sslConfig = new SSLConfig(configLoader.getCombinedProperties());
+        return Optional.of(new SSLEngineComponentFactoryImpl(sslConfig.getSslEngineComponentConfig()));
+      } else {
+        logger.warn("SSL is not enabled");
+        return Optional.empty();
+      }
+    } catch (Exception e) {
+      throw new VeniceException("Caught exception during SSLEngineComponentFactory creation", e);
+    }
+  }
+
+  /**
+   * Create SSLFactory for inter-process communication encryption purpose.
+   */
+  public static Optional<SSLFactory> getSSLFactoryForInterProcessCommunication(VeniceConfigLoader configLoader) {
+    if (configLoader.getCombinedProperties().getBoolean(SERVER_INGESTION_ISOLATION_SSL_ENABLED, false)) {
+      try {
+        // If SSL communication is enabled but SSL configs are missing, we should fail fast here.
+        if (!configLoader.getCombinedProperties().getBoolean(SSL_ENABLED, false)) {
+          throw new VeniceException("Ingestion isolation SSL is enabled for communication, but SSL configs are missing.");
+        }
+        logger.info("SSL is enabled, will create SSLFactory");
+        return Optional.of(new DefaultSSLFactory(configLoader.getCombinedProperties().toProperties()));
+      } catch (Exception e) {
+        throw new VeniceException("Caught exception during SSLFactory creation", e);
+      }
+    } else {
+      return Optional.empty();
+    }
+  }
+
+  /**
+   * Create SSLFactory for D2Client in ClientConfig, which will be used by different ingestion components.
+   */
+  public static Optional<SSLFactory> getSSLFactoryForIngestion(VeniceConfigLoader configLoader) {
+    if (configLoader.getCombinedProperties().getBoolean(SSL_ENABLED, false)) {
+      try {
+        logger.info("SSL is enabled, will create SSLFactory");
+        return Optional.of(new DefaultSSLFactory(configLoader.getCombinedProperties().toProperties()));
+      } catch (Exception e) {
+        throw new VeniceException("Caught exception during SSLFactory creation", e);
+      }
+    } else {
+      return Optional.empty();
+    }
   }
 }

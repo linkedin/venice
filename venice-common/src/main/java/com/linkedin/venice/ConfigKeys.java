@@ -562,6 +562,8 @@ public class ConfigKeys {
 
   public static final String SERVER_INGESTION_ISOLATION_HEARTBEAT_TIMEOUT_MS = "server.ingestion.isolation.heartbeat.timout.ms";
 
+  public static final String SERVER_INGESTION_ISOLATION_SSL_ENABLED = "server.ingestion.isolation.ssl.enabled";
+
   /**
    * A list of JVM arguments for forked child process, separated by comma.
    */

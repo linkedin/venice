@@ -145,7 +145,7 @@ public class DaVinciBackend implements Closeable {
             .setStoreName(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getSystemStoreName()));
 
     storageMetadataService = backendConfig.getIngestionMode().equals(IngestionMode.ISOLATED)
-        ? new MainIngestionStorageMetadataService(backendConfig.getIngestionServicePort(), partitionStateSerializer, new MetadataUpdateStats(metricsRepository))
+        ? new MainIngestionStorageMetadataService(backendConfig.getIngestionServicePort(), partitionStateSerializer, new MetadataUpdateStats(metricsRepository), configLoader)
         : new StorageEngineMetadataService(storageService.getStorageEngineRepository(), partitionStateSerializer);
     // Start storage metadata service
     ((AbstractVeniceService)storageMetadataService).start();

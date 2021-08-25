@@ -200,7 +200,7 @@ public class VeniceServer {
       // Venice Server does not require bootstrap step, so there is no need to open and close all local storage engines.
       storageService = new StorageService(veniceConfigLoader, storageEngineStats, rocksDBMemoryStats, storeVersionStateSerializer, partitionStateSerializer, metadataRepo, false, false);
       logger.info("Create " + MainIngestionStorageMetadataService.class.getName() + " for ingestion isolation.");
-      MainIngestionStorageMetadataService ingestionStorageMetadataService = new MainIngestionStorageMetadataService(veniceConfigLoader.getVeniceServerConfig().getIngestionServicePort(), partitionStateSerializer, new MetadataUpdateStats(metricsRepository));
+      MainIngestionStorageMetadataService ingestionStorageMetadataService = new MainIngestionStorageMetadataService(veniceConfigLoader.getVeniceServerConfig().getIngestionServicePort(), partitionStateSerializer, new MetadataUpdateStats(metricsRepository), veniceConfigLoader);
       services.add(ingestionStorageMetadataService);
       storageMetadataService = ingestionStorageMetadataService;
     } else {

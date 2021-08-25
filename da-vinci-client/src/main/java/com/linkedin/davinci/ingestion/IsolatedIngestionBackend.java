@@ -7,6 +7,7 @@ import com.linkedin.davinci.ingestion.isolated.IsolatedIngestionServer;
 import com.linkedin.davinci.ingestion.main.MainIngestionMonitorService;
 import com.linkedin.davinci.ingestion.main.MainIngestionRequestClient;
 import com.linkedin.davinci.ingestion.main.MainIngestionStorageMetadataService;
+import com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType;
 import com.linkedin.davinci.notifier.RelayNotifier;
@@ -15,6 +16,7 @@ import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionComponentType;
+import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.Time;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Optional;
@@ -41,6 +43,7 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend implements
   private final MainIngestionRequestClient mainIngestionRequestClient;
   private final MainIngestionMonitorService mainIngestionMonitorService;
   private final VeniceConfigLoader configLoader;
+  private final Optional<SSLFactory> sslFactory;
 
   private Process isolatedIngestionServiceProcess;
 
@@ -50,14 +53,15 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend implements
     int servicePort = configLoader.getVeniceServerConfig().getIngestionServicePort();
     int listenerPort = configLoader.getVeniceServerConfig().getIngestionApplicationPort();
     this.configLoader = configLoader;
+    this.sslFactory = IsolatedIngestionUtils.getSSLFactoryForInterProcessCommunication(configLoader);
 
     // Create the ingestion request client.
-    mainIngestionRequestClient = new MainIngestionRequestClient(servicePort);
+    mainIngestionRequestClient = new MainIngestionRequestClient(sslFactory, servicePort);
     // Create the forked isolated ingestion process.
     isolatedIngestionServiceProcess = mainIngestionRequestClient.startForkedIngestionProcess(configLoader);
     // Create and start the ingestion report listener.
     try {
-      mainIngestionMonitorService = new MainIngestionMonitorService(this, listenerPort, servicePort);
+      mainIngestionMonitorService = new MainIngestionMonitorService(this, listenerPort, servicePort, sslFactory);
       mainIngestionMonitorService.setMetricsRepository(metricsRepository);
       mainIngestionMonitorService.setStoreIngestionService(storeIngestionService);
       mainIngestionMonitorService.setStorageMetadataService((MainIngestionStorageMetadataService) storageMetadataService);
