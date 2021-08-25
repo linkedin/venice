@@ -16,10 +16,12 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -58,6 +60,7 @@ public class KafkaConsumerService extends AbstractVeniceService {
    * in the future, we need to change the design of this service.
    */
   private final Map<String, SharedKafkaConsumer> versionTopicToConsumerMap = new VeniceConcurrentHashMap<>();
+  private final Map<SharedKafkaConsumer, Set<String>> consumerToStoresMap = new VeniceConcurrentHashMap<>();
   private final ExecutorService consumerExecutor;
   private final KafkaConsumerServiceStats stats;
 
@@ -113,18 +116,8 @@ public class KafkaConsumerService extends AbstractVeniceService {
    */
   private boolean checkWhetherConsumerHasSubscribedSameStore(SharedKafkaConsumer consumer, String versionTopic)  {
     String storeName = Version.parseStoreFromKafkaTopicName(versionTopic);
-
-    for (Map.Entry<String, SharedKafkaConsumer> entry : versionTopicToConsumerMap.entrySet()) {
-      String vt = entry.getKey();
-      SharedKafkaConsumer c = entry.getValue();
-      if (c != consumer) {
-        continue;
-      }
-      if (Version.parseStoreFromKafkaTopicName(vt).equals(storeName)) {
-        return true;
-      }
-    }
-    return false;
+    Set<String> stores = consumerToStoresMap.get(consumer);
+    return stores != null && stores.contains(storeName);
   }
 
   /**
@@ -169,7 +162,7 @@ public class KafkaConsumerService extends AbstractVeniceService {
        */
       if (!isConsumerAssignedTopic(consumer)) {
         chosenConsumer = consumer;
-        versionTopicToConsumerMap.put(versionTopic, chosenConsumer);
+        assignTopicToConsumer(versionTopic, chosenConsumer);
         LOGGER.info("Assigned a shared consumer with index of " + consumers.indexOf(chosenConsumer) +
             " without any assigned topic for topic: " + versionTopic);
         return chosenConsumer;
@@ -188,7 +181,7 @@ public class KafkaConsumerService extends AbstractVeniceService {
       throw new VeniceException("Failed to find consumer for topic: " + versionTopic + ", and it might be caused by that all"
           + " the existing consumers have subscribed the same store, and that might be caused by a bug or resource leaking");
     }
-    versionTopicToConsumerMap.put(versionTopic, chosenConsumer);
+    assignTopicToConsumer(versionTopic, chosenConsumer);
     LOGGER.info("Assigned a shared consumer with index of " + consumers.indexOf(chosenConsumer) + " for topic: "
         + versionTopic + " with least # of partitions assigned: " + minAssignmentPerConsumer);
     return chosenConsumer;
@@ -218,7 +211,7 @@ public class KafkaConsumerService extends AbstractVeniceService {
       LOGGER.warn("No assigned shared consumer found for this version topic: " + versionTopic);
       return;
     }
-    versionTopicToConsumerMap.remove(versionTopic);
+    removeTopicFromConsumer(versionTopic, sharedKafkaConsumer);
     sharedKafkaConsumer.detach(ingestionTask);
   }
 
@@ -345,12 +338,23 @@ public class KafkaConsumerService extends AbstractVeniceService {
    * first time.
    */
   private boolean isConsumerAssignedTopic(SharedKafkaConsumer consumer) {
-    for (Map.Entry<String, SharedKafkaConsumer> entry : versionTopicToConsumerMap.entrySet()) {
-      if (entry.getValue() == consumer) {
-        return true;
+    return consumerToStoresMap.containsKey(consumer);
+  }
+
+  private void assignTopicToConsumer(String topic, SharedKafkaConsumer consumer) {
+    versionTopicToConsumerMap.put(topic, consumer);
+    consumerToStoresMap.computeIfAbsent(consumer, k -> new HashSet<>()).add(Version.parseStoreFromKafkaTopicName(topic));
+  }
+
+  private void removeTopicFromConsumer(String topic, SharedKafkaConsumer consumer) {
+    versionTopicToConsumerMap.remove(topic);
+    consumerToStoresMap.compute(consumer, (k, v) -> {
+      if (v != null) {
+        v.remove(Version.parseStoreFromKafkaTopicName(topic));
+        return v.isEmpty() ? null : v;
       }
-    }
-    return false;
+      return null;
+    });
   }
 
   private void recordPartitionsPerConsumerSensor() {
