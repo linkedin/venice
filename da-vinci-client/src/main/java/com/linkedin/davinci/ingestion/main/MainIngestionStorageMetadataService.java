@@ -1,5 +1,6 @@
 package com.linkedin.davinci.ingestion.main;
 
+import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.ingestion.IsolatedIngestionBackend;
 import com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils;
 import com.linkedin.davinci.stats.MetadataUpdateStats;
@@ -47,8 +48,8 @@ public class MainIngestionStorageMetadataService extends AbstractVeniceService i
   private final Queue<IngestionStorageMetadata> metadataUpdateQueue = new ConcurrentLinkedDeque<>();
   private final MetadataUpdateStats metadataUpdateStats;
 
-  public MainIngestionStorageMetadataService(int targetPort, InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer, MetadataUpdateStats metadataUpdateStats) {
-    this.client = new MainIngestionRequestClient(targetPort);
+  public MainIngestionStorageMetadataService(int targetPort, InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer, MetadataUpdateStats metadataUpdateStats, VeniceConfigLoader configLoader) {
+    this.client = new MainIngestionRequestClient(IsolatedIngestionUtils.getSSLFactoryForInterProcessCommunication(configLoader), targetPort);
     this.partitionStateSerializer = partitionStateSerializer;
     this.metadataUpdateStats = metadataUpdateStats;
   }

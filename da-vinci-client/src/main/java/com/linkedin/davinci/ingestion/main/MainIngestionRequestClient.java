@@ -16,6 +16,7 @@ import com.linkedin.venice.ingestion.protocol.enums.IngestionAction;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionCommandType;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionComponentType;
 import com.linkedin.venice.meta.IngestionMetadataUpdateType;
+import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.ForkedJavaProcess;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -40,8 +41,8 @@ public class MainIngestionRequestClient implements Closeable {
   private static final int HEARTBEAT_REQUEST_TIMEOUT_MS = 10 * Time.MS_PER_SECOND;
   private final HttpClientTransport httpClientTransport;
 
-  public MainIngestionRequestClient(int port) {
-    httpClientTransport = new HttpClientTransport(port);
+  public MainIngestionRequestClient(Optional<SSLFactory> sslFactory, int port) {
+    httpClientTransport = new HttpClientTransport(sslFactory, port);
   }
 
   public synchronized Process startForkedIngestionProcess(VeniceConfigLoader configLoader) {
