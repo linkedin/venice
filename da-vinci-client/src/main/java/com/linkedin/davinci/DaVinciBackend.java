@@ -86,9 +86,9 @@ public class DaVinciBackend implements Closeable {
   private final StorageMetadataService storageMetadataService;
   private final PushStatusStoreWriter pushStatusStoreWriter;
   private final ExecutorService ingestionReportExecutor = Executors.newSingleThreadExecutor();
-  private final DaVinciIngestionBackend ingestionBackend;
   private final StorageEngineBackedCompressorFactory compressorFactory;
   private final Optional<ObjectCacheBackend> cacheBackend;
+  private DaVinciIngestionBackend ingestionBackend;
 
 
   public DaVinciBackend(
@@ -132,12 +132,7 @@ public class DaVinciBackend implements Closeable {
     rocksDBMemoryStats = backendConfig.isDatabaseMemoryStatsEnabled() ?
         new RocksDBMemoryStats(metricsRepository, "RocksDBMemoryStats", backendConfig.getRocksDBServerConfig().isRocksDBPlainTableFormatEnabled()) : null;
 
-    if (backendConfig.getIngestionMode().equals(IngestionMode.ISOLATED)) {
-      storageService = new StorageService(configLoader, storageEngineStats, rocksDBMemoryStats, storeVersionStateSerializer, partitionStateSerializer, storeRepository, true, false);
-    } else {
-      storageService = new StorageService(configLoader, storageEngineStats, rocksDBMemoryStats, storeVersionStateSerializer, partitionStateSerializer, storeRepository);
-    }
-
+    storageService = new StorageService(configLoader, storageEngineStats, rocksDBMemoryStats, storeVersionStateSerializer, partitionStateSerializer, storeRepository);
     storageService.start();
 
     VeniceWriterFactory writerFactory = new VeniceWriterFactory(backendProps.toProperties());
@@ -184,10 +179,6 @@ public class DaVinciBackend implements Closeable {
       // a correct view of the data.
       throw new IllegalArgumentException("Ingestion isolated and Cache are incompatible configs!!  Aborting start up!");
     }
-
-    ingestionBackend = isIsolatedIngestion() ? new IsolatedIngestionBackend(configLoader, metricsRepository, storageMetadataService, ingestionService, storageService) :
-        new DefaultIngestionBackend(storageMetadataService, ingestionService, storageService);
-    ingestionBackend.addIngestionNotifier(ingestionListener);
 
     bootstrap(managedClients);
 
@@ -278,9 +269,24 @@ public class DaVinciBackend implements Closeable {
      * record all store versions that are up-to-date and close all storage engines. This will make sure child process
      * can open RocksDB stores.
      */
-    if (isIsolatedIngestion() && (!configLoader.getVeniceServerConfig().freezeIngestionIfReadyToServeOrLocalDataExists())) {
-      storageService.closeAllStorageEngines();
+    if (isIsolatedIngestion()) {
+      if (configLoader.getVeniceServerConfig().freezeIngestionIfReadyToServeOrLocalDataExists()) {
+        /**
+         * In this case we will only need to close metadata partition, as it is supposed to be opened and managed by
+         * forked ingestion process via following subscribe call.
+         */
+        for (AbstractStorageEngine storageEngine : storageService.getStorageEngineRepository().getAllLocalStorageEngines()) {
+          storageEngine.closeMetadataPartition();
+        }
+      } else {
+        storageService.closeAllStorageEngines();
+      }
     }
+
+
+    ingestionBackend = isIsolatedIngestion() ? new IsolatedIngestionBackend(configLoader, metricsRepository, storageMetadataService, ingestionService, storageService) :
+        new DefaultIngestionBackend(storageMetadataService, ingestionService, storageService);
+    ingestionBackend.addIngestionNotifier(ingestionListener);
 
     // Subscribe all bootstrap version partitions.
     storeNameToBootstrapVersionMap.forEach((storeName, version) -> {

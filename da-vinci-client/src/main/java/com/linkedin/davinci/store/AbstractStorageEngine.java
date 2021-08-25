@@ -217,6 +217,14 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     }
   }
 
+  public synchronized void closeMetadataPartition() {
+    if (metadataPartitionCreated()) {
+      metadataPartition.close();
+      metadataPartition = null;
+      versionStateCache.set(null);
+    }
+  }
+
   /**
    * Removes and returns a partition from the current store
    *
@@ -300,11 +308,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
   public synchronized void close() throws VeniceException {
     partitionList.forEach(Partition::close);
     partitionList.clear();
-    if (metadataPartitionCreated()) {
-      metadataPartition.close();
-      metadataPartition = null;
-      versionStateCache.set(null);
-    }
+    closeMetadataPartition();
   }
 
   /**

@@ -566,9 +566,11 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
      * and it will re-open the partition on demand.
      * 3. During crash recovery restart, partitions that are already ingestion will be opened by parent process and we
      * should not try to open it. The remaining ingestion tasks will open the storage engines.
+     * Also, we don't need to restore metadata partition here, as all subscribe requests sent to forked process will
+     * automatically open the metadata partitions. Also, during Da Vinci bootstrap, main process will need to open the
+     * metadata partition of storage engines in order to perform full cleanup of stale versions.
      */
-    storageService = new StorageService(configLoader, storageEngineStats, rocksDBMemoryStats,
-        storeVersionStateSerializer, partitionStateSerializer, storeRepository, false, true);
+    storageService = new StorageService(configLoader, storageEngineStats, rocksDBMemoryStats, storeVersionStateSerializer, partitionStateSerializer, storeRepository, false, true);
     storageService.start();
 
     // Create SchemaReader
