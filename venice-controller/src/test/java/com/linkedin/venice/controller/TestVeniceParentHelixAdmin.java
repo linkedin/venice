@@ -23,7 +23,6 @@ import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.exceptions.VeniceStoreAlreadyExistsException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
@@ -124,10 +123,10 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     }
 
     @Override
-    public void addStore(String clusterName, String storeName, String owner, String keySchema, String valueSchema,
-        boolean isSystemStore) {
+    public void createStore(String clusterName, String storeName, String owner, String keySchema, String valueSchema,
+                            boolean isSystemStore) {
       if (!(VeniceSystemStoreUtils.isSystemStore(storeName) && isSystemStore)) {
-        throw new VeniceException("Invalid store name and isSystemStore combination");
+        throw new VeniceException("Invalid store name and isSystemStore combination. Got store name: " + storeName);
       }
       if (systemStores.containsKey(storeName)) {
         // no op
@@ -236,10 +235,10 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     String owner = "test-owner";
     String keySchemaStr = "\"string\"";
     String valueSchemaStr = "\"string\"";
-    parentAdmin.addStore(clusterName, storeName, owner, keySchemaStr, valueSchemaStr);
+    parentAdmin.createStore(clusterName, storeName, owner, keySchemaStr, valueSchemaStr);
 
     verify(internalAdmin)
-        .checkPreConditionForAddStore(clusterName, storeName, keySchemaStr, valueSchemaStr, false, false);
+        .checkPreConditionForCreateStore(clusterName, storeName, keySchemaStr, valueSchemaStr, false, false);
     verify(veniceWriter)
         .put(any(), any(), anyInt());
     verify(zkClient, times(1))
@@ -268,8 +267,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   }
 
   @Test
-  public void testAddStoreForMultiCluster() {
-    String secondCluster = "testAddStoreForMultiCluster";
+  public void testCreateStoreForMultiCluster() {
+    String secondCluster = "testCreateStoreForMultiCluster";
     VeniceControllerConfig configForSecondCluster = mockConfig(secondCluster);
     mockResources(configForSecondCluster, secondCluster);
     Map<String, VeniceControllerConfig> configMap = new HashMap<>();
@@ -314,10 +313,10 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         return future;
       });
 
-      parentAdmin.addStore(cluster, storeName, owner, keySchemaStr, valueSchemaStr);
+      parentAdmin.createStore(cluster, storeName, owner, keySchemaStr, valueSchemaStr);
 
       verify(internalAdmin)
-          .checkPreConditionForAddStore(cluster, storeName, keySchemaStr, valueSchemaStr, false, false);
+          .checkPreConditionForCreateStore(cluster, storeName, keySchemaStr, valueSchemaStr, false, false);
       verify(veniceWriter)
           .put(any(), any(), anyInt());
       verify(zkClient, times(1))
@@ -344,22 +343,22 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   }
 
   @Test
-  public void testAddStoreWhenExists() {
+  public void testCreateStoreWhenExists() {
     String storeName = "test-store";
     String owner = "test-owner";
     String keySchemaStr = "\"string\"";
     String valueSchemaStr = "\"string\"";
     doThrow(new VeniceStoreAlreadyExistsException(storeName, clusterName))
-        .when(internalAdmin).checkPreConditionForAddStore(clusterName, storeName, keySchemaStr, valueSchemaStr, false, false);
+        .when(internalAdmin).checkPreConditionForCreateStore(clusterName, storeName, keySchemaStr, valueSchemaStr, false, false);
 
     when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(null);
     parentAdmin.initVeniceControllerClusterResource(clusterName);
 
-    Assert.assertThrows(VeniceStoreAlreadyExistsException.class, () -> parentAdmin.addStore(clusterName, storeName, owner, keySchemaStr, valueSchemaStr));
+    Assert.assertThrows(VeniceStoreAlreadyExistsException.class, () -> parentAdmin.createStore(clusterName, storeName, owner, keySchemaStr, valueSchemaStr));
   }
 
   @Test
-  public void testAddStoreWhenLastExceptionIsNotNull() {
+  public void testCreateStoreWhenLastExceptionIsNotNull() {
     String storeName = "test-store";
     when(internalAdmin.getLastExceptionForStore(clusterName, storeName))
         .thenReturn(null)
@@ -371,11 +370,11 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     String keySchemaStr = "\"string\"";
     String valueSchemaStr = "\"string\"";
     parentAdmin.initVeniceControllerClusterResource(clusterName);
-    parentAdmin.addStore(clusterName, storeName, owner, keySchemaStr, valueSchemaStr);
+    parentAdmin.createStore(clusterName, storeName, owner, keySchemaStr, valueSchemaStr);
 
     // Add store again now with an existing exception
     Assert.assertThrows(VeniceException.class,
-        () -> parentAdmin.addStore(clusterName, storeName, owner, keySchemaStr, valueSchemaStr));
+        () -> parentAdmin.createStore(clusterName, storeName, owner, keySchemaStr, valueSchemaStr));
   }
 
   @Test
@@ -390,7 +389,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     String keySchemaStr = "\"string\"";
     String valueSchemaStr = "\"string\"";
     parentAdmin.initVeniceControllerClusterResource(clusterName);
-    parentAdmin.addStore(clusterName, storeName, owner, keySchemaStr, valueSchemaStr);
+    parentAdmin.createStore(clusterName, storeName, owner, keySchemaStr, valueSchemaStr);
     parentAdmin.setStorePartitionCount(clusterName, storeName, MAX_PARTITION_NUM);
     Assert.assertThrows(ConfigurationException.class, () -> parentAdmin.setStorePartitionCount(clusterName, storeName, MAX_PARTITION_NUM + 1));
     Assert.assertThrows(ConfigurationException.class, () -> parentAdmin.setStorePartitionCount(clusterName, storeName, -1));
@@ -926,7 +925,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     HelixReadWriteStoreRepository storeRepo = mock(HelixReadWriteStoreRepository.class);
     doReturn(testStore).when(storeRepo).getStore(storeName);
     doReturn(storeRepo).when(resources)
-            .getMetadataRepository();
+            .getStoreMetadataRepository();
     parentAdmin.cleanupHistoricalVersions(clusterName, storeName);
     verify(storeRepo).getStore(storeName);
     verify(storeRepo, never()).updateStore(any());
@@ -943,7 +942,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     HelixReadWriteStoreRepository storeRepo = mock(HelixReadWriteStoreRepository.class);
     doReturn(testStore).when(storeRepo).getStore(storeName);
     doReturn(storeRepo).when(resources)
-            .getMetadataRepository();
+            .getStoreMetadataRepository();
     parentAdmin.cleanupHistoricalVersions(clusterName, storeName);
     verify(storeRepo).getStore(storeName);
     ArgumentCaptor<Store> storeCaptor = ArgumentCaptor.forClass(Store.class);

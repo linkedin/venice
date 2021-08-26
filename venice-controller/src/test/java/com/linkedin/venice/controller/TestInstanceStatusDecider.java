@@ -57,7 +57,7 @@ public class TestInstanceStatusDecider {
 
     accessor = mock(SafeHelixDataAccessor.class);
     doReturn(routingDataRepository).when(resources).getRoutingDataRepository();
-    doReturn(readWriteStoreRepository).when(resources).getMetadataRepository();
+    doReturn(readWriteStoreRepository).when(resources).getStoreMetadataRepository();
     doReturn(mockMonitor).when(resources).getPushMonitor();
     doReturn(manager).when(resources).getHelixManager();
     doReturn(accessor).when(manager).getHelixDataAccessor();

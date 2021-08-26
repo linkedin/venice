@@ -42,7 +42,7 @@ public class TestClusterLevelConfigForActiveActiveReplication extends AbstractTe
     /**
      * Do not enable any store-level config for leader/follower mode or native replication feature.
      */
-    veniceAdmin.addStore(clusterName, storeNameHybrid, "test-owner", KEY_SCHEMA, VALUE_SCHEMA);
+    veniceAdmin.createStore(clusterName, storeNameHybrid, "test-owner", KEY_SCHEMA, VALUE_SCHEMA);
     /**
      * Add a version
      */
@@ -72,7 +72,7 @@ public class TestClusterLevelConfigForActiveActiveReplication extends AbstractTe
     /**
      * Do not enable any store-level config for leader/follower mode or native replication feature.
      */
-    veniceAdmin.addStore(clusterName, storeNameIncremental, "test-owner", KEY_SCHEMA, VALUE_SCHEMA);
+    veniceAdmin.createStore(clusterName, storeNameIncremental, "test-owner", KEY_SCHEMA, VALUE_SCHEMA);
     /**
      * Add a version
      */

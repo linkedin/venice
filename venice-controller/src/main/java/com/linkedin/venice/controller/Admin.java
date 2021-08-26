@@ -38,7 +38,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import javax.swing.text.html.Option;
 
 
 public interface Admin extends AutoCloseable, Closeable {
@@ -94,17 +93,17 @@ public interface Admin extends AutoCloseable, Closeable {
         return false;
     }
 
-    default void addStore(String clusterName, String storeName, String owner, String keySchema, String valueSchema) {
-        addStore(clusterName, storeName, owner, keySchema, valueSchema, false, Optional.empty());
+    default void createStore(String clusterName, String storeName, String owner, String keySchema, String valueSchema) {
+        createStore(clusterName, storeName, owner, keySchema, valueSchema, false, Optional.empty());
     }
 
-    default void addStore(String clusterName, String storeName, String owner, String keySchema, String valueSchema,
-        boolean isSystemStore) {
-        addStore(clusterName, storeName, owner, keySchema, valueSchema, isSystemStore, Optional.empty());
+    default void createStore(String clusterName, String storeName, String owner, String keySchema, String valueSchema,
+                             boolean isSystemStore) {
+        createStore(clusterName, storeName, owner, keySchema, valueSchema, isSystemStore, Optional.empty());
     }
 
-    void addStore(String clusterName, String storeName, String owner, String keySchema, String valueSchema,
-        boolean isSystemStore, Optional<String> accessPermissions);
+    void createStore(String clusterName, String storeName, String owner, String keySchema, String valueSchema,
+                     boolean isSystemStore, Optional<String> accessPermissions);
 
     void migrateStore(String srcClusterName, String destClusterName, String storeName);
 

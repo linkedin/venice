@@ -141,7 +141,7 @@ public class ZkHelixAdminClient implements HelixAdminClient {
           isLeaderFollowerStateModel ? LeaderStandbySMD.name : VeniceStateModel.PARTITION_ONLINE_OFFLINE_STATE_MODEL,
           IdealState.RebalanceMode.FULL_AUTO.toString(),
           AutoRebalanceStrategy.class.getName());
-      VeniceControllerClusterConfig config = multiClusterConfigs.getConfigForCluster(clusterName);
+      VeniceControllerClusterConfig config = multiClusterConfigs.getControllerConfig(clusterName);
       IdealState idealState = helixAdmin.getResourceIdealState(clusterName, kafkaTopic);
       // We don't set the delayed time per resource, we will use the cluster level helix config to decide
       // the delayed rebalance time
