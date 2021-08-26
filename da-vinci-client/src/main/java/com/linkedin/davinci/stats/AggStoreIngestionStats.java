@@ -194,4 +194,12 @@ public class AggStoreIngestionStats extends AbstractVeniceAggStats<StoreIngestio
     totalStats.recordChecksumVerificationFailure();
     getStoreStats(storeName).recordChecksumVerificationFailure();
   }
+
+  public void recordOffsetRegressionDCRError() {
+    totalStats.recordOffsetRegressionDCRError();
+  }
+
+  public void recordTimeStampRegressionDCRError() {
+    totalStats.recordTimeStampRegressionDCRError();
+  }
 }

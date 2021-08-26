@@ -15,20 +15,23 @@ class MergeMap implements Merge<Map<CharSequence, Object>> {
   }
 
   @Override
-  public ValueAndTimestampMetadata<Map<CharSequence, Object>> put(ValueAndTimestampMetadata<Map<CharSequence, Object>> oldValueAndTimestampMetadata,
-      Map<CharSequence, Object> newValue, long writeOperationTimestamp) {
+  public ValueAndReplicationMetadata<Map<CharSequence, Object>> put(
+      ValueAndReplicationMetadata<Map<CharSequence, Object>> oldValueAndReplicationMetadata,
+      Map<CharSequence, Object> newValue, long writeOperationTimestamp, long sourceOffsetOfNewValue, int sourceBrokerIDOfNewValue) {
     return null;
   }
 
   @Override
-  public ValueAndTimestampMetadata<Map<CharSequence, Object>> delete(ValueAndTimestampMetadata<Map<CharSequence, Object>> oldValueAndTimestampMetadata,
-      long writeOperationTimestamp) {
+  public ValueAndReplicationMetadata<Map<CharSequence, Object>> delete(
+      ValueAndReplicationMetadata<Map<CharSequence, Object>> oldValueAndReplicationMetadata,
+      long writeOperationTimestamp, long sourceOffsetOfNewValue, int sourceBrokerIDOfNewValue) {
     return null;
   }
 
   @Override
-  public ValueAndTimestampMetadata<Map<CharSequence, Object>> update(ValueAndTimestampMetadata<Map<CharSequence, Object>> oldValueAndTimestampMetadata,
-      Lazy<GenericRecord> writeOperation, long writeOperationTimestamp) {
+  public ValueAndReplicationMetadata<Map<CharSequence, Object>> update(
+      ValueAndReplicationMetadata<Map<CharSequence, Object>> oldValueAndReplicationMetadata,
+      Lazy<GenericRecord> writeOperation, long writeOperationTimestamp, long sourceOffsetOfNewValue, int sourceBrokerIDOfNewValue) {
     return null;
   }
 }

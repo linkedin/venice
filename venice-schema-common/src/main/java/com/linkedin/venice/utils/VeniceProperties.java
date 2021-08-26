@@ -370,7 +370,7 @@ public class VeniceProperties {
     List<String> pairs = this.getList(key);
 
     for (String pair : pairs) {
-      String[] pairAy = pair.split(":");
+      String[] pairAy = pair.split(":", 2);
       if (pairAy.length != 2) {
         throw new VeniceException("Invalid config. Each pair should be $first:$second. But what we get is: " + pair);
       }

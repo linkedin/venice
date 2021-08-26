@@ -147,7 +147,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
   protected final StorageEngineBackedCompressorFactory compressorFactory;
 
-  private final Map<String, Integer> kafkaClusterUrlToIdMap;
+  protected final Map<String, Integer> kafkaClusterUrlToIdMap;
 
   /**
    * A set of boolean that check if partitions owned by this task have released the latch.

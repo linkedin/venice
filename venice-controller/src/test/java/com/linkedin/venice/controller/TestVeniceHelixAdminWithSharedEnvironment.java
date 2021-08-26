@@ -36,7 +36,7 @@ import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.KillOfflinePushMessage;
 import com.linkedin.venice.pushmonitor.PushMonitor;
-import com.linkedin.venice.schema.TimestampMetadataSchemaAdapter;
+import com.linkedin.venice.schema.ReplicationMetadataSchemaAdapter;
 import com.linkedin.venice.schema.TimestampMetadataSchemaEntry;
 import com.linkedin.venice.schema.WriteComputeSchemaAdapter;
 import com.linkedin.venice.utils.HelixUtils;
@@ -1561,7 +1561,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     String storeName = TestUtils.getUniqueString("aa_store");
     String recordSchemaStr = TestPushUtils.USER_SCHEMA_STRING_WITH_DEFAULT;
     int timestampMetadataVersionId = multiClusterConfig.getCommonConfig().getTimestampMetadataVersionId();
-    Schema metadataSchema = TimestampMetadataSchemaAdapter.parse(recordSchemaStr, timestampMetadataVersionId);
+    Schema metadataSchema = ReplicationMetadataSchemaAdapter.parse(recordSchemaStr, timestampMetadataVersionId);
 
     veniceAdmin.addStore(clusterName, storeName, storeOwner, KEY_SCHEMA, recordSchemaStr);
     veniceAdmin.addTimestampMetadataSchema(clusterName, storeName, 1,  timestampMetadataVersionId, metadataSchema.toString());

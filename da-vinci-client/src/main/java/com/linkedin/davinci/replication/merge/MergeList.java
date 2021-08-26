@@ -15,20 +15,23 @@ class MergeList implements Merge<List<Object>> {
   }
 
   @Override
-  public ValueAndTimestampMetadata<List<Object>> put(ValueAndTimestampMetadata<List<Object>> oldValueAndTimestampMetadata, List<Object> newValue,
-      long writeOperationTimestamp) {
+  public ValueAndReplicationMetadata<List<Object>> put(
+      ValueAndReplicationMetadata<List<Object>> oldValueAndReplicationMetadata, List<Object> newValue,
+      long writeOperationTimestamp, long sourceOffsetOfNewValue, int sourceBrokerIDOfNewValue) {
     return null;
   }
 
   @Override
-  public ValueAndTimestampMetadata<List<Object>> delete(ValueAndTimestampMetadata<List<Object>> oldValueAndTimestampMetadata,
-      long writeOperationTimestamp) {
+  public ValueAndReplicationMetadata<List<Object>> delete(
+      ValueAndReplicationMetadata<List<Object>> oldValueAndReplicationMetadata,
+      long writeOperationTimestamp, long sourceOffsetOfNewValue, int sourceBrokerIDOfNewValue) {
     return null;
   }
 
   @Override
-  public ValueAndTimestampMetadata<List<Object>> update(ValueAndTimestampMetadata<List<Object>> oldValueAndTimestampMetadata,
-      Lazy<GenericRecord> writeOperation, long writeOperationTimestamp) {
+  public ValueAndReplicationMetadata<List<Object>> update(
+      ValueAndReplicationMetadata<List<Object>> oldValueAndReplicationMetadata,
+      Lazy<GenericRecord> writeOperation, long writeOperationTimestamp, long sourceOffsetOfNewValue, int sourceBrokerIDOfNewValue) {
     return null;
   }
 }
