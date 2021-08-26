@@ -81,8 +81,8 @@ public class TestHelixReadWriteStoreRepositoryAdapter {
   }
 
   @Test
-  public void testAddStore() {
-    // Add a regular store
+  public void testAddStoreToStoreRepoAdapter() {
+    // Create a regular store
     String anotherRegularStoreName = TestUtils.getUniqueString("test_store");
     Store testStore = TestUtils.createTestStore(anotherRegularStoreName, "test_owner", 0);
     writeRepoAdapter.addStore(testStore);

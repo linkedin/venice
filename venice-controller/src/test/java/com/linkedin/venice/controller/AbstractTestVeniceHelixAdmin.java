@@ -214,7 +214,7 @@ class AbstractTestVeniceHelixAdmin {
   void participantMessageStoreSetup() {
     int participantStorePartitionCount = 3;
     String participantStoreName = VeniceSystemStoreUtils.getParticipantStoreNameForCluster(clusterName);
-    veniceAdmin.addStore(clusterName, participantStoreName, "venice-internal", ParticipantMessageKey.SCHEMA$.toString(),
+    veniceAdmin.createStore(clusterName, participantStoreName, "venice-internal", ParticipantMessageKey.SCHEMA$.toString(),
         ParticipantMessageValue.SCHEMA$.toString(), true);
     UpdateStoreQueryParams queryParams = new UpdateStoreQueryParams();
     queryParams.setPartitionCount(participantStorePartitionCount);

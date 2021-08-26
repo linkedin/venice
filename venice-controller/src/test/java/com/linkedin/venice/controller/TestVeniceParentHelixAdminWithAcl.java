@@ -48,7 +48,7 @@ public class TestVeniceParentHelixAdminWithAcl extends AbstractTestVeniceParentH
   }
 
   /**
-   * This tests if addStore() is able to properly construct the AclBinding object from input json.
+   * This tests if createStore() is able to properly construct the AclBinding object from input json.
    */
   @Test
   public void testStoreCreationWithAuthorization() {
@@ -74,19 +74,19 @@ public class TestVeniceParentHelixAdminWithAcl extends AbstractTestVeniceParentH
     String valueSchemaStr = "\"string\"";
     initializeParentAdmin(Optional.of(authorizerService));
     parentAdmin.initVeniceControllerClusterResource(clusterName);
-    parentAdmin.addStore(clusterName, storeName, "dev", keySchemaStr, valueSchemaStr, false, Optional.of(accessPerm));
+    parentAdmin.createStore(clusterName, storeName, "dev", keySchemaStr, valueSchemaStr, false, Optional.of(accessPerm));
     Assert.assertEquals(1, authorizerService.setAclsCounter);
     AclBinding actualAB = authorizerService.describeAcls(new Resource(storeName));
     Assert.assertTrue(isAclBindingSame(expectedAB, actualAB));
   }
 
   /**
-   * This tests if addStore() is able to throw exception and and stop further processing when acl provisioning fails.
+   * This tests if createStore() is able to throw exception and and stop further processing when acl provisioning fails.
    */
   @Test
   public void testStoreCreationWithAuthorizationException() {
     String storeName = "test-store-authorizer";
-    //send an invalid json, so that parsing this would generate an exception and thus failing the addStore api to move forward.
+    //send an invalid json, so that parsing this would generate an exception and thus failing the createStore api to move forward.
     String accessPerm =
         "{\"AccessPermissions\":{\"Read\":[\"urn:li:corpuser:user1\",\"urn:li:corpGroup:group1\",\"urn:li:servicePrincipal:app1\"],\"Write\":[\"urn:li:corpuser:user1\",\"urn:li:corpGroup:group1\",\"urn:li:servicePrincipal:app1\"],}}";
 
@@ -98,7 +98,7 @@ public class TestVeniceParentHelixAdminWithAcl extends AbstractTestVeniceParentH
     initializeParentAdmin(Optional.of(authorizerService));
     parentAdmin.initVeniceControllerClusterResource(clusterName);
     Assert.assertThrows(VeniceException.class,
-        () -> parentAdmin.addStore(clusterName, storeName, "dev", keySchemaStr, valueSchemaStr, false,
+        () -> parentAdmin.createStore(clusterName, storeName, "dev", keySchemaStr, valueSchemaStr, false,
             Optional.of(accessPerm)));
     Assert.assertEquals(0, authorizerService.setAclsCounter);
   }
