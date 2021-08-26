@@ -52,6 +52,12 @@ public class StoreIngestionStats extends AbstractVeniceStats {
   private final Sensor ingestionFailureSensor;
 
   /**
+   * Sensors for emitting if/when we detect DCR violations (such as a backwards timestamp or receding offset vector)
+   */
+  private final Sensor timestampRegresssionDCRErrorCount;
+  private final Sensor offsetRegressionDCRErrorCount;
+
+  /**
    * A gauge reporting the total the percentage of hybrid quota used.
    */
   private double hybridQuotaUsageGauge;
@@ -224,6 +230,9 @@ public class StoreIngestionStats extends AbstractVeniceStats {
     leaderIngestionReplicationMetadataLookUpLatencySensor = registerSensor("leader_ingestion_replication_metadata_lookup_latency", new Avg(), new Max());
     conflictResolutionUpdateIgnoredSensor = registerSensor("conflict_resolution_update_ignored", new Rate());
     conflictResolutionTombstoneCreationSensor = registerSensor("conflict_resolution_tombstone_creation", new Rate());
+
+    timestampRegresssionDCRErrorCount = registerSensor("timestamp_regression_dcr_error_count", new Rate());
+    offsetRegressionDCRErrorCount = registerSensor("offset_regression_dcr_error_count", new Rate());
   }
 
   public StoreIngestionTask getStoreIngestionTask() {
@@ -382,6 +391,14 @@ public class StoreIngestionStats extends AbstractVeniceStats {
 
   public void recordChecksumVerificationFailure() {
     checksumVerificationFailureSensor.record();
+  }
+
+  public void recordTimeStampRegressionDCRError() {
+    timestampRegresssionDCRErrorCount.record();
+  }
+
+  public void recordOffsetRegressionDCRError() {
+    offsetRegressionDCRErrorCount.record();
   }
 
   private static class StoreIngestionStatsCounter extends LambdaStat {

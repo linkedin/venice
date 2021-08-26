@@ -8,10 +8,11 @@ import org.apache.avro.Schema;
  * This is simply a wrapper class to delegate the actual schema generation to version specific adapter.
  */
 
-public class TimestampMetadataSchemaAdapter {
-  private static final TimestampMetadataSchemaAdapterV1 V1_REPLICATION_METADATA_SCHEMA_ADAPTER = new TimestampMetadataSchemaAdapterV1();
+public class ReplicationMetadataSchemaAdapter {
+  private static final ReplicationMetadataSchemaAdapterV1
+      V1_REPLICATION_METADATA_SCHEMA_ADAPTER = new ReplicationMetadataSchemaAdapterV1();
 
-  private TimestampMetadataSchemaAdapter() {}
+  private ReplicationMetadataSchemaAdapter() {}
 
   public static Schema parse(String schemaStr, int version) {
     return parse(Schema.parse(schemaStr), version);

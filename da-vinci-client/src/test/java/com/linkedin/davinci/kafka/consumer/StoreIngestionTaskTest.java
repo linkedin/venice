@@ -56,8 +56,8 @@ import com.linkedin.venice.offsets.InMemoryStorageMetadataService;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.partitioner.UserPartitionAwarePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
+import com.linkedin.venice.schema.ReplicationMetadataSchemaAdapter;
 import com.linkedin.venice.schema.SchemaEntry;
-import com.linkedin.venice.schema.TimestampMetadataSchemaAdapter;
 import com.linkedin.venice.schema.TimestampMetadataSchemaEntry;
 import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
@@ -220,7 +220,7 @@ public class StoreIngestionTaskTest {
   private static final byte[] deleteKeyFoo = getRandomKey(PARTITION_FOO);
 
   private static final int REPLICATION_METADATA_VERSION_ID = 1;
-  private static final Schema REPLICATION_METADATA_SCHEMA = TimestampMetadataSchemaAdapter.parse(STRING_SCHEMA, 1);
+  private static final Schema REPLICATION_METADATA_SCHEMA = ReplicationMetadataSchemaAdapter.parse(STRING_SCHEMA, 1);
   private static final RecordSerializer REPLICATION_METADATA_SERIALIZER = FastSerializerDeserializerFactory.getFastAvroGenericSerializer(REPLICATION_METADATA_SCHEMA);
 
   private static final long putKeyFooTimestamp = 1L;

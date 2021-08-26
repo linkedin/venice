@@ -45,6 +45,7 @@ import com.linkedin.venice.writer.DeleteMetadata;
 import com.linkedin.venice.writer.PutMetadata;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.nio.ByteBuffer;
+import java.util.List;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Queue;
@@ -52,6 +53,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.function.BooleanSupplier;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.producer.Callback;
+import org.apache.log4j.Logger;
 
 
 /**
@@ -61,6 +63,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
 
   private final int replicationMetadataVersionId;
   private final MergeConflictResolver mergeConflictResolver;
+  private static final Logger logger = Logger.getLogger(ActiveActiveStoreIngestionTask.class);
+
 
   public ActiveActiveStoreIngestionTask(
       Store store,
@@ -235,15 +239,20 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     }
 
     long writeTimestamp = mergeConflictResolver.getWriteTimestampFromKME(kafkaValue);
-
+    long offsetSumPreOperation = mergeConflictResolver.extractOffsetVectorSumFromReplicationMetadata(replicationMetadataOfOldValue, schemaIdOfOldValue);
+    List<Long> recordTimestampsPreOperation = mergeConflictResolver.extractTimestampFromReplicationMetadata(replicationMetadataOfOldValue, schemaIdOfOldValue);
+    // get the source offset and the id
+    int sourceKafkaClusterId = kafkaClusterUrlToIdMap.getOrDefault(consumerRecordWrapper.kafkaUrl(), -1);
+    long sourceOffset = consumerRecordWrapper.consumerRecord().offset();
     final MergeConflictResult mergeConflictResult;
+
     switch (msgType) {
       case PUT:
         mergeConflictResult = mergeConflictResolver.put(lazyOldValue, replicationMetadataOfOldValue,
-            ((Put) kafkaValue.payloadUnion).putValue, writeTimestamp, schemaIdOfOldValue, incomingValueSchemaId);
+            ((Put) kafkaValue.payloadUnion).putValue, writeTimestamp, schemaIdOfOldValue, incomingValueSchemaId, sourceOffset, sourceKafkaClusterId);
         break;
       case DELETE:
-        mergeConflictResult = mergeConflictResolver.delete(replicationMetadataOfOldValue, schemaIdOfOldValue, writeTimestamp);
+        mergeConflictResult = mergeConflictResolver.delete(replicationMetadataOfOldValue, schemaIdOfOldValue, writeTimestamp, sourceOffset, sourceKafkaClusterId);
         break;
       case UPDATE:
         throw new VeniceUnsupportedOperationException("Update operation not yet supported in Active/Active.");
@@ -260,8 +269,35 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     if (mergeConflictResult.isUpdateIgnored()) {
       storeIngestionStats.recordConflictResolutionUpdateIgnored(storeName);
     } else {
+      validatePostOperationResultsAndRecord(mergeConflictResult, offsetSumPreOperation, recordTimestampsPreOperation);
       // This function may modify the original record in KME and it is unsafe to use the payload from KME directly after this call.
       producePutOrDeleteToKafka(mergeConflictResult, partitionConsumptionState, keyBytes, isChunkedTopic, consumerRecordWrapper);
+    }
+  }
+
+  private void validatePostOperationResultsAndRecord(MergeConflictResult mergeConflictResult, Long offsetSumPreOperation, List<Long> timestampsPreOperation) {
+    // Nothing was applied, no harm no foul
+    if (mergeConflictResult.isUpdateIgnored()) {
+      return;
+    }
+    // Post Validation checks on resolution
+    if (offsetSumPreOperation > mergeConflictResolver.extractOffsetVectorSumFromReplicationMetadata(mergeConflictResult.getReplicationMetadata(), mergeConflictResult.getValueSchemaID())) {
+      // offsets went backwards, raise an alert!
+      storeIngestionStats.recordOffsetRegressionDCRError();
+      logger.error(String.format("Offset vector found to have gone backwards!! New invalid replication metadata result:%s",
+          mergeConflictResolver.printReplicationMetadata(mergeConflictResult.getReplicationMetadata(), mergeConflictResult.getValueSchemaID())));
+    }
+
+    // TODO: This comparison doesn't work well for write compute+schema evolution (can spike up). VENG-8129
+    // this works fine for now however as we do not fully support A/A write compute operations (as we only do root timestamp comparisons).
+    List<Long> timestampsPostOperation = mergeConflictResolver.extractTimestampFromReplicationMetadata(mergeConflictResult.getReplicationMetadata(), mergeConflictResult.getValueSchemaID());
+    for(int i = 0; i < timestampsPreOperation.size(); i++) {
+      if (timestampsPreOperation.get(i) > timestampsPostOperation.get(i)) {
+        // timestamps went backwards, raise an alert!
+        storeIngestionStats.recordTimeStampRegressionDCRError();
+        logger.error(String.format("Timestamp found to have gone backwards!! Invalid replication metadata result:%s",
+            mergeConflictResolver.printReplicationMetadata(mergeConflictResult.getReplicationMetadata(), mergeConflictResult.getValueSchemaID())));
+      }
     }
   }
 
