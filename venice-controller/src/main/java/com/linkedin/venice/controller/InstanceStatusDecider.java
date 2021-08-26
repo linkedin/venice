@@ -88,7 +88,7 @@ public class InstanceStatusDecider {
         Set<String> resourceNameSet = replicas.stream().map(Replica::getResource).collect(Collectors.toSet());
 
         for (String resourceName : resourceNameSet) {
-          if (isCurrentVersion(resourceName, resources.getMetadataRepository())) {
+          if (isCurrentVersion(resourceName, resources.getStoreMetadataRepository())) {
             // Get partition assignments that if we removed the given instance from cluster.
             PartitionAssignment partitionAssignmentAfterRemoving =
                 getPartitionAssignmentAfterRemoving(instanceId, resourceAssignment, resourceName, isInstanceView);
@@ -109,7 +109,7 @@ public class InstanceStatusDecider {
                 return NodeRemovableResult.nonremoveableResult(resourceName, NodeRemovableResult.BlockingRemoveReason.WILL_LOSE_DATA, result.getSecond());
               }
 
-              Optional<Version> version = resources.getMetadataRepository()
+              Optional<Version> version = resources.getStoreMetadataRepository()
                   .getStore(Version.parseStoreFromKafkaTopicName(resourceName))
                   .getVersion(Version.parseVersionFromKafkaTopicName(resourceName));
 

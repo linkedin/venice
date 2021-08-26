@@ -55,7 +55,7 @@ public class HelixVeniceClusterResources implements VeniceResource {
   private final String clusterName;
   private final SafeHelixManager helixManager;
   private final ClusterLockManager clusterLockManager;
-  private final ReadWriteStoreRepository metadataRepository;
+  private final ReadWriteStoreRepository storeMetadataRepository;
   private final HelixExternalViewRepository routingDataRepository;
   private final ReadWriteSchemaRepository schemaRepository;
   private final HelixStatusMessageChannel messageChannel;
@@ -101,7 +101,7 @@ public class HelixVeniceClusterResources implements VeniceResource {
     this.clusterLockManager = new ClusterLockManager(clusterName);
     HelixReadWriteStoreRepository readWriteStoreRepository = new HelixReadWriteStoreRepository(zkClient, adapterSerializer,
         clusterName, metaStoreWriter, clusterLockManager);
-    this.metadataRepository = new HelixReadWriteStoreRepositoryAdapter(
+    this.storeMetadataRepository = new HelixReadWriteStoreRepositoryAdapter(
         admin.getReadOnlyZKSharedSystemStoreRepository(),
         readWriteStoreRepository
     );
@@ -127,22 +127,22 @@ public class HelixVeniceClusterResources implements VeniceResource {
     String aggregateRealTimeSourceKafkaUrl = config.getChildDataCenterKafkaUrlMap().get(config.getAggregateRealTimeSourceRegion());
 
     this.pushMonitor = new PushMonitorDelegator(config.getPushMonitorType(), clusterName, routingDataRepository,
-        offlinePushMonitorAccessor, admin, metadataRepository, new AggPushHealthStats(clusterName, metricsRepository),
+        offlinePushMonitorAccessor, admin, storeMetadataRepository, new AggPushHealthStats(clusterName, metricsRepository),
         onlineOfflineTopicReplicator, leaderFollowerTopicReplicator, metadataStoreWriter, clusterLockManager,
         aggregateRealTimeSourceKafkaUrl, getActiveActiveRealTimeSourceKafkaURLs(config));
 
-    this.leakedPushStatusCleanUpService = new LeakedPushStatusCleanUpService(clusterName, offlinePushMonitorAccessor, metadataRepository,
+    this.leakedPushStatusCleanUpService = new LeakedPushStatusCleanUpService(clusterName, offlinePushMonitorAccessor, storeMetadataRepository,
         new AggPushStatusCleanUpStats(clusterName, metricsRepository), this.config.getLeakedPushStatusCleanUpServiceSleepIntervalInMs());
     // On controller side, router cluster manager is used as an accessor without maintaining any cache, so do not need to refresh once zk reconnected.
     this.routersClusterManager =
         new ZkRoutersClusterManager(zkClient, adapterSerializer, clusterName, config.getRefreshAttemptsForZkReconnect(),
             config.getRefreshIntervalForZkReconnectInMs());
     this.aggPartitionHealthStats =
-        new AggPartitionHealthStats(clusterName, metricsRepository, routingDataRepository, metadataRepository, pushMonitor);
+        new AggPartitionHealthStats(clusterName, metricsRepository, routingDataRepository, storeMetadataRepository, pushMonitor);
     this.storeConfigAccessor = new ZkStoreConfigAccessor(zkClient, adapterSerializer, metaStoreWriter);
     this.accessController = accessController;
     if (config.getErrorPartitionAutoResetLimit() > 0) {
-      errorPartitionResetTask = new ErrorPartitionResetTask(clusterName, helixAdminClient, metadataRepository,
+      errorPartitionResetTask = new ErrorPartitionResetTask(clusterName, helixAdminClient, storeMetadataRepository,
           routingDataRepository, pushMonitor, metricsRepository, config.getErrorPartitionAutoResetLimit(),
           config.getErrorPartitionProcessingCycleDelay());
     }
@@ -193,15 +193,15 @@ public class HelixVeniceClusterResources implements VeniceResource {
     clear();
     //make sure that metadataRepo is initialized first since schemaRepo and
     //pushMonitor depends on it
-    metadataRepository.refresh();
-    repairStoreReplicationFactor(metadataRepository);
+    storeMetadataRepository.refresh();
+    repairStoreReplicationFactor(storeMetadataRepository);
     /**
      * Initialize the dynamic access client and also register the acl creation/deletion listener.
      */
     if (accessController.isPresent()) {
       DynamicAccessController accessClient = accessController.get();
-      accessClient.init(metadataRepository.getAllStores().stream().map(Store::getName).collect(Collectors.toList()));
-      metadataRepository.registerStoreDataChangedListener(new AclCreationDeletionListener(accessClient));
+      accessClient.init(storeMetadataRepository.getAllStores().stream().map(Store::getName).collect(Collectors.toList()));
+      storeMetadataRepository.registerStoreDataChangedListener(new AclCreationDeletionListener(accessClient));
     }
     schemaRepository.refresh();
     routingDataRepository.refresh();
@@ -217,7 +217,7 @@ public class HelixVeniceClusterResources implements VeniceResource {
      * like broadcasting StartOfBufferReplay/TopicSwitch messages.
      */
     pushMonitor.stopAllMonitoring();
-    metadataRepository.clear();
+    storeMetadataRepository.clear();
     schemaRepository.clear();
     routingDataRepository.clear();
     routersClusterManager.clear();
@@ -257,8 +257,8 @@ public class HelixVeniceClusterResources implements VeniceResource {
     }
   }
 
-  public ReadWriteStoreRepository getMetadataRepository() {
-    return metadataRepository;
+  public ReadWriteStoreRepository getStoreMetadataRepository() {
+    return storeMetadataRepository;
   }
 
   public ReadWriteSchemaRepository getSchemaRepository() {

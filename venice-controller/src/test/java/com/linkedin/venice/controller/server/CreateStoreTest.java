@@ -32,7 +32,7 @@ public class CreateStoreTest {
         .isMasterController(clusterName);
     // Throws NPE here
     doThrow(new NullPointerException(fakeMessage)).when(admin)
-        .addStore(any(), any(), any(), any(), any(), anyBoolean(), any());
+        .createStore(any(), any(), any(), any(), any(), anyBoolean(), any());
 
     QueryParamsMap paramsMap = mock(QueryParamsMap.class);
     doReturn(new HashMap<>()).when(paramsMap)
@@ -56,7 +56,7 @@ public class CreateStoreTest {
         .queryParams(VALUE_SCHEMA);
 
     CreateStore createStoreRoute = new CreateStore(Optional.empty());
-    Route createStoreRouter = createStoreRoute.addStore(admin);
+    Route createStoreRouter = createStoreRoute.createStore(admin);
     createStoreRouter.handle(request, response);
     verify(response).status(HttpStatus.SC_INTERNAL_SERVER_ERROR);
   }
@@ -73,7 +73,7 @@ public class CreateStoreTest {
         .isMasterController(clusterName);
     // Throws NPE here
     doThrow(new Error(fakeMessage)).when(admin)
-        .addStore(any(), any(), any(), any(), any(), anyBoolean(), any());
+        .createStore(any(), any(), any(), any(), any(), anyBoolean(), any());
 
     QueryParamsMap paramsMap = mock(QueryParamsMap.class);
     doReturn(new HashMap<>()).when(paramsMap)
@@ -97,7 +97,7 @@ public class CreateStoreTest {
         .queryParams(VALUE_SCHEMA);
 
     CreateStore createStoreRoute = new CreateStore(Optional.empty());
-    Route createStoreRouter = createStoreRoute.addStore(admin);
+    Route createStoreRouter = createStoreRoute.createStore(admin);
     createStoreRouter.handle(request, response);
   }
 
@@ -122,7 +122,7 @@ public class CreateStoreTest {
         .queryParams(CLUSTER);
 
     CreateStore createStoreRoute = new CreateStore(Optional.empty());
-    Route createStoreRouter = createStoreRoute.addStore(admin);
+    Route createStoreRouter = createStoreRoute.createStore(admin);
     createStoreRouter.handle(request, response);
     verify(response).status(HttpStatus.SC_BAD_REQUEST);
   }
@@ -158,7 +158,7 @@ public class CreateStoreTest {
         .queryParams(VALUE_SCHEMA);
 
     CreateStore createStoreRoute = new CreateStore(Optional.empty());
-    Route createStoreRouter = createStoreRoute.addStore(admin);
+    Route createStoreRouter = createStoreRoute.createStore(admin);
     createStoreRouter.handle(request, response);
     verify(response).status(HttpConstants.SC_MISDIRECTED_REQUEST);
   }

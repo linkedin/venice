@@ -486,7 +486,7 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
     String clusterName = cluster.getClusterName();
     String storeName = TestUtils.getUniqueString("controllerClientCanDeleteAllVersion");
 
-    parentController.getVeniceAdmin().addStore(
+    parentController.getVeniceAdmin().createStore(
         clusterName, storeName, "test", "\"string\"", "\"string\"");
     parentController.getVeniceAdmin().incrementVersionIdempotent(
         clusterName, storeName, Version.guidBasedDummyPushId(),1, 1);
@@ -710,7 +710,7 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
     String clusterName = cluster.getClusterName();
 
     String storeName = TestUtils.getUniqueString("controllerClientCanGetExecutionOfDeleteStore");
-    parentController.getVeniceAdmin().addStore(
+    parentController.getVeniceAdmin().createStore(
         clusterName, storeName, "test", "\"string\"", "\"string\"");
 
     parentController.getVeniceAdmin().incrementVersionIdempotent(clusterName, storeName, "test", 1, 1);
