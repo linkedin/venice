@@ -1600,6 +1600,24 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                         version.setNativeReplicationEnabled(nativeReplicationEnabled);
                     }
 
+                    /**
+                     * Apply cluster-level active-active replication configs to non-system stores. A/A support on system
+                     * store will happen in the future.
+                     */
+                    if (!store.isSystemStore()) {
+                        boolean activeActiveReplicationEnabled = version.isActiveActiveReplicationEnabled();
+                        if (store.isHybrid()) {
+                            activeActiveReplicationEnabled |= clusterConfig.isActiveActiveReplicationEnabledAsDefaultForHybrid();
+                        } else {
+                            if (store.isIncrementalPushEnabled()) {
+                                activeActiveReplicationEnabled |= clusterConfig.isActiveActiveReplicationEnabledAsDefaultForIncremental();
+                            } else {
+                                activeActiveReplicationEnabled |= clusterConfig.isActiveActiveReplicationEnabledAsDefaultForBatchOnly();
+                            }
+                        }
+                        store.setActiveActiveReplicationEnabled(activeActiveReplicationEnabled);
+                    }
+
                     // Check whether native replication is enabled
                     if (version.isNativeReplicationEnabled()) {
                         if (remoteKafkaBootstrapServers != null) {
@@ -2678,8 +2696,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         });
     }
 
-    public void setIncrementalPushEnabled(String clusterName, String storeName,
-        boolean incrementalPushEnabled) {
+    public void setIncrementalPushEnabled(String clusterName, String storeName, boolean incrementalPushEnabled) {
         storeMetadataUpdate(clusterName, storeName, store -> {
             IncrementalPushPolicy incrementalPushPolicy = store.getIncrementalPushPolicy();
             if (incrementalPushEnabled && store.isHybrid() && incrementalPushPolicy.equals(IncrementalPushPolicy.PUSH_TO_VERSION_TOPIC)) {
@@ -2701,6 +2718,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                     store.setNativeReplicationEnabled(config.isNativeReplicationEnabledAsDefaultForHybrid());
                     store.setNativeReplicationSourceFabric(config.getNativeReplicationSourceFabricAsDefaultForHybrid());
                 } else {
+                    store.setActiveActiveReplicationEnabled(config.isActiveActiveReplicationEnabledAsDefaultForBatchOnly());
                     store.setNativeReplicationEnabled(config.isNativeReplicationEnabledAsDefaultForBatchOnly());
                     store.setNativeReplicationSourceFabric(config.getNativeReplicationSourceFabricAsDefaultForBatchOnly());
                 }
@@ -3084,6 +3102,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                                 // Enable/disable native replication for batch-only stores if the cluster level config for new batch stores is on
                                 store.setNativeReplicationEnabled(clusterConfig.isNativeReplicationEnabledAsDefaultForBatchOnly());
                                 store.setNativeReplicationSourceFabric(clusterConfig.getNativeReplicationSourceFabricAsDefaultForBatchOnly());
+                                store.setActiveActiveReplicationEnabled(clusterConfig.isActiveActiveReplicationEnabledAsDefaultForBatchOnly());
                             } else {
                                 store.setNativeReplicationEnabled(clusterConfig.isNativeReplicationEnabledAsDefaultForIncremental());
                                 store.setNativeReplicationSourceFabric(clusterConfig.getNativeReplicationSourceFabricAsDefaultForIncremental());
