@@ -58,7 +58,7 @@ public class TestActiveActiveReplicationForHybrid {
   private static final int TEST_TIMEOUT = 90_000; // ms
 
   private static final int NUMBER_OF_CHILD_DATACENTERS = 3;
-  private static final int NUMBER_OF_CLUSTERS = 1;
+  private static final int NUMBER_OF_CLUSTERS = 2;
   private static final String[] CLUSTER_NAMES =
       IntStream.range(0, NUMBER_OF_CLUSTERS).mapToObj(i -> "venice-cluster" + i).toArray(String[]::new);
   // ["venice-cluster0", "venice-cluster1", ...];
@@ -289,7 +289,7 @@ public class TestActiveActiveReplicationForHybrid {
    */
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testAAReplicationCanResolveConflicts(boolean useLogicalTimestamp) {
-    String clusterName = CLUSTER_NAMES[0];
+    String clusterName = CLUSTER_NAMES[1];
     String storeName = TestUtils.getUniqueString("test-store");
     VeniceControllerWrapper parentController =
         parentControllers.stream().filter(c -> c.isMasterController(clusterName)).findAny().get();
@@ -342,7 +342,7 @@ public class TestActiveActiveReplicationForHybrid {
     // Build the SystemProducer with the mock time
     VeniceMultiClusterWrapper childDataCenter = childDatacenters.get(0);
     SystemProducer producerInDC0 = new VeniceSystemProducer(childDataCenter.getZkServerWrapper().getAddress(), SERVICE_NAME, storeName,
-        Version.PushType.STREAM, TestUtils.getUniqueString("venice-push-id"), "dc-0", null, Optional.empty(),
+        Version.PushType.STREAM, TestUtils.getUniqueString("venice-push-id"), "dc-0", true, null, Optional.empty(),
         Optional.empty(), mockTime);
     producerInDC0.start();
 

@@ -16,7 +16,7 @@ import static com.linkedin.venice.serialization.avro.InternalAvroSpecificSeriali
  * protocol gets upgraded.
  */
 public class SchemaPresenceChecker {
-  private static final Logger logger = Logger.getLogger(SchemaPresenceChecker.class);
+  private static final Logger LOGGER = Logger.getLogger(SchemaPresenceChecker.class);
 
   /** Used to fetch and verify a schema version is present in ZK. */
   private SchemaReader schemaReader = null;
@@ -37,15 +37,15 @@ public class SchemaPresenceChecker {
           throw new VeniceMessageException(
               "Failed to retrieve protocol version '" + protocolVersion + " with remote fetch using " + SchemaReader.class.getSimpleName());
         }
-        logger.info(
-            "Discovered new protocol version '" + protocolVersion + "', and successfully retrieved it. Schema:\n" + newProtocolSchema.toString(true));
+        LOGGER.info("Discovered new protocol version '" + protocolVersion + "', and successfully retrieved it.");
+        LOGGER.debug("Schema:\n" + newProtocolSchema.toString(true));
         break;
       } catch (Exception e) {
         if (attempt == MAX_ATTEMPTS_FOR_SCHEMA_READER || !retry) {
           throw new VeniceException("Failed to retrieve new protocol schema version (" + protocolVersion + ") after "
               + MAX_ATTEMPTS_FOR_SCHEMA_READER + " attempts.", e);
         }
-        logger.error("Caught an exception while trying to fetch a new protocol schema version (" + protocolVersion
+        LOGGER.error("Caught an exception while trying to fetch a new protocol schema version (" + protocolVersion
             + "). Attempt #" + attempt + "/" + MAX_ATTEMPTS_FOR_SCHEMA_READER + ". Will sleep "
             + WAIT_TIME_BETWEEN_SCHEMA_READER_ATTEMPTS_IN_MS + " ms and try again.", e);
         Utils.sleep(WAIT_TIME_BETWEEN_SCHEMA_READER_ATTEMPTS_IN_MS);
@@ -63,12 +63,12 @@ public class SchemaPresenceChecker {
     int version = protocolVersion.isPresent() ? protocolVersion.get() : avroProtocolDefinition.getCurrentProtocolVersion();
     try {
       verifySchemaIsPresent(version, retry);
-      logger.info("SchemaPresenceChecker: The schema " + avroProtocolDefinition.name() + " current version " + version
+      LOGGER.info("SchemaPresenceChecker: The schema " + avroProtocolDefinition.name() + " current version " + version
           + " is found");
     } catch (VeniceException e) {
       String errorMsg = "SchemaVersionNotFound: The schema " + avroProtocolDefinition.name() + " current version " + version
           + " is not present in ZK, exiting application";
-      logger.fatal(errorMsg);
+      LOGGER.fatal(errorMsg);
       throw new VeniceException(errorMsg, e);
     }
   }
