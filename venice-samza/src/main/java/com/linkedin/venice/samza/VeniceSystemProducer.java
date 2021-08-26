@@ -4,7 +4,9 @@ import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.d2.balancer.D2ClientBuilder;
 import com.linkedin.venice.D2.D2ClientUtils;
+import com.linkedin.venice.client.schema.SchemaReader;
 import com.linkedin.venice.client.store.ClientConfig;
+import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.client.store.transport.D2TransportClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
@@ -21,6 +23,8 @@ import com.linkedin.venice.pushmonitor.HybridStoreQuotaStatus;
 import com.linkedin.venice.pushmonitor.RouterBasedHybridStoreQuotaMonitor;
 import com.linkedin.venice.pushmonitor.RouterBasedPushMonitor;
 import com.linkedin.venice.security.SSLFactory;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.serialization.avro.SchemaPresenceChecker;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.PartitionUtils;
@@ -86,7 +90,8 @@ public class VeniceSystemProducer implements SystemProducer {
   private final Optional<String> partitioners;
   private final Time time;
   private final String fsBasePath;
-  private String runningFabric = null;
+  private final String runningFabric;
+  private final boolean verifyLatestProtocolPresent;
 
 
   // Mutable, lazily initialized, state
@@ -114,21 +119,22 @@ public class VeniceSystemProducer implements SystemProducer {
   private Optional<RouterBasedHybridStoreQuotaMonitor> hybridStoreQuotaMonitor = Optional.empty();
 
   public VeniceSystemProducer(String veniceD2ZKHost, String d2ServiceName, String storeName,
-      Version.PushType pushType, String samzaJobId, String runningFabric, VeniceSystemFactory factory,
-      Optional<SSLFactory> sslFactory, Optional<String> partitioners) {
-    this(veniceD2ZKHost, d2ServiceName, storeName, pushType, samzaJobId, runningFabric, factory,
+      Version.PushType pushType, String samzaJobId, String runningFabric, boolean verifyLatestProtocolPresent,
+      VeniceSystemFactory factory, Optional<SSLFactory> sslFactory, Optional<String> partitioners) {
+    this(veniceD2ZKHost, d2ServiceName, storeName, pushType, samzaJobId, runningFabric, verifyLatestProtocolPresent, factory,
         sslFactory, partitioners, SystemTime.INSTANCE);
   }
 
   public VeniceSystemProducer(String veniceD2ZKHost, String d2ServiceName, String storeName,
-      Version.PushType pushType, String samzaJobId, String runningFabric, VeniceSystemFactory factory, Optional<SSLFactory> sslFactory,
-      Optional<String> partitioners, Time time) {
+      Version.PushType pushType, String samzaJobId, String runningFabric, boolean verifyLatestProtocolPresent,
+      VeniceSystemFactory factory, Optional<SSLFactory> sslFactory, Optional<String> partitioners, Time time) {
     this.veniceD2ZKHost = veniceD2ZKHost;
     this.d2ServiceName = d2ServiceName;
     this.storeName = storeName;
     this.pushType = pushType;
     this.samzaJobId = samzaJobId;
     this.runningFabric = runningFabric;
+    this.verifyLatestProtocolPresent = verifyLatestProtocolPresent;
     this.factory = factory;
     this.sslFactory = sslFactory;
     this.partitioners = partitioners;
@@ -210,6 +216,26 @@ public class VeniceSystemProducer implements SystemProducer {
         );
     String clusterName = discoveryResponse.getCluster();
     LOGGER.info("Found cluster: " + clusterName + " for store: " + storeName);
+
+    /**
+     * Verify that the latest {@link com.linkedin.venice.serialization.avro.AvroProtocolDefinition#KAFKA_MESSAGE_ENVELOPE}
+     * version in the code base is registered in Venice backend; if not, fail fast in start phase before start writing
+     * Kafka messages that Venice backend couldn't deserialize.
+     */
+    if (verifyLatestProtocolPresent) {
+      LOGGER.info("Start verifying the latest protocols at runtime are valid in Venice backend.");
+      // Discover the D2 service name for the system store
+      String kafkaMessageEnvelopSchemaSysStore = AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getSystemStoreName();
+      D2ServiceDiscoveryResponse sysStoreDiscoveryResponse = (D2ServiceDiscoveryResponse)
+          controllerRequestWithRetry(() -> D2ControllerClient.discoverCluster(d2Client, d2ServiceName, kafkaMessageEnvelopSchemaSysStore)
+          );
+      ClientConfig clientConfigForKafkaMessageEnvelopeSchemaReader = ClientConfig.defaultGenericClientConfig(kafkaMessageEnvelopSchemaSysStore);
+      clientConfigForKafkaMessageEnvelopeSchemaReader.setD2ServiceName(sysStoreDiscoveryResponse.getD2Service());
+      clientConfigForKafkaMessageEnvelopeSchemaReader.setD2Client(d2Client);
+      SchemaReader kafkaMessageEnvelopeSchemaReader = ClientFactory.getSchemaReader(clientConfigForKafkaMessageEnvelopeSchemaReader);
+      new SchemaPresenceChecker(kafkaMessageEnvelopeSchemaReader, AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE).verifySchemaVersionPresentOrExit();
+      LOGGER.info("Successfully verified the latest protocols at runtime are valid in Venice backend.");
+    }
 
     this.controllerClient = new D2ControllerClient(d2ServiceName, clusterName, d2Client, sslFactory);
 

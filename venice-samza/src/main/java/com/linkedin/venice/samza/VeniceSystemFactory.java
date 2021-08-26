@@ -1,6 +1,5 @@
 package com.linkedin.venice.samza;
 
-import com.linkedin.venice.VeniceConstants;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.security.SSLFactory;
@@ -72,6 +71,14 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
   public static final String VENICE_PARENT_D2_SERVICE = "VeniceParentController";
 
   /**
+   * A Samza job config to check whether the protocol versions used at runtime are valid in
+   * Venice backend; if not, fail fast. Default value should be true.
+   *
+   * Turn off the config in DEV configs so that PCL will not try to access routers.
+   */
+  public static final String VALIDATE_VENICE_INTERNAL_SCHEMA_VERSION = "validate.venice.internal.schema.version";
+
+  /**
    * A global static counter to track how many factory one process would create.
    * In general, one factory is enough for one application; otherwise, if there are
    * multiple factory built in the same process, log this information for debugging purpose.
@@ -119,10 +126,10 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
 
   // Extra `Config` parameter is to ease the internal implementation
   protected SystemProducer createSystemProducer(String veniceD2ZKHost, String veniceD2Service, String storeName,
-      Version.PushType venicePushType, String samzaJobId, String runningFabric, Config config,
+      Version.PushType venicePushType, String samzaJobId, String runningFabric, boolean verifyLatestProtocolPresent, Config config,
       Optional<SSLFactory> sslFactory, Optional<String> partitioners) {
-    return new VeniceSystemProducer(veniceD2ZKHost, veniceD2Service, storeName, venicePushType, samzaJobId, runningFabric, this,
-        sslFactory, partitioners);
+    return new VeniceSystemProducer(veniceD2ZKHost, veniceD2Service, storeName, venicePushType, samzaJobId, runningFabric,
+        verifyLatestProtocolPresent, this, sslFactory, partitioners);
   }
 
   /**
@@ -199,8 +206,10 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
       veniceD2Service = VENICE_LOCAL_D2_SERVICE;
     }
     LOGGER.info("Will use the following Venice D2 ZK hosts: " + veniceD2ZKHost);
+
+    boolean verifyLatestProtocolPresent = config.getBoolean(VALIDATE_VENICE_INTERNAL_SCHEMA_VERSION, false);
     SystemProducer systemProducer = createSystemProducer(veniceD2ZKHost, veniceD2Service, storeName, venicePushType,
-        samzaJobId, runningFabric, config, sslFactory, partitioners);
+        samzaJobId, runningFabric, verifyLatestProtocolPresent, config, sslFactory, partitioners);
     this.systemProducerStatues.computeIfAbsent(systemProducer, k -> Pair.create(true, false));
     return systemProducer;
   }
