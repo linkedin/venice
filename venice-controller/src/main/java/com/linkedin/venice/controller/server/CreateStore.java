@@ -19,7 +19,7 @@ public class CreateStore extends AbstractRoute {
     super(accessController);
   }
 
-  public Route addStore(Admin admin) {
+  public Route createStore(Admin admin) {
     return new VeniceRouteHandler<NewStoreResponse>(NewStoreResponse.class) {
       @Override
       public void internalHandle(Request request, NewStoreResponse veniceResponse) {
@@ -46,7 +46,7 @@ public class CreateStore extends AbstractRoute {
         veniceResponse.setCluster(clusterName);
         veniceResponse.setName(storeName);
         veniceResponse.setOwner(owner);
-        admin.addStore(clusterName, storeName, owner, keySchema, valueSchema, isSystemStore, accessPermissions);
+        admin.createStore(clusterName, storeName, owner, keySchema, valueSchema, isSystemStore, accessPermissions);
       }
     };
   }
