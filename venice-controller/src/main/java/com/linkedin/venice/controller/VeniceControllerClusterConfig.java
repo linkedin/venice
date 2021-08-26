@@ -108,6 +108,12 @@ public class VeniceControllerClusterConfig {
   private String nativeReplicationSourceFabricAsDefaultForIncremental;
 
   /**
+   * When this option is enabled, all new batch-only stores will have active-active replication enabled in store config so long
+   * as the store has leader follower also enabled.
+   */
+  private boolean activeActiveReplicationEnabledAsDefaultForBatchOnly;
+
+  /**
    * When this option is enabled, all new hybrid stores will have active-active replication enabled in store config so long
    * as the store has leader follower also enabled.
    */
@@ -202,7 +208,7 @@ public class VeniceControllerClusterConfig {
   public VeniceControllerClusterConfig(VeniceProperties props) {
     try {
       this.props = props;
-      checkProperties(props);
+      initFieldsWithProperties(props);
       logger.info("Loaded configuration");
     } catch (Exception e) {
       String errorMessage = "Can not load properties.";
@@ -211,7 +217,7 @@ public class VeniceControllerClusterConfig {
     }
   }
 
-  private void checkProperties(VeniceProperties props) {
+  private void initFieldsWithProperties(VeniceProperties props) {
     clusterName = props.getString(CLUSTER_NAME);
     zkAddress = props.getString(ZOOKEEPER_ADDRESS);
     controllerName = props.getString(CONTROLLER_NAME);
@@ -267,6 +273,7 @@ public class VeniceControllerClusterConfig {
     nativeReplicationSourceFabricAsDefaultForBatchOnly = props.getString(NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_BATCH_ONLY_STORES, "");
     nativeReplicationSourceFabricAsDefaultForHybrid = props.getString(NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_HYBRID_STORES, "");
     nativeReplicationSourceFabricAsDefaultForIncremental = props.getString(NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_INCREMENTAL_PUSH_STORES, "");
+    activeActiveReplicationEnabledAsDefaultForBatchOnly = props.getBoolean(ENABLE_ACTIVE_ACTIVE_REPLICATION_AS_DEFAULT_FOR_BATCH_ONLY_STORE, false);
     activeActiveReplicationEnabledAsDefaultForHybrid = props.getBoolean(ENABLE_ACTIVE_ACTIVE_REPLICATION_AS_DEFAULT_FOR_HYBRID_STORE, false);
     activeActiveReplicationEnabledAsDefaultForIncremental = props.getBoolean(ENABLE_ACTIVE_ACTIVE_REPLICATION_AS_DEFAULT_FOR_INCREMENTAL_PUSH_STORE, false);
     leaderFollowerEnabledForHybridStores = props.getBoolean(ENABLE_LEADER_FOLLOWER_AS_DEFAULT_FOR_HYBRID_STORES, false);
@@ -290,11 +297,12 @@ public class VeniceControllerClusterConfig {
     }
 
     if (!leaderFollowerEnabledForAllStores && !lfModelDependencyCheckDisabled
-        && (activeActiveReplicationEnabledAsDefaultForHybrid || activeActiveReplicationEnabledAsDefaultForIncremental)) {
+        && (activeActiveReplicationEnabledAsDefaultForHybrid || activeActiveReplicationEnabledAsDefaultForIncremental || activeActiveReplicationEnabledAsDefaultForBatchOnly)) {
       logger.error("Cannot enable active-active replication when leader follower is not enabled for all stores. Will revert "
           + "the cluster-level active-active replication flags to false");
       activeActiveReplicationEnabledAsDefaultForHybrid = false;
       activeActiveReplicationEnabledAsDefaultForIncremental = false;
+      activeActiveReplicationEnabledAsDefaultForBatchOnly = false;
     }
 
     clusterToD2Map = props.getMap(CLUSTER_TO_D2);
@@ -330,7 +338,6 @@ public class VeniceControllerClusterConfig {
       throw new ConfigurationException(ADMIN_TOPIC_REPLICATION_FACTOR + " cannot be less than 1.");
     }
     this.leakedPushStatusCleanUpServiceSleepIntervalInMs = props.getLong(LEAKED_PUSH_STATUS_CLEAN_UP_SERVICE_SLEEP_INTERVAL_MS, TimeUnit.MINUTES.toMillis(15));
-
     this.jettyConfigOverrides = props.clipAndFilterNamespace(CONTROLLER_JETTY_CONFIG_OVERRIDE_PREFIX);
   }
 
@@ -506,6 +513,10 @@ public class VeniceControllerClusterConfig {
 
   public boolean isNativeReplicationEnabledAsDefaultForHybrid() {
     return nativeReplicationEnabledAsDefaultForHybrid;
+  }
+
+  public boolean isActiveActiveReplicationEnabledAsDefaultForBatchOnly() {
+    return activeActiveReplicationEnabledAsDefaultForBatchOnly;
   }
 
   public boolean isActiveActiveReplicationEnabledAsDefaultForHybrid() {

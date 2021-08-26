@@ -458,7 +458,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getVersions().size(), 1,
         "There should only be exactly one version added to the test-store");
 
-    //set topic original topic manager back
+    // Set topic original topic manager back
     veniceAdmin.setTopicManagerRepository(originalTopicManagerRepository);
   }
 
@@ -1353,7 +1353,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getVersions().size(), 2);
     Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getVersion(2).get().getPushStreamSourceAddress(), remoteKafkaBootstrapServers);
 
-    //set topic original topic manager back
+    // Set topic original topic manager back
     veniceAdmin.setTopicManagerRepository(originalTopicManagerRepository);
   }
 
@@ -1552,7 +1552,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     // A/A version level config should be true
     Assert.assertTrue(veniceAdmin.getStore(clusterName, storeName).getVersion(1).get().isActiveActiveReplicationEnabled());
 
-    //set topic original topic manager back
+    // Set topic original topic manager back
     veniceAdmin.setTopicManagerRepository(originalTopicManagerRepository);
   }
 
