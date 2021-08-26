@@ -381,7 +381,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final String localKafkaServer;
   private int valueSchemaId = -1;
 
-  private final Map<Integer, StoragePartitionDiskUsage> partitionConsumptionSizeMap = new HashMap<>();
+  private final Map<Integer, StoragePartitionDiskUsage> partitionConsumptionSizeMap = new VeniceConcurrentHashMap<>();
 
   public StoreIngestionTask(
       Store store,
