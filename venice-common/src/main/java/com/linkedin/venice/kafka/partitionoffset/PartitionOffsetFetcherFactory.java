@@ -17,8 +17,8 @@ public class PartitionOffsetFetcherFactory {
       long kafkaOperationTimeoutMs
   ) {
     PartitionOffsetFetcher partitionOffsetFetcher = new PartitionOffsetFetcherImpl(
-        Lazy.of(() -> kafkaClientFactory.getKafkaConsumer(KafkaClientFactory.getKafkaRawBytesConsumerProps())),
-        Lazy.of(() -> kafkaClientFactory.getKafkaConsumer(KafkaClientFactory.getKafkaRecordConsumerProps())),
+        Lazy.of(() -> kafkaClientFactory.getKafkaConsumer(kafkaClientFactory.getKafkaRawBytesConsumerProps())),
+        Lazy.of(() -> kafkaClientFactory.getKafkaConsumer(kafkaClientFactory.getKafkaRecordConsumerProps())),
         Lazy.of(() -> kafkaClientFactory.getKafkaAdminClient(optionalMetricsRepository)),
         kafkaOperationTimeoutMs
     );
@@ -43,8 +43,8 @@ public class PartitionOffsetFetcherFactory {
       Optional<MetricsRepository> optionalMetricsRepository
   ) {
     PartitionOffsetFetcher partitionOffsetFetcher = new PartitionOffsetFetcherImpl(
-        Lazy.of(() -> kafkaClientFactory.getKafkaConsumer(KafkaClientFactory.getKafkaRawBytesConsumerProps())),
-        Lazy.of(() -> kafkaClientFactory.getKafkaConsumer(KafkaClientFactory.getKafkaRecordConsumerProps())),
+        Lazy.of(() -> kafkaClientFactory.getKafkaConsumer(kafkaClientFactory.getKafkaRawBytesConsumerProps())),
+        Lazy.of(() -> kafkaClientFactory.getKafkaConsumer(kafkaClientFactory.getKafkaRecordConsumerProps())),
         kafkaAdminWrapper,
         kafkaOperationTimeoutMs
     );

@@ -1,6 +1,7 @@
 package com.linkedin.venice.kafka;
 
 import com.linkedin.venice.ConfigKeys;
+import com.linkedin.venice.client.schema.SchemaReader;
 import com.linkedin.venice.kafka.admin.InstrumentedKafkaAdmin;
 import com.linkedin.venice.kafka.admin.KafkaAdminWrapper;
 import com.linkedin.venice.kafka.consumer.ApacheKafkaConsumer;
@@ -9,6 +10,7 @@ import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
 import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.utils.ReflectUtils;
+import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Optional;
 import java.util.Properties;
@@ -18,16 +20,26 @@ import org.apache.kafka.common.serialization.ByteArrayDeserializer;
 import org.apache.log4j.Logger;
 
 import static com.linkedin.venice.ConfigConstants.*;
+import static com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer.VENICE_SCHEMA_READER_CONFIG;
 
 
 public abstract class KafkaClientFactory {
-  private static final Logger LOGGER = Logger.getLogger(KafkaClientFactory.class);
+  private static final Logger logger = Logger.getLogger(KafkaClientFactory.class);
+  protected final Optional<SchemaReader> kafkaMessageEnvelopeSchemaReader;
+
+  protected KafkaClientFactory() {
+    this(Optional.empty());
+  }
+
+  protected KafkaClientFactory(Optional<SchemaReader> kafkaMessageEnvelopeSchemaReader) {
+    this.kafkaMessageEnvelopeSchemaReader = Utils.notNull(kafkaMessageEnvelopeSchemaReader);
+  }
 
   public KafkaConsumerWrapper getConsumer(Properties props) {
     return new ApacheKafkaConsumer(setupSSL(props), false);
   }
 
-  public <K, V> KafkaConsumer<K, V> getKafkaConsumer(Properties properties){
+  public <K, V> KafkaConsumer<K, V> getKafkaConsumer(Properties properties) {
     return new KafkaConsumer<>(setupSSL(properties));
   }
 
@@ -47,14 +59,14 @@ public abstract class KafkaClientFactory {
       // Use Kafka bootstrap server to identify which Kafka admin client stats it is
       String kafkaAdminStatsName = "KafkaAdminStats_" + TehutiUtils.fixMalformedMetricName(getKafkaBootstrapServers());
       adminWrapper = new InstrumentedKafkaAdmin(adminWrapper, optionalMetricsRepository.get(), kafkaAdminStatsName);
-      LOGGER.info("Created instrumented topic manager for Kafka cluster with bootstrap server " + getKafkaBootstrapServers());
+      logger.info("Created instrumented topic manager for Kafka cluster with bootstrap server " + getKafkaBootstrapServers());
     } else {
-      LOGGER.info("Created non-instrumented topic manager for Kafka cluster with bootstrap server " + getKafkaBootstrapServers());
+      logger.info("Created non-instrumented topic manager for Kafka cluster with bootstrap server " + getKafkaBootstrapServers());
     }
     return adminWrapper;
   }
 
-  public static Properties getKafkaRawBytesConsumerProps() {
+  public Properties getKafkaRawBytesConsumerProps() {
     Properties props = new Properties();
     //This is a temporary fix for the issue described here
     //https://stackoverflow.com/questions/37363119/kafka-producer-org-apache-kafka-common-serialization-stringserializer-could-no
@@ -68,7 +80,7 @@ public abstract class KafkaClientFactory {
     return props;
   }
 
-  public static Properties getKafkaRecordConsumerProps() {
+  public Properties getKafkaRecordConsumerProps() {
     Properties props = new Properties();
     //This is a temporary fix for the issue described here
     //https://stackoverflow.com/questions/37363119/kafka-producer-org-apache-kafka-common-serialization-stringserializer-could-no
@@ -79,6 +91,9 @@ public abstract class KafkaClientFactory {
     props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, OptimizedKafkaValueSerializer.class);
     // Increase receive buffer to 1MB to check whether it can solve the metadata timing out issue
     props.put(ConsumerConfig.RECEIVE_BUFFER_CONFIG, 1024 * 1024);
+    if (kafkaMessageEnvelopeSchemaReader.isPresent()) {
+      props.put(VENICE_SCHEMA_READER_CONFIG, kafkaMessageEnvelopeSchemaReader.get());
+    }
     return props;
   }
 

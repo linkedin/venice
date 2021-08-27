@@ -716,10 +716,10 @@ public class TopicManager implements Closeable {
 
   private synchronized KafkaConsumer<byte[], byte[]> getRawBytesConsumer(boolean closeAndRecreate) {
     if (this.kafkaRawBytesConsumer == null) {
-      this.kafkaRawBytesConsumer = kafkaClientFactory.getKafkaConsumer(KafkaClientFactory.getKafkaRawBytesConsumerProps());
+      this.kafkaRawBytesConsumer = kafkaClientFactory.getKafkaConsumer(kafkaClientFactory.getKafkaRawBytesConsumerProps());
     } else if (closeAndRecreate) {
       this.kafkaRawBytesConsumer.close(kafkaOperationTimeoutMs, TimeUnit.MILLISECONDS);
-      this.kafkaRawBytesConsumer = kafkaClientFactory.getKafkaConsumer(KafkaClientFactory.getKafkaRawBytesConsumerProps());
+      this.kafkaRawBytesConsumer = kafkaClientFactory.getKafkaConsumer(kafkaClientFactory.getKafkaRawBytesConsumerProps());
       logger.info("Closed and recreated consumer.");
     }
     return this.kafkaRawBytesConsumer;
