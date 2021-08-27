@@ -140,6 +140,7 @@ import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.VeniceConstants.*;
 import static com.linkedin.venice.utils.TestUtils.*;
 import static org.mockito.Mockito.*;
 import static org.testng.Assert.*;
@@ -242,6 +243,8 @@ public class StoreIngestionTaskTest {
   private static byte[] getReplicationMetadataWithValueSchemaId(long timestamp, int valueSchemaId) {
     GenericRecord replicationMetadataRecord = new GenericData.Record(REPLICATION_METADATA_SCHEMA);
     replicationMetadataRecord.put("timestamp", timestamp);
+    replicationMetadataRecord.put(REPLICATION_CHECKPOINT_VECTOR_FIELD, new ArrayList<Long>());
+
     byte[] replicationMetadata = REPLICATION_METADATA_SERIALIZER.serialize(replicationMetadataRecord);
 
     ByteBuffer replicationMetadataWithValueSchemaId = ByteUtils.prependIntHeaderToByteBuffer(ByteBuffer.wrap(replicationMetadata), valueSchemaId, false);
