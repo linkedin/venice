@@ -96,6 +96,7 @@ public class MergeConflictResolverTest {
     ts.put("age", 20L);
 
     timestampRecord.put(0, 20L);
+    timestampRecord.put(1, new ArrayList<Long>());
 
     GenericRecord newRecord = new GenericData.Record(recordSchema);
     newRecord.put("id", "id10");
@@ -164,6 +165,7 @@ public class MergeConflictResolverTest {
     ts.put("age", 20L);
 
     timestampRecord.put(0, 20L);
+    timestampRecord.put(1, new ArrayList<Long>());
 
     MergeConflictResolver mergeConflictResolver = new MergeConflictResolver(schemaRepository, storeName, replicationMetadataVersionId);
     MergeConflictResult mergeConflictResult  = mergeConflictResolver.delete(getByteBufferOfReplicationMetadata(timestampRecord), 1, 30,1, 0);
@@ -216,6 +218,7 @@ public class MergeConflictResolverTest {
       payload.add(record);
       GenericRecord timeStampRecord = new GenericData.Record(aaSchema);
       timeStampRecord.put(0, (long) (i + 10));
+      timeStampRecord.put(1, new ArrayList<Long>());
       tsRecord.add(timeStampRecord);
       writeTs.add((long) (i + 15));
     }
