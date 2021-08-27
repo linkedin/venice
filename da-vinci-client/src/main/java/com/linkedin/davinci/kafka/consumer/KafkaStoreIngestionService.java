@@ -205,13 +205,16 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     this.compressorFactory = compressorFactory;
 
     VeniceServerConfig serverConfig = veniceConfigLoader.getVeniceServerConfig();
-    VeniceServerConsumerFactory veniceConsumerFactory = new VeniceServerConsumerFactory(serverConfig);
+    VeniceServerConsumerFactory veniceConsumerFactory = new VeniceServerConsumerFactory(serverConfig, kafkaMessageEnvelopeSchemaReader);
 
     /**
      * This new veniceConsumerJavaBasedFactory (underneath it works with java based admin client only) is needed for leader_offset_lag metrics to work.
      * TODO: This should be removed once the VeniceServerConsumerFactory uses java based admin client in production reliably.
      */
-    VeniceServerConsumerJavaBasedFactory veniceConsumerJavaBasedFactory = new VeniceServerConsumerJavaBasedFactory(serverConfig);
+    VeniceServerConsumerJavaBasedFactory veniceConsumerJavaBasedFactory = new VeniceServerConsumerJavaBasedFactory(
+            serverConfig,
+            kafkaMessageEnvelopeSchemaReader
+    );
 
     Properties veniceWriterProperties = veniceConfigLoader.getVeniceClusterConfig().getClusterProperties().toProperties();
     if (serverConfig.isKafkaOpenSSLEnabled()) {

@@ -2,6 +2,7 @@ package com.linkedin.davinci.kafka.consumer;
 
 import com.linkedin.venice.SSLConfig;
 import com.linkedin.davinci.config.VeniceServerConfig;
+import com.linkedin.venice.client.schema.SchemaReader;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.consumer.ApacheKafkaConsumer;
@@ -20,7 +21,8 @@ import static org.apache.kafka.common.config.SslConfigs.*;
 public class VeniceServerConsumerFactory extends KafkaClientFactory {
   protected final VeniceServerConfig serverConfig;
 
-  public VeniceServerConsumerFactory(VeniceServerConfig serverConfig) {
+  public VeniceServerConsumerFactory(VeniceServerConfig serverConfig, Optional<SchemaReader> kafkaMessageEnvelopeSchemaReader) {
+    super(kafkaMessageEnvelopeSchemaReader);
     this.serverConfig = serverConfig;
   }
 
@@ -68,7 +70,7 @@ public class VeniceServerConsumerFactory extends KafkaClientFactory {
     Properties clonedProperties = this.serverConfig.getClusterProperties().toProperties();
     clonedProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, kafkaBootstrapServers);
     clonedProperties.setProperty(KAFKA_ZK_ADDRESS, kafkaZkAddress);
-    return new VeniceServerConsumerFactory(new VeniceServerConfig(new VeniceProperties(clonedProperties)));
+    return new VeniceServerConsumerFactory(new VeniceServerConfig(new VeniceProperties(clonedProperties)), kafkaMessageEnvelopeSchemaReader);
   }
 
   @Override

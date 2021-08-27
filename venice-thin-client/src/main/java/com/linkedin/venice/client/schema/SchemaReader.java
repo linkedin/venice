@@ -39,7 +39,6 @@ public class SchemaReader extends MetadataReader implements SchemaRetriever {
   private Map<Integer, Schema> valueSchemaMap = new VeniceConcurrentHashMap<>();
   private Map<Schema, Integer> valueSchemaMapR = new VeniceConcurrentHashMap<>();
   private AtomicReference<SchemaEntry> latestValueSchemaEntry = new AtomicReference<>();
-
   private final String storeName;
 
   public SchemaReader(AbstractAvroStoreClient client) throws VeniceClientException {
@@ -179,7 +178,7 @@ public class SchemaReader extends MetadataReader implements SchemaRetriever {
     return fetchSingleSchema(requestPath, false);
   }
 
-  void refreshAllValueSchema() throws VeniceClientException {
+  private void refreshAllValueSchema() throws VeniceClientException {
     String requestPath = TYPE_VALUE_SCHEMA + "/" + storeName;
     try {
       byte[] response = storeClientGetRawWithRetry(requestPath);
