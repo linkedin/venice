@@ -637,8 +637,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             }
             if (newStore.isLeaderFollowerModelEnabled()) {
                 newStore.setNativeReplicationEnabled(config.isNativeReplicationEnabledAsDefaultForBatchOnly());
+                newStore.setActiveActiveReplicationEnabled(config.isActiveActiveReplicationEnabledAsDefaultForBatchOnly());
             } else {
                 newStore.setNativeReplicationEnabled(false);
+                newStore.setActiveActiveReplicationEnabled(false);
             }
 
             /**
@@ -1598,24 +1600,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                             }
                         }
                         version.setNativeReplicationEnabled(nativeReplicationEnabled);
-                    }
-
-                    /**
-                     * Apply cluster-level active-active replication configs to non-system stores. A/A support on system
-                     * store will happen in the future.
-                     */
-                    if (!store.isSystemStore()) {
-                        boolean activeActiveReplicationEnabled = version.isActiveActiveReplicationEnabled();
-                        if (store.isHybrid()) {
-                            activeActiveReplicationEnabled |= clusterConfig.isActiveActiveReplicationEnabledAsDefaultForHybrid();
-                        } else {
-                            if (store.isIncrementalPushEnabled()) {
-                                activeActiveReplicationEnabled |= clusterConfig.isActiveActiveReplicationEnabledAsDefaultForIncremental();
-                            } else {
-                                activeActiveReplicationEnabled |= clusterConfig.isActiveActiveReplicationEnabledAsDefaultForBatchOnly();
-                            }
-                        }
-                        store.setActiveActiveReplicationEnabled(activeActiveReplicationEnabled);
                     }
 
                     // Check whether native replication is enabled
