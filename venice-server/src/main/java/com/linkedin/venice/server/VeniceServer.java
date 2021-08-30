@@ -217,11 +217,16 @@ public class VeniceServer {
 
     Optional<SchemaReader> kafkaMessageEnvelopeSchemaReader = clientConfigForConsumer.map(cc -> ClientFactory.getSchemaReader(
         cc.setStoreName(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getSystemStoreName())));
+    Optional<SchemaReader> metaSystemStoreSchemaReader = clientConfigForConsumer.map(cc -> ClientFactory.getSchemaReader(
+        cc.setStoreName(AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.getSystemStoreName())));
 
-    //verify the current version of the KAFKA_MESSAGE_ENVELOPE schema is registered in ZK before moving ahead
-    if (serverConfig.isSchemaPresenceCheckEnabled() && kafkaMessageEnvelopeSchemaReader.isPresent()) {
-      new SchemaPresenceChecker(kafkaMessageEnvelopeSchemaReader.get(),
-          AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE).verifySchemaVersionPresentOrExit();
+    //verify the current version of the system schemas are registered in ZK before moving ahead
+    if (serverConfig.isSchemaPresenceCheckEnabled()) {
+      kafkaMessageEnvelopeSchemaReader.ifPresent(schemaReader -> new SchemaPresenceChecker(schemaReader,
+          AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE).verifySchemaVersionPresentOrExit());
+
+      metaSystemStoreSchemaReader.ifPresent(schemaReader -> new SchemaPresenceChecker(schemaReader,
+          AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE).verifySchemaVersionPresentOrExit());
     }
 
     compressorFactory = new StorageEngineBackedCompressorFactory(storageMetadataService);
