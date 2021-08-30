@@ -316,8 +316,12 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
   }
 
   public void cleanupTopicPartitionState(String topicName, int partitionId) {
-    topicPartitionSubscriptionMap.getOrDefault(topicName, Collections.emptyMap()).remove(partitionId);
-    leaderSessionIdMap.getOrDefault(topicName, Collections.emptyMap()).remove(partitionId);
+    if (topicPartitionSubscriptionMap.containsKey(topicName)) {
+      topicPartitionSubscriptionMap.get(topicName).remove(partitionId);
+    }
+    if (leaderSessionIdMap.containsKey(topicName)) {
+      leaderSessionIdMap.get(topicName).remove(partitionId);
+    }
   }
 
   public void cleanupTopicState(String topicName) {
