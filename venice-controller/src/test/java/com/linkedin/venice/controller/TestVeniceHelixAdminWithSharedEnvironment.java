@@ -90,7 +90,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
   public void testStartClusterAndCreatePush() {
     try {
       String storeName = TestUtils.getUniqueString("test-store");
-      veniceAdmin.createStore(clusterName, storeName, "dev", KEY_SCHEMA, VALUE_SCHEMA);
+      veniceAdmin.addStore(clusterName, storeName, "dev", KEY_SCHEMA, VALUE_SCHEMA);
       String topicName = Version.composeKafkaTopic(storeName, 1);
       Assert.assertEquals(veniceAdmin.getOffLinePushStatus(clusterName, topicName).getExecutionStatus(),
           ExecutionStatus.NOT_CREATED, "Offline job status should not already exist.");
@@ -162,7 +162,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     int minPartitionNumber = controllerConfig.getNumberOfPartition();
     String storeName = TestUtils.getUniqueString("test");
 
-    veniceAdmin.createStore(clusterName, storeName, "dev", KEY_SCHEMA, VALUE_SCHEMA);
+    veniceAdmin.addStore(clusterName, storeName, "dev", KEY_SCHEMA, VALUE_SCHEMA);
 
     long storeSize = partitionSize * (minPartitionNumber + 1);
     int numberOfPartition = veniceAdmin.calculateNumberOfPartitions(clusterName, storeName, storeSize);
@@ -193,12 +193,12 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     int minPartitionNumber = controllerConfig.getNumberOfPartition();
     String storeName = TestUtils.getUniqueString("test");
 
-    veniceAdmin.createStore(clusterName, storeName, "dev", KEY_SCHEMA, VALUE_SCHEMA);
+    veniceAdmin.addStore(clusterName, storeName, "dev", KEY_SCHEMA, VALUE_SCHEMA);
     long storeSize = partitionSize * (minPartitionNumber) + 1;
     int numberOfParition = veniceAdmin.calculateNumberOfPartitions(clusterName, storeName, storeSize);
-    Store store = veniceAdmin.getHelixVeniceClusterResources(clusterName).getStoreMetadataRepository().getStore(storeName);
+    Store store = veniceAdmin.getHelixVeniceClusterResources(clusterName).getMetadataRepository().getStore(storeName);
     store.setPartitionCount(numberOfParition);
-    veniceAdmin.getHelixVeniceClusterResources(clusterName).getStoreMetadataRepository().updateStore(store);
+    veniceAdmin.getHelixVeniceClusterResources(clusterName).getMetadataRepository().updateStore(store);
     Version v = veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(),
         numberOfParition, 1);
     veniceAdmin.setStoreCurrentVersion(clusterName, storeName, v.getNumber());
@@ -212,7 +212,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
   @Test
   public void testHandleVersionCreationFailure() {
     String storeName = TestUtils.getUniqueString("test");
-    veniceAdmin.createStore(clusterName, storeName, "owner", KEY_SCHEMA, VALUE_SCHEMA);
+    veniceAdmin.addStore(clusterName, storeName, "owner", KEY_SCHEMA, VALUE_SCHEMA);
     veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setReplicationFactor(DEFAULT_REPLICA_COUNT));
     // Register the handle for kill message. Otherwise, when job manager collect the old version, it would meet error
     // after sending kill job message. Because, participant can not handle message correctly.
@@ -244,7 +244,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
   @Test
   public void testDeleteOldVersions() {
     String storeName = TestUtils.getUniqueString("test");
-    veniceAdmin.createStore(clusterName, storeName, "owner", KEY_SCHEMA, VALUE_SCHEMA);
+    veniceAdmin.addStore(clusterName, storeName, "owner", KEY_SCHEMA, VALUE_SCHEMA);
     veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setReplicationFactor(DEFAULT_REPLICA_COUNT));
     // Register the handle for kill message. Otherwise, when job manager collect the old version, it would meet error
     // after sending kill job message. Because, participant can not handle message correctly.
@@ -282,7 +282,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
   public void testDeleteResourceThenRestartParticipant() throws Exception {
     delayParticipantJobCompletion(true);
     String storeName = "testDeleteResource";
-    veniceAdmin.createStore(clusterName, storeName, "owner", KEY_SCHEMA, VALUE_SCHEMA);
+    veniceAdmin.addStore(clusterName, storeName, "owner", KEY_SCHEMA, VALUE_SCHEMA);
     Version version =
         veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1);
     // Ensure the the replica has became BOOTSTRAP
@@ -346,7 +346,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     // the replicas will not all be COMPLETE, and the new version will not immediately be activated.
     String additionalNode = "localhost_6868";
     startParticipant(true, additionalNode);
-    veniceAdmin.createStore(clusterName, storeName, owner, KEY_SCHEMA, VALUE_SCHEMA);
+    veniceAdmin.addStore(clusterName, storeName, owner, KEY_SCHEMA, VALUE_SCHEMA);
     Version version = veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(),
         partitionCount, 2); // 2 replicas puts a replica on the blocking participant
     Assert.assertEquals(veniceAdmin.getCurrentVersion(clusterName, storeName), 0);
@@ -444,7 +444,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     veniceAdmin.setTopicManagerRepository(mockedTopicManageRepository);
     String storeName = "test-store";
     String pushJobId = "test-push-job-id";
-    veniceAdmin.createStore(clusterName, storeName, "test-owner", KEY_SCHEMA, VALUE_SCHEMA);
+    veniceAdmin.addStore(clusterName, storeName, "test-owner", KEY_SCHEMA, VALUE_SCHEMA);
     for (int i = 0; i < 5; i ++) {
       // Mimic the retry behavior by the admin consumption task.
       Assert.assertThrows(VeniceOperationAgainstKafkaTimedOut.class,
@@ -466,7 +466,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
   public void testAddVersionWhenClusterInMaintenanceMode() {
     String storeName = TestUtils.getUniqueString("test");
 
-    veniceAdmin.createStore(clusterName, storeName, "owner", KEY_SCHEMA, VALUE_SCHEMA);
+    veniceAdmin.addStore(clusterName, storeName, "owner", KEY_SCHEMA, VALUE_SCHEMA);
     veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setReplicationFactor(DEFAULT_REPLICA_COUNT));
     veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1);
     Assert.assertEquals(veniceAdmin.versionsForStore(clusterName, storeName).size(), 1);
@@ -502,7 +502,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     //Must not be able to get a real time topic until the store is created
     Assert.assertThrows(VeniceNoStoreException.class, () -> veniceAdmin.getRealTimeTopic(clusterName, storeName));
 
-    veniceAdmin.createStore(clusterName, storeName, "owner", KEY_SCHEMA, VALUE_SCHEMA);
+    veniceAdmin.addStore(clusterName, storeName, "owner", KEY_SCHEMA, VALUE_SCHEMA);
     veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams()
         .setHybridRewindSeconds(25L)
         .setHybridOffsetLagThreshold(100L)); //make store hybrid
@@ -531,7 +531,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     //Ensure original participant would hang on bootstrap state.
     delayParticipantJobCompletion(true);
     startParticipant(true, newNodeId);
-    veniceAdmin.createStore(clusterName, storeName, storeOwner, KEY_SCHEMA, VALUE_SCHEMA);
+    veniceAdmin.addStore(clusterName, storeName, storeOwner, KEY_SCHEMA, VALUE_SCHEMA);
     Version version = veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(),
         partitionCount, replicaCount);
 
@@ -590,7 +590,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
   @Test
   public void testDisableStoreWrite() {
     String storeName = TestUtils.getUniqueString("testDisableStoreWriter");
-    veniceAdmin.createStore(clusterName, storeName, storeOwner, KEY_SCHEMA, VALUE_SCHEMA);
+    veniceAdmin.addStore(clusterName, storeName, storeOwner, KEY_SCHEMA, VALUE_SCHEMA);
     veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setReplicationFactor(DEFAULT_REPLICA_COUNT));
     veniceAdmin.setStoreWriteability(clusterName, storeName, false);
     Store store = veniceAdmin.getStore(clusterName, storeName);
@@ -628,7 +628,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
   @Test
   public void testDisableStoreRead() {
     String storeName = TestUtils.getUniqueString("testDisableStoreRead");
-    veniceAdmin.createStore(clusterName, storeName, storeOwner, KEY_SCHEMA, VALUE_SCHEMA);
+    veniceAdmin.addStore(clusterName, storeName, storeOwner, KEY_SCHEMA, VALUE_SCHEMA);
     Version version =
         veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1);
     veniceAdmin.setStoreCurrentVersion(clusterName, storeName, version.getNumber());
@@ -645,7 +645,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
   @Test
   public void testAccessControl() {
     String storeName = "testAccessControl";
-    veniceAdmin.createStore(clusterName, storeName, storeOwner, KEY_SCHEMA, VALUE_SCHEMA);
+    veniceAdmin.addStore(clusterName, storeName, storeOwner, KEY_SCHEMA, VALUE_SCHEMA);
 
     veniceAdmin.setAccessControl(clusterName, storeName, false);
     Store store = veniceAdmin.getStore(clusterName, storeName);
@@ -694,7 +694,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     int partitionCount = 2;
     int replicaFactor = 1;
     // Start a new version with 2 partition and 1 replica
-    veniceAdmin.createStore(clusterName, storeName, "test", KEY_SCHEMA, VALUE_SCHEMA);
+    veniceAdmin.addStore(clusterName, storeName, "test", KEY_SCHEMA, VALUE_SCHEMA);
     Version version = veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(),
         partitionCount, replicaFactor);
     Map<String, Integer> nodesToPartitionMap = new HashMap<>();
@@ -754,7 +754,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
 
       // Prepare 3 version. The first two are completed and the last one is still ongoing.
       int versionCount = 3;
-      veniceAdmin.createStore(clusterName, storeName, "testOwner", KEY_SCHEMA, VALUE_SCHEMA);
+      veniceAdmin.addStore(clusterName, storeName, "testOwner", KEY_SCHEMA, VALUE_SCHEMA);
       veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setReplicationFactor(DEFAULT_REPLICA_COUNT));
       Version lastVersion = null;
       for (int i = 0; i < versionCount; i++) {
@@ -814,7 +814,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     Version version = store.increaseVersion();
     store.updateVersionStatus(version.getNumber(), VersionStatus.ONLINE);
     store.setCurrentVersion(version.getNumber());
-    veniceAdmin.getHelixVeniceClusterResources(clusterName).getStoreMetadataRepository().addStore(store);
+    veniceAdmin.getHelixVeniceClusterResources(clusterName).getMetadataRepository().addStore(store);
     veniceAdmin.setStoreReadability(clusterName, storeName, false);
     veniceAdmin.setStoreWriteability(clusterName, storeName, false);
 
@@ -829,7 +829,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
       HelixStatusMessageChannel channel = new HelixStatusMessageChannel(manager, helixMessageChannelStats);
       channel.registerHandler(KillOfflinePushMessage.class, message -> {/*ignore*/ });
     }
-    veniceAdmin.createStore(clusterName, storeName, "testOwner", KEY_SCHEMA, VALUE_SCHEMA);
+    veniceAdmin.addStore(clusterName, storeName, "testOwner", KEY_SCHEMA, VALUE_SCHEMA);
     veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setReplicationFactor(DEFAULT_REPLICA_COUNT));
     // Add two versions.
     veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1);
@@ -861,7 +861,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
       }
     });
 
-    veniceAdmin.createStore(clusterName, storeName, "testOwner", KEY_SCHEMA, VALUE_SCHEMA);
+    veniceAdmin.addStore(clusterName, storeName, "testOwner", KEY_SCHEMA, VALUE_SCHEMA);
     veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setReplicationFactor(DEFAULT_REPLICA_COUNT));
     // Add three versions.
     veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1);
@@ -891,7 +891,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
               -> stateModelFactory.makeTransitionCompleted(message.getKafkaTopic(), 0))
       );
     }
-    veniceAdmin.createStore(clusterName, storeName, storeOwner, "\"string\"", "\"string\"");
+    veniceAdmin.addStore(clusterName, storeName, storeOwner, "\"string\"", "\"string\"");
     veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setReplicationFactor(DEFAULT_REPLICA_COUNT));
     Version version =
         veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1,1);
@@ -929,7 +929,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
               -> stateModelFactory.makeTransitionCompleted(message.getKafkaTopic(), 0))
       );
 
-      veniceAdmin.createStore(clusterName, storeName, storeOwner, "\"string\"", "\"string\"");
+      veniceAdmin.addStore(clusterName, storeName, storeOwner, "\"string\"", "\"string\"");
       veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setReplicationFactor(DEFAULT_REPLICA_COUNT));
       Version version =
           veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1);
@@ -951,17 +951,17 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
   public void testReCreateStore() {
     String storeName = TestUtils.getUniqueString("testReCreateStore");
     int largestUsedVersionNumber = 100;
-    veniceAdmin.createStore(clusterName, storeName, storeOwner, "\"string\"", "\"string\"");
+    veniceAdmin.addStore(clusterName, storeName, storeOwner, "\"string\"", "\"string\"");
 
     Store store = veniceAdmin.getStore(clusterName, storeName);
     store.setLargestUsedVersionNumber(largestUsedVersionNumber);
     store.setEnableReads(false);
     store.setEnableWrites(false);
-    veniceAdmin.getHelixVeniceClusterResources(clusterName).getStoreMetadataRepository().updateStore(store);
+    veniceAdmin.getHelixVeniceClusterResources(clusterName).getMetadataRepository().updateStore(store);
     veniceAdmin.deleteStore(clusterName, storeName, Store.IGNORE_VERSION, true);
 
     //Re-create store with incompatible schema
-    veniceAdmin.createStore(clusterName, storeName, storeOwner, "\"long\"", "\"long\"");
+    veniceAdmin.addStore(clusterName, storeName, storeOwner, "\"long\"", "\"long\"");
     veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1);
     Assert.assertEquals(veniceAdmin.getKeySchema(clusterName, storeName).getSchema().toString(), "\"long\"");
     Assert.assertEquals(veniceAdmin.getValueSchema(clusterName, storeName, 1).getSchema().toString(), "\"long\"");
@@ -973,7 +973,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
   public void testReCreateStoreWithLegacyStore(){
     String storeName = TestUtils.getUniqueString("testReCreateStore");
     int largestUsedVersionNumber = 100;
-    veniceAdmin.createStore(clusterName, storeName, storeOwner, "\"string\"", "\"string\"");
+    veniceAdmin.addStore(clusterName, storeName, storeOwner, "\"string\"", "\"string\"");
 
     Store store = veniceAdmin.getStore(clusterName, storeName);
     store.setLargestUsedVersionNumber(largestUsedVersionNumber);
@@ -984,9 +984,9 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     StoreConfig storeConfig = storeConfigAccessor.getStoreConfig(storeName);
     storeConfig.setDeleting(true);
     storeConfigAccessor.updateConfig(storeConfig, false);
-    veniceAdmin.getHelixVeniceClusterResources(clusterName).getStoreMetadataRepository().updateStore(store);
+    veniceAdmin.getHelixVeniceClusterResources(clusterName).getMetadataRepository().updateStore(store);
     //Re-create store with incompatible schema
-    veniceAdmin.createStore(clusterName, storeName, storeOwner, "\"long\"", "\"long\"");
+    veniceAdmin.addStore(clusterName, storeName, storeOwner, "\"long\"", "\"long\"");
     veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1);
     Assert.assertEquals(veniceAdmin.getKeySchema(clusterName, storeName).getSchema().toString(), "\"long\"");
     Assert.assertEquals(veniceAdmin.getValueSchema(clusterName, storeName, 1).getSchema().toString(), "\"long\"");
@@ -997,7 +997,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
   @Test
   public void testChunkingEnabled() {
     String storeName = TestUtils.getUniqueString("test_store");
-    veniceAdmin.createStore(clusterName, storeName, storeOwner, "\"string\"", "\"string\"");
+    veniceAdmin.addStore(clusterName, storeName, storeOwner, "\"string\"", "\"string\"");
 
     Store store = veniceAdmin.getStore(clusterName, storeName);
     Assert.assertFalse(store.isChunkingEnabled());
@@ -1012,7 +1012,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
   public void testFindAllBootstrappingVersions() throws Exception {
     delayParticipantJobCompletion(true);
     String storeName = TestUtils.getUniqueString("test_store");
-    veniceAdmin.createStore(clusterName, storeName, storeOwner, "\"string\"", "\"string\"");
+    veniceAdmin.addStore(clusterName, storeName, storeOwner, "\"string\"", "\"string\"");
         veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1);
     veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setReplicationFactor(DEFAULT_REPLICA_COUNT));
     stateModelFactoryByNodeID.forEach((nodeId, stateModelFactory) ->
@@ -1043,7 +1043,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
   public void testGetFutureVersions() throws Exception {
     delayParticipantJobCompletion(true);
     String storeName = TestUtils.getUniqueString("test_store");
-    veniceAdmin.createStore(clusterName, storeName, storeOwner, "\"string\"", "\"string\"");
+    veniceAdmin.addStore(clusterName, storeName, storeOwner, "\"string\"", "\"string\"");
     veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1);
 
     int futureVersion = veniceAdmin.getFutureVersion(clusterName, storeName);
@@ -1081,7 +1081,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
   @Test
   public void testBatchGetLimit() {
     String storeName = TestUtils.getUniqueString("test_store");
-    veniceAdmin.createStore(clusterName, storeName, storeOwner, "\"string\"", "\"string\"");
+    veniceAdmin.addStore(clusterName, storeName, storeOwner, "\"string\"", "\"string\"");
 
     Store store = veniceAdmin.getStore(clusterName, storeName);
     Assert.assertEquals(store.getBatchGetLimit(), -1);
@@ -1095,7 +1095,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
   @Test
   public void testNumVersionsToPreserve() {
     String storeName = TestUtils.getUniqueString("test_store");
-    veniceAdmin.createStore(clusterName, storeName, storeOwner, "\"string\"", "\"string\"");
+    veniceAdmin.addStore(clusterName, storeName, storeOwner, "\"string\"", "\"string\"");
 
     Store store = veniceAdmin.getStore(clusterName, storeName);
     Assert.assertEquals(store.getNumVersionsToPreserve(), store.NUM_VERSION_PRESERVE_NOT_SET);
@@ -1177,7 +1177,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
   @Test
   public void testSetLargestUsedVersion() {
     String storeName = "testSetLargestUsedVersion";
-    veniceAdmin.createStore(clusterName, storeName, storeOwner, KEY_SCHEMA, VALUE_SCHEMA);
+    veniceAdmin.addStore(clusterName, storeName, storeOwner, KEY_SCHEMA, VALUE_SCHEMA);
     Store store = veniceAdmin.getStore(clusterName, storeName);
     Assert.assertEquals(store.getLargestUsedVersionNumber(), 0);
 
@@ -1195,7 +1195,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
   @Test
   public void testWriteComputationEnabled() {
     String storeName = TestUtils.getUniqueString("test_store");
-    veniceAdmin.createStore(clusterName, storeName, storeOwner, "\"string\"", "\"string\"");
+    veniceAdmin.addStore(clusterName, storeName, storeOwner, "\"string\"", "\"string\"");
 
     Store store = veniceAdmin.getStore(clusterName, storeName);
     Assert.assertFalse(store.isWriteComputationEnabled());
@@ -1209,7 +1209,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
   @Test
   public void testComputationEnabled() {
     String storeName = TestUtils.getUniqueString("test_store");
-    veniceAdmin.createStore(clusterName, storeName, storeOwner, KEY_SCHEMA, VALUE_SCHEMA);
+    veniceAdmin.addStore(clusterName, storeName, storeOwner, KEY_SCHEMA, VALUE_SCHEMA);
 
     Store store = veniceAdmin.getStore(clusterName, storeName);
     Assert.assertFalse(store.isReadComputationEnabled());
@@ -1226,7 +1226,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     String recordSchemaStr = TestPushUtils.USER_SCHEMA_STRING_WITH_DEFAULT;
     Schema derivedSchema = WriteComputeSchemaAdapter.parse(recordSchemaStr);
 
-    veniceAdmin.createStore(clusterName, storeName, storeOwner, KEY_SCHEMA, recordSchemaStr);
+    veniceAdmin.addStore(clusterName, storeName, storeOwner, KEY_SCHEMA, recordSchemaStr);
     veniceAdmin.addDerivedSchema(clusterName, storeName, 1, derivedSchema.toString());
     Assert.assertEquals(veniceAdmin.getDerivedSchemas(clusterName, storeName).size(), 1);
 
@@ -1237,7 +1237,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
   @Test
   public void testStoreLevelConfigUpdateShouldNotModifyExistingVersionLevelConfig() {
     String storeName = TestUtils.getUniqueString("test_store");
-    veniceAdmin.createStore(clusterName, storeName, storeOwner, "\"string\"", "\"string\"");
+    veniceAdmin.addStore(clusterName, storeName, storeOwner, "\"string\"", "\"string\"");
 
     /**
      * Create a version with default version level setting:
@@ -1294,7 +1294,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     String metadataStorePrefix = VeniceSystemStoreType.METADATA_STORE.getPrefix();
     String systemStoreOne = metadataStorePrefix + "_store_one";
     String systemStoreTwo = metadataStorePrefix + "_store_two";
-    veniceAdmin.createStore(clusterName, metadataStorePrefix,"Venice", KEY_SCHEMA, VALUE_SCHEMA, true);
+    veniceAdmin.addStore(clusterName, metadataStorePrefix,"Venice", KEY_SCHEMA, VALUE_SCHEMA, true);
     Store storeOne = veniceAdmin.getStore(clusterName, systemStoreOne);
     Store storeTwo = veniceAdmin.getStore(clusterName, systemStoreTwo);
     Assert.assertEquals(storeOne, storeTwo, "The two metadata system store should share the same Store in Zk");
@@ -1328,7 +1328,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     veniceAdmin.setTopicManagerRepository(mockedTopicManageRepository);
     String storeName = TestUtils.getUniqueString("test-store");
     String pushJobId1 = "test-push-job-id-1";
-    veniceAdmin.createStore(clusterName, storeName, "test-owner", KEY_SCHEMA, VALUE_SCHEMA);
+    veniceAdmin.addStore(clusterName, storeName, "test-owner", KEY_SCHEMA, VALUE_SCHEMA);
     /**
      * Enable L/F and native replication.
      */
@@ -1360,10 +1360,10 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
   @Test
   public void testUpdateStoreFailsWhenIncrementalAndHybridAreEnabledWithoutCorrectPolicy() {
     String incrementalEnabledStoreName = TestUtils.getUniqueString("testIncrementalStore");
-    veniceAdmin.createStore(clusterName, incrementalEnabledStoreName, storeOwner, "\"string\"", "\"string\"");
+    veniceAdmin.addStore(clusterName, incrementalEnabledStoreName, storeOwner, "\"string\"", "\"string\"");
 
     String hybridEnabledStoreName = TestUtils.getUniqueString("testHybridStore");
-    veniceAdmin.createStore(clusterName, hybridEnabledStoreName, storeOwner, "\"string\"", "\"string\"");
+    veniceAdmin.addStore(clusterName, hybridEnabledStoreName, storeOwner, "\"string\"", "\"string\"");
 
     veniceAdmin.updateStore(clusterName, incrementalEnabledStoreName, new UpdateStoreQueryParams().setIncrementalPushEnabled(true));
     veniceAdmin.updateStore(clusterName, hybridEnabledStoreName, new UpdateStoreQueryParams().setHybridOffsetLagThreshold(1).setHybridRewindSeconds(0));
@@ -1475,7 +1475,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
   @Test
   public void testNativeReplicationSourceFabric() {
     String storeName = TestUtils.getUniqueString("test_store_nr");
-    veniceAdmin.createStore(clusterName, storeName, storeOwner, KEY_SCHEMA, VALUE_SCHEMA);
+    veniceAdmin.addStore(clusterName, storeName, storeOwner, KEY_SCHEMA, VALUE_SCHEMA);
 
     Store store = veniceAdmin.getStore(clusterName, storeName);
     Assert.assertTrue(store.getNativeReplicationSourceFabric().isEmpty());
@@ -1489,7 +1489,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
   @Test
   public void testGetIncrementalPushVersion() {
     String incrementalEnabledStoreName = TestUtils.getUniqueString("testIncrementalStore");
-    veniceAdmin.createStore(clusterName, incrementalEnabledStoreName, storeOwner, "\"string\"", "\"string\"");
+    veniceAdmin.addStore(clusterName, incrementalEnabledStoreName, storeOwner, "\"string\"", "\"string\"");
     veniceAdmin.updateStore(clusterName, incrementalEnabledStoreName, new UpdateStoreQueryParams().setIncrementalPushEnabled(true));
     veniceAdmin.incrementVersionIdempotent(clusterName, incrementalEnabledStoreName, Version.guidBasedDummyPushId(), 1, 1);
     TestUtils.waitForNonDeterministicCompletion(TOTAL_TIMEOUT_FOR_SHORT_TEST_MS, TimeUnit.MILLISECONDS,
@@ -1501,7 +1501,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     Assert.assertThrows(VeniceException.class, () -> veniceAdmin.getIncrementalPushVersion(clusterName, incrementalEnabledStoreName));
 
     String incrementalAndHybridEnabledStoreName = TestUtils.getUniqueString("testHybridStore");
-    veniceAdmin.createStore(clusterName, incrementalAndHybridEnabledStoreName, storeOwner, "\"string\"", "\"string\"");
+    veniceAdmin.addStore(clusterName, incrementalAndHybridEnabledStoreName, storeOwner, "\"string\"", "\"string\"");
     veniceAdmin.updateStore(clusterName, incrementalAndHybridEnabledStoreName,
         new UpdateStoreQueryParams()
             .setHybridOffsetLagThreshold(1)
@@ -1534,7 +1534,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     veniceAdmin.setTopicManagerRepository(mockedTopicManageRepository);
     String storeName = TestUtils.getUniqueString("test-store");
     String pushJobId1 = "test-push-job-id-1";
-    veniceAdmin.createStore(clusterName, storeName, "test-owner", KEY_SCHEMA, VALUE_SCHEMA);
+    veniceAdmin.addStore(clusterName, storeName, "test-owner", KEY_SCHEMA, VALUE_SCHEMA);
     /**
      * Enable L/F and Active/Active replication
      */
@@ -1563,7 +1563,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     int timestampMetadataVersionId = multiClusterConfig.getCommonConfig().getTimestampMetadataVersionId();
     Schema metadataSchema = ReplicationMetadataSchemaAdapter.parse(recordSchemaStr, timestampMetadataVersionId);
 
-    veniceAdmin.createStore(clusterName, storeName, storeOwner, KEY_SCHEMA, recordSchemaStr);
+    veniceAdmin.addStore(clusterName, storeName, storeOwner, KEY_SCHEMA, recordSchemaStr);
     veniceAdmin.addTimestampMetadataSchema(clusterName, storeName, 1,  timestampMetadataVersionId, metadataSchema.toString());
     Collection<TimestampMetadataSchemaEntry> metadataSchemas = veniceAdmin.getTimestampMetadataSchemas(clusterName, storeName);
     Assert.assertEquals(metadataSchemas.size(), 1);
@@ -1573,7 +1573,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
   @Test
   public void testRepairStoreReplicationFactor() {
     String storeName = TestUtils.getUniqueString("test");
-    veniceAdmin.createStore(clusterName, storeName, storeOwner, "\"string\"", "\"string\"");
+    veniceAdmin.addStore(clusterName, storeName, storeOwner, "\"string\"", "\"string\"");
     Store store = veniceAdmin.getStore(clusterName, storeName);
     Assert.assertTrue(store.getReplicationFactor() > 0, "The replication factor for a new store should be positive.");
     veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setReplicationFactor(0));

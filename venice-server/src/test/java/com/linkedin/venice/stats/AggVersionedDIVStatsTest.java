@@ -78,7 +78,7 @@ public class AggVersionedDIVStatsTest {
   }
 
   @Test(dependsOnMethods = { "testStatsCanLoadAllStoresInTime" })
-  public void testStatsCanCreateStore() {
+  public void testStatsCanAddStore() {
     Store newStore = createStore("store2");
     stats.handleStoreCreated(newStore);
 

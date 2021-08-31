@@ -44,7 +44,7 @@ public class TestControllerEnforeSSL {
        */
       Admin admin = controllerWrapper.getVeniceAdmin();
       String storeName = TestUtils.getUniqueString("test");
-      admin.createStore(CLUSTER_NAME, storeName, "dev", KEY_SCHEMA, VALUE_SCHEMA);
+      admin.addStore(CLUSTER_NAME, storeName, "dev", KEY_SCHEMA, VALUE_SCHEMA);
 
       /**
        * Master controller discovery should still work.

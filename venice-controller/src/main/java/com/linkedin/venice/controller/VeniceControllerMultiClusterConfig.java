@@ -15,27 +15,27 @@ import java.util.Set;
 
 public class VeniceControllerMultiClusterConfig {
 
-  private final Map<String, VeniceControllerConfig> clusterToControllerConfigMap;
+  private final Map<String, VeniceControllerConfig> clusterToConfigMap;
 
   public VeniceControllerMultiClusterConfig(Collection<VeniceProperties> propertiesCollection) {
-    clusterToControllerConfigMap = new HashMap<>(propertiesCollection.size());
+    clusterToConfigMap = new HashMap<>(propertiesCollection.size());
     for (VeniceProperties properties : propertiesCollection) {
       VeniceControllerConfig controllerConfig = new VeniceControllerConfig(properties);
-      clusterToControllerConfigMap.put(controllerConfig.getClusterName(), controllerConfig);
+      clusterToConfigMap.put(controllerConfig.getClusterName(), controllerConfig);
     }
   }
 
-  public VeniceControllerMultiClusterConfig(Map<String, VeniceControllerConfig> clusterToControllerConfigMap){
-    this.clusterToControllerConfigMap = new HashMap<>(clusterToControllerConfigMap);
+  public VeniceControllerMultiClusterConfig(Map<String, VeniceControllerConfig> configMap){
+    clusterToConfigMap = new HashMap<>(configMap);
   }
 
-  public void addClusterConfig(VeniceControllerConfig controllerConfig) {
-    clusterToControllerConfigMap.put(controllerConfig.getClusterName(), controllerConfig);
+  public void addClusterConfig(VeniceControllerConfig clusterConfig) {
+    clusterToConfigMap.put(clusterConfig.getClusterName(), clusterConfig);
   }
 
-  public VeniceControllerConfig getControllerConfig(String clusterName) {
-    if (clusterToControllerConfigMap.containsKey(clusterName)) {
-      return clusterToControllerConfigMap.get(clusterName);
+  public VeniceControllerConfig getConfigForCluster(String clusterName) {
+    if (clusterToConfigMap.containsKey(clusterName)) {
+      return clusterToConfigMap.get(clusterName);
     } else {
       throw new VeniceNoClusterException(clusterName);
     }
@@ -178,7 +178,7 @@ public class VeniceControllerMultiClusterConfig {
   }
 
   public VeniceControllerConfig getCommonConfig() {
-    return clusterToControllerConfigMap.values().iterator().next();
+    return clusterToConfigMap.values().iterator().next();
   }
 
   public List<ControllerRoute> getDisabledRoutes() {
@@ -186,7 +186,7 @@ public class VeniceControllerMultiClusterConfig {
   }
 
   public Set<String> getClusters() {
-    return clusterToControllerConfigMap.keySet();
+    return clusterToConfigMap.keySet();
   }
 
   public String getPushJobStatusStoreClusterName() {

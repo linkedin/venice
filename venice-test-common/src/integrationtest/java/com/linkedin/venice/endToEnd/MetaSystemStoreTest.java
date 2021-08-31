@@ -270,7 +270,7 @@ public class MetaSystemStoreTest {
   @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testThinClientMetaStoreBasedRepository() throws InterruptedException {
     String regularVeniceStoreName = TestUtils.getUniqueString("venice_store");
-    createStoreAndMaterializeMetaSystemStore(regularVeniceStoreName);
+    addStoreAndMaterializeMetaSystemStore(regularVeniceStoreName);
     D2Client d2Client = null;
     NativeMetadataRepository nativeMetadataRepository = null;
     try {
@@ -301,7 +301,7 @@ public class MetaSystemStoreTest {
   @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testDaVinciClientMetaStoreBasedRepository() throws InterruptedException {
     String regularVeniceStoreName = TestUtils.getUniqueString("venice_store");
-    createStoreAndMaterializeMetaSystemStore(regularVeniceStoreName);
+    addStoreAndMaterializeMetaSystemStore(regularVeniceStoreName);
     // Perform another empty push to the meta system store to verify StoreStateReader and StoreState endpoint (system store discovery).
     String metaSystemStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(regularVeniceStoreName);
     VersionCreationResponse metaSystemStoreNewVersionResponse =
@@ -338,7 +338,7 @@ public class MetaSystemStoreTest {
     String regularVeniceStoreName = TestUtils.getUniqueString("venice_store");
     String metaSystemStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(regularVeniceStoreName);
     String valueSchema = INT_KEY_SCHEMA;
-    createStoreAndMaterializeMetaSystemStore(regularVeniceStoreName, valueSchema);
+    addStoreAndMaterializeMetaSystemStore(regularVeniceStoreName, valueSchema);
     final int value = 10;
     TestUtils.createVersionWithBatchData(controllerClient, regularVeniceStoreName, INT_KEY_SCHEMA, valueSchema,
         IntStream.range(0, 5).mapToObj(i -> new AbstractMap.SimpleEntry<>(i, value)));
@@ -398,7 +398,7 @@ public class MetaSystemStoreTest {
     // 1500 fields generate a schema that's roughly 150KB.
     int numberOfLargeSchemaVersions = 15;
     List<String> schemas = generateLargeValueSchemas(1500, numberOfLargeSchemaVersions);
-    createStoreAndMaterializeMetaSystemStore(regularVeniceStoreName, schemas.get(0));
+    addStoreAndMaterializeMetaSystemStore(regularVeniceStoreName, schemas.get(0));
     controllerClient.addValueSchema(regularVeniceStoreName, schemas.get(1));
     D2Client d2Client = null;
     NativeMetadataRepository nativeMetadataRepository = null;
@@ -498,12 +498,12 @@ public class MetaSystemStoreTest {
     });
   }
 
-  private void createStoreAndMaterializeMetaSystemStore(String storeName) {
-    createStoreAndMaterializeMetaSystemStore(storeName, VALUE_SCHEMA_1);
+  private void addStoreAndMaterializeMetaSystemStore(String storeName) {
+    addStoreAndMaterializeMetaSystemStore(storeName, VALUE_SCHEMA_1);
   }
 
-  private void createStoreAndMaterializeMetaSystemStore(String storeName, String valueSchema) {
-    // Verify and create Venice regular store if it doesn't exist.
+  private void addStoreAndMaterializeMetaSystemStore(String storeName, String valueSchema) {
+    // Verify and add Venice regular store if it doesn't exist.
     if (controllerClient.getStore(storeName).getStore() == null) {
       assertFalse(controllerClient.createNewStore(storeName, "test_owner", INT_KEY_SCHEMA, valueSchema).isError());
     }

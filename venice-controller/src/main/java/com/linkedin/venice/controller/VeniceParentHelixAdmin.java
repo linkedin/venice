@@ -260,7 +260,7 @@ public class VeniceParentHelixAdmin implements Admin {
       }
     }
     for (String cluster : multiClusterConfigs.getClusters()) {
-      VeniceControllerConfig config = multiClusterConfigs.getControllerConfig(cluster);
+      VeniceControllerConfig config = multiClusterConfigs.getConfigForCluster(cluster);
       adminCommandExecutionTrackers.put(cluster,
           new AdminCommandExecutionTracker(config.getClusterName(), veniceHelixAdmin.getExecutionIdAccessor(),
               veniceHelixAdmin.getControllerClientMap(config.getClusterName())));
@@ -331,14 +331,14 @@ public class VeniceParentHelixAdmin implements Admin {
           VeniceSystemStoreUtils.getPushJobDetailsStoreName(),
           PUSH_JOB_DETAILS_STORE_DESCRIPTOR + VeniceSystemStoreUtils.getPushJobDetailsStoreName(),
           PushJobStatusRecordKey.SCHEMA$.toString(), PushJobDetails.SCHEMA$.toString(),
-          multiClusterConfigs.getControllerConfig(clusterName).getNumberOfPartition());
+          multiClusterConfigs.getConfigForCluster(clusterName).getNumberOfPartition());
     }
 
-    if (multiClusterConfigs.getControllerConfig(clusterName).isParticipantMessageStoreEnabled()) {
+    if (multiClusterConfigs.getConfigForCluster(clusterName).isParticipantMessageStoreEnabled()) {
       String storeName = VeniceSystemStoreUtils.getParticipantStoreNameForCluster(clusterName);
       asyncSetupForInternalRTStore(clusterName, storeName, PARTICIPANT_MESSAGE_STORE_DESCRIPTOR + storeName,
           ParticipantMessageKey.SCHEMA$.toString(), ParticipantMessageValue.SCHEMA$.toString(),
-          multiClusterConfigs.getControllerConfig(clusterName).getNumberOfPartition());
+          multiClusterConfigs.getConfigForCluster(clusterName).getNumberOfPartition());
     }
   }
 
@@ -396,7 +396,7 @@ public class VeniceParentHelixAdmin implements Admin {
       // We should only perform the store validation if the current controller is the master controller of the requested cluster.
       Store store = getStore(clusterName, storeName);
       if (store == null) {
-        createStore(clusterName, storeName, VENICE_INTERNAL_STORE_OWNER, keySchema, valueSchema, true);
+        addStore(clusterName, storeName, VENICE_INTERNAL_STORE_OWNER, keySchema, valueSchema, true);
         store = getStore(clusterName, storeName);
         if (store == null) {
           throw new VeniceException("Unable to create or fetch the " + storeDescriptor);
@@ -552,80 +552,60 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
-  public void createStore(String clusterName, String storeName, String owner, String keySchema, String valueSchema,
-                          boolean isSystemStore, Optional<String> accessPermissions) {
+  public void addStore(String clusterName, String storeName, String owner, String keySchema, String valueSchema,
+      boolean isSystemStore, Optional<String> accessPermissions) {
     acquireAdminMessageLock(clusterName, storeName);
     try {
-      veniceHelixAdmin.checkPreConditionForCreateStore(clusterName, storeName, keySchema, valueSchema, isSystemStore, false);
+      veniceHelixAdmin.checkPreConditionForAddStore(clusterName, storeName, keySchema, valueSchema, isSystemStore, false);
       logger.info("Adding store: " + storeName + " to cluster: " + clusterName);
 
       //Provisioning ACL needs to be the first step in store creation process.
       provisionAclsForStore(storeName, accessPermissions, Collections.emptyList());
-      sendStoreCreationAdminMessage(clusterName, storeName, owner, keySchema, valueSchema);
-      mayBeMaterializeMetadataStoreVersion(storeName, clusterName);
-      maybeMaterializeMetaSystemStore(storeName, clusterName);
 
-      if (VeniceSystemStoreType.BATCH_JOB_HEARTBEAT_STORE.getPrefix().equals(storeName)) {
-        setupResourceForBatchJobHeartbeatStore(storeName);
+      // Write store creation message to Kafka
+      StoreCreation storeCreation = (StoreCreation) AdminMessageType.STORE_CREATION.getNewInstance();
+      storeCreation.clusterName = clusterName;
+      storeCreation.storeName = storeName;
+      storeCreation.owner = owner;
+      storeCreation.keySchema = new SchemaMeta();
+      storeCreation.keySchema.schemaType = SchemaType.AVRO_1_4.getValue();
+      storeCreation.keySchema.definition = keySchema;
+      storeCreation.valueSchema = new SchemaMeta();
+      storeCreation.valueSchema.schemaType = SchemaType.AVRO_1_4.getValue();
+      storeCreation.valueSchema.definition = valueSchema;
+
+      AdminOperation message = new AdminOperation();
+      message.operationType = AdminMessageType.STORE_CREATION.getValue();
+      message.payloadUnion = storeCreation;
+      sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
+      VeniceControllerConfig controllerConfig = multiClusterConfigs.getConfigForCluster(clusterName);
+      if (!VeniceSystemStoreUtils.isSystemStore(storeName) &&
+          controllerConfig.isMetadataSystemStoreAutoMaterializeEnabled()) {
+        Store zkSharedStore = getStore(clusterName, VeniceSystemStoreUtils.getSharedZkNameForMetadataStore(clusterName));
+        if (zkSharedStore != null && zkSharedStore.getCurrentVersion() != Store.NON_EXISTING_VERSION) {
+          materializeMetadataStoreVersion(clusterName, storeName, zkSharedStore.getCurrentVersion());
+        }
       }
-
-    } finally {
-      releaseAdminMessageLock(clusterName);
-    }
-  }
-
-  private void sendStoreCreationAdminMessage(String clusterName, String storeName, String owner, String keySchema, String valueSchema) {
-    // Write store creation message to Kafka
-    final StoreCreation storeCreation = (StoreCreation) AdminMessageType.STORE_CREATION.getNewInstance();
-    storeCreation.clusterName = clusterName;
-    storeCreation.storeName = storeName;
-    storeCreation.owner = owner;
-    storeCreation.keySchema = new SchemaMeta();
-    storeCreation.keySchema.schemaType = SchemaType.AVRO_1_4.getValue();
-    storeCreation.keySchema.definition = keySchema;
-    storeCreation.valueSchema = new SchemaMeta();
-    storeCreation.valueSchema.schemaType = SchemaType.AVRO_1_4.getValue();
-    storeCreation.valueSchema.definition = valueSchema;
-
-    final AdminOperation message = new AdminOperation();
-    message.operationType = AdminMessageType.STORE_CREATION.getValue();
-    message.payloadUnion = storeCreation;
-    sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
-  }
-
-  private void mayBeMaterializeMetadataStoreVersion(String storeName, String clusterName) {
-    VeniceControllerConfig controllerConfig = multiClusterConfigs.getControllerConfig(clusterName);
-    if (VeniceSystemStoreUtils.isSystemStore(storeName) || !controllerConfig.isMetadataSystemStoreAutoMaterializeEnabled()) {
-      return;
-    }
-    Store zkSharedStore = getStore(clusterName, VeniceSystemStoreUtils.getSharedZkNameForMetadataStore(clusterName));
-    if (zkSharedStore != null && zkSharedStore.getCurrentVersion() != Store.NON_EXISTING_VERSION) {
-      materializeMetadataStoreVersion(clusterName, storeName, zkSharedStore.getCurrentVersion());
-    }
-  }
-
-  private void maybeMaterializeMetaSystemStore(String storeName, String clusterName) {
-    VeniceControllerConfig controllerConfig = multiClusterConfigs.getControllerConfig(clusterName);
-    if (VeniceSystemStoreUtils.isSystemStore(storeName) ||
-            !controllerConfig.isZkSharedMetadataSystemSchemaStoreAutoCreationEnabled() ||
-            !controllerConfig.isAutoMaterializeMetaSystemStoreEnabled()) {
-      return;
-    }
-    String metaSystemStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName);
-    // Generate unique empty push id to ensure a new version is always created.
-    String pushJobId = AUTO_META_SYSTEM_STORE_PUSH_ID_PREFIX + System.currentTimeMillis();
-    Version version = incrementVersionIdempotent(clusterName, metaSystemStoreName, pushJobId,
+      if (!VeniceSystemStoreUtils.isSystemStore(storeName) &&
+          controllerConfig.isZkSharedMetadataSystemSchemaStoreAutoCreationEnabled() &&
+          controllerConfig.isAutoMaterializeMetaSystemStoreEnabled()) {
+        String metaSystemStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName);
+        // Generate unique empty push id to ensure a new version is always created.
+        String pushJobId = AUTO_META_SYSTEM_STORE_PUSH_ID_PREFIX + System.currentTimeMillis();
+        Version version = incrementVersionIdempotent(clusterName, metaSystemStoreName, pushJobId,
             calculateNumberOfPartitions(clusterName, metaSystemStoreName, DEFAULT_META_SYSTEM_STORE_SIZE),
             getReplicationFactor(clusterName, metaSystemStoreName));
-    writeEndOfPush(clusterName, metaSystemStoreName, version.getNumber(), true);
-  }
-
-  private void setupResourceForBatchJobHeartbeatStore(String batchJobHeartbeatStoreName) {
-    if (authorizerService.isPresent()) {
-      authorizerService.get().setupResource(new Resource(batchJobHeartbeatStoreName));
-      logger.info("Set up wildcard ACL regex for " + batchJobHeartbeatStoreName);
-    } else {
-      logger.warn("Skip setting up wildcard ACL regex for " + batchJobHeartbeatStoreName + " since the authorizer service is not provided");
+        writeEndOfPush(clusterName, metaSystemStoreName, version.getNumber(), true);
+      } else if (VeniceSystemStoreType.BATCH_JOB_HEARTBEAT_STORE.getPrefix().equals(storeName)) {
+        if (authorizerService.isPresent()) {
+          authorizerService.get().setupResource(new Resource(storeName));
+          logger.info("Set up wildcard ACL regex for " + storeName);
+        } else {
+          logger.warn("Skip setting up wildcard ACL regex for " + storeName + " since the authorizer service is not provided");
+        }
+      }
+    } finally {
+      releaseAdminMessageLock(clusterName);
     }
   }
 
@@ -688,7 +668,7 @@ public class VeniceParentHelixAdmin implements Admin {
   protected void cleanupHistoricalVersions(String clusterName, String storeName) {
     HelixVeniceClusterResources resources = veniceHelixAdmin.getHelixVeniceClusterResources(clusterName);
     try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
-      ReadWriteStoreRepository storeRepo = resources.getStoreMetadataRepository();
+      ReadWriteStoreRepository storeRepo = resources.getMetadataRepository();
       Store store = storeRepo.getStore(storeName);
       if (null == store) {
         logger.info("The store to clean up: " + storeName + " doesn't exist");
@@ -2206,7 +2186,7 @@ public class VeniceParentHelixAdmin implements Admin {
 
   @Override
   public int getDatacenterCount(String clusterName){
-    return multiClusterConfigs.getControllerConfig(clusterName).getChildDataCenterControllerUrlMap().size();
+    return multiClusterConfigs.getConfigForCluster(clusterName).getChildDataCenterControllerUrlMap().size();
   }
 
   @Override
