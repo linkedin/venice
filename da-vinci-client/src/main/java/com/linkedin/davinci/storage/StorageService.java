@@ -203,7 +203,7 @@ public class StorageService extends AbstractVeniceService {
     // Setup storage engine stats
     aggVersionedStorageEngineStats.setStorageEngine(topicName, engine);
 
-    logger.info("[DEBUGDEBUG] time spent on creating new storage Engine for store " + topicName + ": " + LatencyUtils.getLatencyInMS(startTimeInBuildingNewEngine) + " ms");
+    logger.info("time spent on creating new storage Engine for store " + topicName + ": " + LatencyUtils.getLatencyInMS(startTimeInBuildingNewEngine) + " ms");
     return engine;
   }
 
