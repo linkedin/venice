@@ -54,10 +54,11 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
    */
   private final StoreProperties storeProperties;
 
-  public ZKStore(String name, String owner, long createdTimeMs, PersistenceType persistenceType,
+
+  public ZKStore(String name, String owner, long createdTime, PersistenceType persistenceType,
       RoutingStrategy routingStrategy, ReadStrategy readStrategy, OfflinePushStrategy offlinePushStrategy,
       int replicationFactor) {
-    this(name, owner, createdTimeMs, persistenceType, routingStrategy, readStrategy, offlinePushStrategy,
+    this(name, owner, createdTime, persistenceType, routingStrategy, readStrategy, offlinePushStrategy,
         NON_EXISTING_VERSION, DEFAULT_STORAGE_QUOTA, DEFAULT_READ_QUOTA, null,
         new PartitionerConfigImpl(), // Every store comes with default partitioner settings.
         replicationFactor);

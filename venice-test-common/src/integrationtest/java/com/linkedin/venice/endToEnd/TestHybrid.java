@@ -499,7 +499,7 @@ public class TestHybrid {
         long streamingMessageLag = 2L;
 
         // Create empty store
-        admin.createStore(clusterName, storeName, "tester", "\"string\"", "\"string\"");
+        admin.addStore(clusterName, storeName, "tester", "\"string\"", "\"string\"");
         admin.updateStore(clusterName, storeName, new UpdateStoreQueryParams()
                                                       .setPartitionCount(1)
                                                       .setHybridRewindSeconds(streamingRewindSeconds)
@@ -675,8 +675,8 @@ public class TestHybrid {
 
       // create 2 stores
       // Create empty store
-      admin.createStore(clusterName, storeName1, "tester", "\"string\"", "\"string\"");
-      admin.createStore(clusterName, storeName2, "tester", "\"string\"", "\"string\"");
+      admin.addStore(clusterName, storeName1, "tester", "\"string\"", "\"string\"");
+      admin.addStore(clusterName, storeName2, "tester", "\"string\"", "\"string\"");
       UpdateStoreQueryParams storeSettings = new UpdateStoreQueryParams()
           .setHybridRewindSeconds(streamingRewindSeconds)
           .setHybridOffsetLagThreshold(streamingMessageLag)

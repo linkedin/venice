@@ -85,7 +85,7 @@ public class SystemSchemaInitializationRoutine implements ClusterLeaderInitializ
           }
           String firstKeySchemaStr = keySchema.isPresent() ? keySchema.get().toString() : DEFAULT_KEY_SCHEMA_STR;
           String firstSchemaStr = firstSchema.toString();
-          admin.createStore(clusterToInit, systemStoreName, VeniceConstants.SYSTEM_STORE_OWNER, firstKeySchemaStr,
+          admin.addStore(clusterToInit, systemStoreName, VeniceConstants.SYSTEM_STORE_OWNER, firstKeySchemaStr,
               firstSchemaStr, true);
           // Update the default store config
           storeMetadataUpdate.ifPresent(

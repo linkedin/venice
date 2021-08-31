@@ -245,7 +245,7 @@ public class AdminExecutionTask implements Callable<Void> {
       logger.info("Adding store: " + storeName + ", which already exists, so just skip this message: " + message);
     } else {
       // Adding store
-      admin.createStore(clusterName, storeName, owner, keySchema, valueSchema,
+      admin.addStore(clusterName, storeName, owner, keySchema, valueSchema,
           VeniceSystemStoreUtils.isSystemStore(storeName));
       logger.info("Added store: " + storeName + " to cluster: " + clusterName);
     }

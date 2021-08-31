@@ -59,7 +59,7 @@ public class VeniceControllerService extends AbstractVeniceService {
     consumerServicesByClusters = new HashMap<>(multiClusterConfigs.getClusters().size());
     for (String cluster : multiClusterConfigs.getClusters()) {
       AdminConsumerService adminConsumerService =
-          new AdminConsumerService(internalAdmin, multiClusterConfigs.getControllerConfig(cluster), metricsRepository, kafkaMessageEnvelopeSchemaReader);
+          new AdminConsumerService(internalAdmin, multiClusterConfigs.getConfigForCluster(cluster), metricsRepository, kafkaMessageEnvelopeSchemaReader);
       this.consumerServicesByClusters.put(cluster, adminConsumerService);
 
       this.admin.setAdminConsumerService(cluster, adminConsumerService);

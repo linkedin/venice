@@ -212,7 +212,7 @@ public class VeniceDistClusterControllerStateModel extends StateModel {
   @Transition(to = HelixState.STANDBY_STATE, from = HelixState.OFFLINE_STATE)
   public void onBecomeStandbyFromOffline(Message message, NotificationContext context) {
     executeStateTransition(message, () -> {
-      clusterConfig = multiClusterConfigs.getControllerConfig(clusterName);
+      clusterConfig = multiClusterConfigs.getConfigForCluster(clusterName);
       String controllerName = message.getTgtName();
       logger.info(controllerName + " becoming standby from offline for " + clusterName);
     });

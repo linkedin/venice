@@ -58,7 +58,7 @@ public class TestClusterLevelConfigForNativeReplication extends AbstractTestVeni
     /**
      * Do not enable any store-level config for leader/follower mode or native replication feature.
      */
-    veniceAdmin.createStore(clusterName, storeName, "test-owner", KEY_SCHEMA, VALUE_SCHEMA);
+    veniceAdmin.addStore(clusterName, storeName, "test-owner", KEY_SCHEMA, VALUE_SCHEMA);
 
     /**
      * Add a version

@@ -109,7 +109,7 @@ public class AbstractTestVeniceParentHelixAdmin {
     doReturn(controllerClients).when(internalAdmin).getControllerClientMap(any());
 
     resources = mockResources(config, clusterName);
-    doReturn(storeRepository).when(resources).getStoreMetadataRepository();
+    doReturn(storeRepository).when(resources).getMetadataRepository();
     ZkRoutersClusterManager manager = mock(ZkRoutersClusterManager.class);
     doReturn(manager).when(resources).getRoutersClusterManager();
     doReturn(10).when(manager).getLiveRoutersCount();
