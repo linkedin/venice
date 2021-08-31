@@ -16,8 +16,6 @@ import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.io.IOException;
 import org.apache.hadoop.io.BytesWritable;
 import org.apache.hadoop.mapred.JobConf;
-import org.apache.hadoop.mapred.Reporter;
-import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -76,7 +74,7 @@ public class TestKafkaInputRecordReader {
     conf.set(KAFKA_INPUT_TOPIC, topic);
 
     KafkaInputRecordReader reader = new KafkaInputRecordReader(new KafkaInputSplit(topic, 0, 0, 102),
-        conf, Mockito.mock(Reporter.class));
+        conf, null);
     for (int i = 0; i < 100; ++i) {
       BytesWritable key = new BytesWritable();
       KafkaInputMapperValue value = new KafkaInputMapperValue();
@@ -97,7 +95,7 @@ public class TestKafkaInputRecordReader {
     conf.set(KAFKA_INPUT_TOPIC, topic);
     conf.set(VenicePushJob.KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP, ChunkedKeySuffix.SCHEMA$.toString());
     KafkaInputRecordReader reader = new KafkaInputRecordReader(new KafkaInputSplit(topic, 0, 0, 102),
-        conf, Mockito.mock(Reporter.class));
+        conf, null);
     for (int i = 0; i < 100; ++i) {
       BytesWritable key = new BytesWritable();
       KafkaInputMapperValue value = new KafkaInputMapperValue();
@@ -124,7 +122,7 @@ public class TestKafkaInputRecordReader {
     conf.set(KAFKA_INPUT_TOPIC, topic);
     conf.set(VenicePushJob.KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP, ChunkedKeySuffix.SCHEMA$.toString());
     KafkaInputRecordReader reader = new KafkaInputRecordReader(new KafkaInputSplit(topic, 0, 0, 102),
-        conf, Mockito.mock(Reporter.class));
+        conf, null);
     for (int i = 0; i < 100; ++i) {
       BytesWritable key = new BytesWritable();
       KafkaInputMapperValue value = new KafkaInputMapperValue();
