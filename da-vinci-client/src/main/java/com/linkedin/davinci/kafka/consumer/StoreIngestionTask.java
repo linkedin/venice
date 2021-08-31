@@ -805,17 +805,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         if (!timestampLagIsAcceptable) {
           String msgIdentifier = this.kafkaVersionTopic + "_" + partitionId + "_ignore_time_lag";
           String realTimeTopic = Version.composeRealTimeTopic(storeName);
-          String realTimeTopicKafkaURL;
-          Set<String> realTimeTopicKafkaURLs = getRealTimeDataSourceKafkaAddress(partitionConsumptionState);
-          if (realTimeTopicKafkaURLs.isEmpty()) {
+          String realTimeTopicKafkaURL = getRealTimeDataSourceKafkaAddress(partitionConsumptionState).orElse(null);
+          if (realTimeTopicKafkaURL == null) {
             throw new VeniceException("Expect a real-time topic Kafka URL for store " + storeName);
-          } else if (realTimeTopicKafkaURLs.size() == 1) {
-            realTimeTopicKafkaURL = realTimeTopicKafkaURLs.iterator().next();
-          } else if (realTimeTopicKafkaURLs.contains(localKafkaServer)) {
-            realTimeTopicKafkaURL = localKafkaServer;
-          } else {
-            throw new VeniceException(String.format("Expect source RT Kafka URLs contains local Kafka URL. Got local " +
-                    "Kafka URL %s and RT source Kafka URLs %s", localKafkaServer, realTimeTopicKafkaURLs));
           }
           if (!cachedKafkaMetadataGetter.containsTopic(realTimeTopicKafkaURL, realTimeTopic)) {
             timestampLagIsAcceptable = true;
@@ -1020,12 +1012,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
                * In theory, there should be only one consumer for Samza Reprocessing topic.
                */
               String consumingTopic = record.topic();
-              Collection<KafkaConsumerWrapper> consumers = getConsumers();
+              Collection<KafkaConsumerWrapper> consumers = getConsumer();
               if (consumers.size() != 1) {
                 throw new VeniceException("Only one consumer is expected before processing EOP for topic: " +
                     kafkaVersionTopic + ", partition: " + consumingPartition);
               }
-              getConsumers().forEach(consumer -> consumer.pause(consumingTopic, consumingPartition));
+              getConsumer().forEach(consumer -> consumer.pause(consumingTopic, consumingPartition));
               logger.info("Paused consumption to topic: " + consumingTopic + ", partition: " + consumingPartition +
                   " because of one-time db compaction");
               PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(consumingPartition);
@@ -1485,7 +1477,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           logger.info("One-time compaction is done for store: " + kafkaVersionTopic + ", partition: " + partition +
               ", will resume the consumption");
           // Resume the consumption
-          Collection<KafkaConsumerWrapper> consumers = getConsumers();
+          Collection<KafkaConsumerWrapper> consumers = getConsumer();
           if (consumers.size() != 1) {
             throw new VeniceException("Only one consumer is expected for store: " + kafkaVersionTopic +
                 " when manual compaction is running");
@@ -1729,13 +1721,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
          * to main process when it completed ingestion in the forked process.
          */
         String topicToSubscribe = leaderState.equals(LeaderFollowerStateType.LEADER) ? newPartitionConsumptionState.getOffsetRecord().getLeaderTopic() : topic;
-        consumerSubscribe(
-                topicToSubscribe,
-                newPartitionConsumptionState.getSourceTopicPartition(topicToSubscribe),
-                offsetRecord.getLocalVersionTopicOffset(),
-                localKafkaServer
-        );
-
+        consumerSubscribe(topicToSubscribe, newPartitionConsumptionState, offsetRecord.getLocalVersionTopicOffset());
         partitionConsumptionSizeMap.put(partition, new StoragePartitionDiskUsage(partition, storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic)));
         logger.info(consumerTaskId + " subscribed to: Topic " + topicToSubscribe + " Partition Id " + partition + " Offset "
             + offsetRecord.getLocalVersionTopicOffset());
@@ -1830,10 +1816,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   protected abstract void checkLongRunningTaskState() throws InterruptedException;
   protected abstract void processConsumerAction(ConsumerAction message) throws InterruptedException;
-  protected abstract Set<String> getConsumptionSourceKafkaAddress(PartitionConsumptionState partitionConsumptionState);
+  protected abstract String getConsumptionSourceKafkaAddress(PartitionConsumptionState partitionConsumptionState);
 
-  protected Set<String> getRealTimeDataSourceKafkaAddress(PartitionConsumptionState partitionConsumptionState) {
-    return Collections.singleton(localKafkaServer);
+  protected Optional<String> getRealTimeDataSourceKafkaAddress(PartitionConsumptionState partitionConsumptionState) {
+    return Optional.of(localKafkaServer);
   }
 
   public Optional<PartitionConsumptionState> getPartitionConsumptionState(int partitionId) {
@@ -2700,23 +2686,16 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   public boolean consumerHasSubscription(String topic, PartitionConsumptionState partitionConsumptionState) {
-    Map<String, KafkaConsumerWrapper> consumerByKafkaURL = getConsumerByKafkaURL(partitionConsumptionState);
-    for (KafkaConsumerWrapper consumer : consumerByKafkaURL.values()) {
-      if (consumer.hasSubscription(topic, partitionConsumptionState.getSourceTopicPartition(topic))) {
-        return true;
-      }
-    }
-    return false;
+    KafkaConsumerWrapper consumer = getConsumer(partitionConsumptionState);
+    return consumer.hasSubscription(topic, partitionConsumptionState.getSourceTopicPartition(topic));
   }
 
   public void consumerUnSubscribe(String topic, PartitionConsumptionState partitionConsumptionState) {
-    Map<String, KafkaConsumerWrapper> consumerByKafkaURL = getConsumerByKafkaURL(partitionConsumptionState);
-    consumerByKafkaURL.forEach((kafkaURL, consumer) -> {
-      Instant startTime = Instant.now();
-      consumer.unSubscribe(topic, partitionConsumptionState.getSourceTopicPartition(topic));
-      logger.info(String.format("Consumer unsubscribed topic %s partition %d at %s. Took %d ms",
-              topic, partitionConsumptionState.getPartition(), kafkaURL, Instant.now().toEpochMilli() - startTime.toEpochMilli()));
-    });
+    Instant startTime = Instant.now();
+    KafkaConsumerWrapper consumer = getConsumer(partitionConsumptionState);
+    consumer.unSubscribe(topic, partitionConsumptionState.getSourceTopicPartition(topic));
+    logger.info(String.format("Consumer unsubscribed topic %s partition %d. Took %d ms",
+        topic, partitionConsumptionState.getPartition(), Instant.now().toEpochMilli() - startTime.toEpochMilli()));
   }
 
   public void consumerBatchUnsubscribe(Set<TopicPartition> topicPartitionSet) {
@@ -2728,21 +2707,21 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   public abstract void consumerUnSubscribeAllTopics(PartitionConsumptionState partitionConsumptionState);
 
-  public void consumerSubscribe(String topic, int partition, long startOffset, String kafkaURL) {
-    final long getConsumerTimeStart = System.currentTimeMillis();
-    KafkaConsumerWrapper consumer = getConsumer(kafkaURL, !Objects.equals(kafkaURL, localKafkaServer));
+  public void consumerSubscribe(String topic, PartitionConsumptionState partitionConsumptionState, long offset) {
+    long getConsumerTimeStart = System.currentTimeMillis();
+    KafkaConsumerWrapper consumer = getConsumer(partitionConsumptionState);
     versionedStorageIngestionStats.recordSubscribeGetConsumerLatency(storeName, versionNumber,
-            LatencyUtils.getElapsedTimeInMs(getConsumerTimeStart));
-
-    final long consumerSubscribeTimeStart = System.currentTimeMillis();
-    subscribe(consumer, topic, partition, startOffset);
+        LatencyUtils.getElapsedTimeInMs(getConsumerTimeStart));
+    // only the first subPartition takes care of consuming from RT topic to prevent duplicate process of a single record
+    long consumerSubscribeTimeStart = System.currentTimeMillis();
+    subscribe(consumer, topic, partitionConsumptionState.getSourceTopicPartition(topic), offset);
     versionedStorageIngestionStats.recordSubscribeConsumerSubscribeLatency(storeName, versionNumber,
-            LatencyUtils.getElapsedTimeInMs(consumerSubscribeTimeStart));
+        LatencyUtils.getElapsedTimeInMs(consumerSubscribeTimeStart));
   }
 
   public void consumerResetOffset(String topic, PartitionConsumptionState partitionConsumptionState) {
-    Map<String, KafkaConsumerWrapper> consumerByKafkaURL = getConsumerByKafkaURL(partitionConsumptionState);
-    consumerByKafkaURL.values().forEach(consumer -> consumer.resetOffset(topic, partitionConsumptionState.getSourceTopicPartition(topic)));
+    KafkaConsumerWrapper consumer = getConsumer(partitionConsumptionState);
+    consumer.resetOffset(topic, partitionConsumptionState.getSourceTopicPartition(topic));
   }
 
   /**
@@ -2771,24 +2750,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return recordsByKafkaURLs;
   }
 
-  public Map<String, KafkaConsumerWrapper> getConsumerByKafkaURL(PartitionConsumptionState partitionConsumptionState) {
-    final Set<String> sourceKafkaURLs = getConsumptionSourceKafkaAddress(partitionConsumptionState);
-    if (sourceKafkaURLs.isEmpty()) {
-      throw new VeniceException("Expect at least one source Kafka URL for " + partitionConsumptionState);
+  public KafkaConsumerWrapper getConsumer(PartitionConsumptionState partitionConsumptionState) {
+    final String kafkaSourceAddress = getConsumptionSourceKafkaAddress(partitionConsumptionState);
+    if (kafkaSourceAddress == null) {
+      throw new VeniceException("Expect a source Kafka URL for " + partitionConsumptionState);
     }
-    Map<String, KafkaConsumerWrapper> consumerByKafkaURL = new HashMap<>(sourceKafkaURLs.size());
-    sourceKafkaURLs.forEach(sourceKafkaURL -> {
-      consumerByKafkaURL.put(
-              sourceKafkaURL,
-              getConsumer(sourceKafkaURL, partitionConsumptionState.consumeRemotely())
-      );
-    });
-    return consumerByKafkaURL;
-  }
 
-  private KafkaConsumerWrapper getConsumer(String kafkaURL, boolean consumeRemotely) {
-    return consumerMap.computeIfAbsent(kafkaURL, source -> {
-      Properties consumerProps = updateKafkaConsumerProperties(kafkaProps, kafkaURL, consumeRemotely);
+    return consumerMap.computeIfAbsent(kafkaSourceAddress, source -> {
+      Properties consumerProps = updateKafkaConsumerProperties(kafkaProps, kafkaSourceAddress, partitionConsumptionState.consumeRemotely());
       if (serverConfig.isSharedConsumerPoolEnabled()) {
         return aggKafkaConsumerService.getConsumer(consumerProps,this);
       } else {
@@ -3078,7 +3047,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return kafkaVersionTopic;
   }
 
-  Collection<KafkaConsumerWrapper> getConsumers() {
+  Collection<KafkaConsumerWrapper> getConsumer() {
     return consumerMap.values();
   }
 

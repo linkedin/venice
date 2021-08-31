@@ -506,20 +506,7 @@ public class ServiceFactory {
         VeniceMultiClusterWrapper.generateService("", numberOfClusters, numberOfControllers,
             numberOfServers, numberOfRouters, DEFAULT_REPLICATION_FACTOR, DEFAULT_PARTITION_SIZE_BYTES, false, false,
             DEFAULT_DELAYED_TO_REBALANCE_MS, DEFAULT_REPLICATION_FACTOR - 1, DEFAULT_SSL_TO_STORAGE_NODES,
-            true, false, Optional.empty(), Optional.empty(),
-                Optional.empty(), Optional.empty(), false, false));
-  }
-
-  public static VeniceMultiClusterWrapper getVeniceMultiClusterWrapper(String coloName, KafkaBrokerWrapper kafkaBrokerWrapper,
-                                                                       ZkServerWrapper zkServerWrapper, int numberOfClusters, int numberOfControllers, int numberOfServers, int numberOfRouters,
-                                                                       int replicationFactor, boolean randomizeClusterName, boolean multiColoSetup, boolean multiD2,
-                                                                       Optional<Properties> childControllerProperties, Optional<VeniceProperties> veniceProperties, boolean forkServer) {
-    return getService(VeniceMultiClusterWrapper.SERVICE_NAME,
-            VeniceMultiClusterWrapper.generateService(coloName, numberOfClusters, numberOfControllers,
-                    numberOfServers, numberOfRouters, replicationFactor, DEFAULT_PARTITION_SIZE_BYTES, false, false,
-                    DEFAULT_DELAYED_TO_REBALANCE_MS, replicationFactor - 1, DEFAULT_SSL_TO_STORAGE_NODES, randomizeClusterName,
-                    multiColoSetup, Optional.of(zkServerWrapper), Optional.of(kafkaBrokerWrapper), childControllerProperties,
-                    veniceProperties, multiD2, forkServer));
+            true, false, Optional.empty(), Optional.empty(), false, false));
   }
 
   /**
@@ -532,7 +519,7 @@ public class ServiceFactory {
         VeniceMultiClusterWrapper.generateService(coloName, numberOfClusters, numberOfControllers,
             numberOfServers, numberOfRouters, replicationFactor, DEFAULT_PARTITION_SIZE_BYTES, false, false,
             DEFAULT_DELAYED_TO_REBALANCE_MS, replicationFactor - 1, DEFAULT_SSL_TO_STORAGE_NODES, randomizeClusterName,
-            multiColoSetup, Optional.empty(), Optional.empty(), childControllerProperties, veniceProperties, multiD2, forkServer));
+            multiColoSetup, childControllerProperties, veniceProperties, multiD2, forkServer));
   }
 
   public static VeniceTwoLayerMultiColoMultiClusterWrapper getVeniceTwoLayerMultiColoMultiClusterWrapper(int numberOfColos,

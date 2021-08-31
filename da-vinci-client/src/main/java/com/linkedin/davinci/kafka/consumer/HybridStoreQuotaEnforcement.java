@@ -208,12 +208,12 @@ public class HybridStoreQuotaEnforcement implements StoreDataChangedListener {
    * partition without affecting partition subscription
    */
   private void pausePartition(int partition, String consumingTopic) {
-    this.storeIngestionTask.getConsumers().forEach(consumer -> consumer.pause(consumingTopic, partition));
+    this.storeIngestionTask.getConsumer().forEach(consumer -> consumer.pause(consumingTopic, partition));
     this.pausedPartitions.add(partition);
   }
 
   private void resumePartition(int partition, String consumingTopic) {
-    this.storeIngestionTask.getConsumers().forEach(consumer -> consumer.resume(consumingTopic, partition));
+    this.storeIngestionTask.getConsumer().forEach(consumer -> consumer.resume(consumingTopic, partition));
     this.pausedPartitions.remove(partition);
   }
 

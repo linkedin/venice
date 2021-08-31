@@ -48,7 +48,6 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
       int numberOfClusters, int numberOfControllers, int numberOfServers, int numberOfRouters, int replicationFactor,
       int partitionSize, boolean enableWhitelist, boolean enableAutoJoinWhitelist, long rebalanceDelayMs,
       int minActiveReplica, boolean sslToStorageNodes, boolean randomizeClusterName, boolean multiColoSetup,
-      Optional<ZkServerWrapper> optionalZkServerWrapper, Optional<KafkaBrokerWrapper> optionalKafkaBrokerWrapper,
       Optional<Properties> childControllerProperties, Optional<VeniceProperties> veniceProperties, boolean multiD2,
       boolean forkServer) {
     ZkServerWrapper zkServerWrapper = null;
@@ -58,8 +57,8 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
     Map<Integer, VeniceControllerWrapper> controllerMap = new HashMap<>();
 
     try {
-      zkServerWrapper = optionalZkServerWrapper.isPresent() ? optionalZkServerWrapper.get() : ServiceFactory.getZkServer();
-      kafkaBrokerWrapper = optionalKafkaBrokerWrapper.isPresent() ? optionalKafkaBrokerWrapper.get() : ServiceFactory.getKafkaBroker(zkServerWrapper);
+      zkServerWrapper = ServiceFactory.getZkServer();
+      kafkaBrokerWrapper = ServiceFactory.getKafkaBroker(zkServerWrapper);
       brooklinWrapper = ServiceFactory.getBrooklinWrapper(kafkaBrokerWrapper);
       String clusterToD2 = "";
       String[] clusterNames = new String[numberOfClusters];
