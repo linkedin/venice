@@ -644,8 +644,8 @@ public class AdminConsumptionTask implements Runnable, Closeable {
       boolean throwException = true;
       String exceptionString = "Last delegated execution id was: " + lastDelegatedExecutionId
           + " ,but incoming execution id is: " + incomingExecutionId;
-      String producerInfoString = " Previous producer info: " + producerInfo.toString() + " Incoming message producer info: "
-          + record.value().producerMetadata;
+      String producerInfoString = " Previous producer info: " + (producerInfo == null ? "null" :producerInfo.toString())
+          + " Incoming message producer info: " + record.value().producerMetadata;
       if (producerInfo != null) {
         throwException = !producerInfo.isIncomingMessageValid(record.value().producerMetadata);
       }
