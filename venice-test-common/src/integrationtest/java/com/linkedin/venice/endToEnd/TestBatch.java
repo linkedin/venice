@@ -1101,4 +1101,41 @@ public abstract class TestBatch {
       }
     }
   }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testKafkaInputBatchJobSucceedsWhenSourceTopicIsEmpty() throws Exception {
+    H2VValidator emptyValidator = (avroClient, vsonClient, metricsRepository) -> {
+    };
+
+    //Run an Empty Push
+    String storeName = testBatchStore(inputDir -> {
+      Schema recordSchema = writeEmptyAvroFileWithUserSchema(inputDir);
+      return new Pair<>(recordSchema.getField("id").schema(), recordSchema.getField("name").schema());
+    }, properties -> {}, emptyValidator);
+
+    //Verify the version is online
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+      int version = veniceCluster.getRandmonVeniceController()
+          .getVeniceAdmin()
+          .getCurrentVersion(veniceCluster.getClusterName(), storeName);
+      Assert.assertEquals(version, 1);
+    });
+
+    // Re-push with Kafka Input Format
+    testBatchStore(inputDir -> new Pair<>(Schema.create(Schema.Type.NULL), Schema.create(Schema.Type.NULL)),
+        properties -> {
+          properties.setProperty(SOURCE_KAFKA, "true");
+          properties.setProperty(KAFKA_INPUT_TOPIC, Version.composeKafkaTopic(storeName, 1));
+          properties.setProperty(KAFKA_INPUT_BROKER_URL, veniceCluster.getKafka().getAddress());
+          properties.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
+        }, emptyValidator, storeName, new UpdateStoreQueryParams(), false);
+
+    //Verify the previous repush succeeded and new version is online
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+      int version = veniceCluster.getRandmonVeniceController()
+          .getVeniceAdmin()
+          .getCurrentVersion(veniceCluster.getClusterName(), storeName);
+      Assert.assertEquals(version, 2);
+    });
+  }
 }

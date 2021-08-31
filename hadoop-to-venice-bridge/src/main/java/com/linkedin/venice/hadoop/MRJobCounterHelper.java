@@ -30,6 +30,9 @@ public class MRJobCounterHelper {
   private static final String KAFKA_PRODUCER_METRIC_FOR_BROKER = "%s for %s";
   static final String COUNTER_GROUP_KAFKA_BROKER = "Kafka metrics aggregated per broker";
 
+  private static final String COUNTER_GROUP_KAFKA_INPUT_FORMAT = "KafkaInputFormat";
+  private static final String COUNTER_PUT_OR_DELETE_RECORDS = "put or delete records";
+
   static final GroupAndCounterNames WRITE_ACL_FAILURE_GROUP_COUNTER_NAME =
       new GroupAndCounterNames(COUNTER_GROUP_KAFKA, AUTHORIZATION_FAILURES);
 
@@ -59,6 +62,10 @@ public class MRJobCounterHelper {
 
   static final GroupAndCounterNames REDUCER_CLOSED_COUNT_GROUP_COUNTER_NAME =
       new GroupAndCounterNames(MR_JOB_STATUS, REDUCER_JOB_CLOSED_COUNT);
+
+  static final GroupAndCounterNames TOTAL_PUT_OR_DELETE_COUNT_GROUP_COUNTER_NAME =
+      new GroupAndCounterNames(COUNTER_GROUP_KAFKA_INPUT_FORMAT, COUNTER_PUT_OR_DELETE_RECORDS);
+
 
   private MRJobCounterHelper() {
     // Util class
@@ -104,6 +111,10 @@ public class MRJobCounterHelper {
     incrAmountWithGroupCounterName(reporter, TOTAL_UNCOMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME, amount);
   }
 
+  public static void incrTotalPutOrDeleteRecordCount(Reporter reporter, long amount) {
+    incrAmountWithGroupCounterName(reporter, TOTAL_PUT_OR_DELETE_COUNT_GROUP_COUNTER_NAME, amount);
+  }
+
   static long getWriteAclAuthorizationFailureCount(Reporter reporter) {
     return getCountWithGroupCounterName(reporter, WRITE_ACL_FAILURE_GROUP_COUNTER_NAME);
   }
@@ -122,6 +133,10 @@ public class MRJobCounterHelper {
 
   static long getTotalValueSize(Reporter reporter) {
     return getCountWithGroupCounterName(reporter, TOTAL_VALUE_SIZE_GROUP_COUNTER_NAME);
+  }
+
+  public static long getTotalPutOrDeleteRecordsCount(Reporter reporter) {
+    return getCountWithGroupCounterName(reporter, TOTAL_PUT_OR_DELETE_COUNT_GROUP_COUNTER_NAME);
   }
 
   static long getReducerClosedCount(Counters counters) {
@@ -154,6 +169,10 @@ public class MRJobCounterHelper {
 
   static long getTotalUncompressedValueSize(Counters counters) {
     return getCountFromCounters(counters, TOTAL_UNCOMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME);
+  }
+
+  static long getTotalPutOrDeleteRecordsCount(Counters counters) {
+    return getCountFromCounters(counters, TOTAL_PUT_OR_DELETE_COUNT_GROUP_COUNTER_NAME);
   }
 
   private static long getCountFromCounters(Counters counters, GroupAndCounterNames groupAndCounterNames) {

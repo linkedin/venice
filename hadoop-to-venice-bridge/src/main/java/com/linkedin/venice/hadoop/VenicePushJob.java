@@ -953,11 +953,27 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
   private void validateCountersAfterPush() throws IOException {
     final long reducerClosedCount = MRJobCounterHelper.getReducerClosedCount(runningJob.getCounters());
     if (inputFileHasRecords) {
+      long totalPutOrDeleteRecordsCount = 0;
+      if (pushJobSetting.isSourceKafka) {
+        totalPutOrDeleteRecordsCount = MRJobCounterHelper.getTotalPutOrDeleteRecordsCount(runningJob.getCounters());
+        LOGGER.info(
+            "Source kafka input topic : " + pushJobSetting.kafkaInputTopic + " has " + totalPutOrDeleteRecordsCount
+                + " records");
+      }
       if (reducerClosedCount < kafkaTopicInfo.partitionCount) {
+        /**
+         * No reducer tasks gets created if there is no data record present in source kafka topic in Kafka Input Format mode.
+         * This is possible if the current version is created because of an empty push. Let's check to make sure this is
+         * indeed the case and don't fail the job and instead let the job continue. This will basically be equivalent of
+         * another empty push which will create a new version.
+         */
+        if (pushJobSetting.isSourceKafka && totalPutOrDeleteRecordsCount == 0) {
+          return;
+        }
         throw new VeniceException(String.format(
             "MR job counter is not reliable since the reducer job closed count (%d) < the partition count (%d), "
-                + "while the input file data size is %d byte(s)",
-            reducerClosedCount, kafkaTopicInfo.partitionCount, inputFileDataSize));
+                + "while the input file data size is %d byte(s)", reducerClosedCount, kafkaTopicInfo.partitionCount,
+            inputFileDataSize));
       }
     } else {
       verifyCountersWithZeroValues();

@@ -1,6 +1,7 @@
 package com.linkedin.venice.hadoop.input.kafka;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.hadoop.MRJobCounterHelper;
 import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperValue;
 import com.linkedin.venice.hadoop.input.kafka.avro.MapperValueType;
@@ -47,6 +48,7 @@ public class KafkaInputRecordReader implements RecordReader<BytesWritable, Kafka
   private static final ByteBuffer EMPTY_BYTE_BUFFER = ByteBuffer.wrap(new byte[0]);
   private static final Logger LOGGER = Logger.getLogger(KafkaInputRecordReader.class);
   private static final Long CONSUMER_POLL_TIMEOUT = TimeUnit.SECONDS.toMillis(1); // 1 second
+  private static final long LOG_RECORD_INTERVAL = 100000; //100K
   /**
    * Retry when the poll is returning empty result.
    */
@@ -67,6 +69,7 @@ public class KafkaInputRecordReader implements RecordReader<BytesWritable, Kafka
    */
   private Iterator<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>> recordIterator;
 
+  private final Reporter reporter;
 
   public KafkaInputRecordReader(InputSplit split, JobConf job, Reporter reporter) {
     if (!(split instanceof KafkaInputSplit)) {
@@ -92,6 +95,8 @@ public class KafkaInputRecordReader implements RecordReader<BytesWritable, Kafka
      */
     this.maxNumberOfRecords = endingOffset - startingOffset;
     this.consumer.subscribe(topicPartition.topic(), topicPartition.partition(), currentOffset);
+    this.reporter = reporter;
+    LOGGER.info("KafkaInputRecordReader started for TopicPartition: " + this.topicPartition + " starting offset: " + this.startingOffset + " ending offset: " + this.endingOffset);
   }
 
   /**
@@ -148,7 +153,11 @@ public class KafkaInputRecordReader implements RecordReader<BytesWritable, Kafka
           default:
             throw new IOException("Unexpected '" + messageType + "' message from Kafka topic partition: " + topicPartition + " with offset: " + record.offset());
         }
-
+        MRJobCounterHelper.incrTotalPutOrDeleteRecordCount(reporter, 1);
+        long recordCount = MRJobCounterHelper.getTotalPutOrDeleteRecordsCount(reporter);
+        if (recordCount % LOG_RECORD_INTERVAL == 0) {
+          LOGGER.info("KafkaInputRecordReader for TopicPartition: " + this.topicPartition + " has processed " + recordCount + " records");
+        }
         return true;
       } else {
         // We have pending data but we are unable to fetch any records so throw an exception and stop the job
