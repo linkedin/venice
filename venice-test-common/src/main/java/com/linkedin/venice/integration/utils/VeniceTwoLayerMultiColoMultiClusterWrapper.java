@@ -6,19 +6,14 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.StringJoiner;
 import org.apache.commons.io.IOUtils;
+
 import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
-
-import static com.linkedin.venice.ConfigKeys.*;
 
 
 public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
@@ -61,13 +56,10 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
 
     ZkServerWrapper zkServer = null;
     KafkaBrokerWrapper parentKafka = null;
-    List<KafkaBrokerWrapper> allKafkaBrokers = new ArrayList<>();
-
     try {
       zkServer = ServiceFactory.getZkServer();
       parentKafka = parentKafkaPort.isPresent() ? ServiceFactory.getKafkaBroker(zkServer, parentKafkaPort.get())
           : ServiceFactory.getKafkaBroker(zkServer);
-      allKafkaBrokers.add(parentKafka);
 
       String clusterToD2 = "";
       String[] clusterNames = new String[numberOfClustersInEachColo];
@@ -81,64 +73,13 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
         }
       }
       clusterToD2 = clusterToD2.substring(0, clusterToD2.length() - 1);
-      List<String> allColoNames = new ArrayList<>(numberOfColos);
-
-      for (int i = 0; i < numberOfColos; i++) {
-        allColoNames.add("dc-" + i);
-      }
-      Properties activeActiveRequiredChildControllerProps = new Properties();
-      StringJoiner commonSeparatedStringJoiner = new StringJoiner(",");
-      /**
-       * Need to build Zk servers and Kafka brokers first since they are building blocks of a Venice cluster. In other
-       * words, building the remaining part of a Venice cluster sometiems requires knowledge of all Kafka brokers/clusters
-       * and or Zookeeper servers.
-       */
-      Map<String, ZkServerWrapper> zkServerByColoName = new HashMap<>(allColoNames.size());
-      Map<String, KafkaBrokerWrapper> kafkaBrokerByColoName = new HashMap<>(allColoNames.size());
-
-      for (String coloName : allColoNames) {
-        ZkServerWrapper zkServerWrapper = ServiceFactory.getZkServer();
-        KafkaBrokerWrapper kafkaBrokerWrapper = ServiceFactory.getKafkaBroker(zkServerWrapper);
-        allKafkaBrokers.add(kafkaBrokerWrapper);
-        zkServerByColoName.put(coloName, zkServerWrapper);
-        kafkaBrokerByColoName.put(coloName, kafkaBrokerWrapper);
-        commonSeparatedStringJoiner.add(coloName);
-        activeActiveRequiredChildControllerProps.put(CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + coloName, kafkaBrokerWrapper.getAddress());
-      }
-      String childColoList = commonSeparatedStringJoiner.toString();
-      activeActiveRequiredChildControllerProps.put(ACTIVE_ACTIVE_REAL_TIME_SOURCE_FABRIC_LIST, childColoList);
-      activeActiveRequiredChildControllerProps.put(NATIVE_REPLICATION_FABRIC_WHITELIST, childColoList + "," + VeniceControllerWrapper.DEFAULT_PARENT_DATA_CENTER_REGION_NAME);
-
-      if (childControllerProperties.isPresent()) {
-        childControllerProperties.get().putAll(parentControllerProperties.orElse(new VeniceProperties()).toProperties());
-        childControllerProperties.get().putAll(activeActiveRequiredChildControllerProps);
-      } else {
-        Properties tempProps = new Properties(parentControllerProperties.orElse(new VeniceProperties()).toProperties());
-        tempProps.putAll(activeActiveRequiredChildControllerProps);
-        childControllerProperties = Optional.of(tempProps);
-      }
-      serverProperties = addKafkaClusterIDMappingToServerConfigs(serverProperties, allKafkaBrokers);
 
       // Create multiclusters
       for (int i = 0; i < numberOfColos; i++) {
-        String coloName = allColoNames.get(i);
+        String coloName = "dc-" + i;
         VeniceMultiClusterWrapper multiClusterWrapper =
-            ServiceFactory.getVeniceMultiClusterWrapper(
-                    coloName,
-                    kafkaBrokerByColoName.get(coloName),
-                    zkServerByColoName.get(coloName),
-                    numberOfClustersInEachColo,
-                    numberOfControllers,
-                    numberOfServers,
-                    numberOfRouters,
-                    replicationFactor,
-                    false,
-                    true,
-                    multiD2,
-                    childControllerProperties,
-                    serverProperties,
-                    forkServer
-            );
+            ServiceFactory.getVeniceMultiClusterWrapper(coloName, numberOfClustersInEachColo, numberOfControllers, numberOfServers,
+                numberOfRouters, replicationFactor, false, true, multiD2, childControllerProperties, serverProperties, forkServer);
         multiClusters.add(multiClusterWrapper);
       }
 
@@ -173,27 +114,6 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
       IOUtils.closeQuietly(parentKafka);
       IOUtils.closeQuietly(zkServer);
       throw e;
-    }
-  }
-
-  private static Optional<VeniceProperties> addKafkaClusterIDMappingToServerConfigs(
-          Optional<VeniceProperties> serverProperties,
-          List<KafkaBrokerWrapper> kafkaBrokers
-  ) {
-    if (serverProperties.isPresent()) {
-      StringJoiner stringJoiner = new StringJoiner(",");
-      int key = 0;
-      for (KafkaBrokerWrapper kafkaBroker : kafkaBrokers) {
-        stringJoiner.add(key + ":" + kafkaBroker.getAddress());
-        key++;
-      }
-      String kafkaClusterIdToUrlMapping = stringJoiner.toString();
-      Properties newServerProperties = serverProperties.get().getPropertiesCopy();
-      newServerProperties.put(SERVER_KAFKA_CLUSTER_ID_TO_URL, kafkaClusterIdToUrlMapping);
-      return Optional.of(new VeniceProperties(newServerProperties));
-
-    } else {
-      return serverProperties; // Do not populate if it is Optional.empty()
     }
   }
 

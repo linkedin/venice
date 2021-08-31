@@ -50,7 +50,7 @@ public class RocksDBMemoryEnforcement implements StoreDataChangedListener {
       return;
     }
     for (int partition : task.partitionConsumptionStateMap.keySet()) {
-      task.getConsumers().forEach(consumer -> consumer.pause(getConsumingTopic(partition), partition));
+      task.getConsumer().forEach(consumer -> consumer.pause(getConsumingTopic(partition), partition));
     }
     ingestionPaused = true;
   }
@@ -60,7 +60,7 @@ public class RocksDBMemoryEnforcement implements StoreDataChangedListener {
       return;
     }
     for (int partition : task.partitionConsumptionStateMap.keySet()) {
-      task.getConsumers().forEach(consumer -> consumer.resume(getConsumingTopic(partition), partition));
+      task.getConsumer().forEach(consumer -> consumer.resume(getConsumingTopic(partition), partition));
     }
     ingestionPaused = false;
   }
