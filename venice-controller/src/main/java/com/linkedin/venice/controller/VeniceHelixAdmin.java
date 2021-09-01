@@ -5075,6 +5075,17 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         VeniceControllerClusterConfig clusterConfig = getHelixVeniceClusterResources(clusterName).getConfig();
         if (storeName.isPresent()) {
             /**
+             * Legacy stores venice_system_store_davinci_push_status_store_<cluster_name> still exist.
+             * But {@link com.linkedin.venice.helix.HelixReadOnlyStoreRepositoryAdapter#getStore(String)} cannot find
+             * them by store names. Skip davinci push status stores until legacy znodes are cleaned up.
+             */
+            VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(storeName.get());
+            if (systemStoreType != null && systemStoreType.equals(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE)) {
+                logger.info("Will not enable native replication for davinci push status store " + storeName.get());
+                return;
+            }
+
+            /**
              * The function is invoked by {@link com.linkedin.venice.controller.kafka.consumer.AdminExecutionTask} if the
              * storeName is present.
              */
@@ -5188,6 +5199,17 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
         VeniceControllerClusterConfig clusterConfig = getHelixVeniceClusterResources(clusterName).getConfig();
         if (storeName.isPresent()) {
+            /**
+             * Legacy stores venice_system_store_davinci_push_status_store_<cluster_name> still exist.
+             * But {@link com.linkedin.venice.helix.HelixReadOnlyStoreRepositoryAdapter#getStore(String)} cannot find
+             * them by store names. Skip davinci push status stores until legacy znodes are cleaned up.
+             */
+            VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(storeName.get());
+            if (systemStoreType != null && systemStoreType.equals(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE)) {
+                logger.info("Will not enable active active replication for davinci push status store " + storeName.get());
+                return;
+            }
+
             /**
              * The function is invoked by {@link com.linkedin.venice.controller.kafka.consumer.AdminExecutionTask} if the
              * storeName is present.
