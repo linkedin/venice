@@ -384,6 +384,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
     Map<String, String> partitionerParams;
     int amplificationFactor;
     int targetStoreVersionForIncPush;
+    boolean chunkingEnabled;
   }
 
   private VersionTopicInfo kafkaTopicInfo;
@@ -812,7 +813,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
         pushJobDetails.pushId = pushId;
         pushJobDetails.partitionCount = kafkaTopicInfo.partitionCount;
         pushJobDetails.valueCompressionStrategy = kafkaTopicInfo.compressionStrategy.getValue();
-        pushJobDetails.chunkingEnabled = storeSetting.isChunkingEnabled;
+        pushJobDetails.chunkingEnabled = kafkaTopicInfo.chunkingEnabled;
         pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(PushJobDetailsStatus.TOPIC_CREATED.getValue()));
         pushJobHeartbeatSender.start(pushJobSetting.storeName, kafkaTopicInfo.version);
         sendPushJobDetailsToController();
@@ -1544,6 +1545,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
     kafkaTopicInfo.amplificationFactor = versionCreationResponse.getAmplificationFactor();
     kafkaTopicInfo.daVinciPushStatusStoreEnabled = versionCreationResponse.isDaVinciPushStatusStoreEnabled();
     kafkaTopicInfo.targetStoreVersionForIncPush = versionCreationResponse.getTargetVersionForIncPush();
+    kafkaTopicInfo.chunkingEnabled = storeSetting.isChunkingEnabled && !Version.isRealTimeTopic(kafkaTopicInfo.topic);
 
     if (pushJobSetting.isSourceKafka) {
       /**
@@ -1853,7 +1855,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
       });
     }
     conf.setBoolean(ALLOW_DUPLICATE_KEY, pushJobSetting.isDuplicateKeyAllowed);
-    conf.setBoolean(VeniceWriter.ENABLE_CHUNKING, storeSetting.isChunkingEnabled);
+    conf.setBoolean(VeniceWriter.ENABLE_CHUNKING, kafkaTopicInfo.chunkingEnabled);
 
     conf.set(STORAGE_QUOTA_PROP, Long.toString(storeSetting.storeStorageQuota));
 

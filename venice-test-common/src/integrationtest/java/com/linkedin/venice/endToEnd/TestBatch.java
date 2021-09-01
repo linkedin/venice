@@ -408,6 +408,7 @@ public abstract class TestBatch {
     }, new UpdateStoreQueryParams().setWriteComputationEnabled(true)
         .setLeaderFollowerModel(true)
         .setIncrementalPushEnabled(true)
+        .setChunkingEnabled(true)
         .setPartitionCount(3));
 
     testBatchStore(inputDir -> {
@@ -483,6 +484,8 @@ public abstract class TestBatch {
         }
       }, new UpdateStoreQueryParams()
           .setIncrementalPushEnabled(true)
+          .setLeaderFollowerModel(true)
+          .setChunkingEnabled(true)
           .setHybridOffsetLagThreshold(1)
           .setHybridRewindSeconds(0)
           .setIncrementalPushPolicy(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME)
@@ -497,7 +500,7 @@ public abstract class TestBatch {
       for (int i = 51; i <= 150; i++) {
         Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + (i * 2));
       }
-    }, storeName, null,false);
+    }, storeName, null, false);
 
     testBatchStore(inputDir -> {
       Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir);
