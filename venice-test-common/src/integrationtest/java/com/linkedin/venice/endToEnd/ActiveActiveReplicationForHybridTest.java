@@ -4,6 +4,7 @@ import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.integration.utils.MirrorMakerWrapper;
@@ -33,6 +34,7 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.IntStream;
+import org.apache.http.HttpStatus;
 import org.apache.samza.config.MapConfig;
 import org.apache.samza.system.OutgoingMessageEnvelope;
 import org.apache.samza.system.SystemProducer;
@@ -194,8 +196,43 @@ public class ActiveActiveReplicationForHybridTest {
       verifyDCConfigAARepl(dc0Client, storeName4, false, false, true);
       verifyDCConfigAARepl(dc1Client, storeName4, false, false,true);
       verifyDCConfigAARepl(dc2Client, storeName4, false,false, true);
+    }
+  }
 
+  @Test
+  public void testEnableNRisRequiredBeforeEnablingAA() {
+    String clusterName = CLUSTER_NAMES[0];
+    String storeName = TestUtils.getUniqueString("test-store");
+    VeniceControllerWrapper parentController =
+        parentControllers.stream().filter(c -> c.isMasterController(clusterName)).findAny().get();
+    try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentController.getControllerUrl())) {
+      parentControllerClient.createNewStore(storeName, "owner", STRING_SCHEMA, STRING_SCHEMA);
 
+      // Expect the request to fail since AA cannot be enabled without enabling NR
+      ControllerResponse controllerResponse = updateStore(storeName, parentControllerClient, Optional.of(false), Optional.of(true));
+      Assert.assertTrue(controllerResponse.isError());
+      Assert.assertTrue(controllerResponse.getError().contains("Http Status " + HttpStatus.SC_BAD_REQUEST)); // Must contain the correct HTTP status code
+
+      // Expect the request to succeed
+      controllerResponse = updateStore(storeName, parentControllerClient, Optional.of(true), Optional.of(true));
+      Assert.assertFalse(controllerResponse.isError());
+
+      // Create a new store
+      String anotherStoreName = TestUtils.getUniqueString("test-store");
+      parentControllerClient.createNewStore(anotherStoreName, "owner", STRING_SCHEMA, STRING_SCHEMA);
+
+      // Enable NR
+      controllerResponse = updateStore(storeName, parentControllerClient, Optional.of(true), Optional.of(false));
+      Assert.assertFalse(controllerResponse.isError());
+
+      // Enable AA after NR is enabled (expect to succeed)
+      controllerResponse = updateStore(storeName, parentControllerClient, Optional.empty(), Optional.of(true));
+      Assert.assertFalse(controllerResponse.isError());
+
+      // Disable NR and enable AA (expect to fail)
+      controllerResponse = updateStore(storeName, parentControllerClient, Optional.of(false), Optional.of(true));
+      Assert.assertTrue(controllerResponse.isError());
+      Assert.assertTrue(controllerResponse.getError().contains("Http Status " + HttpStatus.SC_BAD_REQUEST)); // Must contain the correct HTTP status code
     }
   }
 
@@ -213,14 +250,7 @@ public class ActiveActiveReplicationForHybridTest {
         parentControllers.stream().filter(c -> c.isMasterController(clusterName)).findAny().get();
     try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentController.getControllerUrl())) {
       parentControllerClient.createNewStore(storeName, "owner", STRING_SCHEMA, STRING_SCHEMA);
-      // Enable hybrid config, Leader/Follower state model and A/A replication policy
-      parentControllerClient.updateStore(storeName, new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
-          .setHybridRewindSeconds(25L)
-          .setHybridOffsetLagThreshold(1L)
-          .setLeaderFollowerModel(true)
-          .setNativeReplicationEnabled(true)
-          .setActiveActiveReplicationEnabled(true)
-          .setHybridDataReplicationPolicy(DataReplicationPolicy.ACTIVE_ACTIVE));
+      updateStore(storeName, parentControllerClient, Optional.of(true), Optional.of(true));
 
       // Empty push to create a version
       parentControllerClient.emptyPush(storeName, TestUtils.getUniqueString("empty-hybrid-push"), 1L);
@@ -296,14 +326,7 @@ public class ActiveActiveReplicationForHybridTest {
         parentControllers.stream().filter(c -> c.isMasterController(clusterName)).findAny().get();
     try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentController.getControllerUrl())) {
       parentControllerClient.createNewStore(storeName, "owner", STRING_SCHEMA, STRING_SCHEMA);
-      // Enable hybrid config, Leader/Follower state model and A/A replication policy
-      parentControllerClient.updateStore(storeName, new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
-          .setHybridRewindSeconds(25L)
-          .setHybridOffsetLagThreshold(1L)
-          .setLeaderFollowerModel(true)
-          .setNativeReplicationEnabled(true)
-          .setActiveActiveReplicationEnabled(true)
-          .setHybridDataReplicationPolicy(DataReplicationPolicy.ACTIVE_ACTIVE));
+      updateStore(storeName, parentControllerClient, Optional.of(true), Optional.of(true));
 
       // Empty push to create a version
       parentControllerClient.emptyPush(storeName, TestUtils.getUniqueString("empty-hybrid-push"), 1L);
@@ -441,6 +464,25 @@ public class ActiveActiveReplicationForHybridTest {
 //        Assert.assertEquals(valueObject1.toString(), value1, "DCR is not working properly");
 //      });
 //    }
+  }
+
+
+  private ControllerResponse updateStore(
+      String storeName,
+      ControllerClient parentControllerClient,
+      Optional<Boolean> enableNativeReplication,
+      Optional<Boolean> enableActiveActiveReplication
+  ) {
+    UpdateStoreQueryParams params = new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
+        .setHybridRewindSeconds(25L)
+        .setHybridOffsetLagThreshold(1L)
+        .setLeaderFollowerModel(true)
+        .setHybridDataReplicationPolicy(DataReplicationPolicy.ACTIVE_ACTIVE);
+
+    enableNativeReplication.ifPresent(params::setNativeReplicationEnabled);
+    enableActiveActiveReplication.ifPresent(params::setActiveActiveReplicationEnabled);
+
+    return parentControllerClient.updateStore(storeName, params);
   }
 
   public static void verifyDCConfigAARepl(ControllerClient controllerClient, String storeName, boolean isHybrid, boolean currentStatus, boolean expectedStatus) {

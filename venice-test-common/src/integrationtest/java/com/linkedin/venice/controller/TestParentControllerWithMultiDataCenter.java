@@ -270,7 +270,7 @@ public class TestParentControllerWithMultiDataCenter {
       Assert.assertFalse(schemaResponse2.isError(), "addValeSchema returned error: " + schemaResponse2.getError());
 
       UpdateStoreQueryParams updateStoreToEnableAARepl =
-          new UpdateStoreQueryParams().setLeaderFollowerModel(true).setActiveActiveReplicationEnabled(true);
+          new UpdateStoreQueryParams().setLeaderFollowerModel(true).setNativeReplicationEnabled(true).setActiveActiveReplicationEnabled(true);
       TestPushUtils.updateStore(clusterName, storeName, parentControllerClient, updateStoreToEnableAARepl);
       /**
        * Test Active/Active replication config enablement generates the active active metadata schema.

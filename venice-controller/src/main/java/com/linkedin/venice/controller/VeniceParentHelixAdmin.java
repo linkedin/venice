@@ -1463,26 +1463,18 @@ public class VeniceParentHelixAdmin implements Admin {
       }
 
       /**
-       * If the update requests sets nativeReplicationEnabled, the store must already be in leader/follower mode
-       *
        * TODO: We should build an UpdateStoreHelper that takes current store config and update command as input, and
        *       return whether the update command is valid.
        */
-      boolean isLeaderFollowerModelEnabled = (!leaderFollowerModelEnabled.isPresent() && store.isLeaderFollowerModelEnabled())
-                                             || (leaderFollowerModelEnabled.isPresent() && leaderFollowerModelEnabled.get());
-      boolean isLfModelDependencyCheckDisabled = veniceHelixAdmin.getHelixVeniceClusterResources(clusterName).getConfig().isLfModelDependencyCheckDisabled();
-      if(nativeReplicationEnabled.isPresent() && nativeReplicationEnabled.get() && !isLeaderFollowerModelEnabled && !isLfModelDependencyCheckDisabled)  {
-        throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, "Native Replication cannot be enabled for store " + storeName + " since it's not on L/F state model");
-      }
+      validateNativeReplicationEnableConfigs(nativeReplicationEnabled, leaderFollowerModelEnabled, store, clusterName);
+      validateActiveActiveReplicationEnableConfigs(activeActiveReplicationEnabled, nativeReplicationEnabled, store);
+
       setStore.nativeReplicationEnabled = nativeReplicationEnabled
           .map(addToUpdatedConfigList(updatedConfigsList, NATIVE_REPLICATION_ENABLED))
           .orElseGet(store::isNativeReplicationEnabled);
       setStore.pushStreamSourceAddress = pushStreamSourceAddress
           .map(addToUpdatedConfigList(updatedConfigsList, PUSH_STREAM_SOURCE_ADDRESS))
           .orElseGet(store::getPushStreamSourceAddress);
-      if (activeActiveReplicationEnabled.isPresent() && activeActiveReplicationEnabled.get() && !isLeaderFollowerModelEnabled) {
-        throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, "Active/Active Replication cannot be enabled for store " + storeName + " since it's not on L/F state model");
-      }
       setStore.activeActiveReplicationEnabled = activeActiveReplicationEnabled
           .map(addToUpdatedConfigList(updatedConfigsList, ACTIVE_ACTIVE_REPLICATION_ENABLED))
           .orElseGet(store::isActiveActiveReplicationEnabled);
@@ -1686,6 +1678,45 @@ public class VeniceParentHelixAdmin implements Admin {
       }
     } finally {
       releaseAdminMessageLock(clusterName);
+    }
+  }
+
+  private void validateNativeReplicationEnableConfigs(
+      Optional<Boolean> nativeReplicationEnabledOptional,
+      Optional<Boolean> leaderFollowerModelEnabled,
+      Store store,
+      String clusterName
+  ) {
+    final boolean nativeReplicationEnabled = nativeReplicationEnabledOptional.orElse(false);
+    if (!nativeReplicationEnabled) {
+      return;
+    }
+
+    final boolean isLeaderFollowerModelEnabled = (!leaderFollowerModelEnabled.isPresent() && store.isLeaderFollowerModelEnabled())
+        || (leaderFollowerModelEnabled.isPresent() && leaderFollowerModelEnabled.get());
+    final boolean isLfModelDependencyCheckDisabled =
+        veniceHelixAdmin.getHelixVeniceClusterResources(clusterName).getConfig().isLfModelDependencyCheckDisabled();
+    if(!isLeaderFollowerModelEnabled && !isLfModelDependencyCheckDisabled) {
+      throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, "Native Replication cannot be enabled for store " + store.getName() + " since it's not on L/F state model");
+    }
+  }
+
+  private void validateActiveActiveReplicationEnableConfigs(
+      Optional<Boolean> activeActiveReplicationEnabledOptional,
+      Optional<Boolean> nativeReplicationEnabledOptional,
+      Store store
+  ) {
+    final boolean activeActiveReplicationEnabled = activeActiveReplicationEnabledOptional.orElse(false);
+    if (!activeActiveReplicationEnabled) {
+      return;
+    }
+
+    final boolean nativeReplicationEnabled =
+        nativeReplicationEnabledOptional.isPresent() ? nativeReplicationEnabledOptional.get() : store.isNativeReplicationEnabled();
+
+    if (!nativeReplicationEnabled) {
+      throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, "Active/Active Replication cannot be enabled for store "
+          + store.getName() + " since Native Replication is not enabled on it.");
     }
   }
 
