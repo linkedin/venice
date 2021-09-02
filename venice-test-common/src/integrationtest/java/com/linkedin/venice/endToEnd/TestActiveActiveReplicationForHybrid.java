@@ -205,7 +205,7 @@ public class TestActiveActiveReplicationForHybrid {
    * Once servers are able to consume real-time messages from multiple regions, we can enable this test case
    * to test the feature.
    */
-  @Test(timeOut = TEST_TIMEOUT, enabled = true)
+  @Test(timeOut = TEST_TIMEOUT, enabled = false)
   public void testAAReplicationCanConsumeFromAllRegions() {
     String clusterName = CLUSTER_NAMES[0];
     String storeName = TestUtils.getUniqueString("test-store");
