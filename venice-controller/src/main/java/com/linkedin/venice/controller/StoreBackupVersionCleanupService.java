@@ -3,7 +3,6 @@ package com.linkedin.venice.controller;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
@@ -94,7 +93,7 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
     List<Version> readyToBeRemovedVersions = new ArrayList<>();
     int currentVersion = store.getCurrentVersion();
     versions.forEach (v -> {
-      if (v.getNumber() < currentVersion && VersionStatus.isBootstrapCompleted(v.getStatus())) {
+      if (v.getNumber() < currentVersion) {
         readyToBeRemovedVersions.add(v);
       }
     });
