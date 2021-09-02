@@ -54,7 +54,7 @@ import static com.linkedin.venice.utils.TestPushUtils.*;
  * TODO: Update the corresponding test cases and comments after the related Active/Active replication implementation
  *       is done.
  */
-public class TestActiveActiveReplicationForHybrid {
+public class ActiveActiveReplicationForHybridTest {
   private static final int TEST_TIMEOUT = 90_000; // ms
 
   private static final int NUMBER_OF_CHILD_DATACENTERS = 3;
@@ -205,7 +205,7 @@ public class TestActiveActiveReplicationForHybrid {
    * Once servers are able to consume real-time messages from multiple regions, we can enable this test case
    * to test the feature.
    */
-  @Test(timeOut = TEST_TIMEOUT, enabled = false)
+  @Test(timeOut = TEST_TIMEOUT, enabled = true)
   public void testAAReplicationCanConsumeFromAllRegions() {
     String clusterName = CLUSTER_NAMES[0];
     String storeName = TestUtils.getUniqueString("test-store");
@@ -218,6 +218,7 @@ public class TestActiveActiveReplicationForHybrid {
           .setHybridRewindSeconds(25L)
           .setHybridOffsetLagThreshold(1L)
           .setLeaderFollowerModel(true)
+          .setNativeReplicationEnabled(true)
           .setActiveActiveReplicationEnabled(true)
           .setHybridDataReplicationPolicy(DataReplicationPolicy.ACTIVE_ACTIVE));
 
