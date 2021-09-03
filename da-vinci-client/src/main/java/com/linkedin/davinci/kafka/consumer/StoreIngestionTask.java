@@ -3818,13 +3818,15 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
 
     public void promoteToLeader(String topic, int partition, LeaderFollowerPartitionStateModel.LeaderSessionIdChecker checker) {
-      int leaderSubPartition = PartitionUtils.getLeaderSubPartition(partition, amplificationFactor);
-      consumerActionsQueue.add(new ConsumerAction(ConsumerActionType.STANDBY_TO_LEADER, topic, leaderSubPartition, nextSeqNum(), checker));
+      for (int subPartition : PartitionUtils.getSubPartitions(partition, amplificationFactor)) {
+        consumerActionsQueue.add(new ConsumerAction(ConsumerActionType.STANDBY_TO_LEADER, topic, subPartition, nextSeqNum(), checker));
+      }
     }
 
     public void demoteToStandby(String topic, int partition, LeaderFollowerPartitionStateModel.LeaderSessionIdChecker checker) {
-      int leaderSubPartition = PartitionUtils.getLeaderSubPartition(partition, amplificationFactor);
-      consumerActionsQueue.add(new ConsumerAction(ConsumerActionType.LEADER_TO_STANDBY, topic, leaderSubPartition, nextSeqNum(), checker));
+      for (int subPartition : PartitionUtils.getSubPartitions(partition, amplificationFactor)) {
+        consumerActionsQueue.add(new ConsumerAction(ConsumerActionType.LEADER_TO_STANDBY, topic, subPartition, nextSeqNum(), checker));
+      }
     }
 
     public LeaderFollowerStateType getLeaderState(int partition) {
@@ -3843,6 +3845,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         }
       }
       return false;
+    }
+
+    public boolean isLeaderSubPartition(int subPartition) {
+      int userPartition = PartitionUtils.getUserPartition(subPartition, amplificationFactor);
+      int leaderSubPartition = PartitionUtils.getLeaderSubPartition(userPartition, amplificationFactor);
+      return subPartition == leaderSubPartition;
     }
   }
 }

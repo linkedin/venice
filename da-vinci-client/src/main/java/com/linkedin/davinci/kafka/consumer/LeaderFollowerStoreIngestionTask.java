@@ -262,7 +262,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
          * Notice that the pattern is different in stream reprocessing which contains a lot more segments and is also
          * different in some test cases which reuse the same VeniceWriter.
          */
-        return veniceWriterFactory.createBasicVeniceWriter(kafkaVersionTopic, venicePartitioner, Optional.of(storeVersionPartitionCount));
+        return veniceWriterFactory.createBasicVeniceWriter(kafkaVersionTopic, venicePartitioner, Optional.of(storeVersionPartitionCount * amplificationFactor));
       }
     });
 
@@ -467,7 +467,12 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
               offsetRecord.setLeaderTopic(kafkaVersionTopic);
             }
 
-            startConsumingAsLeaderInTransitionFromStandby(partitionConsumptionState);
+            if (!amplificationAdapter.isLeaderSubPartition(partition) && partitionConsumptionState.isEndOfPushReceived()) {
+              partitionConsumptionState.setLeaderFollowerState(STANDBY);
+              consumerSubscribe(kafkaVersionTopic, partitionConsumptionState.getSourceTopicPartition(kafkaVersionTopic), offsetRecord.getLocalVersionTopicOffset(), localKafkaServer);
+            } else {
+              startConsumingAsLeaderInTransitionFromStandby(partitionConsumptionState);
+            }
             /**
              * The topic switch operation will be recorded but the actual topic switch happens only after the replica
              * is promoted to leader; we should check whether it's ready to serve after switching topic.
@@ -520,6 +525,14 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             );
           }
 
+          if (!amplificationAdapter.isLeaderSubPartition(partition) && partitionConsumptionState.isEndOfPushReceived()) {
+            consumerUnSubscribe(currentLeaderTopic, partitionConsumptionState);
+            partitionConsumptionState.setConsumeRemotely(false);
+            partitionConsumptionState.setLeaderFollowerState(STANDBY);
+            consumerSubscribe(kafkaVersionTopic, partitionConsumptionState.getSourceTopicPartition(kafkaVersionTopic), partitionConsumptionState.getOffsetRecord().getLocalVersionTopicOffset(), localKafkaServer);
+            break;
+          }
+
           TopicSwitch topicSwitch = partitionConsumptionState.getTopicSwitch();
           if (null == topicSwitch || currentLeaderTopic.equals(topicSwitch.sourceTopicName.toString())) {
             break;
@@ -531,8 +544,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
            * 2. leader is consuming SR topic right now and TS wants leader to switch to another topic.
            */
           lastTimestamp = getLastConsumedMessageTimestamp(currentLeaderTopic, partition);
-          if (LatencyUtils.getElapsedTimeInMs(lastTimestamp) > newLeaderInactiveTime ||
-              switchAwayFromStreamReprocessingTopic(currentLeaderTopic, topicSwitch)) {
+          if (LatencyUtils.getElapsedTimeInMs(lastTimestamp) > newLeaderInactiveTime || switchAwayFromStreamReprocessingTopic(currentLeaderTopic, topicSwitch)) {
             leaderExecuteTopicSwitch(partitionConsumptionState, topicSwitch);
           }
           break;
@@ -661,7 +673,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     // subscribe to the new upstream
     if (isNativeReplicationEnabled && !newSourceKafkaServer.equals(localKafkaServer)) {
       partitionConsumptionState.setConsumeRemotely(true);
-      logger.info(consumerTaskId + " enabled remote consumption from topic " + newSourceTopicName + " partition " + partition);
+      logger.info(consumerTaskId + " enabled remote consumption from topic " + newSourceTopicName + " partition " + partitionConsumptionState.getSourceTopicPartition(newSourceTopicName));
     }
     partitionConsumptionState.getOffsetRecord().setLeaderTopic(newSourceTopicName);
     partitionConsumptionState.getOffsetRecord().setLeaderUpstreamOffset(
@@ -1451,7 +1463,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
        */
       PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(subPartition);
       produceToLocalKafka = shouldProduceToVersionTopic(partitionConsumptionState);
-
       //UPDATE message is only expected in LEADER which must be produced to kafka.
       MessageType msgType = MessageType.valueOf(kafkaValue);
       if (msgType == MessageType.UPDATE && !produceToLocalKafka) {
