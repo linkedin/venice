@@ -10,6 +10,7 @@ import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.VenicePushJob;
+import com.linkedin.venice.hadoop.input.kafka.KafkaInputRecordReader;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.utils.DataProviderUtils;
@@ -125,6 +126,7 @@ public class ProduceWithSSL {
       props.setProperty(VenicePushJob.SSL_TRUST_STORE_PROPERTY_NAME,trustStorePropertyName);
       props.setProperty(VenicePushJob.SSL_KEY_STORE_PASSWORD_PROPERTY_NAME,keyStorePwdPropertyName);
       props.setProperty(VenicePushJob.SSL_KEY_PASSWORD_PROPERTY_NAME,keyPwdPropertyName);
+      props.setProperty(KafkaInputRecordReader.KIF_RECORD_READER_KAFKA_CONFIG_PREFIX + "send.buffer.bytes", Integer.toString(4 * 1024 * 1024));
 
       // put cert into hadoop user credentials.
       Properties sslProps = KafkaSSLUtils.getLocalCommonKafkaSSLConfig();
