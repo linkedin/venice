@@ -268,7 +268,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
   public static final String ZSTD_COMPRESSION_LEVEL = "zstd.compression.level";
   public static final int DEFAULT_BATCH_BYTES_SIZE = 1000000;
   public static final boolean SORTED = true;
-  private static final Logger LOGGER = Logger.getLogger(VenicePushJob.class);
+  private static final Logger logger = Logger.getLogger(VenicePushJob.class);
 
   /**
    * Since the job is calculating the raw data file size, which is not accurate because of compression,
@@ -459,20 +459,20 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
         throw new VeniceException("Could not get user credential");
       }
     });
-    LOGGER.info("Constructing " + VenicePushJob.class.getSimpleName() + ": " + props.toString(true));
+    logger.info("Constructing " + VenicePushJob.class.getSimpleName() + ": " + props.toString(true));
     String veniceControllerUrl = getVeniceControllerUrl(props);
-    LOGGER.info("Get Venice controller URL: " + veniceControllerUrl);
+    logger.info("Get Venice controller URL: " + veniceControllerUrl);
     this.clusterName = getClusterName(veniceControllerUrl, props);
-    LOGGER.info("Get Venice cluster name: " + clusterName);
+    logger.info("Get Venice cluster name: " + clusterName);
     // Optional configs:
     this.pushJobSetting = getPushJobSetting(veniceControllerUrl, this.clusterName, props);
     this.jobLivenessHeartbeatEnabled = props.getBoolean(HEARTBEAT_ENABLED_CONFIG.getConfigName(), false);
     if (jobLivenessHeartbeatEnabled) {
-      LOGGER.info("Push job heartbeat is enabled.");
+      logger.info("Push job heartbeat is enabled.");
       this.pushJobHeartbeatSenderFactory = new DefaultPushJobHeartbeatSenderFactory();
       this.livenessHeartbeatStoreControllerClient = createLivenessHeartbeatControllerClient(props);
     } else {
-      LOGGER.info("Push job heartbeat is NOT enabled.");
+      logger.info("Push job heartbeat is NOT enabled.");
       this.pushJobHeartbeatSenderFactory = new NoOpPushJobHeartbeatSenderFactory();
       this.livenessHeartbeatStoreControllerClient = null;
     }
@@ -487,7 +487,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
     String veniceControllerUrl = getVeniceControllerUrl(properties);
     String heartbeatStoreClusterName = discoverCluster(heartbeatStoreName, veniceControllerUrl, sslFactory);
     ControllerClient heartbeatStoreControllerClient = new ControllerClient(heartbeatStoreClusterName, veniceControllerUrl, sslFactory);
-    LOGGER.info(String.format("Created controller client for the liveness heartbeat store %s in %s cluster",
+    logger.info(String.format("Created controller client for the liveness heartbeat store %s in %s cluster",
             heartbeatStoreName, heartbeatStoreClusterName));
     return heartbeatStoreControllerClient;
   }
@@ -663,7 +663,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
               clusterName
       );
     }
-    LOGGER.info("userProvidedStoreName: " + userProvidedStoreName);
+    logger.info("userProvidedStoreName: " + userProvidedStoreName);
     StoreResponse storeResponse = ControllerClient.retryableRequest(controllerClient, 3, c -> c.getStore(userProvidedStoreName));
     if (storeResponse.isError()) {
       throw new VeniceException(
@@ -672,7 +672,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
     Map<String, Integer> coloToCurrentVersions = getCurrentStoreVersions(storeResponse);
     if (new HashSet<>(coloToCurrentVersions.values()).size() > 1) {
       if (userProvidedTopicNameOptional.isPresent()) {
-        LOGGER.info(String.format("Got current topic version mismatch across multiple colos %s. Use user-provided topic " +
+        logger.info(String.format("Got current topic version mismatch across multiple colos %s. Use user-provided topic " +
             "name: %s", coloToCurrentVersions, userProvidedTopicNameOptional.get()));
         return userProvidedTopicNameOptional.get();
 
@@ -780,7 +780,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
         if (schemaInfo.isAvro) {
           validateFileSchema(schemaInfo.fileSchemaString);
         } else {
-          LOGGER.info("Skip validating file schema since it is not Avro.");
+          logger.info("Skip validating file schema since it is not Avro.");
         }
         inputFileDataSize = inputInfo.getInputFileDataSizeInBytes();
         inputFileHasRecords = inputInfo.hasRecords();
@@ -801,7 +801,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
       }
 
       if (!pushJobSetting.enablePush) {
-        LOGGER.info("Skipping push job, since " + ENABLE_PUSH + " is set to false.");
+        logger.info("Skipping push job, since " + ENABLE_PUSH + " is set to false.");
       } else {
         Optional<ByteBuffer> optionalCompressionDictionary = getCompressionDictionary();
         long pushStartTimeMs = System.currentTimeMillis();
@@ -833,7 +833,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
            */
           pushJobSetting.incrementalPushVersion = Optional.of(System.currentTimeMillis() + "_" + props.getString(JOB_SERVER_NAME, "unknown_job_server")
                   + "_" + props.getString(JOB_EXEC_ID, "unknown_exec_id"));
-          LOGGER.info("Incremental Push Version: " + pushJobSetting.incrementalPushVersion.get());
+          logger.info("Incremental Push Version: " + pushJobSetting.incrementalPushVersion.get());
           getVeniceWriter(kafkaTopicInfo).broadcastStartOfIncrementalPush(pushJobSetting.incrementalPushVersion.get(), new HashMap<>());
           runJobAndUpdateStatus();
           getVeniceWriter(kafkaTopicInfo)
@@ -879,12 +879,12 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
       }
 
       if (pushJobSetting.enablePBNJ) {
-        LOGGER.info("Post-Bulkload Analysis Job is about to run.");
+        logger.info("Post-Bulkload Analysis Job is about to run.");
         setupPBNJConf(pbnjJobConf, kafkaTopicInfo, pushJobSetting, schemaInfo, storeSetting, props, jobId, inputDirectory);
         runningJob = runJobWithConfig(pbnjJobConf);
       }
     } catch (Throwable e) {
-      LOGGER.error("Failed to run job.", e);
+      logger.error("Failed to run job.", e);
       // Make sure all the logic before killing the failed push jobs is captured in the following block
       try {
         if (e instanceof TopicAuthorizationVeniceException) {
@@ -897,13 +897,13 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
         sendPushJobDetailsToController();
         closeVeniceWriter();
       } catch (Exception ex) {
-        LOGGER.error("Error before killing the failed push job; still issue the kill job command to clean up states in backend", ex);
+        logger.error("Error before killing the failed push job; still issue the kill job command to clean up states in backend", ex);
       } finally {
         try {
           killJobAndCleanup(pushJobSetting, controllerClient, kafkaTopicInfo);
-          LOGGER.info("Successfully killed the failed push job.");
+          logger.info("Successfully killed the failed push job.");
         } catch (Exception ex) {
-          LOGGER.info("Failed to stop and cleanup the job. New pushes might be blocked.", ex);
+          logger.info("Failed to stop and cleanup the job. New pushes might be blocked.", ex);
         }
       }
       throwVeniceException(e);
@@ -957,7 +957,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
       long totalPutOrDeleteRecordsCount = 0;
       if (pushJobSetting.isSourceKafka) {
         totalPutOrDeleteRecordsCount = MRJobCounterHelper.getTotalPutOrDeleteRecordsCount(runningJob.getCounters());
-        LOGGER.info(
+        logger.info(
             "Source kafka input topic : " + pushJobSetting.kafkaInputTopic + " has " + totalPutOrDeleteRecordsCount
                 + " records");
       }
@@ -1012,7 +1012,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
   private Optional<SSLFactory> createSSlFactory(final boolean enableSsl, final String sslFactoryClassName) {
     Optional<SSLFactory> sslFactory = Optional.empty();
     if (enableSsl) {
-      LOGGER.info("Controller ACL is enabled.");
+      logger.info("Controller ACL is enabled.");
       Properties sslProps = sslProperties.get();
       sslFactory = Optional.of(SslUtils.getSSLFactory(sslProps, sslFactoryClassName));
     }
@@ -1045,7 +1045,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
     if (controllerClient == null) {
        controllerClient = new ControllerClient(clusterName, veniceControllerUrl, sslFactory);
     } else {
-      LOGGER.warn("Controller client has already been initialized");
+      logger.warn("Controller client has already been initialized");
     }
   }
 
@@ -1053,19 +1053,19 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
     ByteBuffer compressionDictionary = null;
     if (storeSetting.compressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
       if (pushJobSetting.isSourceKafka) {
-        LOGGER.info("Reading Ztsd dictionary from input topic");
+        logger.info("Reading Ztsd dictionary from input topic");
         // set up ssl properties and kafka consumer properties
         Properties kafkaConsumerProperties = new Properties();
         kafkaConsumerProperties.putAll(this.sslProperties.get());
         kafkaConsumerProperties.setProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, props.getString(KAFKA_INPUT_BROKER_URL));
         compressionDictionary = DictionaryUtils.readDictionaryFromKafka(pushJobSetting.kafkaInputTopic, new VeniceProperties(kafkaConsumerProperties));
       } else {
-        LOGGER.info("Training Zstd dictionary");
+        logger.info("Training Zstd dictionary");
         compressionDictionary = ByteBuffer.wrap(getInputDataInfoProvider().getZstdDictTrainSamples());
       }
-      LOGGER.info("Zstd dictionary size = " + compressionDictionary.limit() + " bytes");
+      logger.info("Zstd dictionary size = " + compressionDictionary.limit() + " bytes");
     } else {
-      LOGGER.info("No compression dictionary is generated with the strategy " + storeSetting.compressionStrategy);
+      logger.info("No compression dictionary is generated with the strategy " + storeSetting.compressionStrategy);
     }
     return Optional.ofNullable(compressionDictionary);
   }
@@ -1128,6 +1128,10 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
     pushJobDetails.totalCompressedValueBytes = -1;
     pushJobDetails.failureDetails = "";
     pushJobDetails.pushJobLatestCheckpoint = PushJobCheckpoints.INITIALIZE_PUSH_JOB.getValue();
+    pushJobDetails.pushJobConfigs = Collections.singletonMap(
+        HEARTBEAT_ENABLED_CONFIG.getConfigName(),
+        String.valueOf(jobLivenessHeartbeatEnabled)
+    );
   }
 
   private void updatePushJobDetailsWithCheckpoint(PushJobCheckpoints checkpoint) {
@@ -1136,7 +1140,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
 
   private void updatePushJobDetailsWithMRCounters() {
     if (runningJob == null) {
-      LOGGER.info("No running job to update push job details with MR counters");
+      logger.info("No running job to update push job details with MR counters");
       return;
     }
     try {
@@ -1145,7 +1149,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
       pushJobDetails.totalRawValueBytes = MRJobCounterHelper.getTotalUncompressedValueSize(runningJob.getCounters());
       pushJobDetails.totalCompressedValueBytes = MRJobCounterHelper.getTotalValueSize(runningJob.getCounters());
     } catch (Exception e) {
-      LOGGER.warn("Exception caught while updating push job details with map reduce counters. "
+      logger.warn("Exception caught while updating push job details with map reduce counters. "
           + NON_CRITICAL_EXCEPTION, e);
     }
   }
@@ -1172,7 +1176,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
         pushJobDetails.producerConfigs = new HashMap<>();
       }
     } catch (Exception e) {
-      LOGGER.warn("Exception caught while updating push job details with configs. " + NON_CRITICAL_EXCEPTION, e);
+      logger.warn("Exception caught while updating push job details with configs. " + NON_CRITICAL_EXCEPTION, e);
     }
   }
 
@@ -1246,7 +1250,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
       }
 
     } catch (Exception e) {
-      LOGGER.warn("Exception caught while updating push job details with colo status. " + NON_CRITICAL_EXCEPTION, e);
+      logger.warn("Exception caught while updating push job details with colo status. " + NON_CRITICAL_EXCEPTION, e);
     }
   }
 
@@ -1261,7 +1265,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
     if (!pushJobSetting.enablePushJobStatusUpload || pushJobDetails == null) {
       String detailMessage = pushJobSetting.enablePushJobStatusUpload ?
           "The payload was not populated properly" : "Feature is disabled";
-      LOGGER.warn("Unable to send push job details for monitoring purpose. " + detailMessage);
+      logger.warn("Unable to send push job details for monitoring purpose. " + detailMessage);
       return;
     }
     try {
@@ -1275,10 +1279,10 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
       getSentPushJobDetailsTracker().record(pushJobSetting.storeName, version, pushJobDetails);
 
       if (response.isError()) {
-        LOGGER.warn("Failed to send push job details. " + NON_CRITICAL_EXCEPTION + " Details: " + response.getError());
+        logger.warn("Failed to send push job details. " + NON_CRITICAL_EXCEPTION + " Details: " + response.getError());
       }
     } catch (Exception e) {
-      LOGGER.error("Exception caught while sending push job details. " + NON_CRITICAL_EXCEPTION, e);
+      logger.error("Exception caught while sending push job details. " + NON_CRITICAL_EXCEPTION, e);
     }
   }
 
@@ -1290,7 +1294,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
   }
 
   private void logGreeting() {
-    LOGGER.info("Running Hadoop to Venice Bridge: " + jobId + Utils.NEW_LINE_CHAR +
+    logger.info("Running Hadoop to Venice Bridge: " + jobId + Utils.NEW_LINE_CHAR +
         "  _    _           _                   "        + Utils.NEW_LINE_CHAR +
         " | |  | |         | |                  "        + Utils.NEW_LINE_CHAR +
         " | |__| | __ _  __| | ___   ___  _ __  "        + Utils.NEW_LINE_CHAR +
@@ -1327,7 +1331,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
     String canonicalizedClientSchema = AvroCompatibilityHelper.toParsingForm(clientSchema);
     if (!canonicalizedServerSchema.equals(canonicalizedClientSchema)) {
       String briefErrorMessage = "Key schema mis-match for store " + setting.storeName;
-      LOGGER.error(briefErrorMessage +
+      logger.error(briefErrorMessage +
           "\n\t\tController URLs: " + controllerClient.getControllerDiscoveryUrls() +
           "\n\t\tschema defined in HDFS: \t" + schemaInfo.keySchemaString +
           "\n\t\tschema defined in Venice: \t" + serverSchema.toString());
@@ -1352,7 +1356,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
    */
   private void validateValueSchema(ControllerClient controllerClient, PushJobSetting setting, SchemaInfo schemaInfo,
       boolean schemaAutoRegisterFromPushJobEnabled) {
-    LOGGER.info("Validating value schema: " + schemaInfo.valueSchemaString + " for store: " + setting.storeName);
+    logger.info("Validating value schema: " + schemaInfo.valueSchemaString + " for store: " + setting.storeName);
 
     SchemaResponse getValueSchemaIdResponse;
 
@@ -1371,7 +1375,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
     }
 
     if (getValueSchemaIdResponse.isError() && schemaAutoRegisterFromPushJobEnabled) {
-      LOGGER.info("Auto registering value schema: " + schemaInfo.valueSchemaString + " for store: " + setting.storeName);
+      logger.info("Auto registering value schema: " + schemaInfo.valueSchemaString + " for store: " + setting.storeName);
       SchemaResponse addValueSchemaResponse = ControllerClient.retryableRequest(controllerClient, setting.controllerRetries, c ->
           c.addValueSchema(setting.storeName, schemaInfo.valueSchemaString));
       if (addValueSchemaResponse.isError()) {
@@ -1387,7 +1391,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
       // Get value schema ID successfully
       setSchemaIdPropInSchemaInfo(schemaInfo, getValueSchemaIdResponse, setting.enableWriteCompute);
     }
-    LOGGER.info("Got schema id: " + schemaInfo.valueSchemaId + " for value schema: " + schemaInfo.valueSchemaString + " of store: " + setting.storeName);
+    logger.info("Got schema id: " + schemaInfo.valueSchemaId + " for value schema: " + schemaInfo.valueSchemaString + " of store: " + setting.storeName);
   }
 
   private void setSchemaIdPropInSchemaInfo(SchemaInfo schemaInfo, SchemaResponse valueSchemaResponse, boolean enableWriteCompute) {
@@ -1532,7 +1536,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
       // TODO: Fix the server-side request handling. This should not happen. We should get a 404 instead.
       throw new VeniceException("Got version 0 from: " + versionCreationResponse.toString());
     } else {
-      LOGGER.info(versionCreationResponse.toString());
+      logger.info(versionCreationResponse.toString());
     }
     kafkaTopicInfo.topic = versionCreationResponse.getKafkaTopic();
     kafkaTopicInfo.version = versionCreationResponse.getVersion();
@@ -1603,7 +1607,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
       VeniceWriter<KafkaKey, byte[], byte[]> newVeniceWriter =
           veniceWriterFactory.createVeniceWriter(versionTopicInfo.topic, venicePartitioner,
               (kafkaTopicInfo.targetStoreVersionForIncPush > 0) ? Optional.of(kafkaTopicInfo.targetStoreVersionForIncPush) : Optional.empty());
-      LOGGER.info("Created VeniceWriter: " + newVeniceWriter.toString());
+      logger.info("Created VeniceWriter: " + newVeniceWriter.toString());
       veniceWriter = newVeniceWriter;
     }
     return veniceWriter;
@@ -1748,7 +1752,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
         }
 
         // Every known datacenter have successfully reported a completed status at least once.
-        LOGGER.info("Successfully pushed " + versionTopicInfo.topic);
+        logger.info("Successfully pushed " + versionTopicInfo.topic);
         return;
       }
 
@@ -1758,7 +1762,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
         unknownStateStartTimeMs = System.currentTimeMillis();
       } else if (System.currentTimeMillis() < unknownStateStartTimeMs + pushJobSetting.jobStatusInUnknownStateTimeoutMs) {
         double elapsedMinutes = (double) (System.currentTimeMillis() - unknownStateStartTimeMs) / Time.MS_PER_MINUTE;
-        LOGGER.warn("Some data centers are still in unknown state after waiting for " + elapsedMinutes + " minutes.");
+        logger.warn("Some data centers are still in unknown state after waiting for " + elapsedMinutes + " minutes.");
       } else {
         long timeoutMinutes = pushJobSetting.jobStatusInUnknownStateTimeoutMs / Time.MS_PER_MINUTE;
         throw new VeniceException("After waiting for " + timeoutMinutes + " minutes; push job is still in unknown state.");
@@ -1777,11 +1781,11 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
     if (null != datacenterSpecificInfo && !datacenterSpecificInfo.isEmpty()) {
       logMessage += datacenterSpecificInfo;
     }
-    LOGGER.info(logMessage);
+    logger.info(logMessage);
 
     Optional<String> details = response.getOptionalStatusDetails();
     if (details.isPresent() && detailsAreDifferent(previousOverallDetails, details.get())) {
-      LOGGER.info("\t\tNew overall details: " + details.get());
+      logger.info("\t\tNew overall details: " + details.get());
       newOverallDetails = details.get();
     }
 
@@ -1794,7 +1798,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
         String current = entry.getValue();
 
         if (detailsAreDifferent(previous, current)) {
-          LOGGER.info("\t\tNew specific details for " + cluster + ": " + current);
+          logger.info("\t\tNew specific details for " + cluster + ": " + current);
           previousExtraDetails.put(cluster, current);
         }
       }
@@ -1946,7 +1950,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
     // Hadoop2 dev cluster provides a newer version of an avro dependency.
     // Set mapreduce.job.classloader to true to force the use of the older avro dependency.
     jobConf.setBoolean(MAPREDUCE_JOB_CLASSLOADER, true);
-    LOGGER.info("**************** " + MAPREDUCE_JOB_CLASSLOADER + ": " + jobConf.get(MAPREDUCE_JOB_CLASSLOADER));
+    logger.info("**************** " + MAPREDUCE_JOB_CLASSLOADER + ": " + jobConf.get(MAPREDUCE_JOB_CLASSLOADER));
 
     if (pushJobSetting.isSourceKafka) {
       Schema keySchemaFromController = getKeySchemaFromController(controllerClient, 3, pushJobSetting.storeName);
@@ -2007,7 +2011,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
       String inputDirectory,
       long inputFileDataSize
   ) {
-    LOGGER.info(pushJobPropertiesToString(versionTopicInfo, pushJobSetting, schemaInfo, clusterName, inputDirectory, inputFileDataSize));
+    logger.info(pushJobPropertiesToString(versionTopicInfo, pushJobSetting, schemaInfo, clusterName, inputDirectory, inputFileDataSize));
   }
 
   private String pushJobPropertiesToString(
@@ -2078,14 +2082,14 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
         currentRetryAttempt++;
       }
       if (Utils.isNullOrEmpty(versionTopicInfo.topic)) {
-        LOGGER.error("Could not find a store version to delete for store: " + pushJobSetting.storeName);
+        logger.error("Could not find a store version to delete for store: " + pushJobSetting.storeName);
       } else {
         ControllerClient.retryableRequest(
             controllerClient,
             pushJobSetting.controllerRetries,
             c -> c.killOfflinePushJob(versionTopicInfo.topic)
         );
-        LOGGER.info("Offline push job has been killed, topic: " + versionTopicInfo.topic);
+        logger.info("Offline push job has been killed, topic: " + versionTopicInfo.topic);
       }
     }
     close();
@@ -2093,19 +2097,19 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
 
   private void killJob() {
     if (runningJob == null) {
-      LOGGER.warn("No op to kill a null running job");
+      logger.warn("No op to kill a null running job");
       return;
     }
     try {
       if (runningJob.isComplete()) {
-        LOGGER.warn(String.format("No op to kill a completed job with name %s and ID %d",
+        logger.warn(String.format("No op to kill a completed job with name %s and ID %d",
             runningJob.getJobName(), runningJob.getID().getId()));
         return;
       }
       runningJob.killJob();
     } catch (Exception ex) {
       // Will try to kill Venice Offline Push Job no matter whether map-reduce job kill throws exception or not.
-      LOGGER.info(String.format("Received exception while killing map-reduce job with name %s and ID %d",
+      logger.info(String.format("Received exception while killing map-reduce job with name %s and ID %d",
           runningJob.getJobName(), runningJob.getID().getId()), ex);
     }
   }
@@ -2132,7 +2136,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
   }
 
   private String discoverCluster(String storeName, String veniceControllerUrl, Optional<SSLFactory> sslFactory) {
-    LOGGER.info("Discover cluster for store:" + storeName);
+    logger.info("Discover cluster for store:" + storeName);
     // TODO: Evaluate what's the proper way to add retries here...
     ControllerResponse clusterDiscoveryResponse;
     if (clusterDiscoveryControllerClient == null) {
