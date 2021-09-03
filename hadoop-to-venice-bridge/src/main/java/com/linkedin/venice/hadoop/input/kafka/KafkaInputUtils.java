@@ -1,7 +1,5 @@
 package com.linkedin.venice.hadoop.input.kafka;
 
-import com.linkedin.venice.ConfigKeys;
-import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.ssl.SSLConfigurator;
 import com.linkedin.venice.hadoop.ssl.UserCredentialsFactory;
@@ -10,6 +8,7 @@ import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.consumer.VeniceKafkaConsumerFactory;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
+import com.linkedin.venice.utils.KafkaSSLUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.IOException;
 import java.util.Properties;
@@ -21,21 +20,21 @@ import static com.linkedin.venice.hadoop.VenicePushJob.*;
 
 
 public class KafkaInputUtils {
-
   public static KafkaClientFactory getConsumerFactory(JobConf config) {
     Properties sslProps = null;
+    Properties consumerFactoryProperties = new Properties();
     if (config.get(SSL_CONFIGURATOR_CLASS_CONFIG) != null) {
       SSLConfigurator configurator = SSLConfigurator.getSSLConfigurator(config.get(SSL_CONFIGURATOR_CLASS_CONFIG));
-
       try {
         sslProps = configurator.setupSSLConfig(HadoopUtils.getProps(config), UserCredentialsFactory.getHadoopUserCredentials());
+        VeniceProperties veniceProperties = new VeniceProperties(sslProps);
+        // Copy the pass-through Kafka properties
+        consumerFactoryProperties.putAll(veniceProperties.clipAndFilterNamespace(KafkaInputRecordReader.KIF_RECORD_READER_KAFKA_CONFIG_PREFIX).toProperties());
+        // Copy the mandatory ssl configs
+        KafkaSSLUtils.validateAndCopyKafakaSSLConfig(veniceProperties, consumerFactoryProperties);
       } catch (IOException e) {
         throw new VeniceException("Could not get user credential for job:" + config.getJobName(), e);
       }
-    }
-    Properties consumerFactoryProperties = new Properties();
-    if (sslProps != null) {
-      consumerFactoryProperties.putAll(sslProps);
     }
 
     /**
@@ -43,10 +42,7 @@ public class KafkaInputUtils {
      */
     consumerFactoryProperties.setProperty(CommonClientConfigs.RECEIVE_BUFFER_CONFIG, Long.toString(4 * 1024 * 1024));
     consumerFactoryProperties.setProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, config.get(KAFKA_INPUT_BROKER_URL));
-    /**
-     * This is used to bypass the check in {@link VeniceKafkaConsumerFactory#getKafkaZkAddress}.
-     */
-    consumerFactoryProperties.setProperty(ConfigKeys.KAFKA_ZK_ADDRESS, "fake_zk_address");
+
     return new VeniceKafkaConsumerFactory(new VeniceProperties(consumerFactoryProperties));
   }
 

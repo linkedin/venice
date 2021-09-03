@@ -19,6 +19,7 @@ import com.linkedin.venice.hadoop.heartbeat.NoOpPushJobHeartbeatSenderFactory;
 import com.linkedin.venice.hadoop.heartbeat.PushJobHeartbeatSender;
 import com.linkedin.venice.hadoop.heartbeat.PushJobHeartbeatSenderFactory;
 import com.linkedin.venice.hadoop.input.kafka.KafkaInputFormat;
+import com.linkedin.venice.hadoop.input.kafka.KafkaInputRecordReader;
 import com.linkedin.venice.hadoop.input.kafka.VeniceKafkaInputMapper;
 import com.linkedin.venice.hadoop.input.kafka.VeniceKafkaInputReducer;
 import com.linkedin.venice.hadoop.pbnj.PostBulkLoadAnalysisMapper;
@@ -1870,25 +1871,43 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
     /** Allow overriding properties if their names start with {@link HADOOP_PREFIX}.
      *  Allow overriding properties if their names start with {@link VeniceWriter.VENICE_WRITER_CONFIG_PREFIX}
      *  Allow overriding properties if their names start with {@link ApacheKafkaProducer.PROPERTIES_KAFKA_PREFIX}
+     *  Allow overriding properties if their names start with {@link KafkaInputRecordReader.KAFKA_INPUT_RECORD_READER_KAFKA_CONFIG_PREFIX}
      **/
+    List<String> passThroughPrefixList = Arrays.asList(
+        VeniceWriter.VENICE_WRITER_CONFIG_PREFIX,
+        ApacheKafkaProducer.PROPERTIES_KAFKA_PREFIX,
+        KafkaInputRecordReader.KIF_RECORD_READER_KAFKA_CONFIG_PREFIX
+    );
+    int passThroughPrefixListSize = passThroughPrefixList.size();
+    if (passThroughPrefixListSize > 1) {
+      /**
+       * The following logic will make sure there are no two prefixes, which will be fully overlapped.
+       * The algo is slightly inefficient, but it should be good enough for VPJ.
+       */
+      for (int i = 0; i < passThroughPrefixListSize; ++i) {
+        for (int j = 0; j < passThroughPrefixListSize; ++j) {
+          if (i != j) {
+            String prefixI = passThroughPrefixList.get(i);
+            String prefixJ = passThroughPrefixList.get(j);
+            if (prefixI.startsWith(prefixJ)) {
+              throw new VeniceException("Prefix: " + prefixJ + " shouldn't be a prefix of another prefix: " + prefixI);
+            }
+          }
+        }
+      }
+    }
+
     for (String key : props.keySet()) {
       String lowerCase = key.toLowerCase();
       if (lowerCase.startsWith(HADOOP_PREFIX)) {
         String overrideKey = key.substring(HADOOP_PREFIX.length());
         conf.set(overrideKey, props.getString(key));
       }
-      /**
-       * Pass Venice Writer related properties down to VeniceWriter instance in
-       * {@link VeniceReducer}.
-       */
-      if (lowerCase.startsWith(VeniceWriter.VENICE_WRITER_CONFIG_PREFIX)) {
-        conf.set(key, props.getString(key));
-      }
-      /**
-       * Pass Kafka related properties down to VeniceWriter instance in {@link VeniceReducer}.
-       */
-      if (lowerCase.startsWith(ApacheKafkaProducer.PROPERTIES_KAFKA_PREFIX)) {
-        conf.set(key, props.getString(key));
+      for (String prefix : passThroughPrefixList) {
+        if (lowerCase.startsWith(prefix)) {
+          conf.set(key, props.getString(key));
+          break;
+        }
       }
     }
 

@@ -45,6 +45,8 @@ import org.apache.log4j.Logger;
  * 4. Value type, which could be 'PUT' or 'DELETE'.
  */
 public class KafkaInputRecordReader implements RecordReader<BytesWritable, KafkaInputMapperValue> {
+  public static final String KIF_RECORD_READER_KAFKA_CONFIG_PREFIX = "kif.record.reader.kafka.";
+
   private static final ByteBuffer EMPTY_BYTE_BUFFER = ByteBuffer.wrap(new byte[0]);
   private static final Logger LOGGER = Logger.getLogger(KafkaInputRecordReader.class);
   private static final Long CONSUMER_POLL_TIMEOUT = TimeUnit.SECONDS.toMillis(1); // 1 second
