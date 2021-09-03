@@ -202,7 +202,14 @@ public class InstanceStatusDecider {
       String storeName = Version.parseStoreFromKafkaTopicName(resourceName);
       int version = Version.parseVersionFromKafkaTopicName(resourceName);
 
-      return metadataRepo.getStore(storeName).getCurrentVersion() == version;
+      Store store = metadataRepo.getStore(storeName);
+      if (store != null) {
+        return store.getCurrentVersion() == version;
+      } else {
+        logger.error("Store " + storeName + " is not in store repository.");
+        // If a store doesn't exist, it doesn't have current version
+        return false;
+      }
     } catch (VeniceException e) {
       return false;
     }
