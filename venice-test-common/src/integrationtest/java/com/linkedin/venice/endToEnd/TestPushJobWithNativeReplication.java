@@ -28,6 +28,7 @@ import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.samza.SamzaExitMode;
 import com.linkedin.venice.samza.VeniceSystemFactory;
 import com.linkedin.venice.samza.VeniceSystemProducer;
 import com.linkedin.venice.server.VeniceServer;
@@ -104,6 +105,7 @@ public class  TestPushJobWithNativeReplication {
     serverProperties.setProperty(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE, "300");
     serverProperties.put(SERVER_SHARED_KAFKA_PRODUCER_ENABLED, "true");
     serverProperties.put(SERVER_KAFKA_PRODUCER_POOL_SIZE_PER_KAFKA_CLUSTER, "1");
+    serverProperties.put(SERVER_AUTO_COMPACTION_FOR_SAMZA_REPROCESSING_JOB_ENABLED, "false");
 
     Properties controllerProps = new Properties();
     controllerProps.put(DEFAULT_MAX_NUMBER_OF_PARTITIONS, 1000);
@@ -138,7 +140,7 @@ public class  TestPushJobWithNativeReplication {
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "storeSize")
   public void testNativeReplicationForBatchPush(int recordCount, int partitionCount) throws Exception {
     motherOfAllTests(
-        updateStoreQueryParams -> updateStoreQueryParams.setPartitionCount(partitionCount),
+        updateStoreQueryParams -> updateStoreQueryParams.setPartitionCount(partitionCount).setAmplificationFactor(2),
         recordCount,
         (parentController, clusterName, storeName, props, inputDir) -> {
           try (VenicePushJob job = new VenicePushJob("Test push job", props)) {
@@ -189,7 +191,7 @@ public class  TestPushJobWithNativeReplication {
   public void testNativeReplicationWithLeadershipHandover() throws Exception {
     int recordCount = 10000;
     motherOfAllTests(
-        updateStoreQueryParams -> updateStoreQueryParams.setPartitionCount(1),
+        updateStoreQueryParams -> updateStoreQueryParams.setPartitionCount(1).setAmplificationFactor(2),
         recordCount,
         (parentController, clusterName, storeName, props, inputDir) -> {
           Thread pushJobThread = new Thread(() -> {
@@ -246,7 +248,7 @@ public class  TestPushJobWithNativeReplication {
     int recordCount = 100;
     motherOfAllTests(
         updateStoreParams -> updateStoreParams
-        .setPartitionCount(2),
+        .setPartitionCount(2).setAmplificationFactor(2),
         recordCount,
         (parentController, clusterName, storeName, props, inputDir) -> {
           try (VenicePushJob job = new VenicePushJob("Test push job", props)) {
@@ -295,7 +297,8 @@ public class  TestPushJobWithNativeReplication {
   public void testNativeReplicationForHybrid() throws Exception {
     motherOfAllTests(
         updateStoreQueryParams -> updateStoreQueryParams
-            .setPartitionCount(2)
+            .setPartitionCount(1)
+            .setAmplificationFactor(2)
             .setHybridRewindSeconds(TEST_TIMEOUT)
             .setHybridOffsetLagThreshold(2)
             .setHybridDataReplicationPolicy(DataReplicationPolicy.AGGREGATE),
@@ -341,7 +344,7 @@ public class  TestPushJobWithNativeReplication {
             String routerUrl = childDataCenter.getClusters().get(clusterName).getRandomRouterURL();
             try (AvroGenericStoreClient<String, Object> client =
                 ClientFactory.getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerUrl))) {
-              TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+              TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
                 // Current version should become 1
                 for (int versionNum : parentController.getVeniceAdmin().getCurrentVersionsForMultiColos(clusterName, storeName).values())  {
                   Assert.assertEquals(versionNum, 1);
