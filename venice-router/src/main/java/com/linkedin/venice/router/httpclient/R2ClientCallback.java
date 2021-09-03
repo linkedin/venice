@@ -4,6 +4,7 @@ import com.linkedin.common.callback.Callback;
 import com.linkedin.r2.message.rest.RestException;
 import com.linkedin.r2.message.rest.RestResponse;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.utils.RedundantExceptionFilter;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import java.io.IOException;
@@ -16,7 +17,9 @@ public class R2ClientCallback implements Callback<RestResponse> {
   private final Consumer<PortableHttpResponse> responseConsumer;
   private final Consumer<Throwable>  failedCallback;
   private final BooleanSupplier cancelledCallBack;
+  private static final StackTraceElement[] emptyStackTrace = new StackTraceElement[0];
 
+  protected static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER = RedundantExceptionFilter.getRedundantExceptionFilter();
 
   public R2ClientCallback(Consumer<PortableHttpResponse> responseConsumer, Consumer<Throwable> failedCallback, BooleanSupplier cancelledCallBack) {
     this.responseConsumer = responseConsumer;
@@ -31,7 +34,11 @@ public class R2ClientCallback implements Callback<RestResponse> {
       RestResponse result = ((RestException) e).getResponse();
       onSuccess(result);
     } else {
-      logger.error("Received error from R2 client ", e);
+      String msg = e.getMessage();
+      if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg != null ? msg : "")) {
+        e.setStackTrace(emptyStackTrace);
+        logger.error("Received error from R2 client ", e);
+      }
       failedCallback.accept(e);
       cancelledCallBack.getAsBoolean();
     }
