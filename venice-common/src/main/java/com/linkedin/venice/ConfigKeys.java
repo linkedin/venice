@@ -62,6 +62,13 @@ public class ConfigKeys {
    */
   public static final String KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND = "kafka.fetch.quota.records.per.second";
 
+  /**
+   * How many records that one server could consume from Kafka at most in one second from the specified regions.
+   * If the consume rate reached this quota, the consumption thread will be blocked until there is the available quota.
+   * The value for this config is read from cluster configs in Zk.
+   */
+  public static final String SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND = "server.kafka.fetch.quota.records.per.second";
+
   // Unordered throttlers aren't compatible with Shared Kafka Consumer and have no effect when Shared Consumer is used.
   public static final String KAFKA_FETCH_QUOTA_UNORDERED_BYTES_PER_SECOND = "kafka.fetch.quota.unordered.bytes.per.second";
   public static final String KAFKA_FETCH_QUOTA_UNORDERED_RECORDS_PER_SECOND = "kafka.fetch.quota.unordered.records.per.second";
