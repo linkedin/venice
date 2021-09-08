@@ -1514,11 +1514,6 @@ public class ConfigKeys {
   public static final String CONTROLLER_DISABLE_PARENT_TOPIC_TRUNCATION_UPON_COMPLETION = "controller.disable.parent.topic.truncation.upon.completion";
 
   /**
-   * Config to control whether automatically materialize metadata system store for newly created Venice stores.
-   */
-  public static final String CONTROLLER_AUTO_MATERIALIZE_METADATA_SYSTEM_STORE_ENABLED = "controller.auto.materialize.metadata.system.store.enabled";
-
-  /**
    * ZooKeeper address of d2 client.
    */
   public static final String D2_CLIENT_ZK_HOSTS_ADDRESS = "r2d2Client.zkHosts";

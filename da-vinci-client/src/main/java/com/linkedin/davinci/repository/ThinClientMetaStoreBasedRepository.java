@@ -71,13 +71,6 @@ public class ThinClientMetaStoreBasedRepository extends NativeMetadataRepository
   }
 
   @Override
-  protected StoreMetadataValue getStoreMetadata(String storeName, StoreMetadataKey key) {
-    throw new UnsupportedOperationException(
-        "getStoreMetadata for store: " + storeName + " and key: " + key.toString() + " is not supported in "
-            + this.getClass().getSimpleName());
-  }
-
-  @Override
   protected SchemaData getSchemaDataFromSystemStore(String storeName) {
     return getSchemaDataFromMetaSystemStore(storeName);
   }

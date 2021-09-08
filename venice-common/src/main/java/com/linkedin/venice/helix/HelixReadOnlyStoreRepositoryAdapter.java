@@ -24,15 +24,17 @@ public class HelixReadOnlyStoreRepositoryAdapter implements ReadOnlyStoreReposit
   private final StoreDataChangedListener zkSharedStoreDataChangedListener;
   private final StoreDataChangedListener regularStoreDataChangedListener;
   private final Set<StoreDataChangedListener> listeners = new CopyOnWriteArraySet<>();
+  private final String clusterName;
 
   public HelixReadOnlyStoreRepositoryAdapter(HelixReadOnlyZKSharedSystemStoreRepository systemStoreRepository,
-      ReadOnlyStoreRepository regularStoreRepository) {
+      ReadOnlyStoreRepository regularStoreRepository, String clusterName) {
     this.systemStoreRepository = systemStoreRepository;
     this.regularStoreRepository = regularStoreRepository;
     this.zkSharedStoreDataChangedListener = new ZKSharedStoreDataChangedListener();
     this.systemStoreRepository.registerStoreDataChangedListener(this.zkSharedStoreDataChangedListener);
     this.regularStoreDataChangedListener = new VeniceStoreDataChangedListener();
     this.regularStoreRepository.registerStoreDataChangedListener(this.regularStoreDataChangedListener);
+    this.clusterName = clusterName;
   }
 
   /**
@@ -44,13 +46,21 @@ public class HelixReadOnlyStoreRepositoryAdapter implements ReadOnlyStoreReposit
     /**
      * This is a regular Venice store or the existing system stores, which hasn't adopted the new repositories yet.
      * Check {@link VeniceSystemStoreType} to find more details.
-      */
+     */
     return null == systemStoreType || !systemStoreType.isNewMedataRepositoryAdopted();
   }
 
   @Override
   public Store getStore(String storeName) {
     VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(storeName);
+    // TODO to be removed once legacy system store resources are cleaned up.
+    if (systemStoreType != null) {
+      if (VeniceSystemStoreType.METADATA_STORE.getPrefix().equals(storeName)
+          || systemStoreType.getZkSharedStoreNameInCluster(clusterName).equals(storeName)) {
+        // Legacy system store zk shared store objects, get them from the regularStoreRepository.
+        return regularStoreRepository.getStore(storeName);
+      }
+    }
     if (forwardToRegularRepository(systemStoreType)) {
       return regularStoreRepository.getStore(storeName);
     }
@@ -116,15 +126,18 @@ public class HelixReadOnlyStoreRepositoryAdapter implements ReadOnlyStoreReposit
     List<Store> regularVeniceStores = regularStoreRepository.getAllStores();
     List<Store> allStores = new ArrayList<>(regularVeniceStores);
     // So far, only consider meta system store.
-    Store zkSharedStoreForMetaSystemStore = systemStoreRepository.getStore(VeniceSystemStoreType.META_STORE.getZkSharedStoreName());
-    Store zkSharedStoreForDaVinciPushStatusSystemStore = systemStoreRepository.getStore(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getZkSharedStoreName());
+    Store zkSharedStoreForMetaSystemStore =
+        systemStoreRepository.getStore(VeniceSystemStoreType.META_STORE.getZkSharedStoreName());
+    Store zkSharedStoreForDaVinciPushStatusSystemStore =
+        systemStoreRepository.getStore(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getZkSharedStoreName());
     // Populate all the systems stores for the regular Venice stores if they are enabled.
-    regularVeniceStores.forEach( store -> {
+    regularVeniceStores.forEach(store -> {
       if (store.isStoreMetaSystemStoreEnabled()) {
         allStores.add(new SystemStore(zkSharedStoreForMetaSystemStore, VeniceSystemStoreType.META_STORE, store));
       }
       if (store.isDaVinciPushStatusStoreEnabled()) {
-        allStores.add(new SystemStore(zkSharedStoreForDaVinciPushStatusSystemStore, VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE, store));
+        allStores.add(new SystemStore(zkSharedStoreForDaVinciPushStatusSystemStore,
+            VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE, store));
       }
     });
     return allStores;
@@ -188,7 +201,8 @@ public class HelixReadOnlyStoreRepositoryAdapter implements ReadOnlyStoreReposit
      * No need to handle zk shared store creation since the system store will be populated on the fly.
      */
     public void handleStoreCreated(Store store) {
-      LOGGER.info("Received a new zk shared store creation: " + store.getName() + ", and current repository will do nothing");
+      LOGGER.info(
+          "Received a new zk shared store creation: " + store.getName() + ", and current repository will do nothing");
     }
 
     /**
@@ -219,8 +233,9 @@ public class HelixReadOnlyStoreRepositoryAdapter implements ReadOnlyStoreReposit
               try {
                 listener.handleStoreChanged(metaSystemStore);
               } catch (Throwable t) {
-                LOGGER.error("Received exception while invoking `handleStoreChanged` of listener: " + listener.getClass()
-                    + " with system store: " + metaSystemStore.getName(), t);
+                LOGGER.error(
+                    "Received exception while invoking `handleStoreChanged` of listener: " + listener.getClass()
+                        + " with system store: " + metaSystemStore.getName(), t);
               }
             });
           }
@@ -230,14 +245,16 @@ public class HelixReadOnlyStoreRepositoryAdapter implements ReadOnlyStoreReposit
         List<Store> regularStores = regularStoreRepository.getAllStores();
         for (Store regularStore : regularStores) {
           if (regularStore.isDaVinciPushStatusStoreEnabled()) {
-            SystemStore daVinciPushStatusSystemStore = new SystemStore(store, VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE, regularStore);
+            SystemStore daVinciPushStatusSystemStore =
+                new SystemStore(store, VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE, regularStore);
             // Notify the change of da vinci push status system store.
             listeners.forEach(listener -> {
               try {
                 listener.handleStoreChanged(daVinciPushStatusSystemStore);
               } catch (Throwable t) {
-                LOGGER.error("Received exception while invoking `handleStoreChanged` of listener: " + listener.getClass()
-                    + " with system store: " + daVinciPushStatusSystemStore.getName(), t);
+                LOGGER.error(
+                    "Received exception while invoking `handleStoreChanged` of listener: " + listener.getClass()
+                        + " with system store: " + daVinciPushStatusSystemStore.getName(), t);
               }
             });
           }
@@ -273,7 +290,8 @@ public class HelixReadOnlyStoreRepositoryAdapter implements ReadOnlyStoreReposit
         // Notify the creation of meta system store.
         listeners.forEach(listener -> {
           try {
-            SystemStore metaSystemStore = new SystemStore(systemStoreRepository.getStoreOrThrow(VeniceSystemStoreType.META_STORE.getZkSharedStoreName()),
+            SystemStore metaSystemStore = new SystemStore(
+                systemStoreRepository.getStoreOrThrow(VeniceSystemStoreType.META_STORE.getZkSharedStoreName()),
                 VeniceSystemStoreType.META_STORE, store);
             listener.handleStoreCreated(metaSystemStore);
           } catch (Throwable t) {
@@ -282,11 +300,13 @@ public class HelixReadOnlyStoreRepositoryAdapter implements ReadOnlyStoreReposit
           }
         });
       }
-      String daVinciPushStatusSystemStoreName = VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(store.getName());
+      String daVinciPushStatusSystemStoreName =
+          VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(store.getName());
       if (store.isDaVinciPushStatusStoreEnabled()) {
         listeners.forEach(listener -> {
           try {
-            SystemStore daVinciPushStatusSystemStore = new SystemStore(systemStoreRepository.getStoreOrThrow(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getZkSharedStoreName()),
+            SystemStore daVinciPushStatusSystemStore = new SystemStore(systemStoreRepository.getStoreOrThrow(
+                VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getZkSharedStoreName()),
                 VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE, store);
             listener.handleStoreCreated(daVinciPushStatusSystemStore);
           } catch (Throwable t) {
@@ -314,9 +334,9 @@ public class HelixReadOnlyStoreRepositoryAdapter implements ReadOnlyStoreReposit
               + " with store: " + storeName, t);
         }
         String metaSystemStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName);
-        SystemStore metaSystemStore =
-            new SystemStore(systemStoreRepository.getStoreOrThrow(VeniceSystemStoreType.META_STORE.getZkSharedStoreName()),
-                VeniceSystemStoreType.META_STORE, store);
+        SystemStore metaSystemStore = new SystemStore(
+            systemStoreRepository.getStoreOrThrow(VeniceSystemStoreType.META_STORE.getZkSharedStoreName()),
+            VeniceSystemStoreType.META_STORE, store);
 
         try {
 
@@ -327,7 +347,8 @@ public class HelixReadOnlyStoreRepositoryAdapter implements ReadOnlyStoreReposit
               + " with system store: " + metaSystemStoreName, t);
         }
         if (store.isDaVinciPushStatusStoreEnabled()) {
-          String daVinciPushStatusSystemStoreName = VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(storeName);
+          String daVinciPushStatusSystemStoreName =
+              VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(storeName);
           try {
             // Notify the da vinci push status system store deletion
             listener.handleStoreDeleted(daVinciPushStatusSystemStoreName);
@@ -367,27 +388,29 @@ public class HelixReadOnlyStoreRepositoryAdapter implements ReadOnlyStoreReposit
              * If it is not acceptable, we could maintain a list here for all the available system stores, and if it
              * is not found, this function could notify the store creation event.
              */
-            SystemStore metaSystemStore =
-                new SystemStore(systemStoreRepository.getStoreOrThrow(VeniceSystemStoreType.META_STORE.getZkSharedStoreName()),
-                    VeniceSystemStoreType.META_STORE, store);
+            SystemStore metaSystemStore = new SystemStore(
+                systemStoreRepository.getStoreOrThrow(VeniceSystemStoreType.META_STORE.getZkSharedStoreName()),
+                VeniceSystemStoreType.META_STORE, store);
             listener.handleStoreChanged(metaSystemStore);
           } catch (Throwable t) {
-            LOGGER.error("Received exception while invoking `handleStoreDeleted` of listener: " + listener.getClass() + " with system store: " + metaSystemStoreName, t);
+            LOGGER.error("Received exception while invoking `handleStoreDeleted` of listener: " + listener.getClass()
+                + " with system store: " + metaSystemStoreName, t);
           }
         }
         if (store.isDaVinciPushStatusStoreEnabled()) {
-          String daVinciPushStatusSystemStoreName = VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(store.getName());
+          String daVinciPushStatusSystemStoreName =
+              VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(store.getName());
           try {
-            SystemStore daVinciPushStatusSystemStore =
-                new SystemStore(systemStoreRepository.getStoreOrThrow(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getZkSharedStoreName()),
-                    VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE, store);
+            SystemStore daVinciPushStatusSystemStore = new SystemStore(systemStoreRepository.getStoreOrThrow(
+                VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getZkSharedStoreName()),
+                VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE, store);
             listener.handleStoreChanged(daVinciPushStatusSystemStore);
           } catch (Throwable t) {
-            LOGGER.error("Received exception while invoking `handleStoreDeleted` of listener: " + listener.getClass() + " with system store: " + daVinciPushStatusSystemStoreName, t);
+            LOGGER.error("Received exception while invoking `handleStoreDeleted` of listener: " + listener.getClass()
+                + " with system store: " + daVinciPushStatusSystemStoreName, t);
           }
         }
       });
-
     }
   }
 }

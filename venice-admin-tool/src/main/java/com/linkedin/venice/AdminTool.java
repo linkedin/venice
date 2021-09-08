@@ -370,15 +370,6 @@ public class AdminTool {
         case DISABLE_LF_MODEL:
           disableLFModel(cmd);
           break;
-        case NEW_ZK_SHARED_STORE:
-          newZkSharedStore(cmd);
-          break;
-        case NEW_ZK_SHARED_STORE_VERSION:
-          newZkSharedStoreVersion(cmd);
-          break;
-        case MATERIALIZE_METADATA_STORE_VERSION:
-          materializeMetadataStoreVersion(cmd);
-          break;
         case DEMATERIALIZE_METADATA_STORE_VERSION:
           dematerializeMetadataStoreVersion(cmd);
           break;
@@ -1455,31 +1446,6 @@ public class AdminTool {
     String storeType = getRequiredArgument(cmd, Arg.STORE_TYPE);
 
     MultiStoreResponse response = controllerClient.enableLFModel(false, storeType);
-    printObject(response);
-  }
-
-  private static void newZkSharedStore(CommandLine cmd) {
-    ControllerResponse response;
-    String newZkSharedStoreName = getRequiredArgument(cmd, Arg.STORE);
-    String owner = getOptionalArgument(cmd, Arg.OWNER, "venice-admin-tool");
-    if (cmd.hasOption(Arg.DEFAULT_CONFIGS.toString())) {
-      response = controllerClient.createNewZkSharedStoreWithDefaultConfigs(newZkSharedStoreName, owner);
-    } else {
-      response = controllerClient.createNewZkSharedStore(newZkSharedStoreName, owner);
-    }
-    printObject(response);
-  }
-
-  private static void newZkSharedStoreVersion(CommandLine cmd) {
-    String zkSharedStoreName = getRequiredArgument(cmd, Arg.STORE);
-    ControllerResponse response = controllerClient.newZkSharedStoreVersion(zkSharedStoreName);
-    printObject(response);
-  }
-
-  private static void materializeMetadataStoreVersion(CommandLine cmd) {
-    String veniceStoreName = getRequiredArgument(cmd, Arg.STORE);
-    int version = Utils.parseIntFromString(getRequiredArgument(cmd, Arg.VERSION), Arg.VERSION.name());
-    ControllerResponse response = controllerClient.materializeMetadataStoreVersion(veniceStoreName, version);
     printObject(response);
   }
 

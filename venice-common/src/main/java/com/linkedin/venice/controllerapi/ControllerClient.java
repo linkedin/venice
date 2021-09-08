@@ -346,27 +346,6 @@ public class ControllerClient implements Closeable {
     return request(ControllerRoute.NEW_STORE, params, NewStoreResponse.class);
   }
 
-  public ControllerResponse createNewZkSharedStoreWithDefaultConfigs(String storeName, String owner) {
-    ControllerResponse response = createNewZkSharedStore(storeName, owner);
-    if (!response.isError()) {
-      response = updateStore(storeName, VeniceSystemStoreUtils.getDefaultZkSharedStoreParams());
-    }
-    return response;
-  }
-
-  public VersionCreationResponse newZkSharedStoreVersion(String zkSharedStoreName) {
-    QueryParams params = newParams()
-        .add(NAME, zkSharedStoreName);
-    return request(ControllerRoute.NEW_ZK_SHARED_STORE_VERSION, params, VersionCreationResponse.class);
-  }
-
-  public ControllerResponse materializeMetadataStoreVersion(String storeName, int versionNumber) {
-    QueryParams params = newParams()
-        .add(NAME, storeName)
-        .add(VERSION, versionNumber);
-    return request(ControllerRoute.MATERIALIZE_METADATA_STORE_VERSION, params, ControllerResponse.class);
-  }
-
   public ControllerResponse dematerializeMetadataStoreVersion(String storeName, int versionNumber) {
     QueryParams params = newParams()
         .add(NAME, storeName)

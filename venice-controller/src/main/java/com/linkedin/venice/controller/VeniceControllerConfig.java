@@ -87,7 +87,6 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   private final boolean backupVersionRetentionBasedCleanupEnabled;
   private final boolean enforceSSLOnly;
   private final long terminalStateTopicCheckerDelayMs;
-  private final boolean isMetadataSystemStoreAutoMaterializeEnabled;
   private final List<ControllerRoute> disabledRoutes;
   /**
    * Test only config used to disable parent topic truncation upon job completion. This is needed because kafka cluster
@@ -259,8 +258,6 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
      * Disable the zk shared metadata system schema store by default until the schema is fully finalized.
      */
     this.zkSharedMetadataSystemSchemaStoreAutoCreationEnabled = props.getBoolean(CONTROLLER_ZK_SHARED_METADATA_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED, false);
-    this.isMetadataSystemStoreAutoMaterializeEnabled = props.getBoolean(
-        CONTROLLER_AUTO_MATERIALIZE_METADATA_SYSTEM_STORE_ENABLED, false);
     this.pushStatusStoreHeartbeatExpirationTimeInSeconds = props.getLong(PUSH_STATUS_STORE_HEARTBEAT_EXPIRATION_TIME_IN_SECONDS, TimeUnit.MINUTES.toSeconds(10));
     this.isDaVinciPushStatusStoreEnabled =  props.getBoolean(PUSH_STATUS_STORE_ENABLED, false);
     this.zkSharedDaVinciPushStatusSystemSchemaStoreAutoCreationEnabled = props.getBoolean(CONTROLLER_ZK_SHARED_DAVINCI_PUSH_STATUS_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED, false);
@@ -520,10 +517,6 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   public boolean isZkSharedMetadataSystemSchemaStoreAutoCreationEnabled() {
     return zkSharedMetadataSystemSchemaStoreAutoCreationEnabled;
-  }
-
-  public boolean isMetadataSystemStoreAutoMaterializeEnabled() {
-    return isMetadataSystemStoreAutoMaterializeEnabled;
   }
 
   public long getPushStatusStoreHeartbeatExpirationTimeInSeconds() {

@@ -50,7 +50,7 @@ public class TestHelixReadWriteStoreRepositoryAdapter {
         Optional.empty(), new ClusterLockManager(cluster));
     writeRepo.refresh();
 
-    writeRepoAdapter = new HelixReadWriteStoreRepositoryAdapter(zkSharedSystemStoreRepository, writeRepo);
+    writeRepoAdapter = new HelixReadWriteStoreRepositoryAdapter(zkSharedSystemStoreRepository, writeRepo, cluster);
     // Create zk shared store first
     Store zkSharedStore = TestUtils.createTestStore(systemStoreType.getZkSharedStoreName(), "test_system_store_owner", 1);
     zkSharedStore.setLeaderFollowerModelEnabled(true);

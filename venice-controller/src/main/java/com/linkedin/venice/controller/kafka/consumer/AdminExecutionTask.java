@@ -344,7 +344,7 @@ public class AdminExecutionTask implements Callable<Void> {
     if (VeniceSystemStoreUtils.getSystemStoreType(storeName) == VeniceSystemStoreType.METADATA_STORE) {
       // Dematerialize a metadata store version.
       admin.dematerializeMetadataStoreVersion(clusterName,
-          VeniceSystemStoreUtils.getStoreNameFromSystemStoreName(storeName), versionNum, false);
+          VeniceSystemStoreUtils.getStoreNameFromSystemStoreName(storeName), versionNum, true);
     } else {
       // Delete an old version for a Venice store.
       admin.deleteOldVersionInStore(clusterName, storeName, versionNum);
@@ -536,18 +536,9 @@ public class AdminExecutionTask implements Callable<Void> {
             pushType, remoteKafkaBootstrapServers, rewindTimeInSecondsOverride, timestampMetadataVersionId);
       }
     } else {
-      if (VeniceSystemStoreUtils.isStoreHostingSharedMetadata(clusterName, storeName)) {
-        // New version for the store hosting shared metadata for all metadata system stores.
-        admin.newZkSharedStoreVersion(clusterName, storeName);
-      } else if (VeniceSystemStoreUtils.getSystemStoreType(storeName) == VeniceSystemStoreType.METADATA_STORE) {
-        // Materialize a metadata store for a specific Venice store.
-        admin.materializeMetadataStoreVersion(clusterName,
-            VeniceSystemStoreUtils.getStoreNameFromSystemStoreName(storeName), versionNumber);
-      } else {
-        // New version for regular Venice store.
-        admin.addVersionAndStartIngestion(clusterName, storeName, pushJobId, versionNumber, numberOfPartitions, pushType,
-            remoteKafkaBootstrapServers, rewindTimeInSecondsOverride, timestampMetadataVersionId);
-      }
+      // New version for regular Venice store.
+      admin.addVersionAndStartIngestion(clusterName, storeName, pushJobId, versionNumber, numberOfPartitions, pushType,
+          remoteKafkaBootstrapServers, rewindTimeInSecondsOverride, timestampMetadataVersionId);
     }
   }
 

@@ -1,28 +1,16 @@
 package com.linkedin.davinci.repository;
 
 import com.linkedin.venice.client.store.ClientConfig;
-import com.linkedin.venice.common.MetadataStoreUtils;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.MissingKeyInStoreMetadataException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
-import com.linkedin.venice.meta.BackupStrategy;
-import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.ClusterInfoProvider;
-import com.linkedin.venice.meta.DataReplicationPolicy;
-import com.linkedin.venice.meta.ETLStoreConfig;
-import com.linkedin.venice.meta.ETLStoreConfigImpl;
-import com.linkedin.venice.meta.HybridStoreConfig;
-import com.linkedin.venice.meta.HybridStoreConfigImpl;
-import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.PartitionerConfigImpl;
-import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStore;
-import com.linkedin.venice.meta.ReadStrategy;
-import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.StoreDataChangedListener;
@@ -30,15 +18,9 @@ import com.linkedin.venice.meta.SubscriptionBasedReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.VersionStatus;
-import com.linkedin.venice.meta.ZKStore;
-import com.linkedin.venice.meta.systemstore.schemas.CurrentStoreStates;
 import com.linkedin.venice.meta.systemstore.schemas.CurrentVersionStates;
-import com.linkedin.venice.meta.systemstore.schemas.StoreAttributes;
-import com.linkedin.venice.meta.systemstore.schemas.StoreKeySchemas;
 import com.linkedin.venice.meta.systemstore.schemas.StoreMetadataKey;
 import com.linkedin.venice.meta.systemstore.schemas.StoreMetadataValue;
-import com.linkedin.venice.meta.systemstore.schemas.StoreProperties;
-import com.linkedin.venice.meta.systemstore.schemas.StoreValueSchemas;
 import com.linkedin.venice.meta.systemstore.schemas.StoreVersionState;
 import com.linkedin.venice.schema.DerivedSchemaEntry;
 import com.linkedin.venice.schema.SchemaData;
@@ -124,14 +106,10 @@ public abstract class NativeMetadataRepository
       logger.info("Initializing " + NativeMetadataRepository.class.getSimpleName() + " with "
           + DaVinciClientMetaStoreBasedRepository.class.getSimpleName());
       return new DaVinciClientMetaStoreBasedRepository(clientConfig, backendConfig);
-    } else if (backendConfig.getBoolean(CLIENT_USE_META_SYSTEM_STORE_REPOSITORY, false)) {
+    } else {
       logger.info("Initializing " + NativeMetadataRepository.class.getSimpleName() + " with "
           + ThinClientMetaStoreBasedRepository.class.getSimpleName());
       return new ThinClientMetaStoreBasedRepository(clientConfig, backendConfig, icProvider);
-    } else {
-      logger.info("Initializing " + NativeMetadataRepository.class.getSimpleName() + " with "
-          + ThinClientMetadataStoreBasedRepository.class.getSimpleName());
-      return new ThinClientMetadataStoreBasedRepository(clientConfig, backendConfig, icProvider);
     }
   }
 
@@ -419,8 +397,6 @@ public abstract class NativeMetadataRepository
 
   protected abstract Store getStoreFromSystemStore(String storeName, String clusterName);
 
-  protected abstract StoreMetadataValue getStoreMetadata(String storeName, StoreMetadataKey key);
-
   protected abstract StoreMetaValue getStoreMetaValue(String storeName, StoreMetaKey key);
 
   // Helper function with common code for retrieving StoreConfig from meta system store.
@@ -470,46 +446,6 @@ public abstract class NativeMetadataRepository
     return schemaData;
   }
 
-  // Helper function with common code for retrieving StoreConfig data from metadata system store based implementations.
-  protected StoreConfig getStoreConfigFromMetadataSystemStore(String storeName) {
-    // Metadata system store based implementations doesn't support any other fields of the StoreConfig other than cluster.
-    // Please use Meta system store based implementation if other StoreConfig fields are needed.
-    StoreMetadataKey storeAttributeKey = MetadataStoreUtils.getStoreAttributesKey(storeName);
-    StoreMetadataValue storeMetadataValue = getStoreMetadata(storeName, storeAttributeKey);
-    if (storeMetadataValue != null) {
-      StoreAttributes storeAttributes = (StoreAttributes) storeMetadataValue.metadataUnion;
-      StoreConfig storeConfig = new StoreConfig(storeName);
-      storeConfig.setCluster(storeAttributes.sourceCluster.toString());
-      return storeConfig;
-    } else {
-      throw new MissingKeyInStoreMetadataException(storeAttributeKey.toString(), StoreAttributes.class.getName());
-    }
-  }
-
-  // Helper function with common code for retrieving Store data from metadata system store based implementations
-  protected Store getStoreFromMetadataSystemStore(String storeName, String clusterName) {
-    StoreMetadataKey storeCurrentStatesKey = MetadataStoreUtils.getCurrentStoreStatesKey(storeName, clusterName);
-    StoreMetadataKey storeCurrentVersionStatesKey =
-        MetadataStoreUtils.getCurrentVersionStatesKey(storeName, clusterName);
-
-    StoreMetadataValue storeMetadataValue;
-    storeMetadataValue = getStoreMetadata(storeName, storeCurrentStatesKey);
-    if (storeMetadataValue == null) {
-      throw new MissingKeyInStoreMetadataException(storeCurrentStatesKey.toString(),
-          CurrentStoreStates.class.getName());
-    }
-    CurrentStoreStates currentStoreStates = (CurrentStoreStates) storeMetadataValue.metadataUnion;
-
-    storeMetadataValue = getStoreMetadata(storeName, storeCurrentVersionStatesKey);
-    if (storeMetadataValue == null) {
-      throw new MissingKeyInStoreMetadataException(storeCurrentVersionStatesKey.toString(),
-          CurrentVersionStates.class.getName());
-    }
-    CurrentVersionStates currentVersionStates = (CurrentVersionStates) storeMetadataValue.metadataUnion;
-
-    return getStoreFromStoreMetadata(currentStoreStates, currentVersionStates);
-  }
-
   // Helper functions to parse version data retrieved from metadata system store based implementations
   protected List<Version> getVersionsFromCurrentVersionStates(String storeName,
       CurrentVersionStates currentVersionStates) {
@@ -533,112 +469,6 @@ public abstract class NativeMetadataRepository
       versionList.add(version);
     }
     return versionList;
-  }
-
-  // Helper functions to parse Store data retrieved from metadata system store based implementations
-  protected Store getStoreFromStoreMetadata(CurrentStoreStates currentStoreStates,
-      CurrentVersionStates currentVersionStates) {
-    StoreProperties storeProperties = currentStoreStates.states;
-
-    HybridStoreConfig hybridStoreConfig = null;
-    if (storeProperties.hybrid) {
-      hybridStoreConfig = new HybridStoreConfigImpl(storeProperties.hybridStoreConfig.rewindTimeInSeconds,
-          storeProperties.hybridStoreConfig.offsetLagThresholdToGoOnline,
-          storeProperties.hybridStoreConfig.producerTimestampLagThresholdToGoOnlineInSeconds,
-          // DataReplicationPolicy and BufferReplayPolicy are not added to metadata value schema as metadata system
-          // store is deprecating and da-vinci does not need these fields. Create hybridStoreConfig with default
-          // dataReplicationPolicy and bufferReplayPolicy.
-          DataReplicationPolicy.NON_AGGREGATE, BufferReplayPolicy.REWIND_FROM_EOP);
-    }
-
-    PartitionerConfig partitionerConfig = null;
-    if (storeProperties.partitionerConfig != null) {
-      partitionerConfig = new PartitionerConfigImpl(storeProperties.partitionerConfig.partitionerClass.toString(),
-          CollectionUtils.getStringMapFromCharSequenceMap(storeProperties.partitionerConfig.partitionerParams),
-          storeProperties.partitionerConfig.amplificationFactor);
-    }
-
-    Store store =
-        new ZKStore(storeProperties.name.toString(), storeProperties.owner.toString(), storeProperties.createdTime,
-            PersistenceType.valueOf(storeProperties.persistenceType.toString()),
-            RoutingStrategy.valueOf(storeProperties.routingStrategy.toString()),
-            ReadStrategy.valueOf(storeProperties.readStrategy.toString()),
-            OfflinePushStrategy.valueOf(storeProperties.offLinePushStrategy.toString()),
-            currentVersionStates.currentVersion, storeProperties.storageQuotaInByte, storeProperties.readQuotaInCU,
-            hybridStoreConfig, partitionerConfig, 1 // TODO: figure out how to get hold of a sensible RF value here
-        );
-    store.setVersions(getVersionsFromCurrentVersionStates(storeProperties.name.toString(), currentVersionStates));
-    store.setBackupStrategy(BackupStrategy.valueOf(storeProperties.backupStrategy.toString()));
-    store.setBatchGetLimit(storeProperties.batchGetLimit);
-    store.setBootstrapToOnlineTimeoutInHours(storeProperties.bootstrapToOnlineTimeoutInHours);
-    store.setChunkingEnabled(storeProperties.chunkingEnabled);
-    store.setClientDecompressionEnabled(storeProperties.clientDecompressionEnabled);
-    store.setCompressionStrategy(CompressionStrategy.valueOf(storeProperties.compressionStrategy.toString()));
-    store.setEnableReads(storeProperties.enableReads);
-    store.setEnableWrites(storeProperties.enableWrites);
-    ETLStoreConfig etlStoreConfig = null;
-    if (storeProperties.etlStoreConfig != null) {
-      etlStoreConfig = new ETLStoreConfigImpl(storeProperties.etlStoreConfig.etledUserProxyAccount.toString(),
-          storeProperties.etlStoreConfig.regularVersionETLEnabled,
-          storeProperties.etlStoreConfig.futureVersionETLEnabled);
-    }
-    store.setEtlStoreConfig(etlStoreConfig);
-    store.setHybridStoreDiskQuotaEnabled(storeProperties.hybridStoreDiskQuotaEnabled);
-    store.setIncrementalPushEnabled(storeProperties.incrementalPushEnabled);
-    store.setLargestUsedVersionNumber(storeProperties.largestUsedVersionNumber);
-    store.setLatestSuperSetValueSchemaId(storeProperties.latestSuperSetValueSchemaId);
-    store.setLeaderFollowerModelEnabled(storeProperties.leaderFollowerModelEnabled);
-    store.setMigrating(storeProperties.migrating);
-    store.setNativeReplicationEnabled(storeProperties.nativeReplicationEnabled);
-    store.setNumVersionsToPreserve(storeProperties.numVersionsToPreserve);
-    store.setPartitionCount(storeProperties.partitionCount);
-    store.setPushStreamSourceAddress(storeProperties.pushStreamSourceAddress.toString());
-    store.setReadComputationEnabled(storeProperties.readComputationEnabled);
-    store.setReadQuotaInCU(storeProperties.readQuotaInCU);
-    store.setSchemaAutoRegisterFromPushJobEnabled(storeProperties.schemaAutoRegisterFromPushJobEnabled);
-    store.setStoreMetadataSystemStoreEnabled(true);
-    store.setStorageQuotaInByte(storeProperties.storageQuotaInByte);
-    store.setWriteComputationEnabled(storeProperties.writeComputationEnabled);
-    if (storeProperties.daVinciPushStatusStoreEnabled != null) {
-      store.setDaVinciPushStatusStoreEnabled(storeProperties.daVinciPushStatusStoreEnabled);
-    } else {
-      store.setDaVinciPushStatusStoreEnabled(false);
-    }
-
-    return store;
-  }
-
-  // Helper function with common code for retrieving schema data from metadata system store based implementations
-  protected SchemaData getSchemaDataFromMetadataSystemStore(String storeName) {
-    StoreMetadataKey storeKeySchemasKey = MetadataStoreUtils.getStoreKeySchemasKey(storeName);
-    StoreMetadataKey storeValueSchemasKey = MetadataStoreUtils.getStoreValueSchemasKey(storeName);
-    StoreKeySchemas storeKeySchemas;
-    StoreValueSchemas storeValueSchemas;
-    StoreMetadataValue storeMetadataValue;
-    storeMetadataValue = getStoreMetadata(storeName, storeKeySchemasKey);
-    if (storeMetadataValue == null) {
-      throw new MissingKeyInStoreMetadataException(storeKeySchemasKey.toString(), StoreKeySchemas.class.getName());
-    }
-    storeKeySchemas = (StoreKeySchemas) storeMetadataValue.metadataUnion;
-
-    storeMetadataValue = getStoreMetadata(storeName, storeValueSchemasKey);
-    if (storeMetadataValue == null) {
-      throw new MissingKeyInStoreMetadataException(storeValueSchemasKey.toString(), StoreValueSchemas.class.getName());
-    }
-    storeValueSchemas = (StoreValueSchemas) storeMetadataValue.metadataUnion;
-
-    // If the local cache doesn't have the schema entry for this store,
-    // it could be added recently, and we need to add/monitor it locally
-    SchemaData schemaData = new SchemaData(storeName);
-    // Fetch first key schema from keySchemaMap. For now only one key schema is used for each store.
-    String keySchemaString = storeKeySchemas.keySchemaMap.values().iterator().next().toString();
-    // Since key schema are not mutated (not even the child zk path) there is no need to set watches
-    schemaData.setKeySchema(new SchemaEntry(KEY_SCHEMA_ID, keySchemaString));
-    // Fetch value schema
-    storeValueSchemas.valueSchemaMap.forEach(
-        (key, val) -> schemaData.addValueSchema(new SchemaEntry(Integer.parseInt(key.toString()), val.toString())));
-
-    return schemaData;
   }
 
   protected Store putStore(Store newStore) {

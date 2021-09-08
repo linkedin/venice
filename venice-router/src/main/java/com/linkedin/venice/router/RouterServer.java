@@ -251,7 +251,8 @@ public class RouterServer extends AbstractVeniceService {
         config.getRefreshAttemptsForZkReconnect(), config.getRefreshIntervalForZkReconnectInMs());
     this.metadataRepository = new HelixReadOnlyStoreRepositoryAdapter(
         readOnlyZKSharedSystemStoreRepository,
-        readOnlyStoreRepository
+        readOnlyStoreRepository,
+        config.getClusterName()
     );
     this.schemaRepository = new HelixReadOnlySchemaRepositoryAdapter(
         new HelixReadOnlyZKSharedSchemaRepository(readOnlyZKSharedSystemStoreRepository, zkClient, adapter, config.getSystemSchemaClusterName(),

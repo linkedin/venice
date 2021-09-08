@@ -547,48 +547,4 @@ public class CreateVersion extends AbstractRoute {
       return AdminSparkServer.mapper.writeValueAsString(responseObject);
     };
   }
-
-  public Route newZkSharedStoreVersion(Admin admin) {
-    return (request, response) -> {
-      VersionCreationResponse responseObject = new VersionCreationResponse();
-      response.type(HttpConstants.JSON);
-      try {
-        AdminSparkServer.validateParams(request, NEW_ZK_SHARED_STORE_VERSION.getParams(), admin);
-        String clusterName = request.queryParams(CLUSTER);
-        String zkSharedStoreName = request.queryParams(NAME);
-
-        Version version = admin.newZkSharedStoreVersion(clusterName, zkSharedStoreName);
-
-        responseObject.setCluster(clusterName);
-        responseObject.setName(zkSharedStoreName);
-        responseObject.setVersion(version.getNumber());
-      } catch (Throwable e) {
-        responseObject.setError(e.getMessage());
-        AdminSparkServer.handleError(e, request, response);
-      }
-      return AdminSparkServer.mapper.writeValueAsString(responseObject);
-    };
-  }
-
-  public Route materializeMetadataStoreVersion(Admin admin) {
-    return (request, response) -> {
-      ControllerResponse responseObject = new ControllerResponse();
-      response.type(HttpConstants.JSON);
-      try {
-        AdminSparkServer.validateParams(request, MATERIALIZE_METADATA_STORE_VERSION.getParams(), admin);
-        String clusterName = request.queryParams(CLUSTER);
-        String storeName = request.queryParams(NAME);
-        int versionNumber = Utils.parseIntFromString(request.queryParams(VERSION), VERSION);
-
-        admin.materializeMetadataStoreVersion(clusterName, storeName, versionNumber);
-
-        responseObject.setCluster(clusterName);
-        responseObject.setName(storeName);
-      } catch (Throwable e) {
-        responseObject.setError(e.getMessage());
-        AdminSparkServer.handleError(e, request, response);
-      }
-      return AdminSparkServer.mapper.writeValueAsString(responseObject);
-    };
-  }
 }

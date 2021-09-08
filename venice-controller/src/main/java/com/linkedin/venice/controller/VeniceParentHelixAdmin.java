@@ -562,7 +562,6 @@ public class VeniceParentHelixAdmin implements Admin {
       //Provisioning ACL needs to be the first step in store creation process.
       provisionAclsForStore(storeName, accessPermissions, Collections.emptyList());
       sendStoreCreationAdminMessage(clusterName, storeName, owner, keySchema, valueSchema);
-      mayBeMaterializeMetadataStoreVersion(storeName, clusterName);
       maybeMaterializeMetaSystemStore(storeName, clusterName);
 
       if (VeniceSystemStoreType.BATCH_JOB_HEARTBEAT_STORE.getPrefix().equals(storeName)) {
@@ -591,17 +590,6 @@ public class VeniceParentHelixAdmin implements Admin {
     message.operationType = AdminMessageType.STORE_CREATION.getValue();
     message.payloadUnion = storeCreation;
     sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
-  }
-
-  private void mayBeMaterializeMetadataStoreVersion(String storeName, String clusterName) {
-    VeniceControllerConfig controllerConfig = multiClusterConfigs.getControllerConfig(clusterName);
-    if (VeniceSystemStoreUtils.isSystemStore(storeName) || !controllerConfig.isMetadataSystemStoreAutoMaterializeEnabled()) {
-      return;
-    }
-    Store zkSharedStore = getStore(clusterName, VeniceSystemStoreUtils.getSharedZkNameForMetadataStore(clusterName));
-    if (zkSharedStore != null && zkSharedStore.getCurrentVersion() != Store.NON_EXISTING_VERSION) {
-      materializeMetadataStoreVersion(clusterName, storeName, zkSharedStore.getCurrentVersion());
-    }
   }
 
   private void maybeMaterializeMetaSystemStore(String storeName, String clusterName) {
@@ -2571,55 +2559,8 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
-  public Version newZkSharedStoreVersion(String clusterName, String zkSharedStoreName) {
-    Version newVersion = veniceHelixAdmin.newZkSharedStoreVersion(clusterName, zkSharedStoreName);
-    acquireAdminMessageLock(clusterName, zkSharedStoreName);
-    try {
-      sendAddVersionAdminMessage(clusterName, zkSharedStoreName, newVersion.getPushJobId(), newVersion, newVersion.getPartitionCount(), newVersion.getPushType());
-    } finally {
-      releaseAdminMessageLock(clusterName);
-    }
-    return newVersion;
-  }
-
-  /**
-   * Parent controller will only create the RT topic. Sync/write relevant target store states to the RT and send add
-   * version admin message for the materializing metadata store version
-   */
-  @Override
-  public void materializeMetadataStoreVersion(String clusterName, String storeName, int metadataStoreVersionNumber) {
-    veniceHelixAdmin.checkControllerMastership(clusterName);
-    Store veniceStore = getStore(clusterName, storeName);
-    Store zkSharedStoreMetadata = getStore(clusterName, VeniceSystemStoreType.METADATA_STORE.getPrefix());
-    veniceHelixAdmin.checkMetadataStorePrerequisites(clusterName, storeName, metadataStoreVersionNumber, veniceStore,
-        zkSharedStoreMetadata);
-    Version version = zkSharedStoreMetadata.getVersion(metadataStoreVersionNumber).get();
-    String metadataStoreName = VeniceSystemStoreUtils.getMetadataStoreName(storeName);
-    getRealTimeTopic(clusterName, metadataStoreName);
-    veniceHelixAdmin.storeMetadataUpdate(clusterName, storeName, store -> {
-      store.setStoreMetadataSystemStoreEnabled(true);
-      return store;
-    });
-
-    AdminOperation message = new AdminOperation();
-    message.operationType = AdminMessageType.ADD_VERSION.getValue();
-    message.payloadUnion = getAddVersionMessage(clusterName, metadataStoreName, version.getPushJobId(), version,
-        version.getPartitionCount(), version.getPushType());
-    acquireAdminMessageLock(clusterName, storeName);
-    try {
-      sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
-    } finally {
-      releaseAdminMessageLock(clusterName);
-    }
-    // Ensure the wild card acl regex is created for METADATA_STORE
-    authorizerService.ifPresent(service -> service.setupResource(
-        new Resource(VeniceSystemStoreType.METADATA_STORE.getSystemStoreName(storeName))));
-  }
-
-  @Override
   public void dematerializeMetadataStoreVersion(String clusterName, String storeName, int versionNumber, boolean deleteRT) {
     String metadataStoreName = VeniceSystemStoreUtils.getMetadataStoreName(storeName);
-    veniceHelixAdmin.checkPreConditionForSingleVersionDeletion(clusterName, metadataStoreName, versionNumber);
     DeleteOldVersion deleteOldVersion = (DeleteOldVersion) AdminMessageType.DELETE_OLD_VERSION.getNewInstance();
     deleteOldVersion.clusterName = clusterName;
     deleteOldVersion.storeName = metadataStoreName;
@@ -2950,11 +2891,6 @@ public class VeniceParentHelixAdmin implements Admin {
   @Override
   public MetaStoreWriter getMetaStoreWriter() {
     return veniceHelixAdmin.getMetaStoreWriter();
-  }
-
-  @Override
-  public MetadataStoreWriter getMetadataStoreWriter() {
-    return veniceHelixAdmin.getMetadataStoreWriter();
   }
 
   @Override

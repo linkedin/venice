@@ -59,7 +59,7 @@ public class TestHelixReadOnlyStoreRepositoryAdapter {
     HelixReadOnlyStoreRepository storeRepository = new HelixReadOnlyStoreRepository(zkClient, adapter, cluster, 1, 1000);
     zkSharedSystemStoreRepository.refresh();
     storeRepository.refresh();
-    repo = new HelixReadOnlyStoreRepositoryAdapter(zkSharedSystemStoreRepository, storeRepository);
+    repo = new HelixReadOnlyStoreRepositoryAdapter(zkSharedSystemStoreRepository, storeRepository, cluster);
     writeRepo = new HelixReadWriteStoreRepository(zkClient, adapter, cluster, Optional.empty(), new ClusterLockManager(cluster));
     repo.refresh();
     writeRepo.refresh();
