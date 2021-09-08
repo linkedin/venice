@@ -180,8 +180,13 @@ public class AdminTool {
           break;
         case JOB_STATUS:
           storeName = getRequiredArgument(cmd, Arg.STORE, Command.JOB_STATUS);
-          versionString = getRequiredArgument(cmd, Arg.VERSION, Command.JOB_STATUS);
-          version = Integer.parseInt(versionString);
+          versionString = getOptionalArgument(cmd, Arg.VERSION, null);
+          if (versionString == null) {
+            StoreInfo storeInfo = controllerClient.getStore(storeName).getStore();
+            version = storeInfo.getLargestUsedVersionNumber();
+          } else {
+            version = Integer.parseInt(versionString);
+          }
           topicName = Version.composeKafkaTopic(storeName, version);
           JobStatusQueryResponse jobStatus = controllerClient.queryJobStatus(topicName);
           printObject(jobStatus);
