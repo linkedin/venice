@@ -132,7 +132,8 @@ public class VeniceMetadataRepositoryBuilder {
 
     storeRepo = new HelixReadOnlyStoreRepositoryAdapter(
         readOnlyZKSharedSystemStoreRepository,
-        readOnlyStoreRepository
+        readOnlyStoreRepository,
+        clusterName
     );
     // Load existing store config and setup watches
     storeRepo.refresh();

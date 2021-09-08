@@ -15,8 +15,8 @@ public class HelixReadWriteStoreRepositoryAdapter extends HelixReadOnlyStoreRepo
   private final ReadWriteStoreRepository regularStoreRepository;
 
   public HelixReadWriteStoreRepositoryAdapter(HelixReadOnlyZKSharedSystemStoreRepository systemStoreRepository,
-      ReadWriteStoreRepository regularStoreRepository) {
-    super(systemStoreRepository, regularStoreRepository);
+      ReadWriteStoreRepository regularStoreRepository, String clusterName) {
+    super(systemStoreRepository, regularStoreRepository, clusterName);
     this.regularStoreRepository = regularStoreRepository;
   }
 

@@ -93,10 +93,6 @@ public enum ControllerRoute {
 
   ENABLE_LF_MODEL("/enable_lf_model", HttpMethod.POST, Arrays.asList(STORE_TYPE, STATUS)),
 
-  NEW_ZK_SHARED_STORE_VERSION("/new_zk_shared_store_version", HttpMethod.POST, Arrays.asList(CLUSTER, NAME)),
-
-  MATERIALIZE_METADATA_STORE_VERSION("/materialize_metadata_store_version", HttpMethod.POST, Arrays.asList(CLUSTER, NAME, VERSION)),
-
   DEMATERIALIZE_METADATA_STORE_VERSION("/dematerialize_metadata_store_version", HttpMethod.POST, Arrays.asList(CLUSTER, NAME, VERSION)),
   FUTURE_VERSION("/list_future_versions", HttpMethod.GET, Arrays.asList(CLUSTER, NAME)),
   SET_TOPIC_COMPACTION("/set_topic_compaction", HttpMethod.POST, Arrays.asList(TOPIC, TOPIC_COMPACTION_POLICY)),

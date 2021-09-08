@@ -12,9 +12,7 @@ import com.linkedin.venice.client.store.AvroSpecificStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.client.store.StatTrackingStoreClient;
-import com.linkedin.venice.common.MetadataStoreUtils;
 import com.linkedin.venice.common.VeniceSystemStoreType;
-import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
@@ -30,9 +28,6 @@ import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiColoMultiCluster
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.meta.systemstore.schemas.StoreAttributes;
-import com.linkedin.venice.meta.systemstore.schemas.StoreMetadataKey;
-import com.linkedin.venice.meta.systemstore.schemas.StoreMetadataValue;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
 import com.linkedin.venice.system.store.MetaStoreDataType;
 import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
@@ -62,6 +57,7 @@ import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.system.store.MetaStoreWriter.*;
 import static com.linkedin.venice.utils.TestPushUtils.*;
 import static org.testng.Assert.*;
+
 
 /**
  * The suite includes integration tests for all store migration tools, including migrate-store, complete-migration,
@@ -103,19 +99,6 @@ public abstract class TestStoreMigration {
         .map(VeniceControllerWrapper::getControllerUrl)
         .collect(Collectors.joining(","));
     childControllerUrl0 = multiClusterWrapper.getControllerConnectString();
-
-    // Create and configure the Zk shared store for metadata system stores.
-    for (String clusterName : clusterNames) {
-      try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerUrl)) {
-        String zkSharedStoreName = VeniceSystemStoreUtils.getSharedZkNameForMetadataStore(clusterName);
-        Assert.assertFalse(parentControllerClient.createNewZkSharedStoreWithDefaultConfigs(
-            zkSharedStoreName, "test").isError(), "Failed to create the Zk shared store");
-        Assert.assertFalse(parentControllerClient.newZkSharedStoreVersion(zkSharedStoreName).isError(),
-            "Failed to create new Zk shared store version");
-        Assert.assertEquals(parentControllerClient.getStore(zkSharedStoreName).getStore().getCurrentVersion(),
-            zkSharedStoreVersion);
-      }
-    }
   }
 
   @AfterClass
@@ -199,49 +182,6 @@ public abstract class TestStoreMigration {
         owner = storeResponse.getStore().getOwner();
         Assert.assertEquals(owner, NEW_OWNER);
       });
-    }
-  }
-
-  @Test(timeOut = TEST_TIMEOUT)
-  public void testStoreMigrationWithMetadataSystemStoreOnParentController() throws Exception {
-    String storeName = TestUtils.getUniqueString("store");
-    createAndPushStore(parentControllerUrl, srcClusterName, storeName);
-
-    // Materialize metadata store in the source cluster
-    try (ControllerClient srcParentControllerClient = new ControllerClient(srcClusterName, parentControllerUrl);
-        ControllerClient destParentControllerClient = new ControllerClient(destClusterName, parentControllerUrl)) {
-      Assert.assertFalse(srcParentControllerClient.materializeMetadataStoreVersion(storeName, zkSharedStoreVersion).isError());
-
-      String srcD2ServiceName = "venice-" + srcClusterName.substring(srcClusterName.length() - 1);
-      D2Client d2Client = D2TestUtils.getAndStartD2Client(multiClusterWrapper.getClusters().get(srcClusterName).getZk().getAddress());
-      ClientConfig<StoreMetadataValue> clientConfig = ClientConfig.defaultSpecificClientConfig(
-          VeniceSystemStoreUtils.getMetadataStoreName(storeName), StoreMetadataValue.class)
-          .setD2ServiceName(srcD2ServiceName)
-          .setD2Client(d2Client)
-          .setStoreName(VeniceSystemStoreUtils.getMetadataStoreName(storeName));
-
-      try (AvroSpecificStoreClient<StoreMetadataKey, StoreMetadataValue> client =
-          ClientFactory.getAndStartSpecificAvroClient(clientConfig)) {
-        StoreMetadataKey storeAttributesKey = MetadataStoreUtils.getStoreAttributesKey(storeName);
-        String metadataStoreTopic =
-            Version.composeKafkaTopic(VeniceSystemStoreUtils.getMetadataStoreName(storeName), zkSharedStoreVersion);
-        TestUtils.waitForNonDeterministicPushCompletion(metadataStoreTopic, srcParentControllerClient, 30,
-            TimeUnit.SECONDS, Optional.empty());
-        TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () ->
-            Assert.assertNotNull(client.get(storeAttributesKey).get()));
-
-        startMigration(parentControllerUrl, storeName);
-        completeMigration(parentControllerUrl, storeName);
-
-        // Verify the metadata store is materialized in the destination cluster and contains correct values.
-        TestUtils.waitForNonDeterministicPushCompletion(metadataStoreTopic, destParentControllerClient, 30,
-            TimeUnit.SECONDS, Optional.empty());
-        TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () ->
-            Assert.assertNotNull(client.get(storeAttributesKey).get()));
-        StoreAttributes storeAttributes = (StoreAttributes) client.get(storeAttributesKey).get().metadataUnion;
-        Assert.assertEquals(storeAttributes.sourceCluster.toString(), destClusterName,
-            "Unexpected source cluster post store migration");
-      }
     }
   }
 

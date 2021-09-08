@@ -490,7 +490,7 @@ public interface Admin extends AutoCloseable, Closeable {
     boolean isTopicTruncated(String topicName);
 
     boolean isTopicTruncatedBasedOnRetention(long retention);
-    
+
     int getMinNumberOfUnusedKafkaTopicsToPreserve();
     /**
      *
@@ -527,14 +527,6 @@ public interface Admin extends AutoCloseable, Closeable {
     void writeEndOfPush(String clusterName, String storeName, int versionNumber, boolean alsoWriteStartOfPush);
 
     boolean whetherEnableBatchPushFromAdmin();
-
-    Version newZkSharedStoreVersion(String clusterName, String zkSharedStoreName);
-
-    /**
-     * Materialize the specified Zk shared metadata store version for the given Venice store name and set the
-     * storeMetadataSystemStoreEnabled flag to true.
-     */
-    void materializeMetadataStoreVersion(String clusterName, String storeName, int versionNumber);
 
     /**
      * Dematerialize the specified Zk shared metadata store version for the given Venice store name and set the
@@ -601,11 +593,6 @@ public interface Admin extends AutoCloseable, Closeable {
      * Return a {@link MetaStoreWriter}, which can be shared across different Venice clusters.
      */
     MetaStoreWriter getMetaStoreWriter();
-
-    /**
-     * Return {@link MetadataStoreWriter}.
-     */
-    MetadataStoreWriter getMetadataStoreWriter();
 
     /**
      * Return {@link PushStatusStoreRecordDeleter}.
