@@ -34,7 +34,7 @@ public class LeaderFollowerParticipantModelFactoryTest {
 
   private Message mockMessage;
 
-  private LeaderFollowerParticipantModelFactory factory;
+  private LeaderFollowerPartitionStateModelFactory factory;
   private ExecutorService executorService;
 
   @BeforeClass
@@ -65,7 +65,7 @@ public class LeaderFollowerParticipantModelFactoryTest {
     mockMessage = Mockito.mock(Message.class);
     Mockito.when(mockMessage.getResourceName()).thenReturn(resourceName);
 
-    factory = new LeaderFollowerParticipantModelFactory(
+    factory = new LeaderFollowerPartitionStateModelFactory(
         mockIngestionBackend,
         mockConfigLoader,
         this.executorService,

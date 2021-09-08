@@ -17,11 +17,11 @@ import org.apache.helix.zookeeper.impl.client.ZkClient;
  * Factory to create VeniceDistClusterControllerStateModel and provide some utility methods to get state model by given
  * cluster.
  */
-public class VeniceDistClusterControllerStateModelFactory extends StateModelFactory<VeniceDistClusterControllerStateModel> {
+public class VeniceDistClusterControllerStateModelFactory extends StateModelFactory<VeniceControllerStateModel> {
   private final ZkClient zkClient;
   private final HelixAdapterSerializer adapterSerializer;
   private final VeniceControllerMultiClusterConfig clusterConfigs;
-  private final ConcurrentMap<String, VeniceDistClusterControllerStateModel> clusterToStateModelsMap =
+  private final ConcurrentMap<String, VeniceControllerStateModel> clusterToStateModelsMap =
       new ConcurrentHashMap<>();
   private final VeniceHelixAdmin admin;
   private final MetricsRepository metricsRepository;
@@ -51,21 +51,21 @@ public class VeniceDistClusterControllerStateModelFactory extends StateModelFact
   }
 
   @Override
-  public VeniceDistClusterControllerStateModel createNewStateModel(String resourceName, String partitionName) {
+  public VeniceControllerStateModel createNewStateModel(String resourceName, String partitionName) {
     String veniceClusterName =
-        VeniceDistClusterControllerStateModel.getVeniceClusterNameFromPartitionName(partitionName);
-    VeniceDistClusterControllerStateModel model =
-        new VeniceDistClusterControllerStateModel(veniceClusterName, zkClient, adapterSerializer, clusterConfigs, admin, metricsRepository, controllerInitialization, onlineOfflineTopicReplicator,
+        VeniceControllerStateModel.getVeniceClusterNameFromPartitionName(partitionName);
+    VeniceControllerStateModel model =
+        new VeniceControllerStateModel(veniceClusterName, zkClient, adapterSerializer, clusterConfigs, admin, metricsRepository, controllerInitialization, onlineOfflineTopicReplicator,
             leaderFollowerTopicReplicator, accessController, metadataStoreWriter, helixAdminClient);
     clusterToStateModelsMap.put(veniceClusterName, model);
     return model;
   }
 
-  public VeniceDistClusterControllerStateModel getModel(String veniceClusterName) {
+  public VeniceControllerStateModel getModel(String veniceClusterName) {
     return clusterToStateModelsMap.get(veniceClusterName);
   }
 
-  public Collection<VeniceDistClusterControllerStateModel> getAllModels(){
+  public Collection<VeniceControllerStateModel> getAllModels(){
     return clusterToStateModelsMap.values();
   }
 }

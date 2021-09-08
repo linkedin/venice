@@ -530,7 +530,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             createClusterIfRequired(clusterName);
         }
         // The resource and partition may be disabled for this controller before, we need to enable again at first. Then the state transition will be triggered.
-        List<String> partitionNames = Collections.singletonList(VeniceDistClusterControllerStateModel.getPartitionNameFromVeniceClusterName(clusterName));
+        List<String> partitionNames = Collections.singletonList(VeniceControllerStateModel.getPartitionNameFromVeniceClusterName(clusterName));
         helixAdminClient.enablePartition(true, controllerClusterName, controllerName, clusterName, partitionNames);
         if (multiClusterConfigs.getControllerConfig(clusterName).isParticipantMessageStoreEnabled()) {
             participantMessageStoreRTTMap.put(clusterName,
@@ -3803,7 +3803,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         // Instead of disconnecting the sub-controller for the given cluster, we should disable it for this controller,
         // then the LEADER->STANDBY and STANDBY->OFFLINE will be triggered, our handler will handle the resource collection.
         List<String> partitionNames = new ArrayList<>();
-        partitionNames.add(VeniceDistClusterControllerStateModel.getPartitionNameFromVeniceClusterName(clusterName));
+        partitionNames.add(VeniceControllerStateModel.getPartitionNameFromVeniceClusterName(clusterName));
         helixAdminClient.enablePartition(false, controllerClusterName, controllerName, clusterName, partitionNames);
     }
 
@@ -4217,7 +4217,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     @Override
     public boolean isMasterController(String clusterName) {
-        VeniceDistClusterControllerStateModel model = controllerStateModelFactory.getModel(clusterName);
+        VeniceControllerStateModel model = controllerStateModelFactory.getModel(clusterName);
         if (model == null ) {
             return false;
         }
@@ -5281,7 +5281,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     public List<String> getClustersLeaderOf() {
         List<String> clusters = new ArrayList<>();
-        for (VeniceDistClusterControllerStateModel model : controllerStateModelFactory.getAllModels()) {
+        for (VeniceControllerStateModel model : controllerStateModelFactory.getAllModels()) {
             if (model.getCurrentState().equals(LeaderStandbySMD.States.LEADER.toString())) {
                 clusters.add(model.getClusterName());
             }

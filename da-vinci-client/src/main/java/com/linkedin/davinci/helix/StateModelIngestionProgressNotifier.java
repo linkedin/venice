@@ -10,35 +10,35 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import org.apache.log4j.Logger;
 
-import static com.linkedin.davinci.helix.AbstractParticipantModelFactory.getStateModelIdentification;
+import static com.linkedin.davinci.helix.AbstractStateModelFactory.getStateModelID;
 
 
 /**
- * This class notify the Helix State Models (SM) about corresponding ingestion progress.
+ * This class notifies the Helix State Models (SM) about corresponding ingestion progress.
  * The class also holds latches that can be used in SM in the cases when state transitions
  * need to coordinate with ingestion progress.
  */
-public abstract class StateModelNotifier implements VeniceNotifier {
+public abstract class StateModelIngestionProgressNotifier implements VeniceNotifier {
   private final Logger logger = Logger.getLogger(this.getClass().getSimpleName());
-  private Map<String, CountDownLatch> stateModelToLatchMap = new VeniceConcurrentHashMap<>();
+  private Map<String, CountDownLatch> stateModelToIngestionCompleteFlagMap = new VeniceConcurrentHashMap<>();
   private Map<String, Boolean> stateModelToSuccessMap = new VeniceConcurrentHashMap<>();
 
   void startConsumption(String resourceName, int partitionId) {
-    CountDownLatch latch = new CountDownLatch(1);
-    stateModelToLatchMap.put(getStateModelIdentification(resourceName, partitionId), latch);
-    stateModelToSuccessMap.put(getStateModelIdentification(resourceName, partitionId), false);
+    final String stateModelID = getStateModelID(resourceName, partitionId);
+    stateModelToIngestionCompleteFlagMap.put(stateModelID, new CountDownLatch(1));
+    stateModelToSuccessMap.put(stateModelID, false);
   }
 
   void waitConsumptionCompleted(String resourceName, int partitionId, int bootstrapToOnlineTimeoutInHours,
       StoreIngestionService storeIngestionService) throws InterruptedException {
-    String stateModelId = getStateModelIdentification(resourceName , partitionId);
-    CountDownLatch latch = stateModelToLatchMap.get(stateModelId);
-    if (latch == null) {
-      String errorMsg = "No latch is found for resource:" + resourceName + " partition:" + partitionId;
+    String stateModelId = getStateModelID(resourceName , partitionId);
+    CountDownLatch ingestionCompleteFlag = stateModelToIngestionCompleteFlagMap.get(stateModelId);
+    if (ingestionCompleteFlag == null) {
+      String errorMsg = "No ingestion complete flag is found for resource:" + resourceName + " partition:" + partitionId;
       logger.error(errorMsg);
       throw new VeniceException(errorMsg);
     } else {
-      if (!latch.await(bootstrapToOnlineTimeoutInHours, TimeUnit.HOURS)) {
+      if (!ingestionCompleteFlag.await(bootstrapToOnlineTimeoutInHours, TimeUnit.HOURS)) {
         // Timeout
         String errorMsg =
             "After waiting " + bootstrapToOnlineTimeoutInHours + " hours, resource:" + resourceName + " partition:"
@@ -52,7 +52,7 @@ public abstract class StateModelNotifier implements VeniceNotifier {
         VeniceException veniceException =  new VeniceException(errorMsg);
         storeIngestionService.getStoreIngestionTask(resourceName).reportError(errorMsg, partitionId, veniceException);
       }
-      stateModelToLatchMap.remove(stateModelId);
+      stateModelToIngestionCompleteFlagMap.remove(stateModelId);
       // If consumption is failed, throw an exception here, Helix will put this replica to ERROR state.
       if (stateModelToSuccessMap.containsKey(stateModelId) && !stateModelToSuccessMap.get(stateModelId)) {
         throw new VeniceException("Consumption is failed. Thrown an exception to put this replica:" +
@@ -61,32 +61,32 @@ public abstract class StateModelNotifier implements VeniceNotifier {
     }
   }
 
-  CountDownLatch getLatch(String resourceName, int partitionId) {
-    return stateModelToLatchMap.get(getStateModelIdentification(resourceName, partitionId));
+  CountDownLatch getIngestionCompleteFlag(String resourceName, int partitionId) {
+    return stateModelToIngestionCompleteFlagMap.get(getStateModelID(resourceName, partitionId));
   }
 
-  void removeLatch(String resourceName, int partitionId) {
-    stateModelToLatchMap.remove(getStateModelIdentification(resourceName, partitionId))  ;
+  void removeIngestionCompleteFlag(String resourceName, int partitionId) {
+    stateModelToIngestionCompleteFlagMap.remove(getStateModelID(resourceName, partitionId))  ;
   }
 
   @Override
   public void completed(String resourceName, int partitionId, long offset, String message) {
-    CountDownLatch latch = getLatch(resourceName, partitionId);
-    if (latch != null) {
-      stateModelToSuccessMap.put(getStateModelIdentification(resourceName, partitionId), true);
-      latch.countDown();
+    CountDownLatch ingestionCompleteFlag = getIngestionCompleteFlag(resourceName, partitionId);
+    if (ingestionCompleteFlag != null) {
+      stateModelToSuccessMap.put(getStateModelID(resourceName, partitionId), true);
+      ingestionCompleteFlag.countDown();
     } else {
-      logger.info("No latch is found for resource:" + resourceName + " partition:" + partitionId);
+      logger.info("No ingestion complete flag is found for resource:" + resourceName + " partition:" + partitionId);
     }
   }
 
   @Override
   public void error(String resourceName, int partitionId, String message, Exception ex) {
-    CountDownLatch latch = getLatch(resourceName, partitionId);
-    if (latch != null) {
-      latch.countDown();
+    CountDownLatch ingestionCompleteFlag = getIngestionCompleteFlag(resourceName, partitionId);
+    if (ingestionCompleteFlag != null) {
+      ingestionCompleteFlag.countDown();
     } else {
-      logger.info("No latch is found for resource:" + resourceName + " partition:" + partitionId);
+      logger.info("No ingestion complete flag is found for resource:" + resourceName + " partition:" + partitionId);
     }
   }
 
@@ -97,12 +97,12 @@ public abstract class StateModelNotifier implements VeniceNotifier {
      * otherwise, error will happen in {@link #waitConsumptionCompleted} if latch is released but
      * consumption is not completed.
      */
-    stateModelToSuccessMap.remove(getStateModelIdentification(resourceName, partitionId));
-    CountDownLatch latch = getLatch(resourceName, partitionId);
-    if (latch != null) {
-      latch.countDown();
+    stateModelToSuccessMap.remove(getStateModelID(resourceName, partitionId));
+    CountDownLatch ingestionCompleteFlag = getIngestionCompleteFlag(resourceName, partitionId);
+    if (ingestionCompleteFlag != null) {
+      ingestionCompleteFlag.countDown();
     } else {
-      logger.info("No latch is found for resource:" + resourceName + " partition:" + partitionId);
+      logger.info("No ingestion complete flag is found for resource:" + resourceName + " partition:" + partitionId);
     }
   }
 }

@@ -34,9 +34,9 @@ import java.util.Optional;
  * we don't extend it right now. //TODO Will ask Helix team to modify the visibility.
  */
 @StateModelInfo(initialState = HelixState.OFFLINE_STATE, states = {HelixState.LEADER_STATE, HelixState.STANDBY_STATE})
-public class VeniceDistClusterControllerStateModel extends StateModel {
+public class VeniceControllerStateModel extends StateModel {
   public static final String PARTITION_SUFFIX = "_0";
-  private static final Logger logger = Logger.getLogger(VeniceDistClusterControllerStateModel.class);
+  private static final Logger logger = Logger.getLogger(VeniceControllerStateModel.class);
 
   private final ZkClient zkClient;
   private final HelixAdapterSerializer adapterSerializer;
@@ -57,13 +57,12 @@ public class VeniceDistClusterControllerStateModel extends StateModel {
 
   private final MetadataStoreWriter metadataStoreWriter;
 
-  public VeniceDistClusterControllerStateModel(String clusterName, ZkClient zkClient, HelixAdapterSerializer adapterSerializer,
-      VeniceControllerMultiClusterConfig multiClusterConfigs, VeniceHelixAdmin admin, MetricsRepository metricsRepository,
-      ClusterLeaderInitializationRoutine controllerInitialization, Optional<TopicReplicator> onlineOfflineTopicReplicator,
-      Optional<TopicReplicator> leaderFollowerTopicReplicator, Optional<DynamicAccessController> accessController,
-      MetadataStoreWriter metadataStoreWriter, HelixAdminClient helixAdminClient) {
-    StateModelParser parser = new StateModelParser();
-    this._currentState = parser.getInitialState(VeniceDistClusterControllerStateModel.class);
+  public VeniceControllerStateModel(String clusterName, ZkClient zkClient, HelixAdapterSerializer adapterSerializer,
+                                    VeniceControllerMultiClusterConfig multiClusterConfigs, VeniceHelixAdmin admin, MetricsRepository metricsRepository,
+                                    ClusterLeaderInitializationRoutine controllerInitialization, Optional<TopicReplicator> onlineOfflineTopicReplicator,
+                                    Optional<TopicReplicator> leaderFollowerTopicReplicator, Optional<DynamicAccessController> accessController,
+                                    MetadataStoreWriter metadataStoreWriter, HelixAdminClient helixAdminClient) {
+    this._currentState = new StateModelParser().getInitialState(VeniceControllerStateModel.class);
     this.clusterName = clusterName;
     this.zkClient = zkClient;
     this.adapterSerializer = adapterSerializer;

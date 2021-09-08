@@ -1,7 +1,7 @@
 package com.linkedin.davinci.ingestion;
 
 import com.linkedin.davinci.config.VeniceStoreConfig;
-import com.linkedin.davinci.helix.LeaderFollowerParticipantModel;
+import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType;
 import com.linkedin.davinci.notifier.VeniceNotifier;
@@ -76,14 +76,14 @@ public class DefaultIngestionBackend implements DaVinciIngestionBackend, VeniceI
 
   @Override
   public void promoteToLeader(VeniceStoreConfig storeConfig, int partition,
-      LeaderFollowerParticipantModel.LeaderSessionIdChecker leaderSessionIdChecker) {
+      LeaderFollowerPartitionStateModel.LeaderSessionIdChecker leaderSessionIdChecker) {
     logger.info("Promoting partition: " + partition + " of topic: " + storeConfig.getStoreName() + " to leader.");
     getStoreIngestionService().promoteToLeader(storeConfig, partition, leaderSessionIdChecker);
   }
 
   @Override
   public void demoteToStandby(VeniceStoreConfig storeConfig, int partition,
-      LeaderFollowerParticipantModel.LeaderSessionIdChecker leaderSessionIdChecker) {
+      LeaderFollowerPartitionStateModel.LeaderSessionIdChecker leaderSessionIdChecker) {
     logger.info("Demoting partition: " + partition + " of topic: " + storeConfig.getStoreName() + " to standby.");
     getStoreIngestionService().demoteToStandby(storeConfig, partition, leaderSessionIdChecker);
   }

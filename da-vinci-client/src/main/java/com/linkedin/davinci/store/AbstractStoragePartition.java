@@ -12,12 +12,11 @@ import org.apache.log4j.Logger;
 
 /**
  * An abstract implementation of a storage partition. This could be a database in BDB
- * environment or a concurrent hashmap incase of an inMemory implementation depending
+ * environment or a concurrent hashmap in the case of an in-memory implementation depending
  * on the storage-partition model.
  */
 public abstract class AbstractStoragePartition {
-  protected final Logger LOGGER = Logger.getLogger(getClass());
-
+  protected final Logger logger = Logger.getLogger(getClass());
   protected final Integer partitionId;
 
   public AbstractStoragePartition(Integer partitionId) { this.partitionId = partitionId; }
@@ -117,7 +116,7 @@ public abstract class AbstractStoragePartition {
    */
   public void warmUp() {
     // Do nothing by default
-    LOGGER.info("Warming up is not implemented by default");
+    logger.info("Warming up is not implemented by default");
   }
 
   /**

@@ -2,7 +2,6 @@ package com.linkedin.davinci.store.cache.backend;
 
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.cache.VeniceStoreCacheStorageEngine;
-import com.linkedin.davinci.store.cache.VeniceStoreCacheStoragePartition;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.Version;
@@ -57,6 +56,6 @@ public class ObjectCacheBackendTest {
 
         //....and make sure it's legit
         Assert.assertEquals(((VeniceStoreCacheStorageEngine) cachedStorageEngine).getCache().getIfPresent(keyRecord), cachedValued);
-        Assert.assertEquals(cachedStorageEngine.getName(), TOPIC_NAME);
+        Assert.assertEquals(cachedStorageEngine.getStoreName(), TOPIC_NAME);
     }
 }

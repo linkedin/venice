@@ -12,20 +12,16 @@ import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.TestUtils;
-import java.util.Collections;
 import org.apache.helix.HelixManager;
 import org.apache.helix.NotificationContext;
 import org.apache.helix.customizedstate.CustomizedStateProvider;
 import org.apache.helix.model.Message;
-import org.mockito.AdditionalAnswers;
 import org.mockito.Mockito;
 import org.testng.annotations.BeforeMethod;
 
-import static org.mockito.ArgumentMatchers.*;
 
-
-public abstract class AbstractVenicePartitionStateModelTest<MODEL_TYPE extends AbstractParticipantModel,
-    NOTIFIER_TYPE extends StateModelNotifier> {
+public abstract class AbstractVenicePartitionStateModelTest<MODEL_TYPE extends AbstractPartitionStateModel,
+    NOTIFIER_TYPE extends StateModelIngestionProgressNotifier> {
   protected KafkaStoreIngestionService mockStoreIngestionService;
   protected StorageService mockStorageService;
   protected VeniceIngestionBackend mockIngestionBackend;

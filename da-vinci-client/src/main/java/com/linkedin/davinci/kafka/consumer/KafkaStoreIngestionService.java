@@ -4,7 +4,7 @@ import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreConfig;
-import com.linkedin.davinci.helix.LeaderFollowerParticipantModel;
+import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
 import com.linkedin.davinci.listener.response.AdminResponse;
 import com.linkedin.davinci.notifier.LogNotifier;
 import com.linkedin.davinci.notifier.MetaSystemStoreReplicaStatusNotifier;
@@ -610,7 +610,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   }
 
   @Override
-  public synchronized void promoteToLeader(VeniceStoreConfig veniceStoreConfig, int partitionId, LeaderFollowerParticipantModel.LeaderSessionIdChecker checker) {
+  public synchronized void promoteToLeader(VeniceStoreConfig veniceStoreConfig, int partitionId, LeaderFollowerPartitionStateModel.LeaderSessionIdChecker checker) {
     String topic = veniceStoreConfig.getStoreName();
     StoreIngestionTask consumerTask = topicNameToIngestionTaskMap.get(topic);
     if (consumerTask != null && consumerTask.isRunning()) {
@@ -621,7 +621,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   }
 
   @Override
-  public synchronized void demoteToStandby(VeniceStoreConfig veniceStoreConfig, int partitionId, LeaderFollowerParticipantModel.LeaderSessionIdChecker checker) {
+  public synchronized void demoteToStandby(VeniceStoreConfig veniceStoreConfig, int partitionId, LeaderFollowerPartitionStateModel.LeaderSessionIdChecker checker) {
     String topic = veniceStoreConfig.getStoreName();
     StoreIngestionTask consumerTask = topicNameToIngestionTaskMap.get(topic);
     if (consumerTask != null && consumerTask.isRunning()) {

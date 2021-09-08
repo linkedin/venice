@@ -89,7 +89,7 @@ public class LeakedResourceCleaner extends AbstractVeniceService {
 
         List<AbstractStorageEngine> storageEngines = storageEngineRepository.getAllLocalStorageEngines();
         for (AbstractStorageEngine storageEngine : storageEngines) {
-          String resourceName = storageEngine.getName();
+          String resourceName = storageEngine.getStoreName();
           try {
             Store store;
             String storeName = Version.parseStoreFromKafkaTopicName(resourceName);

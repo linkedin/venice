@@ -41,19 +41,19 @@ import org.apache.log4j.Logger;
  *
  * Currently, we support 2 kinds of participant model.
  * 1. PartitionOnlineOfflineModel. Check out {@literal VeniceStateModel} for model definition
- * and {@link VenicePartitionStateModel} for behavior registry.
+ * and {@link OnlineOfflinePartitionStateModel} for behavior registry.
  * 2. LeaderStandbyModel. Check out {@link LeaderStandbySMD} for model definition and
- * {@link LeaderFollowerParticipantModel} for behavior registry.
+ * {@link LeaderFollowerPartitionStateModel} for behavior registry.
  */
-public abstract class AbstractParticipantModel extends StateModel {
+public abstract class AbstractPartitionStateModel extends StateModel {
   protected final Logger logger = Logger.getLogger(getClass());
   private static final String STORE_PARTITION_DESCRIPTION_FORMAT = "%s-%d";
   private static final int RETRY_COUNT = 5;
   private static final int RETRY_DURATION_MS = 1000;
-  private static final int WAIT_PARTITION_ACCESSOR_TIME_OUT_MS = 300000;
+  private static final int WAIT_PARTITION_ACCESSOR_TIME_OUT_MS = (int) TimeUnit.MINUTES.toMillis(5);
 
   private final VeniceIngestionBackend ingestionBackend;
-  private final ReadOnlyStoreRepository metaDataRepo;
+  private final ReadOnlyStoreRepository storeRepository;
   private final VeniceStoreConfig storeConfig;
   private final int partition;
   private final String storePartitionDescription;
@@ -62,10 +62,10 @@ public abstract class AbstractParticipantModel extends StateModel {
 
   private HelixPartitionStatusAccessor partitionPushStatusAccessor;
 
-  public AbstractParticipantModel(VeniceIngestionBackend ingestionBackend, ReadOnlyStoreRepository metaDataRepo,
-      VeniceStoreConfig storeConfig, int partition, Optional<CompletableFuture<HelixPartitionStatusAccessor>> accessorFuture, String instanceName) {
+  public AbstractPartitionStateModel(VeniceIngestionBackend ingestionBackend, ReadOnlyStoreRepository storeRepository,
+                                     VeniceStoreConfig storeConfig, int partition, Optional<CompletableFuture<HelixPartitionStatusAccessor>> accessorFuture, String instanceName) {
     this.ingestionBackend = ingestionBackend;
-    this.metaDataRepo = metaDataRepo;
+    this.storeRepository = storeRepository;
     this.storeConfig = storeConfig;
     this.partition = partition;
     this.storePartitionDescription =
@@ -74,7 +74,7 @@ public abstract class AbstractParticipantModel extends StateModel {
      * We cannot block here because helix manager connection depends on the state model constructing in helix logic.
      * If we block here in the constructor, it will cause deadlocks.
      */
-    partitionStatusAccessorFuture = accessorFuture;
+    this.partitionStatusAccessorFuture = accessorFuture;
     this.instanceName = instanceName;
   }
 
@@ -261,11 +261,11 @@ public abstract class AbstractParticipantModel extends StateModel {
     }
   }
 
-  protected void waitConsumptionCompleted(String resourceName, StateModelNotifier notifier) {
+  protected void waitConsumptionCompleted(String resourceName, StateModelIngestionProgressNotifier notifier) {
     try {
       int bootstrapToOnlineTimeoutInHours;
       try {
-        bootstrapToOnlineTimeoutInHours = getMetaDataRepo()
+        bootstrapToOnlineTimeoutInHours = getStoreRepo()
             .getStoreOrThrow(Version.parseStoreFromKafkaTopicName(resourceName))
             .getBootstrapToOnlineTimeoutInHours();
       } catch (Exception e) {
@@ -307,8 +307,8 @@ public abstract class AbstractParticipantModel extends StateModel {
     return ingestionBackend.getStoreIngestionService();
   }
 
-  protected ReadOnlyStoreRepository getMetaDataRepo() {
-    return metaDataRepo;
+  protected ReadOnlyStoreRepository getStoreRepo() {
+    return storeRepository;
   }
 
   protected StorageService getStorageService() {

@@ -2,7 +2,7 @@ package com.linkedin.davinci.kafka.consumer;
 
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreConfig;
-import com.linkedin.davinci.helix.LeaderFollowerParticipantModel;
+import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
 import com.linkedin.davinci.listener.response.AdminResponse;
 import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.stats.AggStoreIngestionStats;
@@ -620,8 +620,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return storeRepository.getStoreOrThrow(storeName);
   }
 
-  public abstract void promoteToLeader(String topic, int partitionId, LeaderFollowerParticipantModel.LeaderSessionIdChecker checker);
-  public abstract void demoteToStandby(String topic, int partitionId, LeaderFollowerParticipantModel.LeaderSessionIdChecker checker);
+  public abstract void promoteToLeader(String topic, int partitionId, LeaderFollowerPartitionStateModel.LeaderSessionIdChecker checker);
+  public abstract void demoteToStandby(String topic, int partitionId, LeaderFollowerPartitionStateModel.LeaderSessionIdChecker checker);
 
   public synchronized void kill() {
     throwIfNotRunning();
@@ -3806,12 +3806,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       }
     }
 
-    public void promoteToLeader(String topic, int partition, LeaderFollowerParticipantModel.LeaderSessionIdChecker checker) {
+    public void promoteToLeader(String topic, int partition, LeaderFollowerPartitionStateModel.LeaderSessionIdChecker checker) {
       int leaderSubPartition = PartitionUtils.getLeaderSubPartition(partition, amplificationFactor);
       consumerActionsQueue.add(new ConsumerAction(ConsumerActionType.STANDBY_TO_LEADER, topic, leaderSubPartition, nextSeqNum(), checker));
     }
 
-    public void demoteToStandby(String topic, int partition, LeaderFollowerParticipantModel.LeaderSessionIdChecker checker) {
+    public void demoteToStandby(String topic, int partition, LeaderFollowerPartitionStateModel.LeaderSessionIdChecker checker) {
       int leaderSubPartition = PartitionUtils.getLeaderSubPartition(partition, amplificationFactor);
       consumerActionsQueue.add(new ConsumerAction(ConsumerActionType.LEADER_TO_STANDBY, topic, leaderSubPartition, nextSeqNum(), checker));
     }

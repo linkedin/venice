@@ -3,9 +3,9 @@ package com.linkedin.davinci.kafka.consumer;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreConfig;
-import com.linkedin.davinci.helix.LeaderFollowerParticipantModel;
-import com.linkedin.davinci.helix.LeaderFollowerStateModelNotifier;
-import com.linkedin.davinci.helix.OnlineOfflineStateModelNotifier;
+import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
+import com.linkedin.davinci.helix.LeaderFollowerIngestionProgressNotifier;
+import com.linkedin.davinci.helix.OnlineOfflineIngestionProgressNotifier;
 import com.linkedin.davinci.notifier.LogNotifier;
 import com.linkedin.davinci.notifier.PartitionPushStatusNotifier;
 import com.linkedin.davinci.notifier.VeniceNotifier;
@@ -303,8 +303,8 @@ public class StoreIngestionTaskTest {
     }).when(mockLogNotifier).error(anyString(), anyInt(), anyString(), any());
 
     mockPartitionStatusNotifier = mock(PartitionPushStatusNotifier.class);
-    mockLeaderFollowerStateModelNotifier = mock(LeaderFollowerStateModelNotifier.class);
-    mockOnlineOfflineStateModelNotifier = mock(OnlineOfflineStateModelNotifier.class);
+    mockLeaderFollowerStateModelNotifier = mock(LeaderFollowerIngestionProgressNotifier.class);
+    mockOnlineOfflineStateModelNotifier = mock(OnlineOfflineIngestionProgressNotifier.class);
 
     mockAbstractStorageEngine = mock(AbstractStorageEngine.class);
     mockStorageMetadataService = mock(StorageMetadataService.class);
@@ -683,7 +683,7 @@ public class StoreIngestionTaskTest {
               Version.composeRealTimeTopic(storeNameWithoutVersionInfo),
               System.currentTimeMillis() - TimeUnit.SECONDS.toMillis(10),
               new HashMap<>());
-      storeIngestionTaskUnderTest.promoteToLeader(topic, PARTITION_FOO, new LeaderFollowerParticipantModel.LeaderSessionIdChecker(1, new AtomicLong(1)));
+      storeIngestionTaskUnderTest.promoteToLeader(topic, PARTITION_FOO, new LeaderFollowerPartitionStateModel.LeaderSessionIdChecker(1, new AtomicLong(1)));
       try {
         rtWriter.put(putKeyFoo, putValue, EXISTING_SCHEMA_ID, putKeyFooTimestamp, null).get();
         rtWriter.delete(deleteKeyFoo, deleteKeyFooTimestamp, null).get();

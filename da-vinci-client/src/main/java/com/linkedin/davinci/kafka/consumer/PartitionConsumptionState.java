@@ -1,5 +1,6 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.TopicSwitch;
 import com.linkedin.venice.kafka.protocol.state.IncrementalPush;
@@ -44,7 +45,7 @@ public class PartitionConsumptionState {
    * is used to determine when it should transit from offline to follower.
    * The latch is only placed if the Helix resource is serving the read traffic.
    *
-   * See {@link com.linkedin.davinci.helix.LeaderFollowerParticipantModel} for the
+   * See {@link LeaderFollowerPartitionStateModel} for the
    * details why we need latch for certain resources.
    */
   private boolean isLatchReleased = false;

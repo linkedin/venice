@@ -8,16 +8,16 @@ import static org.mockito.Mockito.*;
 
 
 public class VeniceLeaderFollowerStateModelTest
-    extends AbstractVenicePartitionStateModelTest<LeaderFollowerParticipantModel, LeaderFollowerStateModelNotifier> {
+    extends AbstractVenicePartitionStateModelTest<LeaderFollowerPartitionStateModel, LeaderFollowerIngestionProgressNotifier> {
   @Override
-  protected LeaderFollowerParticipantModel getParticipantStateModel() {
-    return new LeaderFollowerParticipantModel(mockIngestionBackend, mockStoreConfig,
+  protected LeaderFollowerPartitionStateModel getParticipantStateModel() {
+    return new LeaderFollowerPartitionStateModel(mockIngestionBackend, mockStoreConfig,
         testPartition, mockNotifier, mockReadOnlyStoreRepository, Optional.empty(), null);
   }
 
   @Override
-  protected LeaderFollowerStateModelNotifier getNotifier() {
-    return mock(LeaderFollowerStateModelNotifier.class);
+  protected LeaderFollowerIngestionProgressNotifier getNotifier() {
+    return mock(LeaderFollowerIngestionProgressNotifier.class);
   }
 
   @Test

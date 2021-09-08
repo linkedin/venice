@@ -2,7 +2,7 @@ package com.linkedin.davinci.kafka.consumer;
 
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceStoreConfig;
-import com.linkedin.davinci.helix.LeaderFollowerParticipantModel;
+import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
 import com.linkedin.davinci.notifier.MetaSystemStoreReplicaStatusNotifier;
 import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.stats.AggStoreIngestionStats;
@@ -61,9 +61,9 @@ public interface StoreIngestionService extends MetadataRetriever {
    */
   boolean killConsumptionTask(String topicName);
 
-  void promoteToLeader(VeniceStoreConfig veniceStoreConfig, int partitionId, LeaderFollowerParticipantModel.LeaderSessionIdChecker checker);
+  void promoteToLeader(VeniceStoreConfig veniceStoreConfig, int partitionId, LeaderFollowerPartitionStateModel.LeaderSessionIdChecker checker);
 
-  void demoteToStandby(VeniceStoreConfig veniceStoreConfig, int partitionId, LeaderFollowerParticipantModel.LeaderSessionIdChecker checker);
+  void demoteToStandby(VeniceStoreConfig veniceStoreConfig, int partitionId, LeaderFollowerPartitionStateModel.LeaderSessionIdChecker checker);
 
   /**
    * Adds Notifier to get Notifications for get various status of the consumption

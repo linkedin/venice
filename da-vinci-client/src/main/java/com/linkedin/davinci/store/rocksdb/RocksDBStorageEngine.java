@@ -57,11 +57,11 @@ class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePartition
     this.timestampMetadataEnabled = timestampMetadataEnabled;
 
     // Create store folder if it doesn't exist
-    storeDbPath = RocksDBUtils.composeStoreDbDir(this.rocksDbPath, getName());
+    storeDbPath = RocksDBUtils.composeStoreDbDir(this.rocksDbPath, getStoreName());
     File storeDbDir = new File(storeDbPath);
     if (!storeDbDir.exists()) {
       storeDbDir.mkdirs();
-      LOGGER.info("Created RocksDb dir for store: " + getName());
+      LOGGER.info("Created RocksDb dir for store: " + getStoreName());
     } else {
       if (storeConfig.isRocksDbStorageEngineConfigCheckEnabled()) {
         // We only validate it when re-opening the storage engine.
@@ -130,11 +130,11 @@ class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePartition
       // Remove store db dir
       File storeDbDir = new File(storeDbPath);
       if (storeDbDir.exists()) {
-        LOGGER.info("Started removing database dir: " + storeDbPath + " for store: " + getName());
+        LOGGER.info("Started removing database dir: " + storeDbPath + " for store: " + getStoreName());
         if (!storeDbDir.delete()) {
           LOGGER.warn("Failed to remove dir: " + storeDbDir);
         } else {
-          LOGGER.info("Finished removing database dir: " + storeDbPath + " for store: " + getName());
+          LOGGER.info("Finished removing database dir: " + storeDbPath + " for store: " + getStoreName());
         }
       }
     }
@@ -174,7 +174,7 @@ class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePartition
       }
     } else {
       // If no existing config is found, we will by default skip the checking as not enough information is given to enforce the check.
-      LOGGER.warn("RocksDB storage engine config not found for store" + getName() + " skipping the validation.");
+      LOGGER.warn("RocksDB storage engine config not found for store" + getStoreName() + " skipping the validation.");
     }
     return false;
   }
@@ -194,6 +194,6 @@ class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePartition
   }
 
   private String getRocksDbEngineConfigPath() {
-    return RocksDBUtils.composePartitionDbDir(rocksDbPath, getName(), METADATA_PARTITION_ID) + "/" + SERVER_CONFIG_FILE_NAME;
+    return RocksDBUtils.composePartitionDbDir(rocksDbPath, getStoreName(), METADATA_PARTITION_ID) + "/" + SERVER_CONFIG_FILE_NAME;
   }
  }

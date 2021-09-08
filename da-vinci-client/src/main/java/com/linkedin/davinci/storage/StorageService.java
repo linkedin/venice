@@ -276,7 +276,7 @@ public class StorageService extends AbstractVeniceService {
     restoreAllStores(configLoader, true, true);
     logger.info("Start cleaning up all the stores persisted previously");
     storageEngineRepository.getAllLocalStorageEngines().stream().forEach(storageEngine -> {
-      String storeName = storageEngine.getName();
+      String storeName = storageEngine.getStoreName();
       logger.info("Start deleting store: " + storeName);
       Set<Integer> partitionIds = storageEngine.getPartitionIds();
       for (Integer partitionId : partitionIds) {
@@ -300,7 +300,7 @@ public class StorageService extends AbstractVeniceService {
   public void closeAllStorageEngines() {
     logger.info("Storage service has " + storageEngineRepository.getAllLocalStorageEngines().size() + " storage engines before cleanup.");
     for (AbstractStorageEngine storageEngine : storageEngineRepository.getAllLocalStorageEngines()) {
-      closeStorageEngine(storageEngine.getName());
+      closeStorageEngine(storageEngine.getStoreName());
     }
     logger.info("Storage service has " + storageEngineRepository.getAllLocalStorageEngines().size() + " storage engines after cleanup.");
   }
