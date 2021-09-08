@@ -210,7 +210,7 @@ public abstract class AbstractStorageEngineTest extends AbstractStoreTest {
 
   @Test (expectedExceptions = VeniceException.class)
   public void testAdjustStoragePartitionWithUnknownPartitionId() {
-    String storeName = testStoreEngine.getName();
+    String storeName = testStoreEngine.getStoreName();
     int unknownPartitionId = partitionId + 10000;
     StoragePartitionConfig partitionConfig = new StoragePartitionConfig(storeName, unknownPartitionId);
     testStoreEngine.adjustStoragePartition(partitionConfig);
@@ -218,7 +218,7 @@ public abstract class AbstractStorageEngineTest extends AbstractStoreTest {
 
   @Test
   public void testAdjustStoragePartitionFromTransactionalToDeferredWrite() {
-    String storeName = testStoreEngine.getName();
+    String storeName = testStoreEngine.getStoreName();
     int newPartitionId = partitionId + 1;
     StoragePartitionConfig transactionalPartitionConfig = new StoragePartitionConfig(storeName, newPartitionId);
     StoragePartitionConfig deferredWritePartitionConfig = new StoragePartitionConfig(storeName, newPartitionId);
@@ -242,7 +242,7 @@ public abstract class AbstractStorageEngineTest extends AbstractStoreTest {
 
   @Test
   public void testAdjustStoragePartitionFromDeferredWriteToTransactional() {
-    String storeName = testStoreEngine.getName();
+    String storeName = testStoreEngine.getStoreName();
     int newPartitionId = partitionId + 1;
     StoragePartitionConfig transactionalPartitionConfig = new StoragePartitionConfig(storeName, newPartitionId);
     StoragePartitionConfig deferredWritePartitionConfig = new StoragePartitionConfig(storeName, newPartitionId);

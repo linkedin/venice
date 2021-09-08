@@ -42,8 +42,8 @@ public class VeniceStateModelFactoryTest {
   private Message mockMessage;
   private NotificationContext mockContext;
 
-  private VeniceStateModelFactory factory;
-  private VenicePartitionStateModel stateModel;
+  private OnlineOfflinePartitionStateModelFactory factory;
+  private OnlineOfflinePartitionStateModel stateModel;
   private ExecutorService executorService;
 
   @BeforeClass
@@ -75,7 +75,7 @@ public class VeniceStateModelFactoryTest {
 
     mockContext = Mockito.mock(NotificationContext.class);
 
-    factory = new VeniceStateModelFactory(
+    factory = new OnlineOfflinePartitionStateModelFactory(
         mockIngestionBackend,
         mockConfigLoader,
         this.executorService,
@@ -87,7 +87,7 @@ public class VeniceStateModelFactoryTest {
   public void testStartConsumption() {
     stateModel.onBecomeBootstrapFromOffline(mockMessage, mockContext);
 
-    Assert.assertEquals(factory.getNotifier().getLatch(resourceName, testPartition).getCount(), 1,
+    Assert.assertEquals(factory.getNotifier().getIngestionCompleteFlag(resourceName, testPartition).getCount(), 1,
         "After becoming bootstrap, latch should be set to 1.");
   }
 
@@ -108,7 +108,7 @@ public class VeniceStateModelFactoryTest {
     });
     consumeThread.start();
     stateModel.onBecomeOnlineFromBootstrap(mockMessage, mockContext);
-    Assert.assertNull(factory.getNotifier().getLatch(resourceName, testPartition));
+    Assert.assertNull(factory.getNotifier().getIngestionCompleteFlag(resourceName, testPartition));
   }
 
   @Test(timeOut = 3000, expectedExceptions = VeniceException.class)
@@ -133,7 +133,7 @@ public class VeniceStateModelFactoryTest {
   @Test
   public void testWrongWaiting() {
     stateModel.onBecomeBootstrapFromOffline(mockMessage, mockContext);
-    factory.getNotifier().removeLatch(resourceName, testPartition);
+    factory.getNotifier().removeIngestionCompleteFlag(resourceName, testPartition);
     try {
       stateModel.onBecomeOnlineFromBootstrap(mockMessage, mockContext);
       Assert.fail("Latch was deleted, should throw exception before becoming online.");
@@ -149,7 +149,7 @@ public class VeniceStateModelFactoryTest {
     ThreadPoolExecutor executor = new ThreadPoolExecutor(threadPoolSize, threadPoolSize, 2L, TimeUnit.SECONDS, queue,
         new DaemonThreadFactory("venice-state-transition"));
     executor.allowCoreThreadTimeOut(true);
-    factory = new VeniceStateModelFactory(mockIngestionBackend, mockConfigLoader, executor,
+    factory = new OnlineOfflinePartitionStateModelFactory(mockIngestionBackend, mockConfigLoader, executor,
         mockReadOnlyStoreRepository, Optional.empty(), null);
     ExecutorService testExecutor = factory.getExecutorService("");
     Assert.assertEquals(testExecutor, executor);

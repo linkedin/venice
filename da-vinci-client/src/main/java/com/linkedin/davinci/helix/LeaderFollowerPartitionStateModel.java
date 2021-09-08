@@ -36,7 +36,7 @@ import org.apache.helix.participant.statemachine.Transition;
  * offset of VT.
  */
 @StateModelInfo(initialState = HelixState.OFFLINE_STATE, states = {HelixState.LEADER_STATE, HelixState.STANDBY_STATE})
-public class LeaderFollowerParticipantModel extends AbstractParticipantModel {
+public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateModel {
   /**
    * For each role transition between leader and follower, assign an unique and increasing leader session id for
    * the role transition action; we have one state model for one partition, so this session ID only works for the
@@ -51,12 +51,12 @@ public class LeaderFollowerParticipantModel extends AbstractParticipantModel {
    */
   private final AtomicLong leaderSessionId = new AtomicLong(0L);
 
-  private final LeaderFollowerStateModelNotifier notifier;
+  private final LeaderFollowerIngestionProgressNotifier notifier;
 
-  public LeaderFollowerParticipantModel(VeniceIngestionBackend ingestionBackend,
-      VeniceStoreConfig storeConfig, int partition, LeaderFollowerStateModelNotifier notifier,
-      ReadOnlyStoreRepository metadataRepo,
-      Optional<CompletableFuture<HelixPartitionStatusAccessor>> partitionPushStatusAccessorFuture, String instanceName) {
+  public LeaderFollowerPartitionStateModel(VeniceIngestionBackend ingestionBackend,
+                                           VeniceStoreConfig storeConfig, int partition, LeaderFollowerIngestionProgressNotifier notifier,
+                                           ReadOnlyStoreRepository metadataRepo,
+                                           Optional<CompletableFuture<HelixPartitionStatusAccessor>> partitionPushStatusAccessorFuture, String instanceName) {
     super(ingestionBackend, metadataRepo, storeConfig, partition, partitionPushStatusAccessorFuture, instanceName);
     this.notifier = notifier;
   }
@@ -73,7 +73,7 @@ public class LeaderFollowerParticipantModel extends AbstractParticipantModel {
       int version = Version.parseVersionFromKafkaTopicName(resourceName);
 
       // Placing a latch in the transition if this is the current version
-      if (getMetaDataRepo().getStoreOrThrow(storeName).getCurrentVersion() == version
+      if (getStoreRepo().getStoreOrThrow(storeName).getCurrentVersion() == version
           && !VeniceSystemStoreUtils.isSystemStore(storeName)) {
         //startConsumption is called in order to create the latch
         notifier.startConsumption(resourceName, getPartition());

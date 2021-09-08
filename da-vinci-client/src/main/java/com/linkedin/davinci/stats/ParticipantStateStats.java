@@ -5,7 +5,7 @@ import com.linkedin.venice.stats.Gauge;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
 
-import static com.linkedin.davinci.helix.VenicePartitionStateModel.*;
+import static com.linkedin.davinci.helix.OnlineOfflinePartitionStateModel.*;
 
 public class ParticipantStateStats extends AbstractVeniceStats {
   private Sensor fromOfflineToBootstrapPartitionNumberSensor;

@@ -14,18 +14,18 @@ import static org.mockito.Mockito.*;
  * Unit tests to verify the State model takes the appropriate decisions on transitions.
  */
 public class VenicePartitionStateModelTest
-    extends AbstractVenicePartitionStateModelTest<VenicePartitionStateModel, OnlineOfflineStateModelNotifier> {
+    extends AbstractVenicePartitionStateModelTest<OnlineOfflinePartitionStateModel, OnlineOfflineIngestionProgressNotifier> {
 
   @Override
-  protected VenicePartitionStateModel getParticipantStateModel() {
-    return new VenicePartitionStateModel(mockIngestionBackend, mockStoreConfig, testPartition,
+  protected OnlineOfflinePartitionStateModel getParticipantStateModel() {
+    return new OnlineOfflinePartitionStateModel(mockIngestionBackend, mockStoreConfig, testPartition,
         mockNotifier, mockReadOnlyStoreRepository, Optional.of(CompletableFuture.completedFuture(mockPushStatusAccessor)),
         instanceName);
   }
 
   @Override
-  protected OnlineOfflineStateModelNotifier getNotifier() {
-    return mock(OnlineOfflineStateModelNotifier.class);
+  protected OnlineOfflineIngestionProgressNotifier getNotifier() {
+    return mock(OnlineOfflineIngestionProgressNotifier.class);
   }
 
   /**
@@ -61,12 +61,12 @@ public class VenicePartitionStateModelTest
    */
   @Test
   public void testOfflineToBootstrapToOnline() {
-    OnlineOfflineStateModelNotifier notifier = new OnlineOfflineStateModelNotifier();
+    OnlineOfflineIngestionProgressNotifier notifier = new OnlineOfflineIngestionProgressNotifier();
     testStateModel =
-        new VenicePartitionStateModel(mockIngestionBackend, mockStoreConfig, testPartition,
+        new OnlineOfflinePartitionStateModel(mockIngestionBackend, mockStoreConfig, testPartition,
             notifier, mockReadOnlyStoreRepository, Optional.empty(), null);
     testStateModel.onBecomeBootstrapFromOffline(mockMessage, mockContext);
-    CountDownLatch latch = notifier.getLatch(mockMessage.getResourceName(), testPartition);
+    CountDownLatch latch = notifier.getIngestionCompleteFlag(mockMessage.getResourceName(), testPartition);
     Assert.assertEquals(latch.getCount(), 1);
     new Thread(() -> {
       try {
@@ -79,7 +79,7 @@ public class VenicePartitionStateModelTest
     }).run();
 
     testStateModel.onBecomeOnlineFromBootstrap(mockMessage, mockContext);
-    latch = notifier.getLatch(mockMessage.getResourceName(), testPartition);
+    latch = notifier.getIngestionCompleteFlag(mockMessage.getResourceName(), testPartition);
     Assert.assertNull(latch);
   }
 

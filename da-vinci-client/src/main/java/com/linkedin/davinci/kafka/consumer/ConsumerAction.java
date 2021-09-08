@@ -1,6 +1,6 @@
 package com.linkedin.davinci.kafka.consumer;
 
-import com.linkedin.davinci.helix.LeaderFollowerParticipantModel;
+import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
 import java.util.Optional;
 
 
@@ -16,7 +16,7 @@ public class ConsumerAction implements Comparable<ConsumerAction> {
   private final String topic;
   private final int partition;
   private final int sequenceNumber;
-  private final LeaderFollowerParticipantModel.LeaderSessionIdChecker checker;
+  private final LeaderFollowerPartitionStateModel.LeaderSessionIdChecker checker;
   private final LeaderFollowerStateType leaderState;
 
   private int attempts = 0;
@@ -26,7 +26,7 @@ public class ConsumerAction implements Comparable<ConsumerAction> {
   }
 
   public ConsumerAction(ConsumerActionType type, String topic, int partition, int sequenceNumber,
-      LeaderFollowerParticipantModel.LeaderSessionIdChecker checker) {
+      LeaderFollowerPartitionStateModel.LeaderSessionIdChecker checker) {
     this(type, topic, partition, sequenceNumber, checker, Optional.empty());
   }
 
@@ -36,7 +36,7 @@ public class ConsumerAction implements Comparable<ConsumerAction> {
   }
 
   public ConsumerAction(ConsumerActionType type, String topic, int partition, int sequenceNumber,
-      LeaderFollowerParticipantModel.LeaderSessionIdChecker checker, Optional<LeaderFollowerStateType> leaderState) {
+                        LeaderFollowerPartitionStateModel.LeaderSessionIdChecker checker, Optional<LeaderFollowerStateType> leaderState) {
     this.type = type;
     this.topic = topic;
     this.partition = partition;
@@ -69,7 +69,7 @@ public class ConsumerAction implements Comparable<ConsumerAction> {
     return sequenceNumber;
   }
 
-  public LeaderFollowerParticipantModel.LeaderSessionIdChecker getLeaderSessionIdChecker() {
+  public LeaderFollowerPartitionStateModel.LeaderSessionIdChecker getLeaderSessionIdChecker() {
     return checker;
   }
 

@@ -152,7 +152,7 @@ public class ChunkingUtils {
 
           deserializedValueRecord = (GenericRecord) adapter.constructValue(writerSchemaId,
               schemaRepo.getLatestValueSchema(storeName).getId(), value, value.length, reusedValue, reusedDecoder,
-              response, compressionStrategy, fastAvroEnabled, schemaRepo, storeName, compressorFactory, store.getName());
+              response, compressionStrategy, fastAvroEnabled, schemaRepo, storeName, compressorFactory, store.getStoreName());
 
           computingCallback.onRecordReceived(deserializedKey, deserializedValueRecord);
         } else if (writerSchemaId != AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion()) {
@@ -249,7 +249,7 @@ public class ChunkingUtils {
       }
 
       return adapter.constructValue(writerSchemaId, readerSchemaId, value, valueLength, reusedValue, reusedDecoder,
-          response, compressionStrategy, fastAvroEnabled, schemaRepo, storeName, compressorFactory, store.getName());
+          response, compressionStrategy, fastAvroEnabled, schemaRepo, storeName, compressorFactory, store.getStoreName());
     } else if (writerSchemaId != AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion()) {
       throw new VeniceException("Found a record with invalid schema ID: " + writerSchemaId);
     }
@@ -295,11 +295,11 @@ public class ChunkingUtils {
       response.incrementMultiChunkLargeValueCount();
     }
 
-    return adapter.constructValue(chunkedValueManifest.schemaId, assembledValueContainer, reusedValue, reusedDecoder, response, compressionStrategy, fastAvroEnabled, schemaRepo, storeName, compressorFactory, store.getName());
+    return adapter.constructValue(chunkedValueManifest.schemaId, assembledValueContainer, reusedValue, reusedDecoder, response, compressionStrategy, fastAvroEnabled, schemaRepo, storeName, compressorFactory, store.getStoreName());
   }
 
   private static String getExceptionMessageDetails(AbstractStorageEngine store, int partition, Integer chunkIndex) {
-    String message = "store: " + store.getName() + ", partition: " + partition;
+    String message = "store: " + store.getStoreName() + ", partition: " + partition;
     if (chunkIndex != null) {
       message += ", chunk index: " + chunkIndex;
     }

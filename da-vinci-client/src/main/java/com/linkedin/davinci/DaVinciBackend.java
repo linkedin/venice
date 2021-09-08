@@ -195,7 +195,7 @@ public class DaVinciBackend implements Closeable {
     Map<String, Version> storeNameToBootstrapVersionMap = new HashMap<>();
     Map<String, List<Integer>> storeNameToPartitionListMap = new HashMap<>();
     for (AbstractStorageEngine storageEngine : storageEngines) {
-      String kafkaTopicName = storageEngine.getName();
+      String kafkaTopicName = storageEngine.getStoreName();
       String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopicName);
 
       // If the store is not-managed, all its versions will be removed.
@@ -283,7 +283,6 @@ public class DaVinciBackend implements Closeable {
       }
     }
 
-
     ingestionBackend = isIsolatedIngestion() ? new IsolatedIngestionBackend(configLoader, metricsRepository, storageMetadataService, ingestionService, storageService) :
         new DefaultIngestionBackend(storageMetadataService, ingestionService, storageService);
     ingestionBackend.addIngestionNotifier(ingestionListener);
@@ -295,7 +294,6 @@ public class DaVinciBackend implements Closeable {
       StoreBackend storeBackend = getStoreOrThrow(version.getStoreName());
       storeBackend.subscribe(ComplementSet.newSet(partitions), Optional.of(version));
     });
-
   }
 
   @Override

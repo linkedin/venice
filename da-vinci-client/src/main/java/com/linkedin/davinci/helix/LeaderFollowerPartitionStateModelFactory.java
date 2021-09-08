@@ -8,21 +8,21 @@ import com.linkedin.venice.utils.HelixUtils;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
-import org.apache.helix.participant.statemachine.StateModel;
 
 
 /**
  * State Transition Handler factory for handling Leader/Follower resources in the storage node.
- * For Online/Offline resources, please refer to {@link VeniceStateModelFactory}
+ * For Online/Offline resources, please refer to {@link OnlineOfflinePartitionStateModelFactory}
  */
 
-public class LeaderFollowerParticipantModelFactory extends AbstractParticipantModelFactory {
-  private LeaderFollowerStateModelNotifier leaderFollowerStateModelNotifier = new LeaderFollowerStateModelNotifier();
+public class LeaderFollowerPartitionStateModelFactory extends AbstractStateModelFactory {
+  private LeaderFollowerIngestionProgressNotifier leaderFollowerStateModelNotifier = new LeaderFollowerIngestionProgressNotifier();
 
-  public LeaderFollowerParticipantModelFactory(VeniceIngestionBackend ingestionBackend, VeniceConfigLoader configService,
-      ExecutorService executorService, ReadOnlyStoreRepository metadataRepo,
-      Optional<CompletableFuture<HelixPartitionStatusAccessor>> partitionPushStatusAccessorFuture,
-      String instanceName) {
+  public LeaderFollowerPartitionStateModelFactory(VeniceIngestionBackend ingestionBackend, VeniceConfigLoader configService,
+                                                  ExecutorService executorService, ReadOnlyStoreRepository metadataRepo,
+                                                  Optional<CompletableFuture<HelixPartitionStatusAccessor>> partitionPushStatusAccessorFuture,
+                                                  String instanceName
+  ) {
     super(ingestionBackend, configService, executorService, metadataRepo,
         partitionPushStatusAccessorFuture, instanceName);
 
@@ -33,11 +33,11 @@ public class LeaderFollowerParticipantModelFactory extends AbstractParticipantMo
   }
 
   @Override
-  public StateModel createNewStateModel(String resourceName, String partitionName) {
+  public LeaderFollowerPartitionStateModel createNewStateModel(String resourceName, String partitionName) {
     logger.info("Creating LeaderFollowerParticipantModel handler for partition: " + partitionName);
-    return new LeaderFollowerParticipantModel(getIngestionBackend(),
+    return new LeaderFollowerPartitionStateModel(getIngestionBackend(),
         getConfigService().getStoreConfig(HelixUtils.getResourceName(partitionName)),
-        HelixUtils.getPartitionId(partitionName), leaderFollowerStateModelNotifier, getMetadataRepo(),
+        HelixUtils.getPartitionId(partitionName), leaderFollowerStateModelNotifier, getStoreMetadataRepo(),
         partitionPushStatusAccessorFuture, instanceName);
   }
 }

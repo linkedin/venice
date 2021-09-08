@@ -50,7 +50,7 @@ import org.apache.log4j.Logger;
  * All resources in this class is dedicated for one Venice cluster.
  */
 public class HelixVeniceClusterResources implements VeniceResource {
-  private static final Logger LOGGER = Logger.getLogger(HelixVeniceClusterResources.class);
+  private static final Logger logger = Logger.getLogger(HelixVeniceClusterResources.class);
 
   private final String clusterName;
   private final SafeHelixManager helixManager;
@@ -181,7 +181,7 @@ public class HelixVeniceClusterResources implements VeniceResource {
           int previousReplicationFactor = store.getReplicationFactor();
           store.setReplicationFactor(config.getReplicationFactor());
           metadataRepository.updateStore(store);
-          LOGGER.info("Updated replication factor from " + previousReplicationFactor + " to " +
+          logger.info("Updated replication factor from " + previousReplicationFactor + " to " +
               config.getReplicationFactor() + " for store: " + store.getName() + " in cluster: " + clusterName);
 
         }
@@ -253,7 +253,7 @@ public class HelixVeniceClusterResources implements VeniceResource {
       try {
         leakedPushStatusCleanUpService.stop();
       } catch (Exception e) {
-        LOGGER.error("Error when stopping leaked push status clean-up service for cluster " + clusterName);
+        logger.error("Error when stopping leaked push status clean-up service for cluster " + clusterName);
       }
     }
   }
@@ -311,7 +311,7 @@ public class HelixVeniceClusterResources implements VeniceResource {
    * acquired the lock, no other thread could operate for this cluster.
    */
   public AutoCloseableLock lockForShutdown() {
-    LOGGER.info("lockForShutdown() called. Will log the current stacktrace and then attempt to acquire the lock.",
+    logger.info("lockForShutdown() called. Will log the current stacktrace and then attempt to acquire the lock.",
         new VeniceException("Not thrown, for logging purposes only."));
     return clusterLockManager.createClusterWriteLock();
   }

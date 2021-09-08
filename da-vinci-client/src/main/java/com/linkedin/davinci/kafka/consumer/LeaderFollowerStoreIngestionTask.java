@@ -3,7 +3,7 @@ package com.linkedin.davinci.kafka.consumer;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreConfig;
-import com.linkedin.davinci.helix.LeaderFollowerParticipantModel;
+import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
 import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.stats.AggStoreIngestionStats;
 import com.linkedin.davinci.stats.AggVersionedDIVStats;
@@ -158,7 +158,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    * served the traffic. The set is initialized as an empty set and will add partition
    * numbers once the partition has caught up.
    *
-   * See {@link LeaderFollowerParticipantModel} for the details why we need latch for
+   * See {@link LeaderFollowerPartitionStateModel} for the details why we need latch for
    * certain resources.
    */
   public LeaderFollowerStoreIngestionTask(
@@ -296,13 +296,13 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   }
 
   @Override
-  public synchronized void promoteToLeader(String topic, int partitionId, LeaderFollowerParticipantModel.LeaderSessionIdChecker checker) {
+  public synchronized void promoteToLeader(String topic, int partitionId, LeaderFollowerPartitionStateModel.LeaderSessionIdChecker checker) {
     throwIfNotRunning();
     amplificationAdapter.promoteToLeader(topic, partitionId, checker);
   }
 
   @Override
-  public synchronized void demoteToStandby(String topic, int partitionId, LeaderFollowerParticipantModel.LeaderSessionIdChecker checker) {
+  public synchronized void demoteToStandby(String topic, int partitionId, LeaderFollowerPartitionStateModel.LeaderSessionIdChecker checker) {
     throwIfNotRunning();
     amplificationAdapter.demoteToStandby(topic, partitionId, checker);
   }
@@ -314,7 +314,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     int partition = message.getPartition();
     switch (operation) {
       case STANDBY_TO_LEADER:
-        LeaderFollowerParticipantModel.LeaderSessionIdChecker checker = message.getLeaderSessionIdChecker();
+        LeaderFollowerPartitionStateModel.LeaderSessionIdChecker checker = message.getLeaderSessionIdChecker();
         if (!checker.isSessionIdValid()) {
           /**
            * If the session id in this consumer action is not equal to the latest session id in the state model,

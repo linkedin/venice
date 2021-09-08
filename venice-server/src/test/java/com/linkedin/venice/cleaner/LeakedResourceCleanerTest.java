@@ -50,7 +50,7 @@ public class LeakedResourceCleanerTest {
     for (StorageEngineMockConfig config : configs) {
       AbstractStorageEngine storageEngine = mock(AbstractStorageEngine.class);
       String topic = Version.composeKafkaTopic(storeName, config.version);
-      doReturn(topic).when(storageEngine).getName();
+      doReturn(topic).when(storageEngine).getStoreName();
       if (config.existingInZK) {
         Version version = mock(Version.class);
         doReturn(config.version).when(version).getNumber();

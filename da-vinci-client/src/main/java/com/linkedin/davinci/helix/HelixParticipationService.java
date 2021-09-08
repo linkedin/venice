@@ -76,8 +76,8 @@ public class HelixParticipationService extends AbstractVeniceService implements 
 
   private ZkClient zkClient;
   private SafeHelixManager manager;
-  private AbstractParticipantModelFactory onlineOfflineParticipantModelFactory;
-  private AbstractParticipantModelFactory leaderFollowerParticipantModelFactory;
+  private AbstractStateModelFactory onlineOfflineParticipantModelFactory;
+  private AbstractStateModelFactory leaderFollowerParticipantModelFactory;
   private HelixPartitionStatusAccessor partitionPushStatusAccessor;
 
   public HelixParticipationService(StoreIngestionService storeIngestionService, StorageService storageService,
@@ -135,7 +135,7 @@ public class HelixParticipationService extends AbstractVeniceService implements 
     //create 2 dedicated thread pools for executing incoming state transitions (1 for online offline (O/O) model and the
     //other for leader follower (L/F) model) Since L/F transition is not blocked by ingestion, it should run much faster
     //than O/O's. Thus, the size is supposed to be smaller.
-    onlineOfflineParticipantModelFactory = new VeniceStateModelFactory(
+    onlineOfflineParticipantModelFactory = new OnlineOfflinePartitionStateModelFactory(
         ingestionBackend,
         veniceConfigLoader,
         initHelixStateTransitionThreadPool(
@@ -145,7 +145,7 @@ public class HelixParticipationService extends AbstractVeniceService implements 
             "Venice_ST_thread_pool"),
         helixReadOnlyStoreRepository, partitionPushStatusAccessorFuture, instance.getNodeId());
 
-    leaderFollowerParticipantModelFactory = new LeaderFollowerParticipantModelFactory(
+    leaderFollowerParticipantModelFactory = new LeaderFollowerPartitionStateModelFactory(
         ingestionBackend,
         veniceConfigLoader,
         initHelixStateTransitionThreadPool(
@@ -271,7 +271,7 @@ public class HelixParticipationService extends AbstractVeniceService implements 
         ingestionBackend.addPushStatusNotifier(partitionPushStatusNotifier);
         /**
          * Complete the accessor future after the accessor is created && the notifier is added.
-         * This is for blocking the {@link AbstractParticipantModel #setupNewStorePartition()} until
+         * This is for blocking the {@link AbstractPartitionStateModel #setupNewStorePartition()} until
          * the notifier is added.
          */
         partitionPushStatusAccessorFuture.get().complete(partitionPushStatusAccessor);

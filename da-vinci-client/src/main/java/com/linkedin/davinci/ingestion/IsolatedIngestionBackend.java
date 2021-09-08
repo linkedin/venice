@@ -2,7 +2,7 @@ package com.linkedin.davinci.ingestion;
 
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceStoreConfig;
-import com.linkedin.davinci.helix.LeaderFollowerParticipantModel;
+import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
 import com.linkedin.davinci.ingestion.isolated.IsolatedIngestionServer;
 import com.linkedin.davinci.ingestion.main.MainIngestionMonitorService;
 import com.linkedin.davinci.ingestion.main.MainIngestionRequestClient;
@@ -108,7 +108,7 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend implements
 
   @Override
   public void promoteToLeader(VeniceStoreConfig storeConfig, int partition,
-    LeaderFollowerParticipantModel.LeaderSessionIdChecker leaderSessionIdChecker) {
+    LeaderFollowerPartitionStateModel.LeaderSessionIdChecker leaderSessionIdChecker) {
     boolean messageCompleted = false;
     while (!messageCompleted) {
       /**
@@ -145,7 +145,7 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend implements
 
   @Override
   public void demoteToStandby(VeniceStoreConfig storeConfig, int partition,
-    LeaderFollowerParticipantModel.LeaderSessionIdChecker leaderSessionIdChecker) {
+    LeaderFollowerPartitionStateModel.LeaderSessionIdChecker leaderSessionIdChecker) {
     boolean messageCompleted = false;
     while (!messageCompleted) {
       if (isTopicPartitionInLocal(storeConfig.getStoreName(), partition)) {
