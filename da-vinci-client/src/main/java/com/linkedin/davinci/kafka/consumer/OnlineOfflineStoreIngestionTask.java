@@ -292,6 +292,11 @@ public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
   }
 
   @Override
+  public long getRegionHybridOffsetLag(int regionId) {
+    return StatsErrorCode.METRIC_ONLY_AVAILABLE_FOR_LEADER_FOLLOWER_STORES.code;
+  }
+
+  @Override
   public int getWriteComputeErrorCode() {
     return StatsErrorCode.METRIC_ONLY_AVAILABLE_FOR_LEADER_FOLLOWER_STORES.code;
   }

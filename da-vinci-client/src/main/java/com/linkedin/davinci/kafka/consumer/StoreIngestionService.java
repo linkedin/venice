@@ -1,5 +1,6 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceStoreConfig;
 import com.linkedin.davinci.helix.LeaderFollowerParticipantModel;
 import com.linkedin.davinci.notifier.MetaSystemStoreReplicaStatusNotifier;
@@ -131,4 +132,6 @@ public interface StoreIngestionService extends MetadataRetriever {
   Optional<MetaSystemStoreReplicaStatusNotifier> getMetaSystemStoreReplicaStatusNotifier();
 
   void traverseAllIngestionTasksAndApply(Consumer<StoreIngestionTask> consumer);
+
+  VeniceConfigLoader getVeniceConfigLoader();
 }

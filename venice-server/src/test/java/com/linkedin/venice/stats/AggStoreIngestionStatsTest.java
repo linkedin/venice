@@ -1,6 +1,7 @@
 package com.linkedin.venice.stats;
 
 
+import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionTask;
 import com.linkedin.davinci.stats.AggStoreIngestionStats;
 import com.linkedin.venice.tehuti.MockTehutiReporter;
@@ -25,8 +26,8 @@ public class AggStoreIngestionStatsTest {
     metricsRepository = new MetricsRepository();
     this.reporter = new MockTehutiReporter();
     metricsRepository.addReporter(reporter);
-
-    stats = new AggStoreIngestionStats(metricsRepository);
+    VeniceServerConfig mockVeniceServerConfig = Mockito.mock(VeniceServerConfig.class);
+    stats = new AggStoreIngestionStats(metricsRepository, mockVeniceServerConfig);
 
     StoreIngestionTask task = Mockito.mock(StoreIngestionTask.class);
     Mockito.doReturn(true).when(task).isRunning();

@@ -4,28 +4,35 @@ import com.linkedin.davinci.kafka.consumer.StoreIngestionService;
 import com.linkedin.venice.stats.AbstractVeniceStats;
 import com.linkedin.venice.stats.Gauge;
 import com.linkedin.venice.utils.LatencyUtils;
+import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.Time;
 import io.tehuti.metrics.MetricsRepository;
-import org.apache.log4j.Logger;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicLong;
 
 
 public class AggLagStats extends AbstractVeniceStats {
-  private static final Logger LOGGER = Logger.getLogger(AggLagStats.class);
 
   private final StoreIngestionService storeIngestionService;
+  private final Map<Integer, String> kafkaClusterIdToAliasMap;
 
   private long aggBatchReplicationLagFuture;
   private long aggBatchLeaderOffsetLagFuture;
   private long aggBatchFollowerOffsetLagFuture;
   private long aggHybridLeaderOffsetLagTotal;
   private long aggHybridFollowerOffsetLagTotal;
-
+  private Map<Integer, Long> aggRegionHybridOffsetLagTotalMap;
   private long lastLagUpdateTsMs = 0;
 
   public AggLagStats(StoreIngestionService storeIngestionService, MetricsRepository metricsRepository) {
     super(metricsRepository, "AggLagStats");
     this.storeIngestionService = storeIngestionService;
-
+    this.kafkaClusterIdToAliasMap = storeIngestionService.getVeniceConfigLoader().getVeniceServerConfig().getKafkaClusterIdToAliasMap();
+    for (Map.Entry<Integer, String> entry : kafkaClusterIdToAliasMap.entrySet()) {
+      String regionNamePrefix = RegionUtils.getRegionSpecificMetricPrefix(storeIngestionService.getVeniceConfigLoader().getVeniceServerConfig().getRegionName(), entry.getValue());
+      registerSensor(regionNamePrefix + "_rt_lag", new Gauge(() -> getAggRegionHybridOffsetLagTotal(entry.getKey())));
+    }
     registerSensor("agg_batch_replication_lag_future", new Gauge(this::getAggBatchReplicationLagFuture));
     registerSensor("agg_batch_leader_offset_lag_future", new Gauge(this::getAggBatchLeaderOffsetLagFuture));
     registerSensor("agg_batch_follower_offset_lag_future", new Gauge(this::getAggBatchFollowerOffsetLagFuture));
@@ -45,6 +52,10 @@ public class AggLagStats extends AbstractVeniceStats {
     aggBatchFollowerOffsetLagFuture = 0;
     aggHybridLeaderOffsetLagTotal = 0;
     aggHybridFollowerOffsetLagTotal = 0;
+    aggRegionHybridOffsetLagTotalMap = new HashMap<>();
+    for (int regionId : kafkaClusterIdToAliasMap.keySet()) {
+      aggRegionHybridOffsetLagTotalMap.put(regionId, 0L);
+    }
 
     storeIngestionService.traverseAllIngestionTasksAndApply((ingestionTask) -> {
       if (ingestionTask.isFutureVersion()) {
@@ -56,6 +67,14 @@ public class AggLagStats extends AbstractVeniceStats {
       aggHybridLeaderOffsetLagTotal += ingestionTask.getHybridLeaderOffsetLag();
       aggHybridFollowerOffsetLagTotal += ingestionTask.getHybridFollowerOffsetLag();
     });
+
+    for (int regionId : kafkaClusterIdToAliasMap.keySet()) {
+      AtomicLong totalValue = new AtomicLong();
+      storeIngestionService.traverseAllIngestionTasksAndApply((ingestionTask) -> {
+        totalValue.addAndGet(ingestionTask.getRegionHybridOffsetLag(regionId));
+      });
+      aggRegionHybridOffsetLagTotalMap.put(regionId, totalValue.longValue());
+    }
 
     lastLagUpdateTsMs = System.currentTimeMillis();
   }
@@ -83,5 +102,10 @@ public class AggLagStats extends AbstractVeniceStats {
   public long getAggHybridFollowerOffsetLagTotal() {
     mayCollectAllLags();
     return aggHybridFollowerOffsetLagTotal;
+  }
+
+  public long getAggRegionHybridOffsetLagTotal(int regionId) {
+    mayCollectAllLags();
+    return aggRegionHybridOffsetLagTotalMap.getOrDefault(regionId, 0L);
   }
 }

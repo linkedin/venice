@@ -13,7 +13,6 @@ import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.chunking.ChunkingUtils;
 import com.linkedin.davinci.storage.chunking.GenericRecordChunkingAdapter;
-import com.linkedin.davinci.storage.chunking.RawBytesChunkingAdapter;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
 import com.linkedin.davinci.store.record.ValueRecord;
@@ -1399,6 +1398,18 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     storeIngestionStats.recordTotalLeaderRecordsProduced(producedRecordNum);
   }
 
+  private void recordFabricHybridConsumptionStats(String kafkaUrl, int producedRecordSize, int producedRecordNum) {
+    if (!kafkaClusterUrlToIdMap.containsKey(kafkaUrl)) {
+      logger.warn("Unregistered kafkaUrl: " + kafkaUrl + ", will skip recording region consumption stats.");
+    } else {
+      int regionId = kafkaClusterUrlToIdMap.get(kafkaUrl);
+      versionedStorageIngestionStats.recordRegionHybridBytesConsumed(storeName, versionNumber, producedRecordSize, regionId);
+      versionedStorageIngestionStats.recordRegionHybridRecordsConsumed(storeName, versionNumber, producedRecordNum, regionId);
+      storeIngestionStats.recordTotalRegionHybridBytesConsumed(regionId, producedRecordSize);
+      storeIngestionStats.recordTotalRegionHybridRecordsConsumed(regionId, producedRecordNum);
+    }
+  }
+
   /**
    * The goal of this function is to possibly produce the incoming kafka message consumed from local VT, remote VT, RT or SR topic to
    * local VT if needed. It's decided based on the function output of {@link #shouldProduceToVersionTopic} and message type.
@@ -1466,6 +1477,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
       validateRecordBeforeProducingToLocalKafka(consumerRecordWrapper, partitionConsumptionState);
 
+      if (Version.isRealTimeTopic(consumerRecord.topic())) {
+        recordFabricHybridConsumptionStats(consumerRecordWrapper.kafkaUrl(), consumerRecord.serializedKeySize() + consumerRecord.serializedValueSize(), 1);
+      }
       /**
        * DIV pass-through mode is enabled for all messages received before EOP (from VT,SR topics) but
        * DIV pass through mode is not enabled for messages received from RT.
@@ -1935,6 +1949,58 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   @Override
   public long getHybridFollowerOffsetLag() {
     return getFollowerOffsetLag(HYBRID_FOLLOWER_OFFSET_LAG_FILTER);
+  }
+
+
+  @Override
+  public long getRegionHybridOffsetLag(int regionId) {
+    Optional<StoreVersionState> svs = storageMetadataService.getStoreVersionState(kafkaVersionTopic);
+    if (!svs.isPresent()) {
+      /**
+       * Store version metadata is created for the first time when the first START_OF_PUSH message is processed;
+       * however, the ingestion stat is created the moment an ingestion task is created, so there is a short time
+       * window where there is no version metadata, which is not an error.
+       */
+      return 0;
+    }
+
+    if (partitionConsumptionStateMap.isEmpty()) {
+      /**
+       * Partition subscription happens after the ingestion task and stat are created, it's not an error.
+       */
+      return 0;
+    }
+
+    long offsetLag = partitionConsumptionStateMap.values().stream()
+        .filter(LEADER_OFFSET_LAG_FILTER)
+        //the lag is (latest fabric RT offset - consumed fabric RT offset)
+        .mapToLong((pcs) -> {
+          String currentLeaderTopic = pcs.getOffsetRecord().getLeaderTopic();
+          if (currentLeaderTopic == null || currentLeaderTopic.isEmpty() || !Version.isRealTimeTopic(currentLeaderTopic)) {
+            // Leader topic not found, indicating that it is VT topic.
+            return 0;
+          }
+          String kafkaSourceAddress = kafkaClusterIdToUrlMap.get(regionId);
+          // This storage node does not register with the given region ID.
+          if (kafkaSourceAddress == null) {
+            return 0;
+          }
+          //final String kafkaSourceAddress = getSourceKafkaUrlForOffsetLagMeasurement(pcs);
+          KafkaConsumerWrapper kafkaConsumer = consumerMap.get(kafkaSourceAddress);
+          // Consumer might not existed in the map after the consumption state is created, but before attaching the
+          // corresponding consumer in consumerMap.
+          if (kafkaConsumer != null) {
+            Optional<Long> offsetLagOptional = kafkaConsumer.getOffsetLag(currentLeaderTopic, pcs.getPartition());
+            if (offsetLagOptional.isPresent()) {
+              return offsetLagOptional.get();
+            }
+          }
+          // Fall back to calculate offset lag in the old way
+          return (cachedKafkaMetadataGetter.getOffset(kafkaSourceAddress, currentLeaderTopic, pcs.getPartition()) - 1)
+                - pcs.getOffsetRecord().getLeaderOffset(kafkaSourceAddress);
+        }).sum();
+
+    return minZeroLag(offsetLag);
   }
 
   /**

@@ -5,6 +5,7 @@ import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.admin.ScalaAdminUtils;
 import com.linkedin.venice.status.BatchJobHeartbeatConfigs;
+import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -262,25 +263,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     this.isDaVinciPushStatusStoreEnabled =  props.getBoolean(PUSH_STATUS_STORE_ENABLED, false);
     this.zkSharedDaVinciPushStatusSystemSchemaStoreAutoCreationEnabled = props.getBoolean(CONTROLLER_ZK_SHARED_DAVINCI_PUSH_STATUS_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED, false);
     this.systemStoreAclSynchronizationDelayMs = props.getLong(CONTROLLER_SYSTEM_STORE_ACL_SYNCHRONIZATION_DELAY_MS, TimeUnit.HOURS.toMillis(1));
-    String regionNameFromConfig = props.getString(LOCAL_REGION_NAME, "");
-    if (!Utils.isNullOrEmpty(regionNameFromConfig)) {
-      this.regionName = regionNameFromConfig + (parent ? ".parent" : "");
-    } else {
-      String regionNameFromEnv = null;
-      try {
-        regionNameFromEnv = System.getenv(ENVIRONMENT_CONFIG_KEY_FOR_REGION_NAME);
-        LOGGER.info("Region name from environment config: " + regionNameFromEnv);
-        if (regionNameFromEnv == null) {
-          regionNameFromEnv = System.getProperty(SYSTEM_PROPERTY_FOR_APP_RUNNING_REGION);
-          LOGGER.info("Region name from System property: " + regionNameFromEnv);
-        }
-      } catch (Exception e) {
-        LOGGER.warn("Error when trying to retrieve environment variable for region name; will use default value instead.", e);
-      }
-      this.regionName = Utils.isNullOrEmpty(regionNameFromEnv)
-                        ? ""
-                        : regionNameFromEnv + (parent ? ".parent" : "");
-    }
+    this.regionName = RegionUtils.getLocalRegionName(props, parent);
     LOGGER.info("Final region name for this node: " + this.regionName);
     this.disabledRoutes = parseControllerRoutes(props, CONTROLLER_DISABLED_ROUTES, Collections.emptyList());
     this.adminTopicRemoteConsumptionEnabled = props.getBoolean(ADMIN_TOPIC_REMOTE_CONSUMPTION_ENABLED, false);

@@ -1,11 +1,13 @@
 package com.linkedin.davinci.stats;
 
+import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.kafka.consumer.PartitionConsumptionState;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionTask;
 import com.linkedin.venice.stats.AbstractVeniceStats;
 import com.linkedin.venice.stats.Gauge;
 import com.linkedin.venice.stats.LambdaStat;
 import com.linkedin.venice.stats.TehutiUtils;
+import com.linkedin.venice.utils.RegionUtils;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.Avg;
@@ -14,6 +16,8 @@ import io.tehuti.metrics.stats.Max;
 import io.tehuti.metrics.stats.Min;
 import io.tehuti.metrics.stats.Rate;
 import io.tehuti.metrics.stats.Total;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.function.Supplier;
 
 import static com.linkedin.venice.stats.StatsErrorCode.*;
@@ -118,6 +122,8 @@ public class StoreIngestionStats extends AbstractVeniceStats {
   private final Sensor totalFollowerRecordsConsumedSensor;
   private final Sensor totalLeaderBytesProducedSensor;
   private final Sensor totalLeaderRecordsProducedSensor;
+  private final Map<Integer, Sensor> totalRegionHybridBytesConsumedMap;
+  private final Map<Integer, Sensor> totalRegionHybridRecordsConsumedMap;
 
   private final Sensor checksumVerificationFailureSensor;
 
@@ -151,7 +157,7 @@ public class StoreIngestionStats extends AbstractVeniceStats {
    */
   private final Sensor conflictResolutionTombstoneCreationSensor;
 
-  public StoreIngestionStats(MetricsRepository metricsRepository,
+  public StoreIngestionStats(MetricsRepository metricsRepository, VeniceServerConfig serverConfig,
                              String storeName) {
     super(metricsRepository, storeName);
     this.storeIngestionTask = null;
@@ -221,6 +227,13 @@ public class StoreIngestionStats extends AbstractVeniceStats {
     totalFollowerRecordsConsumedSensor = registerSensor("follower_records_consumed", new Rate());
     totalLeaderBytesProducedSensor = registerSensor("leader_bytes_produced", new Rate());
     totalLeaderRecordsProducedSensor = registerSensor("leader_records_produced", new Rate());
+    totalRegionHybridBytesConsumedMap = new HashMap<>();
+    totalRegionHybridRecordsConsumedMap = new HashMap<>();
+    for (Map.Entry<Integer, String> entry : serverConfig.getKafkaClusterIdToAliasMap().entrySet()) {
+      String regionNamePrefix = RegionUtils.getRegionSpecificMetricPrefix(serverConfig.getRegionName(), entry.getValue());
+      totalRegionHybridBytesConsumedMap.put(entry.getKey(), registerSensor(regionNamePrefix + "_rt_bytes_consumed", new Rate()));
+      totalRegionHybridRecordsConsumedMap.put(entry.getKey(), registerSensor(regionNamePrefix + "_rt_records_consumed", new Rate()));
+    }
 
     checksumVerificationFailureSensor = registerSensor("checksum_verification_failure", new Count());
 
@@ -379,6 +392,18 @@ public class StoreIngestionStats extends AbstractVeniceStats {
 
   public void recordTotalFollowerRecordsConsumed(int count) {
     totalFollowerRecordsConsumedSensor.record(count);
+  }
+
+  public void recordTotalRegionHybridBytesConsumed(int regionId, long bytes) {
+    if (totalRegionHybridBytesConsumedMap.containsKey(regionId)) {
+      totalRegionHybridBytesConsumedMap.get(regionId).record(bytes);
+    }
+  }
+
+  public void recordTotalRegionHybridRecordsConsumed(int regionId, int count) {
+    if (totalRegionHybridRecordsConsumedMap.containsKey(regionId)) {
+      totalRegionHybridRecordsConsumedMap.get(regionId).record(count);
+    }
   }
 
   public void recordTotalLeaderBytesProduced(long bytes) {

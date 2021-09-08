@@ -6,17 +6,16 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.StringJoiner;
-import org.apache.commons.io.IOUtils;
 import java.io.File;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.StringJoiner;
 import java.util.concurrent.TimeUnit;
+import org.apache.commons.io.IOUtils;
 
 import static com.linkedin.venice.ConfigKeys.*;
 
@@ -117,7 +116,7 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
         tempProps.putAll(activeActiveRequiredChildControllerProps);
         childControllerProperties = Optional.of(tempProps);
       }
-      serverProperties = addKafkaClusterIDMappingToServerConfigs(serverProperties, allKafkaBrokers);
+      serverProperties = addKafkaClusterIDMappingToServerConfigs(serverProperties, allColoNames, allKafkaBrokers);
 
       // Create multiclusters
       for (int i = 0; i < numberOfColos; i++) {
@@ -178,14 +177,15 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
 
   private static Optional<VeniceProperties> addKafkaClusterIDMappingToServerConfigs(
           Optional<VeniceProperties> serverProperties,
+          List<String> coloNames,
           List<KafkaBrokerWrapper> kafkaBrokers
   ) {
     if (serverProperties.isPresent()) {
       StringJoiner stringJoiner = new StringJoiner(",");
-      int key = 0;
-      for (KafkaBrokerWrapper kafkaBroker : kafkaBrokers) {
-        stringJoiner.add(key + ":" + kafkaBroker.getAddress());
-        key++;
+      // Add parent kafka cluster.
+      stringJoiner.add("0:parent@" + kafkaBrokers.get(0).getAddress());
+      for (int i = 1; i <= coloNames.size(); i++) {
+        stringJoiner.add(i + ":" + coloNames.get(i-1) + "@" + kafkaBrokers.get(i).getAddress());
       }
       String kafkaClusterIdToUrlMapping = stringJoiner.toString();
       Properties newServerProperties = serverProperties.get().getPropertiesCopy();

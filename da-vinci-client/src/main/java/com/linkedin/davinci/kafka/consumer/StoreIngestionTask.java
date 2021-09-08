@@ -2176,6 +2176,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   public abstract long getHybridFollowerOffsetLag();
 
+  public abstract long getRegionHybridOffsetLag(int regionId);
+
   public abstract int getWriteComputeErrorCode();
 
   public long getOffsetLagThreshold() {
@@ -3354,6 +3356,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     if (storeVersionState.isPresent()) {
       response.addStoreVersionState(storeVersionState.get());
     }
+  }
+
+  public VeniceServerConfig getServerConfig() {
+    return serverConfig;
   }
 
   /**

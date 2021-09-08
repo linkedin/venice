@@ -1944,7 +1944,7 @@ public class StoreIngestionTaskTest {
     propertyBuilder.put(SERVER_LOCAL_CONSUMER_CONFIG_PREFIX, new VeniceProperties());
     propertyBuilder.put(SERVER_REMOTE_CONSUMER_CONFIG_PREFIX, new VeniceProperties());
     propertyBuilder.put(SERVER_AUTO_COMPACTION_FOR_SAMZA_REPROCESSING_JOB_ENABLED, true);
-    propertyBuilder.put(SERVER_KAFKA_CLUSTER_ID_TO_URL, String.format("%d:%s", 0, inMemoryKafkaBroker.getKafkaBootstrapServer()));
+    propertyBuilder.put(SERVER_KAFKA_CLUSTER_ID_TO_URL, String.format("%d:%s@%s", 0, "dev", inMemoryKafkaBroker.getKafkaBootstrapServer()));
     extraProperties.forEach(propertyBuilder::put);
     return new VeniceServerConfig(propertyBuilder.build());
   }

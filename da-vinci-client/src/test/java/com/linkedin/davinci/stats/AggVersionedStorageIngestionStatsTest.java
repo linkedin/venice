@@ -1,5 +1,6 @@
 package com.linkedin.davinci.stats;
 
+import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionTask;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.meta.OfflinePushStrategy;
@@ -27,6 +28,7 @@ public class AggVersionedStorageIngestionStatsTest {
   private MockTehutiReporter reporter;
 
   private ReadOnlyStoreRepository mockStoreRepository;
+  private VeniceServerConfig mockServerConfig;
 
   @BeforeTest
   public void setup() {
@@ -35,7 +37,8 @@ public class AggVersionedStorageIngestionStatsTest {
     metricsRepository.addReporter(reporter);
 
     mockStoreRepository = mock(ReadOnlyStoreRepository.class);
-    versionedIngestionStats = new AggVersionedStorageIngestionStats(metricsRepository, mockStoreRepository);
+    mockServerConfig = mock(VeniceServerConfig.class);
+    versionedIngestionStats = new AggVersionedStorageIngestionStats(metricsRepository, mockStoreRepository, mockServerConfig);
   }
 
   @Test
