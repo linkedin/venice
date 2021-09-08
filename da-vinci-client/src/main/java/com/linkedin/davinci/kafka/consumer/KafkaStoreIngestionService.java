@@ -307,10 +307,10 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       this.metaSystemStoreReplicaStatusNotifier = null;
     }
 
-    this.ingestionStats = new AggStoreIngestionStats(metricsRepository);
+    this.ingestionStats = new AggStoreIngestionStats(metricsRepository, serverConfig);
     AggVersionedDIVStats versionedDIVStats = new AggVersionedDIVStats(metricsRepository, metadataRepo);
     this.versionedStorageIngestionStats =
-        new AggVersionedStorageIngestionStats(metricsRepository, metadataRepo);
+        new AggVersionedStorageIngestionStats(metricsRepository, metadataRepo, serverConfig);
     if (serverConfig.isDedicatedDrainerQueueEnabled()) {
       this.storeBufferService = new SeparatedStoreBufferService(serverConfig);
     } else {
@@ -629,6 +629,11 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     } else {
       logger.warn("Ignoring leader to standby transition message for Topic " + topic + " Partition " + partitionId);
     }
+  }
+
+  @Override
+  public VeniceConfigLoader getVeniceConfigLoader() {
+    return veniceConfigLoader;
   }
 
   /**

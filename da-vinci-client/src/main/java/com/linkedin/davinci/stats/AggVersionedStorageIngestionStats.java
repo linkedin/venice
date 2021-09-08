@@ -1,5 +1,6 @@
 package com.linkedin.davinci.stats;
 
+import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionTask;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
@@ -9,6 +10,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.stats.AbstractVeniceAggVersionedStats;
 import com.linkedin.venice.stats.AbstractVeniceStatsReporter;
 import com.linkedin.venice.stats.Gauge;
+import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricConfig;
 import io.tehuti.metrics.MetricsRepository;
@@ -17,6 +19,8 @@ import io.tehuti.metrics.stats.Avg;
 import io.tehuti.metrics.stats.Count;
 import io.tehuti.metrics.stats.Max;
 import io.tehuti.metrics.stats.Rate;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.function.Supplier;
 import org.apache.log4j.Logger;
 
@@ -48,8 +52,8 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
   private static final String MAX = "_max";
   private static final String AVG = "_avg";
 
-  public AggVersionedStorageIngestionStats(MetricsRepository metricsRepository, ReadOnlyStoreRepository storeRepository) {
-    super(metricsRepository, storeRepository, StorageIngestionStats::new, StorageIngestionStatsReporter::new);
+  public AggVersionedStorageIngestionStats(MetricsRepository metricsRepository, ReadOnlyStoreRepository storeRepository, VeniceServerConfig serverConfig) {
+    super(metricsRepository, storeRepository, () -> new StorageIngestionStats(serverConfig), StorageIngestionStatsReporter::new);
   }
 
   public void setIngestionTask(String storeVersionTopic, StoreIngestionTask ingestionTask) {
@@ -135,6 +139,16 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
     Utils.computeIfNotNull(getStats(storeName, version), stat -> stat.recordLeaderBytesProduced(bytes));
   }
 
+  public void recordRegionHybridBytesConsumed(String storeName, int version, long bytes, int regionId) {
+    Utils.computeIfNotNull(getTotalStats(storeName), stat -> stat.recordRegionHybridBytesConsumed(regionId, bytes));
+    Utils.computeIfNotNull(getStats(storeName, version), stat -> stat.recordRegionHybridBytesConsumed(regionId, bytes));
+  }
+
+  public void recordRegionHybridRecordsConsumed(String storeName, int version, int count, int regionId) {
+    Utils.computeIfNotNull(getTotalStats(storeName), stat -> stat.recordRegionHybridRecordsConsumed(regionId, count));
+    Utils.computeIfNotNull(getStats(storeName, version), stat -> stat.recordRegionHybridRecordsConsumed(regionId, count));
+  }
+
   public void setIngestionTaskPushTimeoutGauge(String storeName, int version) {
     getStats(storeName, version).setIngestionTaskPushTimeoutGauge(1);
   }
@@ -166,6 +180,7 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
   static class StorageIngestionStats {
     private static final MetricConfig METRIC_CONFIG = new MetricConfig();
     private final MetricsRepository localMetricRepository = new MetricsRepository(METRIC_CONFIG);
+    private final Map<Integer, String> kafkaClusterIdToAliasMap;
 
     private StoreIngestionTask ingestionTask;
     private long rtTopicOffsetLagOverThreshold = 0;
@@ -180,6 +195,8 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
     private final Rate followerBytesConsumedRate;
     private final Rate leaderRecordsProducedRate;
     private final Rate leaderBytesProducedRate;
+    private final Map<Integer, Rate> regionIdToHybridBytesConsumedRateMap;
+    private final Map<Integer, Rate> regionIdToHybridRecordsConsumedRateMap;
     private final Count stalePartitionsWithoutIngestionTaskCount;
     private final Avg subscribePrepLatencyAvg;
     private final Avg subscribeGetConsumerLatencyAvg;
@@ -196,12 +213,38 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
     private final Sensor followerBytesConsumedSensor;
     private final Sensor leaderRecordsProducedSensor;
     private final Sensor leaderBytesProducedSensor;
+    private final Map<Integer, Sensor> regionIdToHybridBytesConsumedSensorMap;
+    private final Map<Integer, Sensor> regionIdToHybridRecordsConsumedSensorMap;
     private final Sensor stalePartitionsWithoutIngestionTaskSensor;
     private final Sensor subscribePrepLatencySensor;
     private final Sensor subscribeGetConsumerLatencySensor;
     private final Sensor subscribeConsumerSubscribeLatencySensor;
 
-    public StorageIngestionStats()  {
+    public StorageIngestionStats(VeniceServerConfig serverConfig)  {
+      kafkaClusterIdToAliasMap = serverConfig.getKafkaClusterIdToAliasMap();
+
+      regionIdToHybridBytesConsumedRateMap = new HashMap<>();
+      regionIdToHybridBytesConsumedSensorMap = new HashMap<>();
+      regionIdToHybridRecordsConsumedRateMap = new HashMap<>();
+      regionIdToHybridRecordsConsumedSensorMap = new HashMap<>();
+
+      for (Map.Entry<Integer, String> entry : kafkaClusterIdToAliasMap.entrySet()) {
+        String regionNamePrefix = RegionUtils.getRegionSpecificMetricPrefix(serverConfig.getRegionName(), entry.getValue());
+        Rate regionHybridBytesConsumedRate = new Rate();
+        String regionHybridBytesConsumedMetricName = regionNamePrefix + "_rt_bytes_consumed";
+        Sensor regionHybridBytesConsumedSensor = localMetricRepository.sensor(regionHybridBytesConsumedMetricName);
+        regionHybridBytesConsumedSensor.add(regionHybridBytesConsumedMetricName + regionHybridBytesConsumedRate.getClass().getSimpleName(), regionHybridBytesConsumedRate);
+        regionIdToHybridBytesConsumedRateMap.put(entry.getKey(),  regionHybridBytesConsumedRate);
+        regionIdToHybridBytesConsumedSensorMap.put(entry.getKey(),  regionHybridBytesConsumedSensor);
+
+        Rate regionHybridRecordsConsumedRate = new Rate();
+        String regionHybridRecordsConsumedMetricName = regionNamePrefix + "_rt_records_consumed";
+        Sensor regionHybridRecordsConsumedSensor = localMetricRepository.sensor(regionHybridRecordsConsumedMetricName);
+        regionHybridRecordsConsumedSensor.add(regionHybridRecordsConsumedMetricName + regionHybridRecordsConsumedRate.getClass().getSimpleName(), regionHybridBytesConsumedRate);
+        regionIdToHybridRecordsConsumedRateMap.put(entry.getKey(), regionHybridRecordsConsumedRate);
+        regionIdToHybridRecordsConsumedSensorMap.put(entry.getKey(), regionHybridRecordsConsumedSensor);
+      }
+
       recordsConsumedRate = new Rate();
       recordsConsumedSensor = localMetricRepository.sensor(RECORDS_CONSUMED_METRIC_NAME);
       recordsConsumedSensor.add(RECORDS_CONSUMED_METRIC_NAME + recordsConsumedRate.getClass().getSimpleName(), recordsConsumedRate);
@@ -363,6 +406,13 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
       return ingestionTask.getHybridFollowerOffsetLag();
     }
 
+    public long getRegionHybridOffsetLag(int regionId) {
+      if (ingestionTask == null) {
+        return 0;
+      }
+      return ingestionTask.getRegionHybridOffsetLag(regionId);
+    }
+
     public int getWriteComputeErrorCode() {
       if (ingestionTask == null) {
         return INACTIVE_STORE_INGESTION_TASK.code;
@@ -461,6 +511,33 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
       followerBytesConsumedSensor.record(value);
     }
 
+    public double getRegionHybridBytesConsumed(int regionId) {
+      if (regionIdToHybridBytesConsumedRateMap.containsKey(regionId)) {
+        return regionIdToHybridBytesConsumedRateMap.get(regionId).measure(METRIC_CONFIG, System.currentTimeMillis());
+      } else {
+        return 0.0;
+      }
+    }
+
+    public void recordRegionHybridBytesConsumed(int regionId, double value) {
+      if (regionIdToHybridBytesConsumedRateMap.containsKey(regionId)) {
+        regionIdToHybridBytesConsumedSensorMap.get(regionId).record(value);
+      }
+    }
+
+    public double getRegionHybridRecordsConsumed(int regionId) {
+      if (regionIdToHybridRecordsConsumedRateMap.containsKey(regionId)) {
+        return regionIdToHybridRecordsConsumedRateMap.get(regionId).measure(METRIC_CONFIG, System.currentTimeMillis());
+      } else {
+        return 0.0;
+      }
+    }
+
+    public void recordRegionHybridRecordsConsumed(int regionId, double value) {
+      if (regionIdToHybridRecordsConsumedRateMap.containsKey(regionId)) {
+        regionIdToHybridRecordsConsumedSensorMap.get(regionId).record(value);
+      }
+    }
 
     public double getLeaderRecordsProduced() {
       return leaderRecordsProducedRate.measure(METRIC_CONFIG, System.currentTimeMillis());
@@ -561,6 +638,16 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
 
       registerSensor("number_of_partitions_not_receive_SOBR", new IngestionStatsGauge(this, () ->
           (double) getStats().getNumberOfPartitionsNotReceiveSOBR(), 0));
+
+      for (Map.Entry<Integer, String> entry : getStats().ingestionTask.getServerConfig().getKafkaClusterIdToAliasMap().entrySet()) {
+        String regionNamePrefix = RegionUtils.getRegionSpecificMetricPrefix(getStats().ingestionTask.getServerConfig().getRegionName(), entry.getValue());
+        registerSensor(regionNamePrefix + "_rt_lag",
+            new IngestionStatsGauge(this, () -> (double) getStats().getRegionHybridOffsetLag(entry.getKey()), 0));
+        registerSensor(regionNamePrefix + "_rt_bytes_consumed",
+            new IngestionStatsGauge(this, () -> getStats().getRegionHybridBytesConsumed(entry.getKey()), 0));
+        registerSensor(regionNamePrefix + "_rt_records_consumed",
+            new IngestionStatsGauge(this, () -> getStats().getRegionHybridRecordsConsumed(entry.getKey()), 0));
+      }
     }
 
     private static class IngestionStatsGauge extends Gauge {
