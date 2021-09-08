@@ -2257,6 +2257,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   protected void processEndOfPush(ControlMessage controlMessage, int partition, long offset, PartitionConsumptionState partitionConsumptionState) {
 
+    // Do not process duplication EOP messages.
+    if (partitionConsumptionState.getOffsetRecord().isEndOfPushReceived()) {
+      logger.warn(consumerTaskId + " Received duplicate EOP control message, ignoring it. Partition: " + partition + ", Offset: " + offset);
+      return;
+    }
+
     // We need to keep track of when the EOP happened, as that is used within Hybrid Stores' lag measurement
     partitionConsumptionState.getOffsetRecord().endOfPushReceived(offset);
     /**
