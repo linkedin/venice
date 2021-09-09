@@ -1629,7 +1629,7 @@ public class VeniceParentHelixAdmin implements Admin {
 
       setStore.applyTargetVersionFilterForIncPush = applyTargetStoreFilterForIncPush
           .map(addToUpdatedConfigList(updatedConfigsList, APPLY_TARGET_VERSION_FILTER_FOR_INC_PUSH))
-          .orElseGet(store::applyTargetVersionFilterForIncPush);
+          .orElseGet(store::isApplyTargetVersionFilterForIncPush);
 
       /**
        * By default, parent controllers will not try to replicate the unchanged store configs to child controllers;

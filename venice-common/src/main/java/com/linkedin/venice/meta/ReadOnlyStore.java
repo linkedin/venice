@@ -945,8 +945,8 @@ public class ReadOnlyStore implements Store {
   }
 
   @Override
-  public boolean applyTargetVersionFilterForIncPush() {
-    return this.delegate.applyTargetVersionFilterForIncPush();
+  public boolean isApplyTargetVersionFilterForIncPush() {
+    return this.delegate.isApplyTargetVersionFilterForIncPush();
   }
 
   @Override

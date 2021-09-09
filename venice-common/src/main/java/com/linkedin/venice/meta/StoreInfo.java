@@ -58,7 +58,7 @@ public class StoreInfo {
     storeInfo.setStoreMetaSystemStoreEnabled(store.isStoreMetaSystemStoreEnabled());
     storeInfo.setDaVinciPushStatusStoreEnabled(store.isDaVinciPushStatusStoreEnabled());
     storeInfo.setActiveActiveReplicationEnabled(store.isActiveActiveReplicationEnabled());
-    storeInfo.setApplyTargetVersionFilterForIncPush(store.applyTargetVersionFilterForIncPush());
+    storeInfo.setApplyTargetVersionFilterForIncPush(store.isApplyTargetVersionFilterForIncPush());
     return storeInfo;
   }
   /**
