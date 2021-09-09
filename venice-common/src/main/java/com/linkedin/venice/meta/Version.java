@@ -29,7 +29,7 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
   /**
    * Special number indicating no timestamp metadata version is set.
    */
-  int TIMESTAMP_METADATA_VERSION_ID_UNSET = -1;
+  int REPLICATION_METADATA_VERSION_ID_UNSET = -1;
 
   /**
    * Producer type for writing data to Venice

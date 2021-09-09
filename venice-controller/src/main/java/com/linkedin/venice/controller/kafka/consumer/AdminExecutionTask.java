@@ -218,8 +218,8 @@ public class AdminExecutionTask implements Callable<Void> {
         case CONFIGURE_ACTIVE_ACTIVE_REPLICATION_FOR_CLUSTER:
           handleEnableActiveActiveReplicationForCluster((ConfigureActiveActiveReplicationForCluster) adminOperation.payloadUnion);
           break;
-        case TIMESTAMP_METADATA_SCHEMA_CREATION:
-          handleTimestampMetadataSchemaCreation((MetadataSchemaCreation) adminOperation.payloadUnion);
+        case REPLICATION_METADATA_SCHEMA_CREATION:
+          handleReplicationMetadataSchemaCreation((MetadataSchemaCreation) adminOperation.payloadUnion);
           break;
         default:
           throw new VeniceException("Unknown admin operation type: " + adminOperation.operationType);
@@ -528,17 +528,17 @@ public class AdminExecutionTask implements Callable<Void> {
     Version.PushType pushType = Version.PushType.valueOf(message.pushType);
     String remoteKafkaBootstrapServers = message.pushStreamSourceAddress == null ? null : message.pushStreamSourceAddress.toString();
     long rewindTimeInSecondsOverride = message.rewindTimeInSecondsOverride;
-    int timestampMetadataVersionId = message.timestampMetadataVersionId;
+    int replicationMetadataVersionId = message.timestampMetadataVersionId;
     if (isParentController) {
       if (checkPreConditionForReplicateAddVersion(clusterName, storeName)) {
         // Parent controller mirrors new version to src or dest cluster if the store is migrating
         admin.replicateAddVersionAndStartIngestion(clusterName, storeName, pushJobId, versionNumber, numberOfPartitions,
-            pushType, remoteKafkaBootstrapServers, rewindTimeInSecondsOverride, timestampMetadataVersionId);
+            pushType, remoteKafkaBootstrapServers, rewindTimeInSecondsOverride, replicationMetadataVersionId);
       }
     } else {
       // New version for regular Venice store.
       admin.addVersionAndStartIngestion(clusterName, storeName, pushJobId, versionNumber, numberOfPartitions, pushType,
-          remoteKafkaBootstrapServers, rewindTimeInSecondsOverride, timestampMetadataVersionId);
+          remoteKafkaBootstrapServers, rewindTimeInSecondsOverride, replicationMetadataVersionId);
     }
   }
 
@@ -586,16 +586,16 @@ public class AdminExecutionTask implements Callable<Void> {
     return false;
   }
 
-  private void handleTimestampMetadataSchemaCreation(MetadataSchemaCreation message) {
+  private void handleReplicationMetadataSchemaCreation(MetadataSchemaCreation message) {
     String clusterName = message.clusterName.toString();
     String storeName = message.storeName.toString();
     int valueSchemaId = message.valueSchemaId;
-    String timestampMetadataSchemaStr = message.metadataSchema.definition.toString();
-    int timestampMetadataVersionId = message.timestampMetadataVersionId;
+    String replicationMetadataSchemaStr = message.metadataSchema.definition.toString();
+    int replicationMetadataVersionId = message.timestampMetadataVersionId;
 
-    admin.addReplicationMetadataSchema(clusterName, storeName, valueSchemaId, timestampMetadataVersionId, timestampMetadataSchemaStr);
+    admin.addReplicationMetadataSchema(clusterName, storeName, valueSchemaId, replicationMetadataVersionId, replicationMetadataSchemaStr);
     logger.info(String.format("Added metedata schema:\n %s\n to store: %s, value schema id: %d, metedata schema id: %d",
-        timestampMetadataSchemaStr, storeName, valueSchemaId, timestampMetadataVersionId));
+        replicationMetadataSchemaStr, storeName, valueSchemaId, replicationMetadataVersionId));
   }
 
 }

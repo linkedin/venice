@@ -49,7 +49,7 @@ public enum AdminMessageType {
   DERIVED_SCHEMA_CREATION(17, false),
   SUPERSET_SCHEMA_CREATION(18, false),
   CONFIGURE_NATIVE_REPLICATION_FOR_CLUSTER(19, true),
-  TIMESTAMP_METADATA_SCHEMA_CREATION(20, false),
+  REPLICATION_METADATA_SCHEMA_CREATION(20, false),
   CONFIGURE_ACTIVE_ACTIVE_REPLICATION_FOR_CLUSTER(21, true);
 
   private final int value;
@@ -83,7 +83,7 @@ public enum AdminMessageType {
       case DERIVED_SCHEMA_CREATION: return new DerivedSchemaCreation();
       case SUPERSET_SCHEMA_CREATION: return new SupersetSchemaCreation();
       case CONFIGURE_NATIVE_REPLICATION_FOR_CLUSTER: return new ConfigureNativeReplicationForCluster();
-      case TIMESTAMP_METADATA_SCHEMA_CREATION: return new MetadataSchemaCreation();
+      case REPLICATION_METADATA_SCHEMA_CREATION: return new MetadataSchemaCreation();
       case CONFIGURE_ACTIVE_ACTIVE_REPLICATION_FOR_CLUSTER: return new ConfigureActiveActiveReplicationForCluster();
       default: throw new VeniceException("Unsupported " + getClass().getSimpleName() + " value: " + value);
     }
