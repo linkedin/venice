@@ -138,7 +138,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   /**
    * Metadata Version id to be used.
    */
-  private final int timestampMetadataVersionId;
+  private final int replicationMetadataVersionId;
 
   private final String emergencySourceRegion;
 
@@ -273,7 +273,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     this.aggregateRealTimeSourceRegion = props.getString(AGGREGATE_REAL_TIME_SOURCE_REGION, "");
     this.isAutoMaterializeMetaSystemStoreEnabled = props.getBoolean(CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE, false);
 
-    this.timestampMetadataVersionId = props.getInt(REPLICATION_METADATA_VERSION_ID, 1);
+    this.replicationMetadataVersionId = props.getInt(REPLICATION_METADATA_VERSION_ID, 1);
     this.emergencySourceRegion = props.getString(EMERGENCY_SOURCE_REGION, "");
   }
 
@@ -549,7 +549,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     return isAutoMaterializeMetaSystemStoreEnabled;
   }
 
-  public int getTimestampMetadataVersionId() { return timestampMetadataVersionId; }
+  public int getReplicationMetadataVersionId() { return replicationMetadataVersionId; }
 
   public String getEmergencySourceRegion() {
     return emergencySourceRegion;

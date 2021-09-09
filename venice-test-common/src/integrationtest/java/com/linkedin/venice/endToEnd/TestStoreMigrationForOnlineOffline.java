@@ -19,6 +19,8 @@ public class TestStoreMigrationForOnlineOffline extends TestStoreMigration {
     // Required by metadata system store
     parentControllerProperties.setProperty(PARTICIPANT_MESSAGE_STORE_ENABLED, "true");
     parentControllerProperties.setProperty(CONTROLLER_ZK_SHARED_DAVINCI_PUSH_STATUS_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED, String.valueOf(true));
+    // Set replication metadata version id
+    parentControllerProperties.put(REPLICATION_METADATA_VERSION_ID, 1);
 
     Properties childControllerProperties = new Properties();
     // Required by metadata system store

@@ -1616,7 +1616,7 @@ public class ConfigKeys {
   public static final String CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE = "controller.auto.materialize.meta.system.store";
 
   /**
-   * This will indicate which TimestampMetadataSchemaAdapter version to use to generate timestamp metadata schema.
+   * This will indicate which ReplicationMetadataSchemaAdapter version to use to generate replication metadata schema.
    */
   public static final String REPLICATION_METADATA_VERSION_ID = "replication.metadata.version.id";
 

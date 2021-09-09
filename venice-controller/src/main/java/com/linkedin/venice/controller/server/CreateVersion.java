@@ -31,6 +31,7 @@ import spark.Route;
 
 import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.REPLICATION_METADATA_VERSION_ID;
 import static com.linkedin.venice.controllerapi.ControllerRoute.*;
 import static com.linkedin.venice.meta.Version.*;
 
@@ -426,8 +427,14 @@ public class CreateVersion extends AbstractRoute {
           rewindTimeInSecondsOverride = Long.parseLong(rewindTimeInSecondsOverrideOptional.get());
         }
 
+        Optional<String> replicationMetadataVersionIdOptional = Optional.ofNullable(request.queryParams(REPLICATION_METADATA_VERSION_ID));
+        int replicationMetadataVersionId = REPLICATION_METADATA_VERSION_ID_UNSET;
+        if (replicationMetadataVersionIdOptional.isPresent()) {
+          replicationMetadataVersionId = Integer.parseInt(replicationMetadataVersionIdOptional.get());
+        }
+
         admin.addVersionAndStartIngestion(clusterName, storeName, pushJobId, versionNumber, partitionCount, pushType,
-            remoteKafkaBootstrapServers, rewindTimeInSecondsOverride, TIMESTAMP_METADATA_VERSION_ID_UNSET);
+            remoteKafkaBootstrapServers, rewindTimeInSecondsOverride, replicationMetadataVersionId);
         responseObject.setCluster(clusterName);
         responseObject.setName(storeName);
         responseObject.setVersion(versionNumber);

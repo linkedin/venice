@@ -448,12 +448,12 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     for (int i = 0; i < 5; i ++) {
       // Mimic the retry behavior by the admin consumption task.
       Assert.assertThrows(VeniceOperationAgainstKafkaTimedOut.class,
-          () -> veniceAdmin.addVersionAndStartIngestion(clusterName, storeName, pushJobId, 1, 1, Version.PushType.BATCH, null, -1, multiClusterConfig.getCommonConfig().getTimestampMetadataVersionId()));
+          () -> veniceAdmin.addVersionAndStartIngestion(clusterName, storeName, pushJobId, 1, 1, Version.PushType.BATCH, null, -1, multiClusterConfig.getCommonConfig().getReplicationMetadataVersionId()));
     }
     Assert.assertFalse(veniceAdmin.getStore(clusterName, storeName).getVersion(1).isPresent());
     veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setReplicationFactor(DEFAULT_REPLICA_COUNT));
     reset(mockedTopicManager);
-    veniceAdmin.addVersionAndStartIngestion(clusterName, storeName, pushJobId, 1, 1, Version.PushType.BATCH, null, -1, multiClusterConfig.getCommonConfig().getTimestampMetadataVersionId());
+    veniceAdmin.addVersionAndStartIngestion(clusterName, storeName, pushJobId, 1, 1, Version.PushType.BATCH, null, -1, multiClusterConfig.getCommonConfig().getReplicationMetadataVersionId());
     Assert.assertTrue(veniceAdmin.getStore(clusterName, storeName).getVersion(1).isPresent());
     Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getVersions().size(), 1,
         "There should only be exactly one version added to the test-store");
@@ -1594,7 +1594,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
   public void testAddMetadataSchema() {
     String storeName = TestUtils.getUniqueString("aa_store");
     String recordSchemaStr = TestPushUtils.USER_SCHEMA_STRING_WITH_DEFAULT;
-    int timestampMetadataVersionId = multiClusterConfig.getCommonConfig().getTimestampMetadataVersionId();
+    int timestampMetadataVersionId = multiClusterConfig.getCommonConfig().getReplicationMetadataVersionId();
     Schema metadataSchema = ReplicationMetadataSchemaAdapter.parse(recordSchemaStr, timestampMetadataVersionId);
 
     veniceAdmin.createStore(clusterName, storeName, storeOwner, KEY_SCHEMA, recordSchemaStr);

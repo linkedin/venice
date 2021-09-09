@@ -1032,10 +1032,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                     if (version.getHybridStoreConfig() != null) {
                         rewindTimeInSecondsOverride = version.getHybridStoreConfig().getRewindTimeInSeconds();
                     }
-                    int timestampMetadataVersionId = version.getTimestampMetadataVersionId();
+                    int replicationMetadataVersionId = version.getTimestampMetadataVersionId();
                     destControllerClient.addVersionAndStartIngestion(migratingStoreName, version.getPushJobId(), version.getNumber(),
                         partitionCount, version.getPushType(), null, rewindTimeInSecondsOverride,
-                        timestampMetadataVersionId);
+                        replicationMetadataVersionId);
                 } catch (Exception e) {
                     throw new VeniceException("An exception was thrown when attempting to add version and start ingestion for store "
                         + migratingStoreName + " and version " + version.getNumber(), e);
@@ -1303,7 +1303,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     @Override
     public void addVersionAndStartIngestion(
         String clusterName, String storeName, String pushJobId, int versionNumber, int numberOfPartitions,
-        Version.PushType pushType, String remoteKafkaBootstrapServers, long rewindTimeInSecondsOverride, int timestampMetadataVersionId) {
+        Version.PushType pushType, String remoteKafkaBootstrapServers, long rewindTimeInSecondsOverride, int replicationMetadataVersionId) {
         Store store = getStore(clusterName, storeName);
         if (null == store) {
             throw new VeniceNoStoreException(storeName, clusterName);
@@ -1316,7 +1316,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             addVersion(clusterName, storeName, pushJobId, versionNumber, numberOfPartitions,
                 getReplicationFactor(clusterName, storeName), true, false, false,
                 true, pushType, null, remoteKafkaBootstrapServers, Optional.empty(),
-                rewindTimeInSecondsOverride, timestampMetadataVersionId, Optional.empty());
+                rewindTimeInSecondsOverride, replicationMetadataVersionId, Optional.empty());
         }
     }
 
@@ -1374,11 +1374,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     public Pair<Boolean, Version> addVersionAndTopicOnly(String clusterName, String storeName, String pushJobId, int numberOfPartitions,
         int replicationFactor, boolean sendStartOfPush, boolean sorted, Version.PushType pushType,
         String compressionDictionary, String remoteKafkaBootstrapServers, Optional<String> sourceGridFabric,
-        long rewindTimeInSecondsOverride, int timestampMetadataVersionId, Optional<String> emergencySourceRegion) {
+        long rewindTimeInSecondsOverride, int replicationMetadataVersionId, Optional<String> emergencySourceRegion) {
         return addVersion(clusterName, storeName, pushJobId, VERSION_ID_UNSET, numberOfPartitions, replicationFactor,
             false, sendStartOfPush, sorted, false, pushType,
             compressionDictionary, remoteKafkaBootstrapServers, sourceGridFabric, rewindTimeInSecondsOverride,
-            timestampMetadataVersionId, emergencySourceRegion);
+            replicationMetadataVersionId, emergencySourceRegion);
     }
 
     /**
@@ -1387,7 +1387,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
      */
     public Version addVersionOnly(String clusterName, String storeName, String pushJobId, int versionNumber,
         int numberOfPartitions, Version.PushType pushType, String remoteKafkaBootstrapServers,
-        long rewindTimeInSecondsOverride, int timestampMetadataVersionId) {
+        long rewindTimeInSecondsOverride, int replicationMetadataVersionId) {
         checkControllerMastership(clusterName);
         HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
         ReadWriteStoreRepository repository = resources.getStoreMetadataRepository();
@@ -1431,9 +1431,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                  */
                 handleRewindTimeOverride(store, version, rewindTimeInSecondsOverride);
 
-                if (version.isActiveActiveReplicationEnabled()) {
-                    version.setTimestampMetadataVersionId(timestampMetadataVersionId);
-                }
+                version.setTimestampMetadataVersionId(replicationMetadataVersionId);
+
                 repository.updateStore(store);
                 logger.info("Add version: " + version.getNumber() + " for store: " + storeName);
             }
@@ -1466,7 +1465,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         int numberOfPartitions, int replicationFactor, boolean startIngestion, boolean sendStartOfPush,
         boolean sorted, boolean useFastKafkaOperationTimeout, Version.PushType pushType, String compressionDictionary,
         String remoteKafkaBootstrapServers, Optional<String> sourceGridFabric, long rewindTimeInSecondsOverride,
-        int timestampMetadataVersionId, Optional<String> emergencySourceRegion) {
+        int replicationMetadataVersionId, Optional<String> emergencySourceRegion) {
         if (isClusterInMaintenanceMode(clusterName)) {
             throw new HelixClusterMaintenanceModeException(clusterName);
         }
@@ -1648,9 +1647,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                     handleRewindTimeOverride(store, version, rewindTimeInSecondsOverride);
                     store.setPersistenceType(PersistenceType.ROCKS_DB);
 
-                    if (version.isActiveActiveReplicationEnabled()) {
-                        version.setTimestampMetadataVersionId(timestampMetadataVersionId);
-                    }
+                    version.setTimestampMetadataVersionId(replicationMetadataVersionId);
 
                     repository.updateStore(store);
                     logger.info("Add version: " + version.getNumber() + " for store: " + storeName);
@@ -1833,7 +1830,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             : addVersion(clusterName, storeName, pushJobId, VERSION_ID_UNSET, numberOfPartitions, replicationFactor,
                 true, sendStartOfPush, sorted, false, pushType,
                 compressionDictionary, null, sourceGridFabric, rewindTimeInSecondsOverride,
-                TIMESTAMP_METADATA_VERSION_ID_UNSET, emergencySourceRegion).getSecond();
+                REPLICATION_METADATA_VERSION_ID_UNSET, emergencySourceRegion).getSecond();
     }
 
     /**

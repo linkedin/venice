@@ -185,7 +185,7 @@ public class ControllerClient implements Closeable {
         .add(PARTITION_COUNT, partitionCount)
         .add(PUSH_TYPE, pushType.toString())
         .add(REWIND_TIME_IN_SECONDS_OVERRIDE, rewindTimeInSecondsOverride)
-        .add(TIMESTAMP_METADATA_VERSION_ID, timestampMetadataVersionId);
+        .add(REPLICATION_METADATA_VERSION_ID, timestampMetadataVersionId);
     if (remoteKafkaBootstrapServers != null) {
       params.add(REMOTE_KAFKA_BOOTSTRAP_SERVERS, remoteKafkaBootstrapServers);
     }

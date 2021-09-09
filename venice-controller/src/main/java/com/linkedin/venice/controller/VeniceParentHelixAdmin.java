@@ -651,9 +651,9 @@ public class VeniceParentHelixAdmin implements Admin {
       int numberOfPartitions, Version.PushType pushType, String remoteKafkaBootstrapServers,
       long rewindTimeInSecondsOverride, int timestampMetadataVersionId) {
     // Parent controller will always pick the timestampMetadataVersionId from configs.
-    timestampMetadataVersionId = multiClusterConfigs.getCommonConfig().getTimestampMetadataVersionId();
+    int replicationMetadataVersionId = multiClusterConfigs.getCommonConfig().getReplicationMetadataVersionId();
     Version version = veniceHelixAdmin.addVersionOnly(clusterName, storeName, pushJobId, versionNumber, numberOfPartitions, pushType,
-        remoteKafkaBootstrapServers, rewindTimeInSecondsOverride, timestampMetadataVersionId);
+        remoteKafkaBootstrapServers, rewindTimeInSecondsOverride, replicationMetadataVersionId);
     if (version.isActiveActiveReplicationEnabled()) {
       updateActiveActiveSchemaForAllValueSchema(clusterName, storeName);
     }
@@ -977,10 +977,10 @@ public class VeniceParentHelixAdmin implements Admin {
     if (pushType.isIncremental()) {
       newVersion = veniceHelixAdmin.getIncrementalPushVersion(clusterName, storeName);
     } else {
-      int timestampMetadataVersionId = multiClusterConfigs.getCommonConfig().getTimestampMetadataVersionId();
+      int replicationMetadataVersionId = multiClusterConfigs.getCommonConfig().getReplicationMetadataVersionId();
       Pair<Boolean, Version> result = veniceHelixAdmin.addVersionAndTopicOnly(clusterName, storeName, pushJobId,
           numberOfPartitions, replicationFactor, sendStartOfPush, sorted, pushType, compressionDictionary,
-          null, sourceGridFabric, rewindTimeInSecondsOverride, timestampMetadataVersionId, emergencySourceRegion);
+          null, sourceGridFabric, rewindTimeInSecondsOverride, replicationMetadataVersionId, emergencySourceRegion);
       newVersion = result.getSecond();
       if (result.getFirst()) {
         if (newVersion.isActiveActiveReplicationEnabled()) {
@@ -1949,7 +1949,7 @@ public class VeniceParentHelixAdmin implements Admin {
       logger.info("Adding Timestamp metadata schema: for store:" + storeName + " in cluster:" + clusterName + " metadataSchema:" + replicationMetadataSchemaStr
           + " timestampMetadataVersionId:" + replicationMetadataVersionId + " valueSchemaId:" + valueSchemaId);
 
-      MetadataSchemaCreation timestampMetadataSchemaCreation = (MetadataSchemaCreation) AdminMessageType.TIMESTAMP_METADATA_SCHEMA_CREATION
+      MetadataSchemaCreation timestampMetadataSchemaCreation = (MetadataSchemaCreation) AdminMessageType.REPLICATION_METADATA_SCHEMA_CREATION
           .getNewInstance();
       timestampMetadataSchemaCreation.clusterName = clusterName;
       timestampMetadataSchemaCreation.storeName = storeName;
@@ -1961,7 +1961,7 @@ public class VeniceParentHelixAdmin implements Admin {
       timestampMetadataSchemaCreation.timestampMetadataVersionId = replicationMetadataVersionId;
 
       AdminOperation message = new AdminOperation();
-      message.operationType = AdminMessageType.TIMESTAMP_METADATA_SCHEMA_CREATION.getValue();
+      message.operationType = AdminMessageType.REPLICATION_METADATA_SCHEMA_CREATION.getValue();
       message.payloadUnion = timestampMetadataSchemaCreation;
 
       sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
@@ -1996,7 +1996,7 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   private void updateActiveActiveSchema(String clusterName, String storeName, Schema valueSchema, int valueSchemaId) {
-    int timestampMetadataVersionId = multiClusterConfigs.getCommonConfig().getTimestampMetadataVersionId();
+    int timestampMetadataVersionId = multiClusterConfigs.getCommonConfig().getReplicationMetadataVersionId();
     String timestampMetadataSchema = ReplicationMetadataSchemaAdapter.parse(valueSchema, timestampMetadataVersionId).toString();
     addReplicationMetadataSchema(clusterName, storeName, valueSchemaId, timestampMetadataVersionId, timestampMetadataSchema);
   }

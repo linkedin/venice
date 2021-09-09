@@ -122,7 +122,7 @@ public interface Admin extends AutoCloseable, Closeable {
      */
     void addVersionAndStartIngestion(String clusterName, String storeName, String pushJobId, int versionNumber,
         int numberOfPartitions, Version.PushType pushType, String remoteKafkaBootstrapServers,
-        long rewindTimeInSecondsOverride, int timestampMetadataVersionId);
+        long rewindTimeInSecondsOverride, int replicationMetadataVersionId);
 
     default boolean hasWritePermissionToBatchJobHeartbeatStore(
         X509Certificate requesterCert,
