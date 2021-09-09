@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
+import org.apache.log4j.Logger;
 
 import static com.linkedin.venice.common.VeniceSystemStoreUtils.*;
 
@@ -19,10 +20,12 @@ import static com.linkedin.venice.common.VeniceSystemStoreUtils.*;
 /**
  * Read write store repository which uses Helix as storage.
  * <p>
- * This repository do NOT listen the change of store from ZK. Because in Venice, this is the only once place to modify
+ * This repository does NOT listen the change of store from ZK. Because in Venice, this is the only once place to modify
  * stores.
  */
 public class HelixReadWriteStoreRepository extends CachedReadOnlyStoreRepository implements ReadWriteStoreRepository {
+  protected static final Logger logger = Logger.getLogger(HelixReadWriteStoreRepository.class);
+
   private final Optional<MetaStoreWriter> metaStoreWriter;
   private final String clusterName;
 

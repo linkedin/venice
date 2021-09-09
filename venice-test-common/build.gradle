@@ -1,8 +1,8 @@
-import io.netifi.flatbuffers.plugin.tasks.FlatBuffers
+//import io.netifi.flatbuffers.plugin.tasks.FlatBuffers
 
-plugins {
-  id 'io.netifi.flatbuffers' version '1.0.6'
-}
+//plugins {
+//  id 'io.netifi.flatbuffers' version '1.0.6'
+//}
 
 configurations {
   jmhImplementation.extendsFrom testImplementation
@@ -88,7 +88,7 @@ dependencies {
   runtime libraries.httpCore
   runtime libraries.httpClient
 
-  compileOnly libraries.flatbuffersJava
+  //compileOnly libraries.flatbuffersJava
 
   testImplementation (libraries.mapreduceClientJobClient) {
     exclude group: 'org.apache.avro'
@@ -96,17 +96,17 @@ dependencies {
   }
   testImplementation project(':venice-admin-tool')
 
-  jmhAnnotationProcessor libraries.jmhGenerator
-  jmhImplementation libraries.jmhCore
-  jmhImplementation libraries.flatbuffersJava
+  //jmhAnnotationProcessor libraries.jmhGenerator
+  //jmhImplementation libraries.jmhCore
+  //jmhImplementation libraries.flatbuffersJava
 }
 
-task compileFlatBuffers(type: FlatBuffers) {
-  language = 'java'
-  inputDir = file('src/jmh/flatbuffers')
-  outputDir = file('src/jmh/generated/flatbuffers')
-}
-compileJava.dependsOn(compileFlatBuffers)
+//task compileFlatBuffers(type: FlatBuffers) {
+//  language = 'java'
+//  inputDir = file('src/jmh/flatbuffers')
+//  outputDir = file('src/jmh/generated/flatbuffers')
+//}
+//compileJava.dependsOn(compileFlatBuffers)
 
 task jmh(type: JavaExec, dependsOn: jmhClasses) {
   main = 'org.openjdk.jmh.Main'
