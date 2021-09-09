@@ -1,6 +1,7 @@
 package com.linkedin.venice.kafka.validation;
 
 import com.linkedin.venice.annotation.NotThreadsafe;
+import com.linkedin.venice.annotation.Threadsafe;
 import com.linkedin.venice.exceptions.validation.CorruptDataException;
 import com.linkedin.venice.exceptions.validation.DataValidationException;
 import com.linkedin.venice.exceptions.validation.DuplicateDataException;
@@ -23,13 +24,14 @@ import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.nio.ByteBuffer;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Function;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.log4j.Logger;
@@ -42,10 +44,9 @@ import static com.linkedin.venice.utils.RedundantExceptionFilter.*;
  * It keeps track of the last segment, last sequence number and incrementally computed
  * checksum for any given partition.
  *
- * This class is not thread safe, or at least, not for concurrent calls to the same
- * partition. It is intended to be used in a single-threaded tight loop.
+ * This class is thread safe at partition level. Multiple threads can process records from same partition concurrently.
  */
-@NotThreadsafe
+@Threadsafe
 public class ProducerTracker {
   /**
    * A logging throttler singleton for ProducerTracker with a 64KB bitset.
@@ -61,7 +62,9 @@ public class ProducerTracker {
 
   private final GUID producerGUID;
   // This will allow to create segments for different partitions in parallel.
-  protected final ConcurrentMap<Integer, Segment> segments = new ConcurrentHashMap<>();
+  protected final ConcurrentMap<Integer, Segment> segments = new VeniceConcurrentHashMap<>();
+  protected final ConcurrentMap<Integer, ReentrantLock> partitionLocks = new VeniceConcurrentHashMap<>();
+
   private final String topicName;
 
   public ProducerTracker(GUID producerGUID, String topicName) {
@@ -74,6 +77,10 @@ public class ProducerTracker {
     return ProducerTracker.class.getSimpleName() + "(GUID: " + ByteUtils.toHexString(producerGUID.bytes()) + ", topic: " + topicName + ")";
   }
 
+  private ReentrantLock getPartitionLock(int partition) {
+    return partitionLocks.computeIfAbsent(partition, key -> new ReentrantLock());
+  }
+
   /**
    * In some cases, such as when resetting offsets or unsubscribing from a partition,
    * the {@link ProducerTracker} should forget about the state that it accumulated
@@ -82,20 +89,31 @@ public class ProducerTracker {
    * @param partition to clear state for
    */
   public void clearPartition(int partition) {
-    segments.remove(partition);
+    ReentrantLock partitionLock = getPartitionLock(partition);
+    partitionLock.lock();
+    try {
+      segments.remove(partition);
+    } finally {
+      partitionLock.unlock();
+    }
   }
 
   public void setPartitionState(int partition, ProducerPartitionState state) {
-    Segment segment = new Segment(partition, state);
-    if (segments.containsKey(partition)) {
-      logger.info(this.toString() + " will overwrite previous state for partition: " + partition +
-          "\nPrevious state: " + segments.get(partition) +
-          "\nNew state: " + segment);
-    } else {
-      logger.info(this.toString() + " will set state for partition: " + partition +
-          "\nNew state: " + segment);
+    ReentrantLock partitionLock = getPartitionLock(partition);
+    partitionLock.lock();
+    try {
+      Segment segment = new Segment(partition, state);
+      if (segments.containsKey(partition)) {
+        logger.info(
+            this.toString() + " will overwrite previous state for partition: " + partition + "\nPrevious state: "
+                + segments.get(partition) + "\nNew state: " + segment);
+      } else {
+        logger.info(this.toString() + " will set state for partition: " + partition + "\nNew state: " + segment);
+      }
+      segments.put(partition, segment);
+    } finally {
+      partitionLock.unlock();
     }
-    segments.put(partition, segment);
   }
 
   /**
@@ -124,37 +142,43 @@ public class ProducerTracker {
     // We return a closure, so that it is the caller's responsibility to decide whether to execute the state change or not.
     return offsetRecord -> {
       ProducerPartitionState state = offsetRecord.getProducerPartitionState(producerGUID);
-      if (null == state) {
-        state = new ProducerPartitionState();
 
+      ReentrantLock partitionLock = partitionLocks.get(consumerRecord.partition());
+      partitionLock.lock();
+      try {
+        if (null == state) {
+          state = new ProducerPartitionState();
+
+          /**
+           * The aggregates and debugInfo being stored in the {@link ProducerPartitionState} will add a bit
+           * of overhead when we checkpoint this metadata to disk, so we should be careful not to add a very
+           * large number of elements to these arbitrary collections.
+           *
+           * In the case of the debugInfo, it is expected (at the time of writing this comment) that all
+           * partitions produced by the same producer GUID would have the same debug values (though nothing
+           * precludes us from having per-partition debug values in the future if there is a use case for
+           * that). It is redundant that we store the same debug values once per partition. In the future,
+           * if we want to eliminate this redundancy, we could move the per-producer debug info to another
+           * data structure, though that would increase bookkeeping complexity. This is expected to be a
+           * minor overhead, and therefore it appears to be a premature to optimize this now.
+           */
+          state.aggregates = segment.getAggregates();
+          state.debugInfo = segment.getDebugInfo();
+        }
+        state.checksumType = segment.getCheckSumType().getValue();
         /**
-         * The aggregates and debugInfo being stored in the {@link ProducerPartitionState} will add a bit
-         * of overhead when we checkpoint this metadata to disk, so we should be careful not to add a very
-         * large number of elements to these arbitrary collections.
-         *
-         * In the case of the debugInfo, it is expected (at the time of writing this comment) that all
-         * partitions produced by the same producer GUID would have the same debug values (though nothing
-         * precludes us from having per-partition debug values in the future if there is a use case for
-         * that). It is redundant that we store the same debug values once per partition. In the future,
-         * if we want to eliminate this redundancy, we could move the per-producer debug info to another
-         * data structure, though that would increase bookkeeping complexity. This is expected to be a
-         * minor overhead, and therefore it appears to be a premature to optimize this now.
+         * {@link MD5Digest#getEncodedState()} is allocating a byte array to contain the intermediate state,
+         * which is expensive. We should only invoke this closure when necessary.
          */
-        state.aggregates = segment.getAggregates();
-        state.debugInfo = segment.getDebugInfo();
+        state.checksumState = ByteBuffer.wrap(segment.getCheckSumState());
+        state.segmentNumber = segment.getSegmentNumber();
+        state.messageSequenceNumber = segment.getSequenceNumber();
+        state.messageTimestamp = segment.getLastRecordProducerTimestamp();
+        state.segmentStatus = segment.getStatus().getValue();
+        state.isRegistered = segment.isRegistered();
+      } finally {
+        partitionLock.unlock();
       }
-      state.checksumType = segment.getCheckSumType().getValue();
-      /**
-       * {@link MD5Digest#getEncodedState()} is allocating a byte array to contain the intermediate state,
-       * which is expensive. We should only invoke this closure when necessary.
-       */
-      state.checksumState = ByteBuffer.wrap(segment.getCheckSumState());
-      state.segmentNumber = segment.getSegmentNumber();
-      state.messageSequenceNumber = segment.getSequenceNumber();
-      state.messageTimestamp = consumerRecord.value().producerMetadata.messageTimestamp;
-      state.segmentStatus = segment.getStatus().getValue();
-      state.isRegistered = segment.isRegistered();
-
       offsetRecord.setProducerPartitionState(producerGUID, state);
 
       logger.trace("ProducerPartitionState updated.");
@@ -165,13 +189,19 @@ public class ProducerTracker {
 
   protected Segment validateMessage(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
                                     boolean endOfPushReceived, boolean tolerateMissingMsgs) throws DataValidationException {
-    boolean hasPreviousSegment = segments.containsKey(consumerRecord.partition());
-    Segment segment = trackSegment(consumerRecord, endOfPushReceived, tolerateMissingMsgs);
-    trackSequenceNumber(segment, consumerRecord, endOfPushReceived, tolerateMissingMsgs, hasPreviousSegment);
-    // This is the last step, because we want failures in the previous steps to short-circuit execution.
-    trackCheckSum(segment, consumerRecord, endOfPushReceived, tolerateMissingMsgs);
-    segment.setLastSuccessfulOffset(consumerRecord.offset());
-    return segment;
+    ReentrantLock partitionLock = getPartitionLock(consumerRecord.partition());
+    partitionLock.lock();
+    try {
+      boolean hasPreviousSegment = segments.containsKey(consumerRecord.partition());
+      Segment segment = trackSegment(consumerRecord, endOfPushReceived, tolerateMissingMsgs);
+      trackSequenceNumber(segment, consumerRecord, endOfPushReceived, tolerateMissingMsgs, hasPreviousSegment);
+      // This is the last step, because we want failures in the previous steps to short-circuit execution.
+      trackCheckSum(segment, consumerRecord, endOfPushReceived, tolerateMissingMsgs);
+      segment.setLastSuccessfulOffset(consumerRecord.offset());
+      return segment;
+    } finally {
+      partitionLock.unlock();
+    }
   }
 
   /**
@@ -187,33 +217,33 @@ public class ProducerTracker {
    * @param consumerRecord
    * @throws DuplicateDataException if the incoming segment is lower than the previously seen segment.
    */
-  protected Segment trackSegment(
+  private Segment trackSegment(
       ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
       boolean endOfPushReceived, boolean tolerateMissingMsgs)
       throws DuplicateDataException {
-    int incomingSegment = consumerRecord.value().producerMetadata.segmentNumber;
+    int incomingSegmentNumber = consumerRecord.value().producerMetadata.segmentNumber;
     Segment previousSegment = segments.get(consumerRecord.partition());
     if (previousSegment == null) {
-      if (incomingSegment != 0) {
-        handleUnregisteredProducer("track new segment with non-zero incomingSegment=" + incomingSegment, consumerRecord,
+      if (incomingSegmentNumber != 0) {
+        handleUnregisteredProducer("track new segment with non-zero incomingSegment=" + incomingSegmentNumber, consumerRecord,
             null, endOfPushReceived);
       }
       Segment newSegment = initializeNewSegment(consumerRecord, endOfPushReceived, true);
       return newSegment;
     } else {
       int previousSegmentNumber = previousSegment.getSegmentNumber();
-      if (incomingSegment == previousSegmentNumber) {
+      if (incomingSegmentNumber == previousSegmentNumber) {
         return previousSegment;
-      } else if (incomingSegment == previousSegmentNumber + 1 && previousSegment.isEnded()) {
+      } else if (incomingSegmentNumber == previousSegmentNumber + 1 && previousSegment.isEnded()) {
         /** tolerateAnyMessageType should always be false in this scenario, regardless of {@param endOfPushReceived} */
         return initializeNewSegment(consumerRecord, endOfPushReceived, false);
-      } else if (incomingSegment > previousSegmentNumber) {
+      } else if (incomingSegmentNumber > previousSegmentNumber) {
         if (tolerateMissingMsgs) {
           return initializeNewSegment(consumerRecord, endOfPushReceived, true);
         } else {
           throw DataFaultType.MISSING.getNewException(previousSegment, consumerRecord);
         }
-      } else if (incomingSegment < previousSegmentNumber) {
+      } else if (incomingSegmentNumber < previousSegmentNumber) {
         throw DataFaultType.DUPLICATE.getNewException(previousSegment, consumerRecord);
       } else {
         // Defensive code.
@@ -312,7 +342,7 @@ public class ProducerTracker {
    * @throws MissingDataException if the incoming sequence number is greater than the previous sequence number + 1
    * @throws DuplicateDataException if the incoming sequence number is equal to or smaller than the previous sequence number
    */
-  protected void trackSequenceNumber(
+  private void trackSequenceNumber(
       Segment segment, ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
       boolean endOfPushReceived, boolean tolerateMissingMsgs, boolean hasPreviousSegment)
       throws MissingDataException, DuplicateDataException {
@@ -322,14 +352,17 @@ public class ProducerTracker {
 
     if (!segment.isStarted()) {
       segment.start();
+      segment.setLastRecordProducerTimestamp(consumerRecord.value().producerMetadata.messageTimestamp);
     } else if (incomingSequenceNumber == previousSequenceNumber + 1) {
       // Expected case, in steady state
       segment.getAndIncrementSequenceNumber();
+      segment.setLastRecordProducerTimestamp(consumerRecord.value().producerMetadata.messageTimestamp);
     } else if (incomingSequenceNumber <= previousSequenceNumber) {
       if (!hasPreviousSegment) {
         // When hasPrevSegment is false, SN meets a producer for the first time. For hybrid + L/F case, a follower may never
         // see the record coming from samza producer before it is promoted to leader. This check prevents the first
         // message to be considered as "duplicated" and skipped.
+        segment.setLastRecordProducerTimestamp(consumerRecord.value().producerMetadata.messageTimestamp);
         return;
       }
       // This is a duplicate message, which we can safely ignore.
@@ -355,6 +388,7 @@ public class ProducerTracker {
          * and the partition won't become 'ONLINE' if it is not 'ONLINE' yet.
           */
         segment.setSequenceNumber(incomingSequenceNumber);
+        segment.setLastRecordProducerTimestamp(consumerRecord.value().producerMetadata.messageTimestamp);
       } else {
         throw dataMissingException;
       }
@@ -445,7 +479,7 @@ public class ProducerTracker {
    * If "errorMetricCallback" is present, the callback will be triggered before throwing MISSING_MESSAGE exception;
    * users can register their own callback to emit metrics, produce Kafka events, etc.
    */
-  protected void validateSequenceNumber(
+  private void validateSequenceNumber(
       Segment segment,
       ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
       long logCompactionDelayInMs,
@@ -488,6 +522,66 @@ public class ProducerTracker {
     } else {
       // Defensive coding, to prevent regressions in the above code from causing silent failures
       throw new IllegalStateException("Unreachable code!");
+    }
+  }
+
+  public void checkMissingMessage(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
+      Optional<ProducerTracker.DIVErrorMetricCallback> errorMetricCallback, long kafkaLogCompactionDelayInMs)
+      throws DataValidationException {
+
+    Segment segment = null;
+    ReentrantLock partitionLock = getPartitionLock(consumerRecord.partition());
+    partitionLock.lock();
+    try {
+      try {
+        /**
+         * Explicitly suppress UNREGISTERED_PRODUCER DIV error.
+         */
+        segment = trackSegment(consumerRecord, true, false);
+      } catch (DuplicateDataException duplicate) {
+        /**
+         * Tolerate a segment rewind and not necessary to validate a previous segment;
+         */
+        return;
+      } catch (MissingDataException missingSegment) {
+        /**
+         * Missing an entire segment is not acceptable, even though Kafka log compaction kicks in and all the data
+         * messages within a segment are compacted; START_OF_SEGMENT and END_OF_SEGMENT messages should still be there.
+         */
+        logger.error("Encountered a missing segment. This is unacceptable even if log compaction kicks in. Error msg:\n"
+            + missingSegment.getMessage());
+        if (errorMetricCallback.isPresent()) {
+          errorMetricCallback.get().execute(missingSegment);
+        }
+        throw missingSegment;
+      }
+
+      /**
+       * Check missing sequence number.
+       */
+      validateSequenceNumber(segment, consumerRecord, kafkaLogCompactionDelayInMs, errorMetricCallback);
+      segment.setLastRecordTimestamp(consumerRecord.timestamp());
+
+      /**
+       * End the segment without checking checksum if END_OF_SEGMENT received
+       */
+      KafkaMessageEnvelope messageEnvelope = consumerRecord.value();
+      switch (MessageType.valueOf(messageEnvelope)) {
+        case CONTROL_MESSAGE:
+          ControlMessage controlMessage = (ControlMessage) messageEnvelope.payloadUnion;
+          switch (ControlMessageType.valueOf(controlMessage)) {
+            case END_OF_SEGMENT:
+              // End the segment
+              segment.end(true);
+              break;
+            default:
+              // no-op
+          }
+        default:
+          // no-op
+      }
+    } finally {
+      partitionLock.unlock();
     }
   }
 

@@ -100,53 +100,7 @@ public class KafkaDataIntegrityValidator {
       Optional<ProducerTracker.DIVErrorMetricCallback> errorMetricCallback) throws DataValidationException {
     final GUID producerGUID = consumerRecord.value().producerMetadata.producerGUID;
     ProducerTracker producerTracker = registerProducer(producerGUID);
-    Segment segment = null;
-    try {
-      /**
-       * Explicitly suppress UNREGISTERED_PRODUCER DIV error.
-       */
-      segment = producerTracker.trackSegment(consumerRecord, true, false);
-    } catch (DuplicateDataException duplicate) {
-      /**
-       * Tolerate a segment rewind and not necessary to validate a previous segment;
-       */
-      return;
-    } catch (MissingDataException missingSegment) {
-      /**
-       * Missing an entire segment is not acceptable, even though Kafka log compaction kicks in and all the data
-       * messages within a segment are compacted; START_OF_SEGMENT and END_OF_SEGMENT messages should still be there.
-       */
-      logger.error("Encountered a missing segment. This is unacceptable even if log compaction kicks in. Error msg:\n" + missingSegment.getMessage());
-      if (errorMetricCallback.isPresent()) {
-        errorMetricCallback.get().execute(missingSegment);
-      }
-      throw missingSegment;
-    }
-
-    /**
-     * Check missing sequence number.
-     */
-    producerTracker.validateSequenceNumber(segment, consumerRecord, this.kafkaLogCompactionDelayInMs, errorMetricCallback);
-    segment.setLastRecordTimestamp(consumerRecord.timestamp());
-
-    /**
-     * End the segment without checking checksum if END_OF_SEGMENT received
-     */
-    KafkaMessageEnvelope messageEnvelope = consumerRecord.value();
-    switch (MessageType.valueOf(messageEnvelope)) {
-      case CONTROL_MESSAGE:
-        ControlMessage controlMessage = (ControlMessage) messageEnvelope.payloadUnion;
-        switch (ControlMessageType.valueOf(controlMessage)) {
-          case END_OF_SEGMENT:
-            // End the segment
-            segment.end(true);
-            break;
-          default:
-            // no-op
-        }
-      default:
-        // no-op
-    }
+    producerTracker.checkMissingMessage(consumerRecord, errorMetricCallback, this.kafkaLogCompactionDelayInMs);
   }
 
 }

@@ -51,6 +51,7 @@ public class Segment {
   private boolean finalSegment;
   private long lastSuccessfulOffset;
   private long lastRecordTimestamp = -1;
+  private long lastRecordProducerTimestamp = -1;
 
   public Segment(
       int partition,
@@ -88,6 +89,7 @@ public class Segment {
     this.debugInfo = state.debugInfo;
     this.aggregates = state.aggregates;
     this.registered = state.isRegistered;
+    this.lastRecordProducerTimestamp = state.messageTimestamp;
   }
 
   public int getSegmentNumber() {
@@ -165,6 +167,14 @@ public class Segment {
 
   public void setLastRecordTimestamp(long lastRecordTimestamp) {
     this.lastRecordTimestamp = lastRecordTimestamp;
+  }
+
+  public long getLastRecordProducerTimestamp() {
+    return lastRecordProducerTimestamp;
+  }
+
+  public void setLastRecordProducerTimestamp(long lastRecordProducerTimestamp) {
+    this.lastRecordProducerTimestamp = lastRecordProducerTimestamp;
   }
 
   public void start() {
