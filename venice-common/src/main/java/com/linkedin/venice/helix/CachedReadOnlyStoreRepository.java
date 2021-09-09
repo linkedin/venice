@@ -30,7 +30,7 @@ import static com.linkedin.venice.common.VeniceSystemStoreUtils.*;
 
 
 public class CachedReadOnlyStoreRepository implements ReadOnlyStoreRepository {
-  private static final Logger logger = Logger.getLogger(CachedReadOnlyStoreRepository.class);
+  protected static final Logger logger = Logger.getLogger(CachedReadOnlyStoreRepository.class);
 
   public static final String STORE_REPOSITORY_PATH = "/Stores";
 
@@ -64,7 +64,7 @@ public class CachedReadOnlyStoreRepository implements ReadOnlyStoreRepository {
     if (store != null) {
       return new ReadOnlyStore(store);
     }
-    return null;
+    return refreshOneStore(storeName);
   }
 
   public Store getStoreOrThrow(String storeName) throws VeniceNoStoreException {
