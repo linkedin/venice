@@ -777,6 +777,7 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
     clonedStore.setDaVinciPushStatusStoreEnabled(isDaVinciPushStatusStoreEnabled());
     clonedStore.setStoreMetaSystemStoreEnabled(isStoreMetaSystemStoreEnabled());
     clonedStore.setActiveActiveReplicationEnabled(isActiveActiveReplicationEnabled());
+    clonedStore.setApplyTargetVersionFilterForIncPush(isApplyTargetVersionFilterForIncPush());
     for (StoreVersion storeVersion : this.storeProperties.versions) {
       clonedStore.forceAddVersion(new VersionImpl(storeVersion).cloneVersion(), true);
     }
