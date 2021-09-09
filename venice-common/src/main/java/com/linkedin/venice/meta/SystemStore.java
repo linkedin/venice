@@ -555,8 +555,8 @@ public class SystemStore extends AbstractStore {
   }
 
   @Override
-  public boolean applyTargetVersionFilterForIncPush() {
-    return zkSharedStore.applyTargetVersionFilterForIncPush();
+  public boolean isApplyTargetVersionFilterForIncPush() {
+    return zkSharedStore.isApplyTargetVersionFilterForIncPush();
   }
 
   @Override

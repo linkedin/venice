@@ -653,7 +653,7 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
   }
 
   @Override
-  public boolean applyTargetVersionFilterForIncPush() {
+  public boolean isApplyTargetVersionFilterForIncPush() {
     return this.storeProperties.applyTargetVersionFilterForIncPush;
   }
 

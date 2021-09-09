@@ -226,7 +226,7 @@ public class CreateVersion extends AbstractRoute {
             if (pushType.isIncremental() && (isWriteComputeEnabled || store.getIncrementalPushPolicy()
                 .equals(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME))) {
               admin.getRealTimeTopic(clusterName, storeName);
-              if (store.applyTargetVersionFilterForIncPush()) {
+              if (store.isApplyTargetVersionFilterForIncPush()) {
                 int targetVersion;
                 if (admin.isParent()) {
                   Map<String, Integer> regionToCurrentVersions = admin.getCurrentVersionsForMultiColos(clusterName, storeName);

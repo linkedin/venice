@@ -22,6 +22,9 @@ import java.util.regex.Pattern;
 /**
  * This interface defines all the public APIs, and if you need to add accessors to
  * some new fields, this interface needs to be changed accordingly.
+ *
+ * IMPORTANT: getter functions must start with `is` for boolean result and `get` for other types, and setter functions
+ *            must start with `set`!
  */
 public interface Store {
   /**
@@ -303,7 +306,7 @@ public interface Store {
 
   void setActiveActiveReplicationEnabled(boolean activeActiveReplicationEnabled);
 
-  boolean applyTargetVersionFilterForIncPush();
+  boolean isApplyTargetVersionFilterForIncPush();
 
   void setApplyTargetVersionFilterForIncPush(boolean applyTargetVersionFilterForIncPush);
 
