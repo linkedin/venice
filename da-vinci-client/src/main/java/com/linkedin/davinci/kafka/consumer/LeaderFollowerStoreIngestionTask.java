@@ -1399,9 +1399,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   }
 
   private void recordFabricHybridConsumptionStats(String kafkaUrl, int producedRecordSize, int producedRecordNum) {
-    if (!kafkaClusterUrlToIdMap.containsKey(kafkaUrl)) {
-      logger.warn("Unregistered kafkaUrl: " + kafkaUrl + ", will skip recording region consumption stats.");
-    } else {
+    if (kafkaClusterUrlToIdMap.containsKey(kafkaUrl)) {
       int regionId = kafkaClusterUrlToIdMap.get(kafkaUrl);
       versionedStorageIngestionStats.recordRegionHybridBytesConsumed(storeName, versionNumber, producedRecordSize, regionId);
       versionedStorageIngestionStats.recordRegionHybridRecordsConsumed(storeName, versionNumber, producedRecordNum, regionId);
