@@ -201,7 +201,7 @@ public class TopicCleanupService extends AbstractVeniceService {
         }
         topicRetentions.remove(realTimeTopic);
       }
-      List<String> oldTopicsToDelete = extractVeniceTopicsToCleanup(admin, topicRetentions,
+      List<String> oldTopicsToDelete = extractVersionTopicsToCleanup(admin, topicRetentions,
           minNumberOfUnusedKafkaTopicsToPreserve);
       if (!oldTopicsToDelete.isEmpty()) {
         topics.addAll(oldTopicsToDelete);
@@ -232,9 +232,9 @@ public class TopicCleanupService extends AbstractVeniceService {
     return allStoreTopics;
   }
 
-  public static List<String> extractVeniceTopicsToCleanup(Admin admin, Map<String, Long> topicRetentions,
+  public static List<String> extractVersionTopicsToCleanup(Admin admin, Map<String, Long> topicRetentions,
       int minNumberOfUnusedKafkaTopicsToPreserve) {
-    return extractVeniceTopicsToCleanup(admin, topicRetentions, minNumberOfUnusedKafkaTopicsToPreserve, true);
+    return extractVersionTopicsToCleanup(admin, topicRetentions, minNumberOfUnusedKafkaTopicsToPreserve, true);
   }
 
   // TODO Remove the parameter preserveTopicsForDeletedStore once we move away from KMM. This parameter controls whether
@@ -243,14 +243,15 @@ public class TopicCleanupService extends AbstractVeniceService {
   // SRE/DEV but not when TopicCleanupService is fetching them for auto delete. This is because topic deletion is async
   // and we can/might crash the KMM if the topic in child fabric is deleted before the parent fabric while KMM is
   // performing copying messages.
-  public static List<String> extractVeniceTopicsToCleanup(Admin admin, Map<String, Long> topicRetentions,
+  public static List<String> extractVersionTopicsToCleanup(Admin admin, Map<String, Long> topicRetentions,
       int minNumberOfUnusedKafkaTopicsToPreserve, boolean preserveTopicsForDeletedStore) {
     if (topicRetentions.isEmpty()) {
       return Collections.emptyList();
     }
     Set<String> veniceTopics = topicRetentions.keySet();
     int maxVersion = veniceTopics.stream()
-        .map(t -> Version.parseVersionFromKafkaTopicName(t))
+        .filter(Version::isVersionTopic)
+        .map(Version::parseVersionFromKafkaTopicName)
         .max(Integer::compare)
         .get();
 

@@ -659,7 +659,14 @@ public class StoresRoutes extends AbstractRoute {
           List<String> deletableTopicsList = new ArrayList<>();
           int minNumberOfUnusedKafkaTopicsToPreserve = admin.getMinNumberOfUnusedKafkaTopicsToPreserve();
           allStoreTopics.forEach((storeName, topicsWithRetention) -> {
-            List<String> deletableTopicsForThisStore = TopicCleanupService.extractVeniceTopicsToCleanup(admin, topicsWithRetention,
+            String realTimeTopic = Version.composeRealTimeTopic(storeName);
+            if (topicsWithRetention.containsKey(realTimeTopic)) {
+              if (admin.isTopicTruncatedBasedOnRetention(topicsWithRetention.get(realTimeTopic))) {
+                deletableTopicsList.add(realTimeTopic);
+              }
+              topicsWithRetention.remove(realTimeTopic);
+            }
+            List<String> deletableTopicsForThisStore = TopicCleanupService.extractVersionTopicsToCleanup(admin, topicsWithRetention,
                 minNumberOfUnusedKafkaTopicsToPreserve, false);
             if (!deletableTopicsForThisStore.isEmpty()) {
               deletableTopicsList.addAll(deletableTopicsForThisStore);
