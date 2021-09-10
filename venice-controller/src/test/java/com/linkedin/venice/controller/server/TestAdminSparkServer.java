@@ -2,6 +2,7 @@ package com.linkedin.venice.controller.server;
 
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.LastSucceedExecutionIdResponse;
+import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controllerapi.AdminCommandExecution;
 import com.linkedin.venice.controllerapi.ControllerApiConstants;
@@ -46,6 +47,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 import org.apache.commons.io.IOUtils;
@@ -73,6 +75,8 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
   public void setUp() {
     Properties extraProperties = new Properties();
     extraProperties.put(ConfigKeys.CONTROLLER_JETTY_CONFIG_OVERRIDE_PREFIX + "org.eclipse.jetty.server.Request.maxFormContentSize", ByteUtils.BYTES_PER_MB);
+    // Set topic cleanup interval to a large number to test getDeletableStoreTopics.
+    extraProperties.put(ConfigKeys.TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS, Long.toString(TimeUnit.DAYS.toMillis(7)));
     super.setUp(false, Optional.empty(), extraProperties);
   }
 
@@ -815,11 +819,19 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
   public void controllerCanGetDeletableStoreTopics() {
     String storeName = TestUtils.getUniqueString("canGetDeletableStoreTopics");
     Assert.assertFalse(controllerClient.createNewStore(storeName, "test", "\"string\"", "\"string\"").isError());
+    String metaSystemStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName);
+    // Add some system store and RT topics in the mix to make sure the request can still return the right values.
+    Assert.assertFalse(controllerClient.emptyPush(metaSystemStoreName, "meta-store-push-1", 1024000L).isError());
     Assert.assertFalse(controllerClient.emptyPush(storeName, "push-1", 1024000L).isError());
-    Assert.assertFalse(controllerClient.disableAndDeleteStore(storeName).isError());
+    Assert.assertFalse(controllerClient.emptyPush(storeName, "push-2", 1024000L).isError());
+    Assert.assertFalse(controllerClient.emptyPush(storeName, "push-3", 1024000L).isError());
     MultiStoreTopicsResponse multiStoreTopicResponse = controllerClient.getDeletableStoreTopics();
     Assert.assertFalse(multiStoreTopicResponse.isError());
     Assert.assertTrue(multiStoreTopicResponse.getTopics().contains(Version.composeKafkaTopic(storeName, 1)));
+    Assert.assertFalse(multiStoreTopicResponse.getTopics().contains(Version.composeKafkaTopic(storeName, 2)));
+    Assert.assertFalse(multiStoreTopicResponse.getTopics().contains(Version.composeKafkaTopic(storeName, 3)));
+    Assert.assertFalse(multiStoreTopicResponse.getTopics().contains(Version.composeKafkaTopic(metaSystemStoreName, 1)));
+    Assert.assertFalse(multiStoreTopicResponse.getTopics().contains(Version.composeRealTimeTopic(metaSystemStoreName)));
   }
 
   private void deleteStore(String storeName) {

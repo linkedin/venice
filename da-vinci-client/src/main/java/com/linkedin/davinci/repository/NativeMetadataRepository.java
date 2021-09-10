@@ -19,8 +19,6 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.meta.systemstore.schemas.CurrentVersionStates;
-import com.linkedin.venice.meta.systemstore.schemas.StoreMetadataKey;
-import com.linkedin.venice.meta.systemstore.schemas.StoreMetadataValue;
 import com.linkedin.venice.meta.systemstore.schemas.StoreVersionState;
 import com.linkedin.venice.schema.DerivedSchemaEntry;
 import com.linkedin.venice.schema.SchemaData;
