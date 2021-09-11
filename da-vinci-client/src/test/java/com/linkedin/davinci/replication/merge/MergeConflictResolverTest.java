@@ -4,7 +4,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.ReplicationMetadataSchemaAdapter;
-import com.linkedin.venice.schema.TimestampMetadataSchemaEntry;
+import com.linkedin.venice.schema.ReplicationMetadataSchemaEntry;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
@@ -64,8 +64,9 @@ public class MergeConflictResolverTest {
     this.rmdSerializer = FastSerializerDeserializerFactory.getFastAvroGenericSerializer(aaSchema);
     this.rmdDeserializer = FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(aaSchema, aaSchema);
 
-    TimestampMetadataSchemaEntry rmdSchemaEntry = new TimestampMetadataSchemaEntry(1, replicationMetadataVersionId, aaSchema);
-    doReturn(rmdSchemaEntry).when(schemaRepository).getTimestampMetadataSchema(anyString(), anyInt(), anyInt());
+    ReplicationMetadataSchemaEntry
+        rmdSchemaEntry = new ReplicationMetadataSchemaEntry(1, replicationMetadataVersionId, aaSchema);
+    doReturn(rmdSchemaEntry).when(schemaRepository).getReplicationMetadataSchema(anyString(), anyInt(), anyInt());
 
     SchemaEntry valueSchemaEntry = new SchemaEntry(1, recordSchema);
     doReturn(valueSchemaEntry).when(schemaRepository).getLatestValueSchema(anyString());

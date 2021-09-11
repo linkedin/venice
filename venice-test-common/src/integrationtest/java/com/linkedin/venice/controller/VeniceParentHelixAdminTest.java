@@ -84,7 +84,7 @@ public class VeniceParentHelixAdminTest {
   @Test(timeOut = DEFAULT_TEST_TIMEOUT)
   public void testAddVersion() {
     Properties properties = new Properties();
-    properties.setProperty(TIMESTAMP_METADATA_VERSION_ID, String.valueOf(1));
+    properties.setProperty(REPLICATION_METADATA_VERSION_ID, String.valueOf(1));
     try (VeniceControllerWrapper parentControllerWrapper = ServiceFactory.getVeniceParentController(venice.getClusterName(), zkServerWrapper.getAddress(), venice.getKafka(),
         new VeniceControllerWrapper[]{venice.getMasterVeniceController()}, new VeniceProperties(properties), false)) {
       String parentControllerUrl = parentControllerWrapper.getControllerUrl();

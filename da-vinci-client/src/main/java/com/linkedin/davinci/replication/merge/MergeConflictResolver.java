@@ -4,7 +4,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
-import com.linkedin.venice.schema.TimestampMetadataSchemaEntry;
+import com.linkedin.venice.schema.ReplicationMetadataSchemaEntry;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
@@ -12,7 +12,6 @@ import com.linkedin.venice.utils.Lazy;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.List;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
@@ -322,8 +321,8 @@ public class MergeConflictResolver {
   }
 
   private Schema getReplicationMetadataSchema(int valueSchemaId) {
-    TimestampMetadataSchemaEntry
-        replicationMetadataSchemaEntry = schemaRepository.getTimestampMetadataSchema(storeName, valueSchemaId,
+    ReplicationMetadataSchemaEntry
+        replicationMetadataSchemaEntry = schemaRepository.getReplicationMetadataSchema(storeName, valueSchemaId,
         replicationMetadataVersionId);
     if (replicationMetadataSchemaEntry == null) {
       throw new VeniceException("Unable to fetch replication metadata schema from schema repository");

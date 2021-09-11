@@ -344,4 +344,34 @@ public class SchemaRoutes extends AbstractRoute {
       return AdminSparkServer.mapper.writeValueAsString(responseObject);
     };
   }
+
+  public Route getAllReplicationMetadataSchemas(Admin admin) {
+    return (request, response) -> {
+      MultiSchemaResponse responseObject = new MultiSchemaResponse();
+      response.type(HttpConstants.JSON);
+      try {
+        AdminSparkServer.validateParams(request, GET_ALL_REPLICATION_METADATA_SCHEMAS.getParams(), admin);
+        responseObject.setCluster(request.queryParams(CLUSTER));
+        responseObject.setName(request.queryParams(NAME));
+        Collection<SchemaEntry> valueSchemaEntries =
+            admin.getReplicationMetadataSchemas(responseObject.getCluster(), responseObject.getName())
+                .stream()
+                .sorted(Comparator.comparingInt(SchemaEntry::getId))
+                .collect(Collectors.toList());
+        MultiSchemaResponse.Schema[] schemas = new MultiSchemaResponse.Schema[valueSchemaEntries.size()];
+        int cur = 0;
+        for (SchemaEntry entry : valueSchemaEntries) {
+          schemas[cur] = new MultiSchemaResponse.Schema();
+          schemas[cur].setId(entry.getId());
+          schemas[cur].setSchemaStr(entry.getSchema().toString());
+          ++cur;
+        }
+        responseObject.setSchemas(schemas);
+      } catch (Throwable e) {
+        responseObject.setError(e.getMessage());
+        AdminSparkServer.handleError(new VeniceException(e), request, response);
+      }
+      return AdminSparkServer.mapper.writeValueAsString(responseObject);
+    };
+  }
 }

@@ -58,7 +58,7 @@ import com.linkedin.venice.partitioner.UserPartitionAwarePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.schema.ReplicationMetadataSchemaAdapter;
 import com.linkedin.venice.schema.SchemaEntry;
-import com.linkedin.venice.schema.TimestampMetadataSchemaEntry;
+import com.linkedin.venice.schema.ReplicationMetadataSchemaEntry;
 import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -331,8 +331,8 @@ public class StoreIngestionTaskTest {
     doReturn(true).when(mockSchemaRepo).hasValueSchema(storeNameWithoutVersionInfo, EXISTING_SCHEMA_ID);
     doReturn(false).when(mockSchemaRepo).hasValueSchema(storeNameWithoutVersionInfo, NON_EXISTING_SCHEMA_ID);
 
-    doReturn(new TimestampMetadataSchemaEntry(EXISTING_SCHEMA_ID, REPLICATION_METADATA_VERSION_ID, REPLICATION_METADATA_SCHEMA))
-        .when(mockSchemaRepo).getTimestampMetadataSchema(storeNameWithoutVersionInfo, EXISTING_SCHEMA_ID, REPLICATION_METADATA_VERSION_ID);
+    doReturn(new ReplicationMetadataSchemaEntry(EXISTING_SCHEMA_ID, REPLICATION_METADATA_VERSION_ID, REPLICATION_METADATA_SCHEMA))
+        .when(mockSchemaRepo).getReplicationMetadataSchema(storeNameWithoutVersionInfo, EXISTING_SCHEMA_ID, REPLICATION_METADATA_VERSION_ID);
   }
 
   private VeniceWriter getVeniceWriter(String topic, Supplier<KafkaProducerWrapper> producerSupplier, int amplificationFactor) {
@@ -655,8 +655,8 @@ public class StoreIngestionTaskTest {
     AbstractStoragePartition mockStoragePartition = mock(AbstractStoragePartition.class);
     doReturn(mockStoragePartition).when(mockAbstractStorageEngine).getPartitionOrThrow(anyInt());
 
-    doReturn(putKeyFooReplicationMetadataWithValueSchemaIdBytes).when(mockStoragePartition).getTimestampMetadata(putKeyFoo);
-    doReturn(deleteKeyFooReplicationMetadataWithValueSchemaIdBytes).when(mockStoragePartition).getTimestampMetadata(deleteKeyFoo);
+    doReturn(putKeyFooReplicationMetadataWithValueSchemaIdBytes).when(mockStoragePartition).getReplicationMetadata(putKeyFoo);
+    doReturn(deleteKeyFooReplicationMetadataWithValueSchemaIdBytes).when(mockStoragePartition).getReplicationMetadata(deleteKeyFoo);
 
     SchemaEntry schemaEntry = new SchemaEntry(1, "\"string\"");
     doReturn(schemaEntry).when(mockSchemaRepo).getLatestValueSchema(storeNameWithoutVersionInfo);

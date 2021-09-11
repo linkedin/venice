@@ -223,6 +223,7 @@ public class AdminSparkServer extends AbstractVeniceService {
     httpService.get(GET_ALL_VALUE_SCHEMA.getPath(), schemaRoutes.getAllValueSchema(admin));
     httpService.get(GET_ALL_VALUE_AND_DERIVED_SCHEMA.getPath(), schemaRoutes.getAllValueAndDerivedSchema(admin));
     httpService.post(REMOVE_DERIVED_SCHEMA.getPath(), schemaRoutes.removeDerivedSchema(admin));
+    httpService.get(GET_ALL_REPLICATION_METADATA_SCHEMAS.getPath(), schemaRoutes.getAllReplicationMetadataSchemas(admin));
 
     httpService.post(SET_OWNER.getPath(), storesRoutes.setOwner(admin));
     httpService.post(SET_PARTITION_COUNT.getPath(), storesRoutes.setPartitionCount(admin));

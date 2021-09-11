@@ -660,6 +660,11 @@ public class ControllerClient implements Closeable {
     return request(ControllerRoute.GET_ALL_VALUE_SCHEMA, params, MultiSchemaResponse.class);
   }
 
+  public MultiSchemaResponse getAllReplicationMetadataSchemas(String storeName) {
+    QueryParams params = newParams().add(NAME, storeName);
+    return request(ControllerRoute.GET_ALL_REPLICATION_METADATA_SCHEMAS, params, MultiSchemaResponse.class);
+  }
+
   public MultiSchemaResponse getAllValueAndDerivedSchema(String storeName) {
     QueryParams params = newParams().add(NAME, storeName);
     return request(ControllerRoute.GET_ALL_VALUE_AND_DERIVED_SCHEMA, params, MultiSchemaResponse.class);

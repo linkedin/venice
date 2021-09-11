@@ -593,7 +593,7 @@ public class AdminExecutionTask implements Callable<Void> {
     String timestampMetadataSchemaStr = message.metadataSchema.definition.toString();
     int timestampMetadataVersionId = message.timestampMetadataVersionId;
 
-    admin.addTimestampMetadataSchema(clusterName, storeName, valueSchemaId, timestampMetadataVersionId, timestampMetadataSchemaStr);
+    admin.addReplicationMetadataSchema(clusterName, storeName, valueSchemaId, timestampMetadataVersionId, timestampMetadataSchemaStr);
     logger.info(String.format("Added metedata schema:\n %s\n to store: %s, value schema id: %d, metedata schema id: %d",
         timestampMetadataSchemaStr, storeName, valueSchemaId, timestampMetadataVersionId));
   }

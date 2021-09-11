@@ -2,7 +2,7 @@ package com.linkedin.venice.helix;
 
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.meta.VeniceSerializer;
-import com.linkedin.venice.schema.TimestampMetadataSchemaEntry;
+import com.linkedin.venice.schema.ReplicationMetadataSchemaEntry;
 import com.linkedin.venice.schema.DerivedSchemaEntry;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.utils.HelixUtils;
@@ -39,7 +39,7 @@ public class HelixSchemaAccessor {
 
   private final ZkBaseDataAccessor<SchemaEntry> schemaAccessor;
   private final ZkBaseDataAccessor<DerivedSchemaEntry> derivedSchemaAccessor;
-  private final ZkBaseDataAccessor<TimestampMetadataSchemaEntry> timestampMetadataSchemaAccessor;
+  private final ZkBaseDataAccessor<ReplicationMetadataSchemaEntry> timestampMetadataSchemaAccessor;
 
 
   // Venice cluster name
@@ -207,21 +207,21 @@ public class HelixSchemaAccessor {
 
 
 
-  public TimestampMetadataSchemaEntry getTimestampMetadataSchema(String storeName, String timestampMetadataVersionIdPair) {
+  public ReplicationMetadataSchemaEntry getTimestampMetadataSchema(String storeName, String timestampMetadataVersionIdPair) {
     return timestampMetadataSchemaAccessor.get(getTimestampMetadataSchemaPath(storeName, timestampMetadataVersionIdPair), null,
         AccessOption.PERSISTENT);
   }
 
-  public List<TimestampMetadataSchemaEntry> getAllTimestampMetadataSchemas(String storeName) {
+  public List<ReplicationMetadataSchemaEntry> getAllTimestampMetadataSchemas(String storeName) {
     return HelixUtils.getChildren(timestampMetadataSchemaAccessor, getTimestampMetadataSchemaParentPath(storeName),
         refreshAttemptsForZkReconnect, refreshIntervalForZkReconnectInMs);
   }
 
-  public void addMetadataSchema(String storeName, TimestampMetadataSchemaEntry timestampMetadataSchemaEntry) {
+  public void addMetadataSchema(String storeName, ReplicationMetadataSchemaEntry replicationMetadataSchemaEntry) {
     HelixUtils.create(timestampMetadataSchemaAccessor, getTimestampMetadataSchemaPath(storeName,
-        String.valueOf(timestampMetadataSchemaEntry.getValueSchemaId()), String.valueOf(timestampMetadataSchemaEntry.getId())),
-        timestampMetadataSchemaEntry);
-    logger.info("Added Timestamp metadata schema: " + timestampMetadataSchemaEntry.toString() + " for store: " + storeName);
+        String.valueOf(replicationMetadataSchemaEntry.getValueSchemaId()), String.valueOf(
+            replicationMetadataSchemaEntry.getId())), replicationMetadataSchemaEntry);
+    logger.info("Added Timestamp metadata schema: " + replicationMetadataSchemaEntry.toString() + " for store: " + storeName);
   }
 
   public void subscribeTimestampMetadataSchemaCreationChange(String storeName, IZkChildListener childListener) {

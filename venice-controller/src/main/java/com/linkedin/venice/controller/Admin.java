@@ -16,10 +16,10 @@ import com.linkedin.venice.meta.RoutersClusterConfig;
 import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.kafka.TopicManager;
-import com.linkedin.venice.schema.TimestampMetadataSchemaEntry;
+import com.linkedin.venice.schema.ReplicationMetadataSchemaEntry;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreRecordDeleter;
 import com.linkedin.venice.schema.DerivedSchemaEntry;
-import com.linkedin.venice.schema.TimestampMetadataVersionId;
+import com.linkedin.venice.schema.ReplicationMetadataVersionId;
 import com.linkedin.venice.schema.SchemaEntry;
 
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
@@ -242,9 +242,9 @@ public interface Admin extends AutoCloseable, Closeable {
     DerivedSchemaEntry addDerivedSchema(String clusterName, String storeName, int valueSchemaId, int derivedSchemaId, String derivedSchemaStr);
 
 
-    Collection<TimestampMetadataSchemaEntry> getTimestampMetadataSchemas(String clusterName, String storeName);
-    TimestampMetadataVersionId getTimestampMetadataVersionId(String clusterName, String storeName, String timestampMetadataSchemaStr);
-    TimestampMetadataSchemaEntry addTimestampMetadataSchema(String clusterName, String storeName, int valueSchemaId, int timestampMetadataVersionId, String timestampMetadataSchemaStr);
+    Collection<ReplicationMetadataSchemaEntry> getReplicationMetadataSchemas(String clusterName, String storeName);
+    ReplicationMetadataVersionId getReplicationMetadataVersionId(String clusterName, String storeName, String replicationMetadataSchemaStr);
+    ReplicationMetadataSchemaEntry addReplicationMetadataSchema(String clusterName, String storeName, int valueSchemaId, int replicationMetadataVersionId, String replicationMetadataSchemaStr);
 
     /**
      * Remove an existing derived schema

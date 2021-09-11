@@ -24,7 +24,6 @@ import org.apache.log4j.Logger;
 
 import static com.linkedin.venice.ConfigConstants.*;
 import static com.linkedin.venice.ConfigKeys.*;
-import static com.linkedin.venice.VeniceConstants.*;
 
 
 /**
@@ -274,7 +273,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     this.aggregateRealTimeSourceRegion = props.getString(AGGREGATE_REAL_TIME_SOURCE_REGION, "");
     this.isAutoMaterializeMetaSystemStoreEnabled = props.getBoolean(CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE, false);
 
-    this.timestampMetadataVersionId = props.getInt(TIMESTAMP_METADATA_VERSION_ID, 1);
+    this.timestampMetadataVersionId = props.getInt(REPLICATION_METADATA_VERSION_ID, 1);
     this.emergencySourceRegion = props.getString(EMERGENCY_SOURCE_REGION, "");
   }
 

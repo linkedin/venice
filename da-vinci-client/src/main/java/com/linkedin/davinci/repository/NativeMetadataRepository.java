@@ -23,8 +23,8 @@ import com.linkedin.venice.meta.systemstore.schemas.StoreVersionState;
 import com.linkedin.venice.schema.DerivedSchemaEntry;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
-import com.linkedin.venice.schema.TimestampMetadataSchemaEntry;
-import com.linkedin.venice.schema.TimestampMetadataVersionId;
+import com.linkedin.venice.schema.ReplicationMetadataSchemaEntry;
+import com.linkedin.venice.schema.ReplicationMetadataVersionId;
 import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.system.store.MetaStoreDataType;
 import com.linkedin.venice.systemstore.schemas.StoreClusterConfig;
@@ -330,18 +330,18 @@ public abstract class NativeMetadataRepository
   }
 
   @Override
-  public TimestampMetadataVersionId getTimestampMetadataVersionId(String storeName, String timestampMetadataSchemaStr) {
+  public ReplicationMetadataVersionId getReplicationMetadataVersionId(String storeName, String replicationMetadataSchemaStr) {
     throw new VeniceException("Function: getTimestampMetadataVersionId is not supported!");
   }
 
   @Override
-  public TimestampMetadataSchemaEntry getTimestampMetadataSchema(String storeName, int valueSchemaId,
-      int timestampMetadataVersionId) {
+  public ReplicationMetadataSchemaEntry getReplicationMetadataSchema(String storeName, int valueSchemaId,
+      int replicationMetadataVersionId) {
     throw new VeniceException("Function: getTimestampMetadataSchemas is not supported!");
   }
 
   @Override
-  public Collection<TimestampMetadataSchemaEntry> getTimestampMetadataSchemas(String storeName) {
+  public Collection<ReplicationMetadataSchemaEntry> getReplicationMetadataSchemas(String storeName) {
     throw new VeniceException("Function: getTimestampMetadataSchemas is not supported!");
   }
 
