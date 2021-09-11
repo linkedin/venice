@@ -6,9 +6,9 @@ import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
-import com.linkedin.venice.schema.TimestampMetadataSchemaEntry;
+import com.linkedin.venice.schema.ReplicationMetadataSchemaEntry;
 import com.linkedin.venice.schema.DerivedSchemaEntry;
-import com.linkedin.venice.schema.TimestampMetadataVersionId;
+import com.linkedin.venice.schema.ReplicationMetadataVersionId;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.utils.Pair;
@@ -384,22 +384,24 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
   }
 
   @Override
-  public TimestampMetadataVersionId getTimestampMetadataVersionId(String storeName, String timestampMetadataSchemaStr) {
-    return (TimestampMetadataVersionId)doSchemaOperation(storeName, ((schemaData) -> {
-      TimestampMetadataSchemaEntry timestampMetadataSchemaEntry =
-          new TimestampMetadataSchemaEntry(SchemaData.UNKNOWN_SCHEMA_ID, SchemaData.UNKNOWN_SCHEMA_ID, timestampMetadataSchemaStr);
-      return schemaData.getTimestampMetadataVersionId(timestampMetadataSchemaEntry);
+  public ReplicationMetadataVersionId getReplicationMetadataVersionId(String storeName, String replicationMetadataSchemaStr) {
+    return (ReplicationMetadataVersionId)doSchemaOperation(storeName, ((schemaData) -> {
+      ReplicationMetadataSchemaEntry replicationMetadataSchemaEntry =
+          new ReplicationMetadataSchemaEntry(SchemaData.UNKNOWN_SCHEMA_ID, SchemaData.UNKNOWN_SCHEMA_ID,
+              replicationMetadataSchemaStr);
+      return schemaData.getTimestampMetadataVersionId(replicationMetadataSchemaEntry);
     }));
   }
 
   @Override
-  public TimestampMetadataSchemaEntry getTimestampMetadataSchema(String storeName, int valueSchemaId, int timestampMetadataVersionId) {
-    return (TimestampMetadataSchemaEntry)doSchemaOperation(storeName, ((schemaData) -> schemaData.getTimestampMetadataSchema(valueSchemaId, timestampMetadataVersionId)));
+  public ReplicationMetadataSchemaEntry getReplicationMetadataSchema(String storeName, int valueSchemaId, int replicationMetadataVersionId) {
+    return (ReplicationMetadataSchemaEntry)doSchemaOperation(storeName, ((schemaData) -> schemaData.getTimestampMetadataSchema(valueSchemaId,
+        replicationMetadataVersionId)));
   }
 
   @Override
-  public Collection<TimestampMetadataSchemaEntry> getTimestampMetadataSchemas(String storeName) {
-    return (Collection<TimestampMetadataSchemaEntry>)doSchemaOperation(storeName, ((schemaData) -> schemaData.getTimestampMetadataSchemas()));
+  public Collection<ReplicationMetadataSchemaEntry> getReplicationMetadataSchemas(String storeName) {
+    return (Collection<ReplicationMetadataSchemaEntry>)doSchemaOperation(storeName, ((schemaData) -> schemaData.getTimestampMetadataSchemas()));
   }
 
   /**

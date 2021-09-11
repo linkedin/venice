@@ -140,7 +140,7 @@ public class TimestampMetadataRocksDBStoragePartitionTest extends AbstractStorag
 
       byte[] replicationMetadataWitValueSchemaIdBytes = getReplicationMetadataWithValueSchemaId(entry.getValue().getSecond().getBytes(), valueSchemaId);
 
-      storagePartition.putWithTimestampMetadata(entry.getKey().getBytes(), valueByteBuffer, replicationMetadataWitValueSchemaIdBytes);
+      storagePartition.putWithReplicationMetadata(entry.getKey().getBytes(), valueByteBuffer, replicationMetadataWitValueSchemaIdBytes);
       Assert.assertEquals(valueByteBuffer.position(), valuePosition);
     }
 
@@ -149,7 +149,7 @@ public class TimestampMetadataRocksDBStoragePartitionTest extends AbstractStorag
       byte[] value = storagePartition.get(key);
       Assert.assertEquals(value, entry.getValue().getFirst().getBytes());
       ReplicationMetadataWithValueSchemaId replicationMetadataWithValueSchemaId =
-          ReplicationMetadataWithValueSchemaId.getFromStorageEngineBytes(storagePartition.getTimestampMetadata(key));
+          ReplicationMetadataWithValueSchemaId.getFromStorageEngineBytes(storagePartition.getReplicationMetadata(key));
       byte[] metadata = ByteUtils.extractByteArray(replicationMetadataWithValueSchemaId.getReplicationMetadata());
       Assert.assertEquals(replicationMetadataWithValueSchemaId.getValueSchemaId(), valueSchemaId);
       Assert.assertEquals(metadata, entry.getValue().getSecond().getBytes());
@@ -165,7 +165,7 @@ public class TimestampMetadataRocksDBStoragePartitionTest extends AbstractStorag
       byte[] value = storagePartition.get(entry.getKey().getBytes());
       Assert.assertNull(value);
       ReplicationMetadataWithValueSchemaId replicationMetadataWithValueSchemaId =
-          ReplicationMetadataWithValueSchemaId.getFromStorageEngineBytes(storagePartition.getTimestampMetadata(entry.getKey().getBytes()));
+          ReplicationMetadataWithValueSchemaId.getFromStorageEngineBytes(storagePartition.getReplicationMetadata(entry.getKey().getBytes()));
       byte[] metadata = ByteUtils.extractByteArray(replicationMetadataWithValueSchemaId.getReplicationMetadata());
       Assert.assertNotNull(metadata);
       Assert.assertEquals(replicationMetadataWithValueSchemaId.getValueSchemaId(), updatedValueSchemaId);
@@ -191,7 +191,7 @@ public class TimestampMetadataRocksDBStoragePartitionTest extends AbstractStorag
       byte[] key = entry.getKey().getBytes();
       byte[] value = storagePartition.get(key);
       Assert.assertEquals(value, entry.getValue().getFirst().getBytes());
-      Assert.assertNull(storagePartition.getTimestampMetadata(key));
+      Assert.assertNull(storagePartition.getReplicationMetadata(key));
     }
 
     for (Map.Entry<String, Pair<String, String>> entry : inputRecordsBatch.entrySet()) {
@@ -205,7 +205,7 @@ public class TimestampMetadataRocksDBStoragePartitionTest extends AbstractStorag
       byte[] value = storagePartition.get(entry.getKey().getBytes());
       Assert.assertNull(value);
       ReplicationMetadataWithValueSchemaId replicationMetadataWithValueSchemaId =
-          ReplicationMetadataWithValueSchemaId.getFromStorageEngineBytes(storagePartition.getTimestampMetadata(entry.getKey().getBytes()));
+          ReplicationMetadataWithValueSchemaId.getFromStorageEngineBytes(storagePartition.getReplicationMetadata(entry.getKey().getBytes()));
       byte[] metadata = ByteUtils.extractByteArray(replicationMetadataWithValueSchemaId.getReplicationMetadata());
       Assert.assertNotNull(metadata);
       Assert.assertEquals(replicationMetadataWithValueSchemaId.getValueSchemaId(), updatedValueSchemaId);

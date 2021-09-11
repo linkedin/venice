@@ -8,17 +8,17 @@ import org.apache.avro.Schema;
  * active active replication mode.
  * More information can be found here {@link ReplicationMetadataSchemaAdapter} about the structure of the schema.
  */
-public class TimestampMetadataSchemaEntry extends GeneratedSchemaEntry {
+public class ReplicationMetadataSchemaEntry extends GeneratedSchemaEntry {
 
-  public TimestampMetadataSchemaEntry(int valueSchemaId, int protocolVersion, String schemaStr) {
+  public ReplicationMetadataSchemaEntry(int valueSchemaId, int protocolVersion, String schemaStr) {
     super(valueSchemaId, protocolVersion, schemaStr);
   }
 
-  public TimestampMetadataSchemaEntry(int valueSchemaId, int protocolVersion, Schema schema) {
+  public ReplicationMetadataSchemaEntry(int valueSchemaId, int protocolVersion, Schema schema) {
     super(valueSchemaId, protocolVersion, schema);
   }
 
-  public TimestampMetadataSchemaEntry(int valueSchemaId, int protocolVersion, byte[] bytes) {
+  public ReplicationMetadataSchemaEntry(int valueSchemaId, int protocolVersion, byte[] bytes) {
     super(valueSchemaId, protocolVersion, bytes);
   }
 
@@ -30,7 +30,7 @@ public class TimestampMetadataSchemaEntry extends GeneratedSchemaEntry {
       return false;
     if (getClass() != obj.getClass())
       return false;
-    TimestampMetadataSchemaEntry other = (TimestampMetadataSchemaEntry) obj;
+    ReplicationMetadataSchemaEntry other = (ReplicationMetadataSchemaEntry) obj;
     if (this.valueSchemaId != other.valueSchemaId) {
       return false;
     }

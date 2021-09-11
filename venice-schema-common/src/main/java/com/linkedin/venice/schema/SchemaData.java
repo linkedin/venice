@@ -22,8 +22,8 @@ public final class SchemaData {
   private Map<SchemaEntry, Integer> valueSchemaRMap;
   private Map<Pair<Integer, Integer>, DerivedSchemaEntry> derivedSchemaMap;
   private Map<DerivedSchemaEntry, Pair<Integer, Integer>> derivedSchemaRMap;
-  private Map<TimestampMetadataVersionId, TimestampMetadataSchemaEntry> timestampMetadataSchemaMap;
-  private Map<Schema, TimestampMetadataVersionId> timestampMetadataSchemaRMap;
+  private Map<ReplicationMetadataVersionId, ReplicationMetadataSchemaEntry> timestampMetadataSchemaMap;
+  private Map<Schema, ReplicationMetadataVersionId> timestampMetadataSchemaRMap;
 
   public static int UNKNOWN_SCHEMA_ID = 0;
   public static int INVALID_VALUE_SCHEMA_ID = -1;
@@ -113,27 +113,27 @@ public final class SchemaData {
     return valueSchemas;
   }
 
-  public TimestampMetadataSchemaEntry getTimestampMetadataSchema(int valueSchemaId, int timestampMetadataVersionId) {
-    return timestampMetadataSchemaMap.get(new TimestampMetadataVersionId(valueSchemaId, timestampMetadataVersionId));
+  public ReplicationMetadataSchemaEntry getTimestampMetadataSchema(int valueSchemaId, int timestampMetadataVersionId) {
+    return timestampMetadataSchemaMap.get(new ReplicationMetadataVersionId(valueSchemaId, timestampMetadataVersionId));
   }
 
-  public Collection<TimestampMetadataSchemaEntry> getTimestampMetadataSchemas() {
+  public Collection<ReplicationMetadataSchemaEntry> getTimestampMetadataSchemas() {
     return timestampMetadataSchemaMap.values();
   }
 
-  public TimestampMetadataVersionId getTimestampMetadataVersionId(TimestampMetadataSchemaEntry entry) {
+  public ReplicationMetadataVersionId getTimestampMetadataVersionId(ReplicationMetadataSchemaEntry entry) {
     if (timestampMetadataSchemaRMap.containsKey(entry.getSchema())) {
       return timestampMetadataSchemaRMap.get(entry.getSchema());
     }
 
-    return new TimestampMetadataVersionId(INVALID_VALUE_SCHEMA_ID, INVALID_VALUE_SCHEMA_ID);
+    return new ReplicationMetadataVersionId(INVALID_VALUE_SCHEMA_ID, INVALID_VALUE_SCHEMA_ID);
   }
 
-  public void addTimestampMetadataSchema(TimestampMetadataSchemaEntry timestampMetadataSchemaEntry) {
-    TimestampMetadataVersionId
-        timestampMetadataVersionId = new TimestampMetadataVersionId(timestampMetadataSchemaEntry.getValueSchemaId(), timestampMetadataSchemaEntry
+  public void addTimestampMetadataSchema(ReplicationMetadataSchemaEntry replicationMetadataSchemaEntry) {
+    ReplicationMetadataVersionId
+        timestampMetadataVersionId = new ReplicationMetadataVersionId(replicationMetadataSchemaEntry.getValueSchemaId(), replicationMetadataSchemaEntry
         .getId());
-    timestampMetadataSchemaMap.put(timestampMetadataVersionId, timestampMetadataSchemaEntry);
-    timestampMetadataSchemaRMap.put(timestampMetadataSchemaEntry.getSchema(), timestampMetadataVersionId);
+    timestampMetadataSchemaMap.put(timestampMetadataVersionId, replicationMetadataSchemaEntry);
+    timestampMetadataSchemaRMap.put(replicationMetadataSchemaEntry.getSchema(), timestampMetadataVersionId);
   }
 }

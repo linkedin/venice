@@ -3,9 +3,9 @@ package com.linkedin.venice.helix;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.ReadWriteSchemaRepository;
-import com.linkedin.venice.schema.TimestampMetadataSchemaEntry;
+import com.linkedin.venice.schema.ReplicationMetadataSchemaEntry;
 import com.linkedin.venice.schema.DerivedSchemaEntry;
-import com.linkedin.venice.schema.TimestampMetadataVersionId;
+import com.linkedin.venice.schema.ReplicationMetadataVersionId;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
 import com.linkedin.venice.utils.Pair;
@@ -217,7 +217,7 @@ public class HelixReadWriteSchemaRepositoryAdapter implements ReadWriteSchemaRep
   }
 
   @Override
-  public TimestampMetadataSchemaEntry addMetadataSchema(String storeName, int valueSchemaId, String timestampMetadataSchemaStr, int timestampMetadataVersionId) {
+  public ReplicationMetadataSchemaEntry addMetadataSchema(String storeName, int valueSchemaId, String timestampMetadataSchemaStr, int timestampMetadataVersionId) {
     VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(storeName);
     if (HelixReadOnlyStoreRepositoryAdapter.forwardToRegularRepository(systemStoreType)) {
       return readWriteRegularStoreSchemaRepository.addMetadataSchema(storeName, valueSchemaId, timestampMetadataSchemaStr, timestampMetadataVersionId);
@@ -226,30 +226,34 @@ public class HelixReadWriteSchemaRepositoryAdapter implements ReadWriteSchemaRep
   }
 
   @Override
-  public TimestampMetadataVersionId getTimestampMetadataVersionId(String storeName, String timestampMetadataSchemaStr) {
+  public ReplicationMetadataVersionId getReplicationMetadataVersionId(String storeName, String replicationMetadataSchemaStr) {
     VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(storeName);
     if (HelixReadOnlyStoreRepositoryAdapter.forwardToRegularRepository(systemStoreType)) {
-      return readWriteRegularStoreSchemaRepository.getTimestampMetadataVersionId(storeName, timestampMetadataSchemaStr);
+      return readWriteRegularStoreSchemaRepository.getReplicationMetadataVersionId(storeName,
+          replicationMetadataSchemaStr);
     }
-    return readOnlyZKSharedSchemaRepository.getTimestampMetadataVersionId(systemStoreType.getZkSharedStoreName(), timestampMetadataSchemaStr);
+    return readOnlyZKSharedSchemaRepository.getReplicationMetadataVersionId(systemStoreType.getZkSharedStoreName(),
+        replicationMetadataSchemaStr);
   }
 
   @Override
-  public TimestampMetadataSchemaEntry getTimestampMetadataSchema(String storeName, int valueSchemaId, int timestampMetadataVersionId) {
+  public ReplicationMetadataSchemaEntry getReplicationMetadataSchema(String storeName, int valueSchemaId, int replicationMetadataVersionId) {
     VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(storeName);
     if (HelixReadOnlyStoreRepositoryAdapter.forwardToRegularRepository(systemStoreType)) {
-      return readWriteRegularStoreSchemaRepository.getTimestampMetadataSchema(storeName, valueSchemaId, timestampMetadataVersionId);
+      return readWriteRegularStoreSchemaRepository.getReplicationMetadataSchema(storeName, valueSchemaId,
+          replicationMetadataVersionId);
     }
-    return readOnlyZKSharedSchemaRepository.getTimestampMetadataSchema(systemStoreType.getZkSharedStoreName(), valueSchemaId, timestampMetadataVersionId);
+    return readOnlyZKSharedSchemaRepository.getReplicationMetadataSchema(systemStoreType.getZkSharedStoreName(), valueSchemaId,
+        replicationMetadataVersionId);
   }
 
   @Override
-  public Collection<TimestampMetadataSchemaEntry> getTimestampMetadataSchemas(String storeName) {
+  public Collection<ReplicationMetadataSchemaEntry> getReplicationMetadataSchemas(String storeName) {
     VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(storeName);
     if (HelixReadOnlyStoreRepositoryAdapter.forwardToRegularRepository(systemStoreType)) {
-      return readWriteRegularStoreSchemaRepository.getTimestampMetadataSchemas(storeName);
+      return readWriteRegularStoreSchemaRepository.getReplicationMetadataSchemas(storeName);
     }
-    return readOnlyZKSharedSchemaRepository.getTimestampMetadataSchemas(systemStoreType.getZkSharedStoreName());
+    return readOnlyZKSharedSchemaRepository.getReplicationMetadataSchemas(systemStoreType.getZkSharedStoreName());
   }
 
 

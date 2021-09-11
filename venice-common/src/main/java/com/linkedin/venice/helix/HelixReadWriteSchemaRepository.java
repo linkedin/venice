@@ -9,9 +9,9 @@ import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.ReadWriteSchemaRepository;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.Store;
-import com.linkedin.venice.schema.TimestampMetadataSchemaEntry;
+import com.linkedin.venice.schema.ReplicationMetadataSchemaEntry;
 import com.linkedin.venice.schema.DerivedSchemaEntry;
-import com.linkedin.venice.schema.TimestampMetadataVersionId;
+import com.linkedin.venice.schema.ReplicationMetadataVersionId;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
@@ -462,38 +462,39 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
   }
 
   @Override
-  public Collection<TimestampMetadataSchemaEntry> getTimestampMetadataSchemas(String storeName) {
+  public Collection<ReplicationMetadataSchemaEntry> getReplicationMetadataSchemas(String storeName) {
     preCheckStoreCondition(storeName);
 
     return accessor.getAllTimestampMetadataSchemas(storeName);
   }
 
   @Override
-  public TimestampMetadataSchemaEntry getTimestampMetadataSchema(String storeName, int valueSchemaId, int timestampMetadataVersionId) {
+  public ReplicationMetadataSchemaEntry getReplicationMetadataSchema(String storeName, int valueSchemaId, int replicationMetadataVersionId) {
     preCheckStoreCondition(storeName);
 
-    String idPairStr = valueSchemaId + HelixSchemaAccessor.MULTIPART_SCHEMA_VERSION_DELIMITER + timestampMetadataVersionId;
+    String idPairStr = valueSchemaId + HelixSchemaAccessor.MULTIPART_SCHEMA_VERSION_DELIMITER + replicationMetadataVersionId;
 
     return accessor.getTimestampMetadataSchema(storeName, idPairStr);
   }
 
   @Override
-  public TimestampMetadataVersionId getTimestampMetadataVersionId(String storeName, String timestampMetadataSchemaStr) {
-    Schema timestampMetadataSchema = Schema.parse(timestampMetadataSchemaStr);
-    for (TimestampMetadataSchemaEntry timestampMetadataSchemaEntry : getTimestampMetadataSchemaMap(storeName).values().stream()
+  public ReplicationMetadataVersionId getReplicationMetadataVersionId(String storeName, String replicationMetadataSchemaStr) {
+    Schema timestampMetadataSchema = Schema.parse(replicationMetadataSchemaStr);
+    for (ReplicationMetadataSchemaEntry replicationMetadataSchemaEntry : getTimestampMetadataSchemaMap(storeName).values().stream()
         .flatMap(List::stream).collect(Collectors.toList())) {
-      if (timestampMetadataSchemaEntry.getSchema().equals(timestampMetadataSchema)) {
-        return new TimestampMetadataVersionId(timestampMetadataSchemaEntry.getValueSchemaId(), timestampMetadataSchemaEntry.getId());
+      if (replicationMetadataSchemaEntry.getSchema().equals(timestampMetadataSchema)) {
+        return new ReplicationMetadataVersionId(replicationMetadataSchemaEntry.getValueSchemaId(), replicationMetadataSchemaEntry
+            .getId());
       }
     }
 
-    return new TimestampMetadataVersionId(SchemaData.INVALID_VALUE_SCHEMA_ID, SchemaData.INVALID_VALUE_SCHEMA_ID);
+    return new ReplicationMetadataVersionId(SchemaData.INVALID_VALUE_SCHEMA_ID, SchemaData.INVALID_VALUE_SCHEMA_ID);
   }
 
-  private Map<Integer, List<TimestampMetadataSchemaEntry>> getTimestampMetadataSchemaMap(String storeName) {
+  private Map<Integer, List<ReplicationMetadataSchemaEntry>> getTimestampMetadataSchemaMap(String storeName) {
     preCheckStoreCondition(storeName);
 
-    Map<Integer, List<TimestampMetadataSchemaEntry>> timestampMetadataSchemaEntryMap = new HashMap<>();
+    Map<Integer, List<ReplicationMetadataSchemaEntry>> timestampMetadataSchemaEntryMap = new HashMap<>();
     accessor.getAllTimestampMetadataSchemas(storeName).forEach(timestampMetadataSchemaEntry ->
         timestampMetadataSchemaEntryMap.computeIfAbsent(timestampMetadataSchemaEntry.getValueSchemaId(), id -> new ArrayList<>())
             .add(timestampMetadataSchemaEntry));
@@ -502,17 +503,17 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
   }
 
   @Override
-  public TimestampMetadataSchemaEntry addMetadataSchema(String storeName, int valueSchemaId, String timestampMetadataSchemaStr,  int timestampMetadataVersionId) {
-    TimestampMetadataSchemaEntry timestampMetadataSchemaEntry =
-        new TimestampMetadataSchemaEntry(valueSchemaId, timestampMetadataVersionId, timestampMetadataSchemaStr);
+  public ReplicationMetadataSchemaEntry addMetadataSchema(String storeName, int valueSchemaId, String timestampMetadataSchemaStr,  int timestampMetadataVersionId) {
+    ReplicationMetadataSchemaEntry replicationMetadataSchemaEntry =
+        new ReplicationMetadataSchemaEntry(valueSchemaId, timestampMetadataVersionId, timestampMetadataSchemaStr);
 
     if (timestampMetadataVersionId == SchemaData.DUPLICATE_VALUE_SCHEMA_CODE) {
       logger.info("Timestamp metadata schema already exists. Skip adding it to repository. Schema: " + timestampMetadataSchemaStr);
     } else {
-      accessor.addMetadataSchema(storeName, timestampMetadataSchemaEntry);
+      accessor.addMetadataSchema(storeName, replicationMetadataSchemaEntry);
     }
 
-    return timestampMetadataSchemaEntry;
+    return replicationMetadataSchemaEntry;
   }
 
   @Override

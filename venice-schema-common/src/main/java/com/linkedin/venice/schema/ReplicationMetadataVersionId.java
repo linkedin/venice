@@ -1,10 +1,10 @@
 package com.linkedin.venice.schema;
 
-public class TimestampMetadataVersionId {
+public class ReplicationMetadataVersionId {
   int valueSchemaVersion;
   int timestampMetadataProtocolVersion;
 
-  public TimestampMetadataVersionId(int valueSchemaVersion, int timestampMetadataProtocolVersion) {
+  public ReplicationMetadataVersionId(int valueSchemaVersion, int timestampMetadataProtocolVersion) {
     this.valueSchemaVersion = valueSchemaVersion;
     this.timestampMetadataProtocolVersion = timestampMetadataProtocolVersion;
   }
@@ -31,7 +31,7 @@ public class TimestampMetadataVersionId {
     if (this == o) return true;
     if (o == null || getClass() != o.getClass()) return false;
 
-    TimestampMetadataVersionId that = (TimestampMetadataVersionId)o;
+    ReplicationMetadataVersionId that = (ReplicationMetadataVersionId)o;
 
     if (valueSchemaVersion != that.valueSchemaVersion) return false;
     if (timestampMetadataProtocolVersion != that.timestampMetadataProtocolVersion) return false;

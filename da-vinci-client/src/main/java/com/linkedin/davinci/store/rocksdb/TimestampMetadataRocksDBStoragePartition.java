@@ -20,7 +20,7 @@ import org.rocksdb.WriteBatch;
 public class TimestampMetadataRocksDBStoragePartition extends RocksDBStoragePartition {
   private static final byte[] TIMESTAMP_METADATA_COLUMN_FAMILY = "timestamp_metadata".getBytes();
   private static final int DEFAULT_COLUMN_FAMILY_INDEX = 0;
-  private static final int TIMESTAMP_METADATA_COLUMN_FAMILY_INDEX = 1;
+  private static final int REPLICATION_METADATA_COLUMN_FAMILY_INDEX = 1;
 
   public TimestampMetadataRocksDBStoragePartition(StoragePartitionConfig storagePartitionConfig,
       RocksDBStorageEngineFactory factory, String dbDir, RocksDBMemoryStats rocksDBMemoryStats,
@@ -30,7 +30,7 @@ public class TimestampMetadataRocksDBStoragePartition extends RocksDBStoragePart
   }
 
   @Override
-  public synchronized void putWithTimestampMetadata(byte[] key, byte[] value, byte[] metadata) {
+  public synchronized void putWithReplicationMetadata(byte[] key, byte[] value, byte[] metadata) {
     makeSureRocksDBIsStillOpen();
     if (readOnly) {
       throw new VeniceException(
@@ -39,7 +39,7 @@ public class TimestampMetadataRocksDBStoragePartition extends RocksDBStoragePart
 
     try (WriteBatch writeBatch = new WriteBatch()) {
       writeBatch.put(columnFamilyHandleList.get(DEFAULT_COLUMN_FAMILY_INDEX), key, value);
-      writeBatch.put(columnFamilyHandleList.get(TIMESTAMP_METADATA_COLUMN_FAMILY_INDEX), key, metadata);
+      writeBatch.put(columnFamilyHandleList.get(REPLICATION_METADATA_COLUMN_FAMILY_INDEX), key, metadata);
       rocksDB.write(writeOptions, writeBatch);
     } catch (RocksDBException e) {
       throw new VeniceException("Failed to put key/value pair to store: " + storeName + ", partition id: " + partitionId, e);
@@ -52,17 +52,17 @@ public class TimestampMetadataRocksDBStoragePartition extends RocksDBStoragePart
    * TODO: Rewrite this implementation after we adopt the thread-local direct bytebuffer approach.
    */
   @Override
-  public synchronized void putWithTimestampMetadata(byte[] key, ByteBuffer value, byte[] metadata) {
+  public synchronized void putWithReplicationMetadata(byte[] key, ByteBuffer value, byte[] metadata) {
     byte[] valueBytes = ByteUtils.extractByteArray(value);
-    putWithTimestampMetadata(key, valueBytes, metadata);
+    putWithReplicationMetadata(key, valueBytes, metadata);
   }
 
   @Override
-  public byte[] getTimestampMetadata(byte[] key) {
+  public byte[] getReplicationMetadata(byte[] key) {
     readCloseRWLock.readLock().lock();
     try {
       makeSureRocksDBIsStillOpen();
-      return rocksDB.get(columnFamilyHandleList.get(TIMESTAMP_METADATA_COLUMN_FAMILY_INDEX), key);
+      return rocksDB.get(columnFamilyHandleList.get(REPLICATION_METADATA_COLUMN_FAMILY_INDEX), key);
     } catch (RocksDBException e) {
       throw new VeniceException("Failed to get value from store: " + storeName + ", partition id: " + partitionId, e);
     } finally {
@@ -85,7 +85,7 @@ public class TimestampMetadataRocksDBStoragePartition extends RocksDBStoragePart
     } else {
       try (WriteBatch writeBatch = new WriteBatch()) {
         writeBatch.delete(columnFamilyHandleList.get(DEFAULT_COLUMN_FAMILY_INDEX), key);
-        writeBatch.put(columnFamilyHandleList.get(TIMESTAMP_METADATA_COLUMN_FAMILY_INDEX), key, replicationMetadata);
+        writeBatch.put(columnFamilyHandleList.get(REPLICATION_METADATA_COLUMN_FAMILY_INDEX), key, replicationMetadata);
         rocksDB.write(writeOptions, writeBatch);
       } catch (RocksDBException e) {
         throw new VeniceException("Failed to delete entry to store: " + storeName + ", partition id: " + partitionId, e);

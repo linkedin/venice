@@ -2,9 +2,9 @@ package com.linkedin.venice.helix;
 
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
-import com.linkedin.venice.schema.TimestampMetadataSchemaEntry;
+import com.linkedin.venice.schema.ReplicationMetadataSchemaEntry;
 import com.linkedin.venice.schema.DerivedSchemaEntry;
-import com.linkedin.venice.schema.TimestampMetadataVersionId;
+import com.linkedin.venice.schema.ReplicationMetadataVersionId;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.utils.Pair;
 import java.util.Collection;
@@ -116,30 +116,33 @@ public class HelixReadOnlySchemaRepositoryAdapter implements ReadOnlySchemaRepos
 
 
   @Override
-  public TimestampMetadataVersionId getTimestampMetadataVersionId(String storeName, String timestampMetadataSchemaStr) {
+  public ReplicationMetadataVersionId getReplicationMetadataVersionId(String storeName, String replicationMetadataSchemaStr) {
     VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(storeName);
     if (HelixReadOnlyStoreRepositoryAdapter.forwardToRegularRepository(systemStoreType)) {
-      return regularStoreSchemaRepository.getTimestampMetadataVersionId(storeName, timestampMetadataSchemaStr);
+      return regularStoreSchemaRepository.getReplicationMetadataVersionId(storeName, replicationMetadataSchemaStr);
     }
-    return systemStoreSchemaRepository.getTimestampMetadataVersionId(systemStoreType.getZkSharedStoreName(), timestampMetadataSchemaStr);
+    return systemStoreSchemaRepository.getReplicationMetadataVersionId(systemStoreType.getZkSharedStoreName(),
+        replicationMetadataSchemaStr);
   }
 
   @Override
-  public TimestampMetadataSchemaEntry getTimestampMetadataSchema(String storeName, int valueSchemaId, int timestampMetadataVersionId) {
+  public ReplicationMetadataSchemaEntry getReplicationMetadataSchema(String storeName, int valueSchemaId, int replicationMetadataVersionId) {
     VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(storeName);
     if (HelixReadOnlyStoreRepositoryAdapter.forwardToRegularRepository(systemStoreType)) {
-      return regularStoreSchemaRepository.getTimestampMetadataSchema(storeName, valueSchemaId, timestampMetadataVersionId);
+      return regularStoreSchemaRepository.getReplicationMetadataSchema(storeName, valueSchemaId,
+          replicationMetadataVersionId);
     }
-    return systemStoreSchemaRepository.getTimestampMetadataSchema(systemStoreType.getZkSharedStoreName(), valueSchemaId, timestampMetadataVersionId);
+    return systemStoreSchemaRepository.getReplicationMetadataSchema(systemStoreType.getZkSharedStoreName(), valueSchemaId,
+        replicationMetadataVersionId);
   }
 
   @Override
-  public Collection<TimestampMetadataSchemaEntry> getTimestampMetadataSchemas(String storeName) {
+  public Collection<ReplicationMetadataSchemaEntry> getReplicationMetadataSchemas(String storeName) {
     VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(storeName);
     if (HelixReadOnlyStoreRepositoryAdapter.forwardToRegularRepository(systemStoreType)) {
-      return regularStoreSchemaRepository.getTimestampMetadataSchemas(storeName);
+      return regularStoreSchemaRepository.getReplicationMetadataSchemas(storeName);
     }
-    return systemStoreSchemaRepository.getTimestampMetadataSchemas(systemStoreType.getZkSharedStoreName());
+    return systemStoreSchemaRepository.getReplicationMetadataSchemas(systemStoreType.getZkSharedStoreName());
   }
 
   @Override

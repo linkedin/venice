@@ -101,7 +101,8 @@ public enum ControllerRoute {
   DELETE_ACL("/delete_acl", HttpMethod.GET, Arrays.asList(CLUSTER, NAME)),
   CONFIGURE_NATIVE_REPLICATION_FOR_CLUSTER("/configure_native_replication_for_cluster", HttpMethod.POST, Arrays.asList(CLUSTER, STORE_TYPE, STATUS)),
   CONFIGURE_ACTIVE_ACTIVE_REPLICATION_FOR_CLUSTER("/configure_active_active_replication_for_cluster", HttpMethod.POST, Arrays.asList(CLUSTER, STORE_TYPE, STATUS)),
-  GET_DELETABLE_STORE_TOPICS("/get_deletable_store_topics", HttpMethod.GET, Collections.emptyList());
+  GET_DELETABLE_STORE_TOPICS("/get_deletable_store_topics", HttpMethod.GET, Collections.emptyList()),
+  GET_ALL_REPLICATION_METADATA_SCHEMAS("/get_all_replication_metadata_schemas", HttpMethod.GET, Arrays.asList(NAME));
 
 
   private final String path;

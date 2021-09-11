@@ -1,9 +1,9 @@
 package com.linkedin.venice.meta;
 
 import com.linkedin.venice.VeniceResource;
-import com.linkedin.venice.schema.TimestampMetadataSchemaEntry;
+import com.linkedin.venice.schema.ReplicationMetadataSchemaEntry;
 import com.linkedin.venice.schema.DerivedSchemaEntry;
-import com.linkedin.venice.schema.TimestampMetadataVersionId;
+import com.linkedin.venice.schema.ReplicationMetadataVersionId;
 import com.linkedin.venice.schema.SchemaEntry;
 
 import com.linkedin.venice.utils.Pair;
@@ -60,7 +60,7 @@ public interface ReadOnlySchemaRepository extends VeniceResource {
   DerivedSchemaEntry getLatestDerivedSchema(String storeName, int valueSchemaId);
 
 
-  TimestampMetadataVersionId getTimestampMetadataVersionId(String storeName, String timestampMetadataSchemaStr);
-  TimestampMetadataSchemaEntry getTimestampMetadataSchema(String storeName, int valueSchemaId, int timestampMetadataVersionId);
-  Collection<TimestampMetadataSchemaEntry> getTimestampMetadataSchemas(String storeName);
+  ReplicationMetadataVersionId getReplicationMetadataVersionId(String storeName, String replicationMetadataSchemaStr);
+  ReplicationMetadataSchemaEntry getReplicationMetadataSchema(String storeName, int valueSchemaId, int replicationMetadataVersionId);
+  Collection<ReplicationMetadataSchemaEntry> getReplicationMetadataSchemas(String storeName);
 }

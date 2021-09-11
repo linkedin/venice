@@ -132,7 +132,7 @@ public abstract class AbstractStoragePartition {
    * Only {@link com.linkedin.davinci.store.rocksdb.TimestampMetadataRocksDBStoragePartition} will execute this method,
    * other storage partition implementation will UnsupportedOperationException.
    */
-  public void putWithTimestampMetadata(byte[] key, ByteBuffer value, byte[] metadata) {
+  public void putWithReplicationMetadata(byte[] key, ByteBuffer value, byte[] metadata) {
     throw new VeniceUnsupportedOperationException("putWithTimestampMetadata");
   }
 
@@ -141,7 +141,7 @@ public abstract class AbstractStoragePartition {
    * Only {@link com.linkedin.davinci.store.rocksdb.TimestampMetadataRocksDBStoragePartition} will execute this method,
    * other storage partition implementation will VeniceUnsupportedOperationException.
    */
-  public void putWithTimestampMetadata(byte[] key, byte[] value, byte[] metadata) {
+  public void putWithReplicationMetadata(byte[] key, byte[] value, byte[] metadata) {
     throw new VeniceUnsupportedOperationException("putWithTimestampMetadata");
   }
 
@@ -150,7 +150,7 @@ public abstract class AbstractStoragePartition {
    * Only {@link com.linkedin.davinci.store.rocksdb.TimestampMetadataRocksDBStoragePartition} will execute this method,
    * other storage partition implementation will VeniceUnsupportedOperationException.
    */
-  public byte[] getTimestampMetadata(byte[] key) {
+  public byte[] getReplicationMetadata(byte[] key) {
     throw new VeniceUnsupportedOperationException("getTimestampMetadata");
   }
 

@@ -36,7 +36,7 @@ import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.KillOfflinePushMessage;
 import com.linkedin.venice.pushmonitor.PushMonitor;
 import com.linkedin.venice.schema.ReplicationMetadataSchemaAdapter;
-import com.linkedin.venice.schema.TimestampMetadataSchemaEntry;
+import com.linkedin.venice.schema.ReplicationMetadataSchemaEntry;
 import com.linkedin.venice.schema.WriteComputeSchemaAdapter;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.MockTestStateModelFactory;
@@ -1598,8 +1598,8 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     Schema metadataSchema = ReplicationMetadataSchemaAdapter.parse(recordSchemaStr, timestampMetadataVersionId);
 
     veniceAdmin.createStore(clusterName, storeName, storeOwner, KEY_SCHEMA, recordSchemaStr);
-    veniceAdmin.addTimestampMetadataSchema(clusterName, storeName, 1,  timestampMetadataVersionId, metadataSchema.toString());
-    Collection<TimestampMetadataSchemaEntry> metadataSchemas = veniceAdmin.getTimestampMetadataSchemas(clusterName, storeName);
+    veniceAdmin.addReplicationMetadataSchema(clusterName, storeName, 1,  timestampMetadataVersionId, metadataSchema.toString());
+    Collection<ReplicationMetadataSchemaEntry> metadataSchemas = veniceAdmin.getReplicationMetadataSchemas(clusterName, storeName);
     Assert.assertEquals(metadataSchemas.size(), 1);
     Assert.assertEquals(metadataSchemas.iterator().next().getSchema(), metadataSchema);
   }

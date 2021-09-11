@@ -106,8 +106,8 @@ import com.linkedin.venice.replication.TopicReplicator;
 import com.linkedin.venice.schema.DerivedSchemaEntry;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
-import com.linkedin.venice.schema.TimestampMetadataSchemaEntry;
-import com.linkedin.venice.schema.TimestampMetadataVersionId;
+import com.linkedin.venice.schema.ReplicationMetadataSchemaEntry;
+import com.linkedin.venice.schema.ReplicationMetadataVersionId;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -3704,26 +3704,26 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
 
     @Override
-    public Collection<TimestampMetadataSchemaEntry> getTimestampMetadataSchemas(String clusterName, String storeName) {
+    public Collection<ReplicationMetadataSchemaEntry> getReplicationMetadataSchemas(String clusterName, String storeName) {
         checkControllerMastership(clusterName);
         ReadWriteSchemaRepository schemaRepo = getHelixVeniceClusterResources(clusterName).getSchemaRepository();
-        return schemaRepo.getTimestampMetadataSchemas(storeName);
+        return schemaRepo.getReplicationMetadataSchemas(storeName);
     }
 
-    public TimestampMetadataVersionId getTimestampMetadataVersionId(String clusterName, String storeName, String timestampMetadataSchemaStr) {
+    public ReplicationMetadataVersionId getReplicationMetadataVersionId(String clusterName, String storeName, String replicationMetadataSchemaStr) {
         checkControllerMastership(clusterName);
         ReadWriteSchemaRepository schemaRepo = getHelixVeniceClusterResources(clusterName).getSchemaRepository();
-        return schemaRepo.getTimestampMetadataVersionId(storeName, timestampMetadataSchemaStr);
+        return schemaRepo.getReplicationMetadataVersionId(storeName, replicationMetadataSchemaStr);
     }
 
     protected boolean checkIfMetadataSchemaAlreadyPresent(String clusterName, String storeName, int valueSchemaId,
-        TimestampMetadataSchemaEntry timestampMetadataSchemaEntry) {
+        ReplicationMetadataSchemaEntry replicationMetadataSchemaEntry) {
         checkControllerMastership(clusterName);
         try {
-            Collection<TimestampMetadataSchemaEntry> schemaEntries =
-                getHelixVeniceClusterResources(clusterName).getSchemaRepository().getTimestampMetadataSchemas(storeName);
-            for (TimestampMetadataSchemaEntry schemaEntry : schemaEntries) {
-                if (schemaEntry.equals(timestampMetadataSchemaEntry)) {
+            Collection<ReplicationMetadataSchemaEntry> schemaEntries =
+                getHelixVeniceClusterResources(clusterName).getSchemaRepository().getReplicationMetadataSchemas(storeName);
+            for (ReplicationMetadataSchemaEntry schemaEntry : schemaEntries) {
+                if (schemaEntry.equals(replicationMetadataSchemaEntry)) {
                     return true;
                 }
             }
@@ -3735,20 +3735,21 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
 
     @Override
-    public TimestampMetadataSchemaEntry addTimestampMetadataSchema(String clusterName, String storeName, int valueSchemaId,
-        int timestampMetadataVersionId, String timestampMetadataSchemaStr) {
+    public ReplicationMetadataSchemaEntry addReplicationMetadataSchema(String clusterName, String storeName, int valueSchemaId,
+        int replicationMetadataVersionId, String replicationMetadataSchemaStr) {
         checkControllerMastership(clusterName);
 
-        TimestampMetadataSchemaEntry timestampMetadataSchemaEntry =
-            new TimestampMetadataSchemaEntry(valueSchemaId, timestampMetadataVersionId, timestampMetadataSchemaStr);
-        if (checkIfMetadataSchemaAlreadyPresent(clusterName, storeName, valueSchemaId, timestampMetadataSchemaEntry)) {
-            logger.info("Timestamp metadata schema Already present: for store:" + storeName + " in cluster:" + clusterName + " metadataSchema:" + timestampMetadataSchemaStr
-                + " timestampMetadataVersionId:" + timestampMetadataVersionId + " valueSchemaId:" + valueSchemaId);
-            return timestampMetadataSchemaEntry;
+        ReplicationMetadataSchemaEntry replicationMetadataSchemaEntry =
+            new ReplicationMetadataSchemaEntry(valueSchemaId, replicationMetadataVersionId,
+                replicationMetadataSchemaStr);
+        if (checkIfMetadataSchemaAlreadyPresent(clusterName, storeName, valueSchemaId, replicationMetadataSchemaEntry)) {
+            logger.info("Timestamp metadata schema Already present: for store:" + storeName + " in cluster:" + clusterName + " metadataSchema:" + replicationMetadataSchemaStr
+                + " timestampMetadataVersionId:" + replicationMetadataVersionId + " valueSchemaId:" + valueSchemaId);
+            return replicationMetadataSchemaEntry;
         }
 
         return getHelixVeniceClusterResources(clusterName).getSchemaRepository()
-            .addMetadataSchema(storeName, valueSchemaId, timestampMetadataSchemaStr, timestampMetadataVersionId);
+            .addMetadataSchema(storeName, valueSchemaId, replicationMetadataSchemaStr, replicationMetadataVersionId);
     }
 
     @Override
