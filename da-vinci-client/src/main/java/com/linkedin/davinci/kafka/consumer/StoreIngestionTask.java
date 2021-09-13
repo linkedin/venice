@@ -120,6 +120,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
 import org.apache.avro.Schema;
+import org.apache.commons.codec.binary.Hex;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
@@ -2931,7 +2932,17 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       case PUT:
         Put put = (Put) kafkaValue.payloadUnion;
         waitReadyToProcessDataRecord(put.schemaId);
-        deserializeValue(put.schemaId, put.putValue);
+        try {
+          deserializeValue(put.schemaId, put.putValue);
+        } catch (Exception e) {
+          byte[] valueBytes = ByteUtils.extractByteArray(put.putValue);
+          String errorMsg = String.format("Encounter the error while deserializing PUT message. topic: %s, partition: %d"
+              + " offset: %d, schema id: %d, value bytes: %s", record.topic(), record.partition(), record.offset(),
+              put.schemaId, Hex.encodeHexString(valueBytes));
+
+          logger.error(errorMsg);
+          throw e;
+        }
         break;
       case UPDATE:
         Update update = (Update) kafkaValue.payloadUnion;
