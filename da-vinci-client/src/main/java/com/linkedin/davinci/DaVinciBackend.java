@@ -8,6 +8,7 @@ import com.linkedin.davinci.ingestion.DaVinciIngestionBackend;
 import com.linkedin.davinci.ingestion.DefaultIngestionBackend;
 import com.linkedin.davinci.ingestion.IsolatedIngestionBackend;
 import com.linkedin.davinci.ingestion.main.MainIngestionStorageMetadataService;
+import com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionService;
 import com.linkedin.davinci.notifier.VeniceNotifier;
@@ -102,7 +103,6 @@ public class DaVinciBackend implements Closeable {
     this.configLoader = configLoader;
     metricsRepository = Optional.ofNullable(clientConfig.getMetricsRepository())
                             .orElse(TehutiUtils.getMetricsRepository("davinci-client"));
-
     VeniceMetadataRepositoryBuilder veniceMetadataRepositoryBuilder =
         new VeniceMetadataRepositoryBuilder(configLoader, clientConfig, metricsRepository, icProvider, false);
     ClusterInfoProvider clusterInfoProvider = veniceMetadataRepositoryBuilder.getClusterInfoProvider();
@@ -132,6 +132,8 @@ public class DaVinciBackend implements Closeable {
     rocksDBMemoryStats = backendConfig.isDatabaseMemoryStatsEnabled() ?
         new RocksDBMemoryStats(metricsRepository, "RocksDBMemoryStats", backendConfig.getRocksDBServerConfig().isRocksDBPlainTableFormatEnabled()) : null;
 
+    // Add extra safeguards here to ensure we have released RocksDB database locks before we initialize storage services.
+    IsolatedIngestionUtils.releaseTargetPortBinding(configLoader.getVeniceServerConfig().getIngestionServicePort());
     storageService = new StorageService(configLoader, storageEngineStats, rocksDBMemoryStats, storeVersionStateSerializer, partitionStateSerializer, storeRepository);
     storageService.start();
 

@@ -72,6 +72,7 @@ public class IsolatedIngestionUtils {
 
   private static final Logger logger = Logger.getLogger(IsolatedIngestionUtils.class);
   private static final int D2_STARTUP_TIMEOUT = 60000;
+  private static final int SHELL_COMMAND_WAIT_TIME = 1000;
 
   private static final InternalAvroSpecificSerializer<IngestionTaskCommand> ingestionTaskCommandSerializer =
           AvroProtocolDefinition.INGESTION_TASK_COMMAND.getSerializer();
@@ -237,30 +238,58 @@ public class IsolatedIngestionUtils {
   }
 
   /**
-   * releaseTargetPortBinding aims to release the target port by killing dangling ingestion isolation process bound to
-   * the port, which is created from previous deployment and was not killed due to failures.
+   * releaseTargetPortBinding aims to release the target port by killing lingering ingestion process bound to
+   * the port, which is created from previous deployment and was not killed due to unexpected failures.
    */
   public static void releaseTargetPortBinding(int port) {
     logger.info("Releasing binging on target port: " + port);
-    String processIds = executeShellCommand("/usr/sbin/lsof -t -i :" + port);
-    if (processIds.length() != 0) {
-      logger.info("All processes:\n" + processIds);
-      for (String processId : processIds.split("\n")) {
-        if (!processId.equals("")) {
-          int pid = Integer.parseInt(processId);
-          logger.info("Target port: " + port + " is bind to process id: " + pid);
-          String fullProcessName = executeShellCommand("ps -p " + pid + " -o command");
-          if (fullProcessName.contains(IsolatedIngestionServer.class.getName())) {
-            executeShellCommand("kill " + pid);
-            logger.info("Killed IsolatedIngestionServer process on pid " + pid);
-          } else {
-            logger.info("Target port is bind to unknown process: " + fullProcessName);
+    Optional<Integer> lingeringIngestionProcessPid = getLingeringIngestionProcessId(port);
+    if (lingeringIngestionProcessPid.isPresent()) {
+      int pid = lingeringIngestionProcessPid.get();
+      logger.info("Lingering ingestion process ID: " + pid);
+      executeShellCommand("kill " + pid);
+      boolean hasLingeringProcess = true;
+      while (hasLingeringProcess) {
+        try {
+          Thread.sleep(SHELL_COMMAND_WAIT_TIME);
+          if (!getLingeringIngestionProcessId(port).isPresent()) {
+            logger.info("Lingering ingestion process on pid " + pid + " is killed.");
+            hasLingeringProcess = false;
           }
+        } catch (InterruptedException e) {
+          // Keep the interruption flag.
+          Thread.currentThread().interrupt();
+          logger.info("Shell command execution was interrupted");
+          break;
         }
       }
     } else {
-      logger.info("No process is running on target port.");
+      logger.info("No lingering ingestion process is running on target port: " + port);
     }
+  }
+
+  /**
+   * This method returns lingering forked ingestion process PID if it exists.
+   * Since the lsof command will return all processes associated with the port number(including main process), we will
+   * need to iterate all PIDs and filter out ingestion process by name.
+   */
+  public static Optional<Integer> getLingeringIngestionProcessId(int port) {
+    Optional<Integer> isolatedIngestionProcessPid = Optional.empty();
+    String processIds = executeShellCommand("/usr/sbin/lsof -t -i :" + port);
+    if (processIds.length() != 0) {
+      logger.info("Target port is associated to process IDs:\n" + processIds);
+      for (String processId : processIds.split("\n")) {
+        if (!processId.equals("")) {
+          int pid = Integer.parseInt(processId);
+          String fullProcessName = executeShellCommand("ps -p " + pid + " -o command");
+          logger.info("Target port: " + port + " is associated to process: " + fullProcessName + " with pid: " + pid);
+          if (fullProcessName.contains(IsolatedIngestionServer.class.getName())) {
+            isolatedIngestionProcessPid = Optional.of(pid);
+          }
+        }
+      }
+    }
+    return isolatedIngestionProcessPid;
   }
 
   public static String executeShellCommand(String command) {
@@ -303,7 +332,6 @@ public class IsolatedIngestionUtils {
     report.offsetRecordArray = Collections.emptyList();
     return report;
   }
-
 
   public static void destroyPreviousIsolatedIngestionProcess(Process isolatedIngestionServiceProcess) {
     if (isolatedIngestionServiceProcess != null) {
@@ -360,7 +388,7 @@ public class IsolatedIngestionUtils {
     }
     return configFilePath;
   }
-  
+
   public static Optional<SSLEngineComponentFactory> getSSLEngineComponentFactory(VeniceConfigLoader configLoader) {
     try {
       if (configLoader.getCombinedProperties().getBoolean(SERVER_INGESTION_ISOLATION_SSL_ENABLED, false)) {
