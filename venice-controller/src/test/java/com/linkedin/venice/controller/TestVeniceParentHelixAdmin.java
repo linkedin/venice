@@ -941,18 +941,37 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     }
     HelixReadWriteStoreRepository storeRepo = mock(HelixReadWriteStoreRepository.class);
     doReturn(testStore).when(storeRepo).getStore(storeName);
-    doReturn(storeRepo).when(resources)
-            .getStoreMetadataRepository();
+    doReturn(storeRepo).when(resources).getStoreMetadataRepository();
+    Map<String, ControllerClient> controllerClientMap = new HashMap<>();
+
+    for (int i = 0; i < 3; i++) {
+      ControllerClient client = mock(ControllerClient.class);
+      StoreResponse storeResponse = new StoreResponse();
+      Store s = TestUtils.createTestStore("s" + i, "test", System.currentTimeMillis());
+      s.setCurrentVersion(i + 4); // child colo current versions 4,5,6
+      storeResponse.setStore(StoreInfo.fromStore(s));
+      doReturn(storeResponse).when(client).getStore(anyString());
+      controllerClientMap.put("colo" + i, client);
+    }
+
+    doReturn(controllerClientMap).when(internalAdmin).getControllerClientMap(anyString());
+
     parentAdmin.cleanupHistoricalVersions(clusterName, storeName);
     verify(storeRepo).getStore(storeName);
     ArgumentCaptor<Store> storeCaptor = ArgumentCaptor.forClass(Store.class);
     verify(storeRepo).updateStore(storeCaptor.capture());
     Store capturedStore = storeCaptor.getValue();
     Assert.assertEquals(capturedStore.getVersions().size(), VeniceParentHelixAdmin.STORE_VERSION_RETENTION_COUNT);
-    for (int i = 1; i <= 5; ++i) {
+
+    for (int i = 1; i <= 3; ++i) {
       Assert.assertFalse(capturedStore.containsVersion(i));
     }
-    for (int i = 6; i <= 10; ++i) {
+    // child colo current versions 4,5,6 are persisted
+    for (int i = 4; i <= 6; ++i) {
+      Assert.assertTrue(capturedStore.containsVersion(i));
+    }
+    // last two probably failed pushes are persisted.
+    for (int i = 9; i <= 10; ++i) {
       Assert.assertTrue(capturedStore.containsVersion(i));
     }
   }

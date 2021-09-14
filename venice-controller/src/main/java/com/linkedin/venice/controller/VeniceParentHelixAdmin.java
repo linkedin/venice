@@ -89,11 +89,11 @@ import com.linkedin.venice.participant.protocol.ParticipantMessageValue;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreRecordDeleter;
 import com.linkedin.venice.schema.DerivedSchemaEntry;
-import com.linkedin.venice.schema.SchemaData;
-import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.ReplicationMetadataSchemaAdapter;
 import com.linkedin.venice.schema.ReplicationMetadataSchemaEntry;
 import com.linkedin.venice.schema.ReplicationMetadataVersionId;
+import com.linkedin.venice.schema.SchemaData;
+import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.status.protocol.BatchJobHeartbeatKey;
@@ -687,9 +687,11 @@ public class VeniceParentHelixAdmin implements Admin {
       if (versionCount <= STORE_VERSION_RETENTION_COUNT) {
         return;
       }
+      Map<String, Integer> currentVersionsMap = getCurrentVersionsForMultiColos(clusterName, storeName);
       List<Version> clonedVersions = new ArrayList<>(versions);
       clonedVersions.stream()
           .sorted()
+          .filter(v -> !currentVersionsMap.containsValue(v.getNumber()))
           .limit(versionCount - STORE_VERSION_RETENTION_COUNT)
           .forEach(v -> store.deleteVersion(v.getNumber()));
       storeRepo.updateStore(store);
