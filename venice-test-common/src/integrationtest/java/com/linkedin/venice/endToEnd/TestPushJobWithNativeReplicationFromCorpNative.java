@@ -423,14 +423,16 @@ public class TestPushJobWithNativeReplicationFromCorpNative {
     }
   }
 
-  private void verifyIncrementalPushData(String clusterName, String storeName) throws Exception {
+  public static void verifyIncrementalPushData(List<VeniceMultiClusterWrapper> childDatacenters, String clusterName, String storeName, int maxKey, int valueMultiplier) throws Exception {
     //Verify the data in the first child fabric which consumes remotely
+    int j = 0;
     for (VeniceMultiClusterWrapper childDataCenter : childDatacenters) {
+      logger.info("ssen: verifying dc-" + j++);
       String routerUrl = childDataCenter.getClusters().get(clusterName).getRandomRouterURL();
       try (AvroGenericStoreClient<String, Object> client = ClientFactory.getAndStartGenericAvroClient(
           ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerUrl))) {
-        for (int i = 1; i <= 150; ++i) {
-          String expected = i <= 50 ? "test_name_" + i : "test_name_" + (i * 2);
+        for (int i = 1; i <= maxKey; ++i) {
+          String expected = i <= 50 ? "test_name_" + i : "test_name_" + (i * valueMultiplier);
           String actual = client.get(Integer.toString(i)).get().toString();
           Assert.assertEquals(actual, expected);
         }
@@ -502,7 +504,7 @@ public class TestPushJobWithNativeReplicationFromCorpNative {
         job.run();
         Assert.assertEquals(job.getKafkaUrl(), corpDefaultParentKafka.getAddress());
       }
-      verifyIncrementalPushData(clusterName, storeName);
+      verifyIncrementalPushData(childDatacenters, clusterName, storeName, 150, 2);
 
 
       /**
@@ -533,12 +535,13 @@ public class TestPushJobWithNativeReplicationFromCorpNative {
             childDataCenter.getRandomController().getVeniceAdmin().getStore(clusterName, storeName).getVersion(2);
         Assert.assertTrue(version.get().isIncrementalPushEnabled());
       }
-      verifyIncrementalPushData(clusterName, storeName);
+      verifyIncrementalPushData(childDatacenters, clusterName, storeName, 150, 2);
 
 
       /**
        * Phase2 Rollout
        */
+      /*
       //Setup
       UpdateStoreQueryParams changeSourceFabric = new UpdateStoreQueryParams().setNativeReplicationSourceFabric("dc-2");
       enableNativeRepl.setRegionsFilter("dc-1");
@@ -566,12 +569,15 @@ public class TestPushJobWithNativeReplicationFromCorpNative {
             childDataCenter.getRandomController().getVeniceAdmin().getStore(clusterName, storeName).getVersion(3);
         Assert.assertTrue(version.get().isIncrementalPushEnabled());
       }
-      verifyIncrementalPushData(clusterName, storeName);
+      verifyIncrementalPushData(childDatacenters, clusterName, storeName, 150, 2);
 
+
+       */
 
       /**
        * Phase3 Rollout
        */
+      /*
       //Setup
       enableNativeRepl.setRegionsFilter("dc-2");
       TestPushUtils.updateStore(clusterName, storeName, parentControllerClient, enableNativeRepl);
@@ -598,7 +604,9 @@ public class TestPushJobWithNativeReplicationFromCorpNative {
             childDataCenter.getRandomController().getVeniceAdmin().getStore(clusterName, storeName).getVersion(4);
         Assert.assertTrue(version.get().isIncrementalPushEnabled());
       }
-      verifyIncrementalPushData(clusterName, storeName);
+      verifyIncrementalPushData(childDatacenters, clusterName, storeName, 150, 2);
+
+       */
     } finally {
       ControllerResponse deleteStoreResponse = parentControllerClient.disableAndDeleteStore(storeName);
       Assert.assertFalse(deleteStoreResponse.isError(),

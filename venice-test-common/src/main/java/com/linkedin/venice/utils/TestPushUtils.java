@@ -594,6 +594,24 @@ public class TestPushUtils {
         });
   }
 
+  /**
+   * This file add some new value in {@link #writeSimpleAvroFileWithUserSchema(File)}
+   * It's designed to test incremental push
+   */
+  public static Schema writeSimpleAvroFileWithUserSchema3(File parentDir) throws IOException {
+    return writeAvroFile(parentDir, "simple_user.avro", USER_SCHEMA_STRING,
+        (recordSchema, writer) -> {
+          String name = "test_name_";
+          for (int i = 51; i <= 200; ++i) {
+            GenericRecord user = new GenericData.Record(recordSchema);
+            user.put("id", Integer.toString(i));
+            user.put("name", name + (i * 3));
+            user.put("age", i * 3);
+            writer.append(user);
+          }
+        });
+  }
+
   public static Schema writeSimpleAvroFileWithDuplicateKey(File parentDir) throws IOException {
     return writeAvroFile(parentDir, "duplicate_key_user.avro", USER_SCHEMA_STRING,
         (recordSchema, avroFileWriter) -> {
