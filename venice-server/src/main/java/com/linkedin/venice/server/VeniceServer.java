@@ -6,6 +6,7 @@ import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.helix.HelixParticipationService;
 import com.linkedin.davinci.ingestion.main.MainIngestionStorageMetadataService;
+import com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.repository.VeniceMetadataRepositoryBuilder;
 import com.linkedin.davinci.stats.AggVersionedStorageEngineStats;
@@ -162,9 +163,9 @@ public class VeniceServer {
     Optional<SchemaReader> storeVersionStateSchemaReader = clientConfigForConsumer.map(cc -> ClientFactory.getSchemaReader(
         cc.setStoreName(AvroProtocolDefinition.STORE_VERSION_STATE.getSystemStoreName())));
     final InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer = AvroProtocolDefinition.PARTITION_STATE.getSerializer();
-    partitionStateSchemaReader.ifPresent(r -> partitionStateSerializer.setSchemaReader(r));
+    partitionStateSchemaReader.ifPresent(partitionStateSerializer::setSchemaReader);
     final InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer = AvroProtocolDefinition.STORE_VERSION_STATE.getSerializer();
-    storeVersionStateSchemaReader.ifPresent(r -> storeVersionStateSerializer.setSchemaReader(r));
+    storeVersionStateSchemaReader.ifPresent(storeVersionStateSerializer::setSchemaReader);
 
     //verify the current version of the PARTITION_STATE schema is registered in ZK before moving ahead
     if (serverConfig.isSchemaPresenceCheckEnabled() && partitionStateSchemaReader.isPresent()) {
@@ -195,6 +196,8 @@ public class VeniceServer {
     RocksDBMemoryStats rocksDBMemoryStats = veniceConfigLoader.getVeniceServerConfig().isDatabaseMemoryStatsEnabled() ?
         new RocksDBMemoryStats(metricsRepository, "RocksDBMemoryStats", plainTableEnabled) : null;
 
+    // Add extra safeguards here to ensure we have released RocksDB database locks before we initialize storage services.
+    IsolatedIngestionUtils.releaseTargetPortBinding(veniceConfigLoader.getVeniceServerConfig().getIngestionServicePort());
     // Create and add StorageService. storeRepository will be populated by StorageService
     if (veniceConfigLoader.getVeniceServerConfig().getIngestionMode().equals(IngestionMode.ISOLATED)) {
       // Venice Server does not require bootstrap step, so there is no need to open and close all local storage engines.
@@ -349,7 +352,7 @@ public class VeniceServer {
    *         are not finished starting.
    */
   public boolean isStarted() {
-    return isStarted.get() && services.stream().allMatch(abstractVeniceService -> abstractVeniceService.isRunning());
+    return isStarted.get() && services.stream().allMatch(AbstractVeniceService::isRunning);
   }
 
   /**
@@ -515,7 +518,7 @@ public class VeniceServer {
   }
 
   private static void addShutdownHook(VeniceServer server) {
-    Runtime.getRuntime().addShutdownHook(new Thread(() -> server.shutdown()));
+    Runtime.getRuntime().addShutdownHook(new Thread(server::shutdown));
 
     try {
       Thread.currentThread().join();
