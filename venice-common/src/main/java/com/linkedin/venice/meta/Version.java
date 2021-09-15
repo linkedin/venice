@@ -27,7 +27,7 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
   String STREAM_REPROCESSING_TOPIC_SUFFIX = "_sr";
 
   /**
-   * Special number indicating no timestamp metadata version is set.
+   * Special number indicating no replication metadata version is set.
    */
   int REPLICATION_METADATA_VERSION_ID_UNSET = -1;
 
@@ -153,11 +153,35 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
 
   void setActiveActiveReplicationEnabled(boolean activeActiveReplicationEnabled);
 
-  int getTimestampMetadataVersionId();
+  /**
+   * Get the replication metadata version id.
+   * @deprecated
+   * Use {@link Version#getReplicationMetadataVersionId} instead
+   *
+   * @return the replication metadata version id
+   */
+  @Deprecated
+  default int getTimestampMetadataVersionId() {
+    return getReplicationMetadataVersionId();
+  }
 
-  void setTimestampMetadataVersionId(int timestampMetadataVersionId);
+  /**
+   * Set the replication metadata version id.
+   * @deprecated
+   * Use {@link Version#setReplicationMetadataVersionId(int)} instead
+   */
+  @Deprecated
+  default void setTimestampMetadataVersionId(int replicationMetadataVersionId) {
+    setReplicationMetadataVersionId(replicationMetadataVersionId);
+  }
 
   Version cloneVersion();
+
+  @JsonIgnore
+  int getReplicationMetadataVersionId();
+
+  @JsonIgnore
+  void setReplicationMetadataVersionId(int replicationMetadataVersionId);
 
   /**
    * Kafka topic name is composed by store name and version.

@@ -183,11 +183,11 @@ public class RocksDBStorageEngineTest extends AbstractStorageEngineTest {
 
   @Test
   public void testRocksDBStoragePartitionType() {
-    // Verify that data partition is created as regular RocksDB partition, not a TSMD-RocksDB Partition.
-    Assert.assertFalse(testStoreEngine.getPartitionOrThrow(PARTITION_ID) instanceof TimestampMetadataRocksDBStoragePartition);
+    // Verify that data partition is created as regular RocksDB partition, not a RMD-RocksDB Partition.
+    Assert.assertFalse(testStoreEngine.getPartitionOrThrow(PARTITION_ID) instanceof ReplicationMetadataRocksDBStoragePartition);
     Assert.assertTrue(testStoreEngine.getPartitionOrThrow(PARTITION_ID) instanceof RocksDBStoragePartition);
-    // Verify that metadata partition is created as regular RocksDB partition, not a TSMD-RocksDB Partition.
-    Assert.assertFalse(testStoreEngine.getMetadataPartition() instanceof TimestampMetadataRocksDBStoragePartition);
+    // Verify that metadata partition is created as regular RocksDB partition, not a RMD-RocksDB Partition.
+    Assert.assertFalse(testStoreEngine.getMetadataPartition() instanceof ReplicationMetadataRocksDBStoragePartition);
     Assert.assertTrue(testStoreEngine.getMetadataPartition() instanceof RocksDBStoragePartition);
   }
 }

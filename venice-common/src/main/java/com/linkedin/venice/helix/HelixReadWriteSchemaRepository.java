@@ -48,8 +48,8 @@ import org.apache.log4j.Logger;
  *    {@link DerivedSchemaEntry} for more
  *    details.
  *
- * 3. Timestamp metadata schema
- *  *    ZK Path: ${cluster_name}/Stores/${store_name}/timestamp-metadata-schema/${value_schema_id}-${timestamp_metadata_version_id}
+ * 3. Replication metadata schema
+ *  *    ZK Path: ${cluster_name}/Stores/${store_name}/timestamp-metadata-schema/${value_schema_id}-${replication_metadata_version_id}
  *  *
  * Check out {@link SchemaEntrySerializer} and {@link DerivedSchemaEntrySerializer}
  * to see how schemas are ser-ded.
@@ -132,7 +132,7 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
   /**
    * This function is used to retrieve value schema id for the given store and schema. Attempts to get the schema that
    * matches exactly. If multiple matching schemas are found then the id of the latest added schema is returned.
-   * If the store has auto-register schema from pushjob enabled then if the schema's differ by default value or doc field,
+   * If the store has auto-register schema from push job enabled then if the schema's differ by default value or doc field,
    * they are treated as different schema.
    *
    * @throws {@link com.linkedin.venice.exceptions.VeniceNoStoreException} if the store doesn't exist;
@@ -150,9 +150,9 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
     SchemaEntry valueSchemaEntry = new SchemaEntry(SchemaData.INVALID_VALUE_SCHEMA_ID, valueSchemaStr);
 
     /**
-     * If the store is set to auto-register schema from pushjob, then do exact match (ie compare doc/default value).
+     * If the store is set to auto-register schema from push job, then do exact match (ie compare doc/default value).
      *    if no such schema exists, return INVALID_VALUE_SCHEMA_ID which would trigger auto register the new schema
-     *    in the KakfaPushJob#validateValueSchema.
+     *    in the KafkaPushJob#validateValueSchema.
      * else try to do canonical match ignoring doc/default value and return the largest schema id from the list of such matches.
      */
     if (store.isSchemaAutoRegisterFromPushJobEnabled()) {
@@ -465,7 +465,7 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
   public Collection<ReplicationMetadataSchemaEntry> getReplicationMetadataSchemas(String storeName) {
     preCheckStoreCondition(storeName);
 
-    return accessor.getAllTimestampMetadataSchemas(storeName);
+    return accessor.getAllReplicationMetadataSchemas(storeName);
   }
 
   @Override
@@ -474,15 +474,15 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
 
     String idPairStr = valueSchemaId + HelixSchemaAccessor.MULTIPART_SCHEMA_VERSION_DELIMITER + replicationMetadataVersionId;
 
-    return accessor.getTimestampMetadataSchema(storeName, idPairStr);
+    return accessor.getReplicationMetadataSchema(storeName, idPairStr);
   }
 
   @Override
   public ReplicationMetadataVersionId getReplicationMetadataVersionId(String storeName, String replicationMetadataSchemaStr) {
-    Schema timestampMetadataSchema = Schema.parse(replicationMetadataSchemaStr);
-    for (ReplicationMetadataSchemaEntry replicationMetadataSchemaEntry : getTimestampMetadataSchemaMap(storeName).values().stream()
+    Schema replicationMetadataSchema = Schema.parse(replicationMetadataSchemaStr);
+    for (ReplicationMetadataSchemaEntry replicationMetadataSchemaEntry : getReplicationMetadataSchemaMap(storeName).values().stream()
         .flatMap(List::stream).collect(Collectors.toList())) {
-      if (replicationMetadataSchemaEntry.getSchema().equals(timestampMetadataSchema)) {
+      if (replicationMetadataSchemaEntry.getSchema().equals(replicationMetadataSchema)) {
         return new ReplicationMetadataVersionId(replicationMetadataSchemaEntry.getValueSchemaId(), replicationMetadataSchemaEntry
             .getId());
       }
@@ -491,24 +491,24 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
     return new ReplicationMetadataVersionId(SchemaData.INVALID_VALUE_SCHEMA_ID, SchemaData.INVALID_VALUE_SCHEMA_ID);
   }
 
-  private Map<Integer, List<ReplicationMetadataSchemaEntry>> getTimestampMetadataSchemaMap(String storeName) {
+  private Map<Integer, List<ReplicationMetadataSchemaEntry>> getReplicationMetadataSchemaMap(String storeName) {
     preCheckStoreCondition(storeName);
 
-    Map<Integer, List<ReplicationMetadataSchemaEntry>> timestampMetadataSchemaEntryMap = new HashMap<>();
-    accessor.getAllTimestampMetadataSchemas(storeName).forEach(timestampMetadataSchemaEntry ->
-        timestampMetadataSchemaEntryMap.computeIfAbsent(timestampMetadataSchemaEntry.getValueSchemaId(), id -> new ArrayList<>())
-            .add(timestampMetadataSchemaEntry));
+    Map<Integer, List<ReplicationMetadataSchemaEntry>> replicationMetadataSchemaEntryMap = new HashMap<>();
+    accessor.getAllReplicationMetadataSchemas(storeName).forEach(replicationMetadataSchemaEntry ->
+        replicationMetadataSchemaEntryMap.computeIfAbsent(replicationMetadataSchemaEntry.getValueSchemaId(), id -> new ArrayList<>())
+            .add(replicationMetadataSchemaEntry));
 
-    return timestampMetadataSchemaEntryMap;
+    return replicationMetadataSchemaEntryMap;
   }
 
   @Override
-  public ReplicationMetadataSchemaEntry addMetadataSchema(String storeName, int valueSchemaId, String timestampMetadataSchemaStr,  int timestampMetadataVersionId) {
+  public ReplicationMetadataSchemaEntry addMetadataSchema(String storeName, int valueSchemaId, String replicationMetadataSchemaStr,  int replicationMetadataVersionId) {
     ReplicationMetadataSchemaEntry replicationMetadataSchemaEntry =
-        new ReplicationMetadataSchemaEntry(valueSchemaId, timestampMetadataVersionId, timestampMetadataSchemaStr);
+        new ReplicationMetadataSchemaEntry(valueSchemaId, replicationMetadataVersionId, replicationMetadataSchemaStr);
 
-    if (timestampMetadataVersionId == SchemaData.DUPLICATE_VALUE_SCHEMA_CODE) {
-      logger.info("Timestamp metadata schema already exists. Skip adding it to repository. Schema: " + timestampMetadataSchemaStr);
+    if (replicationMetadataVersionId == SchemaData.DUPLICATE_VALUE_SCHEMA_CODE) {
+      logger.info("Replication metadata schema already exists. Skip adding it to repository. Schema: " + replicationMetadataSchemaStr);
     } else {
       accessor.addMetadataSchema(storeName, replicationMetadataSchemaEntry);
     }

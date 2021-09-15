@@ -2,19 +2,19 @@ package com.linkedin.venice.schema;
 
 public class ReplicationMetadataVersionId {
   int valueSchemaVersion;
-  int timestampMetadataProtocolVersion;
+  int replicationMetadataProtocolVersion;
 
-  public ReplicationMetadataVersionId(int valueSchemaVersion, int timestampMetadataProtocolVersion) {
+  public ReplicationMetadataVersionId(int valueSchemaVersion, int replicationMetadataProtocolVersion) {
     this.valueSchemaVersion = valueSchemaVersion;
-    this.timestampMetadataProtocolVersion = timestampMetadataProtocolVersion;
+    this.replicationMetadataProtocolVersion = replicationMetadataProtocolVersion;
   }
 
   public int getValueSchemaVersion() {
     return valueSchemaVersion;
   }
 
-  public int getTimestampMetadataProtocolVersion() {
-    return timestampMetadataProtocolVersion;
+  public int getReplicationMetadataProtocolVersion() {
+    return replicationMetadataProtocolVersion;
   }
 
   @Override
@@ -22,7 +22,7 @@ public class ReplicationMetadataVersionId {
     final int PRIME = 31;
     int result = 1;
     result = PRIME * result + valueSchemaVersion;
-    result = PRIME * result + timestampMetadataProtocolVersion;
+    result = PRIME * result + replicationMetadataProtocolVersion;
     return result;
   }
 
@@ -34,7 +34,7 @@ public class ReplicationMetadataVersionId {
     ReplicationMetadataVersionId that = (ReplicationMetadataVersionId)o;
 
     if (valueSchemaVersion != that.valueSchemaVersion) return false;
-    if (timestampMetadataProtocolVersion != that.timestampMetadataProtocolVersion) return false;
+    if (replicationMetadataProtocolVersion != that.replicationMetadataProtocolVersion) return false;
 
     return true;
   }

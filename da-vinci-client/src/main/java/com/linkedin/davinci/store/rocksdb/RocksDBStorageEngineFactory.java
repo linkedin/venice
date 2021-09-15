@@ -176,12 +176,12 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
   }
 
   @Override
-  public synchronized AbstractStorageEngine getStorageEngine(VeniceStoreVersionConfig storeConfig, boolean timestampMetadataEnabled) throws StorageInitializationException {
+  public synchronized AbstractStorageEngine getStorageEngine(VeniceStoreVersionConfig storeConfig, boolean replicationMetadataEnabled) throws StorageInitializationException {
     verifyPersistenceType(storeConfig);
     final String storeName = storeConfig.getStoreVersionName();
     try {
       storageEngineMap.putIfAbsent(storeName, new RocksDBStorageEngine(storeConfig, this, rocksDBPath, rocksDBMemoryStats,
-          rocksDBThrottler, rocksDBServerConfig, storeVersionStateSerializer, partitionStateSerializer, timestampMetadataEnabled));
+          rocksDBThrottler, rocksDBServerConfig, storeVersionStateSerializer, partitionStateSerializer, replicationMetadataEnabled));
       return storageEngineMap.get(storeName);
     } catch (Exception e) {
       throw new StorageInitializationException(e);

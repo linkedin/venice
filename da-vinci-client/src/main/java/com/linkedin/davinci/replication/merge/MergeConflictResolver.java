@@ -23,11 +23,11 @@ import static com.linkedin.venice.VeniceConstants.*;
 /**
  * TODO schema validation of old and new schema for WC enabled stores.
  * The workflow is
- * Query old TSMD. If it's null (and running in first batch push merge policy), then write the new value directly.
- * If the old TSMD exists, then deserialize it and run Merge<BB>.
- * If the incoming TS is higher than the entirety of the old TSMD, then write the new value directly.
- * If the incoming TS is lower than the entirety of the old TSMD, then drop the new value.
- * If the incoming TS is partially higher, partially lower, than the old TSMD, then query the old value, deserialize it, and pass it to Merge<GR>, Merge<Map> or Merge<List> .
+ * Query old replication metadata. If it's null (and running in first batch push merge policy), then write the new value directly.
+ * If the old replication metadata exists, then deserialize it and run Merge<BB>.
+ * If the incoming TS is higher than the entirety of the old replication metadata, then write the new value directly.
+ * If the incoming TS is lower than the entirety of the old replication metadata, then drop the new value.
+ * If the incoming TS is partially higher, partially lower, than the old replication metadata, then query the old value, deserialize it, and pass it to Merge<GR>, Merge<Map> or Merge<List> .
  */
 public class MergeConflictResolver {
   private final String storeName;
@@ -84,9 +84,9 @@ public class MergeConflictResolver {
 
     GenericRecord replicationMetadataRecord = getReplicationMetadataDeserializer(schemaIdOfOldValue).deserialize(oldReplicationMetadata);
     Object tsObject = replicationMetadataRecord.get(TIMESTAMP_FIELD);
-    Merge.TSMDType tsmdType = Merge.getTSMDType(tsObject);
+    Merge.ReplicationMetadataType replicationMetadataType = Merge.getReplicationMetadataType(tsObject);
 
-    if (tsmdType == Merge.TSMDType.ROOT_LEVEL_TS) {
+    if (replicationMetadataType == Merge.ReplicationMetadataType.ROOT_LEVEL_TIMESTAMP) {
       long oldTimestamp = (long) tsObject;
       // if new write timestamp is larger, new value wins.
       if (oldTimestamp < writeOperationTimestamp) {
@@ -112,57 +112,7 @@ public class MergeConflictResolver {
       throw new VeniceUnsupportedOperationException("Field level replication metadata not supported");
     }
 
-    /*
-    // check each field's timestamp
-    GenericRecord timestampRecordForOldValue = (GenericRecord) tsObject;
-    List<Schema.Field> fields = timestampRecordForOldValue.getSchema().getFields();
-    boolean newTsLarger = false, newTsSmaller = false;
-    for (int i = 0, fieldsSize = fields.size(); i < fieldsSize; i++) {
-      Schema.Field field = fields.get(i);
-      long fieldTimestamp = (long) timestampRecordForOldValue.get(field.pos());
-      if (fieldTimestamp > writeOperationTimestamp) {
-        newTsLarger = true;
-      } else if (fieldTimestamp < writeOperationTimestamp) {
-        newTsSmaller = true;
-      }
-    }
-    // we need to deserialize both new and old value
-    if (newTsLarger && newTsSmaller) {
-      GenericRecord oldRecord = getValueRecordDeserializer(oldSchemaID, newSchemaID).deserialize(oldValueAndTimestampMetadata.getValue());
-      GenericRecord newRecord = getValueRecordDeserializer(oldSchemaID, newSchemaID).deserialize(newValue.get());
-      ValueAndTimestampMetadata<GenericRecord> valueAndTimestampMetadata = new ValueAndTimestampMetadata<>(oldRecord, oldValueAndTimestampMetadata.getTimestampMetadata());
-
-      valueAndTimestampMetadata = mergeGenericRecord.put(valueAndTimestampMetadata, newRecord, writeOperationTimestamp);
-
-      // serialize back to ByteBuffer to put in storage engine
-      oldValueAndTimestampMetadata.setValue(ByteBuffer.wrap(getRecordSerializer(newSchemaID).serialize(valueAndTimestampMetadata.getValue())));
-    } else if (newTsLarger) { // newValue wins TODO schema validation
-      oldValueAndTimestampMetadata.setValue(newValue.get());
-      oldValueAndTimestampMetadata.setUpdateIgnored(false);
-    }  else if (newTsSmaller){ // old ts larger keep the old value.
-     oldValueAndTimestampMetadata.setUpdateIgnored(true);
-    } else {
-      oldValueAndTimestampMetadata.setValue((ByteBuffer) Merge.compareAndReturn(oldValueAndTimestampMetadata.getValue(), newValue.get()));
-    }
-
-    return oldValueAndTimestampMetadata;
-  }
-    private RecordDeserializer<GenericRecord> getValueRecordDeserializer(int oldSchemaID, int newSchemaID) {
-    int schemaID = oldSchemaID*10000 + newSchemaID;
-    return recordDeSerializerMap.computeIfAbsent(schemaID, schemaId -> {
-      Schema oldSchema = schemaRepository.getValueSchema(storeName, oldSchemaID).getSchema();
-      Schema newSchema  = schemaRepository.getValueSchema(storeName, newSchemaID).getSchema();
-
-      return FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(newSchema, oldSchema);
-    });
-  }
-
-  private RecordSerializer<GenericRecord> getValueRecordSerializer(int schemaID) {
-    return recordSerializerMap.computeIfAbsent(schemaID, schemaId -> {
-      Schema schema  = schemaRepository.getValueSchema(storeName, schemaId).getSchema();
-      return FastSerializerDeserializerFactory.getFastAvroGenericSerializer(schema);
-    });
-  */
+    // TODO: Handle conflict resolution for write-compute
   }
 
   public String printReplicationMetadata(ByteBuffer replicationMetadata, int schemaIdOfValue) {
@@ -194,9 +144,9 @@ public class MergeConflictResolver {
     }
     GenericRecord replicationMetadataRecord = getReplicationMetadataDeserializer(schemaIdOfValue).deserialize(replicationMetadata);
     Object timestampObject = replicationMetadataRecord.get(TIMESTAMP_FIELD);
-    Merge.TSMDType tsmdType = Merge.getTSMDType(timestampObject);
+    Merge.ReplicationMetadataType replicationMetadataType = Merge.getReplicationMetadataType(timestampObject);
 
-    if (tsmdType == Merge.TSMDType.ROOT_LEVEL_TS) {
+    if (replicationMetadataType == Merge.ReplicationMetadataType.ROOT_LEVEL_TIMESTAMP) {
       return Arrays.asList((long) timestampObject);
     } else {
       // not supported yet so ignore it
@@ -249,9 +199,9 @@ public class MergeConflictResolver {
 
     GenericRecord replicationMetadataRecord = getReplicationMetadataDeserializer(schemaIdOfOldValue).deserialize(oldReplicationMetadata);
     Object tsObject = replicationMetadataRecord.get(TIMESTAMP_FIELD);
-    Merge.TSMDType tsmdType = Merge.getTSMDType(tsObject);
+    Merge.ReplicationMetadataType replicationMetadataType = Merge.getReplicationMetadataType(tsObject);
 
-    if (tsmdType == Merge.TSMDType.ROOT_LEVEL_TS) {
+    if (replicationMetadataType == Merge.ReplicationMetadataType.ROOT_LEVEL_TIMESTAMP) {
       long oldTimestamp = (long) tsObject;
       // delete wins on tie
       if (oldTimestamp <= writeOperationTimestamp) {
@@ -269,37 +219,7 @@ public class MergeConflictResolver {
       throw new VeniceUnsupportedOperationException("Field level MD not supported");
     }
 
-    /*
-    GenericRecord timestampRecordForOldValue = (GenericRecord) tsObject;
-    List<Schema.Field> fields = timestampRecordForOldValue.getSchema().getFields();
-    boolean newTsLarger = false, newTsSmaller = false;
-    for (int i = 0, fieldsSize = fields.size(); i < fieldsSize; i++) {
-      Schema.Field field = fields.get(i);
-      long fieldTimestamp = (long) timestampRecordForOldValue.get(field.pos());
-      if (fieldTimestamp > writeOperationTimestamp) {
-        newTsLarger = true;
-      } else if (fieldTimestamp < writeOperationTimestamp) {
-        newTsSmaller = true;
-      }
-    }
-
-    // deserialize old record to update field-level timestamps
-    if (newTsLarger && newTsSmaller) {
-      GenericRecord oldRecord = getValueRecordDeserializer(oldSchemaID, newSchemaID).deserialize(oldValueAndTimestampMetadata.getValue());
-      ValueAndTimestampMetadata<GenericRecord> valueAndTimestampMetadata = new ValueAndTimestampMetadata<>(oldRecord, oldValueAndTimestampMetadata.getTimestampMetadata());
-      valueAndTimestampMetadata = mergeGenericRecord.delete(valueAndTimestampMetadata, writeOperationTimestamp);
-
-      // serialize back to ByteBuffer to put in storage engine
-      ValueAndTimestampMetadata<GenericRecord> finalValueAndTimestampMetadata = valueAndTimestampMetadata;
-      oldValueAndTimestampMetadata.setValue(ByteBuffer.wrap(getRecordSerializer(newSchemaID).serialize(finalValueAndTimestampMetadata.getValue())));
-    } else if (newTsLarger) { // delete wins
-      oldValueAndTimestampMetadata.setValue(null);
-      oldValueAndTimestampMetadata.setUpdateIgnored(false);
-    } else { // old ts larger  keep the old value.
-      oldValueAndTimestampMetadata.setUpdateIgnored(true);
-    }
-    return oldValueAndTimestampMetadata;
-     */
+    // TODO: Handle conflict resolution for write-compute
   }
 
   public long getWriteTimestampFromKME(KafkaMessageEnvelope kme) {

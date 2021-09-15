@@ -157,7 +157,7 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
   /**
    * Column Family is the concept in RocksDB to create isolation between different value for the same key. All KVs are
    * stored in `DEFAULT` column family, if no column family is specified.
-   * If we stores timestamp metadata in the RocksDB, we stored it in a separated column family. We will insert all the
+   * If we stores replication metadata in the RocksDB, we stored it in a separated column family. We will insert all the
    * column family descriptors into columnFamilyDescriptors and pass it to RocksDB when opening the store, and it will
    * fill the columnFamilyHandles with handles which will be used when we want to put/get/delete
    * from different RocksDB column families.
@@ -202,7 +202,7 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
     try {
       /**
        * There are some possible optimization opportunities for column families. For example, optimizeForSmallDb() option
-       * may be applied if we are sure timestampMetadata column family is smaller in size.
+       * may be applied if we are sure replicationMetadata column family is smaller in size.
        */
       ColumnFamilyOptions columnFamilyOptions = new ColumnFamilyOptions(options);
       columnFamilyNameList.forEach(name -> columnFamilyDescriptors.add(new ColumnFamilyDescriptor(name, columnFamilyOptions)));

@@ -331,18 +331,18 @@ public abstract class NativeMetadataRepository
 
   @Override
   public ReplicationMetadataVersionId getReplicationMetadataVersionId(String storeName, String replicationMetadataSchemaStr) {
-    throw new VeniceException("Function: getTimestampMetadataVersionId is not supported!");
+    throw new VeniceException("Function: getReplicationMetadataVersionId is not supported!");
   }
 
   @Override
   public ReplicationMetadataSchemaEntry getReplicationMetadataSchema(String storeName, int valueSchemaId,
       int replicationMetadataVersionId) {
-    throw new VeniceException("Function: getTimestampMetadataSchemas is not supported!");
+    throw new VeniceException("Function: getReplicationMetadataSchema is not supported!");
   }
 
   @Override
   public Collection<ReplicationMetadataSchemaEntry> getReplicationMetadataSchemas(String storeName) {
-    throw new VeniceException("Function: getTimestampMetadataSchemas is not supported!");
+    throw new VeniceException("Function: getReplicationMetadataSchemas is not supported!");
   }
 
   /**

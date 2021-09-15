@@ -434,7 +434,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    *                         >=0: Leader replica consumes a delete message from real-time topic, VeniceWriter in leader
    *                              is sending this message to version topic with extra info: offset in the real-time topic.
    * @param logicalTs - An timestamp field to indicate when this record was produced from apps point of view.
-   * @param deleteMetadata - an optional DeleteMetadata containing timestamp metadata related fields.
+   * @param deleteMetadata - an optional DeleteMetadata containing replication metadata related fields.
    * @return a java.util.concurrent.Future Future for the RecordMetadata that will be assigned to this
    * record. Invoking java.util.concurrent.Future's get() on this future will block until the associated request
    * completes and then return the metadata for the record or throw any exception that occurred while sending the record.
@@ -465,8 +465,8 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     Delete delete = new Delete();
     if (deleteMetadata.isPresent()) {
       delete.schemaId = deleteMetadata.get().getValueSchemaId();
-      delete.replicationMetadataVersionId = deleteMetadata.get().getTimestampMetadataVersionId();
-      delete.replicationMetadataPayload = deleteMetadata.get().getTimestampMetadataPayload();
+      delete.replicationMetadataVersionId = deleteMetadata.get().getReplicationMetadataVersionId();
+      delete.replicationMetadataPayload = deleteMetadata.get().getReplicationMetadataPayload();
     } else {
       delete.schemaId = VENICE_DEFAULT_VALUE_SCHEMA_ID;
       delete.replicationMetadataVersionId = VENICE_DEFAULT_TIMESTAMP_METADATA_VERSION_ID;
@@ -558,7 +558,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    *         sending the message in H2V plugin to the version topic;
    *    >=0: Leader replica consumes a put message from real-time topic, VeniceWriter in leader
    *         is sending this message to version topic with extra info: offset in the real-time topic.
-   * @param putMetadata - A PutMetadata containing timestamp metadata related fields.
+   * @param putMetadata - A PutMetadata containing replication metadata related fields.
    * @return a java.util.concurrent.Future Future for the RecordMetadata that will be assigned to this
    * record. Invoking java.util.concurrent.Future's get() on this future will block until the associated request
    * completes and then return the metadata for the record or throw any exception that occurred while sending the record.
@@ -577,7 +577,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    * @param valueSchemaId - value schema id for the given value
    * @param callback - Callback function invoked by Kafka producer after sending the message
    * @param logicalTs - An timestamp field to indicate when this record was produced from apps view.
-   * @param putMetadata - an optional PutMetadata containing timestamp metadata related fields.
+   * @param putMetadata - an optional PutMetadata containing replication metadata related fields.
    * @return a java.util.concurrent.Future Future for the RecordMetadata that will be assigned to this
    * record. Invoking java.util.concurrent.Future's get() on this future will block until the associated request
    * completes and then return the metadata for the record or throw any exception that occurred while sending the record.
@@ -616,8 +616,8 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     putPayload.schemaId = valueSchemaId;
 
     if (putMetadata.isPresent()) {
-      putPayload.replicationMetadataVersionId = putMetadata.get().getTimestampMetadataVersionId();
-      putPayload.replicationMetadataPayload = putMetadata.get().getTimestampMetadataPayload();
+      putPayload.replicationMetadataVersionId = putMetadata.get().getReplicationMetadataVersionId();
+      putPayload.replicationMetadataPayload = putMetadata.get().getReplicationMetadataPayload();
     } else {
       putPayload.replicationMetadataVersionId = VENICE_DEFAULT_TIMESTAMP_METADATA_VERSION_ID;
       putPayload.replicationMetadataPayload = EMPTY_BYTE_BUFFER;
@@ -1056,8 +1056,8 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     }
 
     if (putMetadata.isPresent()) {
-      putPayload.replicationMetadataVersionId = putMetadata.get().getTimestampMetadataVersionId();
-      putPayload.replicationMetadataPayload = putMetadata.get().getTimestampMetadataPayload();
+      putPayload.replicationMetadataVersionId = putMetadata.get().getReplicationMetadataVersionId();
+      putPayload.replicationMetadataPayload = putMetadata.get().getReplicationMetadataPayload();
     } else {
       putPayload.replicationMetadataVersionId = VENICE_DEFAULT_TIMESTAMP_METADATA_VERSION_ID;
       putPayload.replicationMetadataPayload = EMPTY_BYTE_BUFFER;

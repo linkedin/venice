@@ -5,7 +5,7 @@ import org.apache.avro.generic.GenericRecord;
 
 /**
  * Wrapper class to hold a pair of {@link GenericRecord}, including a value and its corresponding
- * timestamp metadata.
+ * replication metadata.
  */
 public class ValueAndReplicationMetadata<T> {
   private T value;

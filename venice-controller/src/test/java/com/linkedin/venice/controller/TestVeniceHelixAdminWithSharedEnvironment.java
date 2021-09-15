@@ -1626,11 +1626,11 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
   public void testAddMetadataSchema() {
     String storeName = TestUtils.getUniqueString("aa_store");
     String recordSchemaStr = TestPushUtils.USER_SCHEMA_STRING_WITH_DEFAULT;
-    int timestampMetadataVersionId = multiClusterConfig.getCommonConfig().getReplicationMetadataVersionId();
-    Schema metadataSchema = ReplicationMetadataSchemaAdapter.parse(recordSchemaStr, timestampMetadataVersionId);
+    int replicationMetadataVersionId = multiClusterConfig.getCommonConfig().getReplicationMetadataVersionId();
+    Schema metadataSchema = ReplicationMetadataSchemaAdapter.parse(recordSchemaStr, replicationMetadataVersionId);
 
     veniceAdmin.createStore(clusterName, storeName, storeOwner, KEY_SCHEMA, recordSchemaStr);
-    veniceAdmin.addReplicationMetadataSchema(clusterName, storeName, 1,  timestampMetadataVersionId, metadataSchema.toString());
+    veniceAdmin.addReplicationMetadataSchema(clusterName, storeName, 1,  replicationMetadataVersionId, metadataSchema.toString());
     Collection<ReplicationMetadataSchemaEntry> metadataSchemas = veniceAdmin.getReplicationMetadataSchemas(clusterName, storeName);
     Assert.assertEquals(metadataSchemas.size(), 1);
     Assert.assertEquals(metadataSchemas.iterator().next().getSchema(), metadataSchema);

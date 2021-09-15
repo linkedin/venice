@@ -12,21 +12,22 @@ import org.rocksdb.WriteBatch;
 
 
 /**
- * This {@link TimestampMetadataRocksDBStoragePartition} is built to store key value pair along with the timestamp
- * metadata. It is designed for active/active replication mode, which uses putWithTimestampMetadata and getTimestampMetadata
- * to insert and retrieve timestamp metadata associated with a key. The implementation relies on different column family
- * in RocksDB to isolate the value and timestamp metadata of a key.
+ * This {@link ReplicationMetadataRocksDBStoragePartition} is built to store key value pair along with the timestamp
+ * metadata. It is designed for active/active replication mode, which uses putWithReplicationMetadata and getReplicationMetadata
+ * to insert and retrieve replication metadata associated with a key. The implementation relies on different column family
+ * in RocksDB to isolate the value and replication metadata of a key.
  */
-public class TimestampMetadataRocksDBStoragePartition extends RocksDBStoragePartition {
-  private static final byte[] TIMESTAMP_METADATA_COLUMN_FAMILY = "timestamp_metadata".getBytes();
+public class ReplicationMetadataRocksDBStoragePartition extends RocksDBStoragePartition {
+  // The value still uses "timestamp" for backward compatibility
+  private static final byte[] REPLICATION_METADATA_COLUMN_FAMILY = "timestamp_metadata".getBytes();
   private static final int DEFAULT_COLUMN_FAMILY_INDEX = 0;
   private static final int REPLICATION_METADATA_COLUMN_FAMILY_INDEX = 1;
 
-  public TimestampMetadataRocksDBStoragePartition(StoragePartitionConfig storagePartitionConfig,
+  public ReplicationMetadataRocksDBStoragePartition(StoragePartitionConfig storagePartitionConfig,
       RocksDBStorageEngineFactory factory, String dbDir, RocksDBMemoryStats rocksDBMemoryStats,
       RocksDBThrottler rocksDbThrottler, RocksDBServerConfig rocksDBServerConfig) {
     super(storagePartitionConfig, factory, dbDir, rocksDBMemoryStats, rocksDbThrottler, rocksDBServerConfig,
-        Arrays.asList(RocksDB.DEFAULT_COLUMN_FAMILY, TIMESTAMP_METADATA_COLUMN_FAMILY));
+        Arrays.asList(RocksDB.DEFAULT_COLUMN_FAMILY, REPLICATION_METADATA_COLUMN_FAMILY));
   }
 
   @Override

@@ -170,7 +170,7 @@
                       "default": null
                     }, {
                       "name": "timestampPolicy",
-                      "doc": "The policy to determine timestamps of batch push records. 0 => no per record timestamp metadata is stored, hybrid writes always win over batch, 1 => no per record timestamp metadata is stored, Start-Of-Push Control message's logicalTimestamp is treated as last update timestamp for all batch record, and hybrid writes wins only when their own logicalTimestamp are higher, 2 => per record timestamp metadata is provided by the push job and stored for each key, enabling full conflict resolution granularity on a per field basis, just like when merging concurrent update operations.",
+                      "doc": "The policy to determine timestamps of batch push records. 0 => no per record replication metadata is stored, hybrid writes always win over batch, 1 => no per record timestamp metadata is stored, Start-Of-Push Control message's logicalTimestamp is treated as last update timestamp for all batch record, and hybrid writes wins only when their own logicalTimestamp are higher, 2 => per record timestamp metadata is provided by the push job and stored for each key, enabling full conflict resolution granularity on a per field basis, just like when merging concurrent update operations.",
                       "type": "int",
                       "default": 0
                     }

@@ -35,7 +35,7 @@ class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePartition
   private final RocksDBServerConfig rocksDBServerConfig;
   private final RocksDBStorageEngineFactory factory;
   private final VeniceStoreVersionConfig storeConfig;
-  private final boolean timestampMetadataEnabled;
+  private final boolean replicationMetadataEnabled;
 
 
   public RocksDBStorageEngine(VeniceStoreVersionConfig storeConfig,
@@ -46,7 +46,7 @@ class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePartition
                               RocksDBServerConfig rocksDBServerConfig,
                               InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer,
                               InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer,
-                              boolean timestampMetadataEnabled) {
+                              boolean replicationMetadataEnabled) {
     super(storeConfig.getStoreVersionName(), storeVersionStateSerializer, partitionStateSerializer);
     this.storeConfig = storeConfig;
     this.rocksDbPath = rocksDbPath;
@@ -54,7 +54,7 @@ class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePartition
     this.rocksDbThrottler = rocksDbThrottler;
     this.rocksDBServerConfig = rocksDBServerConfig;
     this.factory = factory;
-    this.timestampMetadataEnabled = timestampMetadataEnabled;
+    this.replicationMetadataEnabled = replicationMetadataEnabled;
 
     // Create store folder if it doesn't exist
     storeDbPath = RocksDBUtils.composeStoreDbDir(this.rocksDbPath, getStoreName());
@@ -112,12 +112,12 @@ class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePartition
 
   @Override
   public RocksDBStoragePartition createStoragePartition(StoragePartitionConfig storagePartitionConfig) {
-    // Metadata partition should not enable timestamp metadata column family.
-    if (storagePartitionConfig.getPartitionId() == METADATA_PARTITION_ID || !timestampMetadataEnabled) {
+    // Metadata partition should not enable replication metadata column family.
+    if (storagePartitionConfig.getPartitionId() == METADATA_PARTITION_ID || !replicationMetadataEnabled) {
       return new RocksDBStoragePartition(storagePartitionConfig, factory, rocksDbPath, memoryStats, rocksDbThrottler,
           rocksDBServerConfig);
     } else {
-      return new TimestampMetadataRocksDBStoragePartition(storagePartitionConfig, factory, rocksDbPath, memoryStats, rocksDbThrottler, rocksDBServerConfig);
+      return new ReplicationMetadataRocksDBStoragePartition(storagePartitionConfig, factory, rocksDbPath, memoryStats, rocksDbThrottler, rocksDBServerConfig);
     }
   }
 

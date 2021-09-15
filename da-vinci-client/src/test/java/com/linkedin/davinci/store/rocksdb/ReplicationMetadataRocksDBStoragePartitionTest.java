@@ -31,7 +31,7 @@ import org.testng.annotations.Test;
 import static org.mockito.Mockito.*;
 
 
-public class TimestampMetadataRocksDBStoragePartitionTest extends AbstractStorageEngineTest {
+public class ReplicationMetadataRocksDBStoragePartitionTest extends AbstractStorageEngineTest {
   private static final int PARTITION_ID = 0;
 
   private final String storeName = TestUtils.getUniqueString("rocksdb_store_test");
@@ -111,11 +111,11 @@ public class TimestampMetadataRocksDBStoragePartitionTest extends AbstractStorag
     storageService.stop();
   }
   @Test
-  public void testUseTimestampMetadataRocksDBStoragePartition() {
-    // Verify that data partition is created as TSMD-RocksDB Partition.
-    Assert.assertTrue(testStoreEngine.getPartitionOrThrow(PARTITION_ID) instanceof TimestampMetadataRocksDBStoragePartition);
-    // Verify that metadata partition is not create as TSMD-RocksDB Partition
-    Assert.assertFalse(testStoreEngine.getMetadataPartition() instanceof TimestampMetadataRocksDBStoragePartition);
+  public void testUseReplicationMetadataRocksDBStoragePartition() {
+    // Verify that data partition is created as RMD-RocksDB Partition.
+    Assert.assertTrue(testStoreEngine.getPartitionOrThrow(PARTITION_ID) instanceof ReplicationMetadataRocksDBStoragePartition);
+    // Verify that metadata partition is not create as RMD-RocksDB Partition
+    Assert.assertFalse(testStoreEngine.getMetadataPartition() instanceof ReplicationMetadataRocksDBStoragePartition);
   }
 
   @Test
@@ -130,7 +130,8 @@ public class TimestampMetadataRocksDBStoragePartitionTest extends AbstractStorag
     RocksDBServerConfig rocksDBServerConfig  = new RocksDBServerConfig(veniceServerProperties);
     VeniceServerConfig serverConfig = new VeniceServerConfig(veniceServerProperties);
     RocksDBStorageEngineFactory factory = new RocksDBStorageEngineFactory(serverConfig);
-    TimestampMetadataRocksDBStoragePartition storagePartition = new TimestampMetadataRocksDBStoragePartition(partitionConfig, factory, DATA_BASE_DIR, null, rocksDbThrottler, rocksDBServerConfig);
+    ReplicationMetadataRocksDBStoragePartition
+        storagePartition = new ReplicationMetadataRocksDBStoragePartition(partitionConfig, factory, DATA_BASE_DIR, null, rocksDbThrottler, rocksDBServerConfig);
 
     Map<String, Pair<String, String>> inputRecords = generateInputWithMetadata(100);
     for (Map.Entry<String, Pair<String, String>> entry : inputRecords.entrySet()) {

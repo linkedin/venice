@@ -145,7 +145,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         compressorFactory,
         cacheBackend);
 
-    this.replicationMetadataVersionId = version.getTimestampMetadataVersionId();
+    this.replicationMetadataVersionId = version.getReplicationMetadataVersionId();
     this.mergeConflictResolver = new MergeConflictResolver(schemaRepo, storeName, replicationMetadataVersionId);
   }
 

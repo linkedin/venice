@@ -679,9 +679,9 @@ public class VeniceParentHelixAdmin implements Admin {
   @Override
   public void addVersionAndStartIngestion(String clusterName, String storeName, String pushJobId, int versionNumber,
       int numberOfPartitions, Version.PushType pushType, String remoteKafkaBootstrapServers,
-      long rewindTimeInSecondsOverride, int timestampMetadataVersionId) {
-    // Parent controller will always pick the timestampMetadataVersionId from configs.
-    int replicationMetadataVersionId = multiClusterConfigs.getCommonConfig().getReplicationMetadataVersionId();
+      long rewindTimeInSecondsOverride, int replicationMetadataVersionId) {
+    // Parent controller will always pick the replicationMetadataVersionId from configs.
+    replicationMetadataVersionId = multiClusterConfigs.getCommonConfig().getReplicationMetadataVersionId();
     Version version = veniceHelixAdmin.addVersionOnly(clusterName, storeName, pushJobId, versionNumber, numberOfPartitions, pushType,
         remoteKafkaBootstrapServers, rewindTimeInSecondsOverride, replicationMetadataVersionId);
     if (version.isActiveActiveReplicationEnabled()) {
@@ -1096,7 +1096,7 @@ public class VeniceParentHelixAdmin implements Admin {
       // Default value, unused for non hybrid store
       addVersion.rewindTimeInSecondsOverride = -1;
     }
-    addVersion.timestampMetadataVersionId = version.getTimestampMetadataVersionId();
+    addVersion.timestampMetadataVersionId = version.getReplicationMetadataVersionId();
     return addVersion;
   }
 
@@ -1717,7 +1717,7 @@ public class VeniceParentHelixAdmin implements Admin {
       sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
 
       /**
-       * if active-active replication is getting enabled for the store then generate and register the Timestamp metadata schema
+       * if active-active replication is getting enabled for the store then generate and register the Replication metadata schema
        */
       if (activeActiveReplicationEnabled.isPresent() && activeActiveReplicationEnabled.get() && !store.isActiveActiveReplicationEnabled()) {
         updateActiveActiveSchema(clusterName, storeName, store);
@@ -1846,7 +1846,7 @@ public class VeniceParentHelixAdmin implements Admin {
       SchemaEntry schemaEntry = addValueSchemaEntry(clusterName, storeName, valueSchemaStr, newValueSchemaId);
 
       /**
-       * if active-active replication is enabled for the store then generate and register the new Timestamp metadata schema
+       * if active-active replication is enabled for the store then generate and register the new Replication metadata schema
        * for this newly added value schema.
        */
       if (store.isActiveActiveReplicationEnabled()) {
@@ -2004,38 +2004,38 @@ public class VeniceParentHelixAdmin implements Admin {
           new ReplicationMetadataSchemaEntry(valueSchemaId, replicationMetadataVersionId, replicationMetadataSchemaStr);
       if (veniceHelixAdmin.checkIfMetadataSchemaAlreadyPresent(clusterName, storeName, valueSchemaId,
           replicationMetadataSchemaEntry)) {
-        logger.info("Timestamp metadata schema Already present: for store:" + storeName + " in cluster:" + clusterName + " metadataSchema:" + replicationMetadataSchemaStr
-            + " timestampMetadataVersionId:" + replicationMetadataVersionId + " valueSchemaId:" + valueSchemaId);
+        logger.info("Replication metadata schema Already present: for store:" + storeName + " in cluster:" + clusterName + " metadataSchema:" + replicationMetadataSchemaStr
+            + " replicationMetadataVersionId:" + replicationMetadataVersionId + " valueSchemaId:" + valueSchemaId);
         return replicationMetadataSchemaEntry;
       }
 
-      logger.info("Adding Timestamp metadata schema: for store:" + storeName + " in cluster:" + clusterName + " metadataSchema:" + replicationMetadataSchemaStr
-          + " timestampMetadataVersionId:" + replicationMetadataVersionId + " valueSchemaId:" + valueSchemaId);
+      logger.info("Adding Replication metadata schema: for store:" + storeName + " in cluster:" + clusterName + " metadataSchema:" + replicationMetadataSchemaStr
+          + " replicationMetadataVersionId:" + replicationMetadataVersionId + " valueSchemaId:" + valueSchemaId);
 
-      MetadataSchemaCreation timestampMetadataSchemaCreation = (MetadataSchemaCreation) AdminMessageType.REPLICATION_METADATA_SCHEMA_CREATION
+      MetadataSchemaCreation replicationMetadataSchemaCreation = (MetadataSchemaCreation) AdminMessageType.REPLICATION_METADATA_SCHEMA_CREATION
           .getNewInstance();
-      timestampMetadataSchemaCreation.clusterName = clusterName;
-      timestampMetadataSchemaCreation.storeName = storeName;
-      timestampMetadataSchemaCreation.valueSchemaId = valueSchemaId;
+      replicationMetadataSchemaCreation.clusterName = clusterName;
+      replicationMetadataSchemaCreation.storeName = storeName;
+      replicationMetadataSchemaCreation.valueSchemaId = valueSchemaId;
       SchemaMeta schemaMeta = new SchemaMeta();
       schemaMeta.definition = replicationMetadataSchemaStr;
       schemaMeta.schemaType = SchemaType.AVRO_1_4.getValue();
-      timestampMetadataSchemaCreation.metadataSchema = schemaMeta;
-      timestampMetadataSchemaCreation.timestampMetadataVersionId = replicationMetadataVersionId;
+      replicationMetadataSchemaCreation.metadataSchema = schemaMeta;
+      replicationMetadataSchemaCreation.timestampMetadataVersionId = replicationMetadataVersionId;
 
       AdminOperation message = new AdminOperation();
       message.operationType = AdminMessageType.REPLICATION_METADATA_SCHEMA_CREATION.getValue();
-      message.payloadUnion = timestampMetadataSchemaCreation;
+      message.payloadUnion = replicationMetadataSchemaCreation;
 
       sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
 
       //defensive code checking
       ReplicationMetadataVersionId
           actualValueSchemaId = getReplicationMetadataVersionId(clusterName, storeName, replicationMetadataSchemaStr);
-      if (actualValueSchemaId.getValueSchemaVersion() != valueSchemaId || actualValueSchemaId.getTimestampMetadataProtocolVersion() != replicationMetadataVersionId) {
+      if (actualValueSchemaId.getValueSchemaVersion() != valueSchemaId || actualValueSchemaId.getReplicationMetadataProtocolVersion() != replicationMetadataVersionId) {
         throw new VeniceException(String.format("Something bad happens, the expected new value schema id pair is:"
                 + "%d_%d, but got: %d_%d", valueSchemaId, replicationMetadataVersionId, actualValueSchemaId.getValueSchemaVersion(),
-            actualValueSchemaId.getTimestampMetadataProtocolVersion()));
+            actualValueSchemaId.getReplicationMetadataProtocolVersion()));
       }
 
       return new ReplicationMetadataSchemaEntry(valueSchemaId, replicationMetadataVersionId,
@@ -2059,9 +2059,9 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   private void updateActiveActiveSchema(String clusterName, String storeName, Schema valueSchema, int valueSchemaId) {
-    int timestampMetadataVersionId = multiClusterConfigs.getCommonConfig().getReplicationMetadataVersionId();
-    String timestampMetadataSchema = ReplicationMetadataSchemaAdapter.parse(valueSchema, timestampMetadataVersionId).toString();
-    addReplicationMetadataSchema(clusterName, storeName, valueSchemaId, timestampMetadataVersionId, timestampMetadataSchema);
+    int replicationMetadataVersionId = multiClusterConfigs.getCommonConfig().getReplicationMetadataVersionId();
+    String replicationMetadataSchema = ReplicationMetadataSchemaAdapter.parse(valueSchema, replicationMetadataVersionId).toString();
+    addReplicationMetadataSchema(clusterName, storeName, valueSchemaId, replicationMetadataVersionId, replicationMetadataSchema);
   }
 
   @Override
