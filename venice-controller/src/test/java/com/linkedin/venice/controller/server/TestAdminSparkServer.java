@@ -339,6 +339,8 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
       Assert.assertFalse(storeResponse.isError(), storeResponse.getError());
 
       StoreInfo store = storeResponse.getStore();
+      Assert.assertEquals(parentController.getVeniceAdmin().getBackupVersionDefaultRetentionMs(),
+          store.getBackupVersionRetentionMs(), "Store Info should have correct default retention time in ms.");
       Assert.assertEquals(store.getName(), storeName, "Store Info should have same store name as request");
       Assert.assertTrue(store.isEnableStoreWrites(), "New store should not be disabled");
       Assert.assertTrue(store.isEnableStoreReads(), "New store should not be disabled");
