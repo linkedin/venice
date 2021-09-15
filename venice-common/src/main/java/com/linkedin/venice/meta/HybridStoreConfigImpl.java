@@ -13,6 +13,7 @@ import org.codehaus.jackson.annotate.JsonProperty;
 @com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)
 @org.codehaus.jackson.annotate.JsonIgnoreProperties(ignoreUnknown = true)
 public class HybridStoreConfigImpl implements HybridStoreConfig {
+  public static final long DEFAULT_REWIND_TIME_IN_SECONDS = -1L;
   public static final long DEFAULT_HYBRID_TIME_LAG_THRESHOLD = -1L;
   public static final long DEFAULT_HYBRID_OFFSET_LAG_THRESHOLD = -1L;
   public static final long DEFAULT_BUFFER_REPLAY_REFERENCE_TIMESTAMP_MS = -1L;

@@ -2851,11 +2851,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     public void setActiveActiveReplicationEnabled(String clusterName, String storeName, boolean activeActiveReplicationEnabled) {
         storeMetadataUpdate(clusterName, storeName, store -> {
-            if (activeActiveReplicationEnabled != store.isActiveActiveReplicationEnabled() && store.isHybrid()) {
-                DataReplicationPolicy policy = activeActiveReplicationEnabled ? DataReplicationPolicy.ACTIVE_ACTIVE
-                    : DataReplicationPolicy.NON_AGGREGATE;
-                store.setHybridStoreConfig(VeniceHelixAdmin.mergeNewSettingsIntoOldHybridStoreConfig(store, Optional.empty(), Optional.empty(), Optional.empty(), Optional.of(policy), Optional.empty()));
-            }
             store.setActiveActiveReplicationEnabled(activeActiveReplicationEnabled);
             return store;
         });
@@ -3010,20 +3005,20 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         Optional<Boolean> activeActiveReplicationEnabled = params.getActiveActiveReplicationEnabled();
         Optional<Boolean> applyTargetVersionFilterForIncPush = params.applyTargetVersionFilterForIncPush();
 
-        Optional<HybridStoreConfig> hybridStoreConfig;
+        final Optional<HybridStoreConfig> newHybridStoreConfig;
         if (hybridRewindSeconds.isPresent() || hybridOffsetLagThreshold.isPresent()
             || hybridTimeLagThreshold.isPresent() || hybridDataReplicationPolicy.isPresent()
             || hybridBufferReplayPolicy.isPresent()) {
             HybridStoreConfig hybridConfig = mergeNewSettingsIntoOldHybridStoreConfig(
                 originalStore, hybridRewindSeconds, hybridOffsetLagThreshold, hybridTimeLagThreshold, hybridDataReplicationPolicy,
                 hybridBufferReplayPolicy);
-            hybridStoreConfig = Optional.ofNullable(hybridConfig);
+            newHybridStoreConfig = Optional.ofNullable(hybridConfig);
         } else {
-            hybridStoreConfig = Optional.empty();
+            newHybridStoreConfig = Optional.empty();
         }
 
-        checkWhetherStoreWillHaveConflictConfigForIncrementalAndHybrid(originalStore, incrementalPushEnabled, incrementalPushPolicy, hybridStoreConfig);
-        checkWhetherStoreWillHaveConflictConfigForCompressionAndHybrid(originalStore, compressionStrategy, hybridStoreConfig);
+        checkWhetherStoreWillHaveConflictConfigForIncrementalAndHybrid(originalStore, incrementalPushEnabled, incrementalPushPolicy, newHybridStoreConfig);
+        checkWhetherStoreWillHaveConflictConfigForCompressionAndHybrid(originalStore, compressionStrategy, newHybridStoreConfig);
 
         try {
             if (owner.isPresent()) {
@@ -3087,9 +3082,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             }
 
             VeniceControllerClusterConfig clusterConfig = getHelixVeniceClusterResources(clusterName).getConfig();
-            if (hybridStoreConfig.isPresent()) {
+            if (newHybridStoreConfig.isPresent()) {
                 // To fix the final variable problem in the lambda expression
-                final HybridStoreConfig finalHybridConfig = hybridStoreConfig.get();
+                final HybridStoreConfig finalHybridConfig = newHybridStoreConfig.get();
                 storeMetadataUpdate(clusterName, storeName, store -> {
                     if (!isHybrid(finalHybridConfig)) {
                         /**
@@ -3174,6 +3169,31 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
             if (incrementalPushPolicy.isPresent()) {
                 setIncrementalPushPolicy(clusterName, storeName, incrementalPushPolicy.get());
+
+                if (incrementalPushPolicy.get() == IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME) {
+                    // Set ataReplicationPolicy.NONE on batch-only store (without hybrid store config)
+                    storeMetadataUpdate(clusterName, storeName, store -> {
+                        HybridStoreConfig hybridStoreConfig = store.getHybridStoreConfig();
+                        if (hybridStoreConfig == null) {
+                            store.setHybridStoreConfig(new HybridStoreConfigImpl(
+                                    DEFAULT_REWIND_TIME_IN_SECONDS,
+                                    DEFAULT_HYBRID_OFFSET_LAG_THRESHOLD,
+                                    DEFAULT_HYBRID_TIME_LAG_THRESHOLD,
+                                    DataReplicationPolicy.NONE,
+                                    null
+                            ));
+                        } else if (hybridStoreConfig.getDataReplicationPolicy() == null) {
+                            store.setHybridStoreConfig(new HybridStoreConfigImpl(
+                                    hybridStoreConfig.getRewindTimeInSeconds(),
+                                    hybridStoreConfig.getOffsetLagThresholdToGoOnline(),
+                                    hybridStoreConfig.getProducerTimestampLagThresholdToGoOnlineInSeconds(),
+                                    DataReplicationPolicy.NONE,
+                                    hybridStoreConfig.getBufferReplayPolicy()
+                            ));
+                        }
+                        return store;
+                    });
+                }
             }
 
             if (incrementalPushEnabled.isPresent()) {
@@ -3275,7 +3295,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 + "'. Will attempt to rollback changes.", e);
             //rollback to original store
             storeMetadataUpdate(clusterName, storeName, store -> originalStore);
-            if (originalStore.isHybrid() && hybridStoreConfig.isPresent()
+            if (originalStore.isHybrid() && newHybridStoreConfig.isPresent()
                 && getTopicManager().containsTopicAndAllPartitionsAreOnline(Version.composeRealTimeTopic(storeName))) {
                 // Ensure the topic retention is rolled back too
                 getTopicManager().updateTopicRetention(Version.composeRealTimeTopic(storeName),
@@ -3338,10 +3358,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         if (!hybridRewindSeconds.isPresent() && !hybridOffsetLagThreshold.isPresent() && !oldStore.isHybrid()){
             return null; //For the nullable union in the avro record
         }
-        HybridStoreConfig hybridConfig;
+        HybridStoreConfig mergedHybridStoreConfig;
         if (oldStore.isHybrid()){ // for an existing hybrid store, just replace any specified values
             HybridStoreConfig oldHybridConfig = oldStore.getHybridStoreConfig().clone();
-            hybridConfig = new HybridStoreConfigImpl(
+            mergedHybridStoreConfig = new HybridStoreConfigImpl(
                 hybridRewindSeconds.isPresent()
                     ? hybridRewindSeconds.get()
                     : oldHybridConfig.getRewindTimeInSeconds(),
@@ -3366,7 +3386,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 throw new VeniceException(oldStore.getName() + " was not a hybrid store.  In order to make it a hybrid store both "
                     + " rewind time in seconds and offset or time lag threshold must be specified");
             }
-            hybridConfig = new HybridStoreConfigImpl(
+            mergedHybridStoreConfig = new HybridStoreConfigImpl(
                 hybridRewindSeconds.get(),
                 // If not specified, offset/time lag threshold will be -1 and will not be used to determine whether
                 // a partition is ready to serve
@@ -3376,12 +3396,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 bufferReplayPolicy.orElse(BufferReplayPolicy.REWIND_FROM_EOP)
             );
         }
-        if (hybridConfig.getRewindTimeInSeconds() > 0 && hybridConfig.getOffsetLagThresholdToGoOnline() < 0
-            && hybridConfig.getProducerTimestampLagThresholdToGoOnlineInSeconds() < 0) {
+        if (mergedHybridStoreConfig.getRewindTimeInSeconds() > 0 && mergedHybridStoreConfig.getOffsetLagThresholdToGoOnline() < 0
+            && mergedHybridStoreConfig.getProducerTimestampLagThresholdToGoOnlineInSeconds() < 0) {
             throw new VeniceException("Both offset lag threshold and time lag threshold are negative when setting hybrid"
                 + " configs for store " + oldStore.getName());
         }
-        return hybridConfig;
+        return mergedHybridStoreConfig;
     }
 
     /**
