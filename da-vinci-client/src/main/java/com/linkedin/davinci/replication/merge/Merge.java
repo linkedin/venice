@@ -2,8 +2,6 @@ package com.linkedin.davinci.replication.merge;
 
 import com.linkedin.venice.utils.Lazy;
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collection;
 import java.util.List;
 import org.apache.avro.generic.GenericRecord;
 
@@ -11,24 +9,24 @@ import org.apache.avro.generic.GenericRecord;
 /**
  * API for merging existing data with incoming writes.
  *
- * There should be at least one implementation of this interface for each version of the TSMD protocol, and
+ * There should be at least one implementation of this interface for each version of the replication metadata protocol, and
  * possibly more if multiple competing implementations are created in an attempt to optimize performance,
  * efficiency or other considerations.
  *
  * Conceptually, the various functions merge together 4 elements relating to a given key in the store:
  *
  * 1. The old value associated with the key
- * 2. The old timestamp metadata associated with the old value
+ * 2. The old replication metadata associated with the old value
  * 3. The incoming write operation for that key (absent in case of deletes)
  * 4. The timestamp of the write operation
  *
- * Conflict resolution rules must be applied deterministically such that given an old value and an old TSMD, a
+ * Conflict resolution rules must be applied deterministically such that given an old value and an old replication metadata, a
  * set of write operations (and their associated timestamp) may be applied in any order and always converge to
- * the same end result (i.e. to the same final value and TSMD). This determinism is achieved by the following
+ * the same end result (i.e. to the same final value and replication metadata). This determinism is achieved by the following
  * rules:
  *
  * 1. The fields which are set in the write operation will clobber those of the old value if and only if the write
- *    operation timestamp is greater than the timestamp associated with that field in the TSMD.
+ *    operation timestamp is greater than the timestamp associated with that field in the replication metadata.
  * 2. Each element included in a collection merging operation is applied to the corresponding collection in
  *    the old value iif the write operation timestamp is greater than the timestamp of the corresponding
  *    element, than the timestamp of the corresponding element's tombstone, and than the collection's timestamp.
@@ -44,7 +42,7 @@ import org.apache.avro.generic.GenericRecord;
  */
 interface Merge<T> {
   /**
-   * @param oldValueAndReplicationMetadata the old value and TSMD which are persisted in the server prior to the write operation
+   * @param oldValueAndReplicationMetadata the old value and replication metadata which are persisted in the server prior to the write operation
    * @param newValue a record with all fields populated and with one of the registered value schemas
    * @param writeOperationTimestamp the timestamp of the incoming write operation
    * @param sourceOffsetOfNewValue The offset from which the new value originates in the realtime stream.  Used to build
@@ -57,7 +55,7 @@ interface Merge<T> {
   ValueAndReplicationMetadata<T> put(ValueAndReplicationMetadata<T> oldValueAndReplicationMetadata, T newValue, long writeOperationTimestamp, long sourceOffsetOfNewValue, int sourceBrokerIDOfNewValue);
 
   /**
-   * @param oldValueAndReplicationMetadata the old value and TSMD which are persisted in the server prior to the write operation
+   * @param oldValueAndReplicationMetadata the old value and replication metadata which are persisted in the server prior to the write operation
    * @param writeOperationTimestamp the timestamp of the incoming write operation
    * @param sourceOffsetOfNewValue The offset from which the new value originates in the realtime stream.  Used to build
    *                               the ReplicationMetadata for the newly inserted record.
@@ -69,7 +67,7 @@ interface Merge<T> {
   ValueAndReplicationMetadata<T> delete(ValueAndReplicationMetadata<T> oldValueAndReplicationMetadata, long writeOperationTimestamp, long sourceOffsetOfNewValue, int sourceBrokerIDOfNewValue);
 
   /**
-   * @param oldValueAndReplicationMetadata the old value and TSMD which are persisted in the server prior to the write operation
+   * @param oldValueAndReplicationMetadata the old value and replication metadata which are persisted in the server prior to the write operation
    * @param writeOperation a record with a write compute schema
    * @param writeOperationTimestamp the timestamp of the incoming write operation
    * @param sourceOffsetOfNewValue The offset from which the new value originates in the realtime stream.  Used to build
@@ -87,11 +85,11 @@ interface Merge<T> {
    * @param tsObject
    * @return
    */
-  static TSMDType getTSMDType(Object tsObject) {
+  static ReplicationMetadataType getReplicationMetadataType(Object tsObject) {
     if (tsObject instanceof Long) {
-      return TSMDType.ROOT_LEVEL_TS;
+      return ReplicationMetadataType.ROOT_LEVEL_TIMESTAMP;
     } else {
-      return TSMDType.PER_FIELD_TS;
+      return ReplicationMetadataType.PER_FIELD_TIMESTAMP;
     }
   }
 
@@ -109,10 +107,10 @@ interface Merge<T> {
     }
   }
 
-   enum TSMDType {
-    ROOT_LEVEL_TS(0), PER_FIELD_TS(1);
+   enum ReplicationMetadataType {
+    ROOT_LEVEL_TIMESTAMP(0), PER_FIELD_TIMESTAMP(1);
     int val;
-    TSMDType(int val) {
+    ReplicationMetadataType(int val) {
       this.val = val;
     }
   }

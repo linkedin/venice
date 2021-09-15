@@ -384,12 +384,12 @@ public class ReadOnlyStore implements Store {
     }
 
     @Override
-    public int getTimestampMetadataVersionId() {
-      return this.delegate.getTimestampMetadataVersionId();
+    public int getReplicationMetadataVersionId() {
+      return this.delegate.getReplicationMetadataVersionId();
     }
 
     @Override
-    public void setTimestampMetadataVersionId(int timestampMetadataVersionId) {
+    public void setReplicationMetadataVersionId(int replicationMetadataVersionId) {
       throw new UnsupportedOperationException();
     }
 

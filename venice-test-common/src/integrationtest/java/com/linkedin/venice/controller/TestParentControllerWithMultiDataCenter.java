@@ -250,9 +250,9 @@ public class TestParentControllerWithMultiDataCenter {
     String recordSchemaStr2 = TestPushUtils.USER_SCHEMA_STRING_SIMPLE_WITH_DEFAULT;
     String recordSchemaStr3 = TestPushUtils.USER_SCHEMA_STRING_WITH_DEFAULT;
 
-    Schema timestampMetadataSchema1 = ReplicationMetadataSchemaAdapter.parse(recordSchemaStr1, 1);
-    Schema timestampMetadataSchema2 = ReplicationMetadataSchemaAdapter.parse(recordSchemaStr2, 1);
-    Schema timestampMetadataSchema3 = ReplicationMetadataSchemaAdapter.parse(recordSchemaStr3, 1);
+    Schema replicationMetadataSchema1 = ReplicationMetadataSchemaAdapter.parse(recordSchemaStr1, 1);
+    Schema replicationMetadataSchema2 = ReplicationMetadataSchemaAdapter.parse(recordSchemaStr2, 1);
+    Schema replicationMetadataSchema3 = ReplicationMetadataSchemaAdapter.parse(recordSchemaStr3, 1);
 
     VeniceControllerWrapper parentController =
         parentControllers.stream().filter(c -> c.isMasterController(clusterName)).findAny().get();
@@ -288,9 +288,9 @@ public class TestParentControllerWithMultiDataCenter {
 
         Admin veniceHelixAdmin = childDatacenters.get(0).getControllers().values().iterator().next().getVeniceAdmin();
         TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, false, true, () -> {
-              Collection<ReplicationMetadataSchemaEntry> timestampMetadataSchemas = veniceHelixAdmin.getReplicationMetadataSchemas(clusterName, storeName);
-              Assert.assertEquals(timestampMetadataSchemas.size(), 1);
-              Assert.assertEquals(timestampMetadataSchemas.iterator().next().getSchema(), timestampMetadataSchema2);
+              Collection<ReplicationMetadataSchemaEntry> replicationMetadataSchemas = veniceHelixAdmin.getReplicationMetadataSchemas(clusterName, storeName);
+              Assert.assertEquals(replicationMetadataSchemas.size(), 1);
+              Assert.assertEquals(replicationMetadataSchemas.iterator().next().getSchema(), replicationMetadataSchema2);
         });
 
         //Add a new value schema for the store and make sure the corresponding new metadata schema is generated.
@@ -298,12 +298,12 @@ public class TestParentControllerWithMultiDataCenter {
             parentControllerClient.retryableRequest(5, c -> c.addValueSchema(storeName, recordSchemaStr3));
         Assert.assertFalse(schemaResponse3.isError(), "addValeSchema returned error: " + schemaResponse3.getError());
 
-        Collection<ReplicationMetadataSchemaEntry> timestampMetadataSchemas = veniceHelixAdmin.getReplicationMetadataSchemas(clusterName, storeName);
-        Assert.assertEquals(timestampMetadataSchemas.size(), 2);
+        Collection<ReplicationMetadataSchemaEntry> replicationMetadataSchemas = veniceHelixAdmin.getReplicationMetadataSchemas(clusterName, storeName);
+        Assert.assertEquals(replicationMetadataSchemas.size(), 2);
 
-        Iterator<ReplicationMetadataSchemaEntry> iterator = timestampMetadataSchemas.iterator();
-        Assert.assertEquals(iterator.next().getSchema(), timestampMetadataSchema2);
-        Assert.assertEquals(iterator.next().getSchema(), timestampMetadataSchema3);
+        Iterator<ReplicationMetadataSchemaEntry> iterator = replicationMetadataSchemas.iterator();
+        Assert.assertEquals(iterator.next().getSchema(), replicationMetadataSchema2);
+        Assert.assertEquals(iterator.next().getSchema(), replicationMetadataSchema3);
 
         //Add a new version for the store and make sure all new metadata schema are generated.
         VersionCreationResponse vcr =
@@ -320,16 +320,16 @@ public class TestParentControllerWithMultiDataCenter {
           Assert.assertEquals(versions.size(), 1);
           Assert.assertTrue(versions.get(0).isLeaderFollowerModelEnabled());
           Assert.assertTrue(versions.get(0).isActiveActiveReplicationEnabled());
-          Assert.assertEquals(versions.get(0).getTimestampMetadataVersionId(), 1);
+          Assert.assertEquals(versions.get(0).getReplicationMetadataVersionId(), 1);
         });
 
-        timestampMetadataSchemas = veniceHelixAdmin.getReplicationMetadataSchemas(clusterName, storeName);
-        Assert.assertEquals(timestampMetadataSchemas.size(), 3);
+        replicationMetadataSchemas = veniceHelixAdmin.getReplicationMetadataSchemas(clusterName, storeName);
+        Assert.assertEquals(replicationMetadataSchemas.size(), 3);
 
-        Iterator<ReplicationMetadataSchemaEntry> iterator2 = timestampMetadataSchemas.iterator();
-        Assert.assertEquals(iterator2.next().getSchema(), timestampMetadataSchema1);
-        Assert.assertEquals(iterator2.next().getSchema(), timestampMetadataSchema2);
-        Assert.assertEquals(iterator2.next().getSchema(), timestampMetadataSchema3);
+        Iterator<ReplicationMetadataSchemaEntry> iterator2 = replicationMetadataSchemas.iterator();
+        Assert.assertEquals(iterator2.next().getSchema(), replicationMetadataSchema1);
+        Assert.assertEquals(iterator2.next().getSchema(), replicationMetadataSchema2);
+        Assert.assertEquals(iterator2.next().getSchema(), replicationMetadataSchema3);
       }
     }
   }

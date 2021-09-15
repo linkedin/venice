@@ -107,7 +107,7 @@ import static java.util.concurrent.TimeUnit.*;
  *        is in the transition progress, if so:
  *        (i)   consume the latest messages from version topic;
  *        (ii)  drain all the messages in drainer queue in order to update the latest
- *              consumed message timestamp metadata;
+ *              consumed message replication metadata;
  *        (iii) check whether there has been at least 5 minutes (configurable) of
  *              inactivity for this partition (meaning no new messages); if so,
  *              turn on the LEADER flag for this partition.

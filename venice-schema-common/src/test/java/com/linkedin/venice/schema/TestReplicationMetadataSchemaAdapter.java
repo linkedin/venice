@@ -15,7 +15,7 @@ public class TestReplicationMetadataSchemaAdapter {
 
 
   static String primitiveTypedSchemaStr = "{\"type\": \"string\"}";
-  //Expected Timestamp metadata schema for above Schema
+  //Expected Replication metadata schema for above Schema
   static String aaSchemaPrimitive = "{\n"
       + "  \"type\" : \"record\",\n"
       + "  \"name\" : \"string_MetadataRecord\",\n"
@@ -31,7 +31,8 @@ public class TestReplicationMetadataSchemaAdapter {
       + "      \"type\" : \"array\",\n"
       + "      \"items\" : \"long\"\n" + "    },\n"
       + "    \"doc\" : \"high watermark remote checkpoints which touched this record\",\n"
-      + "    \"default\" : [ ]]\n"
+      + "    \"default\" : [ ]\n"
+      + "  } ]\n"
       + "}";
 
 
@@ -53,7 +54,7 @@ public class TestReplicationMetadataSchemaAdapter {
       + "    \"default\" : -1\n"
       + "  } ]\n"
       + "}";
-  //Expected Timestamp metadata schema for above Schema
+  //Expected Replication metadata schema for above Schema
   static String aaSchemaRecord = "{\n"
       + "  \"type\" : \"record\",\n"
       + "  \"name\" : \"User_MetadataRecord\",\n"
@@ -90,12 +91,12 @@ public class TestReplicationMetadataSchemaAdapter {
       + "    },\n"
       + "    \"doc\" : \"high watermark remote checkpoints which touched this record\",\n"
       + "    \"default\" : [ ]\n"
-      + "  } ] ]\n"
+      + "  } ]\n"
       + "}";
 
 
   static String arraySchemaStr = "{ \"type\": \"array\", \"items\": \"int\" }";
-  //Expected Timestamp metadata schema for above Schema
+  //Expected Replication metadata schema for above Schema
   static String aaSchemaArray = "{\n"
       + "  \"type\" : \"record\",\n"
       + "  \"name\" : \"array_MetadataRecord\",\n"
@@ -113,12 +114,12 @@ public class TestReplicationMetadataSchemaAdapter {
       + "    },\n"
       + "    \"doc\" : \"high watermark remote checkpoints which touched this record\",\n"
       + "    \"default\" : [ ]\n"
-      + "  } ]]\n"
+      + "  } ]\n"
       + "}";
 
 
   static String mapSchemaStr = "{ \"type\": \"map\", \"values\": \"int\" }";
-  //Expected Timestamp metadata schema for above Schema
+  //Expected Replication metadata schema for above Schema
   static String aaSchemaMap = "{\n"
       + "  \"type\" : \"record\",\n"
       + "  \"name\" : \"map_MetadataRecord\",\n"
@@ -136,7 +137,7 @@ public class TestReplicationMetadataSchemaAdapter {
       + "    },\n"
       + "    \"doc\" : \"high watermark remote checkpoints which touched this record\",\n"
       + "    \"default\" : [ ]\n"
-      + "  } ]]\n"
+      + "  } ]\n"
       + "}";
 
 
@@ -160,7 +161,7 @@ public class TestReplicationMetadataSchemaAdapter {
       + "  \"type\" : \"map\",\n"
       + "  \"values\" : \"int\"\n"
       + "}, \"string\" ]";
-  //Expected Timestamp metadata schema for above Schema
+  //Expected Replication metadata schema for above Schema
   static String aaSchemaUnion = "{\n"
       + "  \"type\" : \"record\",\n"
       + "  \"name\" : \"union_MetadataRecord\",\n"
@@ -178,7 +179,7 @@ public class TestReplicationMetadataSchemaAdapter {
       + "    },\n"
       + "    \"doc\" : \"high watermark remote checkpoints which touched this record\",\n"
       + "    \"default\" : [ ]\n"
-      + "  } ]]\n"
+      + "  } ]\n"
       + "}";
 
 
@@ -199,6 +200,7 @@ public class TestReplicationMetadataSchemaAdapter {
     String aaSchemaStr = aaSchema.toString(true);
     logger.info(aaSchemaStr);
     Assert.assertEquals(aaSchema, Schema.parse(aaSchema.toString()));
+    Assert.assertEquals(Schema.parse(aaSchemaPrimitive), Schema.parse(aaSchema.toString()));
     verifyFullUpdateTsRecordPresent(aaSchema, true);
 
   }
@@ -213,6 +215,8 @@ public class TestReplicationMetadataSchemaAdapter {
     logger.info(aaSchemaStr);
 
     Assert.assertEquals(aaSchema, Schema.parse(aaSchema.toString()));
+    Assert.assertEquals(Schema.parse(aaSchemaRecord), Schema.parse(aaSchema.toString()));
+
     verifyFullUpdateTsRecordPresent(aaSchema, false);
     Schema recordTsSchema = aaSchema.getField("timestamp").schema().getTypes().get(1);
     Assert.assertEquals(recordTsSchema.getType(), RECORD);
@@ -235,9 +239,8 @@ public class TestReplicationMetadataSchemaAdapter {
     String aaSchemaStr = aaSchema.toString(true);
     logger.info(OrigSchemaStr);
     logger.info(aaSchemaStr);
+    Assert.assertEquals(Schema.parse(aaSchemaArray), Schema.parse(aaSchema.toString()));
     verifyFullUpdateTsRecordPresent(aaSchema, true);
-
-
   }
 
   @Test
@@ -248,9 +251,8 @@ public class TestReplicationMetadataSchemaAdapter {
     String aaSchemaStr = aaSchema.toString(true);
     logger.info(OrigSchemaStr);
     logger.info(aaSchemaStr);
+    Assert.assertEquals(Schema.parse(aaSchemaMap), Schema.parse(aaSchema.toString()));
     verifyFullUpdateTsRecordPresent(aaSchema, true);
-
-
   }
 
   @Test
@@ -261,7 +263,7 @@ public class TestReplicationMetadataSchemaAdapter {
     String aaSchemaStr = aaSchema.toString(true);
     logger.info(OrigSchemaStr);
     logger.info(aaSchemaStr);
-
+    Assert.assertEquals(Schema.parse(aaSchemaUnion), Schema.parse(aaSchema.toString()));
     verifyFullUpdateTsRecordPresent(aaSchema, true);
   }
 

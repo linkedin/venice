@@ -34,12 +34,12 @@ public class HelixSchemaAccessor {
 
   public static final int VALUE_SCHEMA_STARTING_ID = 1;
 
-  // Timestamp metadata schema path name
-  private static final String TIMESTAMP_METADATA_SCHEMA_PATH = "timestamp-metadata-schema";
+  // Replication metadata schema path name. The value still uses "timestamp" for backward compatibility
+  private static final String REPLICATION_METADATA_SCHEMA_PATH = "timestamp-metadata-schema";
 
   private final ZkBaseDataAccessor<SchemaEntry> schemaAccessor;
   private final ZkBaseDataAccessor<DerivedSchemaEntry> derivedSchemaAccessor;
-  private final ZkBaseDataAccessor<ReplicationMetadataSchemaEntry> timestampMetadataSchemaAccessor;
+  private final ZkBaseDataAccessor<ReplicationMetadataSchemaEntry> replicationMetadataSchemaAccessor;
 
 
   // Venice cluster name
@@ -62,7 +62,7 @@ public class HelixSchemaAccessor {
     registerSerializerForSchema(zkClient, helixAdapterSerializer);
     schemaAccessor = new ZkBaseDataAccessor<>(zkClient);
     derivedSchemaAccessor = new ZkBaseDataAccessor<>(zkClient);
-    timestampMetadataSchemaAccessor = new ZkBaseDataAccessor<>(zkClient);
+    replicationMetadataSchemaAccessor = new ZkBaseDataAccessor<>(zkClient);
   }
 
   private void registerSerializerForSchema(ZkClient zkClient, HelixAdapterSerializer adapter) {
@@ -72,13 +72,13 @@ public class HelixSchemaAccessor {
         PathResourceRegistry.WILDCARD_MATCH_ANY);
     String derivedSchemaPath = getDerivedSchemaParentPath(PathResourceRegistry.WILDCARD_MATCH_ANY) + "/" +
         PathResourceRegistry.WILDCARD_MATCH_ANY;
-    String timestampMetadataSchemaPath = getTimestampMetadataSchemaParentPath(PathResourceRegistry.WILDCARD_MATCH_ANY) + "/" +
+    String replicationMetadataSchemaPath = getReplicationMetadataSchemaParentPath(PathResourceRegistry.WILDCARD_MATCH_ANY) + "/" +
         PathResourceRegistry.WILDCARD_MATCH_ANY;
     VeniceSerializer<SchemaEntry> serializer = new SchemaEntrySerializer();
     adapter.registerSerializer(keySchemaPath, serializer);
     adapter.registerSerializer(valueSchemaPath, serializer);
     adapter.registerSerializer(derivedSchemaPath, new DerivedSchemaEntrySerializer());
-    adapter.registerSerializer(timestampMetadataSchemaPath, new TimestampMetadataSchemaEntrySerializer());
+    adapter.registerSerializer(replicationMetadataSchemaPath, new ReplicationMetadataSchemaEntrySerializer());
     zkClient.setZkSerializer(adapter);
   }
 
@@ -205,44 +205,43 @@ public class HelixSchemaAccessor {
     return getDerivedSchemaParentPath(storeName) + "/" + derivedSchemaIdPair;
   }
 
-
-
-  public ReplicationMetadataSchemaEntry getTimestampMetadataSchema(String storeName, String timestampMetadataVersionIdPair) {
-    return timestampMetadataSchemaAccessor.get(getTimestampMetadataSchemaPath(storeName, timestampMetadataVersionIdPair), null,
+  public ReplicationMetadataSchemaEntry getReplicationMetadataSchema(String storeName, String replicationMetadataVersionIdPair) {
+    return replicationMetadataSchemaAccessor.get(
+        getReplicationMetadataSchemaPath(storeName, replicationMetadataVersionIdPair), null,
         AccessOption.PERSISTENT);
   }
 
-  public List<ReplicationMetadataSchemaEntry> getAllTimestampMetadataSchemas(String storeName) {
-    return HelixUtils.getChildren(timestampMetadataSchemaAccessor, getTimestampMetadataSchemaParentPath(storeName),
+  public List<ReplicationMetadataSchemaEntry> getAllReplicationMetadataSchemas(String storeName) {
+    return HelixUtils.getChildren(replicationMetadataSchemaAccessor, getReplicationMetadataSchemaParentPath(storeName),
         refreshAttemptsForZkReconnect, refreshIntervalForZkReconnectInMs);
   }
 
   public void addMetadataSchema(String storeName, ReplicationMetadataSchemaEntry replicationMetadataSchemaEntry) {
-    HelixUtils.create(timestampMetadataSchemaAccessor, getTimestampMetadataSchemaPath(storeName,
+    HelixUtils.create(replicationMetadataSchemaAccessor, getReplicationMetadataSchemaPath(storeName,
         String.valueOf(replicationMetadataSchemaEntry.getValueSchemaId()), String.valueOf(
             replicationMetadataSchemaEntry.getId())), replicationMetadataSchemaEntry);
-    logger.info("Added Timestamp metadata schema: " + replicationMetadataSchemaEntry.toString() + " for store: " + storeName);
+    logger.info("Added replication metadata schema: " + replicationMetadataSchemaEntry.toString() + " for store: " + storeName);
   }
 
-  public void subscribeTimestampMetadataSchemaCreationChange(String storeName, IZkChildListener childListener) {
-    timestampMetadataSchemaAccessor.subscribeChildChanges(getTimestampMetadataSchemaParentPath(storeName), childListener);
-    logger.info("Subscribe Timestamp metadata schema child changes for store: " + storeName);
+  public void subscribeReplicationMetadataSchemaCreationChange(String storeName, IZkChildListener childListener) {
+    replicationMetadataSchemaAccessor.subscribeChildChanges(getReplicationMetadataSchemaParentPath(storeName), childListener);
+    logger.info("Subscribe replication metadata schema child changes for store: " + storeName);
   }
 
-  public void unsubscribeTimestampMetadataSchemaCreationChanges(String storeName, IZkChildListener childListener) {
-    timestampMetadataSchemaAccessor.unsubscribeChildChanges(getTimestampMetadataSchemaParentPath(storeName), childListener);
-    logger.info("Unsubscribe Timestamp metadata schema child changes for store: " + storeName);
+  public void unsubscribeReplicationMetadataSchemaCreationChanges(String storeName, IZkChildListener childListener) {
+    replicationMetadataSchemaAccessor.unsubscribeChildChanges(getReplicationMetadataSchemaParentPath(storeName), childListener);
+    logger.info("Unsubscribe replication metadata schema child changes for store: " + storeName);
   }
 
-  String getTimestampMetadataSchemaParentPath(String storeName) {
-    return getStorePath(storeName) + TIMESTAMP_METADATA_SCHEMA_PATH;
+  String getReplicationMetadataSchemaParentPath(String storeName) {
+    return getStorePath(storeName) + REPLICATION_METADATA_SCHEMA_PATH;
   }
 
-  String getTimestampMetadataSchemaPath(String storeName, String valueSchemaId, String timestampMetadataVersionId) {
-    return getTimestampMetadataSchemaParentPath(storeName) + "/" + valueSchemaId + MULTIPART_SCHEMA_VERSION_DELIMITER + timestampMetadataVersionId;
+  String getReplicationMetadataSchemaPath(String storeName, String valueSchemaId, String replicationMetadataVersionId) {
+    return getReplicationMetadataSchemaParentPath(storeName) + "/" + valueSchemaId + MULTIPART_SCHEMA_VERSION_DELIMITER + replicationMetadataVersionId;
   }
 
-  String getTimestampMetadataSchemaPath(String storeName, String timestampMetadataVersionIdPair) {
-    return getTimestampMetadataSchemaParentPath(storeName) + "/" + timestampMetadataVersionIdPair;
+  String getReplicationMetadataSchemaPath(String storeName, String replicationMetadataVersionIdPair) {
+    return getReplicationMetadataSchemaParentPath(storeName) + "/" + replicationMetadataVersionIdPair;
   }
 }

@@ -7,34 +7,34 @@ import org.apache.kafka.clients.producer.Callback;
 
 
 /**
- * This is a simple container class to hold timestamp metadata related fields together to be passed on to the Delete api in VeniceWriter
+ * This is a simple container class to hold replication metadata related fields together to be passed on to the Delete api in VeniceWriter
  * {@link VeniceWriter#delete(Object, Callback, LeaderMetadataWrapper, long, Optional)}. Caller should construct an instance of this object by properly
  * filling up all the fields of this object.
  */
 public class DeleteMetadata {
   private final int valueSchemaId;
-  private final int timestampMetadataVersionId;
-  private final ByteBuffer timestampMetadataPayload;
+  private final int replicationMetadataVersionId;
+  private final ByteBuffer replicationMetadataPayload;
 
-  public DeleteMetadata(int valueSchemaId, int timestampMetadataVersionId, ByteBuffer timestampMetadataPayload) {
+  public DeleteMetadata(int valueSchemaId, int replicationMetadataVersionId, ByteBuffer replicationMetadataPayload) {
     this.valueSchemaId = valueSchemaId;
-    this.timestampMetadataVersionId = timestampMetadataVersionId;
-    this.timestampMetadataPayload = timestampMetadataPayload;
+    this.replicationMetadataVersionId = replicationMetadataVersionId;
+    this.replicationMetadataPayload = replicationMetadataPayload;
   }
 
   public int getValueSchemaId() {
     return valueSchemaId;
   }
 
-  public int getTimestampMetadataVersionId() {
-    return timestampMetadataVersionId;
+  public int getReplicationMetadataVersionId() {
+    return replicationMetadataVersionId;
   }
 
-  public ByteBuffer getTimestampMetadataPayload() {
-    return timestampMetadataPayload;
+  public ByteBuffer getReplicationMetadataPayload() {
+    return replicationMetadataPayload;
   }
 
   public int getSerializedSize() {
-    return 2 * ByteUtils.SIZE_OF_INT + timestampMetadataPayload.remaining();
+    return 2 * ByteUtils.SIZE_OF_INT + replicationMetadataPayload.remaining();
   }
 }

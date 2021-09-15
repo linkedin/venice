@@ -287,13 +287,13 @@ public class VersionImpl implements Version {
   }
 
   @Override
-  public int getTimestampMetadataVersionId() {
+  public int getReplicationMetadataVersionId() {
     return this.storeVersion.timestampMetadataVersionId;
   }
 
   @Override
-  public void setTimestampMetadataVersionId(int timestampMetadataVersionId) {
-    this.storeVersion.timestampMetadataVersionId = timestampMetadataVersionId;
+  public void setReplicationMetadataVersionId(int replicationMetadataVersionId) {
+    this.storeVersion.timestampMetadataVersionId = replicationMetadataVersionId;
   }
 
   @Override
@@ -324,7 +324,7 @@ public class VersionImpl implements Version {
         ", hybridConfig=" + getHybridStoreConfig() +
         ", useVersionLevelHybridConfig=" + isUseVersionLevelHybridConfig() +
         ", activeActiveReplicationEnabled=" + isActiveActiveReplicationEnabled() +
-        ", timestampMetadataVersionId=" + getTimestampMetadataVersionId() +
+        ", replicationMetadataVersionId=" + getReplicationMetadataVersionId() +
         '}';
   }
 
@@ -378,7 +378,7 @@ public class VersionImpl implements Version {
     clonedVersion.setHybridStoreConfig(getHybridStoreConfig());
     clonedVersion.setUseVersionLevelHybridConfig(isUseVersionLevelHybridConfig());
     clonedVersion.setActiveActiveReplicationEnabled(isActiveActiveReplicationEnabled());
-    clonedVersion.setTimestampMetadataVersionId(getTimestampMetadataVersionId());
+    clonedVersion.setReplicationMetadataVersionId(getReplicationMetadataVersionId());
     return clonedVersion;
   }
 

@@ -23,7 +23,7 @@ public class ReplicationMetadataSchemaAdapter {
       case 1:
         return V1_REPLICATION_METADATA_SCHEMA_ADAPTER.parse(schema);
       default:
-        throw new VeniceException("Unknown timestamp metadata version id");
+        throw new VeniceException("Unknown replication metadata version id");
     }
   }
 }

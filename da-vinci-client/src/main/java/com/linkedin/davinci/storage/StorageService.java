@@ -198,7 +198,7 @@ public class StorageService extends AbstractVeniceService {
 
     logger.info("Creating/Opening Storage Engine " + topicName + " with type: " + storeConfig.getStorePersistenceType());
     StorageEngineFactory factory = getInternalStorageEngineFactory(storeConfig);
-    engine = factory.getStorageEngine(storeConfig, isTimestampMetadataEnabled(topicName, factory.getPersistenceType()));
+    engine = factory.getStorageEngine(storeConfig, isReplicationMetadataEnabled(topicName, factory.getPersistenceType()));
     storageEngineRepository.addLocalStorageEngine(engine);
     // Setup storage engine stats
     aggVersionedStorageEngineStats.setStorageEngine(topicName, engine);
@@ -353,8 +353,8 @@ public class StorageService extends AbstractVeniceService {
     return PartitionUtils.getSubPartitions(partition, PartitionUtils.getAmplificationFactor(storeRepository, topicName));
   }
 
-  private boolean isTimestampMetadataEnabled(String topicName, PersistenceType persistenceType) {
-    // Timestamp metadata will only be used in Server as Da Vinci will never become LEADER.
+  private boolean isReplicationMetadataEnabled(String topicName, PersistenceType persistenceType) {
+    // Replication metadata will only be used in Server as Da Vinci will never become LEADER.
     if (serverConfig.isDaVinciClient() || !Objects.equals(persistenceType, ROCKS_DB)) {
       return false;
     }

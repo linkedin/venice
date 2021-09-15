@@ -572,7 +572,7 @@ public class StoreIngestionTaskTest {
 
     version.setActiveActiveReplicationEnabled(isActiveActiveReplicationEnabled);
     doReturn(isActiveActiveReplicationEnabled).when(mockStore).isActiveActiveReplicationEnabled();
-    version.setTimestampMetadataVersionId(REPLICATION_METADATA_VERSION_ID);
+    version.setReplicationMetadataVersionId(REPLICATION_METADATA_VERSION_ID);
 
     doReturn(Optional.of(version)).when(mockStore).getVersion(anyInt());
     doReturn(mockStore).when(mockMetadataRepo).getStoreOrThrow(storeNameWithoutVersionInfo);

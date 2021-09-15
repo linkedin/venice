@@ -1044,7 +1044,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                         // Migrated stores should bootstrap by consuming the version topics in its local fabric.
                         null,
                         version.getHybridStoreConfig() == null ? -1 : version.getHybridStoreConfig().getRewindTimeInSeconds(),
-                        version.getTimestampMetadataVersionId());
+                        version.getReplicationMetadataVersionId());
                 } catch (Exception e) {
                     throw new VeniceException("An exception was thrown when attempting to add version and start ingestion for store "
                         + migratingStoreName + " and version " + version.getNumber(), e);
@@ -1343,7 +1343,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     public void replicateAddVersionAndStartIngestion(
         String clusterName, String storeName, String pushJobId, int versionNumber, int numberOfPartitions,
         Version.PushType pushType, String remoteKafkaBootstrapServers, long rewindTimeInSecondsOverride,
-        int timestampMetadataVersionId) {
+        int replicationMetadataVersionId) {
         checkControllerLeadershipFor(clusterName);
         try {
             StoreConfig storeConfig = storeConfigRepo.getStoreConfigOrThrow(storeName);
@@ -1357,7 +1357,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                         ControllerClient.constructClusterControllerClient(sourceCluster, getLeaderController(sourceCluster).getUrl(false), sslFactory);
                     VersionResponse response = sourceClusterControllerClient.addVersionAndStartIngestion(storeName,
                         pushJobId, versionNumber, numberOfPartitions, pushType, remoteKafkaBootstrapServers,
-                        rewindTimeInSecondsOverride, timestampMetadataVersionId);
+                        rewindTimeInSecondsOverride, replicationMetadataVersionId);
                     if (response.isError()) {
                         // Throw exceptions here to utilize admin channel's retry property to overcome transient errors.
                         throw new VeniceException("Replicate add version endpoint call back to source cluster: "
@@ -1371,7 +1371,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                      ControllerClient.constructClusterControllerClient(destinationCluster, getLeaderController(destinationCluster).getUrl(false), sslFactory);
                 VersionResponse response = destClusterControllerClient.addVersionAndStartIngestion(storeName,
                     pushJobId, versionNumber, numberOfPartitions, pushType, remoteKafkaBootstrapServers,
-                    rewindTimeInSecondsOverride, timestampMetadataVersionId);
+                    rewindTimeInSecondsOverride, replicationMetadataVersionId);
                 if (response.isError()) {
                     throw new VeniceException("Replicate add version endpoint call to destination cluster: "
                         + destinationCluster + " failed for store: " + storeName + " with version: " + versionNumber
@@ -1448,7 +1448,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                  */
                 handleRewindTimeOverride(store, version, rewindTimeInSecondsOverride);
 
-                version.setTimestampMetadataVersionId(replicationMetadataVersionId);
+                version.setReplicationMetadataVersionId(replicationMetadataVersionId);
 
                 repository.updateStore(store);
                 logger.info("Add version: " + version.getNumber() + " for store: " + storeName);
@@ -1666,7 +1666,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                     handleRewindTimeOverride(store, version, rewindTimeInSecondsOverride);
                     store.setPersistenceType(PersistenceType.ROCKS_DB);
 
-                    version.setTimestampMetadataVersionId(replicationMetadataVersionId);
+                    version.setReplicationMetadataVersionId(replicationMetadataVersionId);
 
                     repository.updateStore(store);
                     logger.info("Add version: " + version.getNumber() + " for store: " + storeName);
@@ -3805,7 +3805,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 replicationMetadataSchemaStr);
         if (checkIfMetadataSchemaAlreadyPresent(clusterName, storeName, valueSchemaId, replicationMetadataSchemaEntry)) {
             logger.info("Timestamp metadata schema Already present: for store:" + storeName + " in cluster:" + clusterName + " metadataSchema:" + replicationMetadataSchemaStr
-                + " timestampMetadataVersionId:" + replicationMetadataVersionId + " valueSchemaId:" + valueSchemaId);
+                + " replicationMetadataVersionId:" + replicationMetadataVersionId + " valueSchemaId:" + valueSchemaId);
             return replicationMetadataSchemaEntry;
         }
 

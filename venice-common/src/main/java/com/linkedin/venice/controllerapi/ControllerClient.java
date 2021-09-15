@@ -195,12 +195,12 @@ public class ControllerClient implements Closeable {
    * @param pushType of the producer.
    * @param remoteKafkaBootstrapServers of the original push.
    * @param rewindTimeInSecondsOverride of the original push.
-   * @param timestampMetadataVersionId of the original push.
+   * @param replicationMetadataVersionId of the original push.
    * @return
    */
   public VersionResponse addVersionAndStartIngestion(String storeName, String pushJobId, int version,
       int partitionCount, Version.PushType pushType, String remoteKafkaBootstrapServers, long rewindTimeInSecondsOverride,
-      int timestampMetadataVersionId) {
+      int replicationMetadataVersionId) {
     QueryParams params = newParams()
         .add(NAME, storeName)
         .add(PUSH_JOB_ID, pushJobId)
@@ -208,7 +208,7 @@ public class ControllerClient implements Closeable {
         .add(PARTITION_COUNT, partitionCount)
         .add(PUSH_TYPE, pushType.toString())
         .add(REWIND_TIME_IN_SECONDS_OVERRIDE, rewindTimeInSecondsOverride)
-        .add(REPLICATION_METADATA_VERSION_ID, timestampMetadataVersionId);
+        .add(REPLICATION_METADATA_VERSION_ID, replicationMetadataVersionId);
     if (remoteKafkaBootstrapServers != null) {
       params.add(REMOTE_KAFKA_BOOTSTRAP_SERVERS, remoteKafkaBootstrapServers);
     }

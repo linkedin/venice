@@ -63,7 +63,7 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
   private IZkChildListener keySchemaChildListener = new KeySchemaChildListener();
   private IZkChildListener valueSchemaChildListener = new ValueSchemaChildListener();
   private IZkChildListener derivedSchemaChildListener = new DerivedSchemaChildListener();
-  private IZkChildListener timestampMetadataSchemaChildListener = new TimestampMetadataSchemaChildListener();
+  private IZkChildListener replicationMetadataSchemaChildListener = new ReplicationMetadataSchemaChildListener();
 
   // Mutex for local cache
   private final ReadWriteLock schemaLock = new ReentrantReadWriteLock();
@@ -122,8 +122,8 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
   private void mayRegisterAndPopulateMetadataSchema(Store store, SchemaData schemaData) {
     if (store.isActiveActiveReplicationEnabled()) {
       String storeName = store.getName();
-      accessor.subscribeTimestampMetadataSchemaCreationChange(storeName, timestampMetadataSchemaChildListener);
-      accessor.getAllTimestampMetadataSchemas(storeName).forEach(schemaData::addTimestampMetadataSchema);
+      accessor.subscribeReplicationMetadataSchemaCreationChange(storeName, replicationMetadataSchemaChildListener);
+      accessor.getAllReplicationMetadataSchemas(storeName).forEach(schemaData::addReplicationMetadataSchema);
     }
   }
 
@@ -389,19 +389,19 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
       ReplicationMetadataSchemaEntry replicationMetadataSchemaEntry =
           new ReplicationMetadataSchemaEntry(SchemaData.UNKNOWN_SCHEMA_ID, SchemaData.UNKNOWN_SCHEMA_ID,
               replicationMetadataSchemaStr);
-      return schemaData.getTimestampMetadataVersionId(replicationMetadataSchemaEntry);
+      return schemaData.getReplicationMetadataVersionId(replicationMetadataSchemaEntry);
     }));
   }
 
   @Override
   public ReplicationMetadataSchemaEntry getReplicationMetadataSchema(String storeName, int valueSchemaId, int replicationMetadataVersionId) {
-    return (ReplicationMetadataSchemaEntry)doSchemaOperation(storeName, ((schemaData) -> schemaData.getTimestampMetadataSchema(valueSchemaId,
+    return (ReplicationMetadataSchemaEntry)doSchemaOperation(storeName, ((schemaData) -> schemaData.getReplicationMetadataSchema(valueSchemaId,
         replicationMetadataVersionId)));
   }
 
   @Override
   public Collection<ReplicationMetadataSchemaEntry> getReplicationMetadataSchemas(String storeName) {
-    return (Collection<ReplicationMetadataSchemaEntry>)doSchemaOperation(storeName, ((schemaData) -> schemaData.getTimestampMetadataSchemas()));
+    return (Collection<ReplicationMetadataSchemaEntry>)doSchemaOperation(storeName, ((schemaData) -> schemaData.getReplicationMetadataSchemas()));
   }
 
   /**
@@ -498,7 +498,7 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
       accessor.unsubscribeKeySchemaCreationChange(storeName, keySchemaChildListener);
       accessor.unsubscribeValueSchemaCreationChange(storeName, valueSchemaChildListener);
       accessor.unsubscribeDerivedSchemaCreationChanges(storeName, derivedSchemaChildListener);
-      accessor.unsubscribeTimestampMetadataSchemaCreationChanges(storeName, timestampMetadataSchemaChildListener);
+      accessor.unsubscribeReplicationMetadataSchemaCreationChanges(storeName, replicationMetadataSchemaChildListener);
     } finally {
       schemaLock.writeLock().unlock();
     }
@@ -594,19 +594,19 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
     }
   }
 
-  private class TimestampMetadataSchemaChildListener extends SchemaChildListener {
+  private class ReplicationMetadataSchemaChildListener extends SchemaChildListener {
     @Override
     void handleSchemaChanges(String storeName, List<String> currentChildren) {
       SchemaData schemaData = schemaMap.get(getZkStoreName(storeName));
-      for (String timestampMetadataVersionIdPairStr : currentChildren) {
-        String [] ids = timestampMetadataVersionIdPairStr.split(HelixSchemaAccessor.MULTIPART_SCHEMA_VERSION_DELIMITER);
+      for (String replicationMetadataVersionIdPairStr : currentChildren) {
+        String [] ids = replicationMetadataVersionIdPairStr.split(HelixSchemaAccessor.MULTIPART_SCHEMA_VERSION_DELIMITER);
         if (ids.length != 2) {
           throw new VeniceException("unrecognized Schema path format. Store: " + storeName
-              + " path: " + timestampMetadataVersionIdPairStr);
+              + " path: " + replicationMetadataVersionIdPairStr);
         }
 
-        if (null == schemaData.getTimestampMetadataSchema(Integer.valueOf(ids[0]), Integer.valueOf(ids[1]))) {
-          schemaData.addTimestampMetadataSchema(accessor.getTimestampMetadataSchema(storeName, timestampMetadataVersionIdPairStr));
+        if (null == schemaData.getReplicationMetadataSchema(Integer.valueOf(ids[0]), Integer.valueOf(ids[1]))) {
+          schemaData.addReplicationMetadataSchema(accessor.getReplicationMetadataSchema(storeName, replicationMetadataVersionIdPairStr));
         }
       }
     }

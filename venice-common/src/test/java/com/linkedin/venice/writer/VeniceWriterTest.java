@@ -166,7 +166,7 @@ public class VeniceWriterTest {
   }
 
   @Test
-  public void testTimestampMetadataWrittenCorrectly() {
+  public void testReplicationMetadataWrittenCorrectly() {
     KafkaProducerWrapper mockedProducer = mock(KafkaProducerWrapper.class);
     Future mockedFuture = mock(Future.class);
     when(mockedProducer.getNumberOfPartitions(any())).thenReturn(1);
@@ -181,9 +181,9 @@ public class VeniceWriterTest {
 
     //verify the new veniceWriter API's are able to encode the A/A metadat info correctly.
     long ctime = System.currentTimeMillis();
-    ByteBuffer timestampMetadata = ByteBuffer.wrap(new byte[]{0xa, 0xb});
-    PutMetadata putMetadata = new PutMetadata(1, timestampMetadata);
-    DeleteMetadata deleteMetadata = new DeleteMetadata(1, 1, timestampMetadata);
+    ByteBuffer replicationMetadata = ByteBuffer.wrap(new byte[]{0xa, 0xb});
+    PutMetadata putMetadata = new PutMetadata(1, replicationMetadata);
+    DeleteMetadata deleteMetadata = new DeleteMetadata(1, 1, replicationMetadata);
 
     writer.put(Integer.toString(1), Integer.toString(1), 1, null, VeniceWriter.DEFAULT_LEADER_METADATA_WRAPPER, ctime);
     writer.put(Integer.toString(2), Integer.toString(2), 1, null, VeniceWriter.DEFAULT_LEADER_METADATA_WRAPPER, putMetadata);
@@ -210,7 +210,7 @@ public class VeniceWriterTest {
       Assert.assertEquals(kme.producerMetadata.logicalTimestamp, ctime);
     }
 
-    //verify default values for timestampMetadata are written correctly
+    //verify default values for replicationMetadata are written correctly
     Put put = (Put)value1.payloadUnion;
     Assert.assertEquals(put.schemaId, 1);
     Assert.assertEquals(put.replicationMetadataVersionId, VeniceWriter.VENICE_DEFAULT_TIMESTAMP_METADATA_VERSION_ID);
@@ -221,7 +221,7 @@ public class VeniceWriterTest {
     Assert.assertEquals(delete.replicationMetadataVersionId, VeniceWriter.VENICE_DEFAULT_TIMESTAMP_METADATA_VERSION_ID);
     Assert.assertEquals(delete.replicationMetadataPayload, ByteBuffer.wrap(new byte[0]));
 
-    //verify timestampMetadata is encoded correctly for Put.
+    //verify replicationMetadata is encoded correctly for Put.
     KafkaMessageEnvelope value2 = kafkaMessageEnvelopeArgumentCaptor.getAllValues().get(2);
     Assert.assertEquals(value2.messageType, MessageType.PUT.getValue());
     put = (Put)value2.payloadUnion;
@@ -230,7 +230,7 @@ public class VeniceWriterTest {
     Assert.assertEquals(put.replicationMetadataPayload, ByteBuffer.wrap(new byte[]{0xa, 0xb}));
     Assert.assertEquals(value2.producerMetadata.logicalTimestamp, VeniceWriter.APP_DEFAULT_LOGICAL_TS);
 
-    //verify timestampMetadata is encoded correctly for Delete.
+    //verify replicationMetadata is encoded correctly for Delete.
     KafkaMessageEnvelope value5 = kafkaMessageEnvelopeArgumentCaptor.getAllValues().get(5);
     Assert.assertEquals(value5.messageType, MessageType.DELETE.getValue());
     delete = (Delete)value5.payloadUnion;

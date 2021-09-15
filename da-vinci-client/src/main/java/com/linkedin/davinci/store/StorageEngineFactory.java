@@ -27,12 +27,12 @@ public abstract class StorageEngineFactory {
       throws StorageInitializationException;
 
   /**
-   * Timestamp metadata is only supported in RocksDB storage engine. For other type of the storage engine, we will
+   * Replication metadata is only supported in RocksDB storage engine. For other type of the storage engine, we will
    * throw VeniceException here.
    */
-  public AbstractStorageEngine getStorageEngine(VeniceStoreVersionConfig storeDef, boolean timestampMetadataEnabled) {
-    if (timestampMetadataEnabled) {
-      throw new VeniceException("Timestamp metadata is only supported in RocksDB storage engine!");
+  public AbstractStorageEngine getStorageEngine(VeniceStoreVersionConfig storeDef, boolean replicationMetadataEnabled) {
+    if (replicationMetadataEnabled) {
+      throw new VeniceException("Replication metadata is only supported in RocksDB storage engine!");
     }
     return getStorageEngine(storeDef);
   }

@@ -58,6 +58,6 @@ public interface ReadWriteSchemaRepository extends ReadOnlySchemaRepository {
 
   int preCheckDerivedSchemaAndGetNextAvailableId(String storeName, int valueSchemaId, String derivedSchemaStr);
 
-  ReplicationMetadataSchemaEntry addMetadataSchema(String storeName, int valueSchemaId, String timestampMetadataSchemaStr, int timestampMetadataVersionId);
+  ReplicationMetadataSchemaEntry addMetadataSchema(String storeName, int valueSchemaId, String replicationMetadataSchemaStr, int replicationMetadataVersionId);
 
 }
