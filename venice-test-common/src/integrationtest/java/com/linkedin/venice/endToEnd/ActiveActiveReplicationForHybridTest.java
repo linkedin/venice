@@ -497,8 +497,7 @@ public class ActiveActiveReplicationForHybridTest {
     UpdateStoreQueryParams params = new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
         .setHybridRewindSeconds(25L)
         .setHybridOffsetLagThreshold(1L)
-        .setLeaderFollowerModel(true)
-        .setHybridDataReplicationPolicy(DataReplicationPolicy.ACTIVE_ACTIVE);
+        .setLeaderFollowerModel(true);
 
     enableNativeReplication.ifPresent(params::setNativeReplicationEnabled);
     enableActiveActiveReplication.ifPresent(params::setActiveActiveReplicationEnabled);
@@ -513,8 +512,7 @@ public class ActiveActiveReplicationForHybridTest {
       Assert.assertEquals(storeResponse.getStore().isActiveActiveReplicationEnabled(), expectedStatus, "The active active replication config does not match.");
       if (isHybrid && (currentStatus != expectedStatus)) {
         DataReplicationPolicy policy = storeResponse.getStore().getHybridStoreConfig().getDataReplicationPolicy();
-        DataReplicationPolicy targetPolicy = expectedStatus ? DataReplicationPolicy.ACTIVE_ACTIVE : DataReplicationPolicy.NON_AGGREGATE;
-        Assert.assertEquals(targetPolicy, policy, "The active active replication policy does not match.");
+        Assert.assertEquals(policy, DataReplicationPolicy.NON_AGGREGATE, "The active active replication policy does not match.");
       }
     });
   }
