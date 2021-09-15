@@ -26,6 +26,7 @@ public class MRJobCounterHelper {
 
   private static final String MR_JOB_STATUS = "MapReduce job status";
   private static final String REDUCER_JOB_CLOSED_COUNT = "Reducer job closed count";
+  private static final String MAPPER_SPRAY_ALL_PARTITIONS_TRIGGERED_COUNT = "Mapper spray all partitions triggered count";
 
   private static final String KAFKA_PRODUCER_METRIC_FOR_BROKER = "%s for %s";
   static final String COUNTER_GROUP_KAFKA_BROKER = "Kafka metrics aggregated per broker";
@@ -63,6 +64,9 @@ public class MRJobCounterHelper {
   static final GroupAndCounterNames REDUCER_CLOSED_COUNT_GROUP_COUNTER_NAME =
       new GroupAndCounterNames(MR_JOB_STATUS, REDUCER_JOB_CLOSED_COUNT);
 
+  static final GroupAndCounterNames MAPPER_SPRAY_ALL_PARTITIONS_TRIGGERED_COUNT_NAME =
+      new GroupAndCounterNames(MR_JOB_STATUS, MAPPER_SPRAY_ALL_PARTITIONS_TRIGGERED_COUNT);
+
   static final GroupAndCounterNames TOTAL_PUT_OR_DELETE_COUNT_GROUP_COUNTER_NAME =
       new GroupAndCounterNames(COUNTER_GROUP_KAFKA_INPUT_FORMAT, COUNTER_PUT_OR_DELETE_RECORDS);
 
@@ -73,6 +77,10 @@ public class MRJobCounterHelper {
 
   static void incrReducerClosedCount(Reporter reporter, long amount) {
     incrAmountWithGroupCounterName(reporter, REDUCER_CLOSED_COUNT_GROUP_COUNTER_NAME, amount);
+  }
+
+  static void incrMapperSprayAllPartitionsTriggeredCount(Reporter reporter, long amount) {
+    incrAmountWithGroupCounterName(reporter, MAPPER_SPRAY_ALL_PARTITIONS_TRIGGERED_COUNT_NAME, amount);
   }
 
   static void incrWriteAclAuthorizationFailureCount(Reporter reporter, long amount) {
@@ -141,6 +149,10 @@ public class MRJobCounterHelper {
 
   static long getReducerClosedCount(Counters counters) {
     return getCountFromCounters(counters, REDUCER_CLOSED_COUNT_GROUP_COUNTER_NAME);
+  }
+
+  static long getMapperSprayAllPartitionsTriggeredCount(Counters counters) {
+    return getCountFromCounters(counters, MAPPER_SPRAY_ALL_PARTITIONS_TRIGGERED_COUNT_NAME);
   }
 
   static long getOutputRecordsCount(Counters counters) {

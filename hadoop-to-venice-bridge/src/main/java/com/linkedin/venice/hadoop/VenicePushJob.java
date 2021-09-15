@@ -81,6 +81,7 @@ import org.apache.hadoop.mapred.Counters;
 import org.apache.hadoop.mapred.FileInputFormat;
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapred.Partitioner;
+import org.apache.hadoop.mapred.Reporter;
 import org.apache.hadoop.mapred.RunningJob;
 import org.apache.hadoop.mapred.lib.NullOutputFormat;
 import org.apache.kafka.clients.CommonClientConfigs;
@@ -972,6 +973,32 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
         if (pushJobSetting.isSourceKafka && totalPutOrDeleteRecordsCount == 0) {
           return;
         }
+        if (MRJobCounterHelper.getMapperSprayAllPartitionsTriggeredCount(runningJob.getCounters()) == 0) {
+          /**
+           * Right now, only the mapper with task id: 0 will spray all the partitions to make sure each reducer will
+           * be instantiated.
+           * In some situation, it is possible the mapper with task id: 0 won't receive any records, so this
+           * {@link AbstractVeniceMapper#maybeSprayAllPartitions} won't be invoked, so it is not guaranteed that
+           * each reducer will be invoked, and the closing event of the reducers won't be tracked by {@link Reporter},
+           * which will only be passed via {@link org.apache.hadoop.mapred.Reducer#reduce}.
+           *
+           * It will require a lot of efforts to make sure {@link AbstractVeniceMapper#maybeSprayAllPartitions} will be
+           * invoked in all the scenarios, so right now, we choose this approach:
+           * When {@link AbstractVeniceMapper#maybeSprayAllPartitions} is not invoked, VPJ won't fail if the reducer
+           * close count is smaller than the partition count since we couldn't differentiate whether it is a real issue
+           * or not.
+           *
+           * If there is a need to make it work for all the cases, and here are the potential proposals:
+           * 1. Invoke {@link AbstractVeniceMapper#maybeSprayAllPartitions} in every mapper.
+           * 2. Fake some input record to make sure the first mapper would always receive some message.
+           * 3. Examine the VT to find out how many partitions contain messages from batch push.
+           */
+          logger.warn(String.format("'AbstractVeniceMapper#maybeSprayAllPartitions' is not invoked, so we couldn't"
+              + " decide whether the push job finished successfully or not purely based on the reducer job"
+              + " closed count (%d) < the partition count (%d)", reducerClosedCount, kafkaTopicInfo.partitionCount));
+          return;
+        }
+
         throw new VeniceException(String.format(
             "MR job counter is not reliable since the reducer job closed count (%d) < the partition count (%d), "
                 + "while the input file data size is %d byte(s)", reducerClosedCount, kafkaTopicInfo.partitionCount,

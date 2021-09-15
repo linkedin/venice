@@ -46,7 +46,7 @@ public abstract class AbstractVeniceMapper<INPUT_KEY, INPUT_VALUE>
   public void map(INPUT_KEY inputKey, INPUT_VALUE inputValue, OutputCollector<BytesWritable, BytesWritable> output, Reporter reporter)
       throws IOException {
     if (recordKey == null) {
-      maybeSprayAllPartitions(output);
+      maybeSprayAllPartitions(output, reporter);
     }
     if (process(inputKey, inputValue, keyBW, valueBW, reporter)) {
       // key/value pair is valid.
@@ -54,7 +54,7 @@ public abstract class AbstractVeniceMapper<INPUT_KEY, INPUT_VALUE>
     }
   }
 
-  private void maybeSprayAllPartitions(OutputCollector<BytesWritable, BytesWritable> output) throws IOException {
+  private void maybeSprayAllPartitions(OutputCollector<BytesWritable, BytesWritable> output, Reporter reporter) throws IOException {
     /** First map invocation, since the {@link recordKey} will be set after this. */
     if (TASK_ID_NOT_SET == getTaskId()) {
       throw new IllegalStateException("attemptID not set!");
@@ -69,6 +69,7 @@ public abstract class AbstractVeniceMapper<INPUT_KEY, INPUT_VALUE>
       valueBW.set(recordValue, 0, Integer.BYTES);
       output.collect(keyBW, valueBW);
     }
+    MRJobCounterHelper.incrMapperSprayAllPartitionsTriggeredCount(reporter, 1);
     LOGGER.info("Map Task ID " + TASK_ID_WHICH_SHOULD_SPRAY_ALL_PARTITIONS
             + " successfully sprayed all partitions, to ensure that all Reducers come up.");
   }
