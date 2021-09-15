@@ -117,6 +117,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
 import org.apache.avro.Schema;
@@ -1067,7 +1068,29 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       processedRecords.add(recordWrapper);
       long kafkaProduceStartTimeInNS = System.nanoTime();
       // This function may modify the original record in KME and it is unsafe to use the payload from KME directly after this call.
-      switch (delegateConsumerRecord(recordWrapper)) {
+
+      /**
+       * With Active-Active replication during multi-colo RT consumption same records from same producer GUID may be processed in
+       * different consumer threads. Even though DIV is thread safe and will correctly detect DUPLICATE message the
+       * consumer threads might produce the unique records in local VT out of order.
+       * {@link LeaderFollowerStoreIngestionTask#delegateConsumerRecord(VeniceConsumerRecordWrapper)} functions performs
+       * both the DIV + producing to kafka operations during RT consumption.
+       * Taking a lock here on the partition level for the producerGUID makes sure that DIV + producing to Kafka of records
+       * happen in order for a single partition.
+       */
+      final GUID producerGUID = recordWrapper.consumerRecord().value().producerMetadata.producerGUID;
+      ProducerTracker producerTracker = kafkaDataIntegrityValidator.registerProducer(producerGUID);
+      int partition = recordWrapper.consumerRecord().partition();
+      ReentrantLock partitionLock = producerTracker.getPartitionLock(partition);
+      DelegateConsumerRecordResult delegateConsumerRecordResult;
+      partitionLock.lock();
+      try {
+        delegateConsumerRecordResult = delegateConsumerRecord(recordWrapper);
+      } finally {
+        partitionLock.unlock();
+      }
+
+      switch (delegateConsumerRecordResult) {
         case QUEUED_TO_DRAINER:
           long queuePutStartTimeInNS = System.nanoTime();
           storeBufferService.putConsumerRecord(recordWrapper, this, null); // blocking call

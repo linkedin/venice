@@ -77,7 +77,7 @@ public class ProducerTracker {
     return ProducerTracker.class.getSimpleName() + "(GUID: " + ByteUtils.toHexString(producerGUID.bytes()) + ", topic: " + topicName + ")";
   }
 
-  private ReentrantLock getPartitionLock(int partition) {
+  public ReentrantLock getPartitionLock(int partition) {
     return partitionLocks.computeIfAbsent(partition, key -> new ReentrantLock());
   }
 
