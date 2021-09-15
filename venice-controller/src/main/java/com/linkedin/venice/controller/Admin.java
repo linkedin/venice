@@ -634,4 +634,9 @@ public interface Admin extends AutoCloseable, Closeable {
      * Otherwise return false.
      */
     public boolean isActiveActiveReplicationEnabledInAllRegion(String clusterName, String storeName);
+
+    /**
+     * Returns default backup version retention time.
+     */
+    public long getBackupVersionDefaultRetentionMs();
 }

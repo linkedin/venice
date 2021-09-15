@@ -308,6 +308,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     private VeniceDistClusterControllerStateModelFactory controllerStateModelFactory;
 
+    private long backupVersionDefaultRetentionMs;
+
     public VeniceHelixAdmin(
         VeniceControllerMultiClusterConfig multiClusterConfigs,
         MetricsRepository metricsRepository,
@@ -334,6 +336,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         this.kafkaSSLBootstrapServers = multiClusterConfigs.getSslKafkaBootstrapServers();
         this.deprecatedJobTopicRetentionMs = multiClusterConfigs.getDeprecatedJobTopicRetentionMs();
         this.deprecatedJobTopicMaxRetentionMs = multiClusterConfigs.getDeprecatedJobTopicMaxRetentionMs();
+        this.backupVersionDefaultRetentionMs = multiClusterConfigs.getBackupVersionDefaultRetentionMs();
 
         this.minNumberOfUnusedKafkaTopicsToPreserve = multiClusterConfigs.getMinNumberOfUnusedKafkaTopicsToPreserve();
         this.minNumberOfStoreVersionsToPreserve = multiClusterConfigs.getMinNumberOfStoreVersionsToPreserve();
@@ -5380,5 +5383,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         PartitionerConfig ampFactorUpdatedPartitionerConfig = originalPartitionerConfig == null ? new PartitionerConfigImpl() : originalPartitionerConfig.clone();
         ampFactorUpdatedPartitionerConfig.setAmplificationFactor(newPartitionerConfig.getAmplificationFactor());
         return Objects.equals(ampFactorUpdatedPartitionerConfig, newPartitionerConfig);
+    }
+
+    @Override
+    public long getBackupVersionDefaultRetentionMs() {
+        return backupVersionDefaultRetentionMs;
     }
 }

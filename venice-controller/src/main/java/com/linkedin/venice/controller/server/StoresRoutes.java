@@ -104,6 +104,10 @@ public class StoresRoutes extends AbstractRoute {
           return;
         }
         StoreInfo storeInfo = StoreInfo.fromStore(store);
+        // Make sure store info will have right default retention time for Nuage UI display.
+        if (storeInfo.getBackupVersionRetentionMs() < 0) {
+          storeInfo.setBackupVersionRetentionMs(admin.getBackupVersionDefaultRetentionMs());
+        }
         storeInfo.setColoToCurrentVersions(
             admin.getCurrentVersionsForMultiColos(veniceResponse.getCluster(), veniceResponse.getName()));
         veniceResponse.setStore(storeInfo);

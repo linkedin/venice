@@ -2921,4 +2921,9 @@ public class VeniceParentHelixAdmin implements Admin {
       return configValue;
     };
   }
+
+  @Override
+  public long getBackupVersionDefaultRetentionMs() {
+    return veniceHelixAdmin.getBackupVersionDefaultRetentionMs();
+  }
 }
