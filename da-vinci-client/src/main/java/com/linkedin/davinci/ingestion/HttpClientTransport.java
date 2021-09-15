@@ -32,6 +32,8 @@ public class HttpClientTransport implements AutoCloseable {
   private static final int DEFAULT_REQUEST_TIMEOUT_MS = 60 * Time.MS_PER_SECOND;
   private static final int DEFAULT_REQUEST_RETRY_WAIT_TIME_MS = 30 * Time.MS_PER_SECOND;
   private static final int DEFAULT_IO_THREAD_COUNT = 16;
+  private static final String HTTP = "http";
+  private static final String HTTPS = "https";
 
   private static final RequestConfig requestConfig;
 
@@ -46,12 +48,12 @@ public class HttpClientTransport implements AutoCloseable {
   private final String forkedProcessRequestUrl;
 
   public HttpClientTransport(Optional<SSLFactory> sslFactory, int port) {
-    this.forkedProcessRequestUrl = "http://localhost:" + port;
+    this.forkedProcessRequestUrl = (sslFactory.isPresent() ? HTTPS : HTTP) + "://localhost:" + port;
     IOReactorConfig ioReactorConfig = IOReactorConfig.custom().setIoThreadCount(DEFAULT_IO_THREAD_COUNT).build();
     this.httpClient = HttpAsyncClients.custom()
         .setDefaultIOReactorConfig(ioReactorConfig)
         .setDefaultRequestConfig(requestConfig)
-        .setSSLStrategy(sslFactory.isPresent() ? new SSLIOSessionStrategy(sslFactory.get().getSSLContext()) : null)
+        .setSSLStrategy(sslFactory.map(factory -> new SSLIOSessionStrategy(factory.getSSLContext())).orElse(null))
         .build();
     this.httpClient.start();
   }
