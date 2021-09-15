@@ -43,6 +43,8 @@ import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.generic.IndexedRecord;
 import org.apache.avro.util.Utf8;
+import org.apache.hadoop.mapred.OutputCollector;
+import org.apache.hadoop.mapred.Reporter;
 import org.apache.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
@@ -553,6 +555,35 @@ public abstract class TestBatch {
           properties.setProperty(KAFKA_INPUT_TOPIC, Version.composeKafkaTopic(storeName, 1));
           properties.setProperty(KAFKA_INPUT_BROKER_URL, veniceCluster.getKafka().getAddress());
           properties.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
+        }, validator, storeName, new UpdateStoreQueryParams(), false);
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testReducerCountValidation() throws Exception {
+    H2VValidator validator = (avroClient, vsonClient, metricsRepository) -> {
+      //test single get
+      for (int i = 1; i <= 1; i ++) {
+        Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + i);
+      }
+    };
+    String storeName = testBatchStore(inputDir -> {
+      Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir, false, 1);
+      return new Pair<>(recordSchema.getField("id").schema(),
+          recordSchema.getField("name").schema());
+    }, properties -> {}, validator, new UpdateStoreQueryParams().setPartitionCount(3));
+
+    // Re-push with Kafka Input
+    testBatchStore(
+        inputDir -> new Pair<>(Schema.create(Schema.Type.NULL), Schema.create(Schema.Type.NULL)),
+        properties -> {
+          properties.setProperty(SOURCE_KAFKA, "true");
+          properties.setProperty(KAFKA_INPUT_TOPIC, Version.composeKafkaTopic(storeName, 1));
+          properties.setProperty(KAFKA_INPUT_BROKER_URL, veniceCluster.getKafka().getAddress());
+          /**
+           * This is used to make sure the first mapper doesn't contain any real messages, but just control messages.
+           * So that {@link com.linkedin.venice.hadoop.AbstractVeniceMapper#maybeSprayAllPartitions} won't be invoked.
+           */
+          properties.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "2");
         }, validator, storeName, new UpdateStoreQueryParams(), false);
   }
 
