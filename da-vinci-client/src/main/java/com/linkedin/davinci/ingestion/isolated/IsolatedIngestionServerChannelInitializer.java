@@ -1,5 +1,6 @@
 package com.linkedin.davinci.ingestion.isolated;
 
+import com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils;
 import com.linkedin.ddsstorage.router.lnkd.netty4.SSLInitializer;
 import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
 import com.linkedin.venice.listener.VerifySslHandler;
@@ -14,11 +15,13 @@ import java.util.Optional;
 public class IsolatedIngestionServerChannelInitializer extends ChannelInitializer<SocketChannel> {
   private final IsolatedIngestionServer isolatedIngestionServer;
   private final Optional<SSLEngineComponentFactory> sslFactory;
+  private final Optional<IsolatedIngestionServerAclHandler> aclHandler;
   private final VerifySslHandler verifySslHandler = new VerifySslHandler();
 
-  public IsolatedIngestionServerChannelInitializer(IsolatedIngestionServer isolatedIngestionServer, Optional<SSLEngineComponentFactory> sslFactory) {
-    this.sslFactory = sslFactory;
+  public IsolatedIngestionServerChannelInitializer(IsolatedIngestionServer isolatedIngestionServer) {
     this.isolatedIngestionServer = isolatedIngestionServer;
+    this.sslFactory = IsolatedIngestionUtils.getSSLEngineComponentFactory(isolatedIngestionServer.getConfigLoader());
+    this.aclHandler = IsolatedIngestionUtils.getAclHandler(isolatedIngestionServer.getConfigLoader());
   }
 
   @Override
@@ -30,6 +33,7 @@ public class IsolatedIngestionServerChannelInitializer extends ChannelInitialize
     ch.pipeline().addLast(new HttpResponseEncoder());
     if (sslFactory.isPresent()) {
       ch.pipeline().addLast(verifySslHandler);
+      aclHandler.ifPresent(isolatedIngestionServerAclHandler -> ch.pipeline().addLast(isolatedIngestionServerAclHandler));
     }
     ch.pipeline().addLast(new IsolatedIngestionServerHandler(isolatedIngestionServer));
   }
