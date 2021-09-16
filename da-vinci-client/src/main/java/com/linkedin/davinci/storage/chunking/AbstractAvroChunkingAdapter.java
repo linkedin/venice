@@ -20,6 +20,7 @@ import java.nio.ByteBuffer;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.BinaryDecoder;
 import org.apache.avro.io.DecoderFactory;
+import org.apache.avro.io.OptimizedBinaryDecoderFactory;
 
 
 /**
@@ -270,24 +271,24 @@ public abstract class AbstractAvroChunkingAdapter<T> implements ChunkingAdapter<
   private final DecoderWrapperValueOnly<byte[], T> byteArrayDecoderValueOnly =
       (reusedDecoder, bytes, offset, inputBytesLength, reusedValue, compressionStrategy, deserializer, readResponse) -> deserializer
           .deserialize(reusedValue,
-              DecoderFactory.defaultFactory().createBinaryDecoder(bytes, offset, inputBytesLength, reusedDecoder));
+              ByteBuffer.wrap(bytes, offset, inputBytesLength),
+              reusedDecoder);
 
   private final DecoderWrapper<byte[], T> byteArrayDecoder =
       (reusedDecoder, bytes, inputBytesLength, reusedValue, compressionStrategy, deserializer, readResponse, compressorFactory, versionTopic) ->
           deserializer.deserialize(
               reusedValue,
-              DecoderFactory.defaultFactory().createBinaryDecoder(
+              ByteBuffer.wrap(
                   bytes,
                   ValueRecord.SCHEMA_HEADER_LENGTH,
-                  inputBytesLength - ValueRecord.SCHEMA_HEADER_LENGTH,
-                  reusedDecoder));
+                  inputBytesLength - ValueRecord.SCHEMA_HEADER_LENGTH),
+              reusedDecoder);
 
   private final DecoderWrapper<InputStream, T> decompressingInputStreamDecoder =
       (reusedDecoder, inputStream, inputBytesLength, reusedValue, compressionStrategy, deserializer, readResponse, compressorFactory, versionTopic) -> {
         VeniceCompressor compressor = compressorFactory.getCompressor(compressionStrategy, versionTopic);
         try (InputStream decompressedInputStream = compressor.decompress(inputStream)) {
-          BinaryDecoder decoder = DecoderFactory.defaultFactory().createBinaryDecoder(decompressedInputStream, reusedDecoder);
-          return deserializer.deserialize(reusedValue, decoder);
+          return deserializer.deserialize(reusedValue, decompressedInputStream, reusedDecoder);
         } catch (IOException e) {
           throw new VeniceException("Failed to decompress, compressionStrategy: " + compressionStrategy.name(), e);
         }

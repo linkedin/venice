@@ -1,6 +1,7 @@
 package com.linkedin.venice.serializer;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.util.Iterator;
 import java.util.NoSuchElementException;
@@ -84,9 +85,15 @@ public class AvroGenericDeserializer<V> implements RecordDeserializer<V> {
 
   @Override
   public V deserialize(ByteBuffer byteBuffer) throws VeniceSerializationException {
+    return deserialize(null, byteBuffer, null);
+  }
+
+  @Override
+  public V deserialize(V reuse, ByteBuffer byteBuffer, BinaryDecoder reusedDecoder)
+      throws VeniceSerializationException {
     BinaryDecoder decoder = DecoderFactory.defaultFactory()
-        .createBinaryDecoder(byteBuffer.array(), byteBuffer.position(), byteBuffer.remaining(), null);
-    return deserialize(null, decoder);
+        .createBinaryDecoder(byteBuffer.array(), byteBuffer.position(), byteBuffer.remaining(), reusedDecoder);
+    return deserialize(reuse, decoder);
   }
 
   @Override
@@ -108,6 +115,12 @@ public class AvroGenericDeserializer<V> implements RecordDeserializer<V> {
     } catch (Exception e) {
       throw new VeniceSerializationException("Could not deserialize bytes back into Avro object", e);
     }
+  }
+
+  @Override
+  public V deserialize(V reuseRecord, InputStream in, BinaryDecoder reusedDecoder) throws VeniceSerializationException {
+    BinaryDecoder decoder = DecoderFactory.defaultFactory().createBinaryDecoder(in, reusedDecoder);
+    return deserialize(reuseRecord, decoder);
   }
 
   @Override

@@ -15,7 +15,6 @@ import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiColoMultiClusterWrapper;
 import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.Store;
-import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.samza.VeniceObjectWithTimestamp;
@@ -404,6 +403,9 @@ public class ActiveActiveReplicationForHybridTest {
     OutgoingMessageEnvelope envelope2 = new OutgoingMessageEnvelope(new SystemStream("venice", storeName), key1,
         useLogicalTimestamp ? new VeniceObjectWithTimestamp(value2, mockTime.getMilliseconds()) : value2);
     producerInDC0.send(storeName, envelope2);
+
+    // Send <Key1, Value1> with same timestamp to trigger direct object comparison
+    producerInDC0.send(storeName, envelope1);
 
     // Send <Key2, Value1>, which is used to verify that servers have consumed and processed till the end of all real-time messages
     String key2 = "key2";

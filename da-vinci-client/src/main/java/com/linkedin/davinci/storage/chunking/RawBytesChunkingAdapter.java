@@ -1,7 +1,7 @@
 package com.linkedin.davinci.storage.chunking;
 
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
-import com.linkedin.venice.serializer.IdentityRecordDeserializer;
+import com.linkedin.venice.serialization.IdentityRecordDeserializer;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import java.nio.ByteBuffer;
 
