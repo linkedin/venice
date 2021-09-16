@@ -62,4 +62,9 @@ public class OptimizedBinaryDecoder extends BinaryDecoder {
       throw new IllegalStateException("byteBuffer is not initialized! Should call configureByteBuffer before using.");
     }
   }
+
+  public ByteBuffer getRawBytes() {
+    checkInit();
+    return byteBuffer;
+  }
 }

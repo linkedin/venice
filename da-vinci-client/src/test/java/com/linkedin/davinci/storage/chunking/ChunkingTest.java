@@ -1,7 +1,6 @@
 package com.linkedin.davinci.storage.chunking;
 
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
-import com.linkedin.davinci.storage.MetadataRetriever;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.record.ValueRecord;
@@ -9,6 +8,7 @@ import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.ByteUtils;
@@ -17,6 +17,7 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
+import java.util.function.Function;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
@@ -196,8 +197,7 @@ public class ChunkingTest {
     return paramsToReturn;
   }
 
-  @Test(dataProvider = "recordProvider")
-  public void testGenericRecordChunkingAdapter(GenericRecord record) throws IOException {
+  private void runTest(GenericRecord record, AbstractAvroChunkingAdapter chunkingAdapter, Function<Object, Void> assertions) {
     int partition = 9;
     String storeName = "test";
     byte[] keyBytes = ByteUtils.fromHexString("040647454ff4baf2630a5449544c45440010494d504c49434954");
@@ -237,13 +237,31 @@ public class ChunkingTest {
     doReturn(chunk1Bytes).when(storageEngine).get(eq(partition), eq(firstKey));
     doReturn(chunk2Bytes).when(storageEngine).get(eq(partition), eq(secondKey));
 
+    RecordDeserializer deserializer = chunkingAdapter.getDeserializer(storeName, 1, schemaRepository, true);
+
     try (StorageEngineBackedCompressorFactory compressorFactory = new StorageEngineBackedCompressorFactory(mock(
         StorageMetadataService.class))) {
-      GenericRecord value =
-          GenericRecordChunkingAdapter.INSTANCE.get(storageEngine, partition, ByteBuffer.wrap(keyBytes), true, null,
-              null, null, CompressionStrategy.NO_OP, true, schemaRepository, storeName, compressorFactory);
-
-      Assert.assertEquals(value.get("test"), record.get("test"));
+      assertions.apply(chunkingAdapter.get(storageEngine, partition, ByteBuffer.wrap(keyBytes), true, null,
+              null, null, CompressionStrategy.NO_OP, true, schemaRepository, storeName, compressorFactory));
     }
+  }
+
+  @Test(dataProvider = "recordProvider")
+  public void testGenericRecordChunkingAdapter(GenericRecord record) {
+    runTest(record, GenericRecordChunkingAdapter.INSTANCE, (valueFromStorageEngine) -> {
+      Assert.assertTrue(valueFromStorageEngine instanceof GenericRecord);
+      Assert.assertEquals(valueFromStorageEngine, record);
+      return null;
+    });
+  }
+
+  @Test(dataProvider = "recordProvider")
+  public void testRawBytesChunkingAdapter(GenericRecord record) {
+    byte[] serializedRecord = SerializerDeserializerFactory.getAvroGenericSerializer(record.getSchema()).serialize(record);
+    runTest(record, RawBytesChunkingAdapter.INSTANCE, (valueFromStorageEngine) -> {
+      Assert.assertTrue(valueFromStorageEngine instanceof ByteBuffer);
+      Assert.assertEquals(ByteUtils.extractByteArray((ByteBuffer)valueFromStorageEngine), serializedRecord);
+      return null;
+    });
   }
 }
