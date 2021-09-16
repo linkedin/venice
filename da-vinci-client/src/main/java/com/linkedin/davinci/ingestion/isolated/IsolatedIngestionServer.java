@@ -142,7 +142,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
     workerGroup = new NioEventLoopGroup();
     bootstrap = new ServerBootstrap();
     bootstrap.group(bossGroup, workerGroup).channel(serverSocketChannelClass)
-        .childHandler(new IsolatedIngestionServerChannelInitializer(this, IsolatedIngestionUtils.getSSLEngineComponentFactory(configLoader)))
+        .childHandler(new IsolatedIngestionServerChannelInitializer(this))
         .option(ChannelOption.SO_BACKLOG, 1000)
         .childOption(ChannelOption.SO_KEEPALIVE, true)
         .option(ChannelOption.SO_REUSEADDR, true)

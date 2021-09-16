@@ -5,6 +5,7 @@ import com.linkedin.common.util.None;
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.ingestion.isolated.IsolatedIngestionServer;
+import com.linkedin.davinci.ingestion.isolated.IsolatedIngestionServerAclHandler;
 import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
 import com.linkedin.security.ssl.access.control.SSLEngineComponentFactoryImpl;
 import com.linkedin.venice.SSLConfig;
@@ -41,10 +42,15 @@ import io.netty.handler.codec.http.HttpResponse;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpVersion;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.security.KeyStore;
+import java.security.KeyStoreException;
+import java.security.NoSuchAlgorithmException;
+import java.security.cert.CertificateException;
 import java.util.AbstractMap;
 import java.util.Collections;
 import java.util.Map;
@@ -53,7 +59,6 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
-import javax.swing.text.html.Option;
 import org.apache.avro.specific.SpecificRecordBase;
 import org.apache.commons.io.IOUtils;
 import org.apache.log4j.Logger;
@@ -69,6 +74,7 @@ import static com.linkedin.venice.ingestion.protocol.enums.IngestionAction.*;
  */
 public class IsolatedIngestionUtils {
   public static final String INGESTION_ISOLATION_CONFIG_PREFIX = "isolated";
+  public static final String ISOLATED_INGESTION_CONFIG_FILENAME = "ForkedIngestionProcess.conf";
 
   private static final Logger logger = Logger.getLogger(IsolatedIngestionUtils.class);
   private static final int D2_STARTUP_TIMEOUT = 60000;
@@ -356,12 +362,12 @@ public class IsolatedIngestionUtils {
   }
 
   public static String buildAndSaveConfigsForForkedIngestionProcess(VeniceConfigLoader configLoader) {
-    String configFileName = "ForkedIngestionProcess.conf";
     PropertyBuilder propertyBuilder = new PropertyBuilder();
     configLoader.getCombinedProperties().toProperties().forEach((key, value) -> propertyBuilder.put(key.toString(), value.toString()));
     // Override ingestion isolation's customized configs.
     configLoader.getCombinedProperties().clipAndFilterNamespace(INGESTION_ISOLATION_CONFIG_PREFIX).toProperties()
         .forEach((key, value) -> propertyBuilder.put(key.toString(), value.toString()));
+    maybePopulateServerIngestionPrincipal(propertyBuilder, configLoader);
     VeniceProperties veniceProperties = propertyBuilder.build();
 
     String configBasePath = configLoader.getVeniceServerConfig().getDataBasePath();
@@ -372,7 +378,7 @@ public class IsolatedIngestionUtils {
       throw new VeniceException(e);
     }
 
-    String configFilePath = Paths.get(configBasePath, configFileName).toAbsolutePath().toString();
+    String configFilePath = Paths.get(configBasePath, ISOLATED_INGESTION_CONFIG_FILENAME).toAbsolutePath().toString();
     File initializationConfig = new File(configFilePath);
     if (initializationConfig.exists()) {
       LOGGER.warn("Initialization config file already exists, will delete the old configs.");
@@ -391,9 +397,9 @@ public class IsolatedIngestionUtils {
 
   public static Optional<SSLEngineComponentFactory> getSSLEngineComponentFactory(VeniceConfigLoader configLoader) {
     try {
-      if (configLoader.getCombinedProperties().getBoolean(SERVER_INGESTION_ISOLATION_SSL_ENABLED, false)) {
+      if (isolatedIngestionServerSslEnabled(configLoader)) {
         // If SSL communication is enabled but SSL configs are missing, we should fail fast here.
-        if (!configLoader.getCombinedProperties().getBoolean(SSL_ENABLED, false)) {
+        if (!sslEnabled(configLoader)) {
           throw new VeniceException("Ingestion isolation SSL is enabled for communication, but SSL configs are missing.");
         }
         logger.info("SSL is enabled, will create SSLEngineComponentFactory");
@@ -412,10 +418,10 @@ public class IsolatedIngestionUtils {
    * Create SSLFactory for inter-process communication encryption purpose.
    */
   public static Optional<SSLFactory> getSSLFactoryForInterProcessCommunication(VeniceConfigLoader configLoader) {
-    if (configLoader.getCombinedProperties().getBoolean(SERVER_INGESTION_ISOLATION_SSL_ENABLED, false)) {
+    if (isolatedIngestionServerSslEnabled(configLoader)) {
       try {
         // If SSL communication is enabled but SSL configs are missing, we should fail fast here.
-        if (!configLoader.getCombinedProperties().getBoolean(SSL_ENABLED, false)) {
+        if (!sslEnabled(configLoader)) {
           throw new VeniceException("Ingestion isolation SSL is enabled for communication, but SSL configs are missing.");
         }
         logger.info("SSL is enabled, will create SSLFactory");
@@ -432,7 +438,7 @@ public class IsolatedIngestionUtils {
    * Create SSLFactory for D2Client in ClientConfig, which will be used by different ingestion components.
    */
   public static Optional<SSLFactory> getSSLFactoryForIngestion(VeniceConfigLoader configLoader) {
-    if (configLoader.getCombinedProperties().getBoolean(SSL_ENABLED, false)) {
+    if (sslEnabled(configLoader)) {
       try {
         logger.info("SSL is enabled, will create SSLFactory");
         return Optional.of(new DefaultSSLFactory(configLoader.getCombinedProperties().toProperties()));
@@ -441,6 +447,54 @@ public class IsolatedIngestionUtils {
       }
     } else {
       return Optional.empty();
+    }
+  }
+
+  public static Optional<IsolatedIngestionServerAclHandler> getAclHandler(VeniceConfigLoader configLoader) {
+    if (isolatedIngestionServerSslEnabled(configLoader) && isolatedIngestionServerAclEnabled(configLoader)) {
+      String allowedPrincipalName = configLoader.getCombinedProperties().getString(SERVER_INGESTION_ISOLATION_PRINCIPAL_NAME);
+      if (Utils.isNullOrEmpty(allowedPrincipalName)) {
+        throw new VeniceException("Ingestion isolation server SSL and ACL validation are enabled, but allowed principal name is missing in config.");
+      }
+      logger.info("Isolated ingestion server request ACL validation is enabled. Creating ACL handler with allowed principal name: " + allowedPrincipalName);
+      return Optional.of(new IsolatedIngestionServerAclHandler(allowedPrincipalName));
+    } else {
+      return Optional.empty();
+    }
+  }
+
+  public static boolean isolatedIngestionServerSslEnabled(VeniceConfigLoader configLoader) {
+    return configLoader.getCombinedProperties().getBoolean(SERVER_INGESTION_ISOLATION_SSL_ENABLED, false);
+  }
+
+  public static boolean isolatedIngestionServerAclEnabled(VeniceConfigLoader configLoader) {
+    return configLoader.getCombinedProperties().getBoolean(SERVER_INGESTION_ISOLATION_ACL_ENABLED, false);
+  }
+
+  public static boolean sslEnabled(VeniceConfigLoader configLoader) {
+    return configLoader.getCombinedProperties().getBoolean(SSL_ENABLED, false);
+  }
+
+  private static void maybePopulateServerIngestionPrincipal(PropertyBuilder propertyBuilder, VeniceConfigLoader configLoader) {
+    if (!isolatedIngestionServerSslEnabled(configLoader)) {
+      logger.info("Skip populating service principal name since ingestion server SSL is not enabled.");
+      return;
+    }
+
+    if (!isolatedIngestionServerAclEnabled(configLoader)) {
+      logger.info("Skip populating service principal name since ingestion server ACL validation is not enabled.");
+      return;
+    }
+
+    // Extract principal name from the KeyStore file
+    try {
+      FileInputStream is = new FileInputStream(configLoader.getCombinedProperties().getString(SSL_KEYSTORE_LOCATION));
+      KeyStore keystore = KeyStore.getInstance(configLoader.getCombinedProperties().getString(SSL_KEYSTORE_TYPE));
+      keystore.load(is, configLoader.getCombinedProperties().getString(SSL_KEY_PASSWORD).toCharArray());
+      String keyStoreAlias = keystore.aliases().nextElement();
+      propertyBuilder.put(SERVER_INGESTION_ISOLATION_PRINCIPAL_NAME, keyStoreAlias);
+    } catch (KeyStoreException | CertificateException | IOException | NoSuchAlgorithmException e) {
+      throw new VeniceException(e);
     }
   }
 }
