@@ -274,7 +274,7 @@
                     },
                     {
                       "name": "dataReplicationPolicy",
-                      "doc": "Real-time Samza job data replication policy. Using int because Avro Enums are not evolvable 0 => NON_AGGREGATE, 1 => AGGREGATE, 2 => NONE",
+                      "doc": "Real-time Samza job data replication policy. Using int because Avro Enums are not evolvable 0 => NON_AGGREGATE, 1 => AGGREGATE, 2 => NONE, 3 => ACTIVE_ACTIVE",
                       "type": "int",
                       "default": 0
                     },
