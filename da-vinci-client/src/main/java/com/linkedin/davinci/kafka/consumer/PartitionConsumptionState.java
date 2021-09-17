@@ -123,6 +123,12 @@ public class PartitionConsumptionState {
    */
   private boolean skipKafkaMessage = false;
 
+  /**
+   * This is an in-memory only map which will track the consumed offset from each kafka cluster. Currently used in
+   * measuring hybrid offset lag for each prod region during RT consumption.
+   */
+  private final ConcurrentMap<String, Long> consumedUpstreamRTOffsetMap = new VeniceConcurrentHashMap<>();
+
   public PartitionConsumptionState(int partition, int amplificationFactor, OffsetRecord offsetRecord, boolean hybrid,
     boolean isIncrementalPushEnabled, IncrementalPushPolicy incrementalPushPolicy) {
     this.partition = partition;
@@ -468,4 +474,13 @@ public class PartitionConsumptionState {
     public ByteBuffer getReplicationMetadata() {return replicationMetadata;}
 
   }
+
+  public void updateLeaderConsumedUpstreamRTOffset(String kafkaUrl, long offset) {
+    consumedUpstreamRTOffsetMap.put(kafkaUrl, offset);
+  }
+
+  public long getLeaderConsumedUpstreamRTOffset(String kafkaUrl) {
+    return consumedUpstreamRTOffsetMap.getOrDefault(kafkaUrl, 0L);
+  }
+
 }

@@ -1481,13 +1481,13 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       }
 
       //If we are here the message must be produced to local kafka or silently consumed.
-      byte[] keyBytes = kafkaKey.getKey();
       LeaderProducedRecordContext leaderProducedRecordContext;
 
       validateRecordBeforeProducingToLocalKafka(consumerRecordWrapper, partitionConsumptionState);
 
       if (Version.isRealTimeTopic(consumerRecord.topic())) {
         recordFabricHybridConsumptionStats(consumerRecordWrapper.kafkaUrl(), consumerRecord.serializedKeySize() + consumerRecord.serializedValueSize(), 1);
+        partitionConsumptionState.updateLeaderConsumedUpstreamRTOffset(consumerRecordWrapper.kafkaUrl(), consumerRecord.offset());
       }
       /**
        * DIV pass-through mode is enabled for all messages received before EOP (from VT,SR topics) but
@@ -2006,7 +2006,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           }
           // Fall back to calculate offset lag in the old way
           return (cachedKafkaMetadataGetter.getOffset(kafkaSourceAddress, currentLeaderTopic, pcs.getPartition()) - 1)
-                - pcs.getOffsetRecord().getLeaderOffset(kafkaSourceAddress);
+                - pcs.getLeaderConsumedUpstreamRTOffset(kafkaSourceAddress);
         }).sum();
 
     return minZeroLag(offsetLag);
