@@ -21,7 +21,13 @@ public enum DataReplicationPolicy {
    */
   AGGREGATE(1),
 
-  NONE(2);
+  NONE(2),
+
+  /**
+   * Samza job per colo pushes to local real-time topic. Leader SNs replicate data from all colos real-time topic to
+   * local version topic.
+   */
+  ACTIVE_ACTIVE(3);
 
   private final int value;
 
