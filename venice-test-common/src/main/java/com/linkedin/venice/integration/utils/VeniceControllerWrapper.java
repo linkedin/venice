@@ -7,9 +7,7 @@ import com.linkedin.venice.controller.VeniceController;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.kafka.admin.KafkaAdminClient;
-import com.linkedin.venice.meta.AbstractStore;
 import com.linkedin.venice.meta.PersistenceType;
-import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.utils.KafkaSSLUtils;
@@ -23,7 +21,6 @@ import com.linkedin.d2.server.factory.D2Server;
 
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Properties;
-import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.common.protocol.SecurityProtocol;
 import org.apache.log4j.Logger;
 
@@ -342,7 +339,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
 
   public boolean isMasterController(String clusterName) {
     Admin admin = service.getVeniceControllerService().getVeniceHelixAdmin();
-    return admin.isMasterController(clusterName);
+    return admin.isLeaderControllerFor(clusterName);
   }
 
   public boolean isMasterControllerOfControllerCluster() {

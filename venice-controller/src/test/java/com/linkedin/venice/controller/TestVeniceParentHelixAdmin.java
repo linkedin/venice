@@ -190,7 +190,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   public void testAsyncSetupForSystemStores() {
     String arbitraryCluster = TestUtils.getUniqueString("test-cluster");
     String participantStoreName = VeniceSystemStoreUtils.getParticipantStoreNameForCluster(arbitraryCluster);
-    doReturn(true).when(internalAdmin).isMasterController(arbitraryCluster);
+    doReturn(true).when(internalAdmin).isLeaderControllerFor(arbitraryCluster);
     doReturn(Version.composeRealTimeTopic(PUSH_JOB_DETAILS_STORE_NAME)).when(internalAdmin)
         .getRealTimeTopic(arbitraryCluster, PUSH_JOB_DETAILS_STORE_NAME);
     doReturn(Version.composeRealTimeTopic(participantStoreName)).when(internalAdmin)

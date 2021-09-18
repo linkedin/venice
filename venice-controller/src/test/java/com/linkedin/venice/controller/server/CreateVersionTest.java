@@ -128,7 +128,7 @@ public class CreateVersionTest {
 
     // Mock an Admin
     Admin admin = mock(Admin.class);
-    doReturn(true).when(admin).isMasterController(clusterName);
+    doReturn(true).when(admin).isLeaderControllerFor(clusterName);
     Store store = mock(Store.class);
     when(store.isLeaderFollowerModelEnabled()).thenReturn(false);
     PartitionerConfig partitionerConfig = new PartitionerConfigImpl();
@@ -162,7 +162,7 @@ public class CreateVersionTest {
 
     // Mock an Admin
     Admin admin = mock(Admin.class);
-    doReturn(true).when(admin).isMasterController(clusterName);
+    doReturn(true).when(admin).isLeaderControllerFor(clusterName);
     doReturn(true).when(admin).whetherEnableBatchPushFromAdmin();
 
     // Mock a certificate

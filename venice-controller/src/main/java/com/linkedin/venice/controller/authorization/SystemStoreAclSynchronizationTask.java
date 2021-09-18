@@ -59,7 +59,7 @@ public class SystemStoreAclSynchronizationTask implements Runnable, Closeable {
               break clusterLoop;
             }
             try {
-              if (!veniceParentHelixAdmin.isMasterController(cluster)) {
+              if (!veniceParentHelixAdmin.isLeaderControllerFor(cluster)) {
                 // Leadership might have changed.
                 continue clusterLoop;
               }

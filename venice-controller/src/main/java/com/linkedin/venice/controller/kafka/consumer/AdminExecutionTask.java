@@ -98,7 +98,7 @@ public class AdminExecutionTask implements Callable<Void> {
   @Override
   public Void call() {
     while (!internalTopic.isEmpty()) {
-      if (!admin.isMasterController(clusterName)) {
+      if (!admin.isLeaderControllerFor(clusterName)) {
         throw new VeniceRetriableException("This controller is no longer the master of: " + clusterName
             + ". The consumption task should unsubscribe soon");
       }

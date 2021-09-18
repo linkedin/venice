@@ -282,7 +282,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     while (isRunning.get()) {
       try {
         Utils.sleep(READ_CYCLE_DELAY_MS);
-        if (!admin.isMasterController(clusterName)) {
+        if (!admin.isLeaderControllerFor(clusterName)) {
           unSubscribe();
           continue;
         }

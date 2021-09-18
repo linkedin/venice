@@ -29,7 +29,7 @@ public class CreateStoreTest {
     String fakeMessage = "fake_message";
 
     doReturn(true).when(admin)
-        .isMasterController(clusterName);
+        .isLeaderControllerFor(clusterName);
     // Throws NPE here
     doThrow(new NullPointerException(fakeMessage)).when(admin)
         .createStore(any(), any(), any(), any(), any(), anyBoolean(), any());
@@ -70,7 +70,7 @@ public class CreateStoreTest {
     String fakeMessage = "fake_message";
 
     doReturn(true).when(admin)
-        .isMasterController(clusterName);
+        .isLeaderControllerFor(clusterName);
     // Throws NPE here
     doThrow(new Error(fakeMessage)).when(admin)
         .createStore(any(), any(), any(), any(), any(), anyBoolean(), any());
@@ -108,7 +108,7 @@ public class CreateStoreTest {
     Response response = mock(Response.class);
 
     doReturn(true).when(admin)
-        .isMasterController(clusterName);
+        .isLeaderControllerFor(clusterName);
 
     QueryParamsMap paramsMap = mock(QueryParamsMap.class);
     doReturn(new HashMap<>()).when(paramsMap)
@@ -134,7 +134,7 @@ public class CreateStoreTest {
     Response response = mock(Response.class);
 
     doReturn(false).when(admin)
-        .isMasterController(clusterName);
+        .isLeaderControllerFor(clusterName);
 
     QueryParamsMap paramsMap = mock(QueryParamsMap.class);
     doReturn(new HashMap<>()).when(paramsMap)

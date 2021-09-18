@@ -57,7 +57,7 @@ public class TestAdminSparkWithMocks {
         HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD, DataReplicationPolicy.NON_AGGREGATE,
         BufferReplayPolicy.REWIND_FROM_EOP));
     doReturn(mockStore).when(admin).getStore(anyString(), anyString());
-    doReturn(true).when(admin).isMasterController(anyString());
+    doReturn(true).when(admin).isLeaderControllerFor(anyString());
     doReturn(1).when(admin).getReplicationFactor(anyString(), anyString());
     doReturn(1).when(admin).calculateNumberOfPartitions(anyString(), anyString(), anyLong());
     doReturn("kafka-bootstrap").when(admin).getKafkaBootstrapServers(anyBoolean());
@@ -102,7 +102,7 @@ public class TestAdminSparkWithMocks {
         HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD, DataReplicationPolicy.NON_AGGREGATE,
         BufferReplayPolicy.REWIND_FROM_EOP));
     doReturn(mockStore).when(admin).getStore(anyString(), anyString());
-    doReturn(true).when(admin).isMasterController(anyString());
+    doReturn(true).when(admin).isLeaderControllerFor(anyString());
     doReturn(1).when(admin).getReplicationFactor(anyString(), anyString());
     doReturn(1).when(admin).calculateNumberOfPartitions(anyString(), anyString(), anyLong());
     doReturn("kafka-bootstrap").when(admin).getKafkaBootstrapServers(anyBoolean());
@@ -162,7 +162,7 @@ public class TestAdminSparkWithMocks {
     mockStore.setActiveActiveReplicationEnabled(true);
     doReturn(mockStore).when(admin).getStore(anyString(), anyString());
     doReturn(true).when(admin).isParent();
-    doReturn(true).when(admin).isMasterController(anyString());
+    doReturn(true).when(admin).isLeaderControllerFor(anyString());
     doReturn(1).when(admin).getReplicationFactor(anyString(), anyString());
     doReturn(1).when(admin).calculateNumberOfPartitions(anyString(), anyString(), anyLong());
     doReturn(corpRegionKafka.getFirst()).when(admin).getKafkaBootstrapServers(anyBoolean());
