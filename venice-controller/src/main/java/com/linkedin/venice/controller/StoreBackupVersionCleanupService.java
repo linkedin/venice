@@ -130,7 +130,7 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
         }
         // loop all the clusters
         for (String clusterName : allClusters) {
-          if (!admin.isMasterController(clusterName)) {
+          if (!admin.isLeaderControllerFor(clusterName)) {
             // Not master controller for current cluster
             continue;
           }

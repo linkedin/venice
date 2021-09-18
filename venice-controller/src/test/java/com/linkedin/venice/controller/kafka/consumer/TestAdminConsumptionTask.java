@@ -134,7 +134,7 @@ public class TestAdminConsumptionTask {
 
     admin = mock(VeniceHelixAdmin.class);
     // By default, current controller is the master controller
-    doReturn(true).when(admin).isMasterController(clusterName);
+    doReturn(true).when(admin).isLeaderControllerFor(clusterName);
 
     offsetManager = new InMemoryOffsetManager();
     adminTopicMetadataAccessor = new InMemoryAdminTopicMetadataAccssor();
@@ -201,12 +201,12 @@ public class TestAdminConsumptionTask {
   @Test (timeOut = TIMEOUT)
   public void testRunWhenNotMasterController() throws IOException, InterruptedException {
     // Update admin to be a slave controller
-    doReturn(false).when(admin).isMasterController(clusterName);
+    doReturn(false).when(admin).isLeaderControllerFor(clusterName);
 
     AdminConsumptionTask task = getAdminConsumptionTask(new RandomPollStrategy(), false);
     executor.submit(task);
     verify(admin, timeout(TIMEOUT).atLeastOnce())
-        .isMasterController(clusterName);
+        .isLeaderControllerFor(clusterName);
     verify(mockKafkaConsumer, never())
         .subscribe(any(), anyInt(), anyLong());
     task.close();
@@ -243,7 +243,7 @@ public class TestAdminConsumptionTask {
     AdminConsumptionTask task = getAdminConsumptionTask(new RandomPollStrategy(), isParent);
     executor.submit(task);
     verify(admin, timeout(TIMEOUT).atLeastOnce())
-        .isMasterController(clusterName);
+        .isLeaderControllerFor(clusterName);
     if (isParent) {
       verify(topicManager, timeout(TIMEOUT))
           .createTopic(AdminTopicUtils.getTopicNameFromClusterName(clusterName), 1, 1, true, false, Optional.of(0));
@@ -285,7 +285,7 @@ public class TestAdminConsumptionTask {
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
 
     verify(admin, timeout(TIMEOUT).atLeastOnce())
-        .isMasterController(clusterName);
+        .isLeaderControllerFor(clusterName);
     verify(mockKafkaConsumer, timeout(TIMEOUT))
         .subscribe(any(), anyInt(), anyLong());
     verify(mockKafkaConsumer, timeout(TIMEOUT))
@@ -317,7 +317,7 @@ public class TestAdminConsumptionTask {
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
 
     verify(admin, timeout(TIMEOUT).atLeastOnce())
-        .isMasterController(clusterName);
+        .isLeaderControllerFor(clusterName);
     verify(mockKafkaConsumer, timeout(TIMEOUT))
         .subscribe(any(), anyInt(), anyLong());
     verify(mockKafkaConsumer, timeout(TIMEOUT))
@@ -471,7 +471,7 @@ public class TestAdminConsumptionTask {
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
 
     verify(admin, timeout(TIMEOUT).atLeastOnce())
-        .isMasterController(clusterName);
+        .isLeaderControllerFor(clusterName);
     verify(mockKafkaConsumer, timeout(TIMEOUT))
         .subscribe(any(), anyInt(), anyLong());
     verify(mockKafkaConsumer, timeout(TIMEOUT))
@@ -536,7 +536,7 @@ public class TestAdminConsumptionTask {
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
 
     verify(admin, timeout(TIMEOUT).atLeastOnce())
-        .isMasterController(clusterName);
+        .isLeaderControllerFor(clusterName);
     verify(mockKafkaConsumer, timeout(TIMEOUT))
         .subscribe(any(), anyInt(), anyLong());
     verify(mockKafkaConsumer, timeout(TIMEOUT))
@@ -589,7 +589,7 @@ public class TestAdminConsumptionTask {
     executor.shutdownNow();
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
     verify(stats, atLeastOnce()).recordAdminTopicDIVErrorReportCount();
-    verify(admin, atLeastOnce()).isMasterController(clusterName);
+    verify(admin, atLeastOnce()).isLeaderControllerFor(clusterName);
     verify(mockKafkaConsumer, times(1)).subscribe(any(), anyInt(), anyLong());
     verify(mockKafkaConsumer, times(1)).unSubscribe(any(), anyInt());
     verify(admin, times(1)).createStore(clusterName, storeName1, owner, keySchema, valueSchema, false);
@@ -657,7 +657,7 @@ public class TestAdminConsumptionTask {
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
 
     verify(admin, timeout(TIMEOUT).atLeastOnce())
-        .isMasterController(clusterName);
+        .isLeaderControllerFor(clusterName);
     verify(mockKafkaConsumer, timeout(TIMEOUT))
         .subscribe(any(), anyInt(), anyLong());
     verify(mockKafkaConsumer, timeout(TIMEOUT))
@@ -693,7 +693,7 @@ public class TestAdminConsumptionTask {
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
 
     verify(admin, timeout(TIMEOUT).atLeastOnce())
-        .isMasterController(clusterName);
+        .isLeaderControllerFor(clusterName);
     verify(mockKafkaConsumer, timeout(TIMEOUT))
         .subscribe(any(), anyInt(), anyLong());
     verify(mockKafkaConsumer, timeout(TIMEOUT))
@@ -721,7 +721,7 @@ public class TestAdminConsumptionTask {
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
 
     verify(admin, timeout(TIMEOUT).atLeastOnce())
-        .isMasterController(clusterName);
+        .isLeaderControllerFor(clusterName);
     verify(mockKafkaConsumer, timeout(TIMEOUT))
         .subscribe(any(), anyInt(), anyLong());
     verify(mockKafkaConsumer, timeout(TIMEOUT))
@@ -908,7 +908,7 @@ public class TestAdminConsumptionTask {
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
 
     verify(admin, timeout(TIMEOUT).atLeastOnce())
-        .isMasterController(clusterName);
+        .isLeaderControllerFor(clusterName);
     verify(mockKafkaConsumer, timeout(TIMEOUT))
         .subscribe(any(), anyInt(), anyLong());
     verify(mockKafkaConsumer, timeout(TIMEOUT))
@@ -930,7 +930,7 @@ public class TestAdminConsumptionTask {
     TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS,
         () -> Assert.assertEquals(getLastExecutionId(clusterName), 2L));
     // Mimic a transfer of mastership
-    doReturn(false).when(admin).isMasterController(clusterName);
+    doReturn(false).when(admin).isLeaderControllerFor(clusterName);
     TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS,
         () -> Assert.assertEquals(task.getLastSucceededExecutionId(), new Long(-1)));
     // Mimic the behavior where another controller has processed some admin messages
@@ -943,7 +943,7 @@ public class TestAdminConsumptionTask {
     adminTopicMetadataAccessor.updateMetadata(clusterName, newMetadata);
     executionIdAccessor.updateLastSucceededExecutionIdMap(clusterName, storeName, 4L);
     // Resubscribe to the admin topic and make sure it can still process new admin messages
-    doReturn(true).when(admin).isMasterController(clusterName);
+    doReturn(true).when(admin).isLeaderControllerFor(clusterName);
     // Let the admin task to stay idle for at least one cycle
     Utils.sleep(2000);
     veniceWriter.put(emptyKeyBytes, getKillOfflinePushJobMessage(clusterName, storeTopicName, 5L),
@@ -972,7 +972,7 @@ public class TestAdminConsumptionTask {
     // isMasterController() is called once every consumption cycle (1000ms) and for every message processed in AdminExecutionTask.
     // Provide a sufficient number of true -> false -> true to mimic a transfer of mastership and resubscribed behavior
     // while stuck on a failing message.
-    when(admin.isMasterController(clusterName)).thenReturn(
+    when(admin.isLeaderControllerFor(clusterName)).thenReturn(
       true,true, true, true, true, false, false, false, true
     );
     executor.submit(task);

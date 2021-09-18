@@ -104,7 +104,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
 
   @Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST_MS)
   public void testIsMasterController() {
-    Assert.assertTrue(veniceAdmin.isMasterController(clusterName),
+    Assert.assertTrue(veniceAdmin.isLeaderControllerFor(clusterName),
         "The default controller should be the master controller.");
 
     int newAdminPort = controllerConfig.getAdminPort() + 1; /* Note: dummy port */
@@ -119,19 +119,19 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     );
     //Start stand by controller
     newMasterAdmin.initVeniceControllerClusterResource(clusterName);
-    Assert.assertFalse(veniceAdmin.isMasterController(clusterName) && newMasterAdmin.isMasterController(clusterName),
+    Assert.assertFalse(veniceAdmin.isLeaderControllerFor(clusterName) && newMasterAdmin.isLeaderControllerFor(clusterName),
         "At most one controller can be the master.");
     veniceAdmin.stop(clusterName);
     // Waiting state transition from standby->leader on new admin
     waitUntilIsMaster(newMasterAdmin, clusterName, MASTER_CHANGE_TIMEOUT_MS);
-    Assert.assertTrue(newMasterAdmin.isMasterController(clusterName),
+    Assert.assertTrue(newMasterAdmin.isLeaderControllerFor(clusterName),
         "The new controller should be the master controller right now.");
     veniceAdmin.initVeniceControllerClusterResource(clusterName);
     waitForAMaster(Arrays.asList(veniceAdmin, newMasterAdmin), clusterName, MASTER_CHANGE_TIMEOUT_MS);
 
     /* XOR */
-    Assert.assertTrue(veniceAdmin.isMasterController(clusterName) || newMasterAdmin.isMasterController(clusterName));
-    Assert.assertFalse(veniceAdmin.isMasterController(clusterName) && newMasterAdmin.isMasterController(clusterName));
+    Assert.assertTrue(veniceAdmin.isLeaderControllerFor(clusterName) || newMasterAdmin.isLeaderControllerFor(clusterName));
+    Assert.assertFalse(veniceAdmin.isLeaderControllerFor(clusterName) && newMasterAdmin.isLeaderControllerFor(clusterName));
 
     //resume to the original venice admin
     veniceAdmin.initVeniceControllerClusterResource(clusterName);
@@ -151,8 +151,8 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     veniceAdmin.initVeniceControllerClusterResource(newClusterName);
     waitUntilIsMaster(veniceAdmin, newClusterName, MASTER_CHANGE_TIMEOUT_MS);
 
-    Assert.assertTrue(veniceAdmin.isMasterController(clusterName));
-    Assert.assertTrue(veniceAdmin.isMasterController(newClusterName));
+    Assert.assertTrue(veniceAdmin.isLeaderControllerFor(clusterName));
+    Assert.assertTrue(veniceAdmin.isLeaderControllerFor(newClusterName));
   }
 
   @Test(timeOut = TOTAL_TIMEOUT_FOR_SHORT_TEST_MS)

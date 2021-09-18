@@ -329,11 +329,15 @@ public interface Admin extends AutoCloseable, Closeable {
     TopicManager getTopicManager(Pair<String, String> kafkaBootstrapServersAndZkAddress);
 
     /**
-     * Check if this controller itself is the master controller of given cluster or not.
+     * Check if this controller itself is the leader controller for a given cluster or not. Note that the controller can be
+     * either a parent controller or a child controller since a cluster must have a leader child controller and a leader
+     * parent controller. The point is not to be confused the concept of leader-standby with parent-child controller
+     * architecture.
+     *
      * @param clusterName
      * @return
      */
-    boolean isMasterController(String clusterName);
+    boolean isLeaderControllerFor(String clusterName);
 
     /**
     * Calculate how many partitions are needed for the given store and size.

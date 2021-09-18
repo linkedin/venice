@@ -174,7 +174,7 @@ class AbstractTestVeniceHelixAdmin {
     int sleepDuration = 100;
     for (long i = 0; i < timeout; i += sleepDuration) {
       for (VeniceHelixAdmin admin : admins) {
-        if (admin.isMasterController(cluster)) {
+        if (admin.isLeaderControllerFor(cluster)) {
           return;
         }
       }
@@ -191,7 +191,7 @@ class AbstractTestVeniceHelixAdmin {
 
   VeniceHelixAdmin getMaster(List<VeniceHelixAdmin> admins, String cluster) {
     for (VeniceHelixAdmin admin : admins) {
-      if (admin.isMasterController(cluster)) {
+      if (admin.isLeaderControllerFor(cluster)) {
         return admin;
       }
     }
@@ -200,7 +200,7 @@ class AbstractTestVeniceHelixAdmin {
 
   VeniceHelixAdmin getSlave(List<VeniceHelixAdmin> admins, String cluster) {
     for (VeniceHelixAdmin admin : admins) {
-      if (!admin.isMasterController(cluster)) {
+      if (!admin.isLeaderControllerFor(cluster)) {
         return admin;
       }
     }

@@ -26,7 +26,7 @@ public class JobRoutesTest {
   @Test
   public void testPopulateJobStatus() {
     Admin mockAdmin = mock(VeniceParentHelixAdmin.class);
-    doReturn(true).when(mockAdmin).isMasterController(anyString());
+    doReturn(true).when(mockAdmin).isLeaderControllerFor(anyString());
     doReturn(new Admin.OfflinePushStatusInfo(ExecutionStatus.COMPLETED)).when(mockAdmin).getOffLinePushStatus(anyString(), anyString(), any());
 
     TopicManager mockTopicManager = mock(TopicManager.class);

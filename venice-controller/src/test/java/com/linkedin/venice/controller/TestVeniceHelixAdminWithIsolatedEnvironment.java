@@ -270,7 +270,7 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
     admins.add(veniceAdmin);
     admins.add(newMasterAdmin);
     waitForAMaster(admins, clusterName, MASTER_CHANGE_TIMEOUT_MS);
-    if (veniceAdmin.isMasterController(clusterName)) {
+    if (veniceAdmin.isLeaderControllerFor(clusterName)) {
         Assert.assertEquals(veniceAdmin.getLeaderController(clusterName).getNodeId(),
             Utils.getHelixNodeIdentifier(controllerConfig.getAdminPort()));
     } else {
@@ -284,11 +284,11 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
         Utils.getHelixNodeIdentifier(controllerConfig.getAdminPort()), "Controller should be back to original one.");
     veniceAdmin.stop(clusterName);
     TestUtils.waitForNonDeterministicCompletion(MASTER_CHANGE_TIMEOUT_MS, TimeUnit.MILLISECONDS,
-        () -> !veniceAdmin.isMasterController(clusterName));
+        () -> !veniceAdmin.isLeaderControllerFor(clusterName));
 
     //The cluster should be leaderless now
-    Assert.assertFalse(veniceAdmin.isMasterController(clusterName));
-    Assert.assertFalse(newMasterAdmin.isMasterController(clusterName));
+    Assert.assertFalse(veniceAdmin.isLeaderControllerFor(clusterName));
+    Assert.assertFalse(newMasterAdmin.isLeaderControllerFor(clusterName));
   }
 
   @Test
@@ -313,7 +313,7 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
 
     veniceAdmin.initVeniceControllerClusterResource(clusterName);
 
-    TestUtils.waitForNonDeterministicCompletion(5000, TimeUnit.MILLISECONDS, ()->veniceAdmin.isMasterController(clusterName));
+    TestUtils.waitForNonDeterministicCompletion(5000, TimeUnit.MILLISECONDS, ()->veniceAdmin.isLeaderControllerFor(clusterName));
     veniceAdmin.createStore(clusterName, storeName1, "test", KEY_SCHEMA, VALUE_SCHEMA);
     veniceAdmin.createStore(clusterName, storeName2, "test", KEY_SCHEMA, VALUE_SCHEMA);
     veniceAdmin.createStore(clusterName, storeName3, "test", KEY_SCHEMA, VALUE_SCHEMA);
@@ -348,7 +348,7 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
             D2TestUtils.getAndStartD2Client(zkAddress)
     );
     veniceAdmin.initVeniceControllerClusterResource(clusterName);
-    TestUtils.waitForNonDeterministicCompletion(5000, TimeUnit.MILLISECONDS, ()->veniceAdmin.isMasterController(clusterName));
+    TestUtils.waitForNonDeterministicCompletion(5000, TimeUnit.MILLISECONDS, ()->veniceAdmin.isLeaderControllerFor(clusterName));
     veniceAdmin.createStore(clusterName, storeName1, "test", KEY_SCHEMA, VALUE_SCHEMA);
     veniceAdmin.createStore(clusterName, storeName2, "test", KEY_SCHEMA, VALUE_SCHEMA);
     // Store1 is a hybrid store.
@@ -378,7 +378,7 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
     );
     veniceAdmin.initVeniceControllerClusterResource(clusterName);
 
-    TestUtils.waitForNonDeterministicCompletion(5000, TimeUnit.MILLISECONDS, ()->veniceAdmin.isMasterController(clusterName));
+    TestUtils.waitForNonDeterministicCompletion(5000, TimeUnit.MILLISECONDS, ()->veniceAdmin.isLeaderControllerFor(clusterName));
     // Store3 is a batch store
     veniceAdmin.createStore(clusterName, storeName3, "test", KEY_SCHEMA, VALUE_SCHEMA);
 

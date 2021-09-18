@@ -60,7 +60,7 @@ public class TerminalStateTopicCheckerForParentController implements Runnable, C
           // The relevantVersionTopics only contains topics for stores that exist in the local store config repo.
           String clusterName = storeConfigRepository.getStoreConfig(storeName).get().getCluster();
           // Check for leadership again because things could have changed since the relevantVersionTopics was acquired.
-          if (!parentController.isMasterController(clusterName)) {
+          if (!parentController.isLeaderControllerFor(clusterName)) {
             continue;
           }
           for (Map.Entry<String, Long> entry : relevantVersionTopics.get(storeName).entrySet()) {
@@ -123,7 +123,7 @@ public class TerminalStateTopicCheckerForParentController implements Runnable, C
             continue;
           }
           String clusterName = storeConfig.get().getCluster();
-          if (!parentController.isMasterController(clusterName)) {
+          if (!parentController.isLeaderControllerFor(clusterName)) {
             continue;
           }
           if (parentController.getStore(clusterName, storeName).isIncrementalPushEnabled()) {

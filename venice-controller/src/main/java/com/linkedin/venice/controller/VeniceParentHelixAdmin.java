@@ -392,7 +392,7 @@ public class VeniceParentHelixAdmin implements Admin {
       String keySchema, String valueSchema, int partitionCount) {
     boolean storeReady = false;
     UpdateStoreQueryParams updateStoreQueryParams;
-    if (isMasterController(clusterName)) {
+    if (isLeaderControllerFor(clusterName)) {
       // We should only perform the store validation if the current controller is the master controller of the requested cluster.
       Store store = getStore(clusterName, storeName);
       if (store == null) {
@@ -2213,8 +2213,8 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
-  public boolean isMasterController(String clusterName) {
-    return veniceHelixAdmin.isMasterController(clusterName);
+  public boolean isLeaderControllerFor(String clusterName) {
+    return veniceHelixAdmin.isLeaderControllerFor(clusterName);
   }
 
   @Override

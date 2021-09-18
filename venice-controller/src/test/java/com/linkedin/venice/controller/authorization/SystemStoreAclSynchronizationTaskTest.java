@@ -52,7 +52,7 @@ public class SystemStoreAclSynchronizationTaskTest {
     clustersLeaderOf.add(defaultCluster);
     when(veniceParentHelixAdmin.getClustersLeaderOf()).thenReturn(clustersLeaderOf);
     when(veniceParentHelixAdmin.getAllStores(defaultCluster)).thenReturn(allStores);
-    when(veniceParentHelixAdmin.isMasterController(defaultCluster)).thenReturn(true);
+    when(veniceParentHelixAdmin.isLeaderControllerFor(defaultCluster)).thenReturn(true);
   }
 
   @AfterClass
