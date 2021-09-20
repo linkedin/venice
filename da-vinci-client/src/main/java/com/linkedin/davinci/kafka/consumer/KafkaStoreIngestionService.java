@@ -3,7 +3,7 @@ package com.linkedin.davinci.kafka.consumer;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceServerConfig;
-import com.linkedin.davinci.config.VeniceStoreConfig;
+import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
 import com.linkedin.davinci.listener.response.AdminResponse;
 import com.linkedin.davinci.notifier.LogNotifier;
@@ -466,9 +466,9 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     return true;
   }
 
-  private StoreIngestionTask createConsumerTask(VeniceStoreConfig veniceStoreConfig, int partitionId) {
-    String storeName = Version.parseStoreFromKafkaTopicName(veniceStoreConfig.getStoreName());
-    int versionNumber = Version.parseVersionFromKafkaTopicName(veniceStoreConfig.getStoreName());
+  private StoreIngestionTask createConsumerTask(VeniceStoreVersionConfig veniceStoreVersionConfig, int partitionId) {
+    String storeName = Version.parseStoreFromKafkaTopicName(veniceStoreVersionConfig.getStoreVersionName());
+    int versionNumber = Version.parseVersionFromKafkaTopicName(veniceStoreVersionConfig.getStoreVersionName());
 
     Pair<Store, Version> storeVersionPair = metadataRepo.waitVersion(storeName, versionNumber, Duration.ofSeconds(30));
     Store store = storeVersionPair.getFirst();
@@ -477,14 +477,14 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       throw new VeniceException("Store " + storeName + " does not exist.");
     }
     if (version == null) {
-      throw new VeniceException("Version " + veniceStoreConfig.getStoreName() + " does not exist.");
+      throw new VeniceException("Version " + veniceStoreVersionConfig.getStoreVersionName() + " does not exist.");
     }
 
     BooleanSupplier isVersionCurrent = () -> {
       try {
         return versionNumber == metadataRepo.getStoreOrThrow(storeName).getCurrentVersion();
       } catch (VeniceNoStoreException e) {
-        logger.warn("Unable to find store meta-data for " + veniceStoreConfig.getStoreName(), e);
+        logger.warn("Unable to find store meta-data for " + veniceStoreVersionConfig.getStoreVersionName(), e);
         return false;
       }
     };
@@ -492,9 +492,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     return ingestionTaskFactory.getNewIngestionTask(
         store,
         version,
-        getKafkaConsumerProperties(veniceStoreConfig),
-        isVersionCurrent,
-        veniceStoreConfig,
+        getKafkaConsumerProperties(veniceStoreVersionConfig),
+        isVersionCurrent, veniceStoreVersionConfig,
         partitionId,
         isIsolatedIngestion,
         compressorFactory,
@@ -568,9 +567,9 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
    * @param leaderState
    */
   @Override
-  public synchronized void startConsumption(VeniceStoreConfig veniceStore, int partitionId,
+  public synchronized void startConsumption(VeniceStoreVersionConfig veniceStore, int partitionId,
       Optional<LeaderFollowerStateType> leaderState) {
-    String topic = veniceStore.getStoreName();
+    String topic = veniceStore.getStoreVersionName();
     StoreIngestionTask consumerTask = topicNameToIngestionTaskMap.get(topic);
     if (consumerTask == null || !consumerTask.isRunning()) {
       consumerTask = createConsumerTask(veniceStore, partitionId);
@@ -610,8 +609,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   }
 
   @Override
-  public synchronized void promoteToLeader(VeniceStoreConfig veniceStoreConfig, int partitionId, LeaderFollowerPartitionStateModel.LeaderSessionIdChecker checker) {
-    String topic = veniceStoreConfig.getStoreName();
+  public synchronized void promoteToLeader(VeniceStoreVersionConfig veniceStoreVersionConfig, int partitionId, LeaderFollowerPartitionStateModel.LeaderSessionIdChecker checker) {
+    String topic = veniceStoreVersionConfig.getStoreVersionName();
     StoreIngestionTask consumerTask = topicNameToIngestionTaskMap.get(topic);
     if (consumerTask != null && consumerTask.isRunning()) {
       consumerTask.promoteToLeader(topic, partitionId, checker);
@@ -621,8 +620,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   }
 
   @Override
-  public synchronized void demoteToStandby(VeniceStoreConfig veniceStoreConfig, int partitionId, LeaderFollowerPartitionStateModel.LeaderSessionIdChecker checker) {
-    String topic = veniceStoreConfig.getStoreName();
+  public synchronized void demoteToStandby(VeniceStoreVersionConfig veniceStoreVersionConfig, int partitionId, LeaderFollowerPartitionStateModel.LeaderSessionIdChecker checker) {
+    String topic = veniceStoreVersionConfig.getStoreVersionName();
     StoreIngestionTask consumerTask = topicNameToIngestionTaskMap.get(topic);
     if (consumerTask != null && consumerTask.isRunning()) {
       consumerTask.demoteToStandby(topic, partitionId, checker);
@@ -706,8 +705,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
    * @param partitionId Venice partition's id.
    */
   @Override
-  public synchronized void stopConsumption(VeniceStoreConfig veniceStore, int partitionId) {
-    String topic = veniceStore.getStoreName();
+  public synchronized void stopConsumption(VeniceStoreVersionConfig veniceStore, int partitionId) {
+    String topic = veniceStore.getStoreVersionName();
     StoreIngestionTask consumerTask = topicNameToIngestionTaskMap.get(topic);
     if (consumerTask != null && consumerTask.isRunning()) {
       consumerTask.unSubscribePartition(topic, partitionId);
@@ -725,17 +724,17 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
    * @param numRetries
    */
   @Override
-  public void stopConsumptionAndWait(VeniceStoreConfig veniceStore, int partitionId, int sleepSeconds, int numRetries) {
+  public void stopConsumptionAndWait(VeniceStoreVersionConfig veniceStore, int partitionId, int sleepSeconds, int numRetries) {
     stopConsumption(veniceStore, partitionId);
     try {
       for (int i = 0; i < numRetries; i++) {
         if (!isPartitionConsuming(veniceStore, partitionId)) {
-          logger.info("Partition: " + partitionId + " of store: " + veniceStore.getStoreName() + " has stopped consumption.");
+          logger.info("Partition: " + partitionId + " of store: " + veniceStore.getStoreVersionName() + " has stopped consumption.");
           return;
         }
         sleep((long) sleepSeconds * Time.MS_PER_SECOND);
       }
-      logger.error("Partition: " + partitionId + " of store: " + veniceStore.getStoreName()
+      logger.error("Partition: " + partitionId + " of store: " + veniceStore.getStoreVersionName()
           + " is still consuming after waiting for it to stop for " + numRetries * sleepSeconds + " seconds.");
     } catch (InterruptedException e) {
       logger.warn("Waiting for partition to stop consumption was interrupted", e);
@@ -749,8 +748,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
    * @param partitionId Venice partition's id.
    */
   @Override
-  public void resetConsumptionOffset(VeniceStoreConfig veniceStore, int partitionId) {
-    String topic = veniceStore.getStoreName();
+  public void resetConsumptionOffset(VeniceStoreVersionConfig veniceStore, int partitionId) {
+    String topic = veniceStore.getStoreVersionName();
     StoreIngestionTask consumerTask = topicNameToIngestionTaskMap.get(topic);
     if (consumerTask != null && consumerTask.isRunning()) {
       consumerTask.resetPartitionConsumptionOffset(topic, partitionId);
@@ -823,8 +822,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   }
 
   @Override
-  public synchronized boolean containsRunningConsumption(VeniceStoreConfig veniceStore) {
-    return containsRunningConsumption(veniceStore.getStoreName());
+  public synchronized boolean containsRunningConsumption(VeniceStoreVersionConfig veniceStore) {
+    return containsRunningConsumption(veniceStore.getStoreVersionName());
   }
 
   @Override
@@ -834,8 +833,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   }
 
   @Override
-  public synchronized boolean isPartitionConsuming(VeniceStoreConfig veniceStore, int partitionId) {
-    String topic = veniceStore.getStoreName();
+  public synchronized boolean isPartitionConsuming(VeniceStoreVersionConfig veniceStore, int partitionId) {
+    String topic = veniceStore.getStoreVersionName();
     StoreIngestionTask consumerTask = topicNameToIngestionTaskMap.get(topic);
     return consumerTask != null && consumerTask.isRunning() && consumerTask.isPartitionConsuming(partitionId);
   }
@@ -922,9 +921,9 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   /**
    * @return Properties Kafka properties corresponding to the venice store.
    */
-  private Properties getKafkaConsumerProperties(VeniceStoreConfig storeConfig) {
+  private Properties getKafkaConsumerProperties(VeniceStoreVersionConfig storeConfig) {
     Properties kafkaConsumerProperties = getCommonKafkaConsumerProperties(storeConfig);
-    String groupId = getGroupId(storeConfig.getStoreName());
+    String groupId = getGroupId(storeConfig.getStoreVersionName());
     kafkaConsumerProperties.setProperty(ConsumerConfig.GROUP_ID_CONFIG, groupId);
     /**
      * Temporarily we are going to use group_id as client_id as well since it is unique in cluster level.

@@ -1,6 +1,6 @@
 package com.linkedin.davinci.ingestion;
 
-import com.linkedin.davinci.config.VeniceStoreConfig;
+import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType;
@@ -34,20 +34,20 @@ public class DefaultIngestionBackend implements DaVinciIngestionBackend, VeniceI
   }
 
   @Override
-  public void startConsumption(VeniceStoreConfig storeConfig, int partition, Optional<LeaderFollowerStateType> leaderState) {
-    logger.info("Retrieving storage engine for store " + storeConfig.getStoreName() + " partition " + partition);
+  public void startConsumption(VeniceStoreVersionConfig storeConfig, int partition, Optional<LeaderFollowerStateType> leaderState) {
+    logger.info("Retrieving storage engine for store " + storeConfig.getStoreVersionName() + " partition " + partition);
     AbstractStorageEngine storageEngine = getStorageService().openStoreForNewPartition(storeConfig, partition);
-    if (topicStorageEngineReferenceMap.containsKey(storeConfig.getStoreName())) {
-        topicStorageEngineReferenceMap.get(storeConfig.getStoreName()).set(storageEngine);
+    if (topicStorageEngineReferenceMap.containsKey(storeConfig.getStoreVersionName())) {
+        topicStorageEngineReferenceMap.get(storeConfig.getStoreVersionName()).set(storageEngine);
     }
-    logger.info("Retrieved storage engine for store " + storeConfig.getStoreName() + " partition " + partition
+    logger.info("Retrieved storage engine for store " + storeConfig.getStoreVersionName() + " partition " + partition
         + ". Starting consumption in ingestion service");
     getStoreIngestionService().startConsumption(storeConfig, partition, leaderState);
-    logger.info("Completed starting consumption in ingestion service for store " + storeConfig.getStoreName() + " partition " + partition);
+    logger.info("Completed starting consumption in ingestion service for store " + storeConfig.getStoreVersionName() + " partition " + partition);
   }
 
   @Override
-  public void stopConsumption(VeniceStoreConfig storeConfig, int partition) {
+  public void stopConsumption(VeniceStoreVersionConfig storeConfig, int partition) {
     getStoreIngestionService().stopConsumption(storeConfig, partition);
   }
 
@@ -62,29 +62,29 @@ public class DefaultIngestionBackend implements DaVinciIngestionBackend, VeniceI
   }
 
   @Override
-  public void dropStoragePartitionGracefully(VeniceStoreConfig storeConfig, int partition, int timeoutInSeconds) {
+  public void dropStoragePartitionGracefully(VeniceStoreVersionConfig storeConfig, int partition, int timeoutInSeconds) {
     if (storeIngestionService.isPartitionConsuming(storeConfig, partition)) {
       long startTimeInMs = System.currentTimeMillis();
       getStoreIngestionService().stopConsumptionAndWait(storeConfig, partition, 1, timeoutInSeconds);
-      logger.info(String.format("Partition: %d of topic: %s has stopped consumption in %d ms.", partition, storeConfig.getStoreName(),
+      logger.info(String.format("Partition: %d of topic: %s has stopped consumption in %d ms.", partition, storeConfig.getStoreVersionName(),
           LatencyUtils.getElapsedTimeInMs(startTimeInMs)));
     }
     getStoreIngestionService().resetConsumptionOffset(storeConfig, partition);
     getStorageService().dropStorePartition(storeConfig, partition);
-    logger.info("Partition: " + partition + " of topic: " + storeConfig.getStoreName() + " has been dropped.");
+    logger.info("Partition: " + partition + " of topic: " + storeConfig.getStoreVersionName() + " has been dropped.");
   }
 
   @Override
-  public void promoteToLeader(VeniceStoreConfig storeConfig, int partition,
+  public void promoteToLeader(VeniceStoreVersionConfig storeConfig, int partition,
       LeaderFollowerPartitionStateModel.LeaderSessionIdChecker leaderSessionIdChecker) {
-    logger.info("Promoting partition: " + partition + " of topic: " + storeConfig.getStoreName() + " to leader.");
+    logger.info("Promoting partition: " + partition + " of topic: " + storeConfig.getStoreVersionName() + " to leader.");
     getStoreIngestionService().promoteToLeader(storeConfig, partition, leaderSessionIdChecker);
   }
 
   @Override
-  public void demoteToStandby(VeniceStoreConfig storeConfig, int partition,
+  public void demoteToStandby(VeniceStoreVersionConfig storeConfig, int partition,
       LeaderFollowerPartitionStateModel.LeaderSessionIdChecker leaderSessionIdChecker) {
-    logger.info("Demoting partition: " + partition + " of topic: " + storeConfig.getStoreName() + " to standby.");
+    logger.info("Demoting partition: " + partition + " of topic: " + storeConfig.getStoreVersionName() + " to standby.");
     getStoreIngestionService().demoteToStandby(storeConfig, partition, leaderSessionIdChecker);
   }
 

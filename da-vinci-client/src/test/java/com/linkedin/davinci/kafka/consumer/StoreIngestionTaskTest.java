@@ -2,7 +2,7 @@ package com.linkedin.davinci.kafka.consumer;
 
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceServerConfig;
-import com.linkedin.davinci.config.VeniceStoreConfig;
+import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
 import com.linkedin.davinci.helix.LeaderFollowerIngestionProgressNotifier;
 import com.linkedin.davinci.helix.OnlineOfflineIngestionProgressNotifier;
@@ -482,8 +482,8 @@ public class StoreIngestionTaskTest {
       diskUsage = mock(DiskUsage.class);
       doReturn(false).when(diskUsage).isDiskFull(anyLong());
     }
-    VeniceStoreConfig storeConfig = mock(VeniceStoreConfig.class);
-    doReturn(topic).when(storeConfig).getStoreName();
+    VeniceStoreVersionConfig storeConfig = mock(VeniceStoreVersionConfig.class);
+    doReturn(topic).when(storeConfig).getStoreVersionName();
     doReturn(0).when(storeConfig).getTopicOffsetCheckIntervalMs();
     doReturn(READ_CYCLE_DELAY_MS).when(storeConfig).getKafkaReadCycleDelayMs();
     doReturn(EMPTY_POLL_SLEEP_MS).when(storeConfig).getKafkaEmptyPollSleepMs();

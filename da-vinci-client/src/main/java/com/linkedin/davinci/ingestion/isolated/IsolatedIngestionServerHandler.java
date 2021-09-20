@@ -1,6 +1,6 @@
 package com.linkedin.davinci.ingestion.isolated;
 
-import com.linkedin.davinci.config.VeniceStoreConfig;
+import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.ingestion.main.MainIngestionStorageMetadataService;
 import com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
@@ -129,7 +129,7 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
       if (!isolatedIngestionServer.isInitiated()) {
         throw new VeniceException("IsolatedIngestionServer has not been initiated.");
       }
-      VeniceStoreConfig storeConfig = isolatedIngestionServer.getConfigLoader().getStoreConfig(topicName);
+      VeniceStoreVersionConfig storeConfig = isolatedIngestionServer.getConfigLoader().getStoreConfig(topicName);
       KafkaStoreIngestionService storeIngestionService = isolatedIngestionServer.getStoreIngestionService();
 
       switch (ingestionCommandType) {

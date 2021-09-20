@@ -93,14 +93,14 @@ public class VeniceConfigLoader {
     return combinedProperties;
   }
 
-  public VeniceStoreConfig getStoreConfig(String storeName) {
+  public VeniceStoreVersionConfig getStoreConfig(String storeName) {
     VeniceProperties storeProperties = combinedProperties.getStoreProperties(storeName);
-    return new VeniceStoreConfig(storeName, storeProperties);
+    return new VeniceStoreVersionConfig(storeName, storeProperties);
   }
 
-  public VeniceStoreConfig getStoreConfig(String storeName, PersistenceType storePersistenceType) {
+  public VeniceStoreVersionConfig getStoreConfig(String storeName, PersistenceType storePersistenceType) {
     VeniceProperties storeProperties = combinedProperties.getStoreProperties(storeName);
-    return new VeniceStoreConfig(storeName, storeProperties, storePersistenceType);
+    return new VeniceStoreVersionConfig(storeName, storeProperties, storePersistenceType);
   }
 
   /**

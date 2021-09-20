@@ -1,7 +1,7 @@
 package com.linkedin.davinci.kafka.consumer;
 
 import com.linkedin.davinci.config.VeniceServerConfig;
-import com.linkedin.davinci.config.VeniceStoreConfig;
+import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
 import com.linkedin.davinci.listener.response.AdminResponse;
 import com.linkedin.davinci.notifier.VeniceNotifier;
@@ -406,7 +406,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       AggVersionedStorageIngestionStats versionedStorageIngestionStats,
       AbstractStoreBufferService storeBufferService,
       BooleanSupplier isCurrentVersion,
-      VeniceStoreConfig storeConfig,
+      VeniceStoreVersionConfig storeConfig,
       DiskUsage diskUsage,
       RocksDBMemoryStats rocksDBMemoryStats,
       AggKafkaConsumerService kafkaConsumerService,
@@ -431,7 +431,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.unorderedRecordsThrottler = unorderedRecordsThrottler;
     this.storeRepository = storeRepository;
     this.schemaRepository = schemaRepository;
-    this.kafkaVersionTopic = storeConfig.getStoreName();
+    this.kafkaVersionTopic = storeConfig.getStoreVersionName();
     this.storeName = Version.parseStoreFromKafkaTopicName(kafkaVersionTopic);
     this.versionNumber = Version.parseVersionFromKafkaTopicName(kafkaVersionTopic);
     this.availableSchemaIds = new HashSet<>();

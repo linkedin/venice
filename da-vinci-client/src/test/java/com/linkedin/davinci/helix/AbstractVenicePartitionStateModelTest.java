@@ -1,6 +1,6 @@
 package com.linkedin.davinci.helix;
 
-import com.linkedin.davinci.config.VeniceStoreConfig;
+import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.ingestion.VeniceIngestionBackend;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.stats.AggStoreIngestionStats;
@@ -25,7 +25,7 @@ public abstract class AbstractVenicePartitionStateModelTest<MODEL_TYPE extends A
   protected KafkaStoreIngestionService mockStoreIngestionService;
   protected StorageService mockStorageService;
   protected VeniceIngestionBackend mockIngestionBackend;
-  protected VeniceStoreConfig mockStoreConfig;
+  protected VeniceStoreVersionConfig mockStoreConfig;
   protected int testPartition = 0;
 
   protected Message mockMessage;
@@ -59,7 +59,7 @@ public abstract class AbstractVenicePartitionStateModelTest<MODEL_TYPE extends A
     mockIngestionBackend = Mockito.mock(VeniceIngestionBackend.class);
     Mockito.when(mockIngestionBackend.getStorageService()).thenReturn(mockStorageService);
     Mockito.when(mockIngestionBackend.getStoreIngestionService()).thenReturn(mockStoreIngestionService);
-    mockStoreConfig = Mockito.mock(VeniceStoreConfig.class);
+    mockStoreConfig = Mockito.mock(VeniceStoreVersionConfig.class);
 
     mockMessage = Mockito.mock(Message.class);
     mockContext = Mockito.mock(NotificationContext.class);

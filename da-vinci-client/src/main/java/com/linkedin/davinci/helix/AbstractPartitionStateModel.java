@@ -1,6 +1,6 @@
 package com.linkedin.davinci.helix;
 
-import com.linkedin.davinci.config.VeniceStoreConfig;
+import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.ingestion.VeniceIngestionBackend;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionService;
 import com.linkedin.davinci.notifier.MetaSystemStoreReplicaStatusNotifier;
@@ -54,7 +54,7 @@ public abstract class AbstractPartitionStateModel extends StateModel {
 
   private final VeniceIngestionBackend ingestionBackend;
   private final ReadOnlyStoreRepository storeRepository;
-  private final VeniceStoreConfig storeConfig;
+  private final VeniceStoreVersionConfig storeConfig;
   private final int partition;
   private final String storePartitionDescription;
   private final Optional<CompletableFuture<HelixPartitionStatusAccessor>> partitionStatusAccessorFuture;
@@ -63,13 +63,13 @@ public abstract class AbstractPartitionStateModel extends StateModel {
   private HelixPartitionStatusAccessor partitionPushStatusAccessor;
 
   public AbstractPartitionStateModel(VeniceIngestionBackend ingestionBackend, ReadOnlyStoreRepository storeRepository,
-                                     VeniceStoreConfig storeConfig, int partition, Optional<CompletableFuture<HelixPartitionStatusAccessor>> accessorFuture, String instanceName) {
+                                     VeniceStoreVersionConfig storeConfig, int partition, Optional<CompletableFuture<HelixPartitionStatusAccessor>> accessorFuture, String instanceName) {
     this.ingestionBackend = ingestionBackend;
     this.storeRepository = storeRepository;
     this.storeConfig = storeConfig;
     this.partition = partition;
     this.storePartitionDescription =
-        String.format(STORE_PARTITION_DESCRIPTION_FORMAT, storeConfig.getStoreName(), partition);
+        String.format(STORE_PARTITION_DESCRIPTION_FORMAT, storeConfig.getStoreVersionName(), partition);
     /**
      * We cannot block here because helix manager connection depends on the state model constructing in helix logic.
      * If we block here in the constructor, it will cause deadlocks.
@@ -102,13 +102,13 @@ public abstract class AbstractPartitionStateModel extends StateModel {
 
   private void logEntry(String from, String to, Message message, NotificationContext context, boolean rollback) {
     logger.info(getStorePartitionDescription() + " " + (rollback ? "rolling back" : "initiating") + " transition from "
-        + from + " to " + to + " for resource: " + getStoreConfig().getStoreName() + " Partition " + partition +
+        + from + " to " + to + " for resource: " + getStoreConfig().getStoreVersionName() + " Partition " + partition +
         " invoked with Message " + message + " and context " + context);
   }
 
   private void logCompletion(String from, String to, Message message, NotificationContext context, boolean rollback) {
     logger.info(getStorePartitionDescription() + " " + (rollback ? "rolled back" : "completed") + " transition from "
-        + from + " to " + to + " for resource: " + getStoreConfig().getStoreName() + " Partition " + partition +
+        + from + " to " + to + " for resource: " + getStoreConfig().getStoreVersionName() + " Partition " + partition +
         " invoked with Message " + message + " and context " + context);
   }
 
@@ -166,8 +166,8 @@ public abstract class AbstractPartitionStateModel extends StateModel {
      * reset the customized view to default state before instance gets shut down.
      */
     if (partitionPushStatusAccessor != null) {
-      partitionPushStatusAccessor.updateReplicaStatus(storeConfig.getStoreName(), partition, ExecutionStatus.STARTED);
-      partitionPushStatusAccessor.updateHybridQuotaReplicaStatus(storeConfig.getStoreName(), partition,
+      partitionPushStatusAccessor.updateReplicaStatus(storeConfig.getStoreVersionName(), partition, ExecutionStatus.STARTED);
+      partitionPushStatusAccessor.updateHybridQuotaReplicaStatus(storeConfig.getStoreVersionName(), partition,
           HybridStoreQuotaStatus.QUOTA_NOT_VIOLATED);
     }
   }
@@ -184,12 +184,13 @@ public abstract class AbstractPartitionStateModel extends StateModel {
     long startTimeInWaitingPushStatusAccessorInNs = System.nanoTime();
     try {
       waitPartitionPushStatusAccessor();
+      initializePartitionPushStatus();
     } catch (Exception e) {
       throw new VeniceException("Error when initializing partition push status accessor, "
           + "will not start ingestion for store partition. ", e);
     }
     if (storeConfig.isDebugLoggingEnabled()) {
-      logger.info("Completed waiting for partition push status accessor for resource " + storeConfig.getStoreName()
+      logger.info("Completed waiting for partition push status accessor for resource " + storeConfig.getStoreVersionName()
           + " partition " + partition + ". Total elapsed time: " + LatencyUtils.getLatencyInMS(startTimeInWaitingPushStatusAccessorInNs) + " ms");
     }
     /**
@@ -199,7 +200,7 @@ public abstract class AbstractPartitionStateModel extends StateModel {
     long startTimeInStartingConsumptionInNs = System.nanoTime();
     ingestionBackend.startConsumption(storeConfig, partition);
     if (storeConfig.isDebugLoggingEnabled()) {
-      logger.info("Completed starting the consumption for resource " + storeConfig.getStoreName() + " partition "
+      logger.info("Completed starting the consumption for resource " + storeConfig.getStoreVersionName() + " partition "
           + partition + ". Total elapsed time: " + LatencyUtils.getLatencyInMS(startTimeInStartingConsumptionInNs) + " ms");
     }
   }
@@ -216,7 +217,7 @@ public abstract class AbstractPartitionStateModel extends StateModel {
     // Delete this replica from meta system store if necessary
     Optional<MetaSystemStoreReplicaStatusNotifier> metaSystemStoreReplicaStatusNotifier = ingestionBackend.getStoreIngestionService().getMetaSystemStoreReplicaStatusNotifier();
     if (metaSystemStoreReplicaStatusNotifier.isPresent()) {
-      metaSystemStoreReplicaStatusNotifier.get().drop(storeConfig.getStoreName(), partition);
+      metaSystemStoreReplicaStatusNotifier.get().drop(storeConfig.getStoreVersionName(), partition);
     }
   }
 
@@ -231,7 +232,7 @@ public abstract class AbstractPartitionStateModel extends StateModel {
           + "failed to remove customized state. ", e);
     }
     if (partitionPushStatusAccessor != null) {
-      String storeName = getStoreConfig().getStoreName();
+      String storeName = getStoreConfig().getStoreVersionName();
       boolean isSuccess = false;
       int attempt = 0;
       while (!isSuccess && attempt <= RETRY_COUNT) {
@@ -286,8 +287,18 @@ public abstract class AbstractPartitionStateModel extends StateModel {
 
   private void waitPartitionPushStatusAccessor() throws Exception {
     if (partitionStatusAccessorFuture.isPresent() && partitionPushStatusAccessor == null) {
-    partitionPushStatusAccessor =
-            partitionStatusAccessorFuture.get().get(WAIT_PARTITION_ACCESSOR_TIME_OUT_MS, TimeUnit.MILLISECONDS);
+      partitionPushStatusAccessor =
+          partitionStatusAccessorFuture.get().get(WAIT_PARTITION_ACCESSOR_TIME_OUT_MS, TimeUnit.MILLISECONDS);
+    }
+  }
+
+  private void initializePartitionPushStatus() {
+    if (partitionStatusAccessorFuture.isPresent()) {
+      if (partitionPushStatusAccessor != null) {
+        partitionPushStatusAccessor.updateReplicaStatus(storeConfig.getStoreVersionName(), getPartition(), ExecutionStatus.NOT_STARTED);
+      } else {
+        throw new VeniceException("HelixPartitionStatusAccessor is still null after waitPartitionPushStatusAccessor");
+      }
     }
   }
 
@@ -315,7 +326,7 @@ public abstract class AbstractPartitionStateModel extends StateModel {
     return ingestionBackend.getStorageService();
   }
 
-  protected VeniceStoreConfig getStoreConfig() {
+  protected VeniceStoreVersionConfig getStoreConfig() {
     return storeConfig;
   }
 

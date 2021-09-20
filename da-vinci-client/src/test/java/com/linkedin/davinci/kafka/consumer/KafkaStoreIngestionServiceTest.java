@@ -4,7 +4,7 @@ import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceClusterConfig;
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceServerConfig;
-import com.linkedin.davinci.config.VeniceStoreConfig;
+import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.store.AbstractStorageEngineTest;
@@ -123,8 +123,8 @@ public class KafkaStoreIngestionServiceTest {
    doReturn(maxVersionNumber).when(mockStore).getLargestUsedVersionNumber();
    doReturn(mockStore).when(mockMetadataRepo).getStore(mockStoreName);
 
-   VeniceStoreConfig mockStoreConfig = mock(VeniceStoreConfig.class);
-   doReturn(mockStoreName + "_v" + String.valueOf(taskNum)).when(mockStoreConfig).getStoreName();
+   VeniceStoreVersionConfig mockStoreConfig = mock(VeniceStoreVersionConfig.class);
+   doReturn(mockStoreName + "_v" + String.valueOf(taskNum)).when(mockStoreConfig).getStoreVersionName();
 
    kafkaStoreIngestionService.updateStatsEmission(topicNameToIngestionTaskMap, mockStoreName, maxVersionNumber);
 
@@ -194,7 +194,7 @@ public class KafkaStoreIngestionServiceTest {
     doReturn(new Pair<>(mockStore, mockStore.getVersion(1).get())).when(mockMetadataRepo).waitVersion(eq(storeName), eq(1), any());
     doReturn(new Pair<>(toBeDeletedStore, toBeDeletedStore.getVersion(1).get())).when(mockMetadataRepo).waitVersion(eq(deletedStoreName), eq(1), any());
     VeniceProperties veniceProperties = AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB);
-    kafkaStoreIngestionService.startConsumption(new VeniceStoreConfig(topic1, veniceProperties), 0);
+    kafkaStoreIngestionService.startConsumption(new VeniceStoreVersionConfig(topic1, veniceProperties), 0);
     assertEquals(kafkaStoreIngestionService.getIngestingTopicsWithVersionStatusNotOnline().size(), 1,
         "Unexpected number of ingesting topics with version status of not ONLINE");
     mockStore.updateVersionStatus(1, VersionStatus.ONLINE);
@@ -202,8 +202,8 @@ public class KafkaStoreIngestionServiceTest {
        "Expecting an empty set since all ingesting topics have version status of ONLINE");
     mockStore.addVersion(new VersionImpl(storeName, 2, "test-job-id"));
     doReturn(new Pair<>(mockStore, mockStore.getVersion(2).get())).when(mockMetadataRepo).waitVersion(eq(storeName), eq(2), any());
-    kafkaStoreIngestionService.startConsumption(new VeniceStoreConfig(topic2, veniceProperties), 0);
-    kafkaStoreIngestionService.startConsumption(new VeniceStoreConfig(invalidTopic, veniceProperties), 0);
+    kafkaStoreIngestionService.startConsumption(new VeniceStoreVersionConfig(topic2, veniceProperties), 0);
+    kafkaStoreIngestionService.startConsumption(new VeniceStoreVersionConfig(invalidTopic, veniceProperties), 0);
     doThrow(new VeniceNoStoreException(deletedStoreName)).when(mockMetadataRepo).getStoreOrThrow(deletedStoreName);
     doReturn(null).when(mockMetadataRepo).getStore(deletedStoreName);
     assertEquals(kafkaStoreIngestionService.getIngestingTopicsWithVersionStatusNotOnline().size(), 2,

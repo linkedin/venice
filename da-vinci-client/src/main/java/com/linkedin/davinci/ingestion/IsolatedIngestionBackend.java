@@ -1,7 +1,7 @@
 package com.linkedin.davinci.ingestion;
 
 import com.linkedin.davinci.config.VeniceConfigLoader;
-import com.linkedin.davinci.config.VeniceStoreConfig;
+import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
 import com.linkedin.davinci.ingestion.isolated.IsolatedIngestionServer;
 import com.linkedin.davinci.ingestion.main.MainIngestionMonitorService;
@@ -75,18 +75,18 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend implements
   }
 
   @Override
-  public void startConsumption(VeniceStoreConfig storeConfig, int partition, Optional<LeaderFollowerStateType> leaderState) {
-    if (isTopicPartitionInLocal(storeConfig.getStoreName(), partition)) {
+  public void startConsumption(VeniceStoreVersionConfig storeConfig, int partition, Optional<LeaderFollowerStateType> leaderState) {
+    if (isTopicPartitionInLocal(storeConfig.getStoreVersionName(), partition)) {
       super.startConsumption(storeConfig, partition, leaderState);
     } else {
-      mainIngestionMonitorService.addVersionPartitionToIngestionMap(storeConfig.getStoreName(), partition);
-      mainIngestionRequestClient.startConsumption(storeConfig.getStoreName(), partition);
+      mainIngestionMonitorService.addVersionPartitionToIngestionMap(storeConfig.getStoreVersionName(), partition);
+      mainIngestionRequestClient.startConsumption(storeConfig.getStoreVersionName(), partition);
     }
   }
 
   @Override
-  public void stopConsumption(VeniceStoreConfig storeConfig, int partition) {
-    mainIngestionRequestClient.stopConsumption(storeConfig.getStoreName(), partition);
+  public void stopConsumption(VeniceStoreVersionConfig storeConfig, int partition) {
+    mainIngestionRequestClient.stopConsumption(storeConfig.getStoreVersionName(), partition);
     super.stopConsumption(storeConfig, partition);
   }
 
@@ -104,14 +104,14 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend implements
   }
 
   @Override
-  public void dropStoragePartitionGracefully(VeniceStoreConfig storeConfig, int partition, int timeoutInSeconds) {
-    mainIngestionRequestClient.unsubscribeTopicPartition(storeConfig.getStoreName(), partition);
+  public void dropStoragePartitionGracefully(VeniceStoreVersionConfig storeConfig, int partition, int timeoutInSeconds) {
+    mainIngestionRequestClient.unsubscribeTopicPartition(storeConfig.getStoreVersionName(), partition);
     super.dropStoragePartitionGracefully(storeConfig, partition, timeoutInSeconds);
-    mainIngestionMonitorService.cleanupTopicPartitionState(storeConfig.getStoreName(), partition);
+    mainIngestionMonitorService.cleanupTopicPartitionState(storeConfig.getStoreVersionName(), partition);
   }
 
   @Override
-  public void promoteToLeader(VeniceStoreConfig storeConfig, int partition,
+  public void promoteToLeader(VeniceStoreVersionConfig storeConfig, int partition,
     LeaderFollowerPartitionStateModel.LeaderSessionIdChecker leaderSessionIdChecker) {
     boolean messageCompleted = false;
     while (!messageCompleted) {
@@ -125,14 +125,14 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend implements
        * end up reporting completion the ingestion in isolatedIngestionBackend, and then we will add this command
        * to local queue.
        */
-      if (isTopicPartitionInLocal(storeConfig.getStoreName(), partition)) {
+      if (isTopicPartitionInLocal(storeConfig.getStoreVersionName(), partition)) {
         super.promoteToLeader(storeConfig, partition, leaderSessionIdChecker);
         messageCompleted = true;
       } else {
         /**
          * LeaderSessionIdChecker logic for ingestion isolation is included in {@link IsolatedIngestionServer}.
          */
-        messageCompleted = mainIngestionRequestClient.promoteToLeader(storeConfig.getStoreName(), partition);
+        messageCompleted = mainIngestionRequestClient.promoteToLeader(storeConfig.getStoreVersionName(), partition);
       }
       if (!messageCompleted) {
         logger.info("Leader promotion message rejected by remote ingestion server, will retry in " + RETRY_WAIT_TIME_IN_MS + " ms.");
@@ -148,15 +148,15 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend implements
   }
 
   @Override
-  public void demoteToStandby(VeniceStoreConfig storeConfig, int partition,
+  public void demoteToStandby(VeniceStoreVersionConfig storeConfig, int partition,
     LeaderFollowerPartitionStateModel.LeaderSessionIdChecker leaderSessionIdChecker) {
     boolean messageCompleted = false;
     while (!messageCompleted) {
-      if (isTopicPartitionInLocal(storeConfig.getStoreName(), partition)) {
+      if (isTopicPartitionInLocal(storeConfig.getStoreVersionName(), partition)) {
         super.demoteToStandby(storeConfig, partition, leaderSessionIdChecker);
         messageCompleted = true;
       } else {
-        messageCompleted = mainIngestionRequestClient.demoteToStandby(storeConfig.getStoreName(), partition);
+        messageCompleted = mainIngestionRequestClient.demoteToStandby(storeConfig.getStoreVersionName(), partition);
       }
       if (!messageCompleted) {
         logger.info("Leader demotion message rejected by remote ingestion server, will retry in " + RETRY_WAIT_TIME_IN_MS + " ms.");
@@ -248,7 +248,7 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend implements
     return new RelayNotifier(notifier) {
       @Override
       public void completed(String kafkaTopic, int partition, long offset, String message, Optional<LeaderFollowerStateType> leaderState) {
-        VeniceStoreConfig config = configLoader.getStoreConfig(kafkaTopic);
+        VeniceStoreVersionConfig config = configLoader.getStoreConfig(kafkaTopic);
         config.setRestoreDataPartitions(false);
         config.setRestoreMetadataPartition(false);
         // Start partition consumption locally.

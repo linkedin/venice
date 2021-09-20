@@ -2,7 +2,7 @@ package com.linkedin.davinci.kafka.consumer;
 
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceServerConfig;
-import com.linkedin.davinci.config.VeniceStoreConfig;
+import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.stats.AggStoreIngestionStats;
 import com.linkedin.davinci.stats.AggVersionedDIVStats;
@@ -45,7 +45,7 @@ public class StoreIngestionTaskFactory {
       Version version,
       Properties kafkaConsumerProperties,
       BooleanSupplier isCurrentVersion,
-      VeniceStoreConfig storeConfig,
+      VeniceStoreVersionConfig storeConfig,
       int partitionId,
       boolean isIsolatedIngestion,
       StorageEngineBackedCompressorFactory compressorFactory,

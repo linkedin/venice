@@ -1,6 +1,6 @@
 package com.linkedin.davinci.store;
 
-import com.linkedin.davinci.config.VeniceStoreConfig;
+import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.venice.exceptions.StorageInitializationException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.PersistenceType;
@@ -23,14 +23,14 @@ public abstract class StorageEngineFactory {
    * @param storeDef  store definition
    * @return The storage engine
    */
-  public abstract AbstractStorageEngine getStorageEngine(VeniceStoreConfig storeDef)
+  public abstract AbstractStorageEngine getStorageEngine(VeniceStoreVersionConfig storeDef)
       throws StorageInitializationException;
 
   /**
    * Timestamp metadata is only supported in RocksDB storage engine. For other type of the storage engine, we will
    * throw VeniceException here.
    */
-  public AbstractStorageEngine getStorageEngine(VeniceStoreConfig storeDef, boolean timestampMetadataEnabled) {
+  public AbstractStorageEngine getStorageEngine(VeniceStoreVersionConfig storeDef, boolean timestampMetadataEnabled) {
     if (timestampMetadataEnabled) {
       throw new VeniceException("Timestamp metadata is only supported in RocksDB storage engine!");
     }
@@ -70,10 +70,10 @@ public abstract class StorageEngineFactory {
    */
   public abstract PersistenceType getPersistenceType();
 
-  public void verifyPersistenceType(VeniceStoreConfig storeConfig) {
+  public void verifyPersistenceType(VeniceStoreVersionConfig storeConfig) {
     if (!storeConfig.getStorePersistenceType().equals(getPersistenceType())) {
       throw new VeniceException("Required store persistence type: " + storeConfig.getStorePersistenceType() + " of store: "
-          + storeConfig.getStoreName() + " isn't supported in current factory: " + getClass().getName() +
+          + storeConfig.getStoreVersionName() + " isn't supported in current factory: " + getClass().getName() +
           " with type: " + getPersistenceType());
     }
   }

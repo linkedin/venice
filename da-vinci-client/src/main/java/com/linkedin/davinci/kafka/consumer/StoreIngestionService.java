@@ -1,7 +1,7 @@
 package com.linkedin.davinci.kafka.consumer;
 
 import com.linkedin.davinci.config.VeniceConfigLoader;
-import com.linkedin.davinci.config.VeniceStoreConfig;
+import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
 import com.linkedin.davinci.notifier.MetaSystemStoreReplicaStatusNotifier;
 import com.linkedin.davinci.notifier.VeniceNotifier;
@@ -24,9 +24,9 @@ public interface StoreIngestionService extends MetadataRetriever {
    * @param partitionId Venice partition's id.
    * @param leaderState Initial L/F state.
    */
-  void startConsumption(VeniceStoreConfig veniceStore, int partitionId, Optional<LeaderFollowerStateType> leaderState);
+  void startConsumption(VeniceStoreVersionConfig veniceStore, int partitionId, Optional<LeaderFollowerStateType> leaderState);
 
-  default void startConsumption(VeniceStoreConfig veniceStore, int partitionId) {
+  default void startConsumption(VeniceStoreVersionConfig veniceStore, int partitionId) {
     startConsumption(veniceStore, partitionId, Optional.empty());
   }
 
@@ -35,7 +35,7 @@ public interface StoreIngestionService extends MetadataRetriever {
    * @param veniceStore Venice Store for the partition.
    * @param partitionId Venice partition's id.
    */
-  void stopConsumption(VeniceStoreConfig veniceStore, int partitionId);
+  void stopConsumption(VeniceStoreVersionConfig veniceStore, int partitionId);
 
   /**
    * Stops consuming messages from Kafka Partition corresponding to Venice Partition and wait up to
@@ -45,14 +45,14 @@ public interface StoreIngestionService extends MetadataRetriever {
    * @param sleepSeconds
    * @param numRetries
    */
-  void stopConsumptionAndWait(VeniceStoreConfig veniceStore, int partitionId, int sleepSeconds, int numRetries);
+  void stopConsumptionAndWait(VeniceStoreVersionConfig veniceStore, int partitionId, int sleepSeconds, int numRetries);
 
   /**
    * Resets Offset to beginning for Kafka Partition corresponding to Venice Partition.
    * @param veniceStore Venice Store for the partition.
    * @param partitionId Venice partition's id.
    */
-  void resetConsumptionOffset(VeniceStoreConfig veniceStore, int partitionId);
+  void resetConsumptionOffset(VeniceStoreVersionConfig veniceStore, int partitionId);
 
   /**
    * Kill all of running consumptions of given store.
@@ -61,9 +61,9 @@ public interface StoreIngestionService extends MetadataRetriever {
    */
   boolean killConsumptionTask(String topicName);
 
-  void promoteToLeader(VeniceStoreConfig veniceStoreConfig, int partitionId, LeaderFollowerPartitionStateModel.LeaderSessionIdChecker checker);
+  void promoteToLeader(VeniceStoreVersionConfig veniceStoreVersionConfig, int partitionId, LeaderFollowerPartitionStateModel.LeaderSessionIdChecker checker);
 
-  void demoteToStandby(VeniceStoreConfig veniceStoreConfig, int partitionId, LeaderFollowerPartitionStateModel.LeaderSessionIdChecker checker);
+  void demoteToStandby(VeniceStoreVersionConfig veniceStoreVersionConfig, int partitionId, LeaderFollowerPartitionStateModel.LeaderSessionIdChecker checker);
 
   /**
    * Adds Notifier to get Notifications for get various status of the consumption
@@ -96,7 +96,7 @@ public interface StoreIngestionService extends MetadataRetriever {
   /**
    * Check whether there is a running consumption task for given store.
    */
-  boolean containsRunningConsumption(VeniceStoreConfig veniceStore);
+  boolean containsRunningConsumption(VeniceStoreVersionConfig veniceStore);
 
   /**
    * Check whether there is a running consumption task for given store version topic.
@@ -106,7 +106,7 @@ public interface StoreIngestionService extends MetadataRetriever {
   /**
    * Check whether the specified partition is still being consumed
    */
-  boolean isPartitionConsuming(VeniceStoreConfig veniceStore, int partitionId);
+  boolean isPartitionConsuming(VeniceStoreVersionConfig veniceStore, int partitionId);
 
   /**
    * Get topic names that are currently maintained by the ingestion service with corresponding version status not in an

@@ -1,7 +1,7 @@
 package com.linkedin.davinci.store.rocksdb;
 
 import com.linkedin.davinci.config.VeniceServerConfig;
-import com.linkedin.davinci.config.VeniceStoreConfig;
+import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.venice.exceptions.StorageInitializationException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
@@ -171,14 +171,14 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
   }
 
   @Override
-  public synchronized AbstractStorageEngine getStorageEngine(VeniceStoreConfig storeConfig) throws StorageInitializationException {
+  public synchronized AbstractStorageEngine getStorageEngine(VeniceStoreVersionConfig storeConfig) throws StorageInitializationException {
     return getStorageEngine(storeConfig, false);
   }
 
   @Override
-  public synchronized AbstractStorageEngine getStorageEngine(VeniceStoreConfig storeConfig, boolean timestampMetadataEnabled) throws StorageInitializationException {
+  public synchronized AbstractStorageEngine getStorageEngine(VeniceStoreVersionConfig storeConfig, boolean timestampMetadataEnabled) throws StorageInitializationException {
     verifyPersistenceType(storeConfig);
-    final String storeName = storeConfig.getStoreName();
+    final String storeName = storeConfig.getStoreVersionName();
     try {
       storageEngineMap.putIfAbsent(storeName, new RocksDBStorageEngine(storeConfig, this, rocksDBPath, rocksDBMemoryStats,
           rocksDBThrottler, rocksDBServerConfig, storeVersionStateSerializer, partitionStateSerializer, timestampMetadataEnabled));
