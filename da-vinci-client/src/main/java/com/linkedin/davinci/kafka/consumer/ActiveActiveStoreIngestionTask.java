@@ -307,6 +307,16 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     }
   }
 
+  /**
+   * Get the value bytes for a key from {@link PartitionConsumptionState.TransientRecord} or from disk. The assumption
+   * is that the {@link PartitionConsumptionState.TransientRecord} only contains the full value.
+   * @param partitionConsumptionState The {@link PartitionConsumptionState} of the current partition
+   * @param key The key bytes of the incoming record.
+   * @param topic The topic from which the incomign record was consumed
+   * @param partition The Kafka partition from which the incomign record was consumed
+   * @param isChunkedTopic If the store version is chunked.
+   * @return
+   */
   private ByteBuffer getValueBytesForKey(PartitionConsumptionState partitionConsumptionState, byte[] key, String topic, int partition, boolean isChunkedTopic) {
     ByteBuffer originalValue = null;
     // Find the existing value. If a value for this key is found from the transient map then use that value, otherwise get it from DB.
@@ -325,9 +335,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       storeIngestionStats.recordIngestionValueBytesCacheHitCount(storeName);
       //construct originalValue from this transient record only if it's not null.
       if (transientRecord.getValue() != null) {
-        originalValue = RawBytesChunkingAdapter.INSTANCE.constructValue(transientRecord.getValueSchemaId(), transientRecord.getValue(),
-            transientRecord.getValueOffset(), transientRecord.getValueLen(),
-            serverConfig.isComputeFastAvroEnabled(), schemaRepository, storeName);
+        originalValue = ByteBuffer.wrap(transientRecord.getValue(), transientRecord.getValueOffset(), transientRecord.getValueLen());
       }
     }
     return originalValue;
