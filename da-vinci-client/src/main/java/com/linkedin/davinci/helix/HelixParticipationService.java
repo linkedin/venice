@@ -1,7 +1,7 @@
 package com.linkedin.davinci.helix;
 
 import com.linkedin.davinci.config.VeniceConfigLoader;
-import com.linkedin.davinci.config.VeniceStoreConfig;
+import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.ingestion.DefaultIngestionBackend;
 import com.linkedin.davinci.ingestion.IsolatedIngestionBackend;
 import com.linkedin.davinci.ingestion.VeniceIngestionBackend;
@@ -285,12 +285,12 @@ public class HelixParticipationService extends AbstractVeniceService implements 
 
   @Override
   public void handleMessage(KillOfflinePushMessage message) {
-    VeniceStoreConfig storeConfig = veniceConfigLoader.getStoreConfig(message.getKafkaTopic());
+    VeniceStoreVersionConfig storeConfig = veniceConfigLoader.getStoreConfig(message.getKafkaTopic());
     if (ingestionService.containsRunningConsumption(storeConfig)) {
       //push is failed, stop consumption.
       logger.info("Receive the message to kill consumption for topic:" + message.getKafkaTopic() + ", msgId: " + message
           .getMessageId());
-      ingestionService.killConsumptionTask(storeConfig.getStoreName());
+      ingestionService.killConsumptionTask(storeConfig.getStoreVersionName());
       logger.info("Killed Consumption for topic:" + message.getKafkaTopic() + ", msgId: " + message.getMessageId());
     } else {
       logger.info("Ignore the kill message for topic:" + message.getKafkaTopic());

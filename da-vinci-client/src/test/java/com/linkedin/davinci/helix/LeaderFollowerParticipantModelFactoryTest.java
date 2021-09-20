@@ -2,7 +2,7 @@ package com.linkedin.davinci.helix;
 
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceServerConfig;
-import com.linkedin.davinci.config.VeniceStoreConfig;
+import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.ingestion.VeniceIngestionBackend;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
@@ -26,7 +26,7 @@ public class LeaderFollowerParticipantModelFactoryTest {
   private VeniceIngestionBackend mockIngestionBackend;
   private VeniceConfigLoader mockConfigLoader;
   private VeniceServerConfig mockServerConfig;
-  private VeniceStoreConfig mockStoreConfig;
+  private VeniceStoreVersionConfig mockStoreConfig;
   private ReadOnlyStoreRepository mockReadOnlyStoreRepository;
   private Store mockStore;
   private int testPartition = 0;
@@ -52,12 +52,12 @@ public class LeaderFollowerParticipantModelFactoryTest {
     mockIngestionBackend = Mockito.mock(VeniceIngestionBackend.class);
     mockConfigLoader = Mockito.mock(VeniceConfigLoader.class);
     mockServerConfig = Mockito.mock(VeniceServerConfig.class);
-    mockStoreConfig = Mockito.mock(VeniceStoreConfig.class);
+    mockStoreConfig = Mockito.mock(VeniceStoreVersionConfig.class);
     mockReadOnlyStoreRepository = Mockito.mock(ReadOnlyStoreRepository.class);
     mockStore = Mockito.mock(Store.class);
     Mockito.when(mockConfigLoader.getVeniceServerConfig()).thenReturn(mockServerConfig);
     Mockito.when(mockConfigLoader.getStoreConfig(resourceName)).thenReturn(mockStoreConfig);
-    Mockito.when(mockStoreConfig.getStoreName()).thenReturn(resourceName);
+    Mockito.when(mockStoreConfig.getStoreVersionName()).thenReturn(resourceName);
     Mockito.when(mockReadOnlyStoreRepository.getStore(Version.parseStoreFromKafkaTopicName(resourceName)))
         .thenReturn(mockStore);
     Mockito.when(mockStore.getBootstrapToOnlineTimeoutInHours()).thenReturn(Store.BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS);

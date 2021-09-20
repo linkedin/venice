@@ -811,7 +811,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     doReturn(Optional.of(version)).when(store).getVersion(1);
     doReturn(new Pair<>(store, version)).when(internalAdmin).waitVersion(eq(clusterName), eq(storeName), eq(version.getNumber()), any());
     try (PartialMockVeniceParentHelixAdmin partialMockParentAdmin = new PartialMockVeniceParentHelixAdmin(internalAdmin, config)) {
-      partialMockParentAdmin.setOfflineJobStatus(ExecutionStatus.NEW);
+      partialMockParentAdmin.setOfflineJobStatus(ExecutionStatus.NOT_STARTED);
       VeniceWriter veniceWriter = mock(VeniceWriter.class);
       partialMockParentAdmin.setVeniceWriterForCluster(clusterName, veniceWriter);
       doReturn(CompletableFuture.completedFuture(new RecordMetadata(topicPartition, 0, 1, -1, -1L, -1, -1)))
@@ -851,7 +851,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         .addVersionAndTopicOnly(clusterName, storeName, pushJobId, 1, 1, false,
             false, Version.PushType.BATCH, null, null, Optional.empty(), -1, 1, Optional.empty());
     try (PartialMockVeniceParentHelixAdmin partialMockParentAdmin = new PartialMockVeniceParentHelixAdmin(internalAdmin, config)) {
-      partialMockParentAdmin.setOfflineJobStatus(ExecutionStatus.NEW);
+      partialMockParentAdmin.setOfflineJobStatus(ExecutionStatus.NOT_STARTED);
       VeniceWriter veniceWriter = mock(VeniceWriter.class);
       partialMockParentAdmin.setVeniceWriterForCluster(clusterName, veniceWriter);
       doReturn(CompletableFuture.completedFuture(new RecordMetadata(topicPartition, 0, 1, -1, -1L, -1, -1)))
@@ -884,7 +884,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
     doReturn(new Pair<>(store, version)).when(internalAdmin).waitVersion(eq(clusterName), eq(storeName), eq(version.getNumber()), any());
     try (PartialMockVeniceParentHelixAdmin partialMockParentAdmin = new PartialMockVeniceParentHelixAdmin(internalAdmin, config)) {
-      partialMockParentAdmin.setOfflineJobStatus(ExecutionStatus.NEW);
+      partialMockParentAdmin.setOfflineJobStatus(ExecutionStatus.NOT_STARTED);
       try {
         partialMockParentAdmin.incrementVersionIdempotent(clusterName, storeName, pushJobId, 1, 1);
       } catch (VeniceException e){
@@ -1096,14 +1096,14 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     Assert.assertEquals(extraInfo.get("cluster"), ExecutionStatus.NOT_CREATED.toString());
     Assert.assertEquals(extraInfo.get("cluster3"), ExecutionStatus.NOT_CREATED.toString());
 
-    progressMap.put("cluster5", clientMap.get(ExecutionStatus.NEW));
+    progressMap.put("cluster5", clientMap.get(ExecutionStatus.NOT_STARTED));
     offlineJobStatus = parentAdmin.getOffLineJobStatus("IGNORED", "topic4_v1", progressMap);
     extraInfo = offlineJobStatus.getExtraInfo();
-    Assert.assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.NEW);
+    Assert.assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.NOT_STARTED);
     verify(internalAdmin, never()).truncateKafkaTopic("topic4_v1");
     Assert.assertEquals(extraInfo.get("cluster"), ExecutionStatus.NOT_CREATED.toString());
     Assert.assertEquals(extraInfo.get("cluster3"), ExecutionStatus.NOT_CREATED.toString());
-    Assert.assertEquals(extraInfo.get("cluster5"), ExecutionStatus.NEW.toString());
+    Assert.assertEquals(extraInfo.get("cluster5"), ExecutionStatus.NOT_STARTED.toString());
 
     progressMap.put("cluster7", clientMap.get(ExecutionStatus.PROGRESS));
     offlineJobStatus = parentAdmin.getOffLineJobStatus("IGNORED", "topic5_v1", progressMap);
@@ -1186,11 +1186,11 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     // Reset
     parentAdmin.setMaxErroredTopicNumToKeep(0);
 
-    errorMap.put("cluster-new", clientMap.get(ExecutionStatus.NEW));
+    errorMap.put("cluster-new", clientMap.get(ExecutionStatus.NOT_STARTED));
     offlineJobStatus = parentAdmin.getOffLineJobStatus("mycluster", "topic13_v1", errorMap);
     extraInfo = offlineJobStatus.getExtraInfo();
-    Assert.assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.NEW); // Do we want this to be Progress?  limitation of ordering used in aggregation code
-    Assert.assertEquals(extraInfo.get("cluster-new"), ExecutionStatus.NEW.toString());
+    Assert.assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.NOT_STARTED); // Do we want this to be Progress?  limitation of ordering used in aggregation code
+    Assert.assertEquals(extraInfo.get("cluster-new"), ExecutionStatus.NOT_STARTED.toString());
   }
 
   @Test

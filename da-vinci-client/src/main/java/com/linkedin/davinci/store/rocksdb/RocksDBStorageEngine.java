@@ -1,6 +1,6 @@
 package com.linkedin.davinci.store.rocksdb;
 
-import com.linkedin.davinci.config.VeniceStoreConfig;
+import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
@@ -34,11 +34,11 @@ class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePartition
   private final RocksDBThrottler rocksDbThrottler;
   private final RocksDBServerConfig rocksDBServerConfig;
   private final RocksDBStorageEngineFactory factory;
-  private final VeniceStoreConfig storeConfig;
+  private final VeniceStoreVersionConfig storeConfig;
   private final boolean timestampMetadataEnabled;
 
 
-  public RocksDBStorageEngine(VeniceStoreConfig storeConfig,
+  public RocksDBStorageEngine(VeniceStoreVersionConfig storeConfig,
                               RocksDBStorageEngineFactory factory,
                               String rocksDbPath,
                               RocksDBMemoryStats rocksDBMemoryStats,
@@ -47,7 +47,7 @@ class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePartition
                               InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer,
                               InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer,
                               boolean timestampMetadataEnabled) {
-    super(storeConfig.getStoreName(), storeVersionStateSerializer, partitionStateSerializer);
+    super(storeConfig.getStoreVersionName(), storeVersionStateSerializer, partitionStateSerializer);
     this.storeConfig = storeConfig;
     this.rocksDbPath = rocksDbPath;
     this.memoryStats = rocksDBMemoryStats;

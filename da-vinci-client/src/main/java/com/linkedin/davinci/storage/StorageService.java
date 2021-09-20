@@ -7,7 +7,7 @@ import com.linkedin.davinci.store.memory.InMemoryStorageEngineFactory;
 import com.linkedin.davinci.store.rocksdb.RocksDBStorageEngineFactory;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.davinci.config.VeniceServerConfig;
-import com.linkedin.davinci.config.VeniceStoreConfig;
+import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
@@ -121,7 +121,7 @@ public class StorageService extends AbstractVeniceService {
         /**
          * Setup store-level persistence type based on current database setup.
          */
-        VeniceStoreConfig storeConfig = configLoader.getStoreConfig(storeName, pType);
+        VeniceStoreVersionConfig storeConfig = configLoader.getStoreConfig(storeName, pType);
         // Load the metadata & data restore settings from config loader.
         storeConfig.setRestoreDataPartitions(restoreDataPartitions);
         storeConfig.setRestoreMetadataPartition(restoreMetadataPartitions);
@@ -136,17 +136,17 @@ public class StorageService extends AbstractVeniceService {
     logger.info("Done restoring all the stores persisted previously");
   }
 
-  public synchronized AbstractStorageEngine openStoreForNewPartition(VeniceStoreConfig storeConfig, int partitionId) {
-    logger.info("Opening store for " + storeConfig.getStoreName() + " partition " + partitionId);
+  public synchronized AbstractStorageEngine openStoreForNewPartition(VeniceStoreVersionConfig storeConfig, int partitionId) {
+    logger.info("Opening store for " + storeConfig.getStoreVersionName() + " partition " + partitionId);
     AbstractStorageEngine engine = openStore(storeConfig);
     synchronized (engine) {
-      for (int subPartition : getSubPartition(storeConfig.getStoreName(), partitionId)) {
+      for (int subPartition : getSubPartition(storeConfig.getStoreVersionName(), partitionId)) {
         if (!engine.containsPartition(subPartition)) {
           engine.addStoragePartition(subPartition);
         }
       }
     }
-    logger.info("Opened store for " + storeConfig.getStoreName() + " partition " + partitionId);
+    logger.info("Opened store for " + storeConfig.getStoreVersionName() + " partition " + partitionId);
     return engine;
   }
 
@@ -156,7 +156,7 @@ public class StorageService extends AbstractVeniceService {
    * @param storeConfig StoreConfig of the store.
    * @return Factory corresponding to the store.
    */
-  public StorageEngineFactory getInternalStorageEngineFactory(VeniceStoreConfig storeConfig) {
+  public StorageEngineFactory getInternalStorageEngineFactory(VeniceStoreVersionConfig storeConfig) {
     PersistenceType persistenceType = storeConfig.getStorePersistenceType();
     // Instantiate the factory for this persistence type if not already present
     if (persistenceTypeToStorageEngineFactoryMap.containsKey(persistenceType)) {
@@ -181,8 +181,8 @@ public class StorageService extends AbstractVeniceService {
    * @param storeConfig   The store specific properties
    * @return StorageEngine that was created for the given store definition.
    */
-  public synchronized AbstractStorageEngine openStore(VeniceStoreConfig storeConfig) {
-    String topicName = storeConfig.getStoreName();
+  public synchronized AbstractStorageEngine openStore(VeniceStoreVersionConfig storeConfig) {
+    String topicName = storeConfig.getStoreVersionName();
     AbstractStorageEngine engine = storageEngineRepository.getLocalStorageEngine(topicName);
     if (engine != null) {
       return engine;
@@ -210,8 +210,8 @@ public class StorageService extends AbstractVeniceService {
   /**
    * Removes the Store, Partition from the Storage service.
    */
-  public synchronized void dropStorePartition(VeniceStoreConfig storeConfig, int partition) {
-    String kafkaTopic = storeConfig.getStoreName();
+  public synchronized void dropStorePartition(VeniceStoreVersionConfig storeConfig, int partition) {
+    String kafkaTopic = storeConfig.getStoreVersionName();
     AbstractStorageEngine storageEngine = storageEngineRepository.getLocalStorageEngine(kafkaTopic);
     if (storageEngine == null) {
       logger.warn("Storage engine " + kafkaTopic + " does not exist, ignoring drop partition request.");
@@ -228,8 +228,8 @@ public class StorageService extends AbstractVeniceService {
     }
   }
 
-  public synchronized void closeStorePartition(VeniceStoreConfig storeConfig, int partition) {
-    String kafkaTopic = storeConfig.getStoreName();
+  public synchronized void closeStorePartition(VeniceStoreVersionConfig storeConfig, int partition) {
+    String kafkaTopic = storeConfig.getStoreVersionName();
     AbstractStorageEngine storageEngine = storageEngineRepository.getLocalStorageEngine(kafkaTopic);
     if (storageEngine == null) {
       logger.warn("Storage engine " + kafkaTopic + " does not exist, ignoring close partition request.");
@@ -248,7 +248,7 @@ public class StorageService extends AbstractVeniceService {
     }
     storageEngine.drop();
 
-    VeniceStoreConfig storeConfig = configLoader.getStoreConfig(kafkaTopic);
+    VeniceStoreVersionConfig storeConfig = configLoader.getStoreConfig(kafkaTopic);
     storeConfig.setStorePersistenceType(storageEngine.getType());
 
     StorageEngineFactory factory = getInternalStorageEngineFactory(storeConfig);
@@ -263,7 +263,7 @@ public class StorageService extends AbstractVeniceService {
     }
     storageEngine.close();
 
-    VeniceStoreConfig storeConfig = configLoader.getStoreConfig(kafkaTopic);
+    VeniceStoreVersionConfig storeConfig = configLoader.getStoreConfig(kafkaTopic);
     storeConfig.setStorePersistenceType(storageEngine.getType());
 
     StorageEngineFactory factory = getInternalStorageEngineFactory(storeConfig);

@@ -1,6 +1,6 @@
 package com.linkedin.davinci.helix;
 
-import com.linkedin.davinci.config.VeniceStoreConfig;
+import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.ingestion.VeniceIngestionBackend;
 import com.linkedin.davinci.kafka.consumer.LeaderFollowerStoreIngestionTask;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
@@ -54,7 +54,7 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
   private final LeaderFollowerIngestionProgressNotifier notifier;
 
   public LeaderFollowerPartitionStateModel(VeniceIngestionBackend ingestionBackend,
-                                           VeniceStoreConfig storeConfig, int partition, LeaderFollowerIngestionProgressNotifier notifier,
+                                           VeniceStoreVersionConfig storeConfig, int partition, LeaderFollowerIngestionProgressNotifier notifier,
                                            ReadOnlyStoreRepository metadataRepo,
                                            Optional<CompletableFuture<HelixPartitionStatusAccessor>> partitionPushStatusAccessorFuture, String instanceName) {
     super(ingestionBackend, metadataRepo, storeConfig, partition, partitionPushStatusAccessorFuture, instanceName);

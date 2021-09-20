@@ -2,7 +2,7 @@ package com.linkedin.davinci.kafka.consumer;
 
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceServerConfig;
-import com.linkedin.davinci.config.VeniceStoreConfig;
+import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.notifier.LogNotifier;
 import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.stats.AggStoreIngestionStats;
@@ -57,8 +57,8 @@ public class PushTimeoutTest {
     String storeName = TestUtils.getUniqueString("store");
     String versionTopic = Version.composeKafkaTopic(storeName, 1);
 
-    VeniceStoreConfig mockVeniceStoreConfig = mock(VeniceStoreConfig.class);
-    doReturn(versionTopic).when(mockVeniceStoreConfig).getStoreName();
+    VeniceStoreVersionConfig mockVeniceStoreVersionConfig = mock(VeniceStoreVersionConfig.class);
+    doReturn(versionTopic).when(mockVeniceStoreVersionConfig).getStoreVersionName();
 
     VeniceServerConfig mockVeniceServerConfig = mock(VeniceServerConfig.class);
     doReturn(false).when(mockVeniceServerConfig).isHybridQuotaEnabled();
@@ -134,7 +134,7 @@ public class PushTimeoutTest {
         mock(EventThrottler.class), mock(ReadOnlySchemaRepository.class), mockReadOnlyStoreRepository, mock(TopicManagerRepository.class),
         mock(TopicManagerRepository.class), mock(AggStoreIngestionStats.class), mock(AggVersionedDIVStats.class),
         mock(AggVersionedStorageIngestionStats.class), mock(StoreBufferService.class), mock(BooleanSupplier.class),
-        mockVeniceStoreConfig, mock(DiskUsage.class), mock(RocksDBMemoryStats.class), mock(AggKafkaConsumerService.class),
+        mockVeniceStoreVersionConfig, mock(DiskUsage.class), mock(RocksDBMemoryStats.class), mock(AggKafkaConsumerService.class),
         mockVeniceServerConfig, 0, mock(ExecutorService.class), 0, mock(InternalAvroSpecificSerializer.class), false,
         mock(StorageEngineBackedCompressorFactory.class), Optional.empty());
     leaderFollowerStoreIngestionTask.subscribePartition(versionTopic, 0);
@@ -149,8 +149,8 @@ public class PushTimeoutTest {
     String storeName = TestUtils.getUniqueString("store");
     String versionTopic = Version.composeKafkaTopic(storeName, 1);
 
-    VeniceStoreConfig mockVeniceStoreConfig = mock(VeniceStoreConfig.class);
-    doReturn(versionTopic).when(mockVeniceStoreConfig).getStoreName();
+    VeniceStoreVersionConfig mockVeniceStoreVersionConfig = mock(VeniceStoreVersionConfig.class);
+    doReturn(versionTopic).when(mockVeniceStoreVersionConfig).getStoreVersionName();
 
     VeniceServerConfig mockVeniceServerConfig = mock(VeniceServerConfig.class);
     doReturn(false).when(mockVeniceServerConfig).isHybridQuotaEnabled();
@@ -258,7 +258,7 @@ public class PushTimeoutTest {
         mock(EventThrottler.class), mock(ReadOnlySchemaRepository.class), mockReadOnlyStoreRepository, mockTopicManagerRepository,
         mock(TopicManagerRepository.class), mock(AggStoreIngestionStats.class), mock(AggVersionedDIVStats.class),
         mock(AggVersionedStorageIngestionStats.class), mock(StoreBufferService.class), () -> true,
-        mockVeniceStoreConfig, mock(DiskUsage.class), mock(RocksDBMemoryStats.class), mock(AggKafkaConsumerService.class),
+        mockVeniceStoreVersionConfig, mock(DiskUsage.class), mock(RocksDBMemoryStats.class), mock(AggKafkaConsumerService.class),
         mockVeniceServerConfig, 0, mock(ExecutorService.class), 0, mock(InternalAvroSpecificSerializer.class), false,
         mock(StorageEngineBackedCompressorFactory.class), Optional.empty());
 

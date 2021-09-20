@@ -4,7 +4,7 @@ import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.d2.balancer.D2ClientBuilder;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceConfigLoader;
-import com.linkedin.davinci.config.VeniceStoreConfig;
+import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
 import com.linkedin.davinci.ingestion.DefaultIngestionBackend;
 import com.linkedin.davinci.ingestion.IsolatedIngestionBackend;
@@ -55,7 +55,6 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ExecutionException;
@@ -334,7 +333,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
    * and child process.
    * One previous example of the deadlock situation could happen when VersionBackend is trying to unsubscribe a topic partition,
    * it will hold VersionBackend instance lock, and send a blocking call to isolated ingestion service to call
-   * {@link KafkaStoreIngestionService#stopConsumptionAndWait(VeniceStoreConfig, int, int, int)}, inside which it will
+   * {@link KafkaStoreIngestionService#stopConsumptionAndWait(VeniceStoreVersionConfig, int, int, int)}, inside which it will
    * wait up to 30 seconds to drain internal messages for the partition. For SOP message, it will call
    * {@link com.linkedin.davinci.notifier.VeniceNotifier#started(String, int)} and in ingestion isolation case it will
    * send a blocking call to main process to report progress. The logic inside Da Vinci Client ingestion notifier's
@@ -434,7 +433,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
     String topicName = report.topicName.toString();
     int partitionId = report.partitionId;
     return longRunningTaskExecutor.submit(() -> {
-      VeniceStoreConfig storeConfig = getConfigLoader().getStoreConfig(topicName);
+      VeniceStoreVersionConfig storeConfig = getConfigLoader().getStoreConfig(topicName);
       // Make sure partition is not consuming so we can safely close the rocksdb partition
       long startTimeInMs = System.currentTimeMillis();
       getStoreIngestionService().stopConsumptionAndWait(storeConfig, report.partitionId, 1, stopConsumptionWaitRetriesNum);

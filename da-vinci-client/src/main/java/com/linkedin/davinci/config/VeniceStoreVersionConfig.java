@@ -14,9 +14,9 @@ import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.*;
  * class that maintains all properties that are not specific to a venice server and cluster.
  * Includes individual store properties and other properties that can be overwritten.
  */
-public class VeniceStoreConfig extends VeniceServerConfig {
+public class VeniceStoreVersionConfig extends VeniceServerConfig {
 
-  private String storeName;
+  private String storeVersionName;
   /**
    * This config indicates the persistence type being used in local node.
    * It is possible to have different persistence types in stores within the same node since storage engine type
@@ -30,10 +30,10 @@ public class VeniceStoreConfig extends VeniceServerConfig {
   private boolean restoreDataPartitions = true;
   private boolean restoreMetadataPartition = true;
 
-  public VeniceStoreConfig(String storeName, VeniceProperties storeProperties)
+  public VeniceStoreVersionConfig(String storeVersionName, VeniceProperties storeProperties)
     throws ConfigurationException {
     super(storeProperties);
-    this.storeName = storeName;
+    this.storeVersionName = storeVersionName;
 
     // Stores all storage engine configs that are needed to be persisted to disk.
     this.persistStorageEngineConfigs = new PropertyBuilder()
@@ -41,20 +41,20 @@ public class VeniceStoreConfig extends VeniceServerConfig {
         .build();
   }
 
-  public VeniceStoreConfig(String storeName, VeniceProperties storeProperties,
+  public VeniceStoreVersionConfig(String storeVersionName, VeniceProperties storeProperties,
       PersistenceType storePersistenceType)
       throws ConfigurationException {
-    this(storeName, storeProperties);
+    this(storeVersionName, storeProperties);
     this.storePersistenceType = Optional.of(storePersistenceType);
   }
 
-  public String getStoreName() {
-    return storeName;
+  public String getStoreVersionName() {
+    return storeVersionName;
   }
 
   public PersistenceType getStorePersistenceType() {
     if (!storePersistenceType.isPresent()) {
-      throw new VeniceException("The persistence type of store: " + storeName + " is still unknown, something wrong happened");
+      throw new VeniceException("The persistence type of store: " + storeVersionName + " is still unknown, something wrong happened");
     }
     return storePersistenceType.get();
   }
@@ -76,7 +76,7 @@ public class VeniceStoreConfig extends VeniceServerConfig {
   }
 
   /**
-   * For some store, the persistence type may not be known when constructing {@link VeniceStoreConfig}, such as
+   * For some store, the persistence type may not be known when constructing {@link VeniceStoreVersionConfig}, such as
    * in `VeniceStateModelFactory#createNewStateModel`, when Helix wants to create a new state model for some store,
    * it doesn't know the persistence type since it is possible that this store is an existing store, so the persistence
    * type is decided by the on-disk type, and it is a new store, it will be decided by storage node config.
@@ -90,7 +90,7 @@ public class VeniceStoreConfig extends VeniceServerConfig {
 
   /**
    * This reason to create a `setter` for {@link #storePersistenceType} since it is unknown sometimes
-   * when initializing {@link VeniceStoreConfig}, such as in {@link com.linkedin.venice.helix.VeniceStateModelFactory#createNewStateModel},
+   * when initializing {@link VeniceStoreVersionConfig}, such as in {@link com.linkedin.venice.helix.VeniceStateModelFactory#createNewStateModel},
    * The new state model could be created for a brand-new store or an existing store.
    * @param storePersistenceType
    */

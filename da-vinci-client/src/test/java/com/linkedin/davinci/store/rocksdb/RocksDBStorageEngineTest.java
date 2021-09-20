@@ -1,6 +1,6 @@
 package com.linkedin.davinci.store.rocksdb;
 
-import com.linkedin.davinci.config.VeniceStoreConfig;
+import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.stats.AggVersionedStorageEngineStats;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.store.AbstractStorageEngine;
@@ -28,7 +28,7 @@ import static org.mockito.Mockito.*;
 public class RocksDBStorageEngineTest extends AbstractStorageEngineTest {
   private static final int PARTITION_ID = 0;
   private StorageService storageService;
-  private VeniceStoreConfig storeConfig;
+  private VeniceStoreVersionConfig storeConfig;
   private final String storeName = TestUtils.getUniqueString("rocksdb_store_test");
   private final ReadOnlyStoreRepository mockReadOnlyStoreRepository = mock(ReadOnlyStoreRepository.class);
   private final int versionNumber = 0;
@@ -50,7 +50,7 @@ public class RocksDBStorageEngineTest extends AbstractStorageEngineTest {
         AvroProtocolDefinition.STORE_VERSION_STATE.getSerializer(),
         AvroProtocolDefinition.PARTITION_STATE.getSerializer(),
         mockReadOnlyStoreRepository);
-    storeConfig = new VeniceStoreConfig(topicName, serverProps, PersistenceType.ROCKS_DB);
+    storeConfig = new VeniceStoreVersionConfig(topicName, serverProps, PersistenceType.ROCKS_DB);
     testStoreEngine = storageService.openStoreForNewPartition(storeConfig , PARTITION_ID);
     createStoreForTest();
   }

@@ -17,17 +17,18 @@ import com.linkedin.venice.routerapi.ReplicaState;
 import com.linkedin.venice.routerapi.ResourceStateResponse;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
-import com.linkedin.venice.stats.ZkClientStatusStats;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;
+import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Properties;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
@@ -132,7 +133,11 @@ public class TestHelixCustomizedView {
   @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testUpdatingCustomizedState() throws Exception {
     int pushVersion = Version.parseVersionFromKafkaTopicName(storeVersionName);
-
+    ResourceStateResponse resourceStateResponse = getResourceStateFromRouter();
+    Assert.assertEquals(resourceStateResponse.getName(), storeVersionName);
+    for (ReplicaState replicaState : resourceStateResponse.getReplicaStates()) {
+      Assert.assertEquals(ExecutionStatus.NOT_STARTED.name(), replicaState.getVenicePushStatus());
+    }
     String keyPrefix = "key_";
     veniceWriter.broadcastStartOfPush(new HashMap<>());
     // Insert test record and wait synchronously for it to succeed
@@ -149,8 +154,17 @@ public class TestHelixCustomizedView {
       return currentVersion == pushVersion;
     });
     logger.info("The current version is " + controllerClient.getStore(storeName).getStore().getCurrentVersion());
+    resourceStateResponse = getResourceStateFromRouter();
+    Assert.assertEquals(resourceStateResponse.getName(), storeVersionName);
+    List<ReplicaState> replicaStates = resourceStateResponse.getReplicaStates();
+    for (ReplicaState replicaState : replicaStates) {
+      Assert.assertTrue(replicaState.isReadyToServe());
+      Assert.assertEquals(ExecutionStatus.COMPLETED.name(), replicaState.getVenicePushStatus());
+    }
+  }
 
-    // Router looks up the resource states
+  private ResourceStateResponse getResourceStateFromRouter()
+      throws IOException, ExecutionException, InterruptedException {
     String routerURL = veniceCluster.getRandomRouterURL();
     try (CloseableHttpAsyncClient client = HttpAsyncClients.custom()
         .setDefaultRequestConfig(RequestConfig.custom().setSocketTimeout(1000).build())
@@ -166,15 +180,7 @@ public class TestHelixCustomizedView {
       Assert.assertEquals(response.getStatusLine().getStatusCode(), HttpStatus.SC_OK,
           "Failed to get resource state for " + storeVersionName + ". Response: " + responseBody);
       ObjectMapper mapper = new ObjectMapper();
-      ResourceStateResponse resourceStateResponse = mapper.readValue(responseBody.getBytes(), ResourceStateResponse.class);
-      Assert.assertEquals(resourceStateResponse.getName(), storeVersionName);
-      List<ReplicaState> replicaStates = resourceStateResponse.getReplicaStates();
-      for (ReplicaState replicaState : replicaStates) {
-        Assert.assertTrue(replicaState.isReadyToServe());
-        Assert.assertTrue(replicaState.getVenicePushStatus().equals(ExecutionStatus.COMPLETED.name()));
-      }
-    } catch (Exception e) {
-      Assert.fail("Unexpected exception", e);
+      return mapper.readValue(responseBody.getBytes(), ResourceStateResponse.class);
     }
   }
 }

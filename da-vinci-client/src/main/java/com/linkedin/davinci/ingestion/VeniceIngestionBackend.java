@@ -1,16 +1,16 @@
 package com.linkedin.davinci.ingestion;
 
-import com.linkedin.davinci.config.VeniceStoreConfig;
+import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
 import com.linkedin.davinci.notifier.VeniceNotifier;
 
 
 public interface VeniceIngestionBackend extends IngestionBackendBase {
 
-  void promoteToLeader(VeniceStoreConfig storeConfig, int partition,
+  void promoteToLeader(VeniceStoreVersionConfig storeConfig, int partition,
       LeaderFollowerPartitionStateModel.LeaderSessionIdChecker leaderSessionIdChecker);
 
-  void demoteToStandby(VeniceStoreConfig storeConfig, int partition,
+  void demoteToStandby(VeniceStoreVersionConfig storeConfig, int partition,
       LeaderFollowerPartitionStateModel.LeaderSessionIdChecker leaderSessionIdChecker);
 
   void addOnlineOfflineIngestionNotifier(VeniceNotifier ingestionListener);

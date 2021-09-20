@@ -1,6 +1,6 @@
 package com.linkedin.davinci.helix;
 
-import com.linkedin.davinci.config.VeniceStoreConfig;
+import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.ingestion.VeniceIngestionBackend;
 import com.linkedin.venice.helix.HelixPartitionStatusAccessor;
 import com.linkedin.venice.helix.HelixState;
@@ -40,7 +40,7 @@ public class OnlineOfflinePartitionStateModel extends AbstractPartitionStateMode
     private final static AtomicInteger partitionNumberFromBootstrapToOnline = new AtomicInteger(0);
     private final OnlineOfflineIngestionProgressNotifier notifier;
 
-    public OnlineOfflinePartitionStateModel(VeniceIngestionBackend ingestionBackend, VeniceStoreConfig storeConfig, int partition,
+    public OnlineOfflinePartitionStateModel(VeniceIngestionBackend ingestionBackend, VeniceStoreVersionConfig storeConfig, int partition,
                                             OnlineOfflineIngestionProgressNotifier notifier, ReadOnlyStoreRepository readOnlyStoreRepository,
                                             Optional<CompletableFuture<HelixPartitionStatusAccessor>> partitionPushStatusAccessorFuture, String instanceName) {
         super(ingestionBackend, readOnlyStoreRepository, storeConfig, partition, partitionPushStatusAccessorFuture, instanceName);

@@ -1,6 +1,6 @@
 package com.linkedin.davinci;
 
-import com.linkedin.davinci.config.VeniceStoreConfig;
+import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.storage.chunking.AbstractAvroChunkingAdapter;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.venice.VeniceConstants;
@@ -48,7 +48,7 @@ public class VersionBackend {
 
   private final DaVinciBackend backend;
   private final Version version;
-  private final VeniceStoreConfig config;
+  private final VeniceStoreVersionConfig config;
   private final VenicePartitioner partitioner;
   private final boolean reportPushStatus;
   private final boolean suppressLiveUpdates;

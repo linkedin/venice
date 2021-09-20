@@ -2052,7 +2052,7 @@ public class VeniceParentHelixAdmin implements Admin {
   protected OfflinePushStatusInfo getOffLineJobStatus(String clusterName, String kafkaTopic,
       Map<String, ControllerClient> controllerClients, Optional<String> incrementalPushVersion) {
     Set<String> childClusters = controllerClients.keySet();
-    ExecutionStatus currentReturnStatus = ExecutionStatus.NEW; // This status is not used for anything... Might make sense to remove it, but anyhow.
+    ExecutionStatus currentReturnStatus = ExecutionStatus.NOT_STARTED;
     Optional<String> currentReturnStatusDetails = Optional.empty();
     List<ExecutionStatus> statuses = new ArrayList<>();
     Map<String, String> extraInfo = new HashMap<>();

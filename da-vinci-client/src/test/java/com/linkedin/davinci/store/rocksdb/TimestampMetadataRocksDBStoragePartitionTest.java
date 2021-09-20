@@ -1,7 +1,7 @@
 package com.linkedin.davinci.store.rocksdb;
 
 import com.linkedin.davinci.config.VeniceServerConfig;
-import com.linkedin.davinci.config.VeniceStoreConfig;
+import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.replication.ReplicationMetadataWithValueSchemaId;
 import com.linkedin.davinci.stats.AggVersionedStorageEngineStats;
 import com.linkedin.davinci.storage.StorageService;
@@ -46,7 +46,7 @@ public class TimestampMetadataRocksDBStoragePartitionTest extends AbstractStorag
   private static final RocksDBThrottler rocksDbThrottler = new RocksDBThrottler(3);
 
   private StorageService storageService;
-  private VeniceStoreConfig storeConfig;
+  private VeniceStoreVersionConfig storeConfig;
 
   private Map<String, Pair<String, String>> generateInputWithMetadata(int recordCnt) {
     return generateInputWithMetadata(0, recordCnt);
@@ -95,7 +95,7 @@ public class TimestampMetadataRocksDBStoragePartitionTest extends AbstractStorag
         AvroProtocolDefinition.STORE_VERSION_STATE.getSerializer(),
         AvroProtocolDefinition.PARTITION_STATE.getSerializer(),
         mockReadOnlyStoreRepository);
-    storeConfig = new VeniceStoreConfig(topicName, serverProps, PersistenceType.ROCKS_DB);
+    storeConfig = new VeniceStoreVersionConfig(topicName, serverProps, PersistenceType.ROCKS_DB);
     testStoreEngine = storageService.openStoreForNewPartition(storeConfig , PARTITION_ID);
     createStoreForTest();
   }

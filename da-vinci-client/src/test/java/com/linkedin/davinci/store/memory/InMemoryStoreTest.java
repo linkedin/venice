@@ -1,6 +1,6 @@
 package com.linkedin.davinci.store.memory;
 
-import com.linkedin.davinci.config.VeniceStoreConfig;
+import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.store.AbstractStoreTest;
 import org.testng.annotations.Test;
@@ -24,7 +24,7 @@ public class InMemoryStoreTest extends AbstractStoreTest {
     // relative path starting from venice-server
     veniceConfigLoader = VeniceConfigLoader.loadFromConfigDirectory(configFile.getAbsolutePath());
     String storeName = "testng-in-memory";
-    VeniceStoreConfig storeConfig = veniceConfigLoader.getStoreConfig(storeName);
+    VeniceStoreVersionConfig storeConfig = veniceConfigLoader.getStoreConfig(storeName);
 
     InMemoryStorageEngine inMemoryStorageEngine = new InMemoryStorageEngine(storeConfig);
     inMemoryStorageEngine.addStoragePartition(0);

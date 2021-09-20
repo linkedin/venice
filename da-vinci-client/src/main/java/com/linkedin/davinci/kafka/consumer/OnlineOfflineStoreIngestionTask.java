@@ -1,7 +1,7 @@
 package com.linkedin.davinci.kafka.consumer;
 
 import com.linkedin.davinci.config.VeniceServerConfig;
-import com.linkedin.davinci.config.VeniceStoreConfig;
+import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
 import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.stats.AggStoreIngestionStats;
@@ -66,7 +66,7 @@ public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
       AggVersionedStorageIngestionStats versionedStorageIngestionStats,
       AbstractStoreBufferService storeBufferService,
       BooleanSupplier isCurrentVersion,
-      VeniceStoreConfig storeConfig,
+      VeniceStoreVersionConfig storeConfig,
       DiskUsage diskUsage,
       RocksDBMemoryStats rocksDBMemoryStats,
       AggKafkaConsumerService aggKafkaConsumerService,

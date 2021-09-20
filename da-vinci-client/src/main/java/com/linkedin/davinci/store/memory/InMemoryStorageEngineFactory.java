@@ -1,14 +1,13 @@
 package com.linkedin.davinci.store.memory;
 
 import com.linkedin.davinci.config.VeniceServerConfig;
-import com.linkedin.davinci.config.VeniceStoreConfig;
+import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.venice.exceptions.StorageInitializationException;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.StorageEngineFactory;
 
 import java.util.Collections;
-import java.util.HashSet;
 import java.util.Set;
 
 
@@ -21,7 +20,7 @@ public class InMemoryStorageEngineFactory extends StorageEngineFactory {
   }
 
   @Override
-  public AbstractStorageEngine getStorageEngine(VeniceStoreConfig storeConfig)
+  public AbstractStorageEngine getStorageEngine(VeniceStoreVersionConfig storeConfig)
       throws StorageInitializationException {
     verifyPersistenceType(storeConfig);
     synchronized (lock) {

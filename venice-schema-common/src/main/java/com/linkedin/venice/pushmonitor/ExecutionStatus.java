@@ -79,7 +79,10 @@ public enum ExecutionStatus {
   ARCHIVED(true, false, false, true, 14),
 
   /** Job status is unknown when checking, and it could be caused by network issue */
-  UNKNOWN(true, false, false, false, 15);
+  UNKNOWN(true, false, false, false, 15),
+
+  /** Job/Task is created but ingestion haven't started yet */
+  NOT_STARTED(false, true, false, false, 16);
 
   final boolean isJobStatus;
   final boolean isTaskStatus;
