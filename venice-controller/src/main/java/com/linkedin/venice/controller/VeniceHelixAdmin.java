@@ -978,8 +978,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             throw new VeniceException("Source cluster and destination cluster cannot be the same!");
         }
 
-        // Update store and storeConfig to support single datacenter store migration
-        if (!multiClusterConfigs.isParent()) {
+        if (!isParent()) {
+            // Update store and storeConfig to support single datacenter store migration
             this.updateStore(srcClusterName, storeName, new UpdateStoreQueryParams().setStoreMigration(true));
             this.setStoreConfigForMigration(storeName, srcClusterName, destClusterName);
         }
@@ -988,14 +988,28 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         ControllerClient destControllerClient = new ControllerClient(destClusterName, destControllerUrl, sslFactory);
 
         // Get original store properties
-        Store srcStore = this.getStore(srcClusterName, storeName);
+        StoreInfo srcStore = StoreInfo.fromStore(this.getStore(srcClusterName, storeName));
+        // Same as StoresRoutes#getStore, set up backup version retention time. Otherwise, parent and child src store
+        // info will always be different for stores with negative BackupVersionRetentionMs.
+        if (srcStore.getBackupVersionRetentionMs() < 0) {
+            srcStore.setBackupVersionRetentionMs(getBackupVersionDefaultRetentionMs());
+        }
         String keySchema = this.getKeySchema(srcClusterName, storeName).getSchema().toString();
         List<SchemaEntry> valueSchemaEntries = this.getValueSchemas(srcClusterName, storeName)
             .stream()
             .sorted(Comparator.comparingInt(SchemaEntry::getId))
             .collect(Collectors.toList());
+        Map<String, Map<String, StoreInfo>> srcStoresInChildColos = new HashMap<>();
+        Consumer<String> srcStoresInChildColosConsumer = migratingStoreName ->
+            srcStoresInChildColos.put(migratingStoreName, getStoreInfoInChildColos(srcClusterName, migratingStoreName));
+        srcStoresInChildColosConsumer.accept(storeName);
+        if (srcStore.isStoreMetaSystemStoreEnabled()) {
+            srcStoresInChildColosConsumer.accept(VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName));
+        }
+        if (srcStore.isDaVinciPushStatusStoreEnabled()) {
+            srcStoresInChildColosConsumer.accept(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(storeName));
+        }
 
-        int schemaNum = valueSchemaEntries.size();
         // Create a new store in destination cluster
         destControllerClient.createNewStore(
             storeName,
@@ -1003,42 +1017,45 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             keySchema,
             valueSchemaEntries.get(0).getSchema().toString());
         // Add other value schemas
-        for (int i = 1; i < schemaNum; i++) {
+        for (int i = 1; i < valueSchemaEntries.size(); i++) {
             destControllerClient.addValueSchema(storeName, valueSchemaEntries.get(i).getSchema().toString());
         }
 
         // Copy remaining properties that will make the cloned store almost identical to the original
-        UpdateStoreQueryParams params = new UpdateStoreQueryParams(srcStore)
-            .setStoreMigration(true)
-            .setMigrationDuplicateStore(true) // Mark as duplicate store, to which L/F SN refers to avoid multi leaders
-            .setLargestUsedVersionNumber(0); // Decrease the largestUsedVersionNumber to trigger bootstrap in dest cluster
-        destControllerClient.updateStore(storeName, params);
+        UpdateStoreQueryParams paramsInParentColo = new UpdateStoreQueryParams(srcStore);
+        destControllerClient.updateStore(storeName, paramsInParentColo);
+
+        // Src parent controller calls dest parent controller to update colo-specific store configs in child colos.
+        for (Map.Entry<String, StoreInfo> entry : srcStoresInChildColos.get(storeName).entrySet()) {
+              UpdateStoreQueryParams paramsInChildColo = new UpdateStoreQueryParams(entry.getValue());
+              UpdateStoreQueryParams diffResult = new UpdateStoreQueryParams();
+              if (paramsInParentColo.diff(paramsInChildColo, diffResult)) {
+                  diffResult.setRegionsFilter(entry.getKey());
+                  logger.info("Sending colo-specific update-store request " + diffResult + " to " + entry.getKey());
+                  destControllerClient.updateStore(storeName, diffResult);
+            }
+        }
 
         Consumer<String> versionMigrationConsumer = migratingStoreName -> {
             Store migratingStore = this.getStore(srcClusterName, migratingStoreName);
-            List<Version> versionsToMigrate = getVersionsToMigrate(srcClusterName, migratingStoreName, migratingStore);
+            List<Version> versionsToMigrate = getVersionsToMigrate(srcStoresInChildColos, migratingStore);
             logger.info("Adding versions: "
                 + versionsToMigrate.stream().map(Version::getNumber).map(String::valueOf).collect(Collectors.joining(","))
                 + " to the dest cluster " + destClusterName);
             for (Version version : versionsToMigrate) {
                 try {
-                    /**
-                     * Topic manager partitions might be cleaned up in parent controller.
-                     * Get partition count from existing version instead of topic manager.
-                     */
-                    int partitionCount = version.getPartitionCount();
-                    /**
-                     * Remote Kafka is set to null for store migration because version topics at source fabric might be deleted
-                     * already; migrated stores should bootstrap by consuming the version topics in its local fabric.
-                     */
-                    long rewindTimeInSecondsOverride = -1;
-                    if (version.getHybridStoreConfig() != null) {
-                        rewindTimeInSecondsOverride = version.getHybridStoreConfig().getRewindTimeInSeconds();
-                    }
-                    int replicationMetadataVersionId = version.getTimestampMetadataVersionId();
-                    destControllerClient.addVersionAndStartIngestion(migratingStoreName, version.getPushJobId(), version.getNumber(),
-                        partitionCount, version.getPushType(), null, rewindTimeInSecondsOverride,
-                        replicationMetadataVersionId);
+                    destControllerClient.addVersionAndStartIngestion(
+                        migratingStoreName,
+                        version.getPushJobId(),
+                        version.getNumber(),
+                        // Version topic might be deleted in parent. Get partition count from version instead of topic manager.
+                        version.getPartitionCount(),
+                        version.getPushType(),
+                        // Version topic might be deleted in parent. Remote Kafka is set to null for store migration.
+                        // Migrated stores should bootstrap by consuming the version topics in its local fabric.
+                        null,
+                        version.getHybridStoreConfig() == null ? -1 : version.getHybridStoreConfig().getRewindTimeInSeconds(),
+                        version.getTimestampMetadataVersionId());
                 } catch (Exception e) {
                     throw new VeniceException("An exception was thrown when attempting to add version and start ingestion for store "
                         + migratingStoreName + " and version " + version.getNumber(), e);
@@ -1058,9 +1075,26 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         versionMigrationConsumer.accept(storeName);
     }
 
-    private List<Version> getVersionsToMigrate(String srcClusterName, String storeName, Store srcStore) {
+    private Map<String, StoreInfo> getStoreInfoInChildColos(String srcClusterName, String storeName) {
+        Map<String, StoreInfo> storeInfoMap = new HashMap<>();
+        if (isParent()) {
+            Map<String, ControllerClient> controllerClients = this.getControllerClientMap(srcClusterName);
+            for (Map.Entry<String, ControllerClient> entry : controllerClients.entrySet()) {
+                StoreResponse storeResponse = entry.getValue().getStore(storeName);
+                if (storeResponse.isError()) {
+                    throw new VeniceException("Could not query store from region " + entry.getKey() + " and cluster "
+                        + srcClusterName + ". " + storeResponse.getError());
+                }
+                storeInfoMap.put(entry.getKey(), storeResponse.getStore());
+            }
+        }
+        return storeInfoMap;
+    }
+
+
+    private List<Version> getVersionsToMigrate(Map<String, Map<String, StoreInfo>> srcStoresInChildColos, Store srcStore) {
         // For single datacenter store migration, sort, filter and return the version list
-        if (!multiClusterConfigs.isParent()) {
+        if (!isParent()) {
             return srcStore.getVersions()
                 .stream()
                 .sorted(Comparator.comparingInt(Version::getNumber))
@@ -1071,20 +1105,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         // For multi data center store migration, all store versions in parent controller might be error versions.
         // Therefore, we have to gather live versions from child fabrics.
         Map<Integer, Version> versionNumberToVersionMap = new HashMap<>();
-        Map<String, ControllerClient> controllerClients = this.getControllerClientMap(srcClusterName);
-        Set<String> prodColos = controllerClients.keySet();
-        for (String colo : prodColos) {
-            StoreResponse storeResponse = controllerClients.get(colo).getStore(storeName);
-            if (storeResponse.isError()) {
-                throw new VeniceException("Could not query store from child: " + colo + " for cluster: " + srcClusterName + ". "
-                    + storeResponse.getError());
-            } else {
-                StoreInfo storeInfo = storeResponse.getStore();
-                storeInfo.getVersions()
-                    .stream()
-                    .filter(version -> Arrays.asList(STARTED, PUSHED, ONLINE).contains(version.getStatus()))
-                    .forEach(version -> versionNumberToVersionMap.putIfAbsent(version.getNumber(), version));
-            }
+        for (StoreInfo storeInfo : srcStoresInChildColos.get(srcStore.getName()).values()) {
+            storeInfo.getVersions()
+                .stream()
+                .filter(version -> Arrays.asList(STARTED, PUSHED, ONLINE).contains(version.getStatus()))
+                .forEach(version -> versionNumberToVersionMap.putIfAbsent(version.getNumber(), version));
         }
         List<Version> versionsToMigrate = versionNumberToVersionMap.values()
             .stream()
@@ -1105,7 +1130,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
     Map<String, ControllerClient> getControllerClientMap(String clusterName) {
-        if (!multiClusterConfigs.isParent()) {
+        if (!isParent()) {
             throw new VeniceUnsupportedOperationException("getControllerClientMap");
         }
 
