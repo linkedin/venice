@@ -11,10 +11,11 @@ import com.linkedin.venice.meta.ETLStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.PartitionerConfig;
-import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.StoreInfo;
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
@@ -36,41 +37,52 @@ public class UpdateStoreQueryParams extends QueryParams {
 
   /**
    * Useful for store migration
+   * This method must be updated everytime a new store property is introduced
    * @param srcStore The original store
    */
-  public UpdateStoreQueryParams(Store srcStore) {
-    // Copy everything except current version number and largest used version number
-    // This method must be updated everytime a new store property is introduced
+  public UpdateStoreQueryParams(StoreInfo srcStore) {
+    // Copy everything except for currentVersion, daVinciPushStatusStoreEnabled, latestSuperSetValueSchemaId,
+    // storeMetaSystemStoreEnabled, storeMetadataSystemStoreEnabled
     UpdateStoreQueryParams updateStoreQueryParams =
         new UpdateStoreQueryParams()
-            .setStorageQuotaInByte(srcStore.getStorageQuotaInByte())
-            .setReadQuotaInCU(srcStore.getReadQuotaInCU())
             .setAccessControlled(srcStore.isAccessControlled())
-            .setChunkingEnabled(srcStore.isChunkingEnabled())
-            .setBatchGetLimit(srcStore.getBatchGetLimit())
-            .setOwner(srcStore.getOwner())
-            .setCompressionStrategy(srcStore.getCompressionStrategy())
-            .setClientDecompressionEnabled(srcStore.getClientDecompressionEnabled())
-            .setEnableReads(srcStore.isEnableReads())
-            .setEnableWrites(srcStore.isEnableWrites())
-            .setPartitionCount(srcStore.getPartitionCount())
-            .setIncrementalPushEnabled(srcStore.isIncrementalPushEnabled())
-            .setNumVersionsToPreserve(srcStore.getNumVersionsToPreserve())
-            .setStoreMigration(srcStore.isMigrating())
-            .setWriteComputationEnabled(srcStore.isWriteComputationEnabled())
-            .setReadComputationEnabled(srcStore.isReadComputationEnabled())
-            .setBootstrapToOnlineTimeoutInHours(srcStore.getBootstrapToOnlineTimeoutInHours())
-            .setLeaderFollowerModel(srcStore.isLeaderFollowerModelEnabled())
-            .setAutoSchemaPushJobEnabled(srcStore.isSchemaAutoRegisterFromPushJobEnabled())
+            .setActiveActiveReplicationEnabled(srcStore.isActiveActiveReplicationEnabled())
+            .setApplyTargetVersionFilterForIncPush(srcStore.isApplyTargetVersionFilterForIncPush())
             .setBackupStrategy(srcStore.getBackupStrategy())
-            .setHybridStoreDiskQuotaEnabled(srcStore.isHybridStoreDiskQuotaEnabled())
-            .setNativeReplicationEnabled(srcStore.isNativeReplicationEnabled())
-            .setPushStreamSourceAddress(srcStore.getPushStreamSourceAddress())
-            .setIncrementalPushPolicy(srcStore.getIncrementalPushPolicy())
             .setBackupVersionRetentionMs(srcStore.getBackupVersionRetentionMs())
+            .setBatchGetLimit(srcStore.getBatchGetLimit())
+            .setBootstrapToOnlineTimeoutInHours(srcStore.getBootstrapToOnlineTimeoutInHours())
+            .setChunkingEnabled(srcStore.isChunkingEnabled())
+            .setClientDecompressionEnabled(srcStore.getClientDecompressionEnabled())
+            .setCompressionStrategy(srcStore.getCompressionStrategy())
+            .setEnableReads(srcStore.isEnableStoreReads())
+            .setEnableWrites(srcStore.isEnableStoreWrites())
+            .setHybridStoreDiskQuotaEnabled(srcStore.isHybridStoreDiskQuotaEnabled())
+            .setIncrementalPushEnabled(srcStore.isIncrementalPushEnabled())
+            .setIncrementalPushPolicy(srcStore.getIncrementalPushPolicy())
+            .setLargestUsedVersionNumber(0) // Decrease the largestUsedVersionNumber to trigger bootstrap in dest cluster
+            .setLeaderFollowerModel(srcStore.isLeaderFollowerModelEnabled())
+            .setStoreMigration(true)
+            .setMigrationDuplicateStore(true) // Mark as duplicate store, to which L/F SN refers to avoid multi leaders
+            .setNativeReplicationEnabled(srcStore.isNativeReplicationEnabled())
+            .setNativeReplicationSourceFabric(srcStore.getNativeReplicationSourceFabric())
+            .setNumVersionsToPreserve(srcStore.getNumVersionsToPreserve())
+            .setOwner(srcStore.getOwner())
+            .setPartitionCount(srcStore.getPartitionCount())
+            .setPushStreamSourceAddress(srcStore.getPushStreamSourceAddress())
+            .setReadComputationEnabled(srcStore.isReadComputationEnabled())
+            .setReadQuotaInCU(srcStore.getReadQuotaInCU())
             .setReplicationFactor(srcStore.getReplicationFactor())
-            .setNativeReplicationSourceFabric(srcStore.getNativeReplicationSourceFabric());
+            .setAutoSchemaPushJobEnabled(srcStore.isSchemaAutoRegisterFromPushJobEnabled())
+            .setStorageQuotaInByte(srcStore.getStorageQuotaInByte())
+            .setWriteComputationEnabled(srcStore.isWriteComputationEnabled());
 
+    ETLStoreConfig etlStoreConfig = srcStore.getEtlStoreConfig();
+    if (etlStoreConfig != null) {
+      updateStoreQueryParams.setEtledProxyUserAccount(etlStoreConfig.getEtledUserProxyAccount());
+      updateStoreQueryParams.setRegularVersionETLEnabled(etlStoreConfig.isRegularVersionETLEnabled());
+      updateStoreQueryParams.setFutureVersionETLEnabled(etlStoreConfig.isFutureVersionETLEnabled());
+    }
 
     HybridStoreConfig hybridStoreConfig = srcStore.getHybridStoreConfig();
     if (hybridStoreConfig != null) {
@@ -81,12 +93,6 @@ public class UpdateStoreQueryParams extends QueryParams {
       updateStoreQueryParams.setHybridBufferReplayPolicy(hybridStoreConfig.getBufferReplayPolicy());
     }
 
-    ETLStoreConfig etlStoreConfig = srcStore.getEtlStoreConfig();
-    if (etlStoreConfig != null) {
-      updateStoreQueryParams.setEtledProxyUserAccount(etlStoreConfig.getEtledUserProxyAccount());
-      updateStoreQueryParams.setRegularVersionETLEnabled(etlStoreConfig.isRegularVersionETLEnabled());
-      updateStoreQueryParams.setFutureVersionETLEnabled(etlStoreConfig.isFutureVersionETLEnabled());
-    }
     PartitionerConfig partitionerConfig = srcStore.getPartitionerConfig();
     if (partitionerConfig != null) {
       updateStoreQueryParams.setPartitionerClass(partitionerConfig.getPartitionerClass());
@@ -95,6 +101,17 @@ public class UpdateStoreQueryParams extends QueryParams {
     }
 
     this.params.putAll(updateStoreQueryParams.params);
+  }
+
+  public boolean diff(UpdateStoreQueryParams newParams, UpdateStoreQueryParams diffResult) {
+    boolean isDifferent = false;
+    for (Map.Entry<String, String> entry : newParams.params.entrySet()) {
+      if (!Objects.equals(this.params.get(entry.getKey()), entry.getValue())) {
+        isDifferent = true;
+        diffResult.params.put(entry.getKey(), entry.getValue());
+      }
+    }
+    return isDifferent;
   }
 
   public UpdateStoreQueryParams setOwner(String owner) {

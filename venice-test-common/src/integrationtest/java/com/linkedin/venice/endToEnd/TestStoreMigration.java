@@ -21,12 +21,14 @@ import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.integration.utils.D2TestUtils;
+import com.linkedin.venice.integration.utils.MirrorMakerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiColoMultiClusterWrapper;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
 import com.linkedin.venice.system.store.MetaStoreDataType;
@@ -64,11 +66,11 @@ import static org.testng.Assert.*;
  * end-migration and abort-migration. Test cases cover store migration on parent controller and child controller.
  *
  * Test stores are hybrid stores created in {@link TestStoreMigration#createAndPushStore(String, String, String)}.
- * The store onboards L/F model if {@link TestStoreMigration#isLeaderFollowerModel()} is true.
+ * Test stores enable L/F in child datacenter dc-0 and disable L/F in parent datacenter.
  */
 @Test(singleThreaded = true, groups = "flaky") //TODO: remove "flaky" once tests passed consistently in Venice-Flaky
-public abstract class TestStoreMigration {
-  private static final int TEST_TIMEOUT = 60 * Time.MS_PER_SECOND;
+public class TestStoreMigration {
+  private static final int TEST_TIMEOUT = 120 * Time.MS_PER_SECOND;
   private static final int RECORD_COUNT = 20;
   private static final String NEW_OWNER = "newtest@linkedin.com";
   private static final String FABRIC0 = "dc-0";
@@ -80,15 +82,39 @@ public abstract class TestStoreMigration {
   private String destClusterName;
   private String parentControllerUrl;
   private String childControllerUrl0;
-  private int zkSharedStoreVersion = 1;
-
-  protected abstract VeniceTwoLayerMultiColoMultiClusterWrapper initializeVeniceCluster();
-
-  protected abstract boolean isLeaderFollowerModel();
 
   @BeforeClass(timeOut = TEST_TIMEOUT)
   public void setup() {
-    twoLayerMultiColoMultiClusterWrapper = initializeVeniceCluster();
+    Properties parentControllerProperties = new Properties();
+    // Disable topic cleanup since parent and child are sharing the same kafka cluster.
+    parentControllerProperties.setProperty(TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS, String.valueOf(Long.MAX_VALUE));
+    // Required by metadata system store
+    parentControllerProperties.setProperty(PARTICIPANT_MESSAGE_STORE_ENABLED, "true");
+    parentControllerProperties.setProperty(CONTROLLER_ZK_SHARED_DAVINCI_PUSH_STATUS_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED, String.valueOf(true));
+
+    Properties childControllerProperties = new Properties();
+    // Required by metadata system store
+    childControllerProperties.setProperty(PARTICIPANT_MESSAGE_STORE_ENABLED, "true");
+    childControllerProperties.setProperty(CONTROLLER_ZK_SHARED_DAVINCI_PUSH_STATUS_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED, String.valueOf(true));
+
+    Properties serverProperties = new Properties();
+    serverProperties.put(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 1L);
+
+    // 1 parent controller, 1 child colo, 2 clusters per child colo, 2 servers per cluster
+    // RF=2 to test both leader and follower SNs
+    twoLayerMultiColoMultiClusterWrapper=  ServiceFactory.getVeniceTwoLayerMultiColoMultiClusterWrapper(
+        1,
+        2,
+        1,
+        1,
+        2,
+        1,
+        2,
+        Optional.of(new VeniceProperties(parentControllerProperties)),
+        Optional.of(childControllerProperties),
+        Optional.of(new VeniceProperties(serverProperties)),
+        true,
+        MirrorMakerWrapper.DEFAULT_TOPIC_WHITELIST);
 
     multiClusterWrapper = twoLayerMultiColoMultiClusterWrapper.getClusters().get(0);
     String[] clusterNames = multiClusterWrapper.getClusterNames();
@@ -326,9 +352,26 @@ public abstract class TestStoreMigration {
     UpdateStoreQueryParams updateStoreQueryParams = new UpdateStoreQueryParams()
         .setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
         .setHybridRewindSeconds(TEST_TIMEOUT)
-        .setHybridOffsetLagThreshold(2L)
-        .setLeaderFollowerModel(isLeaderFollowerModel());
+        .setHybridOffsetLagThreshold(2L);
     TestPushUtils.createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, updateStoreQueryParams).close();
+
+    // L/F is enabled in dc-0 and disabled in parent.
+    try (ControllerClient childControllerClient0 = new ControllerClient(clusterName, childControllerUrl0)) {
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+        StoreResponse response = childControllerClient0.getStore(storeName);
+        StoreInfo storeInfo = response.getStore();
+        assertNotNull(storeInfo);
+      });
+      UpdateStoreQueryParams enableLeaderFollower = new UpdateStoreQueryParams()
+          .setLeaderFollowerModel(true);
+      childControllerClient0.updateStore(storeName, enableLeaderFollower);
+      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
+        StoreResponse response = childControllerClient0.getStore(storeName);
+        StoreInfo storeInfo = response.getStore();
+        assertNotNull(storeInfo);
+        assertTrue(storeInfo.isLeaderFollowerModelEnabled());
+      });
+    }
 
     SystemProducer veniceProducer0 = null;
     try (VenicePushJob job = new VenicePushJob("Test push job", props)) {

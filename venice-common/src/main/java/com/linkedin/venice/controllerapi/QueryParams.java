@@ -56,4 +56,9 @@ public class QueryParams {
         .map(entry -> new BasicNameValuePair(entry.getKey(), StringUtils.abbreviate(entry.getValue(), 500)))
         .collect(Collectors.toList());
   }
+
+  @Override
+  public String toString() {
+    return params.toString();
+  }
 }
