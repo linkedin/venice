@@ -240,7 +240,7 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
         Rate regionHybridRecordsConsumedRate = new Rate();
         String regionHybridRecordsConsumedMetricName = regionNamePrefix + "_rt_records_consumed";
         Sensor regionHybridRecordsConsumedSensor = localMetricRepository.sensor(regionHybridRecordsConsumedMetricName);
-        regionHybridRecordsConsumedSensor.add(regionHybridRecordsConsumedMetricName + regionHybridRecordsConsumedRate.getClass().getSimpleName(), regionHybridBytesConsumedRate);
+        regionHybridRecordsConsumedSensor.add(regionHybridRecordsConsumedMetricName + regionHybridRecordsConsumedRate.getClass().getSimpleName(), regionHybridRecordsConsumedRate);
         regionIdToHybridRecordsConsumedRateMap.put(entry.getKey(), regionHybridRecordsConsumedRate);
         regionIdToHybridRecordsConsumedSensorMap.put(entry.getKey(), regionHybridRecordsConsumedSensor);
       }
