@@ -211,7 +211,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         ExecutionStatus.STARTED,
         ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED,
         ExecutionStatus.UNKNOWN,
-        ExecutionStatus.NOT_STARTED,
+        ExecutionStatus.NEW,
         ExecutionStatus.NOT_CREATED,
         ExecutionStatus.END_OF_PUSH_RECEIVED,
         ExecutionStatus.ERROR,
