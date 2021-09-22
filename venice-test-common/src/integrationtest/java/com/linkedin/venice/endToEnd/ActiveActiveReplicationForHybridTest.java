@@ -62,7 +62,7 @@ public class ActiveActiveReplicationForHybridTest {
   private static final int TEST_TIMEOUT = 90_000; // ms
 
   private static final int NUMBER_OF_CHILD_DATACENTERS = 3;
-  private static final int NUMBER_OF_CLUSTERS = 2;
+  private static final int NUMBER_OF_CLUSTERS = 1;
   private static final String[] CLUSTER_NAMES =
       IntStream.range(0, NUMBER_OF_CLUSTERS).mapToObj(i -> "venice-cluster" + i).toArray(String[]::new);
   // ["venice-cluster0", "venice-cluster1", ...];
@@ -264,7 +264,7 @@ public class ActiveActiveReplicationForHybridTest {
         VeniceMultiClusterWrapper childDataCenter = childDatacenters.get(dataCenterIndex);
 
         try (ControllerClient childControllerClient = new ControllerClient(clusterName, childDataCenter.getMasterController(clusterName).getControllerUrl())) {
-          TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+          TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
             StoreResponse storeResponse = childControllerClient.getStore(storeName);
             Assert.assertFalse(storeResponse.isError());
             Assert.assertEquals(storeResponse.getStore().getCurrentVersion(), 1);
@@ -341,7 +341,7 @@ public class ActiveActiveReplicationForHybridTest {
    */
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testAAReplicationCanResolveConflicts(boolean useLogicalTimestamp) {
-    String clusterName = CLUSTER_NAMES[1];
+    String clusterName = CLUSTER_NAMES[0];
     String storeName = TestUtils.getUniqueString("test-store");
     VeniceControllerWrapper parentController =
         parentControllers.stream().filter(c -> c.isMasterController(clusterName)).findAny().get();
@@ -354,7 +354,7 @@ public class ActiveActiveReplicationForHybridTest {
 
       // Verify that version 1 is already created in dc-0 region
       try (ControllerClient childControllerClient = new ControllerClient(clusterName, childDatacenters.get(0).getMasterController(clusterName).getControllerUrl())) {
-        TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
           StoreResponse storeResponse = childControllerClient.getStore(storeName);
           Assert.assertFalse(storeResponse.isError());
           Assert.assertEquals(storeResponse.getStore().getCurrentVersion(), 1);
@@ -430,61 +430,61 @@ public class ActiveActiveReplicationForHybridTest {
       });
     }
 
-//    /**
-//     * Second test:
-//     * Servers can resolve conflicts from different regions.
-//     */
-//    // Build a list of mock time
-//    mockTimestampInMs = new LinkedList<>();
-//    if (!useLogicalTimestamp) {
-//      // Timestamp for segment start time bookkeeping
-//      mockTimestampInMs.add(baselineTimestampInMs);
-//      // Timestamp for START_OF_SEGMENT message
-//      mockTimestampInMs.add(baselineTimestampInMs);
-//    }
-//    // Timestamp for Key1 with a different value from dc-1 region; it will be consumed later than all messages in dc-0,
-//    // but since it has an older timestamp, its value will not override the previous value even though it will arrive at dc-0 servers later
-//    mockTimestampInMs.add(baselineTimestampInMs - 5);
-//    // Timestamp for Key3 with the highest offset in dc-1 RT, which will be used to verify that all messages in dc-1 RT have been processed
-//    mockTimestampInMs.add(baselineTimestampInMs);
-//    mockTime = new MockCircularTime(mockTimestampInMs);
-//
-//    // Build the SystemProducer with the mock time
-//    VeniceMultiClusterWrapper childDataCenter1 = childDatacenters.get(1);
-//    SystemProducer producerInDC1 = new VeniceSystemProducer(childDataCenter1.getZkServerWrapper().getAddress(), SERVICE_NAME, storeName,
-//        Version.PushType.STREAM, TestUtils.getUniqueString("venice-push-id"), "dc-1", null, Optional.empty(),
-//        Optional.empty(), mockTime);
-//    producerInDC1.start();
-//
-//    // Send <Key1, Value3>, which will be ignored if DCR is implemented properly
-//    String value3 = "value3";
-//    OutgoingMessageEnvelope envelope4 = new OutgoingMessageEnvelope(new SystemStream("venice", storeName), key1,
-//        useLogicalTimestamp ? new VeniceObjectWithTimestamp(value3, mockTime.getMilliseconds()) : value3);
-//    producerInDC1.send(storeName, envelope4);
-//
-//    // Send <Key3, Value1>, which is used to verify that servers have consumed and processed till the end of all real-time messages from dc-1
-//    String key3 = "key3";
-//    OutgoingMessageEnvelope envelope5 = new OutgoingMessageEnvelope(new SystemStream("venice", storeName), key3,
-//        useLogicalTimestamp ? new VeniceObjectWithTimestamp(value1, mockTime.getMilliseconds()) : value1);
-//    producerInDC1.send(storeName, envelope5);
-//
-//    producerInDC1.stop();
-//
-//    // Verify data in dc-0
-//    try (AvroGenericStoreClient<String, Object> client =
-//        ClientFactory.getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerUrl))) {
-//
-//      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-//        // Check <Key3, Value1> has been consumed
-//        Object valueObject = client.get(key3).get();
-//        Assert.assertNotNull(valueObject);
-//        Assert.assertEquals(valueObject.toString(), value1);
-//        // Check <Key1, Value3> was dropped, so that Key1 will have value equal to Value1
-//        Object valueObject1 = client.get(key1).get();
-//        Assert.assertNotNull(valueObject1);
-//        Assert.assertEquals(valueObject1.toString(), value1, "DCR is not working properly");
-//      });
-//    }
+    /**
+     * Second test:
+     * Servers can resolve conflicts from different regions.
+     */
+    // Build a list of mock time
+    mockTimestampInMs = new LinkedList<>();
+    if (!useLogicalTimestamp) {
+      // Timestamp for segment start time bookkeeping
+      mockTimestampInMs.add(baselineTimestampInMs);
+      // Timestamp for START_OF_SEGMENT message
+      mockTimestampInMs.add(baselineTimestampInMs);
+    }
+    // Timestamp for Key1 with a different value from dc-1 region; it will be consumed later than all messages in dc-0,
+    // but since it has an older timestamp, its value will not override the previous value even though it will arrive at dc-0 servers later
+    mockTimestampInMs.add(baselineTimestampInMs - 5);
+    // Timestamp for Key3 with the highest offset in dc-1 RT, which will be used to verify that all messages in dc-1 RT have been processed
+    mockTimestampInMs.add(baselineTimestampInMs);
+    mockTime = new MockCircularTime(mockTimestampInMs);
+
+    // Build the SystemProducer with the mock time
+    VeniceMultiClusterWrapper childDataCenter1 = childDatacenters.get(1);
+    SystemProducer producerInDC1 = new VeniceSystemProducer(childDataCenter1.getZkServerWrapper().getAddress(), SERVICE_NAME, storeName,
+        Version.PushType.STREAM, TestUtils.getUniqueString("venice-push-id"), "dc-1", true, null, Optional.empty(),
+        Optional.empty(), mockTime);
+    producerInDC1.start();
+
+    // Send <Key1, Value3>, which will be ignored if DCR is implemented properly
+    String value3 = "value3";
+    OutgoingMessageEnvelope envelope4 = new OutgoingMessageEnvelope(new SystemStream("venice", storeName), key1,
+        useLogicalTimestamp ? new VeniceObjectWithTimestamp(value3, mockTime.getMilliseconds()) : value3);
+    producerInDC1.send(storeName, envelope4);
+
+    // Send <Key3, Value1>, which is used to verify that servers have consumed and processed till the end of all real-time messages from dc-1
+    String key3 = "key3";
+    OutgoingMessageEnvelope envelope5 = new OutgoingMessageEnvelope(new SystemStream("venice", storeName), key3,
+        useLogicalTimestamp ? new VeniceObjectWithTimestamp(value1, mockTime.getMilliseconds()) : value1);
+    producerInDC1.send(storeName, envelope5);
+
+    producerInDC1.stop();
+
+    // Verify data in dc-0
+    try (AvroGenericStoreClient<String, Object> client =
+        ClientFactory.getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerUrl))) {
+
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+        // Check <Key3, Value1> has been consumed
+        Object valueObject = client.get(key3).get();
+        Assert.assertNotNull(valueObject);
+        Assert.assertEquals(valueObject.toString(), value1);
+        // Check <Key1, Value3> was dropped, so that Key1 will have value equal to Value1
+        Object valueObject1 = client.get(key1).get();
+        Assert.assertNotNull(valueObject1);
+        Assert.assertEquals(valueObject1.toString(), value1, "DCR is not working properly");
+      });
+    }
   }
 
 

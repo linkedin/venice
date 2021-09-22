@@ -58,6 +58,14 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
     final List<VeniceMultiClusterWrapper> multiClusters = new ArrayList<>(numberOfColos);
     final List<MirrorMakerWrapper> mirrorMakers = new ArrayList<>(numberOfColos);
 
+    /**
+     * Enable participant system store by default in a two-layer multi-colo set-up
+     */
+    Properties parentControllerProps = parentControllerProperties.isPresent()
+        ? parentControllerProperties.get().getPropertiesCopy() : new Properties();
+    parentControllerProps.setProperty(PARTICIPANT_MESSAGE_STORE_ENABLED, "true");
+    parentControllerProperties = Optional.of(new VeniceProperties(parentControllerProps));
+
     ZkServerWrapper zkServer = null;
     KafkaBrokerWrapper parentKafka = null;
     List<KafkaBrokerWrapper> allKafkaBrokers = new ArrayList<>();
@@ -111,9 +119,11 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
       if (childControllerProperties.isPresent()) {
         childControllerProperties.get().putAll(parentControllerProperties.orElse(new VeniceProperties()).toProperties());
         childControllerProperties.get().putAll(activeActiveRequiredChildControllerProps);
+        childControllerProperties.get().setProperty(PARTICIPANT_MESSAGE_STORE_ENABLED, "true");
       } else {
         Properties tempProps = new Properties(parentControllerProperties.orElse(new VeniceProperties()).toProperties());
         tempProps.putAll(activeActiveRequiredChildControllerProps);
+        tempProps.setProperty(PARTICIPANT_MESSAGE_STORE_ENABLED, "true");
         childControllerProperties = Optional.of(tempProps);
       }
       serverProperties = addKafkaClusterIDMappingToServerConfigs(serverProperties, allColoNames, allKafkaBrokers);

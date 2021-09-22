@@ -38,6 +38,7 @@ import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.codec.http.HttpHeaders;
 import io.netty.handler.codec.http.HttpRequest;
+import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.util.ReferenceCountUtil;
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -230,15 +231,15 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
     checkResourceName(storeName, "/" + TYPE_CLUSTER_DISCOVERY + "/${storeName}");
     Optional<StoreConfig> config = storeConfigRepo.getStoreConfig(storeName);
     if (!config.isPresent() || Utils.isNullOrEmpty(config.get().getCluster())) {
-      byte[] errBody = new String("Cluster for store: " + storeName + " doesn't exist").getBytes();
-      setupResponseAndFlush(NOT_FOUND, errBody, false, ctx);
+      String errorMsg = "Cluster for store: " + storeName + " doesn't exist";
+      setupErrorD2DiscoveryResponseAndFlush(NOT_FOUND, errorMsg, headers, ctx);
       return;
     }
     String clusterName = config.get().getCluster();
     String d2Service = getD2ServiceByClusterName(clusterName);
     if (Utils.isNullOrEmpty(d2Service)) {
-      byte[] errBody = new String("D2 service for store: " + storeName + " doesn't exist").getBytes();
-      setupResponseAndFlush(NOT_FOUND, errBody, false, ctx);
+      String errorMsg = "D2 service for store: " + storeName + " doesn't exist";
+      setupErrorD2DiscoveryResponseAndFlush(NOT_FOUND, errorMsg, headers, ctx);
       return;
     }
     if (headers.contains(D2_SERVICE_DISCOVERY_RESPONSE_V2_ENABLED)) {
@@ -256,6 +257,19 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
       responseObject.setName(config.get().getStoreName());
       responseObject.setD2Service(d2Service);
       setupResponseAndFlush(OK, mapper.writeValueAsBytes(responseObject), true, ctx);
+    }
+  }
+
+  private void setupErrorD2DiscoveryResponseAndFlush(HttpResponseStatus status, String errorMsg, HttpHeaders headers,
+      ChannelHandlerContext ctx) throws IOException {
+    if (headers.contains(D2_SERVICE_DISCOVERY_RESPONSE_V2_ENABLED)) {
+      D2ServiceDiscoveryResponseV2 responseObject = new D2ServiceDiscoveryResponseV2();
+      responseObject.setError(errorMsg);
+      setupResponseAndFlush(status, mapper.writeValueAsBytes(responseObject), true, ctx);
+    } else {
+      D2ServiceDiscoveryResponse responseObject = new D2ServiceDiscoveryResponse();
+      responseObject.setError(errorMsg);
+      setupResponseAndFlush(status, mapper.writeValueAsBytes(responseObject), true, ctx);
     }
   }
 
