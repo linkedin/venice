@@ -278,7 +278,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   }
 
   private void validateActiveActiveConfigs() {
-    if (this.activeActiveEnabledOnController && !this.activeActiveRealTimeSourceFabrics.isEmpty()) {
+    if (this.activeActiveEnabledOnController && this.activeActiveRealTimeSourceFabrics.isEmpty()) {
       throw new VeniceException(String.format("The config %s cannot be empty when the child controller has A/A enabled " +
               "(%s == true).",
               ConfigKeys.ACTIVE_ACTIVE_REAL_TIME_SOURCE_FABRIC_LIST, ConfigKeys.ACTIVE_ACTIVE_ENABLED_ON_CONTROLLER));
