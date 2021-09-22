@@ -606,24 +606,28 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       }
     }
 
-    // subscribe to the new upstream
-    final long leaderStartOffset = offsetRecord.getLeaderOffset(OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY);
     Set<String> leaderSourceKafkaURLs = getConsumptionSourceKafkaAddress(partitionConsumptionState);
     if (leaderSourceKafkaURLs.size() != 1) {
       throw new VeniceException("In L/F mode, expect only one leader source Kafka URL. Got: " + leaderSourceKafkaURLs);
     }
+
+    partitionConsumptionState.setLeaderFollowerState(LEADER);
+    final String leaderTopic = offsetRecord.getLeaderTopic();
+    final long leaderStartOffset = offsetRecord.getLeaderOffset(OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY);
+    logger.info(String.format("%s is promoted to leader for partition %d and it is going to start consuming from " +
+                    "topic %s at offset %d",
+            consumerTaskId, partition, leaderTopic, leaderStartOffset));
+
+    // subscribe to the new upstream
     String leaderSourceKafkaURL = leaderSourceKafkaURLs.iterator().next();
-    String leaderTopic = offsetRecord.getLeaderTopic();
     consumerSubscribe(
             leaderTopic,
             partitionConsumptionState.getSourceTopicPartition(leaderTopic),
             leaderStartOffset,
             leaderSourceKafkaURL
     );
-
-    partitionConsumptionState.setLeaderFollowerState(LEADER);
-    logger.info(consumerTaskId + " promoted to leader for partition " + partition
-        + "; start consuming from " + offsetRecord.getLeaderTopic() + " offset " + leaderStartOffset);
+    logger.info(String.format("%s, as a leader, started consuming from topic %s partition %d at offset %d",
+            consumerTaskId, offsetRecord.getLeaderTopic(), partition, leaderStartOffset));
   }
 
   private boolean switchAwayFromStreamReprocessingTopic(String currentLeaderTopic, TopicSwitch topicSwitch) {

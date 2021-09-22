@@ -427,24 +427,27 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       logger.info(consumerTaskId + " enabled remote consumption from topic " + offsetRecord.getLeaderTopic() + " partition " + partition);
     }
 
-    // subscribe to the new upstream
+    partitionConsumptionState.setLeaderFollowerState(LEADER);
     final String leaderTopic = offsetRecord.getLeaderTopic();
     Set<String> leaderSourceKafkaURLs = getConsumptionSourceKafkaAddress(partitionConsumptionState);
     Map<String, Long> leaderOffsetByKafkaURL = new HashMap<>(leaderSourceKafkaURLs.size());
-    leaderSourceKafkaURLs.forEach(kafkaURL -> {
-      final long leaderStartOffset = offsetRecord.getLeaderOffset(kafkaURL);
+    leaderSourceKafkaURLs.forEach(kafkaURL -> leaderOffsetByKafkaURL.put(kafkaURL, offsetRecord.getLeaderOffset(kafkaURL)));
+    logger.info(String.format("%s is promoted to leader for partition %d and it is going to start consuming from " +
+                    "topic %s with offset by Kafka URL mapping %s",
+            consumerTaskId, partition, leaderTopic, leaderOffsetByKafkaURL));
+
+    // subscribe to the new upstream
+    leaderOffsetByKafkaURL.forEach((kafkaURL, leaderStartOffset) -> {
       consumerSubscribe(
               leaderTopic,
               partitionConsumptionState.getSourceTopicPartition(leaderTopic),
               leaderStartOffset,
               kafkaURL
       );
-      leaderOffsetByKafkaURL.put(kafkaURL, leaderStartOffset);
     });
 
-    partitionConsumptionState.setLeaderFollowerState(LEADER);
-    logger.info(consumerTaskId + " promoted to leader for partition " + partition
-            + "; start consuming from " + offsetRecord.getLeaderTopic() + " with offset by Kafka URL mapping " + leaderOffsetByKafkaURL);
+    logger.info(String.format("%s, as a leader, started consuming from topic %s partition %d with offset by Kafka URL mapping %s",
+            consumerTaskId, offsetRecord.getLeaderTopic(), partition, leaderOffsetByKafkaURL));
   }
 
   @Override
