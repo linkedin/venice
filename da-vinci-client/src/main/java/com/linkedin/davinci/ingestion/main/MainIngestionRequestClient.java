@@ -28,7 +28,6 @@ import java.util.Optional;
 import org.apache.log4j.Logger;
 
 import static com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils.*;
-import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.ingestion.protocol.enums.IngestionCommandType.*;
 
 

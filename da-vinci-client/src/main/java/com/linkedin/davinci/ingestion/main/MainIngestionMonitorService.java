@@ -67,22 +67,22 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
   private final Map<String, Set<Integer>> completedTopicPartitions = new VeniceConcurrentHashMap<>();
   private final List<VeniceNotifier> ingestionNotifierList = new ArrayList<>();
   private final List<VeniceNotifier> pushStatusNotifierList = new ArrayList<>();
-  private IsolatedIngestionProcessHeartbeatStats heartbeatStats;
+  private final Optional<SSLFactory> sslFactory;
 
+  private IsolatedIngestionProcessHeartbeatStats heartbeatStats;
   private ChannelFuture serverFuture;
   private MetricsRepository metricsRepository;
   private IsolatedIngestionProcessStats isolatedIngestionProcessStats;
   private MainIngestionStorageMetadataService storageMetadataService;
   private KafkaStoreIngestionService storeIngestionService;
-
   private VeniceConfigLoader configLoader;
-  private Optional<SSLFactory> sslFactory;
-  private volatile long latestHeartbeatTimestamp = -1;
   private long heartbeatTimeoutMs;
+  private volatile long latestHeartbeatTimestamp = -1;
 
-  public MainIngestionMonitorService(IsolatedIngestionBackend ingestionBackend, int applicationPort, int servicePort, Optional<SSLFactory> sslFactory) {
-    this.applicationPort = applicationPort;
-    this.servicePort = servicePort;
+  public MainIngestionMonitorService(IsolatedIngestionBackend ingestionBackend, VeniceConfigLoader configLoader, Optional<SSLFactory> sslFactory) {
+    this.configLoader = configLoader;
+    this.servicePort = configLoader.getVeniceServerConfig().getIngestionServicePort();
+    this.applicationPort = configLoader.getVeniceServerConfig().getIngestionApplicationPort();
     this.ingestionBackend = ingestionBackend;
     this.sslFactory = sslFactory;
 
@@ -92,7 +92,7 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
     workerGroup = new NioEventLoopGroup();
     bootstrap = new ServerBootstrap();
     bootstrap.group(bossGroup, workerGroup).channel(serverSocketChannelClass)
-            .childHandler(new MainIngestionReportChannelInitializer(this))
+            .childHandler(new MainIngestionReportChannelInitializer(this, IsolatedIngestionUtils.getSSLEngineComponentFactory(configLoader)))
             .option(ChannelOption.SO_BACKLOG, 1000)
             .childOption(ChannelOption.SO_KEEPALIVE, true)
             .option(ChannelOption.SO_REUSEADDR, true)
@@ -107,9 +107,6 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
   public boolean startInner() throws Exception {
     serverFuture = bootstrap.bind(applicationPort).sync();
     logger.info("Report listener service started on port: " + applicationPort);
-    if (configLoader == null) {
-      throw new VeniceException("Venice config not found in MainIngestionMonitorService!");
-    }
     heartbeatTimeoutMs = configLoader.getCombinedProperties().getLong(SERVER_INGESTION_ISOLATION_HEARTBEAT_TIMEOUT_MS, 60 * Time.MS_PER_SECOND);
     setupMetricsCollection();
 
@@ -154,10 +151,6 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
 
   public void setMetricsRepository(MetricsRepository metricsRepository) {
     this.metricsRepository = metricsRepository;
-  }
-
-  public void setConfigLoader(VeniceConfigLoader configLoader) {
-    this.configLoader = configLoader;
   }
 
   public MetricsRepository getMetricsRepository() {

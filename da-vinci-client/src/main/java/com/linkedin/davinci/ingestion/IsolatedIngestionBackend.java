@@ -61,11 +61,10 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend implements
     isolatedIngestionServiceProcess = mainIngestionRequestClient.startForkedIngestionProcess(configLoader);
     // Create and start the ingestion report listener.
     try {
-      mainIngestionMonitorService = new MainIngestionMonitorService(this, listenerPort, servicePort, sslFactory);
+      mainIngestionMonitorService = new MainIngestionMonitorService(this, configLoader, sslFactory);
       mainIngestionMonitorService.setMetricsRepository(metricsRepository);
       mainIngestionMonitorService.setStoreIngestionService(storeIngestionService);
       mainIngestionMonitorService.setStorageMetadataService((MainIngestionStorageMetadataService) storageMetadataService);
-      mainIngestionMonitorService.setConfigLoader(configLoader);
       mainIngestionMonitorService.startInner();
       logger.info("Ingestion Report Listener started.");
     } catch (Exception e) {
