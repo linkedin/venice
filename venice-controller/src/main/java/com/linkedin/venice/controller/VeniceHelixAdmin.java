@@ -277,7 +277,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     private final SharedHelixReadOnlyZKSharedSchemaRepository zkSharedSchemaRepository;
     private final MetaStoreWriter metaStoreWriter;
     private final D2Client d2Client;
-    private AvroSpecificStoreClient<PushJobStatusRecordKey, PushJobDetails> pushJobDetailsStoreClient;
 
     /**
      * Level-1 controller, it always being connected to Helix. And will create sub-controller for specific cluster when
@@ -427,20 +426,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             AvroProtocolDefinition.PARTITION_STATE, multiClusterConfigs, this));
         initRoutines.add(new SystemSchemaInitializationRoutine(
             AvroProtocolDefinition.STORE_VERSION_STATE, multiClusterConfigs, this));
-        initRoutines.add(new SystemSchemaInitializationRoutine(
-                AvroProtocolDefinition.BATCH_JOB_HEARTBEAT,
-                multiClusterConfigs,
-                this,
-                Optional.of(BatchJobHeartbeatKey.SCHEMA$),
-                Optional.of(new UpdateStoreQueryParams()
-                        .setHybridStoreDiskQuotaEnabled(false)
-                        .setHybridTimeLagThreshold(TimeUnit.HOURS.toSeconds(1))
-                        .setHybridRewindSeconds(TimeUnit.HOURS.toSeconds(1))
-                        .setHybridOffsetLagThreshold(1000L)
-                        .setPartitionCount(16)
-                        .setLeaderFollowerModel(true)),
-                false)
-        );
+
         if (multiClusterConfigs.isZkSharedMetadataSystemSchemaStoreAutoCreationEnabled()) {
             // Add routine to create zk shared metadata system store
             UpdateStoreQueryParams metadataSystemStoreUpdate = new UpdateStoreQueryParams().setHybridRewindSeconds(TimeUnit.DAYS.toSeconds(1)) // 1 day rewind

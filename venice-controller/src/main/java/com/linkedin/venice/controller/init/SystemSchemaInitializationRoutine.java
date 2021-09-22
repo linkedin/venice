@@ -79,14 +79,14 @@ public class SystemSchemaInitializationRoutine implements ClusterLeaderInitializ
            * At this point, this branch of the if should always be exercised since cluster discovery thinks
            * this store does not exist.
            */
-          Schema firstSchema = protocolSchemaMap.get(1);
-          if (null == firstSchema) {
+          Schema firstVallueSchema = protocolSchemaMap.get(1);
+          if (null == firstVallueSchema) {
             throw new VeniceException("Invalid protocol definition: '" + protocolDefinition.name() + "' does not have a version 1");
           }
           String firstKeySchemaStr = keySchema.isPresent() ? keySchema.get().toString() : DEFAULT_KEY_SCHEMA_STR;
-          String firstSchemaStr = firstSchema.toString();
+          String firstValueSchemaStr = firstVallueSchema.toString();
           admin.createStore(clusterToInit, systemStoreName, VeniceConstants.SYSTEM_STORE_OWNER, firstKeySchemaStr,
-              firstSchemaStr, true);
+              firstValueSchemaStr, true);
           // Update the default store config
           storeMetadataUpdate.ifPresent(
               updateStoreQueryParams -> admin.updateStore(clusterToInit, systemStoreName, updateStoreQueryParams));

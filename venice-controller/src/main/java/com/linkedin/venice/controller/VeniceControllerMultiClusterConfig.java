@@ -125,6 +125,10 @@ public class VeniceControllerMultiClusterConfig {
     return getCommonConfig().getParentControllerWaitingTimeForConsumptionMs();
   }
 
+  public String getBatchJobHeartbeatStoreCluster() {
+    return getCommonConfig().getBatchJobHeartbeatStoreCluster();
+  }
+
   public boolean getBatchJobHeartbeatEnabled() {
     return getCommonConfig().getBatchJobHeartbeatEnabled();
   }
