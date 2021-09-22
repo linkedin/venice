@@ -6,6 +6,12 @@ import java.time.Duration;
 
 public class BatchJobHeartbeatConfigs {
 
+    public static final Utils.ConfigEntity<String> HEARTBEAT_STORE_CLUSTER_CONFIG = new Utils.ConfigEntity<>(
+            "batch.job.heartbeat.store.cluster",
+            null,
+            "Name of cluster where the batch job liveness heartbeat store should exist"
+    );
+
     public static final Utils.ConfigEntity<Boolean> HEARTBEAT_ENABLED_CONFIG = new Utils.ConfigEntity<>(
             "batch.job.heartbeat.enabled",
             false,

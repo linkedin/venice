@@ -46,7 +46,8 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   private final String d2ServiceName;
   private final Map<String, String> childDataCenterControllerD2Map;
   private final int parentControllerWaitingTimeForConsumptionMs;
-  private final boolean batchJobHeartbeatEnabled;
+  private final String batchJobHeartbeatStoreCluster;// Name of cluster where the batch job liveness heartbeat store should exist.
+  private final boolean batchJobHeartbeatEnabled;    // whether the controller is enabled to use batch job liveness heartbeat.
   private final Duration batchJobHeartbeatTimeout;
   private final Duration batchJobHeartbeatInitialBufferTime;
   private final long adminConsumptionTimeoutMinute;
@@ -190,7 +191,14 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     }
     this.nativeReplicationSourceFabric = props.getString(NATIVE_REPLICATION_SOURCE_FABRIC, "");
     this.parentControllerWaitingTimeForConsumptionMs = props.getInt(ConfigKeys.PARENT_CONTROLLER_WAITING_TIME_FOR_CONSUMPTION_MS, 30 * Time.MS_PER_SECOND);
-    this.batchJobHeartbeatEnabled = props.getBoolean(BatchJobHeartbeatConfigs.HEARTBEAT_ENABLED_CONFIG.getConfigName(), false);
+    this.batchJobHeartbeatStoreCluster = props.getString(
+            BatchJobHeartbeatConfigs.HEARTBEAT_STORE_CLUSTER_CONFIG.getConfigName(),
+            BatchJobHeartbeatConfigs.HEARTBEAT_STORE_CLUSTER_CONFIG.getDefaultValue()
+    );
+    this.batchJobHeartbeatEnabled = props.getBoolean(
+            BatchJobHeartbeatConfigs.HEARTBEAT_ENABLED_CONFIG.getConfigName(),
+            BatchJobHeartbeatConfigs.HEARTBEAT_ENABLED_CONFIG.getDefaultValue()
+    );
     this.batchJobHeartbeatTimeout = Duration.ofMillis(props.getLong(
         BatchJobHeartbeatConfigs.HEARTBEAT_CONTROLLER_TIMEOUT_CONFIG.getConfigName(),
         BatchJobHeartbeatConfigs.HEARTBEAT_CONTROLLER_TIMEOUT_CONFIG.getDefaultValue()
@@ -383,6 +391,10 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   public int getParentControllerWaitingTimeForConsumptionMs() {
     return parentControllerWaitingTimeForConsumptionMs;
+  }
+
+  public String getBatchJobHeartbeatStoreCluster() {
+    return batchJobHeartbeatStoreCluster;
   }
 
   public boolean getBatchJobHeartbeatEnabled() {

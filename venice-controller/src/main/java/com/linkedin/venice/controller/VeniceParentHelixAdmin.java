@@ -96,6 +96,7 @@ import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
 import com.linkedin.venice.security.SSLFactory;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.status.protocol.BatchJobHeartbeatKey;
 import com.linkedin.venice.status.protocol.BatchJobHeartbeatValue;
 import com.linkedin.venice.status.protocol.PushJobDetails;
@@ -126,6 +127,7 @@ import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
@@ -168,6 +170,7 @@ public class VeniceParentHelixAdmin implements Admin {
   private static final String VENICE_INTERNAL_STORE_OWNER = "venice-internal";
   private static final String PUSH_JOB_DETAILS_STORE_DESCRIPTOR = "push job details store: ";
   private static final String PARTICIPANT_MESSAGE_STORE_DESCRIPTOR = "participant message store: ";
+  private static final String BATCH_JOB_HEARTBEAT_STORE_DESCRIPTOR = "batch job liveness heartbeat store: ";
   private static final String AUTO_META_SYSTEM_STORE_PUSH_ID_PREFIX = "Auto_meta_system_store_empty_push_";
   private static final long DEFAULT_META_SYSTEM_STORE_SIZE = 1024 * 1024 * 1024;
   //Store version number to retain in Parent Controller to limit 'Store' ZNode size.
@@ -340,6 +343,26 @@ public class VeniceParentHelixAdmin implements Admin {
           ParticipantMessageKey.SCHEMA$.toString(), ParticipantMessageValue.SCHEMA$.toString(),
           multiClusterConfigs.getControllerConfig(clusterName).getNumberOfPartition());
     }
+
+    maybeSetupBatchJobLivenessHeartbeatStore(clusterName);
+  }
+
+  private void maybeSetupBatchJobLivenessHeartbeatStore(String currClusterName) {
+    final String batchJobHeartbeatStoreCluster = multiClusterConfigs.getBatchJobHeartbeatStoreCluster();
+    final String batchJobHeartbeatStoreName = AvroProtocolDefinition.BATCH_JOB_HEARTBEAT.getSystemStoreName();
+
+    if (Objects.equals(currClusterName, batchJobHeartbeatStoreCluster)) {
+      asyncSetupForInternalRTStore(
+              currClusterName,
+              batchJobHeartbeatStoreName,
+              BATCH_JOB_HEARTBEAT_STORE_DESCRIPTOR + batchJobHeartbeatStoreName,
+              BatchJobHeartbeatKey.SCHEMA$.toString(),
+              BatchJobHeartbeatValue.SCHEMA$.toString(),
+              multiClusterConfigs.getControllerConfig(currClusterName).getNumberOfPartition());
+    } else {
+      logger.info(String.format("Skip creating the batch job liveness heartbeat store %s in cluster %s since the expected" +
+              " store cluster is %s", batchJobHeartbeatStoreName, currClusterName, batchJobHeartbeatStoreCluster));
+    }
   }
 
   /**
@@ -357,7 +380,7 @@ public class VeniceParentHelixAdmin implements Admin {
           if (retryCount > 0) {
             timer.sleep(SLEEP_INTERVAL_FOR_ASYNC_SETUP_MS);
           }
-          isStoreReady = verifyAndCreateInternalStore(clusterName, storeName, storeDescriptor, keySchema, valueSchema,
+          isStoreReady = createOrVerifyInternalStore(clusterName, storeName, storeDescriptor, keySchema, valueSchema,
               partitionCount);
         } catch (VeniceException e) {
           // Verification attempts (i.e. a controller running this routine but is not the master of the cluster) do not
@@ -374,24 +397,23 @@ public class VeniceParentHelixAdmin implements Admin {
         }
       }
       if (isStoreReady) {
-        logger.info(storeDescriptor + " has been successfully created or it already exists");
+        logger.info(storeDescriptor + " has been successfully created or it already exists in cluster " + clusterName);
       } else {
-        logger.error("Unable to create or verify the " + storeDescriptor);
+        logger.error("Unable to create or verify the " + storeDescriptor +  " in cluster " + clusterName);
       }
     });
   }
 
   /**
-   * Verify the state of the system store. The master controller will also create and configure the store if the
+   * Verify the state of the system store. The leader controller will also create and configure the store if the
    * desired state is not met.
    * @param clusterName the name of the cluster that push status store belongs to.
    * @param storeName the name of the push status store.
-   * @return {@code true} if the push status store is ready, {@code false} otherwise.
+   * @return {@code true} if the store is ready, {@code false} otherwise.
    */
-  private boolean verifyAndCreateInternalStore(String clusterName, String storeName, String storeDescriptor,
-      String keySchema, String valueSchema, int partitionCount) {
+  private boolean createOrVerifyInternalStore(String clusterName, String storeName, String storeDescriptor,
+                                              String keySchema, String valueSchema, int partitionCount) {
     boolean storeReady = false;
-    UpdateStoreQueryParams updateStoreQueryParams;
     if (isLeaderControllerFor(clusterName)) {
       // We should only perform the store validation if the current controller is the master controller of the requested cluster.
       Store store = getStore(clusterName, storeName);
@@ -401,9 +423,12 @@ public class VeniceParentHelixAdmin implements Admin {
         if (store == null) {
           throw new VeniceException("Unable to create or fetch the " + storeDescriptor);
         }
+      } else {
+        logger.info("Internal store " + storeName + " already exists in cluster " + clusterName);
       }
 
       if (!store.isHybrid()) {
+        UpdateStoreQueryParams updateStoreQueryParams;
         updateStoreQueryParams = new UpdateStoreQueryParams();
         updateStoreQueryParams.setHybridOffsetLagThreshold(100L);
         updateStoreQueryParams.setHybridRewindSeconds(TimeUnit.DAYS.toSeconds(7));
@@ -412,7 +437,9 @@ public class VeniceParentHelixAdmin implements Admin {
         if (!store.isHybrid()) {
           throw new VeniceException("Unable to update the " + storeDescriptor + " to a hybrid store");
         }
+        logger.info("Enabled hybrid for internal store " + storeName + " in cluster " + clusterName);
       }
+
       if (store.getVersions().isEmpty()) {
         int replicationFactor = getReplicationFactor(clusterName, storeName);
         Version version =
@@ -423,9 +450,11 @@ public class VeniceParentHelixAdmin implements Admin {
         if (store.getVersions().isEmpty()) {
           throw new VeniceException("Unable to initialize a version for the " + storeDescriptor);
         }
+        logger.info("Created a version for internal store " + storeName + " in cluster " + clusterName);
       }
-      String pushJobStatusRtTopic = getRealTimeTopic(clusterName, storeName);
-      if (!pushJobStatusRtTopic.equals(Version.composeRealTimeTopic(storeName))) {
+
+      final String existingRtTopic = getRealTimeTopic(clusterName, storeName);
+      if (!existingRtTopic.equals(Version.composeRealTimeTopic(storeName))) {
         throw new VeniceException("Unexpected real time topic name for the " + storeDescriptor);
       }
       storeReady = true;
@@ -436,7 +465,7 @@ public class VeniceParentHelixAdmin implements Admin {
           new ControllerClient(clusterName, getLeaderController(clusterName).getUrl(false), sslFactory)) {
         StoreResponse storeResponse = controllerClient.getStore(storeName);
         if (storeResponse.isError()) {
-          logger.info("Failed to verify " + storeDescriptor + " from the controller with URL: " +
+          logger.warn("Failed to verify if " + storeDescriptor + " exists from the controller with URL: " +
               controllerClient.getControllerDiscoveryUrls());
           return false;
         }
