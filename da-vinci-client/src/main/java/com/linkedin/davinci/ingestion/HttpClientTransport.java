@@ -34,7 +34,6 @@ public class HttpClientTransport implements AutoCloseable {
   private static final int DEFAULT_IO_THREAD_COUNT = 16;
   private static final String HTTP = "http";
   private static final String HTTPS = "https";
-
   private static final RequestConfig requestConfig;
 
   static {
@@ -48,7 +47,7 @@ public class HttpClientTransport implements AutoCloseable {
   private final String forkedProcessRequestUrl;
 
   public HttpClientTransport(Optional<SSLFactory> sslFactory, int port) {
-    this.forkedProcessRequestUrl = (sslFactory.isPresent() ? HTTPS : HTTP) + "://localhost:" + port;
+    this.forkedProcessRequestUrl = (sslFactory.isPresent() ? HTTPS : HTTP) + "://" + Utils.getHostName() + ":" + port;
     IOReactorConfig ioReactorConfig = IOReactorConfig.custom().setIoThreadCount(DEFAULT_IO_THREAD_COUNT).build();
     this.httpClient = HttpAsyncClients.custom()
         .setDefaultIOReactorConfig(ioReactorConfig)
