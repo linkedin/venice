@@ -50,7 +50,7 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
       int minActiveReplica, boolean sslToStorageNodes, boolean randomizeClusterName, boolean multiColoSetup,
       Optional<ZkServerWrapper> optionalZkServerWrapper, Optional<KafkaBrokerWrapper> optionalKafkaBrokerWrapper,
       Optional<Properties> childControllerProperties, Optional<VeniceProperties> veniceProperties, boolean multiD2,
-      boolean forkServer) {
+      boolean forkServer, Optional<Map<String, Map<String, String>>> kafkaClusterMap) {
     ZkServerWrapper zkServerWrapper = null;
     KafkaBrokerWrapper kafkaBrokerWrapper = null;
     BrooklinWrapper brooklinWrapper = null;
@@ -107,7 +107,7 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
         VeniceClusterWrapper clusterWrapper =
             ServiceFactory.getVeniceClusterWrapperForMultiCluster(coloName, zkServerWrapper, kafkaBrokerWrapper, brooklinWrapper,
                 clusterNames[i], clusterToD2, 0, numberOfServers, numberOfRouters, replicationFactor, partitionSize, enableWhitelist,
-                enableAutoJoinWhitelist, rebalanceDelayMs, minActiveReplica, sslToStorageNodes, false, veniceProperties, forkServer);
+                enableAutoJoinWhitelist, rebalanceDelayMs, minActiveReplica, sslToStorageNodes, false, veniceProperties, forkServer, kafkaClusterMap);
         controllerMap.values().stream().forEach(clusterWrapper::addVeniceControllerWrapper);
         clusterWrapperMap.put(clusterWrapper.getClusterName(), clusterWrapper);
         clusterWrapper.setExternalControllerDiscoveryURL(controllerMap.values().stream()

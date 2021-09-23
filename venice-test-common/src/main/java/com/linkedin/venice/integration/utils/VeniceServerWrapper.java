@@ -24,6 +24,7 @@ import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.CommandLineParser;
 import org.apache.commons.cli.DefaultParser;
@@ -121,7 +122,7 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
       KafkaBrokerWrapper kafkaBrokerWrapper,
       Properties featureProperties,
       Properties configProperties) {
-    return generateService(clusterName, kafkaBrokerWrapper, featureProperties, configProperties, false, "");
+    return generateService(clusterName, kafkaBrokerWrapper, featureProperties, configProperties, false, "", Optional.empty());
   }
 
   static StatefulServiceProvider<VeniceServerWrapper> generateService(String clusterName,
@@ -129,7 +130,8 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
       Properties featureProperties,
       Properties configProperties,
       boolean forkServer,
-      String serverName) {
+      String serverName,
+      Optional<Map<String, Map<String, String>>> kafkaClusterMap) {
     return (serviceName, dataDirectory) -> {
       boolean enableServerWhitelist = Boolean.parseBoolean(featureProperties.getProperty(SERVER_ENABLE_SERVER_WHITE_LIST, "false"));
       boolean sslToKafka = Boolean.parseBoolean(featureProperties.getProperty(SERVER_SSL_TO_KAFKA, "false"));
@@ -184,6 +186,9 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
 
       File serverConfigFile = new File(configDirectory, VeniceConfigLoader.SERVER_PROPERTIES_FILE);
       serverProps.storeFlattened(serverConfigFile);
+
+      //generate the kafka cluster map in config directory
+      VeniceConfigLoader.storeKafkaClusterMap(configDirectory, kafkaClusterMap);
 
       if (!forkServer) {
         VeniceConfigLoader veniceConfigLoader = VeniceConfigLoader.loadFromConfigDirectory(configDirectory.getAbsolutePath());

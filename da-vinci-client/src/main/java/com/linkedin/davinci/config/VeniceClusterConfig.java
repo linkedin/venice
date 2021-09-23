@@ -53,10 +53,11 @@ public class VeniceClusterConfig {
   private long kafkaFetchPartitionMaxSizePerSecond;
   private String regionName;
 
-  private Map<Integer, String> kafkaClusterIdToUrlMap;
-  private Map<String, Integer> kafkaClusterUrlToIdMap;
-  private Map<Integer, String> kafkaClusterIdToAliasMap;
-  private Map<String, Integer> kafkaClusterAliasToIdMap;
+  private Map<Integer, String> kafkaClusterIdToUrlMap = new HashMap<>();
+  private Map<String, Integer> kafkaClusterUrlToIdMap = new HashMap<>();
+  private Map<Integer, String> kafkaClusterIdToAliasMap = new HashMap<>();
+  private Map<String, Integer> kafkaClusterAliasToIdMap = new HashMap<>();
+  private Optional<Map<String, Map<String, String>>> kafkaClusterMap;
 
   private final VeniceProperties clusterProperties;
 
@@ -64,13 +65,58 @@ public class VeniceClusterConfig {
   // SSL related config
   Optional<SSLConfig> sslConfig;
 
-  public VeniceClusterConfig(VeniceProperties clusterProperties)
+  public VeniceClusterConfig(VeniceProperties clusterProperties, Optional<Map<String, Map<String, String>>> kafkaClusterMap)
       throws ConfigurationException {
-    checkProperties(clusterProperties);
+    checkProperties(clusterProperties, kafkaClusterMap);
     this.clusterProperties = clusterProperties;
+    this.kafkaClusterMap = kafkaClusterMap;
   }
 
-  protected void checkProperties(VeniceProperties clusterProps) throws ConfigurationException {
+  /**
+   * kafkaClusterMap should look like this
+   * <property name="venice.server.kafkaClustersMap">
+   *       <map>
+   *         <entry key="0">
+   *           <map>
+   *             <entry key="name" value="ei-ltx1"/>
+   *             <entry key="url" value="${venice.kafka.ssl.bootstrap.servers.ei-ltx1}"/>
+   *           </map>
+   *         </entry>
+   *         <entry key="1">
+   *           <map>
+   *             <entry key="name" value="ei4"/>
+   *             <entry key="url" value="${venice.kafka.ssl.bootstrap.servers.ei4}"/>
+   *           </map>
+   *         </entry>
+   *       </map>
+   * </property>
+   * @param kafkaClusterMap
+   */
+  private void parseKafkaClusterMap(Map<String, Map<String, String>> kafkaClusterMap) {
+    kafkaClusterIdToAliasMap.clear();
+    kafkaClusterAliasToIdMap.clear();
+    kafkaClusterIdToUrlMap.clear();
+    kafkaClusterUrlToIdMap.clear();
+
+    for (Map.Entry<String, Map<String, String>> kafkaCluster: kafkaClusterMap.entrySet()) {
+      int clusterId = Integer.parseInt(kafkaCluster.getKey());
+      Map<String, String> mappings = kafkaCluster.getValue();
+
+      String alias = mappings.get(KAFKA_CLUSTER_MAP_KEY_NAME);
+      if (alias != null) {
+        kafkaClusterIdToAliasMap.put(clusterId, alias);
+        kafkaClusterAliasToIdMap.put(alias, clusterId);
+      }
+
+      String url = mappings.get(KAFKA_CLUSTER_MAP_KEY_URL);
+      if (url != null) {
+        kafkaClusterIdToUrlMap.put(clusterId, url);
+        kafkaClusterUrlToIdMap.put(url, clusterId);
+      }
+    }
+  }
+
+  protected void checkProperties(VeniceProperties clusterProps, Optional<Map<String, Map<String, String>>> kafkaClusterMap) throws ConfigurationException {
     clusterName = clusterProps.getString(CLUSTER_NAME);
 
     zookeeperAddress = clusterProps.getString(ZOOKEEPER_ADDRESS);
@@ -134,6 +180,15 @@ public class VeniceClusterConfig {
 
     this.regionName = RegionUtils.getLocalRegionName(clusterProps, false);
     logger.info("Final region name for this node: " + this.regionName);
+
+    //  parse the new kafka cluster map config. This must be done after processing the SERVER_KAFKA_CLUSTER_ID_TO_URL config above. This will
+    //  help deprecate this config later.
+    if (kafkaClusterMap.isPresent()) {
+      logger.info("Input kafka cluster mapping: " + kafkaClusterMap.get());
+      parseKafkaClusterMap(kafkaClusterMap.get());
+    }
+    logger.info("Derived kafka cluster mapping: kafkaClusterIdToUrlMap: " + kafkaClusterIdToUrlMap + ", kafkaClusterUrlToIdMap: " + kafkaClusterUrlToIdMap +
+        ", kafkaClusterIdToAliasMap: " + kafkaClusterIdToAliasMap +  ", kafkaClusterAliasToIdMap: " + kafkaClusterAliasToIdMap);
   }
 
   public int getStatusMessageRetryCount() {

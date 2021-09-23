@@ -15,6 +15,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
@@ -259,7 +260,11 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final boolean schemaPresenceCheckEnabled;
 
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
-    super(serverProperties);
+    this(serverProperties, Optional.empty());
+  }
+
+  public VeniceServerConfig(VeniceProperties serverProperties, Optional<Map<String, Map<String, String>>> kafkaClusterMap) throws ConfigurationException {
+    super(serverProperties, kafkaClusterMap);
     listenerPort = serverProperties.getInt(LISTENER_PORT, 0);
     dataBasePath = serverProperties.getString(DATA_BASE_PATH,
         Paths.get(System.getProperty("java.io.tmpdir"), "venice-server-data").toAbsolutePath().toString());

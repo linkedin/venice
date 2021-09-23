@@ -1944,9 +1944,15 @@ public class StoreIngestionTaskTest {
     propertyBuilder.put(SERVER_LOCAL_CONSUMER_CONFIG_PREFIX, new VeniceProperties());
     propertyBuilder.put(SERVER_REMOTE_CONSUMER_CONFIG_PREFIX, new VeniceProperties());
     propertyBuilder.put(SERVER_AUTO_COMPACTION_FOR_SAMZA_REPROCESSING_JOB_ENABLED, true);
-    propertyBuilder.put(SERVER_KAFKA_CLUSTER_ID_TO_URL, String.format("%d:%s@%s", 0, "dev", inMemoryKafkaBroker.getKafkaBootstrapServer()));
     extraProperties.forEach(propertyBuilder::put);
-    return new VeniceServerConfig(propertyBuilder.build());
+
+    Map<String, Map<String, String>> kafkaClusterMap = new HashMap<>();
+    Map<String, String> mapping = new HashMap<>();
+    mapping.put(KAFKA_CLUSTER_MAP_KEY_NAME, "dev");
+    mapping.put(KAFKA_CLUSTER_MAP_KEY_URL, inMemoryKafkaBroker.getKafkaBootstrapServer());
+    kafkaClusterMap.put(String.valueOf(0), mapping);
+
+    return new VeniceServerConfig(propertyBuilder.build(), Optional.of(kafkaClusterMap));
   }
 
   private void verifyPutAndDelete(int amplificationFactor, boolean isActiveActiveReplicationEnabled, boolean recordsInBatchPush) {
