@@ -211,12 +211,12 @@ public class ActiveActiveReplicationForHybridTest {
       parentControllerClient.createNewStore(storeName, "owner", STRING_SCHEMA, STRING_SCHEMA);
 
       // Expect the request to fail since AA cannot be enabled without enabling NR
-      ControllerResponse controllerResponse = updateStore(storeName, parentControllerClient, Optional.of(false), Optional.of(true));
+      ControllerResponse controllerResponse = updateStore(storeName, parentControllerClient, Optional.of(false), Optional.of(true), Optional.of(false));
       Assert.assertTrue(controllerResponse.isError());
       Assert.assertTrue(controllerResponse.getError().contains("Http Status " + HttpStatus.SC_BAD_REQUEST)); // Must contain the correct HTTP status code
 
       // Expect the request to succeed
-      controllerResponse = updateStore(storeName, parentControllerClient, Optional.of(true), Optional.of(true));
+      controllerResponse = updateStore(storeName, parentControllerClient, Optional.of(true), Optional.of(true), Optional.of(false));
       Assert.assertFalse(controllerResponse.isError());
 
       // Create a new store
@@ -224,15 +224,15 @@ public class ActiveActiveReplicationForHybridTest {
       parentControllerClient.createNewStore(anotherStoreName, "owner", STRING_SCHEMA, STRING_SCHEMA);
 
       // Enable NR
-      controllerResponse = updateStore(storeName, parentControllerClient, Optional.of(true), Optional.of(false));
+      controllerResponse = updateStore(storeName, parentControllerClient, Optional.of(true), Optional.of(false), Optional.of(false));
       Assert.assertFalse(controllerResponse.isError());
 
       // Enable AA after NR is enabled (expect to succeed)
-      controllerResponse = updateStore(storeName, parentControllerClient, Optional.empty(), Optional.of(true));
+      controllerResponse = updateStore(storeName, parentControllerClient, Optional.empty(), Optional.of(true), Optional.of(false));
       Assert.assertFalse(controllerResponse.isError());
 
       // Disable NR and enable AA (expect to fail)
-      controllerResponse = updateStore(storeName, parentControllerClient, Optional.of(false), Optional.of(true));
+      controllerResponse = updateStore(storeName, parentControllerClient, Optional.of(false), Optional.of(true), Optional.of(false));
       Assert.assertTrue(controllerResponse.isError());
       Assert.assertTrue(controllerResponse.getError().contains("Http Status " + HttpStatus.SC_BAD_REQUEST)); // Must contain the correct HTTP status code
     }
@@ -244,15 +244,15 @@ public class ActiveActiveReplicationForHybridTest {
    * Once servers are able to consume real-time messages from multiple regions, we can enable this test case
    * to test the feature.
    */
-  @Test(timeOut = TEST_TIMEOUT, enabled = true)
-  public void testAAReplicationCanConsumeFromAllRegions() {
+  @Test(timeOut = TEST_TIMEOUT, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testAAReplicationCanConsumeFromAllRegions(boolean isChunkingEnabled) {
     String clusterName = CLUSTER_NAMES[0];
     String storeName = TestUtils.getUniqueString("test-store");
     VeniceControllerWrapper parentController =
         parentControllers.stream().filter(c -> c.isMasterController(clusterName)).findAny().get();
     try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentController.getControllerUrl())) {
       parentControllerClient.createNewStore(storeName, "owner", STRING_SCHEMA, STRING_SCHEMA);
-      updateStore(storeName, parentControllerClient, Optional.of(true), Optional.of(true));
+      updateStore(storeName, parentControllerClient, Optional.of(true), Optional.of(true), Optional.of(isChunkingEnabled));
 
       // Empty push to create a version
       parentControllerClient.emptyPush(storeName, TestUtils.getUniqueString("empty-hybrid-push"), 1L);
@@ -322,7 +322,7 @@ public class ActiveActiveReplicationForHybridTest {
         parentControllers.stream().filter(c -> c.isMasterController(clusterName)).findAny().get();
     try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentController.getControllerUrl())) {
       parentControllerClient.createNewStore(storeName, "owner", STRING_SCHEMA, STRING_SCHEMA);
-      updateStore(storeName, parentControllerClient, Optional.of(true), Optional.of(true));
+      updateStore(storeName, parentControllerClient, Optional.of(true), Optional.of(true), Optional.of(false));
 
       // Empty push to create a version
       parentControllerClient.emptyPush(storeName, TestUtils.getUniqueString("empty-hybrid-push"), 1L);
@@ -347,7 +347,7 @@ public class ActiveActiveReplicationForHybridTest {
         parentControllers.stream().filter(c -> c.isMasterController(clusterName)).findAny().get();
     try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentController.getControllerUrl())) {
       parentControllerClient.createNewStore(storeName, "owner", STRING_SCHEMA, STRING_SCHEMA);
-      updateStore(storeName, parentControllerClient, Optional.of(true), Optional.of(true));
+      updateStore(storeName, parentControllerClient, Optional.of(true), Optional.of(true), Optional.of(false));
 
       // Empty push to create a version
       parentControllerClient.emptyPush(storeName, TestUtils.getUniqueString("empty-hybrid-push"), 1L);
@@ -492,7 +492,8 @@ public class ActiveActiveReplicationForHybridTest {
       String storeName,
       ControllerClient parentControllerClient,
       Optional<Boolean> enableNativeReplication,
-      Optional<Boolean> enableActiveActiveReplication
+      Optional<Boolean> enableActiveActiveReplication,
+      Optional<Boolean> enableChunking
   ) {
     UpdateStoreQueryParams params = new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
         .setHybridRewindSeconds(25L)
@@ -501,6 +502,7 @@ public class ActiveActiveReplicationForHybridTest {
 
     enableNativeReplication.ifPresent(params::setNativeReplicationEnabled);
     enableActiveActiveReplication.ifPresent(params::setActiveActiveReplicationEnabled);
+    enableChunking.ifPresent(params::setChunkingEnabled);
 
     return parentControllerClient.updateStore(storeName, params);
   }
