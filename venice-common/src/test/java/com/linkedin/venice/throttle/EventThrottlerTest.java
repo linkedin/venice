@@ -3,8 +3,8 @@ package com.linkedin.venice.throttle;
 import com.linkedin.venice.exceptions.QuotaExceededException;
 import io.tehuti.utils.Time;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 import org.testng.Assert;
-import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 
@@ -14,7 +14,7 @@ public class EventThrottlerTest {
   @Test
   public void testRejectUnexpectedRequests() {
     int quota = 10;
-    long timeWindowMS = 1000l;
+    long timeWindowMS = 1000L;
     EventThrottler throttler = new EventThrottler(testTime, quota, timeWindowMS, "testRejectUnexpectedRequests", true,
         EventThrottler.REJECT_STRATEGY);
 
@@ -43,7 +43,7 @@ public class EventThrottlerTest {
   @Test
   public void testRejectExpansiveRequest() {
     long quota = 10;
-    long timeWindowMS = 1000l;
+    long timeWindowMS = 1000L;
     EventThrottler throttler = new EventThrottler(testTime, quota, timeWindowMS, "testRejectExpansiveRequest", true,
         EventThrottler.REJECT_STRATEGY);
     // Send the single request that usage exceeds the quota.
@@ -82,7 +82,7 @@ public class EventThrottlerTest {
   @Test
   public void testThrottlerWithCheckingQuotaBeforeRecording() {
     long quota = 10;
-    long timeWindowMS = 1000l;
+    long timeWindowMS = 1000L;
     EventThrottler throttler =
         new EventThrottler(testTime, quota, timeWindowMS, "testThrottlerWithCheckingQuotaBeforeRecording", true,
             EventThrottler.REJECT_STRATEGY);
@@ -103,6 +103,67 @@ public class EventThrottlerTest {
       Assert.fail(
           "Request should be accepted, throttler check the quota before recording, so we have enough quota now.", e);
     }
+  }
+
+  @Test
+  public void testQuotaCanBeModifiedAtRuntime() {
+    int startQuotaValue = 10;
+    int updatedQuotaValue = 20;
+
+    int currentQuotaValue = startQuotaValue;
+    AtomicLong currentQuota = new AtomicLong(currentQuotaValue);
+
+    long timeWindowMS = 1000L;
+    EventThrottler throttler = new EventThrottler(testTime, currentQuota::get, timeWindowMS, "testQuotaCanBeModifiedAtRuntime", true,
+        EventThrottler.REJECT_STRATEGY);
+
+    // Send requests that number of them equals to the given quota.
+    // Quota exceeds.
+    try {
+      sendRequests(updatedQuotaValue, throttler);
+      Assert.fail("Number of request exceed quota, throttler should reject them.");
+    } catch (QuotaExceededException e) {
+      // expected.
+    }
+
+    // Time goes 1.5 second so throttler starts second time window. Now we have more capacity granted.
+    testTime.sleep((long) (1500));
+    currentQuotaValue = updatedQuotaValue;
+    currentQuota.set(currentQuotaValue);
+
+    sendRequests(updatedQuotaValue, throttler);
+    // Quota exceeds, case we only have half quota for the in flight time window.
+    try {
+      sendRequests(1, throttler);
+      Assert.fail("Number of request exceed quota, throttler should reject them.");
+    } catch (QuotaExceededException e) {
+      // expected
+    }
+  }
+
+  @Test
+  public void testZeroQuotaWillRejectRequests() {
+    long timeWindowMS = 1000L;
+    EventThrottler throttler = new EventThrottler(testTime, 0, timeWindowMS, "testRejectUnexpectedRequests", true,
+        EventThrottler.REJECT_STRATEGY);
+
+    // Quota exceeds.
+    try {
+      sendRequests(1, throttler);
+      Assert.fail("Number of request exceed quota, throttler should reject them.");
+    } catch (QuotaExceededException e) {
+      // expected.
+    }
+  }
+
+  @Test
+  public void testNegativeQuotaWillNotRejectRequests() {
+    long timeWindowMS = 1000L;
+    EventThrottler throttler = new EventThrottler(testTime, -1, timeWindowMS, "testRejectUnexpectedRequests", true,
+        EventThrottler.REJECT_STRATEGY);
+
+    // Quota shouldn't exceed.
+    sendRequests(1000, throttler);
   }
 
   private void sendRequests(int number, EventThrottler throttler) {
