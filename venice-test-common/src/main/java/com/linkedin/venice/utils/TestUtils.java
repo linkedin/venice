@@ -266,9 +266,9 @@ public class TestUtils {
       String emptyPushStatus = controllerClient.queryJobStatus(topicName, Optional.empty()).getStatus();
       boolean ignoreError = false;
       try {
-        assertNotEquals(emptyPushStatus, ExecutionStatus.ERROR.toString(), "Unexpected empty push failure");
+        assertNotEquals(emptyPushStatus, ExecutionStatus.ERROR.toString(), "Unexpected push failure");
         ignoreError = true;
-        assertEquals(emptyPushStatus, ExecutionStatus.COMPLETED.toString(), "Empty push is yet to complete");
+        assertEquals(emptyPushStatus, ExecutionStatus.COMPLETED.toString(), "Push is yet to complete");
         return true;
       } catch (AssertionError | VerifyError e) {
         if (ignoreError) {

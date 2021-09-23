@@ -8,6 +8,7 @@ import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
+import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.integration.utils.MirrorMakerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
@@ -26,6 +27,7 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import java.util.AbstractMap;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.LinkedList;
@@ -486,6 +488,84 @@ public class ActiveActiveReplicationForHybridTest {
         Assert.assertNotNull(valueObject1);
         Assert.assertEquals(valueObject1.toString(), value1, "DCR is not working properly");
       });
+    }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testAAInOneDCWithHybridAggregateMode() throws Exception {
+    String clusterName = CLUSTER_NAMES[0];
+    String storeName = TestUtils.getUniqueString("hybridAA-test-store");
+    VeniceControllerWrapper parentController =
+        parentControllers.stream().filter(c -> c.isMasterController(clusterName)).findAny().get();
+    int batchDataRangeEnd = 10;
+    int overlapDataRangeStart = 5;
+    int streamDataRangeEnd = 15;
+    try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentController.getControllerUrl());
+        ControllerClient dc0Client = new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
+        ControllerClient dc1Client = new ControllerClient(clusterName, childDatacenters.get(1).getControllerConnectString());
+        ControllerClient dc2Client = new ControllerClient(clusterName, childDatacenters.get(2).getControllerConnectString())) {
+      List<ControllerClient> dcControllerClientList = Arrays.asList(dc0Client, dc1Client, dc2Client);
+      createAndVerifyStoreInAllRegions(storeName, parentControllerClient, dcControllerClientList);
+      Assert.assertFalse(parentControllerClient.updateStore(storeName, new UpdateStoreQueryParams()
+          .setLeaderFollowerModel(true)
+          .setHybridRewindSeconds(10)
+          .setHybridOffsetLagThreshold(2)
+          .setHybridDataReplicationPolicy(DataReplicationPolicy.AGGREGATE)
+      ).isError());
+      Assert.assertFalse(updateStore(storeName, parentControllerClient, Optional.of(true), Optional.of(false),
+          Optional.of(false)).isError());
+      // Enable A/A in just one of the data center
+      Assert.assertFalse(parentControllerClient.updateStore(storeName,
+          new UpdateStoreQueryParams()
+              .setActiveActiveReplicationEnabled(true)
+              .setRegionsFilter("dc-0,parent.parent")).isError());
+      verifyDCConfigNativeAndActiveRepl(dc0Client, storeName, true, true);
+      verifyDCConfigNativeAndActiveRepl(dc1Client, storeName, true, false);
+      verifyDCConfigNativeAndActiveRepl(dc2Client, storeName, true, false);
+      // Write some batch data, value would be the same as the key.
+      VersionCreationResponse response = TestUtils.createVersionWithBatchData(parentControllerClient, storeName,
+          STRING_SCHEMA, STRING_SCHEMA, IntStream.range(0, batchDataRangeEnd)
+              .mapToObj(i -> new AbstractMap.SimpleEntry<>(String.valueOf(i), String.valueOf(i))), 1);
+      TestUtils.waitForNonDeterministicPushCompletion(response.getKafkaTopic(), parentControllerClient, 30,
+          TimeUnit.SECONDS, Optional.empty());
+      Map<String, String> samzaConfig = new HashMap<>();
+      String configPrefix = SYSTEMS_PREFIX + "venice" + DOT;
+      samzaConfig.put(configPrefix + VENICE_PUSH_TYPE, Version.PushType.STREAM.toString());
+      samzaConfig.put(configPrefix + VENICE_STORE, storeName);
+      samzaConfig.put(configPrefix + VENICE_AGGREGATE, "true");
+      samzaConfig.put(D2_ZK_HOSTS_PROPERTY, "invalid_child_zk_address");
+      samzaConfig.put(VENICE_PARENT_D2_ZK_HOSTS, parentController.getKafkaZkAddress());
+      samzaConfig.put(DEPLOYMENT_ID, TestUtils.getUniqueString("venice-push-id"));
+      samzaConfig.put(SSL_ENABLED, "false");
+      VeniceSystemFactory factory = new VeniceSystemFactory();
+      SystemProducer veniceProducer = factory.getProducer("venice", new MapConfig(samzaConfig), null);
+      veniceProducer.start();
+
+      for (int i = overlapDataRangeStart; i < streamDataRangeEnd; i++) {
+        sendStreamingRecord(veniceProducer, storeName, i);
+      }
+      veniceProducer.stop();
+    }
+    // Verify that all data centers should eventually have the same k/v.
+    for (int dataCenterIndex = 0; dataCenterIndex < NUMBER_OF_CHILD_DATACENTERS; dataCenterIndex++) {
+      String routerUrl = childDatacenters.get(dataCenterIndex).getClusters().get(clusterName).getRandomRouterURL();
+      try (AvroGenericStoreClient<String, Object> client = ClientFactory.getAndStartGenericAvroClient(
+          ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerUrl))) {
+        // Verify batch only data
+        for (int i = 0; i < overlapDataRangeStart; i++) {
+          Object v = client.get(String.valueOf(i)).get();
+          Assert.assertNotNull(v, "Batch data should have be consumed already");
+          Assert.assertEquals(v.toString(), String.valueOf(i));
+        }
+        final int dataCenterId = dataCenterIndex;
+        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+          for (int i = overlapDataRangeStart; i < streamDataRangeEnd; i++) {
+            Object v = client.get(String.valueOf(i)).get();
+            Assert.assertNotNull(v, "Servers in data center: " + dataCenterId + " haven't consumed real-time data yet");
+            Assert.assertEquals(v.toString(), "stream_" + i);
+          }
+        });
+      }
     }
   }
 
