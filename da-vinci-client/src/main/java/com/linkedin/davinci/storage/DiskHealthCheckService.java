@@ -2,6 +2,7 @@ package com.linkedin.davinci.storage;
 
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.LatencyUtils;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 
 import java.io.BufferedReader;
@@ -46,7 +47,8 @@ public class DiskHealthCheckService extends AbstractVeniceService {
   private Thread runner;
   private long diskFailServerShutdownTimeMs;
 
-  public DiskHealthCheckService(boolean serviceEnabled, long healthCheckIntervalMs, long diskOperationTimeout, String databasePath, long diskFailServerShutdownTimeMs) {
+  public DiskHealthCheckService(boolean serviceEnabled, long healthCheckIntervalMs, long diskOperationTimeout,
+      String databasePath, long diskFailServerShutdownTimeMs) {
     this.serviceEnabled = serviceEnabled;
     this.healthCheckIntervalMs = healthCheckIntervalMs;
     this.healthCheckTimeoutMs = Math.max(HEALTH_CHECK_HARD_TIMEOUT, healthCheckIntervalMs + diskOperationTimeout);
@@ -119,8 +121,8 @@ public class DiskHealthCheckService extends AbstractVeniceService {
             if (unhealthyStartTime != 0) {
               long duration = System.currentTimeMillis() - unhealthyStartTime;
               if (duration > diskFailServerShutdownTimeMs) {
-                Utils.exit("Disk health service reported unhealthy disk for " + duration/1000 + " seconds, STOPPING THE SERVER NOW!");
-                break;
+                Utils.exit("Disk health service reported unhealthy disk for " + duration / Time.MS_PER_SECOND
+                    + " seconds, STOPPING THE SERVER NOW!");
               }
             } else {
               unhealthyStartTime = System.currentTimeMillis();
@@ -155,7 +157,7 @@ public class DiskHealthCheckService extends AbstractVeniceService {
           // write 64KB data to the temporary file first
           int repeats = tmpFileSizeInBytes / message.length();
           for (int i = 0; i < repeats; i++) {
-            printWriter.print(message + "\n");
+            printWriter.println(message);
           }
           printWriter.flush();
           printWriter.close();
@@ -167,7 +169,8 @@ public class DiskHealthCheckService extends AbstractVeniceService {
           for (int i = 0; i < repeats; i++) {
             String newLine = br.readLine();
             if (!newLine.equals(message)) {
-              errorMessage = "Content in health check file is different from what was written to it; expect message: " + message + "; actual content: " + newLine;
+              errorMessage = "Content in health check file is different from what was written to it; expect message: "
+                  + message + "; actual content: " + newLine;
               fileReadableAndCorrect = false;
               break;
             }
