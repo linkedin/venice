@@ -12,6 +12,7 @@ import io.tehuti.metrics.stats.Rate;
 import io.tehuti.utils.Time;
 import java.util.concurrent.TimeUnit;
 
+import java.util.function.Supplier;
 import org.apache.log4j.Logger;
 
 /**
@@ -38,24 +39,27 @@ public class EventThrottler {
   public static final EventThrottlingStrategy BLOCK_STRATEGY = new BlockEventThrottlingStrategy();
   public static final EventThrottlingStrategy REJECT_STRATEGY = new RejectEventThrottlingStrategy();
 
-  private final long maxRatePerSecond;
+  private final Supplier<Long> maxRatePerSecondProvider;
+  private final long enforcementIntervalMs;
+  private final String throttlerName;
+  private final boolean checkQuotaBeforeRecording;
 
   // Tehuti stuff
+  private long configuredMaxRatePerSecond = -1;
   private final io.tehuti.utils.Time time;
-  private final Rate rate;
-  private final Sensor rateSensor;
-  private final MetricConfig rateConfig;
+  private Sensor rateSensor = null;
+  private MetricConfig rateConfig = null;
   private final EventThrottlingStrategy throttlingStrategy;
 
   /**
-   * @param maxRatePerSecond Maximum rate that this throttler should allow (0 is unlimited)
+   * @param maxRatePerSecond Maximum rate that this throttler should allow (-1 is unlimited)
    */
   public EventThrottler(long maxRatePerSecond) {
     this(maxRatePerSecond, DEFAULT_CHECK_INTERVAL_MS, null, false, BLOCK_STRATEGY);
   }
 
   /**
-   * @param maxRatePerSecond          Maximum rate that this throttler should allow (0 is unlimited)
+   * @param maxRatePerSecond          Maximum rate that this throttler should allow (-1 is unlimited)
    * @param throttlerName             if specified, the throttler will share its limit with others named the same
    *                                  if null, the throttler will be independent of the others
    * @param throttlingStrategy        the strategy how throttler handle the quota exceeding case.
@@ -68,7 +72,7 @@ public class EventThrottler {
   }
 
   /**
-   * @param maxRatePerSecond Maximum rate that this throttler should allow (0 is unlimited)
+   * @param maxRatePerSecond Maximum rate that this throttler should allow (-1 is unlimited)
    * @param intervalMs Minimum interval over which the rate is measured (maximum is twice that)
    * @param throttlerName if specified, the throttler will share its limit with others named the same
    *                      if null, the throttler will be independent of the others
@@ -81,7 +85,7 @@ public class EventThrottler {
 
   /**
    * @param time Used to inject a {@link io.tehuti.utils.Time} in tests
-   * @param maxRatePerSecond Maximum rate that this throttler should allow (0 is unlimited)
+   * @param maxRatePerSecond Maximum rate that this throttler should allow (-1 is unlimited)
    * @param intervalMs Minimum interval over which the rate is measured (maximum is twice that)
    * @param throttlerName if specified, the throttler will share its limit with others named the same
    *                      if null, the throttler will be independent of the others
@@ -94,34 +98,54 @@ public class EventThrottler {
       String throttlerName,
       boolean checkQuotaBeforeRecording,
       EventThrottlingStrategy throttlingStrategy) {
-    this.maxRatePerSecond = maxRatePerSecond;
+    this(time, () -> maxRatePerSecond, intervalMs, throttlerName, checkQuotaBeforeRecording, throttlingStrategy);
+  }
+
+  /**
+   * @param maxRatePerSecondProvider Provider for maximum rate that this throttler should allow (-1 is unlimited)
+   * @param intervalMs Minimum interval over which the rate is measured (maximum is twice that)
+   * @param throttlerName if specified, the throttler will share its limit with others named the same
+   *                      if null, the throttler will be independent of the others
+   * @param checkQuotaBeforeRecording if true throttler will check the quota before recording usage, otherwise throttler will record usage then check the quota.
+   * @param throttlingStrategy the strategy how throttler handle the quota exceeding case.
+   */
+  public EventThrottler(Supplier<Long> maxRatePerSecondProvider,
+      long intervalMs,
+      String throttlerName,
+      boolean checkQuotaBeforeRecording,
+      EventThrottlingStrategy throttlingStrategy) {
+    this(new io.tehuti.utils.SystemTime(), maxRatePerSecondProvider, intervalMs, throttlerName, checkQuotaBeforeRecording, throttlingStrategy);
+  }
+
+  /**
+   * @param time Used to inject a {@link io.tehuti.utils.Time} in tests
+   * @param maxRatePerSecondProvider Provider for maximum rate that this throttler should allow (-1 is unlimited)
+   * @param intervalMs Minimum interval over which the rate is measured (maximum is twice that)
+   * @param throttlerName if specified, the throttler will share its limit with others named the same
+   *                      if null, the throttler will be independent of the others
+   * @param checkQuotaBeforeRecording if true throttler will check the quota before recording usage, otherwise throttler will record usage then check the quota.
+   * @param throttlingStrategy the strategy how throttler handle the quota exceeding case.
+   */
+  public EventThrottler(io.tehuti.utils.Time time,
+      Supplier<Long> maxRatePerSecondProvider,
+      long intervalMs,
+      String throttlerName,
+      boolean checkQuotaBeforeRecording,
+      EventThrottlingStrategy throttlingStrategy) {
+    this.maxRatePerSecondProvider = maxRatePerSecondProvider;
     this.throttlingStrategy = Utils.notNull(throttlingStrategy);
-    if (maxRatePerSecond > 0) {
-      this.time = Utils.notNull(time);
-      if (intervalMs <= 0) {
-        throw new IllegalArgumentException("intervalMs must be a positive number.");
-      }
-      this.rateConfig = new MetricConfig()
-          .timeWindow(intervalMs, TimeUnit.MILLISECONDS)
-          .quota(Quota.lessThan(maxRatePerSecond, checkQuotaBeforeRecording));
-      this.rate = new Rate(TimeUnit.SECONDS);
-      if (throttlerName == null) {
-        throttlerName = THROTTLER_NAME;
-      }
-      // Then we want this EventThrottler to be independent.
-      MetricsRepository metricsRepository = new MetricsRepository(time);
-      this.rateSensor = metricsRepository.sensor(throttlerName, rateConfig);
-      rateSensor.add(THROTTLER_NAME + ".rate", rate, rateConfig);
-    } else {
-      // DISABLED, no point in allocating anything...
-      this.time = null;
-      this.rate = null;
-      this.rateSensor = null;
-      this.rateConfig = null;
+    this.enforcementIntervalMs = intervalMs;
+    this.throttlerName = throttlerName != null ? throttlerName : THROTTLER_NAME;
+    this.checkQuotaBeforeRecording = checkQuotaBeforeRecording;
+    this.time = Utils.notNull(time);
+
+    long maxRatePerSecond = maxRatePerSecondProvider.get();
+    if (maxRatePerSecond >= 0) {
+      initialize(maxRatePerSecond);
     }
 
     if(logger.isDebugEnabled())
-      logger.debug("EventThrottler constructed with maxRatePerSecond = " + maxRatePerSecond);
+      logger.debug("EventThrottler constructed with maxRatePerSecond = " + getMaxRatePerSecond());
 
   }
 
@@ -132,12 +156,12 @@ public class EventThrottler {
    *        determining whether its necessary to sleep.
    */
   public synchronized void maybeThrottle(double eventsSeen) {
-    if (maxRatePerSecond > 0) {
+    if (getMaxRatePerSecond() >= 0) {
       long now = time.milliseconds();
       try {
         rateSensor.record(eventsSeen, now);
       } catch (QuotaViolationException e) {
-        throttlingStrategy.onExceedQuota(time, rateSensor.name(), (long) e.getValue(), maxRatePerSecond,
+        throttlingStrategy.onExceedQuota(time, rateSensor.name(), (long) e.getValue(), getMaxRatePerSecond(),
             rateConfig.timeWindowMs());
       }
     }
@@ -148,7 +172,12 @@ public class EventThrottler {
     public void onExceedQuota(Time time, String throttlerName, long currentRate, long quota, long timeWindowMS) {
       // If we're over quota, we calculate how long to sleep to compensate.
       double excessRate = currentRate - quota;
-      long sleepTimeMs = Math.round(excessRate / quota * Time.MS_PER_SECOND);
+      final long sleepTimeMs;
+      if (quota == 0) {
+        sleepTimeMs = timeWindowMS;
+      } else {
+        sleepTimeMs = Math.round(excessRate / quota * Time.MS_PER_SECOND);
+      }
       if (logger.isDebugEnabled()) {
         logger.debug("Throttler: " + throttlerName + " quota exceeded:\n" +
             "currentRate \t= " + currentRate + UNIT_POSTFIX + "\n" +
@@ -178,6 +207,30 @@ public class EventThrottler {
   }
 
   public long getMaxRatePerSecond() {
+    long maxRatePerSecond = maxRatePerSecondProvider.get();
+    // If quota was disabled but enabled at run time, we need to initialize the required structures.
+    initialize(maxRatePerSecond);
     return maxRatePerSecond;
+  }
+
+  private void initialize(long maxRatePerSecond) {
+    // If the maxRatePerSecond is negative or if the value has not changed since the last time the throttler was
+    // configured, then no need to modify the throttlers.
+    if (maxRatePerSecond < 0 || maxRatePerSecond == configuredMaxRatePerSecond) {
+      return;
+    }
+
+    if (enforcementIntervalMs <= 0) {
+      throw new IllegalArgumentException("intervalMs must be a positive number.");
+    }
+    this.rateConfig = new MetricConfig().timeWindow(enforcementIntervalMs, TimeUnit.MILLISECONDS)
+        .quota(Quota.lessThan(maxRatePerSecond, checkQuotaBeforeRecording));
+    Rate rate = new Rate(TimeUnit.SECONDS);
+
+    // Then we want this EventThrottler to be independent.
+    MetricsRepository metricsRepository = new MetricsRepository(time);
+    this.rateSensor = metricsRepository.sensor(throttlerName, rateConfig);
+    rateSensor.add(THROTTLER_NAME + ".rate", rate, rateConfig);
+    this.configuredMaxRatePerSecond = maxRatePerSecond;
   }
 }

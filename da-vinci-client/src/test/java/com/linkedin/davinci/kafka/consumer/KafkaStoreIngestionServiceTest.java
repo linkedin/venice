@@ -65,7 +65,10 @@ public class KafkaStoreIngestionServiceTest {
     mockVeniceConfigLoader = mock(VeniceConfigLoader.class);
 
     VeniceServerConfig mockVeniceServerConfig = mock(VeniceServerConfig.class);
-    doReturn(0l).when(mockVeniceServerConfig).getKafkaFetchQuotaBytesPerSecond();
+    doReturn(-1l).when(mockVeniceServerConfig).getKafkaFetchQuotaBytesPerSecond();
+    doReturn(-1l).when(mockVeniceServerConfig).getKafkaFetchQuotaRecordPerSecond();
+    doReturn(-1l).when(mockVeniceServerConfig).getKafkaFetchQuotaUnorderedBytesPerSecond();
+    doReturn(-1l).when(mockVeniceServerConfig).getKafkaFetchQuotaUnorderedRecordPerSecond();
     doReturn("").when(mockVeniceServerConfig).getDataBasePath();
     doReturn(0.9d).when(mockVeniceServerConfig).getDiskFullThreshold();
 
