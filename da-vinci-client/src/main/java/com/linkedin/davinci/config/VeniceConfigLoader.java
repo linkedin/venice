@@ -1,11 +1,20 @@
 package com.linkedin.davinci.config;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 
+import java.io.BufferedReader;
+import java.io.BufferedWriter;
+import java.io.File;
+import java.io.FileReader;
+import java.io.FileWriter;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Optional;
 import org.apache.log4j.Logger;
 
 
@@ -65,6 +74,8 @@ public class VeniceConfigLoader {
   public static final String CLUSTER_PROPERTIES_FILE = "cluster.properties";
   public static final String SERVER_PROPERTIES_FILE = "server.properties";
 
+  public static final String KAFKA_CLUSTER_MAP_FILE = "kafka.cluster.map";
+
   private final VeniceServerConfig veniceServerConfig;
   private final VeniceProperties combinedProperties;
 
@@ -73,12 +84,16 @@ public class VeniceConfigLoader {
   }
 
   public VeniceConfigLoader(VeniceProperties clusterProperties, VeniceProperties serverProperties) {
+    this(clusterProperties, serverProperties, Optional.empty());
+  }
+
+  public VeniceConfigLoader(VeniceProperties clusterProperties, VeniceProperties serverProperties, Optional<Map<String, Map<String, String>>> kafkaClusterMap) {
     this.combinedProperties =
         new PropertyBuilder()
             .put(clusterProperties.toProperties())
             .put(serverProperties.toProperties())
             .build();
-    this.veniceServerConfig = new VeniceServerConfig(combinedProperties);
+    this.veniceServerConfig = new VeniceServerConfig(combinedProperties, kafkaClusterMap);
   }
 
   public VeniceClusterConfig getVeniceClusterConfig() {
@@ -128,12 +143,57 @@ public class VeniceConfigLoader {
     }
 
     VeniceProperties clusterProperties, serverProperties;
+    Optional<Map<String, Map<String, String>>> kafkaClusterMap = Optional.empty();
     try {
       clusterProperties = Utils.parseProperties(configDirPath, CLUSTER_PROPERTIES_FILE, false);
       serverProperties = Utils.parseProperties(configDirPath, SERVER_PROPERTIES_FILE, false);
+      kafkaClusterMap = parseKafkaClusterMap(configDirPath);
     } catch (Exception e) {
       throw new ConfigurationException("Loading configuration files failed", e);
     }
-    return new VeniceConfigLoader(clusterProperties, serverProperties);
+    return new VeniceConfigLoader(clusterProperties, serverProperties, kafkaClusterMap);
+  }
+
+  public static Optional<Map<String, Map<String, String>>> parseKafkaClusterMap(String configDirectory) throws Exception {
+    String mapFilePath = configDirectory + File.separator + VeniceConfigLoader.KAFKA_CLUSTER_MAP_FILE;
+    File mapFile = new File(mapFilePath);
+    if (!mapFile.exists()) {
+      return Optional.empty();
+    }
+
+    BufferedReader reader = new BufferedReader(new FileReader(mapFile));
+    String flatMapString = reader.readLine();
+    reader.close();
+
+    ObjectMapper mapper = new ObjectMapper();
+
+    Map<String, String> flatMap = mapper.readValue(flatMapString, Map.class);
+    Map<String, Map<String, String>> kafkaClusterMap = new HashMap<>();
+
+    for (Map.Entry<String, String> entry : flatMap.entrySet()) {
+      kafkaClusterMap.put(entry.getKey(), mapper.readValue(entry.getValue(), Map.class));
+    }
+
+    return Optional.of(kafkaClusterMap);
+  }
+
+  public static void storeKafkaClusterMap(File configDirectory, Optional<Map<String, Map<String, String>>> kafkaClusterMap) throws Exception {
+    if (!kafkaClusterMap.isPresent()) {
+      return;
+    }
+
+    ObjectMapper mapper = new ObjectMapper();
+    Map<String, String> flatMap = new HashMap<>();
+    for (Map.Entry<String, Map<String, String>> entry : kafkaClusterMap.get().entrySet()) {
+      flatMap.put(entry.getKey(), mapper.writeValueAsString(entry.getValue()));
+    }
+
+    String flatMapString = mapper.writeValueAsString(flatMap);
+
+    File mapFile = new File(configDirectory, VeniceConfigLoader.KAFKA_CLUSTER_MAP_FILE);
+    BufferedWriter writer = new BufferedWriter(new FileWriter(mapFile));
+    writer.write(flatMapString);
+    writer.close();
+
   }
 }

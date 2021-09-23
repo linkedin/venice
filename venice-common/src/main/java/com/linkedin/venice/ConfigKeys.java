@@ -1664,4 +1664,12 @@ public class ConfigKeys {
    * The number of records per batch of records that will be decompressed in a multi-get request in routers.
    */
   public static final String ROUTER_MULTI_KEY_DECOMPRESSION_BATCH_SIZE = "router.multi.key.decompression.batch.size";
+
+  /**
+   * Defines the key names in venice.server.kafkaClustersMap
+   */
+  public static final String KAFKA_CLUSTER_MAP_KEY_NAME = "name";
+  public static final String KAFKA_CLUSTER_MAP_KEY_URL = "url";
+
 }
+

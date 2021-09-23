@@ -126,7 +126,6 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
         tempProps.setProperty(PARTICIPANT_MESSAGE_STORE_ENABLED, "true");
         childControllerProperties = Optional.of(tempProps);
       }
-      serverProperties = addKafkaClusterIDMappingToServerConfigs(serverProperties, allColoNames, allKafkaBrokers);
 
       // Create multiclusters
       for (int i = 0; i < numberOfColos; i++) {
@@ -146,7 +145,8 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
                     multiD2,
                     childControllerProperties,
                     serverProperties,
-                    forkServer
+                    forkServer,
+                    addKafkaClusterIDMappingToServerConfigs(serverProperties, allColoNames, allKafkaBrokers)
             );
         multiClusters.add(multiClusterWrapper);
       }
@@ -185,25 +185,27 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
     }
   }
 
-  private static Optional<VeniceProperties> addKafkaClusterIDMappingToServerConfigs(
+  private static Optional<Map<String, Map<String, String>>> addKafkaClusterIDMappingToServerConfigs(
           Optional<VeniceProperties> serverProperties,
           List<String> coloNames,
           List<KafkaBrokerWrapper> kafkaBrokers
   ) {
     if (serverProperties.isPresent()) {
-      StringJoiner stringJoiner = new StringJoiner(",");
-      // Add parent kafka cluster.
-      stringJoiner.add("0:parent@" + kafkaBrokers.get(0).getAddress());
-      for (int i = 1; i <= coloNames.size(); i++) {
-        stringJoiner.add(i + ":" + coloNames.get(i-1) + "@" + kafkaBrokers.get(i).getAddress());
-      }
-      String kafkaClusterIdToUrlMapping = stringJoiner.toString();
-      Properties newServerProperties = serverProperties.get().getPropertiesCopy();
-      newServerProperties.put(SERVER_KAFKA_CLUSTER_ID_TO_URL, kafkaClusterIdToUrlMapping);
-      return Optional.of(new VeniceProperties(newServerProperties));
+      Map<String, Map<String, String>> kafkaClusterMap = new HashMap<>();
 
+      Map<String, String> mapping = new HashMap<>();
+      mapping.put(KAFKA_CLUSTER_MAP_KEY_NAME, "parent");
+      mapping.put(KAFKA_CLUSTER_MAP_KEY_URL, kafkaBrokers.get(0).getAddress());
+      kafkaClusterMap.put(String.valueOf(0), mapping);
+      for (int i = 1; i <= coloNames.size(); i++) {
+        mapping = new HashMap<>();
+        mapping.put(KAFKA_CLUSTER_MAP_KEY_NAME, coloNames.get(i-1));
+        mapping.put(KAFKA_CLUSTER_MAP_KEY_URL, kafkaBrokers.get(i).getAddress());
+        kafkaClusterMap.put(String.valueOf(i), mapping);
+      }
+      return Optional.of(kafkaClusterMap);
     } else {
-      return serverProperties; // Do not populate if it is Optional.empty()
+      return Optional.empty(); // Do not populate if it is Optional.empty()
     }
   }
 

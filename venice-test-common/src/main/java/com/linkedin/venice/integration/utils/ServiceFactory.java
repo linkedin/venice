@@ -30,6 +30,7 @@ import java.lang.management.ManagementFactory;
 import java.lang.management.RuntimeMXBean;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 import org.apache.log4j.Logger;
@@ -307,15 +308,15 @@ public class ServiceFactory {
 
   public static VeniceServerWrapper getVeniceServer(String clusterName, KafkaBrokerWrapper kafkaBrokerWrapper, String zkAddress, Properties featureProperties,
       Properties configProperties) {
-    return getVeniceServer(clusterName, kafkaBrokerWrapper, zkAddress, featureProperties, configProperties, false, "");
+    return getVeniceServer(clusterName, kafkaBrokerWrapper, zkAddress, featureProperties, configProperties, false, "", Optional.empty());
   }
 
   public static VeniceServerWrapper getVeniceServer(String clusterName, KafkaBrokerWrapper kafkaBrokerWrapper, String zkAddress, Properties featureProperties,
-      Properties configProperties, boolean forkServer, String serverName) {
+      Properties configProperties, boolean forkServer, String serverName, Optional<Map<String, Map<String, String>>> kafkaClusterMap) {
     // Set ZK host needed for D2 client creation ingestion isolation ingestion.
     configProperties.setProperty(D2_CLIENT_ZK_HOSTS_ADDRESS, zkAddress);
     return getStatefulService(VeniceServerWrapper.SERVICE_NAME,
-        VeniceServerWrapper.generateService(clusterName, kafkaBrokerWrapper, featureProperties, configProperties, forkServer, serverName));
+        VeniceServerWrapper.generateService(clusterName, kafkaBrokerWrapper, featureProperties, configProperties, forkServer, serverName, kafkaClusterMap));
   }
 
   static VeniceRouterWrapper getVeniceRouter(String clusterName, KafkaBrokerWrapper kafkaBrokerWrapper,
@@ -492,12 +493,14 @@ public class ServiceFactory {
       boolean sslToStorageNodes,
       boolean sslToKafka,
       Optional<VeniceProperties> veniceProperties,
-      boolean forkServer) {
+      boolean forkServer,
+      Optional<Map<String, Map<String, String>>> kafkaClusterMap
+  ) {
     return getService(VeniceClusterWrapper.SERVICE_NAME,
         VeniceClusterWrapper.generateService(coloName, false, zkServerWrapper, kafkaBrokerWrapper, brooklinWrapper, clusterName, clusterToD2,
             numberOfControllers, numberOfServers, numberOfRouters, replicaFactor, partitionSize, enableWhitelist,
             enableAutoJoinWhitelist, delayToRebalanceMS, minActiveReplica, sslToStorageNodes, sslToKafka, false,
-            veniceProperties.orElse(EMPTY_VENICE_PROPS).toProperties(), forkServer));
+            veniceProperties.orElse(EMPTY_VENICE_PROPS).toProperties(), forkServer, kafkaClusterMap));
   }
 
   public static VeniceMultiClusterWrapper getVeniceMultiClusterWrapper(int numberOfClusters, int numberOfControllers,
@@ -507,19 +510,20 @@ public class ServiceFactory {
             numberOfServers, numberOfRouters, DEFAULT_REPLICATION_FACTOR, DEFAULT_PARTITION_SIZE_BYTES, false, false,
             DEFAULT_DELAYED_TO_REBALANCE_MS, DEFAULT_REPLICATION_FACTOR - 1, DEFAULT_SSL_TO_STORAGE_NODES,
             true, false, Optional.empty(), Optional.empty(),
-                Optional.empty(), Optional.empty(), false, false));
+                Optional.empty(), Optional.empty(), false, false, Optional.empty()));
   }
 
   public static VeniceMultiClusterWrapper getVeniceMultiClusterWrapper(String coloName, KafkaBrokerWrapper kafkaBrokerWrapper,
                                                                        ZkServerWrapper zkServerWrapper, int numberOfClusters, int numberOfControllers, int numberOfServers, int numberOfRouters,
                                                                        int replicationFactor, boolean randomizeClusterName, boolean multiColoSetup, boolean multiD2,
-                                                                       Optional<Properties> childControllerProperties, Optional<VeniceProperties> veniceProperties, boolean forkServer) {
+                                                                       Optional<Properties> childControllerProperties, Optional<VeniceProperties> veniceProperties, boolean forkServer,
+      Optional<Map<String, Map<String, String>>> kafkaClusterMap) {
     return getService(VeniceMultiClusterWrapper.SERVICE_NAME,
             VeniceMultiClusterWrapper.generateService(coloName, numberOfClusters, numberOfControllers,
                     numberOfServers, numberOfRouters, replicationFactor, DEFAULT_PARTITION_SIZE_BYTES, false, false,
                     DEFAULT_DELAYED_TO_REBALANCE_MS, replicationFactor - 1, DEFAULT_SSL_TO_STORAGE_NODES, randomizeClusterName,
                     multiColoSetup, Optional.of(zkServerWrapper), Optional.of(kafkaBrokerWrapper), childControllerProperties,
-                    veniceProperties, multiD2, forkServer));
+                    veniceProperties, multiD2, forkServer, kafkaClusterMap));
   }
 
   /**
@@ -532,7 +536,7 @@ public class ServiceFactory {
         VeniceMultiClusterWrapper.generateService(coloName, numberOfClusters, numberOfControllers,
             numberOfServers, numberOfRouters, replicationFactor, DEFAULT_PARTITION_SIZE_BYTES, false, false,
             DEFAULT_DELAYED_TO_REBALANCE_MS, replicationFactor - 1, DEFAULT_SSL_TO_STORAGE_NODES, randomizeClusterName,
-            multiColoSetup, Optional.empty(), Optional.empty(), childControllerProperties, veniceProperties, multiD2, forkServer));
+            multiColoSetup, Optional.empty(), Optional.empty(), childControllerProperties, veniceProperties, multiD2, forkServer, Optional.empty()));
   }
 
   public static VeniceTwoLayerMultiColoMultiClusterWrapper getVeniceTwoLayerMultiColoMultiClusterWrapper(int numberOfColos,
