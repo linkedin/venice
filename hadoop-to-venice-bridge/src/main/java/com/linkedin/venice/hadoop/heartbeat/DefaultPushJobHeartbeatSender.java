@@ -181,10 +181,10 @@ class DefaultPushJobHeartbeatSender implements PushJobHeartbeatSender {
 
     try {
       if (!sendComplete.await(sendTimeout.toMillis(), TimeUnit.MILLISECONDS)) {
-        LOGGER.warn("Liveness heartbeat sent does not get ack-ed by remote server after " + sendTimeout.toMillis() + " ms");
+        LOGGER.warn("Liveness heartbeat sent did not get ack-ed by remote server after " + sendTimeout.toMillis() + " ms");
       }
     } catch (InterruptedException e) {
-      LOGGER.warn(e);
+      LOGGER.warn("Liveness heartbeat sent was interrupted", e);
     }
   }
 }
