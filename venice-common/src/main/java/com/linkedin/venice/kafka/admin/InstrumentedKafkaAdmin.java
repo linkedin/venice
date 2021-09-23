@@ -137,6 +137,17 @@ public class InstrumentedKafkaAdmin implements KafkaAdminWrapper {
   }
 
   @Override
+  public boolean containsTopicWithRetry(String topic, int maxRetries) {
+    final long startTimeMs = time.getMilliseconds();
+    final boolean res = kafkaAdmin.containsTopicWithRetry(topic, maxRetries);
+    kafkaAdminWrapperStats.recordLatency(
+        KafkaAdminWrapperStats.OCCURRENCE_LATENCY_SENSOR_TYPE.CONTAINS_TOPIC_WITH_RETRY,
+        Utils.calculateDurationMs(time, startTimeMs)
+    );
+    return res;
+  }
+
+  @Override
   public Map<String, Properties> getAllTopicConfig() {
     final long startTimeMs = time.getMilliseconds();
     final Map<String, Properties> res = kafkaAdmin.getAllTopicConfig();

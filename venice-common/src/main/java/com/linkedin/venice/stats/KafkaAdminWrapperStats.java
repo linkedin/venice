@@ -24,7 +24,8 @@ public class KafkaAdminWrapperStats extends AbstractVeniceStats {
     CONTAINS_TOPIC,
     GET_ALL_TOPIC_CONFIG,
     IS_TOPIC_DELETION_UNDER_WAY,
-    DESCRIBE_TOPICS
+    DESCRIBE_TOPICS,
+    CONTAINS_TOPIC_WITH_RETRY
   }
 
   private final Map<OCCURRENCE_LATENCY_SENSOR_TYPE, Sensor> sensorsByTypes;

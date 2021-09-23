@@ -378,7 +378,7 @@ public class TopicManagerTest {
     KafkaClientFactory mockKafkaClientFactory = mock(KafkaClientFactory.class);
     // Mock an admin client to pass topic existence check
     KafkaAdminWrapper mockKafkaAdminWrapper = mock(KafkaAdminWrapper.class);
-    doReturn(true).when(mockKafkaAdminWrapper).containsTopic(eq(topic));
+    doReturn(true).when(mockKafkaAdminWrapper).containsTopicWithRetry(eq(topic), anyInt());
     doReturn(mockKafkaAdminWrapper).when(mockKafkaClientFactory).getKafkaAdminClient(any());
     // Throw Kafka TimeoutException when trying to get max offset
     KafkaConsumer<byte[], byte[]> mockKafkaConsumer = mock(KafkaConsumer.class);

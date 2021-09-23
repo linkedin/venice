@@ -1,8 +1,12 @@
 package com.linkedin.venice.kafka.admin;
 
+import com.linkedin.venice.exceptions.VeniceRetriableException;
 import com.linkedin.venice.kafka.TopicDoesNotExistException;
+import com.linkedin.venice.utils.RetryUtils;
 import java.io.Closeable;
+import java.time.Duration;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
@@ -31,6 +35,25 @@ public interface KafkaAdminWrapper extends Closeable {
   Properties getTopicConfigWithRetry(String topicName);
 
   boolean containsTopic(String topic);
+
+  default boolean containsTopicWithRetry(String topic, int maxAttempts) {
+    Duration initialBackoff = Duration.ofMillis(2);
+    Duration maxBackoff = Duration.ofMillis(100);
+    Duration maxDuration = Duration.ofSeconds(10);
+    return RetryUtils.executeWithMaxAttemptAndExponentialBackoff(
+        () -> {
+          if (!this.containsTopic(topic)) {
+            throw new VeniceRetriableException("Couldn't get topic!  Retrying...");
+          }
+          return true;
+        },
+        maxAttempts,
+        initialBackoff,
+        maxBackoff,
+        maxDuration,
+        Collections.singletonList(VeniceRetriableException.class)
+    );
+  }
 
   Map<String, Properties> getAllTopicConfig();
 
