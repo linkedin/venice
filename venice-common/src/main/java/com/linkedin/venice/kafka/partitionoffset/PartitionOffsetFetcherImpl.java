@@ -87,7 +87,7 @@ public class PartitionOffsetFetcherImpl implements PartitionOffsetFetcher {
       throw new IllegalArgumentException("Cannot retrieve latest offsets for invalid partition " + partition);
     }
     try (AutoCloseableLock ignore = new AutoCloseableLock(rawConsumerLock)) {
-      if (doTopicCheck && !kafkaAdminWrapper.get().containsTopic(topic)) {
+      if (doTopicCheck && !kafkaAdminWrapper.get().containsTopicWithRetry(topic, 3)) {
         throw new TopicDoesNotExistException("Topic " + topic + " does not exist!");
       }
       TopicPartition topicPartition = new TopicPartition(topic, partition);
@@ -314,7 +314,7 @@ public class PartitionOffsetFetcherImpl implements PartitionOffsetFetcher {
           "Cannot retrieve latest producer timestamp for invalid partition " + partition + " topic " + topic);
     }
     try (AutoCloseableLock ignore = new AutoCloseableLock(kafkaRecordConsumerLock)) {
-      if (!kafkaAdminWrapper.get().containsTopic(topic)) {
+      if (!kafkaAdminWrapper.get().containsTopicWithRetry(topic, 3)) {
         throw new TopicDoesNotExistException("Topic " + topic + " does not exist!");
       }
       TopicPartition topicPartition = new TopicPartition(topic, partition);
@@ -470,7 +470,7 @@ public class PartitionOffsetFetcherImpl implements PartitionOffsetFetcher {
    */
   private long getEarliestOffset(String topic, int partition) throws TopicDoesNotExistException {
     try (AutoCloseableLock ignore = new AutoCloseableLock(rawConsumerLock)) {
-      if (!kafkaAdminWrapper.get().containsTopic(topic)) {
+      if (!kafkaAdminWrapper.get().containsTopicWithRetry(topic, 3)) {
         throw new TopicDoesNotExistException("Topic " + topic + " does not exist!");
       }
       if (partition < 0) {
