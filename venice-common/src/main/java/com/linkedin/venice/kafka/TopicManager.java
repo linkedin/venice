@@ -545,14 +545,14 @@ public class TopicManager implements Closeable {
         attempts++;
         logger.warn(String.format("Topic deletion for topic %s timed out!  Retry attempt %d / %d", topicName, attempts, MAX_TOPIC_DELETE_RETRIES));
         if(attempts == MAX_TOPIC_DELETE_RETRIES) {
-          logger.error(String.format("Topic deletion for topic %s timed out! Giving up!!", topicName));
+          logger.error(String.format("Topic deletion for topic %s timed out! Giving up!!", topicName), e);
           throw e;
         }
       } catch (ExecutionException e) {
         attempts++;
         logger.warn(String.format("Topic deletion for topic %s errored out!  Retry attempt %d / %d", topicName, attempts, MAX_TOPIC_DELETE_RETRIES));
         if(attempts == MAX_TOPIC_DELETE_RETRIES) {
-          logger.error(String.format("Topic deletion for topic %s errored out! Giving up!!", topicName));
+          logger.error(String.format("Topic deletion for topic %s errored out! Giving up!!", topicName), e);
           throw e;
         }
       }

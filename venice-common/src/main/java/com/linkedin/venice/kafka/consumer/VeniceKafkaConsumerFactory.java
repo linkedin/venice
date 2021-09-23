@@ -8,9 +8,11 @@ import com.linkedin.venice.kafka.admin.KafkaAdminClient;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Properties;
 import org.apache.kafka.clients.CommonClientConfigs;
+import org.apache.log4j.Logger;
 
 
 public class VeniceKafkaConsumerFactory extends KafkaClientFactory {
+  private static final Logger logger = Logger.getLogger(VeniceKafkaConsumerFactory.class);
   private final VeniceProperties veniceProperties;
 
   public VeniceKafkaConsumerFactory(VeniceProperties veniceProperties) {
@@ -25,7 +27,7 @@ public class VeniceKafkaConsumerFactory extends KafkaClientFactory {
       properties.putAll(sslConfig.getKafkaSSLConfig());
       properties.setProperty(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, veniceProperties.getString(ConfigKeys.KAFKA_SECURITY_PROTOCOL));
     } catch (UndefinedPropertyException e) {
-      // No SSL for you.
+      logger.warn("SSL properties are missing, Kafka consumer will not be able to consume if SSL is required.");
     }
     return properties;
   }

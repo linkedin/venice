@@ -54,7 +54,8 @@ public class TopicCleanupServiceForParentController extends TopicCleanupService 
             try {
               topicManager.ensureTopicIsDeletedAndBlockWithRetry(topic);
             } catch (ExecutionException e) {
-              // No op, will try again in the next cleanup cycle
+              logger.warn("ExecutionException caught when trying to delete topic: " + topic);
+              // No op, will try again in the next cleanup cycle.
             }
           }
         }

@@ -173,7 +173,7 @@ public class TopicCleanupService extends AbstractVeniceService {
         }
         getTopicManager().ensureTopicIsDeletedAndBlockWithRetry(topic);
       } catch (ExecutionException e) {
-        LOGGER.warn("ExecutionException caught when trying to delete topic: " + topic, e);
+        LOGGER.warn("ExecutionException caught when trying to delete topic: " + topic);
         // No op, will try again in the next cleanup cycle.
       }
 

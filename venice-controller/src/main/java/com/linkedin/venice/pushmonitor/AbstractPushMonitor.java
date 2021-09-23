@@ -570,7 +570,7 @@ public abstract class AbstractPushMonitor
     try {
       storeCleaner.topicCleanupWhenPushComplete(clusterName, storeName, versionNumber);
     } catch (Exception e) {
-      logger.warn("Couldn't perform topic cleanup when push job completes for topic: " + topic + " in cluster: " + clusterName);
+      logger.warn("Couldn't perform topic cleanup when push job completed for topic: " + topic + " in cluster: " + clusterName, e);
     }
     try {
       storeCleaner.retireOldStoreVersions(clusterName, storeName, false);
