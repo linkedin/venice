@@ -3592,10 +3592,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   protected boolean isSegmentControlMsg(ControlMessageType msgType) {
-    if (ControlMessageType.START_OF_SEGMENT.equals(msgType) || ControlMessageType.END_OF_SEGMENT.equals(msgType)) {
-      return true;
-    }
-    return false;
+    return ControlMessageType.START_OF_SEGMENT.equals(msgType) || ControlMessageType.END_OF_SEGMENT.equals(msgType);
+  }
+
+  protected long getUpstreamOffsetForHybridOffsetLagMeasurement(PartitionConsumptionState pcs) {
+    throw new VeniceException("This API is for L/F model only!");
   }
 
   /**
@@ -3874,6 +3875,43 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       int userPartition = PartitionUtils.getUserPartition(subPartition, amplificationFactor);
       int leaderSubPartition = PartitionUtils.getLeaderSubPartition(userPartition, amplificationFactor);
       return subPartition == leaderSubPartition;
+    }
+
+    /**
+     * This method fetches/calculates latest leader offset and last offset in RT topic. The method relies on
+     * {@link StoreIngestionTask#getUpstreamOffsetForHybridOffsetLagMeasurement} to fetch latest leader offset for different
+     * data replication policy. The return value is a pair of [latestLeaderOffset, lastOffsetInRealTimeTopic]
+     */
+    public Pair<Long, Long> getLatestLeaderOffsetAndHybridTopicOffset(String sourceRealTimeTopicKafkaURL, String leaderTopic, PartitionConsumptionState pcs) {
+      int partition = pcs.getPartition();
+      long latestLeaderOffset;
+      long lastOffsetInRealTimeTopic;
+      if (amplificationFactor != 1) {
+        /**
+         * When amplificationFactor enabled, the RT topic and VT topics have different number of partition.
+         * eg. if amplificationFactor == 10 and partitionCount == 2,
+         *     the RT topic will have 2 partitions and VT topics will have 20 partitions.
+         * No 1-to-1 mapping between the RT topic and VT topics partition, we can not calculate the offset difference.
+         * To measure the offset difference between 2 types of topics, we go through latestLeaderOffset in corresponding
+         * sub-partitions and pick up the maximum value which means picking up the offset of the sub-partition seeing the most recent records in RT,
+         * then use this value to compare against the offset in the RT topic.
+         */
+        int userPartition = PartitionUtils.getUserPartition(partition, amplificationFactor);
+        lastOffsetInRealTimeTopic = cachedKafkaMetadataGetter.getOffset(sourceRealTimeTopicKafkaURL, leaderTopic, userPartition);
+        latestLeaderOffset = -1;
+        for (int subPartition : PartitionUtils.getSubPartitions(userPartition, amplificationFactor)) {
+          long upstreamOffset = -1;
+          if (partitionConsumptionStateMap.get(subPartition) != null
+              && partitionConsumptionStateMap.get(subPartition).getOffsetRecord() != null) {
+            upstreamOffset = getUpstreamOffsetForHybridOffsetLagMeasurement(partitionConsumptionStateMap.get(subPartition));
+          }
+          latestLeaderOffset = (upstreamOffset >= 0 ? Math.max(upstreamOffset, latestLeaderOffset) : latestLeaderOffset);
+        }
+      } else {
+        latestLeaderOffset = getUpstreamOffsetForHybridOffsetLagMeasurement(pcs);
+        lastOffsetInRealTimeTopic = cachedKafkaMetadataGetter.getOffset(sourceRealTimeTopicKafkaURL, leaderTopic, partition);
+      }
+      return new Pair<>(latestLeaderOffset, lastOffsetInRealTimeTopic);
     }
   }
 }

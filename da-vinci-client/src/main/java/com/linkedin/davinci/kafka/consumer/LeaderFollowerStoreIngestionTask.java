@@ -53,6 +53,7 @@ import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.DiskUsage;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Lazy;
+import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.writer.ChunkAwareCallback;
 import com.linkedin.venice.writer.LeaderMetadataWrapper;
@@ -1190,34 +1191,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       throw new VeniceException(String.format("Expect source RT Kafka URLs contains local Kafka URL. Got local " +
               "Kafka URL %s and RT source Kafka URLs %s", localKafkaServer, sourceRealTimeTopicKafkaURLs));
     }
-
-    long latestLeaderOffset;
-    long lastOffsetInRealTimeTopic;
-    if (amplificationFactor != 1) {
-      /**
-       * When amplificationFactor enabled, the RT topic and VT topics have different number of partition.
-       * eg. if amplificationFactor == 10 and partitionCount == 2,
-       *     the RT topic will have 2 partitions and VT topics will have 20 partitions.
-       * No 1-to-1 mapping between the RT topic and VT topics partition, we can not calculate the offset difference.
-       * To measure the offset difference between 2 types of topics, we go through latestLeaderOffset in corresponding
-       * sub-partitions and pick up the maximum value which means picking up the offset of the sub-partition seeing the most recent records in RT,
-       * then use this value to compare against the offset in the RT topic.
-       */
-      int userPartition = PartitionUtils.getUserPartition(partition, amplificationFactor);
-      lastOffsetInRealTimeTopic = cachedKafkaMetadataGetter.getOffset(sourceRealTimeTopicKafkaURL, leaderTopic, userPartition);
-      latestLeaderOffset = -1;
-      for (int subPartition : PartitionUtils.getSubPartitions(userPartition, amplificationFactor)) {
-        long upstreamOffset = -1;
-        if (partitionConsumptionStateMap.get(subPartition) != null
-            && partitionConsumptionStateMap.get(subPartition).getOffsetRecord() != null) {
-          upstreamOffset = getUpstreamOffsetForHybridOffsetLagMeasurement(partitionConsumptionStateMap.get(subPartition));
-        }
-        latestLeaderOffset = (upstreamOffset >= 0 ? Math.max(upstreamOffset, latestLeaderOffset) : latestLeaderOffset);
-      }
-    } else {
-      latestLeaderOffset = getUpstreamOffsetForHybridOffsetLagMeasurement(partitionConsumptionState);
-      lastOffsetInRealTimeTopic = cachedKafkaMetadataGetter.getOffset(sourceRealTimeTopicKafkaURL, leaderTopic, partition);
-    }
+    Pair<Long, Long> hybridLagPair = amplificationAdapter.getLatestLeaderOffsetAndHybridTopicOffset(sourceRealTimeTopicKafkaURL, leaderTopic, partitionConsumptionState);
+    long latestLeaderOffset = hybridLagPair.getFirst();
+    long lastOffsetInRealTimeTopic = hybridLagPair.getSecond();
     long lag = lastOffsetInRealTimeTopic - latestLeaderOffset;
     if (shouldLogLag) {
       logger.info(String.format("%s partition %d real-time buffer lag offset is: " + "(Last RT offset [%d] - Last leader consumed offset [%d]) = Lag [%d]",
@@ -1858,8 +1834,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
           // Fall back to calculate offset lag in the original approach
           if (Version.isRealTimeTopic(currentLeaderTopic)) {
-            return (cachedKafkaMetadataGetter.getOffset(kafkaSourceAddress, currentLeaderTopic, pcs.getPartition()) - 1)
-                - getUpstreamOffsetForHybridOffsetLagMeasurement(pcs);
+            // Since partition count in RT : partition count in VT = 1 : AMP, we will need amplification factor adaptor to calculate the offset for every subPartitions.
+            Pair<Long, Long> hybridOffsetPair = amplificationAdapter.getLatestLeaderOffsetAndHybridTopicOffset(kafkaSourceAddress, currentLeaderTopic, pcs);
+            return (hybridOffsetPair.getSecond() - 1) - hybridOffsetPair.getFirst();
           } else {
             return (cachedKafkaMetadataGetter.getOffset(kafkaSourceAddress, currentLeaderTopic, pcs.getPartition()) - 1)
                 - pcs.getOffsetRecord().getLocalVersionTopicOffset();
@@ -1952,6 +1929,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    * For L/F or NR, there is only one entry in upstreamOffsetMap whose key is NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY.
    * Return the value of the entry.
    */
+  @Override
   protected long getUpstreamOffsetForHybridOffsetLagMeasurement(PartitionConsumptionState pcs) {
     return pcs.getOffsetRecord().getUpstreamOffset(OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY);
   }
