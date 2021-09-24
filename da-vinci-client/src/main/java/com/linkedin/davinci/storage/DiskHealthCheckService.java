@@ -2,8 +2,10 @@ package com.linkedin.davinci.storage;
 
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.LatencyUtils;
+import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
+
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -12,6 +14,8 @@ import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 import org.apache.log4j.Logger;
 
 
@@ -33,8 +37,10 @@ public class DiskHealthCheckService extends AbstractVeniceService {
   private static final Logger logger = Logger.getLogger(DiskHealthCheckService.class);
 
   private static final long HEALTH_CHECK_HARD_TIMEOUT = TimeUnit.SECONDS.toMillis(30); // 30 seconds
+  // lock object protects diskHealthy and lastStatusUpdateTimeInNS.
+  private final Lock lock = new ReentrantLock();
 
-  private volatile boolean diskHealthy = true;
+  private boolean diskHealthy = true;
   private long healthCheckIntervalMs;
   private long healthCheckTimeoutMs;
   private long lastStatusUpdateTimeInNS;
@@ -46,6 +52,24 @@ public class DiskHealthCheckService extends AbstractVeniceService {
   private DiskHealthCheckTask healthCheckTask;
   private Thread runner;
   private long diskFailServerShutdownTimeMs;
+
+  private void setDiskHealthy(boolean diskHealthy) {
+    try (AutoCloseableLock ignore = new AutoCloseableLock(lock)) {
+      this.diskHealthy = diskHealthy;
+    }
+  }
+
+  private boolean getDiskHealthy() {
+    try (AutoCloseableLock ignore = new AutoCloseableLock(lock)) {
+      return diskHealthy;
+    }
+  }
+
+  private void setLastStatusUpdateTimeInNS(long lastStatusUpdateTimeInNS) {
+    try (AutoCloseableLock ignore = new AutoCloseableLock(lock)) {
+      this.lastStatusUpdateTimeInNS = lastStatusUpdateTimeInNS;
+    }
+  }
 
   public DiskHealthCheckService(boolean serviceEnabled, long healthCheckIntervalMs, long diskOperationTimeout,
       String databasePath, long diskFailServerShutdownTimeMs) {
@@ -64,7 +88,7 @@ public class DiskHealthCheckService extends AbstractVeniceService {
       healthCheckTask = null;
       return true;
     }
-    lastStatusUpdateTimeInNS = System.nanoTime();
+    setLastStatusUpdateTimeInNS(System.nanoTime());
     healthCheckTask = new DiskHealthCheckTask();
     runner = new Thread(healthCheckTask);
     runner.setName("Storage Disk Health Check Background Thread");
@@ -80,14 +104,16 @@ public class DiskHealthCheckService extends AbstractVeniceService {
       return true;
     }
 
-    if (LatencyUtils.getLatencyInMS(lastStatusUpdateTimeInNS) > healthCheckTimeoutMs) {
-      /**
-       * Disk operation hangs so the status has not been updated for {@link healthCheckTimeoutMs};
-       * mark the host as unhealthy.
-       */
-      diskHealthy = false;
+    try (AutoCloseableLock ignore = new AutoCloseableLock(lock)) {
+      if (LatencyUtils.getLatencyInMS(lastStatusUpdateTimeInNS) > healthCheckTimeoutMs) {
+        /**
+         * Disk operation hangs so the status has not been updated for {@link healthCheckTimeoutMs};
+         * mark the host as unhealthy.
+         */
+        diskHealthy = false;
+      }
+      return diskHealthy;
     }
-    return diskHealthy;
   }
 
   public String getErrorMessage() {
@@ -117,7 +143,7 @@ public class DiskHealthCheckService extends AbstractVeniceService {
         try {
           Thread.sleep(healthCheckIntervalMs);
 
-          if (!diskHealthy) {
+          if (!getDiskHealthy()) {
             if (unhealthyStartTime != 0) {
               long duration = System.currentTimeMillis() - unhealthyStartTime;
               if (duration > diskFailServerShutdownTimeMs) {
@@ -134,13 +160,13 @@ public class DiskHealthCheckService extends AbstractVeniceService {
           File databaseDir = new File(databasePath);
           if (!databaseDir.exists() || !databaseDir.isDirectory()) {
             errorMessage = databasePath + " does not exist or is not a directory!";
-            diskHealthy = false;
+            setDiskHealthy(false);
             continue;
           }
 
           if (!(databaseDir.canRead() && databaseDir.canWrite())) {
             errorMessage = "No read/write permission for health check service in path " + databasePath;
-            diskHealthy = false;
+            setDiskHealthy(false);
             continue;
           }
 
@@ -177,15 +203,17 @@ public class DiskHealthCheckService extends AbstractVeniceService {
           }
           br.close();
 
-          // update the disk health status
-          diskHealthy = fileReadableAndCorrect;
-          lastStatusUpdateTimeInNS = System.nanoTime();
+          try (AutoCloseableLock ignore = new AutoCloseableLock(lock)) {
+            // update the disk health status
+            diskHealthy = fileReadableAndCorrect;
+            lastStatusUpdateTimeInNS = System.nanoTime();
+          }
         } catch (InterruptedException e) {
           logger.info("Disk check service thread shutting down", e);
         } catch (Exception ee) {
           logger.error("Error while checking the disk health in server: ", ee);
           errorMessage = ee.getMessage();
-          diskHealthy = false;
+          setDiskHealthy(false);
         }
       }
     }
