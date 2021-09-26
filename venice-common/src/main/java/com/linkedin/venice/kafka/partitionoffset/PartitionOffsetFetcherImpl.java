@@ -101,9 +101,10 @@ public class PartitionOffsetFetcherImpl implements PartitionOffsetFetcher {
       throw new IllegalArgumentException("Cannot retrieve latest offsets for invalid partition " + partition);
     }
     try (AutoCloseableLock ignore = AutoCloseableLock.of(rawConsumerLock)) {
-      if (!kafkaAdminWrapper.get().containsTopicWithExpectationAndRetry(topic, 3, true)) {
-        throw new TopicDoesNotExistException("Topic " + topic + " does not exist!");
+      if (!kafkaAdminWrapper.get().containsTopicWithPartitionCheckExpectationAndRetry(topic, partition, 3, true)) {
+        throw new TopicDoesNotExistException("Topic " + topic + " does not exist or partition requested is less topic partition count!");
       }
+
       TopicPartition topicPartition = new TopicPartition(topic, partition);
       try {
         Map<TopicPartition, Long> offsetMap =
