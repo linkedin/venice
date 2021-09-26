@@ -104,6 +104,11 @@ public class InstrumentedKafkaAdmin implements KafkaAdminWrapper {
   }
 
   @Override
+  public boolean containsTopicWithPartitionCheck(String topic, int partitionID) {
+    return instrument(CONTAINS_TOPIC, () -> kafkaAdmin.containsTopicWithPartitionCheck(topic, partitionID));
+  }
+
+  @Override
   public boolean containsTopicWithExpectationAndRetry(String topic, int maxRetries, final boolean expectedResult) {
     return instrument(CONTAINS_TOPIC_WITH_RETRY,
         () -> kafkaAdmin.containsTopicWithExpectationAndRetry(topic, maxRetries, expectedResult));

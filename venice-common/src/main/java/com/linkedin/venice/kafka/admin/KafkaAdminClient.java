@@ -186,6 +186,34 @@ public class KafkaAdminClient implements KafkaAdminWrapper {
   }
 
   @Override
+  public boolean containsTopicWithPartitionCheck(String topic, int partitionID) {
+    try {
+      Collection<String> topicNames = Collections.singleton(topic);
+      TopicDescription topicDescription = getKafkaAdminClient().describeTopics(topicNames).values().get(topic).get();
+
+      if (null == topicDescription) {
+        logger.warn("Unexpected: kafkaAdminClient.describeTopics returned null "
+            + "(rather than throwing an InvalidTopicException). Will carry on assuming the topic doesn't exist.");
+        return false;
+      }
+
+      if (topicDescription.partitions().size() <= partitionID) {
+        logger.warn(topic + " is trying to check partitionID " + partitionID
+            + ", but total partitions count " + topicDescription.partitions().size() +  " Will carry on assuming the topic doesn't exist.");
+        return false;
+      }
+      return true;
+    } catch (Exception e) {
+      if (e.getCause() instanceof  UnknownTopicOrPartitionException || e.getCause() instanceof InvalidTopicException) {
+        // Topic doesn't exist...
+        return false;
+      } else {
+        throw new VeniceException("Failed to check if '" + topic + " exists!", e);
+      }
+    }
+  }
+
+  @Override
   public Map<String, Properties> getSomeTopicConfigs(Set<String> topicNames) {
     return getSomethingForSomeTopics(topicNames, config -> marshallProperties(config), "configs");
   }

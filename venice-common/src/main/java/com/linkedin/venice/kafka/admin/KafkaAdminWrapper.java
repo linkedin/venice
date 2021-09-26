@@ -39,6 +39,8 @@ public interface KafkaAdminWrapper extends Closeable {
 
   boolean containsTopic(String topic);
 
+  boolean containsTopicWithPartitionCheck(String topic, int partitionID);
+
   /**
    * Retry up to a maximum number of attempts to get the expected result. If the topic existence check returns with
    * expected result, return the expected result immediately instead of retrying. This method exists since Kafka metadata
@@ -56,6 +58,21 @@ public interface KafkaAdminWrapper extends Closeable {
     Duration defaultMaxDuration = Duration.ofSeconds(60);
     return containsTopicWithExpectationAndRetry(
         topic,
+        maxAttempts,
+        expectedResult,
+        defaultInitialBackoff,
+        defaultMaxBackoff,
+        defaultMaxDuration
+    );
+  }
+
+  default boolean containsTopicWithPartitionCheckExpectationAndRetry(String topic, int partition, int maxAttempts, final boolean expectedResult) {
+    Duration defaultInitialBackoff = Duration.ofMillis(100);
+    Duration defaultMaxBackoff = Duration.ofSeconds(5);
+    Duration defaultMaxDuration = Duration.ofSeconds(60);
+    return containsTopicWithPartitionCheckExpectationAndRetry(
+        topic,
+        partition,
         maxAttempts,
         expectedResult,
         defaultInitialBackoff,
@@ -85,6 +102,40 @@ public interface KafkaAdminWrapper extends Closeable {
       return RetryUtils.executeWithMaxAttemptAndExponentialBackoff(
           () -> {
             if (expectedResult != this.containsTopic(topic)) {
+              throw new VeniceRetriableException("Retrying containsTopic check to get expected result: " + expectedResult +
+                  " for topic " + topic);
+            }
+            return expectedResult;
+          },
+          maxAttempts,
+          initialBackoff,
+          maxBackoff,
+          maxDuration,
+          RETRIABLE_EXCEPTIONS
+      );
+    } catch (VeniceRetriableException e) {
+      return !expectedResult; // Eventually still not get the expected result
+    }
+  }
+
+  default boolean containsTopicWithPartitionCheckExpectationAndRetry(
+      String topic,
+      int partition,
+      int maxAttempts,
+      final boolean expectedResult,
+      Duration initialBackoff,
+      Duration maxBackoff,
+      Duration maxDuration
+  ) {
+    if (initialBackoff.toMillis() > maxBackoff.toMillis()) {
+      throw new IllegalArgumentException("Initial backoff cannot be longer than max backoff. Got initial backoff in "
+          + "millis: " + initialBackoff.toMillis() + " and max backoff in mills: " + maxBackoff.toMillis());
+    }
+
+    try {
+      return RetryUtils.executeWithMaxAttemptAndExponentialBackoff(
+          () -> {
+            if (expectedResult != this.containsTopicWithPartitionCheck(topic, partition)) {
               throw new VeniceRetriableException("Retrying containsTopic check to get expected result: " + expectedResult +
                   " for topic " + topic);
             }

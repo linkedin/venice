@@ -131,6 +131,13 @@ public class ScalaAdminUtils implements KafkaAdminWrapper {
   }
 
   @Override
+  public boolean containsTopicWithPartitionCheck(String topic, int partitionID) {
+    // same behavior as containsTopic as scala client soon to be deprecated
+    return AdminUtils.topicExists(getZkUtils(), topic);
+  }
+
+
+  @Override
   public Map<String, Properties> getSomeTopicConfigs(Set<String> topicNames) {
     // The old Scala lib does not provide a filtered view, so we filter on our end
     Map<String, Properties> allConfigs = JavaConversions.mapAsJavaMap(AdminUtils.fetchAllTopicConfigs(getZkUtils()));

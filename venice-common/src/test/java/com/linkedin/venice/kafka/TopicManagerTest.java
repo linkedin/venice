@@ -442,7 +442,7 @@ public class TopicManagerTest {
     KafkaClientFactory mockKafkaClientFactory = mock(KafkaClientFactory.class);
     // Mock an admin client to pass topic existence check
     KafkaAdminWrapper mockKafkaAdminWrapper = mock(KafkaAdminWrapper.class);
-    doReturn(true).when(mockKafkaAdminWrapper).containsTopicWithExpectationAndRetry(eq(topic), anyInt(), eq(true));
+    doReturn(true).when(mockKafkaAdminWrapper).containsTopicWithPartitionCheckExpectationAndRetry(eq(topic), anyInt(), anyInt(), eq(true));
     doReturn(mockKafkaAdminWrapper).when(mockKafkaClientFactory).getWriteOnlyKafkaAdmin(any());
     doReturn(mockKafkaAdminWrapper).when(mockKafkaClientFactory).getReadOnlyKafkaAdmin(any());
     // Throw Kafka TimeoutException when trying to get max offset
