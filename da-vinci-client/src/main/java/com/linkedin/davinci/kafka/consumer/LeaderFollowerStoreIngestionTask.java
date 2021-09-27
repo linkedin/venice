@@ -1210,12 +1210,12 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         long upstreamOffset = -1;
         if (partitionConsumptionStateMap.get(subPartition) != null
             && partitionConsumptionStateMap.get(subPartition).getOffsetRecord() != null) {
-          upstreamOffset = partitionConsumptionStateMap.get(subPartition).getOffsetRecord().getUpstreamOffset(OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY);
+          upstreamOffset = getUpstreamOffsetForHybridOffsetLagMeasurement(partitionConsumptionStateMap.get(subPartition));
         }
         latestLeaderOffset = (upstreamOffset >= 0 ? Math.max(upstreamOffset, latestLeaderOffset) : latestLeaderOffset);
       }
     } else {
-      latestLeaderOffset = offsetRecord.getLeaderOffset(OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY);
+      latestLeaderOffset = getUpstreamOffsetForHybridOffsetLagMeasurement(partitionConsumptionState);
       lastOffsetInRealTimeTopic = cachedKafkaMetadataGetter.getOffset(sourceRealTimeTopicKafkaURL, leaderTopic, partition);
     }
     long lag = lastOffsetInRealTimeTopic - latestLeaderOffset;
@@ -1859,7 +1859,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           // Fall back to calculate offset lag in the original approach
           if (Version.isRealTimeTopic(currentLeaderTopic)) {
             return (cachedKafkaMetadataGetter.getOffset(kafkaSourceAddress, currentLeaderTopic, pcs.getPartition()) - 1)
-                - pcs.getOffsetRecord().getLeaderOffset(OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY);
+                - getUpstreamOffsetForHybridOffsetLagMeasurement(pcs);
           } else {
             return (cachedKafkaMetadataGetter.getOffset(kafkaSourceAddress, currentLeaderTopic, pcs.getPartition()) - 1)
                 - pcs.getOffsetRecord().getLocalVersionTopicOffset();
@@ -1915,8 +1915,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         .filter(partitionConsumptionStateFilter)
         //the lag is (latest VT offset - consumed VT offset)
         .mapToLong((pcs) -> {
-          final String kafkaSourceAddress = getSourceKafkaUrlForOffsetLagMeasurement(pcs);
-          KafkaConsumerWrapper kafkaConsumer = consumerMap.get(kafkaSourceAddress);
+          KafkaConsumerWrapper kafkaConsumer = consumerMap.get(localKafkaServer);
           // Consumer might not existed in the map after the consumption state is created, but before attaching the
           // corresponding consumer in consumerMap.
           if (kafkaConsumer != null) {
@@ -1947,6 +1946,14 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       }
     }
     return sourceKafkaURL;
+  }
+
+  /**
+   * For L/F or NR, there is only one entry in upstreamOffsetMap whose key is NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY.
+   * Return the value of the entry.
+   */
+  protected long getUpstreamOffsetForHybridOffsetLagMeasurement(PartitionConsumptionState pcs) {
+    return pcs.getOffsetRecord().getUpstreamOffset(OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY);
   }
 
   @Override

@@ -201,11 +201,6 @@ public class OffsetRecord {
   }
 
   public void setLeaderUpstreamOffset(String upstreamKafkaURL, long leaderOffset) {
-    /**
-     * Native replication has only one source kafka at a time. Keep only one entry in upstreamOffsetMap.
-     * The key can be be anything (does not matter for native replication)
-     * TODO: keep multiple entries once A/A is supported.
-     */
     partitionState.upstreamOffsetMap.put(upstreamKafkaURL, leaderOffset);
     // Set this field as well so that we can rollback
     partitionState.leaderOffset = leaderOffset;
