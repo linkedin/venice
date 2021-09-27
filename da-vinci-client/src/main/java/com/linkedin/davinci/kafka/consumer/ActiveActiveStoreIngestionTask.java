@@ -640,6 +640,16 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     return Version.isRealTimeTopic(topicSwitch.sourceTopicName.toString());
   }
 
+  /**
+   * For A/A, there are multiple entries in upstreamOffsetMap during RT ingestion. But for ready-to-serve check and
+   * leader offset metric, we only care about the local RT offset lag. Therefore, return the value corresponded to local
+   * Kafka url.
+   */
+  @Override
+  protected long getUpstreamOffsetForHybridOffsetLagMeasurement(PartitionConsumptionState pcs) {
+    return pcs.getOffsetRecord().getUpstreamOffset(localKafkaServer);
+  }
+
   private String getUpstreamKafkaUrlFromKafkaValue(KafkaMessageEnvelope kafkaValue) {
     if (kafkaValue.leaderMetadataFooter == null) {
       throw new VeniceException("leaderMetadataFooter field in KME should have been set.");
