@@ -57,6 +57,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
@@ -392,12 +393,8 @@ public class DaVinciBackend implements Closeable {
     return ingestionBackend;
   }
 
-  public boolean compareCacheSettings(Optional<ObjectCacheConfig> config) {
-    if (!cacheBackend.isPresent()) {
-      return !config.isPresent();
-    }
-    return cacheBackend.filter(objectCacheBackend -> objectCacheBackend.getStoreCacheConfig().equals(config.orElse(null)))
-            .isPresent();
+  public boolean compareCacheConfig(Optional<ObjectCacheConfig> config) {
+    return cacheBackend.map(ObjectCacheBackend::getStoreCacheConfig).equals(config);
   }
 
   Map<String, VersionBackend> getVersionByTopicMap() {

@@ -71,7 +71,6 @@ public class DataProviderUtils {
     DaVinciConfig defaultDaVinciConfig = new DaVinciConfig();
 
     DaVinciConfig cachingDaVinciConfig = new DaVinciConfig();
-    cachingDaVinciConfig.enableHeapObjectCacheEnabled(true);
     cachingDaVinciConfig.setCacheConfig(new ObjectCacheConfig());
 
     return new Object[][] {{defaultDaVinciConfig}, {cachingDaVinciConfig}};

@@ -1,17 +1,5 @@
 package com.linkedin.venice.endToEnd;
 
-import com.linkedin.d2.balancer.D2Client;
-import com.linkedin.d2.balancer.D2ClientBuilder;
-import com.linkedin.davinci.DaVinciUserApp;
-import com.linkedin.davinci.client.AvroGenericDaVinciClient;
-import com.linkedin.davinci.client.DaVinciClient;
-import com.linkedin.davinci.client.DaVinciConfig;
-import com.linkedin.davinci.client.NonLocalAccessException;
-import com.linkedin.davinci.client.NonLocalAccessPolicy;
-import com.linkedin.davinci.client.StorageClass;
-import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
-import com.linkedin.davinci.ingestion.main.MainIngestionRequestClient;
-import com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils;
 import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.ComputeRequestBuilder;
@@ -50,8 +38,35 @@ import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
+
+import com.linkedin.d2.balancer.D2Client;
+import com.linkedin.d2.balancer.D2ClientBuilder;
+import com.linkedin.davinci.DaVinciUserApp;
+import com.linkedin.davinci.client.AvroGenericDaVinciClient;
+import com.linkedin.davinci.client.DaVinciClient;
+import com.linkedin.davinci.client.DaVinciConfig;
+import com.linkedin.davinci.client.NonLocalAccessException;
+import com.linkedin.davinci.client.NonLocalAccessPolicy;
+import com.linkedin.davinci.client.StorageClass;
+import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
+import com.linkedin.davinci.ingestion.main.MainIngestionRequestClient;
+import com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils;
+
 import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
+
+import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericData;
+import org.apache.avro.generic.GenericRecord;
+import org.apache.commons.io.FileUtils;
+import org.apache.samza.system.SystemProducer;
+import org.testng.Assert;
+import org.testng.annotations.AfterClass;
+import org.testng.annotations.AfterMethod;
+import org.testng.annotations.BeforeClass;
+import org.testng.annotations.DataProvider;
+import org.testng.annotations.Test;
+
 import java.io.File;
 import java.lang.reflect.Method;
 import java.nio.ByteBuffer;
@@ -73,21 +88,9 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.stream.Stream;
-import org.apache.avro.Schema;
-import org.apache.avro.generic.GenericData;
-import org.apache.avro.generic.GenericRecord;
-import org.apache.commons.io.FileUtils;
-import org.apache.samza.system.SystemProducer;
-import org.testng.Assert;
-import org.testng.annotations.AfterClass;
-import org.testng.annotations.AfterMethod;
-import org.testng.annotations.BeforeClass;
-import org.testng.annotations.DataProvider;
-import org.testng.annotations.Test;
 
 import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.VeniceConstants.*;
@@ -364,7 +367,7 @@ public class DaVinciClientTest {
         // Verify returned value from the client
         assertEquals(((GenericRecord) client.get(k, reusableObject).get()).get(0), 10);
         // Verify value stores in the reused object
-        if (clientConfig.isHeapObjectCacheEnabled()) {
+        if (clientConfig.isCacheEnabled()) {
           // object reuse doesn't work with object cache, so make sure it didn't try or it'll get weird
           assertEquals(reusableObject.get(0), -1);
         } else {
@@ -1149,7 +1152,6 @@ public class DaVinciClientTest {
 
   @Test(timeOut = TEST_TIMEOUT * 2)
   public void testReadComputeSwappedFields() throws Exception {
-
     //Create DaVinci store
     final String storeName = TestUtils.getUniqueString( "store");
     cluster.useControllerClient(client -> TestUtils.assertCommand(
@@ -1241,8 +1243,7 @@ public class DaVinciClientTest {
   }
 
   @Test(timeOut = TEST_TIMEOUT * 2)
-  public void testComputeStreamingExecute() throws ExecutionException, InterruptedException, TimeoutException {
-
+  public void testComputeStreamingExecute() throws ExecutionException, InterruptedException {
     //Setup Store
     final String storeName = TestUtils.getUniqueString( "store");
     cluster.useControllerClient(client -> TestUtils.assertCommand(

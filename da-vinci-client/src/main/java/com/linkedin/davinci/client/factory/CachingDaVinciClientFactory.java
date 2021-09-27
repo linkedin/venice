@@ -48,7 +48,7 @@ public class CachingDaVinciClientFactory implements DaVinciClientFactory, Closea
 
   public CachingDaVinciClientFactory(D2Client d2Client, MetricsRepository metricsRepository,
       VeniceProperties backendConfig, Optional<Set<String>> managedClients, ICProvider icProvider) {
-    logger.info("Creating client factory, managedClients=" + managedClients);
+    logger.info("Creating client factory, managedClients=" + managedClients + "existingMetrics=" + metricsRepository.metrics().keySet());
     this.d2Client = d2Client;
     this.metricsRepository = metricsRepository;
     this.backendConfig = backendConfig;

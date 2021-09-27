@@ -1,7 +1,6 @@
 package com.linkedin.davinci.store.cache.backend;
 
 import java.util.Optional;
-import org.apache.avro.Schema;
 
 
 public class ObjectCacheConfig {
@@ -47,5 +46,13 @@ public class ObjectCacheConfig {
       return false;
     }
     return true;
+  }
+
+  @Override
+  public String toString() {
+    return "ObjectCacheConfig{" +
+               "maxCacheSize=" + maxCacheSize +
+               ", ttlInMilliseconds=" + ttlInMilliseconds +
+               "}";
   }
 }

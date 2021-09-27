@@ -166,7 +166,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
   @Override
   public void unsubscribeAll() {
     unsubscribe(ComplementSet.universalSet());
-    if (isOnHeapCacheEnabled()) {
+    if (daVinciConfig.isCacheEnabled()) {
       dropAllCachePartitions();
     }
   }
@@ -199,7 +199,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
 
 
   // TODO: This is 'almost' the same logic for the batchGet path.  We could probably wrap this function and adapt it to the
-  // batchget api (where sometimes the batchget is just for a single key).  Advantages would be to remove duplicate code.
+  // Batch-get api (where sometimes the Batch-get is just for a single key).  Advantages would be to remove duplicate code.
   private CompletableFuture<V> readFromLocalStorage(K key, V reusableValue) {
     try (ReferenceCounted<VersionBackend> versionRef = storeBackend.getDaVinciCurrentVersion()) {
       VersionBackend versionBackend = versionRef.get();
@@ -243,7 +243,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
         throw new VeniceClientException("Da Vinci client is not subscribed, storeName=" + getStoreName());
       }
 
-      if (isOnHeapCacheEnabled()) {
+      if (daVinciConfig.isCacheEnabled()) {
         return cacheBackend.get(key, versionBackend.getVersion(), (k, executor) -> this.readFromLocalStorage(k, null));
       } else {
         return readFromLocalStorage(key, reusableValue);
@@ -307,7 +307,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
     throwIfNotReady();
     try (ReferenceCounted<VersionBackend> versionRef = storeBackend.getDaVinciCurrentVersion()) {
       VersionBackend versionBackend = versionRef.get();
-      if (isOnHeapCacheEnabled()) {
+      if (daVinciConfig.isCacheEnabled()) {
         return cacheBackend.getAll(keys, versionBackend.getVersion(), (ks) -> {
           try {
             return batchGetFromLocalStorage(ks).get();
@@ -541,10 +541,6 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
     return versionBackend.isPartitionSubscribed(partition);
   }
 
-  protected boolean isOnHeapCacheEnabled() {
-    return daVinciConfig.isHeapObjectCacheEnabled();
-  }
-
   private void dropAllCachePartitions() {
     try (ReferenceCounted<VersionBackend> versionRef = storeBackend.getDaVinciCurrentVersion()) {
       VersionBackend versionBackend = versionRef.get();
@@ -625,32 +621,38 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
     return new VeniceConfigLoader(config, config);
   }
 
-
-  private static synchronized void initBackend(ClientConfig clientConfig, VeniceConfigLoader configLoader,
-      Optional<Set<String>> managedClients, ICProvider icProvider, Optional<ObjectCacheConfig> cacheBackend) {
-    Logger staticLogger = Logger.getLogger(AvroGenericDaVinciClient.class);
-    if (daVinciBackend == null) {
-      staticLogger.info("Da Vinci Backend does not exist, initializing it for client: " + clientConfig.getStoreName());
-      daVinciBackend = new ReferenceCounted<>(new DaVinciBackend(clientConfig, configLoader, managedClients, icProvider, cacheBackend),
-          backend -> {
-            daVinciBackend = null;
-            backend.close();
-          });
-    } else if (VeniceSystemStoreType.getSystemStoreType(clientConfig.getStoreName()) != VeniceSystemStoreType.META_STORE) {
-      staticLogger.info("Da Vinci Backend exists, reusing exsiting backend for client: " + clientConfig.getStoreName());
-      // Do not increment DaVinciBackend reference count for meta system store da-vinci clients. Once the last user da-vinci
-      // client is released the backend can be safely deleted since meta system stores are meaningless without user stores
-      // and they are cheap to re-bootstrap.
-      daVinciBackend.retain();
-    }
-    if(!daVinciBackend.get().compareCacheSettings(cacheBackend)) {
-      throw new VeniceClientException("Cannot initialize multiple clients with different cache settings!!");
+  private void initBackend(
+      ClientConfig clientConfig,
+      VeniceConfigLoader configLoader,
+      Optional<Set<String>> managedClients,
+      ICProvider icProvider,
+      Optional<ObjectCacheConfig> cacheConfig) {
+    synchronized (AvroGenericDaVinciClient.class) {
+      if (daVinciBackend == null) {
+        logger.info("Da Vinci Backend does not exist, creating a new backend for client: " + clientConfig.getStoreName());
+        daVinciBackend = new ReferenceCounted<>(new DaVinciBackend(clientConfig, configLoader, managedClients, icProvider, cacheConfig),
+            backend -> {
+              // Ensure that existing backend is fully closed before a new one can be created.
+              synchronized (AvroGenericDaVinciClient.class) {
+                daVinciBackend = null;
+                backend.close();
+              }
+            });
+      } else if (VeniceSystemStoreType.getSystemStoreType(clientConfig.getStoreName()) != VeniceSystemStoreType.META_STORE) {
+        logger.info("Da Vinci Backend exists, reusing existing backend for client: " + clientConfig.getStoreName());
+        // Do not increment DaVinciBackend reference count for meta system store da-vinci clients. Once the last user da-vinci
+        // client is released the backend can be safely deleted since meta system stores are meaningless without user stores,
+        // and they are cheap to re-bootstrap.
+        daVinciBackend.retain();
+      }
     }
   }
 
   // Visible for testing
-  public static synchronized DaVinciBackend getBackend() {
-    return daVinciBackend.get();
+  public static DaVinciBackend getBackend() {
+    synchronized (AvroGenericDaVinciClient.class) {
+      return daVinciBackend.get();
+    }
   }
 
   @Override
@@ -660,12 +662,18 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
     }
     logger.info("Starting client, storeName=" + getStoreName());
     VeniceConfigLoader configLoader = buildVeniceConfig();
-    initBackend(clientConfig, configLoader, managedClients, icProvider, isOnHeapCacheEnabled() ? Optional.of(daVinciConfig.getCacheConfig()):Optional.empty());
-    if (isOnHeapCacheEnabled()) {
-      cacheBackend = daVinciBackend.get().getObjectCache();
-    }
+    Optional<ObjectCacheConfig> cacheConfig = Optional.ofNullable(daVinciConfig.getCacheConfig());
+    initBackend(clientConfig, configLoader, managedClients, icProvider, cacheConfig);
 
     try {
+      if (!getBackend().compareCacheConfig(cacheConfig)) {
+        throw new VeniceClientException("Cache config conflicts with existing backend, storeName=" + getStoreName());
+      }
+
+      if (daVinciConfig.isCacheEnabled()) {
+        cacheBackend = getBackend().getObjectCache();
+      }
+
       storeBackend = getBackend().getStoreOrThrow(getStoreName());
       if (managedClients.isPresent()) {
         storeBackend.setManaged(daVinciConfig.isManaged());
@@ -698,13 +706,13 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
       if (veniceClient != null) {
         veniceClient.close();
       }
-      logger.info("Releasing reference of Da Vinci backend, called from: " + Arrays.toString(
-          Thread.currentThread().getStackTrace()));
-      daVinciBackend.release();
-      logger.info("Client is closed successfully, storeName=" + getStoreName());
       if (cacheBackend != null) {
         cacheBackend.close();
       }
+      logger.info("Releasing Da Vinci backend reference, called from: " +
+                      Arrays.toString(Thread.currentThread().getStackTrace()));
+      daVinciBackend.release();
+      logger.info("Client is closed successfully, storeName=" + getStoreName());
     } catch (Throwable e) {
       throw new VeniceClientException("Unable to close Da Vinci client, storeName=" + getStoreName(), e);
     }
