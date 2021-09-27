@@ -511,6 +511,8 @@ public class CreateVersion extends AbstractRoute {
     return (request, response) -> {
       VersionCreationResponse responseObject = new VersionCreationResponse();
       response.type(HttpConstants.JSON);
+      String clusterName = null;
+      Version version = null;
       try {
         // Only allow whitelist users to run this command
         if (!isWhitelistUsers(request)) {
@@ -526,13 +528,13 @@ public class CreateVersion extends AbstractRoute {
         AdminSparkServer.validateParams(request, EMPTY_PUSH.getParams(), admin);
 
         //Query params
-        String clusterName = request.queryParams(CLUSTER);
+        clusterName = request.queryParams(CLUSTER);
         String storeName = request.queryParams(NAME);
         long storeSize = Utils.parseLongFromString(request.queryParams(STORE_SIZE), STORE_SIZE);
         String pushJobId = request.queryParams(PUSH_JOB_ID);
         int partitionNum = admin.calculateNumberOfPartitions(clusterName, storeName, storeSize);
         int replicationFactor = admin.getReplicationFactor(clusterName, storeName);
-        Version version = admin.incrementVersionIdempotent(clusterName, storeName, pushJobId,
+        version = admin.incrementVersionIdempotent(clusterName, storeName, pushJobId,
             partitionNum, replicationFactor);
         int versionNumber = version.getNumber();
 
@@ -548,6 +550,11 @@ public class CreateVersion extends AbstractRoute {
         /** TODO: Poll {@link com.linkedin.venice.controller.VeniceParentHelixAdmin#getOffLineJobStatus(String, String, Map, TopicManager)} until it is terminal... */
 
       } catch (Throwable e) {
+        // Clean up on failed push.
+        if (version != null && clusterName != null) {
+          LOGGER.warn("Cleaning up failed Empty push of " + version.kafkaTopicName());
+          admin.killOfflinePush(clusterName, version.kafkaTopicName(), true);
+        }
         responseObject.setError(e.getMessage());
         AdminSparkServer.handleError(e, request, response);
       }
