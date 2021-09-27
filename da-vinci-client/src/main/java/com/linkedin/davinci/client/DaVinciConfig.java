@@ -38,12 +38,10 @@ public class DaVinciConfig {
   /**
    * Cache settings
    */
-  private boolean heapObjectCacheEnabled = false;
   private ObjectCacheConfig cacheConfig;
 
   public DaVinciConfig() {
   }
-
 
   public DaVinciConfig clone() {
     return new DaVinciConfig()
@@ -52,7 +50,6 @@ public class DaVinciConfig {
             .setStorageClass(getStorageClass())
             .setNonLocalAccessPolicy(getNonLocalAccessPolicy())
             .setMemoryLimit(getMemoryLimit())
-            .enableHeapObjectCacheEnabled(isHeapObjectCacheEnabled())
             .setCacheConfig(getCacheConfig());
   }
 
@@ -64,7 +61,7 @@ public class DaVinciConfig {
                ", storageClass=" + storageClass +
                ", nonLocalAccessPolicy=" + nonLocalAccessPolicy +
                ", memoryLimit=" + memoryLimit +
-               ", objectHeapCacheEnabled=" + heapObjectCacheEnabled +
+               ", cacheConfig=" + cacheConfig +
                "}";
   }
 
@@ -108,22 +105,17 @@ public class DaVinciConfig {
     return memoryLimit;
   }
 
-  public boolean isHeapObjectCacheEnabled() {
-    return heapObjectCacheEnabled;
-  }
-
-  public ObjectCacheConfig getCacheConfig() {
-    return cacheConfig;
-  }
-
   public DaVinciConfig setMemoryLimit(long memoryLimit) {
     this.memoryLimit = memoryLimit;
     return this;
   }
 
-  public DaVinciConfig enableHeapObjectCacheEnabled(boolean heapObjectCacheEnabled) {
-    this.heapObjectCacheEnabled = heapObjectCacheEnabled;
-    return this;
+  public boolean isCacheEnabled() {
+    return cacheConfig != null;
+  }
+
+  public ObjectCacheConfig getCacheConfig() {
+    return cacheConfig;
   }
 
   public DaVinciConfig setCacheConfig(ObjectCacheConfig cacheConfig) {
