@@ -34,6 +34,7 @@ public class StoreBufferServiceTest {
     verify(mockTask, timeout(TIMEOUT_IN_MS)).processConsumerRecord(cr2, null);
 
     bufferService.stop();
+    Assert.assertThrows(VeniceException.class, () -> bufferService.drainBufferedRecordsFromTopicPartition(topic, partition1));
   }
 
   @Test
