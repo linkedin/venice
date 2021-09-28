@@ -83,7 +83,7 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
    * In general, one factory is enough for one application; otherwise, if there are
    * multiple factory built in the same process, log this information for debugging purpose.
    */
-  private static AtomicInteger FACTORY_INSTANCE_NUMBER = new AtomicInteger(0);
+  private static final AtomicInteger FACTORY_INSTANCE_NUMBER = new AtomicInteger(0);
 
   /**
    * Key: VeniceSystemProducer instance;
@@ -93,7 +93,7 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
    * the below Map. {@link com.linkedin.venice.pushmonitor.RouterBasedPushMonitor} will update
    * the status of the SystemProducer.
    */
-  private Map<SystemProducer, Pair<Boolean, Boolean>> systemProducerStatues;
+  private final Map<SystemProducer, Pair<Boolean, Boolean>> systemProducerStatues;
 
   /**
    * All the required configs to build a SSL Factory
@@ -122,6 +122,17 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
   @Override
   public SystemConsumer getConsumer(String systemName, Config config, MetricsRegistry registry) {
     throw new SamzaException("There is no Venice Consumer");
+  }
+
+  /**
+   * Keep the original createSystemProducer method to keep backward compatibility.
+   * TODO: Remove this method after samza-li-venice 0.7.1 or higher is released as active version.
+   */
+  protected SystemProducer createSystemProducer(String veniceD2ZKHost, String veniceD2Service, String storeName,
+      Version.PushType venicePushType, String samzaJobId, String runningFabric, Config config,
+      Optional<SSLFactory> sslFactory, Optional<String> partitioners) {
+    return new VeniceSystemProducer(veniceD2ZKHost, veniceD2Service, storeName, venicePushType, samzaJobId, runningFabric,
+        config.getBoolean(VALIDATE_VENICE_INTERNAL_SCHEMA_VERSION, false), this, sslFactory, partitioners);
   }
 
   // Extra `Config` parameter is to ease the internal implementation
