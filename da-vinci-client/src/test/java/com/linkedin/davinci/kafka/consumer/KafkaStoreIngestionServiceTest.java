@@ -12,6 +12,7 @@ import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.ClusterInfoProvider;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PersistenceType;
+import com.linkedin.venice.meta.ReadOnlyLiveClusterConfigRepository;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.ReadStrategy;
@@ -45,6 +46,7 @@ public class KafkaStoreIngestionServiceTest {
   private ClusterInfoProvider mockClusterInfoProvider;
   private ReadOnlyStoreRepository mockMetadataRepo;
   private ReadOnlySchemaRepository mockSchemaRepo;
+  private ReadOnlyLiveClusterConfigRepository mockLiveClusterConfigRepo;
   private StorageEngineBackedCompressorFactory compressorFactory;
 
   private KafkaStoreIngestionService kafkaStoreIngestionService;
@@ -56,6 +58,7 @@ public class KafkaStoreIngestionServiceTest {
     mockClusterInfoProvider = mock(ClusterInfoProvider.class);
     mockMetadataRepo = mock(ReadOnlyStoreRepository.class);
     mockSchemaRepo = mock(ReadOnlySchemaRepository.class);
+    mockLiveClusterConfigRepo = mock(ReadOnlyLiveClusterConfigRepository.class);
     compressorFactory = new StorageEngineBackedCompressorFactory(storageMetadataService);
 
     setupMockConfig();
@@ -92,6 +95,7 @@ public class KafkaStoreIngestionServiceTest {
        mockVeniceConfigLoader,
        storageMetadataService, mockClusterInfoProvider, mockMetadataRepo,
        mockSchemaRepo,
+       mockLiveClusterConfigRepo,
        new MetricsRepository(),
        null,
        Optional.empty(),
@@ -169,6 +173,7 @@ public class KafkaStoreIngestionServiceTest {
         mockVeniceConfigLoader,
         storageMetadataService, mockClusterInfoProvider, mockMetadataRepo,
         mockSchemaRepo,
+        mockLiveClusterConfigRepo,
         new MetricsRepository(),
         null,
         Optional.empty(),

@@ -1,5 +1,6 @@
 package com.linkedin.venice.unit.kafka;
 
+import com.linkedin.venice.utils.Utils;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -15,6 +16,11 @@ import java.util.Optional;
  */
 public class InMemoryKafkaBroker {
   private final Map<String, InMemoryKafkaTopic> topics = new HashMap<>();
+  private final int port;
+
+  public InMemoryKafkaBroker() {
+    port = Utils.getFreePort();
+  }
 
   public synchronized void createTopic(String topicName, int partitionCount) {
     if (topics.containsKey(topicName)) {
@@ -71,6 +77,6 @@ public class InMemoryKafkaBroker {
    * @return an synthetic broker server url.
    */
   public String getKafkaBootstrapServer() {
-    return "InMemoryKafkaBroker:16637";
+    return "InMemoryKafkaBroker:" + port;
   }
 }

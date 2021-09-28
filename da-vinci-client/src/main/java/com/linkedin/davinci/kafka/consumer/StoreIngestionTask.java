@@ -21,6 +21,7 @@ import com.linkedin.venice.common.Measurable;
 import com.linkedin.davinci.utils.StoragePartitionDiskUsage;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.PersistenceFailureException;
+import com.linkedin.venice.exceptions.QuotaExceededException;
 import com.linkedin.venice.exceptions.UnsubscribedTopicPartitionException;
 import com.linkedin.venice.exceptions.VeniceChecksumException;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -267,6 +268,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   // Kafka bootstrap url to consumer
   protected Map<String, KafkaConsumerWrapper> consumerMap;
 
+  private KafkaClusterBasedRecordThrottler kafkaClusterBasedRecordThrottler;
+
   protected Set<Integer> availableSchemaIds;
   protected Set<Integer> deserializedSchemaIds;
   protected int idleCounter = 0;
@@ -397,6 +400,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       EventThrottler recordsThrottler,
       EventThrottler unorderedBandwidthThrottler,
       EventThrottler unorderedRecordsThrottler,
+      KafkaClusterBasedRecordThrottler kafkaClusterBasedRecordThrottler,
       ReadOnlySchemaRepository schemaRepository,
       ReadOnlyStoreRepository storeRepository,
       TopicManagerRepository topicManagerRepository,
@@ -438,6 +442,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.deserializedSchemaIds = new HashSet<>();
     this.consumerActionsQueue = new PriorityBlockingQueue<>(CONSUMER_ACTION_QUEUE_INIT_CAPACITY);
     this.consumerMap = new VeniceConcurrentHashMap<>();
+    this.kafkaClusterBasedRecordThrottler = kafkaClusterBasedRecordThrottler;
 
     // partitionConsumptionStateMap could be accessed by multiple threads: consumption thread and the thread handling kill message
     this.partitionConsumptionStateMap = new VeniceConcurrentHashMap<>();
@@ -1433,7 +1438,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
       /**
        * It's possible to receive checksum verification failure exception here from the above syncOffset() call.
-       * If this task is getting closed aneway (most likely due to SN being shut down), we should not report this replica
+       * If this task is getting closed anyway (most likely due to SN being shut down), we should not report this replica
        * as ERROR. just record the relevant metrics.
        */
       if (t instanceof VeniceChecksumException) {
@@ -2023,9 +2028,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         logger.warn(errorMessage + ". However, " + kafkaVersionTopic
             + " is the current version or EOP is already received so consumption will continue." + e.getMessage());
       }
-    } catch (VeniceMessageException | UnsupportedOperationException excp) {
+    } catch (VeniceMessageException | UnsupportedOperationException e) {
       throw new VeniceException(consumerTaskId + " : Received an exception for message at partition: "
-          + record.partition() + ", offset: " + record.offset() + ". Bubbling up.", excp);
+          + record.partition() + ", offset: " + record.offset() + ". Bubbling up.", e);
     }
 
     partitionConsumptionState.incrementProcessedRecordNum();
@@ -2472,14 +2477,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
        *
        *  Specific notes for Leader:
        *  1.  For DIV pass through mode we are doing DIV in drainer thread with ConsumerRecord only ( ProducedRecord will NOT be null,
-       *      and there is 1-1 mapping between consumerRecord and leaderProducedRecordContext). This will implicitely verify all kafka
-       *      callbacks were executed properly and in order becuase we queue this pair <consumerRecord, producerRecord> from kafka
+       *      and there is 1-1 mapping between consumerRecord and leaderProducedRecordContext). This will implicitly verify all kafka
+       *      callbacks were executed properly and in order because we queue this pair <consumerRecord, producerRecord> from kafka
        *      callback thread only. If there were any problems with callback thread then that will be caught by this DIV here.
        *
        *  2. For DIV non pass-through mode (RT messages) we are doing DIV in {@link LeaderFollowerStoreIngestionTask#delegateConsumerRecord(VeniceConsumerRecordWrapper)}
        *      in consumer thread and no further DIV happens for the leaderProducedRecordContext. The main challenge to do DIV for leaderProducedRecordContext
        *      here is that VeniceWriter internally produces SOS/EOS for non-passthrough mode which is not fed into our DIV pipeline currently.
-       *      TODO: Explore DIV check for produced record in non pass-through mode which also validates the kafka producer calllback like pass through mode.
+       *      TODO: Explore DIV check for produced record in non pass-through mode which also validates the kafka producer callback like pass through mode.
        */
       if (leaderProducedRecordContext == null || !Version.isRealTimeTopic(consumerRecord.topic())) {
         try {
@@ -2779,10 +2784,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   /**
    * Poll consumer(s) to get a map from Kafka URLs to consumed records from that Kafka URL.
+   *
+   * This method is only called for dedicated Kafka consumer
    * @param pollTimeoutMs
    * @return
    */
-  public Map<String, ConsumerRecords<KafkaKey, KafkaMessageEnvelope>> consumerPoll(long pollTimeoutMs) {
+  protected Map<String, ConsumerRecords<KafkaKey, KafkaMessageEnvelope>> consumerPoll(long pollTimeoutMs) {
     if (!storeRepository.getStoreOrThrow(storeName).getVersion(versionNumber).isPresent()) {
       //If the version is not found, it must have been retired/deleted by controller, Let's kill this ingestion task.
       throw new VeniceIngestionTaskKilledException("Version " + versionNumber + " does not exist. Should not poll.");
@@ -2794,8 +2801,15 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     final Map<String, ConsumerRecords<KafkaKey, KafkaMessageEnvelope>> recordsByKafkaURLs = new HashMap<>(consumerMap.keySet().size());
     consumerMap.forEach((kafkaURL, consumer) -> {
       if (consumer.hasSubscription()) {
-        ConsumerRecords<KafkaKey, KafkaMessageEnvelope> consumerRecords = consumer.poll(pollTimeoutMs);
-        if (consumerRecords != null) {
+        ConsumerRecords<KafkaKey, KafkaMessageEnvelope> consumerRecords;
+
+        if (serverConfig.isLiveConfigBasedKafkaThrottlingEnabled()) {
+          consumerRecords = kafkaClusterBasedRecordThrottler.poll(consumer, kafkaURL, pollTimeoutMs);
+        } else {
+          consumerRecords = consumer.poll(pollTimeoutMs);
+        }
+
+        if (!consumerRecords.isEmpty()) {
           recordsByKafkaURLs.put(kafkaURL, consumerRecords);
         }
       }
@@ -2822,7 +2836,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return consumerMap.computeIfAbsent(kafkaURL, source -> {
       Properties consumerProps = updateKafkaConsumerProperties(kafkaProps, kafkaURL, consumeRemotely);
       if (serverConfig.isSharedConsumerPoolEnabled()) {
-        return aggKafkaConsumerService.getConsumer(consumerProps,this);
+        return aggKafkaConsumerService.getConsumer(consumerProps, this);
       } else {
         return factory.getConsumer(consumerProps);
       }
@@ -2927,7 +2941,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       PartitionConsumptionState.TransientRecord transientRecord =
           partitionConsumptionState.mayRemoveTransientRecord(leaderProducedRecordContext.getConsumedOffset(), kafkaKey.getKey());
       if (transientRecord != null) {
-        //This is perfectly fine, logging to see how often it happens where we get mulitple put/update/delete for same key in quick succession.
+        //This is perfectly fine, logging to see how often it happens where we get multiple put/update/delete for same key in quick succession.
         String msg =
             consumerTaskId + ": multiple put,update,delete for same key received from Topic: " + consumerRecord.topic()
                 + " Partition: " + consumedPartition;

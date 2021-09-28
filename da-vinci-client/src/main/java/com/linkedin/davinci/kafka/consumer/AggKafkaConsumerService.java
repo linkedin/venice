@@ -27,13 +27,16 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
   private final long sharedConsumerNonExistingTopicCleanupDelayMS;
   private final EventThrottler bandwidthThrottler;
   private final EventThrottler recordsThrottler;
+  private final KafkaClusterBasedRecordThrottler kafkaClusterBasedRecordThrottler;
   private final KafkaConsumerServiceStats stats;
   private final TopicExistenceChecker topicExistenceChecker;
+  private final boolean liveConfigBasedKafkaThrottlingEnabled;
 
   private final Map<String, KafkaConsumerService> kafkaServerToConsumerService = new VeniceConcurrentHashMap<>();
 
   public AggKafkaConsumerService(final KafkaClientFactory consumerFactory, final VeniceServerConfig serverConfig,
-      final EventThrottler bandwidthThrottler, final EventThrottler recordsThrottler, final MetricsRepository metricsRepository,
+      final EventThrottler bandwidthThrottler, final EventThrottler recordsThrottler,
+      KafkaClusterBasedRecordThrottler kafkaClusterBasedRecordThrottler, final MetricsRepository metricsRepository,
       TopicExistenceChecker topicExistenceChecker) {
     this.consumerFactory = consumerFactory;
     this.readCycleDelayMs = serverConfig.getKafkaReadCycleDelayMs();
@@ -41,8 +44,10 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
     this.sharedConsumerNonExistingTopicCleanupDelayMS = serverConfig.getSharedConsumerNonExistingTopicCleanupDelayMS();
     this.bandwidthThrottler = bandwidthThrottler;
     this.recordsThrottler = recordsThrottler;
+    this.kafkaClusterBasedRecordThrottler = kafkaClusterBasedRecordThrottler;
     this.stats = new KafkaConsumerServiceStats(metricsRepository);
     this.topicExistenceChecker = topicExistenceChecker;
+    this.liveConfigBasedKafkaThrottlingEnabled = serverConfig.isLiveConfigBasedKafkaThrottlingEnabled();
     logger.info("Successfully initialized AggKafkaConsumerService");
   }
 
@@ -66,7 +71,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
     String kafkaUrl = consumerProperties.getProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG);
     return kafkaServerToConsumerService.computeIfAbsent(kafkaUrl, url ->
         new KafkaConsumerService(consumerFactory, consumerProperties, readCycleDelayMs, numOfConsumersPerKafkaCluster,
-            bandwidthThrottler, recordsThrottler, stats, sharedConsumerNonExistingTopicCleanupDelayMS, topicExistenceChecker));
+            bandwidthThrottler, recordsThrottler, kafkaClusterBasedRecordThrottler, stats, sharedConsumerNonExistingTopicCleanupDelayMS, topicExistenceChecker, liveConfigBasedKafkaThrottlingEnabled));
   }
 
   /**

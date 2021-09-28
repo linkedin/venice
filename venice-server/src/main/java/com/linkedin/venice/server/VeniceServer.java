@@ -36,6 +36,7 @@ import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.listener.ListenerService;
 import com.linkedin.venice.listener.StoreValueSchemasCacheService;
 import com.linkedin.venice.meta.IngestionMode;
+import com.linkedin.venice.meta.ReadOnlyLiveClusterConfigRepository;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.RoutingDataRepository;
@@ -86,6 +87,7 @@ public class VeniceServer {
   private MetricsRepository metricsRepository;
   private ReadOnlyStoreRepository metadataRepo;
   private ReadOnlySchemaRepository schemaRepo;
+  private ReadOnlyLiveClusterConfigRepository liveClusterConfigRepo;
   private Optional<HelixReadOnlyZKSharedSchemaRepository> readOnlyZKSharedSchemaRepository;
   private ZkClient zkClient;
   private VeniceJVMStats jvmStats;
@@ -187,6 +189,7 @@ public class VeniceServer {
     zkClient = veniceMetadataRepositoryBuilder.getZkClient();
     metadataRepo = veniceMetadataRepositoryBuilder.getStoreRepo();
     schemaRepo = veniceMetadataRepositoryBuilder.getSchemaRepo();
+    liveClusterConfigRepo = veniceMetadataRepositoryBuilder.getLiveClusterConfigRepo();
     readOnlyZKSharedSchemaRepository = veniceMetadataRepositoryBuilder.getReadOnlyZKSharedSchemaRepository();
 
     // TODO: It would be cleaner to come up with a storage engine metric abstraction so we're not passing around so
@@ -242,6 +245,7 @@ public class VeniceServer {
         new StaticClusterInfoProvider(Collections.singleton(clusterConfig.getClusterName())),
         metadataRepo,
         schemaRepo,
+        liveClusterConfigRepo,
         metricsRepository,
         null,
         kafkaMessageEnvelopeSchemaReader,

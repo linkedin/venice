@@ -6,12 +6,12 @@ import com.linkedin.venice.exceptions.UndefinedPropertyException;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.utils.KafkaSSLUtils;
 import com.linkedin.venice.utils.RegionUtils;
-import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
@@ -19,7 +19,6 @@ import org.apache.kafka.common.protocol.SecurityProtocol;
 import org.apache.log4j.Logger;
 
 import static com.linkedin.venice.ConfigKeys.*;
-import static com.linkedin.venice.VeniceConstants.*;
 
 
 /**
@@ -301,6 +300,10 @@ public class VeniceClusterConfig {
 
   public Map<String, Integer> getKafkaClusterAliasToIdMap() {
     return Collections.unmodifiableMap(kafkaClusterAliasToIdMap);
+  }
+
+  public Set<String> getRegionNames() {
+    return Collections.unmodifiableSet(kafkaClusterAliasToIdMap.keySet());
   }
 
   public VeniceProperties getClusterProperties() {

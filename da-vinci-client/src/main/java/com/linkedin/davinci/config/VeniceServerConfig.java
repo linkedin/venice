@@ -259,6 +259,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   private final boolean schemaPresenceCheckEnabled;
 
+  private final boolean enableLiveConfigBasedKafkaThrottling;
+
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     this(serverProperties, Optional.empty());
   }
@@ -403,6 +405,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     numSchemaFastClassWarmup = serverProperties.getInt(SERVER_NUM_SCHEMA_FAST_CLASS_WARMUP,10);
     fastClassSchemaWarmupTimeout = serverProperties.getLong(SERVER_SCHEMA_FAST_CLASS_WARMUP_TIMEOUT, 2*Time.MS_PER_MINUTE);
     schemaPresenceCheckEnabled = serverProperties.getBoolean(SERVER_SCHEMA_PRESENCE_CHECK_ENABLED, true);
+    enableLiveConfigBasedKafkaThrottling = serverProperties.getBoolean(SERVER_ENABLE_LIVE_CONFIG_BASED_KAFKA_THROTTLING, false);
   }
 
   public int getListenerPort() {
@@ -775,4 +778,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public boolean isSchemaPresenceCheckEnabled() { return schemaPresenceCheckEnabled;}
 
+  public boolean isLiveConfigBasedKafkaThrottlingEnabled() {
+    return enableLiveConfigBasedKafkaThrottling;
+  }
 }

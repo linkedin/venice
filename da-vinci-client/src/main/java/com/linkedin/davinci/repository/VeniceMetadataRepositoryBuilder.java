@@ -5,6 +5,7 @@ import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
+import com.linkedin.venice.helix.HelixReadOnlyLiveClusterConfigRepository;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepositoryAdapter;
 import com.linkedin.venice.helix.HelixReadOnlyStoreRepository;
@@ -14,6 +15,7 @@ import com.linkedin.venice.helix.HelixReadOnlyZKSharedSystemStoreRepository;
 import com.linkedin.venice.helix.SubscriptionBasedStoreRepository;
 import com.linkedin.venice.helix.ZkClientFactory;
 import com.linkedin.venice.meta.ClusterInfoProvider;
+import com.linkedin.venice.meta.ReadOnlyLiveClusterConfigRepository;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.StaticClusterInfoProvider;
@@ -46,6 +48,7 @@ public class VeniceMetadataRepositoryBuilder {
   private ReadOnlyStoreRepository storeRepo;
   private ReadOnlySchemaRepository schemaRepo;
   private HelixReadOnlyZKSharedSchemaRepository readOnlyZKSharedSchemaRepository;
+  private ReadOnlyLiveClusterConfigRepository liveClusterConfigRepo;
   private ZkClient zkClient;
   private ClusterInfoProvider clusterInfoProvider;
 
@@ -78,6 +81,10 @@ public class VeniceMetadataRepositoryBuilder {
     return schemaRepo;
   }
 
+  public ReadOnlyLiveClusterConfigRepository getLiveClusterConfigRepo() {
+    return liveClusterConfigRepo;
+  }
+
   public Optional<HelixReadOnlyZKSharedSchemaRepository> getReadOnlyZKSharedSchemaRepository() {
     return readOnlyZKSharedSchemaRepository == null ? Optional.empty() : Optional.of(readOnlyZKSharedSchemaRepository);
   }
@@ -98,6 +105,7 @@ public class VeniceMetadataRepositoryBuilder {
       clusterInfoProvider = systemStoreBasedRepository;
       storeRepo = systemStoreBasedRepository;
       schemaRepo = systemStoreBasedRepository;
+      liveClusterConfigRepo = null;
     } else {
       // Create ZkClient
       HelixAdapterSerializer adapter = new HelixAdapterSerializer();
@@ -111,6 +119,8 @@ public class VeniceMetadataRepositoryBuilder {
       storeRepo.refresh();
       schemaRepo = new HelixReadOnlySchemaRepository(storeRepo, zkClient, adapter, clusterName, 3, 1000);
       schemaRepo.refresh();
+      liveClusterConfigRepo = new HelixReadOnlyLiveClusterConfigRepository(zkClient, adapter, clusterName);
+      liveClusterConfigRepo.refresh();
     }
   }
 

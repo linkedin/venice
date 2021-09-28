@@ -175,6 +175,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       EventThrottler recordsThrottler,
       EventThrottler unorderedBandwidthThrottler,
       EventThrottler unorderedRecordsThrottler,
+      KafkaClusterBasedRecordThrottler kafkaClusterBasedRecordThrottler,
       ReadOnlySchemaRepository schemaRepo,
       ReadOnlyStoreRepository metadataRepo,
       TopicManagerRepository topicManagerRepository,
@@ -208,6 +209,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         recordsThrottler,
         unorderedBandwidthThrottler,
         unorderedRecordsThrottler,
+        kafkaClusterBasedRecordThrottler,
         schemaRepo,
         metadataRepo,
         topicManagerRepository,
@@ -800,7 +802,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     } else if (realTimeTopicKafkaURLs.size() == 1) {
       return !Objects.equals(realTimeTopicKafkaURLs.iterator().next(), localKafkaServer);
     } else {
-      return true; // If there are multiple RT Kafka URLs, it must be consumng from at least one remote RT
+      return true; // If there are multiple RT Kafka URLs, it must be consuming from at least one remote RT
     }
   }
 

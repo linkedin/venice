@@ -31,6 +31,7 @@ import com.linkedin.venice.kafka.consumer.ApacheKafkaConsumer;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.meta.ClusterInfoProvider;
 import com.linkedin.venice.meta.Instance;
+import com.linkedin.venice.meta.ReadOnlyLiveClusterConfigRepository;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.ServerAdminAction;
@@ -64,6 +65,8 @@ import io.tehuti.metrics.MetricsRepository;
 import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -161,30 +164,13 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
   private final StorageEngineBackedCompressorFactory compressorFactory;
 
-
-  public KafkaStoreIngestionService(StorageEngineRepository storageEngineRepository,
-      VeniceConfigLoader veniceConfigLoader,
-      StorageMetadataService storageMetadataService,
-      ClusterInfoProvider clusterInfoProvider,
-      ReadOnlyStoreRepository metadataRepo,
-      ReadOnlySchemaRepository schemaRepo,
-      MetricsRepository metricsRepository,
-      RocksDBMemoryStats rocksDBMemoryStats,
-      Optional<SchemaReader> kafkaMessageEnvelopeSchemaReader,
-      Optional<ClientConfig> clientConfig,
-      InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer,
-      StorageEngineBackedCompressorFactory compressorFactory) {
-    this(storageEngineRepository, veniceConfigLoader, storageMetadataService, clusterInfoProvider, metadataRepo, schemaRepo,
-        metricsRepository, rocksDBMemoryStats, kafkaMessageEnvelopeSchemaReader, clientConfig, partitionStateSerializer,
-        Optional.empty(), null, false, compressorFactory, Optional.empty());
-  }
-
   public KafkaStoreIngestionService(StorageEngineRepository storageEngineRepository,
                                     VeniceConfigLoader veniceConfigLoader,
                                     StorageMetadataService storageMetadataService,
                                     ClusterInfoProvider clusterInfoProvider,
                                     ReadOnlyStoreRepository metadataRepo,
                                     ReadOnlySchemaRepository schemaRepo,
+                                    ReadOnlyLiveClusterConfigRepository liveClusterConfigRepository,
                                     MetricsRepository metricsRepository,
                                     RocksDBMemoryStats rocksDBMemoryStats,
                                     Optional<SchemaReader> kafkaMessageEnvelopeSchemaReader,
@@ -268,6 +254,25 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         false,
         EventThrottler.BLOCK_STRATEGY);
 
+    final Map<String, EventThrottler> kafkaUrlToRecordsThrottler;
+    if (liveClusterConfigRepository != null) {
+      Set<String> regionNames = serverConfig.getRegionNames();
+      kafkaUrlToRecordsThrottler = new HashMap<>(regionNames.size());
+      regionNames.forEach(region -> {
+        kafkaUrlToRecordsThrottler.put(region, new EventThrottler(
+            () -> (long) liveClusterConfigRepository.getConfigs().getServerKafkaFetchQuotaRecordsPerSecondForRegion(region),
+            serverConfig.getKafkaFetchQuotaTimeWindow(),
+            "kafka_consumption_records_count_" + region,
+            true, // Check quota before recording since we buffer throttled records and don't send them to disk or kafka
+            EventThrottler.REJECT_STRATEGY) // We want exceptions to be thrown when quota is exceeded
+        );
+      });
+    } else {
+      kafkaUrlToRecordsThrottler = Collections.emptyMap();
+    }
+
+    KafkaClusterBasedRecordThrottler kafkaClusterBasedRecordThrottler = new KafkaClusterBasedRecordThrottler(kafkaUrlToRecordsThrottler);
+
     this.topicManagerRepository = new TopicManagerRepository(
         veniceConsumerFactory.getKafkaBootstrapServers(),
         veniceConsumerFactory.getKafkaZkAddress(),
@@ -346,6 +351,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
           serverConfig,
           bandwidthThrottler,
           recordsThrottler,
+          kafkaClusterBasedRecordThrottler,
           metricsRepository,
           new MetadataRepoBasedTopicExistingCheckerImpl(this.getMetadataRepo()));
       /**
@@ -399,6 +405,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         .setRecordsThrottler(recordsThrottler)
         .setUnorderedBandwidthThrottler(unorderedBandwidthThrottler)
         .setUnorderedRecordsThrottler(unorderedRecordsThrottler)
+        .setKafkaClusterBasedRecordThrottler(kafkaClusterBasedRecordThrottler)
         .setSchemaRepository(schemaRepo)
         .setMetadataRepository(metadataRepo)
         .setTopicManagerRepository(topicManagerRepository)

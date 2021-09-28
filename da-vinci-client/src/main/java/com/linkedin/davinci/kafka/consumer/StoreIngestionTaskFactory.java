@@ -22,6 +22,7 @@ import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.DiskUsage;
 import com.linkedin.venice.writer.VeniceWriterFactory;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Queue;
@@ -65,6 +66,7 @@ public class StoreIngestionTaskFactory {
           builder.recordsThrottler,
           builder.unorderedBandwidthThrottler,
           builder.unorderedRecordsThrottler,
+          builder.kafkaClusterBasedRecordThrottler,
           builder.schemaRepo,
           builder.metadataRepo,
           builder.topicManagerRepository,
@@ -100,6 +102,7 @@ public class StoreIngestionTaskFactory {
           builder.recordsThrottler,
           builder.unorderedBandwidthThrottler,
           builder.unorderedRecordsThrottler,
+          builder.kafkaClusterBasedRecordThrottler,
           builder.schemaRepo,
           builder.metadataRepo,
           builder.topicManagerRepository,
@@ -134,6 +137,7 @@ public class StoreIngestionTaskFactory {
           builder.recordsThrottler,
           builder.unorderedBandwidthThrottler,
           builder.unorderedRecordsThrottler,
+          builder.kafkaClusterBasedRecordThrottler,
           builder.schemaRepo,
           builder.metadataRepo,
           builder.topicManagerRepository,
@@ -181,6 +185,7 @@ public class StoreIngestionTaskFactory {
     private EventThrottler recordsThrottler;
     private EventThrottler unorderedBandwidthThrottler;
     private EventThrottler unorderedRecordsThrottler;
+    private KafkaClusterBasedRecordThrottler kafkaClusterBasedRecordThrottler;
     private ReadOnlySchemaRepository schemaRepo;
     private ReadOnlyStoreRepository metadataRepo;
     private TopicManagerRepository topicManagerRepository;
@@ -269,6 +274,13 @@ public class StoreIngestionTaskFactory {
     public Builder setUnorderedRecordsThrottler(EventThrottler throttler) {
       if (!built) {
         this.unorderedRecordsThrottler = throttler;
+      }
+      return this;
+    }
+
+    public Builder setKafkaClusterBasedRecordThrottler(KafkaClusterBasedRecordThrottler kafkaClusterBasedRecordThrottler) {
+      if (!built) {
+        this.kafkaClusterBasedRecordThrottler = kafkaClusterBasedRecordThrottler;
       }
       return this;
     }
