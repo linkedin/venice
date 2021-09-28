@@ -40,19 +40,23 @@ public interface KafkaAdminWrapper extends Closeable {
     Duration initialBackoff = Duration.ofMillis(2);
     Duration maxBackoff = Duration.ofMillis(100);
     Duration maxDuration = Duration.ofSeconds(10);
-    return RetryUtils.executeWithMaxAttemptAndExponentialBackoff(
-        () -> {
-          if (!this.containsTopic(topic)) {
-            throw new VeniceRetriableException("Couldn't get topic!  Retrying...");
-          }
-          return true;
-        },
-        maxAttempts,
-        initialBackoff,
-        maxBackoff,
-        maxDuration,
-        Collections.singletonList(VeniceRetriableException.class)
-    );
+    try {
+      return RetryUtils.executeWithMaxAttemptAndExponentialBackoff(
+          () -> {
+            if (!this.containsTopic(topic)) {
+              throw new VeniceRetriableException("Couldn't get topic!  Retrying...");
+            }
+            return true;
+          },
+          maxAttempts,
+          initialBackoff,
+          maxBackoff,
+          maxDuration,
+          Collections.singletonList(VeniceRetriableException.class)
+      );
+    } catch (VeniceRetriableException e) {
+      return false;
+    }
   }
 
   Map<String, Properties> getAllTopicConfig();
