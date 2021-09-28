@@ -842,6 +842,11 @@ public class ControllerClient implements Closeable {
     return makeErrorResponse(message, lastException, D2ServiceDiscoveryResponse.class);
   }
 
+  public ControllerResponse updateClusterConfig(String clusterName, UpdateClusterConfigQueryParams queryParams) {
+    QueryParams params = addCommonParams(queryParams).add(CLUSTER, clusterName);
+    return request(ControllerRoute.UPDATE_CLUSTER_CONFIG, params, ControllerResponse.class);
+  }
+
   /***
    * Add all global parameters in this method. Always use a form of this method to generate
    * a new list of NameValuePair objects for making HTTP requests.

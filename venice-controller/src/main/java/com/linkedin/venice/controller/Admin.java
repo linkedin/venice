@@ -4,6 +4,7 @@ import com.linkedin.venice.acl.AclException;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.controller.kafka.consumer.VeniceControllerConsumerFactory;
 import com.linkedin.venice.controller.lingeringjob.IdentityParser;
+import com.linkedin.venice.controllerapi.UpdateClusterConfigQueryParams;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
 import com.linkedin.venice.helix.HelixReadOnlyZKSharedSchemaRepository;
@@ -274,6 +275,8 @@ public interface Admin extends AutoCloseable, Closeable {
     void enableLeaderFollowerModelLocally(String clusterName, String storeName, boolean leaderFollowerModelEnabled);
 
     void updateStore(String clusterName, String storeName, UpdateStoreQueryParams params);
+
+    void updateClusterConfig(String clusterName, UpdateClusterConfigQueryParams params);
 
     double getStorageEngineOverheadRatio(String clusterName);
 

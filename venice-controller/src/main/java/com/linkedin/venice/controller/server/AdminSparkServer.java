@@ -167,6 +167,7 @@ public class AdminSparkServer extends AbstractVeniceService {
     RoutersClusterConfigRoutes routersClusterConfigRoutes = new RoutersClusterConfigRoutes(accessController);
     MigrationRoutes migrationRoutes = new MigrationRoutes(accessController);
     VersionRoute versionRoute = new VersionRoute(accessController);
+    ClusterRoutes clusterRoutes = new ClusterRoutes(accessController);
 
     httpService.get(SET_VERSION.getPath(), (request, response) -> {
       response.type(HttpConstants.TEXT_HTML);
@@ -179,6 +180,7 @@ public class AdminSparkServer extends AbstractVeniceService {
     httpService.get(STORE.getPath(), storesRoutes.getStore(admin));
     httpService.get(FUTURE_VERSION.getPath(), storesRoutes.getFutureVersion(admin));
     httpService.post(SET_TOPIC_COMPACTION.getPath(), storesRoutes.setTopicCompaction(admin));
+    httpService.post(UPDATE_CLUSTER_CONFIG.getPath(), clusterRoutes.updateClusterConfig(admin));
 
     httpService.get(JOB.getPath(), jobRoutes.jobStatus(admin));
     httpService.post(KILL_OFFLINE_PUSH_JOB.getPath(), jobRoutes.killOfflinePushJob(admin));
