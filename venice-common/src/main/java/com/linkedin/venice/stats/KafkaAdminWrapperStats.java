@@ -31,7 +31,7 @@ public class KafkaAdminWrapperStats extends AbstractVeniceStats {
   private final Map<OCCURRENCE_LATENCY_SENSOR_TYPE, Sensor> sensorsByTypes;
 
   public KafkaAdminWrapperStats(MetricsRepository metricsRepository, String name) {
-    super(metricsRepository, name);
+    super(metricsRepository, TehutiUtils.fixMalformedMetricName(name));
     Map<OCCURRENCE_LATENCY_SENSOR_TYPE, Sensor> tmpRateSensorsByTypes = new HashMap<>(OCCURRENCE_LATENCY_SENSOR_TYPE.values().length);
     for (OCCURRENCE_LATENCY_SENSOR_TYPE sensorType : OCCURRENCE_LATENCY_SENSOR_TYPE.values()) {
       final String sensorName = sensorType.name().toLowerCase();

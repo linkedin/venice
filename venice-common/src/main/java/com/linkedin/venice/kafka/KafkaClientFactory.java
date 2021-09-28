@@ -44,8 +44,9 @@ public abstract class KafkaClientFactory {
   }
 
   public KafkaAdminWrapper getKafkaAdminClient(Optional<MetricsRepository> optionalMetricsRepository) {
+    final String kafkaAdminClientClass = getKafkaAdminClass();
     KafkaAdminWrapper adminWrapper = ReflectUtils.callConstructor(
-        ReflectUtils.loadClass(getKafkaAdminClass()),
+        ReflectUtils.loadClass(kafkaAdminClientClass),
         new Class[0],
         new Object[0]
     );
@@ -55,13 +56,17 @@ public abstract class KafkaClientFactory {
       properties.put(ConfigKeys.KAFKA_ADMIN_GET_TOPIC_CONFG_MAX_RETRY_TIME_SEC, DEFAULT_KAFKA_ADMIN_GET_TOPIC_CONFIG_RETRY_IN_SECONDS);
     }
     adminWrapper.initialize(properties);
+    final String kafkaBootstrapServers = getKafkaBootstrapServers();
+
     if (optionalMetricsRepository.isPresent()) {
       // Use Kafka bootstrap server to identify which Kafka admin client stats it is
-      String kafkaAdminStatsName = "KafkaAdminStats_" + TehutiUtils.fixMalformedMetricName(getKafkaBootstrapServers());
+      String kafkaAdminStatsName = String.format("KafkaAdminStats_%s_%s", kafkaAdminClientClass, kafkaBootstrapServers);
       adminWrapper = new InstrumentedKafkaAdmin(adminWrapper, optionalMetricsRepository.get(), kafkaAdminStatsName);
-      logger.info("Created instrumented topic manager for Kafka cluster with bootstrap server " + getKafkaBootstrapServers());
+      logger.info(String.format("Created instrumented Kafka admin client of class %s for Kafka cluster with bootstrap server %s",
+              kafkaAdminClientClass, kafkaBootstrapServers));
     } else {
-      logger.info("Created non-instrumented topic manager for Kafka cluster with bootstrap server " + getKafkaBootstrapServers());
+      logger.info(String.format("Created non-instrumented Kafka admin client of class %s for Kafka cluster with bootstrap server %s",
+              kafkaAdminClientClass, kafkaBootstrapServers));
     }
     return adminWrapper;
   }
