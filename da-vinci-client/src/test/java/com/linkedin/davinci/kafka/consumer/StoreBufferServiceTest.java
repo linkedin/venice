@@ -63,29 +63,32 @@ public class StoreBufferServiceTest {
   }
 
   @Test
-  public void testDrainBufferedRecordsWhenNotExists() throws InterruptedException {
+  public void testDrainBufferedRecordsWhenNotExists() throws Exception {
     StoreBufferService bufferService = new StoreBufferService(1, 10000, 1000);
     StoreIngestionTask mockTask = mock(StoreIngestionTask.class);
     String topic = TestUtils.getUniqueString("test_topic");
     int partition = 1;
     VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope>
         cr = new VeniceConsumerRecordWrapper<>(new ConsumerRecord<>(topic, partition, -1, null, null));
+    bufferService.start();
     bufferService.putConsumerRecord(cr, mockTask, null);
     int nonExistingPartition = 2;
     bufferService.internalDrainBufferedRecordsFromTopicPartition(topic, nonExistingPartition, 3, 50);
+    bufferService.stop();
   }
 
-  @Test (expectedExceptions = VeniceException.class)
-  public void testDrainBufferedRecordsWhenExists() throws InterruptedException {
+  @Test
+  public void testDrainBufferedRecordsWhenExists() throws Exception {
     StoreBufferService bufferService = new StoreBufferService(1, 10000, 1000);
     StoreIngestionTask mockTask = mock(StoreIngestionTask.class);
     String topic = TestUtils.getUniqueString("test_topic");
     int partition = 1;
     VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope>
         cr = new VeniceConsumerRecordWrapper<>(new ConsumerRecord<>(topic, partition, 100, null, null));
+    bufferService.start();
     bufferService.putConsumerRecord(cr, mockTask, null);
     bufferService.internalDrainBufferedRecordsFromTopicPartition(topic, partition, 3, 50);
-    Assert.fail("Exception should be thrown here");
+    bufferService.stop();
   }
 
   @Test
