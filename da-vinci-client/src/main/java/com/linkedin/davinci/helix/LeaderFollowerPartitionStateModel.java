@@ -9,7 +9,6 @@ import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.LatencyUtils;
-import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicLong;
 import org.apache.helix.NotificationContext;
@@ -56,7 +55,7 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
   public LeaderFollowerPartitionStateModel(VeniceIngestionBackend ingestionBackend,
                                            VeniceStoreVersionConfig storeConfig, int partition, LeaderFollowerIngestionProgressNotifier notifier,
                                            ReadOnlyStoreRepository metadataRepo,
-                                           Optional<CompletableFuture<HelixPartitionStatusAccessor>> partitionPushStatusAccessorFuture, String instanceName) {
+                                           CompletableFuture<HelixPartitionStatusAccessor> partitionPushStatusAccessorFuture, String instanceName) {
     super(ingestionBackend, metadataRepo, storeConfig, partition, partitionPushStatusAccessorFuture, instanceName);
     this.notifier = notifier;
   }

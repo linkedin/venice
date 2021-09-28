@@ -57,13 +57,13 @@ public abstract class AbstractPartitionStateModel extends StateModel {
   private final VeniceStoreVersionConfig storeConfig;
   private final int partition;
   private final String storePartitionDescription;
-  private final Optional<CompletableFuture<HelixPartitionStatusAccessor>> partitionStatusAccessorFuture;
+  private final CompletableFuture<HelixPartitionStatusAccessor> partitionStatusAccessorFuture;
   private final String instanceName;
 
   private HelixPartitionStatusAccessor partitionPushStatusAccessor;
 
   public AbstractPartitionStateModel(VeniceIngestionBackend ingestionBackend, ReadOnlyStoreRepository storeRepository,
-                                     VeniceStoreVersionConfig storeConfig, int partition, Optional<CompletableFuture<HelixPartitionStatusAccessor>> accessorFuture, String instanceName) {
+                                     VeniceStoreVersionConfig storeConfig, int partition, CompletableFuture<HelixPartitionStatusAccessor> accessorFuture, String instanceName) {
     this.ingestionBackend = ingestionBackend;
     this.storeRepository = storeRepository;
     this.storeConfig = storeConfig;
@@ -286,19 +286,17 @@ public abstract class AbstractPartitionStateModel extends StateModel {
   }
 
   private void waitPartitionPushStatusAccessor() throws Exception {
-    if (partitionStatusAccessorFuture.isPresent() && partitionPushStatusAccessor == null) {
+    if (partitionPushStatusAccessor == null) {
       partitionPushStatusAccessor =
-          partitionStatusAccessorFuture.get().get(WAIT_PARTITION_ACCESSOR_TIME_OUT_MS, TimeUnit.MILLISECONDS);
+          partitionStatusAccessorFuture.get(WAIT_PARTITION_ACCESSOR_TIME_OUT_MS, TimeUnit.MILLISECONDS);
     }
   }
 
   private void initializePartitionPushStatus() {
-    if (partitionStatusAccessorFuture.isPresent()) {
-      if (partitionPushStatusAccessor != null) {
-        partitionPushStatusAccessor.updateReplicaStatus(storeConfig.getStoreVersionName(), getPartition(), ExecutionStatus.NOT_STARTED);
-      } else {
-        throw new VeniceException("HelixPartitionStatusAccessor is still null after waitPartitionPushStatusAccessor");
-      }
+    if (partitionPushStatusAccessor != null) {
+      partitionPushStatusAccessor.updateReplicaStatus(storeConfig.getStoreVersionName(), getPartition(), ExecutionStatus.NOT_STARTED);
+    } else {
+      throw new VeniceException("HelixPartitionStatusAccessor is expected not to be null.");
     }
   }
 

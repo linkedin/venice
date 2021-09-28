@@ -6,7 +6,6 @@ import com.linkedin.venice.helix.HelixPartitionStatusAccessor;
 import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.utils.LatencyUtils;
-import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.helix.NotificationContext;
@@ -42,7 +41,7 @@ public class OnlineOfflinePartitionStateModel extends AbstractPartitionStateMode
 
     public OnlineOfflinePartitionStateModel(VeniceIngestionBackend ingestionBackend, VeniceStoreVersionConfig storeConfig, int partition,
                                             OnlineOfflineIngestionProgressNotifier notifier, ReadOnlyStoreRepository readOnlyStoreRepository,
-                                            Optional<CompletableFuture<HelixPartitionStatusAccessor>> partitionPushStatusAccessorFuture, String instanceName) {
+                                            CompletableFuture<HelixPartitionStatusAccessor> partitionPushStatusAccessorFuture, String instanceName) {
         super(ingestionBackend, readOnlyStoreRepository, storeConfig, partition, partitionPushStatusAccessorFuture, instanceName);
         this.notifier = notifier;
     }

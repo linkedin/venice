@@ -204,7 +204,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final String kafkaAdminClass;
   private final boolean kafkaOpenSSLEnabled;
   private final long routerConnectionWarmingDelayMs;
-  private final boolean helixOfflinePushEnabled;
   private final boolean helixHybridStoreQuotaEnabled;
   private final long ssdHealthCheckShutdownTimeMs;
   private final boolean sharedConsumerPoolEnabled;
@@ -279,7 +278,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     drainerPoolSizeSortedInput = serverProperties.getInt(SORTED_INPUT_DRAINER_SIZE, 8);
     drainerPoolSizeUnsortedInput = serverProperties.getInt(UNSORTED_INPUT_DRAINER_SIZE, 8);
 
-    // To miminize the GC impact during heavy ingestion.
+    // To minimize the GC impact during heavy ingestion.
     storeWriterBufferMemoryCapacity = serverProperties.getSizeInBytes(STORE_WRITER_BUFFER_MEMORY_CAPACITY, 10 * 1024 * 1024); // 10MB
     storeWriterBufferNotifyDelta = serverProperties.getSizeInBytes(STORE_WRITER_BUFFER_NOTIFY_DELTA, 1 * 1024 * 1024); // 1MB
     restServiceStorageThreadNum = serverProperties.getInt(SERVER_REST_SERVICE_STORAGE_THREAD_NUM, 16);
@@ -326,7 +325,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     databaseLookupQueueCapacity = serverProperties.getInt(SERVER_DATABASE_LOOKUP_QUEUE_CAPACITY, Integer.MAX_VALUE);
     computeQueueCapacity = serverProperties.getInt(SERVER_COMPUTE_QUEUE_CAPACITY, Integer.MAX_VALUE);
     kafkaOpenSSLEnabled = serverProperties.getBoolean(SERVER_ENABLE_KAFKA_OPENSSL, false);
-    helixOfflinePushEnabled = serverProperties.getBoolean(HELIX_OFFLINE_PUSH_ENABLED, false);
     helixHybridStoreQuotaEnabled = serverProperties.getBoolean(HELIX_HYBRID_STORE_QUOTA_ENABLED, false);
     ssdHealthCheckShutdownTimeMs = serverProperties.getLong(SERVER_SHUTDOWN_DISK_UNHEALTHY_TIME_MS, 200000);
 
@@ -618,9 +616,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     return routerConnectionWarmingDelayMs;
   }
 
-  public boolean isHelixOfflinePushEnabled() {
-    return helixOfflinePushEnabled;
-  }
   public boolean isHelixHybridStoreQuotaEnabled() {
     return helixHybridStoreQuotaEnabled;
   }

@@ -6,7 +6,6 @@ import com.linkedin.davinci.kafka.consumer.StoreIngestionService;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.venice.helix.HelixPartitionStatusAccessor;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
-import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import org.apache.helix.participant.statemachine.StateModel;
@@ -28,13 +27,13 @@ public abstract class AbstractStateModelFactory extends StateModelFactory<StateM
   //a dedicated thread pool for state transition execution that all state model created by the
   //same factory would share. If it's null, Helix would use a shared thread pool.
   private final ExecutorService executorService;
-  protected Optional<CompletableFuture<HelixPartitionStatusAccessor>> partitionPushStatusAccessorFuture;
+  protected CompletableFuture<HelixPartitionStatusAccessor> partitionPushStatusAccessorFuture;
   protected final String instanceName;
 
   public AbstractStateModelFactory(VeniceIngestionBackend ingestionBackend,
                                    VeniceConfigLoader configService, ExecutorService executorService,
                                    ReadOnlyStoreRepository storeMetadataRepo,
-                                   Optional<CompletableFuture<HelixPartitionStatusAccessor>> partitionPushStatusAccessorFuture,
+                                   CompletableFuture<HelixPartitionStatusAccessor> partitionPushStatusAccessorFuture,
                                    String instanceName
   ) {
     this.ingestionBackend = ingestionBackend;

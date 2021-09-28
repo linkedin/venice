@@ -34,7 +34,6 @@ import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
 import java.util.List;
-import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -72,7 +71,7 @@ public class HelixParticipationService extends AbstractVeniceService implements 
   private final MetricsRepository metricsRepository;
   private final VeniceIngestionBackend ingestionBackend;
   private final CompletableFuture<SafeHelixManager> managerFuture; //complete this future when the manager is connected
-  private final Optional<CompletableFuture<HelixPartitionStatusAccessor>> partitionPushStatusAccessorFuture;
+  private final CompletableFuture<HelixPartitionStatusAccessor> partitionPushStatusAccessorFuture;
 
   private ZkClient zkClient;
   private SafeHelixManager manager;
@@ -95,11 +94,7 @@ public class HelixParticipationService extends AbstractVeniceService implements 
     this.metricsRepository = metricsRepository;
     this.instance = new Instance(participantName, Utils.getHostName(), port);
     this.managerFuture = managerFuture;
-    if (veniceConfigLoader.getVeniceServerConfig().isHelixOfflinePushEnabled()) {
-      this.partitionPushStatusAccessorFuture = Optional.of(new CompletableFuture<>());
-    } else {
-      this.partitionPushStatusAccessorFuture = Optional.empty();
-    }
+    this.partitionPushStatusAccessorFuture = new CompletableFuture<>();
     if (!(storeIngestionService instanceof KafkaStoreIngestionService)) {
       throw new VeniceException("Expecting " + KafkaStoreIngestionService.class.getName() + " for ingestion backend!");
     }
@@ -167,7 +162,7 @@ public class HelixParticipationService extends AbstractVeniceService implements 
     };
     manager.setLiveInstanceInfoProvider(liveInstanceInfoProvider);
 
-    // Create a message channel to receive messagte from controller.
+    // Create a message channel to receive message from controller.
     HelixStatusMessageChannel messageChannel =
         new HelixStatusMessageChannel(manager, new HelixMessageChannelStats(metricsRepository, clusterName));
     messageChannel.registerHandler(KillOfflinePushMessage.class, this);
@@ -258,25 +253,22 @@ public class HelixParticipationService extends AbstractVeniceService implements 
         Utils.exit("Failed to start HelixParticipationService");
       }
 
-      // If Helix customized view is enabled, do dual-write for offline push status update
-      if (partitionPushStatusAccessorFuture.isPresent()) {
-        /**
-         * The accessor can only get created successfully after helix manager is created.
-         */
-        partitionPushStatusAccessor =
-            new HelixPartitionStatusAccessor(manager.getOriginalManager(), instance.getNodeId(),
-                veniceConfigLoader.getVeniceServerConfig().isHelixHybridStoreQuotaEnabled());
-        PartitionPushStatusNotifier partitionPushStatusNotifier =
-            new PartitionPushStatusNotifier(partitionPushStatusAccessor);
-        ingestionBackend.addPushStatusNotifier(partitionPushStatusNotifier);
-        /**
-         * Complete the accessor future after the accessor is created && the notifier is added.
-         * This is for blocking the {@link AbstractPartitionStateModel #setupNewStorePartition()} until
-         * the notifier is added.
-         */
-        partitionPushStatusAccessorFuture.get().complete(partitionPushStatusAccessor);
-        logger.info("Successfully started Helix partition status accessor.");
-      }
+      /**
+       * The accessor can only get created successfully after helix manager is created.
+       */
+      partitionPushStatusAccessor =
+          new HelixPartitionStatusAccessor(manager.getOriginalManager(), instance.getNodeId(),
+              veniceConfigLoader.getVeniceServerConfig().isHelixHybridStoreQuotaEnabled());
+      PartitionPushStatusNotifier partitionPushStatusNotifier =
+          new PartitionPushStatusNotifier(partitionPushStatusAccessor);
+      ingestionBackend.addPushStatusNotifier(partitionPushStatusNotifier);
+      /**
+       * Complete the accessor future after the accessor is created && the notifier is added.
+       * This is for blocking the {@link AbstractPartitionStateModel #setupNewStorePartition()} until
+       * the notifier is added.
+       */
+      partitionPushStatusAccessorFuture.complete(partitionPushStatusAccessor);
+      logger.info("Successfully started Helix partition status accessor.");
 
       serviceState.set(ServiceState.STARTED);
       logger.info("Successfully started Helix Participation Service.");
