@@ -5,7 +5,6 @@ import com.linkedin.davinci.ingestion.VeniceIngestionBackend;
 import com.linkedin.venice.helix.HelixPartitionStatusAccessor;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.utils.HelixUtils;
-import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 
@@ -20,7 +19,7 @@ public class OnlineOfflinePartitionStateModelFactory extends AbstractStateModelF
   public OnlineOfflinePartitionStateModelFactory(VeniceIngestionBackend ingestionBackend,
                                                  VeniceConfigLoader configService, ExecutorService executorService,
                                                  ReadOnlyStoreRepository readOnlyStoreRepository,
-                                                 Optional<CompletableFuture<HelixPartitionStatusAccessor>> partitionPushStatusAccessorFuture,
+                                                 CompletableFuture<HelixPartitionStatusAccessor> partitionPushStatusAccessorFuture,
                                                  String instanceName
   ) {
     super(ingestionBackend, configService, executorService, readOnlyStoreRepository,

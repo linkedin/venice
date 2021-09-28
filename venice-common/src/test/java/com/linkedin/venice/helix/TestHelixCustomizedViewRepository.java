@@ -10,10 +10,10 @@ import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.HybridStoreQuotaStatus;
 import com.linkedin.venice.pushmonitor.ReadOnlyPartitionStatus;
 import com.linkedin.venice.routerapi.ReplicaState;
+import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.MockTestStateModel;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -26,7 +26,6 @@ import org.apache.helix.InstanceType;
 import org.apache.helix.controller.HelixControllerMain;
 import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.helix.manager.zk.ZKHelixManager;
-import org.apache.helix.model.CustomizedStateConfig;
 import org.apache.helix.model.HelixConfigScope;
 import org.apache.helix.model.IdealState;
 import org.apache.helix.model.builder.HelixConfigScopeBuilder;
@@ -76,13 +75,7 @@ public class TestHelixCustomizedViewRepository {
     admin.rebalance(clusterName, resourceName, 2);
 
     // Build customized state config and update to Zookeeper
-    CustomizedStateConfig.Builder customizedStateConfigBuilder = new CustomizedStateConfig.Builder();
-    List<String> aggregationEnabledTypes = new ArrayList<String>();
-    aggregationEnabledTypes.add(HelixPartitionState.HYBRID_STORE_QUOTA.name());
-    aggregationEnabledTypes.add(HelixPartitionState.OFFLINE_PUSH.name());
-    customizedStateConfigBuilder.setAggregationEnabledTypes(aggregationEnabledTypes);
-    CustomizedStateConfig customizedStateConfig = customizedStateConfigBuilder.build();
-    admin.addCustomizedStateConfig(clusterName, customizedStateConfig);
+    HelixUtils.setupCustomizedStateConfig(admin, clusterName);
 
     partitionId0 = 0;
     partitionId1 = 1;

@@ -2,9 +2,11 @@ package com.linkedin.venice.utils;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.ZkDataAccessException;
+import com.linkedin.venice.helix.HelixPartitionState;
 import com.linkedin.venice.helix.SafeHelixDataAccessor;
 import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.meta.Instance;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
@@ -16,6 +18,7 @@ import org.apache.helix.HelixAdmin;
 import org.apache.helix.PropertyKey;
 import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.helix.manager.zk.ZkBaseDataAccessor;
+import org.apache.helix.model.CustomizedStateConfig;
 import org.apache.helix.model.HelixConfigScope;
 import org.apache.helix.model.InstanceConfig;
 import org.apache.helix.model.LiveInstance;
@@ -304,5 +307,25 @@ public class HelixUtils {
     } else {
       return true;
     }
+  }
+
+  /**
+   * This method tells helix what properties to aggregate for customized view.
+   * How customized view works in steps:
+   * 1. Venice SN reports its instance level states e.g. ingestion progress / hybrid store quota for each partition.
+   * 2. Helix aggregates the per instance level states to store version level. This method tells Helix what states to aggregate.
+   * So far we need to aggregate two properties {@link HelixPartitionState#OFFLINE_PUSH} and {@link HelixPartitionState#HYBRID_STORE_QUOTA}.
+   * 3. Other components e.g. Venice routers listen to the store version level states to serve traffic.
+   * @param admin
+   * @param clusterName
+   */
+  public static void setupCustomizedStateConfig(HelixAdmin admin, String clusterName) {
+    CustomizedStateConfig.Builder customizedStateConfigBuilder = new CustomizedStateConfig.Builder();
+    List<String> aggregationEnabledTypes = new ArrayList<>(2);
+    aggregationEnabledTypes.add(HelixPartitionState.OFFLINE_PUSH.name());
+    aggregationEnabledTypes.add(HelixPartitionState.HYBRID_STORE_QUOTA.name());
+    customizedStateConfigBuilder.setAggregationEnabledTypes(aggregationEnabledTypes);
+    CustomizedStateConfig customizedStateConfig = customizedStateConfigBuilder.build();
+    admin.addCustomizedStateConfig(clusterName, customizedStateConfig);
   }
 }

@@ -6,7 +6,6 @@ import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixHybridStoreQuotaRepository;
 import com.linkedin.venice.helix.HelixOfflinePushRepository;
-import com.linkedin.venice.helix.HelixPartitionState;
 import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
@@ -18,8 +17,6 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import java.io.File;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import org.apache.avro.Schema;
@@ -27,7 +24,6 @@ import org.apache.helix.HelixAdmin;
 import org.apache.helix.HelixManagerFactory;
 import org.apache.helix.InstanceType;
 import org.apache.helix.manager.zk.ZKHelixAdmin;
-import org.apache.helix.model.CustomizedStateConfig;
 import org.apache.log4j.Logger;
 import org.apache.samza.system.SystemProducer;
 import org.testng.Assert;
@@ -62,7 +58,6 @@ public class TestHybridQuota {
     // Added a server with shared consumer enabled.
     Properties serverPropertiesWithSharedConsumer = new Properties();
     serverPropertiesWithSharedConsumer.setProperty(SSL_TO_KAFKA, "false");
-    extraProperties.put(HELIX_OFFLINE_PUSH_ENABLED, true);
     extraProperties.put(HELIX_HYBRID_STORE_QUOTA_ENABLED, true);
     extraProperties.setProperty(SERVER_SHARED_CONSUMER_POOL_ENABLED, "true");
     extraProperties.setProperty(SERVER_CONSUMER_POOL_SIZE_PER_KAFKA_CLUSTER, "3");
@@ -129,13 +124,6 @@ public class TestHybridQuota {
       try {
         helixAdmin = new ZKHelixAdmin(sharedVenice.getZk().getAddress());
         helixAdmin.addCluster(sharedVenice.getClusterName());
-        CustomizedStateConfig.Builder customizedStateConfigBuilder = new CustomizedStateConfig.Builder();
-        List<String> aggregationEnabledTypes = new ArrayList<String>();
-        aggregationEnabledTypes.add(HelixPartitionState.HYBRID_STORE_QUOTA.name());
-        aggregationEnabledTypes.add(HelixPartitionState.OFFLINE_PUSH.name());
-        customizedStateConfigBuilder.setAggregationEnabledTypes(aggregationEnabledTypes);
-        CustomizedStateConfig customizedStateConfig = customizedStateConfigBuilder.build();
-        helixAdmin.addCustomizedStateConfig(sharedVenice.getClusterName(), customizedStateConfig);
       } finally {
         if (null != helixAdmin) {
           helixAdmin.close();

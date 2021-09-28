@@ -5,7 +5,6 @@ import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
-import com.linkedin.venice.helix.HelixPartitionState;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.helix.VeniceOfflinePushMonitorAccessor;
 import com.linkedin.venice.helix.ZkClientFactory;
@@ -24,7 +23,6 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.io.IOException;
 import java.io.InputStream;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Properties;
@@ -37,7 +35,6 @@ import org.apache.commons.httpclient.HttpStatus;
 import org.apache.commons.io.IOUtils;
 import org.apache.helix.HelixAdmin;
 import org.apache.helix.manager.zk.ZKHelixAdmin;
-import org.apache.helix.model.CustomizedStateConfig;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.http.HttpResponse;
 import org.apache.http.client.config.RequestConfig;
@@ -86,7 +83,6 @@ public class TestHelixCustomizedView {
     veniceCluster.addVeniceRouter(routerProperties);
 
     Properties serverProperties = new Properties();
-    serverProperties.put(ConfigKeys.HELIX_OFFLINE_PUSH_ENABLED, true);
     // add two servers for enough SNs
     veniceCluster.addVeniceServer(new Properties(), serverProperties);
     veniceCluster.addVeniceServer(new Properties(), serverProperties);
@@ -96,14 +92,6 @@ public class TestHelixCustomizedView {
     storeVersionName = creationResponse.getKafkaTopic();
     storeName = Version.parseStoreFromKafkaTopicName(storeVersionName);
     valueSchemaId = HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID;
-
-    // Build customized state config and update to Zookeeper
-    CustomizedStateConfig.Builder customizedStateConfigBuilder = new CustomizedStateConfig.Builder();
-    List<String> aggregationEnabledTypes = new ArrayList<String>();
-    aggregationEnabledTypes.add(HelixPartitionState.OFFLINE_PUSH.name());
-    customizedStateConfigBuilder.setAggregationEnabledTypes(aggregationEnabledTypes);
-    CustomizedStateConfig customizedStateConfig = customizedStateConfigBuilder.build();
-    admin.addCustomizedStateConfig(veniceCluster.getClusterName(), customizedStateConfig);
 
     controllerClient = new ControllerClient(veniceCluster.getClusterName(), veniceCluster.getAllControllersURLs());
     keySerializer = new VeniceAvroKafkaSerializer(KEY_SCHEMA_STR);

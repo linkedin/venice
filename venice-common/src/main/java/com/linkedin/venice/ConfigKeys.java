@@ -1453,7 +1453,7 @@ public class ConfigKeys {
   public static final String KAFKA_ADMIN_CLASS = "kafka.admin.class";
 
   /**
-   * A config that determines whether to use Helix customized view for offline push
+   * A config that determines whether to use Helix customized view for offline push partition status
    */
   public static final String HELIX_OFFLINE_PUSH_ENABLED = "helix.offline.push.enabled";
   /**

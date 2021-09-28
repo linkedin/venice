@@ -20,7 +20,7 @@ public class LeaderFollowerPartitionStateModelFactory extends AbstractStateModel
 
   public LeaderFollowerPartitionStateModelFactory(VeniceIngestionBackend ingestionBackend, VeniceConfigLoader configService,
                                                   ExecutorService executorService, ReadOnlyStoreRepository metadataRepo,
-                                                  Optional<CompletableFuture<HelixPartitionStatusAccessor>> partitionPushStatusAccessorFuture,
+                                                  CompletableFuture<HelixPartitionStatusAccessor> partitionPushStatusAccessorFuture,
                                                   String instanceName
   ) {
     super(ingestionBackend, configService, executorService, metadataRepo,
