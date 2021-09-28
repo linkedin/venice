@@ -37,7 +37,7 @@ public class InstrumentedKafkaAdmin implements KafkaAdminWrapper {
   ) {
     this.kafkaAdmin = Utils.notNull(kafkaAdmin);
     this.time = Utils.notNull(time);
-    this.kafkaAdminWrapperStats = new KafkaAdminWrapperStats(
+    this.kafkaAdminWrapperStats = KafkaAdminWrapperStats.getInstance(
         Utils.notNull(metricsRepository),
         Utils.stringNotNullNorEmpty(statsName)
     );

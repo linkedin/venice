@@ -1,5 +1,7 @@
 package com.linkedin.venice.stats;
 
+import com.linkedin.venice.utils.Pair;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.Avg;
@@ -12,6 +14,9 @@ import java.util.Map;
 
 
 public class KafkaAdminWrapperStats extends AbstractVeniceStats {
+
+  private static final Map<Pair<MetricsRepository, String>, KafkaAdminWrapperStats>
+      KAFKA_ADMIN_WRAPPER_STATS_SINGLETON_MAP = new VeniceConcurrentHashMap<>();
 
   public enum OCCURRENCE_LATENCY_SENSOR_TYPE {
     CREATE_TOPIC,
@@ -30,8 +35,22 @@ public class KafkaAdminWrapperStats extends AbstractVeniceStats {
 
   private final Map<OCCURRENCE_LATENCY_SENSOR_TYPE, Sensor> sensorsByTypes;
 
-  public KafkaAdminWrapperStats(MetricsRepository metricsRepository, String name) {
-    super(metricsRepository, TehutiUtils.fixMalformedMetricName(name));
+  /**
+   * This singleton function will guarantee for a unique pair of MetricsRepository and stat prefix,
+   * there should be only one instance of {@link KafkaAdminWrapperStats} created.
+   * This is trying to avoid the metric registration conflicts caused by multiple instances of this class.
+   *
+   * For other {@link AbstractVeniceStats} implementations, if it is not easy to pass around a singleton
+   * among different classes, they could choose to adopt this singleton pattern.
+   */
+  public static KafkaAdminWrapperStats getInstance(MetricsRepository metricsRepository, String resourceName) {
+    return KAFKA_ADMIN_WRAPPER_STATS_SINGLETON_MAP.computeIfAbsent(
+        Pair.create(metricsRepository, TehutiUtils.fixMalformedMetricName(resourceName)),
+        k -> new KafkaAdminWrapperStats(k.getFirst(), k.getSecond()));
+  }
+
+  private KafkaAdminWrapperStats(MetricsRepository metricsRepository, String resourceName) {
+    super(metricsRepository, resourceName);
     Map<OCCURRENCE_LATENCY_SENSOR_TYPE, Sensor> tmpRateSensorsByTypes = new HashMap<>(OCCURRENCE_LATENCY_SENSOR_TYPE.values().length);
     for (OCCURRENCE_LATENCY_SENSOR_TYPE sensorType : OCCURRENCE_LATENCY_SENSOR_TYPE.values()) {
       final String sensorName = sensorType.name().toLowerCase();
