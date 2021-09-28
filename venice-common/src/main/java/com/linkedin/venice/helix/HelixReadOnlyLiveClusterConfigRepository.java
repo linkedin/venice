@@ -33,9 +33,10 @@ public class HelixReadOnlyLiveClusterConfigRepository implements ReadOnlyLiveClu
   private static final String CLUSTER_CONFIG_PATH = "/ClusterConfig";
 
   public HelixReadOnlyLiveClusterConfigRepository(ZkClient zkClient, HelixAdapterSerializer adapter, String clusterName) {
-    this.zkDataAccessor = new ZkBaseDataAccessor(zkClient);
+    this.zkDataAccessor = new ZkBaseDataAccessor<>(zkClient);
     this.clusterConfigZkPath = Paths.get(HelixUtils.getHelixClusterZkPath(clusterName), CLUSTER_CONFIG_PATH).toString();
-    adapter.registerSerializer(clusterConfigZkPath, new VeniceJsonSerializer(LiveClusterConfig.class));
+    adapter.registerSerializer(clusterConfigZkPath, new VeniceJsonSerializer<>(LiveClusterConfig.class));
+    zkClient.setZkSerializer(adapter);
   }
 
   @Override

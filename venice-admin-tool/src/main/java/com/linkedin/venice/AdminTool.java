@@ -28,6 +28,7 @@ import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StoreMigrationResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.TrackableControllerResponse;
+import com.linkedin.venice.controllerapi.UpdateClusterConfigQueryParams;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.controllerapi.VersionResponse;
@@ -249,6 +250,9 @@ public class AdminTool {
           break;
         case UPDATE_STORE:
           updateStore(cmd);
+          break;
+        case UPDATE_CLUSTER_CONFIG:
+          updateClusterConfig(cmd);
           break;
         case ADD_SCHEMA:
           applyValueSchemaToStore(cmd);
@@ -652,6 +656,14 @@ public class AdminTool {
     printSuccess(response);
   }
 
+  private static void updateClusterConfig(CommandLine cmd) {
+    UpdateClusterConfigQueryParams params = getUpdateClusterConfigQueryParams(cmd);
+
+    String clusterName = getRequiredArgument(cmd, Arg.CLUSTER, Command.UPDATE_CLUSTER_CONFIG);
+    ControllerResponse response = controllerClient.updateClusterConfig(clusterName, params);
+    printSuccess(response);
+  }
+
   static UpdateStoreQueryParams getUpdateStoreQueryParams(CommandLine cmd) {
     Set<Arg> argSet = new HashSet<>(Arrays.asList(Command.UPDATE_STORE.getOptionalArgs()));
     argSet.addAll(new HashSet<>(Arrays.asList(Command.UPDATE_STORE.getRequiredArgs())));
@@ -714,6 +726,19 @@ public class AdminTool {
     if (params.getStorageQuotaInByte().isPresent() && !params.getHybridStoreOverheadBypass().isPresent()) {
       params.setHybridStoreOverheadBypass(true);
     }
+    return params;
+  }
+
+  protected static UpdateClusterConfigQueryParams getUpdateClusterConfigQueryParams(CommandLine cmd) {
+    UpdateClusterConfigQueryParams params = new UpdateClusterConfigQueryParams();
+
+    String fabric = getOptionalArgument(cmd, Arg.FABRIC);
+
+    String quotaForFabricStr = getOptionalArgument(cmd, Arg.SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND);
+    if (quotaForFabricStr != null) {
+      params.setServerKafkaFetchQuotaRecordsPerSecondForRegion(fabric, Long.parseLong(quotaForFabricStr));
+    }
+
     return params;
   }
 

@@ -1,7 +1,7 @@
 package com.linkedin.venice;
 
 import com.linkedin.venice.controllerapi.MultiReplicaResponse;
-import com.linkedin.venice.controllerapi.MultiStoreTopicsResponse;
+import com.linkedin.venice.controllerapi.UpdateClusterConfigQueryParams;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import java.util.ArrayList;
 import java.util.List;
@@ -11,6 +11,8 @@ import java.util.function.Consumer;
 import org.apache.commons.cli.CommandLine;
 import org.testng.Assert;
 import org.testng.annotations.Test;
+
+import static com.linkedin.venice.Arg.*;
 
 
 public class TestAdminTool {
@@ -56,7 +58,33 @@ public class TestAdminTool {
       Assert.assertEquals(partitionerParamsMap.get(K2), V2);
       Assert.assertEquals(partitionerParamsMap.get(K3), V3);
     } catch (Exception e) {
-      Assert.fail(" All options are not added to update-store arg doc");
+      Assert.fail("All options are not added to update-store arg doc");
+    }
+  }
+
+  @Test
+  public void testAdminUpdateClusterConfigArg() {
+    String controllerUrl = "controllerUrl";
+    String clusterName = "clusterName";
+    String regionName = "region0";
+    int kafkaFetchQuota = 1000;
+
+    String[] args = {"--update-cluster-config",
+        "--url", controllerUrl,
+        "--cluster", clusterName,
+        "--fabric", regionName,
+        "--" + SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND.getArgName(), String.valueOf(kafkaFetchQuota)
+    };
+
+    try {
+      CommandLine commandLine = AdminTool.getCommandLine(args);
+      UpdateClusterConfigQueryParams params = AdminTool.getUpdateClusterConfigQueryParams(commandLine);
+      Optional<Map<String, Integer>> serverKafkaFetchQuotaRecordsPerSecond = params.getServerKafkaFetchQuotaRecordsPerSecond();
+      Assert.assertTrue(serverKafkaFetchQuotaRecordsPerSecond.isPresent(), "Kafka fetch quota not parsed from args");
+      Assert.assertTrue(serverKafkaFetchQuotaRecordsPerSecond.get().containsKey(regionName), "Kafka fetch quota does not have info for region");
+      Assert.assertEquals(serverKafkaFetchQuotaRecordsPerSecond.get().get(regionName), new Integer(kafkaFetchQuota), "Kafka fetch quota has incorrect info for region");
+    } catch (Exception e) {
+      Assert.fail("All options are not added to update-store arg doc");
     }
   }
 }

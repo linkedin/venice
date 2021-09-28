@@ -58,6 +58,7 @@ import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.MultiStoreStatusResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
+import com.linkedin.venice.controllerapi.UpdateClusterConfigQueryParams;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -1724,6 +1725,11 @@ public class VeniceParentHelixAdmin implements Admin {
     } finally {
       releaseAdminMessageLock(clusterName);
     }
+  }
+
+  @Override
+  public void updateClusterConfig(String clusterName, UpdateClusterConfigQueryParams params) {
+    veniceHelixAdmin.updateClusterConfig(clusterName, params);
   }
 
   private void validateNativeReplicationEnableConfigs(

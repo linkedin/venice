@@ -3,13 +3,17 @@ package com.linkedin.venice.controller;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controller.exception.HelixClusterMaintenanceModeException;
+import com.linkedin.venice.controllerapi.UpdateClusterConfigQueryParams;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
+import com.linkedin.venice.helix.HelixAdapterSerializer;
+import com.linkedin.venice.helix.HelixReadOnlyLiveClusterConfigRepository;
 import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.helix.HelixStatusMessageChannel;
 import com.linkedin.venice.helix.SafeHelixManager;
+import com.linkedin.venice.helix.ZkClientFactory;
 import com.linkedin.venice.helix.ZkStoreConfigAccessor;
 import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.kafka.TopicManager;
@@ -18,11 +22,13 @@ import com.linkedin.venice.kafka.VeniceOperationAgainstKafkaTimedOut;
 import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.IncrementalPushPolicy;
+import com.linkedin.venice.meta.LiveClusterConfig;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.PartitionerConfigImpl;
 import com.linkedin.venice.meta.PersistenceType;
+import com.linkedin.venice.meta.ReadOnlyLiveClusterConfigRepository;
 import com.linkedin.venice.meta.ReadStrategy;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.RoutingStrategy;
@@ -1616,5 +1622,27 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     veniceAdmin.getHelixVeniceClusterResources(clusterName).refresh();
     store = veniceAdmin.getStore(clusterName, storeName);
     Assert.assertTrue(store.getReplicationFactor() > 0, "The replication factor should be positive after the one-time repair.");
+  }
+
+  @Test
+  public void testUpdateClusterConfig() {
+    String region0 = "region0";
+    String region1 = "region1";
+
+    int region0Quota = 10000;
+    int region1Quota = 20000;
+    UpdateClusterConfigQueryParams updateClusterConfigQueryParams = new UpdateClusterConfigQueryParams()
+        .setServerKafkaFetchQuotaRecordsPerSecondForRegion(region0, region0Quota)
+        .setServerKafkaFetchQuotaRecordsPerSecondForRegion(region1, region1Quota);
+    veniceAdmin.updateClusterConfig(clusterName, updateClusterConfigQueryParams);
+
+    ReadOnlyLiveClusterConfigRepository liveClusterConfigRepository = new HelixReadOnlyLiveClusterConfigRepository(veniceAdmin.getZkClient(), veniceAdmin.getAdapterSerializer(), clusterName);
+    liveClusterConfigRepository.refresh();
+
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+      LiveClusterConfig clusterConfig = liveClusterConfigRepository.getConfigs();
+      Assert.assertEquals(clusterConfig.getServerKafkaFetchQuotaRecordsPerSecondForRegion(region0), region0Quota);
+      Assert.assertEquals(clusterConfig.getServerKafkaFetchQuotaRecordsPerSecondForRegion(region1), region1Quota);
+    });
   }
 }

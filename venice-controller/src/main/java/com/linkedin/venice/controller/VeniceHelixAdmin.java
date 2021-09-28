@@ -28,6 +28,7 @@ import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
+import com.linkedin.venice.controllerapi.UpdateClusterConfigQueryParams;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionResponse;
 import com.linkedin.venice.exceptions.ConfigurationException;
@@ -44,6 +45,7 @@ import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
 import com.linkedin.venice.helix.HelixReadOnlyZKSharedSchemaRepository;
 import com.linkedin.venice.helix.HelixReadOnlyZKSharedSystemStoreRepository;
+import com.linkedin.venice.helix.HelixReadWriteLiveClusterConfigRepository;
 import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.helix.HelixStoreGraveyard;
 import com.linkedin.venice.helix.Replica;
@@ -67,6 +69,7 @@ import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.InstanceStatus;
+import com.linkedin.venice.meta.LiveClusterConfig;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.PartitionAssignment;
@@ -275,6 +278,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     private final SharedHelixReadOnlyZKSharedSchemaRepository zkSharedSchemaRepository;
     private final MetaStoreWriter metaStoreWriter;
     private final D2Client d2Client;
+    private final Map<String, HelixReadWriteLiveClusterConfigRepository> clusterToLiveClusterConfigRepo;
 
     /**
      * Level-1 controller, it always being connected to Helix. And will create sub-controller for specific cluster when
@@ -415,6 +419,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             zkSharedSystemStoreRepository, zkClient, adapterSerializer, commonConfig.getSystemSchemaClusterName(),
             commonConfig.getRefreshAttemptsForZkReconnect(), commonConfig.getRefreshIntervalForZkReconnectInMs());
         metaStoreWriter = new MetaStoreWriter(topicManagerRepository.getTopicManager(), veniceWriterFactory, zkSharedSchemaRepository);
+
+        clusterToLiveClusterConfigRepo = new VeniceConcurrentHashMap();
 
         List<ClusterLeaderInitializationRoutine> initRoutines = new ArrayList<>();
         initRoutines.add(new SystemSchemaInitializationRoutine(
@@ -723,7 +729,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             }
 
             String currentlyDiscoveredClusterName = storeConfig.getCluster(); // This is for store migration
-            // TODO: and ismigration flag is false, only then delete storeConfig
+            // TODO: and isMigration flag is false, only then delete storeConfig
             if (!currentlyDiscoveredClusterName.equals(clusterName)) {
                 // This is most likely the deletion after a store migration operation.
                 // In this case the storeConfig should not be deleted,
@@ -1209,7 +1215,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         // TODO As some store had already been created before we introduced global store config
         // TODO so we need a way to sync up the data. For example, while we loading all stores from ZK for a cluster,
         // TODO put them into global store configs.
-        boolean isLagecyStore = false;
+        boolean isLegacyStore = false;
         /**
          * In the following situation, we will skip the lingering resource check for the new store request:
          * 1. The store is migrating, and the cluster name is equal to the migrating destination cluster.
@@ -1230,7 +1236,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                     skipLingeringResourceCheck = true;
                 }
             } else {
-                isLagecyStore = true;
+                isLegacyStore = true;
                 skipLingeringResourceCheck = true;
             }
         }
@@ -1238,7 +1244,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         ReadWriteStoreRepository repository = getHelixVeniceClusterResources(clusterName).getStoreMetadataRepository();
         Store store = repository.getStore(storeName);
         // If the store exists in store repository and it's still active(not being deleted), we don't allow to re-create it.
-        if (store != null && !isLagecyStore) {
+        if (store != null && !isLegacyStore) {
             throwStoreAlreadyExists(clusterName, storeName);
         }
 
@@ -2942,6 +2948,27 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         }
     }
 
+    @Override
+    public void updateClusterConfig(String clusterName, UpdateClusterConfigQueryParams params) {
+        checkControllerLeadershipFor(clusterName);
+        Optional<Map<String, Integer>> regionToKafkaFetchQuota = params.getServerKafkaFetchQuotaRecordsPerSecond();
+
+        if (regionToKafkaFetchQuota.isPresent()) {
+            HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
+            try (AutoCloseableLock ignore = resources.getClusterLockManager().createClusterWriteLock()) {
+                HelixReadWriteLiveClusterConfigRepository clusterConfigRepository = getReadWriteLiveClusterConfigRepository(clusterName);
+                LiveClusterConfig clonedClusterConfig = new LiveClusterConfig(clusterConfigRepository.getConfigs());
+                Map<String, Integer> regionToKafkaFetchQuotaInLiveConfigs = clonedClusterConfig.getServerKafkaFetchQuotaRecordsPerSecond();
+                if (regionToKafkaFetchQuotaInLiveConfigs == null) {
+                    clonedClusterConfig.setServerKafkaFetchQuotaRecordsPerSecond(regionToKafkaFetchQuota.get());
+                } else {
+                    regionToKafkaFetchQuotaInLiveConfigs.putAll(regionToKafkaFetchQuota.get());
+                }
+                clusterConfigRepository.updateConfigs(clonedClusterConfig);
+            }
+        }
+    }
+
     private void internalUpdateStore(String clusterName, String storeName, UpdateStoreQueryParams params) {
         /**
          * Check whether the command affects this fabric.
@@ -4464,7 +4491,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                  * 2. This will change the lifecycle of store version greatly, which might introduce other potential issues;
                  *
                  * The target use case is for new fabric build out.
-                 * In Blueshift project, we are planning to leverage participant store to short-cuit
+                 * In Blueshift project, we are planning to leverage participant store to short-circuit
                  * the bootstrap if the corresponding version has been killed in the source fabric.
                  * So in the new fabric, we need the kill-job message to be as accurate as possible to
                  * avoid the discrepancy.
@@ -4645,7 +4672,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     @Override
     public void updateRoutersClusterConfig(String clusterName, Optional<Boolean> isThrottlingEnable,
-        Optional<Boolean> isQuotaRebalancedEnable, Optional<Boolean> isMaxCapaictyProtectionEnabled,
+        Optional<Boolean> isQuotaRebalancedEnable, Optional<Boolean> isMaxCapacityProtectionEnabled,
         Optional<Integer> expectedRouterCount) {
         ZkRoutersClusterManager routersClusterManager = getHelixVeniceClusterResources(clusterName).getRoutersClusterManager();
 
@@ -4653,8 +4680,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         if (isThrottlingEnable.isPresent()) {
             routersClusterManager.enableThrottling(isThrottlingEnable.get());
         }
-        if (isMaxCapaictyProtectionEnabled.isPresent()) {
-            routersClusterManager.enableMaxCapacityProtection(isMaxCapaictyProtectionEnabled.get());
+        if (isMaxCapacityProtectionEnabled.isPresent()) {
+            routersClusterManager.enableMaxCapacityProtection(isMaxCapacityProtectionEnabled.get());
         }
         if (isQuotaRebalancedEnable.isPresent() && expectedRouterCount.isPresent()) {
             routersClusterManager.enableQuotaRebalance(isQuotaRebalancedEnable.get(), expectedRouterCount.get());
@@ -4695,7 +4722,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         monitor.getTopicsOfOngoingOfflinePushes().forEach(topic -> result.put(topic, VersionStatus.STARTED.toString()));
         // Find the versions which had been ONLINE, but some of replicas are still bootstrapping due to:
         // 1. As we use N-1 strategy, so there might be some slow replicas caused by kafka or other issues.
-        // 2. Storage node was added/removed/disconnected, so replicas need to bootstrap again on the same or orther node.
+        // 2. Storage node was added/removed/disconnected, so replicas need to bootstrap again on the same or other node.
         RoutingDataRepository routingDataRepository = getHelixVeniceClusterResources(clusterName).getRoutingDataRepository();
         ReadWriteStoreRepository storeRepository = getHelixVeniceClusterResources(clusterName).getStoreMetadataRepository();
         ResourceAssignment resourceAssignment = routingDataRepository.getResourceAssignment();
@@ -4812,6 +4839,14 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     @Override
     public HelixReadOnlyStoreConfigRepository getStoreConfigRepo() { return storeConfigRepo; }
+
+    private HelixReadWriteLiveClusterConfigRepository getReadWriteLiveClusterConfigRepository(String cluster) {
+        return clusterToLiveClusterConfigRepo.computeIfAbsent(cluster, clusterName -> {
+            HelixReadWriteLiveClusterConfigRepository clusterConfigRepository = new HelixReadWriteLiveClusterConfigRepository(zkClient, adapterSerializer, clusterName);
+            clusterConfigRepository.refresh();
+            return clusterConfigRepository;
+        });
+    }
 
     public interface StoreMetadataOperation {
         /**

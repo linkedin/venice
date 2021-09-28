@@ -13,6 +13,12 @@ public class LiveClusterConfig {
 
   public LiveClusterConfig() {}
 
+  public LiveClusterConfig(LiveClusterConfig clone) {
+    if (clone.getServerKafkaFetchQuotaRecordsPerSecond() != null) {
+      serverKafkaFetchQuotaRecordsPerSecond = new HashMap<>(clone.getServerKafkaFetchQuotaRecordsPerSecond());
+    }
+  }
+
   // ------------------------ Getter/Setter for Jackson to ser/de LiveClusterConfig ------------------------
 
   public Map<String, Integer> getServerKafkaFetchQuotaRecordsPerSecond() {

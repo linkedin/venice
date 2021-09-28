@@ -33,6 +33,7 @@ public enum ControllerRoute {
   ENABLE_STORE("/enable_store", HttpMethod.POST, Arrays.asList(NAME, OPERATION, STATUS)), // status "true" or "false", operation "read" or "write" or "readwrite".
   DELETE_ALL_VERSIONS("/delete_all_versions", HttpMethod.POST, Collections.singletonList(NAME)),
   DELETE_OLD_VERSION("/delete_old_version", HttpMethod.POST, Arrays.asList(NAME, VERSION)),
+  UPDATE_CLUSTER_CONFIG("/update_cluster_config", HttpMethod.POST, Collections.singletonList(CLUSTER), SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND),
 
   JOB("/job", HttpMethod.GET, Arrays.asList(NAME, VERSION)),
   KILL_OFFLINE_PUSH_JOB("/kill_offline_push_job", HttpMethod.POST, Collections.singletonList(TOPIC)),
