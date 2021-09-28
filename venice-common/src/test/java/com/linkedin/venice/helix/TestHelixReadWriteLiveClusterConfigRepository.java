@@ -14,7 +14,6 @@ import org.testng.annotations.Test;
 
 
 public class TestHelixReadWriteLiveClusterConfigRepository {
-  private String zkAddress;
   private ZkClient zkClient;
   private String cluster = "test-metadata-cluster";
   private String clusterPath = "/test-metadata-cluster";
@@ -30,7 +29,6 @@ public class TestHelixReadWriteLiveClusterConfigRepository {
   @BeforeClass
   public void zkSetup() {
     zkServerWrapper = ServiceFactory.getZkServer();
-    zkAddress = zkServerWrapper.getAddress();
   }
 
   @AfterClass
@@ -40,6 +38,7 @@ public class TestHelixReadWriteLiveClusterConfigRepository {
 
   @BeforeMethod
   public void configureTest() {
+    String zkAddress = zkServerWrapper.getAddress();
     zkClient = ZkClientFactory.newZkClient(zkAddress);
     zkClient.setZkSerializer(adapter);
 

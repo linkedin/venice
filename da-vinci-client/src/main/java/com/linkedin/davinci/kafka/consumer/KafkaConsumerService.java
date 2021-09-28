@@ -1,5 +1,6 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.stats.KafkaConsumerServiceStats;
 import com.linkedin.davinci.utils.KafkaRecordWrapper;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -65,22 +66,28 @@ public class KafkaConsumerService extends AbstractVeniceService {
   private final ExecutorService consumerExecutor;
   private final KafkaConsumerServiceStats stats;
 
-  private EventThrottler bandwidthThrottler;
-  private EventThrottler recordsThrottler;
+  private final EventThrottler bandwidthThrottler;
+  private final EventThrottler recordsThrottler;
+  private final KafkaClusterBasedRecordThrottler kafkaClusterBasedRecordThrottler;
   private boolean stopped = false;
+  private final String kafkaUrl;
+  private final boolean liveConfigBasedKafkaThrottlingEnabled;
 
 
   public KafkaConsumerService(final KafkaClientFactory consumerFactory, final Properties consumerProperties,
       final long readCycleDelayMs, final int numOfConsumersPerKafkaCluster, final EventThrottler bandwidthThrottler,
-      final EventThrottler recordsThrottler, final KafkaConsumerServiceStats stats, final long sharedConsumerNonExistingTopicCleanupDelayMS,
-      final TopicExistenceChecker topicExistenceChecker) {
+      final EventThrottler recordsThrottler, final KafkaClusterBasedRecordThrottler kafkaClusterBasedRecordThrottler,
+      final KafkaConsumerServiceStats stats, final long sharedConsumerNonExistingTopicCleanupDelayMS,
+      final TopicExistenceChecker topicExistenceChecker, final boolean liveConfigBasedKafkaThrottlingEnabled) {
     this.readCycleDelayMs = readCycleDelayMs;
     this.sharedConsumerNonExistingTopicCleanupDelayMS = sharedConsumerNonExistingTopicCleanupDelayMS;
     this.bandwidthThrottler = bandwidthThrottler;
     this.recordsThrottler = recordsThrottler;
+    this.liveConfigBasedKafkaThrottlingEnabled = liveConfigBasedKafkaThrottlingEnabled;
+    this.kafkaClusterBasedRecordThrottler = kafkaClusterBasedRecordThrottler;
     this.stats = stats;
 
-    String kafkaUrl = consumerProperties.getProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG);
+    kafkaUrl = consumerProperties.getProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG);
     // Initialize consumers and consumerExecutor
     consumerExecutor = Executors.newFixedThreadPool(numOfConsumersPerKafkaCluster, new DaemonThreadFactory("venice-shared-consumer-for-" + kafkaUrl));
     consumerPartitionsNumSubscribed = new ArrayList<>(numOfConsumersPerKafkaCluster);
@@ -251,7 +258,12 @@ public class KafkaConsumerService extends AbstractVeniceService {
             addSomeDelay = false;
           }
           long beforePollingTimeStamp = System.currentTimeMillis();
-          ConsumerRecords<KafkaKey, KafkaMessageEnvelope> records = consumer.poll(readCycleDelayMs);
+          ConsumerRecords<KafkaKey, KafkaMessageEnvelope> records;
+          if (liveConfigBasedKafkaThrottlingEnabled) {
+            records = kafkaClusterBasedRecordThrottler.poll(consumer, kafkaUrl, readCycleDelayMs);
+          } else {
+            records = consumer.poll(readCycleDelayMs);
+          }
           stats.recordPollRequestLatency(LatencyUtils.getElapsedTimeInMs(beforePollingTimeStamp));
           stats.recordPollResultNum(records.count());
           long totalBytes = 0;

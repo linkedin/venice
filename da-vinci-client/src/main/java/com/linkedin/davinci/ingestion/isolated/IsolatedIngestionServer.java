@@ -29,6 +29,7 @@ import com.linkedin.venice.ingestion.protocol.enums.IngestionReportType;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.ClusterInfoProvider;
+import com.linkedin.venice.meta.ReadOnlyLiveClusterConfigRepository;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.security.SSLFactory;
@@ -120,6 +121,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
   private MetricsRepository metricsRepository = null;
   private VeniceConfigLoader configLoader = null;
   private ReadOnlyStoreRepository storeRepository = null;
+  private ReadOnlyLiveClusterConfigRepository liveConfigRepository = null;
   private StorageService storageService = null;
   private KafkaStoreIngestionService storeIngestionService = null;
   private StorageMetadataService storageMetadataService = null;
@@ -512,6 +514,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
         null,
         true);
     storeRepository = veniceMetadataRepositoryBuilder.getStoreRepo();
+    liveConfigRepository = veniceMetadataRepositoryBuilder.getLiveClusterConfigRepo();
     ReadOnlySchemaRepository schemaRepository = veniceMetadataRepositoryBuilder.getSchemaRepo();
     Optional<HelixReadOnlyZKSharedSchemaRepository> helixReadOnlyZKSharedSchemaRepository = veniceMetadataRepositoryBuilder.getReadOnlyZKSharedSchemaRepository();
     ClusterInfoProvider clusterInfoProvider = veniceMetadataRepositoryBuilder.getClusterInfoProvider();
@@ -581,6 +584,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
         clusterInfoProvider,
         storeRepository,
         schemaRepository,
+        liveConfigRepository,
         metricsRepository,
         rocksDBMemoryStats,
         Optional.of(kafkaMessageEnvelopeSchemaReader),

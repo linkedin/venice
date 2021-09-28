@@ -1674,5 +1674,7 @@ public class ConfigKeys {
   public static final String KAFKA_CLUSTER_MAP_KEY_NAME = "name";
   public static final String KAFKA_CLUSTER_MAP_KEY_URL = "url";
 
+  public static final String SERVER_ENABLE_LIVE_CONFIG_BASED_KAFKA_THROTTLING = "server.enable.live.config.based.kafka.throttling";
+
 }
 

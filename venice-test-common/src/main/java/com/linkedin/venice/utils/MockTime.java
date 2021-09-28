@@ -1,9 +1,9 @@
 package com.linkedin.venice.utils;
 
-import org.apache.log4j.Logger;
-
 import java.util.Date;
 import java.util.concurrent.TimeUnit;
+import org.apache.log4j.Logger;
+
 
 /**
  * A {@link Time} implementation which abstracts logical time away from real
@@ -14,7 +14,7 @@ import java.util.concurrent.TimeUnit;
 public class MockTime
     extends org.apache.kafka.common.utils.MockTime
     implements org.apache.kafka.common.utils.Time, // For interop with the Kafka Broker's Time abstraction
-               Time {
+               Time, io.tehuti.utils.Time {
 
   private static final Logger LOGGER = Logger.getLogger(MockTime.class);
 
@@ -41,7 +41,7 @@ public class MockTime
   }
 
   public int getSeconds() {
-    return (int) (timeMs / MS_PER_SECOND);
+    return (int) (timeMs / Time.MS_PER_SECOND);
   }
 
   public void sleep(long ms) {

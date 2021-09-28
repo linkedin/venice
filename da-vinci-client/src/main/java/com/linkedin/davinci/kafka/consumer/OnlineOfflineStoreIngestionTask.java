@@ -31,6 +31,7 @@ import com.linkedin.venice.stats.StatsErrorCode;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.DiskUsage;
 import java.util.Collections;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Queue;
@@ -57,6 +58,7 @@ public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
       EventThrottler recordsThrottler,
       EventThrottler unorderedBandwidthThrottler,
       EventThrottler unorderedRecordsThrottler,
+      KafkaClusterBasedRecordThrottler kafkaClusterBasedRecordThrottler,
       ReadOnlySchemaRepository schemaRepo,
       ReadOnlyStoreRepository storeRepo,
       TopicManagerRepository topicManagerRepository,
@@ -89,6 +91,7 @@ public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
         recordsThrottler,
         unorderedBandwidthThrottler,
         unorderedRecordsThrottler,
+        kafkaClusterBasedRecordThrottler,
         schemaRepo,
         storeRepo,
         topicManagerRepository,

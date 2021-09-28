@@ -4,9 +4,9 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.LiveClusterConfig;
 import com.linkedin.venice.meta.ReadOnlyLiveClusterConfigRepository;
 import com.linkedin.venice.utils.HelixUtils;
-import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import com.linkedin.venice.utils.RedundantExceptionFilter;
 import java.nio.file.Paths;
-import java.util.Map;
+import org.apache.helix.AccessOption;
 import org.apache.helix.manager.zk.ZkBaseDataAccessor;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.helix.zookeeper.zkclient.IZkDataListener;
@@ -18,12 +18,14 @@ import org.apache.log4j.Logger;
  * The expected users are all venice-backend components.
  */
 public class HelixReadOnlyLiveClusterConfigRepository implements ReadOnlyLiveClusterConfigRepository {
-  private final Logger logger = Logger.getLogger(HelixReadOnlyLiveClusterConfigRepository.class);
+  private static final Logger logger = Logger.getLogger(HelixReadOnlyLiveClusterConfigRepository.class);
+
+  private static final RedundantExceptionFilter REDUNDANT_EXCEPTION_FILTER = RedundantExceptionFilter.getRedundantExceptionFilter();
+  private static final LiveClusterConfig DEFAULT_LIVE_CLUSTER_CONFIG = new LiveClusterConfig();
+
   protected final ZkBaseDataAccessor<LiveClusterConfig> zkDataAccessor;
   protected final String clusterConfigZkPath;
-  protected LiveClusterConfig liveClusterConfig;
-
-  private static final LiveClusterConfig DEFAULT_LIVE_CLUSTER_CONFIG = new LiveClusterConfig();
+  protected LiveClusterConfig liveClusterConfig = DEFAULT_LIVE_CLUSTER_CONFIG;
 
   // Listener to handle modifications to cluster config
   private IZkDataListener clusterConfigListener = new ClusterConfigZkListener();
@@ -44,6 +46,8 @@ public class HelixReadOnlyLiveClusterConfigRepository implements ReadOnlyLiveClu
   @Override
   public void refresh() {
     zkDataAccessor.subscribeDataChanges(clusterConfigZkPath, clusterConfigListener);
+    LiveClusterConfig config = zkDataAccessor.get(clusterConfigZkPath, null, AccessOption.PERSISTENT);
+    liveClusterConfig = config == null ? DEFAULT_LIVE_CLUSTER_CONFIG : config;
   }
 
   @Override
@@ -62,7 +66,10 @@ public class HelixReadOnlyLiveClusterConfigRepository implements ReadOnlyLiveClu
         throw new VeniceException("Invalid notification, changed data is not:" + LiveClusterConfig.class.getName());
       }
       liveClusterConfig = (LiveClusterConfig) data;
-      logger.info("Received updated LiveClusterConfig:\n" + liveClusterConfig);
+      String logMessage = "Received updated LiveClusterConfig:\n" + liveClusterConfig;
+      if (!REDUNDANT_EXCEPTION_FILTER.isRedundantException(logMessage)) {
+        logger.info(logMessage);
+      };
     }
 
     @Override

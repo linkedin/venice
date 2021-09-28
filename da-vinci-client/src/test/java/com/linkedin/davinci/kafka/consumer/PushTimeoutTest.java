@@ -39,6 +39,7 @@ import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.util.ArrayDeque;
 import java.util.Collections;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Queue;
@@ -131,11 +132,12 @@ public class PushTimeoutTest {
     LeaderFollowerStoreIngestionTask leaderFollowerStoreIngestionTask = new LeaderFollowerStoreIngestionTask(mockStore, version, mock(
         VeniceWriterFactory.class), mockKafkaClientFactory, mockKafkaConsumerProperties, mock(StorageEngineRepository.class),
         mockStorageMetadataService, notifiers, mock(EventThrottler.class), mock(EventThrottler.class), mock(EventThrottler.class),
-        mock(EventThrottler.class), mock(ReadOnlySchemaRepository.class), mockReadOnlyStoreRepository, mock(TopicManagerRepository.class),
-        mock(TopicManagerRepository.class), mock(AggStoreIngestionStats.class), mock(AggVersionedDIVStats.class),
-        mock(AggVersionedStorageIngestionStats.class), mock(StoreBufferService.class), mock(BooleanSupplier.class),
-        mockVeniceStoreVersionConfig, mock(DiskUsage.class), mock(RocksDBMemoryStats.class), mock(AggKafkaConsumerService.class),
-        mockVeniceServerConfig, 0, mock(ExecutorService.class), 0, mock(InternalAvroSpecificSerializer.class), false,
+        mock(EventThrottler.class), mock(KafkaClusterBasedRecordThrottler.class), mock(ReadOnlySchemaRepository.class),
+        mockReadOnlyStoreRepository, mock(TopicManagerRepository.class), mock(TopicManagerRepository.class),
+        mock(AggStoreIngestionStats.class), mock(AggVersionedDIVStats.class), mock(AggVersionedStorageIngestionStats.class),
+        mock(StoreBufferService.class), mock(BooleanSupplier.class), mockVeniceStoreVersionConfig, mock(DiskUsage.class),
+        mock(RocksDBMemoryStats.class), mock(AggKafkaConsumerService.class), mockVeniceServerConfig, 0,
+        mock(ExecutorService.class), 0, mock(InternalAvroSpecificSerializer.class), false,
         mock(StorageEngineBackedCompressorFactory.class), Optional.empty());
     leaderFollowerStoreIngestionTask.subscribePartition(versionTopic, 0);
     leaderFollowerStoreIngestionTask.run();
@@ -255,11 +257,12 @@ public class PushTimeoutTest {
     LeaderFollowerStoreIngestionTask leaderFollowerStoreIngestionTask = new LeaderFollowerStoreIngestionTask(mockStore, version, mock(
         VeniceWriterFactory.class), mockKafkaClientFactory, mockKafkaConsumerProperties, mock(StorageEngineRepository.class),
         mockStorageMetadataService, notifiers, mock(EventThrottler.class), mock(EventThrottler.class), mock(EventThrottler.class),
-        mock(EventThrottler.class), mock(ReadOnlySchemaRepository.class), mockReadOnlyStoreRepository, mockTopicManagerRepository,
-        mock(TopicManagerRepository.class), mock(AggStoreIngestionStats.class), mock(AggVersionedDIVStats.class),
-        mock(AggVersionedStorageIngestionStats.class), mock(StoreBufferService.class), () -> true,
-        mockVeniceStoreVersionConfig, mock(DiskUsage.class), mock(RocksDBMemoryStats.class), mock(AggKafkaConsumerService.class),
-        mockVeniceServerConfig, 0, mock(ExecutorService.class), 0, mock(InternalAvroSpecificSerializer.class), false,
+        mock(EventThrottler.class), mock(KafkaClusterBasedRecordThrottler.class), mock(ReadOnlySchemaRepository.class),
+        mockReadOnlyStoreRepository, mockTopicManagerRepository, mock(TopicManagerRepository.class),
+        mock(AggStoreIngestionStats.class), mock(AggVersionedDIVStats.class), mock(AggVersionedStorageIngestionStats.class),
+        mock(StoreBufferService.class), () -> true, mockVeniceStoreVersionConfig, mock(DiskUsage.class),
+        mock(RocksDBMemoryStats.class), mock(AggKafkaConsumerService.class), mockVeniceServerConfig, 0,
+        mock(ExecutorService.class), 0, mock(InternalAvroSpecificSerializer.class), false,
         mock(StorageEngineBackedCompressorFactory.class), Optional.empty());
 
     leaderFollowerStoreIngestionTask.subscribePartition(versionTopic, 0);
