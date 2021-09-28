@@ -293,6 +293,10 @@ public class StoreBufferService extends AbstractStoreBufferService {
         fakeRecord = new VeniceConsumerRecordWrapper<>(new ConsumerRecord<>(topic, partition, -1, null, null));
     int workerIndex = getDrainerIndexForConsumerRecord(fakeRecord);
     BlockingQueue<QueueNode> blockingQueue = blockingQueueArr.get(workerIndex);
+    if (!drainerList.get(workerIndex).isRunning.get()) {
+      throw new VeniceException("Drainer thread " + workerIndex + " has stopped running, cannot drain the topic " + topic);
+    }
+
     QueueNode fakeNode = new QueueNode(fakeRecord, null, null, Optional.empty());
 
     int cur = 0;
