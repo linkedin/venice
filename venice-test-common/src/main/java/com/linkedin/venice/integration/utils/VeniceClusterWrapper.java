@@ -29,6 +29,8 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 
+import java.util.HashSet;
+import java.util.Set;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
@@ -105,8 +107,14 @@ public class VeniceClusterWrapper extends ProcessWrapper {
       AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE,
       AvroProtocolDefinition.PARTITION_STATE,
       AvroProtocolDefinition.STORE_VERSION_STATE,
-      AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE
+      AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE,
+      AvroProtocolDefinition.PUSH_STATUS_SYSTEM_SCHEMA_STORE
   );
+
+  private static final AvroProtocolDefinition[] hybridRequiredSystemStores = new AvroProtocolDefinition[]{
+      AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE, AvroProtocolDefinition.PUSH_STATUS_SYSTEM_SCHEMA_STORE};
+  private static final Set<AvroProtocolDefinition> hybridRequiredSystemStoresSet =
+      new HashSet<>(Arrays.asList(hybridRequiredSystemStores));
 
   VeniceClusterWrapper(
       String clusterName,
@@ -237,8 +245,8 @@ public class VeniceClusterWrapper extends ProcessWrapper {
                 Store store = finalClusterWrapper.getMasterVeniceController().getVeniceAdmin().getStore(clusterName,
                     avroProtocolDefinition.getSystemStoreName());
                 Assert.assertNotNull(store, "Store: " + avroProtocolDefinition.getSystemStoreName()
-                    + "should be initialized by " + ClusterLeaderInitializationRoutine.class.getSimpleName());
-                if (avroProtocolDefinition == AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE) {
+                    + " should be initialized by " + ClusterLeaderInitializationRoutine.class.getSimpleName());
+                if (hybridRequiredSystemStoresSet.contains(avroProtocolDefinition)) {
                   // Check against the HelixReadOnlyZKSharedSystemStoreRepository instead of the
                   // ReadWriteStoreRepository because of the way we implemented getStore for meta system stores in
                   // HelixReadOnlyStoreRepositoryAdapter.

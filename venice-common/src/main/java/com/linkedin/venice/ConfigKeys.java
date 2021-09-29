@@ -278,7 +278,7 @@ public class ConfigKeys {
   /**
    * Whether to automatically create zk shared metadata system store in Controller or not
    */
-  public static final String CONTROLLER_ZK_SHARED_METADATA_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED = "controller.zk.shared.metadata.system.schema.store.auto.creation.enabled";
+  public static final String CONTROLLER_ZK_SHARED_META_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED = "controller.zk.shared.metadata.system.schema.store.auto.creation.enabled";
 
   /**
    * Whether controller should enforce SSL.
@@ -1624,6 +1624,11 @@ public class ConfigKeys {
    * if possible.
    */
   public static final String CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE = "controller.auto.materialize.meta.system.store";
+
+  /**
+   *
+   */
+  public static final String CONTROLLER_AUTO_MATERIALIZE_DAVINCI_PUSH_STATUS_SYSTEM_STORE = "controller.auto.materialize.davinci.push.status.system.store";
 
   /**
    * This will indicate which ReplicationMetadataSchemaAdapter version to use to generate replication metadata schema.

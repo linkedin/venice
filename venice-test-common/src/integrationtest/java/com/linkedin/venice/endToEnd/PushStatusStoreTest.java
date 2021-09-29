@@ -7,6 +7,7 @@ import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controller.Admin;
+import com.linkedin.venice.controller.init.ClusterLeaderInitializationRoutine;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
@@ -14,10 +15,13 @@ import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
+import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.TestUtils;
@@ -49,14 +53,13 @@ public class PushStatusStoreTest {
   private D2Client d2Client;
   private PushStatusStoreReader reader;
   private String storeName;
+  private VeniceControllerWrapper parentController;
+  private ZkServerWrapper parentZkServer;
 
   @BeforeClass
   public void setup() {
     Properties extraProperties = new Properties();
     extraProperties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1L));
-    extraProperties.setProperty(CONTROLLER_ZK_SHARED_DAVINCI_PUSH_STATUS_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED, String.valueOf(true));
-    extraProperties.setProperty(CONTROLLER_ZK_SHARED_METADATA_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED, String.valueOf(true));
-    extraProperties.setProperty(CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE, String.valueOf(true));
     Utils.thisIsLocalhost();
     cluster = ServiceFactory.getVeniceCluster(
         1,
@@ -70,6 +73,11 @@ public class PushStatusStoreTest {
     controllerClient = cluster.getControllerClient();
     d2Client = D2TestUtils.getAndStartD2Client(cluster.getZk().getAddress());
     reader = new PushStatusStoreReader(d2Client, TimeUnit.MINUTES.toSeconds(10));
+    extraProperties.setProperty(CONTROLLER_AUTO_MATERIALIZE_DAVINCI_PUSH_STATUS_SYSTEM_STORE, String.valueOf(true));
+    parentZkServer = ServiceFactory.getZkServer();
+    parentController = ServiceFactory.getVeniceParentController(cluster.getClusterName(), parentZkServer.getAddress(),
+        cluster.getKafka(), cluster.getVeniceControllers().toArray(new VeniceControllerWrapper[0]),
+        new VeniceProperties(extraProperties), false);
   }
 
   @AfterClass
@@ -77,7 +85,9 @@ public class PushStatusStoreTest {
     IOUtils.closeQuietly(reader);
     D2ClientUtils.shutdownClient(d2Client);
     IOUtils.closeQuietly(controllerClient);
+    parentController.close();
     IOUtils.closeQuietly(cluster);
+    parentZkServer.close();
   }
 
   @BeforeMethod
@@ -166,6 +176,32 @@ public class PushStatusStoreTest {
       TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
         assertEquals(reader.getPartitionStatus(storeName, 1, 0, Optional.empty()).size(), 0);
       });
+    }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testParentControllerAutoMaterializeDaVinciPushStatusSystemStore() {
+    try (ControllerClient parentControllerClient = new ControllerClient(cluster.getClusterName(),
+        parentController.getControllerUrl())) {
+      String zkSharedDaVinciPushStatusSchemaStoreName =
+          AvroProtocolDefinition.PUSH_STATUS_SYSTEM_SCHEMA_STORE.getSystemStoreName();
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+        Store readOnlyStore = parentController.getVeniceAdmin()
+            .getReadOnlyZKSharedSystemStoreRepository()
+            .getStore(zkSharedDaVinciPushStatusSchemaStoreName);
+        assertNotNull(readOnlyStore, "Store: " + zkSharedDaVinciPushStatusSchemaStoreName + " should be initialized by "
+            + ClusterLeaderInitializationRoutine.class.getSimpleName());
+        assertTrue(readOnlyStore.isHybrid(),
+            "Store: " + zkSharedDaVinciPushStatusSchemaStoreName + " should be configured to hybrid");
+      });
+      String storeName = TestUtils.getUniqueString("new-user-store");
+      assertFalse(
+          parentControllerClient.createNewStore(storeName, "venice-test", DEFAULT_KEY_SCHEMA, "\"string\"").isError(),
+          "Unexpected new store creation failure");
+      String daVinciPushStatusSystemStoreName =
+          VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(storeName);
+      TestUtils.waitForNonDeterministicPushCompletion(Version.composeKafkaTopic(daVinciPushStatusSystemStoreName, 1),
+          parentControllerClient, 30, TimeUnit.SECONDS, Optional.empty());
     }
   }
 

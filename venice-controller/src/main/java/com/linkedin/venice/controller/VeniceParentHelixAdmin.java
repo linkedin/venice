@@ -172,8 +172,6 @@ public class VeniceParentHelixAdmin implements Admin {
   private static final String PUSH_JOB_DETAILS_STORE_DESCRIPTOR = "push job details store: ";
   private static final String PARTICIPANT_MESSAGE_STORE_DESCRIPTOR = "participant message store: ";
   private static final String BATCH_JOB_HEARTBEAT_STORE_DESCRIPTOR = "batch job liveness heartbeat store: ";
-  private static final String AUTO_META_SYSTEM_STORE_PUSH_ID_PREFIX = "Auto_meta_system_store_empty_push_";
-  private static final long DEFAULT_META_SYSTEM_STORE_SIZE = 1024 * 1024 * 1024;
   //Store version number to retain in Parent Controller to limit 'Store' ZNode size.
   protected static final int STORE_VERSION_RETENTION_COUNT = 5;
 
@@ -195,6 +193,7 @@ public class VeniceParentHelixAdmin implements Admin {
   private final ExecutorService topicCheckerExecutor = Executors.newSingleThreadExecutor();
   private final TerminalStateTopicCheckerForParentController terminalStateTopicChecker;
   private final SystemStoreAclSynchronizationTask systemStoreAclSynchronizationTask;
+  private final UserSystemStoreLifeCycleHelper systemStoreLifeCycleHelper;
   private Time timer = new SystemTime();
   private Optional<SSLFactory> sslFactory = Optional.empty();
 
@@ -285,6 +284,7 @@ public class VeniceParentHelixAdmin implements Admin {
       systemStoreAclSynchronizationExecutor.submit(systemStoreAclSynchronizationTask);
     }
     this.lingeringStoreVersionChecker = Utils.notNull(lingeringStoreVersionChecker);
+    systemStoreLifeCycleHelper = new UserSystemStoreLifeCycleHelper(this, authorizerService, multiClusterConfigs);
   }
 
   // For testing purpose
@@ -592,7 +592,7 @@ public class VeniceParentHelixAdmin implements Admin {
       //Provisioning ACL needs to be the first step in store creation process.
       provisionAclsForStore(storeName, accessPermissions, Collections.emptyList());
       sendStoreCreationAdminMessage(clusterName, storeName, owner, keySchema, valueSchema);
-      maybeMaterializeMetaSystemStore(storeName, clusterName);
+      systemStoreLifeCycleHelper.maybeMaterializeSystemStoresForUserStore(storeName, clusterName);
 
       if (VeniceSystemStoreType.BATCH_JOB_HEARTBEAT_STORE.getPrefix().equals(storeName)) {
         setupResourceForBatchJobHeartbeatStore(storeName);
@@ -620,22 +620,6 @@ public class VeniceParentHelixAdmin implements Admin {
     message.operationType = AdminMessageType.STORE_CREATION.getValue();
     message.payloadUnion = storeCreation;
     sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
-  }
-
-  private void maybeMaterializeMetaSystemStore(String storeName, String clusterName) {
-    VeniceControllerConfig controllerConfig = multiClusterConfigs.getControllerConfig(clusterName);
-    if (VeniceSystemStoreUtils.isSystemStore(storeName) ||
-            !controllerConfig.isZkSharedMetadataSystemSchemaStoreAutoCreationEnabled() ||
-            !controllerConfig.isAutoMaterializeMetaSystemStoreEnabled()) {
-      return;
-    }
-    String metaSystemStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName);
-    // Generate unique empty push id to ensure a new version is always created.
-    String pushJobId = AUTO_META_SYSTEM_STORE_PUSH_ID_PREFIX + System.currentTimeMillis();
-    Version version = incrementVersionIdempotent(clusterName, metaSystemStoreName, pushJobId,
-            calculateNumberOfPartitions(clusterName, metaSystemStoreName, DEFAULT_META_SYSTEM_STORE_SIZE),
-            getReplicationFactor(clusterName, metaSystemStoreName));
-    writeEndOfPush(clusterName, metaSystemStoreName, version.getNumber(), true);
   }
 
   private void setupResourceForBatchJobHeartbeatStore(String batchJobHeartbeatStoreName) {
@@ -1041,16 +1025,7 @@ public class VeniceParentHelixAdmin implements Admin {
         } finally {
           releaseAdminMessageLock(clusterName);
         }
-        if (VeniceSystemStoreType.getSystemStoreType(storeName) == VeniceSystemStoreType.META_STORE
-            && authorizerService.isPresent()) {
-          // Ensure the wild card acl regex is created for META_STORE
-          authorizerService.get().setupResource(new Resource(storeName));
-        }
-        if (VeniceSystemStoreType.getSystemStoreType(storeName) == VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE
-            && authorizerService.isPresent()) {
-          // Ensure the wild card acl regex is created for DAVINCI_PUSH_STATUS_STORE
-          authorizerService.get().setupResource(new Resource(storeName));
-        }
+        systemStoreLifeCycleHelper.maybeCreateSystemStoreWildcardAcl(storeName);
       }
     }
     cleanupHistoricalVersions(clusterName, storeName);

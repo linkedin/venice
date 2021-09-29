@@ -12,6 +12,7 @@ import com.linkedin.venice.client.store.AvroSpecificStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.common.VeniceSystemStoreType;
+import com.linkedin.venice.controller.init.ClusterLeaderInitializationRoutine;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
@@ -20,6 +21,8 @@ import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
+import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.ReadOnlyStore;
 import com.linkedin.venice.meta.Store;
@@ -27,6 +30,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.schema.SchemaEntry;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.system.store.MetaStoreDataType;
 import com.linkedin.venice.systemstore.schemas.StoreKeySchemas;
 import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
@@ -43,6 +47,7 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Optional;
+import java.util.Properties;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.IntStream;
@@ -73,17 +78,27 @@ public class MetaSystemStoreTest {
 
   private VeniceClusterWrapper venice;
   private ControllerClient controllerClient;
+  private VeniceControllerWrapper parentController;
+  private ZkServerWrapper parentZkServer;
 
   @BeforeClass
   public void setup() {
+    Properties testProperties = new Properties();
+    testProperties.setProperty(CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE, String.valueOf(true));
     venice = ServiceFactory.getVeniceCluster(1, 2, 1, 2, 1000000, false, false);
     controllerClient = venice.getControllerClient();
+    parentZkServer = ServiceFactory.getZkServer();
+    parentController = ServiceFactory.getVeniceParentController(venice.getClusterName(), parentZkServer.getAddress(),
+        venice.getKafka(), venice.getVeniceControllers().toArray(new VeniceControllerWrapper[0]),
+        new VeniceProperties(testProperties), false);
   }
 
   @AfterClass
   public void cleanup() {
     controllerClient.close();
+    parentController.close();
     venice.close();
+    parentZkServer.close();
   }
 
   @Test(timeOut = 60 * Time.MS_PER_SECOND)
@@ -442,6 +457,31 @@ public class MetaSystemStoreTest {
         // into other tests.
         nativeMetadataRepository.clear();
       }
+    }
+  }
+
+  @Test(timeOut = 60 * Time.MS_PER_SECOND)
+  public void testParentControllerAutoMaterializeMetaSystemStore() {
+    try (ControllerClient parentControllerClient = new ControllerClient(venice.getClusterName(),
+        parentController.getControllerUrl())) {
+      String zkSharedMetaSystemSchemaStoreName =
+          AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.getSystemStoreName();
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+        Store readOnlyStore = parentController.getVeniceAdmin()
+            .getReadOnlyZKSharedSystemStoreRepository()
+            .getStore(zkSharedMetaSystemSchemaStoreName);
+        Assert.assertNotNull(readOnlyStore, "Store: " + zkSharedMetaSystemSchemaStoreName + " should be initialized by "
+            + ClusterLeaderInitializationRoutine.class.getSimpleName());
+        Assert.assertTrue(readOnlyStore.isHybrid(),
+            "Store: " + zkSharedMetaSystemSchemaStoreName + " should be configured to hybrid");
+      });
+      String storeName = TestUtils.getUniqueString("new-user-store");
+      assertFalse(
+          parentControllerClient.createNewStore(storeName, "venice-test", INT_KEY_SCHEMA, VALUE_SCHEMA_1).isError(),
+          "Unexpected new store creation failure");
+      String metaSystemStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName);
+      TestUtils.waitForNonDeterministicPushCompletion(Version.composeKafkaTopic(metaSystemStoreName, 1),
+          parentControllerClient, 30, TimeUnit.SECONDS, Optional.empty());
     }
   }
 

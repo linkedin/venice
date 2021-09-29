@@ -25,7 +25,7 @@ import org.codehaus.jackson.annotate.JsonProperty;
  * When adding fields to Store Metadata (stored in ZK or metadata system store), you need to modify avro schema in this folder:
  * venice-common/src/main/resources/avro/StoreMeta/StoreMetaValue
  * Before we enable the zk shared metadata system schema store auto creation:
- * {@link com.linkedin.venice.ConfigKeys#CONTROLLER_ZK_SHARED_METADATA_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED},
+ * {@link com.linkedin.venice.ConfigKeys#CONTROLLER_ZK_SHARED_META_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED},
  * we could continue to modify v1 schema.
  * But once this is enabled, we need to evolve the value schema by adding a new version, and DON'T EVER CHANGE
  * THE EXISTING SCHEMA WITHOUT CAREFUL CONSIDERATION!!!
