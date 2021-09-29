@@ -141,7 +141,8 @@ public class VeniceControllerWrapper extends ProcessWrapper {
             // The first cluster will always be the one to host system schemas...
             .put(CONTROLLER_SYSTEM_SCHEMA_CLUSTER_NAME, clusterNames[0])
             .put(TOPIC_CLEANUP_SEND_CONCURRENT_DELETES_REQUESTS, false)
-            .put(CONTROLLER_ZK_SHARED_METADATA_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED, true)
+            .put(CONTROLLER_ZK_SHARED_META_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED, true)
+            .put(CONTROLLER_ZK_SHARED_DAVINCI_PUSH_STATUS_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED, true)
             .put(PUSH_STATUS_STORE_ENABLED, true)
             .put(extraProps.toProperties());
 

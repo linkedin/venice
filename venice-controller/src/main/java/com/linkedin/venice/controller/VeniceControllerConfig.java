@@ -96,7 +96,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
    */
   private final boolean disableParentTopicTruncationUponCompletion;
   private final Set<String> parentFabrics;
-  private final boolean zkSharedMetadataSystemSchemaStoreAutoCreationEnabled;
+  private final boolean zkSharedMetaSystemSchemaStoreAutoCreationEnabled;
   /**
    * To decide whether to initialize push status store related components.
    */
@@ -132,9 +132,16 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   private final String aggregateRealTimeSourceRegion;
 
   /**
-   * Automatically perform new version creation for corresponding meta system store upon new user store creation.
+   * Automatically perform empty push to create a new version for corresponding meta system store upon new user store
+   * creation.
    */
   private final boolean isAutoMaterializeMetaSystemStoreEnabled;
+
+  /**
+   * Automatically perform empty push to create a new version for corresponding da-vinci push status system store upon
+   * new user store creation.
+   */
+  private final boolean isAutoMaterializeDaVinciPushStatusSystemStoreEnabled;
 
   /**
    * Metadata Version id to be used.
@@ -265,7 +272,8 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     /**
      * Disable the zk shared metadata system schema store by default until the schema is fully finalized.
      */
-    this.zkSharedMetadataSystemSchemaStoreAutoCreationEnabled = props.getBoolean(CONTROLLER_ZK_SHARED_METADATA_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED, false);
+    this.zkSharedMetaSystemSchemaStoreAutoCreationEnabled = props.getBoolean(
+        CONTROLLER_ZK_SHARED_META_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED, false);
     this.pushStatusStoreHeartbeatExpirationTimeInSeconds = props.getLong(PUSH_STATUS_STORE_HEARTBEAT_EXPIRATION_TIME_IN_SECONDS, TimeUnit.MINUTES.toSeconds(10));
     this.isDaVinciPushStatusStoreEnabled =  props.getBoolean(PUSH_STATUS_STORE_ENABLED, false);
     this.zkSharedDaVinciPushStatusSystemSchemaStoreAutoCreationEnabled = props.getBoolean(CONTROLLER_ZK_SHARED_DAVINCI_PUSH_STATUS_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED, false);
@@ -280,6 +288,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     this.adminTopicSourceRegion = props.getString(ADMIN_TOPIC_SOURCE_REGION, "");
     this.aggregateRealTimeSourceRegion = props.getString(AGGREGATE_REAL_TIME_SOURCE_REGION, "");
     this.isAutoMaterializeMetaSystemStoreEnabled = props.getBoolean(CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE, false);
+    this.isAutoMaterializeDaVinciPushStatusSystemStoreEnabled = props.getBoolean(CONTROLLER_AUTO_MATERIALIZE_DAVINCI_PUSH_STATUS_SYSTEM_STORE, false);
 
     this.replicationMetadataVersionId = props.getInt(REPLICATION_METADATA_VERSION_ID, 1);
     this.emergencySourceRegion = props.getString(EMERGENCY_SOURCE_REGION, "");
@@ -509,8 +518,8 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     return disableParentTopicTruncationUponCompletion;
   }
 
-  public boolean isZkSharedMetadataSystemSchemaStoreAutoCreationEnabled() {
-    return zkSharedMetadataSystemSchemaStoreAutoCreationEnabled;
+  public boolean isZkSharedMetaSystemSchemaStoreAutoCreationEnabled() {
+    return zkSharedMetaSystemSchemaStoreAutoCreationEnabled;
   }
 
   public long getPushStatusStoreHeartbeatExpirationTimeInSeconds() {
@@ -559,6 +568,10 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   public boolean isAutoMaterializeMetaSystemStoreEnabled() {
     return isAutoMaterializeMetaSystemStoreEnabled;
+  }
+
+  public boolean isAutoMaterializeDaVinciPushStatusSystemStoreEnabled() {
+    return isAutoMaterializeDaVinciPushStatusSystemStoreEnabled;
   }
 
   public int getReplicationMetadataVersionId() { return replicationMetadataVersionId; }

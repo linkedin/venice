@@ -430,7 +430,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         initRoutines.add(new SystemSchemaInitializationRoutine(
             AvroProtocolDefinition.STORE_VERSION_STATE, multiClusterConfigs, this));
 
-        if (multiClusterConfigs.isZkSharedMetadataSystemSchemaStoreAutoCreationEnabled()) {
+        if (multiClusterConfigs.isZkSharedMetaSystemSchemaStoreAutoCreationEnabled()) {
             // Add routine to create zk shared metadata system store
             UpdateStoreQueryParams metadataSystemStoreUpdate = new UpdateStoreQueryParams().setHybridRewindSeconds(TimeUnit.DAYS.toSeconds(1)) // 1 day rewind
                 .setHybridOffsetLagThreshold(1).setHybridTimeLagThreshold(TimeUnit.MINUTES.toSeconds(1)) // 1 mins
@@ -782,44 +782,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             }
             truncateOldTopics(clusterName, store, true);
 
-            // Cleanup meta system store if necessary
-            if (store.isStoreMetaSystemStoreEnabled()) {
-                String metaSystemStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName);
-                logger.info("Start deleting meta system store: " + metaSystemStoreName);
-                // Delete All versions and push statues for meta system store
-                deleteAllVersionsInStore(clusterName, metaSystemStoreName);
-                resources.getPushMonitor().cleanupStoreStatus(metaSystemStoreName);
-                if (!store.isMigrating()) {
-                    // Clean up venice writer before truncating RT topic
-                    metaStoreWriter.removeMetaStoreWriter(metaSystemStoreName);
-                    // Delete RT topic
-                    truncateKafkaTopic(Version.composeRealTimeTopic(metaSystemStoreName));
-                } else {
-                    logger.info("The rt topic for " + metaSystemStoreName + " will be kept since the store is migrating");
-                }
-                Store metaSystemStore = storeRepository.getStore(metaSystemStoreName);
-                if (metaSystemStore != null) {
-                    truncateOldTopics(clusterName, metaSystemStore, true);
-                }
-                logger.info("Finished deleting meta system store: " + metaSystemStoreName);
-            }
-            if (store.isDaVinciPushStatusStoreEnabled()) {
-                String daVinciPushStatusSystemStoreName = VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(storeName);
-                logger.info("Start deleting Da Vinci push status system store: " + daVinciPushStatusSystemStoreName);
-                // Delete All versions and push statues for da vinci push status system store
-                deleteAllVersionsInStore(clusterName, daVinciPushStatusSystemStoreName);
-                resources.getPushMonitor().cleanupStoreStatus(daVinciPushStatusSystemStoreName);
-                if (!store.isMigrating()) {
-                    truncateKafkaTopic(Version.composeRealTimeTopic(daVinciPushStatusSystemStoreName));
-                } else {
-                    logger.info("The rt topic for " + daVinciPushStatusSystemStoreName + " will be kept since the store is migrating");
-                }
-                Store daVinciPushStatusSystemStore = storeRepository.getStore(daVinciPushStatusSystemStoreName);
-                if (daVinciPushStatusSystemStore != null) {
-                    truncateOldTopics(clusterName, daVinciPushStatusSystemStore, true);
-                }
-                logger.info("Finished deleting da vinci push status system store: " + daVinciPushStatusSystemStore);
-            }
+            // Cleanup system stores if applicable
+            UserSystemStoreLifeCycleHelper.maybeDeleteSystemStoresForUserStore(this, storeRepository,
+                resources.getPushMonitor(), clusterName, store, metaStoreWriter, logger);
             // Move the store to graveyard. It will only re-create the znode for store's metadata excluding key and
             // value schemas.
             logger.info("Putting store: " + storeName + " into graveyard");
