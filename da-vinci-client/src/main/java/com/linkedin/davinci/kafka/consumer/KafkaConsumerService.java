@@ -15,6 +15,7 @@ import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
@@ -52,7 +53,7 @@ public class KafkaConsumerService extends AbstractVeniceService {
 
   private final long readCycleDelayMs;
   private final long sharedConsumerNonExistingTopicCleanupDelayMS;
-  private final List<SharedKafkaConsumer> consumers;
+  private final List<SharedKafkaConsumer> readOnlyConsumersList;
   private final List<Integer> consumerPartitionsNumSubscribed;
   /**
    * This field is used to maintain the mapping between version topic and the corresponding ingestion task.
@@ -83,7 +84,7 @@ public class KafkaConsumerService extends AbstractVeniceService {
     // Initialize consumers and consumerExecutor
     consumerExecutor = Executors.newFixedThreadPool(numOfConsumersPerKafkaCluster, new DaemonThreadFactory("venice-shared-consumer-for-" + kafkaUrl));
     consumerPartitionsNumSubscribed = new ArrayList<>(numOfConsumersPerKafkaCluster);
-    consumers = new ArrayList<>(numOfConsumersPerKafkaCluster);
+    ArrayList<SharedKafkaConsumer> consumers = new ArrayList<>(numOfConsumersPerKafkaCluster);
     for (int i = 0; i < numOfConsumersPerKafkaCluster; ++i) {
       /**
        * We need to assign an unique client id across all the storage nodes, otherwise, they will fail into the same throttling bucket.
@@ -94,6 +95,7 @@ public class KafkaConsumerService extends AbstractVeniceService {
       consumers.add(newConsumer);
       consumerPartitionsNumSubscribed.add(0);
     }
+    readOnlyConsumersList = Collections.unmodifiableList(consumers);
     consumerExecutor.shutdown();
 
     LOGGER.info("KafkaConsumerService was initialized with " + numOfConsumersPerKafkaCluster + " consumers.");
@@ -143,7 +145,7 @@ public class KafkaConsumerService extends AbstractVeniceService {
     }
 
     int minAssignmentPerConsumer = Integer.MAX_VALUE;
-    for (SharedKafkaConsumer consumer : consumers) {
+    for (SharedKafkaConsumer consumer : readOnlyConsumersList) {
       if (ingestionTask.isHybridMode()) {
         /**
          * Firstly, we need to make sure multiple store versions won't share the same consumer since for Hybrid stores,
@@ -163,7 +165,7 @@ public class KafkaConsumerService extends AbstractVeniceService {
       if (!isConsumerAssignedTopic(consumer)) {
         chosenConsumer = consumer;
         assignTopicToConsumer(versionTopic, chosenConsumer);
-        LOGGER.info("Assigned a shared consumer with index of " + consumers.indexOf(chosenConsumer) +
+        LOGGER.info("Assigned a shared consumer with index of " + readOnlyConsumersList.indexOf(chosenConsumer) +
             " without any assigned topic for topic: " + versionTopic);
         return chosenConsumer;
       }
@@ -182,7 +184,7 @@ public class KafkaConsumerService extends AbstractVeniceService {
           + " the existing consumers have subscribed the same store, and that might be caused by a bug or resource leaking");
     }
     assignTopicToConsumer(versionTopic, chosenConsumer);
-    LOGGER.info("Assigned a shared consumer with index of " + consumers.indexOf(chosenConsumer) + " for topic: "
+    LOGGER.info("Assigned a shared consumer with index of " + readOnlyConsumersList.indexOf(chosenConsumer) + " for topic: "
         + versionTopic + " with least # of partitions assigned: " + minAssignmentPerConsumer);
     return chosenConsumer;
   }
@@ -190,12 +192,12 @@ public class KafkaConsumerService extends AbstractVeniceService {
   /**
    * Attach the messages belonging to {@param topic} to the passed {@param ingestionTask}
    */
-  public synchronized void attach(KafkaConsumerWrapper consumer, String topic, StoreIngestionTask ingestionTask) {
+  public void attach(KafkaConsumerWrapper consumer, String topic, StoreIngestionTask ingestionTask) {
     if (!(consumer instanceof SharedKafkaConsumer)) {
       throw new VeniceException("The `consumer` passed must be a `SharedKafkaConsumer`");
     }
     SharedKafkaConsumer sharedConsumer = (SharedKafkaConsumer)consumer;
-    if (! consumers.contains(sharedConsumer)) {
+    if (!readOnlyConsumersList.contains(sharedConsumer)) {
       throw new VeniceException("Unknown shared consumer passed");
     }
     sharedConsumer.attach(topic, ingestionTask);
@@ -225,7 +227,7 @@ public class KafkaConsumerService extends AbstractVeniceService {
     stopped = true;
     consumerExecutor.shutdownNow();
     consumerExecutor.awaitTermination(30, TimeUnit.SECONDS);
-    consumers.forEach( consumer -> consumer.close());
+    readOnlyConsumersList.forEach( consumer -> consumer.close());
   }
 
   private class ConsumptionTask implements Runnable {
@@ -381,8 +383,8 @@ public class KafkaConsumerService extends AbstractVeniceService {
   }
 
   public void setPartitionsNumSubscribed(SharedKafkaConsumer consumer, int assignedPartitions) {
-    if (consumers.contains(consumer)) {
-      consumerPartitionsNumSubscribed.set(consumers.indexOf(consumer), assignedPartitions);
+    if (readOnlyConsumersList.contains(consumer)) {
+      consumerPartitionsNumSubscribed.set(readOnlyConsumersList.indexOf(consumer), assignedPartitions);
     } else {
       throw new VeniceException("Shared consumer cannot be found in KafkaConsumerService.");
     }
