@@ -691,6 +691,9 @@ public class AdminConsumptionTask implements Runnable, Closeable {
       case CONFIGURE_ACTIVE_ACTIVE_REPLICATION_FOR_CLUSTER:
         throw new VeniceException("Operation " + AdminMessageType.CONFIGURE_ACTIVE_ACTIVE_REPLICATION_FOR_CLUSTER + " is a batch "
             + "update that affects all existing store in cluster " + clusterName + ". Cannot extract a specific store name.");
+      case CONFIGURE_INCREMENTAL_PUSH_FOR_CLUSTER:
+        throw new VeniceException("Operation " + AdminMessageType.CONFIGURE_INCREMENTAL_PUSH_FOR_CLUSTER + " is a batch "
+            + "update that affects all existing store in cluster " + clusterName + ". Cannot extract a specific store name.");
       default:
         try {
           GenericRecord payload = (GenericRecord) adminOperation.payloadUnion;

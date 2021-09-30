@@ -7,6 +7,7 @@ import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controllerapi.routes.AdminCommandExecutionResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
+import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
@@ -801,6 +802,14 @@ public class ControllerClient implements Closeable {
 
   public MultiStoreTopicsResponse getDeletableStoreTopics() {
     return request(ControllerRoute.GET_DELETABLE_STORE_TOPICS, newParams(), MultiStoreTopicsResponse.class);
+  }
+
+  public ControllerResponse configureIncrementalPushForCluster(IncrementalPushPolicy incrementalPushPolicyToApply, Optional<IncrementalPushPolicy> incrementalPushPolicyToFilter, Optional<String> regionsFilter) {
+    QueryParams params = newParams()
+        .add(INCREMENTAL_PUSH_POLICY, incrementalPushPolicyToApply.name());
+    incrementalPushPolicyToFilter.ifPresent(f -> params.add(INCREMENTAL_PUSH_POLICY_TO_FILTER, f.name()));
+    regionsFilter.ifPresent(f -> params.add(REGIONS_FILTER, f));
+    return request(ControllerRoute.CONFIGURE_INCREMENTAL_PUSH_FOR_CLUSTER, params, ControllerResponse.class);
   }
 
   public static D2ServiceDiscoveryResponse discoverCluster(String discoveryUrls, String storeName) {

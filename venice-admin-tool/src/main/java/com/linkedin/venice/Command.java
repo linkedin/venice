@@ -197,7 +197,9 @@ public enum Command {
   DISABLE_ACTIVE_ACTIVE_REPLICATION_FOR_CLUSTER("disable-active-active-replication-for-cluster", "disable active active replication for certain stores (batch-only, hybrid-only, incremental-push, hybrid-or-incremental, all) in a cluster",
       new Arg[] {URL, CLUSTER, STORE_TYPE}, new Arg[] {REGIONS_FILTER}),
   GET_DELETABLE_STORE_TOPICS("get-deletable-store-topics", "Get a list of deletable store topics in the fabric that belongs to the controller handling the request",
-      new Arg[] {URL, CLUSTER});
+      new Arg[] {URL, CLUSTER}),
+  CONFIGURE_INCREMENTAL_PUSH_FOR_CLUSTER("configure-incremental-push-for-cluster", "Configure all stores in a cluster which match a specific store type to a configurable incremental push type",
+      new Arg[] {URL, CLUSTER, INCREMENTAL_PUSH_POLICY_TO_APPLY}, new Arg[] {INCREMENTAL_PUSH_POLICY_TO_FILTER, REGIONS_FILTER});
   private final String commandName;
   private final String description;
   private final Arg[] requiredArgs;

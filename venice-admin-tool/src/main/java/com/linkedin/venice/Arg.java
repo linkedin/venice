@@ -104,7 +104,9 @@ public enum Arg {
   ACTIVE_ACTIVE_REPLICATION_ENABLED("active-active-replication-enabled", "aa", true, "A parameter flag to enable/disable Active/Active replication feature for a store"),
   REGIONS_FILTER("regions-filter", "regf", true, "A list of regions that will be impacted by the command; can be used by UpdateStore command"),
   APPLY_TARGET_VERSION_FILTER_FOR_INC_PUSH("apply-target-version-filter-for-inc-push", "atvffip", true, "Enable/disable applying the target version filter for incremental pushes"),
-  SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND(ConfigKeys.SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND, "kfq", true, "The quota of records to fetch from Kafka for the specified fabric.");
+  SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND(ConfigKeys.SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND, "kfq", true, "The quota of records to fetch from Kafka for the specified fabric."),
+  INCREMENTAL_PUSH_POLICY_TO_FILTER("incremental-push-policy-to-filter", "ippf", true, "If the batch update command is trying to configure existing incremental push store type, their incremental push policy should also match this filter before the batch update command applies any change to them"),
+  INCREMENTAL_PUSH_POLICY_TO_APPLY("incremental-push-policy-to-apply", "ippa", true, "This field will determine what incremental push policy will be applied to the selected stores.");
 
   private final String argName;
   private final String first;

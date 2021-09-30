@@ -105,6 +105,8 @@ public class ControllerApiConstants {
 
   public static final String INCREMENTAL_PUSH_POLICY = "incremental_push_policy";
 
+  public static final String INCREMENTAL_PUSH_POLICY_TO_FILTER = "incremental_push_policy_to_filter";
+
   public static final String TOPIC_COMPACTION_POLICY = "topic_compaction_policy";
 
   public static final String BACKUP_VERSION_RETENTION_MS = "backup_version_retention_ms";
