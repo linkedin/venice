@@ -23,7 +23,6 @@ import com.linkedin.venice.controller.init.SystemSchemaInitializationRoutine;
 import com.linkedin.venice.controller.kafka.StoreStatusDecider;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.controller.kafka.consumer.VeniceControllerConsumerFactory;
-import com.linkedin.venice.controller.stats.VeniceHelixAdminStats;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
@@ -104,10 +103,10 @@ import com.linkedin.venice.pushstatushelper.PushStatusStoreRecordDeleter;
 import com.linkedin.venice.replication.LeaderStorageNodeReplicator;
 import com.linkedin.venice.replication.TopicReplicator;
 import com.linkedin.venice.schema.DerivedSchemaEntry;
-import com.linkedin.venice.schema.SchemaData;
-import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.ReplicationMetadataSchemaEntry;
 import com.linkedin.venice.schema.ReplicationMetadataVersionId;
+import com.linkedin.venice.schema.SchemaData;
+import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -265,7 +264,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     private final StoreGraveyard storeGraveyard;
     private final Map<String, String> participantMessageStoreRTTMap;
     private final Map<String, VeniceWriter> participantMessageWriterMap;
-    private final VeniceHelixAdminStats veniceHelixAdminStats;
     private final boolean isControllerClusterHAAS;
     private final String coloMasterClusterName;
     private final Optional<SSLFactory> sslFactory;
@@ -397,7 +395,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             LeaderStorageNodeReplicator.class.getName(), topicManagerRepository.getTopicManager(), commonConfig.getProps(), veniceWriterFactory);
         this.participantMessageStoreRTTMap = new VeniceConcurrentHashMap<>();
         this.participantMessageWriterMap = new VeniceConcurrentHashMap<>();
-        this.veniceHelixAdminStats = new VeniceHelixAdminStats(metricsRepository, "venice_helix_admin");
         isControllerClusterHAAS = commonConfig.isControllerClusterLeaderHAAS();
         coloMasterClusterName = commonConfig.getClusterName();
         pushJobStatusStoreClusterName = commonConfig.getPushJobStatusStoreClusterName();
@@ -1996,7 +1993,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             }
 
             if (!getTopicManager().containsTopicAndAllPartitionsAreOnline(kafkaTopic) || isTopicTruncated(kafkaTopic)) {
-              veniceHelixAdminStats.recordUnexpectedTopicAbsenceCount();
+                resources.getVeniceAdminStats().recordUnexpectedTopicAbsenceCount();
               throw new VeniceException("Incremental push cannot be started for store: " + storeName + " in cluster: "
                   + clusterName + " because the topic: " + kafkaTopic + " is either absent or being truncated");
             }
@@ -4799,10 +4796,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     public void addConfig(VeniceControllerConfig config) {
         multiClusterConfigs.addClusterConfig(config);
-    }
-
-    public void addMetric(String clusterName, MetricsRepository metricsRepository){
-
     }
 
     public ZkWhitelistAccessor getWhitelistAccessor() {

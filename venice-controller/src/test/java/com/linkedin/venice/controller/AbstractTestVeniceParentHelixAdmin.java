@@ -4,6 +4,7 @@ import com.linkedin.venice.authorization.AuthorizerService;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controller.kafka.AdminTopicUtils;
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
+import com.linkedin.venice.controller.stats.VeniceAdminStats;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
@@ -59,6 +60,7 @@ public class AbstractTestVeniceParentHelixAdmin {
   VeniceWriter veniceWriter;
   VeniceParentHelixAdmin parentAdmin = null;
   HelixVeniceClusterResources resources;
+  VeniceAdminStats adminStats;
   Store store;
   ParentHelixOfflinePushAccessor accessor;
   HelixReadOnlyStoreConfigRepository readOnlyStoreConfigRepository;
@@ -115,6 +117,9 @@ public class AbstractTestVeniceParentHelixAdmin {
     doReturn(10).when(manager).getLiveRoutersCount();
     ClusterLockManager clusterLockManager = mock(ClusterLockManager.class);
     doReturn(clusterLockManager).when(resources).getClusterLockManager();
+
+    adminStats = mock(VeniceAdminStats.class);
+    doReturn(adminStats).when(resources).getVeniceAdminStats();
 
     accessor = mock(ParentHelixOfflinePushAccessor.class);
 

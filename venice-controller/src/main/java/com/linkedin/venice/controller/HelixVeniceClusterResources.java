@@ -5,6 +5,7 @@ import com.linkedin.venice.acl.AclCreationDeletionListener;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controller.stats.AggPartitionHealthStats;
+import com.linkedin.venice.controller.stats.VeniceAdminStats;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixReadWriteSchemaRepositoryAdapter;
 import com.linkedin.venice.helix.HelixReadWriteStoreRepositoryAdapter;
@@ -70,6 +71,7 @@ public class HelixVeniceClusterResources implements VeniceResource {
 
   private ErrorPartitionResetTask errorPartitionResetTask = null;
   private final Optional<MetaStoreWriter> metaStoreWriter;
+  private final VeniceAdminStats veniceAdminStats;
 
   public HelixVeniceClusterResources(String clusterName,
       ZkClient zkClient,
@@ -147,6 +149,7 @@ public class HelixVeniceClusterResources implements VeniceResource {
           routingDataRepository, pushMonitor, metricsRepository, config.getErrorPartitionAutoResetLimit(),
           config.getErrorPartitionProcessingCycleDelay());
     }
+    veniceAdminStats = new VeniceAdminStats(metricsRepository, "venice-admin-" + clusterName);
   }
 
   private List<String> getActiveActiveRealTimeSourceKafkaURLs(VeniceControllerConfig config) {
@@ -304,6 +307,10 @@ public class HelixVeniceClusterResources implements VeniceResource {
 
   public ClusterLockManager getClusterLockManager() {
     return clusterLockManager;
+  }
+
+  public VeniceAdminStats getVeniceAdminStats() {
+    return veniceAdminStats;
   }
 
   /**

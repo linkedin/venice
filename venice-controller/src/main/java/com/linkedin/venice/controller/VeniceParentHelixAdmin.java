@@ -1037,6 +1037,16 @@ public class VeniceParentHelixAdmin implements Admin {
       }
     }
     cleanupHistoricalVersions(clusterName, storeName);
+    if (VeniceSystemStoreType.getSystemStoreType(storeName) == null) {
+      if (pushType.isBatch()) {
+        veniceHelixAdmin.getHelixVeniceClusterResources(clusterName).getVeniceAdminStats()
+            .recordSuccessfullyStartedUserBatchPushParentAdminCount();
+      }
+      else if (pushType.isIncremental()) {
+        veniceHelixAdmin.getHelixVeniceClusterResources(clusterName).getVeniceAdminStats()
+            .recordSuccessfullyStartedUserIncrementalPushParentAdminCount();
+      }
+    }
 
     return newVersion;
   }

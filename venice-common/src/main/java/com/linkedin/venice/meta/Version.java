@@ -46,6 +46,10 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
 
     public int getValue() { return value; }
 
+    public boolean isBatch() {
+      return this == BATCH;
+    }
+
     public boolean isIncremental() {
       return this == INCREMENTAL;
     }
