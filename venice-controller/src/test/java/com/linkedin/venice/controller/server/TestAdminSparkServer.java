@@ -497,7 +497,7 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
     parentController.getVeniceAdmin().incrementVersionIdempotent(
         clusterName, storeName, Version.guidBasedDummyPushId(),1, 1);
 
-    try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentController.getControllerUrl())) {
+    try (ControllerClient parentControllerClient = ControllerClient.constructClusterControllerClient(clusterName, parentController.getControllerUrl())) {
       parentControllerClient.enableStoreReads(storeName, false);
       parentControllerClient.enableStoreWrites(storeName, false);
 
@@ -556,7 +556,7 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
     List<String> storeNames = new ArrayList<>();
     storeNames.add(cluster.getNewStore("testStore").getName());
     try {
-      ControllerClient parentControllerClient = new ControllerClient(cluster.getClusterName(), parentController.getControllerUrl());
+      ControllerClient parentControllerClient = ControllerClient.constructClusterControllerClient(cluster.getClusterName(), parentController.getControllerUrl());
       MultiStoreStatusResponse storeResponse = parentControllerClient.getFutureVersions(cluster.getClusterName(), storeNames.get(0));
 
       // Theres no version for this store and no future version coming, so we expect an entry with Store.NON_EXISTING_VERSION
@@ -722,7 +722,7 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
 
     parentController.getVeniceAdmin().incrementVersionIdempotent(clusterName, storeName, "test", 1, 1);
 
-    try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentController.getControllerUrl())) {
+    try (ControllerClient parentControllerClient = ControllerClient.constructClusterControllerClient(clusterName, parentController.getControllerUrl())) {
       parentControllerClient.enableStoreReads(storeName, false);
       parentControllerClient.enableStoreWrites(storeName, false);
 

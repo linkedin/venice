@@ -299,6 +299,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
   protected final VeniceProperties props;
   private final String jobId;
   private ControllerClient controllerClient;
+  private ControllerClient systemKMEStoreControllerClient;
   private String clusterName;
   private RunningJob runningJob;
   // Job config for regular push job
@@ -488,7 +489,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
     );
     String veniceControllerUrl = getVeniceControllerUrl(properties);
     String heartbeatStoreClusterName = discoverCluster(heartbeatStoreName, veniceControllerUrl, sslFactory);
-    ControllerClient heartbeatStoreControllerClient = new ControllerClient(heartbeatStoreClusterName, veniceControllerUrl, sslFactory);
+    ControllerClient heartbeatStoreControllerClient = ControllerClient.constructClusterControllerClient(heartbeatStoreClusterName, veniceControllerUrl, sslFactory);
     logger.info(String.format("Created controller client for the liveness heartbeat store %s in %s cluster",
             heartbeatStoreName, heartbeatStoreClusterName));
     return heartbeatStoreControllerClient;
@@ -751,6 +752,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
       );
       initControllerClient(sslFactory, pushJobSetting.veniceControllerUrl, clusterName);
       sendPushJobDetailsToController();
+      validateKafkaMessageEnvelopeSchema(pushJobSetting);
       pushJobHeartbeatSender = pushJobHeartbeatSenderFactory.createHeartbeatSender(
           props,
           livenessHeartbeatStoreControllerClient,
@@ -1009,6 +1011,11 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
     }
   }
 
+  // Visible for testing
+  void setSystemKMEStoreControllerClient(ControllerClient controllerClient) {
+    this.systemKMEStoreControllerClient = controllerClient;
+  }
+
   private void verifyCountersWithZeroValues() throws IOException {
     final Counters counters = runningJob.getCounters();
     final long reducerClosedCount = MRJobCounterHelper.getReducerClosedCount(counters);
@@ -1071,9 +1078,15 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
    */
   private void initControllerClient(Optional<SSLFactory> sslFactory, String veniceControllerUrl, String clusterName) {
     if (controllerClient == null) {
-       controllerClient = new ControllerClient(clusterName, veniceControllerUrl, sslFactory);
+       controllerClient = ControllerClient.constructClusterControllerClient(clusterName, veniceControllerUrl, sslFactory);
     } else {
-      logger.warn("Controller client has already been initialized");
+      logger.info("Controller client has already been initialized");
+    }
+    if (systemKMEStoreControllerClient == null) {
+      systemKMEStoreControllerClient = ControllerClient.discoverAndConstructControllerClient(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE
+          .getSystemStoreName(), veniceControllerUrl, sslFactory);
+    } else {
+      logger.info("System store controller client has already been initialized");
     }
   }
 
@@ -1364,6 +1377,15 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
           "\n\t\tschema defined in HDFS: \t" + schemaInfo.keySchemaString +
           "\n\t\tschema defined in Venice: \t" + serverSchema.toString());
       throw new VeniceException(briefErrorMessage);
+    }
+  }
+
+  private void validateKafkaMessageEnvelopeSchema(PushJobSetting setting) {
+    SchemaResponse response = ControllerClient.retryableRequest(systemKMEStoreControllerClient, setting.controllerRetries, c ->
+        c.getValueSchema(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getSystemStoreName(), AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getCurrentProtocolVersion()));
+
+    if (response.isError()) {
+      throw new VeniceException("KME protocol is upgraded in the push job but not in the Venice backend; Please contact Venice team. Error : "+ response.getError());
     }
   }
 

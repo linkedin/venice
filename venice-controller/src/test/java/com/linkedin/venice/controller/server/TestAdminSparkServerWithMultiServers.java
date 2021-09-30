@@ -44,7 +44,7 @@ public class TestAdminSparkServerWithMultiServers {
   @BeforeClass
   public void setUp() {
     cluster = ServiceFactory.getVeniceCluster(1, STORAGE_NODE_COUNT, 0);
-    controllerClient = new ControllerClient(cluster.getClusterName(), cluster.getAllControllersURLs());
+    controllerClient = ControllerClient.constructClusterControllerClient(cluster.getClusterName(), cluster.getAllControllersURLs());
   }
 
   @AfterClass

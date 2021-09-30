@@ -35,9 +35,9 @@ public class AbstractTestAdminSparkServer {
             new VeniceControllerWrapper[]{cluster.getMasterVeniceController()}, false, authorizerService);
 
     if (!useParentRestEndpoint) {
-      controllerClient = new ControllerClient(cluster.getClusterName(), cluster.getAllControllersURLs());
+      controllerClient =  ControllerClient.constructClusterControllerClient(cluster.getClusterName(), cluster.getAllControllersURLs());
     } else {
-      controllerClient = new ControllerClient(cluster.getClusterName(), parentController.getControllerUrl());
+      controllerClient =  ControllerClient.constructClusterControllerClient(cluster.getClusterName(), parentController.getControllerUrl());
     }
 
     TestUtils.waitForNonDeterministicCompletion(TEST_TIMEOUT, TimeUnit.MILLISECONDS,

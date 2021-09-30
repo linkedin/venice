@@ -58,7 +58,7 @@ public class TestRestartController {
     int versionNum = response.getVersion();
 
     VeniceWriter<String, String, byte[]> veniceWriter = cluster.getVeniceWriter(topicName);
-    ControllerClient controllerClient = new ControllerClient(cluster.getClusterName(), cluster.getAllControllersURLs());
+    ControllerClient controllerClient = ControllerClient.constructClusterControllerClient(cluster.getClusterName(), cluster.getAllControllersURLs());
     Assert.assertEquals(controllerClient.queryJobStatus(topicName).getStatus(), ExecutionStatus.STARTED.toString());
 
     // push some data
@@ -124,7 +124,7 @@ public class TestRestartController {
     String topicName = response.getKafkaTopic();
 
     VeniceWriter<String, String, byte[]> veniceWriter = cluster.getVeniceWriter(topicName);
-    ControllerClient controllerClient = new ControllerClient(cluster.getClusterName(), cluster.getAllControllersURLs());
+    ControllerClient controllerClient = ControllerClient.constructClusterControllerClient(cluster.getClusterName(), cluster.getAllControllersURLs());
     Assert.assertEquals(controllerClient.queryJobStatus(topicName).getStatus(), ExecutionStatus.STARTED.toString());
     // push some data
     veniceWriter.broadcastStartOfPush(new HashMap<>());

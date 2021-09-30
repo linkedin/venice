@@ -107,7 +107,7 @@ public class AbstractTestVeniceParentHelixAdmin {
     config = mockConfig(clusterName);
     doReturn(1).when(config).getReplicationMetadataVersionId();
 
-    controllerClients.put(coloName, new ControllerClient(clusterName, "localhost", Optional.empty()));
+    controllerClients.put(coloName, ControllerClient.constructClusterControllerClient(clusterName, "localhost", Optional.empty()));
     doReturn(controllerClients).when(internalAdmin).getControllerClientMap(any());
 
     resources = mockResources(config, clusterName);

@@ -75,7 +75,7 @@ public class TestControllerClient {
       mockController.addResponseForUriPattern(ControllerRoute.MASTER_CONTROLLER.getPath() + ".*", response);
 
       String controllerUrlWithSpaceAtBeginning = "   http://" + mockController.getAddress();
-      ControllerClient controllerClient = new ControllerClient(clusterName, controllerUrlWithSpaceAtBeginning);
+      ControllerClient controllerClient = ControllerClient.constructClusterControllerClient(clusterName, controllerUrlWithSpaceAtBeginning);
       String masterControllerUrl = controllerClient.getMasterControllerUrl();
       Assert.assertEquals(masterControllerUrl, fakeMasterControllerUrl);
     }

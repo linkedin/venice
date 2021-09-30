@@ -13,6 +13,7 @@ import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.Closeable;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -20,6 +21,7 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -46,6 +48,8 @@ public class ControllerClient implements Closeable {
   private String masterControllerUrl;
   private List<String> controllerDiscoveryUrls;
 
+  private static final Map<String, ControllerClient> clusterToClientMap = new VeniceConcurrentHashMap<>();
+
   public ControllerClient(String clusterName, String discoveryUrls) {
     this(clusterName, discoveryUrls, Optional.empty());
   }
@@ -68,8 +72,27 @@ public class ControllerClient implements Closeable {
     logger.debug("Parsed hostname as: " + this.localHostName);
   }
 
+  public static ControllerClient discoverAndConstructControllerClient(String storeName, String discoveryUrls) {
+    return discoverAndConstructControllerClient(storeName, discoveryUrls, Optional.empty());
+  }
+
+  public static ControllerClient discoverAndConstructControllerClient(String storeName, String discoveryUrls, Optional<SSLFactory> sslFactory) {
+    String cluster = discoverCluster(discoveryUrls, storeName, sslFactory).getCluster();
+    return clusterToClientMap.computeIfAbsent(cluster, k -> new ControllerClient(cluster, discoveryUrls, sslFactory));
+  }
+
+  public static ControllerClient constructClusterControllerClient(String clusterName, String discoveryUrls) {
+    return constructClusterControllerClient(clusterName, discoveryUrls, Optional.empty());
+  }
+
+  public static ControllerClient constructClusterControllerClient(String clusterName, String discoveryUrls, Optional<SSLFactory> sslFactory) {
+    // key on both cluster + discovery URLs
+    return clusterToClientMap.computeIfAbsent(clusterName + discoveryUrls, k -> new ControllerClient(clusterName, discoveryUrls, sslFactory));
+  }
+
   @Override
   public void close() {
+    clusterToClientMap.clear();
   }
 
   protected String discoverMasterController() {

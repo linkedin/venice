@@ -462,7 +462,7 @@ public class VeniceParentHelixAdmin implements Admin {
       // Verify that the store is indeed created by another controller. This is to prevent if the initial master fails
       // or when the cluster happens to be leaderless for a bit.
       try (ControllerClient controllerClient =
-          new ControllerClient(clusterName, getLeaderController(clusterName).getUrl(false), sslFactory)) {
+           ControllerClient.constructClusterControllerClient(clusterName, getLeaderController(clusterName).getUrl(false), sslFactory)) {
         StoreResponse storeResponse = controllerClient.getStore(storeName);
         if (storeResponse.isError()) {
           logger.warn("Failed to verify if " + storeDescriptor + " exists from the controller with URL: " +

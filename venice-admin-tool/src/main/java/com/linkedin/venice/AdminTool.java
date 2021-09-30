@@ -151,7 +151,7 @@ public class AdminTool {
           String sslFactoryClassName = sslProperties.getProperty(SSL_FACTORY_CLASS_NAME, DEFAULT_SSL_FACTORY_CLASS_NAME);
           sslFactory = Optional.of(SslUtils.getSSLFactory(sslProperties, sslFactoryClassName));
         }
-        controllerClient = new ControllerClient(clusterName, veniceUrl, sslFactory);
+        controllerClient = ControllerClient.constructClusterControllerClient(clusterName, veniceUrl, sslFactory);
       }
 
       if (cmd.hasOption(Arg.FLAT_JSON.toString())){

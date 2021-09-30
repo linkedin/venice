@@ -79,7 +79,7 @@ public class TestParentControllerWithMultiDataCenter {
 
     VeniceControllerWrapper parentController =
         parentControllers.stream().filter(c -> c.isMasterController(clusterName)).findAny().get();
-    ControllerClient parentControllerClient = new ControllerClient(clusterName, parentController.getControllerUrl());
+    ControllerClient parentControllerClient = ControllerClient.constructClusterControllerClient(clusterName, parentController.getControllerUrl());
 
     /**
      * Create a test store

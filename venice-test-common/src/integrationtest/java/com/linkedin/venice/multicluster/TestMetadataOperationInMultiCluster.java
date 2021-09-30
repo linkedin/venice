@@ -46,9 +46,9 @@ public class TestMetadataOperationInMultiCluster {
       String secondCluster = clusterNames[1];
 
       try (VeniceControllerWrapper controllerWrapper = multiClusterWrapper.getRandomController();
-          ControllerClient secondControllerClient = new ControllerClient(secondCluster, controllerWrapper.getControllerUrl())) {
+          ControllerClient secondControllerClient = ControllerClient.constructClusterControllerClient(secondCluster, controllerWrapper.getControllerUrl())) {
         // controller client could talk to any controller and find the lead of the given cluster correclty.
-        ControllerClient controllerClient = new ControllerClient(clusterName, controllerWrapper.getControllerUrl());
+        ControllerClient controllerClient = ControllerClient.constructClusterControllerClient(clusterName, controllerWrapper.getControllerUrl());
 
         // Create store
         String storeName = "testCreateStoreAndVersionForMultiCluster";
@@ -114,7 +114,7 @@ public class TestMetadataOperationInMultiCluster {
             recordSchema.getField(h2vProperties.getProperty(VenicePushJob.VALUE_FIELD_PROP)).schema();
 
         try (ControllerClient controllerClient =
-            new ControllerClient(clusterName, multiClusterWrapper.getRandomController().getControllerUrl())) {
+            ControllerClient.constructClusterControllerClient(clusterName, multiClusterWrapper.getRandomController().getControllerUrl())) {
           controllerClient.createNewStore(storeName, "test", keySchema.toString(), valueSchema.toString());
           ControllerResponse controllerResponse = controllerClient.updateStore(
               h2vProperties.getProperty(VENICE_STORE_NAME_PROP),
@@ -129,7 +129,7 @@ public class TestMetadataOperationInMultiCluster {
         properties.setProperty(VenicePushJob.PBNJ_ENABLE, "true");
         properties.setProperty(VenicePushJob.PBNJ_ROUTER_URL_PROP, multiClusterWrapper.getClusters().get(clusterName).getRandomRouterURL());
         runH2V(properties, 1,
-            new ControllerClient(clusterName, multiClusterWrapper.getRandomController().getControllerUrl()));
+            ControllerClient.constructClusterControllerClient(clusterName, multiClusterWrapper.getRandomController().getControllerUrl()));
       }
     }
   }

@@ -43,7 +43,7 @@ public class TestDeleteStoreDeletesRealtimeTopic {
   @BeforeClass
   public void setUp() {
     venice = ServiceFactory.getVeniceCluster();
-    controllerClient = new ControllerClient(venice.getClusterName(), venice.getRandomRouterURL());
+    controllerClient = ControllerClient.constructClusterControllerClient(venice.getClusterName(), venice.getRandomRouterURL());
     topicManager = new TopicManager(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, 0l, TestUtils.getVeniceConsumerFactory(venice.getKafka()));
     storeName = TestUtils.getUniqueString("hybrid-store");
     venice.getNewStore(storeName);
