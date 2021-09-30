@@ -37,7 +37,7 @@ if __name__ == "__main__":
     formatter_class=argparse.RawTextHelpFormatter,
     description=textwrap.dedent(
       """
-      Run tests on Jenkins with current working copy changes.
+      Test current working copy on Jenkins.
 
       Please follow instructions from the link below to generate an API token:
       https://jenkins.io/doc/book/system-administration/authenticating-scripted-clients
@@ -49,30 +49,32 @@ if __name__ == "__main__":
         }}
       """.format(config=CI_CONFIG)))
 
-  parser.add_argument("patch", nargs='?', help="Patch file to submit for testing.")
+  parser.add_argument("-b", "--baseline", help="baseline branch/tag to use for testing", default="origin/master")
+  parser.add_argument("patch", nargs='?', help="diff-formatted patch to submit for testing")
   args = parser.parse_args()
 
   params = dict(job="Venice-WcTest")
   params.update(get_config(CI_CONFIG))
   if isinstance(params["url"], list):
     params["url"] = random.choice(params["url"])
+  params.update(vars(args))
 
   if args.patch:
     response = run_command(
-      "curl -kfv '{url}/job/{job}/buildWithParameters' -u $(whoami):{apiToken} -F 'patch.diff=@{patch}'"
-        .format(**params, patch=args.patch))
+      "curl -kfv '{url}/job/{job}/buildWithParameters?baseline={baseline}' -u $(whoami):{apiToken} -F 'patch.diff=@{patch}'"
+        .format(**params))
   else:
-    changes = run_command("git diff --patch --find-renames --compact-summary origin/master")
+    changes = run_command("git diff --patch --find-renames --compact-summary {baseline}".format(**params))
     if not changes:
       raise SystemExit("No changes")
 
     revision = '#' + run_command("git rev-parse --short HEAD")
     response = run_command(
-        "curl -kfv '{url}/job/{job}/buildWithParameters' -u $(whoami):{apiToken} -F 'patch.diff=@-;filename={name}' <<'\003'\n{changes}\n\003"
+        "curl -kfv '{url}/job/{job}/buildWithParameters?baseline={baseline}' -u $(whoami):{apiToken} -F 'patch.diff=@-;filename={name}' <<'\003'\n{changes}\n\003"
           .format(**params, changes=changes, name=revision))
 
     print("Submitted working copy {name} for testing:".format(name=revision))
-    print(run_command("git diff --find-renames --compact-summary origin/master"))
+    print(run_command("git diff --find-renames --compact-summary {baseline}".format(**params)))
     print()
 
   build_url = re.findall("< Location: (https?://.+)", response)[0]
