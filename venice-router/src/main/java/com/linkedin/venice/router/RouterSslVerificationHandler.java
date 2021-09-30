@@ -16,16 +16,16 @@ import java.io.IOException;
 import org.apache.log4j.Logger;
 
 @ChannelHandler.Sharable
-public class VerifySslHandler extends SimpleChannelInboundHandler<HttpRequest> {
-  private static final Logger logger = Logger.getLogger(VerifySslHandler.class);
+public class RouterSslVerificationHandler extends SimpleChannelInboundHandler<HttpRequest> {
+  private static final Logger logger = Logger.getLogger(RouterSslVerificationHandler.class);
   private final SecurityStats stats;
   private final boolean requireSsl;
 
-  public VerifySslHandler(SecurityStats stats) {
+  public RouterSslVerificationHandler(SecurityStats stats) {
     this(stats, true);
   }
 
-  public VerifySslHandler(SecurityStats stats, boolean requireSsl) {
+  public RouterSslVerificationHandler(SecurityStats stats, boolean requireSsl) {
     this.stats = stats;
     this.requireSsl = requireSsl;
   }
