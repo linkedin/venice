@@ -66,7 +66,7 @@ public class KafkaTopicDumper {
   private int max_consume_attempts;
   private boolean logMetadataOnly;
 
-  public KafkaTopicDumper(ControllerClient controllerClient, Properties consumerProps, String topic, int partitionNumber,  int startingOffset, int messageCount, String parentDir, int maxConsumeAttempts, boolean logMetadataOnly) {
+  public KafkaTopicDumper(ControllerClient controllerClient, Properties consumerProps, String topic, int partitionNumber,  long startingOffset, int messageCount, String parentDir, int maxConsumeAttempts, boolean logMetadataOnly) {
     this.max_consume_attempts = maxConsumeAttempts;
     if (Version.isVersionTopic(topic)) {
       this.storeName = Version.parseStoreFromKafkaTopicName(topic);
@@ -261,8 +261,8 @@ public class KafkaTopicDumper {
         logger.info("KafkaOffset: " + record.offset() + " ControlMsg: " + (kafkaKey.isControlMessage() ? "Yes" : "No")
             + " msgType: " + msg + " ProducerMetadata:(" + "guid: " + producerMetadata.producerGUID.toString()
             + " seq: " + producerMetadata.messageSequenceNumber + " segment: " + producerMetadata.segmentNumber
-            + " upstreamOffset: " + producerMetadata.upstreamOffset + ") footer hostname: " + (
-            kafkaMessageEnvelope.leaderMetadataFooter == null ? "" : kafkaMessageEnvelope.leaderMetadataFooter.hostName)
+            + " upstreamOffset: " + producerMetadata.upstreamOffset+ " messageTimestamp: " + producerMetadata.messageTimestamp
+            + ") footer hostname: " + (kafkaMessageEnvelope.leaderMetadataFooter == null ? "" : kafkaMessageEnvelope.leaderMetadataFooter.hostName)
             + " footer offset: " + (kafkaMessageEnvelope.leaderMetadataFooter == null ? "" : kafkaMessageEnvelope.leaderMetadataFooter.upstreamOffset));
       } catch (Exception e) {
         logger.error("Failed when building record for offset " + record.offset(), e);
