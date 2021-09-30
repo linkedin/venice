@@ -72,7 +72,7 @@ public class VeniceServerTest {
       // Stop server, remove it from the cluster then restart. We expect that all local storage would be deleted. Once
       // the server join again.
       cluster.stopVeniceServer(server.getPort());
-      try (ControllerClient client = new ControllerClient(cluster.getClusterName(), cluster.getAllControllersURLs())) {
+      try (ControllerClient client = ControllerClient.constructClusterControllerClient(cluster.getClusterName(), cluster.getAllControllersURLs())) {
         client.removeNodeFromCluster(Utils.getHelixNodeIdentifier(server.getPort()));
       }
 

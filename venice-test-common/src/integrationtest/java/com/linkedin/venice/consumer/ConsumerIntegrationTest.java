@@ -114,7 +114,7 @@ public class ConsumerIntegrationTest {
   @BeforeClass
   public void sharedSetUp() {
     cluster = ServiceFactory.getVeniceCluster();
-    controllerClient = new ControllerClient(cluster.getClusterName(), cluster.getAllControllersURLs());
+    controllerClient = ControllerClient.constructClusterControllerClient(cluster.getClusterName(), cluster.getAllControllersURLs());
 
     String systemStoreName = AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getSystemStoreName();
     TestUtils.waitForNonDeterministicAssertion(15, TimeUnit.SECONDS, () -> {

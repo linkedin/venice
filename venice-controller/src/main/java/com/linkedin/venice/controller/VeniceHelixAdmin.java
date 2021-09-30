@@ -834,7 +834,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             // Can be fetched from local repository
             return getValueSchemaId(clusterName, storeName, valueSchemaStr);
         }
-        ControllerClient controllerClient = new ControllerClient(clusterName,
+        ControllerClient controllerClient = ControllerClient.constructClusterControllerClient(clusterName,
             getLeaderController(clusterName).getUrl(false), sslFactory);
         SchemaResponse response = controllerClient.getValueSchemaID(storeName, valueSchemaStr);
         if (response.isError()) {
@@ -968,7 +968,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         }
 
         String destControllerUrl = this.getLeaderController(destClusterName).getUrl(false);
-        ControllerClient destControllerClient = new ControllerClient(destClusterName, destControllerUrl, sslFactory);
+        ControllerClient destControllerClient = ControllerClient.constructClusterControllerClient(destClusterName, destControllerUrl, sslFactory);
 
         // Get original store properties
         StoreInfo srcStore = StoreInfo.fromStore(this.getStore(srcClusterName, storeName));
@@ -1121,7 +1121,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             Map<String, ControllerClient> controllerClients = new HashMap<>();
             VeniceControllerConfig veniceControllerConfig = multiClusterConfigs.getControllerConfig(clusterName);
             veniceControllerConfig.getChildDataCenterControllerUrlMap().entrySet().
-                forEach(entry -> controllerClients.put(entry.getKey(), new ControllerClient(clusterName, entry.getValue(), sslFactory)));
+                forEach(entry -> controllerClients.put(entry.getKey(), ControllerClient.constructClusterControllerClient(clusterName, entry.getValue(), sslFactory)));
             veniceControllerConfig.getChildDataCenterControllerD2Map().entrySet().
                 forEach(entry -> controllerClients.put(entry.getKey(),
                     new D2ControllerClient(veniceControllerConfig.getD2ServiceName(), clusterName, entry.getValue(), sslFactory)));
@@ -1348,7 +1348,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 if (clusterName.equals(destinationCluster)) {
                     // Mirror new pushes back to the source cluster in case we abort migration after completion.
                     ControllerClient sourceClusterControllerClient =
-                        new ControllerClient(sourceCluster, getLeaderController(sourceCluster).getUrl(false), sslFactory);
+                        ControllerClient.constructClusterControllerClient(sourceCluster, getLeaderController(sourceCluster).getUrl(false), sslFactory);
                     VersionResponse response = sourceClusterControllerClient.addVersionAndStartIngestion(storeName,
                         pushJobId, versionNumber, numberOfPartitions, pushType, remoteKafkaBootstrapServers,
                         rewindTimeInSecondsOverride, timestampMetadataVersionId);
@@ -1362,7 +1362,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             } else if (clusterName.equals(sourceCluster)) {
                 // Migration is still in progress and we need to mirror new version signal from source to dest.
                 ControllerClient destClusterControllerClient =
-                    new ControllerClient(destinationCluster, getLeaderController(destinationCluster).getUrl(false), sslFactory);
+                     ControllerClient.constructClusterControllerClient(destinationCluster, getLeaderController(destinationCluster).getUrl(false), sslFactory);
                 VersionResponse response = destClusterControllerClient.addVersionAndStartIngestion(storeName,
                     pushJobId, versionNumber, numberOfPartitions, pushType, remoteKafkaBootstrapServers,
                     rewindTimeInSecondsOverride, timestampMetadataVersionId);

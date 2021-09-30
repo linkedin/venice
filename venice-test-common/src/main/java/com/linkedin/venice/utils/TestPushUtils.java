@@ -988,8 +988,7 @@ public class TestPushUtils {
 
     String veniceUrl = props.containsKey(VENICE_DISCOVER_URL_PROP) ? props.getProperty(VENICE_DISCOVER_URL_PROP) : props.getProperty(VENICE_URL_PROP);
 
-    ControllerClient controllerClient =
-        new ControllerClient(veniceClusterName, veniceUrl);
+    ControllerClient controllerClient = ControllerClient.constructClusterControllerClient(veniceClusterName, veniceUrl);
     NewStoreResponse newStoreResponse = controllerClient.retryableRequest(5, c -> c.createNewStore(props.getProperty(
         VenicePushJob.VENICE_STORE_NAME_PROP),
         "test@linkedin.com", keySchemaStr, valueSchemaStr));
@@ -1016,7 +1015,7 @@ public class TestPushUtils {
   }
 
   public static void makeStoreLF(VeniceClusterWrapper venice, String storeName) {
-    try(ControllerClient controllerClient = new ControllerClient(venice.getClusterName(), venice.getRandomRouterURL())) {
+    try(ControllerClient controllerClient = ControllerClient.constructClusterControllerClient(venice.getClusterName(), venice.getRandomRouterURL())) {
       ControllerResponse response = controllerClient.updateStore(storeName, new UpdateStoreQueryParams()
           .setLeaderFollowerModel(true));
       if (response.isError()) {
@@ -1026,7 +1025,7 @@ public class TestPushUtils {
   }
 
   public static void makeStoreHybrid(VeniceClusterWrapper venice, String storeName, long rewindSeconds, long offsetLag) {
-    try(ControllerClient controllerClient = new ControllerClient(venice.getClusterName(), venice.getRandomRouterURL())) {
+    try(ControllerClient controllerClient = ControllerClient.constructClusterControllerClient(venice.getClusterName(), venice.getRandomRouterURL())) {
       ControllerResponse response = controllerClient.updateStore(storeName, new UpdateStoreQueryParams()
           .setHybridRewindSeconds(rewindSeconds)
           .setHybridOffsetLagThreshold(offsetLag));

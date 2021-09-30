@@ -64,7 +64,7 @@ public class TestAdminTopicRemoteConsumption {
     // Test the admin channel with the regular KMM pipeline
     VeniceControllerWrapper parentController =
         parentControllers.stream().filter(c -> c.isMasterController(clusterName)).findAny().get();
-    ControllerClient parentControllerClient = new ControllerClient(clusterName, parentController.getControllerUrl());
+    ControllerClient parentControllerClient = ControllerClient.constructClusterControllerClient(clusterName, parentController.getControllerUrl());
 
     // Create a test store
     NewStoreResponse newStoreResponse = parentControllerClient.retryableRequest(5, c -> c.createNewStore(storeName,
@@ -76,7 +76,7 @@ public class TestAdminTopicRemoteConsumption {
     TestPushUtils.updateStore(clusterName, storeName, parentControllerClient, updateStoreParamsOnParent);
 
     // The new store config should be reflected in the child region
-    ControllerClient dc0Client = new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
+    ControllerClient dc0Client = ControllerClient.constructClusterControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
     checkStoreConfig(dc0Client, parentControllerClient, storeName, true);
 
     // Replace the child controller in DC0 region with the new config to enable admin topic remote consumption
@@ -103,7 +103,7 @@ public class TestAdminTopicRemoteConsumption {
 
     // Build a new controller client with the new child controller
     dc0Client.close();
-    ControllerClient newDc0Client = new ControllerClient(clusterName, addedControllerWrapper.getControllerUrl());
+    ControllerClient newDc0Client = ControllerClient.constructClusterControllerClient(clusterName, addedControllerWrapper.getControllerUrl());
     // Before sending any new admin messages, the L/F config should remain true
     checkStoreConfig(newDc0Client, parentControllerClient, storeName, true);
 

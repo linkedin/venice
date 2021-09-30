@@ -252,6 +252,8 @@ public class TestVenicePushJobWithReporterCounters {
             createControllerClientMock(),
             createClusterDiscoverControllerClient()
     );
+    venicePushJob.setSystemKMEStoreControllerClient(createControllerClientMock());
+
     venicePushJob.setJobClientWrapper(createJobClientWrapperMock(mockCounterInfos));
     venicePushJob.setClusterDiscoveryControllerClient(createClusterDiscoveryControllerClientMock());
     venicePushJob.setInputDataInfoProvider(getInputDataInfoProviderMock(inputFileDataSizeInBytes, inputFileHasRecords));
@@ -329,6 +331,8 @@ public class TestVenicePushJobWithReporterCounters {
     ControllerClient controllerClient = mock(ControllerClient.class);
     StoreResponse storeResponse = mock(StoreResponse.class);
     StoreInfo storeInfo = mock(StoreInfo.class);
+
+    when(controllerClient.getValueSchema(anyString(), anyInt())).thenReturn(mock(SchemaResponse.class));
 
     StorageEngineOverheadRatioResponse storageEngineOverheadRatioResponse = mock(StorageEngineOverheadRatioResponse.class);
     when(storageEngineOverheadRatioResponse.isError()).thenReturn(false);
