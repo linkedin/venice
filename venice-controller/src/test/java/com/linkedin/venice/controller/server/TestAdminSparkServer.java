@@ -515,9 +515,10 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
   @Test(timeOut = TEST_TIMEOUT)
   public void controllerClientCanListStoresStatuses() {
     List<String> storeNames = new ArrayList<>();
+    String storePrefix = "controllerClientCanListStoresStatusesTestStore";
     int storeCount = 2;
     for (int i = 0; i < storeCount; i++) {
-      storeNames.add(cluster.getNewStore("testStore" + i).getName());
+      storeNames.add(cluster.getNewStore(storePrefix + i).getName());
     }
 
     try {
@@ -533,13 +534,13 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
       List<String> storeStatuses = storeResponse.getStoreStatusMap()
           .entrySet()
           .stream()
-          .filter(e -> !e.getKey().equals(VeniceSystemStoreUtils.getParticipantStoreNameForCluster(cluster.getClusterName())))
+          .filter(e -> e.getKey().contains(storePrefix))
           .map(Map.Entry::getValue)
           .collect(Collectors.toList());
-      Assert.assertFalse(storeStatuses.isEmpty());
+      Assert.assertTrue(storeStatuses.size() == storeCount);
       for (String status : storeStatuses) {
         Assert.assertEquals(status, StoreStatus.UNAVAILABLE.toString(),
-            "Store should be unavailable because we have not created a version for this store.");
+            "Store should be unavailable because we have not created a version for this store. " + storeResponse.getStoreStatusMap());
       }
       for (String expectedStore : storeNames) {
         Assert.assertTrue(storeResponse.getStoreStatusMap().containsKey(expectedStore),
@@ -820,20 +821,24 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
   @Test(timeOut = TEST_TIMEOUT)
   public void controllerCanGetDeletableStoreTopics() {
     String storeName = TestUtils.getUniqueString("canGetDeletableStoreTopics");
-    Assert.assertFalse(controllerClient.createNewStore(storeName, "test", "\"string\"", "\"string\"").isError());
-    String metaSystemStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName);
-    // Add some system store and RT topics in the mix to make sure the request can still return the right values.
-    Assert.assertFalse(controllerClient.emptyPush(metaSystemStoreName, "meta-store-push-1", 1024000L).isError());
-    Assert.assertFalse(controllerClient.emptyPush(storeName, "push-1", 1024000L).isError());
-    Assert.assertFalse(controllerClient.emptyPush(storeName, "push-2", 1024000L).isError());
-    Assert.assertFalse(controllerClient.emptyPush(storeName, "push-3", 1024000L).isError());
-    MultiStoreTopicsResponse multiStoreTopicResponse = controllerClient.getDeletableStoreTopics();
-    Assert.assertFalse(multiStoreTopicResponse.isError());
-    Assert.assertTrue(multiStoreTopicResponse.getTopics().contains(Version.composeKafkaTopic(storeName, 1)));
-    Assert.assertFalse(multiStoreTopicResponse.getTopics().contains(Version.composeKafkaTopic(storeName, 2)));
-    Assert.assertFalse(multiStoreTopicResponse.getTopics().contains(Version.composeKafkaTopic(storeName, 3)));
-    Assert.assertFalse(multiStoreTopicResponse.getTopics().contains(Version.composeKafkaTopic(metaSystemStoreName, 1)));
-    Assert.assertFalse(multiStoreTopicResponse.getTopics().contains(Version.composeRealTimeTopic(metaSystemStoreName)));
+    try {
+      Assert.assertFalse(controllerClient.createNewStore(storeName, "test", "\"string\"", "\"string\"").isError());
+      String metaSystemStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName);
+      // Add some system store and RT topics in the mix to make sure the request can still return the right values.
+      Assert.assertFalse(controllerClient.emptyPush(metaSystemStoreName, "meta-store-push-1", 1024000L).isError());
+      Assert.assertFalse(controllerClient.emptyPush(storeName, "push-1", 1024000L).isError());
+      Assert.assertFalse(controllerClient.emptyPush(storeName, "push-2", 1024000L).isError());
+      Assert.assertFalse(controllerClient.emptyPush(storeName, "push-3", 1024000L).isError());
+      MultiStoreTopicsResponse multiStoreTopicResponse = controllerClient.getDeletableStoreTopics();
+      Assert.assertFalse(multiStoreTopicResponse.isError());
+      Assert.assertTrue(multiStoreTopicResponse.getTopics().contains(Version.composeKafkaTopic(storeName, 1)));
+      Assert.assertFalse(multiStoreTopicResponse.getTopics().contains(Version.composeKafkaTopic(storeName, 2)));
+      Assert.assertFalse(multiStoreTopicResponse.getTopics().contains(Version.composeKafkaTopic(storeName, 3)));
+      Assert.assertFalse(multiStoreTopicResponse.getTopics().contains(Version.composeKafkaTopic(metaSystemStoreName, 1)));
+      Assert.assertFalse(multiStoreTopicResponse.getTopics().contains(Version.composeRealTimeTopic(metaSystemStoreName)));
+    } finally {
+      deleteStore(storeName);
+    }
   }
 
   private void deleteStore(String storeName) {
