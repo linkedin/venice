@@ -523,7 +523,8 @@ public class RouterServer extends AbstractVeniceService {
     RouterThrottleStats routerThrottleStats = new RouterThrottleStats(this.metricsRepository, "router_throttler_stats");
     routerEarlyThrottler = new EventThrottler(config.getMaxRouterReadCapacityCu(), config.getRouterQuotaCheckWindow(), "router-early-throttler", true, EventThrottler.REJECT_STRATEGY);
 
-    VerifySslHandler unsecureVerifySslHandler = new VerifySslHandler(securityStats, config.isEnforcingSecureOnly());
+    RouterSslVerificationHandler
+        unsecureRouterSslVerificationHandler = new RouterSslVerificationHandler(securityStats, config.isEnforcingSecureOnly());
     HealthCheckStats healthCheckStats = new HealthCheckStats(this.metricsRepository, "healthcheck_stats");
     AdminOperationsStats adminOperationsStats = new AdminOperationsStats(this.metricsRepository, "admin_stats", config);
     AdminOperationsHandler adminOperationsHandler = new AdminOperationsHandler(accessController.orElse(null), this, adminOperationsStats);
@@ -541,7 +542,7 @@ public class RouterServer extends AbstractVeniceService {
           .beforeHttpRequestHandler(ChannelPipeline.class, (pipeline) -> {
             pipeline.addLast("RouterThrottleHandler", new RouterThrottleHandler(routerThrottleStats, routerEarlyThrottler, config));
             pipeline.addLast("HealthCheckHandler", new HealthCheckHandler(healthCheckStats));
-            pipeline.addLast("VerifySslHandler", unsecureVerifySslHandler);
+            pipeline.addLast("VerifySslHandler", unsecureRouterSslVerificationHandler);
             pipeline.addLast("MetadataHandler", metaDataHandler);
             pipeline.addLast("AdminOperationsHandler", adminOperationsHandler);
             addStreamingHandler(pipeline);
@@ -550,7 +551,7 @@ public class RouterServer extends AbstractVeniceService {
           .build());
     }
 
-    VerifySslHandler verifySslHandler = new VerifySslHandler(securityStats);
+    RouterSslVerificationHandler routerSslVerificationHandler = new RouterSslVerificationHandler(securityStats);
     StoreAclHandler aclHandler = accessController.isPresent() ? new StoreAclHandler(accessController.get(), metadataRepository) : null;
     final SSLInitializer sslInitializer;
     if (sslFactory.isPresent()) {
@@ -580,7 +581,7 @@ public class RouterServer extends AbstractVeniceService {
     RouterThrottleHandler routerThrottleHandler = new RouterThrottleHandler(routerThrottleStats, routerEarlyThrottler, config);
     Consumer<ChannelPipeline> withoutAcl = pipeline -> {
       pipeline.addLast("HealthCheckHandler", secureRouterHealthCheckHander);
-      pipeline.addLast("VerifySslHandler", verifySslHandler);
+      pipeline.addLast("VerifySslHandler", routerSslVerificationHandler);
       pipeline.addLast("MetadataHandler", metaDataHandler);
       pipeline.addLast("AdminOperationsHandler", adminOperationsHandler);
       pipeline.addLast("RouterThrottleHandler", routerThrottleHandler);
@@ -588,7 +589,7 @@ public class RouterServer extends AbstractVeniceService {
     };
     Consumer<ChannelPipeline> withAcl = pipeline -> {
       pipeline.addLast("HealthCheckHandler", secureRouterHealthCheckHander);
-      pipeline.addLast("VerifySslHandler", verifySslHandler);
+      pipeline.addLast("VerifySslHandler", routerSslVerificationHandler);
       pipeline.addLast("MetadataHandler", metaDataHandler);
       pipeline.addLast("AdminOperationsHandler", adminOperationsHandler);
       pipeline.addLast("StoreAclHandler", aclHandler);

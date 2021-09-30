@@ -13,6 +13,9 @@ import java.util.Optional;
 import org.apache.log4j.Logger;
 
 
+/**
+ * Currently this VerifySslHandler is only used in servers or the isolated ingestion process.
+ */
 @ChannelHandler.Sharable
 public class VerifySslHandler extends SimpleChannelInboundHandler<HttpRequest> {
   private static final Logger logger = Logger.getLogger(VerifySslHandler.class);
