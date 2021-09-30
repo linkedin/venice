@@ -9,6 +9,7 @@ import com.linkedin.venice.controller.kafka.protocol.admin.AbortMigration;
 import com.linkedin.venice.controller.kafka.protocol.admin.AddVersion;
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
 import com.linkedin.venice.controller.kafka.protocol.admin.ConfigureActiveActiveReplicationForCluster;
+import com.linkedin.venice.controller.kafka.protocol.admin.ConfigureIncrementalPushForCluster;
 import com.linkedin.venice.controller.kafka.protocol.admin.ConfigureNativeReplicationForCluster;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteAllVersions;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteOldVersion;
@@ -220,6 +221,9 @@ public class AdminExecutionTask implements Callable<Void> {
           break;
         case REPLICATION_METADATA_SCHEMA_CREATION:
           handleReplicationMetadataSchemaCreation((MetadataSchemaCreation) adminOperation.payloadUnion);
+          break;
+        case CONFIGURE_INCREMENTAL_PUSH_FOR_CLUSTER:
+          handleConfigureIncrementalPushForCluster((ConfigureIncrementalPushForCluster) adminOperation.payloadUnion);
           break;
         default:
           throw new VeniceException("Unknown admin operation type: " + adminOperation.operationType);
@@ -561,6 +565,18 @@ public class AdminExecutionTask implements Callable<Void> {
     Optional<String> regionsFilter = (message.regionsFilter == null)
         ? Optional.empty() : Optional.of(message.regionsFilter.toString());
     admin.configureActiveActiveReplication(clusterName, storeType, Optional.empty(), enableActiveActiveReplication, regionsFilter);
+  }
+
+  private void handleConfigureIncrementalPushForCluster(ConfigureIncrementalPushForCluster message) {
+    String clusterName = message.clusterName.toString();
+    IncrementalPushPolicy incrementalPushPolicyToApply = IncrementalPushPolicy.valueOf(message.incrementalPushPolicyToApply);
+    Optional<IncrementalPushPolicy> incrementalPushPolicyToFilter = message.incrementalPushPolicyToFilter >= 0
+                                                                    ? Optional.of(IncrementalPushPolicy.valueOf(message.incrementalPushPolicyToFilter))
+                                                                    : Optional.empty();
+    Optional<String> regionsFilter = (message.regionsFilter == null)
+        ? Optional.empty() : Optional.of(message.regionsFilter.toString());
+    admin.configureIncrementalPushForCluster(clusterName, Optional.of(storeName), incrementalPushPolicyToApply,
+        incrementalPushPolicyToFilter, regionsFilter);
   }
 
   private boolean checkPreConditionForReplicateAddVersion(String clusterName, String storeName) {

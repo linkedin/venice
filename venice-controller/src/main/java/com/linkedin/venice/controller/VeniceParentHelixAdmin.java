@@ -22,6 +22,7 @@ import com.linkedin.venice.controller.kafka.protocol.admin.AbortMigration;
 import com.linkedin.venice.controller.kafka.protocol.admin.AddVersion;
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
 import com.linkedin.venice.controller.kafka.protocol.admin.ConfigureActiveActiveReplicationForCluster;
+import com.linkedin.venice.controller.kafka.protocol.admin.ConfigureIncrementalPushForCluster;
 import com.linkedin.venice.controller.kafka.protocol.admin.ConfigureNativeReplicationForCluster;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteAllVersions;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteOldVersion;
@@ -2878,6 +2879,31 @@ public class VeniceParentHelixAdmin implements Admin {
       releaseAdminMessageLock(clusterName);
     }
   }
+
+  @Override
+  public void configureIncrementalPushForCluster(String clusterName, Optional<String> storeName,
+      IncrementalPushPolicy incrementalPushPolicyToApply, Optional<IncrementalPushPolicy> incrementalPushPolicyToFilter,
+      Optional<String> regionsFilter) {
+    acquireAdminMessageLock(clusterName, null);
+
+    try {
+      ConfigureIncrementalPushForCluster incrementalPushBatchUpdateMessage
+          = (ConfigureIncrementalPushForCluster) AdminMessageType.CONFIGURE_INCREMENTAL_PUSH_FOR_CLUSTER.getNewInstance();
+      incrementalPushBatchUpdateMessage.clusterName = clusterName;
+      incrementalPushBatchUpdateMessage.incrementalPushPolicyToApply = incrementalPushPolicyToApply.getValue();
+      incrementalPushBatchUpdateMessage.incrementalPushPolicyToFilter =
+          incrementalPushPolicyToFilter.isPresent() ? incrementalPushPolicyToFilter.get().getValue() : -1;
+      incrementalPushBatchUpdateMessage.regionsFilter = regionsFilter.orElse(null);
+
+      AdminOperation message = new AdminOperation();
+      message.operationType = AdminMessageType.CONFIGURE_INCREMENTAL_PUSH_FOR_CLUSTER.getValue();
+      message.payloadUnion = incrementalPushBatchUpdateMessage;
+      sendAdminMessageAndWaitForConsumed(clusterName, null, message);
+    } finally {
+      releaseAdminMessageLock(clusterName);
+    }
+  }
+
   /**
    * This function will check whether there are still resources left for the requested store in the requested
    * cluster.

@@ -2,6 +2,7 @@ package com.linkedin.venice.meta;
 
 import com.linkedin.venice.systemstore.schemas.StoreHybridConfig;
 import com.linkedin.venice.utils.AvroCompatibilityUtils;
+import com.linkedin.venice.utils.Time;
 import java.util.Objects;
 import org.codehaus.jackson.annotate.JsonProperty;
 
@@ -13,9 +14,9 @@ import org.codehaus.jackson.annotate.JsonProperty;
 @com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)
 @org.codehaus.jackson.annotate.JsonIgnoreProperties(ignoreUnknown = true)
 public class HybridStoreConfigImpl implements HybridStoreConfig {
-  public static final long DEFAULT_REWIND_TIME_IN_SECONDS = -1L;
+  public static final long DEFAULT_REWIND_TIME_IN_SECONDS = Time.SECONDS_PER_DAY;
   public static final long DEFAULT_HYBRID_TIME_LAG_THRESHOLD = -1L;
-  public static final long DEFAULT_HYBRID_OFFSET_LAG_THRESHOLD = -1L;
+  public static final long DEFAULT_HYBRID_OFFSET_LAG_THRESHOLD = 1000L;
   public static final long DEFAULT_BUFFER_REPLAY_REFERENCE_TIMESTAMP_MS = -1L;
 
   private final StoreHybridConfig hybridConfig;

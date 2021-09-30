@@ -266,6 +266,7 @@ public class AdminSparkServer extends AbstractVeniceService {
     httpService.get(GET_ACL.getPath(), createStoreRoute.getAclForStore(admin));
     httpService.get(DELETE_ACL.getPath(), createStoreRoute.deleteAclForStore(admin));
     httpService.get(GET_DELETABLE_STORE_TOPICS.getPath(), storesRoutes.getDeletableStoreTopics(admin));
+    httpService.post(CONFIGURE_INCREMENTAL_PUSH_FOR_CLUSTER.getPath(), storesRoutes.configureIncrementalPushForCluster(admin));
 
 
     httpService.awaitInitialization(); // Wait for server to be initialized

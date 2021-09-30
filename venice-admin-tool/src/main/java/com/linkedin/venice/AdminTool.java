@@ -410,6 +410,9 @@ public class AdminTool {
         case GET_DELETABLE_STORE_TOPICS:
           getDeletableStoreTopics(cmd);
           break;
+        case CONFIGURE_INCREMENTAL_PUSH_FOR_CLUSTER:
+          configureIncrementalPushForCluster(cmd);
+          break;
         default:
           StringJoiner availableCommands = new StringJoiner(", ");
           for (Command c : Command.values()){
@@ -1880,6 +1883,22 @@ public class AdminTool {
 
   private static void getDeletableStoreTopics(CommandLine cmd) {
     MultiStoreTopicsResponse response = controllerClient.getDeletableStoreTopics();
+    printObject(response);
+  }
+
+  private static void configureIncrementalPushForCluster(CommandLine cmd) {
+    String incrementalPushPolicyToApplyParam = getRequiredArgument(cmd, Arg.INCREMENTAL_PUSH_POLICY_TO_APPLY);
+    IncrementalPushPolicy incrementalPushPolicyToApply = IncrementalPushPolicy.valueOf(incrementalPushPolicyToApplyParam);
+
+    String incrementalPushPolicyToFilterParam = getOptionalArgument(cmd, Arg.INCREMENTAL_PUSH_POLICY_TO_FILTER);
+    Optional<IncrementalPushPolicy> incrementalPushPolicyToFilter =
+        Utils.isNullOrEmpty(incrementalPushPolicyToFilterParam) ? Optional.empty() : Optional.of(IncrementalPushPolicy.valueOf(incrementalPushPolicyToFilterParam));
+
+    String regionsFilterParam = getOptionalArgument(cmd, Arg.REGIONS_FILTER);
+    Optional<String> regionsFilter =
+        Utils.isNullOrEmpty(regionsFilterParam) ? Optional.empty() : Optional.of(regionsFilterParam);
+
+    ControllerResponse response = controllerClient.configureIncrementalPushForCluster(incrementalPushPolicyToApply, incrementalPushPolicyToFilter, regionsFilter);
     printObject(response);
   }
 
