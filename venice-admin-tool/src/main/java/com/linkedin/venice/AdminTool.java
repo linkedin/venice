@@ -980,7 +980,7 @@ public class AdminTool {
     String kafkaTopic = getRequiredArgument(cmd, Arg.KAFKA_TOPIC_NAME);
     // optional arguments
     int partitionNumber = (null == getOptionalArgument(cmd, Arg.KAFKA_TOPIC_PARTITION)) ? -1 : Integer.parseInt(getOptionalArgument(cmd, Arg.KAFKA_TOPIC_PARTITION));
-    int startingOffset = (null == getOptionalArgument(cmd, Arg.STARTING_OFFSET)) ? -1 : Integer.parseInt(getOptionalArgument(cmd, Arg.STARTING_OFFSET));
+    long startingOffset = (null == getOptionalArgument(cmd, Arg.STARTING_OFFSET)) ? -1 : Long.parseLong(getOptionalArgument(cmd, Arg.STARTING_OFFSET));
     int messageCount = (null == getOptionalArgument(cmd, Arg.MESSAGE_COUNT)) ? -1 : Integer.parseInt(getOptionalArgument(cmd, Arg.MESSAGE_COUNT));
     String parentDir = "./";
     if (getOptionalArgument(cmd, Arg.PARENT_DIRECTORY) != null) {
