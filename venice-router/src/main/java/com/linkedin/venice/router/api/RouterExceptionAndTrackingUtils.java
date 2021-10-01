@@ -49,7 +49,9 @@ public class RouterExceptionAndTrackingUtils {
     String name = storeName.isPresent() ? storeName.get() : "";
     if (!filter.isRedundantException(name, e)) {
       if (responseStatus == BAD_REQUEST) {
-        logger.debug(BAD_REQUEST.toString() + " for store: " + name, e);
+        logger.debug(BAD_REQUEST + " for store: " + name, e);
+      } else if (failureType == FailureType.RESOURCE_NOT_FOUND) {
+        logger.error("Could not find resources for store: " + name, e);
       } else {
         logger.warn("Got an exception for store: " + name, e);
       }
