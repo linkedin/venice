@@ -134,7 +134,7 @@ public class DaVinciBackend implements Closeable {
         new RocksDBMemoryStats(metricsRepository, "RocksDBMemoryStats", backendConfig.getRocksDBServerConfig().isRocksDBPlainTableFormatEnabled()) : null;
 
     // Add extra safeguards here to ensure we have released RocksDB database locks before we initialize storage services.
-    IsolatedIngestionUtils.releaseTargetPortBinding(configLoader.getVeniceServerConfig().getIngestionServicePort());
+    IsolatedIngestionUtils.destroyLingeringIsolatedIngestionProcess(configLoader);
     storageService = new StorageService(configLoader, storageEngineStats, rocksDBMemoryStats, storeVersionStateSerializer, partitionStateSerializer, storeRepository);
     storageService.start();
 

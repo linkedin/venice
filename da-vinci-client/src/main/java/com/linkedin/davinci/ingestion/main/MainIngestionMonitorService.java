@@ -7,7 +7,6 @@ import com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.stats.IsolatedIngestionProcessHeartbeatStats;
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.Time;
@@ -256,7 +255,7 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
        * RocksDB storage locks and JVM memory during slow shutdown process and new forked process might fail to start
        * without necessary resources.
        */
-      IsolatedIngestionUtils.destroyPreviousIsolatedIngestionProcess(ingestionBackend.getIsolatedIngestionServiceProcess());
+      IsolatedIngestionUtils.destroyIsolatedIngestionProcess(ingestionBackend.getIsolatedIngestionServiceProcess());
       Process newIsolatedIngestionProcess = client.startForkedIngestionProcess(configLoader);
       ingestionBackend.setIsolatedIngestionServiceProcess(newIsolatedIngestionProcess);
       logger.info("Forked process has been recovered.");

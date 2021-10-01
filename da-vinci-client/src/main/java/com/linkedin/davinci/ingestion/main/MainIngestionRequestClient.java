@@ -48,7 +48,7 @@ public class MainIngestionRequestClient implements Closeable {
     int ingestionServicePort = configLoader.getVeniceServerConfig().getIngestionServicePort();
     int currentAttempt = 0;
     int totalAttempts = 3;
-    Process forkedIngestionProcess = null;
+    ForkedJavaProcess forkedIngestionProcess = null;
 
     List<String> jvmArgs = new ArrayList<>();
     for (String jvmArg : configLoader.getCombinedProperties()
@@ -64,8 +64,8 @@ public class MainIngestionRequestClient implements Closeable {
 
     while (currentAttempt < totalAttempts) {
       try {
-        // Add blocking call to release target port binding.
-        IsolatedIngestionUtils.releaseTargetPortBinding(ingestionServicePort);
+        // Destroy lingering isolated forked process.
+        IsolatedIngestionUtils.destroyLingeringIsolatedIngestionProcess(configLoader);
 
         /**
          * Do not register shutdown hook for forked ingestion process, as it will be taken care of by graceful shutdown of
@@ -80,6 +80,8 @@ public class MainIngestionRequestClient implements Closeable {
             Optional.empty(),
             false
         );
+        logger.info("Forked new isolated ingestion process at PID: " + forkedIngestionProcess.pid());
+        IsolatedIngestionUtils.saveForkedIngestionProcessMetadata(configLoader, forkedIngestionProcess);
         // Wait for server in forked child process to bind the listening port.
         IsolatedIngestionUtils.waitPortBinding(ingestionServicePort, 100);
         // Wait for server in forked child process to pass health check.
@@ -90,8 +92,6 @@ public class MainIngestionRequestClient implements Closeable {
           throw new VeniceException("Exception caught during initialization of ingestion service:", e);
         } else {
           logger.warn("Caught exception when initializing forked process in attempt " + currentAttempt + "/" + totalAttempts, e);
-          // Kill failed process created in previous attempt.
-          IsolatedIngestionUtils.destroyPreviousIsolatedIngestionProcess(forkedIngestionProcess);
           continue;
         }
       }
