@@ -22,6 +22,7 @@ import com.linkedin.venice.security.DefaultSSLFactory;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
+import com.linkedin.venice.utils.ForkedJavaProcess;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -74,7 +75,9 @@ import static com.linkedin.venice.ingestion.protocol.enums.IngestionAction.*;
  */
 public class IsolatedIngestionUtils {
   public static final String INGESTION_ISOLATION_CONFIG_PREFIX = "isolated";
-  public static final String ISOLATED_INGESTION_CONFIG_FILENAME = "ForkedIngestionProcess.conf";
+  public static final String ISOLATED_INGESTION_CONFIG_FILENAME = "IsolatedIngestionConfig.conf";
+  public static final String FORKED_PROCESS_METADATA_FILENAME = "ForkedProcessMetadata.conf";
+  public static final String PID = "pid";
 
   private static final Logger logger = Logger.getLogger(IsolatedIngestionUtils.class);
   private static final int D2_STARTUP_TIMEOUT = 60000;
@@ -100,9 +103,7 @@ public class IsolatedIngestionUtils {
       Stream.of(
           new AbstractMap.SimpleEntry<>(COMMAND, ingestionTaskCommandSerializer),
           new AbstractMap.SimpleEntry<>(REPORT, ingestionTaskReportSerializer),
-          // TODO: The request of metric is dummy
           new AbstractMap.SimpleEntry<>(METRIC, ingestionDummyContentSerializer),
-          // TODO: The request of heartbeat is dummy
           new AbstractMap.SimpleEntry<>(HEARTBEAT, ingestionDummyContentSerializer),
           new AbstractMap.SimpleEntry<>(UPDATE_METADATA, ingestionStorageMetadataSerializer),
           new AbstractMap.SimpleEntry<>(SHUTDOWN_COMPONENT, processShutdownCommandSerializer)
@@ -111,7 +112,6 @@ public class IsolatedIngestionUtils {
   private static final Map<IngestionAction, InternalAvroSpecificSerializer> ingestionActionToResponseSerializerMap =
       Stream.of(
           new AbstractMap.SimpleEntry<>(COMMAND, ingestionTaskReportSerializer),
-          // TODO: The response of report is dummy
           new AbstractMap.SimpleEntry<>(REPORT, ingestionDummyContentSerializer),
           new AbstractMap.SimpleEntry<>(METRIC, ingestionMetricsReportSerializer),
           new AbstractMap.SimpleEntry<>(HEARTBEAT, ingestionTaskCommandSerializer),
@@ -248,12 +248,12 @@ public class IsolatedIngestionUtils {
    * the port, which is created from previous deployment and was not killed due to unexpected failures.
    */
   public static void releaseTargetPortBinding(int port) {
-    logger.info("Releasing binging on target port: " + port);
+    logger.info("Releasing isolated ingestion process binding on target port: " + port);
     Optional<Integer> lingeringIngestionProcessPid = getLingeringIngestionProcessId(port);
     if (lingeringIngestionProcessPid.isPresent()) {
       int pid = lingeringIngestionProcessPid.get();
-      logger.info("Lingering ingestion process ID: " + pid);
-      executeShellCommand("kill " + pid);
+      logger.info("Found lingering ingestion process ID: " + pid);
+      executeShellCommand("kill -9" + pid);
       boolean hasLingeringProcess = true;
       while (hasLingeringProcess) {
         try {
@@ -339,7 +339,7 @@ public class IsolatedIngestionUtils {
     return report;
   }
 
-  public static void destroyPreviousIsolatedIngestionProcess(Process isolatedIngestionServiceProcess) {
+  public static void destroyIsolatedIngestionProcess(Process isolatedIngestionServiceProcess) {
     if (isolatedIngestionServiceProcess != null) {
       long startTime = System.currentTimeMillis();
       logger.info("Destroying lingering isolated ingestion process.");
@@ -347,6 +347,37 @@ public class IsolatedIngestionUtils {
       long endTime = System.currentTimeMillis();
       logger.info("Isolated ingestion process has been destroyed in " + (endTime - startTime) + "ms.");
     }
+  }
+
+  /**
+   * Kill isolated ingestion process by provided PID.
+   */
+  public static void destroyIsolatedIngestionProcessByPid(long pid) {
+    String fullProcessName = executeShellCommand("ps -p " + pid + " -o command");
+    if (fullProcessName.contains(IsolatedIngestionServer.class.getName())) {
+      executeShellCommand("kill -9" + pid);
+    } else {
+      logger.warn("PID: " + pid + " does not belong to isolated ingestion process, will not kill the process.");
+    }
+  }
+
+  /**
+   * This method takes two steps to kill any lingering forked ingestion process previously created by the same user.
+   * It first tries to locate the PID of the lingering forked ingestion process stored in the metadata file. It then uses
+   * lsof command to locate isolated ingestion process binding to the same port and kill it.
+   */
+  public static void destroyLingeringIsolatedIngestionProcess(VeniceConfigLoader configLoader) {
+    try {
+      String configBasePath = configLoader.getVeniceServerConfig().getDataBasePath();
+      VeniceProperties properties = loadVenicePropertiesFromFile(configBasePath, FORKED_PROCESS_METADATA_FILENAME);
+      if (properties.containsKey(PID)) {
+        long pid = properties.getLong(PID);
+        destroyIsolatedIngestionProcessByPid(pid);
+      }
+    } catch (Exception e) {
+      logger.warn("Failed to load forked process metadata file:", e);
+    }
+    releaseTargetPortBinding(configLoader.getVeniceServerConfig().getIngestionServicePort());
   }
 
   public static IngestionTaskReport createIngestionTaskReport() {
@@ -369,30 +400,31 @@ public class IsolatedIngestionUtils {
         .forEach((key, value) -> propertyBuilder.put(key.toString(), value.toString()));
     maybePopulateServerIngestionPrincipal(propertyBuilder, configLoader);
     VeniceProperties veniceProperties = propertyBuilder.build();
-
     String configBasePath = configLoader.getVeniceServerConfig().getDataBasePath();
-    try {
-      // Make sure the base path exists so we can store the config file in the path.
-      Files.createDirectories(Paths.get(configBasePath));
-    } catch (IOException e) {
-      throw new VeniceException(e);
-    }
+    return storeVenicePropertiesToFile(configBasePath, ISOLATED_INGESTION_CONFIG_FILENAME, veniceProperties);
+  }
 
-    String configFilePath = Paths.get(configBasePath, ISOLATED_INGESTION_CONFIG_FILENAME).toAbsolutePath().toString();
-    File initializationConfig = new File(configFilePath);
-    if (initializationConfig.exists()) {
-      LOGGER.warn("Initialization config file already exists, will delete the old configs.");
-      if (!initializationConfig.delete()) {
-        throw new VeniceException("Unable to delete config file at path: " + configFilePath);
-      }
+  public static void saveForkedIngestionProcessMetadata(VeniceConfigLoader configLoader, ForkedJavaProcess forkedJavaProcess) {
+    PropertyBuilder propertyBuilder = new PropertyBuilder();
+    propertyBuilder.put(PID, forkedJavaProcess.pid());
+    VeniceProperties veniceProperties = propertyBuilder.build();
+    String configBasePath = configLoader.getVeniceServerConfig().getDataBasePath();
+    storeVenicePropertiesToFile(configBasePath, FORKED_PROCESS_METADATA_FILENAME, veniceProperties);
+  }
+
+  public static VeniceProperties loadVenicePropertiesFromFile(String configPath) {
+    if (!(new File(configPath).exists())) {
+      throw new VeniceException("Config file: " + configPath + " does not exist.");
     }
     try {
-      veniceProperties.storeFlattened(initializationConfig);
-      logger.info("Forked process configs are stored into: " + configFilePath);
+      return Utils.parseProperties(configPath);
     } catch (IOException e) {
       throw new VeniceException(e);
     }
-    return configFilePath;
+  }
+
+  public static VeniceProperties loadVenicePropertiesFromFile(String basePath, String fileName) {
+    return loadVenicePropertiesFromFile(Paths.get(basePath, fileName).toAbsolutePath().toString());
   }
 
   public static Optional<SSLEngineComponentFactory> getSSLEngineComponentFactory(VeniceConfigLoader configLoader) {
@@ -496,5 +528,31 @@ public class IsolatedIngestionUtils {
     } catch (KeyStoreException | CertificateException | IOException | NoSuchAlgorithmException e) {
       throw new VeniceException(e);
     }
+  }
+
+  private static String storeVenicePropertiesToFile(String basePath, String fileName, VeniceProperties veniceProperties) {
+    try {
+      // Make sure the base path exists so we can store the config file in the path.
+      Files.createDirectories(Paths.get(basePath));
+    } catch (IOException e) {
+      throw new VeniceException(e);
+    }
+    // Generate full config file path.
+    String configFilePath = Paths.get(basePath, fileName).toAbsolutePath().toString();
+    File configFile = new File(configFilePath);
+    if (configFile.exists()) {
+      LOGGER.warn("Config file already exists, will delete existing file: " + configFilePath);
+      if (!configFile.delete()) {
+        throw new VeniceException("Unable to delete config file: " + configFilePath);
+      }
+    }
+    // Store properties into config file.
+    try {
+      veniceProperties.storeFlattened(configFile);
+      logger.info("Configs are stored into: " + configFilePath);
+    } catch (IOException e) {
+      throw new VeniceException(e);
+    }
+    return configFilePath;
   }
 }

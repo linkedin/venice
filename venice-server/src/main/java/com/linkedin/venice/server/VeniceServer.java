@@ -200,7 +200,7 @@ public class VeniceServer {
         new RocksDBMemoryStats(metricsRepository, "RocksDBMemoryStats", plainTableEnabled) : null;
 
     // Add extra safeguards here to ensure we have released RocksDB database locks before we initialize storage services.
-    IsolatedIngestionUtils.releaseTargetPortBinding(veniceConfigLoader.getVeniceServerConfig().getIngestionServicePort());
+    IsolatedIngestionUtils.destroyLingeringIsolatedIngestionProcess(veniceConfigLoader);
     // Create and add StorageService. storeRepository will be populated by StorageService
     if (veniceConfigLoader.getVeniceServerConfig().getIngestionMode().equals(IngestionMode.ISOLATED)) {
       // Venice Server does not require bootstrap step, so there is no need to open and close all local storage engines.

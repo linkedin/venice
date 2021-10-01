@@ -136,7 +136,8 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
 
   public IsolatedIngestionServer(int servicePort, String configPath) {
     this.servicePort = servicePort;
-    this.configLoader = loadInitializationConfig(configPath);
+    VeniceProperties loadedVeniceProperties = IsolatedIngestionUtils.loadVenicePropertiesFromFile(configPath);
+    this.configLoader = new VeniceConfigLoader(loadedVeniceProperties, loadedVeniceProperties);
     this.heartbeatTimeoutMs = configLoader.getCombinedProperties().getLong(SERVER_INGESTION_ISOLATION_HEARTBEAT_TIMEOUT_MS, 60 * Time.MS_PER_SECOND);
     // Initialize Netty server.
     Class<? extends ServerChannel> serverSocketChannelClass = NioServerSocketChannel.class;
@@ -463,18 +464,6 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
           logger.info("Unable to shutdown ingestion service gracefully", e);
         }
       }
-    }
-  }
-
-  private VeniceConfigLoader loadInitializationConfig(String configPath) {
-    if (!(new File(configPath).exists())) {
-      throw new VeniceException("Initialization config for forked process does not exist.");
-    }
-    try {
-      VeniceProperties loadedVeniceProperties = Utils.parseProperties(configPath);
-      return new VeniceConfigLoader(loadedVeniceProperties, loadedVeniceProperties);
-    } catch (IOException e) {
-      throw new VeniceException(e);
     }
   }
 
