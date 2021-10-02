@@ -1,6 +1,7 @@
 package com.linkedin.venice.hadoop.utils;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
+import com.linkedin.avroutil1.compatibility.SchemaParseConfiguration;
 import com.linkedin.venice.exceptions.VeniceException;
 import org.apache.avro.Schema;
 import org.apache.log4j.Logger;
@@ -28,10 +29,10 @@ public class AvroSchemaParseUtils {
     }
 
     public static Schema parseSchemaFromJSONWithExtendedValidation(String jsonSchema) {
-        return AvroCompatibilityHelper.parse(jsonSchema);
+        return AvroCompatibilityHelper.parse(jsonSchema, SchemaParseConfiguration.STRICT, null).getMainSchema();
     }
 
     public static Schema parseSchemaFromJSONWithNoExtendedValidation(String jsonSchema) {
-        return new Schema.Parser().parse(jsonSchema);
+        return AvroCompatibilityHelper.parse(jsonSchema, SchemaParseConfiguration.LOOSE, null).getMainSchema();
     }
 }
