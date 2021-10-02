@@ -1,5 +1,7 @@
 package com.linkedin.venice.client.schema;
 
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
+import com.linkedin.avroutil1.compatibility.SchemaParseConfiguration;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.AbstractAvroStoreClient;
 import com.linkedin.venice.client.store.MetadataReader;
@@ -195,8 +197,14 @@ public class SchemaReader extends MetadataReader implements SchemaRetriever {
           if (SchemaData.INVALID_VALUE_SCHEMA_ID == latestSchemaId || latestSchemaId < schema.getId()) {
             latestSchemaId = schema.getId();
           }
-          Schema writerSchema =
-              preemptiveSchemaVerification(Schema.parse(schema.getSchemaStr()), schema.getSchemaStr(), schema.getId());
+          final String schemaStr = schema.getSchemaStr();
+          Schema writerSchema = preemptiveSchemaVerification(
+                  // Use the "LOOSE" mode here since we might have registered schemas that do not pass the STRICT validation
+                  // and that is allowed for now
+                  AvroCompatibilityHelper.parse(schemaStr, SchemaParseConfiguration.LOOSE, null).getMainSchema(),
+                  schemaStr,
+                  schema.getId()
+          );
           valueSchemaMap.put(schema.getId(), writerSchema);
           valueSchemaMapR.put(writerSchema, schema.getId());
         }

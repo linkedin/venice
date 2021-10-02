@@ -81,4 +81,30 @@ public class TestAvroSchemaParseUtils {
         final boolean extendedSchemaValidityCheckEnabled = true;
         AvroSchemaParseUtils.parseSchemaFromJSON(SCHEMA_PASS_EXTENDED_VALIDATION, extendedSchemaValidityCheckEnabled);
     }
+
+    @Test
+    public void testParseSchemaStrWithDifferentConfigurations() {
+        String schemaStr = "{" +
+            "    \"doc\": \"Value in the store\"," +
+            "    \"fields\": [" +
+            "      {\n" +
+            "         \"default\": null," +
+            "         \"name\": \"fieldName\"," +
+            "         \"type\": [" + // To pass the STRICT mode, order of these 2 types needs to be swapped.
+            "           \"float\"," +
+            "           \"null\"" +
+            "        ]" +
+            "      }" +
+            "    ]," +
+            "    \"name\": \"someName\"," +
+            "    \"type\": \"record\"" +
+            "}";
+
+        // Can parse the schema in the LOOSE mode
+        Schema schema = AvroSchemaParseUtils.parseSchemaFromJSON(schemaStr, false);
+        Assert.assertNotNull(schema);
+
+        // Cannot parse the schema in the STRICT mode
+        Assert.assertThrows(VeniceException.class, () -> AvroSchemaParseUtils.parseSchemaFromJSON(schemaStr, true));
+    }
 }
