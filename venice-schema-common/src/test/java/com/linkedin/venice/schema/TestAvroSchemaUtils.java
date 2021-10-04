@@ -2,6 +2,7 @@ package com.linkedin.venice.schema;
 
 import com.linkedin.avroutil1.compatibility.AvroIncompatibleSchemaException;
 import com.linkedin.avroutil1.compatibility.AvroSchemaVerifier;
+import com.linkedin.venice.exceptions.InvalidVeniceSchemaException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.AvroSchemaUtils;
 import org.apache.avro.Schema;
@@ -200,7 +201,7 @@ public class TestAvroSchemaUtils {
       Assert.assertFalse(AvroSchemaUtils.isValidAvroSchema(Schema.parse(schemaStr)));
       AvroSchemaUtils.validateAvroSchemaStr(schemaStr);
       Assert.fail("Default null should fail with int first union field");
-    } catch (AvroIncompatibleSchemaException e) {
+    } catch (InvalidVeniceSchemaException e) {
       Assert.assertTrue(e.getMessage().equals("Union field KeyRecord.experience has invalid default value." + ""
           + " A union's default value type should match the first branch of the union." + ""
           + " Excepting int as its the first branch of : [\"int\",\"float\",\"null\"] instead got null"));

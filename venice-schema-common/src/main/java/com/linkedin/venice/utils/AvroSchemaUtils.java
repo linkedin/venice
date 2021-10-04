@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.avroutil1.compatibility.AvroIncompatibleSchemaException;
 import com.linkedin.avroutil1.compatibility.AvroSchemaVerifier;
+import com.linkedin.venice.exceptions.InvalidVeniceSchemaException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.schema.SchemaEntry;
 import java.io.IOException;
@@ -54,7 +55,12 @@ public class AvroSchemaUtils {
    */
   public static void validateAvroSchemaStr(String str) {
     Schema schema = Schema.parse(str);
-    validateAvroSchemaStr(schema);
+    try {
+      validateAvroSchemaStr(schema);
+    } catch (AvroIncompatibleSchemaException e) {
+      // Wrap and throw to propagate an ENUM error type to the user
+      throw new InvalidVeniceSchemaException(e.getMessage(), e);
+    }
   }
 
   public static boolean isValidAvroSchema(Schema schema) {
