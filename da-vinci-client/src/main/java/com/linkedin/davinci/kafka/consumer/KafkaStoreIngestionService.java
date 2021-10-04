@@ -156,7 +156,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   private boolean metaSystemStoreReplicaStatusNotifierQueued = false;
   // TODO: This could be a composite storage engine which keeps secondary storage engines updated in lockstep with a primary
   // source.  This could be a view of the data, or in our case a cache, or both potentially.
-  private Optional<ObjectCacheBackend> cacheBackend = Optional.empty();
+  private final Optional<ObjectCacheBackend> cacheBackend;
 
   private final SharedKafkaProducerService sharedKafkaProducerService;
 
@@ -214,11 +214,11 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
           return new ApacheKafkaProducer(props);
         }
       }, metricsRepository, serverConfig.getKafkaProducerMetrics());
-      logger.info("Shared kafka producer service is enabled");
     } else {
       sharedKafkaProducerService = null;
-      logger.info("Shared kafka producer service is disabled");
     }
+    logger.info("Shared kafka producer service is "
+        + (serverConfig.isSharedKafkaProducerEnabled() ? "enabled" : "disabled"));
 
     VeniceWriterFactory veniceWriterFactory = new VeniceWriterFactory(veniceWriterProperties, Optional.ofNullable(sharedKafkaProducerService));
     VeniceWriterFactory veniceWriterFactoryForMetaStoreWriter = new VeniceWriterFactory(veniceWriterProperties);
@@ -372,19 +372,18 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         commonKafkaConsumerConfigs.putAll(serverConfig.getKafkaConsumerConfigsForLocalConsumption().toProperties());
       }
       aggKafkaConsumerService.getKafkaConsumerService(commonKafkaConsumerConfigs);
-      logger.info("Shared consumer pool for ingestion is enabled");
     } else {
       aggKafkaConsumerService = null;
-      logger.info("Shared consumer pool for ingestion is disabled");
     }
+    logger.info("Shared consumer pool for ingestion is "
+        + (serverConfig.isSharedConsumerPoolEnabled() ? "enabled" : "disabled"));
 
     if (serverConfig.isCacheWarmingBeforeReadyToServeEnabled()) {
       cacheWarmingExecutorService = Executors.newFixedThreadPool(serverConfig.getCacheWarmingThreadPoolSize(), new DaemonThreadFactory("Cache_Warming"));
-      logger.info("Cache warming is enabled");
     } else {
       cacheWarmingExecutorService = null;
-      logger.info("Cache warming is disabled");
     }
+    logger.info("Cache warming is " + (serverConfig.isCacheWarmingBeforeReadyToServeEnabled() ? "enabled" : "disabled"));
 
     /**
      * Use the same diskUsage instance for all ingestion tasks; so that all the ingestion tasks can update the same
