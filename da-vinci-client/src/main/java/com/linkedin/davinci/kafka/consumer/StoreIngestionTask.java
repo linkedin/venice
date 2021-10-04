@@ -953,15 +953,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             throw new VeniceException(
                 "Unexpected to receive any new messages while the DB compaction is still " + "ongoing for store: " +
                     kafkaVersionTopic + ", partition: " + consumingPartition);
-          } else {
-            if (dbCompactFuture.isCompletedExceptionally()) {
-              try {
-                dbCompactFuture.get();
-              } catch (ExecutionException e) {
-                throw new VeniceException(
-                    "Unexpected to receive any new message since the one-time db compaction failed " + "for store: " +
-                        kafkaVersionTopic + ", partition: " + consumingPartition + " with exception: " + e);
-              }
+          } else if (dbCompactFuture.isCompletedExceptionally()) {
+            try {
+              dbCompactFuture.get();
+            } catch (ExecutionException e) {
+              throw new VeniceException(
+                  "Unexpected to receive any new message since the one-time db compaction failed " + "for store: " +
+                      kafkaVersionTopic + ", partition: " + consumingPartition + " with exception: " + e);
             }
           }
         } else {
@@ -971,7 +969,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           KafkaKey kafkaKey = record.key();
           if (kafkaKey.isControlMessage() && ControlMessageType.valueOf((ControlMessage) record.value().payloadUnion) == ControlMessageType.END_OF_PUSH) {
             Optional<StoreVersionState> storeVersionState = storageMetadataService.getStoreVersionState(kafkaVersionTopic);
-            if (!storeVersionState.isPresent()) {
+            if (storeVersionState.isEmpty()) {
               /**
                * EOP is received, but {@link StoreVersionState} for current store is not available, which indicates that
                * this is a small push, but to be consistent, we will flush all the pending messages in the drainer queue, and wait
@@ -989,7 +987,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
               waitForAllMessageToBeProcessedFromTopicPartition(record.topic(), record.partition(),
                   partitionConsumptionState);
               storeVersionState = storageMetadataService.getStoreVersionState(kafkaVersionTopic);
-              if (!storeVersionState.isPresent()) {
+              if (storeVersionState.isEmpty()) {
                 throw new VeniceException(
                     "Failed to get StoreVersionState after draining all the pending messages for topic: " +
                         kafkaVersionTopic + ", partition: " + consumingPartition);
