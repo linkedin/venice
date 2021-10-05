@@ -167,7 +167,7 @@ public class TestAdminSparkWithMocks {
     doReturn(1).when(admin).calculateNumberOfPartitions(anyString(), anyString(), anyLong());
     doReturn(corpRegionKafka.getFirst()).when(admin).getKafkaBootstrapServers(anyBoolean());
     doReturn(true).when(admin).whetherEnableBatchPushFromAdmin();
-    doReturn(true).when(admin).isActiveActiveReplicationEnabledInAllRegion(clusterName, storeName);
+    doReturn(true).when(admin).isActiveActiveReplicationEnabledInAllRegion(clusterName, storeName, false);
     doReturn(storeName + "_rt").when(admin).getRealTimeTopic(anyString(), anyString());
     doReturn(corpRegionKafka).when(admin).getNativeReplicationKafkaBootstrapServerAndZkAddress(corpRegion);
     doReturn(emergencySourceRegionKafka).when(admin).getNativeReplicationKafkaBootstrapServerAndZkAddress(emergencySourceRegion);
@@ -229,4 +229,69 @@ public class TestAdminSparkWithMocks {
 
     server.stop();
   }
+
+  /**
+   * @param samzaPolicy true means it's running in AGGREGATE mode, otherwise running in NON_AGGREGATE mode.
+   * @param storePolicy true means store is configured in AGGREGATE mode, otherwise configured in NON_AGGREGATE mode.
+   * @throws Exception
+   */
+  @Test(dataProvider = "Three-True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testSamzaReplicationPolicyMode(boolean samzaPolicy, boolean storePolicy, boolean aaEnabled) throws Exception {
+    //setup server with mock admin, note returns topic "store_rt"
+    VeniceHelixAdmin admin = Mockito.mock(VeniceHelixAdmin.class);
+    Store mockStore = new ZKStore("store", "owner", System.currentTimeMillis(), PersistenceType.IN_MEMORY, RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION, 1);
+    if (storePolicy) {
+      mockStore.setHybridStoreConfig(new HybridStoreConfigImpl(25L, 100L, HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD,
+          DataReplicationPolicy.AGGREGATE, BufferReplayPolicy.REWIND_FROM_EOP));
+    } else {
+      mockStore.setHybridStoreConfig(new HybridStoreConfigImpl(25L, 100L, HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD,
+          DataReplicationPolicy.NON_AGGREGATE, BufferReplayPolicy.REWIND_FROM_EOP));
+    }
+    doReturn(mockStore).when(admin).getStore(anyString(), anyString());
+    doReturn(true).when(admin).isLeaderControllerFor(anyString());
+    doReturn(1).when(admin).getReplicationFactor(anyString(), anyString());
+    doReturn(1).when(admin).calculateNumberOfPartitions(anyString(), anyString(), anyLong());
+    doReturn("kafka-bootstrap").when(admin).getKafkaBootstrapServers(anyBoolean());
+    doReturn("store_rt").when(admin).getRealTimeTopic(anyString(), anyString());
+    doReturn(samzaPolicy).when(admin).isParent();
+    doReturn(aaEnabled).when(admin).isActiveActiveReplicationEnabledInAllRegion(anyString(), anyString(), eq(true));
+    mockStore.setActiveActiveReplicationEnabled(aaEnabled);
+
+    // Add a banned route not relevant to the test just to make sure theres coverage for unbanned routes still be accessible
+    AdminSparkServer server = ServiceFactory.getMockAdminSparkServer(admin, "clustername", Arrays.asList(ControllerRoute.ADD_DERIVED_SCHEMA));
+    int port = server.getPort();
+
+    //build request
+    List<NameValuePair> params = new ArrayList<>();
+    params.add(new BasicNameValuePair(ControllerApiConstants.CLUSTER, "clustername"));
+    params.add(new BasicNameValuePair(ControllerApiConstants.HOSTNAME, "localhost"));
+    params.add(new BasicNameValuePair(ControllerApiConstants.NAME, "storename"));
+    params.add(new BasicNameValuePair(ControllerApiConstants.STORE_SIZE, Long.toString(1L)));
+    params.add(new BasicNameValuePair(ControllerApiConstants.PUSH_JOB_ID, "pushJobId-1234"));
+    params.add(new BasicNameValuePair(ControllerApiConstants.PUSH_TYPE, Version.PushType.STREAM.toString()));
+    final HttpPost post = new HttpPost("http://localhost:" + port + ControllerRoute.REQUEST_TOPIC.getPath());
+    post.setEntity(new UrlEncodedFormEntity(params));
+
+    //make request, parse response
+    VersionCreationResponse responseObject;
+    try (CloseableHttpAsyncClient httpClient = HttpClientUtils.getMinimalHttpClient(1,1, Optional.of(SslUtils.getLocalSslFactory()))) {
+      httpClient.start();
+      HttpResponse response = httpClient.execute(post, null).get();
+      String json = IOUtils.toString(response.getEntity().getContent());
+      responseObject = new ObjectMapper().readValue(json, VersionCreationResponse.class);
+    }
+
+    //verify response, note we expect same topic, "store_rt"
+
+
+    if ((storePolicy && samzaPolicy) || (!storePolicy && !samzaPolicy) || aaEnabled) {
+      Assert.assertFalse(responseObject.isError(), "unexpected error: " + responseObject.getError());
+      Assert.assertEquals(responseObject.getKafkaTopic(), "store_rt");
+    } else {
+      Assert.assertTrue(responseObject.isError(), "expected error: ");
+      Assert.assertEquals(responseObject.getKafkaTopic(), null);
+    }
+    server.stop();
+  }
+
 }

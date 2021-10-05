@@ -936,7 +936,7 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
-  public boolean isActiveActiveReplicationEnabledInAllRegion(String clusterName, String storeName) {
+  public boolean isActiveActiveReplicationEnabledInAllRegion(String clusterName, String storeName, boolean checkCurrentVersion) {
     Map<String, ControllerClient> controllerClients = veniceHelixAdmin.getControllerClientMap(clusterName);
     Store store = veniceHelixAdmin.getStore(clusterName, storeName);
 
@@ -954,6 +954,22 @@ public class VeniceParentHelixAdmin implements Admin {
         if (!response.getStore().isActiveActiveReplicationEnabled()) {
           logger.info("isActiveActiveReplicationEnabledInAllRegion:" + storeName + " store is not enabled for Active/Active in region: " + region);
           return false;
+        }
+
+        /**
+         * check version level config as well. In case there is no version it should be fine to return true.
+         */
+        if (checkCurrentVersion) {
+          int currentVersion = response.getStore().getCurrentVersion();
+          for (Version version : response.getStore().getVersions()) {
+            if (currentVersion == version.getNumber()) {
+              if (!version.isActiveActiveReplicationEnabled()) {
+                logger.info(
+                    "isActiveActiveReplicationEnabledInAllRegion:" + storeName + " current version: " + version.getNumber() + " is not enabled for Active/Active in region: " + region);
+                return false;
+              }
+            }
+          }
         }
       }
     }

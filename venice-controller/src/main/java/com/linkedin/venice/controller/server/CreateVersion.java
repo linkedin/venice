@@ -185,7 +185,15 @@ public class CreateVersion extends AbstractRoute {
          */
         Lazy<Boolean> isActiveActiveReplicationEnabledInAllRegion = Lazy.of(() -> {
           if (admin.isParent() && store.isActiveActiveReplicationEnabled()) {
-            return admin.isActiveActiveReplicationEnabledInAllRegion(clusterName, storeName);
+            return admin.isActiveActiveReplicationEnabledInAllRegion(clusterName, storeName, false);
+          } else {
+            return false;
+          }
+        });
+
+        Lazy<Boolean> isActiveActiveReplicationEnabledInAllRegionAllVersions = Lazy.of(() -> {
+          if (admin.isParent() && store.isActiveActiveReplicationEnabled()) {
+            return admin.isActiveActiveReplicationEnabledInAllRegion(clusterName, storeName, true);
           } else {
             return false;
           }
@@ -360,12 +368,20 @@ public class CreateVersion extends AbstractRoute {
             if (admin.isParent()) {
               // Conditionally check if this store has aggregate mode enabled.  If not, throw an exception (as aggregate mode is required to produce to parent colo)
               // We check the store config instead of the version config because we want this policy to go into affect without needing to perform empty pushes everywhere
-              if(!store.getHybridStoreConfig().getDataReplicationPolicy().equals(DataReplicationPolicy.AGGREGATE)) {
-                throw new VeniceException("Store is not in aggregate mode!  Cannot push data to parent topic!!");
+              if (!store.getHybridStoreConfig().getDataReplicationPolicy().equals(DataReplicationPolicy.AGGREGATE)) {
+                if (!isActiveActiveReplicationEnabledInAllRegionAllVersions.get()) {
+                  throw new VeniceException("Store is not in aggregate mode!  Cannot push data to parent topic!!");
+                } else {
+                  LOGGER.info("Store: " + storeName + " samza job running in Aggregate mode, Store config is in Non-Aggregate mode, AA is enabled in all regions, letting the job continue");
+                }
               }
             } else {
-              if(store.getHybridStoreConfig().getDataReplicationPolicy().equals(DataReplicationPolicy.AGGREGATE)) {
-                throw new VeniceException("Store is in aggregate mode!  Cannot push data to child topic!!");
+              if (store.getHybridStoreConfig().getDataReplicationPolicy().equals(DataReplicationPolicy.AGGREGATE)) {
+                if (!store.isActiveActiveReplicationEnabled()) {
+                  throw new VeniceException("Store is in aggregate mode!  Cannot push data to child topic!!");
+                } else {
+                  LOGGER.info("Store: " + storeName + " samza job running in Non-Aggregate mode, Store config is in Aggregate mode, AA is enabled in the local region, letting the job continue");
+                }
               }
             }
 
