@@ -637,7 +637,7 @@ public interface Admin extends AutoCloseable, Closeable {
      * Returns true if A/A replication is enabled in all child controller and parent controller. This is implemented only in parent controller.
      * Otherwise return false.
      */
-    public boolean isActiveActiveReplicationEnabledInAllRegion(String clusterName, String storeName);
+    public boolean isActiveActiveReplicationEnabledInAllRegion(String clusterName, String storeName, boolean checkCurrentVersion);
 
     /**
      * Returns default backup version retention time.

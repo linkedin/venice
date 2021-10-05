@@ -5299,7 +5299,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
     @Override
-    public boolean isActiveActiveReplicationEnabledInAllRegion(String clusterName, String storeName) {
+    public boolean isActiveActiveReplicationEnabledInAllRegion(String clusterName, String storeName, boolean checkCurrentVersion) {
         throw new VeniceUnsupportedOperationException("isActiveActiveReplicationEnabledInAllRegion is not supported in child controller!");
     }
 
