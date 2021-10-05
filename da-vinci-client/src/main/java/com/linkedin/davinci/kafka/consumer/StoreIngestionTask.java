@@ -21,7 +21,6 @@ import com.linkedin.venice.common.Measurable;
 import com.linkedin.davinci.utils.StoragePartitionDiskUsage;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.PersistenceFailureException;
-import com.linkedin.venice.exceptions.QuotaExceededException;
 import com.linkedin.venice.exceptions.UnsubscribedTopicPartitionException;
 import com.linkedin.venice.exceptions.VeniceChecksumException;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -830,7 +829,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
               logger.info(String.format("%s [Time lag] Real-time topic %s doesn't exist; ignoring time lag.", consumerTaskId, realTimeTopic));
             }
           } else {
-            long latestProducerTimestampInRT = cachedKafkaMetadataGetter.getProducerTimestampOfLastMessage(realTimeTopicKafkaURL, realTimeTopic, partitionId);
+            long latestProducerTimestampInRT = cachedKafkaMetadataGetter.getProducerTimestampOfLastDataMessage(realTimeTopicKafkaURL, realTimeTopic, partitionId);
             if (latestProducerTimestampInRT < 0 || latestProducerTimestampInRT <= latestProducerTimestamp) {
               timestampLagIsAcceptable = true;
               if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msgIdentifier)) {
@@ -3465,12 +3464,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       }
     }
 
-    long getProducerTimestampOfLastMessage(String sourceKafkaServer, String topicName, int partitionId) {
+    long getProducerTimestampOfLastDataMessage(String sourceKafkaServer, String topicName, int partitionId) {
       try {
         return fetchMetadata(new KafkaMetadataCacheKey(sourceKafkaServer, topicName, Optional.of(partitionId)), lastProducerTimestampCache, () -> {
-          long latestProducerTimestamp = getTopicManager(sourceKafkaServer).getLatestProducerTimestampAndRetry(topicName, partitionId, 10);
+          long latestDataMessageProducerTimestamp = getTopicManager(sourceKafkaServer).getProducerTimestampOfLastDataRecord(topicName, partitionId, 10);
           // Get a new TTL start time after fetching fresh metadata.
-          return new Pair<>(System.nanoTime() + ttl, latestProducerTimestamp);
+          return new Pair<>(System.nanoTime() + ttl, latestDataMessageProducerTimestamp);
         });
       } catch (TopicDoesNotExistException e) {
         //It's observed in production that with java based admin client the topic may not be found temporarily, return error code

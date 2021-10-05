@@ -92,11 +92,11 @@ public class InstrumentedPartitionOffsetFetcher implements PartitionOffsetFetche
   }
 
   @Override
-  public long getLatestProducerTimestampAndRetry(String topic, int partition, int retries) {
+  public long getProducerTimestampOfLastDataRecord(String topic, int partition, int retries) {
     final long startTimeMs = time.getMilliseconds();
-    long res = partitionOffsetFetcher.getLatestProducerTimestampAndRetry(topic, partition, retries);
+    long res = partitionOffsetFetcher.getProducerTimestampOfLastDataRecord(topic, partition, retries);
     stats.recordLatency(
-        PartitionOffsetFetcherStats.OCCURRENCE_LATENCY_SENSOR_TYPE.GET_LATEST_PRODUCER_TIMESTAMP_WITH_RETRY,
+        PartitionOffsetFetcherStats.OCCURRENCE_LATENCY_SENSOR_TYPE.GET_LATEST_PRODUCER_TIMESTAMP_ON_DATA_RECORD_WITH_RETRY,
         Utils.calculateDurationMs(time, startTimeMs)
     );
     return res;
