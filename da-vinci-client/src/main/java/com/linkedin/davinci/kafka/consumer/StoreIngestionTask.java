@@ -969,7 +969,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           KafkaKey kafkaKey = record.key();
           if (kafkaKey.isControlMessage() && ControlMessageType.valueOf((ControlMessage) record.value().payloadUnion) == ControlMessageType.END_OF_PUSH) {
             Optional<StoreVersionState> storeVersionState = storageMetadataService.getStoreVersionState(kafkaVersionTopic);
-            if (storeVersionState.isEmpty()) {
+            if (!storeVersionState.isPresent()) {
               /**
                * EOP is received, but {@link StoreVersionState} for current store is not available, which indicates that
                * this is a small push, but to be consistent, we will flush all the pending messages in the drainer queue, and wait
@@ -987,7 +987,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
               waitForAllMessageToBeProcessedFromTopicPartition(record.topic(), record.partition(),
                   partitionConsumptionState);
               storeVersionState = storageMetadataService.getStoreVersionState(kafkaVersionTopic);
-              if (storeVersionState.isEmpty()) {
+              if (!storeVersionState.isPresent()) {
                 throw new VeniceException(
                     "Failed to get StoreVersionState after draining all the pending messages for topic: " +
                         kafkaVersionTopic + ", partition: " + consumingPartition);
