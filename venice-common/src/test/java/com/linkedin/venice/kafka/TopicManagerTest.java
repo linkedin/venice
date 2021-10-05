@@ -1,20 +1,36 @@
 package com.linkedin.venice.kafka;
 
 import com.github.benmanes.caffeine.cache.Cache;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.kafka.admin.KafkaAdminWrapper;
+import com.linkedin.venice.kafka.partitionoffset.PartitionOffsetFetcherImpl;
+import com.linkedin.venice.kafka.protocol.ControlMessage;
+import com.linkedin.venice.kafka.protocol.EndOfPush;
+import com.linkedin.venice.kafka.protocol.GUID;
+import com.linkedin.venice.kafka.protocol.Put;
+import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
+import com.linkedin.venice.kafka.protocol.LeaderMetadata;
+import com.linkedin.venice.kafka.protocol.ProducerMetadata;
+import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
+import com.linkedin.venice.kafka.protocol.enums.MessageType;
+import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.ZKStore;
+import com.linkedin.venice.serialization.KafkaKeySerializer;
+import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.systemstore.schemas.StoreProperties;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.time.Duration;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -29,7 +45,9 @@ import com.linkedin.venice.writer.ApacheKafkaProducer;
 import com.linkedin.venice.writer.VeniceWriter;
 import kafka.log.LogConfig;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
+import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerConfig;
+import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.PartitionInfo;
 import org.apache.kafka.common.TopicPartition;
@@ -49,12 +67,12 @@ public class TopicManagerTest {
 
   private static final Logger LOGGER = Logger.getLogger(TopicManagerTest.class);
 
-  /** Wait time for {@link #manager} operations, in seconds */
+  /** Wait time for {@link #topicManager} operations, in seconds */
   private static final int WAIT_TIME = 10;
   private static final long MIN_COMPACTION_LAG = 24 * Time.MS_PER_HOUR;
 
   private KafkaBrokerWrapper kafka;
-  private TopicManager manager;
+  private TopicManager topicManager;
   private MockTime mockTime;
 
   private String getTopic() {
@@ -62,9 +80,9 @@ public class TopicManagerTest {
     String topicName = TestUtils.getUniqueString(callingFunction);
     int partitions = 1;
     int replicas = 1;
-    manager.createTopic(topicName, partitions, replicas, false);
+    topicManager.createTopic(topicName, partitions, replicas, false);
     TestUtils.waitForNonDeterministicAssertion(WAIT_TIME, TimeUnit.SECONDS,
-        () -> Assert.assertTrue(manager.containsTopicAndAllPartitionsAreOnline(topicName)));
+        () -> Assert.assertTrue(topicManager.containsTopicAndAllPartitionsAreOnline(topicName)));
     return topicName;
   }
 
@@ -72,30 +90,132 @@ public class TopicManagerTest {
   public void setup() {
     mockTime = new MockTime();
     kafka = ServiceFactory.getKafkaBroker(mockTime);
-    manager = new TopicManager(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, MIN_COMPACTION_LAG, TestUtils.getVeniceConsumerFactory(kafka));
+    topicManager = new TopicManager(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, MIN_COMPACTION_LAG, TestUtils.getVeniceConsumerFactory(kafka));
     Cache cacheNothingCache = mock(Cache.class);
     Mockito.when(cacheNothingCache.getIfPresent(Mockito.any())).thenReturn(null);
-    manager.setTopicConfigCache(cacheNothingCache);
+    topicManager.setTopicConfigCache(cacheNothingCache);
   }
 
   @AfterClass
   public void teardown() throws IOException {
     kafka.close();
-    manager.close();
+    topicManager.close();
+  }
+
+  @Test
+  public void testGetProducerTimestampOfLastDataRecord() throws ExecutionException, InterruptedException {
+    final String topic = getTopic();
+    final long timestamp = System.currentTimeMillis();
+    produceToKafka(topic, true, timestamp - 1000);
+    produceToKafka(topic, true, timestamp); // This timestamp is expected to be retrieved
+
+    long retrievedTimestamp = topicManager.getProducerTimestampOfLastDataRecord(topic, 0, 1);
+    Assert.assertEquals(retrievedTimestamp, timestamp);
+  }
+
+  @Test
+  public void testGetProducerTimestampOfLastDataRecordWithControlMessage() throws ExecutionException, InterruptedException {
+    final String topic = getTopic();
+    long timestamp = System.currentTimeMillis();
+    produceToKafka(topic, true, timestamp); // This timestamp is expected to be retrieved
+    produceToKafka(topic, false, timestamp + 1000); // produce a control message
+
+    long retrievedTimestamp = topicManager.getProducerTimestampOfLastDataRecord(topic, 0, 1);
+    Assert.assertEquals(retrievedTimestamp, timestamp);
+
+    // Produce more data records to this topic partition
+    for (int i = 0; i < 10; i++) {
+      timestamp += 1000;
+      produceToKafka(topic, true, timestamp);
+    }
+    // Produce several control messages at the end
+    for (int i = 1; i <= 3; i++) {
+      produceToKafka(topic, false, timestamp + i * 1000);
+    }
+    retrievedTimestamp = topicManager.getProducerTimestampOfLastDataRecord(topic, 0, 1);
+    Assert.assertEquals(retrievedTimestamp, timestamp);
+  }
+
+  @Test
+  public void testGetProducerTimestampOfLastDataRecordOnEmptyTopic() {
+    final String emptyTopic = getTopic();
+    long retrievedTimestamp = topicManager.getProducerTimestampOfLastDataRecord(emptyTopic, 0, 1);
+    Assert.assertEquals(retrievedTimestamp, PartitionOffsetFetcherImpl.NO_PRODUCER_TIME_IN_EMPTY_TOPIC_PARTITION);
+  }
+
+  @Test
+  public void testGetProducerTimestampOfLastDataRecordWithOnlyControlMessages() throws ExecutionException, InterruptedException {
+    final String topic = getTopic();
+    long timestamp = System.currentTimeMillis();
+
+    // Produce only control messages
+    for (int i = 0; i < 10; i++) {
+      produceToKafka(topic, false, timestamp);
+      timestamp += 10;
+    }
+
+    Assert.assertThrows(VeniceException.class, () -> topicManager.getProducerTimestampOfLastDataRecord(topic, 0, 1));
+  }
+
+  /**
+   * This method produces either an random data record or a control message/record to Kafka with a given producer timestamp.
+   *
+   * @param topic
+   * @param isDataRecord
+   * @param producerTimestamp
+   * @throws ExecutionException
+   * @throws InterruptedException
+   */
+  private void produceToKafka(String topic, boolean isDataRecord, long producerTimestamp) throws ExecutionException, InterruptedException {
+    Properties props = new Properties();
+    props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, KafkaKeySerializer.class);
+    props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, KafkaValueSerializer.class);
+    props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, kafka.getAddress());
+    KafkaProducer<KafkaKey, KafkaMessageEnvelope> producer = new KafkaProducer(props);
+    final byte[] randomBytes = new byte[]{0, 1};
+
+    // Prepare record key
+    KafkaKey recordKey = new KafkaKey(
+        isDataRecord ? MessageType.PUT : MessageType.CONTROL_MESSAGE,
+        randomBytes
+    );
+
+    // Prepare record value
+    KafkaMessageEnvelope recordValue = new KafkaMessageEnvelope();
+    recordValue.producerMetadata = new ProducerMetadata();
+    recordValue.producerMetadata.producerGUID = new GUID();
+    recordValue.producerMetadata.messageTimestamp = producerTimestamp;
+    recordValue.leaderMetadataFooter = new LeaderMetadata();
+    recordValue.leaderMetadataFooter.hostName = "localhost";
+
+    if (isDataRecord) {
+      Put put = new Put();
+      put.putValue = ByteBuffer.wrap(new byte[]{0, 1});
+      put.replicationMetadataPayload = ByteBuffer.wrap(randomBytes);
+      recordValue.payloadUnion = put;
+    } else {
+      ControlMessage controlMessage = new ControlMessage();
+      controlMessage.controlMessageType = ControlMessageType.END_OF_PUSH.getValue();
+      controlMessage.controlMessageUnion = new EndOfPush();
+      controlMessage.debugInfo = Collections.emptyMap();
+      recordValue.payloadUnion = controlMessage;
+    }
+    ProducerRecord<KafkaKey, KafkaMessageEnvelope> record = new ProducerRecord<>(topic, recordKey, recordValue);
+    producer.send(record).get();
   }
 
   @Test
   public void testCreateTopic() throws Exception {
     String topicNameWithEternalRetentionPolicy = getTopic();
-    manager.createTopic(topicNameWithEternalRetentionPolicy, 1, 1, true); /* should be noop */
-    Assert.assertTrue(manager.containsTopicAndAllPartitionsAreOnline(topicNameWithEternalRetentionPolicy));
-    Assert.assertEquals(manager.getTopicRetention(topicNameWithEternalRetentionPolicy), TopicManager.ETERNAL_TOPIC_RETENTION_POLICY_MS);
+    topicManager.createTopic(topicNameWithEternalRetentionPolicy, 1, 1, true); /* should be noop */
+    Assert.assertTrue(topicManager.containsTopicAndAllPartitionsAreOnline(topicNameWithEternalRetentionPolicy));
+    Assert.assertEquals(topicManager.getTopicRetention(topicNameWithEternalRetentionPolicy), TopicManager.ETERNAL_TOPIC_RETENTION_POLICY_MS);
 
     String topicNameWithDefaultRetentionPolicy = getTopic();
-    manager.createTopic(topicNameWithDefaultRetentionPolicy, 1, 1, false); /* should be noop */
-    Assert.assertTrue(manager.containsTopicAndAllPartitionsAreOnline(topicNameWithDefaultRetentionPolicy));
-    Assert.assertEquals(manager.getTopicRetention(topicNameWithDefaultRetentionPolicy), TopicManager.DEFAULT_TOPIC_RETENTION_POLICY_MS);
-    Assert.assertEquals(1, manager.getReplicationFactor(topicNameWithDefaultRetentionPolicy));
+    topicManager.createTopic(topicNameWithDefaultRetentionPolicy, 1, 1, false); /* should be noop */
+    Assert.assertTrue(topicManager.containsTopicAndAllPartitionsAreOnline(topicNameWithDefaultRetentionPolicy));
+    Assert.assertEquals(topicManager.getTopicRetention(topicNameWithDefaultRetentionPolicy), TopicManager.DEFAULT_TOPIC_RETENTION_POLICY_MS);
+    Assert.assertEquals(1, topicManager.getReplicationFactor(topicNameWithDefaultRetentionPolicy));
   }
 
   @Test
@@ -104,36 +224,36 @@ public class TopicManagerTest {
     String topicNameWithDefaultRetentionPolicy = getTopic();
 
     // Create topic with zero retention policy
-    manager.createTopic(topicNameWithEternalRetentionPolicy, 1, 1, false);
-    manager.createTopic(topicNameWithDefaultRetentionPolicy, 1, 1, false);
-    manager.updateTopicRetention(topicNameWithEternalRetentionPolicy, 0);
-    manager.updateTopicRetention(topicNameWithDefaultRetentionPolicy, 0);
-    Assert.assertEquals(manager.getTopicRetention(topicNameWithEternalRetentionPolicy), 0);
-    Assert.assertEquals(manager.getTopicRetention(topicNameWithDefaultRetentionPolicy), 0);
+    topicManager.createTopic(topicNameWithEternalRetentionPolicy, 1, 1, false);
+    topicManager.createTopic(topicNameWithDefaultRetentionPolicy, 1, 1, false);
+    topicManager.updateTopicRetention(topicNameWithEternalRetentionPolicy, 0);
+    topicManager.updateTopicRetention(topicNameWithDefaultRetentionPolicy, 0);
+    Assert.assertEquals(topicManager.getTopicRetention(topicNameWithEternalRetentionPolicy), 0);
+    Assert.assertEquals(topicManager.getTopicRetention(topicNameWithDefaultRetentionPolicy), 0);
 
     // re-create those topics with different retention policy
 
-    manager.createTopic(topicNameWithEternalRetentionPolicy, 1, 1, true); /* should be noop */
-    Assert.assertTrue(manager.containsTopicAndAllPartitionsAreOnline(topicNameWithEternalRetentionPolicy));
-    Assert.assertEquals(manager.getTopicRetention(topicNameWithEternalRetentionPolicy), TopicManager.ETERNAL_TOPIC_RETENTION_POLICY_MS);
+    topicManager.createTopic(topicNameWithEternalRetentionPolicy, 1, 1, true); /* should be noop */
+    Assert.assertTrue(topicManager.containsTopicAndAllPartitionsAreOnline(topicNameWithEternalRetentionPolicy));
+    Assert.assertEquals(topicManager.getTopicRetention(topicNameWithEternalRetentionPolicy), TopicManager.ETERNAL_TOPIC_RETENTION_POLICY_MS);
 
-    manager.createTopic(topicNameWithDefaultRetentionPolicy, 1, 1, false); /* should be noop */
-    Assert.assertTrue(manager.containsTopicAndAllPartitionsAreOnline(topicNameWithDefaultRetentionPolicy));
-    Assert.assertEquals(manager.getTopicRetention(topicNameWithDefaultRetentionPolicy), TopicManager.DEFAULT_TOPIC_RETENTION_POLICY_MS);
+    topicManager.createTopic(topicNameWithDefaultRetentionPolicy, 1, 1, false); /* should be noop */
+    Assert.assertTrue(topicManager.containsTopicAndAllPartitionsAreOnline(topicNameWithDefaultRetentionPolicy));
+    Assert.assertEquals(topicManager.getTopicRetention(topicNameWithDefaultRetentionPolicy), TopicManager.DEFAULT_TOPIC_RETENTION_POLICY_MS);
   }
 
   @Test
   public void testDeleteTopic() throws ExecutionException {
     String topicName = getTopic();
-    manager.ensureTopicIsDeletedAndBlock(topicName);
-    Assert.assertFalse(manager.containsTopicAndAllPartitionsAreOnline(topicName));
+    topicManager.ensureTopicIsDeletedAndBlock(topicName);
+    Assert.assertFalse(topicManager.containsTopicAndAllPartitionsAreOnline(topicName));
   }
 
   @Test
   public void testDeleteTopicWithRetry() throws ExecutionException {
     String topicName = getTopic();
-    manager.ensureTopicIsDeletedAndBlockWithRetry(topicName);
-    Assert.assertFalse(manager.containsTopicAndAllPartitionsAreOnline(topicName));
+    topicManager.ensureTopicIsDeletedAndBlockWithRetry(topicName);
+    Assert.assertFalse(topicManager.containsTopicAndAllPartitionsAreOnline(topicName));
   }
 
   @Test
@@ -154,14 +274,14 @@ public class TopicManagerTest {
   public void testSyncDeleteTopic() throws ExecutionException {
     String topicName = getTopic();
     // Delete that topic
-    manager.ensureTopicIsDeletedAndBlock(topicName);
-    Assert.assertFalse(manager.containsTopicAndAllPartitionsAreOnline(topicName));
+    topicManager.ensureTopicIsDeletedAndBlock(topicName);
+    Assert.assertFalse(topicManager.containsTopicAndAllPartitionsAreOnline(topicName));
   }
 
   @Test
   public void testGetLastOffsets() {
     String topic = getTopic();
-    Map<Integer, Long> lastOffsets = manager.getTopicLatestOffsets(topic);
+    Map<Integer, Long> lastOffsets = topicManager.getTopicLatestOffsets(topic);
     TestUtils.waitForNonDeterministicAssertion(2, TimeUnit.SECONDS, () -> {
       Assert.assertTrue(lastOffsets.containsKey(0), "single partition topic has an offset for partition 0");
       Assert.assertEquals(lastOffsets.keySet().size(), 1, "single partition topic has only an offset for one partition");
@@ -173,7 +293,7 @@ public class TopicManagerTest {
   public void testListOffsetsOnEmptyTopic(){
     KafkaConsumer<byte[], byte[]> mockConsumer = mock(KafkaConsumer.class);
     doReturn(new HashMap<String, List<PartitionInfo>>()).when(mockConsumer).listTopics();
-    Map<Integer, Long> offsets = manager.getTopicLatestOffsets("myTopic");
+    Map<Integer, Long> offsets = topicManager.getTopicLatestOffsets("myTopic");
     Assert.assertEquals(offsets.size(), 0);
   }
 
@@ -208,7 +328,7 @@ public class TopicManagerTest {
     }
 
     assertOffsetsByTime(topicName, 0, 0);
-    Map<Integer, Long> latestOffsets = manager.getTopicLatestOffsets(topicName);
+    Map<Integer, Long> latestOffsets = topicManager.getTopicLatestOffsets(topicName);
     latestOffsets.forEach((partition, offset) -> Assert.assertTrue(offset >= NUMBER_OF_MESSAGES,
         "When asking the latest offsets, partition " + partition + " has an unexpected offset."));
 
@@ -229,7 +349,7 @@ public class TopicManagerTest {
     /**
      * Check whether {@link TopicManager#getOffsetByTimeIfOutOfRange} could return the right offset or not.
      */
-    long offset = manager.getOffsetByTimeIfOutOfRange(new TopicPartition(topicName, 0), futureTime);
+    long offset = topicManager.getOffsetByTimeIfOutOfRange(new TopicPartition(topicName, 0), futureTime);
     Assert.assertEquals(offset, NUMBER_OF_MESSAGES + 1);
 
     /**
@@ -240,7 +360,7 @@ public class TopicManagerTest {
 
   private void assertOffsetsByTime(String topicName, long time, long expectedOffset) {
     LOGGER.info("Asking for time: " + time + ", expecting offset: " + expectedOffset);
-    Map<Integer, Long> offsets = manager.getTopicOffsetsByTime(topicName, time);
+    Map<Integer, Long> offsets = topicManager.getTopicOffsetsByTime(topicName, time);
     offsets.forEach((partition, offset) -> Assert.assertEquals(offset, new Long(expectedOffset),
         "When asking for timestamp " + time + ", partition " + partition + " has an unexpected offset."));
 
@@ -249,8 +369,8 @@ public class TopicManagerTest {
   @Test
   public void testGetTopicConfig() {
     String topic = TestUtils.getUniqueString("topic");
-    manager.createTopic(topic, 1, 1, true);
-    Properties topicProperties = manager.getTopicConfig(topic);
+    topicManager.createTopic(topic, 1, 1, true);
+    Properties topicProperties = topicManager.getTopicConfig(topic);
     Assert.assertTrue(topicProperties.containsKey(LogConfig.RetentionMsProp()));
     Assert.assertTrue(Long.parseLong(topicProperties.getProperty(LogConfig.RetentionMsProp())) > 0,
         "retention.ms should be positive");
@@ -259,40 +379,40 @@ public class TopicManagerTest {
   @Test (expectedExceptions = TopicDoesNotExistException.class)
   public void testGetTopicConfigWithUnknownTopic() {
     String topic = TestUtils.getUniqueString("topic");
-    manager.getTopicConfig(topic);
+    topicManager.getTopicConfig(topic);
   }
 
   @Test
   public void testUpdateTopicRetention() {
     String topic = TestUtils.getUniqueString("topic");
-    manager.createTopic(topic, 1, 1, true);
-    manager.updateTopicRetention(topic, 0);
-    Properties topicProperties = manager.getTopicConfig(topic);
+    topicManager.createTopic(topic, 1, 1, true);
+    topicManager.updateTopicRetention(topic, 0);
+    Properties topicProperties = topicManager.getTopicConfig(topic);
     Assert.assertEquals(topicProperties.getProperty(LogConfig.RetentionMsProp()), "0");
   }
 
   @Test
   public void testListAllTopics() {
-    Set<String> expectTopics = new HashSet<>(manager.listTopics());
+    Set<String> expectTopics = new HashSet<>(topicManager.listTopics());
     String topic1 = TestUtils.getUniqueString("topic");
     String topic2 = TestUtils.getUniqueString("topic");
     String topic3 = TestUtils.getUniqueString("topic");
     // Create 1 topic, expect 1 topic in total
-    manager.createTopic(topic1, 1, 1, true);
+    topicManager.createTopic(topic1, 1, 1, true);
     expectTopics.add(topic1);
-    Set<String> allTopics = manager.listTopics();
+    Set<String> allTopics = topicManager.listTopics();
     Assert.assertEquals(allTopics, expectTopics);
 
     // Create another topic, expect 2 topics in total
-    manager.createTopic(topic2, 1, 1, false);
+    topicManager.createTopic(topic2, 1, 1, false);
     expectTopics.add(topic2);
-    allTopics = manager.listTopics();
+    allTopics = topicManager.listTopics();
     Assert.assertEquals(allTopics, expectTopics);
 
     // Create another topic, expect 3 topics in total
-    manager.createTopic(topic3, 1, 1, false);
+    topicManager.createTopic(topic3, 1, 1, false);
     expectTopics.add(topic3);
-    allTopics = manager.listTopics();
+    allTopics = topicManager.listTopics();
     Assert.assertEquals(allTopics, expectTopics);
   }
 
@@ -301,12 +421,12 @@ public class TopicManagerTest {
     String topic1 = TestUtils.getUniqueString("topic");
     String topic2 = TestUtils.getUniqueString("topic");
     String topic3 = TestUtils.getUniqueString("topic");
-    manager.createTopic(topic1, 1, 1, true);
-    manager.createTopic(topic2, 1, 1, false);
-    manager.createTopic(topic3, 1, 1, false);
-    manager.updateTopicRetention(topic3, 5000);
+    topicManager.createTopic(topic1, 1, 1, true);
+    topicManager.createTopic(topic2, 1, 1, false);
+    topicManager.createTopic(topic3, 1, 1, false);
+    topicManager.updateTopicRetention(topic3, 5000);
 
-    Map<String, Long> topicRetentions = manager.getAllTopicRetentions();
+    Map<String, Long> topicRetentions = topicManager.getAllTopicRetentions();
     Assert.assertTrue(topicRetentions.size() > 3, "There should be at least 3 topics, "
         + "which were created by this test");
     Assert.assertEquals(topicRetentions.get(topic1).longValue(), TopicManager.ETERNAL_TOPIC_RETENTION_POLICY_MS);
@@ -314,61 +434,63 @@ public class TopicManagerTest {
     Assert.assertEquals(topicRetentions.get(topic3).longValue(), 5000);
 
     long deprecatedTopicRetentionMaxMs = 5000;
-    Assert.assertFalse(manager.isTopicTruncated(topic1, deprecatedTopicRetentionMaxMs),
+    Assert.assertFalse(topicManager.isTopicTruncated(topic1, deprecatedTopicRetentionMaxMs),
         "Topic1 should not be deprecated because of unlimited retention policy");
-    Assert.assertFalse(manager.isTopicTruncated(topic2, deprecatedTopicRetentionMaxMs),
+    Assert.assertFalse(topicManager.isTopicTruncated(topic2, deprecatedTopicRetentionMaxMs),
         "Topic2 should not be deprecated because of unknown retention policy");
-    Assert.assertTrue(manager.isTopicTruncated(topic3, deprecatedTopicRetentionMaxMs),
+    Assert.assertTrue(topicManager.isTopicTruncated(topic3, deprecatedTopicRetentionMaxMs),
         "Topic3 should be deprecated because of low retention policy");
 
-    Assert.assertFalse(manager.isRetentionBelowTruncatedThreshold(deprecatedTopicRetentionMaxMs + 1, deprecatedTopicRetentionMaxMs));
-    Assert.assertFalse(manager.isRetentionBelowTruncatedThreshold(TopicManager.UNKNOWN_TOPIC_RETENTION, deprecatedTopicRetentionMaxMs));
-    Assert.assertTrue(manager.isRetentionBelowTruncatedThreshold(deprecatedTopicRetentionMaxMs - 1, deprecatedTopicRetentionMaxMs));
+    Assert.assertFalse(
+        topicManager.isRetentionBelowTruncatedThreshold(deprecatedTopicRetentionMaxMs + 1, deprecatedTopicRetentionMaxMs));
+    Assert.assertFalse(topicManager.isRetentionBelowTruncatedThreshold(TopicManager.UNKNOWN_TOPIC_RETENTION, deprecatedTopicRetentionMaxMs));
+    Assert.assertTrue(
+        topicManager.isRetentionBelowTruncatedThreshold(deprecatedTopicRetentionMaxMs - 1, deprecatedTopicRetentionMaxMs));
   }
 
   @Test
   public void testUpdateTopicCompactionPolicy() {
     String topic = TestUtils.getUniqueString("topic");
-    manager.createTopic(topic, 1, 1, true);
-    Assert.assertFalse(manager.isTopicCompactionEnabled(topic), "topic: " + topic + " should be with compaction disabled");
-    manager.updateTopicCompactionPolicy(topic, true);
-    Assert.assertTrue(manager.isTopicCompactionEnabled(topic), "topic: " + topic + " should be with compaction enabled");
-    Assert.assertEquals(manager.getTopicMinLogCompactionLagMs(topic), MIN_COMPACTION_LAG);
-    manager.updateTopicCompactionPolicy(topic, false);
-    Assert.assertFalse(manager.isTopicCompactionEnabled(topic), "topic: " + topic + " should be with compaction disabled");
-    Assert.assertEquals(manager.getTopicMinLogCompactionLagMs(topic), 0L);
+    topicManager.createTopic(topic, 1, 1, true);
+    Assert.assertFalse(topicManager.isTopicCompactionEnabled(topic), "topic: " + topic + " should be with compaction disabled");
+    topicManager.updateTopicCompactionPolicy(topic, true);
+    Assert.assertTrue(topicManager.isTopicCompactionEnabled(topic), "topic: " + topic + " should be with compaction enabled");
+    Assert.assertEquals(topicManager.getTopicMinLogCompactionLagMs(topic), MIN_COMPACTION_LAG);
+    topicManager.updateTopicCompactionPolicy(topic, false);
+    Assert.assertFalse(topicManager.isTopicCompactionEnabled(topic), "topic: " + topic + " should be with compaction disabled");
+    Assert.assertEquals(topicManager.getTopicMinLogCompactionLagMs(topic), 0L);
   }
 
   @Test
   public void testGetConfigForNonExistingTopic() {
     String nonExistingTopic = TestUtils.getUniqueString("non-existing-topic");
-    Assert.assertThrows(TopicDoesNotExistException.class, () -> manager.getTopicConfig(nonExistingTopic));
+    Assert.assertThrows(TopicDoesNotExistException.class, () -> topicManager.getTopicConfig(nonExistingTopic));
   }
 
   @Test
   public void testGetLatestOffsetForNonExistingTopic() {
     String nonExistingTopic = TestUtils.getUniqueString("non-existing-topic");
-    Assert.assertThrows(TopicDoesNotExistException.class, () -> manager.getPartitionLatestOffset(nonExistingTopic, 0));
-    Assert.assertThrows(TopicDoesNotExistException.class, () -> manager.getPartitionLatestOffsetAndRetry(nonExistingTopic, 0, 10));
+    Assert.assertThrows(TopicDoesNotExistException.class, () -> topicManager.getPartitionLatestOffset(nonExistingTopic, 0));
+    Assert.assertThrows(TopicDoesNotExistException.class, () -> topicManager.getPartitionLatestOffsetAndRetry(nonExistingTopic, 0, 10));
   }
 
   @Test
   public void testGetLatestProducerTimestampForNonExistingTopic() {
     String nonExistingTopic = TestUtils.getUniqueString("non-existing-topic");
-    Assert.assertThrows(TopicDoesNotExistException.class, () -> manager.getLatestProducerTimestampAndRetry(nonExistingTopic, 0, 10));
+    Assert.assertThrows(TopicDoesNotExistException.class, () -> topicManager.getProducerTimestampOfLastDataRecord(nonExistingTopic, 0, 10));
   }
 
   @Test
   public void testGetAndUpdateTopicRetentionForNonExistingTopic() {
     String nonExistingTopic = TestUtils.getUniqueString("non-existing-topic");
-    Assert.assertThrows(TopicDoesNotExistException.class, () -> manager.getTopicRetention(nonExistingTopic));
-    Assert.assertThrows(TopicDoesNotExistException.class, () -> manager.updateTopicRetention(nonExistingTopic, TimeUnit.DAYS.toMillis(1)));
+    Assert.assertThrows(TopicDoesNotExistException.class, () -> topicManager.getTopicRetention(nonExistingTopic));
+    Assert.assertThrows(TopicDoesNotExistException.class, () -> topicManager.updateTopicRetention(nonExistingTopic, TimeUnit.DAYS.toMillis(1)));
   }
 
   @Test
   public void testUpdateTopicCompactionPolicyForNonExistingTopic() {
     String nonExistingTopic = TestUtils.getUniqueString("non-existing-topic");
-    Assert.assertThrows(TopicDoesNotExistException.class, () -> manager.updateTopicCompactionPolicy(nonExistingTopic, true));
+    Assert.assertThrows(TopicDoesNotExistException.class, () -> topicManager.updateTopicCompactionPolicy(nonExistingTopic, true));
   }
 
   @Test
@@ -422,21 +544,21 @@ public class TopicManagerTest {
   @Test
   public void testContainsTopicAndAllPartitionsAreOnline() {
     String topic = TestUtils.getUniqueString("a-new-topic");
-    Assert.assertFalse(manager.containsTopicAndAllPartitionsAreOnline(topic)); // Topic does not exist yet
+    Assert.assertFalse(topicManager.containsTopicAndAllPartitionsAreOnline(topic)); // Topic does not exist yet
 
-    manager.createTopic(topic, 1, 1, true);
-    Assert.assertTrue(manager.containsTopicAndAllPartitionsAreOnline(topic));
+    topicManager.createTopic(topic, 1, 1, true);
+    Assert.assertTrue(topicManager.containsTopicAndAllPartitionsAreOnline(topic));
   }
 
   @Test
   public void testGetPartitionOffsetByTimeWithRetrySucceeds() {
     String topic = TestUtils.getUniqueString("topic");
-    manager.createTopic(topic, 1, 1, true);
+    topicManager.createTopic(topic, 1, 1, true);
     int[] maxAttempts = {1, 3, 5};
 
     for (int maxAttempt : maxAttempts) {
       // Fetch the earliest offset which should be 0
-      Assert.assertEquals(manager.getPartitionOffsetByTimeWithRetry(topic, 0, 0, maxAttempt, Duration.ofMillis(1)), 0);
+      Assert.assertEquals(topicManager.getPartitionOffsetByTimeWithRetry(topic, 0, 0, maxAttempt, Duration.ofMillis(1)), 0);
     }
   }
 

@@ -403,7 +403,6 @@ public class TopicManager implements Closeable {
     return retention != UNKNOWN_TOPIC_RETENTION && retention <= truncatedTopicMaxRetentionMs;
   }
 
-
   /**
    * This operation is a little heavy, since it will pull the configs for all the topics.
    */
@@ -657,8 +656,8 @@ public class TopicManager implements Closeable {
     return partitionOffsetFetcher.getPartitionLatestOffsetAndRetry(topic, partition, retries);
   }
 
-  public long getLatestProducerTimestampAndRetry(String topic, int partition, int retries) {
-    return partitionOffsetFetcher.getLatestProducerTimestampAndRetry(topic, partition, retries);
+  public long getProducerTimestampOfLastDataRecord(String topic, int partition, int retries) {
+    return partitionOffsetFetcher.getProducerTimestampOfLastDataRecord(topic, partition, retries);
   }
 
   /**
