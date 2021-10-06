@@ -57,7 +57,6 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
@@ -229,8 +228,8 @@ public class DaVinciBackend implements Closeable {
       // Initialize expected version numbers for each store.
       if (!expectedBootstrapVersions.containsKey(storeName)) {
         Set<Integer> validVersionNumbers = new HashSet<>();
-        Optional<Version> latestVersion = getVeniceLatestVersion(storeName, Collections.emptySet());
-        Optional<Version> currentVersion = getVeniceCurrentVersion(storeName, Collections.emptySet());
+        Optional<Version> latestVersion = getVeniceLatestNonFaultyVersion(storeName, Collections.emptySet());
+        Optional<Version> currentVersion = getVeniceCurrentVersion(storeName);
         currentVersion.ifPresent(version -> validVersionNumbers.add(version.getNumber()));
         latestVersion.ifPresent(version -> validVersionNumbers.add(version.getNumber()));
         expectedBootstrapVersions.put(storeName, validVersionNumbers);
@@ -416,32 +415,6 @@ public class DaVinciBackend implements Closeable {
     return compressorFactory;
   }
 
-  Optional<Version> getVeniceLatestVersion(String storeName, Set<Integer> faultyVersions) {
-    try {
-      return getVeniceLatestVersion(getStoreRepository().getStoreOrThrow(storeName), faultyVersions);
-    } catch (VeniceNoStoreException e) {
-      return Optional.empty();
-    }
-  }
-
-  static Optional<Version> getVeniceLatestVersion(Store store, Set<Integer> faultyVersions) {
-    return store.getVersions().stream().filter(v -> !faultyVersions.contains(v.getNumber()))
-               .max(Comparator.comparing(Version::getNumber));
-  }
-
-  Optional<Version> getVeniceCurrentVersion(String storeName, Set<Integer> faultyVersions) {
-    try {
-      return getVeniceCurrentVersion(getStoreRepository().getStoreOrThrow(storeName), faultyVersions);
-    } catch (VeniceNoStoreException e) {
-      return Optional.empty();
-    }
-  }
-
-  static Optional<Version> getVeniceCurrentVersion(Store store, Set<Integer> faultyVersions) {
-    int versionNumber = store.getCurrentVersion();
-    return faultyVersions.contains(versionNumber) ? Optional.empty() : store.getVersion(versionNumber);
-  }
-
   protected void reportPushStatus(String kafkaTopic, int subPartition, ExecutionStatus status) {
     reportPushStatus(kafkaTopic, subPartition, status, Optional.empty());
   }
@@ -466,19 +439,50 @@ public class DaVinciBackend implements Closeable {
     return configLoader.getVeniceServerConfig().getIngestionMode().equals(IngestionMode.ISOLATED);
   }
 
+  // Move the logic to this protected method to make it visible for unit test.
+  protected void handleStoreChanged(StoreBackend storeBackend) {
+    storeBackend.validateDaVinciAndVeniceCurrentVersion();
+    storeBackend.tryDeleteInvalidDaVinciFutureVersion();
+    /**
+     * Future version may not meet the swapping condition when local partitions finished ingestion, thus everytime
+     * when store config has been changed in the Venice backend, we need to check if we could swap the future version
+     * to current.
+     */
+    storeBackend.trySwapDaVinciCurrentVersion(null);
+    storeBackend.trySubscribeDaVinciFutureVersion();
+  }
+
+  Optional<Version> getVeniceLatestNonFaultyVersion(String storeName, Set<Integer> faultyVersions) {
+    try {
+      return getVeniceLatestNonFaultyVersion(getStoreRepository().getStoreOrThrow(storeName), faultyVersions);
+    } catch (VeniceNoStoreException e) {
+      return Optional.empty();
+    }
+  }
+
+  Optional<Version> getVeniceCurrentVersion(String storeName) {
+    try {
+      return getVeniceCurrentVersion(getStoreRepository().getStoreOrThrow(storeName));
+    } catch (VeniceNoStoreException e) {
+      return Optional.empty();
+    }
+  }
+
+  private Optional<Version> getVeniceLatestNonFaultyVersion(Store store, Set<Integer> faultyVersions) {
+    return store.getVersions().stream().filter(v -> !faultyVersions.contains(v.getNumber()))
+        .max(Comparator.comparing(Version::getNumber));
+  }
+
+  private Optional<Version> getVeniceCurrentVersion(Store store) {
+    return store.getVersion(store.getCurrentVersion());
+  }
+
   private final StoreDataChangedListener storeChangeListener = new StoreDataChangedListener() {
     @Override
     public void handleStoreChanged(Store store) {
       StoreBackend storeBackend = storeByNameMap.get(store.getName());
       if (storeBackend != null) {
-        storeBackend.tryDeleteObsoleteDaVinciFutureVersion();
-        /**
-         * Future version may not meet the swapping condition when local partitions finished ingestion, thus everytime
-         * when store config has been changed in the Venice backend, we need to check if we could swap the future version
-         * to current.
-         */
-        storeBackend.trySwapDaVinciCurrentVersion(null);
-        storeBackend.trySubscribeDaVinciFutureVersion();
+        DaVinciBackend.this.handleStoreChanged(storeBackend);
       }
     }
 

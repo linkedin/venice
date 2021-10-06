@@ -83,10 +83,11 @@ public class StoreBackendTest {
     when(backend.getStorageService()).thenReturn(storageService);
     when(backend.getIngestionService()).thenReturn(mock(StoreIngestionService.class));
     when(backend.getVersionByTopicMap()).thenReturn(versionMap);
-    when(backend.getVeniceLatestVersion(anyString(), anySet())).thenCallRealMethod();
-    when(backend.getVeniceCurrentVersion(anyString(), anySet())).thenCallRealMethod();
+    when(backend.getVeniceLatestNonFaultyVersion(anyString(), anySet())).thenCallRealMethod();
+    when(backend.getVeniceCurrentVersion(anyString())).thenCallRealMethod();
     when(backend.getIngestionBackend()).thenReturn(ingestionBackend);
     when(backend.getCompressorFactory()).thenReturn(compressorFactory);
+    doCallRealMethod().when(backend).handleStoreChanged(any());
 
     store = new ZKStore("test-store", null, 0, PersistenceType.ROCKS_DB,
         RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_ALL_REPLICAS, 1);
@@ -148,8 +149,7 @@ public class StoreBackendTest {
     }
     // Mark the version 2 as current.
     store.setCurrentVersion(version2.getNumber());
-    // Since we don't have the listener here, we manually trigger the try swap logic.
-    storeBackend.trySwapDaVinciCurrentVersion(null);
+    backend.handleStoreChanged(storeBackend);
 
     // Verify that future version became current once ingestion is complete.
     try (ReferenceCounted<VersionBackend> versionRef = storeBackend.getDaVinciCurrentVersion()) {
@@ -182,8 +182,7 @@ public class StoreBackendTest {
     }
     // Mark the version 2 as current.
     store.setCurrentVersion(version2.getNumber());
-    // Since we don't have the listener here, we manually trigger the try swap logic.
-    storeBackend.trySwapDaVinciCurrentVersion(null);
+    backend.handleStoreChanged(storeBackend);
 
     // Verify that future version became current once ingestion is complete.
     try (ReferenceCounted<VersionBackend> versionRef = storeBackend.getDaVinciCurrentVersion()) {
@@ -195,6 +194,8 @@ public class StoreBackendTest {
   void testSubscribeWithoutCurrentVersion() throws Exception {
     int partition = 1;
     store.setCurrentVersion(Store.NON_EXISTING_VERSION);
+    backend.handleStoreChanged(storeBackend);
+
     // Expecting to subscribe to the latest version (version2).
     CompletableFuture subscribeResult = storeBackend.subscribe(ComplementSet.of(partition));
     versionMap.get(version2.kafkaTopicName()).completePartition(partition);
@@ -210,9 +211,10 @@ public class StoreBackendTest {
     Version version3 = new VersionImpl(store.getName(), store.peekNextVersion().getNumber(), null, 15);
     store.addVersion(version3);
     store.setCurrentVersion(version2.getNumber());
+    backend.handleStoreChanged(storeBackend);
 
     int partition = 2;
-    // Expecting to subscribe to the specified version (version1), which is nether current nor latest.
+    // Expecting to subscribe to the specified version (version1), which is neither current nor latest.
     CompletableFuture subscribeResult = storeBackend.subscribe(ComplementSet.of(partition), Optional.of(version1));
     versionMap.get(version1.kafkaTopicName()).completePartition(partition);
     subscribeResult.get(0, TimeUnit.SECONDS);
@@ -240,7 +242,7 @@ public class StoreBackendTest {
 
     // Simulate future version kill and removal from Venice.
     store.deleteVersion(version2.getNumber());
-    storeBackend.tryDeleteObsoleteDaVinciFutureVersion();
+    backend.handleStoreChanged(storeBackend);
     // Verify that corresponding Version Backend is deleted exactly once.
     assertFalse(versionMap.containsKey(version2.kafkaTopicName()));
     verify(ingestionBackend, times(1)).removeStorageEngine(eq(version2.kafkaTopicName()));
@@ -248,12 +250,12 @@ public class StoreBackendTest {
     // Simulate new version push and subsequent ingestion failure.
     Version version3 = new VersionImpl(store.getName(), store.peekNextVersion().getNumber(), null, 15);
     store.addVersion(version3);
-    storeBackend.trySubscribeDaVinciFutureVersion();
+    backend.handleStoreChanged(storeBackend);
 
     // Simulate new version push while faulty future version is being ingested.
     Version version4 = new VersionImpl(store.getName(), store.peekNextVersion().getNumber(), null, 20);
     store.addVersion(version4);
-    storeBackend.trySubscribeDaVinciFutureVersion();
+    backend.handleStoreChanged(storeBackend);
 
     versionMap.get(version3.kafkaTopicName()).completePartitionExceptionally(partition, new Exception());
     // Verify that neither of the bad versions became current.
@@ -268,8 +270,7 @@ public class StoreBackendTest {
     }
     // Mark the version 4 as current.
     store.setCurrentVersion(version4.getNumber());
-    // Since we don't have the listener here, we manually trigger the try swap logic.
-    storeBackend.trySwapDaVinciCurrentVersion(null);
+    backend.handleStoreChanged(storeBackend);
 
     // Verify that successfully ingested version became current.
     try (ReferenceCounted<VersionBackend> versionRef = storeBackend.getDaVinciCurrentVersion()) {
@@ -279,7 +280,7 @@ public class StoreBackendTest {
     // Simulate new version push and subsequent ingestion failure.
     Version version5 = new VersionImpl(store.getName(), store.peekNextVersion().getNumber(), null, 30);
     store.addVersion(version5);
-    storeBackend.trySubscribeDaVinciFutureVersion();
+    backend.handleStoreChanged(storeBackend);
     versionMap.get(version5.kafkaTopicName()).completePartitionExceptionally(partition, new Exception());
     // Verify that corresponding Version Backend is deleted exactly once.
     assertFalse(versionMap.containsKey(version5.kafkaTopicName()));
@@ -335,5 +336,44 @@ public class StoreBackendTest {
     assertTrue(versionMap.isEmpty());
     assertEquals(FileUtils.sizeOfDirectory(baseDataPath), 0);
     verify(ingestionBackend, times(store.getVersions().size())).removeStorageEngine(any());
+  }
+
+  @Test
+  void testRollbackAndRollForward() {
+    int partition = 1;
+    // Expecting to subscribe to the latest version (v1).
+    CompletableFuture subscribeResult = storeBackend.subscribe(ComplementSet.of(partition));
+    versionMap.get(version1.kafkaTopicName()).completePartition(partition);
+
+    store.setCurrentVersion(version2.getNumber());
+    backend.handleStoreChanged(storeBackend);
+    versionMap.get(version2.kafkaTopicName()).completePartition(partition);
+
+    Version version3 = new VersionImpl(store.getName(), store.peekNextVersion().getNumber(), null, 3);
+    store.addVersion(version3);
+    backend.handleStoreChanged(storeBackend);
+
+    versionMap.get(version3.kafkaTopicName()).completePartition(partition);
+    store.setCurrentVersion(version3.getNumber());
+    backend.handleStoreChanged(storeBackend);
+    try (ReferenceCounted<VersionBackend> versionRef = storeBackend.getDaVinciCurrentVersion()) {
+      assertEquals(versionRef.get().getVersion().getNumber(), version3.getNumber());
+    }
+
+    // Rollback happens here, expecting Da Vinci to switch back to v1.
+    store.setCurrentVersion(1);
+    backend.handleStoreChanged(storeBackend);
+    versionMap.get(version1.kafkaTopicName()).completePartition(partition);
+    try (ReferenceCounted<VersionBackend> versionRef = storeBackend.getDaVinciCurrentVersion()) {
+      assertEquals(versionRef.get().getVersion().getNumber(), version1.getNumber());
+    }
+    versionMap.get(version2.kafkaTopicName()).completePartition(partition);
+
+    store.setCurrentVersion(3);
+    backend.handleStoreChanged(storeBackend);
+    versionMap.get(version3.kafkaTopicName()).completePartition(partition);
+    try (ReferenceCounted<VersionBackend> versionRef = storeBackend.getDaVinciCurrentVersion()) {
+      assertEquals(versionRef.get().getVersion().getNumber(), version3.getNumber());
+    }
   }
 }

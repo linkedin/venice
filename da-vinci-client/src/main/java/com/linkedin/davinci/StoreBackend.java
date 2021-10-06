@@ -22,7 +22,7 @@ public class StoreBackend {
   private final String storeName;
   private final StoreBackendStats stats;
   private final StoreBackendConfig config;
-  private final Set<Integer> faultyVersions = new HashSet<>();
+  private final Set<Integer> faultyVersionSet = new HashSet<>();
   private final ComplementSet<Integer> subscription = ComplementSet.emptySet();
   private final ConcurrentRef<VersionBackend> daVinciCurrentVersionRef = new ConcurrentRef<>(this::deleteVersion);
   private VersionBackend daVinciCurrentVersion;
@@ -131,8 +131,8 @@ public class StoreBackend {
       setDaVinciCurrentVersion(new VersionBackend(
           backend,
           bootstrapVersion.orElseGet(
-              () -> backend.getVeniceCurrentVersion(storeName, faultyVersions).orElseGet(
-                  () -> backend.getVeniceLatestVersion(storeName, faultyVersions).orElseThrow(
+              () -> backend.getVeniceCurrentVersion(storeName).orElseGet(
+                  () -> backend.getVeniceLatestNonFaultyVersion(storeName, faultyVersionSet).orElseThrow(
                       () -> new VeniceException("Cannot subscribe to an empty store, storeName=" + storeName)))),
           stats));
 
@@ -209,28 +209,52 @@ public class StoreBackend {
       return;
     }
 
-    Version storeCurrentVersion = backend.getVeniceCurrentVersion(storeName, faultyVersions).orElse(null);
-    Version storeLatestVersion = backend.getVeniceLatestVersion(storeName, faultyVersions).orElse(null);
+    Version veniceCurrentVersion = backend.getVeniceCurrentVersion(storeName).orElse(null);
+    // Latest non-faulty store version in Venice store.
+    Version veniceLatestVersion = backend.getVeniceLatestNonFaultyVersion(storeName, faultyVersionSet).orElse(null);
     Version targetVersion;
     // Make sure current version in the store config has highest priority.
-    if (storeCurrentVersion != null && storeCurrentVersion.getNumber() != daVinciCurrentVersion.getVersion().getNumber()) {
-      targetVersion = storeCurrentVersion;
+    if (veniceCurrentVersion != null && veniceCurrentVersion.getNumber() != daVinciCurrentVersion.getVersion().getNumber()) {
+      targetVersion = veniceCurrentVersion;
+    } else if (veniceLatestVersion != null && veniceLatestVersion.getNumber() > daVinciCurrentVersion.getVersion().getNumber()) {
+      targetVersion = veniceLatestVersion;
     } else {
-      /**
-       * Before we implement rollback, this condition checking is valid as we should always moving forward. Once we have
-       * rollback, we might need to review it again to make sure it won't block rollback.
-       */
-      if (storeLatestVersion == null || storeLatestVersion.getNumber() <= daVinciCurrentVersion.getVersion().getNumber()) {
-        return;
-      }
-      targetVersion = storeLatestVersion;
+      return;
     }
     logger.info("Subscribing to future version " + targetVersion.kafkaTopicName());
     setDaVinciFutureVersion(new VersionBackend(backend, targetVersion, stats));
     daVinciFutureVersion.subscribe(subscription).whenComplete((v, e) -> trySwapDaVinciCurrentVersion(e));
   }
 
-  synchronized void tryDeleteObsoleteDaVinciFutureVersion() {
+  /**
+   * This method intends to check Venice store's current version and compare with Da Vinci current version when a store
+   * change is detected.
+   * If current version is smaller than Da Vinci current version, it is considered rollback of store's current version.
+   * If current version is greater than Da Vinci current version, it indicates that we have a new current version and
+   * we might need to remove it from faulty version set, which might be added because of previous rollback or local ingestion
+   * failure.
+   */
+  synchronized void validateDaVinciAndVeniceCurrentVersion() {
+    Version veniceCurrentVersion = backend.getVeniceCurrentVersion(storeName).orElse(null);
+    if (veniceCurrentVersion != null && daVinciCurrentVersion != null) {
+      if (veniceCurrentVersion.getNumber() > daVinciCurrentVersion.getVersion().getNumber() && faultyVersionSet.contains(veniceCurrentVersion.getNumber())) {
+        logger.info("Venice is rolling forward to version: " + veniceCurrentVersion.getNumber() + ", removing it from faulty version set.");
+        removeFaultyVersion(veniceCurrentVersion);
+        return;
+      }
+      if (veniceCurrentVersion.getNumber() < daVinciCurrentVersion.getVersion().getNumber()) {
+        logger.info("Detected a version rollback from Da Vinci current version: " + daVinciCurrentVersion.getVersion()
+            + " to Venice current version: " +  veniceCurrentVersion);
+        removeFaultyVersion(veniceCurrentVersion);
+        addFaultyVersion(daVinciCurrentVersion, null);
+      }
+    }
+  }
+
+  /**
+   * This method intends to remove faulty/obsolete Da Vinci future version when a store change is detected.
+   */
+  synchronized void tryDeleteInvalidDaVinciFutureVersion() {
     if (daVinciFutureVersion != null) {
       Store store = backend.getStoreRepository().getStoreOrThrow(storeName);
       int versionNumber = daVinciFutureVersion.getVersion().getNumber();
@@ -238,33 +262,35 @@ public class StoreBackend {
         logger.info("Deleting obsolete future version " + daVinciFutureVersion + ", currentVersion=" + daVinciCurrentVersion);
         deleteFutureVersion();
       }
+      if (faultyVersionSet.contains(versionNumber)) {
+        logger.info("Deleting faulty future version " + daVinciFutureVersion + ", currentVersion=" + daVinciCurrentVersion);
+        deleteFutureVersion();
+      }
     }
   }
 
-  private synchronized void addFaultyVersion(VersionBackend version, Throwable failure) {
-    logger.warn("Failed to subscribe to version " + version +
-                    ", currentVersion=" + daVinciCurrentVersion +
-                    ", faultyVersions=" + faultyVersions, failure);
-    faultyVersions.add(version.getVersion().getNumber());
-  }
-
-  // May be called several times even after version was swapped.
+  /**
+   * This method intends to swap Da Vinci future version to current version. It might be triggered in the following cases:
+   * (1) A store change is detected;
+   * (2) Da Vinci future version ingestion is completed;
+   */
   synchronized void trySwapDaVinciCurrentVersion(Throwable failure) {
     if (daVinciFutureVersion != null) {
       // Fetch current version from store config.
-      Version veniceCurrentVersion = backend.getVeniceCurrentVersion(storeName, faultyVersions).orElse(null);
+      Version veniceCurrentVersion = backend.getVeniceCurrentVersion(storeName).orElse(null);
       if (veniceCurrentVersion == null) {
         logger.warn("Failed to retrieve current version of store: " + storeName);
         return;
       }
       int veniceCurrentVersionNumber = veniceCurrentVersion.getNumber();
       int daVinciFutureVersionNumber = daVinciFutureVersion.getVersion().getNumber();
-      boolean isDaVinciFutureVersionObsolete = backend.getStoreRepository().getStoreOrThrow(storeName).getVersions().stream().noneMatch(v -> (v.getNumber() == daVinciFutureVersionNumber));
+      boolean isDaVinciFutureVersionInvalid = faultyVersionSet.contains(daVinciFutureVersionNumber) ||
+          backend.getStoreRepository().getStoreOrThrow(storeName).getVersions().stream().noneMatch(v -> (v.getNumber() == daVinciFutureVersionNumber));
       /**
        * We will only swap it to current version slot when it is fully pushed and the version number is (or was) the
        * current version in store config.
        */
-      if (daVinciFutureVersion.isReadyToServe(subscription) && !isDaVinciFutureVersionObsolete && daVinciFutureVersionNumber <= veniceCurrentVersionNumber) {
+      if (daVinciFutureVersion.isReadyToServe(subscription) && !isDaVinciFutureVersionInvalid && daVinciFutureVersionNumber <= veniceCurrentVersionNumber) {
         logger.info("Ready to serve partitions " + subscription + " of " + daVinciFutureVersion);
         swapCurrentVersion();
         trySubscribeDaVinciFutureVersion();
@@ -277,6 +303,20 @@ public class StoreBackend {
         logger.info("Da Vinci future version " + daVinciFutureVersion + " is not ready to serve traffic, will try again later.");
       }
     }
+  }
+
+  private synchronized void addFaultyVersion(VersionBackend version, Throwable failure) {
+    addFaultyVersion(version.getVersion(), failure);
+  }
+
+  private synchronized void addFaultyVersion(Version version, Throwable failure) {
+    logger.warn("Adding faulty version " + version + " to faulty version set: " + faultyVersionSet, failure);
+    faultyVersionSet.add(version.getNumber());
+  }
+
+  private synchronized void removeFaultyVersion(Version version) {
+    logger.warn("Removing version " + version + " from faulty version set: " + faultyVersionSet);
+    faultyVersionSet.remove(version.getNumber());
   }
 
   // May be called indirectly by readers via ReferenceCounted::release(), so cannot be blocking.
