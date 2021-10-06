@@ -21,6 +21,11 @@ public enum DataReplicationPolicy {
    */
   AGGREGATE(1),
 
+  /**
+   * This enum value is used in 2 cases:
+   *   1. batch-only stores since it has no real-time data replication.
+   *   2. incremental push stores that do not have Samza jobs.
+   */
   NONE(2),
 
   /**

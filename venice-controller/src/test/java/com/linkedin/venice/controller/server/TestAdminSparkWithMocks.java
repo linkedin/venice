@@ -160,6 +160,7 @@ public class TestAdminSparkWithMocks {
         HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD, DataReplicationPolicy.NON_AGGREGATE,
         BufferReplayPolicy.REWIND_FROM_EOP));
     mockStore.setActiveActiveReplicationEnabled(true);
+    mockStore.setIncrementalPushEnabled(true);
     doReturn(mockStore).when(admin).getStore(anyString(), anyString());
     doReturn(true).when(admin).isParent();
     doReturn(true).when(admin).isLeaderControllerFor(anyString());
@@ -202,9 +203,6 @@ public class TestAdminSparkWithMocks {
     // Add a banned route not relevant to the test just to make sure theres coverage for unbanned routes still be accessible
     AdminSparkServer server = ServiceFactory.getMockAdminSparkServer(admin, "clustername", Arrays.asList(ControllerRoute.ADD_DERIVED_SCHEMA));
     int port = server.getPort();
-
-
-
     final HttpPost post = new HttpPost("http://localhost:" + port + ControllerRoute.REQUEST_TOPIC.getPath());
     post.setEntity(new UrlEncodedFormEntity(params));
 
