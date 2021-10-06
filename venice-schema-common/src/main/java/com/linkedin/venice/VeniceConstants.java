@@ -79,4 +79,10 @@ public class VeniceConstants {
   public static final String TIMESTAMP_FIELD = "timestamp";
 
   public static final String REPLICATION_CHECKPOINT_VECTOR_FIELD = "replication_checkpoint_vector";
+
+  /**
+   * This is a sentinel value to be used in TopicSwitch message rewindStartTimestamp field between controller and server.
+   * When controller specifies this, Leader server nodes will calculate the rewind start time itself.
+   */
+  public static final Long REWIND_TIME_DECIDED_BY_SERVER = -2L;
 }

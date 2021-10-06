@@ -1648,6 +1648,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
          */
         beginBatchWrite(partition, sorted, newPartitionConsumptionState);
 
+        newPartitionConsumptionState.setStartOfPushTimestamp(storeVersionState.get().startOfPushTimestamp);
+        newPartitionConsumptionState.setEndOfPushTimestamp(storeVersionState.get().endOfPushTimestamp);
+
         reportStatusAdapter.reportRestarted(newPartitionConsumptionState);
       }
       /**
@@ -2252,6 +2255,20 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return hybridStoreConfig != null && hybridStoreConfig.isPresent();
   }
 
+  private void syncEndOfPushTimestampToMetadataService(long endOfPushTimestamp) {
+    Optional<StoreVersionState> storeVersionState = storageMetadataService.getStoreVersionState(kafkaVersionTopic);
+    if (storeVersionState.isPresent()) {
+      storeVersionState.get().endOfPushTimestamp = endOfPushTimestamp;
+
+      // Sync latest store version level metadata to disk
+      storageMetadataService.put(kafkaVersionTopic, storeVersionState.get());
+    } else {
+      throw new VeniceException("Unexpected: received some " + ControlMessageType.END_OF_PUSH.name() +
+          " control message in a topic where we have not yet received a " +
+          ControlMessageType.START_OF_PUSH.name() + " control message.");
+    }
+  }
+
   protected void processStartOfPush(KafkaMessageEnvelope startOfPushKME, ControlMessage controlMessage, int partition, long offset,
       PartitionConsumptionState partitionConsumptionState) {
     StartOfPush startOfPush = (StartOfPush) controlMessage.controlMessageUnion;
@@ -2259,6 +2276,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      * Notify the underlying store engine about starting batch push.
      */
     beginBatchWrite(partition, startOfPush.sorted, partitionConsumptionState);
+    partitionConsumptionState.setStartOfPushTimestamp(startOfPushKME.producerMetadata.messageTimestamp);
 
     reportStatusAdapter.reportStarted(partitionConsumptionState);
     Optional<StoreVersionState> storeVersionState = storageMetadataService.getStoreVersionState(kafkaVersionTopic);
@@ -2284,7 +2302,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     } // else, no need to persist it once more.
   }
 
-  protected void processEndOfPush(ControlMessage controlMessage, int partition, long offset, PartitionConsumptionState partitionConsumptionState) {
+  protected void processEndOfPush(KafkaMessageEnvelope endOfPushKME, ControlMessage controlMessage, int partition, long offset, PartitionConsumptionState partitionConsumptionState) {
 
     // Do not process duplication EOP messages.
     if (partitionConsumptionState.getOffsetRecord().isEndOfPushReceived()) {
@@ -2321,6 +2339,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      * The checksum verification is not used after EOP, so completely reset it.
      */
     partitionConsumptionState.finalizeExpectedChecksum();
+
+    //persist the EOP message producer's timestamp.
+    partitionConsumptionState.setEndOfPushTimestamp(endOfPushKME.producerMetadata.messageTimestamp);
+    syncEndOfPushTimestampToMetadataService(endOfPushKME.producerMetadata.messageTimestamp);
+
     /**
      * It's a bit of tricky here. Since the offset is not updated yet, it's actually previous offset reported
      * here.
@@ -2328,6 +2351,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      */
     reportStatusAdapter.reportEndOfPushReceived(partitionConsumptionState);
   }
+
+
 
   private void processStartOfBufferReplay(ControlMessage controlMessage, long offset, PartitionConsumptionState partitionConsumptionState) {
     Optional<StoreVersionState> storeVersionState = storageMetadataService.getStoreVersionState(kafkaVersionTopic);
@@ -2404,7 +2429,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         processStartOfPush(kafkaMessageEnvelope, controlMessage, partition, offset, partitionConsumptionState);
         break;
       case END_OF_PUSH:
-        processEndOfPush(controlMessage, partition, offset, partitionConsumptionState);
+        processEndOfPush(kafkaMessageEnvelope, controlMessage, partition, offset, partitionConsumptionState);
         break;
       case START_OF_SEGMENT:
       case END_OF_SEGMENT:

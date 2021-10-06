@@ -42,6 +42,7 @@ import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.DiskUsage;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Lazy;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.writer.DeleteMetadata;
 import com.linkedin.venice.writer.PutMetadata;
 import com.linkedin.venice.writer.VeniceWriterFactory;
@@ -61,6 +62,7 @@ import org.apache.kafka.clients.producer.Callback;
 import org.apache.log4j.Logger;
 
 import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.*;
+import static com.linkedin.venice.VeniceConstants.*;
 
 
 /**
@@ -452,6 +454,19 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
             consumerTaskId, offsetRecord.getLeaderTopic(), partition, leaderOffsetByKafkaURL));
   }
 
+  private long calculateRewindStartTime(PartitionConsumptionState partitionConsumptionState) {
+    long rewindStartTime = 0;
+    switch (hybridStoreConfig.get().getBufferReplayPolicy()) {
+      case REWIND_FROM_SOP:
+        rewindStartTime =  partitionConsumptionState.getStartOfPushTimestamp() - hybridStoreConfig.get().getRewindTimeInSeconds() * Time.MS_PER_SECOND;
+        break;
+      case REWIND_FROM_EOP:
+      default:
+        rewindStartTime = partitionConsumptionState.getEndOfPushTimestamp() - hybridStoreConfig.get().getRewindTimeInSeconds() * Time.MS_PER_SECOND;
+    }
+    return rewindStartTime;
+  }
+
   @Override
   protected void leaderExecuteTopicSwitch(PartitionConsumptionState partitionConsumptionState, TopicSwitch topicSwitch) {
     if (partitionConsumptionState.getLeaderFollowerState() != LEADER) {
@@ -470,12 +485,20 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     topicSwitch.sourceKafkaServers.forEach(sourceKafkaURL -> {
       Long upstreamStartOffset = partitionConsumptionState.getOffsetRecord().getUpstreamOffsetWithNoDefault(sourceKafkaURL.toString());
       if (upstreamStartOffset == null || upstreamStartOffset < 0) {
-        if (topicSwitch.rewindStartTimestamp > 0) {
+        long rewindStartTimestamp = 0;
+        //calculate the rewind start time here if controller asked to do so by using this sentinel value.
+        if (topicSwitch.rewindStartTimestamp == REWIND_TIME_DECIDED_BY_SERVER) {
+          rewindStartTimestamp = calculateRewindStartTime(partitionConsumptionState);
+          logger.info(String.format("%s leader calculated rewindStartTimestamp %d for topic %s partition %d", consumerTaskId, rewindStartTimestamp, newSourceTopicName, sourceTopicPartition));
+        } else {
+          rewindStartTimestamp = topicSwitch.rewindStartTimestamp;
+        }
+        if (rewindStartTimestamp > 0) {
           upstreamStartOffset = getTopicPartitionOffsetByKafkaURL(
                   sourceKafkaURL,
                   newSourceTopicName,
                   sourceTopicPartition,
-                  topicSwitch.rewindStartTimestamp
+                  rewindStartTimestamp
           );
         } else {
           upstreamStartOffset = OffsetRecord.LOWEST_OFFSET;
@@ -535,9 +558,17 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     Map<String, Long> upstreamStartOffsetByKafkaURL = new HashMap<>(topicSwitch.sourceKafkaServers.size());
     final int newSourceTopicPartition = partitionConsumptionState.getSourceTopicPartition(newSourceTopicName);
     topicSwitch.sourceKafkaServers.forEach(sourceKafkaURL -> {
-      if (topicSwitch.rewindStartTimestamp > 0) {
+      long rewindStartTimestamp = 0;
+      //calculate the rewind start time here if controller asked to do so by using this sentinel value.
+      if (topicSwitch.rewindStartTimestamp == REWIND_TIME_DECIDED_BY_SERVER) {
+        rewindStartTimestamp = calculateRewindStartTime(partitionConsumptionState);
+        logger.info(String.format("%s leader calculated rewindStartTimestamp %d for topic %s partition %d", consumerTaskId, rewindStartTimestamp, newSourceTopicName, newSourceTopicPartition));
+      } else {
+        rewindStartTimestamp = topicSwitch.rewindStartTimestamp;
+      }
+       if (rewindStartTimestamp > 0) {
         long upstreamStartOffset = getTopicManager(sourceKafkaURL.toString())
-            .getPartitionOffsetByTime(newSourceTopicName, newSourceTopicPartition, topicSwitch.rewindStartTimestamp);
+            .getPartitionOffsetByTime(newSourceTopicName, newSourceTopicPartition, rewindStartTimestamp);
         if (upstreamStartOffset != OffsetRecord.LOWEST_OFFSET) {
           upstreamStartOffset -= 1;
         }
