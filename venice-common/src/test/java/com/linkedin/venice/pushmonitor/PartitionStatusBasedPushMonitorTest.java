@@ -63,7 +63,7 @@ public class PartitionStatusBasedPushMonitorTest extends AbstractPushMonitorTest
     getMonitor().loadAllPushes();
     verify(getMockStoreRepo(), atLeastOnce()).updateStore(store);
     verify(getMockStoreCleaner(), atLeastOnce())
-        .retireOldStoreVersions(anyString(), anyString(), eq(false));
+        .retireOldStoreVersions(anyString(), anyString(), eq(false), anyInt());
     Assert.assertEquals(getMonitor().getOfflinePushOrThrow(topic).getCurrentStatus(), ExecutionStatus.COMPLETED);
     // After offline push completed, bump up the current version of this store.
     Assert.assertEquals(store.getCurrentVersion(), 1);
