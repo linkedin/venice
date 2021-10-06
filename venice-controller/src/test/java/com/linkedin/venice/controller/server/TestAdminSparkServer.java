@@ -841,6 +841,12 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
     }
   }
 
+  @Test(timeOut = TEST_TIMEOUT)
+  public void controllerClientReturns404ForNonexistentStoreQuery() {
+    StoreResponse storeResponse = controllerClient.getStore("nonexistent");
+    Assert.assertTrue(storeResponse.getError().contains("Http Status 404"));
+  }
+
   private void deleteStore(String storeName) {
     controllerClient.enableStoreReadWrites(storeName, false);
     controllerClient.deleteStore(storeName);
