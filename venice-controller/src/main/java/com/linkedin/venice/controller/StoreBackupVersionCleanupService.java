@@ -32,6 +32,7 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
   private static final long MINIMAL_BACKUP_VERSION_CLEANUP_DELAY = TimeUnit.HOURS.toMillis(1);
 
   private final VeniceHelixAdmin admin;
+  private final VeniceControllerMultiClusterConfig multiClusterConfig;
   private final Set<String> allClusters;
   private final Thread cleanupThread;
   private final long sleepInterval;
@@ -46,6 +47,7 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
 
   protected StoreBackupVersionCleanupService(VeniceHelixAdmin admin, VeniceControllerMultiClusterConfig multiClusterConfig, Time time) {
     this.admin = admin;
+    this.multiClusterConfig = multiClusterConfig;
     this.allClusters = multiClusterConfig.getClusters();
     this.cleanupThread = new Thread(new StoreBackupVersionCleanupTask(), "StoreBackupVersionCleanupTask");
     this.sleepInterval = TimeUnit.MINUTES.toMillis(5);
@@ -128,10 +130,13 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
           LOGGER.error("Received InterruptedException during sleep in StoreBackupVersionCleanupTask thread");
           break;
         }
+
+
         // loop all the clusters
         for (String clusterName : allClusters) {
-          if (!admin.isLeaderControllerFor(clusterName)) {
-            // Not master controller for current cluster
+          boolean cleanupEnabled = multiClusterConfig.getControllerConfig(clusterName).isBackupVersionRetentionBasedCleanupEnabled();
+          if (!cleanupEnabled & !admin.isLeaderControllerFor(clusterName)) {
+            // Only do backup version retention with cluster level config enabled in master controller for current cluster
             continue;
           }
           // Get all stores for current cluster

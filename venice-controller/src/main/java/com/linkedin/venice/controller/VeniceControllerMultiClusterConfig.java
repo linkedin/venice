@@ -209,10 +209,6 @@ public class VeniceControllerMultiClusterConfig {
     return getCommonConfig().getBackupVersionDefaultRetentionMs();
   }
 
-  public boolean isBackupVersionRetentionBasedCleanupEnabled() {
-    return getCommonConfig().isBackupVersionRetentionBasedCleanupEnabled();
-  }
-
   public boolean isControllerEnforceSSLOnly() {
     return getCommonConfig().isControllerEnforceSSLOnly();
   }

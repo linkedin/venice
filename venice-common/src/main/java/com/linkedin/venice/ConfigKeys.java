@@ -271,9 +271,10 @@ public class ConfigKeys {
   public static final String CONTROLLER_BACKUP_VERSION_DEFAULT_RETENTION_MS = "controller.backup.version.default.retention.ms";
 
   /**
-   * The following config is to control whether to enable backup version cleanup based on retention policy or not.
+   * The following config is to control whether to enable backup version cleanup based on retention policy or not at cluster level.
    */
   public static final String CONTROLLER_BACKUP_VERSION_RETENTION_BASED_CLEANUP_ENABLED = "controller.backup.version.retention.based.cleanup.enabled";
+
 
   /**
    * Whether to automatically create zk shared metadata system store in Controller or not
