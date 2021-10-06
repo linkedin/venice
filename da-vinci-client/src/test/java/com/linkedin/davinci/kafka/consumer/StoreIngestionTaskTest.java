@@ -245,6 +245,8 @@ public class StoreIngestionTaskTest {
 
   private boolean databaseChecksumVerificationEnabled = false;
 
+  private Supplier<Optional<StoreVersionState>> storeVersionStateSupplier = (Optional::empty);
+
   private static byte[] getRandomKey(Integer partition) {
     String randomString = getUniqueString("KeyForPartition" + partition);
     return ByteBuffer.allocate(randomString.length() + 1)
@@ -354,6 +356,8 @@ public class StoreIngestionTaskTest {
 
     doReturn(new ReplicationMetadataSchemaEntry(EXISTING_SCHEMA_ID, REPLICATION_METADATA_VERSION_ID, REPLICATION_METADATA_SCHEMA))
         .when(mockSchemaRepo).getReplicationMetadataSchema(storeNameWithoutVersionInfo, EXISTING_SCHEMA_ID, REPLICATION_METADATA_VERSION_ID);
+
+    storeVersionStateSupplier = getStoreVersionStateSupplierDefault();
   }
 
   private VeniceWriter getVeniceWriter(String topic, Supplier<KafkaProducerWrapper> producerSupplier, int amplificationFactor) {
@@ -609,7 +613,7 @@ public class StoreIngestionTaskTest {
         if (hybridStoreConfig.isPresent()) {
           doReturn(Optional.of(new StoreVersionState())).when(mockStorageMetadataService).getStoreVersionState(topic);
         } else {
-          doReturn(Optional.empty()).when(mockStorageMetadataService).getStoreVersionState(topic);
+          doReturn(storeVersionStateSupplier.get()).when(mockStorageMetadataService).getStoreVersionState(topic);
         }
       }
     }
@@ -666,6 +670,17 @@ public class StoreIngestionTaskTest {
         .setAggKafkaConsumerService(aggKafkaConsumerService)
         .setCacheWarmingThreadPool(Executors.newFixedThreadPool(1))
         .setPartitionStateSerializer(partitionStateSerializer);
+  }
+
+  Supplier<Optional<StoreVersionState>> getStoreVersionStateSupplierDefault() {
+    StoreVersionState storeVersionState = new StoreVersionState();
+    return (() ->Optional.of(storeVersionState));
+  }
+
+  Supplier<Optional<StoreVersionState>> getStoreVersionStateSupplier(boolean sorted) {
+    StoreVersionState storeVersionState = new StoreVersionState();
+    storeVersionState.sorted = sorted;
+    return (() ->Optional.of(storeVersionState));
   }
 
   private Pair<TopicPartition, Long> getTopicPartitionOffsetPair(RecordMetadata recordMetadata) {
@@ -1518,6 +1533,7 @@ public class StoreIngestionTaskTest {
     final int totalNumberOfMessages = 1000;
     final int totalNumberOfConsumptionRestarts = 10;
 
+    storeVersionStateSupplier = getStoreVersionStateSupplier(sortedInput);
     localVeniceWriter.broadcastStartOfPush(sortedInput, new HashMap<>());
     for (int i = 0; i < totalNumberOfMessages; i++) {
       byte[] key = getNumberedKey(i);
@@ -1667,6 +1683,7 @@ public class StoreIngestionTaskTest {
 
   @Test(dataProvider = "L/F-A/A", dataProviderClass = DataProviderUtils.class)
   public void testVeniceMessagesProcessingWithSortedInput(boolean isLeaderFollowerModelEnabled, boolean isActiveActiveReplicationEnabled) throws Exception {
+    storeVersionStateSupplier = getStoreVersionStateSupplier(true);
     localVeniceWriter.broadcastStartOfPush(true, new HashMap<>());
     RecordMetadata putMetadata = (RecordMetadata) localVeniceWriter.put(putKeyFoo, putValue, EXISTING_SCHEMA_ID).get();
     RecordMetadata deleteMetadata = (RecordMetadata) localVeniceWriter.delete(deleteKeyFoo, null).get();
@@ -1701,6 +1718,7 @@ public class StoreIngestionTaskTest {
   public void testVeniceMessagesProcessingWithSortedInputVerifyChecksum(boolean isLeaderFollowerModelEnabled, boolean isActiveActiveReplicationEnabled) throws Exception {
     databaseChecksumVerificationEnabled = true;
     doReturn(false).when(rocksDBServerConfig).isRocksDBPlainTableFormatEnabled();
+    storeVersionStateSupplier = getStoreVersionStateSupplier(true);
     localVeniceWriter.broadcastStartOfPush(true, new HashMap<>());
     RecordMetadata putMetadata = (RecordMetadata) localVeniceWriter.put(putKeyFoo, putValue, SCHEMA_ID).get();
     //intentionally not sending the EOP so that expectedSSTFileChecksum calculation does not get reset.
@@ -1824,6 +1842,7 @@ public class StoreIngestionTaskTest {
 
   @Test(dataProvider = "L/F-A/A", dataProviderClass = DataProviderUtils.class)
   public void testIncrementalPush(boolean isLeaderFollowerModelEnabled, boolean isActiveActiveReplicationEnabled) throws Exception {
+    storeVersionStateSupplier = getStoreVersionStateSupplier(true);
     localVeniceWriter.broadcastStartOfPush(true, new HashMap<>());
     long fooOffset = getOffset(localVeniceWriter.put(putKeyFoo, putValue, SCHEMA_ID));
     localVeniceWriter.broadcastEndOfPush(new HashMap<>());
@@ -1858,6 +1877,7 @@ public class StoreIngestionTaskTest {
 
   @Test(dataProvider = "L/F-A/A", dataProviderClass = DataProviderUtils.class)
   public void testCacheWarming(boolean isLeaderFollowerModelEnabled, boolean isActiveActiveReplicationEnabled) throws Exception {
+    storeVersionStateSupplier = getStoreVersionStateSupplier(true);
     localVeniceWriter.broadcastStartOfPush(true, new HashMap<>());
     long fooOffset = getOffset(localVeniceWriter.put(putKeyFoo, putValue, SCHEMA_ID));
     localVeniceWriter.broadcastEndOfPush(new HashMap<>());
@@ -1888,8 +1908,9 @@ public class StoreIngestionTaskTest {
 
   @Test(dataProvider = "L/F-A/A", dataProviderClass = DataProviderUtils.class)
   public void testSchemaCacheWarming(boolean isLeaderFollowerModelEnabled, boolean isActiveActiveReplicationEnabled) throws Exception {
+    storeVersionStateSupplier = getStoreVersionStateSupplier(true);
     localVeniceWriter.broadcastStartOfPush(true, new HashMap<>());
-    long fooOffset = getOffset(localVeniceWriter.put(putKeyFoo, putValue, EXISTING_SCHEMA_ID));
+    long fooOffset = getOffset(localVeniceWriter.put(putKeyFoo, putValue, SCHEMA_ID));
     localVeniceWriter.broadcastEndOfPush(new HashMap<>());
     SchemaEntry schemaEntry = new SchemaEntry(1, STRING_SCHEMA);
     //Records order are: StartOfSeg, StartOfPush, data, EndOfPush, EndOfSeg

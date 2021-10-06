@@ -50,7 +50,7 @@ public class LeaderStorageNodeReplicator extends TopicReplicator {
       hybridStoreConfig = Optional.ofNullable(store.getHybridStoreConfig());
     }
     checkPreconditions(srcTopicName, destTopicName, store, hybridStoreConfig);
-    long bufferReplayStartTime = getRewindStartTime(hybridStoreConfig, version.get().getCreatedTime());
+    long bufferReplayStartTime = getRewindStartTime(version.get(), hybridStoreConfig, version.get().getCreatedTime());
     String finalDestTopicName = version.get().getPushType().isStreamReprocessing() ?
         Version.composeStreamReprocessingTopic(store.getName(), version.get().getNumber()) : destTopicName;
     List<String> remoteKafkaUrls = new ArrayList<>();

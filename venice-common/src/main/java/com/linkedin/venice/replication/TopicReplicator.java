@@ -17,6 +17,8 @@ import java.util.List;
 import java.util.Optional;
 import org.apache.log4j.Logger;
 
+import static com.linkedin.venice.VeniceConstants.*;
+
 
 /**
  * Extend this class with an implementation that can start and end replication of data between two kafka topics
@@ -163,7 +165,14 @@ public abstract class TopicReplicator {
     }
   }
 
-  protected long getRewindStartTime(Optional<HybridStoreConfig> hybridStoreConfig, long versionCreationTimeInMs) {
+  protected long getRewindStartTime(Version version, Optional<HybridStoreConfig> hybridStoreConfig, long versionCreationTimeInMs) {
+    /**
+     * For A/A mode rewindStartTime should be consistent across each colo. Setting a sentinel value here will let the Leader
+     * calculate a deterministic and consistent rewindStartTimestamp in all colos.
+     */
+    if (version.isActiveActiveReplicationEnabled()) {
+      return REWIND_TIME_DECIDED_BY_SERVER;
+    }
     switch (hybridStoreConfig.get().getBufferReplayPolicy()) {
       // TODO to get a more deterministic timestamp across colo we could use the timestamp from the SOP/EOP control message.
       case REWIND_FROM_SOP:

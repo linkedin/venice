@@ -129,6 +129,12 @@ public class PartitionConsumptionState {
    */
   private final ConcurrentMap<String, Long> consumedUpstreamRTOffsetMap = new VeniceConcurrentHashMap<>();
 
+  //stores the SOP control message's producer timestamp.
+  private long startOfPushTimestamp = 0;
+
+  //stores the EOP control message's producer timestamp.
+  private long endOfPushTimestamp = 0;
+
   public PartitionConsumptionState(int partition, int amplificationFactor, OffsetRecord offsetRecord, boolean hybrid,
     boolean isIncrementalPushEnabled, IncrementalPushPolicy incrementalPushPolicy) {
     this.partition = partition;
@@ -483,4 +489,15 @@ public class PartitionConsumptionState {
     return consumedUpstreamRTOffsetMap.getOrDefault(kafkaUrl, 0L);
   }
 
+  public void setStartOfPushTimestamp(long startOfPushTimestamp) {
+    this.startOfPushTimestamp = startOfPushTimestamp;
+  }
+
+  public long getStartOfPushTimestamp() {return startOfPushTimestamp;}
+
+  public void setEndOfPushTimestamp(long endOfPushTimestamp) {
+    this.endOfPushTimestamp = endOfPushTimestamp;
+  }
+
+  public long getEndOfPushTimestamp() {return endOfPushTimestamp;}
 }

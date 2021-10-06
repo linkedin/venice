@@ -152,7 +152,7 @@ public class BrooklinTopicReplicator extends TopicReplicator {
       hybridStoreConfig = Optional.ofNullable(store.getHybridStoreConfig());
     }
     checkPreconditions(srcTopicName, destTopicName, store, hybridStoreConfig);
-    long bufferReplayStartTime = getRewindStartTime(hybridStoreConfig, version.get().getCreatedTime());
+    long bufferReplayStartTime = getRewindStartTime(version.get(), hybridStoreConfig, version.get().getCreatedTime());
     beginReplication(srcTopicName, destTopicName, bufferReplayStartTime, null);
   }
 

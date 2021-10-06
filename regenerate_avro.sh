@@ -15,7 +15,7 @@ AVRO_SCHEMAS_PATH=(
   "venice-common/src/main/resources/avro/KafkaMessageEnvelope/v10/*"
   "venice-common/src/main/resources/avro/PushJobStatusRecord/PushJobStatusRecordKey/v1/*"
   "venice-common/src/main/resources/avro/PartitionState/v10/*"
-  "venice-common/src/main/resources/avro/StoreVersionState/v6/*"
+  "venice-common/src/main/resources/avro/StoreVersionState/v7/*"
   "venice-common/src/main/resources/avro/ChunkedValueManifest/v-20/*"
   "venice-common/src/main/resources/avro/ChunkedKeySuffix/*"
   "venice-common/src/main/resources/avro/ParticipantMessage/ParticipantMessageKey/*"
