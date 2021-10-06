@@ -8,6 +8,7 @@ import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.MockTime;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
@@ -55,7 +56,7 @@ public class TopicReplicatorTest {
 
     // Methods under test
     doCallRealMethod().when(topicReplicator).checkPreconditions(anyString(), anyString(), any(), any());
-    doCallRealMethod().when(topicReplicator).getRewindStartTime(any(), anyLong());
+    doCallRealMethod().when(topicReplicator).getRewindStartTime(any(), any(), anyLong());
     doCallRealMethod().when(topicReplicator).beginReplication(anyString(), anyString(), anyLong(), anyList());
   }
 
@@ -71,7 +72,7 @@ public class TopicReplicatorTest {
     final String destinationTopicName = "destination topic name";
 
     topicReplicator.checkPreconditions(sourceTopicName, destinationTopicName, store, hybridStoreConfig);
-    long rewindStartTime = topicReplicator.getRewindStartTime(hybridStoreConfig, VERSION_CREATION_TIME_MS);
+    long rewindStartTime = topicReplicator.getRewindStartTime(mock(Version.class), hybridStoreConfig, VERSION_CREATION_TIME_MS);
     assertEquals(rewindStartTime, mockTime.getMilliseconds() - Time.MS_PER_SECOND * REWIND_TIME_IN_SECONDS,
         "Rewind start timestamp is not calculated properly");
     topicReplicator.beginReplication(sourceTopicName, destinationTopicName, rewindStartTime, null);
@@ -98,7 +99,7 @@ public class TopicReplicatorTest {
     final String destinationTopicName = "destination topic name";
 
     topicReplicator.checkPreconditions(sourceTopicName, destinationTopicName, store, hybridStoreConfig);
-    long rewindStartTime = topicReplicator.getRewindStartTime(hybridStoreConfig, VERSION_CREATION_TIME_MS);
+    long rewindStartTime = topicReplicator.getRewindStartTime(mock(Version.class), hybridStoreConfig, VERSION_CREATION_TIME_MS);
     assertEquals(rewindStartTime, VERSION_CREATION_TIME_MS - Time.MS_PER_SECOND * REWIND_TIME_IN_SECONDS, "Rewind start timestamp is not calculated properly");
     topicReplicator.beginReplication(sourceTopicName, destinationTopicName, rewindStartTime, null);
 
