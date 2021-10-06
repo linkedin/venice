@@ -19,6 +19,7 @@ import com.linkedin.venice.controllerapi.TrackableControllerResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionResponse;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.kafka.TopicDoesNotExistException;
 import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Store;
@@ -100,8 +101,7 @@ public class StoresRoutes extends AbstractRoute {
         veniceResponse.setName(request.queryParams(NAME));
         Store store = admin.getStore(veniceResponse.getCluster(), veniceResponse.getName());
         if (null == store) {
-          veniceResponse.setError("Store " + request.queryParams(NAME) + " does not exist.");
-          return;
+          throw new VeniceNoStoreException(veniceResponse.getName());
         }
         StoreInfo storeInfo = StoreInfo.fromStore(store);
         // Make sure store info will have right default retention time for Nuage UI display.
