@@ -238,6 +238,6 @@ public class CreateVersionTest {
       throw new VeniceException(e);
     }
 
-    verify(response).status(HttpStatus.SC_NOT_IMPLEMENTED);
+    verify(response).status(HttpStatus.SC_BAD_REQUEST);
   }
 }

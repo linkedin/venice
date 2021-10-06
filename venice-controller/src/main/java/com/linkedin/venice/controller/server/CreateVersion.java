@@ -140,11 +140,7 @@ public class CreateVersion extends AbstractRoute {
         } catch (RuntimeException e){
           throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, pushTypeString + " is an invalid " + PUSH_TYPE, e);
         }
-
-        if (pushType.equals(PushType.STREAM) && !store.isHybrid()){
-          throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, "requesting topic for streaming writes to store "
-              + storeName + " which is not configured to be a hybrid store");
-        }
+        validatePushType(pushType, store);
 
         boolean sendStartOfPush = false;
         // Make this optional so that it is compatible with old version controller client
@@ -400,6 +396,22 @@ public class CreateVersion extends AbstractRoute {
 
       return AdminSparkServer.mapper.writeValueAsString(responseObject);
     };
+  }
+
+  private void validatePushType(PushType pushType, Store store) {
+    if (pushType.equals(PushType.STREAM) && !store.isHybrid()){
+      throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, "requesting topic for streaming writes to store "
+          + store.getName() + " which is not configured to be a hybrid store");
+    }
+    if (pushType.equals(PushType.STREAM) && store.getHybridStoreConfig().getDataReplicationPolicy().equals(DataReplicationPolicy.NONE)) {
+      throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, "requesting topic for streaming writes to store " +
+          store.getName() + " which is configured to have a hybrid data replication policy " +
+          store.getHybridStoreConfig().getDataReplicationPolicy());
+    }
+    if (pushType.isIncremental() && !store.isIncrementalPushEnabled()) {
+      throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, "requesting topic for incremental push to store " +
+          store.getName() + " which does not have incremental push enabled.");
+    }
   }
 
   /**
