@@ -134,10 +134,10 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
   private int stopConsumptionWaitRetriesNum;
   private DefaultIngestionBackend ingestionBackend;
 
-  public IsolatedIngestionServer(int servicePort, String configPath) {
-    this.servicePort = servicePort;
+  public IsolatedIngestionServer(String configPath) {
     VeniceProperties loadedVeniceProperties = IsolatedIngestionUtils.loadVenicePropertiesFromFile(configPath);
     this.configLoader = new VeniceConfigLoader(loadedVeniceProperties, loadedVeniceProperties);
+    this.servicePort = configLoader.getVeniceServerConfig().getIngestionServicePort();
     this.heartbeatTimeoutMs = configLoader.getCombinedProperties().getLong(SERVER_INGESTION_ISOLATION_HEARTBEAT_TIMEOUT_MS, 60 * Time.MS_PER_SECOND);
     // Initialize Netty server.
     Class<? extends ServerChannel> serverSocketChannelClass = NioServerSocketChannel.class;
@@ -600,11 +600,10 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
 
   public static void main(String[] args) throws Exception {
     logger.info("Capture arguments: " + Arrays.toString(args));
-    if (args.length < 1) {
-      throw new VeniceException("Expected at least one arguments: port. Got " + args.length);
+    if (args.length != 1) {
+      throw new VeniceException("Expected exactly one argument for config file path. Got " + args.length);
     }
-    int port = Integer.parseInt(args[0]);
-    IsolatedIngestionServer isolatedIngestionServer = new IsolatedIngestionServer(port, args[1]);
+    IsolatedIngestionServer isolatedIngestionServer = new IsolatedIngestionServer(args[0]);
     isolatedIngestionServer.start();
   }
 }

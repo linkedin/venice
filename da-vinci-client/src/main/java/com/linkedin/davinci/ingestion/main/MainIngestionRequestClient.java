@@ -22,7 +22,7 @@ import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import java.io.Closeable;
 import java.util.ArrayList;
-import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import org.apache.log4j.Logger;
@@ -75,7 +75,7 @@ public class MainIngestionRequestClient implements Closeable {
          */
         forkedIngestionProcess = ForkedJavaProcess.exec(
             IsolatedIngestionServer.class,
-            Arrays.asList(String.valueOf(ingestionServicePort), configFilePath),
+            Collections.singletonList(configFilePath),
             jvmArgs,
             Optional.empty(),
             false
