@@ -269,7 +269,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     // Store-level write lock is shared between VeniceHelixAdmin and AbstractPushMonitor. It's not guaranteed that the
     // new version is online and old version will be deleted during VeniceHelixAdmin#addVersion early backup deletion.
     // Explicitly run early backup deletion again to make the test deterministic.
-    veniceAdmin.retireOldStoreVersions(clusterName, storeName, true);
+    veniceAdmin.retireOldStoreVersions(clusterName, storeName, true, VeniceHelixAdmin.VERSION_ID_UNSET);
     TestUtils.waitForNonDeterministicCompletion(30000, TimeUnit.MILLISECONDS, () -> veniceAdmin.versionsForStore(clusterName, storeName).size() == 1);
     Assert.assertEquals(veniceAdmin.getCurrentVersion(clusterName, storeName), version.getNumber());
     Assert.assertEquals(veniceAdmin.versionsForStore(clusterName, storeName).get(0).getNumber(), version.getNumber());
@@ -494,7 +494,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     // try to add same version again
     veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1);
     TestUtils.waitForNonDeterministicCompletion(30000, TimeUnit.MILLISECONDS, () -> veniceAdmin.getCurrentVersion(clusterName, storeName) == 2);
-    veniceAdmin.retireOldStoreVersions(clusterName, storeName, true);
+    veniceAdmin.retireOldStoreVersions(clusterName, storeName, true, VeniceHelixAdmin.VERSION_ID_UNSET);
     Assert.assertEquals(veniceAdmin.versionsForStore(clusterName, storeName).size(), 1);
 
     veniceAdmin.getHelixAdmin().enableMaintenanceMode(clusterName, false);
@@ -618,7 +618,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1);
     veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1);
     TestUtils.waitForNonDeterministicCompletion(30000, TimeUnit.MILLISECONDS, () -> veniceAdmin.getCurrentVersion(clusterName, storeName) == 2);
-    veniceAdmin.retireOldStoreVersions(clusterName, storeName, true);
+    veniceAdmin.retireOldStoreVersions(clusterName, storeName, true, VeniceHelixAdmin.VERSION_ID_UNSET);
 
     store = veniceAdmin.getStore(clusterName, storeName);
     //Version 1 and version 2 are added to this store. Version 1 is deleted by early backup deletion
@@ -879,9 +879,9 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
           System.out.println("sidian's log: current version is : " + veniceAdmin.getStore(clusterName, storeName).getCurrentVersion());
           return veniceAdmin.getStore(clusterName, storeName).getCurrentVersion() == 3;
         });
-    veniceAdmin.retireOldStoreVersions(clusterName, storeName, true);
+    veniceAdmin.retireOldStoreVersions(clusterName, storeName, true, VeniceHelixAdmin.VERSION_ID_UNSET);
     veniceAdmin.setStoreReadability(clusterName, storeName, false);
-    veniceAdmin.retireOldStoreVersions(clusterName, storeName, false);
+    veniceAdmin.retireOldStoreVersions(clusterName, storeName, false, VeniceHelixAdmin.VERSION_ID_UNSET);
     Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getVersions().size(), 1,
         " Versions should be deleted.");
   }
@@ -1560,6 +1560,32 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     // For incremental push policy INCREMENTAL_PUSH_SAME_AS_REAL_TIME, incremental push should fail if rt topic is truncated
     veniceAdmin.truncateKafkaTopic(rtTopic);
     Assert.assertThrows(VeniceException.class, () -> veniceAdmin.getIncrementalPushVersion(clusterName, incrementalAndHybridEnabledStoreName));
+  }
+
+  @Test
+  public void testEarlyDeleteBackup() {
+    String testDeleteStore = TestUtils.getUniqueString("testDeleteStore");
+    veniceAdmin.createStore(clusterName, testDeleteStore, storeOwner, "\"string\"", "\"string\"");
+    veniceAdmin.updateStore(clusterName, testDeleteStore, new UpdateStoreQueryParams().setIncrementalPushEnabled(true));
+    veniceAdmin.incrementVersionIdempotent(clusterName, testDeleteStore, Version.guidBasedDummyPushId(), 1, 1);
+    TestUtils.waitForNonDeterministicCompletion(TOTAL_TIMEOUT_FOR_SHORT_TEST_MS, TimeUnit.MILLISECONDS,
+        () -> veniceAdmin.getCurrentVersion(clusterName, testDeleteStore) == 1);
+
+    veniceAdmin.incrementVersionIdempotent(clusterName, testDeleteStore, Version.guidBasedDummyPushId(), 1, 1);
+
+    TestUtils.waitForNonDeterministicCompletion(TOTAL_TIMEOUT_FOR_SHORT_TEST_MS, TimeUnit.MILLISECONDS,
+        () -> veniceAdmin.getCurrentVersion(clusterName, testDeleteStore) == 2);
+
+    Store store = veniceAdmin.getStore(clusterName, testDeleteStore);
+
+    Assert.assertEquals(store.getVersions().size(), 2);
+
+    veniceAdmin.incrementVersionIdempotent(clusterName, testDeleteStore, Version.guidBasedDummyPushId(), 1, 1);
+
+    TestUtils.waitForNonDeterministicCompletion(TOTAL_TIMEOUT_FOR_SHORT_TEST_MS, TimeUnit.MILLISECONDS,
+        () -> veniceAdmin.getCurrentVersion(clusterName, testDeleteStore) == 3);
+    store = veniceAdmin.getStore(clusterName, testDeleteStore);
+    Assert.assertEquals(store.getVersions().size(), 2);
   }
 
   @Test

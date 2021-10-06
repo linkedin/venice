@@ -1493,6 +1493,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         Version version = null;
         OfflinePushStrategy strategy;
         boolean isLeaderFollowerStateModel = false;
+        int currentVersionBeforePush = -1;
         VeniceControllerClusterConfig clusterConfig = resources.getConfig();
         BackupStrategy backupStrategy;
 
@@ -1520,6 +1521,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                     if (store == null) {
                         throwStoreDoesNotExist(clusterName, storeName);
                     }
+                    currentVersionBeforePush = store.getCurrentVersion();
                     // Dest child controllers skip the version whose kafka topic is truncated
                     if (store.isMigrating() && skipMigratingVersion(clusterName, storeName, versionNumber)) {
                         if (versionNumber > store.getLargestUsedVersionNumber()) {
@@ -1748,7 +1750,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                             numberOfPartitions, replicationFactor, isLeaderFollowerStateModel);
                     }
                 }
-
+                // We need to release the locks as `waitUntilNodesAreAssignedForResource` can take long time
+                // and race condition can still happen in the following code.
                 if (startIngestion) {
                     // Store write lock is released before polling status
                     waitUntilNodesAreAssignedForResource(clusterName, version.kafkaTopicName(), strategy,
@@ -1758,7 +1761,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                     if (backupStrategy == BackupStrategy.DELETE_ON_NEW_PUSH_START
                         && multiClusterConfigs.getControllerConfig(clusterName).isEarlyDeleteBackUpEnabled()) {
                         try {
-                            retireOldStoreVersions(clusterName, storeName, true);
+                            retireOldStoreVersions(clusterName, storeName, true, currentVersionBeforePush);
                         } catch (Throwable t) {
                             String errorMessage =
                                 "Failed to delete previous backup version while pushing " + versionNumber + " to store "
@@ -2176,7 +2179,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
     @Override
-    public void retireOldStoreVersions(String clusterName, String storeName, boolean deleteBackupOnStartPush) {
+    public void retireOldStoreVersions(String clusterName, String storeName, boolean deleteBackupOnStartPush, int currentVersionBeforePush) {
         HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
         try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
             Store store = resources.getStoreMetadataRepository().getStore(storeName);
@@ -2198,6 +2201,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             }
 
             for (Version version : versionsToDelete) {
+                if (version.getNumber() == currentVersionBeforePush) {
+                    continue;
+                }
                 try {
                     deleteOneStoreVersion(clusterName, storeName, version.getNumber());
                 } catch (VeniceException e) {

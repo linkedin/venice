@@ -3,7 +3,7 @@ package com.linkedin.venice.meta;
 public interface StoreCleaner {
   void deleteOneStoreVersion(String clusterName, String storeName, int versionNumber);
 
-  void retireOldStoreVersions(String clusterName, String storeName, boolean deleteBackupOnStartPush);
+  void retireOldStoreVersions(String clusterName, String storeName, boolean deleteBackupOnStartPush, int currentVersionBeforePush);
 
   /**
    * This purpose of this function is to execute some topic related cleanup when push job is completed.

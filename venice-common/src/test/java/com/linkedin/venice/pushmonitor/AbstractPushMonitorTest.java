@@ -457,7 +457,7 @@ public abstract class AbstractPushMonitorTest {
     }
 
     @Override
-    public void retireOldStoreVersions(String clusterName, String storeName, boolean deleteBackupOnStartPush) {
+    public void retireOldStoreVersions(String clusterName, String storeName, boolean deleteBackupOnStartPush, int currentVersionBeforePush) {
       try (AutoCloseableLock ignore = clusterLockManager.createStoreWriteLock(storeName)) {
         try {
           Thread.sleep(1000);
