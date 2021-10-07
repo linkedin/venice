@@ -1,5 +1,6 @@
 package com.linkedin.venice.client.store;
 
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.client.stats.ClientStats;
 import com.linkedin.venice.client.store.predicate.Predicate;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
@@ -81,10 +82,10 @@ public class AvroComputeRequestBuilderV3<K> extends AbstractAvroComputeRequestBu
       // Generate result schema
       List<Schema.Field> resultSchemaFields = getCommonResultFields();
       countLists.forEach( count -> {
-        Schema.Field countField = new Schema.Field(count.resultFieldName.toString(),
+        Schema.Field countField = AvroCompatibilityHelper.createSchemaField(count.resultFieldName.toString(),
             COUNT_RESULT_SCHEMA,
             "",
-            JsonNodeFactory.instance.nullNode());
+            null);
         resultSchemaFields.add(countField);
       });
 

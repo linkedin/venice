@@ -1,5 +1,6 @@
 package com.linkedin.venice.client.store;
 
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.stats.ClientStats;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
@@ -51,8 +52,8 @@ public abstract class AbstractAvroComputeRequestBuilder<K> implements ComputeReq
    * field will be updated, so the next time when we set the field in a new schema, it would fail because
    * {@link Schema#setFields(List)} check whether the position is -1.
    */
-  protected final Schema.Field VENICE_COMPUTATION_ERROR_MAP_FIELD = new Schema.Field(VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME,
-      Schema.createMap(Schema.create(Schema.Type.STRING)), "", JsonNodeFactory.instance.objectNode());
+  protected final Schema.Field VENICE_COMPUTATION_ERROR_MAP_FIELD = AvroCompatibilityHelper.createSchemaField(VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME,
+      Schema.createMap(Schema.create(Schema.Type.STRING)), "", null);
 
   protected static final Map< Map<String, Object>, Pair<Schema, String>> RESULT_SCHEMA_CACHE = new VeniceConcurrentHashMap<>();
   protected static final String PROJECTION_SPEC = "projection_spec";
@@ -222,27 +223,36 @@ public abstract class AbstractAvroComputeRequestBuilder<K> implements ComputeReq
     List<Schema.Field> resultSchemaFields = new LinkedList<>();
     projectFields.forEach( projectField -> {
       Schema.Field existingField = latestValueSchema.getField(projectField);
-      resultSchemaFields.add(new Schema.Field(existingField.name(), existingField.schema(), "", existingField.defaultValue()));
+      /**
+       * We still need to assign the default value to make it compatible with the existing logic in Server, which is validating
+       * whether the {@link Schema.Field} exists in the original value schema or not.
+       * Check here: {@link ComputeUtils#checkResultSchema}.
+       */
+      Object defaultValue = null;
+      if (AvroCompatibilityHelper.fieldHasDefault(existingField)) {
+        defaultValue = AvroCompatibilityHelper.getGenericDefaultValue(existingField);
+      }
+      resultSchemaFields.add(AvroCompatibilityHelper.createSchemaField(existingField.name(), existingField.schema(), "", defaultValue));
     });
     dotProducts.forEach( dotProduct -> {
-      Schema.Field dotProductField = new Schema.Field(dotProduct.resultFieldName.toString(),
+      Schema.Field dotProductField = AvroCompatibilityHelper.createSchemaField(dotProduct.resultFieldName.toString(),
           getDotProductResultSchema(),
           "",
-          getDotProductResultDefaultValue());
+          null);
       resultSchemaFields.add(dotProductField);
     });
     cosineSimilarities.forEach( cosineSimilarity -> {
-      Schema.Field cosineSimilarityField = new Schema.Field(cosineSimilarity.resultFieldName.toString(),
+      Schema.Field cosineSimilarityField = AvroCompatibilityHelper.createSchemaField(cosineSimilarity.resultFieldName.toString(),
           getCosineSimilarityResultSchema(),
           "",
-          getCosineSimilarityResultDefaultValue());
+          null);
       resultSchemaFields.add(cosineSimilarityField);
     });
     hadamardProducts.forEach( hadamardProduct -> {
-      Schema.Field hadamardProductField = new Schema.Field(hadamardProduct.resultFieldName.toString(),
+      Schema.Field hadamardProductField = AvroCompatibilityHelper.createSchemaField(hadamardProduct.resultFieldName.toString(),
           HADAMARD_PRODUCT_RESULT_SCHEMA,
           "",
-          JsonNodeFactory.instance.nullNode());
+          null);
       resultSchemaFields.add(hadamardProductField);
     });
     resultSchemaFields.add(VENICE_COMPUTATION_ERROR_MAP_FIELD);
@@ -416,13 +426,5 @@ public abstract class AbstractAvroComputeRequestBuilder<K> implements ComputeReq
 
   protected Schema getCosineSimilarityResultSchema() {
     return COSINE_SIMILARITY_RESULT_SCHEMA;
-  }
-
-  protected JsonNode getDotProductResultDefaultValue() {
-    return JsonNodeFactory.instance.nullNode();
-  }
-
-  protected JsonNode getCosineSimilarityResultDefaultValue() {
-    return JsonNodeFactory.instance.nullNode();
   }
 }

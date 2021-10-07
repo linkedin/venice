@@ -24,6 +24,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Supplier;
 import nonapi.io.github.classgraph.utils.JarUtils;
 import org.apache.log4j.Logger;
 
@@ -72,14 +73,19 @@ public final class ForkedJavaProcess extends Process {
 
   private Thread processReaper;
 
-  public static ForkedJavaProcess exec(Class appClass, List<String> args, List<String> jvmArgs, Optional<String> extraLoggerName, boolean registerShutdownHook) throws IOException {
+  public static ForkedJavaProcess exec(Class appClass, List<String> args, List<String> jvmArgs,
+      Optional<String> extraLoggerName, boolean registerShutdownHook, Optional<Supplier<String>> classPathSupplier) throws IOException {
     LOGGER.info("Forking " + appClass.getSimpleName() + " with arguments " + args + " and jvm arguments " + jvmArgs +
         " extraLoggerName: " + (extraLoggerName.isPresent() ? extraLoggerName.get() : ""));
 
     List<String> command = new ArrayList<>();
     command.add(JAVA_PATH);
     command.add("-cp");
-    command.add(getClasspath());
+    if (classPathSupplier.isPresent()) {
+      command.add(classPathSupplier.get().get());
+    } else {
+      command.add(getClasspath());
+    }
 
     command.addAll(DEFAULT_JAVA_ARGS);
     // Add user provided customized JVM arguments for child process.
@@ -91,6 +97,10 @@ public final class ForkedJavaProcess extends Process {
     Process process = new ProcessBuilder(command).redirectErrorStream(true).start();
     Logger logger = Logger.getLogger((extraLoggerName.isPresent() ? extraLoggerName.get() + ", " : "") + appClass.getSimpleName() + ", PID=" + getPidOfProcess(process));
     return new ForkedJavaProcess(process, logger, registerShutdownHook);
+  }
+
+  public static ForkedJavaProcess exec(Class appClass, List<String> args, List<String> jvmArgs, Optional<String> extraLoggerName, boolean registerShutdownHook) throws IOException {
+    return exec(appClass, args, jvmArgs, extraLoggerName, registerShutdownHook, Optional.empty());
   }
 
   public static ForkedJavaProcess exec(Class appClass, List<String> args, List<String> jvmArgs, Optional<String> extraLoggerName) throws IOException {

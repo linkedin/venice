@@ -4,6 +4,7 @@ buildscript {
   dependencies {
     classpath 'com.gradle:gradle-enterprise-gradle-plugin:3.5.2'
     classpath 'gradle.plugin.com.dorongold.plugins:task-tree:1.5'
+    classpath "com.github.spotbugs:spotbugs-gradle-plugin:4.7.1"
   }
 }
 
@@ -55,7 +56,7 @@ def ddsStorageCoreVersion = '13.0.16'
 ext.libraries = [
     avro: 'org.apache.avro:avro:1.7.7',
     avroMapred: 'org.apache.avro:avro-mapred:1.7.7',
-    avroUtilCompatibilityHelper: 'com.linkedin.avroutil1:helper-all:0.2.53',
+    avroUtilCompatibilityHelper: 'com.linkedin.avroutil1:helper-all:0.2.57',
     avroUtilFastserde: 'com.linkedin.avroutil1:avro-fastserde:0.2.46',
     brooklinCommon: 'com.linkedin.brooklin-li-common:brooklin-li-common:80.0.2',
     brooklinKafka: 'com.github.datastream:datastream-kafka-connector:36.0.1',
@@ -139,7 +140,10 @@ ext.libraries = [
 
     jmhCore: 'org.openjdk.jmh:jmh-core:1.28',
     jmhGenerator: 'org.openjdk.jmh:jmh-generator-annprocess:1.28',
-    failsafe: 'net.jodah:failsafe:2.4.0'
+    failsafe: 'net.jodah:failsafe:2.4.0',
+
+    spotbugs: 'com.github.spotbugs:spotbugs:4.2.3',
+    spotbugsPlugins: 'com.linkedin.avroutil1:spotbugs-plugin:0.2.51'
 ]
 
 subprojects {
@@ -252,6 +256,39 @@ subprojects {
       includeGroups 'flaky'
     }
     mustRunAfter test
+  }
+}
+
+// For now, only enable spotbugs in 'venice-thin-client' and 'da-vinci-client' since they are customer facing and so far
+// only avro rules are enabled, and in the future, we would like to apply spotbugs to every module and include more rules.
+allprojects.findAll { it.name in ['venice-thin-client', 'da-vinci-client'] }.each { p ->
+  configure(p) {
+    apply plugin: 'com.github.spotbugs'
+
+    dependencies {
+      spotbugs libraries.spotbugs
+
+      //register spotbugs plugin(s)
+      spotbugsPlugins libraries.spotbugsPlugins
+    }
+
+    spotbugs {
+      //see https://spotbugs-gradle-plugin.netlify.app/com/github/spotbugs/snom/spotbugsextension for docs
+      toolVersion = '4.2.3'
+      includeFilter = file("../findbugs-include.xml")
+      ignoreFailures = false
+      showProgress = true
+    }
+
+    spotbugsMain {
+      reports {
+        html {
+          enabled = true
+          destination = file("$buildDir/reports/spotbugs/main/spotbugs.html")
+          stylesheet = 'fancy-hist.xsl'
+        }
+      }
+    }
   }
 }
 
