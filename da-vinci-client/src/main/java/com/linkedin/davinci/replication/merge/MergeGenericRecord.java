@@ -1,11 +1,14 @@
 package com.linkedin.davinci.replication.merge;
 
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
+import com.linkedin.avroutil1.compatibility.AvroVersion;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.schema.ReplicationMetadataSchemaAdapterV1;
 import com.linkedin.venice.utils.Lazy;
 import java.util.List;
 import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 
 import static com.linkedin.venice.VeniceConstants.*;
@@ -22,6 +25,8 @@ import static com.linkedin.venice.VeniceConstants.*;
  */
 class MergeGenericRecord implements Merge<GenericRecord> {
   private static final MergeGenericRecord INSTANCE = new MergeGenericRecord();
+
+  private static final AvroVersion RUNTIME_AVRO_VERSION = AvroCompatibilityHelper.getRuntimeAvroVersion();
 
   private MergeGenericRecord() {}
 
@@ -111,6 +116,11 @@ class MergeGenericRecord implements Merge<GenericRecord> {
   public ValueAndReplicationMetadata<GenericRecord> delete(
       ValueAndReplicationMetadata<GenericRecord> oldValueAndReplicationMetadata,
       long writeOperationTimestamp, long sourceOffsetOfNewValue, int sourceBrokerIDOfNewValue) {
+    if (RUNTIME_AVRO_VERSION.earlierThan(AvroVersion.AVRO_1_7)) {
+      throw new VeniceException("'delete' operation won't work properly with Avro version before 1.7 and"
+          + " the runtime Avro version is: " + RUNTIME_AVRO_VERSION);
+    }
+
     GenericRecord oldReplicationMetadata = oldValueAndReplicationMetadata.getReplicationMetadata();
 
     Object tsObject = oldReplicationMetadata.get(TIMESTAMP_FIELD);
@@ -140,7 +150,8 @@ class MergeGenericRecord implements Merge<GenericRecord> {
           Schema.Field field = fields.get(i);
           long fieldTimestamp = (long) timestampRecord.get(field.pos());
           if (fieldTimestamp <= writeOperationTimestamp) {
-            oldValue.put(field.name(), oldValue.getSchema().getField(field.name()).defaultValue());
+            Schema.Field oldField = oldValue.getSchema().getField(field.name());
+            oldValue.put(field.name(), GenericData.get().deepCopy(oldField.schema(), GenericData.get().getDefaultValue(oldField)));
             timestampRecord.put(field.name(), writeOperationTimestamp);
           } else {
             newerField = true;

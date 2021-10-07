@@ -1,5 +1,6 @@
 package com.linkedin.davinci.storage.chunking;
 
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.store.AbstractStorageEngine;
@@ -21,6 +22,7 @@ import java.util.function.Function;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
+import org.apache.avro.generic.IndexedRecord;
 import org.apache.avro.util.Utf8;
 import org.testng.Assert;
 import org.testng.annotations.DataProvider;
@@ -249,7 +251,7 @@ public class ChunkingTest {
   @Test(dataProvider = "recordProvider")
   public void testGenericRecordChunkingAdapter(GenericRecord record) {
     runTest(record, GenericRecordChunkingAdapter.INSTANCE, (valueFromStorageEngine) -> {
-      Assert.assertTrue(valueFromStorageEngine instanceof GenericRecord);
+      Assert.assertTrue(valueFromStorageEngine instanceof IndexedRecord && AvroCompatibilityHelper.isGenericRecord((IndexedRecord)valueFromStorageEngine));
       Assert.assertEquals(valueFromStorageEngine, record);
       return null;
     });

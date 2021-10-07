@@ -1,5 +1,3 @@
-apply plugin: 'java-library'
-
 task buildJar(type: Jar) {
   manifest {
     attributes 'Implementation-Title': 'Venice Thin Client',

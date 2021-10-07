@@ -86,8 +86,8 @@ public class MergeGenericRecordTest {
     Merge<GenericRecord> merge = MergeGenericRecord.getInstance();
     valueAndReplicationMetadata = merge.delete(valueAndReplicationMetadata, 20, 1, 0);
     // verify id and name fields are default (deleted)
-    Assert.assertEquals(valueAndReplicationMetadata.getValue().get("id"), valueRecord.getSchema().getField("id").defaultValue());
-    Assert.assertEquals(valueAndReplicationMetadata.getValue().get("name"), valueRecord.getSchema().getField("name").defaultValue());
+    Assert.assertEquals(valueAndReplicationMetadata.getValue().get("id").toString(), "id");
+    Assert.assertEquals(valueAndReplicationMetadata.getValue().get("name").toString(), "name");
     Assert.assertEquals(valueAndReplicationMetadata.getValue().get("age"), 10);
     ts = (GenericRecord) valueAndReplicationMetadata.getReplicationMetadata().get(TIMESTAMP_FIELD);
     Assert.assertEquals(ts.get("id"), 20L);

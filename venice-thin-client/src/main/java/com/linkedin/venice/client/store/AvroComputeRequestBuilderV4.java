@@ -1,5 +1,6 @@
 package com.linkedin.venice.client.store;
 
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.stats.ClientStats;
 import com.linkedin.venice.client.store.predicate.AndPredicate;
@@ -131,7 +132,7 @@ public class AvroComputeRequestBuilderV4<K> extends AvroComputeRequestBuilderV3<
 
     for (Schema.Field keyField : keySchemaFields) {
       if (expectedPrefixKeys.contains(keyField.name())) {
-        prefixFields.add(new Schema.Field(keyField.name(), keyField.schema(), "", keyField.defaultValue()));
+        prefixFields.add(AvroCompatibilityHelper.createSchemaField(keyField.name(), keyField.schema(), "", null));
       } else {
         break;
       }
