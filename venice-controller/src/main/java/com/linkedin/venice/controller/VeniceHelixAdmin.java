@@ -3857,6 +3857,45 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     public OfflinePushStatusInfo getOffLinePushStatus(String clusterName, String kafkaTopic, Optional<String> incrementalPushVersion) {
         checkControllerLeadershipFor(clusterName);
         PushMonitor monitor = getHelixVeniceClusterResources(clusterName).getPushMonitor();
+        String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopic);
+        Store store = getStore(clusterName, storeName);
+        int versionNumber = Version.parseVersionFromVersionTopicName(kafkaTopic);
+
+        OfflinePushStatusInfo offlinePushStatusInfo = getOfflinePushStatusInfo(clusterName, kafkaTopic, incrementalPushVersion, monitor, store, versionNumber);
+
+        if (incrementalPushVersion.isPresent() && !store.isApplyTargetVersionFilterForIncPush()
+            && store.getVersion(versionNumber).get().getIncrementalPushPolicy().equals(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME)
+            && !offlinePushStatusInfo.getExecutionStatus().equals(ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED)) {
+            List<OfflinePushStatusInfo> list = new ArrayList<>();
+            list.add(offlinePushStatusInfo);
+            // check other store versions if current version has not yet received EOIP
+            for (Version version : store.getVersions()) {
+                if (version.getNumber() == versionNumber || !version.getIncrementalPushPolicy().equals(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME)) {
+                    continue;
+                }
+                String kafkaTopicToTry = Version.composeKafkaTopic(storeName, version.getNumber());
+                OfflinePushStatusInfo offlinePushStatusInfoOtherVersion = getOfflinePushStatusInfo(clusterName, kafkaTopicToTry, incrementalPushVersion, monitor, store, version.getNumber());
+                if (offlinePushStatusInfoOtherVersion.getExecutionStatus().equals(ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED)
+                    || offlinePushStatusInfoOtherVersion.getExecutionStatus().equals(ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED)) {
+                    list.add(offlinePushStatusInfoOtherVersion);
+                }
+            }
+            if (list.size() > 0) {
+                // higher priority of EOIP followed by SOIP and NOT_CREATED
+                list.sort(((o1, o2) -> {
+                    int val1 = o1.getExecutionStatus().getValue();
+                    int val2 = o2.getExecutionStatus().getValue();
+                    return val2 - val1;
+                }));
+                return list.get(0);
+            }
+        }
+
+        return offlinePushStatusInfo;
+    }
+
+    private OfflinePushStatusInfo getOfflinePushStatusInfo(String clusterName, String kafkaTopic,
+        Optional<String> incrementalPushVersion, PushMonitor monitor, Store store, int versionNumber) {
         Pair<ExecutionStatus, Optional<String>> statusAndDetails =
             monitor.getPushStatusAndDetails(kafkaTopic, incrementalPushVersion);
         ExecutionStatus executionStatus = statusAndDetails.getFirst();
@@ -3877,14 +3916,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         }
 
         // Retrive Da Vinci push status
-        String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopic);
-        Store store = getStore(clusterName, storeName);
-        int versionNumber = Version.parseVersionFromVersionTopicName(kafkaTopic);
         // Da Vinci can only subscribe to an existing version, so skip 1st push
         if (store.isDaVinciPushStatusStoreEnabled() && (versionNumber > 1 || incrementalPushVersion.isPresent())) {
             Version version = store.getVersion(versionNumber)
-                .orElseThrow(() -> new VeniceException("Version " + versionNumber + " of " + storeName + " does not exist."));
-            Pair<ExecutionStatus, Optional<String>> daVinciStatusAndDetails = getDaVinciPushStatusAndDetails(version, incrementalPushVersion);
+                .orElseThrow(() -> new VeniceException("Version " + versionNumber + " of " + store.getName() + " does not exist."));
+            Pair<ExecutionStatus, Optional<String>> daVinciStatusAndDetails = getDaVinciPushStatusAndDetails(version,
+                incrementalPushVersion);
             ExecutionStatus daVinciStatus = daVinciStatusAndDetails.getFirst();
             Optional<String> daVinciDetails = daVinciStatusAndDetails.getSecond();
             executionStatus = getOverallPushStatus(executionStatus, daVinciStatus);
