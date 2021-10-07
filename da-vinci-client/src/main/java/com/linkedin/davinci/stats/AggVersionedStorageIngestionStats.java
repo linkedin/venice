@@ -41,6 +41,7 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
 
   private static final String LEADER_RECORDS_CONSUMED_METRIC_NAME = "leader_records_consumed";
   private static final String LEADER_BYTES_CONSUMED_METRIC_NAME = "leader_bytes_consumed";
+  private static final String LEADER_STALLED_HYBRID_INGESTION_METRIC_NAME = "leader_stalled_hybrid_ingestion";
   private static final String FOLLOWER_RECORDS_CONSUMED_METRIC_NAME = "follower_records_consumed";
   private static final String FOLLOWER_BYTES_CONSUMED_METRIC_NAME = "follower_bytes_consumed";
   private static final String LEADER_RECORDS_PRODUCED_METRIC_NAME = "leader_records_produced";
@@ -420,6 +421,20 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
       return ingestionTask.getWriteComputeErrorCode();
     }
 
+    /**
+     * @return 1 if the leader offset lag is greater than 0 and not actively ingesting data, otherwise 0.
+     */
+    public double getLeaderStalledHybridIngestion() {
+      if (ingestionTask == null) {
+        return INACTIVE_STORE_INGESTION_TASK.code;
+      }
+      if (getLeaderOffsetLag() > 0 && getLeaderBytesConsumed() == 0) {
+        return 1;
+      } else {
+        return 0;
+      }
+    }
+
     public double getStalePartitionsWithoutIngestionTaskCount() {
       return stalePartitionsWithoutIngestionTaskCount.measure(METRIC_CONFIG, System.currentTimeMillis());
     }
@@ -638,6 +653,9 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
 
       registerSensor("number_of_partitions_not_receive_SOBR", new IngestionStatsGauge(this, () ->
           (double) getStats().getNumberOfPartitionsNotReceiveSOBR(), 0));
+
+      registerSensor(LEADER_STALLED_HYBRID_INGESTION_METRIC_NAME,
+          new IngestionStatsGauge(this, () -> getStats().getLeaderStalledHybridIngestion(), 0));
 
       for (Map.Entry<Integer, String> entry : getStats().ingestionTask.getServerConfig().getKafkaClusterIdToAliasMap().entrySet()) {
         String regionNamePrefix = RegionUtils.getRegionSpecificMetricPrefix(getStats().ingestionTask.getServerConfig().getRegionName(), entry.getValue());
