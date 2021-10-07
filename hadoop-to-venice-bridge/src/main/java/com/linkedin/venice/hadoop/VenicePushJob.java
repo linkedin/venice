@@ -28,6 +28,7 @@ import com.linkedin.venice.hadoop.ssl.TempFileSSLConfigurator;
 import com.linkedin.venice.hadoop.ssl.UserCredentialsFactory;
 import com.linkedin.venice.hadoop.utils.AvroSchemaParseUtils;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
@@ -137,6 +138,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
   public final static String SOURCE_ETL = "source.etl";
   public final static String ETL_VALUE_SCHEMA_TRANSFORMATION = "etl.value.schema.transformation";
   public final static String TARGET_VERSION_FOR_INCREMENTAL_PUSH = "target.version.for.incremental.push";
+  public final static String ALLOW_KIF_REPUSH_FOR_INC_PUSH_FROM_VT_TO_VT = "allow.kif.repush.for.inc.push.from.vt.to.vt";
 
   /**
    * Configs used to enable Kafka Input.
@@ -368,6 +370,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
     String kafkaInputTopic;
     long rewindTimeInSecondsOverride;
     long reducerInactiveTimeoutInMs;
+    boolean allowKifRepushForIncPushFromVTToVT;
   }
   protected PushJobSetting pushJobSetting;
 
@@ -563,6 +566,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
     pushJobSetting.enableWriteCompute = props.getBoolean(ENABLE_WRITE_COMPUTE, false);
     pushJobSetting.isSourceETL = props.getBoolean(SOURCE_ETL, false);
     pushJobSetting.isSourceKafka = props.getBoolean(SOURCE_KAFKA, false);
+    pushJobSetting.allowKifRepushForIncPushFromVTToVT = props.getBoolean(ALLOW_KIF_REPUSH_FOR_INC_PUSH_FROM_VT_TO_VT, false);
 
     if (pushJobSetting.isSourceKafka) {
       /**
@@ -1608,6 +1612,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
        * 2. Compression Strategy.
        * 3. Partition Count.
        * 4. Partitioner Config.
+       * 5. Incremental Push policy
        * Since right now, the messages from the source topic will be passed through to the new version topic without
        * reformatting, we need to make sure the pass-through messages won't violate the new version config.
        *
@@ -1639,6 +1644,15 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
             + "not supported by Kafka Input right now, "
             + " source version: " + sourceVersion.getNumber() + " is using: " + sourceVersion.isChunkingEnabled()
             + ", new version: " + newVersion.getNumber() + " is using: " + newVersion.isChunkingEnabled());
+      }
+
+      if (!pushJobSetting.allowKifRepushForIncPushFromVTToVT) {
+        if ((sourceVersion.isIncrementalPushEnabled() && sourceVersion.getIncrementalPushPolicy().equals(IncrementalPushPolicy.PUSH_TO_VERSION_TOPIC))
+            && (newVersion.isIncrementalPushEnabled() && newVersion.getIncrementalPushPolicy().equals(IncrementalPushPolicy.PUSH_TO_VERSION_TOPIC))) {
+          throw new VeniceException("Store: " + pushJobSetting.storeName + " has same Incremental Push to VT policy for source and new version. This may lead to data "
+              + "loss in certain scenario and thus not supported right now. "
+              + "Source version: " + sourceVersion.getNumber() + ", new version: " + newVersion.getNumber());
+        }
       }
     }
   }
