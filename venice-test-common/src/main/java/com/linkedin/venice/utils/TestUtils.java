@@ -453,10 +453,12 @@ public class TestUtils {
 
       @Override
       public void checkExit(int status) {
-        String message = "System exit requested with error " + status;
-        SecurityException e = new SecurityException(message);
-        LOGGER.info("checkExit called", e);
-        throw e;
+        if (status != 0) {
+          String message = "System exit requested with error " + status;
+          SecurityException e = new SecurityException(message);
+          LOGGER.info("checkExit called", e);
+          throw e;
+        }
       }
     });
   }
