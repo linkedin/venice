@@ -565,6 +565,8 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
 
     StorageEngineBackedCompressorFactory compressorFactory = new StorageEngineBackedCompressorFactory(storageMetadataService);
 
+    boolean isDaVinciClient = veniceMetadataRepositoryBuilder.isDaVinciClient();
+
     // Create KafkaStoreIngestionService
     storeIngestionService = new KafkaStoreIngestionService(
         storageService.getStorageEngineRepository(),
@@ -577,13 +579,14 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
         metricsRepository,
         rocksDBMemoryStats,
         Optional.of(kafkaMessageEnvelopeSchemaReader),
-        veniceMetadataRepositoryBuilder.isDaVinciClient() ? Optional.empty() : Optional.of(clientConfig),
+        isDaVinciClient ? Optional.empty() : Optional.of(clientConfig),
         partitionStateSerializer,
         helixReadOnlyZKSharedSchemaRepository,
         null,
         true,
         compressorFactory,
-        Optional.empty());
+        Optional.empty(),
+        isDaVinciClient);
     storeIngestionService.start();
     storeIngestionService.addCommonNotifier(new IsolatedIngestionNotifier(this));
     ingestionBackend = new DefaultIngestionBackend(storageMetadataService, storeIngestionService, storageService);

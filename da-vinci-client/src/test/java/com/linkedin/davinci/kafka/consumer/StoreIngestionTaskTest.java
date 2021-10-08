@@ -33,6 +33,7 @@ import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
+import com.linkedin.venice.kafka.protocol.TopicSwitch;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
@@ -482,7 +483,7 @@ public class StoreIngestionTaskTest {
     partitionerConfig.setPartitionerClass(partitioner.getClass().getName());
     partitionerConfig.setAmplificationFactor(amplificationFactor);
 
-    MockStoreVersionConfigs storeAndVersionConfigs = setupStoreAndVersionMocks(partitionCount, partitionerConfig, hybridStoreConfig, incrementalPushEnabled, isLeaderFollowerModelEnabled, isActiveActiveReplicationEnabled);
+    MockStoreVersionConfigs storeAndVersionConfigs = setupStoreAndVersionMocks(partitionCount, partitionerConfig, hybridStoreConfig, incrementalPushEnabled, isLeaderFollowerModelEnabled, false, isActiveActiveReplicationEnabled);
     Store mockStore = storeAndVersionConfigs.store;
     Version version = storeAndVersionConfigs.version;
     VeniceStoreVersionConfig storeConfig = storeAndVersionConfigs.storeVersionConfig;
@@ -519,7 +520,10 @@ public class StoreIngestionTaskTest {
     }
   }
 
-  private MockStoreVersionConfigs setupStoreAndVersionMocks(int partitionCount, PartitionerConfig partitionerConfig, Optional<HybridStoreConfig> hybridStoreConfig, boolean incrementalPushEnabled, boolean isLeaderFollowerModelEnabled, boolean isActiveActiveReplicationEnabled) {
+  private MockStoreVersionConfigs setupStoreAndVersionMocks(int partitionCount, PartitionerConfig partitionerConfig,
+      Optional<HybridStoreConfig> hybridStoreConfig, boolean incrementalPushEnabled,
+      boolean isLeaderFollowerModelEnabled, boolean isNativeReplicationEnabled,
+      boolean isActiveActiveReplicationEnabled) {
     boolean isHybrid = hybridStoreConfig.isPresent();
     HybridStoreConfig hybridSoreConfigValue = null;
     if (isHybrid) {
@@ -556,8 +560,8 @@ public class StoreIngestionTaskTest {
 
     version.setBufferReplayEnabledForHybrid(true);
 
-    version.setNativeReplicationEnabled(false);
-    doReturn(false).when(mockStore).isNativeReplicationEnabled();
+    version.setNativeReplicationEnabled(isNativeReplicationEnabled);
+    doReturn(isNativeReplicationEnabled).when(mockStore).isNativeReplicationEnabled();
 
     version.setPushStreamSourceAddress("");
     doReturn("").when(mockStore).getPushStreamSourceAddress();
@@ -2100,7 +2104,7 @@ public class StoreIngestionTaskTest {
     );
 
     MockStoreVersionConfigs storeAndVersionConfigs = setupStoreAndVersionMocks(partitionCount, partitionerConfig,
-        Optional.of(hybridStoreConfig), false, true, true);
+        Optional.of(hybridStoreConfig), false, true, false, true);
     Store mockStore = storeAndVersionConfigs.store;
     Version version = storeAndVersionConfigs.version;
     VeniceStoreVersionConfig storeConfig = storeAndVersionConfigs.storeVersionConfig;
@@ -2192,6 +2196,124 @@ public class StoreIngestionTaskTest {
     Assert.assertTrue(kafkaUrlToConsumerRecords3.containsKey(inMemoryRemoteKafkaBroker.getKafkaBootstrapServer()));
     int mockInteractionsAfterPoll = Mockito.mockingDetails(mockRemoteKafkaConsumer).getInvocations().size();
     Assert.assertEquals(mockInteractionsBeforePoll, mockInteractionsAfterPoll, "Remote consumer should not poll for new records but return previously cached records");
+  }
+
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testIsReadyToServe(boolean isDaVinciClient) {
+    int partitionCount = 2;
+    int amplificationFactor = 1;
+
+    VenicePartitioner partitioner = getVenicePartitioner(1); // Only get base venice partitioner
+    PartitionerConfig partitionerConfig = new PartitionerConfigImpl();
+    partitionerConfig.setPartitionerClass(partitioner.getClass().getName());
+    partitionerConfig.setAmplificationFactor(amplificationFactor);
+
+    HybridStoreConfig hybridStoreConfig = new HybridStoreConfigImpl(100,
+        100,
+        HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD,
+        DataReplicationPolicy.NON_AGGREGATE,
+        BufferReplayPolicy.REWIND_FROM_EOP
+    );
+
+    MockStoreVersionConfigs storeAndVersionConfigs = setupStoreAndVersionMocks(partitionCount, partitionerConfig,
+        Optional.of(hybridStoreConfig), false, true, true, true);
+    Store mockStore = storeAndVersionConfigs.store;
+    Version version = storeAndVersionConfigs.version;
+    VeniceStoreVersionConfig storeConfig = storeAndVersionConfigs.storeVersionConfig;
+
+    Map<String, Object> extraServerProperties = new HashMap<>();
+
+    StoreIngestionTaskFactory ingestionTaskFactory = getIngestionTaskFactoryBuilder(new RandomPollStrategy(),
+        Utils.setOf(PARTITION_FOO), Optional.of(hybridStoreConfig), Optional.empty(), 1, extraServerProperties)
+        .setIsDaVinciClient(isDaVinciClient)
+        .setTopicManagerRepositoryJavaBased(mockTopicManagerRepository)
+        .build();
+
+
+    TopicManager mockTopicManagerRemoteKafka = mock(TopicManager.class);
+
+    doReturn(mockTopicManager).when(mockTopicManagerRepository).getTopicManager(inMemoryLocalKafkaBroker.getKafkaBootstrapServer());
+    doReturn(mockTopicManagerRemoteKafka).when(mockTopicManagerRepository).getTopicManager(inMemoryRemoteKafkaBroker.getKafkaBootstrapServer());
+
+    Properties kafkaProps = new Properties();
+    kafkaProps.put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, inMemoryLocalKafkaBroker.getKafkaBootstrapServer());
+
+    int leaderSubPartition = PartitionUtils.getLeaderSubPartition(PARTITION_FOO, amplificationFactor);
+    storeIngestionTaskUnderTest = ingestionTaskFactory.getNewIngestionTask(mockStore, version, kafkaProps,
+        isCurrentVersion, storeConfig, leaderSubPartition, false,
+        new StorageEngineBackedCompressorFactory(mockStorageMetadataService), Optional.empty());
+
+
+    String rtTopic = Version.composeRealTimeTopic(mockStore.getName());
+    TopicSwitch topicSwitchWithSourceRealTimeTopic = new TopicSwitch();
+    topicSwitchWithSourceRealTimeTopic.sourceKafkaServers = new ArrayList<>();
+    topicSwitchWithSourceRealTimeTopic.sourceKafkaServers.add(inMemoryRemoteKafkaBroker.getKafkaBootstrapServer());
+    topicSwitchWithSourceRealTimeTopic.sourceTopicName = rtTopic;
+
+    OffsetRecord mockOffsetRecordLagCaughtUp = mock(OffsetRecord.class);
+    doReturn(5L).when(mockOffsetRecordLagCaughtUp).getLocalVersionTopicOffset();
+    doReturn(rtTopic).when(mockOffsetRecordLagCaughtUp).getLeaderTopic();
+    doReturn(5L).when(mockOffsetRecordLagCaughtUp).getUpstreamOffset(inMemoryLocalKafkaBroker.getKafkaBootstrapServer());
+    doReturn(5L).when(mockOffsetRecordLagCaughtUp).getUpstreamOffset(inMemoryRemoteKafkaBroker.getKafkaBootstrapServer());
+
+    OffsetRecord mockOffsetRecordVTLagCaughtUpRemoteRTLagging = mock(OffsetRecord.class);
+    doReturn(5L).when(mockOffsetRecordVTLagCaughtUpRemoteRTLagging).getLocalVersionTopicOffset();
+    doReturn(rtTopic).when(mockOffsetRecordVTLagCaughtUpRemoteRTLagging).getLeaderTopic();
+    doReturn(5L).when(mockOffsetRecordVTLagCaughtUpRemoteRTLagging).getUpstreamOffset(inMemoryLocalKafkaBroker.getKafkaBootstrapServer());
+    doReturn(150L).when(mockOffsetRecordVTLagCaughtUpRemoteRTLagging).getUpstreamOffset(inMemoryRemoteKafkaBroker.getKafkaBootstrapServer());
+
+
+    // If EOP is not received, partition is not ready to serve
+    PartitionConsumptionState mockPcsEOPNotReceived = mock(PartitionConsumptionState.class);
+    doReturn(false).when(mockPcsEOPNotReceived).isEndOfPushReceived();
+    Assert.assertFalse(storeIngestionTaskUnderTest.isReadyToServe(mockPcsEOPNotReceived));
+
+    // If EOP is received and partition has reported COMPLETED, then partition is ready to serve
+    PartitionConsumptionState mockPcsCompleted = mock(PartitionConsumptionState.class);
+    doReturn(true).when(mockPcsCompleted).isEndOfPushReceived();
+    doReturn(true).when(mockPcsCompleted).isComplete();
+    Assert.assertTrue(storeIngestionTaskUnderTest.isReadyToServe(mockPcsCompleted));
+
+    // If partition has not reported COMPLETED but is not waiting for replication lag to catch up, it is ready to serve
+    PartitionConsumptionState mockPcsNotWaitingForReplicationLag = mock(PartitionConsumptionState.class);
+    doReturn(true).when(mockPcsNotWaitingForReplicationLag).isEndOfPushReceived();
+    doReturn(false).when(mockPcsNotWaitingForReplicationLag).isComplete();
+    doReturn(false).when(mockPcsNotWaitingForReplicationLag).isWaitingForReplicationLag();
+    Assert.assertTrue(storeIngestionTaskUnderTest.isReadyToServe(mockPcsNotWaitingForReplicationLag));
+
+    // If partition is waiting for replication lag to catch up, but buffer replay has not started, it is not ready to serve
+    PartitionConsumptionState mockPcsHybridButBufferReplayNotStarted = mock(PartitionConsumptionState.class);
+    doReturn(true).when(mockPcsHybridButBufferReplayNotStarted).isEndOfPushReceived();
+    doReturn(false).when(mockPcsHybridButBufferReplayNotStarted).isComplete();
+    doReturn(true).when(mockPcsHybridButBufferReplayNotStarted).isWaitingForReplicationLag();
+    doReturn(true).when(mockPcsHybridButBufferReplayNotStarted).isHybrid();
+    doReturn(null).when(mockPcsHybridButBufferReplayNotStarted).getTopicSwitch();
+    Assert.assertFalse(storeIngestionTaskUnderTest.isReadyToServe(mockPcsHybridButBufferReplayNotStarted));
+
+    // Since replication lag is caught up, partition is ready to serve
+    PartitionConsumptionState mockPcsBufferReplayStartedLagCaughtUp = mock(PartitionConsumptionState.class);
+    doReturn(true).when(mockPcsBufferReplayStartedLagCaughtUp).isEndOfPushReceived();
+    doReturn(false).when(mockPcsBufferReplayStartedLagCaughtUp).isComplete();
+    doReturn(true).when(mockPcsBufferReplayStartedLagCaughtUp).isWaitingForReplicationLag();
+    doReturn(true).when(mockPcsBufferReplayStartedLagCaughtUp).isHybrid();
+    doReturn(topicSwitchWithSourceRealTimeTopic).when(mockPcsBufferReplayStartedLagCaughtUp).getTopicSwitch();
+    doReturn(mockOffsetRecordLagCaughtUp).when(mockPcsBufferReplayStartedLagCaughtUp).getOffsetRecord();
+    doReturn(5L).when(mockTopicManager).getPartitionLatestOffsetAndRetry(anyString(), anyInt(), anyInt());
+    doReturn(5L).when(mockTopicManagerRemoteKafka).getPartitionLatestOffsetAndRetry(anyString(), anyInt(), anyInt());
+    Assert.assertTrue(storeIngestionTaskUnderTest.isReadyToServe(mockPcsBufferReplayStartedLagCaughtUp));
+
+    // Remote replication lag has not caught up but host has caught up to lag in local VT, so DaVinci replica will be
+    // marked ready to serve but not storage node replica
+    PartitionConsumptionState mockPcsBufferReplayStartedRemoteLagging = mock(PartitionConsumptionState.class);
+    doReturn(true).when(mockPcsBufferReplayStartedRemoteLagging).isEndOfPushReceived();
+    doReturn(false).when(mockPcsBufferReplayStartedRemoteLagging).isComplete();
+    doReturn(true).when(mockPcsBufferReplayStartedRemoteLagging).isWaitingForReplicationLag();
+    doReturn(true).when(mockPcsBufferReplayStartedRemoteLagging).isHybrid();
+    doReturn(topicSwitchWithSourceRealTimeTopic).when(mockPcsBufferReplayStartedRemoteLagging).getTopicSwitch();
+    doReturn(mockOffsetRecordVTLagCaughtUpRemoteRTLagging).when(mockPcsBufferReplayStartedRemoteLagging).getOffsetRecord();
+    doReturn(5L).when(mockTopicManager).getPartitionLatestOffsetAndRetry(anyString(), anyInt(), anyInt());
+    doReturn(150L).when(mockTopicManagerRemoteKafka).getPartitionLatestOffsetAndRetry(anyString(), anyInt(), anyInt());
+    Assert.assertEquals(storeIngestionTaskUnderTest.isReadyToServe(mockPcsBufferReplayStartedRemoteLagging), isDaVinciClient);
   }
 
   private static class MockStoreVersionConfigs {

@@ -66,6 +66,7 @@ import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
@@ -387,6 +388,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   private final Map<Integer, StoragePartitionDiskUsage> partitionConsumptionSizeMap = new VeniceConcurrentHashMap<>();
 
+  protected final boolean isDaVinciClient;
+
   public StoreIngestionTask(
       Store store,
       Version version,
@@ -419,7 +422,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       long startReportingReadyToServeTimestamp,
       InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer,
       boolean isIsolatedIngestion,
-      Optional<ObjectCacheBackend> cacheBackend) {
+      Optional<ObjectCacheBackend> cacheBackend,
+      boolean isDaVinciClient) {
     this.readCycleDelayMs = storeConfig.getKafkaReadCycleDelayMs();
     this.emptyPollSleepMs = storeConfig.getKafkaEmptyPollSleepMs();
     this.databaseSyncBytesIntervalForTransactionalMode = storeConfig.getDatabaseSyncBytesIntervalForTransactionalMode();
@@ -535,6 +539,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.amplificationAdapter = new AmplificationAdapter(amplificationFactor);
     this.cacheBackend = cacheBackend;
     this.localKafkaServer = this.kafkaProps.getProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG);
+    this.isDaVinciClient = isDaVinciClient;
   }
 
   public boolean isFutureVersion() {
