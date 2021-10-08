@@ -1487,8 +1487,8 @@ public class VeniceParentHelixAdmin implements Admin {
         if (partitionCount.isPresent() && partitionCount.get() != store.getPartitionCount()){
           throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, "Cannot change partition count for hybrid stores");
         }
-        if (amplificationFactor.isPresent() || partitionerClass.isPresent() || partitionerParams.isPresent()) {
-          throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, "Cannot change partitioner config for hybrid stores");
+        if (partitionerClass.isPresent() || partitionerParams.isPresent()) {
+          throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, "Cannot change partitioner class and parameters for hybrid stores");
         }
       }
 
