@@ -11,8 +11,10 @@ import com.linkedin.venice.utils.RetryUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
@@ -311,7 +313,7 @@ public class PartitionOffsetFetcherImpl implements PartitionOffsetFetcher {
    * otherwise, return the producer timestamp of the last message in the selected partition of a topic
    */
   private long getProducerTimestampOfLastDataRecord(String topic, int partition) throws TopicDoesNotExistException {
-    ConsumerRecords<KafkaKey, KafkaMessageEnvelope> lastConsumedRecords = consumeLatestRecords(topic, partition, 1);
+    List<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>> lastConsumedRecords = consumeLatestRecords(topic, partition, 1);
     if (lastConsumedRecords.isEmpty()) {
       return NO_PRODUCER_TIME_IN_EMPTY_TOPIC_PARTITION;
     }
@@ -324,7 +326,7 @@ public class PartitionOffsetFetcherImpl implements PartitionOffsetFetcher {
 
     // Second attempt and read 60 records this time. There could be several control messages at the end of a RT partition
     // if multiple Samza jobs write to this topic partition. 60 should be sufficient.
-    final long lastRecordsCount = 60;
+    final int lastRecordsCount = 60;
     logger.info(String.format("The last record in topic %s partition %d is a control message. Hence, try to find the "
         + "last data record among the last %d records from the end of that partition", topic, partition, lastRecordsCount));
 
@@ -361,10 +363,30 @@ public class PartitionOffsetFetcherImpl implements PartitionOffsetFetcher {
     return latestDataRecordProducerTimestamp;
   }
 
-  private ConsumerRecords<KafkaKey, KafkaMessageEnvelope> consumeLatestRecords(
+  /**
+   * This method retrieves last {@code lastRecordsCount} records from a topic partition and there are 4 steps below.
+   *  1. Find the current end offset N
+   *  2. Seek back {@code lastRecordsCount} records from the end offset N
+   *  3. Keep consuming records until the last consumed offset is greater than or equal to N
+   *  4. Return all consumed records
+   *
+   * There are 2 things to note:
+   *   1. When this method returns, these returned records are not necessarily the "last" records because after step 2,
+   *      there could be more records produced to this topic partition and this method only consume records until the end
+   *      offset retrieved at the above step 2.
+   *
+   *   2. This method might return more than {@code lastRecordsCount} records since the consumer poll method gets a batch
+   *      of consumer records each time and the batch size is arbitrary.
+   *
+   * @param topic
+   * @param partition
+   * @param lastRecordsCount
+   * @return
+   */
+  private List<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>> consumeLatestRecords(
       final String topic,
       final int partition,
-      final long lastRecordsCount
+      final int lastRecordsCount
   ) {
     if (partition < 0) {
       throw new IllegalArgumentException(
@@ -378,7 +400,7 @@ public class PartitionOffsetFetcherImpl implements PartitionOffsetFetcher {
       if (!kafkaAdminWrapper.get().containsTopicWithRetry(topic, 3)) {
         throw new TopicDoesNotExistException("Topic " + topic + " does not exist!");
       }
-      TopicPartition topicPartition = new TopicPartition(topic, partition);
+      final TopicPartition topicPartition = new TopicPartition(topic, partition);
       try {
         Map<TopicPartition, Long> offsetByTopicPartition = kafkaRecordConsumer.get().endOffsets(Collections.singletonList(topicPartition), DEFAULT_KAFKA_OFFSET_API_TIMEOUT);
         if (offsetByTopicPartition == null || !offsetByTopicPartition.containsKey(topicPartition)) {
@@ -387,8 +409,8 @@ public class PartitionOffsetFetcherImpl implements PartitionOffsetFetcher {
         final long latestOffset = offsetByTopicPartition.get(topicPartition);
 
         if (latestOffset <= 0) {
-          // empty topic
-          return ConsumerRecords.empty();
+          // Empty topic
+          return Collections.emptyList();
         } else {
           Long earliestOffset = kafkaRecordConsumer.get()
               .beginningOffsets(Collections.singletonList(topicPartition), DEFAULT_KAFKA_OFFSET_API_TIMEOUT)
@@ -398,30 +420,46 @@ public class PartitionOffsetFetcherImpl implements PartitionOffsetFetcher {
           }
           if (earliestOffset == latestOffset) {
             // Empty topic
-            return ConsumerRecords.empty();
+            return Collections.emptyList();
           } else {
             // poll the last message and retrieve the producer timestamp
             kafkaRecordConsumer.get().assign(Collections.singletonList(topicPartition));
             final long startConsumeOffset = Math.max(latestOffset - lastRecordsCount, earliestOffset);
             kafkaRecordConsumer.get().seek(topicPartition, startConsumeOffset);
-            ConsumerRecords<KafkaKey, KafkaMessageEnvelope> consumedRecords = ConsumerRecords.empty();
-            int currAttempt = 0;
-            while (currAttempt++ < KAFKA_POLLING_RETRY_MAX_ATTEMPT && consumedRecords.isEmpty()) {
-              logger.info(String.format("Trying to get records from topic %s partition %d from offset %d to its log end "
-                  + "offset. Attempt# %d / %d", topic, partition, startConsumeOffset, currAttempt, KAFKA_POLLING_RETRY_MAX_ATTEMPT));
+            List<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>> allConsumedRecords = new ArrayList<>(lastRecordsCount);
 
-              consumedRecords = kafkaRecordConsumer.get().poll(kafkaOperationTimeout);
-            }
-            if (consumedRecords.isEmpty()) {
-              /**
-               * Failed the job if we cannot get the last offset of the topic.
-               */
-              String errorMsg = "Failed to get the last record from topic: " + topicPartition.toString() + " after " + KAFKA_POLLING_RETRY_MAX_ATTEMPT
-                  + " attempts";
-              logger.error(errorMsg);
-              throw new VeniceException(errorMsg);
-            }
-            return consumedRecords;
+            // Keep consuming records from that topic partition until the last consumed record's offset is greater or equal
+            // to the partition end offset retrieved before.
+            do {
+              List<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>> oneBatchConsumedRecords = Collections.emptyList();
+              int currAttempt = 0;
+
+              while (currAttempt++ < KAFKA_POLLING_RETRY_MAX_ATTEMPT && oneBatchConsumedRecords.isEmpty()) {
+                logger.info(String.format(
+                    "Trying to get records from topic %s partition %d from offset %d to its log end " + "offset. Attempt# %d / %d", topic, partition, startConsumeOffset, currAttempt,
+                    KAFKA_POLLING_RETRY_MAX_ATTEMPT));
+
+                oneBatchConsumedRecords = kafkaRecordConsumer.get().poll(kafkaOperationTimeout).records(topicPartition);
+              }
+              if (oneBatchConsumedRecords.isEmpty()) {
+                /**
+                 * Failed the job if we cannot get the last offset of the topic.
+                 */
+                String errorMsg = "Failed to get the last record from topic-partition: " + topicPartition.toString() + " after " + KAFKA_POLLING_RETRY_MAX_ATTEMPT
+                    + " attempts";
+                logger.error(errorMsg);
+                throw new VeniceException(errorMsg);
+              }
+
+              logger.info(String.format("Consumed %d record(s) from topic %s partition %d",
+                  oneBatchConsumedRecords.size(), topicPartition.topic(), topicPartition.partition()));
+
+              oneBatchConsumedRecords.forEach(consumedRecord -> {
+                allConsumedRecords.add(consumedRecord);
+              });
+            } while(allConsumedRecords.get(allConsumedRecords.size() - 1).offset() + 1 < latestOffset);
+
+            return allConsumedRecords;
           }
         }
       } catch (org.apache.kafka.common.errors.TimeoutException ex) {
