@@ -55,6 +55,7 @@ import org.apache.commons.io.FileUtils;
 import org.apache.kafka.clients.producer.Callback;
 import org.apache.log4j.Logger;
 import org.apache.samza.SamzaException;
+import org.apache.samza.config.Config;
 import org.apache.samza.system.OutgoingMessageEnvelope;
 import org.apache.samza.system.SystemProducer;
 
@@ -118,6 +119,19 @@ public class VeniceSystemProducer implements SystemProducer {
   private Optional<RouterBasedPushMonitor> pushMonitor = Optional.empty();
   private Optional<RouterBasedHybridStoreQuotaMonitor> hybridStoreQuotaMonitor = Optional.empty();
 
+  /**
+   * TODO: remove the public constructor after the builder pattern is released as an active version in Samza/Venice multi-product.
+   */
+  public VeniceSystemProducer(String veniceD2ZKHost, String d2ServiceName, String storeName,
+      Version.PushType pushType, String samzaJobId, String runningFabric, VeniceSystemFactory factory,
+      Optional<SSLFactory> sslFactory, Optional<String> partitioners) {
+    this(veniceD2ZKHost, d2ServiceName, storeName, pushType, samzaJobId, runningFabric, false, factory,
+        sslFactory, partitioners, SystemTime.INSTANCE);
+  }
+
+  /**
+   * TODO: remove the public constructor after the builder pattern is released as an active version in Samza/Venice multi-product.
+   */
   public VeniceSystemProducer(String veniceD2ZKHost, String d2ServiceName, String storeName,
       Version.PushType pushType, String samzaJobId, String runningFabric, boolean verifyLatestProtocolPresent,
       VeniceSystemFactory factory, Optional<SSLFactory> sslFactory, Optional<String> partitioners) {
@@ -125,6 +139,9 @@ public class VeniceSystemProducer implements SystemProducer {
         sslFactory, partitioners, SystemTime.INSTANCE);
   }
 
+  /**
+   * TODO: remove the public constructor after the builder pattern is released as an active version in Samza/Venice multi-product.
+   */
   public VeniceSystemProducer(String veniceD2ZKHost, String d2ServiceName, String storeName,
       Version.PushType pushType, String samzaJobId, String runningFabric, boolean verifyLatestProtocolPresent,
       VeniceSystemFactory factory, Optional<SSLFactory> sslFactory, Optional<String> partitioners, Time time) {
@@ -140,6 +157,21 @@ public class VeniceSystemProducer implements SystemProducer {
     this.partitioners = partitioners;
     this.time = time;
     this.fsBasePath = "./tmp/d2/" + storeName;
+  }
+
+  private VeniceSystemProducer(Builder builder) {
+    this.veniceD2ZKHost = builder.veniceD2ZKHost;
+    this.d2ServiceName = builder.d2ServiceName;
+    this.storeName = builder.storeName;
+    this.pushType = builder.pushType;
+    this.samzaJobId = builder.samzaJobId;
+    this.runningFabric = builder.runningFabric;
+    this.verifyLatestProtocolPresent = builder.verifyLatestProtocolPresent;
+    this.factory = builder.factory;
+    this.sslFactory = builder.sslFactory;
+    this.partitioners = builder.partitioners;
+    this.time = builder.time;
+    this.fsBasePath = "./tmp/d2/" + this.storeName;
   }
 
   public String getRunningFabric() {
@@ -595,5 +627,119 @@ public class VeniceSystemProducer implements SystemProducer {
    */
   public VeniceWriter<byte[], byte[], byte[]> getInternalProducer() {
     return this.veniceWriter;
+  }
+
+  public static class Builder {
+    private volatile boolean built = false;
+
+    private Config samzaJobConfig;
+    private String veniceD2ZKHost;
+    private String d2ServiceName;
+    private String storeName;
+    private Version.PushType pushType;
+    private String samzaJobId;
+    private String runningFabric;
+    private boolean verifyLatestProtocolPresent;
+    private VeniceSystemFactory factory;
+    private Optional<SSLFactory> sslFactory;
+    private Optional<String> partitioners;
+    private Time time;
+
+    /**
+     * Extend the Builder and override the build function inside the Samza/Venice multi-product to return the LI specific
+     * VeniceSystemProducer implementation.
+     */
+    public synchronized VeniceSystemProducer build() {
+      if (built) {
+        throw new VeniceException("Cannot invoke build() twice.");
+      }
+      // flip the build flag to true
+      this.built = true;
+      return new VeniceSystemProducer(this);
+    }
+
+    public Builder setSamzaJobConfig(Config config) {
+      if (!built) {
+        this.samzaJobConfig = config;
+      }
+      return this;
+    }
+
+    public Builder setVeniceD2ZKHost(String veniceD2ZKHost) {
+      if (!built) {
+        this.veniceD2ZKHost = veniceD2ZKHost;
+      }
+      return this;
+    }
+
+    public Builder setD2ServiceName(String d2ServiceName) {
+      if (!built) {
+        this.d2ServiceName = d2ServiceName;
+      }
+      return this;
+    }
+
+    public Builder setStoreName(String storeName) {
+      if (!built) {
+        this.storeName = storeName;
+      }
+      return this;
+    }
+
+    public Builder setPushType(Version.PushType pushType) {
+      if (!built) {
+        this.pushType = pushType;
+      }
+      return this;
+    }
+
+    public Builder setSamzaJobId(String samzaJobId) {
+      if (!built) {
+        this.samzaJobId = samzaJobId;
+      }
+      return this;
+    }
+
+    public Builder setRunningFabric(String runningFabric) {
+      if (!built) {
+        this.runningFabric = runningFabric;
+      }
+      return this;
+    }
+
+    public Builder setVerifyLatestProtocolPresent(boolean verifyLatestProtocolPresent) {
+      if (!built) {
+        this.verifyLatestProtocolPresent = verifyLatestProtocolPresent;
+      }
+      return this;
+    }
+
+    public Builder setFactory(VeniceSystemFactory veniceSystemFactory) {
+      if (!built) {
+        this.factory = veniceSystemFactory;
+      }
+      return this;
+    }
+
+    public Builder setSslFactory(Optional<SSLFactory> sslFactory) {
+      if (!built) {
+        this.sslFactory = sslFactory;
+      }
+      return this;
+    }
+
+    public Builder setPartitioners(Optional<String> partitioners) {
+      if (!built) {
+        this.partitioners = partitioners;
+      }
+      return this;
+    }
+
+    public Builder setTime(Time time) {
+      if (!built) {
+        this.time = time;
+      }
+      return this;
+    }
   }
 }

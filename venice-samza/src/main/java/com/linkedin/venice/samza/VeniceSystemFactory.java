@@ -5,6 +5,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.SslUtils;
+import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.Serializable;
 import java.util.Arrays;
@@ -135,6 +136,9 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
         config.getBoolean(VALIDATE_VENICE_INTERNAL_SCHEMA_VERSION, false), this, sslFactory, partitioners);
   }
 
+  /**
+   * TODO: remove this function after the builder pattern is released as an active version in Samza/Venice multi-product.
+   */
   // Extra `Config` parameter is to ease the internal implementation
   protected SystemProducer createSystemProducer(String veniceD2ZKHost, String veniceD2Service, String storeName,
       Version.PushType venicePushType, String samzaJobId, String runningFabric, boolean verifyLatestProtocolPresent, Config config,
@@ -219,8 +223,21 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
     LOGGER.info("Will use the following Venice D2 ZK hosts: " + veniceD2ZKHost);
 
     boolean verifyLatestProtocolPresent = config.getBoolean(VALIDATE_VENICE_INTERNAL_SCHEMA_VERSION, false);
-    SystemProducer systemProducer = createSystemProducer(veniceD2ZKHost, veniceD2Service, storeName, venicePushType,
-        samzaJobId, runningFabric, verifyLatestProtocolPresent, config, sslFactory, partitioners);
+
+    SystemProducer systemProducer = new VeniceSystemProducer.Builder().setVeniceD2ZKHost(veniceD2ZKHost)
+                                                                      .setD2ServiceName(veniceD2Service)
+                                                                      .setStoreName(storeName)
+                                                                      .setPushType(venicePushType)
+                                                                      .setSamzaJobId(samzaJobId)
+                                                                      .setRunningFabric(runningFabric)
+                                                                      .setVerifyLatestProtocolPresent(verifyLatestProtocolPresent)
+                                                                      .setSamzaJobConfig(config)
+                                                                      .setFactory(this)
+                                                                      .setSslFactory(sslFactory)
+                                                                      .setPartitioners(partitioners)
+                                                                      .setTime(SystemTime.INSTANCE)
+                                                                      .build();
+
     this.systemProducerStatues.computeIfAbsent(systemProducer, k -> Pair.create(true, false));
     return systemProducer;
   }
