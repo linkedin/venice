@@ -196,7 +196,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer,
       boolean isIsolatedIngestion,
       StorageEngineBackedCompressorFactory compressorFactory,
-      Optional<ObjectCacheBackend> cacheBackend) {
+      Optional<ObjectCacheBackend> cacheBackend,
+      boolean isDaVinciClient) {
     super(
         store,
         version,
@@ -229,7 +230,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         startReportingReadyToServeTimestamp,
         partitionStateSerializer,
         isIsolatedIngestion,
-        cacheBackend);
+        cacheBackend,
+        isDaVinciClient);
     /**
      * We are going to apply fast leader failover for {@link com.linkedin.venice.common.VeniceSystemStoreType#META_STORE}
      * since it is time sensitive, and if the split-brain problem happens in prod, we could design a way to periodically
@@ -1193,7 +1195,16 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       throw new VeniceException(String.format("Expect source RT Kafka URLs contains local Kafka URL. Got local " +
               "Kafka URL %s and RT source Kafka URLs %s", localKafkaServer, sourceRealTimeTopicKafkaURLs));
     }
-    Pair<Long, Long> hybridLagPair = amplificationAdapter.getLatestLeaderOffsetAndHybridTopicOffset(sourceRealTimeTopicKafkaURL, leaderTopic, partitionConsumptionState);
+
+    // Since DaVinci clients run in follower only mode, use local VT to compute hybrid lag.
+    if (isDaVinciClient) {
+      return cachedKafkaMetadataGetter.getOffset(localKafkaServer, kafkaVersionTopic, partition) -
+          partitionConsumptionState.getOffsetRecord().getLocalVersionTopicOffset();
+    }
+
+    Pair<Long, Long> hybridLagPair =
+        amplificationAdapter.getLatestLeaderOffsetAndHybridTopicOffset(sourceRealTimeTopicKafkaURL, leaderTopic,
+            partitionConsumptionState);
     long latestLeaderOffset = hybridLagPair.getFirst();
     long lastOffsetInRealTimeTopic = hybridLagPair.getSecond();
     long lag = lastOffsetInRealTimeTopic - latestLeaderOffset;

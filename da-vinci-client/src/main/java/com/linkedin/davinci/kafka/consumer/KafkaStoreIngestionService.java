@@ -180,7 +180,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
                                     ICProvider icProvider,
                                     boolean isIsolatedIngestion,
                                     StorageEngineBackedCompressorFactory compressorFactory,
-                                    Optional<ObjectCacheBackend> cacheBackend) {
+                                    Optional<ObjectCacheBackend> cacheBackend,
+                                    boolean isDaVinciClient) {
     this.cacheBackend = cacheBackend;
     this.storageMetadataService = storageMetadataService;
     this.metadataRepo = metadataRepo;
@@ -420,6 +421,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         .setCacheWarmingThreadPool(cacheWarmingExecutorService)
         .setStartReportingReadyToServeTimestamp(System.currentTimeMillis() + serverConfig.getDelayReadyToServeMS())
         .setPartitionStateSerializer(partitionStateSerializer)
+        .setIsDaVinciClient(isDaVinciClient)
         .build();
   }
 

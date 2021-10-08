@@ -172,7 +172,8 @@ public class DaVinciBackend implements Closeable {
         null,
         false,
         compressorFactory,
-        cacheBackend);
+        cacheBackend,
+        true);
 
     ingestionService.start();
     ingestionService.addCommonNotifier(ingestionListener);

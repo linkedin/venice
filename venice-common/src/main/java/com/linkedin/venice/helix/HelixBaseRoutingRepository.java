@@ -310,15 +310,6 @@ public abstract class HelixBaseRoutingRepository
     if (null == p) {
       return null;
     }
-    List<Instance> instances = p.getLeaderInstance();
-    if (instances.isEmpty()) {
-      return null;
-    }
-
-    if (instances.size() > 1) {
-      logger.error(String.format("Detect multiple leaders. Kafka topic: %s, partition: %d", resourceName, partition));
-    }
-
-    return instances.get(0);
+    return p.getLeaderInstance();
   }
 }
