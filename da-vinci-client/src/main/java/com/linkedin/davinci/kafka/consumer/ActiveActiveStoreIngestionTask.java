@@ -24,12 +24,14 @@ import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.TopicManagerRepository;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.Delete;
+import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.TopicSwitch;
 import com.linkedin.venice.kafka.protocol.Update;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
+import com.linkedin.venice.kafka.validation.ProducerTracker;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
@@ -56,6 +58,7 @@ import java.util.Properties;
 import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.BooleanSupplier;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.producer.Callback;
@@ -147,6 +150,38 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
 
     this.replicationMetadataVersionId = version.getReplicationMetadataVersionId();
     this.mergeConflictResolver = new MergeConflictResolver(schemaRepo, storeName, replicationMetadataVersionId);
+  }
+
+  @Override
+  protected DelegateConsumerRecordResult delegateConsumerRecord(
+      VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope> consumerRecordWrapper) {
+    ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord = consumerRecordWrapper.consumerRecord();
+    if (!Version.isRealTimeTopic(consumerRecord.topic())) {
+      /**
+       * We don't need to lock the partition here because during VT consumption there is only one consumption source.
+       */
+      return super.delegateConsumerRecord(consumerRecordWrapper);
+    } else {
+      /**
+       * With Active-Active replication during multi-colo RT consumption same records from same producer GUID may be processed in
+       * different consumer threads. Even though DIV is thread safe and will correctly detect DUPLICATE message the
+       * consumer threads might produce the unique records in local VT out of order.
+       * {@link LeaderFollowerStoreIngestionTask#delegateConsumerRecord(VeniceConsumerRecordWrapper)} functions performs
+       * both the DIV + producing to kafka operations during RT consumption.
+       * Taking a lock here on the partition level for the producerGUID makes sure that DIV + producing to Kafka of records
+       * happen in order for a single partition.
+       */
+      final GUID producerGUID = consumerRecord.value().producerMetadata.producerGUID;
+      ProducerTracker producerTracker = kafkaDataIntegrityValidator.registerProducer(producerGUID);
+      int partition = consumerRecord.partition();
+      ReentrantLock partitionLock = producerTracker.getPartitionLock(partition);
+      partitionLock.lock();
+      try {
+        return super.delegateConsumerRecord(consumerRecordWrapper);
+      } finally {
+        partitionLock.unlock();
+      }
+    }
   }
 
   @Override
