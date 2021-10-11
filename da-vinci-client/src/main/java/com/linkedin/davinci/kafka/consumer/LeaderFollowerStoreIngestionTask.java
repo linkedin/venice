@@ -1973,7 +1973,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
     long offsetLag = partitionConsumptionStateMap.values().stream()
         .filter(LEADER_OFFSET_LAG_FILTER)
-        //the lag is (latest fabric RT offset - consumed fabric RT offset)
+        // Leader consumption upstream RT offset is only available in leader subPartition
+        .filter(pcs -> amplificationAdapter.isLeaderSubPartition(pcs.getPartition()))
+        // the lag is (latest fabric RT offset - consumed fabric RT offset)
         .mapToLong((pcs) -> {
           String currentLeaderTopic = pcs.getOffsetRecord().getLeaderTopic();
           if (currentLeaderTopic == null || currentLeaderTopic.isEmpty() || !Version.isRealTimeTopic(currentLeaderTopic)) {
@@ -1985,18 +1987,17 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           if (kafkaSourceAddress == null) {
             return 0;
           }
-          //final String kafkaSourceAddress = getSourceKafkaUrlForOffsetLagMeasurement(pcs);
           KafkaConsumerWrapper kafkaConsumer = consumerMap.get(kafkaSourceAddress);
           // Consumer might not existed in the map after the consumption state is created, but before attaching the
           // corresponding consumer in consumerMap.
           if (kafkaConsumer != null) {
-            Optional<Long> offsetLagOptional = kafkaConsumer.getOffsetLag(currentLeaderTopic, pcs.getPartition());
+            Optional<Long> offsetLagOptional = kafkaConsumer.getOffsetLag(currentLeaderTopic, pcs.getUserPartition());
             if (offsetLagOptional.isPresent()) {
               return offsetLagOptional.get();
             }
           }
           // Fall back to calculate offset lag in the old way
-          return (cachedKafkaMetadataGetter.getOffset(kafkaSourceAddress, currentLeaderTopic, pcs.getPartition()) - 1)
+          return (cachedKafkaMetadataGetter.getOffset(kafkaSourceAddress, currentLeaderTopic, pcs.getUserPartition()) - 1)
                 - pcs.getLeaderConsumedUpstreamRTOffset(kafkaSourceAddress);
         }).sum();
 
