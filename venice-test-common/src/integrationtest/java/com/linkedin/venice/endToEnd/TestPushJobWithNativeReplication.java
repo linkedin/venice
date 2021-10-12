@@ -460,9 +460,7 @@ public class  TestPushJobWithNativeReplication {
     } finally {
       FileUtils.deleteDirectory(inputDir);
       if (null != parentControllerClient) {
-        ControllerResponse deleteStoreResponse = parentControllerClient.disableAndDeleteStore(storeName);
         IOUtils.closeQuietly(parentControllerClient);
-        Assert.assertFalse(deleteStoreResponse.isError(), "Failed to delete the test store: " + deleteStoreResponse.getError());
       }
     }
   }
