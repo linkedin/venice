@@ -34,7 +34,7 @@ public class OfflinePushStatus {
   private final int replicationFactor;
   private final OfflinePushStrategy strategy;
 
-  private ExecutionStatus currentStatus = STARTED;
+  private ExecutionStatus currentStatus;
   /**
    * The initial status details will be overridden later, when the Helix resource is created.
    */
@@ -55,9 +55,10 @@ public class OfflinePushStatus {
     this.replicationFactor = replicationFactor;
     this.strategy = strategy;
     this.pushProperties = new HashMap<>();
-    statusHistory = new ArrayList<>();
+    this.currentStatus = STARTED; // Initial push status
+    this.statusHistory = new ArrayList<>();
     addHistoricStatus(currentStatus, incrementalPushVersion);
-    partitionIdToStatus = new VeniceConcurrentHashMap<>();
+    this.partitionIdToStatus = new VeniceConcurrentHashMap<>(numberOfPartition);
     for (int i = 0; i < numberOfPartition; i++) {
       ReadOnlyPartitionStatus partitionStatus = new ReadOnlyPartitionStatus(i, Collections.emptyList());
       partitionIdToStatus.put(i, partitionStatus);

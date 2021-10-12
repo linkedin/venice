@@ -26,6 +26,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -364,13 +365,13 @@ public abstract class AbstractPushMonitor
   public abstract List<Instance> getReadyToServeInstances(PartitionAssignment partitionAssignment, int partitionId);
 
   public void refreshAndUpdatePushStatus(String kafkaTopic, ExecutionStatus newStatus, Optional<String> newStatusDetails) {
-    final OfflinePushStatus refreshedPushStatus = getOfflinePushOrThrow(kafkaTopic);
-    if (refreshedPushStatus.validatePushStatusTransition(newStatus)) {
-      updatePushStatus(refreshedPushStatus, newStatus, newStatusDetails);
-    } else {
-      logger.info("refreshedPushStatus does not allow transitioning to " + newStatus + ", because it is currently in: "
-          + refreshedPushStatus.getCurrentStatus() + " status. Will skip updating the status.");
-    }
+      final OfflinePushStatus refreshedPushStatus = getOfflinePushOrThrow(kafkaTopic);
+      if (refreshedPushStatus.validatePushStatusTransition(newStatus)) {
+        updatePushStatus(refreshedPushStatus, newStatus, newStatusDetails);
+      } else {
+        logger.info(
+            "refreshedPushStatus does not allow transitioning to " + newStatus + ", because it is currently in: " + refreshedPushStatus.getCurrentStatus() + " status. Will skip updating the status.");
+      }
   }
 
   /**
@@ -378,15 +379,27 @@ public abstract class AbstractPushMonitor
    * other terminal status update should be made through handleOfflinePushUpdate. That method will then invoke
    * handleErrorPush and perform relevant operations to handle the ERROR status update properly.
    */
-  protected void updatePushStatus(OfflinePushStatus pushStatus, ExecutionStatus newStatus, Optional<String> newStatusDetails){
-    String storeName = Version.parseStoreFromKafkaTopicName(pushStatus.getKafkaTopic());
+  protected void updatePushStatus(OfflinePushStatus expectedCurrPushStatus, ExecutionStatus newExecutionStatus, Optional<String> newExecutionStatusDetails){
+    final String kafkaTopic = expectedCurrPushStatus.getKafkaTopic();
+    String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopic);
     try (AutoCloseableLock ignore = clusterLockManager.createStoreWriteLock(storeName)) {
-      OfflinePushStatus clonedPushStatus = pushStatus.clonePushStatus();
-      clonedPushStatus.updateStatus(newStatus, newStatusDetails);
+      final OfflinePushStatus actualCurrPushStatus = getOfflinePushOrThrow(kafkaTopic);
+      if (!Objects.equals(actualCurrPushStatus, expectedCurrPushStatus)) {
+        logger.warn(String.format("For topic %s, the actual current push status is different from the expected current push status."
+            + " [actual current status = %s], [expected push status = %s]", kafkaTopic, actualCurrPushStatus, expectedCurrPushStatus));
+      }
+      if (!actualCurrPushStatus.validatePushStatusTransition(newExecutionStatus)) {
+        logger.warn(String.format("Skip updating push execution status for topic %s due to invalid transition from %s to %s",
+            kafkaTopic, actualCurrPushStatus.getCurrentStatus(), newExecutionStatus));
+        return;
+      }
+
+      OfflinePushStatus clonedPushStatus = expectedCurrPushStatus.clonePushStatus();
+      clonedPushStatus.updateStatus(newExecutionStatus, newExecutionStatusDetails);
       // Update remote storage
       offlinePushAccessor.updateOfflinePushStatus(clonedPushStatus);
       // Update local copy
-      topicToPushMap.put(pushStatus.getKafkaTopic(), clonedPushStatus);
+      topicToPushMap.put(kafkaTopic, clonedPushStatus);
     }
   }
 
