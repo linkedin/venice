@@ -4,6 +4,7 @@ import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controllerapi.ControllerResponse;
+import com.linkedin.venice.controllerapi.IncrementalPushVersionsResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.routes.PushJobStatusUploadResponse;
 import com.linkedin.venice.meta.Version;
@@ -23,6 +24,7 @@ import spark.Route;
 
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
 import static com.linkedin.venice.controllerapi.ControllerRoute.*;
+
 
 public class JobRoutes extends AbstractRoute {
   private InternalAvroSpecificSerializer<PushJobDetails> pushJobDetailsSerializer =
@@ -53,8 +55,8 @@ public class JobRoutes extends AbstractRoute {
     };
   }
 
-  protected JobStatusQueryResponse populateJobStatus(String cluster, String store,
-      int versionNumber, Admin admin, Optional<String> incrementalPushVersion) {
+  protected JobStatusQueryResponse populateJobStatus(String cluster, String store, int versionNumber, Admin admin,
+      Optional<String> incrementalPushVersion) {
     JobStatusQueryResponse responseObject = new JobStatusQueryResponse();
 
     Version version = new VersionImpl(store, versionNumber);
@@ -75,7 +77,8 @@ public class JobRoutes extends AbstractRoute {
      * Job status query should happen after 'querying offset' since job status query could
      * delete current topic
      */
-    Admin.OfflinePushStatusInfo offlineJobStatus = admin.getOffLinePushStatus(cluster, kafkaTopicName, incrementalPushVersion);
+    Admin.OfflinePushStatusInfo offlineJobStatus =
+        admin.getOffLinePushStatus(cluster, kafkaTopicName, incrementalPushVersion);
     responseObject.setStatus(offlineJobStatus.getExecutionStatus().toString());
     responseObject.setStatusDetails(offlineJobStatus.getStatusDetails().orElse(null));
     responseObject.setExtraInfo(offlineJobStatus.getExtraInfo());
@@ -95,7 +98,8 @@ public class JobRoutes extends AbstractRoute {
         // Also allow whitelist users to run this command
         if (!isWhitelistUsers(request) && !hasWriteAccessToTopic(request)) {
           response.status(HttpStatus.SC_FORBIDDEN);
-          responseObject.setError("You don't have permission to kill this push job; please grant write ACL for yourself.");
+          responseObject.setError(
+              "You don't have permission to kill this push job; please grant write ACL for yourself.");
           return AdminSparkServer.mapper.writeValueAsString(responseObject);
         }
         AdminSparkServer.validateParams(request, KILL_OFFLINE_PUSH_JOB.getParams(), admin);
@@ -103,7 +107,6 @@ public class JobRoutes extends AbstractRoute {
         String topic = request.queryParams(TOPIC);
         responseObject.setCluster(cluster);
         responseObject.setName(Version.parseStoreFromKafkaTopicName(topic));
-
 
         admin.killOfflinePush(cluster, topic, false);
       } catch (Throwable e) {
@@ -143,8 +146,8 @@ public class JobRoutes extends AbstractRoute {
         if (request.queryParams().contains(PUSH_JOB_DETAILS)) {
           String pushJobDetailsString = request.queryParams(PUSH_JOB_DETAILS);
           DatumReader<PushJobDetails> reader = new SpecificDatumReader<>(PushJobDetails.SCHEMA$);
-          pushJobDetails =
-              reader.read(null, DecoderFactory.defaultFactory().jsonDecoder(PushJobDetails.SCHEMA$, pushJobDetailsString));
+          pushJobDetails = reader.read(null,
+              DecoderFactory.defaultFactory().jsonDecoder(PushJobDetails.SCHEMA$, pushJobDetailsString));
         } else {
           pushJobDetails = pushJobDetailsSerializer.deserialize(null, request.bodyAsBytes());
         }
@@ -154,6 +157,26 @@ public class JobRoutes extends AbstractRoute {
         AdminSparkServer.handleError(e, request, response);
       }
       return AdminSparkServer.mapper.writeValueAsString(controllerResponse);
+    });
+  }
+
+  public Route getOngoingIncrementalPushVersions(Admin admin) {
+    return ((request, response) -> {
+      IncrementalPushVersionsResponse incrementalPushVersionsResponse = new IncrementalPushVersionsResponse();
+      response.type(HttpConstants.JSON);
+      try {
+        AdminSparkServer.validateParams(request, GET_ONGOING_INCREMENTAL_PUSH_VERSIONS.getParams(), admin);
+        String clusterName = request.queryParams(CLUSTER);
+        String versionTopic = request.queryParams(TOPIC);
+        incrementalPushVersionsResponse.setCluster(clusterName);
+        incrementalPushVersionsResponse.setName(Version.parseStoreFromKafkaTopicName(versionTopic));
+        incrementalPushVersionsResponse.setIncrementalPushVersions(
+            admin.getOngoingIncrementalPushVersions(clusterName, versionTopic));
+      } catch (Throwable e) {
+        incrementalPushVersionsResponse.setError(e.getMessage());
+        AdminSparkServer.handleError(e, request, response);
+      }
+      return AdminSparkServer.mapper.writeValueAsString(incrementalPushVersionsResponse);
     });
   }
 }

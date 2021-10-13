@@ -280,6 +280,27 @@ public class TestUtils {
     });
   }
 
+  public static void waitForNonDeterministicIncrementalPushCompletion(String topicName, String incrementalPushVersion,
+      ControllerClient controllerClient, long timeout, TimeUnit timeoutUnits, Optional<Logger> logger) {
+    waitForNonDeterministicCompletion(timeout, timeoutUnits, () -> {
+      String emptyPushStatus = controllerClient.queryJobStatus(topicName, Optional.of(incrementalPushVersion)).getStatus();
+      boolean ignoreError = false;
+      try {
+        assertNotEquals(emptyPushStatus, ExecutionStatus.ERROR.toString(), "Unexpected incremental push failure");
+        ignoreError = true;
+        assertEquals(emptyPushStatus, ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED.toString(),
+            "Incremental push is yet to complete");
+        return true;
+      } catch (AssertionError | VerifyError e) {
+        if (ignoreError) {
+          logger.ifPresent(value -> value.info(e.getMessage()));
+          return false;
+        }
+        throw e;
+      }
+    });
+  }
+
   public static Store createTestStore(String name, String owner, long createdTime) {
       Store store = new ZKStore(name, owner, createdTime, PersistenceType.IN_MEMORY, RoutingStrategy.CONSISTENT_HASH,
           ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_ALL_REPLICAS,

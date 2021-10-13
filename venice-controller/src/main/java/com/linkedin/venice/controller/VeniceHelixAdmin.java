@@ -4044,6 +4044,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         return monitor.getOfflinePushProgress(kafkaTopic);
     }
 
+    @Override
+    public Set<String> getOngoingIncrementalPushVersions(String clusterName, String kafkaTopic) {
+        checkControllerLeadershipFor(clusterName);
+        PushMonitor monitor = getHelixVeniceClusterResources(clusterName).getPushMonitor();
+        return monitor.getOngoingIncrementalPushVersions(kafkaTopic);
+    }
+
     // TODO remove this method once we are fully on HaaS
     // Create the controller cluster for venice cluster assignment if required.
     private void createControllerClusterIfRequired() {

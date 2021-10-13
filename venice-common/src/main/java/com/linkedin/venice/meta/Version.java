@@ -4,16 +4,12 @@ import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.systemstore.schemas.StoreVersion;
-import com.linkedin.venice.utils.AvroCompatibilityUtils;
-
-import org.codehaus.jackson.annotate.JsonIgnore;
-import org.codehaus.jackson.annotate.JsonProperty;
-
 import java.time.Duration;
 import java.util.Arrays;
-import java.util.Objects;
 import java.util.Optional;
+import org.codehaus.jackson.annotate.JsonIgnore;
 import org.codehaus.jackson.map.annotate.JsonDeserialize;
+
 
 /**
  * This interface defines all the public APIs, and if you need to add accessors to
@@ -30,6 +26,11 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
    * Special number indicating no replication metadata version is set.
    */
   int REPLICATION_METADATA_VERSION_ID_UNSET = -1;
+
+  /**
+   * Prefix used in push id to indicate the version's data source is coming from an existing version topic.
+   */
+  String VENICE_RE_PUSH_PUSH_ID_PREFIX = "venice_re_push_";
 
   /**
    * Producer type for writing data to Venice
@@ -327,5 +328,16 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
 
   static String numberBasedDummyPushId(int number){
     return "push_for_version_" + number;
+  }
+
+  static String generateRePushId(String pushId) {
+    return VENICE_RE_PUSH_PUSH_ID_PREFIX + pushId;
+  }
+
+  static boolean isPushIdRePush(String pushId) {
+    if (pushId == null || pushId.isEmpty()) {
+      return false;
+    }
+    return pushId.startsWith(VENICE_RE_PUSH_PUSH_ID_PREFIX);
   }
 }

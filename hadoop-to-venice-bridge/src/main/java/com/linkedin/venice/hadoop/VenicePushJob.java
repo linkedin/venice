@@ -6,6 +6,7 @@ import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
+import com.linkedin.venice.controllerapi.IncrementalPushVersionsResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
@@ -273,6 +274,10 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
   public static final String ZSTD_COMPRESSION_LEVEL = "zstd.compression.level";
   public static final int DEFAULT_BATCH_BYTES_SIZE = 1000000;
   public static final boolean SORTED = true;
+  /**
+   * The rewind override when performing re-push with an ongoing incremental push to RT to prevent data loss.
+   */
+  public static final long RE_PUSH_REWIND_OVERRIDE_WITH_INCREMENTAL_PUSH_TO_RT_IN_SECONDS = 7 * Time.SECONDS_PER_DAY;
   private static final Logger logger = Logger.getLogger(VenicePushJob.class);
 
   /**
@@ -824,6 +829,10 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
         Optional<ByteBuffer> optionalCompressionDictionary = getCompressionDictionary();
         long pushStartTimeMs = System.currentTimeMillis();
         String pushId = pushStartTimeMs + "_" + props.getString(JOB_EXEC_URL, "failed_to_obtain_execution_url");
+        if (pushJobSetting.isSourceKafka) {
+          pushId = Version.generateRePushId(pushId);
+          checkConflictWithIncrementalPush(pushJobSetting.kafkaInputTopic, storeSetting.sourceKafkaInputVersionInfo);
+        }
         // Create new store version, topic and fetch Kafka url from backend
         createNewStoreVersion(pushJobSetting, inputFileDataSize, controllerClient, pushId, props, optionalCompressionDictionary);
         updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.NEW_VERSION_CREATED);
@@ -1580,6 +1589,29 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
 
   private Version.PushType getPushType(PushJobSetting pushJobSetting) {
     return pushJobSetting.isIncrementalPush ? Version.PushType.INCREMENTAL : Version.PushType.BATCH;
+  }
+
+  private void checkConflictWithIncrementalPush(String sourceKafkaTopic, Version sourceVersion) {
+    if (sourceVersion.isIncrementalPushEnabled()) {
+      IncrementalPushVersionsResponse incrementalPushVersionsResponse =
+          ControllerClient.retryableRequest(controllerClient, pushJobSetting.controllerRetries,
+              c -> c.getOngoingIncrementalPushVersions(sourceKafkaTopic));
+      Set<String> ongoingIncrementalPushVersions = incrementalPushVersionsResponse.getIncrementalPushVersions();
+      if (!ongoingIncrementalPushVersions.isEmpty()) {
+        if (sourceVersion.getIncrementalPushPolicy() == IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME) {
+          pushJobSetting.rewindTimeInSecondsOverride = RE_PUSH_REWIND_OVERRIDE_WITH_INCREMENTAL_PUSH_TO_RT_IN_SECONDS;
+          logger.info("Overriding re-push rewind time in seconds to: "
+              + RE_PUSH_REWIND_OVERRIDE_WITH_INCREMENTAL_PUSH_TO_RT_IN_SECONDS
+              + " due to ongoing incremental push to source topic: " + sourceKafkaTopic
+              + " with incremental push versions: " + String.join(",", ongoingIncrementalPushVersions));
+        } else {
+          throw new VeniceException("Cannot perform re-push with source topic: " + sourceKafkaTopic
+              + " with incremental push policy: " + sourceVersion.getIncrementalPushPolicy().toString()
+              + " due to ongoing incremental push version(s): "
+              + String.join(",", ongoingIncrementalPushVersions));
+        }
+      }
+    }
   }
 
   /**

@@ -1,5 +1,6 @@
 package com.linkedin.venice.endToEnd;
 
+import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
@@ -21,22 +22,31 @@ import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.VenicePushJob;
+import com.linkedin.venice.integration.utils.MirrorMakerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiColoMultiClusterWrapper;
 import com.linkedin.venice.kafka.TopicManager;
+import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
+import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.utils.TestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 
 import io.tehuti.Metric;
 
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.Optional;
+import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import org.apache.avro.Schema;
 import org.apache.avro.util.Utf8;
 import org.apache.log4j.Logger;
@@ -76,7 +86,12 @@ public class TestMultiDataCenterPush {
 
   @BeforeClass
   public void setUp() {
-    multiColoMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiColoMultiClusterWrapper(NUMBER_OF_CHILD_DATACENTERS, NUMBER_OF_CLUSTERS, 1, 1, 1, 1);
+    Properties serverProperties = new Properties();
+    serverProperties.setProperty(ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1));
+    multiColoMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiColoMultiClusterWrapper(
+        NUMBER_OF_CHILD_DATACENTERS, NUMBER_OF_CLUSTERS, 1, 1, 1, 1,
+        1, Optional.empty(), Optional.empty(), Optional.of(new VeniceProperties(serverProperties)), false,
+        MirrorMakerWrapper.DEFAULT_TOPIC_WHITELIST);
 
     childClusters = multiColoMultiClusterWrapper.getClusters();
     childControllers = childClusters.stream()
@@ -139,21 +154,13 @@ public class TestMultiDataCenterPush {
       for (int dataCenterIndex = 0; dataCenterIndex < NUMBER_OF_CHILD_DATACENTERS; dataCenterIndex++) {
         VeniceMultiClusterWrapper veniceCluster = childClusters.get(dataCenterIndex);
         String routerUrl = veniceCluster.getClusters().get(clusterName).getRandomRouterURL();
-        try (AvroGenericStoreClient<String, Object> client = ClientFactory.getAndStartGenericAvroClient(
-            ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerUrl))) {
-          for (int i = 1; i <= 100; ++i) {
-            String expected = "test_name_" + i;
-            String actual = client.get(Integer.toString(i)).get().toString(); /* client.get().get() returns a Utf8 object */
-            Assert.assertEquals(actual, expected);
-          }
-
-          try (ControllerClient controllerClient = new ControllerClient(clusterName, routerUrl)) {
-            JobStatusQueryResponse jobStatus = controllerClient.queryJobStatus(job.getKafkaTopic());
-            Assert.assertFalse(jobStatus.isError(), "Error in getting JobStatusResponse: " + jobStatus.getError());
-            Assert.assertEquals(jobStatus.getStatus(), ExecutionStatus.COMPLETED.toString(),
-                "After job is complete, status should reflect that");
-            // We won't verify progress any more here since we decided to disable this feature
-          }
+        verifyVeniceStoreData(storeName, routerUrl, DEFAULT_USER_DATA_VALUE_PREFIX, DEFAULT_USER_DATA_RECORD_COUNT);
+        try (ControllerClient controllerClient = new ControllerClient(clusterName, routerUrl)) {
+          JobStatusQueryResponse jobStatus = controllerClient.queryJobStatus(job.getKafkaTopic());
+          Assert.assertFalse(jobStatus.isError(), "Error in getting JobStatusResponse: " + jobStatus.getError());
+          Assert.assertEquals(jobStatus.getStatus(), ExecutionStatus.COMPLETED.toString(),
+              "After job is complete, status should reflect that");
+          // We won't verify progress any more here since we decided to disable this feature
         }
       }
     }
@@ -393,6 +400,146 @@ public class TestMultiDataCenterPush {
       }
       return allFailedMessagesSkipped;
     });
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testMultiDataCenterRePushWithIncrementalPush() throws Exception {
+    String clusterName = CLUSTER_NAMES[0];
+    File inputDir = getTempDataDirectory();
+    Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir);
+    String inputDirPath = "file:" + inputDir.getAbsolutePath();
+    String storeName = TestUtils.getUniqueString("test-re-push-store");
+    long userSetHybridRewindInSeconds = Time.SECONDS_PER_DAY;
+    VeniceControllerWrapper parentController =
+        parentControllers.stream().filter(c -> c.isMasterController(clusterName)).findAny().get();
+    Properties props = defaultH2VProps(parentController.getControllerUrl(), inputDirPath, storeName);
+    createStoreForJob(clusterName, recordSchema, props).close();
+    VeniceWriter<String, String, byte[]> incPushToVTWriter = null;
+    VeniceWriter<String, String, byte[]> incPushToRTWriter = null;
+    try (ControllerClient parentControllerClient =
+        new ControllerClient(clusterName, parentController.getControllerUrl())) {
+      // Enable incremental push with PUSH_TO_VERSION_TOPIC policy in preparation for later tests.
+      Assert.assertFalse(parentControllerClient.updateStore(storeName,
+          new UpdateStoreQueryParams()
+              .setIncrementalPushEnabled(true)
+              .setIncrementalPushPolicy(IncrementalPushPolicy.PUSH_TO_VERSION_TOPIC)).isError());
+      try (VenicePushJob initialPushJob = new VenicePushJob("Test re-push job initial push", props)) {
+        initialPushJob.run();
+      }
+      String incPushToVTVersion = System.currentTimeMillis() + "_test_inc_push_to_vt";
+      incPushToVTWriter = startIncrementalPush(parentControllerClient, storeName,
+          parentController.getVeniceAdmin().getVeniceWriterFactory(), incPushToVTVersion);
+      final String versionTopicName = incPushToVTWriter.getTopicName();
+      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+        Assert.assertEquals(parentControllerClient.getOngoingIncrementalPushVersions(versionTopicName)
+            .getIncrementalPushVersions().iterator().next(), incPushToVTVersion);
+      });
+      // Re-push should fail now since there is an ongoing incremental push with incompatible incremental push policy.
+      props.setProperty(SOURCE_KAFKA, "true");
+      props.setProperty(KAFKA_INPUT_TOPIC, versionTopicName);
+      props.setProperty(KAFKA_INPUT_BROKER_URL, multiColoMultiClusterWrapper.getParentKafkaBrokerWrapper().getAddress());
+      props.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
+      props.setProperty(VeniceWriter.ENABLE_CHUNKING, "false");
+      props.setProperty(ALLOW_KIF_REPUSH_FOR_INC_PUSH_FROM_VT_TO_VT, "true");
+      try (VenicePushJob rePushJob = new VenicePushJob("Test re-push job re-push", props)) {
+        rePushJob.run();
+        Assert.fail("Re-push with an incompatible ongoing incremental push should fail");
+      } catch (Exception e) {
+        Assert.assertTrue(e.getMessage().contains("due to ongoing incremental push version"));
+      }
+      // Complete the incremental push and re-push should be unblocked.
+      incPushToVTWriter.broadcastEndOfIncrementalPush(incPushToVTVersion, new HashMap<>());
+      TestUtils.waitForNonDeterministicIncrementalPushCompletion(versionTopicName, incPushToVTVersion,
+          parentControllerClient, 10, TimeUnit.SECONDS, Optional.empty());
+      try (VenicePushJob rePushJob = new VenicePushJob("Test re-push job re-push", props)) {
+        rePushJob.run();
+      }
+      // Update the store to L/F hybrid and enable INCREMENTAL_PUSH_SAME_AS_REAL_TIME.
+      Assert.assertFalse(parentControllerClient.updateStore(storeName,
+          new UpdateStoreQueryParams()
+              .setIncrementalPushPolicy(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME)
+              .setLeaderFollowerModel(true)
+              .setHybridOffsetLagThreshold(1)
+              .setHybridRewindSeconds(userSetHybridRewindInSeconds)).isError());
+      props.setProperty(KAFKA_INPUT_TOPIC, Version.composeKafkaTopic(storeName, 2));
+      try (VenicePushJob rePushJob = new VenicePushJob("Test re-push job re-push", props)) {
+        rePushJob.run();
+      }
+      String incPushToRTVersion = System.currentTimeMillis() + "_test_inc_push_to_rt";
+      incPushToRTWriter = startIncrementalPush(parentControllerClient, storeName,
+          parentController.getVeniceAdmin().getVeniceWriterFactory(), incPushToRTVersion);
+      final String newVersionTopic = Version.composeKafkaTopic(storeName, parentControllerClient.getStore(storeName)
+          .getStore().getLargestUsedVersionNumber());
+      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+        Set<String> ongoingIncrementalVersions =
+            parentControllerClient.getOngoingIncrementalPushVersions(newVersionTopic).getIncrementalPushVersions();
+        Assert.assertFalse(ongoingIncrementalVersions.isEmpty());
+        Assert.assertEquals(ongoingIncrementalVersions.iterator().next(), incPushToRTVersion);
+      });
+      // Incremental push shouldn't be blocked and we will complete it once the new re-push is started.
+      String incValuePrefix = "inc_test_";
+      int newRePushVersion = Version.parseVersionFromKafkaTopicName(newVersionTopic) + 1;
+      VeniceWriter<String, String, byte[]> finalIncPushToRTWriter = incPushToRTWriter;
+      CompletableFuture.runAsync(() -> {
+        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+          Assert.assertEquals(parentControllerClient.getStore(storeName).getStore().getLargestUsedVersionNumber(),
+              newRePushVersion);
+        });
+        for (int i = 1; i <= 10; i++) {
+          finalIncPushToRTWriter.put(Integer.toString(i), incValuePrefix + i, 1);
+        }
+        finalIncPushToRTWriter.broadcastEndOfIncrementalPush(incPushToRTVersion, new HashMap<>());
+      });
+      // The re-push should complete and contain all the incremental push to RT data.
+      props.setProperty(KAFKA_INPUT_TOPIC, newVersionTopic);
+      try (VenicePushJob rePushJob = new VenicePushJob("Test re-push job re-push", props)) {
+        rePushJob.run();
+      }
+      // Rewind should be overwritten.
+      Optional<Version> latestVersion =
+          parentControllerClient.getStore(storeName).getStore().getVersion(newRePushVersion);
+      Assert.assertTrue(latestVersion.isPresent());
+      Assert.assertEquals(latestVersion.get().getHybridStoreConfig().getRewindTimeInSeconds(),
+          VenicePushJob.RE_PUSH_REWIND_OVERRIDE_WITH_INCREMENTAL_PUSH_TO_RT_IN_SECONDS);
+      for (int dataCenterIndex = 0; dataCenterIndex < NUMBER_OF_CHILD_DATACENTERS; dataCenterIndex++) {
+        String routerUrl = childClusters.get(dataCenterIndex).getClusters().get(clusterName).getRandomRouterURL();
+        verifyVeniceStoreData(storeName, routerUrl, incValuePrefix, 10);
+      }
+    } finally {
+      if (incPushToVTWriter != null) {
+        incPushToVTWriter.close();
+      }
+      if (incPushToRTWriter != null) {
+        incPushToRTWriter.close();
+      }
+    }
+  }
+
+  private VeniceWriter<String, String, byte[]> startIncrementalPush(ControllerClient controllerClient, String storeName,
+      VeniceWriterFactory veniceWriterFactory, String incrementalPushVersion) {
+    VersionCreationResponse response = controllerClient.requestTopicForWrites(storeName, 1024,
+        Version.PushType.INCREMENTAL, "test-incremental-push", false, true, false, Optional.empty(),
+        Optional.empty(), Optional.empty(), false, -1);
+    Assert.assertFalse(response.isError());
+    Assert.assertNotNull(response.getKafkaTopic());
+    VeniceWriter veniceWriter  =
+        veniceWriterFactory.createVeniceWriter(response.getKafkaTopic(),
+            new VeniceAvroKafkaSerializer(STRING_SCHEMA), new VeniceAvroKafkaSerializer(STRING_SCHEMA));
+    veniceWriter.broadcastStartOfIncrementalPush(incrementalPushVersion, new HashMap<>());
+    return veniceWriter;
+  }
+
+  private void verifyVeniceStoreData(String storeName, String routerUrl, String valuePrefix, int keyCount)
+      throws ExecutionException, InterruptedException {
+    try (AvroGenericStoreClient<String, Object> client = ClientFactory.getAndStartGenericAvroClient(
+        ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerUrl))) {
+      for (int i = 1; i <= keyCount; ++i) {
+        String expected = valuePrefix + i;
+        Object actual = client.get(Integer.toString(i)).get(); /* client.get().get() returns a Utf8 object */
+        Assert.assertNotNull(actual, "Unexpected null value for key: " + i);
+        Assert.assertEquals(actual.toString(), expected);
+      }
+    }
   }
 
   private byte[] getStoreUpdateMessage(String clusterName, String storeName, String owner, long executionId, AdminOperationSerializer adminOperationSerializer) {

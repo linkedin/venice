@@ -20,6 +20,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import org.apache.log4j.Logger;
@@ -209,5 +210,10 @@ public class PushMonitorDelegator implements PushMonitor {
 
   public List<Instance> getReadyToServeInstances(PartitionAssignment partitionAssignment, int partitionId) {
     return getPushMonitor(partitionAssignment.getTopic()).getReadyToServeInstances(partitionAssignment, partitionId);
+  }
+
+  @Override
+  public Set<String> getOngoingIncrementalPushVersions(String topic) {
+    return getPushMonitor(topic).getOngoingIncrementalPushVersions(topic);
   }
 }

@@ -56,6 +56,7 @@ import com.linkedin.venice.controller.migration.MigrationPushStrategyZKAccessor;
 import com.linkedin.venice.controllerapi.AdminCommandExecution;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
+import com.linkedin.venice.controllerapi.IncrementalPushVersionsResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.MultiStoreStatusResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
@@ -2197,6 +2198,18 @@ public class VeniceParentHelixAdmin implements Admin {
   public Map<String, Long> getOfflinePushProgress(String clusterName, String kafkaTopic){
     Map<String, ControllerClient> controllerClients = veniceHelixAdmin.getControllerClientMap(clusterName);
     return getOfflineJobProgress(clusterName, kafkaTopic, controllerClients);
+  }
+
+  @Override
+  public Set<String> getOngoingIncrementalPushVersions(String clusterName, String kafkaTopic) {
+    veniceHelixAdmin.checkControllerLeadershipFor(clusterName);
+    Set<String> result = new HashSet<>();
+    for (ControllerClient controllerClient : veniceHelixAdmin.getControllerClientMap(clusterName).values()) {
+      IncrementalPushVersionsResponse response = controllerClient.getOngoingIncrementalPushVersions(kafkaTopic);
+      // return any ongoing incremental push version we find in any of the child data centers.
+      result.addAll(response.getIncrementalPushVersions());
+    }
+    return result;
   }
 
   protected static Map<String, Long> getOfflineJobProgress(String clusterName, String kafkaTopic, Map<String, ControllerClient> controllerClients){
