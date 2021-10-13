@@ -19,6 +19,7 @@ import com.linkedin.venice.hadoop.heartbeat.NoOpPushJobHeartbeatSenderFactory;
 import com.linkedin.venice.hadoop.heartbeat.PushJobHeartbeatSender;
 import com.linkedin.venice.hadoop.heartbeat.PushJobHeartbeatSenderFactory;
 import com.linkedin.venice.hadoop.input.kafka.KafkaInputFormat;
+import com.linkedin.venice.hadoop.input.kafka.KafkaInputOffsetTracker;
 import com.linkedin.venice.hadoop.input.kafka.KafkaInputRecordReader;
 import com.linkedin.venice.hadoop.input.kafka.VeniceKafkaInputMapper;
 import com.linkedin.venice.hadoop.input.kafka.VeniceKafkaInputReducer;
@@ -324,6 +325,8 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
   private SentPushJobDetailsTracker sentPushJobDetailsTracker;
   private Class<? extends Partitioner> mapRedPartitionerClass = VeniceMRPartitioner.class;
 
+  private KafkaInputOffsetTracker kafkaInputOffsetTracker;
+
   protected static class SchemaInfo {
     boolean isAvro = true;
     int valueSchemaId; // Value schema id retrieved from backend for valueSchemaString
@@ -408,6 +411,8 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
     boolean isWriteComputeEnabled;
     boolean isIncrementalPushEnabled;
     Version sourceKafkaInputVersionInfo;
+    Version sourceKafkaOutputVersionInfo;
+
   }
 
   protected StoreSetting storeSetting;
@@ -740,6 +745,11 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
     this.pushJobHeartbeatSenderFactory = pushJobHeartbeatSenderFactory;
   }
 
+  // Visible for testing
+  protected void setKafkaInputOffsetTracker(KafkaInputOffsetTracker kafkaInputOffsetTracker) {
+    this.kafkaInputOffsetTracker = kafkaInputOffsetTracker;
+  }
+
   /**
    * @throws VeniceException
    */
@@ -832,6 +842,15 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
         // If reducer phase is enabled, each reducer will sort all the messages inside one single
         // topic partition.
         setupMRConf(jobConf, kafkaTopicInfo, pushJobSetting, schemaInfo, storeSetting, props, jobId, inputDirectory);
+
+        //cache the latest VT offsets now, will be used to compare the latest offsets after the job finishes.
+        if (pushJobSetting.isSourceKafka && kafkaInputOffsetTrackingNeeded()) {
+          if (kafkaInputOffsetTracker == null) {
+            kafkaInputOffsetTracker = new KafkaInputOffsetTracker(jobConf);
+          }
+          kafkaInputOffsetTracker.markLatestOffsetAtBeginning();
+        }
+
         if (pushJobSetting.isIncrementalPush) {
           /**
            * N.B.: For now, we always send control messages directly for incremental pushes, regardless of
@@ -862,11 +881,29 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
              */
           }
           runJobAndUpdateStatus();
+
+          /**
+           * Verify that the end offsets did not change before and after the KIF repush job
+           */
+          if (pushJobSetting.isSourceKafka && kafkaInputOffsetTrackingNeeded()) {
+            kafkaInputOffsetTracker.markLatestOffsetAtEnd();
+            if (!kafkaInputOffsetTracker.compareOffsetsAtBeginningAndEnd()) {
+              throw new VeniceException("Store: " + pushJobSetting.storeName
+                  + " source VT topic offsets does not match before and after the push job. This could be "
+                  + "possible if a incremental push to VT has run while this repush was going on");
+            } else {
+              logger.info("Store: " + pushJobSetting.storeName
+                  + " Source VT topic offsets matches before and after the push job");
+            }
+          }
+
           if (pushJobSetting.sendControlMessagesDirectly) {
             getVeniceWriter(kafkaTopicInfo).broadcastEndOfPush(Collections.emptyMap());
           } else {
             controllerClient.writeEndOfPush(pushJobSetting.storeName, kafkaTopicInfo.version);
           }
+
+
         }
         // Close VeniceWriter before polling job status since polling job status could
         // trigger job deletion
@@ -921,6 +958,11 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
         pushJobHeartbeatSender.stop();
       }
       inputDataInfoProvider = null;
+
+      if (kafkaInputOffsetTracker != null) {
+        kafkaInputOffsetTracker.close();
+        kafkaInputOffsetTracker = null;
+      }
     }
   }
 
@@ -1631,6 +1673,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
             + " with urls: " + setting.veniceControllerUrl);
       }
       Version newVersion = newVersionOptional.get();
+      storeSetting.sourceKafkaOutputVersionInfo = newVersion;
       Version sourceVersion = storeSetting.sourceKafkaInputVersionInfo;
 
       if (sourceVersion.getCompressionStrategy() != newVersion.getCompressionStrategy()) {
@@ -2231,6 +2274,16 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
     } else {
       return clusterDiscoveryResponse.getCluster();
     }
+  }
+
+  private boolean kafkaInputOffsetTrackingNeeded() {
+    return (
+        (storeSetting.sourceKafkaInputVersionInfo.isIncrementalPushEnabled() && storeSetting.sourceKafkaInputVersionInfo
+            .getIncrementalPushPolicy()
+            .equals(IncrementalPushPolicy.PUSH_TO_VERSION_TOPIC)) && (
+            storeSetting.sourceKafkaOutputVersionInfo.isIncrementalPushEnabled()
+                && storeSetting.sourceKafkaOutputVersionInfo.getIncrementalPushPolicy()
+                .equals(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME)));
   }
 
   public String getKafkaTopic() {
