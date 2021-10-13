@@ -7,6 +7,7 @@ import com.linkedin.venice.utils.Pair;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 
 /**
@@ -113,4 +114,11 @@ public interface PushMonitor {
   void recordPushPreparationDuration(String topic, long offlinePushWaitTimeInSecond);
 
   List<Instance> getReadyToServeInstances(PartitionAssignment partitionAssignment, int partitionId);
+
+  /**
+   * Check if there are any ongoing incremental push for the given version topic.
+   * @param topic to check for ongoing incremental push
+   * @return ongoing incremental push versions if there are any, otherwise an empty set is returned.
+   */
+  Set<String> getOngoingIncrementalPushVersions(String topic);
 }

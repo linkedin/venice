@@ -220,6 +220,10 @@ public class TestPushUtils {
 
   public static final String STRING_SCHEMA = "\"string\"";
 
+  public static final int DEFAULT_USER_DATA_RECORD_COUNT = 100;
+
+  public static final String DEFAULT_USER_DATA_VALUE_PREFIX = "test_name_";
+
   public static File getTempDataDirectory() {
     return TestUtils.getTempDataDirectory();
   }
@@ -237,7 +241,7 @@ public class TestPushUtils {
 
   public static Schema writeSimpleAvroFileWithUserSchema(File parentDir, boolean fileNameWithAvroSuffix)
       throws IOException {
-    return writeSimpleAvroFileWithUserSchema(parentDir, fileNameWithAvroSuffix, 100);
+    return writeSimpleAvroFileWithUserSchema(parentDir, fileNameWithAvroSuffix, DEFAULT_USER_DATA_RECORD_COUNT);
   }
 
   public static Schema writeSimpleAvroFileWithUserSchema(File parentDir, boolean fileNameWithAvroSuffix, int recordCount)
@@ -250,11 +254,10 @@ public class TestPushUtils {
     }
     return writeAvroFile(parentDir, fileName, USER_SCHEMA_STRING,
         (recordSchema, writer) -> {
-          String name = "test_name_";
           for (int i = 1; i <= recordCount; ++i) {
             GenericRecord user = new GenericData.Record(recordSchema);
             user.put("id", Integer.toString(i));
-            user.put("name", name + i);
+            user.put("name", DEFAULT_USER_DATA_VALUE_PREFIX + i);
             user.put("age", i);
             writer.append(user);
           }
@@ -272,7 +275,6 @@ public class TestPushUtils {
 
     return writeAvroFile(parentDir, fileName, getETLStoreSchemaString(ETL_KEY_SCHEMA_STRING, ETL_VALUE_SCHEMA_STRING),
         (recordSchema, writer) -> {
-          String name = "test_name_";
           for (int i = 1; i <= 50; ++i) {
             GenericRecord user = new GenericData.Record(recordSchema);
 
@@ -280,7 +282,7 @@ public class TestPushUtils {
             GenericRecord value = new GenericData.Record(Schema.parse(ETL_VALUE_SCHEMA_STRING));
 
             key.put("id", Integer.toString(i));
-            value.put("name", name + i);
+            value.put("name", DEFAULT_USER_DATA_VALUE_PREFIX + i);
 
             user.put("opalSegmentIdPart", 0);
             user.put("opalSegmentIdSeq", 0);
@@ -583,11 +585,10 @@ public class TestPushUtils {
   public static Schema writeSimpleAvroFileWithUserSchema2(File parentDir) throws IOException {
     return writeAvroFile(parentDir, "simple_user.avro", USER_SCHEMA_STRING,
         (recordSchema, writer) -> {
-          String name = "test_name_";
           for (int i = 51; i <= 150; ++i) {
             GenericRecord user = new GenericData.Record(recordSchema);
             user.put("id", Integer.toString(i));
-            user.put("name", name + (i * 2));
+            user.put("name", DEFAULT_USER_DATA_VALUE_PREFIX + (i * 2));
             user.put("age", i * 2);
             writer.append(user);
           }
@@ -601,11 +602,10 @@ public class TestPushUtils {
   public static Schema writeSimpleAvroFileWithUserSchema3(File parentDir) throws IOException {
     return writeAvroFile(parentDir, "simple_user.avro", USER_SCHEMA_STRING,
         (recordSchema, writer) -> {
-          String name = "test_name_";
           for (int i = 51; i <= 200; ++i) {
             GenericRecord user = new GenericData.Record(recordSchema);
             user.put("id", Integer.toString(i));
-            user.put("name", name + (i * 3));
+            user.put("name", DEFAULT_USER_DATA_VALUE_PREFIX + (i * 3));
             user.put("age", i * 3);
             writer.append(user);
           }
@@ -790,10 +790,9 @@ public class TestPushUtils {
 
     writeVsonFile(vsonKey, vsonValue, parentDir,  "complex_user_vson-file",
         (keySerializer, valueSerializer, writer) ->{
-          String name = "test_name_";
           for (int i = 1; i <= 100; i++) {
             Map<String, Object> valueRecord = new HashMap<>();
-            valueRecord.put("name", name + i);
+            valueRecord.put("name", DEFAULT_USER_DATA_VALUE_PREFIX + i);
             valueRecord.put("age", i);
             writer.append(new BytesWritable(keySerializer.toBytes(Integer.toString(i))),
                 new BytesWritable(valueSerializer.toBytes(valueRecord)));

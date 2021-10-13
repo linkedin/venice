@@ -103,8 +103,11 @@ public enum ControllerRoute {
   CONFIGURE_NATIVE_REPLICATION_FOR_CLUSTER("/configure_native_replication_for_cluster", HttpMethod.POST, Arrays.asList(CLUSTER, STORE_TYPE, STATUS)),
   CONFIGURE_ACTIVE_ACTIVE_REPLICATION_FOR_CLUSTER("/configure_active_active_replication_for_cluster", HttpMethod.POST, Arrays.asList(CLUSTER, STORE_TYPE, STATUS)),
   GET_DELETABLE_STORE_TOPICS("/get_deletable_store_topics", HttpMethod.GET, Collections.emptyList()),
-  GET_ALL_REPLICATION_METADATA_SCHEMAS("/get_all_replication_metadata_schemas", HttpMethod.GET, Arrays.asList(NAME)),
-  CONFIGURE_INCREMENTAL_PUSH_FOR_CLUSTER("/configure_incremental_push_for_cluster", HttpMethod.POST, Arrays.asList(CLUSTER, INCREMENTAL_PUSH_POLICY));
+  GET_ALL_REPLICATION_METADATA_SCHEMAS("/get_all_replication_metadata_schemas", HttpMethod.GET,
+      Collections.singletonList(NAME)),
+  CONFIGURE_INCREMENTAL_PUSH_FOR_CLUSTER("/configure_incremental_push_for_cluster", HttpMethod.POST, Arrays.asList(CLUSTER, INCREMENTAL_PUSH_POLICY)),
+  GET_ONGOING_INCREMENTAL_PUSH_VERSIONS("/get_ongoing_incremental_push_versions", HttpMethod.GET,
+      Collections.singletonList(TOPIC));
 
 
   private final String path;

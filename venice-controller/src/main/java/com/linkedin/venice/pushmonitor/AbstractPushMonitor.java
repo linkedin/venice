@@ -24,6 +24,7 @@ import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -658,6 +659,18 @@ public abstract class AbstractPushMonitor
   public void recordPushPreparationDuration(String topic, long offlinePushWaitTimeInSecond) {
     String storeName = Version.parseStoreFromKafkaTopicName(topic);
     aggPushHealthStats.recordPushPrepartionDuration(storeName, offlinePushWaitTimeInSecond);
+  }
+
+  @Override
+  public Set<String> getOngoingIncrementalPushVersions(String topic) {
+    OfflinePushStatus pushStatus = getOfflinePush(topic);
+    Set<String> result = new HashSet<>();
+    if (pushStatus != null) {
+      // No ongoing push job of any kind for the given topic
+      result.addAll(pushStatus.getOngoingIncrementalPushVersions(getRoutingDataRepository()
+          .getPartitionAssignments(topic)));
+    }
+    return result;
   }
 
   /**

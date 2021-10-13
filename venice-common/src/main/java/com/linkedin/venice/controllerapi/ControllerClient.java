@@ -504,6 +504,14 @@ public class ControllerClient implements Closeable {
     return request(ControllerRoute.JOB, params, JobStatusQueryResponse.class, timeoutMs, 1, null);
   }
 
+  public IncrementalPushVersionsResponse getOngoingIncrementalPushVersions(String versionTopic) {
+    if (!Version.isVersionTopic(versionTopic)) {
+      throw new IllegalArgumentException("Invalid version topic: " + versionTopic);
+    }
+    QueryParams params = newParams().add(TOPIC, versionTopic);
+    return request(ControllerRoute.GET_ONGOING_INCREMENTAL_PUSH_VERSIONS, params, IncrementalPushVersionsResponse.class);
+  }
+
   // TODO remove passing PushJobDetails as JSON string once all H2V plugins are updated.
   public ControllerResponse sendPushJobDetails(String storeName, int version, String pushJobDetailsString) {
     QueryParams params = newParams()

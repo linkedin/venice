@@ -312,6 +312,14 @@ public interface Admin extends AutoCloseable, Closeable {
     Map<String, Long> getOfflinePushProgress(String clusterName, String kafkaTopic);
 
     /**
+     * Get ongoing incremental push versions for a given version topic if there are any.
+     * @param clusterName of the store.
+     * @param kafkaTopic to check for potential incremental push on.
+     * @return the ongoing incremental push versions or an empty set if there aren't any.
+     */
+    Set<String> getOngoingIncrementalPushVersions(String clusterName, String kafkaTopic);
+
+    /**
      * Return the ssl or non-ssl bootstrap servers based on the given flag.
      * @return kafka bootstrap servers url, if there are multiple will be comma separated.
      */
