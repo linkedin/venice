@@ -3,7 +3,7 @@ package com.linkedin.venice.integration;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
-import com.linkedin.venice.router.httpclient.HttpClientUtils;
+import com.linkedin.venice.httpclient.HttpClientUtils;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.Utils;
 import java.io.IOException;

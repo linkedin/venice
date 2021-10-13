@@ -1,6 +1,6 @@
-package com.linkedin.venice.router.httpclient;
+package com.linkedin.venice.httpclient;
 
-import com.linkedin.venice.router.stats.DnsLookupStats;
+import com.linkedin.venice.stats.DnsLookupStats;
 import java.io.Closeable;
 import java.io.IOException;
 import java.net.InetAddress;

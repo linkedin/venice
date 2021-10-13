@@ -39,7 +39,7 @@ public class IsolatedIngestionServerTest {
   public void testShutdownAfterHeartbeatTimeout() {
     int servicePort = Utils.getFreePort();
     VeniceConfigLoader configLoader = getConfigLoader(servicePort);
-    try (MainIngestionRequestClient client = new MainIngestionRequestClient(IsolatedIngestionUtils.getSSLFactoryForInterProcessCommunication(configLoader), servicePort)) {
+    try (MainIngestionRequestClient client = new MainIngestionRequestClient(IsolatedIngestionUtils.getSSLEngineComponentFactory(configLoader), servicePort)) {
       Process isolatedIngestionService = client.startForkedIngestionProcess(configLoader);
       TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, false, () -> {
         Assert.assertTrue(client.sendHeartbeatRequest());
@@ -54,7 +54,7 @@ public class IsolatedIngestionServerTest {
   public void testReleaseTargetPortBinding() {
     int servicePort = Utils.getFreePort();
     VeniceConfigLoader configLoader = getConfigLoader(servicePort);
-    try (MainIngestionRequestClient client = new MainIngestionRequestClient(IsolatedIngestionUtils.getSSLFactoryForInterProcessCommunication(configLoader), servicePort)) {
+    try (MainIngestionRequestClient client = new MainIngestionRequestClient(IsolatedIngestionUtils.getSSLEngineComponentFactory(configLoader), servicePort)) {
       // Make sure the process is forked successfully.
       ForkedJavaProcess isolatedIngestionService = (ForkedJavaProcess) client.startForkedIngestionProcess(configLoader);
       Assert.assertTrue(isolatedIngestionService.isAlive());

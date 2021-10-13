@@ -14,6 +14,7 @@ import com.linkedin.davinci.notifier.RelayNotifier;
 import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
+import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionComponentType;
 import com.linkedin.venice.security.SSLFactory;
@@ -43,7 +44,7 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend implements
   private final MainIngestionRequestClient mainIngestionRequestClient;
   private final MainIngestionMonitorService mainIngestionMonitorService;
   private final VeniceConfigLoader configLoader;
-  private final Optional<SSLFactory> sslFactory;
+  private final Optional<SSLEngineComponentFactory> sslFactory;
 
   private Process isolatedIngestionServiceProcess;
 
@@ -53,7 +54,7 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend implements
     int servicePort = configLoader.getVeniceServerConfig().getIngestionServicePort();
     int listenerPort = configLoader.getVeniceServerConfig().getIngestionApplicationPort();
     this.configLoader = configLoader;
-    this.sslFactory = IsolatedIngestionUtils.getSSLFactoryForInterProcessCommunication(configLoader);
+    this.sslFactory = IsolatedIngestionUtils.getSSLEngineComponentFactory(configLoader);
 
     // Create the ingestion request client.
     mainIngestionRequestClient = new MainIngestionRequestClient(sslFactory, servicePort);
