@@ -7,6 +7,7 @@ import com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.stats.IsolatedIngestionProcessHeartbeatStats;
+import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.Time;
@@ -66,7 +67,7 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
   private final Map<String, Set<Integer>> completedTopicPartitions = new VeniceConcurrentHashMap<>();
   private final List<VeniceNotifier> ingestionNotifierList = new ArrayList<>();
   private final List<VeniceNotifier> pushStatusNotifierList = new ArrayList<>();
-  private final Optional<SSLFactory> sslFactory;
+  private final Optional<SSLEngineComponentFactory> sslFactory;
 
   private IsolatedIngestionProcessHeartbeatStats heartbeatStats;
   private ChannelFuture serverFuture;
@@ -74,11 +75,11 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
   private IsolatedIngestionProcessStats isolatedIngestionProcessStats;
   private MainIngestionStorageMetadataService storageMetadataService;
   private KafkaStoreIngestionService storeIngestionService;
-  private VeniceConfigLoader configLoader;
+  private final VeniceConfigLoader configLoader;
   private long heartbeatTimeoutMs;
   private volatile long latestHeartbeatTimestamp = -1;
 
-  public MainIngestionMonitorService(IsolatedIngestionBackend ingestionBackend, VeniceConfigLoader configLoader, Optional<SSLFactory> sslFactory) {
+  public MainIngestionMonitorService(IsolatedIngestionBackend ingestionBackend, VeniceConfigLoader configLoader, Optional<SSLEngineComponentFactory> sslFactory) {
     this.configLoader = configLoader;
     this.servicePort = configLoader.getVeniceServerConfig().getIngestionServicePort();
     this.applicationPort = configLoader.getVeniceServerConfig().getIngestionApplicationPort();

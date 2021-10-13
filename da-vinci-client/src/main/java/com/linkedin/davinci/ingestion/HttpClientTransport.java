@@ -1,10 +1,11 @@
 package com.linkedin.davinci.ingestion;
 
+import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.exceptions.VeniceTimeoutException;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionAction;
-import com.linkedin.venice.security.SSLFactory;
+import com.linkedin.venice.httpclient.HttpClientUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import java.util.Optional;
@@ -13,13 +14,9 @@ import java.util.concurrent.TimeoutException;
 import org.apache.avro.specific.SpecificRecordBase;
 import org.apache.commons.httpclient.HttpStatus;
 import org.apache.http.HttpResponse;
-import org.apache.http.client.config.RequestConfig;
 import org.apache.http.client.methods.HttpPost;
 import org.apache.http.entity.ByteArrayEntity;
 import org.apache.http.impl.nio.client.CloseableHttpAsyncClient;
-import org.apache.http.impl.nio.client.HttpAsyncClients;
-import org.apache.http.impl.nio.reactor.IOReactorConfig;
-import org.apache.http.nio.conn.ssl.SSLIOSessionStrategy;
 import org.apache.http.util.EntityUtils;
 import org.apache.log4j.Logger;
 
@@ -28,36 +25,36 @@ import static com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils.*;
 
 public class HttpClientTransport implements AutoCloseable {
   private static final Logger logger = Logger.getLogger(HttpClientTransport.class);
-  private static final int CONNECTION_TIMEOUT_MS = 30 * Time.MS_PER_SECOND;
+  private static final int DEFAULT_CONNECTION_TIMEOUT_MS = 30 * Time.MS_PER_SECOND;
+  private static final int DEFAULT_SOCKET_TIMEOUT_MS = 30 * Time.MS_PER_SECOND;
   private static final int DEFAULT_REQUEST_TIMEOUT_MS = 60 * Time.MS_PER_SECOND;
   private static final int DEFAULT_REQUEST_RETRY_WAIT_TIME_MS = 30 * Time.MS_PER_SECOND;
+  private static final int DEFAULT_MAX_CONNECTION_PER_ROUTE = 2;
+  private static final int DEFAULT_MAX_CONNECTION_TOTAL = 10;
+  private static final int DEFAULT_IDLE_CONNECTION_CLEANUP_THRESHOLD_IN_MINUTES = 3 * Time.MINUTES_PER_HOUR;
   private static final int DEFAULT_IO_THREAD_COUNT = 16;
   private static final String HTTP = "http";
   private static final String HTTPS = "https";
-  private static final RequestConfig requestConfig;
-
-  static {
-    requestConfig = RequestConfig.custom()
-        .setConnectTimeout(CONNECTION_TIMEOUT_MS)
-        .setConnectionRequestTimeout(CONNECTION_TIMEOUT_MS)
-        .build();
-  }
 
   private final CloseableHttpAsyncClient httpClient;
   private final String forkedProcessRequestUrl;
 
-  public HttpClientTransport(Optional<SSLFactory> sslFactory, int port) {
-    this.forkedProcessRequestUrl = (sslFactory.isPresent() ? HTTPS : HTTP) + "://" + Utils.getHostName() + ":" + port;
-    IOReactorConfig ioReactorConfig = IOReactorConfig.custom().setIoThreadCount(DEFAULT_IO_THREAD_COUNT).build();
-    this.httpClient = HttpAsyncClients.custom()
-        .setDefaultIOReactorConfig(ioReactorConfig)
-        .setDefaultRequestConfig(requestConfig)
-        .setSSLStrategy(sslFactory.map(factory -> new SSLIOSessionStrategy(factory.getSSLContext())).orElse(null))
-        .build();
-    this.httpClient.start();
+  public HttpClientTransport(Optional<SSLEngineComponentFactory> sslFactory, int port) {
+    forkedProcessRequestUrl = (sslFactory.isPresent() ? HTTPS : HTTP) + "://" + Utils.getHostName() + ":" + port;
+    httpClient = HttpClientUtils.getMinimalHttpClientWithConnManager(
+        DEFAULT_IO_THREAD_COUNT,
+        DEFAULT_MAX_CONNECTION_PER_ROUTE,
+        DEFAULT_MAX_CONNECTION_TOTAL,
+        DEFAULT_SOCKET_TIMEOUT_MS,
+        DEFAULT_CONNECTION_TIMEOUT_MS,
+        sslFactory,
+        Optional.empty(),
+        Optional.empty(),
+        true,
+        DEFAULT_IDLE_CONNECTION_CLEANUP_THRESHOLD_IN_MINUTES
+    ).getClient();
+    httpClient.start();
   }
-
-
 
   @Override
   public void close() {

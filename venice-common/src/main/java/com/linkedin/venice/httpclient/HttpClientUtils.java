@@ -1,8 +1,8 @@
-package com.linkedin.venice.router.httpclient;
+package com.linkedin.venice.httpclient;
 
 import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.router.stats.HttpConnectionPoolStats;
+import com.linkedin.venice.stats.HttpConnectionPoolStats;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
 import java.net.SocketAddress;
 import java.util.Optional;

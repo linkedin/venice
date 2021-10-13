@@ -1,4 +1,4 @@
-package com.linkedin.venice.router.stats;
+package com.linkedin.venice.stats;
 
 import com.linkedin.venice.stats.AbstractVeniceStats;
 import com.linkedin.venice.stats.Gauge;
@@ -20,15 +20,15 @@ import org.apache.http.pool.PoolStats;
 
 
 public class HttpConnectionPoolStats extends AbstractVeniceStats {
-  private List<PoolingNHttpClientConnectionManager> connectionManagerList = new ArrayList<>();
+  private final List<PoolingNHttpClientConnectionManager> connectionManagerList = new ArrayList<>();
   /**
    * The following lock is used to protect {@link #connectionManagerList}.
    * It is possible that this list will be modified and read at the same time.
    * But for now, we don't create {@link PoolingNHttpClientConnectionManager} dynamically,
    * but I think it is fine to still keep this lock to make it independent from the external logic.
    */
-  private ReentrantReadWriteLock rwLock = new ReentrantReadWriteLock();
-  private Map<String, RouteHttpConnectionPoolStats> routeConnectionPoolStatsMap = new VeniceConcurrentHashMap<>();
+  private final ReentrantReadWriteLock rwLock = new ReentrantReadWriteLock();
+  private final Map<String, RouteHttpConnectionPoolStats> routeConnectionPoolStatsMap = new VeniceConcurrentHashMap<>();
 
   /**
    * Measure how much time to take to lease a connection from connection pool.

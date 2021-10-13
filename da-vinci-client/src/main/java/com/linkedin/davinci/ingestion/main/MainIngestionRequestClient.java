@@ -5,6 +5,7 @@ import com.linkedin.davinci.ingestion.HttpClientTransport;
 import com.linkedin.davinci.ingestion.IsolatedIngestionProcessStats;
 import com.linkedin.davinci.ingestion.isolated.IsolatedIngestionServer;
 import com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils;
+import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.ingestion.protocol.IngestionMetricsReport;
@@ -16,7 +17,6 @@ import com.linkedin.venice.ingestion.protocol.enums.IngestionAction;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionCommandType;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionComponentType;
 import com.linkedin.venice.meta.IngestionMetadataUpdateType;
-import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.ForkedJavaProcess;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -40,7 +40,7 @@ public class MainIngestionRequestClient implements Closeable {
   private static final int HEARTBEAT_REQUEST_TIMEOUT_MS = 10 * Time.MS_PER_SECOND;
   private final HttpClientTransport httpClientTransport;
 
-  public MainIngestionRequestClient(Optional<SSLFactory> sslFactory, int port) {
+  public MainIngestionRequestClient(Optional<SSLEngineComponentFactory> sslFactory, int port) {
     httpClientTransport = new HttpClientTransport(sslFactory, port);
   }
 

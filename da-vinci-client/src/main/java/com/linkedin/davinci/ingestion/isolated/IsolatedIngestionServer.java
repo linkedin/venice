@@ -590,7 +590,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
 
     logger.info("Starting report client with target application port: " + configLoader.getVeniceServerConfig().getIngestionApplicationPort());
     // Create Netty client to report status back to application.
-    reportClient = new IsolatedIngestionRequestClient(IsolatedIngestionUtils.getSSLFactoryForInterProcessCommunication(configLoader), configLoader.getVeniceServerConfig().getIngestionApplicationPort());
+    reportClient = new IsolatedIngestionRequestClient(IsolatedIngestionUtils.getSSLEngineComponentFactory(configLoader), configLoader.getVeniceServerConfig().getIngestionApplicationPort());
 
     // Mark the IsolatedIngestionServer as initiated.
     isInitiated = true;

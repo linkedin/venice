@@ -18,7 +18,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.ZKStore;
-import com.linkedin.venice.router.httpclient.HttpClientUtils;
+import com.linkedin.venice.httpclient.HttpClientUtils;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.SslUtils;
 import java.util.ArrayList;
