@@ -22,6 +22,7 @@ import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.DiskUsage;
 import com.linkedin.venice.writer.VeniceWriterFactory;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Queue;
@@ -86,8 +87,7 @@ public class StoreIngestionTaskFactory {
           builder.partitionStateSerializer,
           isIsolatedIngestion,
           compressorFactory,
-          cacheBackend,
-          builder.isDaVinciClient);
+          cacheBackend);
     } else if (version.isLeaderFollowerModelEnabled()) {
       return new LeaderFollowerStoreIngestionTask(
           store,
@@ -123,8 +123,7 @@ public class StoreIngestionTaskFactory {
           builder.partitionStateSerializer,
           isIsolatedIngestion,
           compressorFactory,
-          cacheBackend,
-          builder.isDaVinciClient);
+          cacheBackend);
     } else {
       return new OnlineOfflineStoreIngestionTask(
           store,
@@ -158,8 +157,7 @@ public class StoreIngestionTaskFactory {
           builder.startReportingReadyToServeTimestamp,
           builder.partitionStateSerializer,
           isIsolatedIngestion,
-          cacheBackend,
-          builder.isDaVinciClient);
+          cacheBackend);
     }
   }
 
@@ -203,7 +201,6 @@ public class StoreIngestionTaskFactory {
     private ExecutorService cacheWarmingThreadPool;
     private long startReportingReadyToServeTimestamp;
     private InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer;
-    private boolean isDaVinciClient;
 
     public StoreIngestionTaskFactory build() {
       // flip the build flag to true
@@ -389,13 +386,6 @@ public class StoreIngestionTaskFactory {
     public Builder setPartitionStateSerializer(InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer) {
       if (!built) {
         this.partitionStateSerializer = partitionStateSerializer;
-      }
-      return this;
-    }
-
-    public Builder setIsDaVinciClient(boolean isDaVinciClient) {
-      if (!built) {
-        this.isDaVinciClient = isDaVinciClient;
       }
       return this;
     }

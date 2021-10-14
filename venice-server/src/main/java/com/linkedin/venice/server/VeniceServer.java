@@ -255,8 +255,7 @@ public class VeniceServer {
         icProvider,
         false,
         compressorFactory,
-        Optional.empty(),
-        false);
+        Optional.empty());
     this.kafkaStoreIngestionService.addMetaSystemStoreReplicaStatusNotifier();
 
     this.diskHealthCheckService = new DiskHealthCheckService(

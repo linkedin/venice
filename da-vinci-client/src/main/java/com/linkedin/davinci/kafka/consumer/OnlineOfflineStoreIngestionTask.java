@@ -78,8 +78,7 @@ public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
       long startReportingReadyToServeTimestamp,
       InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer,
       boolean isIsolatedIngestion,
-      Optional<ObjectCacheBackend> cacheBackend,
-      boolean isDaVinciClient) {
+      Optional<ObjectCacheBackend> cacheBackend) {
     super(
         store,
         version,
@@ -112,8 +111,7 @@ public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
         startReportingReadyToServeTimestamp,
         partitionStateSerializer,
         isIsolatedIngestion,
-        cacheBackend,
-        isDaVinciClient);
+        cacheBackend);
     if (amplificationFactor != 1) {
       throw new VeniceException("amplificationFactor is not supported in Online/Offline state model");
     }
