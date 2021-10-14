@@ -138,7 +138,7 @@ public class PushTimeoutTest {
         mock(StoreBufferService.class), mock(BooleanSupplier.class), mockVeniceStoreVersionConfig, mock(DiskUsage.class),
         mock(RocksDBMemoryStats.class), mock(AggKafkaConsumerService.class), mockVeniceServerConfig, 0,
         mock(ExecutorService.class), 0, mock(InternalAvroSpecificSerializer.class), false,
-        mock(StorageEngineBackedCompressorFactory.class), Optional.empty(), false);
+        mock(StorageEngineBackedCompressorFactory.class), Optional.empty());
     leaderFollowerStoreIngestionTask.subscribePartition(versionTopic, 0);
     leaderFollowerStoreIngestionTask.run();
 
@@ -263,7 +263,7 @@ public class PushTimeoutTest {
         mock(StoreBufferService.class), () -> true, mockVeniceStoreVersionConfig, mock(DiskUsage.class),
         mock(RocksDBMemoryStats.class), mock(AggKafkaConsumerService.class), mockVeniceServerConfig, 0,
         mock(ExecutorService.class), 0, mock(InternalAvroSpecificSerializer.class), false,
-        mock(StorageEngineBackedCompressorFactory.class), Optional.empty(), false);
+        mock(StorageEngineBackedCompressorFactory.class), Optional.empty());
 
     leaderFollowerStoreIngestionTask.subscribePartition(versionTopic, 0);
     /**

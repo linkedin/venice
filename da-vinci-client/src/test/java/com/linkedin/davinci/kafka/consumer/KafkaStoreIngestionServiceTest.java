@@ -105,8 +105,7 @@ public class KafkaStoreIngestionServiceTest {
        null,
        false,
        compressorFactory,
-       Optional.empty(),
-       false);
+       Optional.empty());
 
    String mockStoreName = "test";
    String mockSimilarStoreName = "testTest";
@@ -184,8 +183,7 @@ public class KafkaStoreIngestionServiceTest {
         null,
         false,
         compressorFactory,
-        Optional.empty(),
-        false);
+        Optional.empty());
     String topic1 = "test-store_v1";
     String topic2 = "test-store_v2";
     String invalidTopic = "invalid-store_v1";

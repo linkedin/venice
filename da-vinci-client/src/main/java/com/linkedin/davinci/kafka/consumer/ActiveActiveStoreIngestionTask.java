@@ -111,8 +111,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer,
       boolean isIsolatedIngestion,
       StorageEngineBackedCompressorFactory compressorFactory,
-      Optional<ObjectCacheBackend> cacheBackend,
-      boolean isDaVinciClient) {
+      Optional<ObjectCacheBackend> cacheBackend) {
     super(
         store,
         version,
@@ -147,8 +146,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         partitionStateSerializer,
         isIsolatedIngestion,
         compressorFactory,
-        cacheBackend,
-        isDaVinciClient);
+        cacheBackend);
 
     this.replicationMetadataVersionId = version.getReplicationMetadataVersionId();
     this.mergeConflictResolver = new MergeConflictResolver(schemaRepo, storeName, replicationMetadataVersionId);
