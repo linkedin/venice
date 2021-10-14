@@ -2564,7 +2564,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     public void setStorePartitionerConfig(String clusterName, String storeName, PartitionerConfig partitionerConfig) {
         storeMetadataUpdate(clusterName, storeName, store -> {
             // Only amplification factor is allowed to be changed if the store is a hybrid store.
-            if (store.isHybrid() && !(Objects.equals(store.getPartitionerConfig(), partitionerConfig) || isAmplificationFactorUpdateOnly(store.getPartitionerConfig(), partitionerConfig))) {
+            if (store.isHybrid() && !(Objects.equals(store.getPartitionerConfig(), partitionerConfig) ||
+                isAmplificationFactorUpdateOnly(store.getPartitionerConfig(), partitionerConfig))) {
                 throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, "Partitioner config change from "
                     + store.getPartitionerConfig() + " to " + partitionerConfig + " in hybrid store is not supported except amplification factor.");
             } else {
@@ -3043,6 +3044,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 setStorePartitionCount(clusterName, storeName, partitionCount.get());
             }
 
+            // Amplification factor is a Leader-Follower only feature. Block the update if the store is in O/O model.
             String amplificationFactorNotSupportedErrorMessage = "amplificationFactor is not supported in Online/Offline state model";
             if (amplificationFactor.isPresent() && amplificationFactor.get() != 1) {
                 if (leaderFollowerModelEnabled.isPresent()) {
@@ -3056,15 +3058,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 }
             }
             /**
-             * If either of these three fields is not present, we should use default value to construct correct PartitionerConfig.
+             * If either of these three fields is not present, we should use store's original value to construct correct
+             * updated partitioner config.
              */
             if (partitionerClass.isPresent() || partitionerParams.isPresent() || amplificationFactor.isPresent()) {
-                PartitionerConfig partitionerConfig = new PartitionerConfigImpl();
-                partitionerClass.ifPresent(partitionerConfig::setPartitionerClass);
-                partitionerParams.ifPresent(partitionerConfig::setPartitionerParams);
-                amplificationFactor.ifPresent(partitionerConfig::setAmplificationFactor);
-
-                setStorePartitionerConfig(clusterName, storeName, partitionerConfig);
+                PartitionerConfig updatedPartitionerConfig = mergeNewSettingsIntoOldPartitionerConfig(originalStore,
+                    partitionerClass, partitionerParams, amplificationFactor);
+                setStorePartitionerConfig(clusterName, storeName, updatedPartitionerConfig);
             }
 
             if (storageQuotaInByte.isPresent()) {
@@ -3408,6 +3408,21 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 + " configs for store " + oldStore.getName());
         }
         return mergedHybridStoreConfig;
+    }
+
+    protected static PartitionerConfig mergeNewSettingsIntoOldPartitionerConfig(Store oldStore, Optional<String> partitionerClass,
+        Optional<Map<String, String>> partitionerParams, Optional<Integer> amplificationFactor) {
+        PartitionerConfig originalPartitionerConfig;
+        if (oldStore.getPartitionerConfig() == null) {
+            originalPartitionerConfig = new PartitionerConfigImpl();
+        } else {
+            originalPartitionerConfig = oldStore.getPartitionerConfig();
+        }
+        return new PartitionerConfigImpl(
+            partitionerClass.orElse(originalPartitionerConfig.getPartitionerClass()),
+            partitionerParams.orElse(originalPartitionerConfig.getPartitionerParams()),
+            amplificationFactor.orElse(originalPartitionerConfig.getAmplificationFactor())
+        );
     }
 
     /**

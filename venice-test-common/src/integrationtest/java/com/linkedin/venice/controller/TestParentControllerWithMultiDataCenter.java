@@ -19,6 +19,7 @@ import com.linkedin.venice.schema.ReplicationMetadataSchemaEntry;
 import com.linkedin.venice.utils.TestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
@@ -97,7 +98,9 @@ public class TestParentControllerWithMultiDataCenter {
     final UpdateStoreQueryParams updateStoreParams = new UpdateStoreQueryParams()
         .setHybridRewindSeconds(expectedHybridRewindSeconds)
         .setHybridOffsetLagThreshold(expectedHybridOffsetLagThreshold)
-        .setHybridBufferReplayPolicy(expectedHybridBufferReplayPolicy);
+        .setHybridBufferReplayPolicy(expectedHybridBufferReplayPolicy)
+        .setLeaderFollowerModel(true) // Enable L/F to update amplification factor.
+        .setAmplificationFactor(2);
 
     TestPushUtils.updateStore(clusterName, storeName, parentControllerClient, updateStoreParams);
 
@@ -121,6 +124,37 @@ public class TestParentControllerWithMultiDataCenter {
             expectedHybridOffsetLagThreshold);
         Assert.assertEquals(storeInfo.getHybridStoreConfig().getRewindTimeInSeconds(), expectedHybridRewindSeconds);
         Assert.assertEquals(storeInfo.getHybridStoreConfig().getBufferReplayPolicy(), expectedHybridBufferReplayPolicy);
+        Assert.assertTrue(storeInfo.isLeaderFollowerModelEnabled());
+        Assert.assertNotNull(storeInfo.getPartitionerConfig());
+        Assert.assertEquals(storeInfo.getPartitionerConfig().getAmplificationFactor(), 2);
+      }
+    });
+
+    // Turn off hybrid config so we can update the partitioner config.
+    final UpdateStoreQueryParams updateStoreParams2 = new UpdateStoreQueryParams()
+        .setHybridRewindSeconds(-1)
+        .setHybridOffsetLagThreshold(-1);
+    TestPushUtils.updateStore(clusterName, storeName, parentControllerClient, updateStoreParams2);
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, true, () -> {
+      for (ControllerClient controllerClient : controllerClients) {
+        StoreResponse storeResponse = controllerClient.getStore(storeName);
+        Assert.assertFalse(storeResponse.isError());
+        StoreInfo storeInfo = storeResponse.getStore();
+        Assert.assertNull(storeInfo.getHybridStoreConfig());
+      }
+    });
+
+    // Update partitioner parameters make sure new update is in and other fields of partitioner config is not reset.
+    final UpdateStoreQueryParams updateStoreParams3 = new UpdateStoreQueryParams().setPartitionerParams(Collections.singletonMap("key", "val"));
+    TestPushUtils.updateStore(clusterName, storeName, parentControllerClient, updateStoreParams3);
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, true, () -> {
+      for (ControllerClient controllerClient : controllerClients) {
+        StoreResponse storeResponse = controllerClient.getStore(storeName);
+        Assert.assertFalse(storeResponse.isError());
+        StoreInfo storeInfo = storeResponse.getStore();
+        Assert.assertNotNull(storeInfo.getPartitionerConfig());
+        Assert.assertEquals(storeInfo.getPartitionerConfig().getAmplificationFactor(), 2);
+        Assert.assertEquals(storeInfo.getPartitionerConfig().getPartitionerParams(), Collections.singletonMap("key", "val"));
       }
     });
   }
