@@ -80,6 +80,7 @@ import com.linkedin.venice.meta.ETLStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.Instance;
+import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.RoutersClusterConfig;
 import com.linkedin.venice.meta.Store;
@@ -1501,25 +1502,27 @@ public class VeniceParentHelixAdmin implements Admin {
           .map(addToUpdatedConfigList(updatedConfigsList, ACTIVE_ACTIVE_REPLICATION_ENABLED))
           .orElseGet(store::isActiveActiveReplicationEnabled);
 
-      if (!(partitionerClass.isPresent() || partitionerParams.isPresent() || amplificationFactor.isPresent())) {
-        setStore.partitionerConfig = null;
-      } else {
-        // Only update fields that are set, other fields will be read from the original store.
+      if (partitionerClass.isPresent() || partitionerParams.isPresent() || amplificationFactor.isPresent()) {
+        // Only update fields that are set, other fields will be read from the original store's partitioner config.
+        PartitionerConfig updatedPartitionerConfig = VeniceHelixAdmin.mergeNewSettingsIntoOldPartitionerConfig(store,
+            partitionerClass, partitionerParams, amplificationFactor);
+        // Update updatedConfigsList.
+        partitionerClass.ifPresent(p -> updatedConfigsList.add(PARTITIONER_CLASS));
+        partitionerParams.ifPresent(p -> updatedConfigsList.add(PARTITIONER_PARAMS));
+        amplificationFactor.ifPresent(p -> updatedConfigsList.add(AMPLIFICATION_FACTOR));
+        // Create PartitionConfigRecord for admin channel transmission.
         PartitionerConfigRecord partitionerConfigRecord = new PartitionerConfigRecord();
-        partitionerConfigRecord.partitionerClass = partitionerClass
-            .map(addToUpdatedConfigList(updatedConfigsList, PARTITIONER_CLASS))
-            .orElseGet(store.getPartitionerConfig()::getPartitionerClass);
-        Map<String, String> ssPartitionerParamsMap = partitionerParams
-            .map(addToUpdatedConfigList(updatedConfigsList, PARTITIONER_PARAMS))
-            .orElseGet(store.getPartitionerConfig()::getPartitionerParams);
-        partitionerConfigRecord.partitionerParams = CollectionUtils.getCharSequenceMapFromStringMap(ssPartitionerParamsMap);
-        partitionerConfigRecord.amplificationFactor = amplificationFactor
-            .map(addToUpdatedConfigList(updatedConfigsList, AMPLIFICATION_FACTOR))
-            .orElseGet(store.getPartitionerConfig()::getAmplificationFactor);
-
-        // Before setting, verify the resulting partitionerConfig can be built
+        partitionerConfigRecord.partitionerClass = updatedPartitionerConfig.getPartitionerClass();
+        partitionerConfigRecord.partitionerParams = CollectionUtils.getCharSequenceMapFromStringMap(updatedPartitionerConfig.getPartitionerParams());
+        partitionerConfigRecord.amplificationFactor = updatedPartitionerConfig.getAmplificationFactor();
+        // Before setting partitioner config, verify the updated partitionerConfig can be built
         try {
-          PartitionUtils.getVenicePartitioner(partitionerConfigRecord.partitionerClass.toString(), partitionerConfigRecord.amplificationFactor, new VeniceProperties(partitionerConfigRecord.partitionerParams), getKeySchema(clusterName, storeName).getSchema());
+          PartitionUtils.getVenicePartitioner(
+              partitionerConfigRecord.partitionerClass.toString(),
+              partitionerConfigRecord.amplificationFactor,
+              new VeniceProperties(partitionerConfigRecord.partitionerParams),
+              getKeySchema(clusterName, storeName).getSchema()
+          );
         } catch (Exception e) {
           throw new VeniceException("Partitioner Configs invalid, please verify that partitioner configs like classpath and parameters are correct!", e);
         }
