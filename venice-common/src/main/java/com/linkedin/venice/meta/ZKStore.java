@@ -139,6 +139,70 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
     });
   }
 
+  public ZKStore(Store store) {
+    this(store.getName(),
+        store.getOwner(),
+        store.getCreatedTime(),
+        store.getPersistenceType(),
+        store.getRoutingStrategy(),
+        store.getReadStrategy(),
+        store.getOffLinePushStrategy(),
+        store.getCurrentVersion(),
+        store.getStorageQuotaInByte(),
+        store.getReadQuotaInCU(),
+        null == store.getHybridStoreConfig() ? null : store.getHybridStoreConfig().clone(),
+        null == store.getPartitionerConfig() ? null : store.getPartitionerConfig().clone(),
+        store.getReplicationFactor());
+    setEnableReads(store.isEnableReads());
+    setEnableWrites(store.isEnableWrites());
+    setPartitionCount(store.getPartitionCount());
+    setAccessControlled(store.isAccessControlled());
+    setCompressionStrategy(store.getCompressionStrategy());
+    setClientDecompressionEnabled(store.getClientDecompressionEnabled());
+    setChunkingEnabled(store.isChunkingEnabled());
+    setBatchGetLimit(store.getBatchGetLimit());
+    setNumVersionsToPreserve(store.getNumVersionsToPreserve());
+    setIncrementalPushEnabled(store.isIncrementalPushEnabled());
+    setLargestUsedVersionNumber(store.getLargestUsedVersionNumber());
+    setMigrating(store.isMigrating());
+    setWriteComputationEnabled(store.isWriteComputationEnabled());
+    setReadComputationEnabled(store.isReadComputationEnabled());
+    setBootstrapToOnlineTimeoutInHours(store.getBootstrapToOnlineTimeoutInHours());
+    setLeaderFollowerModelEnabled(store.isLeaderFollowerModelEnabled());
+    setNativeReplicationEnabled(store.isNativeReplicationEnabled());
+    setBackupStrategy(store.getBackupStrategy());
+    setSchemaAutoRegisterFromPushJobEnabled(store.isSchemaAutoRegisterFromPushJobEnabled());
+    setLatestSuperSetValueSchemaId(store.getLatestSuperSetValueSchemaId());
+    setHybridStoreDiskQuotaEnabled(store.isHybridStoreDiskQuotaEnabled());
+    setEtlStoreConfig(store.getEtlStoreConfig());
+    setStoreMetadataSystemStoreEnabled(store.isStoreMetadataSystemStoreEnabled());
+    setIncrementalPushPolicy(store.getIncrementalPushPolicy());
+    setLatestVersionPromoteToCurrentTimestamp(store.getLatestVersionPromoteToCurrentTimestamp());
+    setBackupVersionRetentionMs(store.getBackupVersionRetentionMs());
+    setReplicationFactor(store.getReplicationFactor());
+    setMigrationDuplicateStore(store.isMigrationDuplicateStore());
+    setNativeReplicationSourceFabric(store.getNativeReplicationSourceFabric());
+    setDaVinciPushStatusStoreEnabled(store.isDaVinciPushStatusStoreEnabled());
+    setStoreMetaSystemStoreEnabled(store.isStoreMetaSystemStoreEnabled());
+    setActiveActiveReplicationEnabled(store.isActiveActiveReplicationEnabled());
+    setApplyTargetVersionFilterForIncPush(store.isApplyTargetVersionFilterForIncPush());
+    for (Version storeVersion : store.getVersions()) {
+      forceAddVersion(storeVersion.cloneVersion(), true);
+    }
+
+    /**
+     * Add version can overwrite the value of {@link largestUsedVersionNumber}, so in order to clone the
+     * object properly, it's important to call the {@link #setLargestUsedVersionNumber(int)} setter after
+     * calling {@link #forceAddVersion(Version)}.
+     */
+    setLargestUsedVersionNumber(store.getLargestUsedVersionNumber());
+
+    // Clone systemStores
+    Map<String, SystemStoreAttributes> clonedSystemStores = new HashMap<>();
+    store.getSystemStores().forEach((k, v) -> clonedSystemStores.put(k, v.clone()));
+    setSystemStores(clonedSystemStores);
+  }
+
   @Override
   public StoreProperties dataModel() {
     return this.storeProperties;
@@ -731,69 +795,6 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
    * @return cloned store.
    */
   public Store cloneStore() {
-    ZKStore clonedStore =
-        new ZKStore(getName(),
-                  getOwner(),
-                  getCreatedTime(),
-                  getPersistenceType(),
-                  getRoutingStrategy(),
-                  getReadStrategy(),
-                  getOffLinePushStrategy(),
-                  getCurrentVersion(),
-                  getStorageQuotaInByte(),
-                  getReadQuotaInCU(),
-                  null == getHybridStoreConfig() ? null : getHybridStoreConfig().clone(),
-                  null == getPartitionerConfig() ? null : getPartitionerConfig().clone(),
-                  getReplicationFactor());
-    clonedStore.setEnableReads(isEnableReads());
-    clonedStore.setEnableWrites(isEnableWrites());
-    clonedStore.setPartitionCount(getPartitionCount());
-    clonedStore.setAccessControlled(isAccessControlled());
-    clonedStore.setCompressionStrategy(getCompressionStrategy());
-    clonedStore.setClientDecompressionEnabled(getClientDecompressionEnabled());
-    clonedStore.setChunkingEnabled(isChunkingEnabled());
-    clonedStore.setBatchGetLimit(getBatchGetLimit());
-    clonedStore.setNumVersionsToPreserve(getNumVersionsToPreserve());
-    clonedStore.setIncrementalPushEnabled(isIncrementalPushEnabled());
-    clonedStore.setLargestUsedVersionNumber(getLargestUsedVersionNumber());
-    clonedStore.setMigrating(isMigrating());
-    clonedStore.setWriteComputationEnabled(isWriteComputationEnabled());
-    clonedStore.setReadComputationEnabled(isReadComputationEnabled());
-    clonedStore.setBootstrapToOnlineTimeoutInHours(getBootstrapToOnlineTimeoutInHours());
-    clonedStore.setLeaderFollowerModelEnabled(isLeaderFollowerModelEnabled());
-    clonedStore.setNativeReplicationEnabled(isNativeReplicationEnabled());
-    clonedStore.setBackupStrategy(getBackupStrategy());
-    clonedStore.setSchemaAutoRegisterFromPushJobEnabled(isSchemaAutoRegisterFromPushJobEnabled());
-    clonedStore.setLatestSuperSetValueSchemaId(getLatestSuperSetValueSchemaId());
-    clonedStore.setHybridStoreDiskQuotaEnabled(isHybridStoreDiskQuotaEnabled());
-    clonedStore.setEtlStoreConfig(getEtlStoreConfig());
-    clonedStore.setStoreMetadataSystemStoreEnabled(isStoreMetadataSystemStoreEnabled());
-    clonedStore.setIncrementalPushPolicy(getIncrementalPushPolicy());
-    clonedStore.setLatestVersionPromoteToCurrentTimestamp(getLatestVersionPromoteToCurrentTimestamp());
-    clonedStore.setBackupVersionRetentionMs(getBackupVersionRetentionMs());
-    clonedStore.setReplicationFactor(getReplicationFactor());
-    clonedStore.setMigrationDuplicateStore(isMigrationDuplicateStore());
-    clonedStore.setNativeReplicationSourceFabric(getNativeReplicationSourceFabric());
-    clonedStore.setDaVinciPushStatusStoreEnabled(isDaVinciPushStatusStoreEnabled());
-    clonedStore.setStoreMetaSystemStoreEnabled(isStoreMetaSystemStoreEnabled());
-    clonedStore.setActiveActiveReplicationEnabled(isActiveActiveReplicationEnabled());
-    clonedStore.setApplyTargetVersionFilterForIncPush(isApplyTargetVersionFilterForIncPush());
-    for (StoreVersion storeVersion : this.storeProperties.versions) {
-      clonedStore.forceAddVersion(new VersionImpl(storeVersion).cloneVersion(), true);
-    }
-
-    /**
-     * Add version can overwrite the value of {@link largestUsedVersionNumber}, so in order to clone the
-     * object properly, it's important to call the {@link #setLargestUsedVersionNumber(int)} setter after
-     * calling {@link #forceAddVersion(Version)}.
-     */
-    clonedStore.setLargestUsedVersionNumber(this.storeProperties.largestUsedVersionNumber);
-
-    // Clone systemStores
-    Map<String, SystemStoreAttributes> clonedSystemStores = new HashMap<>();
-    getSystemStores().forEach((k, v) -> clonedSystemStores.put(k, v.clone()));
-    clonedStore.setSystemStores(clonedSystemStores);
-
-    return clonedStore;
+    return new ZKStore(this);
   }
 }

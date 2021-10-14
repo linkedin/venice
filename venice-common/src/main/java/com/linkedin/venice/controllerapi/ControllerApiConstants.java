@@ -141,4 +141,16 @@ public class ControllerApiConstants {
    * The value for this config is read from cluster configs in Zk.
    */
   public static final String SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND = "server.kafka.fetch.quota.records.per.second";
+
+  /**
+   * An optional argument in list-store command; pass in a store config to select stores. If the config name argument is
+   * used in the command, users must specify the config value filter too.
+   */
+  public static final String STORE_CONFIG_NAME_FILTER = "store_config_name_filter";
+
+  /**
+   * An optional argument in list-store command; if the config name argument is used in the command, users must specify
+   * the config value filter too.
+   */
+  public static final String STORE_CONFIG_VALUE_FILTER = "store_config_value_filter";
 }

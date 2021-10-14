@@ -488,7 +488,9 @@ public class AdminTool {
 
   private static MultiStoreResponse queryStoreList(CommandLine cmd) {
     boolean includeSystemStores = Boolean.parseBoolean(getOptionalArgument(cmd, Arg.INCLUDE_SYSTEM_STORES));
-    return controllerClient.queryStoreList(includeSystemStores);
+    Optional<String> configNameFilter = Optional.ofNullable(getOptionalArgument(cmd, Arg.STORE_CONFIG_NAME_FILTER));
+    Optional<String> configValueFilter = Optional.ofNullable(getOptionalArgument(cmd, Arg.STORE_CONFIG_VALUE_FILTER));
+    return controllerClient.queryStoreList(includeSystemStores, configNameFilter, configValueFilter);
   }
 
   private static void queryStoreForKey(CommandLine cmd, String veniceUrl)

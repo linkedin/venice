@@ -533,8 +533,20 @@ public class ControllerClient implements Closeable {
   }
 
   public MultiStoreResponse queryStoreList(boolean includeSystemStores) {
+    return queryStoreList(includeSystemStores, Optional.empty(), Optional.empty());
+  }
+
+  public MultiStoreResponse queryStoreList(boolean includeSystemStores, Optional<String> configNameFilter, Optional<String> configValueFilter) {
     QueryParams queryParams = newParams()
         .add(INCLUDE_SYSTEM_STORES, includeSystemStores);
+    if (configNameFilter.isPresent()^configValueFilter.isPresent()) {
+      throw new VeniceException("Missing argument: " + (configNameFilter.isPresent() ? "store-config-value-filter" : "store-config-name-filter"));
+    }
+    if (includeSystemStores && configNameFilter.isPresent()) {
+      throw new VeniceException("Doesn't support config filtering on system store yet.");
+    }
+    configNameFilter.ifPresent(c -> queryParams.add(STORE_CONFIG_NAME_FILTER, c));
+    configValueFilter.ifPresent(c -> queryParams.add(STORE_CONFIG_VALUE_FILTER, c));
     return request(ControllerRoute.LIST_STORES, queryParams, MultiStoreResponse.class);
   }
 

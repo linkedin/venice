@@ -21,18 +21,24 @@ import com.linkedin.venice.controllerapi.VersionResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.kafka.TopicDoesNotExistException;
+import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.ZKStore;
+import com.linkedin.venice.systemstore.schemas.StoreProperties;
 import com.linkedin.venice.utils.Utils;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
+import org.apache.avro.Schema;
 import spark.Request;
 import spark.Route;
 
@@ -59,17 +65,101 @@ public class StoresRoutes extends AbstractRoute {
 
         // Potentially filter out the system stores
         String includeSystemStores = request.queryParams(INCLUDE_SYSTEM_STORES);
-        List<Store> storeList = admin.getAllStores(veniceResponse.getCluster());
-        if (null != includeSystemStores // If the param is not provided, the default is to include them
-            && !Boolean.parseBoolean(includeSystemStores)) {
-          storeList = storeList.stream()
-              .filter(store -> !store.isSystemStore())
-              .collect(Collectors.toList());
+        // If the param is not provided, the default is to include them
+        boolean excludeSystemStores = (null != includeSystemStores && !Boolean.parseBoolean(includeSystemStores));
+        Optional<String> storeConfigNameFilter = Optional.ofNullable(request.queryParamOrDefault(STORE_CONFIG_NAME_FILTER, null));
+        Optional<String> storeConfigValueFilter = Optional.ofNullable(request.queryParamOrDefault(STORE_CONFIG_VALUE_FILTER, null));
+        if (storeConfigNameFilter.isPresent()^storeConfigValueFilter.isPresent()) {
+          throw new VeniceException("Missing parameter: " + (storeConfigNameFilter.isPresent() ? "store_config_value_filter" : "store_config_name_filter"));
+        }
+        boolean isDataReplicationPolicyConfigFilter = false;
+        Schema.Field configFilterField = null;
+        if (storeConfigNameFilter.isPresent()) {
+          configFilterField = StoreProperties.SCHEMA$.getField(storeConfigNameFilter.get());
+          if (configFilterField == null) {
+            isDataReplicationPolicyConfigFilter = storeConfigNameFilter.get().equalsIgnoreCase("dataReplicationPolicy");
+            if (!isDataReplicationPolicyConfigFilter) {
+              throw new VeniceException("The config name filter " + storeConfigNameFilter.get() + " is not a valid store config.");
+            }
+          }
         }
 
-        String[] storeNameList = new String[storeList.size()];
-        for (int i = 0; i < storeList.size(); i++) {
-          storeNameList[i] = storeList.get(i).getName();
+        List<Store> storeList = admin.getAllStores(veniceResponse.getCluster());
+        List<Store> selectedStoreList;
+        if (excludeSystemStores || storeConfigNameFilter.isPresent()) {
+          selectedStoreList = new ArrayList<>();
+          for (Store store : storeList) {
+            if (excludeSystemStores && store.isSystemStore()) {
+              continue;
+            }
+            if (storeConfigValueFilter.isPresent()) {
+              boolean configValueMatch = false;
+              if (isDataReplicationPolicyConfigFilter) {
+                if (!store.isHybrid() || store.getHybridStoreConfig().getDataReplicationPolicy() == null) {
+                  continue;
+                }
+                configValueMatch = store.getHybridStoreConfig().getDataReplicationPolicy().name().equalsIgnoreCase(storeConfigValueFilter.get());
+              } else {
+                ZKStore cloneStore = new ZKStore(store);
+                Object configValue = cloneStore.dataModel().get(storeConfigNameFilter.get());
+                if (configValue == null) {
+                  // If the store doesn't have the config, it fails the match
+                  continue;
+                }
+                // Compare based on schema type
+                Schema fieldSchema = configFilterField.schema();
+                switch (fieldSchema.getType()) {
+                  case BOOLEAN:
+                    configValueMatch = Boolean.valueOf(storeConfigValueFilter.get()).equals((Boolean) configValue);
+                    break;
+                  case INT:
+                    configValueMatch = Integer.valueOf(storeConfigValueFilter.get()).equals((Integer) configValue);
+                    break;
+                  case LONG:
+                    configValueMatch = Long.valueOf(storeConfigValueFilter.get()).equals((Long) configValue);
+                    break;
+                  case FLOAT:
+                    configValueMatch = Float.valueOf(storeConfigValueFilter.get()).equals(configValue);
+                    break;
+                  case DOUBLE:
+                    configValueMatch = Double.valueOf(storeConfigValueFilter.get()).equals(configValue);
+                    break;
+                  case STRING:
+                    configValueMatch = storeConfigValueFilter.get().equals(configValue);
+                    break;
+                  case ENUM:
+                    configValueMatch = storeConfigValueFilter.get().equals(configValue.toString());
+                    break;
+                  case UNION:
+                    /**
+                     * For union field, return match as long as the union field is not null
+                     */
+                    configValueMatch = (configValue != null);
+                    break;
+                  case ARRAY:
+                  case MAP:
+                  case FIXED:
+                  case BYTES:
+                  case RECORD:
+                  case NULL:
+                  default:
+                    throw new VeniceException(
+                        "Store config filtering for Schema type " + fieldSchema.getType().toString() + " is not supported");
+                }
+              }
+              if (!configValueMatch) {
+                continue;
+              }
+            }
+            selectedStoreList.add(store);
+          }
+        } else {
+          selectedStoreList = storeList;
+        }
+
+        String[] storeNameList = new String[selectedStoreList.size()];
+        for (int i = 0; i < selectedStoreList.size(); i++) {
+          storeNameList[i] = selectedStoreList.get(i).getName();
         }
         veniceResponse.setStores(storeNameList);
       }
