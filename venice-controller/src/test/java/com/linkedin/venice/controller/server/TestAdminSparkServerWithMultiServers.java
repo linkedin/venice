@@ -4,12 +4,14 @@ import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.MultiStoreResponse;
+import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
+import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.TestUtils;
@@ -18,8 +20,10 @@ import com.linkedin.venice.utils.Utils;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
@@ -66,6 +70,82 @@ public class TestAdminSparkServerWithMultiServers {
     for (String expectedStore : storeNames) {
       Assert.assertTrue(returnedStoreNames.contains(expectedStore), "Query store list should include " + expectedStore);
     }
+  }
+
+  public void testListStoreWithConfigFilter() {
+    // Add a store with native replication enabled
+    String nativeReplicationEnabledStore = TestUtils.getUniqueString("native-replication-store");
+    NewStoreResponse newStoreResponse = controllerClient.createNewStore(nativeReplicationEnabledStore, "test", "\"string\"", "\"string\"");
+    Assert.assertFalse(newStoreResponse.isError());
+    ControllerResponse updateStoreResponse = controllerClient.updateStore(nativeReplicationEnabledStore, new UpdateStoreQueryParams().setLeaderFollowerModel(true).setNativeReplicationEnabled(true));
+    Assert.assertFalse(updateStoreResponse.isError());
+
+    // Add a store with incremental push enabled
+    String incrementalPushEnabledStore = TestUtils.getUniqueString("incremental-push-store");
+    newStoreResponse = controllerClient.createNewStore(incrementalPushEnabledStore, "test", "\"string\"", "\"string\"");
+    Assert.assertFalse(newStoreResponse.isError());
+    updateStoreResponse = controllerClient.updateStore(incrementalPushEnabledStore, new UpdateStoreQueryParams().setIncrementalPushEnabled(true));
+    Assert.assertFalse(updateStoreResponse.isError());
+
+    // List stores that have native replication enabled
+    MultiStoreResponse multiStoreResponse = controllerClient.queryStoreList(false, Optional.of("nativeReplicationEnabled"), Optional.of("true"));
+    Assert.assertFalse(multiStoreResponse.isError());
+    Assert.assertEquals(multiStoreResponse.getStores().length, 1);
+    Assert.assertEquals(multiStoreResponse.getStores()[0], nativeReplicationEnabledStore);
+
+    // List stores that have incremental push enabled
+    multiStoreResponse = controllerClient.queryStoreList(false, Optional.of("incrementalPushEnabled"), Optional.of("true"));
+    Assert.assertFalse(multiStoreResponse.isError());
+    Assert.assertEquals(multiStoreResponse.getStores().length, 1);
+    Assert.assertEquals(multiStoreResponse.getStores()[0], incrementalPushEnabledStore);
+
+    // List stores that have leader/follower mode enabled
+    multiStoreResponse = controllerClient.queryStoreList(false, Optional.of("leaderFollowerModelEnabled"), Optional.of("true"));
+    Assert.assertFalse(multiStoreResponse.isError());
+    Assert.assertEquals(multiStoreResponse.getStores().length, 1);
+    Assert.assertEquals(multiStoreResponse.getStores()[0], nativeReplicationEnabledStore);
+
+    // Add a store with hybrid config enabled and the DataReplicationPolicy is non-aggregate
+    String hybridNonAggregateStore = TestUtils.getUniqueString("hybrid-non-aggregate");
+    newStoreResponse = controllerClient.createNewStore(hybridNonAggregateStore, "test", "\"string\"", "\"string\"");
+    Assert.assertFalse(newStoreResponse.isError());
+    updateStoreResponse = controllerClient.updateStore(hybridNonAggregateStore, new UpdateStoreQueryParams()
+        .setHybridRewindSeconds(100)
+        .setHybridOffsetLagThreshold(10)
+        .setHybridDataReplicationPolicy(DataReplicationPolicy.NON_AGGREGATE));
+    Assert.assertFalse(updateStoreResponse.isError());
+
+    // Add a store with hybrid config enabled and the DataReplicationPolicy is aggregate
+    String hybridAggregateStore = TestUtils.getUniqueString("hybrid-aggregate");
+    newStoreResponse = controllerClient.createNewStore(hybridAggregateStore, "test", "\"string\"", "\"string\"");
+    Assert.assertFalse(newStoreResponse.isError());
+    updateStoreResponse = controllerClient.updateStore(hybridAggregateStore, new UpdateStoreQueryParams()
+        .setHybridRewindSeconds(100)
+        .setHybridOffsetLagThreshold(10)
+        .setHybridDataReplicationPolicy(DataReplicationPolicy.AGGREGATE));
+    Assert.assertFalse(updateStoreResponse.isError());
+
+    // List stores that have hybrid config enabled
+    multiStoreResponse = controllerClient.queryStoreList(false, Optional.of("hybridConfig"), Optional.of("true"));
+    Assert.assertFalse(multiStoreResponse.isError());
+    // Don't check the size of the return store list since the cluster is shared by all test cases.
+    Set<String> hybridStoresSet = new HashSet<>(Arrays.asList(multiStoreResponse.getStores()));
+    Assert.assertTrue(hybridStoresSet.contains(hybridAggregateStore));
+    Assert.assertTrue(hybridStoresSet.contains(hybridNonAggregateStore));
+    Assert.assertFalse(hybridStoresSet.contains(nativeReplicationEnabledStore));
+    Assert.assertFalse(hybridStoresSet.contains(incrementalPushEnabledStore));
+
+    // List hybrid stores that are on non-aggregate mode
+    multiStoreResponse = controllerClient.queryStoreList(false, Optional.of("dataReplicationPolicy"), Optional.of("NON_AGGREGATE"));
+    Assert.assertFalse(multiStoreResponse.isError());
+    Assert.assertEquals(multiStoreResponse.getStores().length, 1);
+    Assert.assertEquals(multiStoreResponse.getStores()[0], hybridNonAggregateStore);
+
+    // List hybrid stores that are on aggregate mode
+    multiStoreResponse = controllerClient.queryStoreList(false, Optional.of("dataReplicationPolicy"), Optional.of("AGGREGATE"));
+    Assert.assertFalse(multiStoreResponse.isError());
+    Assert.assertEquals(multiStoreResponse.getStores().length, 1);
+    Assert.assertEquals(multiStoreResponse.getStores()[0], hybridAggregateStore);
   }
 
   @Test(timeOut = TEST_TIMEOUT)
