@@ -45,6 +45,7 @@ import com.linkedin.venice.utils.DiskUsage;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Lazy;
 import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.writer.DeleteMetadata;
 import com.linkedin.venice.writer.PutMetadata;
 import com.linkedin.venice.writer.VeniceWriterFactory;
@@ -75,7 +76,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   private static final Logger logger = Logger.getLogger(ActiveActiveStoreIngestionTask.class);
   private final int replicationMetadataVersionId;
   private final MergeConflictResolver mergeConflictResolver;
-
+  private Map<GUID, Map<Integer, ReentrantLock>> partitionLockMapPerProducer = new VeniceConcurrentHashMap<>();
 
   public ActiveActiveStoreIngestionTask(
       Store store,
@@ -172,9 +173,9 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
        * happen in order for a single partition.
        */
       final GUID producerGUID = consumerRecord.value().producerMetadata.producerGUID;
-      ProducerTracker producerTracker = kafkaDataIntegrityValidator.registerProducer(producerGUID);
       int partition = consumerRecord.partition();
-      ReentrantLock partitionLock = producerTracker.getPartitionLock(partition);
+      Map<Integer, ReentrantLock> partitionLockMap = partitionLockMapPerProducer.computeIfAbsent(producerGUID, guid -> new VeniceConcurrentHashMap<>());
+      ReentrantLock partitionLock = partitionLockMap.computeIfAbsent(partition, key -> new ReentrantLock());
       partitionLock.lock();
       try {
         return super.delegateConsumerRecord(consumerRecordWrapper);
@@ -730,4 +731,5 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     }
     return upstreamKafkaURL;
   }
+
 }
