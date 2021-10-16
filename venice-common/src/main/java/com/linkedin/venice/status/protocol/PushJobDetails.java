@@ -7,7 +7,7 @@ package com.linkedin.venice.status.protocol;
 
 @SuppressWarnings("all")
 public class PushJobDetails extends org.apache.avro.specific.SpecificRecordBase implements org.apache.avro.specific.SpecificRecord {
-  public static final org.apache.avro.Schema SCHEMA$ = org.apache.avro.Schema.parse("{\"type\":\"record\",\"name\":\"PushJobDetails\",\"namespace\":\"com.linkedin.venice.status.protocol\",\"fields\":[{\"name\":\"clusterName\",\"type\":\"string\"},{\"name\":\"reportTimestamp\",\"type\":\"long\",\"doc\":\"timestamp for when the reported details were collected\"},{\"name\":\"overallStatus\",\"type\":{\"type\":\"array\",\"items\":{\"type\":\"record\",\"name\":\"PushJobDetailsStatusTuple\",\"fields\":[{\"name\":\"status\",\"type\":\"int\"},{\"name\":\"timestamp\",\"type\":\"long\"}]}}},{\"name\":\"coloStatus\",\"type\":[\"null\",{\"type\":\"map\",\"values\":{\"type\":\"array\",\"items\":\"PushJobDetailsStatusTuple\"}}],\"default\":null},{\"name\":\"pushId\",\"type\":\"string\",\"default\":\"\"},{\"name\":\"partitionCount\",\"type\":\"int\",\"default\":-1},{\"name\":\"valueCompressionStrategy\",\"type\":\"int\",\"doc\":\"0 => NO_OP, 1 => GZIP\",\"default\":0},{\"name\":\"chunkingEnabled\",\"type\":\"boolean\",\"default\":false},{\"name\":\"jobDurationInMs\",\"type\":\"long\",\"default\":-1},{\"name\":\"totalNumberOfRecords\",\"type\":\"long\",\"doc\":\"total number of key value pairs pushed\",\"default\":-1},{\"name\":\"totalKeyBytes\",\"type\":\"long\",\"doc\":\"total amount of key bytes pushed\",\"default\":-1},{\"name\":\"totalRawValueBytes\",\"type\":\"long\",\"doc\":\"total amount of uncompressed value bytes\",\"default\":-1},{\"name\":\"totalCompressedValueBytes\",\"type\":\"long\",\"doc\":\"total amount of \",\"default\":-1},{\"name\":\"pushJobConfigs\",\"type\":[\"null\",{\"type\":\"map\",\"values\":\"string\"}],\"default\":null},{\"name\":\"producerConfigs\",\"type\":[\"null\",{\"type\":\"map\",\"values\":\"string\"}],\"default\":null},{\"name\":\"pushJobLatestCheckpoint\",\"type\":[\"null\",\"int\"],\"doc\":\"Latest checkpoint reached by the push job if available, negative values are known error checkpoints. Refer to {@link com.linkedin.venice.hadoop.VenicePushJob.PushJobCheckpoints}\",\"default\":null},{\"name\":\"failureDetails\",\"type\":\"string\",\"default\":\"\"}]}");
+  public static final org.apache.avro.Schema SCHEMA$ = org.apache.avro.Schema.parse("{\"type\":\"record\",\"name\":\"PushJobDetails\",\"namespace\":\"com.linkedin.venice.status.protocol\",\"fields\":[{\"name\":\"clusterName\",\"type\":\"string\"},{\"name\":\"reportTimestamp\",\"type\":\"long\",\"doc\":\"timestamp for when the reported details were collected\"},{\"name\":\"overallStatus\",\"type\":{\"type\":\"array\",\"items\":{\"type\":\"record\",\"name\":\"PushJobDetailsStatusTuple\",\"fields\":[{\"name\":\"status\",\"type\":\"int\"},{\"name\":\"timestamp\",\"type\":\"long\"}]}}},{\"name\":\"coloStatus\",\"type\":[\"null\",{\"type\":\"map\",\"values\":{\"type\":\"array\",\"items\":\"PushJobDetailsStatusTuple\"}}],\"default\":null},{\"name\":\"pushId\",\"type\":\"string\",\"default\":\"\"},{\"name\":\"partitionCount\",\"type\":\"int\",\"default\":-1},{\"name\":\"valueCompressionStrategy\",\"type\":\"int\",\"doc\":\"0 => NO_OP, 1 => GZIP\",\"default\":0},{\"name\":\"chunkingEnabled\",\"type\":\"boolean\",\"default\":false},{\"name\":\"jobDurationInMs\",\"type\":\"long\",\"default\":-1},{\"name\":\"totalNumberOfRecords\",\"type\":\"long\",\"doc\":\"total number of key value pairs pushed\",\"default\":-1},{\"name\":\"totalKeyBytes\",\"type\":\"long\",\"doc\":\"total amount of key bytes pushed\",\"default\":-1},{\"name\":\"totalRawValueBytes\",\"type\":\"long\",\"doc\":\"total amount of uncompressed value bytes\",\"default\":-1},{\"name\":\"totalCompressedValueBytes\",\"type\":\"long\",\"doc\":\"total amount of \",\"default\":-1},{\"name\":\"pushJobConfigs\",\"type\":[\"null\",{\"type\":\"map\",\"values\":\"string\"}],\"default\":null},{\"name\":\"producerConfigs\",\"type\":[\"null\",{\"type\":\"map\",\"values\":\"string\"}],\"default\":null},{\"name\":\"pushJobLatestCheckpoint\",\"type\":[\"null\",\"int\"],\"doc\":\"Latest checkpoint reached by the push job if available, negative values are known error checkpoints. Refer to {@link com.linkedin.venice.hadoop.VenicePushJob.PushJobCheckpoints}\",\"default\":null},{\"name\":\"failureDetails\",\"type\":\"string\",\"default\":\"\"},{\"name\":\"sendLivenessHeartbeatFailureDetails\",\"type\":[\"null\",\"string\"],\"doc\":\"Failure details of sending liveness heartbeat from the push job. If no failure or the job is not enabled to send liveness heartbeat, this field is null\",\"default\":null}]}");
   public java.lang.CharSequence clusterName;
   /** timestamp for when the reported details were collected */
   public long reportTimestamp;
@@ -32,6 +32,8 @@ public class PushJobDetails extends org.apache.avro.specific.SpecificRecordBase 
   /** Latest checkpoint reached by the push job if available, negative values are known error checkpoints. Refer to {@link com.linkedin.venice.hadoop.VenicePushJob.PushJobCheckpoints} */
   public java.lang.Integer pushJobLatestCheckpoint;
   public java.lang.CharSequence failureDetails;
+  /** Failure details of sending liveness heartbeat from the push job. If no failure or the job is not enabled to send liveness heartbeat, this field is null */
+  public java.lang.CharSequence sendLivenessHeartbeatFailureDetails;
   public org.apache.avro.Schema getSchema() { return SCHEMA$; }
   // Used by DatumWriter.  Applications should not call. 
   public java.lang.Object get(int field$) {
@@ -53,6 +55,7 @@ public class PushJobDetails extends org.apache.avro.specific.SpecificRecordBase 
     case 14: return producerConfigs;
     case 15: return pushJobLatestCheckpoint;
     case 16: return failureDetails;
+    case 17: return sendLivenessHeartbeatFailureDetails;
     default: throw new org.apache.avro.AvroRuntimeException("Bad index");
     }
   }
@@ -77,6 +80,7 @@ public class PushJobDetails extends org.apache.avro.specific.SpecificRecordBase 
     case 14: producerConfigs = (java.util.Map<java.lang.CharSequence,java.lang.CharSequence>)value$; break;
     case 15: pushJobLatestCheckpoint = (java.lang.Integer)value$; break;
     case 16: failureDetails = (java.lang.CharSequence)value$; break;
+    case 17: sendLivenessHeartbeatFailureDetails = (java.lang.CharSequence)value$; break;
     default: throw new org.apache.avro.AvroRuntimeException("Bad index");
     }
   }
