@@ -58,7 +58,7 @@ public enum AvroProtocolDefinition {
   /**
    * Used to encode push job details records to be written to the PushJobDetails system store.
    */
-  PUSH_JOB_DETAILS(26, 2, PushJobDetails.class),
+  PUSH_JOB_DETAILS(26, 3, PushJobDetails.class),
 
   /**
    * Used to encode metadata changes about the system as a whole. Records of this type

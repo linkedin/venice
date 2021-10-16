@@ -31,7 +31,7 @@ AVRO_SCHEMAS_PATH=(
   "venice-schema-common/src/main/resources/avro/ComputeResponseRecord/*"
   "venice-schema-common/src/main/resources/avro/ComputeRouterRequestKey/*"
   "venice-schema-common/src/main/resources/avro/StreamingFooterRecord/*"
-  "venice-common/src/main/resources/avro/PushJobDetails/v2/*"
+  "venice-common/src/main/resources/avro/PushJobDetails/v3/*"
   "venice-common/src/main/resources/avro/BatchJobHeartbeatKey/v1/*"
   "venice-common/src/main/resources/avro/BatchJobHeartbeatValue/v1/*"
   "venice-common/src/main/resources/avro/StoreMetadata/StoreMetadataKey/*"
