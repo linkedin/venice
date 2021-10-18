@@ -10,6 +10,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -41,6 +42,7 @@ class DefaultPushJobHeartbeatSender implements PushJobHeartbeatSender {
   private Instant heartbeatStartTime;
   private long successfulHeartbeatCount;
   private long failedHeartbeatCount;
+  private Exception firstSendHeartbeatException;
 
   DefaultPushJobHeartbeatSender(
           @Nonnull Duration initialDelay,
@@ -63,6 +65,7 @@ class DefaultPushJobHeartbeatSender implements PushJobHeartbeatSender {
     this.executorService = Executors.newSingleThreadScheduledExecutor(new DaemonThreadFactory("push-job-heartbeat-thread"));
     this.successfulHeartbeatCount = 0;
     this.failedHeartbeatCount = 0;
+    this.firstSendHeartbeatException = null;
   }
 
   private int getSchemaIdForSchemaOrFail(Schema expectedSchema, Map<Integer, Schema> valueSchemasById) {
@@ -137,6 +140,11 @@ class DefaultPushJobHeartbeatSender implements PushJobHeartbeatSender {
     sendHeartbeat(createHeartbeatKey(), createHeartbeatValue(), DEFAULT_SEND_CALLBACK_AWAIT_TIMEOUT, false);
   }
 
+  @Override
+  public Optional<Exception> getFirstSendHeartbeatException() {
+   return Optional.ofNullable(firstSendHeartbeatException);
+  }
+
   private BatchJobHeartbeatKey createHeartbeatKey() {
     BatchJobHeartbeatKey batchJobHeartbeatKey = new BatchJobHeartbeatKey();
     batchJobHeartbeatKey.storeName = this.storeName;
@@ -167,6 +175,9 @@ class DefaultPushJobHeartbeatSender implements PushJobHeartbeatSender {
         LOGGER.info("Sending one heartbeat event successfully. Took: " + sendDuration.toMillis() + " ms");
       } else {
         failedHeartbeatCount++;
+        if (firstSendHeartbeatException == null) {
+          firstSendHeartbeatException = exception;
+        }
         LOGGER.info("Failed to send one heartbeat event after " + sendDuration.toMillis() + " ms", exception);
       }
       sendComplete.countDown();
