@@ -1,6 +1,7 @@
 package com.linkedin.venice.hadoop.heartbeat;
 
 import java.time.Duration;
+import java.util.Optional;
 import javax.annotation.Nonnull;
 
 public class NoOpPushJobHeartbeatSender implements PushJobHeartbeatSender {
@@ -27,5 +28,10 @@ public class NoOpPushJobHeartbeatSender implements PushJobHeartbeatSender {
     @Override
     public void run() {
         // No op
+    }
+
+    @Override
+    public Optional<Exception> getFirstSendHeartbeatException() {
+        return Optional.empty();
     }
 }

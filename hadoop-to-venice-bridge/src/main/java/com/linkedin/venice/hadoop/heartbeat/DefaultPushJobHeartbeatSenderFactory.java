@@ -34,20 +34,6 @@ public class DefaultPushJobHeartbeatSenderFactory implements PushJobHeartbeatSen
       ControllerClient controllerClient,
       Optional<Properties> sslProperties
   ) {
-    try {
-      return createDefaultPushJobHeartbeatSender(properties, controllerClient, sslProperties);
-    } catch (Exception e) {
-      logger.error("Creating the default push job heartbeat sender fails and use the no-op push job sender instead. It "
-          + "means the push job heartbeat feature is not enabled.", e);
-      return new NoOpPushJobHeartbeatSender();
-    }
-  }
-
-  private DefaultPushJobHeartbeatSender createDefaultPushJobHeartbeatSender(
-      VeniceProperties properties,
-      ControllerClient controllerClient,
-      Optional<Properties> sslProperties
-  ) {
     Utils.notNull(controllerClient);
     final String heartbeatStoreName = getHeartbeatStoreName(properties);
     VersionCreationResponse versionCreationResponse = ControllerClient.retryableRequest(

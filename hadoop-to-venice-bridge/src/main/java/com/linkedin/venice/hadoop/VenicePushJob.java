@@ -16,6 +16,7 @@ import com.linkedin.venice.etl.ETLValueSchemaTransformation;
 import com.linkedin.venice.exceptions.TopicAuthorizationVeniceException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.heartbeat.DefaultPushJobHeartbeatSenderFactory;
+import com.linkedin.venice.hadoop.heartbeat.NoOpPushJobHeartbeatSender;
 import com.linkedin.venice.hadoop.heartbeat.NoOpPushJobHeartbeatSenderFactory;
 import com.linkedin.venice.hadoop.heartbeat.PushJobHeartbeatSender;
 import com.linkedin.venice.hadoop.heartbeat.PushJobHeartbeatSenderFactory;
@@ -772,11 +773,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
       initControllerClient(sslFactory, pushJobSetting.veniceControllerUrl, clusterName);
       sendPushJobDetailsToController();
       validateKafkaMessageEnvelopeSchema(pushJobSetting);
-      pushJobHeartbeatSender = pushJobHeartbeatSenderFactory.createHeartbeatSender(
-          props,
-          livenessHeartbeatStoreControllerClient,
-          sslEnabled ? Optional.of(this.sslProperties.get()) : Optional.empty()
-      );
+      pushJobHeartbeatSender = createPushJobHeartbeatSender(sslEnabled);
       inputDirectory = getInputURI(props);
       storeSetting = getSettingsFromController(controllerClient, pushJobSetting);
       inputStorageQuotaTracker = new InputStorageQuotaTracker(storeSetting.storeStorageQuota);
@@ -928,6 +925,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
         pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(PushJobDetailsStatus.COMPLETED.getValue()));
         pushJobDetails.jobDurationInMs = System.currentTimeMillis() - jobStartTimeMs;
         updatePushJobDetailsWithConfigs();
+        updatePushJobDetailsWithLivenessHeartbeatException(pushJobHeartbeatSender);
         sendPushJobDetailsToController();
         deleteOutdatedIncrementalPushStatusIfNeeded();
       }
@@ -948,6 +946,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
         pushJobDetails.failureDetails = e.toString();
         pushJobDetails.jobDurationInMs = System.currentTimeMillis() - jobStartTimeMs;
         updatePushJobDetailsWithConfigs();
+        updatePushJobDetailsWithLivenessHeartbeatException(pushJobHeartbeatSender);
         sendPushJobDetailsToController();
         closeVeniceWriter();
       } catch (Exception ex) {
@@ -972,6 +971,32 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
         kafkaInputOffsetTracker.close();
         kafkaInputOffsetTracker = null;
       }
+    }
+  }
+
+  private PushJobHeartbeatSender createPushJobHeartbeatSender(final boolean sslEnabled) {
+    try {
+      return pushJobHeartbeatSenderFactory.createHeartbeatSender(
+          props,
+          livenessHeartbeatStoreControllerClient,
+          sslEnabled ? Optional.of(this.sslProperties.get()) : Optional.empty()
+      );
+    } catch (Exception e) {
+      logger.warn("Failed to create a push job heartbeat sender. Use the no-op push job heartbeat sender.", e);
+      pushJobDetails.sendLivenessHeartbeatFailureDetails = e.getMessage();
+      return new NoOpPushJobHeartbeatSender();
+    }
+  }
+
+  private void updatePushJobDetailsWithLivenessHeartbeatException(PushJobHeartbeatSender pushJobHeartbeatSender) {
+    if (pushJobHeartbeatSender == null || this.pushJobDetails == null) {
+      return;
+    }
+    if (pushJobDetails.sendLivenessHeartbeatFailureDetails == null) {
+      pushJobHeartbeatSender.getFirstSendHeartbeatException().ifPresent(
+          firstSendHeartbeatException ->
+              pushJobDetails.sendLivenessHeartbeatFailureDetails = firstSendHeartbeatException.getMessage()
+      );
     }
   }
 

@@ -20,6 +20,7 @@ import org.apache.avro.io.DatumReader;
 import org.apache.avro.io.DecoderFactory;
 import org.apache.avro.specific.SpecificDatumReader;
 import org.apache.http.HttpStatus;
+import org.apache.log4j.Logger;
 import spark.Route;
 
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
@@ -27,6 +28,7 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.*;
 
 
 public class JobRoutes extends AbstractRoute {
+  private static final Logger logger = Logger.getLogger(JobRoutes.class);
   private InternalAvroSpecificSerializer<PushJobDetails> pushJobDetailsSerializer =
       AvroProtocolDefinition.PUSH_JOB_DETAILS.getSerializer();
 
@@ -152,6 +154,12 @@ public class JobRoutes extends AbstractRoute {
           pushJobDetails = pushJobDetailsSerializer.deserialize(null, request.bodyAsBytes());
         }
         admin.sendPushJobDetails(key, pushJobDetails);
+
+        if (pushJobDetails.sendLivenessHeartbeatFailureDetails != null) {
+          logger.warn(String.format("Sending push job liveness heartbeats for store %s with version %d failed due to "
+              + "%s. Push job ID is: %s", storeName, versionNumber, pushJobDetails.failureDetails.toString(), pushJobDetails.pushId.toString()));
+        }
+
       } catch (Throwable e) {
         controllerResponse.setError(e.getMessage());
         AdminSparkServer.handleError(e, request, response);
