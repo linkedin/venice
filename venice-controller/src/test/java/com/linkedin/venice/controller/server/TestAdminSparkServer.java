@@ -73,6 +73,7 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
   @BeforeClass
   public void setUp() {
     Properties extraProperties = new Properties();
+
     extraProperties.put(ConfigKeys.CONTROLLER_JETTY_CONFIG_OVERRIDE_PREFIX + "org.eclipse.jetty.server.Request.maxFormContentSize", ByteUtils.BYTES_PER_MB);
     // Set topic cleanup interval to a large number to test getDeletableStoreTopics.
     extraProperties.put(ConfigKeys.TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS, Long.toString(TimeUnit.DAYS.toMillis(7)));
@@ -828,6 +829,11 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
       Assert.assertFalse(controllerClient.emptyPush(storeName, "push-1", 1024000L).isError());
       Assert.assertFalse(controllerClient.emptyPush(storeName, "push-2", 1024000L).isError());
       Assert.assertFalse(controllerClient.emptyPush(storeName, "push-3", 1024000L).isError());
+
+      TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+        StoreResponse storeResponse = controllerClient.getStore(storeName);
+        Assert.assertEquals(storeResponse.getStore().getVersions().size(), 2);
+      });
       MultiStoreTopicsResponse multiStoreTopicResponse = controllerClient.getDeletableStoreTopics();
       Assert.assertFalse(multiStoreTopicResponse.isError());
       Assert.assertTrue(multiStoreTopicResponse.getTopics().contains(Version.composeKafkaTopic(storeName, 1)));
