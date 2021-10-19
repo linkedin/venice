@@ -317,7 +317,7 @@ public class ByteUtils {
       int originalBufferPosition = originalBuffer.position();
       ByteBuffer byteBufferWithHeader = ByteBuffer.allocate(SIZE_OF_INT + originalBuffer.remaining())
           .putInt(header)
-          .put(originalBuffer);
+          .put(originalBuffer.array(), originalBuffer.position(), originalBuffer.limit());
       originalBuffer.position(originalBufferPosition);
       byteBufferWithHeader.flip();
       byteBufferWithHeader.position(SIZE_OF_INT);
