@@ -123,16 +123,16 @@ public class TestWriteCompute {
           }
         });
 
-        //disable the purging of transientRecord cache using reflection.
+        //disable the purging of transientRecord buffer using reflection.
         if (writeComputeFromCache) {
           for (VeniceServerWrapper veniceServerWrapper : veniceClusterWrapper.getVeniceServers()) {
             try {
               VeniceServer veniceServer = veniceServerWrapper.getVeniceServer();
               StoreIngestionTask ingestionTask = veniceServer.getKafkaStoreIngestionService().getStoreIngestionTask(Version.composeKafkaTopic(storeName, 1));
-              Field purgeTransientRecordCacheField =
-                  ingestionTask.getClass().getSuperclass().getDeclaredField("purgeTransientRecordCache");
-              purgeTransientRecordCacheField.setAccessible(true);
-              purgeTransientRecordCacheField.setBoolean(ingestionTask, false);
+              Field purgeTransientRecordBufferField =
+                  ingestionTask.getClass().getSuperclass().getDeclaredField("purgeTransientRecordBuffer");
+              purgeTransientRecordBufferField.setAccessible(true);
+              purgeTransientRecordBufferField.setBoolean(ingestionTask, false);
             } catch (Exception e) {
               throw e;
             }

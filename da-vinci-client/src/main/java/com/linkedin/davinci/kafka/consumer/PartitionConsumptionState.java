@@ -90,9 +90,9 @@ public class PartitionConsumptionState {
 
   /**
    * This hash map will keep a temporary mapping between a key and it's value.
-   * get {@link #getTransientRecord(byte[])} and put {@link #setTransientRecord(long, byte[], byte[], int, int, int)}
+   * get {@link #getTransientRecord(byte[])} and put {@link #setTransientRecord(String, long, byte[], byte[], int, int, int, ByteBuffer)}
    * operation on this map will be invoked from from kafka consumer thread.
-   * delete {@link #mayRemoveTransientRecord(long, byte[])} operation will be invoked from drainer thread after persisting it in DB.
+   * delete {@link #mayRemoveTransientRecord(String, long, byte[])} operation will be invoked from drainer thread after persisting it in DB.
    * because of the properties of the above operations the caller is guaranteed to get the latest value for a key either from
    * this map or from the DB.
    */
@@ -392,12 +392,12 @@ public class PartitionConsumptionState {
     return consumptionStartTimeInMs;
   }
 
-  public void setTransientRecord(long kafkaConsumedOffset, byte[] key, ByteBuffer replicationMetadata) {
-    setTransientRecord(kafkaConsumedOffset, key, null, -1, -1, -1, replicationMetadata);
+  public void setTransientRecord(String kafkaUrl, long kafkaConsumedOffset, byte[] key, ByteBuffer replicationMetadata) {
+    setTransientRecord(kafkaUrl, kafkaConsumedOffset, key, null, -1, -1, -1, replicationMetadata);
   }
 
-  public void setTransientRecord(long kafkaConsumedOffset, byte[] key, byte[] value, int valueOffset, int valueLen, int valueSchemaId, ByteBuffer replicationMetadata) {
-    transientRecordMap.put(ByteBuffer.wrap(key), new TransientRecord(value, valueOffset, valueLen, valueSchemaId, kafkaConsumedOffset, replicationMetadata));
+  public void setTransientRecord(String kafkaUrl, long kafkaConsumedOffset, byte[] key, byte[] value, int valueOffset, int valueLen, int valueSchemaId, ByteBuffer replicationMetadata) {
+    transientRecordMap.put(ByteBuffer.wrap(key), new TransientRecord(value, valueOffset, valueLen, valueSchemaId, kafkaUrl, kafkaConsumedOffset, replicationMetadata));
   }
 
   public TransientRecord getTransientRecord(byte[] key) {
@@ -410,9 +410,9 @@ public class PartitionConsumptionState {
    * @param kafkaConsumedOffset
    * @return
    */
-  public TransientRecord mayRemoveTransientRecord(long kafkaConsumedOffset, byte[] key) {
+  public TransientRecord mayRemoveTransientRecord(String kafkaUrl, long kafkaConsumedOffset, byte[] key) {
     TransientRecord removed = transientRecordMap.computeIfPresent(ByteBuffer.wrap(key), (k, v) -> {
-      if (v.kafkaConsumedOffset == kafkaConsumedOffset) {
+      if (v.kafkaUrl.equals(kafkaUrl) && v.kafkaConsumedOffset == kafkaConsumedOffset) {
         return null;
       } else {
         return v;
@@ -461,14 +461,16 @@ public class PartitionConsumptionState {
     private final int valueOffset;
     private final int valueLen;
     private final int valueSchemaId;
+    private final String kafkaUrl;
     private final long kafkaConsumedOffset;
     private final ByteBuffer replicationMetadata;
 
-    TransientRecord(byte[] value, int valueOffset, int valueLen, int valueSchemaId, long kafkaConsumedOffset, ByteBuffer replicationMetadata) {
+    TransientRecord(byte[] value, int valueOffset, int valueLen, int valueSchemaId, String kafkaUrl, long kafkaConsumedOffset, ByteBuffer replicationMetadata) {
       this.value = value;
       this.valueOffset = valueOffset;
       this.valueLen = valueLen;
       this.valueSchemaId = valueSchemaId;
+      this.kafkaUrl = kafkaUrl;
       this.kafkaConsumedOffset = kafkaConsumedOffset;
       this.replicationMetadata = (replicationMetadata == null ? null : ByteBuffer.wrap(replicationMetadata.array(), replicationMetadata.position(), replicationMetadata.limit()));
     }

@@ -316,7 +316,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   //This flag is introduced to help write integration test to exercise code path during UPDATE message processing in
   //{@link LeaderFollowerStoreIngestionTask#hasProducedToKafka(VeniceConsumerRecordWrapper)}. This must be always set to true except
   //as needed in integration test.
-  private boolean purgeTransientRecordCache = true;
+  private boolean purgeTransientRecordBuffer = true;
 
   /**
    * Freeze ingestion if ready to serve or local data exists
@@ -2938,10 +2938,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      * Potentially clean the mapping from transient record map. consumedOffset may be -1 when individual chunks are getting
      * produced to drainer queue from kafka callback thread {@link LeaderFollowerStoreIngestionTask#LeaderProducerMessageCallback}
      */
-    if (purgeTransientRecordCache && isWriteComputationEnabled && partitionConsumptionState.isEndOfPushReceived()
+    if (purgeTransientRecordBuffer && isTransientRecordBufferUsed() && partitionConsumptionState.isEndOfPushReceived()
         && leaderProducedRecordContext != null && leaderProducedRecordContext.getConsumedOffset() != -1) {
       PartitionConsumptionState.TransientRecord transientRecord =
-          partitionConsumptionState.mayRemoveTransientRecord(leaderProducedRecordContext.getConsumedOffset(), kafkaKey.getKey());
+          partitionConsumptionState.mayRemoveTransientRecord(leaderProducedRecordContext.getConsumedKafkaUrl(), leaderProducedRecordContext.getConsumedOffset(), kafkaKey.getKey());
       if (transientRecord != null) {
         //This is perfectly fine, logging to see how often it happens where we get multiple put/update/delete for same key in quick succession.
         String msg =
@@ -3930,4 +3930,15 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       return new Pair<>(latestLeaderOffset, lastOffsetInRealTimeTopic);
     }
   }
+
+  /**
+   * This is not a per record state. Rather it's used to indicate if the transient record buffer is being used at all
+   * for this ingestion task or not.
+   * For L/F mode only WC ingestion task needs this buffer.
+   * @return
+   */
+  protected boolean isTransientRecordBufferUsed() {
+    return isWriteComputationEnabled;
+  }
+
 }
