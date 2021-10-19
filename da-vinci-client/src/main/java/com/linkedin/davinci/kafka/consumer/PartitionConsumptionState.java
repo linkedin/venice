@@ -470,7 +470,7 @@ public class PartitionConsumptionState {
       this.valueLen = valueLen;
       this.valueSchemaId = valueSchemaId;
       this.kafkaConsumedOffset = kafkaConsumedOffset;
-      this.replicationMetadata = replicationMetadata;
+      this.replicationMetadata = ByteBuffer.wrap(replicationMetadata.array(), replicationMetadata.position(), replicationMetadata.limit());
     }
 
     public byte[] getValue() {return value;}
