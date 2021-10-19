@@ -135,7 +135,7 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
         // loop all the clusters
         for (String clusterName : allClusters) {
           boolean cleanupEnabled = multiClusterConfig.getControllerConfig(clusterName).isBackupVersionRetentionBasedCleanupEnabled();
-          if (!cleanupEnabled & !admin.isLeaderControllerFor(clusterName)) {
+          if (!cleanupEnabled || !admin.isLeaderControllerFor(clusterName)) {
             // Only do backup version retention with cluster level config enabled in master controller for current cluster
             continue;
           }
