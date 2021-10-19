@@ -1520,6 +1520,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         ControlMessage controlMessage = (ControlMessage) kafkaValue.payloadUnion;
         ControlMessageType controlMessageType = ControlMessageType.valueOf(controlMessage);
         leaderProducedRecordContext = LeaderProducedRecordContext.newControlMessageRecord(
+            consumerRecordWrapper.kafkaUrl(),
             consumerRecord.offset(),
             kafkaKey.getKey(),
             controlMessage
@@ -1617,7 +1618,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
              * setLeaderUpstreamOffset in {@link updateOffset()}.
              * The leaderUpstreamOffset is set from the TS message config itself. We should not override it.
              */
-            leaderProducedRecordContext = LeaderProducedRecordContext.newControlMessageRecord(-1, kafkaKey.getKey(), controlMessage);
+            leaderProducedRecordContext = LeaderProducedRecordContext.newControlMessageRecord(null, -1, kafkaKey.getKey(), controlMessage);
             produceToLocalKafka(consumerRecordWrapper, partitionConsumptionState, leaderProducedRecordContext,
                 (callback, leaderMetadataWrapper) -> veniceWriter.get().asyncSendControlMessage(controlMessage, consumerRecord.partition(),
                     new HashMap<>(), callback, DEFAULT_LEADER_METADATA_WRAPPER));
@@ -2052,11 +2053,11 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
          * received from RT. Messages received from VT have been persisted to disk already before switching to RT topic.
          */
         if (isWriteComputationEnabled && partitionConsumptionState.isEndOfPushReceived()) {
-          partitionConsumptionState.setTransientRecord(consumerRecord.offset(), keyBytes, putValue.array(),
+          partitionConsumptionState.setTransientRecord(consumerRecordWrapper.kafkaUrl(), consumerRecord.offset(), keyBytes, putValue.array(),
               putValue.position(), putValue.remaining(), put.schemaId, null);
         }
 
-        LeaderProducedRecordContext leaderProducedRecordContext = LeaderProducedRecordContext.newPutRecord(consumerRecord.offset(), keyBytes, put);
+        LeaderProducedRecordContext leaderProducedRecordContext = LeaderProducedRecordContext.newPutRecord(consumerRecordWrapper.kafkaUrl(), consumerRecord.offset(), keyBytes, put);
         produceToLocalKafka(consumerRecordWrapper, partitionConsumptionState, leaderProducedRecordContext,
             (callback, leaderMetadataWrapper) -> {
               /**
@@ -2165,12 +2166,12 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
         //finally produce and update the transient record map.
         if (updatedValueBytes == null) {
-          partitionConsumptionState.setTransientRecord(consumerRecord.offset(), keyBytes, null);
-          leaderProducedRecordContext = LeaderProducedRecordContext.newDeleteRecord(consumerRecord.offset(), keyBytes);
+          partitionConsumptionState.setTransientRecord(consumerRecordWrapper.kafkaUrl(), consumerRecord.offset(), keyBytes, null);
+          leaderProducedRecordContext = LeaderProducedRecordContext.newDeleteRecord(consumerRecordWrapper.kafkaUrl(), consumerRecord.offset(), keyBytes);
           produceToLocalKafka(consumerRecordWrapper, partitionConsumptionState, leaderProducedRecordContext,
               (callback, leaderMetadataWrapper) -> veniceWriter.get().delete(keyBytes, callback, leaderMetadataWrapper));
         } else {
-          partitionConsumptionState.setTransientRecord(consumerRecord.offset(), keyBytes, updatedValueBytes, 0,
+          partitionConsumptionState.setTransientRecord(consumerRecordWrapper.kafkaUrl(), consumerRecord.offset(), keyBytes, updatedValueBytes, 0,
               updatedValueBytes.length, valueSchemaId, null);
 
           ByteBuffer updateValueWithSchemaId = ByteUtils.prependIntHeaderToByteBuffer(ByteBuffer.wrap(updatedValueBytes), valueSchemaId, false);
@@ -2186,7 +2187,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             // to der-se of keys a couple of times.
             updatedKeyBytes = ChunkingUtils.KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(keyBytes);
           }
-          leaderProducedRecordContext = LeaderProducedRecordContext.newPutRecord(consumerRecord.offset(), updatedKeyBytes, updatedPut);
+          leaderProducedRecordContext = LeaderProducedRecordContext.newPutRecord(consumerRecordWrapper.kafkaUrl(), consumerRecord.offset(), updatedKeyBytes, updatedPut);
           produceToLocalKafka(consumerRecordWrapper, partitionConsumptionState, leaderProducedRecordContext,
               (callback, leaderMetadataWrapper) -> veniceWriter.get().put(keyBytes, updatedValueBytes, valueSchemaId,
                   callback, leaderMetadataWrapper));
@@ -2198,9 +2199,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
          * For WC enabled stores update the transient record map with the latest {key,null} for similar reason as mentioned in PUT above.
          */
         if (isWriteComputationEnabled && partitionConsumptionState.isEndOfPushReceived()) {
-          partitionConsumptionState.setTransientRecord(consumerRecord.offset(), keyBytes, null);
+          partitionConsumptionState.setTransientRecord(consumerRecordWrapper.kafkaUrl(), consumerRecord.offset(), keyBytes, null);
         }
-        leaderProducedRecordContext = LeaderProducedRecordContext.newDeleteRecord(consumerRecord.offset(), keyBytes);
+        leaderProducedRecordContext = LeaderProducedRecordContext.newDeleteRecord(consumerRecordWrapper.kafkaUrl(), consumerRecord.offset(), keyBytes);
         produceToLocalKafka(consumerRecordWrapper, partitionConsumptionState, leaderProducedRecordContext,
             (callback, leaderMetadataWrapper) -> veniceWriter.get().delete(keyBytes, callback, leaderMetadataWrapper));
         break;
@@ -2312,7 +2313,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
               chunkPut.schemaId = schemaId;
 
               LeaderProducedRecordContext
-                  producedRecordForChunk = LeaderProducedRecordContext.newPutRecord(-1, ByteUtils.extractByteArray(chunkKey), chunkPut);
+                  producedRecordForChunk = LeaderProducedRecordContext.newPutRecord(null, -1, ByteUtils.extractByteArray(chunkKey), chunkPut);
               producedRecordForChunk.setProducedOffset(-1);
               ingestionTask.produceToStoreBufferService(sourceConsumerRecordWrapper, producedRecordForChunk);
 
@@ -2335,6 +2336,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             manifestPut.schemaId = schemaId;
 
             LeaderProducedRecordContext producedRecordForManifest = LeaderProducedRecordContext.newPutRecordWithFuture(
+                leaderProducedRecordContext.getConsumedKafkaUrl(),
                 leaderProducedRecordContext.getConsumedOffset(),
                 key, manifestPut, leaderProducedRecordContext.getPersistedToDBFuture());
             producedRecordForManifest.setProducedOffset(recordMetadata.offset());

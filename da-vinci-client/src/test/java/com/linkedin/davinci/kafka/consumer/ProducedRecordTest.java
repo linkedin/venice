@@ -19,7 +19,7 @@ public class ProducedRecordTest {
     put1.putValue = ByteBuffer.wrap(value1);
     put1.schemaId = 5;
 
-    LeaderProducedRecordContext pr1 = LeaderProducedRecordContext.newPutRecord(1, key1, put1);
+    LeaderProducedRecordContext pr1 = LeaderProducedRecordContext.newPutRecord("", 1, key1, put1);
     new Thread(() -> {
       pr1.completePersistedToDBFuture(null);
     }).run();
@@ -35,7 +35,7 @@ public class ProducedRecordTest {
     put1.putValue = ByteBuffer.wrap(value1);
     put1.schemaId = 5;
 
-    LeaderProducedRecordContext pr1 = LeaderProducedRecordContext.newPutRecord(1, key1, put1);
+    LeaderProducedRecordContext pr1 = LeaderProducedRecordContext.newPutRecord("", 1, key1, put1);
     new Thread(() -> {
       pr1.completePersistedToDBFuture(new VeniceMessageException("test exception"));
     }).run();

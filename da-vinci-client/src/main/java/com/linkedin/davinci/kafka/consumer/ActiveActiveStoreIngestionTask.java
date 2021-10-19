@@ -404,14 +404,14 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     // finally produce and update the transient record map.
     if (updatedValueBytes == null) {
       storeIngestionStats.recordConflictResolutionTombstoneCreated(storeName);
-      partitionConsumptionState.setTransientRecord(consumerRecord.offset(), key, updatedReplicationMetadataBytes);
-      LeaderProducedRecordContext leaderProducedRecordContext = LeaderProducedRecordContext.newDeleteRecord(consumerRecord.offset(), key);
+      partitionConsumptionState.setTransientRecord(consumerRecordWrapper.kafkaUrl(), consumerRecord.offset(), key, updatedReplicationMetadataBytes);
+      LeaderProducedRecordContext leaderProducedRecordContext = LeaderProducedRecordContext.newDeleteRecord(consumerRecordWrapper.kafkaUrl(), consumerRecord.offset(), key);
       produceToLocalKafka(consumerRecordWrapper, partitionConsumptionState, leaderProducedRecordContext,
           (callback, sourceTopicOffset) -> veniceWriter.get().delete(key, callback, sourceTopicOffset,
               new DeleteMetadata(valueSchemaId, replicationMetadataVersionId, updatedReplicationMetadataBytes)));
     } else {
       int valueLen = updatedValueBytes.remaining();
-      partitionConsumptionState.setTransientRecord(consumerRecord.offset(), key, updatedValueBytes.array(), updatedValueBytes.position(),
+      partitionConsumptionState.setTransientRecord(consumerRecordWrapper.kafkaUrl(), consumerRecord.offset(), key, updatedValueBytes.array(), updatedValueBytes.position(),
           valueLen, valueSchemaId, updatedReplicationMetadataBytes);
 
       boolean doesResultReuseInput = mergeConflictResult.doesResultReuseInput();
@@ -429,7 +429,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         // used to persist on disk after producing to Kafka.
         updatedKeyBytes = ChunkingUtils.KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(key);
       }
-      LeaderProducedRecordContext leaderProducedRecordContext = LeaderProducedRecordContext.newPutRecord(consumerRecord.offset(), updatedKeyBytes, updatedPut);
+      LeaderProducedRecordContext leaderProducedRecordContext = LeaderProducedRecordContext.newPutRecord(consumerRecordWrapper.kafkaUrl(), consumerRecord.offset(), updatedKeyBytes, updatedPut);
 
       produceToLocalKafka(consumerRecordWrapper, partitionConsumptionState, leaderProducedRecordContext,
         (callback, sourceTopicOffset) -> {
@@ -730,6 +730,15 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
               kafkaValue.leaderMetadataFooter.upstreamKafkaClusterId, kafkaClusterIdToUrlMap));
     }
     return upstreamKafkaURL;
+  }
+
+  /**
+   * For Active-Active this buffer is always used.
+   * @return
+   */
+  @Override
+  protected boolean isTransientRecordBufferUsed() {
+    return true;
   }
 
 }
