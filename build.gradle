@@ -57,7 +57,7 @@ ext.libraries = [
     avro: 'org.apache.avro:avro:1.7.7',
     avroMapred: 'org.apache.avro:avro-mapred:1.7.7',
     avroUtilCompatibilityHelper: 'com.linkedin.avroutil1:helper-all:0.2.57',
-    avroUtilFastserde: 'com.linkedin.avroutil1:avro-fastserde:0.2.46',
+    avroUtilFastserde: 'com.linkedin.avroutil1:avro-fastserde:0.2.58',
     brooklinCommon: 'com.linkedin.brooklin-li-common:brooklin-li-common:80.0.2',
     brooklinKafka: 'com.github.datastream:datastream-kafka-connector:36.0.1',
     brooklinKafkaTransport: 'com.github.datastream:datastream-kafka:36.0.1',
