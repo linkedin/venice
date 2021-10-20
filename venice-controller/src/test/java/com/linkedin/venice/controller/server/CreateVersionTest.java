@@ -2,6 +2,7 @@ package com.linkedin.venice.controller.server;
 
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.Admin;
+import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.DataReplicationPolicy;
@@ -24,7 +25,8 @@ import java.util.Map;
 import java.util.Optional;
 import javax.security.auth.x500.X500Principal;
 import javax.servlet.http.HttpServletRequest;
-import org.apache.http.HttpStatus;
+import org.codehaus.jackson.map.ObjectMapper;
+import org.testng.Assert;
 import org.testng.annotations.Test;
 import spark.QueryParamsMap;
 import spark.Request;
@@ -39,6 +41,8 @@ import static org.mockito.Mockito.*;
 
 
 public class CreateVersionTest {
+  private static ObjectMapper mapper = new ObjectMapper();
+
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testCreateVersionWithACL(boolean checkReadMethod) {
     String storeName = "test_store";
@@ -112,7 +116,7 @@ public class CreateVersionTest {
   }
 
   @Test
-  public void testCreateVersionwWithAmplificationFactorAndLeaderFollowerNotEnabled() throws Exception {
+  public void testCreateVersionWithAmplificationFactorAndLeaderFollowerNotEnabled() throws Exception {
     String clusterName = "test_cluster";
     String storeName = "test_store";
     String pushJobId = "push_1";
@@ -153,7 +157,7 @@ public class CreateVersionTest {
   }
 
   @Test
-  public void testCreateVersionFailsIfIncrementalPushMadeWithHybridStoreWithoutMakingFullPush() {
+  public void testCreateVersionReturnsVersionTopicIfIncrementalPushMadeWithHybridStoreWithoutMakingFullPush() throws Exception {
     String storeName = "test_store";
     String user = "test_user";
     String clusterName = "test_cluster";
@@ -202,6 +206,7 @@ public class CreateVersionTest {
     // Setting up a store with hybrid and incremental enabled and incremental policy = INCREMENTAL_PUSH_SAME_AS_REAL_TIME
     Store store = new ZKStore(storeName, "abc@linkedin.com", 10, PersistenceType.ROCKS_DB,
         RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_ALL_REPLICAS, 1);
+    store.setIncrementalPushEnabled(true);
     store.setIncrementalPushPolicy(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME);
     store.setHybridStoreConfig(new HybridStoreConfigImpl(0, 1, HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD,
         DataReplicationPolicy.NON_AGGREGATE, BufferReplayPolicy.REWIND_FROM_EOP));
@@ -229,15 +234,16 @@ public class CreateVersionTest {
     doReturn(true).when(accessClient).isWhitelistUsers(certificate, storeName, HTTP_GET);
 
     /**
-     * Create version should fail if the store is hybrid and incremental but the current version's incremental push
-     * policy is not "INCREMENTAL_PUSH_SAME_AS_REAL_TIME".
+     * Create version should return version topic if the store is hybrid and incremental but the current version's
+     * incremental push policy is not "INCREMENTAL_PUSH_SAME_AS_REAL_TIME".
      */
+    Object result;
     try {
-      createVersionRoute.handle(request, response);
+      result = createVersionRoute.handle(request, response);
     } catch (Exception e) {
       throw new VeniceException(e);
     }
-
-    verify(response).status(HttpStatus.SC_BAD_REQUEST);
+    VersionCreationResponse versionCreationResponse = mapper.readValue(result.toString(), VersionCreationResponse.class);
+    Assert.assertEquals(versionCreationResponse.getKafkaTopic(), "test_store_v1");
   }
 }
