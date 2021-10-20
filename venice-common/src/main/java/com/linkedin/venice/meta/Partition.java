@@ -8,6 +8,8 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import org.apache.log4j.Logger;
+
 
 /**
  * Class defines the partition in Venice.
@@ -20,6 +22,7 @@ import java.util.Map;
  * In the future, if Venice need more flexibility to manage cluster, some update/delete methods could be added here.
  */
 public class Partition {
+  private static final Logger logger = Logger.getLogger(Partition.class);
   /**
    * Id of partition. One of the number between [0 ~ total number of partition)
    */
@@ -74,8 +77,18 @@ public class Partition {
     return getInstancesInState(HelixState.OFFLINE_STATE);
   }
 
-  public List<Instance> getLeaderInstance() {
-    return getInstancesInState(HelixState.LEADER_STATE);
+  public Instance getLeaderInstance() {
+    List<Instance> instances = getInstancesInState(HelixState.LEADER_STATE);
+
+    if (instances.isEmpty()) {
+      return null;
+    }
+
+    if (instances.size() > 1) {
+      logger.error(String.format("Detect multiple leaders. Partition: %d", id));
+    }
+
+    return instances.get(0);
   }
 
   public Map<String, List<Instance>> getAllInstances() {

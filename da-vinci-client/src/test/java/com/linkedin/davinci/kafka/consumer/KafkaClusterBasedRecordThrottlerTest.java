@@ -26,9 +26,9 @@ public class KafkaClusterBasedRecordThrottlerTest {
   @Test
   public void testRecordsCanBeThrottledPerRegion() throws ExecutionException, InterruptedException {
     String topic = TestUtils.getUniqueString("topic");
-    InMemoryKafkaBroker inMemoryLocalKafkaBroker = new InMemoryKafkaBroker();
+    InMemoryKafkaBroker inMemoryLocalKafkaBroker = new InMemoryKafkaBroker("local");
     inMemoryLocalKafkaBroker.createTopic(topic, 2);
-    InMemoryKafkaBroker inMemoryRemoteKafkaBroker = new InMemoryKafkaBroker();
+    InMemoryKafkaBroker inMemoryRemoteKafkaBroker = new InMemoryKafkaBroker("remote");
     inMemoryRemoteKafkaBroker.createTopic(topic, 2);
 
     Map<String, Object> extraServerProperties = new HashMap<>();
