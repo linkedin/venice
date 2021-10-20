@@ -387,6 +387,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   private final Map<Integer, StoragePartitionDiskUsage> partitionConsumptionSizeMap = new VeniceConcurrentHashMap<>();
 
+  protected final boolean isDaVinciClient;
+
   public StoreIngestionTask(
       Store store,
       Version version,
@@ -419,7 +421,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       long startReportingReadyToServeTimestamp,
       InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer,
       boolean isIsolatedIngestion,
-      Optional<ObjectCacheBackend> cacheBackend) {
+      Optional<ObjectCacheBackend> cacheBackend,
+      boolean isDaVinciClient) {
     this.readCycleDelayMs = storeConfig.getKafkaReadCycleDelayMs();
     this.emptyPollSleepMs = storeConfig.getKafkaEmptyPollSleepMs();
     this.databaseSyncBytesIntervalForTransactionalMode = storeConfig.getDatabaseSyncBytesIntervalForTransactionalMode();
@@ -535,6 +538,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.amplificationAdapter = new AmplificationAdapter(amplificationFactor);
     this.cacheBackend = cacheBackend;
     this.localKafkaServer = this.kafkaProps.getProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG);
+    this.isDaVinciClient = isDaVinciClient;
   }
 
   public boolean isFutureVersion() {
@@ -784,20 +788,20 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
        */
       if (producerTimeLagThresholdInSeconds > 0) {
         long producerTimeLagThresholdInMS = TimeUnit.SECONDS.toMillis(producerTimeLagThresholdInSeconds);
-        long latestProducerTimestamp = partitionConsumptionState.getOffsetRecord().getLatestProducerProcessingTimeInMs();
+        long latestConsumedProducerTimestamp = partitionConsumptionState.getOffsetRecord().getLatestProducerProcessingTimeInMs();
         if (amplificationFactor != 1) {
           for (int subPartition : PartitionUtils.getSubPartitions(partitionConsumptionState.getUserPartition(), amplificationFactor)) {
             if (partitionConsumptionStateMap.containsKey(subPartition) && partitionConsumptionStateMap.get(subPartition).isEndOfPushReceived()) {
-              latestProducerTimestamp = Math.max(latestProducerTimestamp,
+              latestConsumedProducerTimestamp = Math.max(latestConsumedProducerTimestamp,
                   partitionConsumptionStateMap.get(subPartition).getOffsetRecord().getLatestProducerProcessingTimeInMs());
             }
           }
         }
-        long producerTimestampLag = LatencyUtils.getElapsedTimeInMs(latestProducerTimestamp);
+        long producerTimestampLag = LatencyUtils.getElapsedTimeInMs(latestConsumedProducerTimestamp);
         boolean timestampLagIsAcceptable = (producerTimestampLag < producerTimeLagThresholdInMS);
         if (shouldLogLag) {
           logger.info(String.format("%s [Time lag] partition %d is %slagging. The latest producer timestamp is %d. Timestamp Lag: [%d] %s Threshold [%d]",
-              consumerTaskId, partitionId, (!timestampLagIsAcceptable ? "" : "not "), latestProducerTimestamp, producerTimestampLag,
+              consumerTaskId, partitionId, (!timestampLagIsAcceptable ? "" : "not "), latestConsumedProducerTimestamp, producerTimestampLag,
               (timestampLagIsAcceptable ? "<" : ">"), producerTimeLagThresholdInMS));
         }
         /**
@@ -823,24 +827,51 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             throw new VeniceException(String.format("Expect source RT Kafka URLs contains local Kafka URL. Got local " +
                     "Kafka URL %s and RT source Kafka URLs %s", localKafkaServer, realTimeTopicKafkaURLs));
           }
-          if (!cachedKafkaMetadataGetter.containsTopic(realTimeTopicKafkaURL, realTimeTopic)) {
+
+          final String lagMeasurementTopic, lagMeasurementKafkaUrl;
+          // Since DaVinci clients run in embedded mode, they may not have network ACLs to check remote RT to get latest
+          // producer timestamp in RT. Only use latest producer time in local RT.
+          if (isDaVinciClient) {
+            lagMeasurementKafkaUrl = localKafkaServer;
+            lagMeasurementTopic = kafkaVersionTopic;
+          } else {
+            lagMeasurementKafkaUrl = realTimeTopicKafkaURL;
+            lagMeasurementTopic = realTimeTopic;
+          }
+
+          if (!cachedKafkaMetadataGetter.containsTopic(lagMeasurementKafkaUrl, lagMeasurementTopic)) {
             timestampLagIsAcceptable = true;
             if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msgIdentifier)) {
-              logger.info(String.format("%s [Time lag] Real-time topic %s doesn't exist; ignoring time lag.", consumerTaskId, realTimeTopic));
+              logger.info(String.format("%s [Time lag] Topic %s doesn't exist; ignoring time lag.", consumerTaskId, lagMeasurementTopic));
             }
           } else {
-            long latestProducerTimestampInRT = cachedKafkaMetadataGetter.getProducerTimestampOfLastDataMessage(realTimeTopicKafkaURL, realTimeTopic, partitionId);
-            if (latestProducerTimestampInRT < 0 || latestProducerTimestampInRT <= latestProducerTimestamp) {
-              timestampLagIsAcceptable = true;
-              if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msgIdentifier)) {
-                if (latestProducerTimestampInRT < 0) {
-                  logger.info(String.format("%s [Time lag] Real-time topic %s is empty or all messages have been truncated; ignoring time lag.", consumerTaskId, realTimeTopic));
-                } else {
-                  logger.info(String.format("%s [Time lag] Producer timestamp of last message in Real-time topic %s "
-                      + "partition %d: %d, which is smaller or equal than the known latest producer time: %d. Consumption "
-                      + "lag is caught up already.", consumerTaskId, realTimeTopic, partitionId, latestProducerTimestampInRT, latestProducerTimestamp));
+            try {
+              long latestProducerTimestampInTopic = cachedKafkaMetadataGetter.getProducerTimestampOfLastDataMessage(lagMeasurementKafkaUrl, lagMeasurementTopic, partitionId);
+              if (latestProducerTimestampInTopic < 0 || latestProducerTimestampInTopic <= latestConsumedProducerTimestamp) {
+                timestampLagIsAcceptable = true;
+                if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msgIdentifier)) {
+                  if (latestProducerTimestampInTopic < 0) {
+                    logger.info(String.format(
+                        "%s [Time lag] Topic %s is empty or all messages have been truncated; ignoring time lag.",
+                        consumerTaskId, lagMeasurementTopic));
+                  } else {
+                    logger.info(String.format("%s [Time lag] Producer timestamp of last message in topic %s " +
+                            "partition %d: %d, which is smaller or equal than the known latest producer time: %d. "
+                            + "Consumption lag is caught up already.", consumerTaskId, lagMeasurementTopic, partitionId,
+                        latestProducerTimestampInTopic, latestConsumedProducerTimestamp));
+                  }
                 }
               }
+            } catch (Exception e) {
+              String exceptionMsgIdentifier = new StringBuilder()
+                  .append(storeName).append("_")
+                  .append(versionNumber).append("_")
+                  .append("getProducerTimestampOfLastDataMessage")
+                  .toString();
+              if (!REDUNDANT_LOGGING_FILTER.isRedundantException(exceptionMsgIdentifier)) {
+                logger.info(String.format("Got exception when getting producer timestamp of last data message from topic: %s on Kafka cluster: %s", lagMeasurementTopic, lagMeasurementKafkaUrl));
+              }
+              timestampLagIsAcceptable = false;
             }
           }
         }

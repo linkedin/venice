@@ -125,7 +125,7 @@ public class TestAdminConsumptionTask {
     clusterName = TestUtils.getUniqueString("test-cluster");
     topicName = AdminTopicUtils.getTopicNameFromClusterName(clusterName);
     executor = Executors.newCachedThreadPool();
-    inMemoryKafkaBroker = new InMemoryKafkaBroker();
+    inMemoryKafkaBroker = new InMemoryKafkaBroker("local");
     inMemoryKafkaBroker.createTopic(topicName, AdminTopicUtils.PARTITION_NUM_FOR_ADMIN_TOPIC);
     veniceWriter = getVeniceWriter(inMemoryKafkaBroker);
     executionIdAccessor = new InMemoryExecutionIdAccessor();

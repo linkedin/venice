@@ -17,9 +17,11 @@ import java.util.Optional;
 public class InMemoryKafkaBroker {
   private final Map<String, InMemoryKafkaTopic> topics = new HashMap<>();
   private final int port;
+  private final String brokerNamePrefix;
 
-  public InMemoryKafkaBroker() {
+  public InMemoryKafkaBroker(String brokerNamePrefix) {
     port = Utils.getFreePort();
+    this.brokerNamePrefix = brokerNamePrefix;
   }
 
   public synchronized void createTopic(String topicName, int partitionCount) {
@@ -77,6 +79,6 @@ public class InMemoryKafkaBroker {
    * @return an synthetic broker server url.
    */
   public String getKafkaBootstrapServer() {
-    return "InMemoryKafkaBroker:" + port;
+    return brokerNamePrefix + "_InMemoryKafkaBroker:" + port;
   }
 }
