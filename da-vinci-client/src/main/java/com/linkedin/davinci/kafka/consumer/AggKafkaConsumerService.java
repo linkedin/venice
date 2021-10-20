@@ -2,6 +2,7 @@ package com.linkedin.davinci.kafka.consumer;
 
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.stats.KafkaConsumerServiceStats;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
 import com.linkedin.venice.service.AbstractVeniceService;
@@ -29,11 +30,13 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
   private final EventThrottler bandwidthThrottler;
   private final EventThrottler recordsThrottler;
   private final KafkaClusterBasedRecordThrottler kafkaClusterBasedRecordThrottler;
-  private final KafkaConsumerServiceStats stats;
+  private final MetricsRepository metricsRepository;
   private final TopicExistenceChecker topicExistenceChecker;
   private final boolean liveConfigBasedKafkaThrottlingEnabled;
+  private final KafkaConsumerService.ConsumerAssignmentStrategy sharedConsumerAssignmentStrategy;
 
   private final Map<String, KafkaConsumerService> kafkaServerToConsumerService = new VeniceConcurrentHashMap<>();
+  private final Map<String, String> kafkaClusterUrlToAliasMap;
 
   public AggKafkaConsumerService(final KafkaClientFactory consumerFactory, final VeniceServerConfig serverConfig,
       final EventThrottler bandwidthThrottler, final EventThrottler recordsThrottler,
@@ -46,9 +49,11 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
     this.bandwidthThrottler = bandwidthThrottler;
     this.recordsThrottler = recordsThrottler;
     this.kafkaClusterBasedRecordThrottler = kafkaClusterBasedRecordThrottler;
-    this.stats = new KafkaConsumerServiceStats(metricsRepository);
+    this.metricsRepository = metricsRepository;
     this.topicExistenceChecker = topicExistenceChecker;
     this.liveConfigBasedKafkaThrottlingEnabled = serverConfig.isLiveConfigBasedKafkaThrottlingEnabled();
+    this.sharedConsumerAssignmentStrategy = serverConfig.getSharedConsumerAssignmentStrategy();
+    this.kafkaClusterUrlToAliasMap = serverConfig.getKafkaClusterUrlToAliasMap();
     logger.info("Successfully initialized AggKafkaConsumerService");
   }
 
@@ -70,10 +75,28 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
    */
   public KafkaConsumerService getKafkaConsumerService(final Properties consumerProperties) {
     String kafkaUrl = consumerProperties.getProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG);
-    return kafkaServerToConsumerService.computeIfAbsent(kafkaUrl, url ->
-        new KafkaConsumerService(consumerFactory, consumerProperties, readCycleDelayMs, numOfConsumersPerKafkaCluster,
-            bandwidthThrottler, recordsThrottler, kafkaClusterBasedRecordThrottler, stats, sharedConsumerNonExistingTopicCleanupDelayMS, topicExistenceChecker, liveConfigBasedKafkaThrottlingEnabled));
+    //TODO: introduce builder pattern due to significant # of parameters for KafkaConsumerService.
+    switch (sharedConsumerAssignmentStrategy) {
+      case PARTITION_WISE_SHARED_CONSUMER_ASSIGNMENT_STRATEGY:
+        return kafkaServerToConsumerService.computeIfAbsent(kafkaUrl, url -> {
+            KafkaConsumerServiceStats stats = createKafkaConsumerServiceStats(url);
+            return new PartitionWiseKafkaConsumerService(consumerFactory, consumerProperties, readCycleDelayMs, numOfConsumersPerKafkaCluster,
+                bandwidthThrottler, recordsThrottler, kafkaClusterBasedRecordThrottler, stats, sharedConsumerNonExistingTopicCleanupDelayMS,
+                topicExistenceChecker, liveConfigBasedKafkaThrottlingEnabled);
+        });
+      case TOPIC_WISE_SHARED_CONSUMER_ASSIGNMENT_STRATEGY:
+        return kafkaServerToConsumerService.computeIfAbsent(kafkaUrl, url -> {
+          KafkaConsumerServiceStats stats = createKafkaConsumerServiceStats(url);
+          return new TopicWiseKafkaConsumerService(consumerFactory, consumerProperties, readCycleDelayMs, numOfConsumersPerKafkaCluster,
+              bandwidthThrottler, recordsThrottler, kafkaClusterBasedRecordThrottler, stats, sharedConsumerNonExistingTopicCleanupDelayMS,
+              topicExistenceChecker, liveConfigBasedKafkaThrottlingEnabled);
+        });
+      default:
+        throw new VeniceException("Unknown shared consumer assignment strategy: " + sharedConsumerAssignmentStrategy);
+    }
+
   }
+
 
   /**
    * Get a shared consumer based both consumer properties (which contains Kafka bootstrap url) as well as ingestion task.
@@ -93,5 +116,12 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
    */
   public void detach(StoreIngestionTask ingestionTask) {
     kafkaServerToConsumerService.values().forEach(consumerService -> consumerService.detach(ingestionTask));
+  }
+
+  private KafkaConsumerServiceStats createKafkaConsumerServiceStats(String kafkaUrl) {
+    // Allow integration test with kafka url like "localhost:1234" to pass with default.
+    String kafkaClusterAlias = kafkaClusterUrlToAliasMap.getOrDefault(kafkaUrl, kafkaUrl);
+    String nameWithKafkaClusterAlias = kafkaClusterAlias + ".kafka_consumer_service";
+    return new KafkaConsumerServiceStats(metricsRepository, nameWithKafkaClusterAlias);
   }
 }

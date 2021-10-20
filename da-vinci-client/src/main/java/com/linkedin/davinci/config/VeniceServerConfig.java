@@ -1,5 +1,6 @@
 package com.linkedin.davinci.config;
 
+import com.linkedin.davinci.kafka.consumer.KafkaConsumerService;
 import com.linkedin.davinci.store.rocksdb.RocksDBServerConfig;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -209,6 +210,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final boolean helixHybridStoreQuotaEnabled;
   private final long ssdHealthCheckShutdownTimeMs;
   private final boolean sharedConsumerPoolEnabled;
+  private final KafkaConsumerService.ConsumerAssignmentStrategy sharedConsumerAssignmentStrategy;
   private final int consumerPoolSizePerKafkaCluster;
   private final boolean leakedResourceCleanupEnabled;
   private final boolean cacheWarmingBeforeReadyToServeEnabled;
@@ -352,6 +354,14 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     // Disable it by default, and when router connection warming is enabled, we need to adjust this config.
     routerConnectionWarmingDelayMs = serverProperties.getLong(SERVER_ROUTER_CONNECTION_WARMING_DELAY_MS, 0);
     sharedConsumerPoolEnabled = serverProperties.getBoolean(SERVER_SHARED_CONSUMER_POOL_ENABLED, false);
+    String sharedConsumerAssignmentStrategyStr = serverProperties.getString(SERVER_SHARED_CONSUMER_ASSIGNMENT_STRATEGY,
+        KafkaConsumerService.ConsumerAssignmentStrategy.TOPIC_WISE_SHARED_CONSUMER_ASSIGNMENT_STRATEGY.name());
+    try {
+      sharedConsumerAssignmentStrategy = KafkaConsumerService.ConsumerAssignmentStrategy.valueOf(sharedConsumerAssignmentStrategyStr);
+    } catch (IllegalArgumentException e) {
+      throw new VeniceException("Invalid consumer assignment strategy: " + Arrays.toString(KafkaConsumerService.ConsumerAssignmentStrategy.values()));
+    }
+
     consumerPoolSizePerKafkaCluster = serverProperties.getInt(SERVER_CONSUMER_POOL_SIZE_PER_KAFKA_CLUSTER, 5);
     if (consumerPoolSizePerKafkaCluster < MINIMUM_CONSUMER_NUM_IN_CONSUMER_POOL_PER_KAFKA_CLUSTER) {
       throw new VeniceException(SERVER_CONSUMER_POOL_SIZE_PER_KAFKA_CLUSTER + " shouldn't be less than: " +
@@ -626,6 +636,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public boolean isSharedConsumerPoolEnabled() {
     return sharedConsumerPoolEnabled;
+  }
+
+  public KafkaConsumerService.ConsumerAssignmentStrategy getSharedConsumerAssignmentStrategy() {
+    return sharedConsumerAssignmentStrategy;
   }
 
   public int getConsumerPoolSizePerKafkaCluster() {

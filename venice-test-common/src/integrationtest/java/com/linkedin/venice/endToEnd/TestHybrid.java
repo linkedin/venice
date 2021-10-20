@@ -1,6 +1,7 @@
 package com.linkedin.venice.endToEnd;
 
 import com.github.benmanes.caffeine.cache.Cache;
+import com.linkedin.davinci.kafka.consumer.KafkaConsumerService;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
@@ -127,8 +128,8 @@ public class TestHybrid {
    */
   @BeforeClass(alwaysRun=true)
   public void setUp() {
-    sharedVenice = setUpCluster(false);
-    ingestionIsolationEnabledSharedVenice = setUpCluster(true);
+    sharedVenice = setUpCluster(false, false);
+    ingestionIsolationEnabledSharedVenice = setUpCluster(true, false);
   }
 
   @AfterClass(alwaysRun=true)
@@ -1394,6 +1395,113 @@ public class TestHybrid {
     }
   }
 
+  @Test(timeOut = 180 * Time.MS_PER_SECOND)
+  public void testHybridWithPartitionWiseConsumer() throws Exception {
+    final Properties extraProperties = new Properties();
+    extraProperties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1L));
+    // Using partition count of 4 to trigger realtime topic from different store versions' store ingestion task will share one consumer.
+    final int partitionCount = 4;
+    final int keyCount = 10;
+    VeniceClusterWrapper cluster = setUpCluster(false, true);
+    UpdateStoreQueryParams params = new UpdateStoreQueryParams()
+        // set hybridRewindSecond to a big number so following versions won't ignore old records in RT
+        .setHybridRewindSeconds(2000000)
+        .setHybridOffsetLagThreshold(10)
+        .setPartitionCount(partitionCount)
+        .setLeaderFollowerModel(true);
+    String storeName = Utils.getUniqueString("store");
+    try (ControllerClient client = cluster.getControllerClient()) {
+      client.createNewStore(storeName, "owner", DEFAULT_KEY_SCHEMA, DEFAULT_VALUE_SCHEMA);
+      client.updateStore(storeName, params);
+    }
+    // Create store version 1 by writing keyCount * 1 records.
+    cluster.createVersion(storeName, DEFAULT_KEY_SCHEMA, DEFAULT_VALUE_SCHEMA, IntStream.range(0, keyCount).mapToObj(i -> new AbstractMap.SimpleEntry<>(i, i)));
+    try (AvroGenericStoreClient client = ClientFactory.getAndStartGenericAvroClient(
+        ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(cluster.getRandomRouterURL()))) {
+      TestUtils.waitForNonDeterministicAssertion(20, TimeUnit.SECONDS, true, true, () -> {
+        for (Integer i = 0; i < keyCount; i++) {
+          assertEquals(client.get(i).get(), i);
+        }
+      });
+      SystemProducer producer = TestPushUtils.getSamzaProducer(cluster, storeName, Version.PushType.STREAM);
+      for (int i = 0; i < keyCount; i++) {
+        TestPushUtils.sendStreamingRecord(producer, storeName, i, i);
+      }
+      producer.stop();
+      TestUtils.waitForNonDeterministicAssertion(20, TimeUnit.SECONDS, true, true, () -> {
+        for (int i = 0; i < keyCount; i++) {
+          assertEquals(client.get(i).get(), i);
+        }
+      });
+
+      // Create store version 2 by writing keyCount * 2 records.
+      cluster.createVersion(storeName, DEFAULT_KEY_SCHEMA, DEFAULT_VALUE_SCHEMA, IntStream.range(keyCount, keyCount*2).mapToObj(i -> new AbstractMap.SimpleEntry<>(i, i)));
+      producer = TestPushUtils.getSamzaProducer(cluster, storeName, Version.PushType.STREAM);
+      for (int i = keyCount; i < keyCount*2; i++) {
+        TestPushUtils.sendStreamingRecord(producer, storeName, i, i);
+      }
+      producer.stop();
+      TestUtils.waitForNonDeterministicAssertion(20, TimeUnit.SECONDS, true, true, () -> {
+        for (int i = 0; i < keyCount*2; i++) {
+          assertEquals(client.get(i).get(), i);
+        }
+      });
+
+      // Create store version 3 by writing keyCount * 3 records.
+      cluster.createVersion(storeName, DEFAULT_KEY_SCHEMA, DEFAULT_VALUE_SCHEMA, IntStream.range(keyCount*2, keyCount*3).mapToObj(i -> new AbstractMap.SimpleEntry<>(i, i)));
+      producer = TestPushUtils.getSamzaProducer(cluster, storeName, Version.PushType.STREAM);
+      for (int i = keyCount*2; i < keyCount*3; i++) {
+        TestPushUtils.sendStreamingRecord(producer, storeName, i, i);
+      }
+      TestUtils.waitForNonDeterministicAssertion(20, TimeUnit.SECONDS, true, true, () -> {
+        for (int i = 0; i < keyCount*3; i++) {
+          assertEquals(client.get(i).get(), i);
+        }
+      });
+
+      // Verify that store version 2 should get keyCount * 3 records, since rt topic has keyCount * 3 records.
+      AvroSerializer<Integer> stringSerializer = new AvroSerializer(Schema.parse(DEFAULT_KEY_SCHEMA));
+      AvroGenericDeserializer<Integer> stringDeserializer = new AvroGenericDeserializer<>(Schema.parse(DEFAULT_KEY_SCHEMA), Schema.parse(DEFAULT_VALUE_SCHEMA));
+
+      try (CloseableHttpAsyncClient storageNodeClient = HttpAsyncClients.createDefault()) {
+        storageNodeClient.start();
+        Base64.Encoder encoder = Base64.getUrlEncoder();
+        TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, true, () -> {
+          VeniceServerWrapper server = cluster.getVeniceServers().get(1);
+          int foundCount = 0;
+          for (int i = 0; i < 3 * keyCount; i++) {
+            for(int j = 0; j < partitionCount; j++) {
+              StringBuilder sb = new StringBuilder().append("http://")
+                  .append(server.getAddress())
+                  .append("/")
+                  .append(TYPE_STORAGE)
+                  .append("/")
+                  .append(Version.composeKafkaTopic(storeName, 2))
+                  .append("/")
+                  .append(j)
+                  .append("/")
+                  .append(encoder.encodeToString(stringSerializer.serialize(i)))
+                  .append("?f=b64");
+              HttpGet getReq = new HttpGet(sb.toString());
+              HttpResponse storageNodeResponse = storageNodeClient.execute(getReq, null).get();
+              try (InputStream bodyStream = storageNodeClient.execute(getReq, null).get().getEntity().getContent()) {
+                byte[] body = IOUtils.toByteArray(bodyStream);
+                if (storageNodeResponse.getStatusLine().getStatusCode() == HttpStatus.SC_OK) {
+                  Object value = stringDeserializer.deserialize(null, body);
+                  Assert.assertEquals(value, i);
+                  foundCount++;
+                }
+              }
+            }
+          }
+          Assert.assertEquals(foundCount, keyCount*3);
+        });
+      }
+    }
+  }
+
+
+
   private static Pair<KafkaKey, KafkaMessageEnvelope> getKafkaKeyAndValueEnvelope(byte[] keyBytes, byte[] valueBytes,
       int valueSchemaId, GUID producerGUID, int segmentNumber, int sequenceNumber, long upstreamOffset) {
     KafkaKey kafkaKey = new KafkaKey(MessageType.PUT, keyBytes);
@@ -1433,7 +1541,7 @@ public class TestHybrid {
     }
   }
 
-  private static VeniceClusterWrapper setUpCluster(boolean enabledIngestionIsolation) {
+  private static VeniceClusterWrapper setUpCluster(boolean enabledIngestionIsolation, boolean enablePartitionWiseSharedConsumer) {
     Properties extraProperties = new Properties();
     extraProperties.setProperty(PERSISTENCE_TYPE, PersistenceType.ROCKS_DB.name());
     extraProperties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(3L));
@@ -1442,6 +1550,10 @@ public class TestHybrid {
     extraProperties.setProperty(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE, "300");
     if (enabledIngestionIsolation) {
       extraProperties.setProperty(SERVER_INGESTION_MODE, IngestionMode.ISOLATED.toString());
+    }
+    if (enablePartitionWiseSharedConsumer) {
+      extraProperties.setProperty(SERVER_SHARED_CONSUMER_ASSIGNMENT_STRATEGY,
+          KafkaConsumerService.ConsumerAssignmentStrategy.PARTITION_WISE_SHARED_CONSUMER_ASSIGNMENT_STRATEGY.name());
     }
     VeniceClusterWrapper cluster = ServiceFactory.getVeniceCluster(1,1,1, 2, 1000000, false, false, extraProperties);
     Properties serverPropertiesWithSharedConsumer = new Properties();

@@ -102,7 +102,7 @@ public class SharedKafkaConsumer implements KafkaConsumerWrapper {
   /**
    * an ever increasing count of number of time poll has been invoked.
    */
-  protected volatile long pollTimes = 0 ;
+  private volatile long pollTimes = 0 ;
 
   private final Time time;
 

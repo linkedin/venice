@@ -57,6 +57,7 @@ public class VeniceClusterConfig {
   private Map<String, Integer> kafkaClusterUrlToIdMap = new HashMap<>();
   private Map<Integer, String> kafkaClusterIdToAliasMap = new HashMap<>();
   private Map<String, Integer> kafkaClusterAliasToIdMap = new HashMap<>();
+  private Map<String, String> kafkaClusterUrlToAliasMap = new HashMap<>();
   private final Optional<Map<String, Map<String, String>>> kafkaClusterMap;
 
   private final VeniceProperties clusterProperties;
@@ -176,6 +177,11 @@ public class VeniceClusterConfig {
     }
     kafkaClusterUrlToIdMap = kafkaClusterIdToUrlMap.entrySet().stream().collect(Collectors.toMap(Map.Entry::getValue, Map.Entry::getKey));
     kafkaClusterAliasToIdMap = kafkaClusterIdToAliasMap.entrySet().stream().collect(Collectors.toMap(Map.Entry::getValue, Map.Entry::getKey));
+
+    for (Map.Entry<String, Integer> entry : kafkaClusterUrlToIdMap.entrySet()) {
+      String kafkaClusterAlias = kafkaClusterIdToAliasMap.get(entry.getValue());
+      kafkaClusterUrlToAliasMap.put(entry.getKey(), kafkaClusterAlias);
+    }
 
     this.regionName = RegionUtils.getLocalRegionName(clusterProps, false);
     logger.info("Final region name for this node: " + this.regionName);
@@ -300,6 +306,10 @@ public class VeniceClusterConfig {
 
   public Map<String, Integer> getKafkaClusterAliasToIdMap() {
     return Collections.unmodifiableMap(kafkaClusterAliasToIdMap);
+  }
+
+  public Map<String, String> getKafkaClusterUrlToAliasMap() {
+    return Collections.unmodifiableMap(kafkaClusterUrlToAliasMap);
   }
 
   public Set<String> getRegionNames() {
