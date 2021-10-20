@@ -283,20 +283,6 @@ public class CreateVersion extends AbstractRoute {
                  */
                 overrideSourceFabric = false;
               }
-            } else if (pushType.isIncremental() && store.isHybrid()) {
-              /** We want to check if the current version has both incremental push and buffer replay enabled but a full push has
-               *  not been made. There are three possible cases of config updates that could lead to this:
-               *  1. Store was already hybrid enabled and incremental push was enabled later - disallow incremental push
-               *  2. Store was not incremental and not hybrid enabled, but was enabled for both at the same time - disallow incremental push
-               *  3. Store was incremental enabled and hybrid was enabled later - allow incremental push
-               *
-               *  This 'if' block only checks if incremental and hybrid configs are enabled at the same time. We can't
-               *  differentiate between the three cases since these configs are not version level configs.
-               */
-              throw new VeniceUnsupportedOperationException(pushTypeString,
-                  "Incremental push cannot be made with hybrid stores unless the version push policy is "
-                      + IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME
-                      + ". If this is a recent change, please make a full push for configs to take effect.");
             } else {
               responseTopic = version.kafkaTopicName();
             }
