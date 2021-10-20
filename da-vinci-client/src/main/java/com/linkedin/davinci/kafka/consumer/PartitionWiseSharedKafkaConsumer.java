@@ -7,6 +7,7 @@ import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import java.util.Collection;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Optional;
@@ -57,6 +58,7 @@ public class PartitionWiseSharedKafkaConsumer extends SharedKafkaConsumer {
     return storeIngestionTasksOfSameTopic;
   }
 
+  @Override
   protected void sanitizeTopicsWithoutCorrespondingIngestionTask(ConsumerRecords<KafkaKey, KafkaMessageEnvelope> records) {
     // Check whether the returned records, which don't have the corresponding ingestion tasks
     topicPartitionsWithoutCorrespondingIngestionTask.clear();
@@ -89,6 +91,9 @@ public class PartitionWiseSharedKafkaConsumer extends SharedKafkaConsumer {
     }
     updateCurrentAssignment(newAssignment);
     this.delegate.assign(newAssignment);
+    for(TopicPartition topicPartition : topicPartitions) {
+      topicPartitionStoreIngestionTaskMap.remove(topicPartition);
+    }
   }
 
   @Override
@@ -120,6 +125,24 @@ public class PartitionWiseSharedKafkaConsumer extends SharedKafkaConsumer {
   }
 
   @Override
+  public synchronized void unSubscribe(String topic, int partition) {
+    super.unSubscribe(topic, partition);
+    TopicPartition topicPartition = new TopicPartition(topic, partition);
+    // Remove mapping.
+    topicPartitionStoreIngestionTaskMap.remove(topicPartition);
+  }
+
+  @Override
+  public synchronized void assign(Collection<TopicPartition> topicPartitions) {
+    throw new VeniceUnsupportedOperationException("assign method for partition wise shared consumer should not be called.");
+  }
+
+  @Override
+  public synchronized void batchUnsubscribe(Set<TopicPartition> topicPartitionSet) {
+    throw new VeniceUnsupportedOperationException("batchUnsubscribe method for partition wise shared consumer should not be called.");
+  }
+
+  @Override
   public void detach(StoreIngestionTask storeIngestionTask) {
     Set<TopicPartition> topicPartitionsToRemove = new HashSet<>();
     for(Map.Entry<TopicPartition, StoreIngestionTask> entry : topicPartitionStoreIngestionTaskMap.entrySet()) {
@@ -129,7 +152,6 @@ public class PartitionWiseSharedKafkaConsumer extends SharedKafkaConsumer {
         topicPartitionsToRemove.add(topicPartition);
       }
     }
-    topicPartitionsToRemove.forEach(topicPartition -> topicPartitionStoreIngestionTaskMap.remove(topicPartition));
     unSubscribeTopicPartitions(topicPartitionsToRemove);
   }
 

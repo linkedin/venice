@@ -510,6 +510,11 @@ public class ConfigKeys {
   public static final String SERVER_CONSUMER_POOL_SIZE_PER_KAFKA_CLUSTER = "server.consumer.pool.size.per.kafka.cluster";
 
   /**
+   * Whether to enable partition wise balanced shared consumer assignment.
+   */
+  public static final String SERVER_SHARED_CONSUMER_ASSIGNMENT_STRATEGY = "server.shared.consumer.assignment.strategy";
+
+  /**
    * Whether to enable leaked resource cleanup in storage node.
    * Right now, it only covers leaked storage partitions on disk.
    */

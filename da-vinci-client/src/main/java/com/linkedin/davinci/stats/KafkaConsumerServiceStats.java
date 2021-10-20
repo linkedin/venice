@@ -28,8 +28,8 @@ public class KafkaConsumerServiceStats extends AbstractVeniceStats {
   private final Sensor minPartitionsPerConsumer;
   private final Sensor avgPartitionsPerConsumer;
 
-  public KafkaConsumerServiceStats(MetricsRepository metricsRepository) {
-    super(metricsRepository, "kafka_consumer_service");
+  public KafkaConsumerServiceStats(MetricsRepository metricsRepository, String nameWithKafkaClusterAlias) {
+    super(metricsRepository, nameWithKafkaClusterAlias);
 
     pollRequestSensor = registerSensor("consumer_poll_request", new OccurrenceRate());
     pollRequestLatencySensor = registerSensor("consumer_poll_request_latency", new Avg(), new Max());

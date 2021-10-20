@@ -7,23 +7,19 @@ import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
-import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Utils;
-import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
-import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -51,30 +47,24 @@ import org.apache.logging.log4j.Logger;
  *    to make the logic in both classes isolated;
  *
  */
-public class KafkaConsumerService extends AbstractVeniceService {
+
+public abstract class KafkaConsumerService extends AbstractVeniceService {
   private static final Logger LOGGER = LogManager.getLogger(KafkaConsumerService.class);
 
   private final long readCycleDelayMs;
   private final long sharedConsumerNonExistingTopicCleanupDelayMS;
-  private final List<SharedKafkaConsumer> readOnlyConsumersList;
   private final List<Integer> consumerPartitionsNumSubscribed;
-  /**
-   * This field is used to maintain the mapping between version topic and the corresponding ingestion task.
-   * In theory, One version topic should only be mapped to one ingestion task, and if this assumption is violated
-   * in the future, we need to change the design of this service.
-   */
-  private final Map<String, SharedKafkaConsumer> versionTopicToConsumerMap = new VeniceConcurrentHashMap<>();
-  private final Map<SharedKafkaConsumer, Set<String>> consumerToStoresMap = new VeniceConcurrentHashMap<>();
   private final ExecutorService consumerExecutor;
-  private final KafkaConsumerServiceStats stats;
-
   private final EventThrottler bandwidthThrottler;
   private final EventThrottler recordsThrottler;
   private final KafkaClusterBasedRecordThrottler kafkaClusterBasedRecordThrottler;
-  private boolean stopped = false;
   private final String kafkaUrl;
   private final boolean liveConfigBasedKafkaThrottlingEnabled;
 
+  protected final KafkaConsumerServiceStats stats;
+  protected final List<SharedKafkaConsumer> readOnlyConsumersList;
+
+  private boolean stopped = false;
 
   public KafkaConsumerService(final KafkaClientFactory consumerFactory, final Properties consumerProperties,
       final long readCycleDelayMs, final int numOfConsumersPerKafkaCluster, final EventThrottler bandwidthThrottler,
@@ -89,7 +79,7 @@ public class KafkaConsumerService extends AbstractVeniceService {
     this.kafkaClusterBasedRecordThrottler = kafkaClusterBasedRecordThrottler;
     this.stats = stats;
 
-    kafkaUrl = consumerProperties.getProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG);
+    this.kafkaUrl = consumerProperties.getProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG);
     // Initialize consumers and consumerExecutor
     consumerExecutor = Executors.newFixedThreadPool(numOfConsumersPerKafkaCluster, new DaemonThreadFactory("venice-shared-consumer-for-" + kafkaUrl));
     consumerPartitionsNumSubscribed = new ArrayList<>(numOfConsumersPerKafkaCluster);
@@ -99,7 +89,7 @@ public class KafkaConsumerService extends AbstractVeniceService {
        * We need to assign an unique client id across all the storage nodes, otherwise, they will fail into the same throttling bucket.
        */
       consumerProperties.setProperty(ConsumerConfig.CLIENT_ID_CONFIG, getUniqueClientId(kafkaUrl, i));
-      SharedKafkaConsumer newConsumer = new SharedKafkaConsumer(consumerFactory.getConsumer(consumerProperties), this, sharedConsumerNonExistingTopicCleanupDelayMS, topicExistenceChecker);
+      SharedKafkaConsumer newConsumer = createSharedKafkaConsumer(consumerFactory.getConsumer(consumerProperties),sharedConsumerNonExistingTopicCleanupDelayMS, topicExistenceChecker);
       consumerExecutor.submit(new ConsumptionTask(kafkaUrl, newConsumer));
       consumers.add(newConsumer);
       consumerPartitionsNumSubscribed.add(0);
@@ -110,6 +100,9 @@ public class KafkaConsumerService extends AbstractVeniceService {
     LOGGER.info("KafkaConsumerService was initialized with " + numOfConsumersPerKafkaCluster + " consumers.");
   }
 
+  protected abstract SharedKafkaConsumer createSharedKafkaConsumer(final KafkaConsumerWrapper kafkaConsumerWrapper, final long nonExistingTopicCleanupDelayMS,
+      TopicExistenceChecker topicExistenceChecker);
+
   private String getUniqueClientId(String kafkaUrl, int suffix) {
     return Utils.getHostName() + "_" + kafkaUrl + "_" + suffix;
   }
@@ -119,111 +112,21 @@ public class KafkaConsumerService extends AbstractVeniceService {
   }
 
   /**
-   * This function is used to check whether the passed {@param consumer} has already subscribed the topics
-   * belonging to the same store, which owns the passed {@param versionTopic} or not.
-   * @param consumer
-   * @param versionTopic
-   * @return
-   */
-  private boolean checkWhetherConsumerHasSubscribedSameStore(SharedKafkaConsumer consumer, String versionTopic)  {
-    String storeName = Version.parseStoreFromKafkaTopicName(versionTopic);
-    Set<String> stores = consumerToStoresMap.get(consumer);
-    return stores != null && stores.contains(storeName);
-  }
-
-  /**
    * This function will return a consumer for the passed {@link StoreIngestionTask}.
-   * If the version topic of the passed {@link StoreIngestionTask} has been attached before, the previously assigned
-   * consumer will be returned.
    *
-   * This function will also try to avoid assigning the same consumer to the version topics, which are belonging to
-   * the same store since for Hybrid store, the ingestion tasks for different store versions will subscribe the same
-   * Real-time topic, which won't work if they are using the same shared consumer.
    * @param ingestionTask
    * @return
    */
-  public synchronized KafkaConsumerWrapper getConsumer(StoreIngestionTask ingestionTask) {
-    String versionTopic = ingestionTask.getVersionTopic();
-    // Check whether this version topic has been subscribed before or not.
-    SharedKafkaConsumer chosenConsumer = null;
-    chosenConsumer = versionTopicToConsumerMap.get(versionTopic);
-    if (null != chosenConsumer) {
-      LOGGER.info("The version topic: " + versionTopic + " has been subscribed previously,"
-          + " so this function will return the previously assigned shared consumer directly");
-      return chosenConsumer;
-    }
-
-    int minAssignmentPerConsumer = Integer.MAX_VALUE;
-    for (SharedKafkaConsumer consumer : readOnlyConsumersList) {
-      if (ingestionTask.isHybridMode()) {
-        /**
-         * Firstly, we need to make sure multiple store versions won't share the same consumer since for Hybrid stores,
-         * all the store versions will consume the same RT topic with different offset.
-         */
-        if (checkWhetherConsumerHasSubscribedSameStore(consumer, versionTopic)) {
-          LOGGER.info("Current consumer has already subscribed the same store as the new topic: " + versionTopic + ", "
-              + "will skip it and try next consumer in consumer pool");
-          continue;
-        }
-      }
-      /**
-       * Find the zero loaded consumer by topics. There is a delay between {@link SharedKafkaConsumer#attach(String, StoreIngestionTask)}
-       * and {@link SharedKafkaConsumer#assign(List)} partitions, so we should guarantee every {@link SharedKafkaConsumer}
-       * is assigned with {@linkStoreIngestionTask} first.
-       */
-      if (!isConsumerAssignedTopic(consumer)) {
-        chosenConsumer = consumer;
-        assignTopicToConsumer(versionTopic, chosenConsumer);
-        LOGGER.info("Assigned a shared consumer with index of " + readOnlyConsumersList.indexOf(chosenConsumer) +
-            " without any assigned topic for topic: " + versionTopic);
-        return chosenConsumer;
-      }
-
-      // Find the least loaded consumer by partitions
-      final int assignedPartitions = consumer.getAssignmentSize();
-      if (assignedPartitions < minAssignmentPerConsumer) {
-        minAssignmentPerConsumer = assignedPartitions;
-        chosenConsumer = consumer;
-      }
-    }
-    if (null == chosenConsumer) {
-      stats.recordConsumerSelectionForTopicError();
-      throw new VeniceException("Failed to find consumer for topic: " + versionTopic + ", and it might be caused by that all"
-          + " the existing consumers have subscribed the same store, and that might be caused by a bug or resource leaking");
-    }
-    assignTopicToConsumer(versionTopic, chosenConsumer);
-    LOGGER.info("Assigned a shared consumer with index of " + readOnlyConsumersList.indexOf(chosenConsumer) + " for topic: "
-        + versionTopic + " with least # of partitions assigned: " + minAssignmentPerConsumer);
-    return chosenConsumer;
-  }
-
+  public abstract KafkaConsumerWrapper getConsumer(StoreIngestionTask ingestionTask);
   /**
    * Attach the messages belonging to {@param topic} to the passed {@param ingestionTask}
    */
-  public void attach(KafkaConsumerWrapper consumer, String topic, StoreIngestionTask ingestionTask) {
-    if (!(consumer instanceof SharedKafkaConsumer)) {
-      throw new VeniceException("The `consumer` passed must be a `SharedKafkaConsumer`");
-    }
-    SharedKafkaConsumer sharedConsumer = (SharedKafkaConsumer)consumer;
-    if (!readOnlyConsumersList.contains(sharedConsumer)) {
-      throw new VeniceException("Unknown shared consumer passed");
-    }
-    sharedConsumer.attach(topic, ingestionTask);
-  }
+  public abstract void attach(KafkaConsumerWrapper consumer, String topic, StoreIngestionTask ingestionTask);
 
   /**
    * Detach the messages processing belonging to the topics of the passed {@param ingestionTask}
    */
-  public synchronized void detach(StoreIngestionTask ingestionTask) {
-    String versionTopic = ingestionTask.getVersionTopic();
-    SharedKafkaConsumer sharedKafkaConsumer = versionTopicToConsumerMap.get(versionTopic);
-    if (null == sharedKafkaConsumer) {
-      LOGGER.warn("No assigned shared consumer found for this version topic: " + versionTopic);
-      return;
-    }
-    removeTopicFromConsumer(versionTopic, sharedKafkaConsumer);
-    sharedKafkaConsumer.detach(ingestionTask);
-  }
+  public abstract void detach(StoreIngestionTask ingestionTask);
 
   @Override
   public boolean startInner() throws Exception {
@@ -348,31 +251,6 @@ public class KafkaConsumerService extends AbstractVeniceService {
     }
   }
 
-  /**
-   * This function will check a consumer is assigned topic or not. Since we may not have too many consumers and this
-   * function will be only called when {@link KafkaConsumerService#getConsumer(StoreIngestionTask)} called at the
-   * first time.
-   */
-  private boolean isConsumerAssignedTopic(SharedKafkaConsumer consumer) {
-    return consumerToStoresMap.containsKey(consumer);
-  }
-
-  private void assignTopicToConsumer(String topic, SharedKafkaConsumer consumer) {
-    versionTopicToConsumerMap.put(topic, consumer);
-    consumerToStoresMap.computeIfAbsent(consumer, k -> new HashSet<>()).add(Version.parseStoreFromKafkaTopicName(topic));
-  }
-
-  private void removeTopicFromConsumer(String topic, SharedKafkaConsumer consumer) {
-    versionTopicToConsumerMap.remove(topic);
-    consumerToStoresMap.compute(consumer, (k, v) -> {
-      if (v != null) {
-        v.remove(Version.parseStoreFromKafkaTopicName(topic));
-        return v.isEmpty() ? null : v;
-      }
-      return null;
-    });
-  }
-
   private void recordPartitionsPerConsumerSensor() {
     int totalPartitions = 0;
     int minPartitionsPerConsumer = Integer.MAX_VALUE;
@@ -402,6 +280,16 @@ public class KafkaConsumerService extends AbstractVeniceService {
     } else {
       throw new VeniceException("Shared consumer cannot be found in KafkaConsumerService.");
     }
+  }
+
+  /**
+   * This consumer assignment strategy specify how consumers from consumer pool are allocated. Now we support two basic
+   * strategies with topic-wise and partition-wise for supporting consumer shared in topic and topic-partition granularity,
+   * respectively. Each strategy will have a specific extension of {@link KafkaConsumerService}.
+   */
+  public enum ConsumerAssignmentStrategy {
+    TOPIC_WISE_SHARED_CONSUMER_ASSIGNMENT_STRATEGY,
+    PARTITION_WISE_SHARED_CONSUMER_ASSIGNMENT_STRATEGY
   }
 
 }
