@@ -2283,7 +2283,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
          * Kafka Broker yet.
          */
         if (multiClusterConfigs.isParent()) {
-            return truncateKafkaTopicInParent(kafkaTopicName);
+            return truncateKafkaTopicInParentFabrics(kafkaTopicName);
         } else {
             return truncateKafkaTopic(getTopicManager(), kafkaTopicName);
         }
@@ -2295,16 +2295,16 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
              * topicConfigs is ignored on purpose, since we couldn't guarantee configs are in sync in
              * different Kafka clusters.
              */
-            return truncateKafkaTopicInParent(kafkaTopicName);
+            return truncateKafkaTopicInParentFabrics(kafkaTopicName);
         } else {
             return truncateKafkaTopic(getTopicManager(), kafkaTopicName, topicConfigs);
         }
     }
 
     /**
-     * Iterate through all Kafka clusters in parent fabric to truncate the same topic name
+     * Iterate through all parent fabric Kafka clusters and truncate the given kafka topic.
      */
-    private boolean truncateKafkaTopicInParent(String kafkaTopicName) {
+    private boolean truncateKafkaTopicInParentFabrics(String kafkaTopicName) {
         boolean allTopicsAreDeleted = true;
         Set<String> parentFabrics = multiClusterConfigs.getParentFabrics();
         for (String parentFabric : parentFabrics) {
