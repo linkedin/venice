@@ -146,7 +146,12 @@ public enum StatsErrorCode {
    * Default value for kafka client metrics. This is used when emitting metric configured via {@link ConfigKeys#KAFKA_PRODUCER_METRICS}
    * and that metric is missing from those returned by the Kafka client.
    */
-  KAFKA_CLIENT_METRICS_DEFAULT(-24);
+  KAFKA_CLIENT_METRICS_DEFAULT(-24),
+
+  /**
+   * There was an exception when retrieving a metric value.  Please consult application logs to determine the root cause!
+   */
+  UNKNOWN_METRIC_EXCEPTION(-25);
 
   public final int code;
 
