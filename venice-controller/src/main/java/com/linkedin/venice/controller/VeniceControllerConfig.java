@@ -609,8 +609,8 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
                 throw new VeniceException(errMsg + ": urls can not be empty");
               }
 
-              if (Arrays.stream(uriList).anyMatch(uri -> !uri.startsWith("http://"))) {
-                throw new VeniceException(errMsg + ": urls must begin with http://");
+              if (Arrays.stream(uriList).anyMatch(uri -> (!uri.startsWith("http://") && !uri.startsWith("https://")))) {
+                throw new VeniceException(errMsg + ": urls must begin with http:// or https://");
               }
             }
 
