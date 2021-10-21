@@ -15,6 +15,7 @@ import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.davinci.store.rocksdb.RocksDBComputeAccessMode;
 import com.linkedin.venice.VeniceConstants;
 import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.compute.ComputeOperationUtils;
 import com.linkedin.venice.compute.ComputeRequestWrapper;
 import com.linkedin.venice.compute.ReadComputeOperator;
 import com.linkedin.venice.compute.protocol.request.ComputeOperation;
@@ -656,10 +657,14 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
     for (ComputeOperation operation : operations) {
       ReadComputeOperator operator = ComputeOperationType.valueOf(operation).getOperator();
       String fieldName = operator.getOperatorFieldName(operation);
-      if (reuseValueRecord.get(fieldName) == null) {
-        String msg = "Failed to execute compute request as the field " + fieldName + " does not exist.";
+      String errorMessage = ComputeOperationUtils.validateNullableFieldAndGetErrorMsg(
+          operator,
+          reuseValueRecord,
+          fieldName
+      ).orElse(null);
+      if (errorMessage != null) {
         operator.putDefaultResult(reuseResultRecord, operator.getResultFieldName(operation));
-        computationErrorMap.put(operator.getResultFieldName(operation), msg);
+        computationErrorMap.put(operator.getResultFieldName(operation), errorMessage);
         continue;
       }
       incrementOperatorCount(response, operation);

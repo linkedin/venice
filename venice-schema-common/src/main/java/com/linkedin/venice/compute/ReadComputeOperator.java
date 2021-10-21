@@ -20,4 +20,10 @@ public interface ReadComputeOperator {
   String getResultFieldName(ComputeOperation op);
 
   String getOperatorFieldName(ComputeOperation op);
+
+  /**
+   * Whether the extracted value of the field in the read value record is allowed to be null.
+   * @return True if the extracted value is nullable and vice versa
+   */
+  boolean allowFieldValueToBeNull();
 }

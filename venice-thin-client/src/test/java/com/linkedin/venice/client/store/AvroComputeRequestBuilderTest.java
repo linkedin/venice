@@ -249,7 +249,7 @@ public class AvroComputeRequestBuilderTest {
     computeRequestBuilder.execute(keys);
   }
 
-  @Test (expectedExceptions = VeniceClientException.class, expectedExceptionsMessageRegExp = ".*isn't an 'ARRAY' type")
+  @Test (expectedExceptions = VeniceClientException.class, expectedExceptionsMessageRegExp = ".*isn't an 'ARRAY' type. Got: INT")
   public void testDotProductAgainstNonFloatArrayField1() {
     AbstractAvroStoreClient mockClient = getMockClient();
     AvroComputeRequestBuilderV3<String> computeRequestBuilder = new AvroComputeRequestBuilderV3(VALID_RECORD_SCHEMA,
@@ -258,7 +258,7 @@ public class AvroComputeRequestBuilderTest {
     computeRequestBuilder.execute(keys);
   }
 
-  @Test (expectedExceptions = VeniceClientException.class, expectedExceptionsMessageRegExp = ".*isn't an 'ARRAY' type")
+  @Test (expectedExceptions = VeniceClientException.class, expectedExceptionsMessageRegExp = ".*isn't an 'ARRAY' type. Got: INT")
   public void testCosineSimilarityAgainstNonFloatArrayField1() {
     AbstractAvroStoreClient mockClient = getMockClient();
     AvroComputeRequestBuilderV3<String> computeRequestBuilder = new AvroComputeRequestBuilderV3(VALID_RECORD_SCHEMA,

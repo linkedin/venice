@@ -7,6 +7,7 @@ import com.linkedin.venice.client.store.predicate.Predicate;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
 import com.linkedin.venice.client.store.streaming.VeniceResponseMap;
 import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.compute.ComputeOperationUtils;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
@@ -55,6 +56,7 @@ import com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils;
 import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
 
+import java.util.concurrent.Callable;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
@@ -151,6 +153,17 @@ public class DaVinciClientTest {
       "         { \"name\": \"member_feature\", \"type\": { \"type\": \"array\", \"items\": \"float\" } }        " +
       "  ]       " +
       " }       ";
+
+  private static final String VALUE_SCHEMA_FOR_COMPUTE_NULLABLE_LIST_FIELD = "{" +
+      "  \"namespace\": \"example.compute\",    " +
+      "  \"type\": \"record\",        " +
+      "  \"name\": \"MemberFeature\",       " +
+      "  \"fields\": [        " +
+      "   {\"name\": \"id\", \"type\": \"string\" },             " +
+      "   {\"name\": \"name\", \"type\": \"string\" },           " +
+      "   {\"name\": \"member_feature\", \"type\": [\"null\",{\"type\":\"array\",\"items\":\"float\"}],\"default\": null}" + // nullable field
+      "  ] " +
+      " }  ";
 
   private static final String VALUE_SCHEMA_FOR_COMPUTE_SWAPPED = "{" +
       "  \"namespace\": \"example.compute\",    " +
@@ -1036,9 +1049,103 @@ public class DaVinciClientTest {
     }
   }
 
+  @Test
+  public void testComputeOnStoreWithQTFDScompliantSchema() throws Exception {
+    final String storeName = TestUtils.getUniqueString( "store");
+    cluster.useControllerClient(client -> TestUtils.assertCommand(
+        client.createNewStore(storeName, getClass().getName(), DEFAULT_KEY_SCHEMA, VALUE_SCHEMA_FOR_COMPUTE_NULLABLE_LIST_FIELD)));
+
+    VersionCreationResponse newVersion = cluster.getNewVersion(storeName, 1024);
+    String topic = newVersion.getKafkaTopic();
+    VeniceWriterFactory vwFactory = TestUtils.getVeniceWriterFactory(cluster.getKafka().getAddress());
+
+    VeniceKafkaSerializer keySerializer = new VeniceAvroKafkaSerializer(DEFAULT_KEY_SCHEMA);
+    VeniceKafkaSerializer valueSerializer = new VeniceAvroKafkaSerializer(VALUE_SCHEMA_FOR_COMPUTE_NULLABLE_LIST_FIELD);
+
+    MetricsRepository metricsRepository = new MetricsRepository();
+    String baseDataPath = TestUtils.getTempDataDirectory().getAbsolutePath();
+
+    int applicationListenerPort = Utils.getFreePort();
+    int servicePort = Utils.getFreePort();
+
+    VeniceProperties backendConfig = new PropertyBuilder()
+        .put(DATA_BASE_PATH, baseDataPath)
+        .put(PERSISTENCE_TYPE, ROCKS_DB)
+        .put(SERVER_INGESTION_MODE, ISOLATED)
+        .put(SERVER_INGESTION_ISOLATION_APPLICATION_PORT, applicationListenerPort)
+        .put(SERVER_INGESTION_ISOLATION_SERVICE_PORT, servicePort)
+        .put(D2_CLIENT_ZK_HOSTS_ADDRESS, cluster.getZk().getAddress())
+        .build();
+
+    Map<Integer, GenericRecord> computeResult;
+    final int key1 = 1;
+    final int key2 = 2;
+    Set<Integer> keySetForCompute = new HashSet<Integer>(){{
+      add(key1);
+      add(key2);
+    }};
+
+    try (
+        VeniceWriter<Object, Object, byte[]> veniceWriter = vwFactory.createVeniceWriter(topic, keySerializer, valueSerializer, false);
+        CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(d2Client, metricsRepository, backendConfig);
+        DaVinciClient<Integer, Integer> client = factory.getAndStartGenericAvroClient(storeName, new DaVinciConfig())) {
+
+      //Write data to DaVinci Store and subscribe client
+      Schema valueSchema = Schema.parse(VALUE_SCHEMA_FOR_COMPUTE_NULLABLE_LIST_FIELD);
+      List<Float> memberFeatureEmbedding = Arrays.asList(1.0f, 2.0f, 3.0f);
+      GenericRecord value1 = new GenericData.Record(valueSchema);
+      GenericRecord value2 = new GenericData.Record(valueSchema);
+      value1.put("id", "1");
+      value1.put("name", "companiesEmbedding");
+      value1.put("member_feature", memberFeatureEmbedding);
+      value2.put("id", "2");
+      value2.put("name", "companiesEmbedding");
+      value2.put("member_feature", null); // Null value instead of a list
+      Map<Integer, GenericRecord> valuesByKey = new HashMap<>(2);
+      valuesByKey.put(key1, value1);
+      valuesByKey.put(key2, value2);
+
+      pushRecordsToStore(valuesByKey, veniceWriter, 1);
+      client.subscribeAll().get();
+
+      final Consumer<Map<Integer, GenericRecord>> assertComputeResults = (readComputeResult) -> {
+        // Expect no error
+        for (Map.Entry<Integer, GenericRecord> entry : readComputeResult.entrySet()) {
+          Assert.assertEquals(((HashMap<String, String>)entry.getValue().get(VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME)).size(), 0);
+        }
+        // Results for key 2 should be all null since the nullable field in the value of key 2 is null
+        Assert.assertNull(readComputeResult.get(key2).get("dot_product_result"));
+        Assert.assertNull(readComputeResult.get(key2).get("hadamard_product_result"));
+        Assert.assertNull(readComputeResult.get(key2).get("cosine_similarity_result"));
+        // Results for key 1 should be non-null since the nullable field in the value of key 1 is non-null
+        Assert.assertEquals(readComputeResult.get(key1).get("dot_product_result"), ComputeOperationUtils.dotProduct(memberFeatureEmbedding, memberFeatureEmbedding));
+        Assert.assertEquals(readComputeResult.get(key1).get("hadamard_product_result"), ComputeOperationUtils.hadamardProduct(memberFeatureEmbedding, memberFeatureEmbedding));
+        Assert.assertEquals(readComputeResult.get(key1).get("cosine_similarity_result"), 1.0f); // Cosine similarity between a vector and itself is 1.0
+      };
+
+      // Perform compute on client
+      computeResult = client.compute()
+          .dotProduct("member_feature", memberFeatureEmbedding, "dot_product_result")
+          .hadamardProduct("member_feature", memberFeatureEmbedding, "hadamard_product_result")
+          .cosineSimilarity("member_feature", memberFeatureEmbedding, "cosine_similarity_result")
+          .execute(keySetForCompute).get();
+
+      assertComputeResults.accept(computeResult);
+
+      computeResult = client.compute()
+          .dotProduct("member_feature", memberFeatureEmbedding, "dot_product_result")
+          .hadamardProduct("member_feature", memberFeatureEmbedding, "hadamard_product_result")
+          .cosineSimilarity("member_feature", memberFeatureEmbedding, "cosine_similarity_result")
+          .streamingExecute(keySetForCompute).get();
+
+      assertComputeResults.accept(computeResult);
+      client.unsubscribeAll();
+    }
+  }
+
+
   @Test(timeOut = TEST_TIMEOUT * 2)
   public void testReadComputeMissingField() throws Exception {
-
     //Create DaVinci store
     final String storeName = TestUtils.getUniqueString( "store");
     cluster.useControllerClient(client -> TestUtils.assertCommand(
@@ -1507,6 +1614,19 @@ public class DaVinciClientTest {
       writer.put(i, value, valueSchemaId).get();
     }
     writer.broadcastEndOfPush(Collections.emptyMap());
+  }
+
+  private void pushRecordsToStore(
+      Map<Integer, GenericRecord> valuesByKey,
+      VeniceWriter<Object, Object, byte[]> veniceWriter,
+      int valueSchemaId
+  ) throws Exception {
+
+    veniceWriter.broadcastStartOfPush(Collections.emptyMap());
+    for (Map.Entry<Integer, GenericRecord> keyValue : valuesByKey.entrySet()) {
+      veniceWriter.put(keyValue.getKey(), keyValue.getValue(), valueSchemaId).get();
+    }
+    veniceWriter.broadcastEndOfPush(Collections.emptyMap());
   }
 
   private void pushDataToStoreForStreamingCompute(VeniceWriter<Object, Object, byte[]> writer, String valueSchemaString,

@@ -8,12 +8,14 @@ import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.client.store.deserialization.BatchDeserializerType;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.CompressorFactory;
+import com.linkedin.venice.compute.ComputeOperationUtils;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
+import com.linkedin.venice.exceptions.ExceptionType;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.meta.Version;
@@ -27,6 +29,8 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -50,7 +54,6 @@ import static com.linkedin.venice.VeniceConstants.*;
 public class ReadComputeValidationTest {
   private static final String valuePrefix = "id_";
   private VeniceClusterWrapper veniceCluster;
-  private int valueSchemaId;
   private String storeName;
   private String routerAddr;
   private VeniceKafkaSerializer keySerializer;
@@ -118,7 +121,6 @@ public class ReadComputeValidationTest {
     // Create test store
     VersionCreationResponse creationResponse = veniceCluster.getNewStoreVersion(keySchema, valueSchemaForCompute);
     storeName = Version.parseStoreFromKafkaTopicName(creationResponse.getKafkaTopic());
-    valueSchemaId = HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID;
 
     // TODO: Make serializers parameterized so we test them all.
     keySerializer = new VeniceAvroKafkaSerializer(keySchema);
@@ -176,6 +178,7 @@ public class ReadComputeValidationTest {
           .execute(keySet).get();
       ControllerClient controllerClient = new ControllerClient(veniceCluster.getClusterName(), veniceCluster.getRandmonVeniceController().getControllerUrl());
       SchemaResponse schemaResponse = controllerClient.addValueSchema(storeName, valueSchemaForCompute2);
+      // Restart the server to get new  schemas
       veniceCluster.stopAndRestartVeniceServer(veniceCluster.getVeniceServers().get(0).getPort());
 
       VersionCreationResponse newVersion2 = veniceCluster.getNewVersion(storeName, 1024);
@@ -184,6 +187,7 @@ public class ReadComputeValidationTest {
       VeniceWriter<Object, byte[], byte[]> veniceWriter2 = vwFactory.createVeniceWriter(topic2, keySerializer, new DefaultSerializer(), valueLargerThan1MB);
       pushSyntheticDataToStore(topic2, 100,
           veniceWriter2, pushVersion2, valueSchemaForCompute2, valueSerializer2, true, 2);
+      // Restart the server to get new  schemas
       veniceCluster.stopAndRestartVeniceServer(veniceCluster.getVeniceServers().get(0).getPort());
 
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
@@ -239,6 +243,7 @@ public class ReadComputeValidationTest {
           .execute(keySet).get();
       ControllerClient controllerClient = new ControllerClient(veniceCluster.getClusterName(), veniceCluster.getRandmonVeniceController().getControllerUrl());
       SchemaResponse schemaResponse = controllerClient.addValueSchema(storeName, valueSchemaForCompute2);
+      // Restart the server to get new  schemas
       veniceCluster.stopAndRestartVeniceServer(veniceCluster.getVeniceServers().get(0).getPort());
 
       VersionCreationResponse newVersion2 = veniceCluster.getNewVersion(storeName, 1024);
@@ -247,6 +252,7 @@ public class ReadComputeValidationTest {
       VeniceWriter<Object, byte[], byte[]> veniceWriter2 = vwFactory.createVeniceWriter(topic2, keySerializer, new DefaultSerializer(), false);
       pushSyntheticDataToStore(topic2, 100,
           veniceWriter2, pushVersion2, valueSchemaForComputeSwapped, valueSerializerSwapped, false, 2);
+      // Restart the server to get new  schemas
       veniceCluster.stopAndRestartVeniceServer(veniceCluster.getVeniceServers().get(0).getPort());
 
       Map<Integer, GenericRecord> computeResult = storeClient.compute()
@@ -257,6 +263,136 @@ public class ReadComputeValidationTest {
         Assert.assertEquals(((HashMap<String, String>)entry.getValue().get(VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME)).size(), 0);
       }
     }
+  }
+
+  /**
+   * The QT-FDS compliant schema allows nullable list field in a schema. This method tests that the dot product, cosine
+   * similarity, and hadamard product works with nullable list field.
+   *
+   * @throws Exception
+   */
+  @Test
+  public void testComputeOnStoreWithQTFDScompliantSchema() throws Exception {
+    String keySchema = "\"int\"";
+    String valueSchemaWithNullableListField = "{" +
+        "  \"namespace\": \"example.compute\",    " +
+        "  \"type\": \"record\",        " +
+        "  \"name\": \"MemberFeature\",       " +
+        "  \"fields\": [        " +
+        "   {\"name\": \"id\", \"type\": \"string\" },             " +
+        "   {\"name\": \"name\", \"type\": \"string\" },           " +
+        "   {\"name\": \"member_feature\", \"type\": [\"null\",{\"type\":\"array\",\"items\":\"float\"}],\"default\": null}" + // nullable field
+        "  ] " +
+        " }  ";
+    VeniceAvroKafkaSerializer keySerializer = new VeniceAvroKafkaSerializer(keySchema);
+    VeniceAvroKafkaSerializer valueSerializer = new VeniceAvroKafkaSerializer(valueSchemaWithNullableListField);
+
+    // Create store with a version
+    VersionCreationResponse creationResponse = veniceCluster.getNewStoreVersion(keySchema, valueSchemaWithNullableListField);
+    Assert.assertFalse(creationResponse.isError());
+    final String topic = creationResponse.getKafkaTopic();
+
+    // Update the store and enable read-compute
+    final String storeName = Version.parseStoreFromKafkaTopicName(creationResponse.getKafkaTopic());
+    final int pushVersion = creationResponse.getVersion();
+    CompressionStrategy compressionStrategy = CompressionStrategy.NO_OP;
+    BatchDeserializerType batchDeserializerType = BatchDeserializerType.BLOCKING;
+    AvroGenericDeserializer.IterableImpl iterableImpl = AvroGenericDeserializer.IterableImpl.BLOCKING;
+
+    UpdateStoreQueryParams params = new UpdateStoreQueryParams();
+    params.setCompressionStrategy(compressionStrategy);
+    params.setReadComputationEnabled(true);
+    params.setChunkingEnabled(false);
+    ControllerResponse controllerResponse = veniceCluster.updateStore(storeName, params);
+    Assert.assertFalse(controllerResponse.isError());
+
+    // Create synthetic value records to write to the store
+    Schema valueSchema = Schema.parse(valueSchemaWithNullableListField);
+    GenericRecord value1 = new GenericData.Record(valueSchema);
+    List<Float> memberFeatureEmbedding = Arrays.asList(1.0f, 2.0f, 3.0f);
+    final int key1 = 1;
+    final int key2 = 2;
+    value1.put("id", "1");
+    value1.put("name", "companiesEmbedding");
+    value1.put("member_feature", memberFeatureEmbedding);
+
+    GenericRecord value2 = new GenericData.Record(valueSchema);
+    value2.put("id", "2");
+    value2.put("name", "companiesEmbedding");
+    value2.put("member_feature", null); // Null value instead of a list
+
+    Map<Integer, GenericRecord> valuesByKey = new HashMap<>(2);
+    valuesByKey.put(key1, value1);
+    valuesByKey.put(key2, value2);
+
+    VeniceWriterFactory vwFactory =
+        TestUtils.getVeniceWriterFactory(veniceCluster.getKafka().getAddress());
+    try (VeniceWriter<Object, byte[], byte[]> veniceWriter =
+        vwFactory.createVeniceWriter(topic, keySerializer, new DefaultSerializer(), false);
+        AvroGenericStoreClient<Integer, Object> storeClient = ClientFactory.getAndStartGenericAvroClient(
+            ClientConfig.defaultGenericClientConfig(storeName)
+                .setVeniceURL(routerAddr)
+                .setBatchDeserializerType(batchDeserializerType)
+                .setMultiGetEnvelopeIterableImpl(iterableImpl)
+                .setUseFastAvro(false))) {
+
+      // Write synthetic value records to the store
+      pushRecordsToStore(topic, valuesByKey, veniceWriter, valueSerializer, 1);
+
+      Set<Integer> keySet = Utils.setOf(key1, key2);
+
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, true, () -> {
+        Map<Integer, GenericRecord> computeResult = storeClient.compute()
+            .dotProduct("member_feature", memberFeatureEmbedding, "dot_product_result")
+            .hadamardProduct("member_feature", memberFeatureEmbedding, "hadamard_product_result")
+            .cosineSimilarity("member_feature", memberFeatureEmbedding, "cosine_similarity_result")
+            .execute(keySet)
+            .get();
+
+        // Expect no error
+        for (Map.Entry<Integer, GenericRecord> entry : computeResult.entrySet()) {
+          Assert.assertEquals(((HashMap<String, String>) entry.getValue().get(VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME)).size(), 0);
+        }
+        // Results for key 2 should be all null since the nullable field in the value of key 2 is null
+        Assert.assertNull(computeResult.get(key2).get("dot_product_result"));
+        Assert.assertNull(computeResult.get(key2).get("hadamard_product_result"));
+        Assert.assertNull(computeResult.get(key2).get("cosine_similarity_result"));
+
+        // Results for key 1 should be non-null since the nullable field in the value of key 1 is non-null
+        Assert.assertEquals(computeResult.get(key1).get("dot_product_result"), ComputeOperationUtils.dotProduct(memberFeatureEmbedding, memberFeatureEmbedding));
+        Assert.assertEquals(computeResult.get(key1).get("hadamard_product_result"), ComputeOperationUtils.hadamardProduct(memberFeatureEmbedding, memberFeatureEmbedding));
+        Assert.assertEquals(computeResult.get(key1).get("cosine_similarity_result"), 1.0f); // Cosine similarity between a vector and itself is 1.0
+
+        // Count on a null field should fail
+        Exception expectedException = null;
+        try {
+          computeResult = storeClient.compute().count("member_feature", "count_result").execute(keySet).get();
+        } catch (Exception e) {
+          expectedException = e;
+        }
+        Assert.assertNotNull(expectedException);
+        Assert.assertTrue(expectedException instanceof VeniceClientException);
+        Assert.assertEquals(((VeniceClientException) expectedException).getExceptionType(), ExceptionType.GENERAL_ERROR);
+        Assert.assertEquals(expectedException.getMessage(), "COUNT field: member_feature isn't 'ARRAY' or 'MAP' type");
+      });
+    }
+  }
+
+  private void pushRecordsToStore(
+      String topic,
+      Map<Integer, GenericRecord> valuesByKey,
+      VeniceWriter<Object, byte[], byte[]> veniceWriter,
+      VeniceKafkaSerializer serializer,
+      int valueSchemaId
+  ) throws Exception {
+    veniceWriter.broadcastStartOfPush(false, false, CompressionStrategy.NO_OP, Collections.emptyMap());
+
+    for (Map.Entry<Integer, GenericRecord> keyValue : valuesByKey.entrySet()) {
+      byte[] compressedValue = compressorFactory.getCompressor(CompressionStrategy.NO_OP).compress(serializer.serialize(topic, keyValue.getValue()));
+      veniceWriter.put(keyValue.getKey(), compressedValue, valueSchemaId).get();
+    }
+    // Write end of push message to make node become ONLINE from BOOTSTRAP
+    veniceWriter.broadcastEndOfPush(Collections.emptyMap());
   }
 
   private void pushSyntheticDataToStore(String topic, int numOfRecords,
