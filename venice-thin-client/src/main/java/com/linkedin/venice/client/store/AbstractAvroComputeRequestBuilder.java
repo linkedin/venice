@@ -20,6 +20,7 @@ import io.tehuti.utils.Time;
 import java.io.ByteArrayOutputStream;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
@@ -33,8 +34,6 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.BinaryEncoder;
-import org.codehaus.jackson.JsonNode;
-import org.codehaus.jackson.node.JsonNodeFactory;
 
 import static com.linkedin.venice.VeniceConstants.*;
 import static com.linkedin.venice.compute.protocol.request.enums.ComputeOperationType.*;
@@ -133,7 +132,7 @@ public abstract class AbstractAvroComputeRequestBuilder<K> implements ComputeReq
       throws VeniceClientException {
     DotProduct dotProduct = (DotProduct) DOT_PRODUCT.getNewInstance();
     dotProduct.field = inputFieldName;
-    dotProduct.dotProductParam = dotProductParam;
+    dotProduct.dotProductParam = (dotProductParam == null ? Collections.emptyList() : dotProductParam);
     dotProduct.resultFieldName = resultFieldName;
     dotProducts.add(dotProduct);
 
@@ -145,7 +144,7 @@ public abstract class AbstractAvroComputeRequestBuilder<K> implements ComputeReq
       throws VeniceClientException {
     CosineSimilarity cosineSimilarity = (CosineSimilarity) COSINE_SIMILARITY.getNewInstance();
     cosineSimilarity.field = inputFieldName;
-    cosineSimilarity.cosSimilarityParam = cosSimilarityParam;
+    cosineSimilarity.cosSimilarityParam = (cosSimilarityParam == null ? Collections.emptyList() : cosSimilarityParam);
     cosineSimilarity.resultFieldName = resultFieldName;
     cosineSimilarities.add(cosineSimilarity);
 
@@ -353,23 +352,25 @@ public abstract class AbstractAvroComputeRequestBuilder<K> implements ComputeReq
   }
 
   protected void checkComputeFieldValidity(String computeFieldName, String resultFieldName, Set<String> resultFieldsSet, ComputeOperationType computeType) {
-    Schema.Field fieldSchema = latestValueSchema.getField(computeFieldName);
+    final Schema.Field fieldSchema = latestValueSchema.getField(computeFieldName);
     if (null == fieldSchema) {
       throw new VeniceClientException("Unknown " + computeType + " field: " + computeFieldName);
     }
 
+    final Schema.Type fieldType = fieldSchema.schema().getType();
     if (computeType == COUNT) {
-      if (fieldSchema.schema().getType() != Schema.Type.ARRAY && fieldSchema.schema().getType() != Schema.Type.MAP) {
+      if (fieldType != Schema.Type.ARRAY && fieldType != Schema.Type.MAP) {
         throw new VeniceClientException(computeType + " field: " + computeFieldName + " isn't 'ARRAY' or 'MAP' type");
       }
     } else {
-      if (fieldSchema.schema().getType() != Schema.Type.ARRAY) {
-        throw new VeniceClientException(computeType + " field: " + computeFieldName + " isn't an 'ARRAY' type");
-      }
-      // TODO: is it necessary to be 'FLOAT' only?
-      Schema elementSchema = fieldSchema.schema().getElementType();
-      if (elementSchema.getType() != Schema.Type.FLOAT) {
-        throw new VeniceClientException(computeType + " field: " + computeFieldName + " isn't an 'ARRAY' of 'FLOAT'");
+      if (fieldType == Schema.Type.ARRAY) {
+        // TODO: is it necessary to be 'FLOAT' only?
+        Schema elementSchema = fieldSchema.schema().getElementType();
+        if (elementSchema.getType() != Schema.Type.FLOAT) {
+          throw new VeniceClientException(computeType + " field: " + computeFieldName + " isn't an 'ARRAY' of 'FLOAT'");
+        }
+      } else if (!isFieldNullableList(fieldSchema)) {
+        throw new VeniceClientException(computeType + " field: " + computeFieldName + " isn't an 'ARRAY' type. Got: " + fieldSchema.schema().getType());
       }
     }
 
@@ -386,6 +387,36 @@ public abstract class AbstractAvroComputeRequestBuilder<K> implements ComputeReq
           " is reserved, please choose a different name to store the computed result");
     }
     resultFieldsSet.add(resultFieldName);
+  }
+
+  private boolean isFieldNullableList(final Schema.Field fieldSchema) {
+    if (fieldSchema.schema().getType() != Schema.Type.UNION) {
+      return false;
+    }
+
+    // Should have 2 parts, a NULL schema and an ARRAY schema respectively.
+    List<Schema> schemas = fieldSchema.schema().getTypes();
+    if (schemas.size() != 2) {
+      return false;
+    }
+    Schema expectedNullSchema;
+    Schema expectedListSchema;
+    if (schemas.get(0).getType() == Schema.Type.NULL) {
+      expectedNullSchema = schemas.get(0);
+      expectedListSchema = schemas.get(1);
+    } else {
+      expectedNullSchema = schemas.get(1);
+      expectedListSchema = schemas.get(0);
+    }
+
+    if (expectedNullSchema.getType() != Schema.Type.NULL) {
+      return false;
+    }
+    if (expectedListSchema.getType() != Schema.Type.ARRAY) {
+      return false;
+    }
+    // Make sure it is a list of float specifically
+    return expectedListSchema.getElementType().getType() == Schema.Type.FLOAT;
   }
 
   protected Pair<Schema, String> getResultSchema() {
@@ -411,7 +442,7 @@ public abstract class AbstractAvroComputeRequestBuilder<K> implements ComputeReq
       throws VeniceClientException {
     HadamardProduct hadamardProduct = (HadamardProduct) HADAMARD_PRODUCT.getNewInstance();
     hadamardProduct.field = inputFieldName;
-    hadamardProduct.hadamardProductParam = hadamardProductParam;
+    hadamardProduct.hadamardProductParam = (hadamardProductParam == null ? Collections.emptyList() : hadamardProductParam);
     hadamardProduct.resultFieldName = resultFieldName;
     hadamardProducts.add(hadamardProduct);
 

@@ -8,13 +8,14 @@ import org.apache.avro.generic.GenericRecord;
 
 
 public class DotProductOperator implements ReadComputeOperator {
+
   @Override
   public void compute(int computeRequestVersion, ComputeOperation op, GenericRecord valueRecord, GenericRecord resultRecord,
       Map<String, String> computationErrorMap, Map<String, Object> context) {
     DotProduct dotProduct = (DotProduct) op.operation;
     try {
-      List<Float> valueVector =  (List<Float>)valueRecord.get(dotProduct.field.toString());
-      List<Float> dotProductParam = dotProduct.dotProductParam;
+      List<Float> valueVector = ComputeOperationUtils.getNullableFieldValueAsList(valueRecord, dotProduct.field.toString());
+          List<Float> dotProductParam = dotProduct.dotProductParam;
 
       if (valueVector.size() == 0 || dotProductParam.size() == 0) {
         putResult(resultRecord, dotProduct.resultFieldName.toString(), null);
@@ -41,14 +42,25 @@ public class DotProductOperator implements ReadComputeOperator {
     }
   }
 
+  @Override
+  public boolean allowFieldValueToBeNull() {
+    return true;
+  }
+
+  @Override
+  public String toString() {
+    return "read-compute dot product operator";
+  }
+
+  @Override
   public String getOperatorFieldName(ComputeOperation op) {
     DotProduct operation = (DotProduct) op.operation;
     return operation.field.toString();
   }
 
+  @Override
   public String getResultFieldName(ComputeOperation op) {
     DotProduct operation = (DotProduct) op.operation;
     return operation.resultFieldName.toString();
   }
-
 }

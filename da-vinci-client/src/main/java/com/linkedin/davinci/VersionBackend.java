@@ -5,6 +5,7 @@ import com.linkedin.davinci.storage.chunking.AbstractAvroChunkingAdapter;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.venice.VeniceConstants;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
+import com.linkedin.venice.compute.ComputeOperationUtils;
 import com.linkedin.venice.compute.ComputeRequestWrapper;
 import com.linkedin.venice.compute.ReadComputeOperator;
 import com.linkedin.venice.compute.protocol.request.ComputeOperation;
@@ -218,7 +219,7 @@ public class VersionBackend {
         null,
         backend.getCompressorFactory());
 
-    return getResultOfComputeOperations(computeRequestWrapper.getOperations(), reusableValueRecord, globalContext,
+    return getResultOfComputeOperations(computeRequestWrapper.getOperations(), computeRequestWrapper.getValueSchema(), reusableValueRecord, globalContext,
         computeRequestWrapper.getComputeRequestVersion(), computeResultSchema);
   }
 
@@ -237,7 +238,8 @@ public class VersionBackend {
     StreamingCallback<GenericRecord, GenericRecord> computingCallback = new StreamingCallback<GenericRecord, GenericRecord>() {
       @Override
       public void onRecordReceived(GenericRecord key, GenericRecord value) {
-        GenericRecord computeResult = getResultOfComputeOperations(computeRequestWrapper.getOperations(), value, globalContext,
+        GenericRecord computeResult = getResultOfComputeOperations(
+            computeRequestWrapper.getOperations(), computeRequestWrapper.getValueSchema(), value, globalContext,
             computeRequestWrapper.getComputeRequestVersion(), computeResultSchema);
         callback.onRecordReceived(key, computeResult);
       }
@@ -268,8 +270,8 @@ public class VersionBackend {
         computingCallback);
   }
 
-  private GenericRecord getResultOfComputeOperations(List<ComputeOperation> operations, GenericRecord valueRecord,
-      Map<String, Object> globalContext, int computeRequestVersion, Schema computeResultSchema){
+  private GenericRecord getResultOfComputeOperations(List<ComputeOperation> operations, Schema valueSchema, GenericRecord valueRecord,
+      Map<String, Object> globalContext, int computeRequestVersion, Schema computeResultSchema) {
 
     if (null == valueRecord) {
       return null;
@@ -282,9 +284,8 @@ public class VersionBackend {
     for (ComputeOperation computeOperation : operations) {
       ReadComputeOperator operator = ComputeOperationType.valueOf(computeOperation).getOperator();
       String operatorFieldName = operator.getOperatorFieldName(computeOperation);
-      if (null == valueRecord.get(operatorFieldName)) {
-        String errorMessage = "Failed to execute compute request as the field " + operatorFieldName + " does not exist in the value record. " +
-            "Fields present in the value record are: " + getStringOfSchemaFieldNames(valueRecord);
+      String errorMessage = ComputeOperationUtils.validateNullableFieldAndGetErrorMsg(operator, valueRecord, operatorFieldName).orElse(null);
+      if (errorMessage != null) {
         operator.putDefaultResult(resultRecord, operator.getResultFieldName(computeOperation));
         computationErrorMap.put(operator.getResultFieldName(computeOperation), errorMessage);
         continue;
@@ -305,15 +306,6 @@ public class VersionBackend {
       }
     }
     return resultRecord;
-  }
-
-  private String getStringOfSchemaFieldNames(GenericRecord valueRecord){
-    List<String> fieldNames = valueRecord.getSchema()
-        .getFields()
-        .stream()
-        .map(Schema.Field::name)
-        .collect(Collectors.toList());
-    return String.join(", ", fieldNames);
   }
 
   public int getPartitionCount() {

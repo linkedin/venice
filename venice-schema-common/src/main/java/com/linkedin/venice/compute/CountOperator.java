@@ -9,6 +9,7 @@ import org.apache.avro.generic.GenericRecord;
 
 
 public class CountOperator implements ReadComputeOperator {
+
   @Override
   public void compute(int computeRequestVersion, ComputeOperation op, GenericRecord valueRecord, GenericRecord resultRecord,
       Map<String, String> computationErrorMap, Map<String, Object> context) {
@@ -32,11 +33,13 @@ public class CountOperator implements ReadComputeOperator {
     }
   }
 
+  @Override
   public String getOperatorFieldName(ComputeOperation op) {
     Count operation = (Count) op.operation;
     return operation.field.toString();
   }
 
+  @Override
   public String getResultFieldName(ComputeOperation op) {
     Count operation = (Count) op.operation;
     return operation.resultFieldName.toString();
@@ -44,5 +47,15 @@ public class CountOperator implements ReadComputeOperator {
   @Override
   public void putDefaultResult(GenericRecord record, String field) {
     putResult(record, field, 0);
+  }
+
+  @Override
+  public boolean allowFieldValueToBeNull() {
+    return false;
+  }
+
+  @Override
+  public String toString() {
+    return "read-compute count operator";
   }
 }

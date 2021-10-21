@@ -4,7 +4,13 @@ import com.linkedin.avro.api.PrimitiveFloatList;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.serializer.ComputablePrimitiveFloatList;
 import com.linkedin.venice.utils.CollectionUtils;
+import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
+import java.util.stream.Collectors;
+import javax.validation.constraints.NotNull;
+import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericRecord;
 
 
 /**
@@ -117,5 +123,59 @@ public class ComputeOperationUtils {
       FloatSupplierByIndex floatSupplierByIndex = list::get;
       return dotProduct(size, floatSupplierByIndex, floatSupplierByIndex);
     }
+  }
+
+  /**
+   *
+   * @param record the record from which the value of the given field is extracted
+   * @param fieldName name of the file which is used to extract the value from the given record
+   * @param <T> Type of the list element to cast the extracted value to
+   *
+   * @return An unmodifiable empty list if the extracted value is null. Otherwise return a list that may or may not be
+   *         modifiable depending on specified type of the list as a field in the record.
+   */
+  @NotNull
+  public static<T> List<T> getNullableFieldValueAsList(final GenericRecord record, final String fieldName) {
+    Object value = record.get(fieldName);
+    if (value == null) {
+      return Collections.emptyList();
+    }
+    if (!(value instanceof List)) {
+      throw new IllegalArgumentException(
+          String.format("Field %s in the record is not of the type list. Value: %s", fieldName, record));
+    }
+    return (List<T>) value;
+  }
+
+  /**
+   * @return Error message if the nullable field validation failed or Optional.empty() otherwise.
+   */
+  public static Optional<String> validateNullableFieldAndGetErrorMsg(
+      ReadComputeOperator operator,
+      GenericRecord valueRecord,
+      String operatorFieldName
+  ) {
+    if (valueRecord.get(operatorFieldName) != null) {
+      return Optional.empty();
+    }
+    if (valueRecord.getSchema().getField(operatorFieldName) == null) {
+      return Optional.of("Failed to execute compute request as the field " + operatorFieldName + " does not exist in the value record. " +
+          "Fields present in the value record are: " + getStringOfSchemaFieldNames(valueRecord));
+    }
+
+    // Field exist and the value is null. That means the field is nullable.
+    if (operator.allowFieldValueToBeNull()) {
+      return Optional.empty();
+    }
+    return Optional.of("Failed to execute compute request as the field " + operatorFieldName + " is not allowed to be null for " + operator + " in value record. ");
+  }
+
+  private static String getStringOfSchemaFieldNames(GenericRecord valueRecord){
+    List<String> fieldNames = valueRecord.getSchema()
+        .getFields()
+        .stream()
+        .map(Schema.Field::name)
+        .collect(Collectors.toList());
+    return String.join(", ", fieldNames);
   }
 }

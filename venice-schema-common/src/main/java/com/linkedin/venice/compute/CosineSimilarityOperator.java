@@ -11,12 +11,13 @@ import static com.linkedin.venice.compute.ComputeOperationUtils.*;
 
 
 public class CosineSimilarityOperator implements ReadComputeOperator {
+
   @Override
   public void compute(int computeRequestVersion, ComputeOperation op, GenericRecord valueRecord, GenericRecord resultRecord,
       Map<String, String> computationErrorMap, Map<String, Object> context) {
     CosineSimilarity cosineSimilarity = (CosineSimilarity) op.operation;
     try {
-      List<Float> valueVector = (List<Float>) valueRecord.get(cosineSimilarity.field.toString());
+      List<Float> valueVector = ComputeOperationUtils.getNullableFieldValueAsList(valueRecord, cosineSimilarity.field.toString());
       List<Float> cosSimilarityParam = cosineSimilarity.cosSimilarityParam;
 
       if (valueVector.size() == 0 || cosSimilarityParam.size() == 0) {
@@ -61,11 +62,23 @@ public class CosineSimilarityOperator implements ReadComputeOperator {
     }
   }
 
+  @Override
+  public boolean allowFieldValueToBeNull() {
+    return true;
+  }
+
+  @Override
+  public String toString() {
+    return "read-compute cosine similarity operator";
+  }
+
+  @Override
   public String getOperatorFieldName(ComputeOperation op) {
     CosineSimilarity operation = (CosineSimilarity) op.operation;
     return operation.field.toString();
   }
 
+  @Override
   public String getResultFieldName(ComputeOperation op) {
     CosineSimilarity operation = (CosineSimilarity) op.operation;
     return operation.resultFieldName.toString();
