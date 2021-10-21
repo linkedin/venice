@@ -91,7 +91,7 @@ public class ActiveActiveReplicationForHybridTest {
     Properties controllerProps = new Properties();
     controllerProps.put(DEFAULT_MAX_NUMBER_OF_PARTITIONS, 1000);
     controllerProps.put(NATIVE_REPLICATION_SOURCE_FABRIC, "dc-0");
-    controllerProps.put(PARENT_KAFKA_CLUSTER_FABRIC_LIST, DEFAULT_PARENT_DATA_CENTER_REGION_NAME + ",dc-0");
+    controllerProps.put(PARENT_KAFKA_CLUSTER_FABRIC_LIST, DEFAULT_PARENT_DATA_CENTER_REGION_NAME);
 
     controllerProps.put(LF_MODEL_DEPENDENCY_CHECK_DISABLED, "true");
     controllerProps.put(AGGREGATE_REAL_TIME_SOURCE_REGION, DEFAULT_PARENT_DATA_CENTER_REGION_NAME);
@@ -551,13 +551,13 @@ public class ActiveActiveReplicationForHybridTest {
       String routerUrl = childDatacenters.get(dataCenterIndex).getClusters().get(clusterName).getRandomRouterURL();
       try (AvroGenericStoreClient<String, Object> client = ClientFactory.getAndStartGenericAvroClient(
           ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerUrl))) {
+        final int dataCenterId = dataCenterIndex;
         // Verify batch only data
         for (int i = 0; i < overlapDataRangeStart; i++) {
           Object v = client.get(String.valueOf(i)).get();
-          Assert.assertNotNull(v, "Batch data should have be consumed already");
+          Assert.assertNotNull(v, "Batch data should have be consumed already in data center: " + dataCenterId);
           Assert.assertEquals(v.toString(), String.valueOf(i));
         }
-        final int dataCenterId = dataCenterIndex;
         TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
           for (int i = overlapDataRangeStart; i < streamDataRangeEnd; i++) {
             Object v = client.get(String.valueOf(i)).get();
