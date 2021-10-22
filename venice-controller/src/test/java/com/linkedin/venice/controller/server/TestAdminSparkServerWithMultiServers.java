@@ -138,14 +138,22 @@ public class TestAdminSparkServerWithMultiServers {
     // List hybrid stores that are on non-aggregate mode
     multiStoreResponse = controllerClient.queryStoreList(false, Optional.of("dataReplicationPolicy"), Optional.of("NON_AGGREGATE"));
     Assert.assertFalse(multiStoreResponse.isError());
-    Assert.assertEquals(multiStoreResponse.getStores().length, 1);
-    Assert.assertEquals(multiStoreResponse.getStores()[0], hybridNonAggregateStore);
+    // Don't check the size of the return store list since the cluster is shared by all test cases.
+    Set<String> nonAggHybridStoresSet = new HashSet<>(Arrays.asList(multiStoreResponse.getStores()));
+    Assert.assertFalse(nonAggHybridStoresSet.contains(hybridAggregateStore));
+    Assert.assertTrue(nonAggHybridStoresSet.contains(hybridNonAggregateStore));
+    Assert.assertFalse(nonAggHybridStoresSet.contains(nativeReplicationEnabledStore));
+    Assert.assertFalse(nonAggHybridStoresSet.contains(incrementalPushEnabledStore));
 
     // List hybrid stores that are on aggregate mode
     multiStoreResponse = controllerClient.queryStoreList(false, Optional.of("dataReplicationPolicy"), Optional.of("AGGREGATE"));
     Assert.assertFalse(multiStoreResponse.isError());
-    Assert.assertEquals(multiStoreResponse.getStores().length, 1);
-    Assert.assertEquals(multiStoreResponse.getStores()[0], hybridAggregateStore);
+    // Don't check the size of the return store list since the cluster is shared by all test cases.
+    Set<String> aggHybridStoresSet = new HashSet<>(Arrays.asList(multiStoreResponse.getStores()));
+    Assert.assertTrue(aggHybridStoresSet.contains(hybridAggregateStore));
+    Assert.assertFalse(aggHybridStoresSet.contains(hybridNonAggregateStore));
+    Assert.assertFalse(aggHybridStoresSet.contains(nativeReplicationEnabledStore));
+    Assert.assertFalse(aggHybridStoresSet.contains(incrementalPushEnabledStore));
   }
 
   @Test(timeOut = TEST_TIMEOUT)
