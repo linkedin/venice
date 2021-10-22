@@ -573,10 +573,13 @@ public abstract class AbstractPushMonitor
     String topic = pushStatus.getKafkaTopic();
     long durationSecs = getDurationInSec(pushStatus);
     pushStatus.setSuccessfulPushDurationInSecs(durationSecs);
-    updatePushStatus(pushStatus, ExecutionStatus.COMPLETED, Optional.empty());
     String storeName = Version.parseStoreFromKafkaTopicName(topic);
     int versionNumber = Version.parseVersionFromKafkaTopicName(topic);
     updateStoreVersionStatus(storeName, versionNumber, VersionStatus.ONLINE);
+    // Updating the version's overall push status must be the last step due to the current way we load and check for
+    // pushes that might have completed during controller restart or leadership handover. If the overall push status is
+    // updated first but failed to complete the version swap for whatever reason it will never get a second chance.
+    updatePushStatus(pushStatus, ExecutionStatus.COMPLETED, Optional.empty());
     aggPushHealthStats.recordSuccessfulPush(storeName, durationSecs);
     aggPushHealthStats.recordSuccessfulPushGauge(storeName, durationSecs);
     // If we met some error to retire the old version, we should not throw the exception out to fail this operation,
