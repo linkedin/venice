@@ -4,9 +4,9 @@ import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.utils.TestUtils;
-import java.io.BufferedReader;
+import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.VeniceProperties;
 import java.io.File;
-import java.io.FileReader;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
@@ -30,9 +30,10 @@ import org.openjdk.jmh.profile.GCProfiler;
 import org.openjdk.jmh.runner.Runner;
 import org.openjdk.jmh.runner.RunnerException;
 import org.openjdk.jmh.runner.options.OptionsBuilder;
-import org.testng.Assert;
 
 import static com.linkedin.venice.integration.utils.ServiceFactory.*;
+import static org.testng.Assert.*;
+
 
 /**
  * Benchmark ingestion GC performance with JMH.
@@ -60,8 +61,8 @@ public class IngestionBenchmarkWithTwoProcesses {
   public void setup() throws Exception {
     clusterInfoFilePath = File.createTempFile("temp-cluster-info", null).getAbsolutePath();
     ServiceFactory.startVeniceClusterInAnotherProcess(clusterInfoFilePath);
-
-    // JMH benchmark relies on System.exit to finish one round of benchmark run, otherwise it will hang there.
+    // We need ot make sure Venice cluster in forked process is up and store has been created before we run our benchmark.
+    TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> assertTrue(parseClusterInfoFile()));
     TestUtils.restoreSystemExit();
   }
 
@@ -77,7 +78,6 @@ public class IngestionBenchmarkWithTwoProcesses {
 
   @Benchmark
   public void ingestionBenchmarkTest() {
-    parseClusterInfoFile();
     File dataBasePath = TestUtils.getTempDataDirectory();
     try {
       FileUtils.deleteDirectory(dataBasePath);
@@ -90,19 +90,15 @@ public class IngestionBenchmarkWithTwoProcesses {
     }
   }
 
-  private void parseClusterInfoFile() {
-    try (BufferedReader reader = new BufferedReader(new FileReader(clusterInfoFilePath))) {
-      String line = reader.readLine();
-      String[] strings = line.split(" ");
-      Assert.assertEquals(strings[0], "storeName");
-      storeName = strings[1];
-      line = reader.readLine();
-      strings = line.split(" ");
-      Assert.assertEquals(strings[0], "zkAddress");
-      zkAddress = strings[1];
-    } catch (IOException e) {
-      throw new RuntimeException(e);
+  private boolean parseClusterInfoFile() {
+    try {
+      VeniceProperties properties = Utils.parseProperties(clusterInfoFilePath);
+      storeName = properties.getString("storeName");
+      zkAddress = properties.getString("zkAddress");
+    } catch (Exception e) {
+      return false;
     }
+    return true;
   }
 
   public static void main(String[] args) throws RunnerException {

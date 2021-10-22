@@ -22,38 +22,36 @@ import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.utils.ForkedJavaProcess;
 import com.linkedin.venice.utils.KafkaSSLUtils;
+import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
-
-import java.util.HashSet;
-import java.util.Set;
-import org.apache.avro.Schema;
-import org.apache.avro.generic.GenericData;
-import org.apache.avro.generic.GenericRecord;
-import org.apache.commons.io.IOUtils;
-import org.apache.log4j.Logger;
-
-import java.io.BufferedWriter;
 import java.io.File;
-import java.io.FileWriter;
 import java.io.IOException;
 import java.util.AbstractMap;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
+import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericData;
+import org.apache.avro.generic.GenericRecord;
+import org.apache.commons.io.IOUtils;
+import org.apache.log4j.Logger;
 import org.testng.Assert;
 
 import static com.linkedin.venice.ConfigKeys.*;
@@ -928,22 +926,24 @@ public class VeniceClusterWrapper extends ProcessWrapper {
 
     Utils.thisIsLocalhost();
     VeniceClusterWrapper veniceClusterWrapper = ServiceFactory.getVeniceCluster();
-
     /**
      * write some cluster info to a file, which will be used by another process to make connection to this cluster
      * e.g. {@link com.linkedin.venice.benchmark.IngestionBenchmarkWithTwoProcesses#parseClusterInfoFile()}
      */
     String storeName = buildFloatVectorStore(veniceClusterWrapper);
     String zkAddress = veniceClusterWrapper.getZk().getAddress();
-    File clusterInfoFile = new File(args[0]);
-    BufferedWriter bw;
+    String clusterInfoConfigPath = args[0];
+    PropertyBuilder propertyBuilder = new PropertyBuilder();
+    propertyBuilder.put("storeName", storeName);
+    propertyBuilder.put("zkAddress", zkAddress);
+    VeniceProperties veniceProperties = propertyBuilder.build();
+    File configFile = new File(clusterInfoConfigPath);
+    // Store properties into config file.
     try {
-      bw = new BufferedWriter(new FileWriter(clusterInfoFile));
-      bw.write("storeName " + storeName + "\n" );
-      bw.write("zkAddress " + zkAddress + "\n" );
-      bw.close();
+      veniceProperties.storeFlattened(configFile);
+      logger.info("Configs are stored into: " + clusterInfoConfigPath);
     } catch (IOException e) {
-      throw new VeniceException("Cannot write to file" + clusterInfoFile.getName(), e);
+      throw new VeniceException(e);
     }
   }
 }
