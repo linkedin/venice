@@ -2279,7 +2279,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
   }
 
-  protected void processStartOfPush(KafkaMessageEnvelope startOfPushKME, ControlMessage controlMessage, int partition, long offset,
+  private void processStartOfPush(KafkaMessageEnvelope startOfPushKME, ControlMessage controlMessage, int partition, long offset,
       PartitionConsumptionState partitionConsumptionState) {
     StartOfPush startOfPush = (StartOfPush) controlMessage.controlMessageUnion;
     /**
