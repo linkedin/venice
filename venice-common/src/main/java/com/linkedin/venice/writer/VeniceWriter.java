@@ -206,17 +206,15 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
 
   private String writerId;
   /**
-   * N.B.: chunking enabled flag is mutable; if users attempt to update the flag after VeniceWriter is created, they
-   * need to be aware that the message format sent before changing the flag is different from the message format sent
-   * after changing the flag, which usually breaks the consumption side unless the consumer is aware of the exact offset
-   * where the format changes.
+   * N.B.: chunking enabled flag is mutable only if this VeniceWriter is currently used in pass-through mode and hasn't
+   * been used in non pass-through mode yet; once VW starts referring to the chunking setting in non pass-through mode,
+   * the chunking setting will become immutable.
    *
-   * A recommended way to update the chunking flag after it's created: when VeniceWriter is producing in a pass-through
-   * mode (a.k.a {@link VeniceWriter#put(KafkaKey, KafkaMessageEnvelope, Callback, int, LeaderMetadataWrapper)}), it doesn't care about the
-   * chunking flag, it's okay to update this flag during pass-through mode; once VeniceWriter starts producing in a non
-   * pass-through fashion, the chunking flag shouldn't be updated anymore.
+   * The only way to update chunking config is when a START_OF_PUSH message is processed in pass-through mode, chunking
+   * setting will be updated to {@link StartOfPush#chunked}.
    */
   private volatile boolean isChunkingEnabled;
+  private volatile boolean isChunkingSet;
   private volatile boolean isChunkingFlagInvoked;
 
   private final Optional<Integer> targetStoreVersionForIncPush;
@@ -243,6 +241,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     this.closeTimeOut = props.getInt(CLOSE_TIMEOUT_MS, DEFAULT_CLOSE_TIMEOUT_MS);
     this.checkSumType = CheckSumType.valueOf(props.getString(CHECK_SUM_TYPE, DEFAULT_CHECK_SUM_TYPE));
     this.isChunkingEnabled = props.getBoolean(ENABLE_CHUNKING, false);
+    this.isChunkingSet = props.containsKey(ENABLE_CHUNKING);
     this.maxSizeForUserPayloadPerMessageInBytes = props.getInt(MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES,
         DEFAULT_MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES);
     if (maxSizeForUserPayloadPerMessageInBytes > DEFAULT_MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES) {
@@ -630,9 +629,15 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    * Write a message with the kafka message envelope (KME) passed in. This allows users re-using existing KME to
    * speed up the performance. If this is called, VeniceWriter will also reuse the existing DIV data (producer
    * metadata). It's the "pass-through" mode.
+   *
+   * TODO: move pass-through supports into a server-specific extension of VeniceWriter
    */
+  @Deprecated
   public Future<RecordMetadata> put(KafkaKey kafkaKey, KafkaMessageEnvelope kafkaMessageEnvelope, Callback callback,
       int upstreamPartition, LeaderMetadataWrapper leaderMetadataWrapper) {
+    // Self-adjust the chunking setting in pass-through mode
+    verifyChunkingSetting(kafkaMessageEnvelope);
+
     byte[] serializedKey = kafkaKey.getKey();
 
     LeaderMetadata leaderMetadata = new LeaderMetadata();
@@ -811,16 +816,41 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   }
 
   /**
+   * IMPORTANT: Only invoke this function in pass-through mode.
+   *
    * 1. If the isChunkingEnabled flag has never been used in the VeniceWriter (regular put will use this flag;
    *    pass-though mode doesn't use this flag), it's okay to update this chunking flag;
    * 2. If the isChunkingEnabled flag has been used, it's not allowed to update this flag anymore.
+   *
+   * If Start_of_Push message is produced through pass-through mode, check whether chunking config in SOP is different
+   * from the chunking setting in the VeniceWriter; if so, update the chunking setting in this VW.
+   *
+   * Reason behind this check: in batch native replication, VeniceWriter might be created in leaders without reading
+   * the chunking config in SOP message yet, so VW needs to self-adjust if SOP is produced in pass-through mode (pass-through
+   * mode doesn't leverage the chunking setting in producing messages yet; once chunking setting is used, it becomes immutable)
    */
-  public synchronized void updateChunkingEnabled(boolean isChunkingEnabled) {
-    if (isChunkingFlagInvoked) {
-      throw new VeniceException("Chunking enabled config shouldn't be updated after VeniceWriter has explitly produced a regular or chunked message");
+  private void verifyChunkingSetting(KafkaMessageEnvelope kafkaMessageEnvelope) {
+    if (!isChunkingSet) {
+      if (MessageType.valueOf(kafkaMessageEnvelope.messageType).equals(MessageType.CONTROL_MESSAGE)) {
+        ControlMessage controlMessage = (ControlMessage)kafkaMessageEnvelope.payloadUnion;
+        if (ControlMessageType.valueOf(controlMessage).equals(ControlMessageType.START_OF_PUSH)) {
+          StartOfPush startOfPush = (StartOfPush)controlMessage.controlMessageUnion;
+          synchronized (this) {
+            if (!isChunkingSet) {
+              if (isChunkingFlagInvoked) {
+                throw new VeniceException(
+                    "Chunking enabled config shouldn't be updated after VeniceWriter has explicitly produced a regular or chunked message");
+              }
+              logger.info("Chunking enabled config is updated from " + this.isChunkingEnabled + " to " + isChunkingEnabled);
+              if (this.isChunkingEnabled != startOfPush.chunked) {
+                this.isChunkingEnabled = startOfPush.chunked;
+              }
+              this.isChunkingSet = true;
+            }
+          }
+        }
+      }
     }
-    logger.info("Chunking enabled config is updated from " + this.isChunkingEnabled + " to " + isChunkingEnabled);
-    this.isChunkingEnabled = isChunkingEnabled;
   }
 
   /**

@@ -289,18 +289,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   }
 
   @Override
-  protected void processStartOfPush(KafkaMessageEnvelope kafkaMessageEnvelope, ControlMessage controlMessage, int partition, long offset,
-      PartitionConsumptionState partitionConsumptionState) {
-    StartOfPush startOfPush = (StartOfPush) controlMessage.controlMessageUnion;
-    super.processStartOfPush(kafkaMessageEnvelope, controlMessage, partition, offset, partitionConsumptionState);
-
-    // Update chunking flag in VeniceWriter
-    if (startOfPush.chunked) {
-      veniceWriter.ifPresent(vw -> vw.updateChunkingEnabled(startOfPush.chunked));
-    }
-  }
-
-  @Override
   public synchronized void promoteToLeader(String topic, int partitionId, LeaderFollowerPartitionStateModel.LeaderSessionIdChecker checker) {
     throwIfNotRunning();
     amplificationAdapter.promoteToLeader(topic, partitionId, checker);
