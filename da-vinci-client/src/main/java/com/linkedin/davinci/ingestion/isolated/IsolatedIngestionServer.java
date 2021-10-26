@@ -136,7 +136,9 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
 
   public IsolatedIngestionServer(String configPath) {
     VeniceProperties loadedVeniceProperties = IsolatedIngestionUtils.loadVenicePropertiesFromFile(configPath);
-    this.configLoader = new VeniceConfigLoader(loadedVeniceProperties, loadedVeniceProperties);
+    String configBasePath = (new VeniceConfigLoader(loadedVeniceProperties, loadedVeniceProperties)).getVeniceServerConfig().getDataBasePath();
+    Optional<Map<String, Map<String, String>>> kafkaClusterMap = IsolatedIngestionUtils.loadForkedIngestionKafkaClusterMapConfig(configBasePath);
+    this.configLoader = new VeniceConfigLoader(loadedVeniceProperties, loadedVeniceProperties, kafkaClusterMap);
     this.servicePort = configLoader.getVeniceServerConfig().getIngestionServicePort();
     this.heartbeatTimeoutMs = configLoader.getCombinedProperties().getLong(SERVER_INGESTION_ISOLATION_HEARTBEAT_TIMEOUT_MS, 60 * Time.MS_PER_SECOND);
     // Initialize Netty server.

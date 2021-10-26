@@ -78,8 +78,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   private static final Logger logger = Logger.getLogger(ActiveActiveStoreIngestionTask.class);
   private final int replicationMetadataVersionId;
   private final MergeConflictResolver mergeConflictResolver;
-  private Map<GUID, Map<Integer, ReentrantLock>> partitionLockMapPerProducer = new VeniceConcurrentHashMap<>();
-  private AggVersionedStorageIngestionStats aggVersionedStorageIngestionStats;
+  private final Map<GUID, Map<Integer, ReentrantLock>> partitionLockMapPerProducer = new VeniceConcurrentHashMap<>();
+  private final AggVersionedStorageIngestionStats aggVersionedStorageIngestionStats;
 
   public ActiveActiveStoreIngestionTask(
       Store store,

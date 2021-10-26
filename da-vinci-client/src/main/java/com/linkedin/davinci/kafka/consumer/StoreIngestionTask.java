@@ -1748,18 +1748,18 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         // Initialize partition status;
         reportStatusAdapter.initializePartitionStatus(partition);
         // First let's try to restore the state retrieved from the OffsetManager
-        PartitionConsumptionState newPartitionConsumptionState = new PartitionConsumptionState(partition, amplificationFactor, offsetRecord,
-            hybridStoreConfig.isPresent(), isIncrementalPushEnabled, incrementalPushPolicy);
+        PartitionConsumptionState newPartitionConsumptionState =
+            new PartitionConsumptionState(partition, amplificationFactor, offsetRecord, hybridStoreConfig.isPresent(),
+                isIncrementalPushEnabled, incrementalPushPolicy);
 
         newPartitionConsumptionState.setLeaderFollowerState(leaderState);
 
-        partitionConsumptionStateMap.put(partition,  newPartitionConsumptionState);
+        partitionConsumptionStateMap.put(partition, newPartitionConsumptionState);
         offsetRecord.getProducerPartitionStateMap().entrySet().stream().forEach(entry -> {
-              GUID producerGuid = GuidUtils.getGuidFromCharSequence(entry.getKey());
-              ProducerTracker producerTracker = kafkaDataIntegrityValidator.registerProducer(producerGuid);
-              producerTracker.setPartitionState(partition, entry.getValue());
-            }
-        );
+          GUID producerGuid = GuidUtils.getGuidFromCharSequence(entry.getKey());
+          ProducerTracker producerTracker = kafkaDataIntegrityValidator.registerProducer(producerGuid);
+          producerTracker.setPartitionState(partition, entry.getValue());
+        });
 
         long consumptionStatePrepTimeStart = System.currentTimeMillis();
         checkConsumptionStateWhenStart(offsetRecord, newPartitionConsumptionState);
@@ -1771,17 +1771,16 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
          * For now, this will only be triggered by ingestion isolation, as it is passing LEADER state from forked process
          * to main process when it completed ingestion in the forked process.
          */
-        String topicToSubscribe = leaderState.equals(LeaderFollowerStateType.LEADER) ? newPartitionConsumptionState.getOffsetRecord().getLeaderTopic() : topic;
-        consumerSubscribe(
-                topicToSubscribe,
-                newPartitionConsumptionState.getSourceTopicPartition(topicToSubscribe),
-                offsetRecord.getLocalVersionTopicOffset(),
-                localKafkaServer
-        );
-
+        if (leaderState.equals(LeaderFollowerStateType.LEADER)) {
+          // Need to set the leader state back to IN_TRANSITION_FROM_STANDBY_TO_LEADER to bypass check logic below.
+          newPartitionConsumptionState.setLeaderFollowerState(LeaderFollowerStateType.IN_TRANSITION_FROM_STANDBY_TO_LEADER);
+          startConsumingAsLeaderInTransitionFromStandby(newPartitionConsumptionState);
+        } else {
+          // Subscribe to local version topic.
+          consumerSubscribe(topic, newPartitionConsumptionState.getSourceTopicPartition(topic), offsetRecord.getLocalVersionTopicOffset(), localKafkaServer);
+          logger.info(consumerTaskId + " subscribed to: Topic " + topic + " Partition Id " + partition + " Offset " + offsetRecord.getLocalVersionTopicOffset());
+        }
         partitionConsumptionSizeMap.put(partition, new StoragePartitionDiskUsage(partition, storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic)));
-        logger.info(consumerTaskId + " subscribed to: Topic " + topicToSubscribe + " Partition Id " + partition + " Offset "
-            + offsetRecord.getLocalVersionTopicOffset());
         break;
       case UNSUBSCRIBE:
         logger.info(consumerTaskId + " UnSubscribed to: Topic " + topic + " Partition Id " + partition);
@@ -1874,6 +1873,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected abstract void checkLongRunningTaskState() throws InterruptedException;
   protected abstract void processConsumerAction(ConsumerAction message) throws InterruptedException;
   protected abstract Set<String> getConsumptionSourceKafkaAddress(PartitionConsumptionState partitionConsumptionState);
+
+  protected void startConsumingAsLeaderInTransitionFromStandby(PartitionConsumptionState partitionConsumptionState) {
+    throw new UnsupportedOperationException("Leader transition should only happen in L/F mode!");
+  }
 
   protected Set<String> getRealTimeDataSourceKafkaAddress(PartitionConsumptionState partitionConsumptionState) {
     return Collections.singleton(localKafkaServer);
