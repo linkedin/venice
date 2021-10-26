@@ -157,16 +157,6 @@ public class AggStoreIngestionStats extends AbstractVeniceAggStats<StoreIngestio
     getStoreStats(storeName).recordIngestionReplicationMetadataCacheHitCount();
   }
 
-  public void recordConflictResolutionUpdateIgnored(String storeName) {
-    totalStats.recordConflictResolutionUpdateIgnored();
-    getStoreStats(storeName).recordConflictResolutionUpdateIgnored();
-  }
-
-  public void recordConflictResolutionTombstoneCreated(String storeName) {
-    totalStats.recordConflictResolutionTombstoneCreated();
-    getStoreStats(storeName).recordConflictResolutionTombstoneCreated();
-  }
-
   public void recordTotalLeaderBytesConsumed(long bytes) {
     totalStats.recordTotalLeaderBytesConsumed(bytes);
   }
@@ -202,6 +192,14 @@ public class AggStoreIngestionStats extends AbstractVeniceAggStats<StoreIngestio
   public void recordChecksumVerificationFailure(String storeName) {
     totalStats.recordChecksumVerificationFailure();
     getStoreStats(storeName).recordChecksumVerificationFailure();
+  }
+
+  public void recodUpdateIgnoredDCR() {
+    totalStats.recodUpdateIgnoredDCR();
+  }
+
+  public void recorTombstoneCreatedDCR() {
+    totalStats.recorTombstoneCreatedDCR();
   }
 
   public void recordOffsetRegressionDCRError() {

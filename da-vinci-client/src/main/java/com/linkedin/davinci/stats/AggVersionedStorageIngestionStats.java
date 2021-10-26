@@ -50,6 +50,11 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
   private static final String SUBSCRIBE_ACTION_PREP_LATENCY = "subscribe_action_prep_latency";
   private static final String SUBSCRIBE_ACTION_GET_CONSUMER_LATENCY = "subscribe_action_get_consumer_latency";
   private static final String SUBSCRIBE_SUBSCRIBE_ACTION_CONSUMER_SUBSCRIBE_LATENCY = "subscribe_action_consumer_subscribe_latency";
+  private static final String UPDATE_IGNORED_DCR = "update_ignored_dcr";
+  private static final String TIMESTAMP_REGRESSION_DCR_ERROR = "timestamp_regression_dcr_error";
+  private static final String OFFSET_REGRESSION_DCR_ERROR = "offset_regression_dcr_error";
+  private static final String TOMBSTONE_CREATION_DCR = "tombstone_creation_dcr";
+
   private static final String MAX = "_max";
   private static final String AVG = "_avg";
 
@@ -150,6 +155,26 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
     Utils.computeIfNotNull(getStats(storeName, version), stat -> stat.recordRegionHybridRecordsConsumed(regionId, count));
   }
 
+  public void recordUpdateIgnoredDCR(String storeName, int version) {
+    Utils.computeIfNotNull(getTotalStats(storeName), StorageIngestionStats::recordUpdateIgnoredDCR);
+    Utils.computeIfNotNull(getStats(storeName, version), StorageIngestionStats::recordUpdateIgnoredDCR);
+  }
+
+  public void recordTimestampRegressionDCRError(String storeName, int version) {
+    Utils.computeIfNotNull(getTotalStats(storeName), StorageIngestionStats::recordTimestampRegressionDCRError);
+    Utils.computeIfNotNull(getStats(storeName, version), StorageIngestionStats::recordTimestampRegressionDCRError);
+  }
+
+  public void recordOffsetRegressionDCRError(String storeName, int version) {
+    Utils.computeIfNotNull(getTotalStats(storeName), StorageIngestionStats::recordOffsetRegressionDCRError);
+    Utils.computeIfNotNull(getStats(storeName, version), StorageIngestionStats::recordOffsetRegressionDCRError);
+  }
+
+  public void recordTombStoneCreationDCR(String storeName, int version) {
+    Utils.computeIfNotNull(getTotalStats(storeName), StorageIngestionStats::recordTombStoneCreationDCR);
+    Utils.computeIfNotNull(getStats(storeName, version), StorageIngestionStats::recordTombStoneCreationDCR);
+  }
+
   public void setIngestionTaskPushTimeoutGauge(String storeName, int version) {
     getStats(storeName, version).setIngestionTaskPushTimeoutGauge(1);
   }
@@ -196,6 +221,11 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
     private final Rate followerBytesConsumedRate;
     private final Rate leaderRecordsProducedRate;
     private final Rate leaderBytesProducedRate;
+    private final Rate updatedIgnoredDCRRate;
+    private final Rate timestampRegressionDCRRate;
+    private final Rate offsetRegressionDCRRate;
+    private final Rate tombstoneCreationDCRRate;
+
     private final Map<Integer, Rate> regionIdToHybridBytesConsumedRateMap;
     private final Map<Integer, Rate> regionIdToHybridRecordsConsumedRateMap;
     private final Count stalePartitionsWithoutIngestionTaskCount;
@@ -220,6 +250,13 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
     private final Sensor subscribePrepLatencySensor;
     private final Sensor subscribeGetConsumerLatencySensor;
     private final Sensor subscribeConsumerSubscribeLatencySensor;
+    /**
+     * Measure the count of ignored updates due to conflict resolution
+     */
+    private final Sensor conflictResolutionUpdateIgnoredSensor;
+    private final Sensor timestampRegressionDCRErrorSensor;
+    private final Sensor offsetRegressionDCRErrorSensor;
+    private final Sensor tombstoneCreationDCRSensor;
 
     public StorageIngestionStats(VeniceServerConfig serverConfig)  {
       kafkaClusterIdToAliasMap = serverConfig.getKafkaClusterIdToAliasMap();
@@ -308,9 +345,29 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
           + subscribeConsumerSubscribeLatencyMax.getClass().getSimpleName(), subscribeConsumerSubscribeLatencyMax);
       subscribeConsumerSubscribeLatencySensor.add(SUBSCRIBE_SUBSCRIBE_ACTION_CONSUMER_SUBSCRIBE_LATENCY
           + subscribeConsumerSubscribeLatencyAvg.getClass().getSimpleName(), subscribeConsumerSubscribeLatencyAvg);
+      updatedIgnoredDCRRate = new Rate();
+      conflictResolutionUpdateIgnoredSensor = localMetricRepository.sensor(UPDATE_IGNORED_DCR);
+      conflictResolutionUpdateIgnoredSensor.add(UPDATE_IGNORED_DCR + updatedIgnoredDCRRate.getClass().getSimpleName(),
+          updatedIgnoredDCRRate);
+
+      timestampRegressionDCRRate = new Rate();
+      timestampRegressionDCRErrorSensor = localMetricRepository.sensor(TIMESTAMP_REGRESSION_DCR_ERROR);
+      timestampRegressionDCRErrorSensor.add(TIMESTAMP_REGRESSION_DCR_ERROR + timestampRegressionDCRRate.getClass().getSimpleName(),
+          timestampRegressionDCRRate);
+
+      offsetRegressionDCRRate = new Rate();
+      offsetRegressionDCRErrorSensor = localMetricRepository.sensor(OFFSET_REGRESSION_DCR_ERROR);
+      offsetRegressionDCRErrorSensor.add(OFFSET_REGRESSION_DCR_ERROR + offsetRegressionDCRRate.getClass().getSimpleName(), offsetRegressionDCRRate);
+
+      tombstoneCreationDCRRate = new Rate();
+      tombstoneCreationDCRSensor = localMetricRepository.sensor(TOMBSTONE_CREATION_DCR);
+      tombstoneCreationDCRSensor.add(TOMBSTONE_CREATION_DCR + tombstoneCreationDCRRate.getClass().getSimpleName(),
+          tombstoneCreationDCRRate);
     }
 
-    public void setIngestionTask(StoreIngestionTask ingestionTask) { this.ingestionTask = ingestionTask; }
+    public void setIngestionTask(StoreIngestionTask ingestionTask) {
+      this.ingestionTask = ingestionTask;
+    }
 
     public long getRtTopicOffsetLag() {
       if (ingestionTask == null) {
@@ -534,6 +591,22 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
       }
     }
 
+    public void recordUpdateIgnoredDCR() {
+      conflictResolutionUpdateIgnoredSensor.record();
+    }
+
+    public void recordTimestampRegressionDCRError() {
+      timestampRegressionDCRErrorSensor.record();
+    }
+
+    public void recordOffsetRegressionDCRError() {
+      offsetRegressionDCRErrorSensor.record();
+    }
+
+    public void recordTombStoneCreationDCR() {
+      tombstoneCreationDCRSensor.record();
+    }
+
     public void recordRegionHybridBytesConsumed(int regionId, double value) {
       if (regionIdToHybridBytesConsumedRateMap.containsKey(regionId)) {
         regionIdToHybridBytesConsumedSensorMap.get(regionId).record(value);
@@ -556,6 +629,22 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
 
     public double getLeaderRecordsProduced() {
       return leaderRecordsProducedRate.measure(METRIC_CONFIG, System.currentTimeMillis());
+    }
+
+    public double getUpdateIgnoredRate() {
+      return updatedIgnoredDCRRate.measure(METRIC_CONFIG, System.currentTimeMillis());
+    }
+
+    public double getTombstoneCreationDCRRate() {
+      return tombstoneCreationDCRRate.measure(METRIC_CONFIG, System.currentTimeMillis());
+    }
+
+    public double getTimestampRegressionDCRRate() {
+      return timestampRegressionDCRRate.measure(METRIC_CONFIG, System.currentTimeMillis());
+    }
+
+    public double getOffsetRegressionDCRRate() {
+      return offsetRegressionDCRRate.measure(METRIC_CONFIG, System.currentTimeMillis());
     }
 
     public void recordLeaderRecordsProduced(double value) {
@@ -659,6 +748,11 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
 
 
       if (getStats().ingestionTask.isActiveActiveReplicationEnabled()) {
+        registerSensor(UPDATE_IGNORED_DCR, new IngestionStatsGauge(this, () -> getStats().getUpdateIgnoredRate(), 0));
+        registerSensor(TOMBSTONE_CREATION_DCR, new IngestionStatsGauge(this, () -> getStats().getTombstoneCreationDCRRate(), 0));
+        registerSensor(TIMESTAMP_REGRESSION_DCR_ERROR, new IngestionStatsGauge(this, () -> getStats().getTimestampRegressionDCRRate(), 0));
+        registerSensor(OFFSET_REGRESSION_DCR_ERROR, new IngestionStatsGauge(this, () -> getStats().getOffsetRegressionDCRRate(), 0));
+
         for (Map.Entry<Integer, String> entry : getStats().ingestionTask.getServerConfig().getKafkaClusterIdToAliasMap().entrySet()) {
           String regionNamePrefix = RegionUtils.getRegionSpecificMetricPrefix(getStats().ingestionTask.getServerConfig().getRegionName(), entry.getValue());
           registerSensor(regionNamePrefix + "_rt_lag",
