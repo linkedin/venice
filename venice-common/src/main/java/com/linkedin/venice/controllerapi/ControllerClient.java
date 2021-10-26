@@ -32,6 +32,7 @@ import java.util.concurrent.TimeoutException;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.apache.http.client.utils.URLEncodedUtils;
+import org.apache.kafka.common.protocol.types.Field;
 import org.apache.log4j.Logger;
 
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
@@ -121,6 +122,14 @@ public class ControllerClient implements Closeable {
   public StoreResponse getStore(String storeName) {
     QueryParams params = newParams().add(NAME, storeName);
     return request(ControllerRoute.STORE, params, StoreResponse.class);
+  }
+
+  public RepushInfoResponse getRepushInfo(String storeName, Optional<String> fabircName) {
+    QueryParams params = newParams().add(NAME, storeName);
+    if (fabircName.isPresent()) {
+      params.add(FABRIC, fabircName.get());
+    }
+    return request(ControllerRoute.GET_REPUSH_INFO, params, RepushInfoResponse.class);
   }
 
   public MultiStoreStatusResponse getFutureVersions(String clusterName, String storeName) {

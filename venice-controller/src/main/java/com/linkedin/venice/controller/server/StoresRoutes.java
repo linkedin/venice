@@ -12,6 +12,8 @@ import com.linkedin.venice.controllerapi.MultiStoreTopicsResponse;
 import com.linkedin.venice.controllerapi.MultiVersionResponse;
 import com.linkedin.venice.controllerapi.OwnerResponse;
 import com.linkedin.venice.controllerapi.PartitionResponse;
+import com.linkedin.venice.controllerapi.RepushInfoResponse;
+import com.linkedin.venice.controllerapi.RepushInfo;
 import com.linkedin.venice.controllerapi.StorageEngineOverheadRatioResponse;
 import com.linkedin.venice.controllerapi.StoreMigrationResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
@@ -21,7 +23,6 @@ import com.linkedin.venice.controllerapi.VersionResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.kafka.TopicDoesNotExistException;
-import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Store;
@@ -31,9 +32,7 @@ import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.systemstore.schemas.StoreProperties;
 import com.linkedin.venice.utils.Utils;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -182,17 +181,39 @@ public class StoresRoutes extends AbstractRoute {
     };
   }
 
+  public Route getRepushInfo(Admin admin) {
+    return new VeniceRouteHandler<RepushInfoResponse>(RepushInfoResponse.class) {
+      @Override
+      public void internalHandle(Request request, RepushInfoResponse veniceResponse) {
+        AdminSparkServer.validateParams(request, GET_REPUSH_INFO.getParams(), admin);
+        String clusterName = request.queryParams(CLUSTER);
+        String storeName = request.queryParams(NAME);
+        String fabricName = request.queryParams(FABRIC);
+
+        veniceResponse.setCluster(clusterName);
+        veniceResponse.setName(storeName);
+
+        RepushInfo repushInfo = admin.getRepushInfo(clusterName, storeName, Optional.ofNullable(fabricName));
+
+        veniceResponse.setRepushInfo(repushInfo);
+      }
+    };
+  }
+
+
   public Route getStore(Admin admin) {
     return new VeniceRouteHandler<StoreResponse>(StoreResponse.class) {
       @Override
       public void internalHandle(Request request, StoreResponse veniceResponse) {
         // No ACL check for getting store metadata
         AdminSparkServer.validateParams(request, STORE.getParams(), admin);
-        veniceResponse.setCluster(request.queryParams(CLUSTER));
-        veniceResponse.setName(request.queryParams(NAME));
-        Store store = admin.getStore(veniceResponse.getCluster(), veniceResponse.getName());
+        String storeName = request.queryParams(NAME);
+        String clusterName = request.queryParams(CLUSTER);
+        veniceResponse.setCluster(clusterName);
+        veniceResponse.setName(storeName);
+        Store store = admin.getStore(clusterName, storeName);
         if (null == store) {
-          throw new VeniceNoStoreException(veniceResponse.getName());
+          throw new VeniceNoStoreException(storeName);
         }
         StoreInfo storeInfo = StoreInfo.fromStore(store);
         // Make sure store info will have right default retention time for Nuage UI display.
@@ -200,7 +221,10 @@ public class StoresRoutes extends AbstractRoute {
           storeInfo.setBackupVersionRetentionMs(admin.getBackupVersionDefaultRetentionMs());
         }
         storeInfo.setColoToCurrentVersions(
-            admin.getCurrentVersionsForMultiColos(veniceResponse.getCluster(), veniceResponse.getName()));
+            admin.getCurrentVersionsForMultiColos(clusterName, storeName));
+        boolean isSSL = admin.isSSLEnabledForPush(clusterName, storeName);
+        storeInfo.setKafkaBrokerUrl(admin.getKafkaBootstrapServers(isSSL));
+
         veniceResponse.setStore(storeInfo);
       }
     };

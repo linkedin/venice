@@ -59,6 +59,7 @@ import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.IncrementalPushVersionsResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.MultiStoreStatusResponse;
+import com.linkedin.venice.controllerapi.RepushInfo;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateClusterConfigQueryParams;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
@@ -1155,6 +1156,36 @@ public class VeniceParentHelixAdmin implements Admin {
   public Map<String, Integer> getCurrentVersionsForMultiColos(String clusterName, String storeName) {
     Map<String, ControllerClient> controllerClients = getVeniceHelixAdmin().getControllerClientMap(clusterName);
     return getCurrentVersionForMultiColos(clusterName, storeName, controllerClients);
+  }
+
+  @Override
+  public RepushInfo getRepushInfo(String clusterName, String storeName, Optional<String> fabricName) {
+    Map<String, ControllerClient> controllerClients = getVeniceHelixAdmin().getControllerClientMap(clusterName);
+
+    if (fabricName.isPresent()) {
+      StoreResponse response = controllerClients.get(fabricName.get()).getStore(storeName);
+      if (response.isError()) {
+        throw new VeniceException("Could not query store from colo: " + fabricName.get() + " for cluster: " + clusterName + ". " + response.getError());
+      }
+      return RepushInfo.createRepushInfo(response.getStore().getVersion(response.getStore().getCurrentVersion()).get(),
+          response.getStore().getKafkaBrokerUrl());
+    }
+    // fabricName not present, get the largest version info among the child colos.
+    Map<String, Integer> currentVersionsMap = getCurrentVersionForMultiColos(clusterName, storeName, controllerClients);
+    int largestVersion = Integer.MIN_VALUE;
+    String colo = null;
+    for (Map.Entry<String, Integer> mapEntry : currentVersionsMap.entrySet()) {
+      if (mapEntry.getValue() > largestVersion) {
+        largestVersion = mapEntry.getValue();
+        colo = mapEntry.getKey();
+      }
+    }
+    StoreResponse response = controllerClients.get(colo).getStore(storeName);
+    if (response.isError()) {
+      throw new VeniceException("Could not query store from largest version colo: " + fabricName.get() + " for cluster: " + clusterName + ". " + response.getError());
+    }
+    return RepushInfo.createRepushInfo(response.getStore().getVersion((response.getStore().getCurrentVersion())).get(),
+        response.getStore().getKafkaBrokerUrl());
   }
 
   @Override

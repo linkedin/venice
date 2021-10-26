@@ -107,7 +107,9 @@ public enum ControllerRoute {
       Collections.singletonList(NAME)),
   CONFIGURE_INCREMENTAL_PUSH_FOR_CLUSTER("/configure_incremental_push_for_cluster", HttpMethod.POST, Arrays.asList(CLUSTER, INCREMENTAL_PUSH_POLICY)),
   GET_ONGOING_INCREMENTAL_PUSH_VERSIONS("/get_ongoing_incremental_push_versions", HttpMethod.GET,
-      Collections.singletonList(TOPIC));
+      Collections.singletonList(TOPIC)),
+  GET_REPUSH_INFO("/get_repush_info", HttpMethod.GET, Arrays.asList(NAME), FABRIC);
+
 
 
   private final String path;

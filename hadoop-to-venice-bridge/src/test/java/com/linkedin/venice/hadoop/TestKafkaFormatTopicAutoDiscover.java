@@ -3,6 +3,8 @@ package com.linkedin.venice.hadoop;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
+import com.linkedin.venice.controllerapi.RepushInfo;
+import com.linkedin.venice.controllerapi.RepushInfoResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.exceptions.UndefinedPropertyException;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -11,6 +13,7 @@ import com.linkedin.venice.meta.Version;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Properties;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -36,6 +39,8 @@ public class TestKafkaFormatTopicAutoDiscover {
     Map<String, Integer> coloToVersionMap = Collections.emptyMap(); // Single colo
     StoreResponse storeResponse = getMockStoreResponse(coloToVersionMap, singleColoCurrentVersion);
     when(controllerClient.getStore(STORE_NAME)).thenReturn(storeResponse);
+    RepushInfoResponse repushInfo = getMockRepushResponse(1);
+    when(controllerClient.getRepushInfo(STORE_NAME, Optional.empty())).thenReturn(repushInfo);
 
     Map<String, String> overrideProperties = Collections.singletonMap(VENICE_STORE_NAME_PROP, STORE_NAME);
     VenicePushJob venicePushJob = new VenicePushJob(
@@ -54,6 +59,8 @@ public class TestKafkaFormatTopicAutoDiscover {
     coloToVersionMap.put("colo-2", multipleColoCurrentVersion);
     StoreResponse storeResponse = getMockStoreResponse(coloToVersionMap, -1);
     when(controllerClient.getStore(STORE_NAME)).thenReturn(storeResponse);
+    RepushInfoResponse repushInfo = getMockRepushResponse(1);
+    when(controllerClient.getRepushInfo(STORE_NAME, Optional.empty())).thenReturn(repushInfo);
 
     Map<String, String> overrideProperties = Collections.singletonMap(VENICE_STORE_NAME_PROP, STORE_NAME);
     VenicePushJob venicePushJob = new VenicePushJob(
@@ -62,7 +69,7 @@ public class TestKafkaFormatTopicAutoDiscover {
     Assert.assertEquals(venicePushJob.getPushJobSetting().kafkaInputTopic, expectedTopicName);
   }
 
-  @Test (expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = "Got current topic version mismatch across multiple colos.*")
+  @Test
   public void testNoUserProvidedTopicNameAndMultiColoVersionMismatch() {
     // Mismatched versions below
     final int multipleColoCurrentVersion1 = 1;
@@ -74,9 +81,12 @@ public class TestKafkaFormatTopicAutoDiscover {
     coloToVersionMap.put("colo-2", multipleColoCurrentVersion2);
     StoreResponse storeResponse = getMockStoreResponse(coloToVersionMap, -1);
     when(controllerClient.getStore(STORE_NAME)).thenReturn(storeResponse);
-
+    RepushInfoResponse repushInfo = getMockRepushResponse(multipleColoCurrentVersion2);
+    when(controllerClient.getRepushInfo(STORE_NAME, Optional.empty())).thenReturn(repushInfo);
     Map<String, String> overrideProperties = Collections.singletonMap(VENICE_STORE_NAME_PROP, STORE_NAME);
-    new VenicePushJob(JOB_ID, getJobProperties(overrideProperties), controllerClient, getClusterDiscoveryControllerClient());
+    VenicePushJob venicePushJob = new VenicePushJob(JOB_ID, getJobProperties(overrideProperties), controllerClient, getClusterDiscoveryControllerClient());
+    String expectedTopicName = Version.composeKafkaTopic(STORE_NAME, multipleColoCurrentVersion2);
+    Assert.assertEquals(venicePushJob.getPushJobSetting().kafkaInputTopic, expectedTopicName);
   }
 
   @Test
@@ -172,6 +182,17 @@ public class TestKafkaFormatTopicAutoDiscover {
     when(storeInfo.getCurrentVersion()).thenReturn(currentVersion);
     when(storeResponse.getStore()).thenReturn(storeInfo);
     return storeResponse;
+  }
+
+  private RepushInfoResponse getMockRepushResponse(int versionNum) {
+    RepushInfoResponse repushInfoResponse = mock(RepushInfoResponse.class);
+    RepushInfo repushInfo = mock(RepushInfo.class);
+    Version version = mock(Version.class);
+    when(version.getNumber()).thenReturn(versionNum);
+    when(repushInfo.getVersion()).thenReturn(version);
+    when(repushInfo.getKafkaBrokerUrl()).thenReturn("kafkaUrl");
+    when(repushInfoResponse.getRepushInfo()).thenReturn(repushInfo);
+    return repushInfoResponse;
   }
 
   private Properties getJobProperties(Map<String, String> overrideConfigs) {
