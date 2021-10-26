@@ -26,6 +26,7 @@ import com.linkedin.venice.controller.kafka.consumer.VeniceControllerConsumerFac
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
+import com.linkedin.venice.controllerapi.RepushInfo;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateClusterConfigQueryParams;
@@ -2003,6 +2004,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     @Override
     public Map<String, Integer> getCurrentVersionsForMultiColos(String clusterName, String storeName) {
         return null;
+    }
+
+    @Override
+    public RepushInfo getRepushInfo(String clusterName, String storeName, Optional<String> fabricName) {
+        Store store = getStore(clusterName, storeName);
+        boolean isSSL = isSSLEnabledForPush(clusterName, storeName);
+        return  RepushInfo.createRepushInfo(store.getVersion(store.getCurrentVersion()).get(), getKafkaBootstrapServers(isSSL));
     }
 
     @Override

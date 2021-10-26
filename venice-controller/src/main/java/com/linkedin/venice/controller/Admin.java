@@ -4,6 +4,7 @@ import com.linkedin.venice.acl.AclException;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.controller.kafka.consumer.VeniceControllerConsumerFactory;
 import com.linkedin.venice.controller.lingeringjob.IdentityParser;
+import com.linkedin.venice.controllerapi.RepushInfo;
 import com.linkedin.venice.controllerapi.UpdateClusterConfigQueryParams;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
@@ -175,6 +176,8 @@ public interface Admin extends AutoCloseable, Closeable {
     Map<String, String> getFutureVersionsForMultiColos(String clusterName, String storeName);
 
     int getFutureVersion(String clusterName, String storeName);
+
+    RepushInfo getRepushInfo(String clusterNae, String storeName, Optional<String> fabricName);
 
     Version peekNextVersion(String clusterName, String storeName);
 

@@ -287,6 +287,8 @@ public class StoreInfo {
    */
   private boolean applyTargetVersionFilterForIncPush;
 
+  private String kafkaBrokerUrl;
+
   public StoreInfo() {
   }
 
@@ -300,6 +302,14 @@ public class StoreInfo {
 
   public void setName(String name) {
     this.name = name;
+  }
+
+  public void setKafkaBrokerUrl(String kafkaBrokerUrl) {
+    this.kafkaBrokerUrl = kafkaBrokerUrl;
+  }
+
+  public String getKafkaBrokerUrl() {
+    return kafkaBrokerUrl;
   }
 
   /**

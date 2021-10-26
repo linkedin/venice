@@ -552,4 +552,35 @@ public class TestVenicePushJob {
     }
   }
 
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testKIFRepushFetch() throws Exception {
+    File inputDir = getTempDataDirectory();
+    writeSimpleAvroFileWithUserSchema(inputDir);
+    // Setup job properties
+    String inputDirPath = "file://" + inputDir.getAbsolutePath();
+    String storeName = TestUtils.getUniqueString("store");
+    veniceCluster.getNewStore(storeName);
+    TestUtils.assertCommand(veniceCluster.updateStore(storeName, new UpdateStoreQueryParams()
+        .setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
+        .setPartitionCount(2)
+        .setIncrementalPushEnabled(true)
+        .setIncrementalPushPolicy(IncrementalPushPolicy.PUSH_TO_VERSION_TOPIC)
+        .setLeaderFollowerModel(true)));
+    Properties props = defaultH2VProps(veniceCluster, inputDirPath, storeName);
+
+    //create a batch version.
+    TestPushUtils.runPushJob("Test push job", props);
+
+    //setup repush job settings, without any broker url or topic name
+    props.setProperty(SOURCE_KAFKA, "true");
+    props.setProperty(KAFKA_INPUT_FABRIC, "dc-0");
+    props.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
+    //convert to RT policy
+    TestUtils.assertCommand(veniceCluster.updateStore(storeName, new UpdateStoreQueryParams()
+        .setHybridOffsetLagThreshold(1)
+        .setHybridRewindSeconds(0)
+        .setIncrementalPushPolicy(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME)));
+    //Run the repush job, it should still pass
+    TestPushUtils.runPushJob("Test push job", props);
+  }
 }

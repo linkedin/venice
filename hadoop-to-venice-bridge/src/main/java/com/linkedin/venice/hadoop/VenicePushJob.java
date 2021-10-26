@@ -9,6 +9,7 @@ import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.IncrementalPushVersionsResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
+import com.linkedin.venice.controllerapi.RepushInfoResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
@@ -154,6 +155,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
    * 2. We might want to re-push from a backup version, which should be unlikely.
    */
   public static final String KAFKA_INPUT_TOPIC = "kafka.input.topic";
+  public static final String KAFKA_INPUT_FABRIC = "kafka.input.fabric";
   public static final String KAFKA_INPUT_BROKER_URL = "kafka.input.broker.url";
   // Optional
   public static final String KAFKA_INPUT_MAX_RECORDS_PER_MAPPER = "kafka.input.max.records.per.mapper";
@@ -377,6 +379,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
     boolean isSourceKafka;
     String kafkaInputBrokerUrl;
     String kafkaInputTopic;
+    RepushInfoResponse repushInfoResponse;
     long rewindTimeInSecondsOverride;
     long reducerInactiveTimeoutInMs;
     boolean allowKifRepushForIncPushFromVTToVT;
@@ -595,8 +598,8 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
       if (pushJobSetting.enablePBNJ) {
         throw new VeniceException("PBNJ is not supported while using Kafka Input");
       }
-      pushJobSetting.kafkaInputBrokerUrl = props.getString(KAFKA_INPUT_BROKER_URL);
-      pushJobSetting.kafkaInputTopic = getSourceTopicNameForKafkaInput(props.getString(VENICE_STORE_NAME_PROP), clusterName, props);
+      pushJobSetting.kafkaInputTopic = getSourceTopicNameForKafkaInput(props.getString(VENICE_STORE_NAME_PROP), clusterName, props, pushJobSetting);
+      pushJobSetting.kafkaInputBrokerUrl = pushJobSetting.repushInfoResponse == null ? props.getString(KAFKA_INPUT_BROKER_URL) : pushJobSetting.repushInfoResponse.getRepushInfo().getKafkaBrokerUrl();
       pushJobSetting.storeName = props.getString(VENICE_STORE_NAME_PROP);
     } else {
       pushJobSetting.storeName = props.getString(VENICE_STORE_NAME_PROP);
@@ -662,16 +665,9 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
   private String getSourceTopicNameForKafkaInput(
           final String userProvidedStoreName,
           final String clusterName,
-          final VeniceProperties properties
+          final VeniceProperties properties,
+      final PushJobSetting pushJobSetting
   ) {
-    final Optional<String> userProvidedTopicNameOptional = Optional.ofNullable(properties.getString(KAFKA_INPUT_TOPIC, () -> null));
-    if (userProvidedTopicNameOptional.isPresent()) {
-      String derivedStoreName = Version.parseStoreFromKafkaTopicName(userProvidedTopicNameOptional.get());
-      if (!Objects.equals(derivedStoreName, userProvidedStoreName)) {
-        throw new IllegalArgumentException(String.format("Store user-provided name mismatch with the derived store name. " +
-            "Got user-provided store name %s and derived store name %s", userProvidedStoreName, derivedStoreName));
-      }
-    }
     if (controllerClient == null) {
       initControllerClient(createSSlFactory(
               properties.getBoolean(ENABLE_SSL, false),
@@ -681,34 +677,55 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
               clusterName
       );
     }
-    logger.info("userProvidedStoreName: " + userProvidedStoreName);
-    StoreResponse storeResponse = ControllerClient.retryableRequest(controllerClient, 3, c -> c.getStore(userProvidedStoreName));
-    if (storeResponse.isError()) {
-      throw new VeniceException(
-              String.format("Fail to get store information for store %s with error %s", userProvidedStoreName, storeResponse.getError()));
-    }
-    Map<String, Integer> coloToCurrentVersions = getCurrentStoreVersions(storeResponse);
-    if (new HashSet<>(coloToCurrentVersions.values()).size() > 1) {
-      if (userProvidedTopicNameOptional.isPresent()) {
-        logger.info(String.format("Got current topic version mismatch across multiple colos %s. Use user-provided topic " +
-            "name: %s", coloToCurrentVersions, userProvidedTopicNameOptional.get()));
-        return userProvidedTopicNameOptional.get();
+    final Optional<String> userProvidedTopicNameOptional = Optional.ofNullable(properties.getString(KAFKA_INPUT_TOPIC, () -> null));
 
-      } else {
-        throw new VeniceException(String.format("Got current topic version mismatch across multiple colos %s but " +
-            "no user-provided topic name.", coloToCurrentVersions));
+    // This mode of passing the topic name to VPJ is going to be deprecated.
+    if (userProvidedTopicNameOptional.isPresent()) {
+      return getUserProvidedTopicName(userProvidedStoreName, userProvidedTopicNameOptional.get());
+    }
+    //  If VPJ has fabric name available use that to find the child colo version otherwise
+    //  use the largest version among the child colo to use as KIF input topic.
+    final Optional<String> userProvidedFabricNameOptional = Optional.ofNullable(properties.getString(KAFKA_INPUT_FABRIC, () -> null));
+
+    pushJobSetting.repushInfoResponse =  ControllerClient.retryableRequest(controllerClient, 3,
+        c->c.getRepushInfo(userProvidedStoreName, userProvidedFabricNameOptional));
+    if (pushJobSetting.repushInfoResponse.isError()) {
+      throw new VeniceException("Could not get repush info for store "  + userProvidedStoreName);
+    }
+    int version = pushJobSetting.repushInfoResponse.getRepushInfo().getVersion().getNumber();
+    return Version.composeKafkaTopic(userProvidedStoreName, version);
+  }
+
+  private String getUserProvidedTopicName(final String userProvidedStoreName,
+      String userProvidedTopicName) {
+      String derivedStoreName = Version.parseStoreFromKafkaTopicName(userProvidedTopicName);
+      if (!Objects.equals(derivedStoreName, userProvidedStoreName)) {
+        throw new IllegalArgumentException(String.format("Store user-provided name mismatch with the derived store name. " +
+            "Got user-provided store name %s and derived store name %s", userProvidedStoreName, derivedStoreName));
       }
-    }
-    Integer detectedCurrentTopicVersion = null;
-    for (Integer topicVersion : coloToCurrentVersions.values()) {
-      detectedCurrentTopicVersion = topicVersion;
-    }
-    String derivedTopicName = Version.composeKafkaTopic(userProvidedStoreName, detectedCurrentTopicVersion);
-    if (userProvidedTopicNameOptional.isPresent() && !Objects.equals(derivedTopicName, userProvidedTopicNameOptional.get())) {
-      throw new IllegalStateException(String.format("Mismatch between user-provided topic name and auto discovered " +
-              "topic name. They are %s and %s respectively", userProvidedTopicNameOptional.get(), derivedTopicName));
-    }
-    return derivedTopicName;
+
+      logger.info("userProvidedStoreName: " + userProvidedStoreName);
+      StoreResponse storeResponse = ControllerClient.retryableRequest(controllerClient, 3, c -> c.getStore(userProvidedStoreName));
+      if (storeResponse.isError()) {
+        throw new VeniceException(
+            String.format("Fail to get store information for store %s with error %s", userProvidedStoreName, storeResponse.getError()));
+      }
+      Map<String, Integer> coloToCurrentVersions = getCurrentStoreVersions(storeResponse);
+      if (new HashSet<>(coloToCurrentVersions.values()).size() > 1) {
+         logger.info(String.format("Got current topic version mismatch across multiple colos %s. Use user-provided topic " +
+            "name: %s", coloToCurrentVersions, userProvidedTopicName));
+         return userProvidedTopicName;
+      }
+      Integer detectedCurrentTopicVersion = null;
+      for (Integer topicVersion : coloToCurrentVersions.values()) {
+        detectedCurrentTopicVersion = topicVersion;
+      }
+      String derivedTopicName = Version.composeKafkaTopic(userProvidedStoreName, detectedCurrentTopicVersion);
+      if (!Objects.equals(derivedTopicName, userProvidedTopicName)) {
+        throw new IllegalStateException(String.format("Mismatch between user-provided topic name and auto discovered " +
+            "topic name. They are %s and %s respectively", userProvidedTopicName, derivedTopicName));
+      }
+      return derivedTopicName;
   }
 
   // Visible for testing
@@ -1572,9 +1589,14 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
       int sourceVersionNumber = Version.parseVersionFromKafkaTopicName(pushJobSetting.kafkaInputTopic);
       Optional<Version> sourceVersion = storeResponse.getStore().getVersion(sourceVersionNumber);
       if (!sourceVersion.isPresent()) {
-        throw new VeniceException("Couldn't find the source version for Kafka Input: " + sourceVersionNumber +
-            " from Controller for store: " + setting.storeName);
+        if (pushJobSetting.repushInfoResponse != null && pushJobSetting.repushInfoResponse.getRepushInfo().getVersion().getNumber() == sourceVersionNumber) {
+          logger.warn("Could not find version " + sourceVersionNumber + " in parent colo, fetching from child colo.");
+          sourceVersion = Optional.of(pushJobSetting.repushInfoResponse.getRepushInfo().getVersion());
+        } else {
+          throw new VeniceException("Could not find version " + sourceVersionNumber + ", please provide input fabric to repush.");
+        }
       }
+
       storeSetting.sourceKafkaInputVersionInfo = sourceVersion.get();
       if (storeSetting.sourceKafkaInputVersionInfo.isChunkingEnabled() != storeSetting.isChunkingEnabled) {
         throw new VeniceException(String.format("Source version and new version have mismatch on chunking support. " +
@@ -2082,6 +2104,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
        * So here will set it up from {@link #pushJobSetting}.
        */
       conf.set(KAFKA_INPUT_TOPIC, pushJobSetting.kafkaInputTopic);
+      conf.set(KAFKA_INPUT_BROKER_URL, pushJobSetting.kafkaInputBrokerUrl);
     } else {
       conf.setInt(VALUE_SCHEMA_ID_PROP, schemaInfo.valueSchemaId);
       conf.setInt(DERIVED_SCHEMA_ID_PROP, schemaInfo.derivedSchemaId);

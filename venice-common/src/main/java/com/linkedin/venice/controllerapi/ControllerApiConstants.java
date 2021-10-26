@@ -11,6 +11,7 @@ public class ControllerApiConstants {
 
   public static final String NAME = "store_name";
   public static final String OWNER = "owner";
+  public static final String FABRIC = "fabric";
   public static final String PARTITION_COUNT = "partition_count";
   public static final String PARTITIONER_CLASS = "partitioner_class";
   public static final String PARTITIONER_PARAMS = "partitioner_params";
