@@ -38,11 +38,12 @@ public class VeniceSystemStoreUtils {
   }
 
   public static VeniceSystemStoreType getSystemStoreType(String storeName) {
-    if (storeName.startsWith(METADATA_STORE.getPrefix())) {
-      return METADATA_STORE;
-    } else {
-      return null;
+    for (VeniceSystemStoreType type : VeniceSystemStoreType.values()) {
+      if (storeName.startsWith(type.getPrefix())) {
+        return type;
+      }
     }
+    return null;
   }
 
   /**
