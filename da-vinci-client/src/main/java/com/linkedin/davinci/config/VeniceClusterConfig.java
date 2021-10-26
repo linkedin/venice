@@ -56,7 +56,7 @@ public class VeniceClusterConfig {
   private Map<String, Integer> kafkaClusterUrlToIdMap = new HashMap<>();
   private Map<Integer, String> kafkaClusterIdToAliasMap = new HashMap<>();
   private Map<String, Integer> kafkaClusterAliasToIdMap = new HashMap<>();
-  private Optional<Map<String, Map<String, String>>> kafkaClusterMap;
+  private final Optional<Map<String, Map<String, String>>> kafkaClusterMap;
 
   private final VeniceProperties clusterProperties;
 
@@ -96,7 +96,6 @@ public class VeniceClusterConfig {
     kafkaClusterAliasToIdMap.clear();
     kafkaClusterIdToUrlMap.clear();
     kafkaClusterUrlToIdMap.clear();
-
     for (Map.Entry<String, Map<String, String>> kafkaCluster: kafkaClusterMap.entrySet()) {
       int clusterId = Integer.parseInt(kafkaCluster.getKey());
       Map<String, String> mappings = kafkaCluster.getValue();
@@ -308,5 +307,9 @@ public class VeniceClusterConfig {
 
   public VeniceProperties getClusterProperties() {
     return this.clusterProperties;
+  }
+
+  public Optional<Map<String, Map<String, String>>> getKafkaClusterMap() {
+    return kafkaClusterMap;
   }
 }

@@ -34,6 +34,7 @@ import com.linkedin.venice.utils.VeniceProperties;
 import java.lang.reflect.Field;
 import java.util.AbstractMap;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
@@ -77,6 +78,10 @@ public class ActiveActiveReplicationForHybridTest {
   private List<VeniceControllerWrapper> parentControllers;
   private VeniceTwoLayerMultiColoMultiClusterWrapper multiColoMultiClusterWrapper;
 
+  public Map<String, String> getExtraServerProperties() {
+    return Collections.emptyMap();
+  }
+
   @BeforeClass(alwaysRun = true)
   public void setUp() {
     /**
@@ -92,6 +97,7 @@ public class ActiveActiveReplicationForHybridTest {
     serverProperties.setProperty(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE, "300");
     serverProperties.put(SERVER_SHARED_KAFKA_PRODUCER_ENABLED, "true");
     serverProperties.put(SERVER_KAFKA_PRODUCER_POOL_SIZE_PER_KAFKA_CLUSTER, "2");
+    getExtraServerProperties().forEach(serverProperties::put);
 
     Properties controllerProps = new Properties();
     controllerProps.put(DEFAULT_MAX_NUMBER_OF_PARTITIONS, 1000);
@@ -331,7 +337,7 @@ public class ActiveActiveReplicationForHybridTest {
               String expectedValue = "stream_" + i;
               Object valueObject = client.get(keyPrefix + i).get();
               if (valueObject == null) {
-                Assert.fail("Servers in dc-0 haven't consumed real-time data from region dc-" + dataCenterIndex);
+                Assert.fail("Servers in dc-0 haven't consumed real-time data from region dc-" + dataCenterIndex + " for key: " + keyPrefix + i);
               } else {
                 Assert.assertEquals(valueObject.toString(), expectedValue, "Servers in dc-0 contain corrupted data sent from region dc-" + dataCenterIndex);
               }

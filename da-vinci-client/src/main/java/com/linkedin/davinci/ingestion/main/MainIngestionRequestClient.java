@@ -61,6 +61,7 @@ public class MainIngestionRequestClient implements Closeable {
 
     // Prepare initialization config
     String configFilePath = buildAndSaveConfigsForForkedIngestionProcess(configLoader);
+    saveForkedIngestionKafkaClusterMapConfig(configLoader);
 
     while (currentAttempt < totalAttempts) {
       try {

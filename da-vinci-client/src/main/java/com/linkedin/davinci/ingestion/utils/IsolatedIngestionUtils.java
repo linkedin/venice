@@ -76,7 +76,9 @@ import static com.linkedin.venice.ingestion.protocol.enums.IngestionAction.*;
 public class IsolatedIngestionUtils {
   public static final String INGESTION_ISOLATION_CONFIG_PREFIX = "isolated";
   public static final String ISOLATED_INGESTION_CONFIG_FILENAME = "IsolatedIngestionConfig.conf";
+  public static final String ISOLATED_INGESTION_KAFKA_CLUSTER_MAP_FILENAME = "IsolatedIngestionKafkaClusterMap.conf";
   public static final String FORKED_PROCESS_METADATA_FILENAME = "ForkedProcessMetadata.conf";
+
   public static final String PID = "pid";
 
   private static final Logger logger = Logger.getLogger(IsolatedIngestionUtils.class);
@@ -404,6 +406,32 @@ public class IsolatedIngestionUtils {
     return storeVenicePropertiesToFile(configBasePath, ISOLATED_INGESTION_CONFIG_FILENAME, veniceProperties);
   }
 
+  public static void saveForkedIngestionKafkaClusterMapConfig(VeniceConfigLoader configLoader) {
+    String configBasePath = configLoader.getVeniceServerConfig().getDataBasePath();
+    String configFilePath = Paths.get(configBasePath, ISOLATED_INGESTION_KAFKA_CLUSTER_MAP_FILENAME).toAbsolutePath().toString();
+    File configFile = new File(configFilePath);
+    if (configFile.exists()) {
+      logger.info("Kafka cluster map file already exists, will delete existing file: " + configFilePath);
+      if (!configFile.delete()) {
+        throw new VeniceException("Unable to delete config file: " + configFilePath);
+      }
+    }
+    try {
+      VeniceConfigLoader.storeKafkaClusterMap(new File(configBasePath), ISOLATED_INGESTION_KAFKA_CLUSTER_MAP_FILENAME,
+          configLoader.getVeniceClusterConfig().getKafkaClusterMap());
+    } catch (Exception e) {
+      throw new VeniceException("Failed to store Kafka cluster map for isolated ingestion process", e);
+    }
+  }
+
+  public static Optional<Map<String, Map<String, String>>> loadForkedIngestionKafkaClusterMapConfig(String configBasePath) {
+    try {
+      return VeniceConfigLoader.parseKafkaClusterMap(configBasePath, ISOLATED_INGESTION_KAFKA_CLUSTER_MAP_FILENAME);
+    } catch (Exception e) {
+      throw new VeniceException("Failed to parse Kafka cluster map for isolated ingestion process", e);
+    }
+  }
+
   public static void saveForkedIngestionProcessMetadata(VeniceConfigLoader configLoader, ForkedJavaProcess forkedJavaProcess) {
     PropertyBuilder propertyBuilder = new PropertyBuilder();
     propertyBuilder.put(PID, forkedJavaProcess.pid());
@@ -541,7 +569,7 @@ public class IsolatedIngestionUtils {
     String configFilePath = Paths.get(basePath, fileName).toAbsolutePath().toString();
     File configFile = new File(configFilePath);
     if (configFile.exists()) {
-      LOGGER.warn("Config file already exists, will delete existing file: " + configFilePath);
+      logger.warn("Config file already exists, will delete existing file: " + configFilePath);
       if (!configFile.delete()) {
         throw new VeniceException("Unable to delete config file: " + configFilePath);
       }
