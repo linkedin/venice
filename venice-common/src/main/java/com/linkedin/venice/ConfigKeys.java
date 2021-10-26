@@ -429,6 +429,11 @@ public class ConfigKeys {
   public static final String SERVER_DISK_HEALTH_CHECK_SERVICE_ENABLED = "server.disk.health.check.service.enabled";
 
   /**
+   * This config is used to enable/disable the holistic health check service.
+   */
+  public static final String SERVER_HOLISTIC_HEALTH_CHECK_SERVICE_ENABLED = "server.holistic.health.check.service.enabled";
+
+  /**
    * Whether to enable fast-avro in compute request path.
    */
   public static final String SERVER_COMPUTE_FAST_AVRO_ENABLED = "server.compute.fast.avro.enabled";
