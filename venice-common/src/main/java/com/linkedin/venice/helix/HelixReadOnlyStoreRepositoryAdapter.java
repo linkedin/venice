@@ -19,19 +19,19 @@ import org.apache.log4j.Logger;
 public class HelixReadOnlyStoreRepositoryAdapter implements ReadOnlyStoreRepository {
   private static final Logger LOGGER = Logger.getLogger(HelixReadOnlyStoreRepositoryAdapter.class);
 
-  private final HelixReadOnlyZKSharedSystemStoreRepository systemStoreRepository;
+  private final HelixReadOnlyZKSharedSystemStoreRepository zkSharedSystemStoreRepository;
   private final ReadOnlyStoreRepository regularStoreRepository;
   private final StoreDataChangedListener zkSharedStoreDataChangedListener;
   private final StoreDataChangedListener regularStoreDataChangedListener;
   private final Set<StoreDataChangedListener> listeners = new CopyOnWriteArraySet<>();
   private final String clusterName;
 
-  public HelixReadOnlyStoreRepositoryAdapter(HelixReadOnlyZKSharedSystemStoreRepository systemStoreRepository,
+  public HelixReadOnlyStoreRepositoryAdapter(HelixReadOnlyZKSharedSystemStoreRepository zkSharedSystemStoreRepository,
       ReadOnlyStoreRepository regularStoreRepository, String clusterName) {
-    this.systemStoreRepository = systemStoreRepository;
+    this.zkSharedSystemStoreRepository = zkSharedSystemStoreRepository;
     this.regularStoreRepository = regularStoreRepository;
     this.zkSharedStoreDataChangedListener = new ZKSharedStoreDataChangedListener();
-    this.systemStoreRepository.registerStoreDataChangedListener(this.zkSharedStoreDataChangedListener);
+    this.zkSharedSystemStoreRepository.registerStoreDataChangedListener(this.zkSharedStoreDataChangedListener);
     this.regularStoreDataChangedListener = new VeniceStoreDataChangedListener();
     this.regularStoreRepository.registerStoreDataChangedListener(this.regularStoreDataChangedListener);
     this.clusterName = clusterName;
@@ -72,7 +72,7 @@ public class HelixReadOnlyStoreRepositoryAdapter implements ReadOnlyStoreReposit
     }
     // Get ZK shared system store name
     String zkSharedStoreName = systemStoreType.getZkSharedStoreName();
-    Store zkSharedStore = systemStoreRepository.getStore(zkSharedStoreName);
+    Store zkSharedStore = zkSharedSystemStoreRepository.getStore(zkSharedStoreName);
     if (null == zkSharedStore) {
       return null;
     }
@@ -97,7 +97,7 @@ public class HelixReadOnlyStoreRepositoryAdapter implements ReadOnlyStoreReposit
     }
     String zkSharedStoreName = systemStoreType.getZkSharedStoreName();
     String regularStoreName = systemStoreType.extractRegularStoreName(storeName);
-    return systemStoreRepository.hasStore(zkSharedStoreName) && regularStoreRepository.hasStore(regularStoreName);
+    return zkSharedSystemStoreRepository.hasStore(zkSharedStoreName) && regularStoreRepository.hasStore(regularStoreName);
   }
 
   @Override
@@ -108,7 +108,7 @@ public class HelixReadOnlyStoreRepositoryAdapter implements ReadOnlyStoreReposit
     }
     String zkSharedStoreName = systemStoreType.getZkSharedStoreName();
     String regularStoreName = systemStoreType.extractRegularStoreName(storeName);
-    systemStoreRepository.refreshOneStore(zkSharedStoreName);
+    zkSharedSystemStoreRepository.refreshOneStore(zkSharedStoreName);
     regularStoreRepository.refreshOneStore(regularStoreName);
 
     return getStore(storeName);
@@ -127,9 +127,9 @@ public class HelixReadOnlyStoreRepositoryAdapter implements ReadOnlyStoreReposit
     List<Store> allStores = new ArrayList<>(regularVeniceStores);
     // So far, only consider meta system store.
     Store zkSharedStoreForMetaSystemStore =
-        systemStoreRepository.getStore(VeniceSystemStoreType.META_STORE.getZkSharedStoreName());
+        zkSharedSystemStoreRepository.getStore(VeniceSystemStoreType.META_STORE.getZkSharedStoreName());
     Store zkSharedStoreForDaVinciPushStatusSystemStore =
-        systemStoreRepository.getStore(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getZkSharedStoreName());
+        zkSharedSystemStoreRepository.getStore(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getZkSharedStoreName());
     // Populate all the systems stores for the regular Venice stores if they are enabled.
     regularVeniceStores.forEach(store -> {
       if (store.isStoreMetaSystemStoreEnabled()) {
@@ -166,7 +166,7 @@ public class HelixReadOnlyStoreRepositoryAdapter implements ReadOnlyStoreReposit
     }
 
     // Then get the batch limit from the zk shared store
-    return systemStoreRepository.getBatchGetLimit(systemStoreType.getZkSharedStoreName());
+    return zkSharedSystemStoreRepository.getBatchGetLimit(systemStoreType.getZkSharedStoreName());
   }
 
   @Override
@@ -177,23 +177,23 @@ public class HelixReadOnlyStoreRepositoryAdapter implements ReadOnlyStoreReposit
     }
 
     // Then get the batch limit from the zk shared store
-    return systemStoreRepository.isReadComputationEnabled(systemStoreType.getZkSharedStoreName());
+    return zkSharedSystemStoreRepository.isReadComputationEnabled(systemStoreType.getZkSharedStoreName());
   }
 
   @Override
   public void refresh() {
-    systemStoreRepository.refresh();
+    zkSharedSystemStoreRepository.refresh();
     regularStoreRepository.refresh();
   }
 
   @Override
   public void clear() {
-    systemStoreRepository.clear();
+    zkSharedSystemStoreRepository.clear();
     regularStoreRepository.clear();
   }
 
   /**
-   * {@link StoreDataChangedListener} to handle all the events from {@link #systemStoreRepository}.
+   * {@link StoreDataChangedListener} to handle all the events from {@link #zkSharedSystemStoreRepository}.
    */
   private class ZKSharedStoreDataChangedListener implements StoreDataChangedListener {
 
@@ -291,7 +291,7 @@ public class HelixReadOnlyStoreRepositoryAdapter implements ReadOnlyStoreReposit
         listeners.forEach(listener -> {
           try {
             SystemStore metaSystemStore = new SystemStore(
-                systemStoreRepository.getStoreOrThrow(VeniceSystemStoreType.META_STORE.getZkSharedStoreName()),
+                zkSharedSystemStoreRepository.getStoreOrThrow(VeniceSystemStoreType.META_STORE.getZkSharedStoreName()),
                 VeniceSystemStoreType.META_STORE, store);
             listener.handleStoreCreated(metaSystemStore);
           } catch (Throwable t) {
@@ -305,7 +305,7 @@ public class HelixReadOnlyStoreRepositoryAdapter implements ReadOnlyStoreReposit
       if (store.isDaVinciPushStatusStoreEnabled()) {
         listeners.forEach(listener -> {
           try {
-            SystemStore daVinciPushStatusSystemStore = new SystemStore(systemStoreRepository.getStoreOrThrow(
+            SystemStore daVinciPushStatusSystemStore = new SystemStore(zkSharedSystemStoreRepository.getStoreOrThrow(
                 VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getZkSharedStoreName()),
                 VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE, store);
             listener.handleStoreCreated(daVinciPushStatusSystemStore);
@@ -335,7 +335,7 @@ public class HelixReadOnlyStoreRepositoryAdapter implements ReadOnlyStoreReposit
         }
         String metaSystemStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName);
         SystemStore metaSystemStore = new SystemStore(
-            systemStoreRepository.getStoreOrThrow(VeniceSystemStoreType.META_STORE.getZkSharedStoreName()),
+            zkSharedSystemStoreRepository.getStoreOrThrow(VeniceSystemStoreType.META_STORE.getZkSharedStoreName()),
             VeniceSystemStoreType.META_STORE, store);
 
         try {
@@ -389,7 +389,7 @@ public class HelixReadOnlyStoreRepositoryAdapter implements ReadOnlyStoreReposit
              * is not found, this function could notify the store creation event.
              */
             SystemStore metaSystemStore = new SystemStore(
-                systemStoreRepository.getStoreOrThrow(VeniceSystemStoreType.META_STORE.getZkSharedStoreName()),
+                zkSharedSystemStoreRepository.getStoreOrThrow(VeniceSystemStoreType.META_STORE.getZkSharedStoreName()),
                 VeniceSystemStoreType.META_STORE, store);
             listener.handleStoreChanged(metaSystemStore);
           } catch (Throwable t) {
@@ -401,7 +401,7 @@ public class HelixReadOnlyStoreRepositoryAdapter implements ReadOnlyStoreReposit
           String daVinciPushStatusSystemStoreName =
               VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(store.getName());
           try {
-            SystemStore daVinciPushStatusSystemStore = new SystemStore(systemStoreRepository.getStoreOrThrow(
+            SystemStore daVinciPushStatusSystemStore = new SystemStore(zkSharedSystemStoreRepository.getStoreOrThrow(
                 VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getZkSharedStoreName()),
                 VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE, store);
             listener.handleStoreChanged(daVinciPushStatusSystemStore);

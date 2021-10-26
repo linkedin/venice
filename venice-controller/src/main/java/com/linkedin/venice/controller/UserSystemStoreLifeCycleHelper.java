@@ -61,11 +61,38 @@ public class UserSystemStoreLifeCycleHelper {
         clusterToAutoCreateEnabledSystemStoresMap.get(clusterName);
     for (VeniceSystemStoreType systemStoreType : autoCreateEnabledSystemStores) {
       String systemStoreName = systemStoreType.getSystemStoreName(userStoreName);
-      String pushJobId = AUTO_META_SYSTEM_STORE_PUSH_ID_PREFIX + System.currentTimeMillis();
-      Version version = parentAdmin.incrementVersionIdempotent(clusterName, systemStoreName, pushJobId,
-          parentAdmin.calculateNumberOfPartitions(clusterName, systemStoreName, DEFAULT_META_SYSTEM_STORE_SIZE),
-          parentAdmin.getReplicationFactor(clusterName, systemStoreName));
-      parentAdmin.writeEndOfPush(clusterName, systemStoreName, version.getNumber(), true);
+      final int systemStoreLargestUsedVersionNumber =
+          parentAdmin.getVeniceHelixAdmin().getStoreGraveyard().getSystemStoreLargestUsedVersionNumber(systemStoreName);
+
+      final int materializedSystemStoreVersion;
+      final String pushJobId = AUTO_META_SYSTEM_STORE_PUSH_ID_PREFIX + System.currentTimeMillis();
+      final int partitionCount = parentAdmin.calculateNumberOfPartitions(clusterName, systemStoreName, DEFAULT_META_SYSTEM_STORE_SIZE);
+
+      if (systemStoreLargestUsedVersionNumber == Store.NON_EXISTING_VERSION) {
+        materializedSystemStoreVersion = parentAdmin.incrementVersionIdempotent(
+            clusterName,
+            systemStoreName,
+            pushJobId,
+            partitionCount,
+            parentAdmin.getReplicationFactor(clusterName, systemStoreName)
+        ).getNumber();
+
+      } else {
+        // Continue to use the largest used version number found in the store graveyard to avoid resource collision.
+        materializedSystemStoreVersion = systemStoreLargestUsedVersionNumber + 1;
+        parentAdmin.addVersionAndStartIngestion(
+            clusterName,
+            systemStoreName,
+            pushJobId,
+            materializedSystemStoreVersion,
+            partitionCount,
+            Version.PushType.BATCH,
+            null,
+            -1,
+            parentAdmin.getMultiClusterConfigs().getCommonConfig().getReplicationMetadataVersionId()
+        );
+      }
+      parentAdmin.writeEndOfPush(clusterName, systemStoreName, materializedSystemStoreVersion, true);
     }
   }
 

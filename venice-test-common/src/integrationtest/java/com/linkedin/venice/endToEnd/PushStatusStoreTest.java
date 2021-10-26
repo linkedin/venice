@@ -9,6 +9,7 @@ import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.init.ClusterLeaderInitializationRoutine;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.hadoop.VenicePushJob;
@@ -25,6 +26,7 @@ import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.File;
@@ -32,6 +34,7 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import org.apache.commons.io.IOUtils;
+import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.BeforeMethod;
@@ -46,7 +49,7 @@ import static org.testng.Assert.*;
 
 
 public class PushStatusStoreTest {
-  private static final int TEST_TIMEOUT = 60_000; // ms
+  private static final int TEST_TIMEOUT_MS = 100 * Time.MS_PER_MINUTE; // For debugging purpose
 
   private VeniceClusterWrapper cluster;
   private ControllerClient controllerClient;
@@ -112,7 +115,7 @@ public class PushStatusStoreTest {
         controllerClient, 30, TimeUnit.SECONDS, Optional.empty());
   }
 
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT * 2)
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT_MS * 2)
   public void testKafkaPushJob(boolean isIsolated) throws Exception {
     Properties h2vProperties = getH2VProperties();
     // setup initial version
@@ -128,7 +131,7 @@ public class PushStatusStoreTest {
     try (DaVinciClient daVinciClient = ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster, new DaVinciConfig(), backendConfig)) {
       daVinciClient.subscribeAll().get();
       runH2V(h2vProperties, 2, cluster);
-      TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
+      TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT_MS, TimeUnit.MILLISECONDS, () -> {
         assertEquals(reader.getPartitionStatus(storeName, 2, 0, Optional.empty()).size(), 1);
       });
     }
@@ -146,7 +149,7 @@ public class PushStatusStoreTest {
     });
   }
 
-  @Test(timeOut = TEST_TIMEOUT)
+  @Test(timeOut = TEST_TIMEOUT_MS)
   public void testIncrementalPush() throws Exception {
     VeniceProperties backendConfig = getBackendConfigBuilder().build();
     Properties h2vProperties = getH2VProperties();
@@ -160,7 +163,7 @@ public class PushStatusStoreTest {
     }
   }
 
-  @Test(timeOut = TEST_TIMEOUT)
+  @Test(timeOut = TEST_TIMEOUT_MS)
   public void testAutomaticPurge() throws Exception {
     VeniceProperties backendConfig = getBackendConfigBuilder().build();
     Properties h2vProperties = getH2VProperties();
@@ -168,18 +171,18 @@ public class PushStatusStoreTest {
     runH2V(h2vProperties, 1, cluster);
     try (DaVinciClient daVinciClient = ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster, new DaVinciConfig(), backendConfig)) {
       daVinciClient.subscribeAll().get();
-      TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
+      TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT_MS, TimeUnit.MILLISECONDS, () -> {
         assertEquals(reader.getPartitionStatus(storeName, 1, 0, Optional.empty()).size(), 1);
       });
       runH2V(h2vProperties, 2, cluster);
       runH2V(h2vProperties, 3, cluster);
-      TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
+      TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT_MS, TimeUnit.MILLISECONDS, () -> {
         assertEquals(reader.getPartitionStatus(storeName, 1, 0, Optional.empty()).size(), 0);
       });
     }
   }
 
-  @Test(timeOut = TEST_TIMEOUT)
+  @Test(timeOut = TEST_TIMEOUT_MS)
   public void testParentControllerAutoMaterializeDaVinciPushStatusSystemStore() {
     try (ControllerClient parentControllerClient = new ControllerClient(cluster.getClusterName(),
         parentController.getControllerUrl())) {
@@ -194,14 +197,44 @@ public class PushStatusStoreTest {
         assertTrue(readOnlyStore.isHybrid(),
             "Store: " + zkSharedDaVinciPushStatusSchemaStoreName + " should be configured to hybrid");
       });
-      String storeName = TestUtils.getUniqueString("new-user-store");
-      assertFalse(
-          parentControllerClient.createNewStore(storeName, "venice-test", DEFAULT_KEY_SCHEMA, "\"string\"").isError(),
-          "Unexpected new store creation failure");
-      String daVinciPushStatusSystemStoreName =
-          VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(storeName);
+      final String regularStoreName = TestUtils.getUniqueString("new-user-store");
+      NewStoreResponse newStoreResponse = parentControllerClient.createNewStore(regularStoreName, "venice-test", DEFAULT_KEY_SCHEMA, "\"string\"");
+      assertFalse(newStoreResponse.isError(), "Unexpected new store creation failure: " + newStoreResponse);
+      String daVinciPushStatusSystemStoreName = VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(regularStoreName);
       TestUtils.waitForNonDeterministicPushCompletion(Version.composeKafkaTopic(daVinciPushStatusSystemStoreName, 1),
           parentControllerClient, 30, TimeUnit.SECONDS, Optional.empty());
+
+      Store daVinciPushStatusSystemStore = parentController.getVeniceAdmin().getStore(cluster.getClusterName(), daVinciPushStatusSystemStoreName);
+      Assert.assertEquals(daVinciPushStatusSystemStore.getLargestUsedVersionNumber(), 1);
+
+      // Do empty pushes to increase the system store's version
+      final int emptyPushAttempt = 2;
+      for (int i = 0; i < emptyPushAttempt; i++) {
+        final int newVersion = parentController.getVeniceAdmin()
+            .incrementVersionIdempotent(cluster.getClusterName(), daVinciPushStatusSystemStoreName,
+                "push job ID placeholder " + i, 1, 1)
+            .getNumber();
+        parentController.getVeniceAdmin().writeEndOfPush(cluster.getClusterName(), daVinciPushStatusSystemStoreName, newVersion, true);
+        TestUtils.waitForNonDeterministicPushCompletion(Version.composeKafkaTopic(daVinciPushStatusSystemStoreName, newVersion),
+            parentControllerClient, 30, TimeUnit.SECONDS, Optional.empty());
+      }
+      daVinciPushStatusSystemStore = parentController.getVeniceAdmin().getStore(cluster.getClusterName(), daVinciPushStatusSystemStoreName);
+      final int systemStoreCurrVersionBeforeBeingDeleted = daVinciPushStatusSystemStore.getLargestUsedVersionNumber();
+      Assert.assertEquals(systemStoreCurrVersionBeforeBeingDeleted, 1 + emptyPushAttempt);
+
+      parentControllerClient.disableAndDeleteStore(regularStoreName);
+      // Both the system store and user store should be gone at this point
+      Assert.assertNull(parentController.getVeniceAdmin().getStore(cluster.getClusterName(), regularStoreName));
+      Assert.assertNull(parentController.getVeniceAdmin().getStore(cluster.getClusterName(), daVinciPushStatusSystemStoreName));
+
+      // Create the same regular store again
+      newStoreResponse = parentControllerClient.createNewStore(regularStoreName, "venice-test", DEFAULT_KEY_SCHEMA, "\"string\"");
+      assertFalse(newStoreResponse.isError(), "Unexpected new store creation failure: " + newStoreResponse);
+
+      // The re-created/materialized per-user store system store should contain a continued version from its last life
+      daVinciPushStatusSystemStore = parentController.getVeniceAdmin().getStore(cluster.getClusterName(), daVinciPushStatusSystemStoreName);
+      Assert.assertEquals(daVinciPushStatusSystemStore.getLargestUsedVersionNumber(), systemStoreCurrVersionBeforeBeingDeleted + 1);
+
     }
   }
 
