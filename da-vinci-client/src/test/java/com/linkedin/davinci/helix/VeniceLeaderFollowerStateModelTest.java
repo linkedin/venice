@@ -1,7 +1,7 @@
 package com.linkedin.davinci.helix;
 
 import com.linkedin.venice.meta.Store;
-import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 import org.testng.annotations.Test;
 
 import static org.mockito.Mockito.*;
@@ -12,7 +12,7 @@ public class VeniceLeaderFollowerStateModelTest
   @Override
   protected LeaderFollowerPartitionStateModel getParticipantStateModel() {
     return new LeaderFollowerPartitionStateModel(mockIngestionBackend, mockStoreConfig,
-        testPartition, mockNotifier, mockReadOnlyStoreRepository, Optional.empty(), null);
+        testPartition, mockNotifier, mockReadOnlyStoreRepository, CompletableFuture.completedFuture(mockPushStatusAccessor), null);
   }
 
   @Override

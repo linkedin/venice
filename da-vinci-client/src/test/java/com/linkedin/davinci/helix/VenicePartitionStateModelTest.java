@@ -1,7 +1,6 @@
 package com.linkedin.davinci.helix;
 
 import com.linkedin.venice.meta.Store;
-import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import org.apache.helix.participant.statemachine.StateTransitionError;
@@ -19,7 +18,7 @@ public class VenicePartitionStateModelTest
   @Override
   protected OnlineOfflinePartitionStateModel getParticipantStateModel() {
     return new OnlineOfflinePartitionStateModel(mockIngestionBackend, mockStoreConfig, testPartition,
-        mockNotifier, mockReadOnlyStoreRepository, Optional.of(CompletableFuture.completedFuture(mockPushStatusAccessor)),
+        mockNotifier, mockReadOnlyStoreRepository, CompletableFuture.completedFuture(mockPushStatusAccessor),
         instanceName);
   }
 
@@ -64,7 +63,7 @@ public class VenicePartitionStateModelTest
     OnlineOfflineIngestionProgressNotifier notifier = new OnlineOfflineIngestionProgressNotifier();
     testStateModel =
         new OnlineOfflinePartitionStateModel(mockIngestionBackend, mockStoreConfig, testPartition,
-            notifier, mockReadOnlyStoreRepository, Optional.empty(), null);
+            notifier, mockReadOnlyStoreRepository, CompletableFuture.completedFuture(mockPushStatusAccessor), null);
     testStateModel.onBecomeBootstrapFromOffline(mockMessage, mockContext);
     CountDownLatch latch = notifier.getIngestionCompleteFlag(mockMessage.getResourceName(), testPartition);
     Assert.assertEquals(latch.getCount(), 1);

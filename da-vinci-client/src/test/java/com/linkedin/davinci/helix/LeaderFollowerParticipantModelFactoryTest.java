@@ -10,7 +10,6 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.HelixUtils;
-import java.util.Optional;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import org.apache.helix.model.Message;
@@ -69,7 +68,7 @@ public class LeaderFollowerParticipantModelFactoryTest {
         mockIngestionBackend,
         mockConfigLoader,
         this.executorService,
-        mockReadOnlyStoreRepository, Optional.empty(), null);
+        mockReadOnlyStoreRepository, null, null);
   }
 
   @Test

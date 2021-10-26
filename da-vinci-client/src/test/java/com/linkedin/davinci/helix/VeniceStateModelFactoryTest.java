@@ -5,12 +5,13 @@ import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.ingestion.VeniceIngestionBackend;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.helix.HelixPartitionStatusAccessor;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.TestUtils;
-import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -35,6 +36,7 @@ public class VeniceStateModelFactoryTest {
   private VeniceServerConfig mockServerConfig;
   private VeniceStoreVersionConfig mockStoreConfig;
   private ReadOnlyStoreRepository mockReadOnlyStoreRepository;
+  private HelixPartitionStatusAccessor mockPushStatusAccessor;
   private Store mockStore;
   private int testPartition = 0;
   private String resourceName = "test_v1";
@@ -63,6 +65,7 @@ public class VeniceStateModelFactoryTest {
     mockServerConfig = Mockito.mock(VeniceServerConfig.class);
     mockStoreConfig = Mockito.mock(VeniceStoreVersionConfig.class);
     mockReadOnlyStoreRepository = Mockito.mock(ReadOnlyStoreRepository.class);
+    mockPushStatusAccessor = Mockito.mock(HelixPartitionStatusAccessor.class);
     mockStore = Mockito.mock(Store.class);
     Mockito.when(mockConfigLoader.getVeniceServerConfig()).thenReturn(mockServerConfig);
     Mockito.when(mockConfigLoader.getStoreConfig(resourceName)).thenReturn(mockStoreConfig);
@@ -79,7 +82,7 @@ public class VeniceStateModelFactoryTest {
         mockIngestionBackend,
         mockConfigLoader,
         this.executorService,
-        mockReadOnlyStoreRepository, Optional.empty(), null);
+        mockReadOnlyStoreRepository, CompletableFuture.completedFuture(mockPushStatusAccessor), null);
     stateModel = factory.createNewStateModel(resourceName, resourceName + "_" + testPartition);
   }
 
@@ -150,7 +153,7 @@ public class VeniceStateModelFactoryTest {
         new DaemonThreadFactory("venice-state-transition"));
     executor.allowCoreThreadTimeOut(true);
     factory = new OnlineOfflinePartitionStateModelFactory(mockIngestionBackend, mockConfigLoader, executor,
-        mockReadOnlyStoreRepository, Optional.empty(), null);
+        mockReadOnlyStoreRepository, CompletableFuture.completedFuture(mockPushStatusAccessor), null);
     ExecutorService testExecutor = factory.getExecutorService("");
     Assert.assertEquals(testExecutor, executor);
 
