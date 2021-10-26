@@ -33,7 +33,6 @@ import com.linkedin.venice.kafka.protocol.Update;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
-import com.linkedin.venice.kafka.validation.ProducerTracker;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
@@ -79,6 +78,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   private final int replicationMetadataVersionId;
   private final MergeConflictResolver mergeConflictResolver;
   private Map<GUID, Map<Integer, ReentrantLock>> partitionLockMapPerProducer = new VeniceConcurrentHashMap<>();
+  private AggVersionedStorageIngestionStats aggVersionedStorageIngestionStats;
 
   public ActiveActiveStoreIngestionTask(
       Store store,
@@ -155,6 +155,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
 
     this.replicationMetadataVersionId = version.getReplicationMetadataVersionId();
     this.mergeConflictResolver = new MergeConflictResolver(schemaRepo, storeName, replicationMetadataVersionId);
+    this.aggVersionedStorageIngestionStats = versionedStorageIngestionStats;
   }
 
   @Override
@@ -317,7 +318,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     }
 
     if (mergeConflictResult.isUpdateIgnored()) {
-      storeIngestionStats.recordConflictResolutionUpdateIgnored(storeName);
+      storeIngestionStats.recodUpdateIgnoredDCR();
+      aggVersionedStorageIngestionStats.recordUpdateIgnoredDCR(storeName, versionNumber);
     } else {
       validatePostOperationResultsAndRecord(mergeConflictResult, offsetSumPreOperation, recordTimestampsPreOperation);
       // This function may modify the original record in KME and it is unsafe to use the payload from KME directly after this call.
@@ -334,6 +336,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     if (offsetSumPreOperation > mergeConflictResolver.extractOffsetVectorSumFromReplicationMetadata(mergeConflictResult.getReplicationMetadata(), mergeConflictResult.getValueSchemaID())) {
       // offsets went backwards, raise an alert!
       storeIngestionStats.recordOffsetRegressionDCRError();
+      aggVersionedStorageIngestionStats.recordOffsetRegressionDCRError(storeName, versionNumber);
       logger.error(String.format("Offset vector found to have gone backwards!! New invalid replication metadata result:%s",
           mergeConflictResolver.printReplicationMetadata(mergeConflictResult.getReplicationMetadata(), mergeConflictResult.getValueSchemaID())));
     }
@@ -345,6 +348,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       if (timestampsPreOperation.get(i) > timestampsPostOperation.get(i)) {
         // timestamps went backwards, raise an alert!
         storeIngestionStats.recordTimeStampRegressionDCRError();
+        aggVersionedStorageIngestionStats.recordTimestampRegressionDCRError(storeName, versionNumber);
         logger.error(String.format("Timestamp found to have gone backwards!! Invalid replication metadata result:%s",
             mergeConflictResolver.printReplicationMetadata(mergeConflictResult.getReplicationMetadata(), mergeConflictResult.getValueSchemaID())));
       }
@@ -407,7 +411,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     final ByteBuffer updatedReplicationMetadataBytes = mergeConflictResult.getReplicationMetadata();
     // finally produce and update the transient record map.
     if (updatedValueBytes == null) {
-      storeIngestionStats.recordConflictResolutionTombstoneCreated(storeName);
+      storeIngestionStats.recorTombstoneCreatedDCR();
+      aggVersionedStorageIngestionStats.recordTombStoneCreationDCR(storeName, versionNumber);
       partitionConsumptionState.setTransientRecord(consumerRecordWrapper.kafkaUrl(), consumerRecord.offset(), key, valueSchemaId, updatedReplicationMetadataBytes);
       Delete deletePayload = new Delete();
       deletePayload.schemaId = valueSchemaId;

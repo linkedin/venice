@@ -58,8 +58,8 @@ public class StoreIngestionStats extends AbstractVeniceStats {
   /**
    * Sensors for emitting if/when we detect DCR violations (such as a backwards timestamp or receding offset vector)
    */
-  private final Sensor timestampRegresssionDCRErrorCount;
-  private final Sensor offsetRegressionDCRErrorCount;
+  private final Sensor timestampRegresssionDCRErrorRate;
+  private final Sensor offsetRegressionDCRErrorRate;
 
   /**
    * A gauge reporting the total the percentage of hybrid quota used.
@@ -150,12 +150,12 @@ public class StoreIngestionStats extends AbstractVeniceStats {
   /**
    * Measure the count of ignored updates due to conflict resolution
    */
-  private final Sensor conflictResolutionUpdateIgnoredSensor;
+  private final Sensor updateIgnoredDCRSensor;
 
   /**
    * Measure the count of tombstones created
    */
-  private final Sensor conflictResolutionTombstoneCreationSensor;
+  private final Sensor tombstoneCreationDCRSensor;
 
   public StoreIngestionStats(MetricsRepository metricsRepository, VeniceServerConfig serverConfig,
                              String storeName) {
@@ -241,11 +241,11 @@ public class StoreIngestionStats extends AbstractVeniceStats {
     leaderIngestionValueBytesCacheHitCount = registerSensor("leader_ingestion_value_bytes_cache_hit_count", new Rate());
     leaderIngestionReplicationMetadataCacheHitCount = registerSensor("leader_ingestion_replication_metadata_cache_hit_count", new Rate());
     leaderIngestionReplicationMetadataLookUpLatencySensor = registerSensor("leader_ingestion_replication_metadata_lookup_latency", new Avg(), new Max());
-    conflictResolutionUpdateIgnoredSensor = registerSensor("conflict_resolution_update_ignored", new Rate());
-    conflictResolutionTombstoneCreationSensor = registerSensor("conflict_resolution_tombstone_creation", new Rate());
+    updateIgnoredDCRSensor = registerSensor("update_ignored_dcr", new Rate());
+    tombstoneCreationDCRSensor = registerSensor("tombstone_creation_dcr", new Rate());
 
-    timestampRegresssionDCRErrorCount = registerSensor("timestamp_regression_dcr_error_count", new Rate());
-    offsetRegressionDCRErrorCount = registerSensor("offset_regression_dcr_error_count", new Rate());
+    timestampRegresssionDCRErrorRate = registerSensor("timestamp_regression_dcr_error", new Rate());
+    offsetRegressionDCRErrorRate = registerSensor("offset_regression_dcr_error", new Rate());
   }
 
   public StoreIngestionTask getStoreIngestionTask() {
@@ -370,12 +370,12 @@ public class StoreIngestionStats extends AbstractVeniceStats {
     leaderIngestionReplicationMetadataCacheHitCount.record();
   }
 
-  public void recordConflictResolutionUpdateIgnored() {
-    conflictResolutionUpdateIgnoredSensor.record();
+  public void recodUpdateIgnoredDCR() {
+    updateIgnoredDCRSensor.record();
   }
 
-  public void recordConflictResolutionTombstoneCreated() {
-    conflictResolutionTombstoneCreationSensor.record();
+  public void recorTombstoneCreatedDCR() {
+    tombstoneCreationDCRSensor.record();
   }
 
   public void recordTotalLeaderBytesConsumed(long bytes) {
@@ -419,11 +419,11 @@ public class StoreIngestionStats extends AbstractVeniceStats {
   }
 
   public void recordTimeStampRegressionDCRError() {
-    timestampRegresssionDCRErrorCount.record();
+    timestampRegresssionDCRErrorRate.record();
   }
 
   public void recordOffsetRegressionDCRError() {
-    offsetRegressionDCRErrorCount.record();
+    offsetRegressionDCRErrorRate.record();
   }
 
   private static class StoreIngestionStatsCounter extends LambdaStat {
