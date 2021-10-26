@@ -83,6 +83,42 @@ public class RetriableStoreClientTest {
   }
 
   @Test
+  public void testGetRetryWithBackOffAndCount() throws ExecutionException, InterruptedException {
+    CompletableFuture<Object> mockInnerFuture = new CompletableFuture();
+    Object mockReturnObject = mock(Object.class);
+    mockInnerFuture.completeExceptionally(new VeniceClientHttpException(503));
+    CompletableFuture<Object>  mockInnerFuture1 = new CompletableFuture();
+    mockInnerFuture1.complete(mockReturnObject);
+
+    mockInnerFuture.handle((value, throwable) -> {
+      try {
+        Thread.sleep(50);
+      } catch (InterruptedException e) {
+        e.printStackTrace();
+      }
+      return null;
+    });
+    mockInnerFuture1.handle((value, throwable) -> {
+      try {
+        Thread.sleep(50);
+      } catch (InterruptedException e) {
+        e.printStackTrace();
+      }
+      return null;
+    });
+
+
+    // Verify retry count and retry backoff can be configured
+    doReturn(mockInnerFuture).doReturn(mockInnerFuture).doReturn(mockInnerFuture1).when(mockStoreClient).get(any(),
+        any(), anyLong());
+    RetriableStoreClient<String, Object> retriableStoreClient = new RetriableStoreClient<>(mockStoreClient,
+        ClientConfig.defaultGenericClientConfig(mockStoreClient.getStoreName())
+            .setRetryCount(3)
+            .setRetryBackOffInMs(100));
+    Assert.assertEquals(mockReturnObject, retriableStoreClient.get("key").get());
+  }
+
+  @Test
   public void testMultiGet() throws ExecutionException, InterruptedException {
     CompletableFuture<Object> mockInnerFuture = new CompletableFuture();
     Map<String, String> result = new HashMap<>();

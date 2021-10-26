@@ -64,9 +64,9 @@ import static java.lang.Thread.*;
  */
 public abstract class NativeMetadataRepository
     implements SubscriptionBasedReadOnlyStoreRepository, ReadOnlySchemaRepository, ClusterInfoProvider {
-  protected static final int SUBSCRIBE_TIMEOUT_IN_SECONDS = 30;
-  protected static final int KEY_SCHEMA_ID = 1;
-  protected static final int DEFAULT_SYSTEM_STORE_CURRENT_VERSION = 1;
+  protected static final int SUBSCRIBE_TIMEOUT_IN_SECONDS = 60;
+  protected static final int THIN_CLIENT_RETRY_COUNT = 3;
+  protected static final long THIN_CLIENT_RETRY_BACKOFF_MS = 10000;
 
   private static final long DEFAULT_REFRESH_INTERVAL_IN_SECONDS = 60;
   private static final Logger logger = Logger.getLogger(NativeMetadataRepository.class);

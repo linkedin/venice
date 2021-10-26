@@ -100,7 +100,10 @@ public class ThinClientMetaStoreBasedRepository extends NativeMetadataRepository
     return storeClientMap.computeIfAbsent(storeName, k -> {
       ClientConfig<StoreMetaValue> clonedClientConfig = ClientConfig.cloneConfig(clientConfig)
           .setStoreName(VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName))
-          .setSpecificValueClass(StoreMetaValue.class);
+          .setSpecificValueClass(StoreMetaValue.class)
+          .setRetryOnAllErrors(true)
+          .setRetryCount(THIN_CLIENT_RETRY_COUNT)
+          .setRetryBackOffInMs(THIN_CLIENT_RETRY_BACKOFF_MS);
       return ClientFactory.getAndStartSpecificAvroClient(clonedClientConfig);
     });
   }

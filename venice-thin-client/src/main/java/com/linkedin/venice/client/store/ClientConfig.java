@@ -43,6 +43,9 @@ public class ClientConfig<T extends SpecificRecord> {
   private int alwaysOnDeserializerQueueCapacity = 10000;
   private boolean useFastAvro = true;
   private boolean retryOnRouterError = false;
+  private boolean retryOnAllErrors = false;
+  private int retryCount = 1;
+  private long retryBackOffInMs = 0;
   private boolean useBlackHoleDeserializer = false;
   private boolean reuseObjectsForSerialization = false;
 
@@ -93,6 +96,9 @@ public class ClientConfig<T extends SpecificRecord> {
         .setAlwaysOnDeserializerQueueCapacity(config.getAlwaysOnDeserializerQueueCapacity())
         .setUseFastAvro(config.isUseFastAvro())
         .setRetryOnRouterError(config.isRetryOnRouterErrorEnabled())
+        .setRetryOnAllErrors(config.isRetryOnAllErrorsEnabled())
+        .setRetryCount(config.getRetryCount())
+        .setRetryBackOffInMs(config.getRetryBackOffInMs())
         .setUseBlackHoleDeserializer(config.isUseBlackHoleDeserializer())
         .setReuseObjectsForSerialization(config.isReuseObjectsForSerialization())
         // Security settings
@@ -330,6 +336,33 @@ public class ClientConfig<T extends SpecificRecord> {
 
   public boolean isRetryOnRouterErrorEnabled() {
     return retryOnRouterError;
+  }
+
+  public ClientConfig<T> setRetryOnAllErrors(boolean value) {
+    this.retryOnAllErrors = value;
+    return this;
+  }
+
+  public boolean isRetryOnAllErrorsEnabled() {
+    return retryOnAllErrors;
+  }
+
+  public ClientConfig<T> setRetryCount(int retryCount) {
+    this.retryCount = retryCount;
+    return this;
+  }
+
+  public int getRetryCount() {
+    return retryCount;
+  }
+
+  public ClientConfig<T> setRetryBackOffInMs(long retryBackOffInMs) {
+    this.retryBackOffInMs = retryBackOffInMs;
+    return this;
+  }
+
+  public long getRetryBackOffInMs() {
+    return retryBackOffInMs;
   }
 
   public boolean isUseBlackHoleDeserializer() {

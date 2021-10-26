@@ -34,7 +34,7 @@ public class ClientFactory {
 
     AvroGenericStoreClient<K, V> client;
 
-    if (clientConfig.isRetryOnRouterErrorEnabled()) {
+    if (clientConfig.isRetryOnRouterErrorEnabled() || clientConfig.isRetryOnAllErrorsEnabled()) {
       client = new RetriableStoreClient<>(internalClient, clientConfig);
     } else {
       client = new StatTrackingStoreClient<>(internalClient, clientConfig);
@@ -55,7 +55,7 @@ public class ClientFactory {
 
     AvroSpecificStoreClient<K, V> client;
 
-    if (clientConfig.isRetryOnRouterErrorEnabled()) {
+    if (clientConfig.isRetryOnRouterErrorEnabled() || clientConfig.isRetryOnAllErrorsEnabled()) {
       client = new SpecificRetriableStoreClient<>(avroClient, clientConfig);
     } else {
       client = new SpecificStatTrackingStoreClient<>(avroClient, clientConfig);
