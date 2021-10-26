@@ -36,6 +36,7 @@ import com.linkedin.venice.exceptions.InvalidVeniceSchemaException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.exceptions.VeniceNoClusterException;
+import com.linkedin.venice.exceptions.VeniceNoHelixResourceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.exceptions.VeniceRetriableException;
 import com.linkedin.venice.exceptions.VeniceStoreAlreadyExistsException;
@@ -3878,37 +3879,37 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         Store store = getStore(clusterName, storeName);
         int versionNumber = Version.parseVersionFromVersionTopicName(kafkaTopic);
 
-        OfflinePushStatusInfo offlinePushStatusInfo = getOfflinePushStatusInfo(clusterName, kafkaTopic, incrementalPushVersion, monitor, store, versionNumber);
-
-        if (incrementalPushVersion.isPresent() && !store.isApplyTargetVersionFilterForIncPush()
-            && store.getVersion(versionNumber).get().getIncrementalPushPolicy().equals(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME)
-            && !offlinePushStatusInfo.getExecutionStatus().equals(ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED)) {
-            List<OfflinePushStatusInfo> list = new ArrayList<>();
-            list.add(offlinePushStatusInfo);
-            // check other store versions if current version has not yet received EOIP
-            for (Version version : store.getVersions()) {
-                if (version.getNumber() == versionNumber || !version.getIncrementalPushPolicy().equals(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME)) {
-                    continue;
-                }
-                String kafkaTopicToTry = Version.composeKafkaTopic(storeName, version.getNumber());
-                OfflinePushStatusInfo offlinePushStatusInfoOtherVersion = getOfflinePushStatusInfo(clusterName, kafkaTopicToTry, incrementalPushVersion, monitor, store, version.getNumber());
-                if (offlinePushStatusInfoOtherVersion.getExecutionStatus().equals(ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED)
-                    || offlinePushStatusInfoOtherVersion.getExecutionStatus().equals(ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED)) {
-                    list.add(offlinePushStatusInfoOtherVersion);
-                }
-            }
-            if (list.size() > 0) {
-                // higher priority of EOIP followed by SOIP and NOT_CREATED
-                list.sort(((o1, o2) -> {
-                    int val1 = o1.getExecutionStatus().getValue();
-                    int val2 = o2.getExecutionStatus().getValue();
-                    return val2 - val1;
-                }));
-                return list.get(0);
-            }
+        if (!incrementalPushVersion.isPresent()) {
+         return getOfflinePushStatusInfo(clusterName, kafkaTopic, incrementalPushVersion, monitor, store, versionNumber);
         }
 
-        return offlinePushStatusInfo;
+        List<OfflinePushStatusInfo> list = new ArrayList<>();
+        // for incremental for push status. check all the incremental enabled versions of the store
+        for (Version version : store.getVersions()) {
+            if (!version.isIncrementalPushEnabled() || version.getStatus() == ERROR) {
+                continue;
+            }
+            try {
+                String kafkaTopicToTry = Version.composeKafkaTopic(storeName, version.getNumber());
+                OfflinePushStatusInfo offlinePushStatusInfoOtherVersion = getOfflinePushStatusInfo(clusterName, kafkaTopicToTry, incrementalPushVersion, monitor, store, version.getNumber());
+                list.add(offlinePushStatusInfoOtherVersion);
+            } catch (VeniceNoHelixResourceException e) {
+                logger.warn("Resource for store " + storeName + " version " + version + " not found!", e);
+            }
+
+        }
+
+        if (list.size() == 0) {
+            logger.warn("Could not find any valid incremental push status for store, returning NOT_CREATED status. " + storeName);
+            return new OfflinePushStatusInfo(ExecutionStatus.NOT_CREATED, Optional.of("Offline job hasn't been created yet."));
+        }
+        // higher priority of EOIP followed by SOIP and NOT_CREATED
+        list.sort(((o1, o2) -> {
+            int val1 = o1.getExecutionStatus().getValue();
+            int val2 = o2.getExecutionStatus().getValue();
+            return val2 - val1;
+        }));
+        return list.get(0);
     }
 
     private OfflinePushStatusInfo getOfflinePushStatusInfo(String clusterName, String kafkaTopic,
