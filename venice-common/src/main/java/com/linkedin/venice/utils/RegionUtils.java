@@ -35,9 +35,9 @@ public class RegionUtils {
 
   public static String getRegionSpecificMetricPrefix(String localRegionName, String regionName) {
     if (Objects.equals(localRegionName.toLowerCase(), regionName.toLowerCase())) {
-      return regionName + "_local";
+      return localRegionName + "_to_" + regionName + "_local";
     } else {
-      return regionName + "_remote";
+      return localRegionName + "_to_" + regionName + "_remote";
     }
   }
 }
