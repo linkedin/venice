@@ -11,12 +11,16 @@ public class LiveClusterConfig {
   @JsonProperty(ConfigKeys.SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND)
   private Map<String, Integer> serverKafkaFetchQuotaRecordsPerSecond;
 
+  @JsonProperty(ConfigKeys.ALLOW_STORE_MIGRATION)
+  private boolean storeMigrationAllowed = true;
+
   public LiveClusterConfig() {}
 
   public LiveClusterConfig(LiveClusterConfig clone) {
     if (clone.getServerKafkaFetchQuotaRecordsPerSecond() != null) {
       serverKafkaFetchQuotaRecordsPerSecond = new HashMap<>(clone.getServerKafkaFetchQuotaRecordsPerSecond());
     }
+    storeMigrationAllowed = clone.storeMigrationAllowed;
   }
 
   // ------------------------ Getter/Setter for Jackson to ser/de LiveClusterConfig ------------------------
@@ -27,6 +31,14 @@ public class LiveClusterConfig {
 
   public void setServerKafkaFetchQuotaRecordsPerSecond(Map<String, Integer> serverKafkaFetchQuotaRecordsPerSecond) {
     this.serverKafkaFetchQuotaRecordsPerSecond = serverKafkaFetchQuotaRecordsPerSecond;
+  }
+
+  public boolean isStoreMigrationAllowed() {
+    return storeMigrationAllowed;
+  }
+
+  public void setStoreMigrationAllowed(boolean storeMigrationAllowed) {
+    this.storeMigrationAllowed = storeMigrationAllowed;
   }
 
   // -------------------------------------- Default Values for config --------------------------------------

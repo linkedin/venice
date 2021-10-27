@@ -2,22 +2,10 @@ package com.linkedin.venice.controllerapi;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.kafka.protocol.Update;
-import com.linkedin.venice.meta.BackupStrategy;
-import com.linkedin.venice.meta.BufferReplayPolicy;
-import com.linkedin.venice.meta.DataReplicationPolicy;
-import com.linkedin.venice.meta.ETLStoreConfig;
-import com.linkedin.venice.meta.HybridStoreConfig;
-import com.linkedin.venice.meta.IncrementalPushPolicy;
-import com.linkedin.venice.meta.PartitionerConfig;
-import com.linkedin.venice.meta.StoreInfo;
 import java.io.IOException;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Optional;
 
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
@@ -51,7 +39,23 @@ public class UpdateClusterConfigQueryParams extends QueryParams {
     });
   }
 
+  public UpdateClusterConfigQueryParams setStoreMigrationAllowed(boolean storeMigrationAllowed) {
+    return putBoolean(ALLOW_STORE_MIGRATION, storeMigrationAllowed);
+  }
+
+  public Optional<Boolean> getStoreMigrationAllowed() {
+    return getBoolean(ALLOW_STORE_MIGRATION);
+  }
+
   //***************** above this line are getters and setters *****************
+
+  private UpdateClusterConfigQueryParams putBoolean(String name, boolean value) {
+    return (UpdateClusterConfigQueryParams) add(name, value);
+  }
+
+  private Optional<Boolean> getBoolean(String name) {
+    return Optional.ofNullable(params.get(name)).map(Boolean::valueOf);
+  }
 
   private UpdateClusterConfigQueryParams putStringMap(String name, Map<String, String> value) {
     try {

@@ -32,7 +32,6 @@ import java.util.concurrent.TimeoutException;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.apache.http.client.utils.URLEncodedUtils;
-import org.apache.kafka.common.protocol.types.Field;
 import org.apache.log4j.Logger;
 
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
@@ -384,6 +383,10 @@ public class ControllerClient implements Closeable {
         .add(NAME, storeName)
         .add(VERSION, versionNumber);
     return request(ControllerRoute.DEMATERIALIZE_METADATA_STORE_VERSION, params, ControllerResponse.class);
+  }
+
+  public StoreMigrationResponse isStoreMigrationAllowed() {
+    return request(ControllerRoute.STORE_MIGRATION_ALLOWED, newParams(), StoreMigrationResponse.class);
   }
 
   public StoreMigrationResponse migrateStore(String storeName, String destClusterName) {
@@ -880,8 +883,11 @@ public class ControllerClient implements Closeable {
     return makeErrorResponse(message, lastException, D2ServiceDiscoveryResponse.class);
   }
 
-  public ControllerResponse updateClusterConfig(String clusterName, UpdateClusterConfigQueryParams queryParams) {
-    QueryParams params = addCommonParams(queryParams).add(CLUSTER, clusterName);
+  public ControllerResponse updateClusterConfig(UpdateClusterConfigQueryParams queryParams) {
+    if (queryParams.getNameValuePairs().size() == 0) {
+      throw new VeniceException("UpdateClusterConfig command didn't change any specific cluster config");
+    }
+    QueryParams params = addCommonParams(queryParams);
     return request(ControllerRoute.UPDATE_CLUSTER_CONFIG, params, ControllerResponse.class);
   }
 

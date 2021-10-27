@@ -664,8 +664,7 @@ public class AdminTool {
   private static void updateClusterConfig(CommandLine cmd) {
     UpdateClusterConfigQueryParams params = getUpdateClusterConfigQueryParams(cmd);
 
-    String clusterName = getRequiredArgument(cmd, Arg.CLUSTER, Command.UPDATE_CLUSTER_CONFIG);
-    ControllerResponse response = controllerClient.updateClusterConfig(clusterName, params);
+    ControllerResponse response = controllerClient.updateClusterConfig(params);
     printSuccess(response);
   }
 
@@ -742,6 +741,11 @@ public class AdminTool {
     String quotaForFabricStr = getOptionalArgument(cmd, Arg.SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND);
     if (quotaForFabricStr != null) {
       params.setServerKafkaFetchQuotaRecordsPerSecondForRegion(fabric, Long.parseLong(quotaForFabricStr));
+    }
+
+    String storeMigrationAllowed = getOptionalArgument(cmd, Arg.ALLOW_STORE_MIGRATION);
+    if (storeMigrationAllowed != null) {
+      params.setStoreMigrationAllowed(Boolean.parseBoolean(storeMigrationAllowed));
     }
 
     return params;
@@ -1033,6 +1037,22 @@ public class AdminTool {
     }
   }
 
+  private static void checkWhetherStoreMigrationIsAllowed(ControllerClient controllerClient) {
+    StoreMigrationResponse response = controllerClient.isStoreMigrationAllowed();
+    if (response.isError()) {
+      throw new VeniceException("Could not check whether store migration is allowed " + response.getError());
+    }
+    if (!response.isStoreMigrationAllowed()) {
+      throw new VeniceException("Cluster " + controllerClient.getClusterName()
+          + " does not allow store migration operations!");
+    }
+  }
+
+  private static void checkPreconditionForStoreMigration(ControllerClient srcClient, ControllerClient destClient) {
+    checkWhetherStoreMigrationIsAllowed(srcClient);
+    checkWhetherStoreMigrationIsAllowed(destClient);
+  }
+
   private static void migrateStore(CommandLine cmd) {
     String veniceUrl = getRequiredArgument(cmd, Arg.URL);
     String storeName = getRequiredArgument(cmd, Arg.STORE);
@@ -1043,6 +1063,8 @@ public class AdminTool {
     }
 
     ControllerClient srcControllerClient = new ControllerClient(srcClusterName, veniceUrl, sslFactory);
+    ControllerClient destControllerClient = new ControllerClient(destClusterName, veniceUrl, sslFactory);
+    checkPreconditionForStoreMigration(srcControllerClient, destControllerClient);
 
     StoreResponse storeResponse = srcControllerClient.getStore(storeName);
     if (storeResponse.isError()) {
@@ -1136,6 +1158,8 @@ public class AdminTool {
 
     ControllerClient srcControllerClient = new ControllerClient(srcClusterName, veniceUrl, sslFactory);
     ControllerClient destControllerClient = new ControllerClient(destClusterName, veniceUrl, sslFactory);
+    checkPreconditionForStoreMigration(srcControllerClient, destControllerClient);
+
     Map<String, String> childClusterMap = destControllerClient.listChildControllers(destClusterName).getChildClusterMap();
     if (childClusterMap == null) {
       // This is a controller in single datacenter setup
@@ -1298,6 +1322,7 @@ public class AdminTool {
 
     ControllerClient srcControllerClient = new ControllerClient(srcClusterName, veniceUrl, sslFactory);
     ControllerClient destControllerClient = new ControllerClient(destClusterName, veniceUrl, sslFactory);
+    checkPreconditionForStoreMigration(srcControllerClient, destControllerClient);
 
     // Check arguments
     if (srcControllerClient.getStore(storeName).getStore() == null) {
@@ -1403,6 +1428,7 @@ public class AdminTool {
 
     ControllerClient srcControllerClient = new ControllerClient(srcClusterName, veniceUrl, sslFactory);
     ControllerClient destControllerClient = new ControllerClient(destClusterName, veniceUrl, sslFactory);
+    checkPreconditionForStoreMigration(srcControllerClient, destControllerClient);
 
     // Make sure destClusterName does agree with the cluster discovery result
     String clusterDiscovered = destControllerClient.discoverCluster(storeName).getCluster();

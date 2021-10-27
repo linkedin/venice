@@ -4,6 +4,8 @@ package com.linkedin.venice.controllerapi;
 public class StoreMigrationResponse extends ControllerResponse {
   private String srcClusterName;
 
+  private boolean storeMigrationAllowed = true;
+
   public String getSrcClusterName() {
     return srcClusterName;
   }
@@ -12,6 +14,13 @@ public class StoreMigrationResponse extends ControllerResponse {
     this.srcClusterName = srcClusterName;
   }
 
+  public boolean isStoreMigrationAllowed() {
+    return storeMigrationAllowed;
+  }
+
+  public void setStoreMigrationAllowed(boolean storeMigrationAllowed) {
+    this.storeMigrationAllowed = storeMigrationAllowed;
+  }
 
   @Override
   public String toString() {

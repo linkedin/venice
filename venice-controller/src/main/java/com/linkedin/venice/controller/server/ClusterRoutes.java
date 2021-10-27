@@ -3,6 +3,7 @@ package com.linkedin.venice.controller.server;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controllerapi.ControllerResponse;
+import com.linkedin.venice.controllerapi.StoreMigrationResponse;
 import com.linkedin.venice.controllerapi.UpdateClusterConfigQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
 import java.util.Map;
@@ -55,6 +56,23 @@ public class ClusterRoutes  extends AbstractRoute {
         } catch (Exception e) {
           veniceResponse.setError("Failed when updating configs for cluster: " + clusterName + ". Exception type: " + e.getClass().toString() + ". Detailed message = " + e.getMessage());
         }
+      }
+    };
+  }
+
+  public Route isStoreMigrationAllowed(Admin admin) {
+    return new VeniceRouteHandler<StoreMigrationResponse>(StoreMigrationResponse.class) {
+      @Override
+      public void internalHandle(Request request, StoreMigrationResponse veniceResponse) {
+        // Only allow whitelist users to run this command
+        if (!isWhitelistUsers(request)) {
+          veniceResponse.setError("Only admin users are allowed to run " + request.url());
+          return;
+        }
+        AdminSparkServer.validateParams(request, STORE_MIGRATION_ALLOWED.getParams(), admin);
+        String clusterName = request.queryParams(CLUSTER);
+        veniceResponse.setCluster(clusterName);
+        veniceResponse.setStoreMigrationAllowed(admin.isStoreMigrationAllowed(clusterName));
       }
     };
   }

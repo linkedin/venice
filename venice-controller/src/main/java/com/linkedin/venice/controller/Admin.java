@@ -24,7 +24,6 @@ import com.linkedin.venice.pushstatushelper.PushStatusStoreRecordDeleter;
 import com.linkedin.venice.schema.DerivedSchemaEntry;
 import com.linkedin.venice.schema.ReplicationMetadataVersionId;
 import com.linkedin.venice.schema.SchemaEntry;
-
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
 import com.linkedin.venice.status.protocol.BatchJobHeartbeatKey;
 import com.linkedin.venice.status.protocol.BatchJobHeartbeatValue;
@@ -107,6 +106,8 @@ public interface Admin extends AutoCloseable, Closeable {
 
     void createStore(String clusterName, String storeName, String owner, String keySchema, String valueSchema,
                      boolean isSystemStore, Optional<String> accessPermissions);
+
+    boolean isStoreMigrationAllowed(String srcClusterName);
 
     void migrateStore(String srcClusterName, String destClusterName, String storeName);
 

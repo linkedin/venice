@@ -154,4 +154,10 @@ public class ControllerApiConstants {
    * the config value filter too.
    */
   public static final String STORE_CONFIG_VALUE_FILTER = "store_config_value_filter";
+
+  /**
+   * Whether stores are allowed to be migrated from/to a specific cluster.
+   * The value for this config is read from cluster configs in Zk.
+   */
+  public static final String ALLOW_STORE_MIGRATION = "allow.store.migration";
 }
