@@ -7,6 +7,7 @@ import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.security.SSLFactory;
 
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
@@ -98,6 +99,47 @@ public class D2ControllerClient extends ControllerClient{
   public static D2ServiceDiscoveryResponse discoverCluster(D2Client d2Client, String d2ServiceName, String storeName) {
     return d2ClientGet(d2Client, d2ServiceName, ControllerRoute.CLUSTER_DISCOVERY.getPath(),
         getQueryParamsToDiscoverCluster(storeName), D2ServiceDiscoveryResponse.class);
+  }
+
+  /**
+   * Here, if discovery fails, we will throw a VeniceException.
+   */
+
+  public static D2ServiceDiscoveryResponse discoverCluster(String d2ZkHost, String d2ServiceName, String storeName) throws VeniceException {
+    D2Client d2Client = new D2ClientBuilder()
+        .setZkHosts(d2ZkHost)
+        .build();
+    try {
+      D2ClientUtils.startClient(d2Client);
+      D2ServiceDiscoveryResponse discoResponse = discoverCluster(d2Client, d2ServiceName, storeName);
+      if (discoResponse.isError())
+        throw new VeniceException(discoResponse.getError());
+      return discoResponse;
+    }
+    finally {
+      D2ClientUtils.shutdownClient(d2Client);
+    }
+  }
+
+  public static D2ControllerClient discoverAndConstructControllerClient(String storeName, String d2ServiceName, String d2ZkHost) {
+    return D2ControllerClient.constructClusterControllerClient(storeName, d2ServiceName, d2ZkHost, Optional.empty());
+  }
+
+  public static D2ControllerClient discoverAndConstructControllerClient(String storeName, String d2ServiceName, String d2ZkHost, Optional<SSLFactory> sslFactory) {
+    D2ServiceDiscoveryResponse discoResponse = discoverCluster(d2ZkHost, d2ServiceName, storeName);
+    if (!clusterToClientMapContains(discoResponse.getCluster(), d2ServiceName));
+      addClusterToClientMapEntry(discoResponse.getCluster(), d2ServiceName, new D2ControllerClient(d2ServiceName, discoResponse.getCluster(), d2ZkHost, sslFactory));
+    return constructClusterControllerClient(discoResponse.getCluster(), d2ServiceName, d2ZkHost, sslFactory);
+  }
+
+  public static D2ControllerClient constructClusterControllerClient(String clusterName, String d2ServiceName, String d2ZkHost) {
+    return D2ControllerClient.constructClusterControllerClient(clusterName, d2ServiceName, d2ZkHost, Optional.empty());
+  }
+
+  public static D2ControllerClient constructClusterControllerClient(String clusterName, String d2ServiceName, String d2ZkHost, Optional<SSLFactory> sslFactory) {
+    if (!clusterToClientMapContains(clusterName, d2ServiceName))
+      addClusterToClientMapEntry(clusterName, d2ServiceName, new D2ControllerClient(d2ServiceName, clusterName, d2ZkHost, sslFactory));
+    return (D2ControllerClient) getClusterToClientMap().get(clusterName);
   }
 
   @Override
