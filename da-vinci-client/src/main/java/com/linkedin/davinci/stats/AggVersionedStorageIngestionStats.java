@@ -657,14 +657,17 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
       registerSensor(LEADER_STALLED_HYBRID_INGESTION_METRIC_NAME,
           new IngestionStatsGauge(this, () -> getStats().getLeaderStalledHybridIngestion(), 0));
 
-      for (Map.Entry<Integer, String> entry : getStats().ingestionTask.getServerConfig().getKafkaClusterIdToAliasMap().entrySet()) {
-        String regionNamePrefix = RegionUtils.getRegionSpecificMetricPrefix(getStats().ingestionTask.getServerConfig().getRegionName(), entry.getValue());
-        registerSensor(regionNamePrefix + "_rt_lag",
-            new IngestionStatsGauge(this, () -> (double) getStats().getRegionHybridOffsetLag(entry.getKey()), 0));
-        registerSensor(regionNamePrefix + "_rt_bytes_consumed",
-            new IngestionStatsGauge(this, () -> getStats().getRegionHybridBytesConsumed(entry.getKey()), 0));
-        registerSensor(regionNamePrefix + "_rt_records_consumed",
-            new IngestionStatsGauge(this, () -> getStats().getRegionHybridRecordsConsumed(entry.getKey()), 0));
+
+      if (getStats().ingestionTask.isActiveActiveReplicationEnabled()) {
+        for (Map.Entry<Integer, String> entry : getStats().ingestionTask.getServerConfig().getKafkaClusterIdToAliasMap().entrySet()) {
+          String regionNamePrefix = RegionUtils.getRegionSpecificMetricPrefix(getStats().ingestionTask.getServerConfig().getRegionName(), entry.getValue());
+          registerSensor(regionNamePrefix + "_rt_lag",
+              new IngestionStatsGauge(this, () -> (double) getStats().getRegionHybridOffsetLag(entry.getKey()), 0));
+          registerSensor(regionNamePrefix + "_rt_bytes_consumed",
+              new IngestionStatsGauge(this, () -> getStats().getRegionHybridBytesConsumed(entry.getKey()), 0));
+          registerSensor(regionNamePrefix + "_rt_records_consumed",
+              new IngestionStatsGauge(this, () -> getStats().getRegionHybridRecordsConsumed(entry.getKey()), 0));
+        }
       }
     }
 

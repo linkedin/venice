@@ -22,6 +22,7 @@ import com.linkedin.venice.exceptions.VeniceMessageException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.TopicManagerRepository;
+import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.Delete;
 import com.linkedin.venice.kafka.protocol.GUID;
@@ -31,6 +32,7 @@ import com.linkedin.venice.kafka.protocol.TopicSwitch;
 import com.linkedin.venice.kafka.protocol.Update;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
+import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.kafka.validation.ProducerTracker;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
@@ -741,6 +743,58 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   @Override
   protected boolean isTransientRecordBufferUsed() {
     return true;
+  }
+
+  @Override
+  public long getRegionHybridOffsetLag(int regionId) {
+    Optional<StoreVersionState> svs = storageMetadataService.getStoreVersionState(kafkaVersionTopic);
+    if (!svs.isPresent()) {
+      /**
+       * Store version metadata is created for the first time when the first START_OF_PUSH message is processed;
+       * however, the ingestion stat is created the moment an ingestion task is created, so there is a short time
+       * window where there is no version metadata, which is not an error.
+       */
+      return 0;
+    }
+
+    if (partitionConsumptionStateMap.isEmpty()) {
+      /**
+       * Partition subscription happens after the ingestion task and stat are created, it's not an error.
+       */
+      return 0;
+    }
+
+    long offsetLag = partitionConsumptionStateMap.values().stream()
+        .filter(LeaderFollowerStoreIngestionTask.LEADER_OFFSET_LAG_FILTER)
+        // Leader consumption upstream RT offset is only available in leader subPartition
+        .filter(pcs -> amplificationAdapter.isLeaderSubPartition(pcs.getPartition()))
+        // the lag is (latest fabric RT offset - consumed fabric RT offset)
+        .mapToLong((pcs) -> {
+          String currentLeaderTopic = pcs.getOffsetRecord().getLeaderTopic();
+          if (currentLeaderTopic == null || currentLeaderTopic.isEmpty() || !Version.isRealTimeTopic(currentLeaderTopic)) {
+            // Leader topic not found, indicating that it is VT topic.
+            return 0;
+          }
+          String kafkaSourceAddress = kafkaClusterIdToUrlMap.get(regionId);
+          // This storage node does not register with the given region ID.
+          if (kafkaSourceAddress == null) {
+            return 0;
+          }
+          KafkaConsumerWrapper kafkaConsumer = consumerMap.get(kafkaSourceAddress);
+          // Consumer might not existed in the map after the consumption state is created, but before attaching the
+          // corresponding consumer in consumerMap.
+          if (kafkaConsumer != null) {
+            Optional<Long> offsetLagOptional = kafkaConsumer.getOffsetLag(currentLeaderTopic, pcs.getUserPartition());
+            if (offsetLagOptional.isPresent()) {
+              return offsetLagOptional.get();
+            }
+          }
+          // Fall back to calculate offset lag in the old way
+          return (cachedKafkaMetadataGetter.getOffset(kafkaSourceAddress, currentLeaderTopic, pcs.getUserPartition()) - 1)
+              - pcs.getLeaderConsumedUpstreamRTOffset(kafkaSourceAddress);
+        }).sum();
+
+    return minZeroLag(offsetLag);
   }
 
 }

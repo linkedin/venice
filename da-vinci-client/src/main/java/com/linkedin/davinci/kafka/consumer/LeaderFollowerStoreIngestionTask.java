@@ -1789,7 +1789,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     return getReplicationLag(BATCH_REPLICATION_LAG_FILTER);
   }
 
-  private static final Predicate<? super PartitionConsumptionState> LEADER_OFFSET_LAG_FILTER = pcs -> pcs.getLeaderFollowerState().equals(LEADER);
+  public static final Predicate<? super PartitionConsumptionState> LEADER_OFFSET_LAG_FILTER = pcs -> pcs.getLeaderFollowerState().equals(LEADER);
   private static final Predicate<? super PartitionConsumptionState> BATCH_LEADER_OFFSET_LAG_FILTER = pcs ->
       !pcs.isEndOfPushReceived() && pcs.getLeaderFollowerState().equals(LEADER);
   private static final Predicate<? super PartitionConsumptionState> HYBRID_LEADER_OFFSET_LAG_FILTER = pcs ->
@@ -1954,54 +1954,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
   @Override
   public long getRegionHybridOffsetLag(int regionId) {
-    Optional<StoreVersionState> svs = storageMetadataService.getStoreVersionState(kafkaVersionTopic);
-    if (!svs.isPresent()) {
-      /**
-       * Store version metadata is created for the first time when the first START_OF_PUSH message is processed;
-       * however, the ingestion stat is created the moment an ingestion task is created, so there is a short time
-       * window where there is no version metadata, which is not an error.
-       */
-      return 0;
-    }
-
-    if (partitionConsumptionStateMap.isEmpty()) {
-      /**
-       * Partition subscription happens after the ingestion task and stat are created, it's not an error.
-       */
-      return 0;
-    }
-
-    long offsetLag = partitionConsumptionStateMap.values().stream()
-        .filter(LEADER_OFFSET_LAG_FILTER)
-        // Leader consumption upstream RT offset is only available in leader subPartition
-        .filter(pcs -> amplificationAdapter.isLeaderSubPartition(pcs.getPartition()))
-        // the lag is (latest fabric RT offset - consumed fabric RT offset)
-        .mapToLong((pcs) -> {
-          String currentLeaderTopic = pcs.getOffsetRecord().getLeaderTopic();
-          if (currentLeaderTopic == null || currentLeaderTopic.isEmpty() || !Version.isRealTimeTopic(currentLeaderTopic)) {
-            // Leader topic not found, indicating that it is VT topic.
-            return 0;
-          }
-          String kafkaSourceAddress = kafkaClusterIdToUrlMap.get(regionId);
-          // This storage node does not register with the given region ID.
-          if (kafkaSourceAddress == null) {
-            return 0;
-          }
-          KafkaConsumerWrapper kafkaConsumer = consumerMap.get(kafkaSourceAddress);
-          // Consumer might not existed in the map after the consumption state is created, but before attaching the
-          // corresponding consumer in consumerMap.
-          if (kafkaConsumer != null) {
-            Optional<Long> offsetLagOptional = kafkaConsumer.getOffsetLag(currentLeaderTopic, pcs.getUserPartition());
-            if (offsetLagOptional.isPresent()) {
-              return offsetLagOptional.get();
-            }
-          }
-          // Fall back to calculate offset lag in the old way
-          return (cachedKafkaMetadataGetter.getOffset(kafkaSourceAddress, currentLeaderTopic, pcs.getUserPartition()) - 1)
-                - pcs.getLeaderConsumedUpstreamRTOffset(kafkaSourceAddress);
-        }).sum();
-
-    return minZeroLag(offsetLag);
+    return StatsErrorCode.ACTIVE_ACTIVE_NOT_ENABLED.code;
   }
 
   /**
