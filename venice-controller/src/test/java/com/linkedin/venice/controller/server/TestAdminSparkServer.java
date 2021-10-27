@@ -26,6 +26,7 @@ import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.controllerapi.VersionResponse;
 import com.linkedin.venice.controllerapi.routes.AdminCommandExecutionResponse;
+import com.linkedin.venice.httpclient.HttpClientUtils;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.meta.InstanceStatus;
@@ -33,7 +34,6 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.StoreStatus;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.httpclient.HttpClientUtils;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.EncodingUtils;
 import com.linkedin.venice.utils.TestUtils;
@@ -62,6 +62,7 @@ import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
+
 public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
   /**
    * Seems that Helix has limit on the number of resource each node is able to handle.
@@ -75,8 +76,10 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
     Properties extraProperties = new Properties();
 
     extraProperties.put(ConfigKeys.CONTROLLER_JETTY_CONFIG_OVERRIDE_PREFIX + "org.eclipse.jetty.server.Request.maxFormContentSize", ByteUtils.BYTES_PER_MB);
-    // Set topic cleanup interval to a large number to test getDeletableStoreTopics.
+    // Set topic cleanup interval to a large number and min number of unused topic to preserve to 1 to test
+    // getDeletableStoreTopics deterministically.
     extraProperties.put(ConfigKeys.TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS, Long.toString(TimeUnit.DAYS.toMillis(7)));
+    extraProperties.put(ConfigKeys.MIN_NUMBER_OF_UNUSED_KAFKA_TOPICS_TO_PRESERVE, Integer.toString(1));
     super.setUp(false, Optional.empty(), extraProperties);
   }
 
@@ -820,29 +823,42 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
 
   @Test(timeOut = TEST_TIMEOUT)
   public void controllerCanGetDeletableStoreTopics() {
+    // The parent controller here is sharing the same kafka as child controllers.
     String storeName = TestUtils.getUniqueString("canGetDeletableStoreTopics");
+    ControllerClient parentControllerClient =
+        new ControllerClient(cluster.getClusterName(), parentController.getControllerUrl());
     try {
-      Assert.assertFalse(controllerClient.createNewStore(storeName, "test", "\"string\"", "\"string\"").isError());
+      Assert.assertFalse(parentControllerClient.createNewStore(storeName, "test", "\"string\"", "\"string\"").isError());
       String metaSystemStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName);
       // Add some system store and RT topics in the mix to make sure the request can still return the right values.
-      Assert.assertFalse(controllerClient.emptyPush(metaSystemStoreName, "meta-store-push-1", 1024000L).isError());
-      Assert.assertFalse(controllerClient.emptyPush(storeName, "push-1", 1024000L).isError());
-      Assert.assertFalse(controllerClient.emptyPush(storeName, "push-2", 1024000L).isError());
-      Assert.assertFalse(controllerClient.emptyPush(storeName, "push-3", 1024000L).isError());
-
-      TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
-        StoreResponse storeResponse = controllerClient.getStore(storeName);
-        Assert.assertEquals(storeResponse.getStore().getVersions().size(), 2);
+      Assert.assertFalse(parentControllerClient.emptyPush(metaSystemStoreName, "meta-store-push-1", 1024000L).isError());
+      Assert.assertFalse(parentControllerClient.emptyPush(storeName, "push-1", 1024000L).isError());
+      // Store version topic v1 should be truncated after polling for completion by parent controller.
+      TestUtils.waitForNonDeterministicPushCompletion(Version.composeKafkaTopic(storeName, 1),
+          parentControllerClient, 10, TimeUnit.SECONDS, Optional.empty());
+      Assert.assertFalse(parentControllerClient.emptyPush(storeName, "push-2", 1024000L).isError());
+      TestUtils.waitForNonDeterministicPushCompletion(Version.composeKafkaTopic(storeName, 2),
+          controllerClient, 10, TimeUnit.SECONDS, Optional.empty());
+      Assert.assertFalse(parentControllerClient.deleteOldVersion(storeName, 1).isError());
+      MultiStoreTopicsResponse parentMultiStoreTopicResponse = parentControllerClient.getDeletableStoreTopics();
+      Assert.assertFalse(parentMultiStoreTopicResponse.isError());
+      Assert.assertTrue(parentMultiStoreTopicResponse.getTopics().contains(Version.composeKafkaTopic(storeName, 1)));
+      Assert.assertFalse(parentMultiStoreTopicResponse.getTopics().contains(Version.composeKafkaTopic(storeName, 2)));
+      Assert.assertFalse(parentMultiStoreTopicResponse.getTopics().contains(Version.composeKafkaTopic(metaSystemStoreName, 1)));
+      Assert.assertFalse(parentMultiStoreTopicResponse.getTopics().contains(Version.composeRealTimeTopic(metaSystemStoreName)));
+      // Child fabric should return the same result since they are sharing kafka. Wait for resource of v1 to be cleaned
+      // up since for child fabric we only consider a topic is deletable if its resource is deleted.
+      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+        Assert.assertFalse(cluster.getMasterVeniceController().getVeniceAdmin().isResourceStillAlive(
+            Version.composeKafkaTopic(storeName, 1)));
       });
-      MultiStoreTopicsResponse multiStoreTopicResponse = controllerClient.getDeletableStoreTopics();
-      Assert.assertFalse(multiStoreTopicResponse.isError());
-      Assert.assertTrue(multiStoreTopicResponse.getTopics().contains(Version.composeKafkaTopic(storeName, 1)));
-      Assert.assertFalse(multiStoreTopicResponse.getTopics().contains(Version.composeKafkaTopic(storeName, 2)));
-      Assert.assertFalse(multiStoreTopicResponse.getTopics().contains(Version.composeKafkaTopic(storeName, 3)));
-      Assert.assertFalse(multiStoreTopicResponse.getTopics().contains(Version.composeKafkaTopic(metaSystemStoreName, 1)));
-      Assert.assertFalse(multiStoreTopicResponse.getTopics().contains(Version.composeRealTimeTopic(metaSystemStoreName)));
+      MultiStoreTopicsResponse childMultiStoreTopicResponse = controllerClient.getDeletableStoreTopics();
+      Assert.assertFalse(childMultiStoreTopicResponse.isError());
+      Assert.assertTrue(childMultiStoreTopicResponse.getTopics().contains(Version.composeKafkaTopic(storeName, 1)));
+      Assert.assertFalse(childMultiStoreTopicResponse.getTopics().contains(Version.composeKafkaTopic(storeName, 2)));
     } finally {
-      deleteStore(storeName);
+      deleteStore(parentControllerClient, storeName);
+      parentControllerClient.close();
     }
   }
 
@@ -853,6 +869,10 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
   }
 
   private void deleteStore(String storeName) {
+    deleteStore(controllerClient, storeName);
+  }
+
+  private void deleteStore(ControllerClient controllerClient, String storeName) {
     controllerClient.enableStoreReadWrites(storeName, false);
     controllerClient.deleteStore(storeName);
   }
