@@ -9,6 +9,7 @@ import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
@@ -26,18 +27,22 @@ public class AbstractTestAdminSparkServer {
   protected VeniceControllerWrapper parentController;
   protected ZkServerWrapper parentZk;
 
-  public void setUp(boolean useParentRestEndpoint, Optional<AuthorizerService> authorizerService, Properties extraProperties) {
+  public void setUp(boolean useParentRestEndpoint, Optional<AuthorizerService> authorizerService,
+      Properties extraProperties) {
     cluster = ServiceFactory.getVeniceCluster(1, STORAGE_NODE_COUNT, 0, 1, 100, false, false, extraProperties);
 
     parentZk = ServiceFactory.getZkServer();
     parentController =
-        ServiceFactory.getVeniceParentController(cluster.getClusterName(), parentZk.getAddress(), cluster.getKafka(),
-            new VeniceControllerWrapper[]{cluster.getMasterVeniceController()}, false, authorizerService);
+        ServiceFactory.getVeniceParentController(new String[]{cluster.getClusterName()}, parentZk.getAddress(),
+            cluster.getKafka(), new VeniceControllerWrapper[]{cluster.getMasterVeniceController()}, null, false, 1,
+            new VeniceProperties(extraProperties), authorizerService);
 
     if (!useParentRestEndpoint) {
-      controllerClient =  ControllerClient.constructClusterControllerClient(cluster.getClusterName(), cluster.getAllControllersURLs());
+      controllerClient =
+          ControllerClient.constructClusterControllerClient(cluster.getClusterName(), cluster.getAllControllersURLs());
     } else {
-      controllerClient =  ControllerClient.constructClusterControllerClient(cluster.getClusterName(), parentController.getControllerUrl());
+      controllerClient = ControllerClient.constructClusterControllerClient(cluster.getClusterName(),
+          parentController.getControllerUrl());
     }
 
     TestUtils.waitForNonDeterministicCompletion(TEST_TIMEOUT, TimeUnit.MILLISECONDS,
@@ -45,9 +50,9 @@ public class AbstractTestAdminSparkServer {
   }
 
   public void tearDown() {
+    Utils.closeQuietlyWithErrorLogged(parentController);
     Utils.closeQuietlyWithErrorLogged(controllerClient);
     Utils.closeQuietlyWithErrorLogged(cluster);
-    Utils.closeQuietlyWithErrorLogged(parentController);
     Utils.closeQuietlyWithErrorLogged(parentZk);
   }
 }
