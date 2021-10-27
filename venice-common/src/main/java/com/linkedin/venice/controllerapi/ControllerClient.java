@@ -51,6 +51,29 @@ public class ControllerClient implements Closeable {
 
   private static final Map<String, ControllerClient> clusterToClientMap = new VeniceConcurrentHashMap<>();
 
+  /**
+   * The key to find a cluster in clusterToClientMap is clusterName + url,
+   * where url is either a set of discoveryUrls or a D2 service name.
+   */
+
+  public static Map<String, ControllerClient> getClusterToClientMap() { return Collections.unmodifiableMap(clusterToClientMap); }
+
+  public static void addClusterToClientMapEntry(String clusterName, String url, ControllerClient value) {
+    clusterToClientMap.computeIfAbsent(clusterName + url, k -> value);
+  }
+
+  public static void deleteClusterToClientMapEntry(String clusterName, String url) {
+    clusterToClientMap.remove(clusterName + url);
+  }
+
+  public static ControllerClient getClusterToClientMapEntry(String clusterName, String url) {
+    return (ControllerClient)getClusterToClientMap().get(clusterName + url);
+  }
+
+  public static boolean clusterToClientMapContains(String clusterName, String url) {
+    return getClusterToClientMap().containsKey(clusterName + url);
+  }
+
   public ControllerClient(String clusterName, String discoveryUrls) {
     this(clusterName, discoveryUrls, Optional.empty());
   }
@@ -78,8 +101,10 @@ public class ControllerClient implements Closeable {
   }
 
   public static ControllerClient discoverAndConstructControllerClient(String storeName, String discoveryUrls, Optional<SSLFactory> sslFactory) {
-    String cluster = discoverCluster(discoveryUrls, storeName, sslFactory).getCluster();
-    return clusterToClientMap.computeIfAbsent(cluster, k -> new ControllerClient(cluster, discoveryUrls, sslFactory));
+    String clusterName = discoverCluster(discoveryUrls, storeName, sslFactory).getCluster();
+    if (!clusterToClientMapContains(clusterName, discoveryUrls))
+      addClusterToClientMapEntry(clusterName, discoveryUrls, new ControllerClient(clusterName, discoveryUrls, sslFactory));
+    return getClusterToClientMapEntry(clusterName, discoveryUrls);
   }
 
   public static ControllerClient constructClusterControllerClient(String clusterName, String discoveryUrls) {
@@ -87,8 +112,10 @@ public class ControllerClient implements Closeable {
   }
 
   public static ControllerClient constructClusterControllerClient(String clusterName, String discoveryUrls, Optional<SSLFactory> sslFactory) {
-    // key on both cluster + discovery URLs
-    return clusterToClientMap.computeIfAbsent(clusterName + discoveryUrls, k -> new ControllerClient(clusterName, discoveryUrls, sslFactory));
+    if (!clusterToClientMapContains(clusterName, discoveryUrls)) {
+      addClusterToClientMapEntry(clusterName, discoveryUrls, new ControllerClient(clusterName, discoveryUrls, sslFactory));
+    }
+    return getClusterToClientMapEntry(clusterName, discoveryUrls);
   }
 
   @Override
