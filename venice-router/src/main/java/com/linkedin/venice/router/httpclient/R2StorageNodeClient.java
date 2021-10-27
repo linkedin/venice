@@ -34,13 +34,17 @@ public class R2StorageNodeClient implements StorageNodeClient {
   private final Map<String, Client> nodeIdToR2ClientMap = new VeniceConcurrentHashMap<>();
   private final List<TransportClientFactory> transportClientFactoryList = Collections.synchronizedList(new ArrayList());
   private final boolean http2Enabled;
+  private int requestTimeout;
 
   private final int httpMaxResponseSize;
+
 
   public R2StorageNodeClient(Optional<SSLEngineComponentFactory> sslFactory, VeniceRouterConfig config) {
     this.sslFactory = sslFactory;
     this.httpMaxResponseSize = config.getRouterHTTPMaxResponseSize();
     this.http2Enabled = config.isRouterHTTP2R2ClientEnabled();
+    this.requestTimeout = config.getSocketTimeout();
+
   }
 
   @Override
@@ -54,8 +58,11 @@ public class R2StorageNodeClient implements StorageNodeClient {
 
     RestRequest request = path.composeRestRequest(host.getHostUrl(sslFactory.isPresent()));
 
+    RequestContext requestContext = new RequestContext();
+    requestContext.getLocalAttrs().put(R2Constants.REQUEST_TIMEOUT, requestTimeout);
+
     Client selectedClient = nodeIdToR2ClientMap.computeIfAbsent(host.getNodeId(), h -> buildR2Client(sslFactory));
-    selectedClient.restRequest(request, new R2ClientCallback(completedCallBack, failedCallBack, cancelledCallBack));
+    selectedClient.restRequest(request, requestContext, new R2ClientCallback(completedCallBack, failedCallBack, cancelledCallBack));
   }
 
   public Client buildR2Client(Optional<SSLEngineComponentFactory> sslEngineComponentFactory) {
