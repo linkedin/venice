@@ -355,6 +355,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    */
   private final Set<Integer> consumptionResumedPartitionSet = new HashSet<>();
 
+  private final boolean isActiveActiveReplicationEnabled;
+
   /**
    * This would be the number of partitions in the StorageEngine and in version topics
    */
@@ -539,6 +541,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.cacheBackend = cacheBackend;
     this.localKafkaServer = this.kafkaProps.getProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG);
     this.isDaVinciClient = isDaVinciClient;
+    this.isActiveActiveReplicationEnabled = version.isActiveActiveReplicationEnabled();
   }
 
   public boolean isFutureVersion() {
@@ -3404,6 +3407,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   protected ReportStatusAdapter getReportStatusAdapter() {
     return reportStatusAdapter;
+  }
+
+  public boolean isActiveActiveReplicationEnabled() {
+    return this.isActiveActiveReplicationEnabled;
   }
 
   /**

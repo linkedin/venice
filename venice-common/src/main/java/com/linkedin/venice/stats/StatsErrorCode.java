@@ -151,7 +151,12 @@ public enum StatsErrorCode {
   /**
    * There was an exception when retrieving a metric value.  Please consult application logs to determine the root cause!
    */
-  UNKNOWN_METRIC_EXCEPTION(-25);
+  UNKNOWN_METRIC_EXCEPTION(-25),
+
+  /**
+   * This metric should not be emitted as it is a metric specific to an A/A store.
+   */
+  ACTIVE_ACTIVE_NOT_ENABLED(-25);
 
   public final int code;
 
