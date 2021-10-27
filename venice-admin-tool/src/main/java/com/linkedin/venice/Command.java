@@ -99,7 +99,7 @@ public enum Command {
           INCREMENTAL_PUSH_POLICY, BACKUP_VERSION_RETENTION_DAY, REPLICATION_FACTOR, NATIVE_REPLICATION_SOURCE_FABRIC, REPLICATE_ALL_CONFIGS,
           ACTIVE_ACTIVE_REPLICATION_ENABLED, REGIONS_FILTER, APPLY_TARGET_VERSION_FILTER_FOR_INC_PUSH}),
   UPDATE_CLUSTER_CONFIG("update-cluster-config", "Update live cluster configs",
-      new Arg[] {URL, CLUSTER}, new Arg[] {FABRIC, SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND}),
+      new Arg[] {URL, CLUSTER}, new Arg[] {FABRIC, SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND, ALLOW_STORE_MIGRATION}),
   EMPTY_PUSH("empty-push", "Do an empty push into an existing store",
       new Arg[]{URL, CLUSTER, STORE, PUSH_ID, STORE_SIZE}),
   ENABLE_THROTTLING("enable-throttling", "Enable the feature that throttling read request on all routers",

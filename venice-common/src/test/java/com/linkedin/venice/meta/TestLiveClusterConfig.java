@@ -12,8 +12,8 @@ public class TestLiveClusterConfig {
   private static final String NON_CONFIGURED_REGION = "NonConfiguredRegion";
 
   private static final ObjectMapper objectMapper = new ObjectMapper();
-  static final String serialized = String.format("{\"%s\":{\"%s\": 1500}}", ConfigKeys.SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND,
-      CONFIGURED_REGION);
+  static final String serialized = String.format("{\"%s\":{\"%s\": 1500},\"%s\":true}", ConfigKeys.SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND,
+      CONFIGURED_REGION, ConfigKeys.ALLOW_STORE_MIGRATION);
 
   @Test
   public void deserializesAsJson() throws IOException {
@@ -21,6 +21,7 @@ public class TestLiveClusterConfig {
     Assert.assertEquals(config.getServerKafkaFetchQuotaRecordsPerSecond().size(), 1);
     Assert.assertEquals(config.getServerKafkaFetchQuotaRecordsPerSecondForRegion(CONFIGURED_REGION), 1500);
     Assert.assertEquals(config.getServerKafkaFetchQuotaRecordsPerSecondForRegion(NON_CONFIGURED_REGION), LiveClusterConfig.DEFAULT_SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND);
+    Assert.assertTrue(config.isStoreMigrationAllowed());
   }
 
   @Test

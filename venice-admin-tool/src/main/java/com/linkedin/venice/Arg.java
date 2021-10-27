@@ -108,7 +108,8 @@ public enum Arg {
   INCREMENTAL_PUSH_POLICY_TO_FILTER("incremental-push-policy-to-filter", "ippf", true, "If the batch update command is trying to configure existing incremental push store type, their incremental push policy should also match this filter before the batch update command applies any change to them"),
   INCREMENTAL_PUSH_POLICY_TO_APPLY("incremental-push-policy-to-apply", "ippa", true, "This field will determine what incremental push policy will be applied to the selected stores."),
   STORE_CONFIG_NAME_FILTER("store-config-name-filter", "scnf", true, "An optional argument in list-store command; pass in a store config to select stores. If the config name argument is used in the command, users must specify the config value filter too."),
-  STORE_CONFIG_VALUE_FILTER("store-config-value-filter", "scvf", true, "n optional argument in list-store command; if the config name argument is used in the command, users must specify the config value filter too.");
+  STORE_CONFIG_VALUE_FILTER("store-config-value-filter", "scvf", true, "n optional argument in list-store command; if the config name argument is used in the command, users must specify the config value filter too."),
+  ALLOW_STORE_MIGRATION(ConfigKeys.ALLOW_STORE_MIGRATION, "asm", true, "whether stores are allowed to be migrated from/to a cluster");
 
   private final String argName;
   private final String first;

@@ -931,6 +931,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
     @Override
+    public boolean isStoreMigrationAllowed(String clusterName) {
+        HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
+        try (AutoCloseableLock ignore = resources.getClusterLockManager().createClusterReadLock()) {
+            HelixReadWriteLiveClusterConfigRepository clusterConfigRepository = getReadWriteLiveClusterConfigRepository(clusterName);
+            return clusterConfigRepository.getConfigs().isStoreMigrationAllowed();
+        }
+    }
+
+    @Override
     public void migrateStore(String srcClusterName, String destClusterName, String storeName) {
         if (srcClusterName.equals(destClusterName)) {
             throw new VeniceException("Source cluster and destination cluster cannot be the same!");
@@ -2935,20 +2944,22 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     public void updateClusterConfig(String clusterName, UpdateClusterConfigQueryParams params) {
         checkControllerLeadershipFor(clusterName);
         Optional<Map<String, Integer>> regionToKafkaFetchQuota = params.getServerKafkaFetchQuotaRecordsPerSecond();
+        Optional<Boolean> storeMigrationAllowed = params.getStoreMigrationAllowed();
 
-        if (regionToKafkaFetchQuota.isPresent()) {
-            HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
-            try (AutoCloseableLock ignore = resources.getClusterLockManager().createClusterWriteLock()) {
-                HelixReadWriteLiveClusterConfigRepository clusterConfigRepository = getReadWriteLiveClusterConfigRepository(clusterName);
-                LiveClusterConfig clonedClusterConfig = new LiveClusterConfig(clusterConfigRepository.getConfigs());
+        HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
+        try (AutoCloseableLock ignore = resources.getClusterLockManager().createClusterWriteLock()) {
+            HelixReadWriteLiveClusterConfigRepository clusterConfigRepository = getReadWriteLiveClusterConfigRepository(clusterName);
+            LiveClusterConfig clonedClusterConfig = new LiveClusterConfig(clusterConfigRepository.getConfigs());
+            regionToKafkaFetchQuota.ifPresent(quota -> {
                 Map<String, Integer> regionToKafkaFetchQuotaInLiveConfigs = clonedClusterConfig.getServerKafkaFetchQuotaRecordsPerSecond();
                 if (regionToKafkaFetchQuotaInLiveConfigs == null) {
-                    clonedClusterConfig.setServerKafkaFetchQuotaRecordsPerSecond(regionToKafkaFetchQuota.get());
+                    clonedClusterConfig.setServerKafkaFetchQuotaRecordsPerSecond(quota);
                 } else {
-                    regionToKafkaFetchQuotaInLiveConfigs.putAll(regionToKafkaFetchQuota.get());
+                    regionToKafkaFetchQuotaInLiveConfigs.putAll(quota);
                 }
-                clusterConfigRepository.updateConfigs(clonedClusterConfig);
-            }
+            });
+            storeMigrationAllowed.ifPresent(clonedClusterConfig::setStoreMigrationAllowed);
+            clusterConfigRepository.updateConfigs(clonedClusterConfig);
         }
     }
 

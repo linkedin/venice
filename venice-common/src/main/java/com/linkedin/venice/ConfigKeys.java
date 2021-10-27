@@ -301,6 +301,11 @@ public class ConfigKeys {
    */
   public static final String AGGREGATE_REAL_TIME_SOURCE_REGION = "aggregate.real.time.source.region";
 
+  /**
+   * Whether stores are allowed to be migrated from/to a specific cluster.
+   * The value for this config is read from cluster configs in Zk.
+   */
+  public static final String ALLOW_STORE_MIGRATION = "allow.store.migration";
 
   // Server specific configs
   public static final String LISTENER_PORT = "listener.port";

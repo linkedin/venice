@@ -7,12 +7,12 @@ import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixReadOnlyLiveClusterConfigRepository;
 import com.linkedin.venice.helix.ZkClientFactory;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
-import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
@@ -73,7 +73,31 @@ public class TestAdminToolEndToEnd {
       Assert.assertEquals(
           liveClusterConfigRepository.getConfigs().getServerKafkaFetchQuotaRecordsPerSecondForRegion(regionName),
           kafkaFetchQuota);
+      Assert.assertTrue(liveClusterConfigRepository.getConfigs().isStoreMigrationAllowed());
     });
+
+    String[] disallowStoreMigrationArg =
+        {"--update-cluster-config", "--url", venice.getMasterVeniceController().getControllerUrl(),
+            "--cluster", clusterName,
+            "--" + Arg.ALLOW_STORE_MIGRATION.getArgName(), String.valueOf(false)};
+    AdminTool.main(disallowStoreMigrationArg);
+
+    TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
+      liveClusterConfigRepository.refresh();
+      Assert.assertFalse(liveClusterConfigRepository.getConfigs().isStoreMigrationAllowed());
+    });
+
+    try {
+      String[] startMigrationArgs =
+          {"--migrate-store", "--url", venice.getMasterVeniceController().getControllerUrl(),
+              "--store", "anyStore",
+              "--cluster-src", clusterName,
+              "--cluster-dest", "anyCluster"};
+      AdminTool.main(startMigrationArgs);
+      Assert.fail("Store migration should be denied");
+    } catch (VeniceException e) {
+      Assert.assertTrue(e.getMessage().contains("does not allow store migration"));
+    }
   }
 
   @Test(timeOut = TEST_TIMEOUT)

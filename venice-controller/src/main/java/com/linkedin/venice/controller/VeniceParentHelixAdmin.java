@@ -2618,6 +2618,11 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
+  public boolean isStoreMigrationAllowed(String clusterName) {
+    return getVeniceHelixAdmin().isStoreMigrationAllowed(clusterName);
+  }
+
+  @Override
   public void migrateStore(String srcClusterName, String destClusterName, String storeName) {
     if (srcClusterName.equals(destClusterName)) {
       throw new VeniceException("Source cluster and destination cluster cannot be the same!");
