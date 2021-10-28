@@ -1071,6 +1071,10 @@ public class TestPushUtils {
     sendStreamingRecord(producer, storeName, keyPrefix + recordId, "stream_" + recordId);
   }
 
+  public static void sendStreamingDeleteRecord(SystemProducer producer, String storeName, String key) {
+    sendStreamingRecord(producer, storeName, key, null);
+  }
+
   public static void sendStreamingRecord(SystemProducer producer, String storeName, Object key, Object message) {
     OutgoingMessageEnvelope envelope = new OutgoingMessageEnvelope(
         new SystemStream("venice", storeName), key, message);

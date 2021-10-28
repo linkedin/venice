@@ -1,5 +1,8 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import com.linkedin.venice.kafka.protocol.ControlMessage;
+import com.linkedin.venice.kafka.protocol.Delete;
+import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import java.util.concurrent.CompletableFuture;
 
@@ -58,15 +61,15 @@ public class LeaderProducedRecordContext {
    */
   private CompletableFuture<Void> persistedToDBFuture = null;
 
-  public static LeaderProducedRecordContext newControlMessageRecord(String consumedKafkaUrl, long consumedOffset, byte[] keyBytes, Object valueUnion) {
+  public static LeaderProducedRecordContext newControlMessageRecord(String consumedKafkaUrl, long consumedOffset, byte[] keyBytes, ControlMessage valueUnion) {
     return new LeaderProducedRecordContext(consumedKafkaUrl, consumedOffset, MessageType.CONTROL_MESSAGE, keyBytes, valueUnion, true);
   }
 
-  public static LeaderProducedRecordContext newPutRecord(String consumedKafkaUrl, long consumedOffset, byte[] keyBytes, Object valueUnion) {
+  public static LeaderProducedRecordContext newPutRecord(String consumedKafkaUrl, long consumedOffset, byte[] keyBytes, Put valueUnion) {
     return new LeaderProducedRecordContext(consumedKafkaUrl, consumedOffset, MessageType.PUT, keyBytes, valueUnion, true);
   }
 
-  public static LeaderProducedRecordContext newPutRecordWithFuture(String consumedKafkaUrl, long consumedOffset, byte[] keyBytes, Object valueUnion,
+  public static LeaderProducedRecordContext newPutRecordWithFuture(String consumedKafkaUrl, long consumedOffset, byte[] keyBytes, Put valueUnion,
       CompletableFuture<Void> persistedToDBFuture) {
     LeaderProducedRecordContext
         leaderProducedRecordContext = new LeaderProducedRecordContext(consumedKafkaUrl, consumedOffset, MessageType.PUT, keyBytes, valueUnion, false);
@@ -74,8 +77,8 @@ public class LeaderProducedRecordContext {
     return leaderProducedRecordContext;
   }
 
-  public static LeaderProducedRecordContext newDeleteRecord(String consumedKafkaUrl, long consumedOffset, byte[] keyBytes) {
-    return new LeaderProducedRecordContext(consumedKafkaUrl, consumedOffset, MessageType.DELETE, keyBytes, null, true);
+  public static LeaderProducedRecordContext newDeleteRecord(String consumedKafkaUrl, long consumedOffset, byte[] keyBytes, Delete valueUnion) {
+    return new LeaderProducedRecordContext(consumedKafkaUrl, consumedOffset, MessageType.DELETE, keyBytes, valueUnion, true);
   }
 
   private LeaderProducedRecordContext(String consumedKafkaUrl, long consumedOffset, MessageType messageType, byte[] keyBytes, Object valueUnion,

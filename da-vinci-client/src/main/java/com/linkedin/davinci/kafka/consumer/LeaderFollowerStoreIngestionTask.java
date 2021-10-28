@@ -2118,8 +2118,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
         //finally produce and update the transient record map.
         if (updatedValueBytes == null) {
-          partitionConsumptionState.setTransientRecord(consumerRecordWrapper.kafkaUrl(), consumerRecord.offset(), keyBytes, null);
-          leaderProducedRecordContext = LeaderProducedRecordContext.newDeleteRecord(consumerRecordWrapper.kafkaUrl(), consumerRecord.offset(), keyBytes);
+          partitionConsumptionState.setTransientRecord(consumerRecordWrapper.kafkaUrl(), consumerRecord.offset(), keyBytes, -1, null);
+          leaderProducedRecordContext = LeaderProducedRecordContext.newDeleteRecord(consumerRecordWrapper.kafkaUrl(), consumerRecord.offset(), keyBytes, null);
           produceToLocalKafka(consumerRecordWrapper, partitionConsumptionState, leaderProducedRecordContext,
               (callback, leaderMetadataWrapper) -> veniceWriter.get().delete(keyBytes, callback, leaderMetadataWrapper));
         } else {
@@ -2151,9 +2151,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
          * For WC enabled stores update the transient record map with the latest {key,null} for similar reason as mentioned in PUT above.
          */
         if (isWriteComputationEnabled && partitionConsumptionState.isEndOfPushReceived()) {
-          partitionConsumptionState.setTransientRecord(consumerRecordWrapper.kafkaUrl(), consumerRecord.offset(), keyBytes, null);
+          partitionConsumptionState.setTransientRecord(consumerRecordWrapper.kafkaUrl(), consumerRecord.offset(), keyBytes, -1, null);
         }
-        leaderProducedRecordContext = LeaderProducedRecordContext.newDeleteRecord(consumerRecordWrapper.kafkaUrl(), consumerRecord.offset(), keyBytes);
+        leaderProducedRecordContext = LeaderProducedRecordContext.newDeleteRecord(consumerRecordWrapper.kafkaUrl(), consumerRecord.offset(), keyBytes, null);
         produceToLocalKafka(consumerRecordWrapper, partitionConsumptionState, leaderProducedRecordContext,
             (callback, leaderMetadataWrapper) -> veniceWriter.get().delete(keyBytes, callback, leaderMetadataWrapper));
         break;

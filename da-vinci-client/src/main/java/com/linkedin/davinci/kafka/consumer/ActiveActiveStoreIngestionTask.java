@@ -408,8 +408,12 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     // finally produce and update the transient record map.
     if (updatedValueBytes == null) {
       storeIngestionStats.recordConflictResolutionTombstoneCreated(storeName);
-      partitionConsumptionState.setTransientRecord(consumerRecordWrapper.kafkaUrl(), consumerRecord.offset(), key, updatedReplicationMetadataBytes);
-      LeaderProducedRecordContext leaderProducedRecordContext = LeaderProducedRecordContext.newDeleteRecord(consumerRecordWrapper.kafkaUrl(), consumerRecord.offset(), key);
+      partitionConsumptionState.setTransientRecord(consumerRecordWrapper.kafkaUrl(), consumerRecord.offset(), key, valueSchemaId, updatedReplicationMetadataBytes);
+      Delete deletePayload = new Delete();
+      deletePayload.schemaId = valueSchemaId;
+      deletePayload.replicationMetadataVersionId = replicationMetadataVersionId;
+      deletePayload.replicationMetadataPayload = updatedReplicationMetadataBytes;
+      LeaderProducedRecordContext leaderProducedRecordContext = LeaderProducedRecordContext.newDeleteRecord(consumerRecordWrapper.kafkaUrl(), consumerRecord.offset(), key, deletePayload);
       produceToLocalKafka(consumerRecordWrapper, partitionConsumptionState, leaderProducedRecordContext,
           (callback, sourceTopicOffset) -> veniceWriter.get().delete(key, callback, sourceTopicOffset,
               new DeleteMetadata(valueSchemaId, replicationMetadataVersionId, updatedReplicationMetadataBytes)));
