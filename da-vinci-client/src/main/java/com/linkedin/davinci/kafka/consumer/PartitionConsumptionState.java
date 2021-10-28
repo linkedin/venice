@@ -10,6 +10,7 @@ import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pushmonitor.SubPartitionStatus;
+import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.nio.ByteBuffer;
@@ -392,8 +393,8 @@ public class PartitionConsumptionState {
     return consumptionStartTimeInMs;
   }
 
-  public void setTransientRecord(String kafkaUrl, long kafkaConsumedOffset, byte[] key, ByteBuffer replicationMetadata) {
-    setTransientRecord(kafkaUrl, kafkaConsumedOffset, key, null, -1, -1, -1, replicationMetadata);
+  public void setTransientRecord(String kafkaUrl, long kafkaConsumedOffset, byte[] key, int valueSchemaId, ByteBuffer replicationMetadata) {
+    setTransientRecord(kafkaUrl, kafkaConsumedOffset, key, null, -1, -1, valueSchemaId, replicationMetadata);
   }
 
   public void setTransientRecord(String kafkaUrl, long kafkaConsumedOffset, byte[] key, byte[] value, int valueOffset, int valueLen, int valueSchemaId, ByteBuffer replicationMetadata) {
@@ -473,6 +474,11 @@ public class PartitionConsumptionState {
       this.kafkaUrl = kafkaUrl;
       this.kafkaConsumedOffset = kafkaConsumedOffset;
       this.replicationMetadata = (replicationMetadata == null ? null : ByteBuffer.wrap(replicationMetadata.array(), replicationMetadata.position(), replicationMetadata.remaining()));
+
+      if (valueSchemaId == -1 && replicationMetadata != null) {
+        throw new IllegalStateException("valueSchemaId is -1 but replicationMetadata is not null. replicationMetadata "
+            + "is: 0x" + ByteUtils.toHexString(ByteUtils.extractByteArray(replicationMetadata)));
+      }
     }
 
     public byte[] getValue() {return value;}

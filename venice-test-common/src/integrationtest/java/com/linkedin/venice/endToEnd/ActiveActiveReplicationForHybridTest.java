@@ -1,5 +1,6 @@
 package com.linkedin.venice.endToEnd;
 
+import com.linkedin.davinci.kafka.consumer.StoreIngestionTask;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
@@ -11,8 +12,10 @@ import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.integration.utils.MirrorMakerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiColoMultiClusterWrapper;
 import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.Store;
@@ -21,12 +24,14 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.samza.VeniceObjectWithTimestamp;
 import com.linkedin.venice.samza.VeniceSystemFactory;
 import com.linkedin.venice.samza.VeniceSystemProducer;
+import com.linkedin.venice.server.VeniceServer;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.MockCircularTime;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import java.lang.reflect.Field;
 import java.util.AbstractMap;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -245,19 +250,41 @@ public class ActiveActiveReplicationForHybridTest {
    * Once servers are able to consume real-time messages from multiple regions, we can enable this test case
    * to test the feature.
    */
-  @Test(timeOut = TEST_TIMEOUT, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testAAReplicationCanConsumeFromAllRegions(boolean isChunkingEnabled) {
+  @Test(timeOut = TEST_TIMEOUT, dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testAAReplicationCanConsumeFromAllRegions(boolean isChunkingEnabled, boolean useTransientRecordCache)
+      throws NoSuchFieldException, IllegalAccessException {
     String clusterName = CLUSTER_NAMES[0];
     String storeName = TestUtils.getUniqueString("test-store");
     VeniceControllerWrapper parentController =
         parentControllers.stream().filter(c -> c.isMasterController(clusterName)).findAny().get();
+
     try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentController.getControllerUrl())) {
       parentControllerClient.createNewStore(storeName, "owner", STRING_SCHEMA, STRING_SCHEMA);
       updateStore(storeName, parentControllerClient, Optional.of(true), Optional.of(true), Optional.of(isChunkingEnabled));
 
       // Empty push to create a version
-      parentControllerClient.emptyPush(storeName, TestUtils.getUniqueString("empty-hybrid-push"), 1L);
+      VersionCreationResponse versionCreationResponse = parentControllerClient.emptyPush(storeName, TestUtils.getUniqueString("empty-hybrid-push"), 1L);
 
+      //disable the purging of transientRecord buffer using reflection.
+      if (useTransientRecordCache) {
+        for (VeniceMultiClusterWrapper veniceColo : multiColoMultiClusterWrapper.getClusters()) {
+          VeniceClusterWrapper veniceCluster = veniceColo.getClusters().get(clusterName);
+          // Wait for push to complete in the colo
+          TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () ->
+              Assert.assertEquals(veniceCluster.getControllerClient().getStore(storeName).getStore().getCurrentVersion(),
+                  Version.parseVersionFromKafkaTopicName(versionCreationResponse.getKafkaTopic())));
+          for (VeniceServerWrapper veniceServerWrapper : veniceCluster.getVeniceServers()){
+            VeniceServer veniceServer = veniceServerWrapper.getVeniceServer();
+            StoreIngestionTask ingestionTask = veniceServer.getKafkaStoreIngestionService().getStoreIngestionTask(versionCreationResponse.getKafkaTopic());
+            Field purgeTransientRecordBufferField =
+                ingestionTask.getClass().getSuperclass().getSuperclass().getDeclaredField("purgeTransientRecordBuffer");
+            purgeTransientRecordBufferField.setAccessible(true);
+            purgeTransientRecordBufferField.setBoolean(ingestionTask, false);
+          }
+        }
+      }
+
+      Map<VeniceMultiClusterWrapper, SystemProducer> childDatacenterToSystemProducer = new HashMap<>(NUMBER_OF_CHILD_DATACENTERS);
       int streamingRecordCount = 10;
       for (int dataCenterIndex = 0; dataCenterIndex < NUMBER_OF_CHILD_DATACENTERS; dataCenterIndex++) {
         // Send messages to RT in the corresponding region
@@ -284,11 +311,11 @@ public class ActiveActiveReplicationForHybridTest {
         VeniceSystemFactory factory = new VeniceSystemFactory();
         SystemProducer veniceProducer = factory.getProducer("venice", new MapConfig(samzaConfig), null);
         veniceProducer.start();
+        childDatacenterToSystemProducer.put(childDataCenter, veniceProducer);
 
         for (int i = 0; i < streamingRecordCount; i++) {
           sendStreamingRecordWithKeyPrefix(veniceProducer, storeName, keyPrefix, i);
         }
-        veniceProducer.stop();
       }
 
       // Server in dc-0 data center should serve real-time data from all different regions
@@ -311,6 +338,52 @@ public class ActiveActiveReplicationForHybridTest {
             }
           }
         });
+
+        // Send DELETE from all child datacenter for existing and new records
+        for (int dataCenterIndex = 0; dataCenterIndex < NUMBER_OF_CHILD_DATACENTERS; dataCenterIndex++) {
+          String keyPrefix = "dc-" + dataCenterIndex + "_key_";
+          sendStreamingDeleteRecord(childDatacenterToSystemProducer.get(childDatacenters.get(dataCenterIndex)), storeName, keyPrefix + (streamingRecordCount - 1));
+          sendStreamingDeleteRecord(childDatacenterToSystemProducer.get(childDatacenters.get(dataCenterIndex)), storeName, keyPrefix + streamingRecordCount);
+        }
+
+        // Verify both DELETEs can be processed
+        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+          for (int dataCenterIndex = 0; dataCenterIndex < NUMBER_OF_CHILD_DATACENTERS; dataCenterIndex++) {
+            // Verify the data sent by Samza producer from different regions
+            String keyPrefix = "dc-" + dataCenterIndex + "_key_";
+            Assert.assertNull(client.get(keyPrefix + (streamingRecordCount - 1)).get(),
+                "Servers in dc-0 haven't consumed real-time data from region dc-" + dataCenterIndex);
+            Assert.assertNull(client.get(keyPrefix + streamingRecordCount).get(),
+                "Servers in dc-0 haven't consumed real-time data from region dc-" + dataCenterIndex);
+          }
+        });
+
+        // Send PUT from all child datacenter for new records
+        for (int dataCenterIndex = 0; dataCenterIndex < NUMBER_OF_CHILD_DATACENTERS; dataCenterIndex++) {
+          String keyPrefix = "dc-" + dataCenterIndex + "_key_";
+          sendStreamingRecordWithKeyPrefix(childDatacenterToSystemProducer.get(childDatacenters.get(dataCenterIndex)), storeName, keyPrefix, streamingRecordCount);
+        }
+
+
+        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+          for (int dataCenterIndex = 0; dataCenterIndex < NUMBER_OF_CHILD_DATACENTERS; dataCenterIndex++) {
+            // Verify the data sent by Samza producer from different regions
+            String keyPrefix = "dc-" + dataCenterIndex + "_key_";
+            Assert.assertNull(client.get(keyPrefix + (streamingRecordCount - 1)).get(),
+                "Servers in dc-0 haven't consumed real-time data from region dc-" + dataCenterIndex);
+            String expectedValue = "stream_" + streamingRecordCount;
+            Object valueObject = client.get(keyPrefix + streamingRecordCount).get();
+            if (valueObject == null) {
+              Assert.fail("Servers in dc-0 haven't consumed real-time data from region dc-" + dataCenterIndex);
+            } else {
+              Assert.assertEquals(valueObject.toString(), expectedValue, "Servers in dc-0 contain corrupted data sent from region dc-" + dataCenterIndex);
+            }
+          }
+        });
+      }
+
+      for (SystemProducer veniceProducer : childDatacenterToSystemProducer.values()) {
+        veniceProducer.stop();
       }
     }
   }
