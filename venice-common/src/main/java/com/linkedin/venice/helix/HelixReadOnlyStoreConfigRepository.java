@@ -99,17 +99,17 @@ public class HelixReadOnlyStoreConfigRepository implements ReadOnlyStoreConfigRe
    */
   @Override
   public Optional<StoreConfig> getStoreConfig(String storeName) {
-    String veniceStoreName = VeniceSystemStoreUtils.isSystemStore(storeName) ?
+    String regularStoreName = VeniceSystemStoreUtils.isSystemStore(storeName) ?
         VeniceSystemStoreUtils.getStoreNameFromSystemStoreName(storeName) : storeName;
     // To handle meta system store specifically
     VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(storeName);
     if (systemStoreType != null && systemStoreType.equals(VeniceSystemStoreType.META_STORE)) {
-      veniceStoreName = VeniceSystemStoreType.META_STORE.extractRegularStoreName(storeName);
+      regularStoreName = VeniceSystemStoreType.META_STORE.extractRegularStoreName(storeName);
     }
     if (systemStoreType != null && systemStoreType.equals(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE)) {
-      veniceStoreName = VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.extractRegularStoreName(storeName);
+      regularStoreName = VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.extractRegularStoreName(storeName);
     }
-    StoreConfig config = storeConfigMap.get().get(veniceStoreName);
+    StoreConfig config = storeConfigMap.get().get(regularStoreName);
     if (config != null) {
       return Optional.of(config.cloneStoreConfig());
     } else {
