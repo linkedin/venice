@@ -69,6 +69,8 @@ public class LiveClusterConfig {
     return new StringBuilder()
         .append(ConfigKeys.SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND)
         .append('=').append(serverKafkaFetchQuotaRecordsPerSecond).append('\n')
+        .append(ConfigKeys.ALLOW_STORE_MIGRATION)
+        .append('=').append(storeMigrationAllowed).append('\n')
         .toString();
   }
 }
