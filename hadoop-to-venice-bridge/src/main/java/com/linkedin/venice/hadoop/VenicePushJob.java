@@ -407,7 +407,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
 
   private VersionTopicInfo kafkaTopicInfo;
 
-  private PushJobDetails pushJobDetails;
+  private final PushJobDetails pushJobDetails;
   private final InternalAvroSpecificSerializer<PushJobDetails> pushJobDetailsSerializer =
       AvroProtocolDefinition.PUSH_JOB_DETAILS.getSerializer();
 
@@ -486,16 +486,30 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
     logger.info("Get Venice cluster name: " + clusterName);
     // Optional configs:
     this.pushJobSetting = getPushJobSetting(veniceControllerUrl, this.clusterName, props);
-    this.jobLivenessHeartbeatEnabled = props.getBoolean(HEARTBEAT_ENABLED_CONFIG.getConfigName(), false);
-    if (jobLivenessHeartbeatEnabled) {
+    this.pushJobDetails = new PushJobDetails();
+    boolean jobLivenessHeartbeatEnabled;
+    if (props.getBoolean(HEARTBEAT_ENABLED_CONFIG.getConfigName(), false)) {
       logger.info("Push job heartbeat is enabled.");
-      this.pushJobHeartbeatSenderFactory = new DefaultPushJobHeartbeatSenderFactory();
-      this.livenessHeartbeatStoreControllerClient = createLivenessHeartbeatControllerClient(props);
+      try {
+        this.pushJobHeartbeatSenderFactory = new DefaultPushJobHeartbeatSenderFactory();
+        this.livenessHeartbeatStoreControllerClient = createLivenessHeartbeatControllerClient(props);
+        jobLivenessHeartbeatEnabled = true;
+
+      } catch (Exception e) {
+        logger.warn("Initializing the liveness heartbeat sender or its controller client failed. Hence the"
+            + " feature is disabled.", e);
+        this.pushJobDetails.sendLivenessHeartbeatFailureDetails = e.getMessage();
+        this.pushJobHeartbeatSenderFactory = new NoOpPushJobHeartbeatSenderFactory();
+        this.livenessHeartbeatStoreControllerClient = null;
+        jobLivenessHeartbeatEnabled = false;
+      }
     } else {
       logger.info("Push job heartbeat is NOT enabled.");
       this.pushJobHeartbeatSenderFactory = new NoOpPushJobHeartbeatSenderFactory();
       this.livenessHeartbeatStoreControllerClient = null;
+      jobLivenessHeartbeatEnabled = false;
     }
+    this.jobLivenessHeartbeatEnabled = jobLivenessHeartbeatEnabled;
   }
 
   private ControllerClient createLivenessHeartbeatControllerClient(VeniceProperties properties) {
@@ -1251,7 +1265,6 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
   }
 
   private void initPushJobDetails() {
-    pushJobDetails = new PushJobDetails();
     pushJobDetails.clusterName = this.clusterName;
     pushJobDetails.overallStatus = new ArrayList<>();
     pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(PushJobDetailsStatus.STARTED.getValue()));
