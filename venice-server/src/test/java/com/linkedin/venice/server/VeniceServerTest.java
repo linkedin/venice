@@ -4,25 +4,31 @@ import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.TestVeniceServer;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
-
+import java.lang.reflect.Field;
+import java.util.Properties;
 import org.testng.Assert;
 import org.testng.annotations.Test;
-
-import java.util.Properties;
 
 import static com.linkedin.venice.integration.utils.VeniceServerWrapper.*;
 
 
 public class VeniceServerTest {
   @Test
-  public void testStartServerWhenDisableWhitelistChecking() {
+  public void testStartServerWithDefaultConfigForTests() throws NoSuchFieldException, IllegalAccessException {
     try (VeniceClusterWrapper cluster = ServiceFactory.getVeniceCluster(1, 1, 0)) {
-      Assert.assertTrue(cluster.getVeniceServers().get(0).getVeniceServer().isStarted());
+      TestVeniceServer server = cluster.getVeniceServers().get(0).getVeniceServer();
+      Assert.assertTrue(server.isStarted());
+
+      Field liveClusterConfigRepoField =
+          server.getClass().getSuperclass().getDeclaredField("liveClusterConfigRepo");
+      liveClusterConfigRepoField.setAccessible(true);
+      Assert.assertNotNull(liveClusterConfigRepoField.get(server));
     }
   }
 
