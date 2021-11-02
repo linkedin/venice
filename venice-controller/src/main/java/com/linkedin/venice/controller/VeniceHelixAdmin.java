@@ -807,7 +807,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     private Integer fetchSystemStoreSchemaId(String clusterName, String storeName, String valueSchemaStr) {
         if (isLeaderControllerFor(clusterName)) {
             // Can be fetched from local repository
-            return getValueSchemaId(clusterName, storeName, valueSchemaStr);
+            int valueSchemaId = getValueSchemaId(clusterName, storeName, valueSchemaStr);
+            if (SchemaData.INVALID_VALUE_SCHEMA_ID == valueSchemaId) {
+                throw new InvalidVeniceSchemaException("Can not find any registered value schema for the store " + storeName
+                    + " that matches the requested schema" + valueSchemaStr);
+            }
+            return valueSchemaId;
         }
         ControllerClient controllerClient = ControllerClient.constructClusterControllerClient(clusterName,
             getLeaderController(clusterName).getUrl(false), sslFactory);
