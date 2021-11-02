@@ -108,7 +108,7 @@ public class PartitionConsumptionState {
    * all the records in it to in order to compare with incoming status string. Without explicit locking, this iteration
    * might throw {@link java.util.ConcurrentModificationException} in multi-thread environments.
    */
-  private final Set<SubPartitionStatus> previousStatusSet = VeniceConcurrentHashMap.newKeySet();
+  private final Set<String> previousStatusSet = VeniceConcurrentHashMap.newKeySet();
 
   /**
    * This field is used to track whether the last queued record has been fully processed or not.
@@ -163,7 +163,7 @@ public class PartitionConsumptionState {
 
     // Restore previous status from offset record.
     for (CharSequence status : offsetRecord.getSubPartitionStatus().keySet()) {
-      previousStatusSet.add(SubPartitionStatus.valueOf(status.toString()));
+      previousStatusSet.add(status.toString());
     }
   }
 
@@ -434,11 +434,11 @@ public class PartitionConsumptionState {
     return transientRecordMap.size();
   }
 
-  public boolean hasSubPartitionStatus(SubPartitionStatus subPartitionStatus) {
+  public boolean hasSubPartitionStatus(String subPartitionStatus) {
     return previousStatusSet.contains(subPartitionStatus);
   }
 
-  public void recordSubPartitionStatus(SubPartitionStatus subPartitionStatus) {
+  public void recordSubPartitionStatus(String subPartitionStatus) {
     if (this.getOffsetRecord() != null) {
       this.getOffsetRecord().recordSubPartitionStatus(subPartitionStatus);
     }

@@ -477,6 +477,7 @@ public abstract class TestBatch {
           Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + i);
         }
       }, new UpdateStoreQueryParams()
+          .setAmplificationFactor(2)
           .setIncrementalPushEnabled(true)
           .setLeaderFollowerModel(true)
           .setChunkingEnabled(true)

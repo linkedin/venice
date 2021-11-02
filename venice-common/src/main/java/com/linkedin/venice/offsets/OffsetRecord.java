@@ -139,8 +139,8 @@ public class OffsetRecord {
     this.partitionState.endOfPush = true;
   }
 
-  public void recordSubPartitionStatus(SubPartitionStatus status) {
-    partitionState.previousStatuses.put(status.name(), status.name());
+  public void recordSubPartitionStatus(String status) {
+    partitionState.previousStatuses.put(status, status);
   }
 
   public Map<CharSequence, CharSequence> getSubPartitionStatus() {

@@ -2402,7 +2402,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     CharSequence startVersion = ((StartOfIncrementalPush) startOfIncrementalPush.controlMessageUnion).version;
     IncrementalPush newIncrementalPush = new IncrementalPush();
     newIncrementalPush.version = startVersion;
-
     partitionConsumptionState.setIncrementalPush(newIncrementalPush);
     reportStatusAdapter.reportStartOfIncrementalPushReceived(partitionConsumptionState, startVersion.toString());
   }
@@ -3663,7 +3662,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   public class ReportStatusAdapter {
     private final IngestionNotificationDispatcher notificationDispatcher;
     private final Map<Integer, AtomicBoolean> shouldCleanupStatus = new VeniceConcurrentHashMap<>();
-    private final Map<Integer, Map<SubPartitionStatus, AtomicBoolean>> statusReportMap = new VeniceConcurrentHashMap<>();
+    private final Map<Integer, Map<String, AtomicBoolean>> statusReportMap = new VeniceConcurrentHashMap<>();
     private final Map<Integer, CompletableFuture<Void>> canReportCompleted = new VeniceConcurrentHashMap<>();
 
     public ReportStatusAdapter(IngestionNotificationDispatcher notificationDispatcher) {
@@ -3691,17 +3690,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
 
     public void reportStartOfIncrementalPushReceived(PartitionConsumptionState partitionConsumptionState, String version) {
-      report(partitionConsumptionState, SubPartitionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED,
+      report(partitionConsumptionState, SubPartitionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED, Optional.of(version),
           () -> notificationDispatcher.reportStartOfIncrementalPushReceived(partitionConsumptionState, version));
     }
 
-    /**
-     * TODO: when amplificationFactor > 1, could potentially report END_OF_INCREMENTAL_PUSH_RECEIVED before
-     * all subPartitions receive END_OF_INCREMENTAL_PUSH_RECEIVED if there were previous incremental pushes.
-     * For now we dont have amplificationFactor use cases need incremental push feature.
-     */
     public void reportEndOfIncrementalPushReceived(PartitionConsumptionState partitionConsumptionState, String version) {
-      report(partitionConsumptionState, SubPartitionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED,
+      report(partitionConsumptionState, SubPartitionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED, Optional.of(version),
           () -> notificationDispatcher.reportEndOfIncrementalPushRecived(partitionConsumptionState, version));
     }
 
@@ -3732,14 +3726,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       }
       int userPartition = partitionConsumptionState.getUserPartition();
       // Initialize status reporting map.
-      statusReportMap.get(userPartition).putIfAbsent(SubPartitionStatus.COMPLETED, new AtomicBoolean(false));
+      statusReportMap.get(userPartition).putIfAbsent(SubPartitionStatus.COMPLETED.toString(), new AtomicBoolean(false));
       for (int subPartitionId : PartitionUtils.getSubPartitions(userPartition, amplificationFactor)) {
         if (!partitionConsumptionStateMap.containsKey(subPartitionId)
             /**
              * In processEndOfPush, endOfPushReceived is marked as true first then END_OF_PUSH_RECEIVED get reported.
              * add a check in completion report to prevent a race condition that END_OF_PUSH_RECEIVED comes after completion reported.
              */
-            || !partitionConsumptionStateMap.get(subPartitionId).hasSubPartitionStatus(SubPartitionStatus.END_OF_PUSH_RECEIVED)
+            || !partitionConsumptionStateMap.get(subPartitionId).hasSubPartitionStatus(SubPartitionStatus.END_OF_PUSH_RECEIVED.toString())
             || !partitionConsumptionStateMap.get(subPartitionId).isComplete()) {
           return;
         }
@@ -3754,7 +3748,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         logger.info("Caught exception when waiting completion report condition", e);
       }
       // Make sure we only report once for each user partition.
-      if (statusReportMap.get(userPartition).get(SubPartitionStatus.COMPLETED).compareAndSet(false, true)) {
+      if (statusReportMap.get(userPartition).get(SubPartitionStatus.COMPLETED.toString()).compareAndSet(false, true)) {
         notificationDispatcher.reportCompleted(partitionConsumptionState, forceCompletion);
         for (int subPartitionId : PartitionUtils.getSubPartitions(userPartition, amplificationFactor)) {
           PartitionConsumptionState subPartitionConsumptionState = partitionConsumptionStateMap.get(subPartitionId);
@@ -3801,19 +3795,31 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       notificationDispatcher.reportKilled(getLeaderPcsList(pcsList), ke);
     }
 
+    private void report(
+        PartitionConsumptionState partitionConsumptionState,
+        SubPartitionStatus subPartitionStatus,
+        Runnable report) {
+      report(partitionConsumptionState, subPartitionStatus, Optional.empty(), report);
+    }
     /**
      * report status to all subPartitions of the given partitionConsumptionState's userPartition.
      */
     private void report(
         PartitionConsumptionState partitionConsumptionState,
         SubPartitionStatus subPartitionStatus,
+        Optional<String> version,
         Runnable report) {
       if (amplificationFactor == 1) {
         report.run();
         return;
       }
+      /**
+       * Below we compose the version aware subPartition status name, so amplification factor can work properly with
+       * multiple incremental pushes.
+       */
+      String versionAwareSubPartitionStatus = subPartitionStatus.name() + (version.map(s -> "-" + s).orElse(""));
       int userPartition = partitionConsumptionState.getUserPartition();
-      statusReportMap.get(userPartition).putIfAbsent(subPartitionStatus, new AtomicBoolean(false));
+      statusReportMap.get(userPartition).putIfAbsent(versionAwareSubPartitionStatus, new AtomicBoolean(false));
       /**
        * If we are reporting EOP, it means it is a fresh ingestion and COMPLETED reporting will have to wait until
        * EOP has been reported.
@@ -3821,15 +3827,32 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       if (subPartitionStatus.equals(SubPartitionStatus.END_OF_PUSH_RECEIVED)) {
         canReportCompleted.put(userPartition, new CompletableFuture<>());
       }
-      partitionConsumptionState.recordSubPartitionStatus(subPartitionStatus);
+
+      if ((subPartitionStatus.equals(SubPartitionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED)
+          || (subPartitionStatus.equals(SubPartitionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED))) &&
+          incrementalPushPolicy.equals(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME)) {
+        /**
+         * For inc push to RT policy, the control msg is only consumed by leader subPartition. We need to record the
+         * detailed subPartition status for every subPartition of the same user partition so that the below report logic
+         * can be triggered.
+         */
+        for (int subPartition : PartitionUtils.getSubPartitions(userPartition, amplificationFactor)) {
+          PartitionConsumptionState subPartitionConsumptionState = partitionConsumptionStateMap.get(subPartition);
+          subPartitionConsumptionState.recordSubPartitionStatus(versionAwareSubPartitionStatus);
+        }
+      } else {
+        partitionConsumptionState.recordSubPartitionStatus(versionAwareSubPartitionStatus);
+      }
+
+      // Check if all sub-partitions have received the same
       for (int subPartition : PartitionUtils.getSubPartitions(userPartition, amplificationFactor)) {
         PartitionConsumptionState consumptionState = partitionConsumptionStateMap.get(subPartition);
-        if (consumptionState == null || !consumptionState.hasSubPartitionStatus(subPartitionStatus)) {
+        if (consumptionState == null || !consumptionState.hasSubPartitionStatus(versionAwareSubPartitionStatus)) {
           return;
         }
       }
       // Make sure we only report once for each partition status.
-      if (statusReportMap.get(userPartition).get(subPartitionStatus).compareAndSet(false, true)) {
+      if (statusReportMap.get(userPartition).get(versionAwareSubPartitionStatus).compareAndSet(false, true)) {
         report.run();
         if (subPartitionStatus.equals(SubPartitionStatus.END_OF_PUSH_RECEIVED)) {
           canReportCompleted.get(userPartition).complete(null);
