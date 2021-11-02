@@ -334,100 +334,11 @@ public class TestPushJobWithNativeReplicationFromCorpNative {
     });
   }
 
-  @Test(timeOut = TEST_TIMEOUT)
-  public void testNativeReplicationForIncrementalPush() throws Exception {
-    String clusterName = CLUSTER_NAMES[0];
-    File inputDir = getTempDataDirectory();
-    VeniceControllerWrapper parentController =
-        parentControllers.stream().filter(c -> c.isMasterController(clusterName)).findAny().get();
-    String inputDirPath = "file:" + inputDir.getAbsolutePath();
-    String storeName = TestUtils.getUniqueString("store");
-    Properties props = defaultH2VProps(parentController.getControllerUrl(), inputDirPath, storeName);
-    props.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
-
-    Schema recordSchema = TestPushUtils.writeSimpleAvroFileWithUserSchema(inputDir, true, 100);
-    String keySchemaStr = recordSchema.getField(props.getProperty(VenicePushJob.KEY_FIELD_PROP)).schema().toString();
-    String valueSchemaStr = recordSchema.getField(props.getProperty(VenicePushJob.VALUE_FIELD_PROP)).schema().toString();
-
-    UpdateStoreQueryParams updateStoreParams = new UpdateStoreQueryParams()
-        .setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
-        .setPartitionCount(2)
-        .setLeaderFollowerModel(true)
-        .setNativeReplicationEnabled(true)
-        .setIncrementalPushEnabled(true)
-        .setIncrementalPushPolicy(IncrementalPushPolicy.PUSH_TO_VERSION_TOPIC);
-
-    createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, updateStoreParams).close();
-
-    try (ControllerClient dc0Client = new ControllerClient(clusterName,
-        childDatacenters.get(0).getControllerConnectString());
-        ControllerClient dc1Client = new ControllerClient(clusterName,
-            childDatacenters.get(1).getControllerConnectString());
-        ControllerClient dc2Client = new ControllerClient(clusterName,
-            childDatacenters.get(2).getControllerConnectString())) {
-
-      /**
-       * Check the update store command in parent controller has been propagated into child controllers, before
-       * sending any commands directly into child controllers, which can help avoid race conditions.
-       */
-      TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(dc0Client, storeName, true);
-      TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(dc1Client, storeName, true);
-      TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(dc2Client, storeName, true);
-
-      //disable L/F+ native replication for dc-1 and dc-2.
-      UpdateStoreQueryParams updateStoreParams1 =
-          new UpdateStoreQueryParams().setLeaderFollowerModel(false).setNativeReplicationEnabled(false);
-      TestPushUtils.updateStore(clusterName, storeName, dc1Client, updateStoreParams1);
-      TestPushUtils.updateStore(clusterName, storeName, dc2Client, updateStoreParams1);
-
-      //verify all the datacenter is configured correctly.
-      TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(dc0Client, storeName, true);
-      TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(dc1Client, storeName, false);
-      TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(dc2Client, storeName, false);
-    }
-
-    // Write batch data
-    TestPushUtils.runPushJob("Test push job", props);
-    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-      // Current version should become 3
-      for (int version : parentController.getVeniceAdmin()
-          .getCurrentVersionsForMultiColos(clusterName, storeName)
-          .values()) {
-        Assert.assertEquals(version, 1);
-      }
-    });
-
-    //Run incremental push job
-    props.setProperty(INCREMENTAL_PUSH, "true");
-    TestPushUtils.writeSimpleAvroFileWithUserSchema2(inputDir);
-    TestPushUtils.runPushJob("Test incremental push job", props);
-
-    //Verify following in child controller
-    for (VeniceMultiClusterWrapper childDataCenter : childDatacenters) {
-      //Verify version level incremental push config is set correctly. The current version should be 1.
-      Optional<Version> version =
-          childDataCenter.getRandomController().getVeniceAdmin().getStore(clusterName, storeName).getVersion(1);
-      Assert.assertTrue(version.get().isIncrementalPushEnabled());
-    }
-
-    //Verify the data in the first child fabric which consumes remotely
-    VeniceMultiClusterWrapper childDataCenter = childDatacenters.get(0);
-    String routerUrl = childDataCenter.getClusters().get(clusterName).getRandomRouterURL();
-    try(AvroGenericStoreClient<String, Object> client =
-        ClientFactory.getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerUrl))) {
-      for (int i = 1; i <= 150; ++i) {
-        String expected = i <= 50 ? "test_name_" + i : "test_name_" + (i * 2);
-        String actual = client.get(Integer.toString(i)).get().toString();
-        Assert.assertEquals(actual, expected);
-      }
-    }
-  }
-
   public static void verifyIncrementalPushData(List<VeniceMultiClusterWrapper> childDatacenters, String clusterName, String storeName, int maxKey, int valueMultiplier) throws Exception {
     //Verify the data in the first child fabric which consumes remotely
     int j = 0;
     for (VeniceMultiClusterWrapper childDataCenter : childDatacenters) {
-      logger.info("ssen: verifying dc-" + j++);
+      logger.info("verifying dc-" + j++);
       String routerUrl = childDataCenter.getClusters().get(clusterName).getRandomRouterURL();
       try (AvroGenericStoreClient<String, Object> client = ClientFactory.getAndStartGenericAvroClient(
           ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerUrl))) {
