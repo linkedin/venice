@@ -156,5 +156,8 @@ public class VeniceMetadataRepositoryBuilder {
             clusterConfig.getRefreshAttemptsForZkReconnect(), clusterConfig.getRefreshIntervalForZkReconnectInMs())
     );
     schemaRepo.refresh();
+
+    liveClusterConfigRepo = new HelixReadOnlyLiveClusterConfigRepository(zkClient, adapter, clusterName);
+    liveClusterConfigRepo.refresh();
   }
 }
