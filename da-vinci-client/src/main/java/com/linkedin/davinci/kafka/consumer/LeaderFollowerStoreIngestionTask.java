@@ -1611,13 +1611,15 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                     + " Partition " + consumerRecord.partition() + " Offset " + consumerRecord.offset());
           case START_OF_INCREMENTAL_PUSH:
           case END_OF_INCREMENTAL_PUSH:
+            // For inc push to RT policy, the control msg is written in RT topic, we will need to calculate the destination partition in VT correctly.
+            int versionTopicPartitionToBeProduced = Version.isRealTimeTopic(consumerRecord.topic()) ? consumerRecord.partition() * amplificationFactor : consumerRecord.partition();
             /**
              * We are using {@link VeniceWriter#asyncSendControlMessage()} api instead of {@link VeniceWriter#put()} since we have
              * to calculate DIV for this message but keeping the ControlMessage content unchanged. {@link VeniceWriter#put()} does not
              * allow that.
              */
             produceToLocalKafka(consumerRecordWrapper, partitionConsumptionState, leaderProducedRecordContext,
-                (callback, leaderMetadataWrapper) -> veniceWriter.get().asyncSendControlMessage(controlMessage, consumerRecord.partition(),
+                (callback, leaderMetadataWrapper) -> veniceWriter.get().asyncSendControlMessage(controlMessage, versionTopicPartitionToBeProduced,
                     new HashMap<>(), callback, leaderMetadataWrapper));
             break;
           case TOPIC_SWITCH:
