@@ -6,6 +6,7 @@ import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.RoutingDataRepository;
+import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.routerapi.ReplicaState;
 import com.linkedin.venice.utils.Utils;
 import java.util.Collection;
@@ -66,7 +67,7 @@ public abstract class HelixBaseRoutingRepository
 
   protected volatile Map<String, Integer> resourceToIdealPartitionCountMap;
 
-  private long masterControllerChangeTime = -1;
+  private long masterControllerChangeTimeMs = -1;
 
   private RoutingTableProvider routingTableProvider;
 
@@ -135,7 +136,19 @@ public abstract class HelixBaseRoutingRepository
     return getReadyToServeInstances(resourceAssignment.getPartitionAssignment(kafkaTopic), partitionId);
   }
 
-  public abstract List<Instance> getReadyToServeInstances(PartitionAssignment partitionAssignment, int partitionId);
+  /**
+   * Get ready to serve instances from local memory. All of instances are in {@link ExecutionStatus#COMPLETED} or
+   * {@link HelixState#ONLINE} state.
+   */
+  @Override
+  public List<Instance> getReadyToServeInstances(PartitionAssignment partitionAssignment, int partitionId) {
+    Partition partition = partitionAssignment.getPartition(partitionId);
+    if (partition == null) {
+      return Collections.emptyList();
+    } else {
+      return partition.getReadyToServeInstances();
+    }
+  }
 
   /**
    * This function is mainly used in VeniceVersionFinder#anyOfflinePartitions() when there is no online replica for
@@ -147,7 +160,7 @@ public abstract class HelixBaseRoutingRepository
    */
   public Map<String, List<Instance>> getAllInstances(String kafkaTopic, int partitionId) {
     Partition partition = getPartitionAssignments(kafkaTopic).getPartition(partitionId);
-    return partition != null ? partition.getAllInstances() : Collections.EMPTY_MAP;
+    return partition != null ? partition.getAllInstances() : Collections.emptyMap();
   }
 
   @Override
@@ -206,8 +219,8 @@ public abstract class HelixBaseRoutingRepository
   }
 
   @Override
-  public long getMasterControllerChangeTime() {
-    return this.masterControllerChangeTime;
+  public long getMasterControllerChangeTimeMs() {
+    return this.masterControllerChangeTimeMs;
   }
 
   @Override
@@ -218,7 +231,7 @@ public abstract class HelixBaseRoutingRepository
     }
     logger.info("Got notification type:" + changeContext.getType() + ". Master controller is changed.");
     LiveInstance leader = manager.getHelixDataAccessor().getProperty(keyBuilder.controllerLeader());
-    this.masterControllerChangeTime = System.currentTimeMillis();
+    this.masterControllerChangeTimeMs = System.currentTimeMillis();
     if (leader == null) {
       this.masterController = null;
       logger.error("Cluster do not have master controller now!");

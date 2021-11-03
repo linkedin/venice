@@ -166,7 +166,7 @@ public class VeniceDelegateMode extends ScatterGatherMode {
           SERVICE_UNAVAILABLE, "The retry request aborted because of delay constraint of smart long-tail retry",
           RouterExceptionAndTrackingUtils.FailureType.SMART_RETRY_ABORTED_BY_DELAY_CONSTRAINT);
     }
-    ScatterGatherMode scatterMode = null;
+    ScatterGatherMode scatterMode;
     switch (venicePath.getRequestType()) {
       case MULTI_GET:
       case MULTI_GET_STREAMING:

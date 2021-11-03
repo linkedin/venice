@@ -40,18 +40,6 @@ public class HelixExternalViewRepository extends HelixBaseRoutingRepository {
         dataSource.put(PropertyType.EXTERNALVIEW, Collections.emptyList());
     }
 
-    /**
-     * Get instances from local memory. All of instances are in {@link HelixState#ONLINE} state.
-     */
-    public List<Instance> getReadyToServeInstances(PartitionAssignment partitionAssignment, int partitionId) {
-        Partition partition = partitionAssignment.getPartition(partitionId);
-        if (partition == null) {
-            return Collections.emptyList();
-        } else {
-            return partition.getReadyToServeInstances();
-        }
-    }
-
     public List<ReplicaState> getReplicaStates(String kafkaTopic, int partitionId) {
         Partition partition = resourceAssignment.getPartition(kafkaTopic, partitionId);
         if (partition == null) {
@@ -106,6 +94,7 @@ public class HelixExternalViewRepository extends HelixBaseRoutingRepository {
             listener.onExternalViewChange(resourceAssignment.getPartitionAssignment(resource)));
     }
 
+    @Override
     protected void onExternalViewDataChange(RoutingTableSnapshot routingTableSnapshot) {
         if (routingTableSnapshot.getExternalViews() == null || routingTableSnapshot.getExternalViews().size() <= 0){
             logger.info("Ignore the empty external view.");

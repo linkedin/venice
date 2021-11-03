@@ -16,12 +16,10 @@ import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreConfigRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.RoutingDataRepository;
-import com.linkedin.venice.meta.SerializableSystemStore;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.SystemStore;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.pushmonitor.HybridStoreQuotaStatus;
 import com.linkedin.venice.pushmonitor.PartitionStatusOnlineInstanceFinder;
 import com.linkedin.venice.router.api.VenicePathParserHelper;
@@ -158,7 +156,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
     responseObject.setUrl(routing.getMasterController().getUrl());
     logger.info(
         "For cluster " + responseObject.getCluster() + ", the master controller url is " + responseObject.getUrl()
-            + ", last refreshed at " + routing.getMasterControllerChangeTime());
+            + ", last refreshed at " + routing.getMasterControllerChangeTimeMs());
     setupResponseAndFlush(OK, mapper.writeValueAsBytes(responseObject), true, ctx);
   }
 

@@ -61,14 +61,8 @@ public class ResourceAssignment {
     Set<String> deletedResources = compareAndGetDeletedResources(newAssignment);
     Set<String> updatedResources = compareAndGetUpdatedResources(newAssignment);
 
-    resourceToAssignmentsMap = newAssignment.resourceToAssignmentsMap;
-
+    this.resourceToAssignmentsMap = newAssignment.resourceToAssignmentsMap;
     return new ResourceAssignmentChanges(deletedResources, updatedResources);
-  }
-
-  @Deprecated
-  public void refreshAssignment(ResourceAssignment newAssignment) {
-    resourceToAssignmentsMap = newAssignment.resourceToAssignmentsMap;
   }
 
   Set<String> compareAndGetDeletedResources(ResourceAssignment newAssignment) {

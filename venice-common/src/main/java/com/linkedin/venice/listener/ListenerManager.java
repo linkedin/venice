@@ -20,12 +20,12 @@ import org.apache.log4j.Logger;
  */
 public class ListenerManager<T> {
 
-  private ConcurrentMap<String, Set<T>> listenerMap;
+  private final ConcurrentMap<String, Set<T>> listenerMap;
 
-  private ExecutorService threadPool;
+  private final ExecutorService threadPool;
 
-  //TODO make thread couent and keepAlive time configurable.
-  private int threadCount = 1;
+  //TODO make thread count and keepAlive time configurable.
+  private final int threadCount = 1;
 
   private static final Logger logger = Logger.getLogger(ListenerManager.class);
 
@@ -49,7 +49,6 @@ public class ListenerManager<T> {
   public synchronized void unsubscribe(String key, T listener) {
     if (!listenerMap.containsKey(key)) {
       logger.debug("Not listeners are found for given key:" + key);
-      return;
     } else {
       listenerMap.get(key).remove(listener);
       if (listenerMap.get(key).isEmpty()) {
@@ -72,7 +71,7 @@ public class ListenerManager<T> {
 
   private void trigger(Set<T> listeners, Consumer<T> handler) {
     if (listeners != null) {
-      listeners.stream().forEach(listener -> threadPool.execute(() -> handler.accept(listener)));
+      listeners.forEach(listener -> threadPool.execute(() -> handler.accept(listener)));
     }
   }
 

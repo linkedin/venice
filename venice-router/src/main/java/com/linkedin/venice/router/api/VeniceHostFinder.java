@@ -3,6 +3,7 @@ package com.linkedin.venice.router.api;
 import com.linkedin.ddsstorage.router.api.HostFinder;
 import com.linkedin.ddsstorage.router.api.HostHealthMonitor;
 import com.linkedin.ddsstorage.router.api.RouterException;
+import com.linkedin.venice.helix.HelixBaseRoutingRepository;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.OnlineInstanceFinder;
 import com.linkedin.venice.meta.Version;
@@ -16,11 +17,13 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
+import org.apache.log4j.Logger;
 
 import static com.linkedin.venice.read.RequestType.*;
 
 
 public class VeniceHostFinder implements HostFinder<Instance, VeniceRole> {
+  private static final Logger logger = Logger.getLogger(VeniceHostFinder.class);
   private static final Comparator<Instance> INSTANCE_COMPARATOR = Comparator.comparing(Instance::getNodeId);
 
   private final OnlineInstanceFinder onlineInstanceFinder;
@@ -61,6 +64,7 @@ public class VeniceHostFinder implements HostFinder<Instance, VeniceRole> {
       /**
        * Zero available host issue is handled by {@link VeniceDelegateMode} by checking whether there is any 'offline request'.
        */
+      logger.warn("No ready-to-serve host for resource " + resourceName + " with partition " + partitionName);
       return hosts;
     }
     /**
@@ -82,7 +86,7 @@ public class VeniceHostFinder implements HostFinder<Instance, VeniceRole> {
      * {@link com.linkedin.ddsstorage.router.api.ScatterGatherMode} is just a dummy check.
      */
     // hosts is an unmodifiable list
-    List<Instance> newHosts = new ArrayList<>();
+    List<Instance> newHosts = new ArrayList<>(hosts.size());
     boolean isSingleGet = VeniceRouterUtils.isHttpGet(requestMethod);
     /**
      * {@link VeniceHostFinder} needs to filter out unhealthy hosts.
@@ -120,8 +124,11 @@ public class VeniceHostFinder implements HostFinder<Instance, VeniceRole> {
         newHosts.add(instance);
       }
     }
-    int hostCount = newHosts.size();
-    if (hostCount <= 1)  {
+    final int hostCount = newHosts.size();
+    if (hostCount <= 1) {
+      if (hostCount == 0) {
+        logger.warn("All host(s) for resource " + resourceName + " with partition " + partitionName + " are not healthy: " + hosts);
+      }
       return newHosts;
     }
     if (isSingleGet && !isStickyRoutingEnabledForSingleGet || // single-get but sticky routing is not enabled

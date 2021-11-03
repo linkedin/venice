@@ -32,7 +32,7 @@ public interface RoutingDataRepository extends VeniceResource, OnlineInstanceFin
   /**
    * Timestamp in milliseconds of the last time master controller changed.
    */
-  long getMasterControllerChangeTime();
+  long getMasterControllerChangeTimeMs();
 
   /**
    * Add a listener on kafka topic to get the notification when routing data is changed.
