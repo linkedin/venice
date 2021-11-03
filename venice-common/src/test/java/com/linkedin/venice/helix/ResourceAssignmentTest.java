@@ -29,19 +29,19 @@ public class ResourceAssignmentTest {
   }
 
   @Test
-  public void testRefreshAssignment() {
+  public void testUpdateResourceAssignment() {
     String resource = "test";
     ResourceAssignment resourceAssignment = new ResourceAssignment();
     ResourceAssignment newResourceAssignment = new ResourceAssignment();
     PartitionAssignment partitionAssignment = new PartitionAssignment(resource, 1);
     newResourceAssignment.setPartitionAssignment(resource, partitionAssignment);
-    resourceAssignment.refreshAssignment(newResourceAssignment);
+    resourceAssignment.updateResourceAssignment(newResourceAssignment);
     Assert.assertEquals(resourceAssignment.getPartitionAssignment(resource), partitionAssignment);
     Assert.assertEquals(resourceAssignment.getAssignedResources(), newResourceAssignment.getAssignedResources());
   }
 
   @Test
-  public void testUpdateResourceAssignment() {
+  public void testUpdateResourceAssignmentGenerateChange() {
     //init 2 resource assignments
     ResourceAssignment resourceAssignment = new ResourceAssignment();
     ResourceAssignment newResourceAssignment = new ResourceAssignment();

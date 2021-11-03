@@ -36,7 +36,7 @@ import org.testng.annotations.Test;
 
 
 /**
- * Test case for {@link HelixOfflinePushRepository} and {@link HelixHybridStoreQuotaRepository}
+ * Test case for {@link HelixCustomizedViewOfflinePushRepository} and {@link HelixHybridStoreQuotaRepository}
  */
 public class TestHelixCustomizedViewRepository {
   // Test behavior configuration
@@ -53,7 +53,7 @@ public class TestHelixCustomizedViewRepository {
   private int partitionId0, partitionId1, partitionId2;
   private ZkServerWrapper zkServerWrapper;
   private HelixHybridStoreQuotaRepository hybridStoreQuotaOnlyRepository;
-  private HelixOfflinePushRepository offlinePushOnlyRepository;
+  private HelixCustomizedViewOfflinePushRepository offlinePushOnlyRepository;
   private SafeHelixManager readManager;
   private HelixPartitionStatusAccessor accessor0, accessor1;
 
@@ -107,7 +107,7 @@ public class TestHelixCustomizedViewRepository {
         HelixManagerFactory.getZKHelixManager(clusterName, "reader", InstanceType.SPECTATOR, zkAddress));
     readManager.connect();
     hybridStoreQuotaOnlyRepository = new HelixHybridStoreQuotaRepository(readManager);
-    offlinePushOnlyRepository = new HelixOfflinePushRepository(readManager);
+    offlinePushOnlyRepository = new HelixCustomizedViewOfflinePushRepository(readManager);
     hybridStoreQuotaOnlyRepository.refresh();
     offlinePushOnlyRepository.refresh();
     // Update customized state for each partition on each instance

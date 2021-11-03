@@ -783,6 +783,10 @@ public class ConfigKeys {
    * the same storage node if rebalance/deployment doesn't happen.
    * With this way, the cache efficiency will be improved a lot in storage node since each storage node only needs
    * to serve 1/3 of key space in the most scenarios.
+   *
+   * Note that the risk is that sometimes there is no rebalance but a replica could be overloaded. In this case, ideally
+   * the read request should be routed to other replica(s) of the partition. However, with this config being true, the
+   * read request still gets routed to the overloaded replica in a "sticky" way.
    */
   public static final String ROUTER_ENABLE_STICKY_ROUTING_FOR_SINGLE_GET = "router.enable.sticky.routing.for.single.get";
 

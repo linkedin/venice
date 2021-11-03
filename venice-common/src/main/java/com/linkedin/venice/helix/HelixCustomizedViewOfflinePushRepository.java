@@ -32,28 +32,14 @@ import static com.linkedin.venice.helix.ResourceAssignment.ResourceAssignmentCha
 /**
  * Extend HelixBaseRoutingRepository to leverage customized view data for offline push.
  */
-public class HelixOfflinePushRepository extends HelixBaseRoutingRepository {
-  private static final Logger logger = Logger.getLogger(HelixOfflinePushRepository.class);
+public class HelixCustomizedViewOfflinePushRepository extends HelixBaseRoutingRepository {
+  private static final Logger logger = Logger.getLogger(HelixCustomizedViewOfflinePushRepository.class);
 
   private static final String LEADER_FOLLOWER_VENICE_STATE_FILLER = "N/A";
 
-  public HelixOfflinePushRepository(SafeHelixManager manager) {
+  public HelixCustomizedViewOfflinePushRepository(SafeHelixManager manager) {
     super(manager);
     dataSource.put(PropertyType.CUSTOMIZEDVIEW, Arrays.asList(HelixPartitionState.OFFLINE_PUSH.name()));
-  }
-
-  /**
-   * Get ready to serve instances from local memory. All of instances are in {@link ExecutionStatus#COMPLETED}
-   * state.
-   */
-  @Override
-  public List<Instance> getReadyToServeInstances(PartitionAssignment partitionAssignment, int partitionId) {
-    Partition partition = partitionAssignment.getPartition(partitionId);
-    if (partition == null) {
-      return Collections.emptyList();
-    } else {
-      return partition.getReadyToServeInstances();
-    }
   }
 
   @Override
@@ -74,7 +60,7 @@ public class HelixOfflinePushRepository extends HelixBaseRoutingRepository {
 
   @Override
   protected void onExternalViewDataChange(RoutingTableSnapshot routingTableSnapshot) {
-    throw new VeniceException("The function onExternalViewDataChange is not implemented");
+    throw new VeniceException("This function should not be called because this class handles updates on CV instead of EV.");
   }
 
   @Override
@@ -160,17 +146,16 @@ public class HelixOfflinePushRepository extends HelixBaseRoutingRepository {
         }
         newResourceAssignment.setPartitionAssignment(resourceName, partitionAssignment);
       }
-      ResourceAssignmentChanges updates;
+      final ResourceAssignmentChanges updates;
       synchronized (resourceAssignment) {
         // Update the live instances as well. Helix updates live instances in this routing data
         // changed event.
         this.liveInstancesMap = Collections.unmodifiableMap(liveInstanceSnapshot);
         updates = resourceAssignment.updateResourceAssignment(newResourceAssignment);
-        resourceAssignment.refreshAssignment(newResourceAssignment);
-        logger.info("Updated resource assignment and live instances.");
+        logger.info("Updated resource assignment and live instances for .");
       }
       logger.info("Customized view is changed. The number of active resources is " + resourcesInCustomizedView.size()
-          + ", and the number of deleted resource is " + updates.getDeletedResource().size());
+          + ", and the deleted resources are " + updates.getDeletedResource());
       // Notify listeners that listen on customized view data change
       for (String kafkaTopic : updates.getUpdatedResources()) {
         PartitionAssignment partitionAssignment = resourceAssignment.getPartitionAssignment(kafkaTopic);

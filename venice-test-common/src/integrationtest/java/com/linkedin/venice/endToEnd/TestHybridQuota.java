@@ -5,7 +5,7 @@ import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixHybridStoreQuotaRepository;
-import com.linkedin.venice.helix.HelixOfflinePushRepository;
+import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
@@ -106,7 +106,7 @@ public class TestHybridQuota {
     Properties h2vProperties = defaultH2VProps(sharedVenice, inputDirPath, storeName);
 
     SafeHelixManager readManager = null;
-    HelixOfflinePushRepository offlinePushRepository = null;
+    HelixCustomizedViewOfflinePushRepository offlinePushRepository = null;
     HelixHybridStoreQuotaRepository hybridStoreQuotaOnlyRepository = null;
     try (ControllerClient controllerClient = createStoreForJob(sharedVenice, recordSchema, h2vProperties);
         TopicManager topicManager = new TopicManager(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, 0l,
@@ -135,7 +135,7 @@ public class TestHybridQuota {
           HelixManagerFactory.getZKHelixManager(sharedVenice.getClusterName(), "reader", InstanceType.SPECTATOR,
               sharedVenice.getZk().getAddress()));
       readManager.connect();
-      offlinePushRepository = new HelixOfflinePushRepository(readManager);
+      offlinePushRepository = new HelixCustomizedViewOfflinePushRepository(readManager);
       hybridStoreQuotaOnlyRepository = new HelixHybridStoreQuotaRepository(readManager);
       offlinePushRepository.refresh();
       hybridStoreQuotaOnlyRepository.refresh();

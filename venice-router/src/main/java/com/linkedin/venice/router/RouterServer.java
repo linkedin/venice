@@ -23,7 +23,7 @@ import com.linkedin.venice.helix.HelixExternalViewRepository;
 import com.linkedin.venice.helix.HelixHybridStoreQuotaRepository;
 import com.linkedin.venice.helix.HelixInstanceConfigRepository;
 import com.linkedin.venice.helix.HelixLiveInstanceMonitor;
-import com.linkedin.venice.helix.HelixOfflinePushRepository;
+import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepositoryAdapter;
 import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
@@ -261,7 +261,7 @@ public class RouterServer extends AbstractVeniceService {
             config.getRefreshAttemptsForZkReconnect(), config.getRefreshIntervalForZkReconnectInMs())
     );
     this.routingDataRepository =
-        config.isHelixOfflinePushEnabled() ? new HelixOfflinePushRepository(manager)
+        config.isHelixOfflinePushEnabled() ? new HelixCustomizedViewOfflinePushRepository(manager)
             : new HelixExternalViewRepository(manager);
     this.hybridStoreQuotaRepository =
         config.isHelixHybridStoreQuotaEnabled()? Optional.of(new HelixHybridStoreQuotaRepository(manager)) : Optional.empty();

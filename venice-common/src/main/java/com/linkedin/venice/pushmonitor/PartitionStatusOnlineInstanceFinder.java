@@ -3,6 +3,7 @@ package com.linkedin.venice.pushmonitor;
 import com.linkedin.venice.VeniceResource;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoHelixResourceException;
+import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.OnlineInstanceFinder;
 import com.linkedin.venice.meta.PartitionAssignment;
@@ -31,7 +32,7 @@ import org.apache.log4j.Logger;
  * find out available instances for L/F model resources.
  *
  * Since it listens to all partition status changes, ZK loads will increase dramatically.
- * We can use {@link com.linkedin.venice.helix.HelixOfflinePushRepository} instead to improve.
+ * We can use {@link HelixCustomizedViewOfflinePushRepository} instead to improve.
  */
 public class PartitionStatusOnlineInstanceFinder
     implements OfflinePushAccessor.PartitionStatusListener, OnlineInstanceFinder, VeniceResource, IZkChildListener {
