@@ -37,6 +37,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import com.linkedin.venice.utils.MockTime;
@@ -65,10 +66,10 @@ import static org.mockito.Mockito.*;
 
 public class TopicManagerTest {
 
-  private static final Logger LOGGER = Logger.getLogger(TopicManagerTest.class);
+  private static final Logger logger = Logger.getLogger(TopicManagerTest.class);
 
   /** Wait time for {@link #topicManager} operations, in seconds */
-  private static final int WAIT_TIME = 10;
+  private static final int WAIT_TIME_IN_SECONDS = 10;
   private static final long MIN_COMPACTION_LAG = 24 * Time.MS_PER_HOUR;
 
   private KafkaBrokerWrapper kafka;
@@ -81,7 +82,7 @@ public class TopicManagerTest {
     int partitions = 1;
     int replicas = 1;
     topicManager.createTopic(topicName, partitions, replicas, false);
-    TestUtils.waitForNonDeterministicAssertion(WAIT_TIME, TimeUnit.SECONDS,
+    TestUtils.waitForNonDeterministicAssertion(WAIT_TIME_IN_SECONDS, TimeUnit.SECONDS,
         () -> Assert.assertTrue(topicManager.containsTopicAndAllPartitionsAreOnline(topicName)));
     return topicName;
   }
@@ -302,7 +303,7 @@ public class TopicManagerTest {
     final long START_TIME = 10;
     final long TIME_SKIP = 10000;
     final int NUMBER_OF_MESSAGES = 100;
-    LOGGER.info("Current time at the start of testGetOffsetsByTime: " + START_TIME);
+    logger.info("Current time at the start of testGetOffsetsByTime: " + START_TIME);
 
     // Setup
     mockTime.setTime(START_TIME);
@@ -323,7 +324,7 @@ public class TopicManagerTest {
       byte[] value = ("value" + messageNumber).getBytes();
       offsetsByMessageNumber[messageNumber] = veniceWriter.put(key, value, 0, null).get();
       long offset = offsetsByMessageNumber[messageNumber].offset();
-      LOGGER.info("Wrote messageNumber: " + messageNumber + ", at time: " + mockTime + ", offset: " + offset);
+      logger.info("Wrote messageNumber: " + messageNumber + ", at time: " + mockTime + ", offset: " + offset);
       mockTime.addMilliseconds(1);
     }
 
@@ -359,11 +360,10 @@ public class TopicManagerTest {
   }
 
   private void assertOffsetsByTime(String topicName, long time, long expectedOffset) {
-    LOGGER.info("Asking for time: " + time + ", expecting offset: " + expectedOffset);
+    logger.info("Asking for time: " + time + ", expecting offset: " + expectedOffset);
     Map<Integer, Long> offsets = topicManager.getTopicOffsetsByTime(topicName, time);
     offsets.forEach((partition, offset) -> Assert.assertEquals(offset, new Long(expectedOffset),
         "When asking for timestamp " + time + ", partition " + partition + " has an unexpected offset."));
-
   }
 
   @Test
@@ -500,7 +500,7 @@ public class TopicManagerTest {
     KafkaClientFactory mockKafkaClientFactory = mock(KafkaClientFactory.class);
     // Mock an admin client to pass topic existence check
     KafkaAdminWrapper mockKafkaAdminWrapper = mock(KafkaAdminWrapper.class);
-    doReturn(true).when(mockKafkaAdminWrapper).containsTopicWithRetry(eq(topic), anyInt());
+    doReturn(true).when(mockKafkaAdminWrapper).containsTopicWithExpectationAndRetry(eq(topic), anyInt(), eq(true));
     doReturn(mockKafkaAdminWrapper).when(mockKafkaClientFactory).getKafkaAdminClient(any());
     // Throw Kafka TimeoutException when trying to get max offset
     KafkaConsumer<byte[], byte[]> mockKafkaConsumer = mock(KafkaConsumer.class);
@@ -509,6 +509,53 @@ public class TopicManagerTest {
 
     TopicManager topicManager = new TopicManager(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, MIN_COMPACTION_LAG, mockKafkaClientFactory);
     Assert.assertThrows(VeniceOperationAgainstKafkaTimedOut.class, () -> topicManager.getPartitionLatestOffsetAndRetry(topic, 0, 10));
+  }
+
+  @Test
+  public void testContainsTopicWithExpectationAndRetry() throws InterruptedException {
+    // Case 1: topic does not exist
+    String nonExistingTopic = TestUtils.getUniqueString("topic");
+    Assert.assertFalse(topicManager.containsTopicWithExpectationAndRetry(nonExistingTopic, 3, true));
+
+    // Case 2: topic exists
+    topicManager.createTopic(nonExistingTopic, 1, 1, false);
+    String existingTopic = nonExistingTopic;
+    Assert.assertTrue(topicManager.containsTopicWithExpectationAndRetry(existingTopic, 3, true));
+
+    // Case 3: topic does not exist initially but topic is created later.
+    //         This test case is to simulate the situation where the contains topic check fails on initial attempt(s) but succeeds eventually.
+    String initiallyNotExistTopic = TestUtils.getUniqueString("topic");
+
+    final long delayedTopicCreationInSeconds = 1;
+    CountDownLatch delayedTopicCreationStartedSignal = new CountDownLatch(1);
+
+    Thread delayedTopicCreationThread = new Thread(() -> {
+      delayedTopicCreationStartedSignal.countDown();
+      logger.info(String.format("Thread started and it will create topic %s in %s second(s)", initiallyNotExistTopic, delayedTopicCreationInSeconds));
+      try {
+        Thread.sleep(TimeUnit.SECONDS.toMillis(delayedTopicCreationInSeconds));
+      } catch (InterruptedException e) {
+        Assert.fail("Got unexpected exception...", e);
+      }
+      topicManager.createTopic(initiallyNotExistTopic, 1, 1, false);
+      logger.info("Created this initially-not-exist topic: " + initiallyNotExistTopic);
+    });
+    delayedTopicCreationThread.setDaemon(true);
+    delayedTopicCreationThread.start();
+    // Just because start() is called does not mean thread is actually started running. Wait for a significant amount of time
+    delayedTopicCreationStartedSignal.await(5, TimeUnit.SECONDS);
+
+    Duration initialBackoff = Duration.ofSeconds(delayedTopicCreationInSeconds + 2);
+    Duration maxBackoff = Duration.ofSeconds(initialBackoff.getSeconds() + 1);
+    Duration maxDuration = Duration.ofSeconds(3 * maxBackoff.getSeconds());
+    Assert.assertTrue(topicManager.containsTopicWithExpectationAndRetry(
+        initiallyNotExistTopic,
+        3,
+        true,
+        initialBackoff,
+        maxBackoff,
+        maxDuration
+    ));
   }
 
   @Test

@@ -36,17 +36,52 @@ public interface KafkaAdminWrapper extends Closeable {
 
   boolean containsTopic(String topic);
 
-  default boolean containsTopicWithRetry(String topic, int maxAttempts) {
-    Duration initialBackoff = Duration.ofMillis(2);
-    Duration maxBackoff = Duration.ofMillis(100);
-    Duration maxDuration = Duration.ofSeconds(10);
+  /**
+   * Retry up to a maximum number of attempts to get the expected result. If the topic existence check returns with
+   * expected result, return the expected result immediately instead of retrying. This method exists since Kafka metadata
+   * is eventually consistent so that it takes time for all Kafka brokers to learn about a topic creation takes. So checking
+   * multiple times give us a more certain result of whether a topic exists.
+   *
+   * @param topic
+   * @param maxAttempts maximum number of attempts to check if no expected result is returned
+   * @param expectedResult expected result
+   * @return
+   */
+  default boolean containsTopicWithExpectationAndRetry(String topic, int maxAttempts, final boolean expectedResult) {
+    Duration defaultInitialBackoff = Duration.ofMillis(100);
+    Duration defaultMaxBackoff = Duration.ofSeconds(3);
+    Duration defaultMaxDuration = Duration.ofSeconds(10);
+    return containsTopicWithExpectationAndRetry(
+        topic,
+        maxAttempts,
+        expectedResult,
+        defaultInitialBackoff,
+        defaultMaxBackoff,
+        defaultMaxDuration
+    );
+  }
+
+  default boolean containsTopicWithExpectationAndRetry(
+      String topic,
+      int maxAttempts,
+      final boolean expectedResult,
+      Duration initialBackoff,
+      Duration maxBackoff,
+      Duration maxDuration
+  ) {
+    if (initialBackoff.toMillis() > maxBackoff.toMillis()) {
+      throw new IllegalArgumentException("Initial backoff cannot be longer than max backoff. Got initial backoff in "
+          + "millis: " + initialBackoff.toMillis() + " and max backoff in mills: " + maxBackoff.toMillis());
+    }
+
     try {
       return RetryUtils.executeWithMaxAttemptAndExponentialBackoff(
           () -> {
-            if (!this.containsTopic(topic)) {
-              throw new VeniceRetriableException("Couldn't get topic!  Retrying...");
+            if (expectedResult != this.containsTopic(topic)) {
+              throw new VeniceRetriableException("Retrying containsTopic check to get expected result: " + expectedResult +
+                  " for topic " + topic);
             }
-            return true;
+            return expectedResult;
           },
           maxAttempts,
           initialBackoff,
@@ -55,7 +90,7 @@ public interface KafkaAdminWrapper extends Closeable {
           Collections.singletonList(VeniceRetriableException.class)
       );
     } catch (VeniceRetriableException e) {
-      return false;
+      return !expectedResult; // Eventually still not get the expected result
     }
   }
 

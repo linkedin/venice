@@ -101,7 +101,7 @@ public class KafkaAdminClient implements KafkaAdminWrapper {
     try {
       getKafkaAdminClient().alterConfigs(configs).all().get();
     } catch (ExecutionException | InterruptedException e) {
-      if (!containsTopic(topicName)) {
+      if (!containsTopicWithExpectationAndRetry(topicName, 3, true)) {
         // We assume the exception was caused by a non-existent topic.
         throw new TopicDoesNotExistException("Topic " + topicName + " does not exist");
       }

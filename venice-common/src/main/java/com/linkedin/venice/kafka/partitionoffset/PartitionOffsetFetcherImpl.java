@@ -14,7 +14,6 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
@@ -91,7 +90,7 @@ public class PartitionOffsetFetcherImpl implements PartitionOffsetFetcher {
       throw new IllegalArgumentException("Cannot retrieve latest offsets for invalid partition " + partition);
     }
     try (AutoCloseableLock ignore = new AutoCloseableLock(rawConsumerLock)) {
-      if (doTopicCheck && !kafkaAdminWrapper.get().containsTopicWithRetry(topic, 3)) {
+      if (doTopicCheck && !kafkaAdminWrapper.get().containsTopicWithExpectationAndRetry(topic, 3, true)) {
         throw new TopicDoesNotExistException("Topic " + topic + " does not exist!");
       }
       TopicPartition topicPartition = new TopicPartition(topic, partition);
@@ -128,7 +127,6 @@ public class PartitionOffsetFetcherImpl implements PartitionOffsetFetcher {
       throw new IllegalArgumentException("Invalid retries. Got: " + retries);
     }
     int attempt = 0;
-    long offset;
     VeniceOperationAgainstKafkaTimedOut lastException = new VeniceOperationAgainstKafkaTimedOut("This exception should not be thrown");
     while (attempt < retries) {
       try {
@@ -136,7 +134,7 @@ public class PartitionOffsetFetcherImpl implements PartitionOffsetFetcher {
       } catch (VeniceOperationAgainstKafkaTimedOut e){ // topic and partition is listed in the exception object
         logger.warn("Failed to get latest offset.  Retries remaining: " + (retries - attempt), e);
         lastException = e;
-        attempt ++;
+        attempt++;
       }
     }
     throw lastException;
@@ -397,7 +395,7 @@ public class PartitionOffsetFetcherImpl implements PartitionOffsetFetcher {
     }
 
     try (AutoCloseableLock ignore = new AutoCloseableLock(kafkaRecordConsumerLock)) {
-      if (!kafkaAdminWrapper.get().containsTopicWithRetry(topic, 3)) {
+      if (!kafkaAdminWrapper.get().containsTopicWithExpectationAndRetry(topic, 3, true)) {
         throw new TopicDoesNotExistException("Topic " + topic + " does not exist!");
       }
       final TopicPartition topicPartition = new TopicPartition(topic, partition);
@@ -568,7 +566,7 @@ public class PartitionOffsetFetcherImpl implements PartitionOffsetFetcher {
    */
   private long getEarliestOffset(String topic, int partition) throws TopicDoesNotExistException {
     try (AutoCloseableLock ignore = new AutoCloseableLock(rawConsumerLock)) {
-      if (!kafkaAdminWrapper.get().containsTopicWithRetry(topic, 3)) {
+      if (!kafkaAdminWrapper.get().containsTopicWithExpectationAndRetry(topic, 3, true)) {
         throw new TopicDoesNotExistException("Topic " + topic + " does not exist!");
       }
       if (partition < 0) {

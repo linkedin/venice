@@ -572,6 +572,32 @@ public class TopicManager implements Closeable {
   }
 
   /**
+   * See Java doc of {@link KafkaAdminWrapper#containsTopicWithExpectationAndRetry} which provides exactly the same
+   * semantics.
+   */
+  public boolean containsTopicWithExpectationAndRetry(String topic, int maxAttempts, final boolean expectedResult) {
+    return kafkaAdmin.get().containsTopicWithExpectationAndRetry(topic, maxAttempts, expectedResult);
+  }
+
+  public boolean containsTopicWithExpectationAndRetry(
+      String topic,
+      int maxAttempts,
+      final boolean expectedResult,
+      Duration initialBackoff,
+      Duration maxBackoff,
+      Duration maxDuration
+  ) {
+    return kafkaAdmin.get().containsTopicWithExpectationAndRetry(
+        topic,
+        maxAttempts,
+        expectedResult,
+        initialBackoff,
+        maxBackoff,
+        maxDuration
+    );
+  }
+
+  /**
    * @see {@link #containsTopicAndAllPartitionsAreOnline(String, Integer)}
    */
   public boolean containsTopicAndAllPartitionsAreOnline(String topic) {
