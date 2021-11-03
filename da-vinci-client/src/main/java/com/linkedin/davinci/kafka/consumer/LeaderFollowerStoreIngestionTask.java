@@ -1170,6 +1170,12 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       return Long.MAX_VALUE;
     }
 
+    // Since DaVinci clients run in follower only mode, use local VT to compute hybrid lag.
+    if (isDaVinciClient) {
+      return cachedKafkaMetadataGetter.getOffset(localKafkaServer, kafkaVersionTopic, partition)
+          - partitionConsumptionState.getOffsetRecord().getLocalVersionTopicOffset();
+    }
+
     // leaderTopic is the real-time topic now
     String sourceRealTimeTopicKafkaURL;
     Set<String> sourceRealTimeTopicKafkaURLs = getRealTimeDataSourceKafkaAddress(partitionConsumptionState);
@@ -1177,30 +1183,32 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       throw new VeniceException("Expect a real-time source Kafka URL for " + partitionConsumptionState);
     } else if (sourceRealTimeTopicKafkaURLs.size() == 1) {
       sourceRealTimeTopicKafkaURL = sourceRealTimeTopicKafkaURLs.iterator().next();
-    } else if (sourceRealTimeTopicKafkaURLs.contains(localKafkaServer)) {
-      sourceRealTimeTopicKafkaURL = localKafkaServer;
+      return measureRTOffsetLagForSingleRegion(sourceRealTimeTopicKafkaURL, partitionConsumptionState, shouldLogLag);
     } else {
-      throw new VeniceException(String.format("Expect source RT Kafka URLs contains local Kafka URL. Got local " +
-              "Kafka URL %s and RT source Kafka URLs %s", localKafkaServer, sourceRealTimeTopicKafkaURLs));
+      return measureRTOffsetLagForMultiRegions(sourceRealTimeTopicKafkaURLs, partitionConsumptionState, shouldLogLag);
     }
+  }
 
-    // Since DaVinci clients run in follower only mode, use local VT to compute hybrid lag.
-    if (isDaVinciClient) {
-      return cachedKafkaMetadataGetter.getOffset(localKafkaServer, kafkaVersionTopic, partition) -
-          partitionConsumptionState.getOffsetRecord().getLocalVersionTopicOffset();
-    }
-
+  protected long measureRTOffsetLagForSingleRegion(String sourceRealTimeTopicKafkaURL,
+      PartitionConsumptionState partitionConsumptionState, boolean shouldLogLag) {
     Pair<Long, Long> hybridLagPair =
-        amplificationAdapter.getLatestLeaderOffsetAndHybridTopicOffset(sourceRealTimeTopicKafkaURL, leaderTopic,
-            partitionConsumptionState);
+        amplificationAdapter.getLatestLeaderOffsetAndHybridTopicOffset(sourceRealTimeTopicKafkaURL,
+            partitionConsumptionState.getOffsetRecord().getLeaderTopic(), partitionConsumptionState);
     long latestLeaderOffset = hybridLagPair.getFirst();
     long lastOffsetInRealTimeTopic = hybridLagPair.getSecond();
     long lag = lastOffsetInRealTimeTopic - latestLeaderOffset;
     if (shouldLogLag) {
-      logger.info(String.format("%s partition %d real-time buffer lag offset is: " + "(Last RT offset [%d] - Last leader consumed offset [%d]) = Lag [%d]",
-          consumerTaskId, partition, lastOffsetInRealTimeTopic, latestLeaderOffset, lag));
+      logger.info(String.format("%s partition %d real-time buffer lag offset for region: %s is: "
+              + "(Last RT offset [%d] - Last leader consumed offset [%d]) = Lag [%d]", consumerTaskId,
+          partitionConsumptionState.getPartition(), sourceRealTimeTopicKafkaURL, lastOffsetInRealTimeTopic,
+          latestLeaderOffset, lag));
     }
     return lag;
+  }
+
+  protected long measureRTOffsetLagForMultiRegions(Set<String> sourceRealTimeTopicKafkaURLs,
+      PartitionConsumptionState partitionConsumptionState, boolean shouldLogLag) {
+    throw new VeniceException(String.format("%s Multi colo RT offset lag calculation is not supported for non Active-Active stores", consumerTaskId));
   }
 
   @Override
