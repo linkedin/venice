@@ -34,6 +34,7 @@ import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
@@ -806,4 +807,34 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     return minZeroLag(offsetLag);
   }
 
+  /**
+   * For stores in aggregate mode this is optimistic and  returns the minimum lag of all fabric. This is because in aggregate
+   * mode duplicate msg consumption happen from all fabric. So it should be fine to consider the lowest lag.
+   *
+   * In non-aggregate mode of consumption only return the local fabric lag
+   * @param sourceRealTimeTopicKafkaURLs
+   * @param partitionConsumptionState
+   * @param shouldLogLag
+   * @return
+   */
+  @Override
+  protected long measureRTOffsetLagForMultiRegions(Set<String> sourceRealTimeTopicKafkaURLs, PartitionConsumptionState partitionConsumptionState, boolean shouldLogLag) {
+    if (this.hybridStoreConfig.get().getDataReplicationPolicy().equals(DataReplicationPolicy.AGGREGATE)) {
+      long minLag = Long.MAX_VALUE;
+      for (String sourceRealTimeTopicKafkaURL : sourceRealTimeTopicKafkaURLs) {
+        long lag = measureRTOffsetLagForSingleRegion(sourceRealTimeTopicKafkaURL, partitionConsumptionState, shouldLogLag);
+        if (minLag > lag) {
+          minLag = lag;
+        }
+      }
+      return minLag;
+    } else {
+      if (sourceRealTimeTopicKafkaURLs.contains(localKafkaServer)) {
+        return measureRTOffsetLagForSingleRegion(localKafkaServer, partitionConsumptionState, shouldLogLag);
+      } else {
+        throw new VeniceException(String.format("Expect source RT Kafka URLs contains local Kafka URL. Got local " +
+            "Kafka URL %s and RT source Kafka URLs %s", localKafkaServer, sourceRealTimeTopicKafkaURLs));
+      }
+    }
+  }
 }
