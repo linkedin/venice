@@ -3649,7 +3649,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return ControlMessageType.START_OF_SEGMENT.equals(msgType) || ControlMessageType.END_OF_SEGMENT.equals(msgType);
   }
 
-  protected long getUpstreamOffsetForHybridOffsetLagMeasurement(PartitionConsumptionState pcs) {
+  protected long getUpstreamOffsetForHybridOffsetLagMeasurement(PartitionConsumptionState pcs, String upstreamKafkaUrl) {
     throw new VeniceException("This API is for L/F model only!");
   }
 
@@ -3957,12 +3957,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           long upstreamOffset = -1;
           if (partitionConsumptionStateMap.get(subPartition) != null
               && partitionConsumptionStateMap.get(subPartition).getOffsetRecord() != null) {
-            upstreamOffset = getUpstreamOffsetForHybridOffsetLagMeasurement(partitionConsumptionStateMap.get(subPartition));
+            upstreamOffset = getUpstreamOffsetForHybridOffsetLagMeasurement(partitionConsumptionStateMap.get(subPartition), sourceRealTimeTopicKafkaURL);
           }
           latestLeaderOffset = (upstreamOffset >= 0 ? Math.max(upstreamOffset, latestLeaderOffset) : latestLeaderOffset);
         }
       } else {
-        latestLeaderOffset = getUpstreamOffsetForHybridOffsetLagMeasurement(pcs);
+        latestLeaderOffset = getUpstreamOffsetForHybridOffsetLagMeasurement(pcs, sourceRealTimeTopicKafkaURL);
         lastOffsetInRealTimeTopic = cachedKafkaMetadataGetter.getOffset(sourceRealTimeTopicKafkaURL, leaderTopic, partition);
       }
       return new Pair<>(latestLeaderOffset, lastOffsetInRealTimeTopic);
