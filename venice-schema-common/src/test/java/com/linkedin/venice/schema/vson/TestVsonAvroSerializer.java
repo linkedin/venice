@@ -67,14 +67,15 @@ public class TestVsonAvroSerializer {
 
     //test single byte. 'byte' is represented as 'int8' in Vson
     //and it is represented as Fixed (with 1 length) in Avro
-    testSerializer("\"int8\"", () -> randomBytes[0],
+    byte byte_val = 40;
+    testSerializer("\"int8\"", () -> byte_val,
         (serializer, bytes) -> {
-          Assert.assertEquals(serializer.toObject(bytes), randomBytes[0]);
+          Assert.assertEquals(serializer.toObject(bytes), byte_val);
           Object avroByte = serializer.bytesToAvro(bytes);
           Assert.assertTrue(avroByte instanceof GenericData.Fixed);
           byte[] avroByteArray = ((GenericData.Fixed) avroByte).bytes();
           Assert.assertEquals(avroByteArray.length, 1);
-          Assert.assertEquals(avroByteArray[0], randomBytes[0]);
+          Assert.assertEquals(avroByteArray[0], byte_val);
         });
     testSerializerWithNullValue("\"int8\"");
 
