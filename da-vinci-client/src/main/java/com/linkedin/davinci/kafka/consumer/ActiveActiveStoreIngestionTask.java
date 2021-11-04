@@ -724,13 +724,13 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   }
 
   /**
-   * For A/A, there are multiple entries in upstreamOffsetMap during RT ingestion. But for ready-to-serve check and
-   * leader offset metric, we only care about the local RT offset lag. Therefore, return the value corresponded to local
-   * Kafka url.
+   * For A/A, there are multiple entries in upstreamOffsetMap during RT ingestion.
+   * If the current DataReplicationPolicy is on Aggregate mode, A/A will check the upstream offset lags from all regions;
+   * otherwise, only check the upstream offset lag from the local region.
    */
   @Override
-  protected long getUpstreamOffsetForHybridOffsetLagMeasurement(PartitionConsumptionState pcs) {
-    return pcs.getOffsetRecord().getUpstreamOffset(localKafkaServer);
+  protected long getUpstreamOffsetForHybridOffsetLagMeasurement(PartitionConsumptionState pcs, String upstreamKafkaUrl) {
+    return pcs.getOffsetRecord().getUpstreamOffset(upstreamKafkaUrl);
   }
 
   private String getUpstreamKafkaUrlFromKafkaValue(KafkaMessageEnvelope kafkaValue) {

@@ -1940,7 +1940,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    * Return the value of the entry.
    */
   @Override
-  protected long getUpstreamOffsetForHybridOffsetLagMeasurement(PartitionConsumptionState pcs) {
+  protected long getUpstreamOffsetForHybridOffsetLagMeasurement(PartitionConsumptionState pcs, String ignoredUpstreamKafkaUrl) {
     return pcs.getOffsetRecord().getUpstreamOffset(OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY);
   }
 
