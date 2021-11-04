@@ -71,7 +71,7 @@ ext.libraries = [
     kafkaClients: internalKafkaGroup + ':kafka-clients:' + internalKafkaVersion,
     kafkaClientsTest: internalKafkaGroup + ':kafka-clients:' + internalKafkaVersion + ':test',
     mockito: 'org.mockito:mockito-core:3.3.3',
-    netty: 'io.netty:netty-all:4.1.22.Final',
+    netty: 'io.netty:netty-all:4.1.42.Final',
     zkclient: 'com.101tec:zkclient:0.7', //for Kafka AdminUtils
     d2: 'com.linkedin.container:pegasus-d2-server-factory:30.1.265',
     d2Client: 'com.linkedin.container:pegasus-d2-client-factory:38.4.175',
