@@ -8,8 +8,10 @@ import com.linkedin.venice.compute.protocol.request.DotProduct;
 import com.linkedin.venice.compute.protocol.request.HadamardProduct;
 import com.linkedin.venice.compute.protocol.request.enums.ComputeOperationType;
 import com.linkedin.venice.exceptions.VeniceException;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -26,37 +28,36 @@ public class ComputeUtils {
       throw new VeniceException("Compute result schema and value schema must be RECORD type");
     }
 
-    Set<Schema.Field> valueFields = new HashSet<>(valueSchema.getFields());
-    Set<String> valueFieldStrings = new HashSet<>();
-    valueFields.forEach(field -> valueFieldStrings.add(field.name()));
+    final Map<String, Schema> valueFieldSchemaMap = new HashMap<>(valueSchema.getFields().size());
+    valueSchema.getFields().forEach(f -> valueFieldSchemaMap.put(f.name(), f.schema()));
     Set<Pair<String, Schema.Type>> operationResultFields = new HashSet<>();
 
     for (ComputeOperation operation : operations) {
       switch (ComputeOperationType.valueOf(operation)) {
         case DOT_PRODUCT:
           DotProduct dotProduct = (DotProduct)operation.operation;
-          if (!valueFieldStrings.contains(dotProduct.field.toString())) {
+          if (!valueFieldSchemaMap.containsKey(dotProduct.field.toString())) {
             throw new VeniceException("The field " + dotProduct.field.toString() + " being operated on is not in value schema");
           }
           operationResultFields.add(new Pair<>(dotProduct.resultFieldName.toString(), Schema.Type.UNION));
           break;
         case COSINE_SIMILARITY:
           CosineSimilarity cosineSimilarity = (CosineSimilarity)operation.operation;
-          if (!valueFieldStrings.contains(cosineSimilarity.field.toString())) {
+          if (!valueFieldSchemaMap.containsKey(cosineSimilarity.field.toString())) {
             throw new VeniceException("The field " + cosineSimilarity.field.toString() + " being operated on is not in value schema");
           }
           operationResultFields.add(new Pair<>(cosineSimilarity.resultFieldName.toString(),  Schema.Type.UNION));
           break;
         case HADAMARD_PRODUCT:
           HadamardProduct hadamardProduct = (HadamardProduct)operation.operation;
-          if (!valueFieldStrings.contains(hadamardProduct.field.toString())) {
+          if (!valueFieldSchemaMap.containsKey(hadamardProduct.field.toString())) {
             throw new VeniceException("The field " + hadamardProduct.field.toString() + " being operated on is not in value schema");
           }
           operationResultFields.add(new Pair<>(hadamardProduct.resultFieldName.toString(), Schema.Type.UNION));
           break;
         case COUNT:
           Count count = (Count) operation.operation;
-          if (!valueFieldStrings.contains(count.field.toString())) {
+          if (!valueFieldSchemaMap.containsKey(count.field.toString())) {
             throw new VeniceException("The field " + count.field.toString() + " being operated on is not in value schema");
           }
           operationResultFields.add(new Pair<>(count.resultFieldName.toString(), Schema.Type.UNION));
@@ -66,7 +67,16 @@ public class ComputeUtils {
       }
     }
     for (Schema.Field resultField : resultSchema.getFields()) {
-      if (valueFields.contains(resultField)) {
+      /**
+       * There is no need to compare whether the 'resultField' is exactly same as the corresponding one in the value schema,
+       * since there is no need to make the result schema backward compatible.
+       * As long as the schema of the same field is same between the result schema and the value schema, it will be
+       * good enough.
+       * The major reason we couldn't make sure the same field is exactly same between the result schema and value schema
+       * is that it is not easy to achieve on Client side since the way to extract the default value from
+       * an existing field changes with Avro-1.9 or above.
+       */
+      if (resultField.schema().equals(valueFieldSchemaMap.get(resultField.name()))) {
         continue;
       }
       if (resultField.name().equals(VeniceConstants.VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME)) {

@@ -223,15 +223,14 @@ public abstract class AbstractAvroComputeRequestBuilder<K> implements ComputeReq
     projectFields.forEach( projectField -> {
       Schema.Field existingField = latestValueSchema.getField(projectField);
       /**
-       * We still need to assign the default value to make it compatible with the existing logic in Server, which is validating
-       * whether the {@link Schema.Field} exists in the original value schema or not.
-       * Check here: {@link ComputeUtils#checkResultSchema}.
+       * {@link AvroCompatibilityHelper#newField} is behaving differently with different Avro versions:
+       * 1. For Avro-1.8 or below, this method will guarantee the cloned field will be exactly same as the existing field.
+       * 2. For Avro-1.9 or above, this method couldn't guarantee the cloned field will be exactly same as the existing field
+       *    since the way to extract the default value from the existing field changes and we could only extract the default
+       *    value in Java format, but the {@link Schema.Field#equals} will compare the underlying {@link org.codehaus.jackson.JsonNode}
+       *    format of the default value.
        */
-      Object defaultValue = null;
-      if (AvroCompatibilityHelper.fieldHasDefault(existingField)) {
-        defaultValue = AvroCompatibilityHelper.getGenericDefaultValue(existingField);
-      }
-      resultSchemaFields.add(AvroCompatibilityHelper.createSchemaField(existingField.name(), existingField.schema(), "", defaultValue));
+      resultSchemaFields.add(AvroCompatibilityHelper.newField(existingField).setDoc("").build());
     });
     dotProducts.forEach( dotProduct -> {
       Schema.Field dotProductField = AvroCompatibilityHelper.createSchemaField(dotProduct.resultFieldName.toString(),
