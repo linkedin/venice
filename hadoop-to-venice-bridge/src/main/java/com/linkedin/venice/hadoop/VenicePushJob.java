@@ -22,6 +22,7 @@ import com.linkedin.venice.hadoop.heartbeat.NoOpPushJobHeartbeatSenderFactory;
 import com.linkedin.venice.hadoop.heartbeat.PushJobHeartbeatSender;
 import com.linkedin.venice.hadoop.heartbeat.PushJobHeartbeatSenderFactory;
 import com.linkedin.venice.hadoop.input.kafka.KafkaInputFormat;
+import com.linkedin.venice.hadoop.input.kafka.KafkaInputFormatCombiner;
 import com.linkedin.venice.hadoop.input.kafka.KafkaInputOffsetTracker;
 import com.linkedin.venice.hadoop.input.kafka.KafkaInputRecordReader;
 import com.linkedin.venice.hadoop.input.kafka.VeniceKafkaInputMapper;
@@ -159,6 +160,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
   public static final String KAFKA_INPUT_BROKER_URL = "kafka.input.broker.url";
   // Optional
   public static final String KAFKA_INPUT_MAX_RECORDS_PER_MAPPER = "kafka.input.max.records.per.mapper";
+  public static final String KAFKA_INPUT_COMBINER_ENABLED = "kafka.input.combiner.enabled";
   /**
    * Optional.
    * If we want to use a different rewind time from the default store-level rewind time config for Kafka Input re-push,
@@ -383,6 +385,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
     long rewindTimeInSecondsOverride;
     long reducerInactiveTimeoutInMs;
     boolean allowKifRepushForIncPushFromVTToVT;
+    boolean kafkaInputCombinerEnabled;
   }
   protected PushJobSetting pushJobSetting;
 
@@ -595,6 +598,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
     pushJobSetting.isSourceETL = props.getBoolean(SOURCE_ETL, false);
     pushJobSetting.isSourceKafka = props.getBoolean(SOURCE_KAFKA, false);
     pushJobSetting.allowKifRepushForIncPushFromVTToVT = props.getBoolean(ALLOW_KIF_REPUSH_FOR_INC_PUSH_FROM_VT_TO_VT, false);
+    pushJobSetting.kafkaInputCombinerEnabled = props.getBoolean(KAFKA_INPUT_COMBINER_ENABLED, false);
 
     if (pushJobSetting.isSourceKafka) {
       /**
@@ -2176,6 +2180,9 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
       jobConf.set(KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP, keySchemaString);
       jobConf.setInputFormat(KafkaInputFormat.class);
       jobConf.setMapperClass(VeniceKafkaInputMapper.class);
+      if (pushJobSetting.kafkaInputCombinerEnabled) {
+        jobConf.setCombinerClass(KafkaInputFormatCombiner.class);
+      }
     } else {
       // TODO:The job is using path-filter to check the consistency of avro file schema ,
       // but doesn't specify the path filter for the input directory of map-reduce job.

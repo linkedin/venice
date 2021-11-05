@@ -5,6 +5,7 @@ import com.linkedin.venice.hadoop.exceptions.VeniceSchemaFieldNotFoundException;
 import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
 import com.linkedin.venice.schema.vson.VsonAvroSerializer;
 import com.linkedin.venice.utils.Pair;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.IOException;
 import java.util.Collections;
@@ -140,8 +141,8 @@ public class VeniceVsonRecordReader extends AbstractVeniceRecordReader<BytesWrit
   }
 
   @Override
-  public void close() throws IOException {
-    fileReader.close();
+  public void close() {
+    Utils.closeQuietlyWithErrorLogged(fileReader);
   }
 
   private static class VsonIterator implements Iterator<Pair<byte[], byte[]>> {

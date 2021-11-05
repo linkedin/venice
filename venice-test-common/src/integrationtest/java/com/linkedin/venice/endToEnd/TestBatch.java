@@ -196,15 +196,7 @@ public abstract class TestBatch {
         validator, new UpdateStoreQueryParams().setCompressionStrategy(CompressionStrategy.GZIP));
 
     // Re-push with Kafka Input
-    testBatchStore(
-        inputDir -> new Pair<>(Schema.create(Schema.Type.NULL), Schema.create(Schema.Type.NULL)),
-        properties -> {
-          properties.setProperty(SOURCE_KAFKA, "true");
-          properties.setProperty(KAFKA_INPUT_TOPIC, Version.composeKafkaTopic(storeName, 1));
-          properties.setProperty(KAFKA_INPUT_BROKER_URL, veniceCluster.getKafka().getAddress());
-          properties.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
-        },
-        validator, storeName, new UpdateStoreQueryParams(), false);
+    testRepush(storeName, validator);
   }
 
   @Test(timeOut = TEST_TIMEOUT)
@@ -548,14 +540,7 @@ public abstract class TestBatch {
           recordSchema.getField("name").schema());
     }, properties -> {}, validator);
     // Re-push with Kafka Input
-    testBatchStore(
-        inputDir -> new Pair<>(Schema.create(Schema.Type.NULL), Schema.create(Schema.Type.NULL)),
-        properties -> {
-          properties.setProperty(SOURCE_KAFKA, "true");
-          properties.setProperty(KAFKA_INPUT_TOPIC, Version.composeKafkaTopic(storeName, 1));
-          properties.setProperty(KAFKA_INPUT_BROKER_URL, veniceCluster.getKafka().getAddress());
-          properties.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
-        }, validator, storeName, new UpdateStoreQueryParams(), false);
+    testRepush(storeName, validator);
   }
 
   @Test(timeOut = TEST_TIMEOUT)
@@ -709,6 +694,20 @@ public abstract class TestBatch {
   private String testBatchStoreWithDerivedSchema(InputFileWriter inputFileWriter, Consumer<Properties> extraProps, H2VValidator dataValidator,
       UpdateStoreQueryParams storeParms) throws Exception {
     return testBatchStore(inputFileWriter, extraProps, dataValidator, null, storeParms, true, true);
+  }
+
+  private void testRepush(String storeName, H2VValidator dataValidator) throws Exception {
+    for (String combiner: new String[]{"true", "false"}) {
+      testBatchStore(
+          inputDir -> new Pair<>(Schema.create(Schema.Type.NULL), Schema.create(Schema.Type.NULL)),
+          properties -> {
+            properties.setProperty(SOURCE_KAFKA, "true");
+            properties.setProperty(KAFKA_INPUT_BROKER_URL, veniceCluster.getKafka().getAddress());
+            properties.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
+            properties.setProperty(KAFKA_INPUT_COMBINER_ENABLED, combiner);
+          },
+          dataValidator, storeName, new UpdateStoreQueryParams(), false);
+    }
   }
 
   private String testBatchStore(InputFileWriter inputFileWriter, Consumer<Properties> extraProps, H2VValidator dataValidator,

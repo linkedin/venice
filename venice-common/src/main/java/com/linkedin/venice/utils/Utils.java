@@ -184,14 +184,8 @@ public class Utils {
    */
   public static VeniceProperties parseProperties(File propertyFile) throws IOException {
     Properties props = new Properties();
-    FileInputStream inputStream = null;
-    try {
-      inputStream = new FileInputStream(propertyFile);
+    try (FileInputStream inputStream = new FileInputStream(propertyFile)) {
       props.load(inputStream);
-    } finally {
-      if (inputStream != null) {
-        inputStream.close();
-      }
     }
     return new VeniceProperties(props);
   }
@@ -378,15 +372,16 @@ public class Utils {
    */
   public static Schema getSchemaFromResource(String resourcePath) throws IOException {
     ClassLoader classLoader = Utils.class.getClassLoader();
-    InputStream inputStream = classLoader.getResourceAsStream(resourcePath);
-    if (inputStream == null) {
-      throw new IOException("Resource path '" + resourcePath + "' does not exist!");
+    try (InputStream inputStream = classLoader.getResourceAsStream(resourcePath)) {
+      if (inputStream == null) {
+        throw new IOException("Resource path '" + resourcePath + "' does not exist!");
+      }
+      String schemaString = IOUtils.toString(inputStream);
+      Schema schema = Schema.parse(schemaString);
+      LOGGER.info("Loaded schema from resource path '" + resourcePath + "'");
+      LOGGER.debug("Schema literal:\n" + schema.toString(true));
+      return schema;
     }
-    String schemaString = IOUtils.toString(inputStream);
-    Schema schema = Schema.parse(schemaString);
-    LOGGER.info("Loaded schema from resource path '" + resourcePath + "'");
-    LOGGER.debug("Schema literal:\n" + schema.toString(true));
-    return schema;
   }
 
   public static Map<Integer, Schema> getAllSchemasFromResources(AvroProtocolDefinition protocolDef) {
