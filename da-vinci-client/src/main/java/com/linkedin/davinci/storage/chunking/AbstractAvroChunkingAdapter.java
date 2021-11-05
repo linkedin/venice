@@ -20,7 +20,6 @@ import java.nio.ByteBuffer;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.BinaryDecoder;
 import org.apache.avro.io.DecoderFactory;
-import org.apache.avro.io.OptimizedBinaryDecoderFactory;
 
 
 /**
@@ -296,13 +295,16 @@ public abstract class AbstractAvroChunkingAdapter<T> implements ChunkingAdapter<
 
   private final DecoderWrapper<byte[], T> decompressingByteArrayDecoder =
       (reusedDecoder, bytes, inputBytesLength, reusedValue, compressionStrategy, deserializer, readResponse, compressorFactory, versionTopic) -> {
-        InputStream inputStream = new VeniceByteArrayInputStream(
+        try (InputStream inputStream = new VeniceByteArrayInputStream(
             bytes,
             ValueRecord.SCHEMA_HEADER_LENGTH,
-            inputBytesLength - ValueRecord.SCHEMA_HEADER_LENGTH);
+            inputBytesLength - ValueRecord.SCHEMA_HEADER_LENGTH)) {
 
-        return decompressingInputStreamDecoder.decode(reusedDecoder, inputStream, inputBytesLength, reusedValue, compressionStrategy,
-            deserializer, readResponse, compressorFactory, versionTopic);
+          return decompressingInputStreamDecoder.decode(reusedDecoder, inputStream, inputBytesLength, reusedValue,
+              compressionStrategy, deserializer, readResponse, compressorFactory, versionTopic);
+        } catch (IOException e) {
+          throw new VeniceException("Failed to decompress, compressionStrategy: " + compressionStrategy.name(), e);
+        }
       };
 
   private final DecoderWrapper<byte[], T> instrumentedByteArrayDecoder =

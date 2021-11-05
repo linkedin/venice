@@ -177,9 +177,8 @@ public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends SpecificReco
    */
   @Override
   public byte[] serialize(String topic, SPECIFIC_RECORD object) {
-    try {
-      // If single-threaded, both the ByteArrayOutputStream and Encoder can be re-used. TODO: explore GC tuning later.
-      ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
+    // If single-threaded, both the ByteArrayOutputStream and Encoder can be re-used. TODO: explore GC tuning later.
+    try (ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream()) {
       Encoder encoder = AvroCompatibilityHelper.newBinaryEncoder(byteArrayOutputStream, true, null);
 
       // We write according to the latest protocol version.

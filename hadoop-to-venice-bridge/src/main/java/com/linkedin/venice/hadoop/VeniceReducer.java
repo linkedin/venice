@@ -21,6 +21,7 @@ import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.writer.AbstractVeniceWriter;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
+import java.io.Closeable;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.util.Arrays;
@@ -69,7 +70,7 @@ import static com.linkedin.venice.hadoop.VenicePushJob.*;
  */
 public class VeniceReducer
     extends AbstractMapReduceTask
-    implements Reducer<BytesWritable, BytesWritable, NullWritable, NullWritable> {
+    implements Reducer<BytesWritable, BytesWritable, BytesWritable, BytesWritable> {
 
   public static class VeniceWriterMessage {
     private byte[] keyBytes;
@@ -158,7 +159,7 @@ public class VeniceReducer
   public void reduce(
       BytesWritable key,
       Iterator<BytesWritable> values,
-      OutputCollector<NullWritable, NullWritable> output,
+      OutputCollector<BytesWritable, BytesWritable> output,
       Reporter reporter
   ) {
     if (updatePreviousReporter(reporter)) {
@@ -360,21 +361,29 @@ public class VeniceReducer
 
   @Override
   public void close() throws IOException {
-    LOGGER.info("Kafka message progress before flushing and closing producer:");
-    logMessageProgress();
-    if (null != veniceWriter) {
-      veniceWriter.flush();
-      boolean shouldEndAllSegments = messageErrored.get() == 0 && messageSent == messageCompleted.get() &&
-          previousReporter.getProgress() == 1.0;
-      veniceWriter.close(shouldEndAllSegments);
+    try {
+      LOGGER.info("Kafka message progress before flushing and closing producer:");
+      logMessageProgress();
+      if (null != veniceWriter) {
+        boolean shouldEndAllSegments = false;
+        try {
+          veniceWriter.flush();
+          shouldEndAllSegments = messageErrored.get() == 0 && messageSent == messageCompleted.get() &&
+              previousReporter.getProgress() == 1.0;
+        } finally {
+          veniceWriter.close(shouldEndAllSegments);
+        }
+      }
+      maybePropagateCallbackException();
+      LOGGER.info("Kafka message progress after flushing and closing producer:");
+      logMessageProgress();
+      if (messageSent != messageCompleted.get()) {
+        throw new VeniceException("Message sent: " + messageSent + " doesn't match message completed: " + messageCompleted.get());
+      }
+    } finally {
+      Utils.closeQuietlyWithErrorLogged(duplicateKeyPrinter);
+      reducerProgressHeartbeatScheduler.shutdownNow();
     }
-    maybePropagateCallbackException();
-    LOGGER.info("Kafka message progress after flushing and closing producer:");
-    logMessageProgress();
-    if (messageSent != messageCompleted.get()) {
-      throw new VeniceException("Message sent: " + messageSent + " doesn't match message completed: " + messageCompleted.get());
-    }
-    reducerProgressHeartbeatScheduler.shutdownNow();
     if (previousReporter == null) {
       LOGGER.warn("No MapReduce reporter set");
     } else {
@@ -618,13 +627,14 @@ public class VeniceReducer
    * Avro as well from Reducer's perspective) We should update this method once
    * Venice supports other format in the future
    */
-  public static class DuplicateKeyPrinter {
+  public static class DuplicateKeyPrinter implements AutoCloseable, Closeable {
     private static final int MAX_NUM_OF_LOG = 10;
 
     private final boolean isDupKeyAllowed;
 
     private final String topic;
     private final Schema  keySchema;
+    private final AbstractVeniceRecordReader<?, ?> recordReader;
     private final VeniceKafkaSerializer<?> keySerializer;
     private final GenericDatumWriter<Object> avroDatumWriter;
     private int numOfDupKey = 0;
@@ -634,7 +644,7 @@ public class VeniceReducer
       this.isDupKeyAllowed = jobConf.getBoolean(ALLOW_DUPLICATE_KEY, false);
 
       VeniceProperties veniceProperties = HadoopUtils.getVeniceProps(jobConf);
-      AbstractVeniceRecordReader recordReader = jobConf.getBoolean(VSON_PUSH, false) ?
+      this.recordReader = jobConf.getBoolean(VSON_PUSH, false) ?
           new VeniceVsonRecordReader(veniceProperties) : new VeniceAvroRecordReader(veniceProperties);
       this.keySchema = Schema.parse(recordReader.getKeySchemaStr());
 
@@ -691,6 +701,12 @@ public class VeniceReducer
       } catch (IOException exception) {
         throw new VeniceException(exception);
       }
+    }
+
+    @Override
+    public void close() {
+      Utils.closeQuietlyWithErrorLogged(recordReader);
+      Utils.closeQuietlyWithErrorLogged(keySerializer);
     }
   }
 }

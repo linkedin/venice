@@ -6,6 +6,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.exceptions.VeniceSchemaFieldNotFoundException;
 import com.linkedin.venice.hadoop.utils.AvroSchemaParseUtils;
 import com.linkedin.venice.utils.Pair;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.IOException;
 import java.io.InputStream;
@@ -173,9 +174,9 @@ public class VeniceAvroRecordReader extends AbstractVeniceRecordReader<AvroWrapp
   }
 
   @Override
-  public void close() throws IOException {
-    avroDataFileStream.close();
-    hdfsInputStream.close();
+  public void close() {
+    Utils.closeQuietlyWithErrorLogged(avroDataFileStream);
+    Utils.closeQuietlyWithErrorLogged(hdfsInputStream);
   }
 
   private static class AvroIterator implements Iterator<Pair<byte[], byte[]>> {
