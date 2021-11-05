@@ -50,10 +50,13 @@ public class VeniceClusterInitializer implements AutoCloseable {
       "  \"type\": \"record\",        " +
       "  \"name\": \"MemberFeature\",       " +
       "  \"fields\": [        " +
-      "         { \"name\": \"id\", \"type\": \"string\" },             " +
-      "         { \"name\": \"name\", \"type\": \"string\" },           " +
+      "         { \"name\": \"id\", \"type\": \"string\", \"default\": \"default_id\"},             " +
+      "         { \"name\": \"name\", \"type\": \"string\", \"default\": \"default_name\"},           " +
+      "         { \"name\": \"boolean_field\", \"type\": \"boolean\", \"default\": false},           " +
+      "         { \"name\": \"int_field\", \"type\": \"int\", \"default\": 0},           " +
+      "         { \"name\": \"float_field\", \"type\": \"float\", \"default\": 0},           " +
       "         { \"name\": \"namemap\", \"type\":  {\"type\" : \"map\", \"values\" : \"int\" }},           " +
-      "         { \"name\": \"member_feature\", \"type\": { \"type\": \"array\", \"items\": \"float\" } }        " +
+      "         { \"name\": \"member_feature\", \"type\": { \"type\": \"array\", \"items\": \"float\" }, \"default\": []}        " +
       "  ]       " +
       " }       ";
   public static final String KEY_SCHEMA_STR = "\"string\"";
@@ -164,6 +167,9 @@ public class VeniceClusterInitializer implements AutoCloseable {
       String name = "name_" + i;
       value.put("name", name);
       value.put("namemap", Collections.emptyMap());
+      value.put("boolean_field", true);
+      value.put("int_field", 10);
+      value.put("float_field", 10.0f);
 
       List<Float> features = new ArrayList<>();
       features.add(Float.valueOf((float)(i + 1)));

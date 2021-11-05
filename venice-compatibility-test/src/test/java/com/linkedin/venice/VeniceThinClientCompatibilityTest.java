@@ -138,7 +138,7 @@ public class VeniceThinClientCompatibilityTest {
     List<Float> cosP = Arrays.asList(123.4f, 5.6f);
     List<Float> hadamardP = Arrays.asList(135.7f, 246.8f);
     Map<String, GenericRecord> computeResult = storeClient.compute()
-        .project("id")
+        .project("id", "boolean_field", "int_field", "float_field", "member_feature")
         .dotProduct("member_feature", p, "member_score")
         .cosineSimilarity("member_feature", cosP, "cosine_similarity_result")
         .hadamardProduct("member_feature", hadamardP, "hadamard_product_result")
