@@ -937,7 +937,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     doReturn((LingeringStoreVersionChecker) (store1, version1, time, controllerAdmin, requesterCert, identityParser) -> false).when(mockParentAdmin).getLingeringStoreVersionChecker();
     doReturn(mock(UserSystemStoreLifeCycleHelper.class)).when(mockParentAdmin).getSystemStoreLifeCycleHelper();
     doReturn(new VeniceControllerMultiClusterConfig(configMap)).when(mockParentAdmin).getMultiClusterConfigs();
-    doReturn(Optional.of(version.kafkaTopicName())).when(mockParentAdmin).getTopicForCurrentPushJob(eq(clusterName), eq(storeName), anyBoolean());
+    doReturn(Optional.of(version.kafkaTopicName())).when(mockParentAdmin).getTopicForCurrentPushJob(eq(clusterName), eq(storeName), anyBoolean(), anyBoolean());
 
     String incomingPushId = "TEST_BATCH_PUSH";
     doCallRealMethod().when(mockParentAdmin).incrementVersionIdempotent(clusterName, storeName, incomingPushId, 1, 1,
@@ -979,7 +979,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     doReturn((LingeringStoreVersionChecker) (store1, version1, time, controllerAdmin, requesterCert, identityParser) -> false).when(mockParentAdmin).getLingeringStoreVersionChecker();
     doReturn(mock(UserSystemStoreLifeCycleHelper.class)).when(mockParentAdmin).getSystemStoreLifeCycleHelper();
     doReturn(new VeniceControllerMultiClusterConfig(configMap)).when(mockParentAdmin).getMultiClusterConfigs();
-    doReturn(Optional.of(version.kafkaTopicName())).when(mockParentAdmin).getTopicForCurrentPushJob(eq(clusterName), eq(storeName), anyBoolean());
+    doReturn(Optional.of(version.kafkaTopicName())).when(mockParentAdmin).getTopicForCurrentPushJob(eq(clusterName), eq(storeName), anyBoolean(), anyBoolean());
 
     String incomingPushId = Version.generateRePushId("TEST_BATCH_PUSH");
     doCallRealMethod().when(mockParentAdmin).incrementVersionIdempotent(clusterName, storeName, incomingPushId, 1, 1,
@@ -1022,7 +1022,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     doReturn((LingeringStoreVersionChecker) (store1, version1, time, controllerAdmin, requesterCert, identityParser) -> false).when(mockParentAdmin).getLingeringStoreVersionChecker();
     doReturn(mock(UserSystemStoreLifeCycleHelper.class)).when(mockParentAdmin).getSystemStoreLifeCycleHelper();
     doReturn(new VeniceControllerMultiClusterConfig(configMap)).when(mockParentAdmin).getMultiClusterConfigs();
-    doReturn(Optional.of(version.kafkaTopicName())).when(mockParentAdmin).getTopicForCurrentPushJob(eq(clusterName), eq(storeName), anyBoolean());
+    doReturn(Optional.of(version.kafkaTopicName())).when(mockParentAdmin).getTopicForCurrentPushJob(eq(clusterName), eq(storeName), anyBoolean(), anyBoolean());
 
     String incomingPushId = "TEST_INCREMENTAL_PUSH";
     doCallRealMethod().when(mockParentAdmin).incrementVersionIdempotent(clusterName, storeName, incomingPushId, 1, 1,
@@ -1062,7 +1062,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     doReturn((LingeringStoreVersionChecker) (store1, version1, time, controllerAdmin, requesterCert, identityParser) -> false).when(mockParentAdmin).getLingeringStoreVersionChecker();
     doReturn(mock(UserSystemStoreLifeCycleHelper.class)).when(mockParentAdmin).getSystemStoreLifeCycleHelper();
     doReturn(new VeniceControllerMultiClusterConfig(configMap)).when(mockParentAdmin).getMultiClusterConfigs();
-    doReturn(Optional.of(version.kafkaTopicName())).when(mockParentAdmin).getTopicForCurrentPushJob(eq(clusterName), eq(storeName), anyBoolean());
+    doReturn(Optional.of(version.kafkaTopicName())).when(mockParentAdmin).getTopicForCurrentPushJob(eq(clusterName), eq(storeName), anyBoolean(), anyBoolean());
 
     String incomingPushId = "TEST_INCREMENTAL_PUSH";
     doCallRealMethod().when(mockParentAdmin).incrementVersionIdempotent(clusterName, storeName, incomingPushId, 1, 1,
@@ -1658,7 +1658,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     VeniceParentHelixAdmin mockParentAdmin = mock(VeniceParentHelixAdmin.class);
     doReturn(internalAdmin).when(mockParentAdmin).getVeniceHelixAdmin();
     doReturn(new ArrayList<String>()).when(mockParentAdmin).getKafkaTopicsByAge(any());
-    doCallRealMethod().when(mockParentAdmin).getTopicForCurrentPushJob(clusterName, storeName, false);
+    doCallRealMethod().when(mockParentAdmin).getTopicForCurrentPushJob(clusterName, storeName, false, false);
 
     Store store = new ZKStore(storeName, "test_owner", 1, PersistenceType.ROCKS_DB,
         RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION,
@@ -1668,7 +1668,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     doReturn(store).when(mockParentAdmin).getStore(clusterName, storeName);
     doReturn(new Pair<>(store, store.getVersion(1).get())).when(internalAdmin).waitVersion(eq(clusterName), eq(storeName), eq(1), any());
 
-    Assert.assertFalse(mockParentAdmin.getTopicForCurrentPushJob(clusterName, storeName, false).isPresent());
+    Assert.assertFalse(mockParentAdmin.getTopicForCurrentPushJob(clusterName, storeName, false, false).isPresent());
 
     String latestTopic = storeName + "_v1";
     doReturn(Arrays.asList(latestTopic)).when(mockParentAdmin).getKafkaTopicsByAge(storeName);
@@ -1677,7 +1677,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
     // When there is a deprecated topic
     doReturn(true).when(mockParentAdmin).isTopicTruncated(latestTopic);
-    Assert.assertFalse(mockParentAdmin.getTopicForCurrentPushJob(clusterName, storeName, false).isPresent());
+    Assert.assertFalse(mockParentAdmin.getTopicForCurrentPushJob(clusterName, storeName, false, false).isPresent());
     verify(mockParentAdmin, never()).getOffLinePushStatus(clusterName, latestTopic);
 
     // When there is a regular topic and the job status is terminal
@@ -1685,14 +1685,14 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         .when(mockParentAdmin)
         .getOffLinePushStatus(clusterName, latestTopic);
     doReturn(false).when(mockParentAdmin).isTopicTruncated(latestTopic);
-    Assert.assertFalse(mockParentAdmin.getTopicForCurrentPushJob(clusterName, storeName, false).isPresent());
+    Assert.assertFalse(mockParentAdmin.getTopicForCurrentPushJob(clusterName, storeName, false, false).isPresent());
     verify(mockParentAdmin).getOffLinePushStatus(clusterName, latestTopic);
 
     // When there is a regular topic and the job status is not terminal
     doReturn(new Admin.OfflinePushStatusInfo(ExecutionStatus.PROGRESS))
         .when(mockParentAdmin)
         .getOffLinePushStatus(clusterName, latestTopic);
-    Optional<String> currentPush = mockParentAdmin.getTopicForCurrentPushJob(clusterName, storeName, false);
+    Optional<String> currentPush = mockParentAdmin.getTopicForCurrentPushJob(clusterName, storeName, false, false);
     Assert.assertTrue(currentPush.isPresent());
     Assert.assertEquals(currentPush.get(), latestTopic);
     verify(mockParentAdmin, times(2)).getOffLinePushStatus(clusterName, latestTopic);
@@ -1706,7 +1706,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         .getOffLinePushStatus(clusterName, latestTopic);
     doCallRealMethod().when(mockParentAdmin).setTimer(any());
     mockParentAdmin.setTimer(new MockTime());
-    currentPush = mockParentAdmin.getTopicForCurrentPushJob(clusterName, storeName, false);
+    currentPush = mockParentAdmin.getTopicForCurrentPushJob(clusterName, storeName, false, false);
     Assert.assertFalse(currentPush.isPresent());
     verify(mockParentAdmin, times(7)).getOffLinePushStatus(clusterName, latestTopic);
 
@@ -1715,7 +1715,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     doReturn(new Admin.OfflinePushStatusInfo(ExecutionStatus.PROGRESS, extraInfo))
         .when(mockParentAdmin)
         .getOffLinePushStatus(clusterName, latestTopic);
-    currentPush = mockParentAdmin.getTopicForCurrentPushJob(clusterName, storeName, false);
+    currentPush = mockParentAdmin.getTopicForCurrentPushJob(clusterName, storeName, false, false);
     Assert.assertTrue(currentPush.isPresent());
     Assert.assertEquals(currentPush.get(), latestTopic);
     verify(mockParentAdmin, times(12)).getOffLinePushStatus(clusterName, latestTopic);
@@ -1728,7 +1728,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     when(mockParentAdmin.getOffLinePushStatus(clusterName, latestTopic))
         .thenReturn(new Admin.OfflinePushStatusInfo(ExecutionStatus.PROGRESS, extraInfo))
         .thenReturn(new Admin.OfflinePushStatusInfo(ExecutionStatus.PROGRESS));
-    currentPush = mockParentAdmin.getTopicForCurrentPushJob(clusterName, storeName, false);
+    currentPush = mockParentAdmin.getTopicForCurrentPushJob(clusterName, storeName, false, false);
     Assert.assertTrue(currentPush.isPresent());
     Assert.assertEquals(currentPush.get(), latestTopic);
     verify(mockParentAdmin, times(14)).getOffLinePushStatus(clusterName, latestTopic);
@@ -1739,18 +1739,18 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
     // If the in memory topic to creation time map doesn't contain topic info, then push will be killed
     doReturn(null).when(internalAdmin).getInMemoryTopicCreationTime(Version.composeKafkaTopic(storeName, 1));
-    currentPush = mockParentAdmin.getTopicForCurrentPushJob(clusterName, storeName, false);
+    currentPush = mockParentAdmin.getTopicForCurrentPushJob(clusterName, storeName, false, false);
     Assert.assertFalse(currentPush.isPresent());
     verify(mockParentAdmin, times(1)).killOfflinePush(clusterName, latestTopic, true);
 
     // If the topic has been created recently, an exception will be thrown to kill the request and killOfflinePush will not be called
     doReturn(SystemTime.INSTANCE.getMilliseconds() - Time.MS_PER_MINUTE).when(internalAdmin).getInMemoryTopicCreationTime(Version.composeKafkaTopic(storeName, 1));
-    Assert.assertThrows(VeniceException.class, () -> mockParentAdmin.getTopicForCurrentPushJob(clusterName, storeName, false));
+    Assert.assertThrows(VeniceException.class, () -> mockParentAdmin.getTopicForCurrentPushJob(clusterName, storeName, false, false));
     verify(mockParentAdmin, times(1)).killOfflinePush(clusterName, latestTopic, true);
 
     // If a considerable time has passed since topic creation and the version creation still wasn't written to Zk, then, the push should be killed
     doReturn(SystemTime.INSTANCE.getMilliseconds() - 5 * Time.MS_PER_MINUTE).when(internalAdmin).getInMemoryTopicCreationTime(Version.composeKafkaTopic(storeName, 1));
-    currentPush = mockParentAdmin.getTopicForCurrentPushJob(clusterName, storeName, false);
+    currentPush = mockParentAdmin.getTopicForCurrentPushJob(clusterName, storeName, false, false);
     Assert.assertFalse(currentPush.isPresent());
     verify(mockParentAdmin, times(2)).killOfflinePush(clusterName, latestTopic, true);
   }
@@ -1768,10 +1768,10 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     doReturn(topics).when(mockParentAdmin).existingTopicsForStore(storeName);
     // isTopicTruncated will return false for other topics
     doReturn(true).when(mockParentAdmin).isTopicTruncated(storeName + "_v8");
-    doCallRealMethod().when(mockParentAdmin).truncateTopicsBasedOnMaxErroredTopicNumToKeep(any());
+    doCallRealMethod().when(mockParentAdmin).truncateTopicsBasedOnMaxErroredTopicNumToKeep(any(), anyBoolean(), any());
     doCallRealMethod().when(mockParentAdmin).setMaxErroredTopicNumToKeep(anyInt());
     mockParentAdmin.setMaxErroredTopicNumToKeep(2);
-    mockParentAdmin.truncateTopicsBasedOnMaxErroredTopicNumToKeep(topics);
+    mockParentAdmin.truncateTopicsBasedOnMaxErroredTopicNumToKeep(topics, false, null);
     /**
      * Since the max error version topics we would like to keep is 2 and the non-truncated version
      * topics include v1, v5, v7 and v10 (v8 is truncated already), we will truncate v1, v5 and keep
@@ -1795,8 +1795,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     doReturn(true).when(mockParentAdmin).isTopicTruncated(storeName1 + "_v10");
     doReturn(true).when(mockParentAdmin).isTopicTruncated(storeName1 + "_v7");
     doReturn(true).when(mockParentAdmin).isTopicTruncated(storeName1 + "_v8");
-    doCallRealMethod().when(mockParentAdmin).truncateTopicsBasedOnMaxErroredTopicNumToKeep(any());
-    mockParentAdmin.truncateTopicsBasedOnMaxErroredTopicNumToKeep(topics1);
+    doCallRealMethod().when(mockParentAdmin).truncateTopicsBasedOnMaxErroredTopicNumToKeep(any(), anyBoolean(), any());
+    mockParentAdmin.truncateTopicsBasedOnMaxErroredTopicNumToKeep(topics1, false, null);
     /**
      * Since the max error version topics we would like to keep is 2 and we only have 2 non-truncated version
      * topics v1 and v5 (v7, v8 and v10 are truncated already), we will not truncate anything.
@@ -1814,7 +1814,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     List<String> topics = Arrays.asList(storeName + "_v1", storeName + "_v2", storeName + "_v3");
     doReturn(new HashSet(topics)).when(topicManager).listTopics();
 
-    parentAdmin.truncateTopicsBasedOnMaxErroredTopicNumToKeep(topics);
+    parentAdmin.truncateTopicsBasedOnMaxErroredTopicNumToKeep(topics, false, null);
     verify(internalAdmin).truncateKafkaTopic(storeName + "_v1");
     verify(internalAdmin).truncateKafkaTopic(storeName + "_v2");
     verify(internalAdmin).truncateKafkaTopic(storeName + "_v3");

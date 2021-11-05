@@ -772,7 +772,7 @@ public class VeniceParentHelixAdmin implements Admin {
    * If there is no ongoing push for specified store currently, this function will return {@link Optional#empty()},
    * else will return the ongoing Kafka topic. It will also try to clean up legacy topics.
    */
-  protected Optional<String> getTopicForCurrentPushJob(String clusterName, String storeName, boolean isIncrementalPush) {
+  protected Optional<String> getTopicForCurrentPushJob(String clusterName, String storeName, boolean isIncrementalPush, boolean isRepush) {
     // The first/last topic in the list is the latest/oldest version topic
     List<String> versionTopics = getKafkaTopicsByAge(storeName);
     Optional<String> latestKafkaTopic = Optional.empty();
@@ -854,7 +854,8 @@ public class VeniceParentHelixAdmin implements Admin {
            * it will be truncated in {@link #getOffLinePushStatus(String, String)}.
            */
           if (!isIncrementalPush) {
-            truncateTopicsBasedOnMaxErroredTopicNumToKeep(versionTopics);
+            Map<String, Integer> currentVersionsMap = getCurrentVersionsForMultiColos(clusterName, storeName);
+            truncateTopicsBasedOnMaxErroredTopicNumToKeep(versionTopics, isRepush, currentVersionsMap);
           }
         }
       }
@@ -870,7 +871,7 @@ public class VeniceParentHelixAdmin implements Admin {
    *
    * TODO: rename the method once we remove the rest of KMM debugging logic.
    */
-  protected void truncateTopicsBasedOnMaxErroredTopicNumToKeep(List<String> topics) {
+  protected void truncateTopicsBasedOnMaxErroredTopicNumToKeep(List<String> topics, boolean isRepush, Map<String, Integer> currentVersionsMap) {
     // Based on current logic, only 'errored' topics were not truncated.
     List<String> sortedNonTruncatedTopics = topics.stream().filter(topic -> !isTopicTruncated(topic)).sorted((t1, t2) -> {
       int v1 = Version.parseVersionFromKafkaTopicName(t1);
@@ -889,6 +890,18 @@ public class VeniceParentHelixAdmin implements Admin {
     int topicNumToTruncate = sortedNonTruncatedVersionTopics.size() - maxErroredTopicNumToKeep;
     int truncatedTopicCnt = 0;
     for (String topic: sortedNonTruncatedVersionTopics) {
+      /**
+       * If Venice repush somehow failed and we delete the version topic for the current version here, future incremental
+       * pushes will fail; therefore, keep Venice repush transparent and don't delete any VTs; future regular batch pushes
+       * from users will delete the VT we retain here.
+       * Potential improvement: After the Venice repush completes, we can automatically deletes VT from previous version,
+       * at the risk of not being able to roll back to previous version though, so not recommend to do such automation.
+       */
+      if (isRepush && currentVersionsMap.containsValue(Version.parseVersionFromVersionTopicName(topic))) {
+        logger.info("Do not delete topic " + topic + " since the incoming batch push is a Venice internal repush and"
+            + "" + topic + " is a current version topic.");
+        continue;
+      }
       if (++truncatedTopicCnt > topicNumToTruncate) {
         break;
       }
@@ -971,7 +984,7 @@ public class VeniceParentHelixAdmin implements Admin {
       int numberOfPartitions, int replicationFactor, Version.PushType pushType, boolean sendStartOfPush,
       boolean sorted, String compressionDictionary, Optional<String> sourceGridFabric,
       Optional<X509Certificate> requesterCert, long rewindTimeInSecondsOverride, Optional<String> emergencySourceRegion) {
-    Optional<String> currentPushTopic = getTopicForCurrentPushJob(clusterName, storeName, pushType.isIncremental());
+    Optional<String> currentPushTopic = getTopicForCurrentPushJob(clusterName, storeName, pushType.isIncremental(), Version.isPushIdRePush(pushJobId));
     if (currentPushTopic.isPresent()) {
       int currentPushVersion = Version.parseVersionFromKafkaTopicName(currentPushTopic.get());
       Store store = getStore(clusterName, storeName);
