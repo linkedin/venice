@@ -38,12 +38,11 @@ public class VeniceSystemStoreUtils {
   }
 
   public static VeniceSystemStoreType getSystemStoreType(String storeName) {
-    for (VeniceSystemStoreType type : VeniceSystemStoreType.values()) {
-      if (storeName.startsWith(type.getPrefix())) {
-        return type;
-      }
+    if (storeName.startsWith(METADATA_STORE.getPrefix())) {
+      return METADATA_STORE;
+    } else {
+      return null;
     }
-    return null;
   }
 
   /**
@@ -80,16 +79,16 @@ public class VeniceSystemStoreUtils {
     if (storeName.isEmpty()) {
       throw new IllegalArgumentException("Empty string is not a valid push status store name");
     }
-    VeniceSystemStoreType systemStoreType = getSystemStoreType(storeName);
-    if (systemStoreType == null || (!systemStoreType.isStoreZkShared())) { // If a system store is not Zk-shared, it does not have its per-user store
+    VeniceSystemStoreType storeType = getSystemStoreType(storeName);
+    if (storeType == null) {
       return storeName;
     }
-    int index = storeName.lastIndexOf(systemStoreType.getPrefix());
+    int index = storeName.lastIndexOf(storeType.getPrefix());
     if (index == -1) {
-      throw new IllegalArgumentException("Cannot find the store prefix: " + systemStoreType.getPrefix()
+      throw new IllegalArgumentException("Cannot find the store prefix: " + storeType.getPrefix()
           + " in store name: " + storeName);
     }
-    return storeName.substring(index + systemStoreType.getPrefix().length() + SEPARATOR.length());
+    return storeName.substring(index + storeType.getPrefix().length() + SEPARATOR.length());
   }
 
   public static String getSharedZkNameForMetadataStore(String clusterName) {

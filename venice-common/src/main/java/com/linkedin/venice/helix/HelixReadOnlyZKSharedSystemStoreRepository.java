@@ -4,8 +4,8 @@ import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.StoreDataChangedListener;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -26,19 +26,17 @@ public class HelixReadOnlyZKSharedSystemStoreRepository extends HelixReadOnlySto
   /**
    * This set is used to keep all the zk shared stores the current repo will monitor.
    */
-  private final Set<String> zkSharedSystemStoreSet;
+  private final Set<String> zkSharedSystemStoreSet = new HashSet<>();
 
 
   public HelixReadOnlyZKSharedSystemStoreRepository(ZkClient zkClient, HelixAdapterSerializer compositeSerializer, String systemStoreClusterName) {
     super(zkClient, compositeSerializer,  systemStoreClusterName,0, 0);
     // Initialize the necessary zk shared system stores
-    Set<String> tmpZkSharedSystemStoreSet = new HashSet<>(VeniceSystemStoreType.values().length); // Keep the size small
     for (VeniceSystemStoreType type : VeniceSystemStoreType.values()) {
       if (type.isNewMedataRepositoryAdopted()) {
-        tmpZkSharedSystemStoreSet.add(type.getZkSharedStoreName());
+        zkSharedSystemStoreSet.add(type.getZkSharedStoreName());
       }
     }
-    this.zkSharedSystemStoreSet = Collections.unmodifiableSet(tmpZkSharedSystemStoreSet);
   }
 
   /**
