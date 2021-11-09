@@ -10,6 +10,7 @@ import com.linkedin.venice.hadoop.input.kafka.chunk.RawKeyBytesAndChunkedKeySuff
 import com.linkedin.venice.hadoop.input.kafka.chunk.ChunkKeyValueTransformer;
 import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
+import com.linkedin.venice.kafka.protocol.Delete;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
@@ -146,11 +147,16 @@ public class KafkaInputRecordReader implements RecordReader<BytesWritable, Kafka
             value.valueType = MapperValueType.PUT;
             value.value = put.putValue;
             value.schemaId = put.schemaId;
+            value.replicationMetadataPayload = put.replicationMetadataPayload;
+            value.replicationMetadataVersionId = put.replicationMetadataVersionId;
             break;
           case DELETE:
+            Delete delete = (Delete)kafkaMessageEnvelope.payloadUnion;
             value.valueType = MapperValueType.DELETE;
             value.value = EMPTY_BYTE_BUFFER;
-            value.schemaId = -1;
+            value.replicationMetadataPayload = delete.replicationMetadataPayload;
+            value.replicationMetadataVersionId = delete.replicationMetadataVersionId;
+            value.schemaId = delete.schemaId;
             break;
           default:
             throw new IOException("Unexpected '" + messageType + "' message from Kafka topic partition: " + topicPartition + " with offset: " + record.offset());

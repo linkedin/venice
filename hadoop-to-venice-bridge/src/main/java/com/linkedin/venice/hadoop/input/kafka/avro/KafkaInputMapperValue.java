@@ -8,7 +8,7 @@ package com.linkedin.venice.hadoop.input.kafka.avro;
 @SuppressWarnings("all")
 /** The data protocol between Mapper and Reducer for KafkaInputFormat */
 public class KafkaInputMapperValue extends org.apache.avro.specific.SpecificRecordBase implements org.apache.avro.specific.SpecificRecord {
-  public static final org.apache.avro.Schema SCHEMA$ = org.apache.avro.Schema.parse("{\"type\":\"record\",\"name\":\"KafkaInputMapperValue\",\"namespace\":\"com.linkedin.venice.hadoop.input.kafka.avro\",\"fields\":[{\"name\":\"valueType\",\"type\":{\"type\":\"enum\",\"name\":\"MapperValueType\",\"symbols\":[\"PUT\",\"DELETE\"]},\"doc\":\"The value type of the message\"},{\"name\":\"value\",\"type\":\"bytes\",\"doc\":\"The raw value bytes\"},{\"name\":\"offset\",\"type\":\"long\",\"doc\":\"The offset of the record in the original Kafka topic partition\"},{\"name\":\"schemaId\",\"type\":\"int\",\"doc\":\"The schema id of the original record\"},{\"name\":\"chunkedKeySuffix\",\"type\":[\"null\",\"bytes\"],\"doc\":\"Serialized chunked key suffix and this field is not null only when this value is a chunk of a large value\",\"default\":null}]}");
+  public static final org.apache.avro.Schema SCHEMA$ = org.apache.avro.Schema.parse("{\"type\":\"record\",\"name\":\"KafkaInputMapperValue\",\"namespace\":\"com.linkedin.venice.hadoop.input.kafka.avro\",\"fields\":[{\"name\":\"valueType\",\"type\":{\"type\":\"enum\",\"name\":\"MapperValueType\",\"symbols\":[\"PUT\",\"DELETE\"]},\"doc\":\"The value type of the message\"},{\"name\":\"value\",\"type\":\"bytes\",\"doc\":\"The raw value bytes\"},{\"name\":\"offset\",\"type\":\"long\",\"doc\":\"The offset of the record in the original Kafka topic partition\"},{\"name\":\"schemaId\",\"type\":\"int\",\"doc\":\"The schema id of the original record\"},{\"name\":\"chunkedKeySuffix\",\"type\":[\"null\",\"bytes\"],\"doc\":\"Serialized chunked key suffix and this field is not null only when this value is a chunk of a large value\",\"default\":null},{\"name\":\"replicationMetadataVersionId\",\"type\":\"int\",\"doc\":\"The A/A replication metadata schema version ID that will be used to deserialize replicationMetadataPayload.\",\"default\":-1},{\"name\":\"replicationMetadataPayload\",\"type\":\"bytes\",\"doc\":\"The serialized value of the replication metadata schema.\",\"default\":\"\"}]}");
   /** The value type of the message */
   public com.linkedin.venice.hadoop.input.kafka.avro.MapperValueType valueType;
   /** The raw value bytes */
@@ -19,6 +19,10 @@ public class KafkaInputMapperValue extends org.apache.avro.specific.SpecificReco
   public int schemaId;
   /** Serialized chunked key suffix and this field is not null only when this value is a chunk of a large value */
   public java.nio.ByteBuffer chunkedKeySuffix;
+  /** The A/A replication metadata schema version ID that will be used to deserialize replicationMetadataPayload. */
+  public int replicationMetadataVersionId;
+  /** The serialized value of the replication metadata schema. */
+  public java.nio.ByteBuffer replicationMetadataPayload;
   public org.apache.avro.Schema getSchema() { return SCHEMA$; }
   // Used by DatumWriter.  Applications should not call. 
   public java.lang.Object get(int field$) {
@@ -28,6 +32,8 @@ public class KafkaInputMapperValue extends org.apache.avro.specific.SpecificReco
     case 2: return offset;
     case 3: return schemaId;
     case 4: return chunkedKeySuffix;
+    case 5: return replicationMetadataVersionId;
+    case 6: return replicationMetadataPayload;
     default: throw new org.apache.avro.AvroRuntimeException("Bad index");
     }
   }
@@ -40,6 +46,8 @@ public class KafkaInputMapperValue extends org.apache.avro.specific.SpecificReco
     case 2: offset = (java.lang.Long)value$; break;
     case 3: schemaId = (java.lang.Integer)value$; break;
     case 4: chunkedKeySuffix = (java.nio.ByteBuffer)value$; break;
+    case 5: replicationMetadataVersionId = (java.lang.Integer)value$; break;
+    case 6: replicationMetadataPayload = (java.nio.ByteBuffer)value$; break;
     default: throw new org.apache.avro.AvroRuntimeException("Bad index");
     }
   }

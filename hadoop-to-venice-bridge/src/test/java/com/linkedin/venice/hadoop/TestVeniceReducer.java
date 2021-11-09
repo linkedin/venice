@@ -8,6 +8,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.writer.AbstractVeniceWriter;
+import com.linkedin.venice.writer.PutMetadata;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.util.Arrays;
 import java.util.Collections;
@@ -53,7 +54,7 @@ public class TestVeniceReducer extends AbstractTestVeniceMR {
   @Test
   public void testReducerPutWithTooLargeValueAndChunkingDisabled() {
     AbstractVeniceWriter mockWriter = mock(AbstractVeniceWriter.class);
-    when(mockWriter.put(any(), any(), anyInt(), any())).thenThrow(new RecordTooLargeException("expected exception"));
+    when(mockWriter.put(any(), any(), anyInt(), any(), any())).thenThrow(new RecordTooLargeException("expected exception"));
     testReduceWithTooLargeValueAndChunkingDisabled(mockWriter, setupJobConf());
   }
 
@@ -106,9 +107,10 @@ public class TestVeniceReducer extends AbstractTestVeniceMR {
     ArgumentCaptor<byte[]> keyCaptor = ArgumentCaptor.forClass(byte[].class);
     ArgumentCaptor<byte[]> valueCaptor = ArgumentCaptor.forClass(byte[].class);
     ArgumentCaptor<Integer> schemaIdCaptor = ArgumentCaptor.forClass(Integer.class);
+    ArgumentCaptor<PutMetadata> metadataArgumentCaptor = ArgumentCaptor.forClass(PutMetadata.class);
     ArgumentCaptor<VeniceReducer.KafkaMessageCallback> callbackCaptor = ArgumentCaptor.forClass(VeniceReducer.KafkaMessageCallback.class);
 
-    verify(mockWriter).put(keyCaptor.capture(), valueCaptor.capture(), schemaIdCaptor.capture(), callbackCaptor.capture());
+    verify(mockWriter).put(keyCaptor.capture(), valueCaptor.capture(), schemaIdCaptor.capture(), callbackCaptor.capture(), metadataArgumentCaptor.capture());
     Assert.assertEquals(keyCaptor.getValue(), keyFieldValue.getBytes());
     Assert.assertEquals(valueCaptor.getValue(), valueFieldValue.getBytes());
     Assert.assertEquals(schemaIdCaptor.getValue(), new Integer(VALUE_SCHEMA_ID));
@@ -285,7 +287,7 @@ public class TestVeniceReducer extends AbstractTestVeniceMR {
     );
     OutputCollector mockCollector = mock(OutputCollector.class);
     reducer.reduce(new BytesWritable(keyBytes), values.iterator(), mockCollector, mockReporter);
-    verify(mockWriter).put(any(), any(), anyInt(),any()); // Expect the writer to be invoked
+    verify(mockWriter).put(any(), any(), anyInt(),any(), any()); // Expect the writer to be invoked
     Assert.assertFalse(reducer.hasReportedFailure(mockReporter, isDuplicateKeyAllowed));
   }
 
@@ -300,7 +302,7 @@ public class TestVeniceReducer extends AbstractTestVeniceMR {
 
     OutputCollector mockCollector = mock(OutputCollector.class);
     AbstractVeniceWriter mockVeniceWriter = mock(AbstractVeniceWriter.class);
-    when(mockVeniceWriter.put(any(), any(), anyInt(), any())).thenThrow(new TopicAuthorizationVeniceException("No ACL permission"));
+    when(mockVeniceWriter.put(any(), any(), anyInt(), any(), any())).thenThrow(new TopicAuthorizationVeniceException("No ACL permission"));
     VeniceReducer reducer = new VeniceReducer();
     reducer.setVeniceWriter(mockVeniceWriter);
     reducer.configure(setupJobConf());
@@ -413,14 +415,14 @@ public class TestVeniceReducer extends AbstractTestVeniceMR {
 
     ArgumentCaptor<VeniceReducer.KafkaMessageCallback> callbackCaptor = ArgumentCaptor.forClass(VeniceReducer.KafkaMessageCallback.class);
 
-    verify(mockWriter).put(any(), any(), anyInt(), callbackCaptor.capture());
+    verify(mockWriter).put(any(), any(), anyInt(), callbackCaptor.capture(), any());
     Assert.assertEquals(callbackCaptor.getValue().getProgressable(), mockReporter);
 
     // test with different reporter
     Reporter newMockReporter = createZeroCountReporterMock();
 
     reducer.reduce(keyWritable, values.iterator(), mockCollector, newMockReporter);
-    verify(mockWriter, times(2)).put(any(), any(), anyInt(), callbackCaptor.capture());
+    verify(mockWriter, times(2)).put(any(), any(), anyInt(), callbackCaptor.capture(), any());
     Assert.assertEquals(callbackCaptor.getValue().getProgressable(), newMockReporter);
   }
 
@@ -434,6 +436,12 @@ public class TestVeniceReducer extends AbstractTestVeniceMR {
 
       @Override
       public Future<RecordMetadata> put(Object key, Object value, int valueSchemaId, Callback callback) {
+        callback.onCompletion(null, new VeniceException("Fake exception"));
+        return null;
+      }
+
+      @Override
+      public Future<RecordMetadata> put(Object key, Object value, int valueSchemaId, Callback callback, PutMetadata putMetadata) {
         callback.onCompletion(null, new VeniceException("Fake exception"));
         return null;
       }
@@ -476,6 +484,12 @@ public class TestVeniceReducer extends AbstractTestVeniceMR {
   @Test (expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = "VenicePushJob failed with exception.*")
   public void testClosingReducerWithWriterException() throws IOException {
     AbstractVeniceWriter exceptionWriter = new AbstractVeniceWriter(TOPIC_NAME) {
+      @Override
+      public Future<RecordMetadata> put(Object key, Object value, int valueSchemaId, Callback callback, PutMetadata putMetadata) {
+        callback.onCompletion(null, new VeniceException("Some writer exception"));
+        return null;
+      }
+
       @Override
       public Future<RecordMetadata> put(Object key, Object value, int valueSchemaId, Callback callback) {
         callback.onCompletion(null, new VeniceException("Some writer exception"));

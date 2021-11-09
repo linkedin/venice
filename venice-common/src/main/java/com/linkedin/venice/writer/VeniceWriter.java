@@ -491,6 +491,11 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     return put(key, value, valueSchemaId, callback, DEFAULT_LEADER_METADATA_WRAPPER);
   }
 
+  @Override
+  public Future<RecordMetadata> put(K key, V value, int valueSchemaId, Callback callback, PutMetadata putMetadata) {
+    return put(key, value, valueSchemaId, callback, DEFAULT_LEADER_METADATA_WRAPPER, putMetadata);
+  }
+
   /**
    * Execute a standard "put" on the key.
    *

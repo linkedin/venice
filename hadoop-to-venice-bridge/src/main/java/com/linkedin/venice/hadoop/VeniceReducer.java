@@ -19,11 +19,13 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.writer.AbstractVeniceWriter;
+import com.linkedin.venice.writer.PutMetadata;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.io.Closeable;
 import java.io.PrintWriter;
 import java.io.StringWriter;
+import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -55,6 +57,7 @@ import java.util.Iterator;
 import java.util.concurrent.atomic.AtomicLong;
 
 import static com.linkedin.venice.hadoop.VenicePushJob.*;
+import static com.linkedin.venice.writer.VeniceWriter.*;
 
 
 /**
@@ -76,11 +79,27 @@ public class VeniceReducer
     private byte[] keyBytes;
     private byte[] valueBytes;
     private int valueSchemaId;
+    private int replicationMetadataVersionId;
+    private ByteBuffer replicationMetadataPayload;
 
     public VeniceWriterMessage(byte[] keyBytes, byte[] valueBytes, int valueSchemaId) {
+      this(keyBytes, valueBytes, valueSchemaId, -1, null);
+    }
+
+    public VeniceWriterMessage(byte[] keyBytes, byte[] valueBytes, int valueSchemaId, int replicationMetadataVersionId, ByteBuffer replicationMetadataPayload) {
       this.keyBytes = keyBytes;
       this.valueBytes = valueBytes;
       this.valueSchemaId = valueSchemaId;
+      this.replicationMetadataPayload = replicationMetadataPayload;
+      this.replicationMetadataVersionId = replicationMetadataVersionId;
+    }
+
+    public ByteBuffer getReplicationMetadataPayload() {
+      return replicationMetadataPayload;
+    }
+
+    public int getReplicationMetadataVersionId() {
+      return replicationMetadataVersionId;
     }
 
     public byte[] getKeyBytes() {
@@ -174,7 +193,12 @@ public class VeniceReducer
       Optional<VeniceWriterMessage> message = extract(key, values, reporter);
       if (message.isPresent()) {
         try {
-          sendMessageToKafka(message.get().keyBytes, message.get().valueBytes, message.get().valueSchemaId, reporter);
+          if (message.get().replicationMetadataPayload != null) {
+            PutMetadata putMetadata = new PutMetadata(message.get().getReplicationMetadataVersionId(), message.get().getReplicationMetadataPayload());
+            sendMessageToKafka(message.get().keyBytes, message.get().valueBytes, message.get().valueSchemaId, reporter, putMetadata);
+          } else {
+            sendMessageToKafka(message.get().keyBytes, message.get().valueBytes, message.get().valueSchemaId, reporter);
+          }
         } catch (VeniceException e) {
           if (e instanceof TopicAuthorizationVeniceException) {
             MRJobCounterHelper.incrWriteAclAuthorizationFailureCount(reporter, 1);
@@ -284,6 +308,10 @@ public class VeniceReducer
   }
 
   protected void sendMessageToKafka(byte[] keyBytes, byte[] valueBytes, int valueSchemaId, Reporter reporter) {
+    sendMessageToKafka(keyBytes, valueBytes, valueSchemaId, reporter, null);
+  }
+
+  protected void sendMessageToKafka(byte[] keyBytes, byte[] valueBytes, int valueSchemaId, Reporter reporter, PutMetadata putMetadata) {
     maybePropagateCallbackException();
     if (null == veniceWriter) {
       veniceWriter = createBasicVeniceWriter();
@@ -291,7 +319,7 @@ public class VeniceReducer
     if (enableWriteCompute && derivedValueSchemaId > 0) {
       veniceWriter.update(keyBytes, valueBytes, valueSchemaId, derivedValueSchemaId, callback);
     } else {
-      veniceWriter.put(keyBytes, valueBytes, valueSchemaId, callback);
+      veniceWriter.put(keyBytes, valueBytes, valueSchemaId, callback, putMetadata);
     }
     messageSent++;
     telemetry();
