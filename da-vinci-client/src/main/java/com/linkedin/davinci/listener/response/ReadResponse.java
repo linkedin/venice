@@ -27,6 +27,7 @@ public abstract class ReadResponse {
   private int cosineSimilarityCount = 0;
   private int hadamardProductCount = 0;
   private int countOperatorCount = 0;
+  private int rcu = 0;
 
   public void setCompressionStrategy(CompressionStrategy compressionStrategy) {
     this.compressionStrategy = compressionStrategy;
@@ -122,6 +123,22 @@ public abstract class ReadResponse {
 
   public void setStorageExecutionSubmissionWaitTime(double storageExecutionSubmissionWaitTime) {
     this.storageExecutionSubmissionWaitTime = storageExecutionSubmissionWaitTime;
+  }
+
+  /**
+   * Set the read compute unit (RCU) cost for this response's request
+   * @param rcu
+   */
+  public void setRCU(int rcu) {
+    this.rcu = rcu;
+  }
+
+  /**
+   * Get the read compute unit (RCU) for this response's request
+   * @return
+   */
+  public int getRCU() {
+    return this.rcu;
   }
 
   public int getStorageExecutionQueueLen() {

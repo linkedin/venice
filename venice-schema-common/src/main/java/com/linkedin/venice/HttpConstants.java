@@ -22,6 +22,7 @@ public class HttpConstants {
   public static final String VENICE_PARTITION = "X-VENICE-PARTITION";
   public static final String VENICE_API_VERSION = "X-VENICE-API-VERSION";
   public static final String VENICE_SCHEMA_ID = "X-VENICE-SCHEMA-ID";
+  public static final String VENICE_REQUEST_RCU = "X-VENICE-RCU";
   public static final String VENICE_RETRY = "X-VENICE-RETRY";
 
   public static final String VENICE_COMPRESSION_STRATEGY = "X-VENICE-COMPRESSION-STRATEGY";

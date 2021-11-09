@@ -87,6 +87,7 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import io.netty.channel.AbstractChannel;
 import io.netty.channel.Channel;
+import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelPipeline;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.MultithreadEventLoopGroup;
@@ -101,6 +102,7 @@ import io.tehuti.metrics.MetricsRepository;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -170,6 +172,9 @@ public class RouterServer extends AbstractVeniceService {
 
   private ExecutorService workerExecutor;
   private EventThrottler routerEarlyThrottler;
+
+  // A map of optional ChannelHandlers that retains insertion order to be added at the end of the router pipeline
+  private Map<String, ChannelHandler> optionalChannelHandlers = new LinkedHashMap<>();
 
   private final static String ROUTER_SERVICE_NAME = "venice-router";
 
@@ -546,6 +551,7 @@ public class RouterServer extends AbstractVeniceService {
             pipeline.addLast("MetadataHandler", metaDataHandler);
             pipeline.addLast("AdminOperationsHandler", adminOperationsHandler);
             addStreamingHandler(pipeline);
+            addOptionalChannelHandlersToPipeline(pipeline);
           })
           .idleTimeout(3, TimeUnit.HOURS)
           .build());
@@ -586,6 +592,7 @@ public class RouterServer extends AbstractVeniceService {
       pipeline.addLast("AdminOperationsHandler", adminOperationsHandler);
       pipeline.addLast("RouterThrottleHandler", routerThrottleHandler);
       addStreamingHandler(pipeline);
+      addOptionalChannelHandlersToPipeline(pipeline);
     };
     Consumer<ChannelPipeline> withAcl = pipeline -> {
       pipeline.addLast("HealthCheckHandler", secureRouterHealthCheckHander);
@@ -595,6 +602,7 @@ public class RouterServer extends AbstractVeniceService {
       pipeline.addLast("StoreAclHandler", aclHandler);
       pipeline.addLast("RouterThrottleHandler", routerThrottleHandler);
       addStreamingHandler(pipeline);
+      addOptionalChannelHandlersToPipeline(pipeline);
     };
 
     secureRouter = Router.builder(scatterGather)
@@ -632,6 +640,16 @@ public class RouterServer extends AbstractVeniceService {
     if (config.isStreamingEnabled()) {
       pipeline.addLast("VeniceChunkedWriteHandler", new VeniceChunkedWriteHandler());
     }
+  }
+
+  private void addOptionalChannelHandlersToPipeline(ChannelPipeline pipeline) {
+    for (Map.Entry<String, ChannelHandler> channelHandler : optionalChannelHandlers.entrySet()) {
+      pipeline.addLast(channelHandler.getKey(), channelHandler.getValue());
+    }
+  }
+
+  public void addOptionalChannelHandler(String key, ChannelHandler channelHandler) {
+    optionalChannelHandlers.put(key, channelHandler);
   }
 
   @Override

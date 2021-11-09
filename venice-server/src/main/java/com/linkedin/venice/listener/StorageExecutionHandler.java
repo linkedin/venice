@@ -246,6 +246,7 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
           }
           response.setStorageExecutionSubmissionWaitTime(submissionWaitTime);
           response.setStorageExecutionQueueLen(queueLen);
+          response.setRCU(ReadQuotaEnforcementHandler.getRcu(request));
           if (request.isStreamingRequest()) {
             response.setStreamingResponse();
           }

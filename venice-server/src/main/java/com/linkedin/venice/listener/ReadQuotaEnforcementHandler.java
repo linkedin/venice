@@ -170,7 +170,7 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
    * @param request
    * @return
    */
-  private int getRcu(RouterRequest request){
+  public static int getRcu(RouterRequest request){
     switch (request.getRequestType()) {
       case SINGLE_GET:
         return 1;
