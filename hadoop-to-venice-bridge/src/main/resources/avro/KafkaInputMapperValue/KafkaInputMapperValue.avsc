@@ -33,6 +33,18 @@
       "doc": "Serialized chunked key suffix and this field is not null only when this value is a chunk of a large value",
       "type": ["null", "bytes"],
       "default": null
+    },
+    {
+      "name": "replicationMetadataVersionId",
+      "doc": "The A/A replication metadata schema version ID that will be used to deserialize replicationMetadataPayload.",
+      "type": "int",
+      "default": -1
+    },
+    {
+      "name": "replicationMetadataPayload",
+      "doc": "The serialized value of the replication metadata schema.",
+      "type": "bytes",
+      "default": ""
     }
   ]
 }

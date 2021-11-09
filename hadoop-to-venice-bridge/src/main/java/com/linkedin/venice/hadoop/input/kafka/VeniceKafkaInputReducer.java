@@ -84,6 +84,9 @@ public class VeniceKafkaInputReducer extends VeniceReducer {
       return Optional.empty();
     }
     byte[] valueBytes = ByteUtils.extractByteArray(lastValue.value);
+    if (lastValue.replicationMetadataPayload != null) {
+      return Optional.of(new VeniceWriterMessage(keyBytes, valueBytes, lastValue.schemaId, lastValue.replicationMetadataVersionId, lastValue.replicationMetadataPayload));
+    }
     return Optional.of(new VeniceWriterMessage(keyBytes, valueBytes, lastValue.schemaId));
   }
 

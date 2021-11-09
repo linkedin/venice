@@ -30,6 +30,7 @@ public class TestVeniceKafkaInputReducer {
       value.offset = offset++;
       value.schemaId = -1;
       value.valueType = valueType;
+      value.replicationMetadataPayload = ByteBuffer.wrap(new byte[0]);
       if (valueType.equals(MapperValueType.DELETE)) {
         value.value = ByteBuffer.wrap(new byte[0]);
       } else {
