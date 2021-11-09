@@ -123,6 +123,7 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
 
     @Override
     public void run() {
+      boolean interruptReceived = false;
       while (!stop) {
         try {
           time.sleep(sleepInterval);
@@ -130,8 +131,6 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
           LOGGER.error("Received InterruptedException during sleep in StoreBackupVersionCleanupTask thread");
           break;
         }
-
-
         // loop all the clusters
         for (String clusterName : allClusters) {
           boolean cleanupEnabled = multiClusterConfig.getControllerConfig(clusterName).isBackupVersionRetentionBasedCleanupEnabled();
@@ -142,11 +141,24 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
           // Get all stores for current cluster
           List<Store> stores = admin.getAllStores(clusterName);
           for (Store store: stores) {
+            boolean didCleanup = false;
             try {
-              cleanupBackupVersion(store, clusterName);
+              didCleanup = cleanupBackupVersion(store, clusterName);
             } catch (Exception e) {
               LOGGER.error("Encountered exception while handling backup version cleanup for store: " + store.getName() + " in cluster: " + clusterName, e);
             }
+            if (didCleanup) {
+              try {
+                time.sleep(sleepInterval);
+              } catch (InterruptedException e) {
+                interruptReceived = true;
+                LOGGER.error("Received InterruptedException during sleep in StoreBackupVersionCleanupTask thread");
+                break;
+              }
+            }
+          }
+          if (interruptReceived) {
+            break;
           }
         }
       }

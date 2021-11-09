@@ -3,13 +3,16 @@ package com.linkedin.venice.controller;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
+import com.linkedin.venice.utils.MockTime;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.TestUtils;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -104,4 +107,38 @@ public class TestStoreBackupVersionCleanupService {
     Store storeWithRollback = mockStore(-1, System.currentTimeMillis() - defaultRetentionMs * 2, versions, 1);
     Assert.assertFalse(service.cleanupBackupVersion(storeWithRollback, clusterName));
   }
+
+  @Test
+  public void testCleanupBackupVersionSleepValidation() throws Exception {
+    VeniceHelixAdmin admin = mock(VeniceHelixAdmin.class);
+    VeniceControllerMultiClusterConfig config = mock(VeniceControllerMultiClusterConfig.class);
+    long defaultRetentionMs = TimeUnit.DAYS.toMillis(7);
+    doReturn(defaultRetentionMs).when(config).getBackupVersionDefaultRetentionMs();
+    doReturn(defaultRetentionMs).when(config).getBackupVersionDefaultRetentionMs();
+    VeniceControllerConfig controllerConfig = mock(VeniceControllerConfig.class);
+    doReturn(controllerConfig).when(config).getControllerConfig(any());
+    doReturn(true).when(controllerConfig).isBackupVersionRetentionBasedCleanupEnabled();
+    doReturn(true).when(admin).isLeaderControllerFor(any());
+    Map<Integer, VersionStatus> versions = new HashMap<>();
+    versions.put(1, VersionStatus.ONLINE);
+    versions.put(2, VersionStatus.ONLINE);
+    Store storeWithTwoVersions = mockStore(-1, System.currentTimeMillis() - defaultRetentionMs * 2, versions, 2);
+
+    Set<String> stores = new HashSet<>();
+    String clusterName = "test_cluster";
+    stores.add(storeWithTwoVersions.getName());
+    Set<String> clusters = new HashSet<>();
+    clusters.add(clusterName);
+    doReturn(clusters).when(config).getClusters();
+    List<Store> storeList = new ArrayList<>();
+    storeList.add(storeWithTwoVersions);
+    doReturn(storeList).when(admin).getAllStores(any());
+    MockTime time = new MockTime();
+    StoreBackupVersionCleanupService service = new StoreBackupVersionCleanupService(admin, config, time);
+    service.startInner();
+    TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.SECONDS, true, false, () -> {
+      verify(admin, atLeast(1)).deleteOneStoreVersion(clusterName, storeWithTwoVersions.getName(), 1);
+    });
+  }
+
 }
