@@ -41,6 +41,7 @@ public class OutboundHttpWrapperHandler extends ChannelOutboundHandlerAdapter {
     HttpResponseStatus responseStatus = OK;
     String offsetHeader = "-1";
     int schemaIdHeader = -1;
+    int responseRcu = 1;
     CompressionStrategy compressionStrategy = CompressionStrategy.NO_OP;
     boolean isStreamingResponse = false;
     try {
@@ -70,6 +71,7 @@ public class OutboundHttpWrapperHandler extends ChannelOutboundHandlerAdapter {
           responseStatus = NOT_FOUND;
         }
         isStreamingResponse = obj.isStreamingResponse();
+        responseRcu = obj.getRCU();
       } else if (msg instanceof HttpShortcutResponse) {
         HttpShortcutResponse shortcutResponse = (HttpShortcutResponse)msg;
         responseStatus = shortcutResponse.getStatus();
@@ -127,6 +129,7 @@ public class OutboundHttpWrapperHandler extends ChannelOutboundHandlerAdapter {
     response.headers().set(HttpConstants.VENICE_COMPRESSION_STRATEGY, compressionStrategy.getValue());
     response.headers().set(HttpConstants.VENICE_OFFSET, offsetHeader);
     response.headers().set(HttpConstants.VENICE_SCHEMA_ID, schemaIdHeader);
+    response.headers().set(HttpConstants.VENICE_REQUEST_RCU, responseRcu);
     if (isStreamingResponse) {
       response.headers().set(HttpConstants.VENICE_STREAMING_RESPONSE, "1");
     }

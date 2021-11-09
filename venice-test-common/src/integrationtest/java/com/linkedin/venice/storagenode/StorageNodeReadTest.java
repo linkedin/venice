@@ -131,17 +131,7 @@ public class StorageNodeReadTest {
     return partitioner.getPartitionId(key, partitionCount);
   }
 
-  /**
-   * There are (at least) two types of flakiness in this test:
-   *
-   * 1. Sometimes, it times out. Usually, the test completes in under 3 sec, so the 10s timeout should be generous...
-   *    At this point, it is unclear why the test times out. TODO: Debug the timeout.
-   * 2. Sometimes, data is apparently not fully ingested in all partitions by the time the batch get happens,
-   *    so the offset data is still at zero... This shouldn't happen, since data freshness is checked in
-   *    {@link #pushSyntheticData(String, String, int, VeniceClusterWrapper, VeniceWriter, int)} so it is not
-   *    clear why that would be the case. TODO: Debug why the offset occasionally shows as zero
-   */
-  @Test(timeOut = 30 * Time.MS_PER_SECOND, groups = {"flaky"})
+  @Test(timeOut = 30 * Time.MS_PER_SECOND)
   public void testRead() throws Exception {
     final int pushVersion = Version.parseVersionFromKafkaTopicName(storeVersionName);
 
@@ -174,6 +164,7 @@ public class StorageNodeReadTest {
             "Response did not return 200: " + new String(body));
         Object value = valueSerializer.deserialize(null, body);
         Assert.assertEquals(value.toString(), valuePrefix + "0");
+        Assert.assertEquals(response.getLastHeader(HttpConstants.VENICE_REQUEST_RCU).getValue(), "1");
       }
 
       // Multi-get
@@ -208,6 +199,9 @@ public class StorageNodeReadTest {
 
       Future<HttpResponse> multiGetFuture = client.execute(httpPost, null);
       HttpResponse multiGetResponse = multiGetFuture.get();
+
+      // TODO: Potentially a brittle test if we change the heuristic for RCU computation?
+      Assert.assertEquals(multiGetResponse.getLastHeader(HttpConstants.VENICE_REQUEST_RCU).getValue(), String.valueOf(keys.size()));
       try (InputStream bodyStream = multiGetResponse.getEntity().getContent()) {
         byte[] body = IOUtils.toByteArray(bodyStream);
         Assert.assertEquals(multiGetResponse.getStatusLine().getStatusCode(), HttpStatus.SC_OK,
