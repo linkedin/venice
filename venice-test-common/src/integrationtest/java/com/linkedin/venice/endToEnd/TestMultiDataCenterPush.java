@@ -31,6 +31,7 @@ import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
+import com.linkedin.venice.pushmonitor.StatusSnapshot;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.utils.TestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
@@ -322,6 +323,9 @@ public class TestMultiDataCenterPush {
           .getVeniceAdmin()
           .getOffLinePushStatus(clusterName, incrementalPushJob.getKafkaTopic(), incrementalPushJob.getIncrementalPushVersion());
       Assert.assertEquals(offlinePushStatusInfo.getExecutionStatus(), ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED);
+      Assert.assertTrue(incrementalPushJob.getIncrementalPushVersion().isPresent());
+      long incrementalPushJobTimeInMs = StatusSnapshot.getIncrementalPushJobTimeInMs(incrementalPushJob.getIncrementalPushVersion().get());
+      Assert.assertTrue(incrementalPushJobTimeInMs > 0L);
     }
     // validate the client can read data
     for (int dataCenterIndex = 0; dataCenterIndex < NUMBER_OF_CHILD_DATACENTERS; dataCenterIndex++) {
