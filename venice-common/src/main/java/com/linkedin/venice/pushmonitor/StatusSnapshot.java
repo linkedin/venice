@@ -1,5 +1,9 @@
 package com.linkedin.venice.pushmonitor;
 
+import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.utils.Utils;
+
+
 /**
  * The snap shot of status change.
  */
@@ -27,6 +31,20 @@ public class StatusSnapshot {
 
   public void setIncrementalPushVersion(String incrementalPushVersion) {
     this.incrementalPushVersion = incrementalPushVersion;
+  }
+
+  /**
+   * Incremental push job version id follows such pattern: timestampInMs_hadoopClusterName_jobExecutionId
+   */
+  public static long getIncrementalPushJobTimeInMs(String incPushVersionId) {
+    if (Utils.isNullOrEmpty(incPushVersionId)) {
+      throw new VeniceException(incPushVersionId + " is not a valid incremental push version id");
+    }
+    if (incPushVersionId.indexOf("_") > 0) {
+      return Long.valueOf(incPushVersionId.substring(0, incPushVersionId.indexOf("_")).trim());
+    } else {
+      return Long.valueOf(incPushVersionId);
+    }
   }
 
   @Override
