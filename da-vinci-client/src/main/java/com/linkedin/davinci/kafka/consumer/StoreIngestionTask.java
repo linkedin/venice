@@ -3824,7 +3824,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
        * EOP has been reported.
        */
       if (subPartitionStatus.equals(SubPartitionStatus.END_OF_PUSH_RECEIVED)) {
-        canReportCompleted.put(userPartition, new CompletableFuture<>());
+        canReportCompleted.putIfAbsent(userPartition, new CompletableFuture<>());
       }
 
       if ((subPartitionStatus.equals(SubPartitionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED)
