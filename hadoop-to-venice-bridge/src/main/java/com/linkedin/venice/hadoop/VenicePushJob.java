@@ -189,6 +189,22 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
   public static final String REWIND_TIME_IN_SECONDS_OVERRIDE = "rewind.time.in.seconds.override";
 
   /**
+   * A time stamp specified to rewind to before replaying data.  This config is ignored if rewind.time.in.seconds.override
+   * is provided.  This config at time of push will be leveraged to fill in the rewind.time.in.seconds.override by taking
+   * System.currentTime - rewind.epoch.time.in.seconds.override and storing the result in rewind.time.in.seconds.override.
+   * With this in mind, a push policy of REWIND_FROM_SOP should be used in order to get a behavior that makes sense to a user.
+   * A timestamp that is in the future is not valid and will result in an exception.
+   */
+  public static final String REWIND_EPOCH_TIME_IN_SECONDS_OVERRIDE = "rewind.epoch.time.in.seconds.override";
+
+  /**
+   * Relates to the above argument.  An overridable amount of buffer to be applied to the epoch (as the rewind isn't
+   * perfectly instantaneous).  Defaults to 1 minute.
+   */
+  public static final String REWIND_EPOCH_TIME_BUFFER_IN_SECONDS_OVERRIDE = "rewind.epoch.time.buffer.in.seconds.override";
+
+
+  /**
    * In single-colo mode, this can be either a controller or router.
    * In multi-colo mode, it must be a parent controller.
    */
@@ -623,6 +639,24 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
       pushJobSetting.storeName = props.getString(VENICE_STORE_NAME_PROP);
     }
     pushJobSetting.rewindTimeInSecondsOverride = props.getLong(REWIND_TIME_IN_SECONDS_OVERRIDE, -1);
+
+    // If we didn't specify a rewind time
+    if (pushJobSetting.rewindTimeInSecondsOverride == -1) {
+      // But we did specify a rewind time epoch timestamp
+      long rewindTimestamp = props.getLong(REWIND_EPOCH_TIME_IN_SECONDS_OVERRIDE, -1);
+      if (rewindTimestamp > -1) {
+        long nowInSeconds = System.currentTimeMillis() / 1000;
+        // So long as that rewind time isn't in the future
+        if (rewindTimestamp > nowInSeconds) {
+          throw new VeniceException(String.format("Provided {} for {}. {} cannot be a timestamp in the future!! ",
+              rewindTimestamp, REWIND_EPOCH_TIME_IN_SECONDS_OVERRIDE, REWIND_EPOCH_TIME_IN_SECONDS_OVERRIDE));
+        }
+        // Set the rewindTimeInSecondsOverride to be the time that is now - the provided timestamp so that we rewind
+        // from start of push to the provided timestamp with some extra buffer time since things aren't perfecty instantaneous
+        long bufferTime = props.getLong(REWIND_EPOCH_TIME_BUFFER_IN_SECONDS_OVERRIDE, 60);
+        pushJobSetting.rewindTimeInSecondsOverride = (nowInSeconds - rewindTimestamp) + bufferTime;
+      }
+    }
 
 
     if (pushJobSetting.enablePBNJ) {
