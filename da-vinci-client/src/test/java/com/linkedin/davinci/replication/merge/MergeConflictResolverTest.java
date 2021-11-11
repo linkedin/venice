@@ -1,5 +1,6 @@
 package com.linkedin.davinci.replication.merge;
 
+import com.linkedin.avro.fastserde.coldstart.ColdPrimitiveLongList;
 import com.linkedin.avro.fastserde.primitive.PrimitiveLongArrayList;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
@@ -19,6 +20,7 @@ import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 import org.testng.Assert;
 import org.testng.annotations.BeforeClass;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 import static org.mockito.Mockito.*;
@@ -255,9 +257,18 @@ public class MergeConflictResolverTest {
     Assert.assertEquals(GenericData.get().compare(result1, result2, recordSchema), 0);
   }
 
-  @Test
-  public void testOffsetVectorMergeAndSum() {
-    List<Long> newVector = new PrimitiveLongArrayList(1);
+  /**
+   * Data provider which provides for many list implementations because we've been hurt before :'(
+   */
+  @DataProvider(name = "Long-Lists-and-null")
+  public static Object[][] listImplementationsProvider() {
+    return new Object[][] {
+        {new ArrayList<Long>()}, {new PrimitiveLongArrayList(0)}, {new ColdPrimitiveLongList(0)}, {null}
+    };
+  }
+
+  @Test(dataProvider = "Long-Lists-and-null")
+  public void testOffsetVectorMergeAndSum(List<Long> newVector) {
     newVector = (List<Long>) Merge.mergeOffsetVectors(newVector, 1L, 0);
     newVector = (List<Long>) Merge.mergeOffsetVectors(newVector, 2L, 1);
     newVector = (List<Long>) Merge.mergeOffsetVectors(newVector, 3L, 4);
@@ -269,8 +280,7 @@ public class MergeConflictResolverTest {
     Assert.assertEquals(newVector, expectedVector);
     Assert.assertEquals(Merge.sumOffsetVector(newVector), 16L);
 
-    // Reverse it
-    newVector = new PrimitiveLongArrayList(2);
+    newVector.clear();
     newVector = (List<Long>) Merge.mergeOffsetVectors(newVector, 3L, 5);
     newVector = (List<Long>) Merge.mergeOffsetVectors(newVector, 9L, 1);
     newVector = (List<Long>) Merge.mergeOffsetVectors(newVector, 1L, 0);
