@@ -1,5 +1,6 @@
 package com.linkedin.davinci.replication.merge;
 
+import com.linkedin.avro.fastserde.primitive.PrimitiveLongArrayList;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.schema.SchemaEntry;
@@ -256,7 +257,7 @@ public class MergeConflictResolverTest {
 
   @Test
   public void testOffsetVectorMergeAndSum() {
-    List<Long> newVector = new ArrayList<>();
+    List<Long> newVector = new PrimitiveLongArrayList(1);
     newVector = (List<Long>) Merge.mergeOffsetVectors(newVector, 1L, 0);
     newVector = (List<Long>) Merge.mergeOffsetVectors(newVector, 2L, 1);
     newVector = (List<Long>) Merge.mergeOffsetVectors(newVector, 3L, 4);
@@ -269,7 +270,7 @@ public class MergeConflictResolverTest {
     Assert.assertEquals(Merge.sumOffsetVector(newVector), 16L);
 
     // Reverse it
-    newVector = new ArrayList<>();
+    newVector = new PrimitiveLongArrayList(2);
     newVector = (List<Long>) Merge.mergeOffsetVectors(newVector, 3L, 5);
     newVector = (List<Long>) Merge.mergeOffsetVectors(newVector, 9L, 1);
     newVector = (List<Long>) Merge.mergeOffsetVectors(newVector, 1L, 0);
