@@ -199,7 +199,8 @@ public enum Command {
   GET_DELETABLE_STORE_TOPICS("get-deletable-store-topics", "Get a list of deletable store topics in the fabric that belongs to the controller handling the request",
       new Arg[] {URL, CLUSTER}),
   CONFIGURE_INCREMENTAL_PUSH_FOR_CLUSTER("configure-incremental-push-for-cluster", "Configure all stores in a cluster which match a specific store type to a configurable incremental push type",
-      new Arg[] {URL, CLUSTER, INCREMENTAL_PUSH_POLICY_TO_APPLY}, new Arg[] {INCREMENTAL_PUSH_POLICY_TO_FILTER, REGIONS_FILTER});
+      new Arg[] {URL, CLUSTER, INCREMENTAL_PUSH_POLICY_TO_APPLY}, new Arg[] {INCREMENTAL_PUSH_POLICY_TO_FILTER, REGIONS_FILTER}),
+  WIPE_CLUSTER("wipe-cluster", "Delete data and metadata of a cluster/store/version in a child fabric", new Arg[] {URL, CLUSTER, FABRIC}, new Arg[] {STORE, VERSION});
   private final String commandName;
   private final String description;
   private final Arg[] requiredArgs;

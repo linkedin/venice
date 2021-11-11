@@ -3074,6 +3074,21 @@ public class VeniceParentHelixAdmin implements Admin {
     return getVeniceHelixAdmin().getBackupVersionDefaultRetentionMs();
   }
 
+  @Override
+  public void wipeCluster(String clusterName, String fabric, Optional<String> storeName, Optional<Integer> versionNum) {
+    String childControllerUrl = multiClusterConfigs.getControllerConfig(clusterName).getChildControllerUrl(fabric);
+    if (Utils.isNullOrEmpty(childControllerUrl)) {
+      throw new VeniceException("Parent controller does not know the controller url of child fabric " + fabric
+          + ". Could not forward the request to child controller.");
+    }
+    ControllerClient childControllerClient = ControllerClient.constructClusterControllerClient(clusterName,
+        childControllerUrl, sslFactory);
+    ControllerResponse response = childControllerClient.wipeCluster(fabric, storeName, versionNum);
+    if (response.isError()) {
+      throw new VeniceException("Could not wipe cluster " + clusterName + " in colo: " + fabric + ". " + response.getError());
+    }
+  }
+
   // Allow overriding in tests
   protected LingeringStoreVersionChecker getLingeringStoreVersionChecker() {
     return lingeringStoreVersionChecker;

@@ -109,6 +109,15 @@ public class HelixStoreGraveyard implements StoreGraveyard {
     logger.info("Put store: " + store.getName() + " into graveyard with largestUsedVersionNumber " + largestUsedVersionNumber);
   }
 
+  public void removeStoreFromGraveyard(String clusterName, String storeName) {
+    String path = getClusterDeletedStorePath(clusterName, storeName);
+    Store store = dataAccessor.get(path, null, AccessOption.PERSISTENT);
+    if (store != null) {
+      HelixUtils.remove(dataAccessor, path);
+      logger.info("Removed store: " + storeName + " from graveyard");
+    }
+  }
+
   /**
    * Search for matching store in graveyard in all clusters
    * @param storeName Store of interest

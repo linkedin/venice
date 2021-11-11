@@ -248,4 +248,8 @@ public class VeniceControllerMultiClusterConfig {
   public String getEmergencySourceRegion() {
     return getCommonConfig().getEmergencySourceRegion();
   }
+
+  public boolean isUsingKMM() {
+    return getCommonConfig().isUsingKMM();
+  }
 }

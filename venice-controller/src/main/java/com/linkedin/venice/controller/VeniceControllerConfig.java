@@ -150,6 +150,9 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   private final String emergencySourceRegion;
 
+  private final boolean allowClusterWipe;
+
+  private final boolean useKafkaMirrorMaker;
 
   public VeniceControllerConfig(VeniceProperties props) {
     super(props);
@@ -292,6 +295,8 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
     this.replicationMetadataVersionId = props.getInt(REPLICATION_METADATA_VERSION_ID, 1);
     this.emergencySourceRegion = props.getString(EMERGENCY_SOURCE_REGION, "");
+    this.allowClusterWipe = props.getBoolean(ALLOW_CLUSTER_WIPE, false);
+    this.useKafkaMirrorMaker = props.getBoolean(USE_KAFKA_MIRROR_MAKER, true);
   }
 
   private void validateActiveActiveConfigs() {
@@ -578,6 +583,18 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   public String getEmergencySourceRegion() {
     return emergencySourceRegion;
+  }
+
+  public String getChildControllerUrl(String fabric) {
+    return getProps().getString(CHILD_CLUSTER_URL_PREFIX + "." + fabric, "");
+  }
+
+  public boolean isClusterWipeAllowed() {
+    return allowClusterWipe;
+  }
+
+  public boolean isUsingKMM() {
+    return useKafkaMirrorMaker;
   }
 
   /**

@@ -307,6 +307,16 @@ public class ConfigKeys {
    */
   public static final String ALLOW_STORE_MIGRATION = "allow.store.migration";
 
+  /**
+   * Whether a cluster in a data center could be wiped. Default is false.
+   */
+  public static final String ALLOW_CLUSTER_WIPE = "allow.cluster.wipe";
+
+  /**
+   * Whether a cluster is still using Kafka Mirror Maker (KMM). Default is true.
+   */
+  public static final String USE_KAFKA_MIRROR_MAKER = "use.kafka.mirror.maker";
+
   // Server specific configs
   public static final String LISTENER_PORT = "listener.port";
   public static final String DATA_BASE_PATH = "data.base.path";

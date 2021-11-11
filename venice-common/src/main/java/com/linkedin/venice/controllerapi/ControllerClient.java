@@ -445,6 +445,13 @@ public class ControllerClient implements Closeable {
     return request(ControllerRoute.DELETE_STORE, params, TrackableControllerResponse.class);
   }
 
+  public ControllerResponse wipeCluster(String fabric, Optional<String> storeName, Optional<Integer> versionNum) {
+    QueryParams params = newParams().add(FABRIC, fabric);
+    storeName.ifPresent(s -> params.add(NAME, s));
+    versionNum.ifPresent(v -> params.add(VERSION, v));
+    return request(ControllerRoute.WIPE_CLUSTER, params, ControllerResponse.class);
+  }
+
   public ControllerResponse disableAndDeleteStore(String storeName) {
     UpdateStoreQueryParams updateParams = new UpdateStoreQueryParams()
             .setEnableWrites(false)

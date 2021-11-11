@@ -90,7 +90,7 @@ public class TestTopicCleanupService {
     topicRetentions1.put("store1_v4", HIGH_RETENTION_POLICY);
     List<String> expectedResult1 = Arrays.asList("store1_v1", "store1_v2");
     List<String> actualResult1 = TopicCleanupService.extractVersionTopicsToCleanup(admin, topicRetentions1,
-        admin.getMinNumberOfUnusedKafkaTopicsToPreserve());
+        admin.getMinNumberOfUnusedKafkaTopicsToPreserve(), true);
     actualResult1.sort(String::compareTo);
     Assert.assertEquals(actualResult1, expectedResult1);
 
@@ -101,7 +101,7 @@ public class TestTopicCleanupService {
     topicRetentions2.put("store1_v4", LOW_RETENTION_POLICY);
     List<String> expectedResult2 = Arrays.asList("store1_v3");
     List<String> actualResult2 = TopicCleanupService.extractVersionTopicsToCleanup(admin, topicRetentions2,
-        admin.getMinNumberOfUnusedKafkaTopicsToPreserve());
+        admin.getMinNumberOfUnusedKafkaTopicsToPreserve(), true);
     actualResult2.sort(String::compareTo);
     Assert.assertEquals(actualResult2, expectedResult2);
 
@@ -112,7 +112,7 @@ public class TestTopicCleanupService {
     topicRetentions3.put("store1_v4", HIGH_RETENTION_POLICY);
     List<String> expectedResult3 = Arrays.asList("store1_v1", "store1_v3");
     List<String> actualResult3 = TopicCleanupService.extractVersionTopicsToCleanup(admin, topicRetentions3,
-        admin.getMinNumberOfUnusedKafkaTopicsToPreserve());
+        admin.getMinNumberOfUnusedKafkaTopicsToPreserve(), true);
     actualResult3.sort(String::compareTo);
     Assert.assertEquals(actualResult3, expectedResult3);
 
@@ -124,7 +124,7 @@ public class TestTopicCleanupService {
     topicRetentions4.put("store1_v4", LOW_RETENTION_POLICY);
     List<String> expectedResult4 = Arrays.asList("store1_v1", "store1_v2", "store1_v3");
     List<String> actualResult4 = TopicCleanupService.extractVersionTopicsToCleanup(admin, topicRetentions4,
-        admin.getMinNumberOfUnusedKafkaTopicsToPreserve());
+        admin.getMinNumberOfUnusedKafkaTopicsToPreserve(), true);
     actualResult4.sort(String::compareTo);
     Assert.assertEquals(actualResult4, expectedResult4);
 
@@ -135,7 +135,7 @@ public class TestTopicCleanupService {
     List<String> expectedResult5 = Arrays.asList(Version.composeKafkaTopic(systemStoreName, 1),
         Version.composeKafkaTopic(systemStoreName, 2));
     List<String> actualResult5 = TopicCleanupService.extractVersionTopicsToCleanup(admin, topicRetentions5,
-        admin.getMinNumberOfUnusedKafkaTopicsToPreserve());
+        admin.getMinNumberOfUnusedKafkaTopicsToPreserve(), true);
     actualResult5.sort(String::compareTo);
     Assert.assertEquals(actualResult5, expectedResult5);
   }

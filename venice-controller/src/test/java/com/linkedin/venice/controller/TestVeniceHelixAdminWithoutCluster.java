@@ -230,6 +230,8 @@ public class TestVeniceHelixAdminWithoutCluster {
     doReturn(store.isPresent() ? store.get() : null).when(storeRepository).getStore(storeName);
     doReturn(storeRepository).when(admin).getMetadataRepository(clusterName);
 
+    doReturn(true).when(admin).isUsingKMM(clusterName);
+
     TopicManager topicManager = mock(TopicManager.class);
     doReturn(topics).when(topicManager).listTopics();
     doReturn(topicManager).when(admin).getTopicManager();

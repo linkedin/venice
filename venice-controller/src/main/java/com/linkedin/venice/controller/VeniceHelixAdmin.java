@@ -622,7 +622,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         HelixVeniceClusterResources clusterResources = getHelixVeniceClusterResources(clusterName);
         logger.info(String.format("Start creating store %s in cluster %s with owner %s", storeName, clusterName, owner));
         try (AutoCloseableLock ignore = clusterResources.getClusterLockManager().createStoreWriteLock(storeName)) {
-            checkPreConditionForCreateStore(clusterName, storeName, keySchema, valueSchema, isSystemStore, true);
+            checkPreConditionForCreateStore(clusterName, storeName, keySchema, valueSchema, isSystemStore, isUsingKMM(clusterName));
             VeniceControllerClusterConfig config = getHelixVeniceClusterResources(clusterName).getConfig();
             Store newStore = new ZKStore(storeName, owner, System.currentTimeMillis(), config.getPersistenceType(),
                 config.getRoutingStrategy(), config.getReadStrategy(), config.getOfflinePushStrategy(),
@@ -711,6 +711,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
      */
     public void deleteStore(String clusterName, String storeName, int largestUsedVersionNumber,
         boolean waitOnRTTopicDeletion) {
+        deleteStore(clusterName, storeName, largestUsedVersionNumber, waitOnRTTopicDeletion, false);
+    }
+
+    private void deleteStore(String clusterName, String storeName, int largestUsedVersionNumber,
+        boolean waitOnRTTopicDeletion, boolean isForcedDelete) {
         checkControllerLeadershipFor(clusterName);
         logger.info(String.format("Start deleting store: %s in cluster %s", storeName, clusterName));
         HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
@@ -733,7 +738,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             }
 
             String currentlyDiscoveredClusterName = storeConfig.getCluster(); // This is for store migration
-            // TODO: and isMigration flag is false, only then delete storeConfig
             if (!currentlyDiscoveredClusterName.equals(clusterName)) {
                 // This is most likely the deletion after a store migration operation.
                 // In this case the storeConfig should not be deleted,
@@ -789,10 +793,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             // Cleanup system stores if applicable
             UserSystemStoreLifeCycleHelper.maybeDeleteSystemStoresForUserStore(this, storeRepository,
                 resources.getPushMonitor(), clusterName, store, metaStoreWriter, logger);
-            // Move the store to graveyard. It will only re-create the znode for store's metadata excluding key and
-            // value schemas.
-            logger.info("Putting store: " + storeName + " into graveyard");
-            storeGraveyard.putStoreIntoGraveyard(clusterName, storeRepository.getStore(storeName));
+
+            if (isForcedDelete) {
+                storeGraveyard.removeStoreFromGraveyard(clusterName, storeName);
+            } else {
+                // Move the store to graveyard. It will only re-create the znode for store's metadata excluding key and
+                // value schemas.
+                logger.info("Putting store: " + storeName + " into graveyard");
+                storeGraveyard.putStoreIntoGraveyard(clusterName, storeRepository.getStore(storeName));
+            }
             // Helix will remove all data under this store's znode including key and value schemas.
             resources.getStoreMetadataRepository().deleteStore(storeName);
 
@@ -2061,8 +2070,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             repository.updateStore(store);
             List<Version> deletingVersionSnapshot = new ArrayList<>(store.getVersions());
 
-            // Do not lock the entire deleting block, because during the deleting, controller would acquire repository lock
-            // to query store when received the status update from storage node.
             for (Version version : deletingVersionSnapshot) {
                 deleteOneStoreVersion(clusterName, version.getStoreName(), version.getNumber());
             }
@@ -2106,9 +2113,16 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
      */
     @Override
     public void deleteOneStoreVersion(String clusterName, String storeName, int versionNumber) {
+        deleteOneStoreVersion(clusterName, storeName, versionNumber, false);
+    }
+
+    public void deleteOneStoreVersion(String clusterName, String storeName, int versionNumber, boolean isForcedDelete) {
         HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
         try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
             Store store = resources.getStoreMetadataRepository().getStore(storeName);
+            if (store == null) {
+                throwStoreDoesNotExist(clusterName, storeName);
+            }
             Store storeToCheckOngoingMigration =
                 VeniceSystemStoreUtils.getSystemStoreType(storeName) == VeniceSystemStoreType.METADATA_STORE ?
                     resources.getStoreMetadataRepository()
@@ -2133,7 +2147,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 }
             }
 
-            stopMonitorOfflinePush(clusterName, resourceName, true);
+            stopMonitorOfflinePush(clusterName, resourceName, true, isForcedDelete);
             Optional<Version> deletedVersion = deleteVersionFromStoreRepository(clusterName, storeName, versionNumber);
             if (deletedVersion.isPresent()) {
                 // Do not delete topic during store migration
@@ -4839,9 +4853,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             strategy);
     }
 
-    protected void stopMonitorOfflinePush(String clusterName, String topic, boolean deletePushStatus) {
+    protected void stopMonitorOfflinePush(String clusterName, String topic, boolean deletePushStatus,
+        boolean isForcedDelete) {
         PushMonitor offlinePushMonitor = getHelixVeniceClusterResources(clusterName).getPushMonitor();
-        offlinePushMonitor.stopMonitorOfflinePush(topic, deletePushStatus);
+        offlinePushMonitor.stopMonitorOfflinePush(topic, deletePushStatus, isForcedDelete);
     }
 
     protected Store checkPreConditionForUpdateStoreMetadata(String clusterName, String storeName) {
@@ -5406,12 +5421,44 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         checkResourceCleanupBeforeStoreCreation(clusterName, storeName, true);
     }
 
+    @Override
+    public void wipeCluster(String clusterName, String fabric, Optional<String> storeName, Optional<Integer> versionNum) {
+        checkControllerLeadershipFor(clusterName);
+        if (!multiClusterConfigs.getRegionName().equals(fabric)) {
+            throw new VeniceException("Current fabric " + multiClusterConfigs.getRegionName()
+                + " does not match with parameter " + fabric);
+        }
+        if (!multiClusterConfigs.getControllerConfig(clusterName).isClusterWipeAllowed()) {
+            throw new VeniceException("Current fabric " + fabric + " does not allow cluster wipe");
+        }
+        HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
+        if (storeName.isPresent()) {
+            if (versionNum.isPresent()) {
+                deleteOneStoreVersion(clusterName, storeName.get(), versionNum.get(), true);
+            } else {
+                setStoreReadWriteability(clusterName, storeName.get(), false);
+                deleteStore(clusterName, storeName.get(), Store.IGNORE_VERSION, false, true);
+            }
+        } else {
+            try (AutoCloseableLock ignore = resources.getClusterLockManager().createClusterWriteLock()) {
+                for (Store store : resources.getStoreMetadataRepository().getAllStores()) {
+                    setStoreReadWriteability(clusterName, store.getName(), false);
+                    deleteStore(clusterName, store.getName(), Store.IGNORE_VERSION, false, true);
+                }
+            }
+        }
+    }
+
     protected ZkStoreConfigAccessor getStoreConfigAccessor(String clusterName) {
         return getHelixVeniceClusterResources(clusterName).getStoreConfigAccessor();
     }
 
     protected ReadWriteStoreRepository getMetadataRepository(String clusterName) {
         return getHelixVeniceClusterResources(clusterName).getStoreMetadataRepository();
+    }
+
+    protected boolean isUsingKMM(String clusterName) {
+        return multiClusterConfigs.getControllerConfig(clusterName).isUsingKMM();
     }
 
     protected void checkResourceCleanupBeforeStoreCreation(String clusterName, String storeName, boolean checkHelixResource) {
@@ -5435,7 +5482,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         Set<String> topics = getTopicManager().listTopics();
         /**
          * So far, there is still a policy for Venice Store to keep the latest couple of topics to avoid KMM crash, so
-         * this function will skip the Version Topic check for now.
+         * this function will skip the version topic check if the cluster is using KMM.
          * Once Venice gets rid of KMM, we could consider to remove all the deprecated version topics.
          * So for topic check, we will ensure the RT topic for the Venice store will be deleted, and all other system
          * store topics.
@@ -5446,8 +5493,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 storeNameForTopic = Version.parseStoreFromRealTimeTopic(topic);
             } else if (Version.isVersionTopicOrStreamReprocessingTopic(topic)) {
                 storeNameForTopic = Version.parseStoreFromKafkaTopicName(topic);
-                if (storeNameForTopic.equals(storeName)) {
-                    /** Skip Version Topic Check */
+                if (storeNameForTopic.equals(storeName) && isUsingKMM(clusterName)) {
+                    /** Skip version topic check if the cluster is using KMM */
                     storeNameForTopic = null;
                 }
             }
