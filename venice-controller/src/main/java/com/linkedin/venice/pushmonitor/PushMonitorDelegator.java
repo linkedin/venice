@@ -145,8 +145,8 @@ public class PushMonitorDelegator implements PushMonitor {
   }
 
   @Override
-  public void stopMonitorOfflinePush(String kafkaTopic, boolean deletePushStatus) {
-    getPushMonitor(kafkaTopic).stopMonitorOfflinePush(kafkaTopic, deletePushStatus);
+  public void stopMonitorOfflinePush(String kafkaTopic, boolean deletePushStatus, boolean isForcedDelete) {
+    getPushMonitor(kafkaTopic).stopMonitorOfflinePush(kafkaTopic, deletePushStatus, isForcedDelete);
   }
 
   @Override

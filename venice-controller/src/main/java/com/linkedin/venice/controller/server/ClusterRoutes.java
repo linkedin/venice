@@ -76,4 +76,25 @@ public class ClusterRoutes  extends AbstractRoute {
       }
     };
   }
+
+  public Route wipeCluster(Admin admin) {
+    return new VeniceRouteHandler<ControllerResponse>(ControllerResponse.class) {
+      @Override
+      public void internalHandle(Request request, ControllerResponse veniceResponse) {
+        // Only allow whitelist users to run this command
+        if (!isWhitelistUsers(request)) {
+          veniceResponse.setError("Only admin users are allowed to run " + request.url());
+          return;
+        }
+        AdminSparkServer.validateParams(request, WIPE_CLUSTER.getParams(), admin);
+        String cluster = request.queryParams(CLUSTER);
+        String fabric = request.queryParams(FABRIC);
+        Optional<String> storeName = Optional.ofNullable(request.queryParams(NAME));
+        Optional<Integer> versionNum = Optional.ofNullable(request.queryParams(VERSION)).map(Integer::parseInt);
+        veniceResponse.setCluster(cluster);
+        storeName.ifPresent(veniceResponse::setName);
+        admin.wipeCluster(cluster, fabric, storeName, versionNum);
+      }
+    };
+  }
 }

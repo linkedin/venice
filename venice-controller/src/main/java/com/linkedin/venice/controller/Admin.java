@@ -668,4 +668,6 @@ public interface Admin extends AutoCloseable, Closeable {
      */
     void configureIncrementalPushForCluster(String cluster, Optional<String> storeName, IncrementalPushPolicy incrementalPushPolicyToApply,
         Optional<IncrementalPushPolicy> incrementalPushPolicyToFilter, Optional<String> regionsFilter);
+
+    void wipeCluster(String clusterName, String fabric, Optional<String> storeName, Optional<Integer> versionNum);
 }

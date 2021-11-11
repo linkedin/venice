@@ -184,7 +184,7 @@ public abstract class AbstractPushMonitor
   }
 
   @Override
-  public void stopMonitorOfflinePush(String kafkaTopic, boolean deletePushStatus) {
+  public void stopMonitorOfflinePush(String kafkaTopic, boolean deletePushStatus, boolean isForcedDelete) {
     logger.info("Stopping monitoring push on topic:" + kafkaTopic);
     String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopic);
     try (AutoCloseableLock ignore = clusterLockManager.createStoreWriteLock(storeName)) {
@@ -195,7 +195,7 @@ public abstract class AbstractPushMonitor
       OfflinePushStatus pushStatus = getOfflinePush(kafkaTopic);
       offlinePushAccessor.unsubscribePartitionsStatusChange(pushStatus, this);
       routingDataRepository.unSubscribeRoutingDataChange(kafkaTopic, this);
-      if (pushStatus.getCurrentStatus().equals(ExecutionStatus.ERROR)) {
+      if (pushStatus.getCurrentStatus().equals(ExecutionStatus.ERROR) && !isForcedDelete) {
         retireOldErrorPushes(storeName);
       } else {
         cleanupPushStatus(pushStatus, deletePushStatus);
@@ -210,7 +210,7 @@ public abstract class AbstractPushMonitor
     try (AutoCloseableLock ignore = clusterLockManager.createClusterWriteLock()) {
       for (Map.Entry<String, OfflinePushStatus> entry : topicToPushMap.entrySet()) {
         String kafkaTopic = entry.getKey();
-        stopMonitorOfflinePush(kafkaTopic, false);
+        stopMonitorOfflinePush(kafkaTopic, false, false);
       }
       logger.info("Successfully stopped monitoring push for all topics.");
     } catch (Exception e) {

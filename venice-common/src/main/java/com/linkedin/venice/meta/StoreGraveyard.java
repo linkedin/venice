@@ -17,5 +17,10 @@ public interface StoreGraveyard {
    * Put the given store into grave yard. If the store has already existed in the grave yard, update it by this given
    * store.
    */
-  void putStoreIntoGraveyard(String clusterNaem, Store store);
+  void putStoreIntoGraveyard(String clusterName, Store store);
+
+  /**
+   * Remove the given store from grave yard if it exists.
+   */
+  void removeStoreFromGraveyard(String clusterName, String storeName);
 }

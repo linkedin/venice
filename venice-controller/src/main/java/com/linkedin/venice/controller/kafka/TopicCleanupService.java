@@ -202,7 +202,7 @@ public class TopicCleanupService extends AbstractVeniceService {
         topicRetentions.remove(realTimeTopic);
       }
       List<String> oldTopicsToDelete = extractVersionTopicsToCleanup(admin, topicRetentions,
-          minNumberOfUnusedKafkaTopicsToPreserve);
+          minNumberOfUnusedKafkaTopicsToPreserve, multiClusterConfigs.isUsingKMM());
       if (!oldTopicsToDelete.isEmpty()) {
         topics.addAll(oldTopicsToDelete);
       }
@@ -230,11 +230,6 @@ public class TopicCleanupService extends AbstractVeniceService {
       });
     }
     return allStoreTopics;
-  }
-
-  public static List<String> extractVersionTopicsToCleanup(Admin admin, Map<String, Long> topicRetentions,
-      int minNumberOfUnusedKafkaTopicsToPreserve) {
-    return extractVersionTopicsToCleanup(admin, topicRetentions, minNumberOfUnusedKafkaTopicsToPreserve, true);
   }
 
   // TODO Remove the parameter preserveTopicsForDeletedStore once we move away from KMM. This parameter controls whether

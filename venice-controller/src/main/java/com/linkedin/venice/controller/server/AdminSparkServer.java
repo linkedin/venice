@@ -181,6 +181,7 @@ public class AdminSparkServer extends AbstractVeniceService {
     httpService.get(FUTURE_VERSION.getPath(), storesRoutes.getFutureVersion(admin));
     httpService.post(SET_TOPIC_COMPACTION.getPath(), storesRoutes.setTopicCompaction(admin));
     httpService.post(UPDATE_CLUSTER_CONFIG.getPath(), clusterRoutes.updateClusterConfig(admin));
+    httpService.post(WIPE_CLUSTER.getPath(), clusterRoutes.wipeCluster(admin));
 
     httpService.get(JOB.getPath(), jobRoutes.jobStatus(admin));
     httpService.post(KILL_OFFLINE_PUSH_JOB.getPath(), jobRoutes.killOfflinePushJob(admin));

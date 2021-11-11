@@ -49,7 +49,7 @@ public interface PushMonitor {
    * 1. Retire a version;
    * 2. Leader controller transits to standby; in this case, controller shouldn't delete any push status.
    */
-  void stopMonitorOfflinePush(String kafkaTopic, boolean deletePushStatus);
+  void stopMonitorOfflinePush(String kafkaTopic, boolean deletePushStatus, boolean isForcedDelete);
 
   /**
    * Clean up all push statuses related to a store including all error pushes. This is called when

@@ -413,6 +413,9 @@ public class AdminTool {
         case CONFIGURE_INCREMENTAL_PUSH_FOR_CLUSTER:
           configureIncrementalPushForCluster(cmd);
           break;
+        case WIPE_CLUSTER:
+          wipeCluster(cmd);
+          break;
         default:
           StringJoiner availableCommands = new StringJoiner(", ");
           for (Command c : Command.values()){
@@ -1927,6 +1930,14 @@ public class AdminTool {
         Utils.isNullOrEmpty(regionsFilterParam) ? Optional.empty() : Optional.of(regionsFilterParam);
 
     ControllerResponse response = controllerClient.configureIncrementalPushForCluster(incrementalPushPolicyToApply, incrementalPushPolicyToFilter, regionsFilter);
+    printObject(response);
+  }
+
+  private static void wipeCluster(CommandLine cmd) {
+    String fabric = getRequiredArgument(cmd, Arg.FABRIC);
+    Optional<String> storeName = Optional.ofNullable(getOptionalArgument(cmd, Arg.STORE));
+    Optional<Integer> versionNum = Optional.ofNullable(getOptionalArgument(cmd, Arg.VERSION)).map(Integer::parseInt);
+    ControllerResponse response = controllerClient.wipeCluster(fabric, storeName, versionNum);
     printObject(response);
   }
 

@@ -4,9 +4,11 @@ import com.linkedin.venice.AdminTool;
 import com.linkedin.venice.Arg;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
+import com.linkedin.venice.controllerapi.MultiStoreResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
+import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixReadOnlyLiveClusterConfigRepository;
@@ -36,8 +38,9 @@ public class TestAdminToolEndToEnd {
   @BeforeClass
   public void setup() {
     Properties properties = new Properties();
-    // Disable topic deletion
-    properties.setProperty(TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS, String.valueOf(Long.MAX_VALUE));
+    properties.setProperty(LOCAL_REGION_NAME, "region0");
+    properties.setProperty(ALLOW_CLUSTER_WIPE, "true");
+    properties.setProperty(USE_KAFKA_MIRROR_MAKER, "false");
     venice = ServiceFactory.getVeniceCluster(1, 1, 1, 1, 100000, false, false, properties);
     clusterName = venice.getClusterName();
   }
@@ -142,6 +145,69 @@ public class TestAdminToolEndToEnd {
         Assert.assertEquals(storeResponse.getStore().getIncrementalPushPolicy(), IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME);
         Assert.assertNotNull(storeResponse.getStore().getHybridStoreConfig());
       });
+    }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testWipeClusterCommand() throws Exception {
+    try (ControllerClient controllerClient = new ControllerClient(clusterName, venice.getMasterVeniceController().getControllerUrl())) {
+      // Create 2 stores. Store 1 has 2 versions
+      String testStoreName1 = TestUtils.getUniqueString("test-store");
+      NewStoreResponse newStoreResponse = controllerClient.createNewStore(testStoreName1, "test",
+          "\"string\"", "\"string\"");
+      Assert.assertFalse(newStoreResponse.isError());
+      VersionCreationResponse versionCreationResponse = controllerClient.emptyPush(testStoreName1,
+          TestUtils.getUniqueString("empty-push-1"), 1L);
+      Assert.assertFalse(versionCreationResponse.isError());
+      versionCreationResponse = controllerClient.emptyPush(testStoreName1,
+          TestUtils.getUniqueString("empty-push-2"), 1L);
+      Assert.assertFalse(versionCreationResponse.isError());
+
+      String testStoreName2 = TestUtils.getUniqueString("test-store");
+      newStoreResponse = controllerClient.createNewStore(testStoreName2, "test",
+          "\"string\"", "\"string\"");
+      Assert.assertFalse(newStoreResponse.isError());
+
+      // Delete a version
+      String[] wipeClusterArgs1 =
+          {"--wipe-cluster", "--url", venice.getMasterVeniceController().getControllerUrl(),
+              "--cluster", clusterName,
+              "--fabric", "region0",
+              "--store", testStoreName1,
+              "--version", "1"};
+      AdminTool.main(wipeClusterArgs1);
+      StoreResponse storeResponse = controllerClient.getStore(testStoreName1);
+      Assert.assertNotNull(storeResponse.getStore());
+      Assert.assertFalse(storeResponse.getStore().getVersion(1).isPresent());
+      Assert.assertTrue(storeResponse.getStore().getVersion(2).isPresent());
+
+      // Delete a store
+      String[] wipeClusterArgs2 =
+          {"--wipe-cluster", "--url", venice.getMasterVeniceController().getControllerUrl(),
+              "--cluster", clusterName,
+              "--fabric", "region0",
+              "--store", testStoreName1};
+      AdminTool.main(wipeClusterArgs2);
+      storeResponse = controllerClient.getStore(testStoreName1);
+      Assert.assertNull(storeResponse.getStore());
+
+      // Wipe a cluster
+      String[] wipeClusterArgs3 =
+          {"--wipe-cluster", "--url", venice.getMasterVeniceController().getControllerUrl(),
+              "--cluster", clusterName,
+              "--fabric", "region0"};
+      AdminTool.main(wipeClusterArgs3);
+      MultiStoreResponse multiStoreResponse = controllerClient.queryStoreList();
+      Assert.assertEquals(multiStoreResponse.getStores().length, 0);
+
+      // Redo fabric buildup. Create the store and version again.
+      newStoreResponse = controllerClient.createNewStore(testStoreName1, "test",
+          "\"string\"", "\"string\"");
+      Assert.assertFalse(newStoreResponse.isError());
+      versionCreationResponse = controllerClient.emptyPush(testStoreName1,
+          TestUtils.getUniqueString("empty-push-1"), 1L);
+      Assert.assertFalse(versionCreationResponse.isError());
+      Assert.assertEquals(versionCreationResponse.getVersion(), 1);
     }
   }
 }
