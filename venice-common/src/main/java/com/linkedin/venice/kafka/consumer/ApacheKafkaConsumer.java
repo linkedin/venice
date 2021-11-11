@@ -9,6 +9,7 @@ import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -217,7 +218,7 @@ public class ApacheKafkaConsumer implements KafkaConsumerWrapper {
   }
 
   @Override
-  public void assign(List<TopicPartition> topicPartitions) {
+  public void assign(Collection<TopicPartition> topicPartitions) {
     kafkaConsumer.assign(topicPartitions);
   }
 

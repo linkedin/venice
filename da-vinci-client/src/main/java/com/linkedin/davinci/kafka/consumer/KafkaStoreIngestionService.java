@@ -57,6 +57,8 @@ import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.utils.locks.AutoCloseableLock;
+import com.linkedin.venice.utils.locks.ResourceAutoClosableLockManager;
 import com.linkedin.venice.writer.ApacheKafkaProducer;
 import com.linkedin.venice.writer.KafkaProducerWrapper;
 import com.linkedin.venice.writer.SharedKafkaProducerService;
@@ -80,6 +82,7 @@ import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import org.apache.kafka.clients.CommonClientConfigs;
@@ -164,6 +167,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
   private final StorageEngineBackedCompressorFactory compressorFactory;
 
+  private final ResourceAutoClosableLockManager topicLockManager;
+
   public KafkaStoreIngestionService(StorageEngineRepository storageEngineRepository,
                                     VeniceConfigLoader veniceConfigLoader,
                                     StorageMetadataService storageMetadataService,
@@ -190,6 +195,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     this.isIsolatedIngestion = isIsolatedIngestion;
     this.partitionStateSerializer = partitionStateSerializer;
     this.compressorFactory = compressorFactory;
+    // Each topic that has any partition ingested by this class has its own lock.
+    this.topicLockManager = new ResourceAutoClosableLockManager(() -> new ReentrantLock());
 
     VeniceServerConfig serverConfig = veniceConfigLoader.getVeniceServerConfig();
     VeniceServerConsumerFactory veniceConsumerFactory = new VeniceServerConsumerFactory(serverConfig, kafkaMessageEnvelopeSchemaReader);
@@ -538,7 +545,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
    * Closes all the Kafka clients.
    */
   @Override
-  public void stopInner() throws Exception {
+  public void stopInner() {
     Utils.closeQuietlyWithErrorLogged(participantStoreConsumptionTask);
     shutdownExecutorService(participantStoreConsumerExecutorService, true, "participantStoreConsumerExecutorService");
 
@@ -565,6 +572,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     Utils.closeQuietlyWithErrorLogged(storeBufferService);
     Utils.closeQuietlyWithErrorLogged(topicManagerRepository);
     Utils.closeQuietlyWithErrorLogged(topicManagerRepositoryJavaBased);
+    topicLockManager.removeAllLocks();
   }
 
   /**
@@ -575,66 +583,75 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
    * @param leaderState
    */
   @Override
-  public synchronized void startConsumption(VeniceStoreVersionConfig veniceStore, int partitionId,
+  public void startConsumption(VeniceStoreVersionConfig veniceStore, int partitionId,
       Optional<LeaderFollowerStateType> leaderState) {
-    String topic = veniceStore.getStoreVersionName();
-    StoreIngestionTask consumerTask = topicNameToIngestionTaskMap.get(topic);
-    if (consumerTask == null || !consumerTask.isRunning()) {
-      consumerTask = createConsumerTask(veniceStore, partitionId);
-      topicNameToIngestionTaskMap.put(topic, consumerTask);
-      versionedStorageIngestionStats.setIngestionTask(topic, consumerTask);
-      if (!isRunning()) {
-        logger.info("Ignoring Start consumption message as service is stopping. Topic " + topic + " Partition " + partitionId);
-        return;
+
+    final String topic = veniceStore.getStoreVersionName();
+    try (AutoCloseableLock ignore = topicLockManager.getLockForResource(topic)) {
+      StoreIngestionTask consumerTask = topicNameToIngestionTaskMap.get(topic);
+      if (consumerTask == null || !consumerTask.isRunning()) {
+        consumerTask = createConsumerTask(veniceStore, partitionId);
+        topicNameToIngestionTaskMap.put(topic, consumerTask);
+        versionedStorageIngestionStats.setIngestionTask(topic, consumerTask);
+        if (!isRunning()) {
+          logger.info("Ignoring Start consumption message as service is stopping. Topic " + topic + " Partition " + partitionId);
+          return;
+        }
+        ingestionExecutorService.submit(consumerTask);
       }
-      ingestionExecutorService.submit(consumerTask);
-    }
 
-    /**
-     * Since Venice metric is store-level and it would have multiply topics tasks exist in the same time.
-     * Only the task with largest version would emit it stats. That being said, relying on the {@link #metadataRepo}
-     * to get the max version may be unreliable, since the information in this object is not guaranteed
-     * to be up to date. As a sanity check, we will also look at the version in the topic name, and
-     * pick whichever number is highest as the max version number.
-     */
-    String storeName = Version.parseStoreFromKafkaTopicName(topic);
-    int maxVersionNumberFromTopicName = Version.parseVersionFromKafkaTopicName(topic);
-    int maxVersionNumberFromMetadataRepo = getStoreMaximumVersionNumber(storeName);
-    if (maxVersionNumberFromTopicName > maxVersionNumberFromMetadataRepo) {
-      logger.warn("Got stale info from metadataRepo. maxVersionNumberFromTopicName: " + maxVersionNumberFromTopicName +
-          ", maxVersionNumberFromMetadataRepo: " + maxVersionNumberFromMetadataRepo +
-          ". Will rely on the topic name's version.");
-    }
-    /**
-     * Notice that the version push for maxVersionNumberFromMetadataRepo might be killed already (this code path will
-     * also be triggered after server restarts).
-     */
-    int maxVersionNumber = Math.max(maxVersionNumberFromMetadataRepo, maxVersionNumberFromTopicName);
-    updateStatsEmission(topicNameToIngestionTaskMap, storeName, maxVersionNumber);
+      /**
+       * Since Venice metric is store-level and it would have multiply topics tasks exist in the same time.
+       * Only the task with largest version would emit it stats. That being said, relying on the {@link #metadataRepo}
+       * to get the max version may be unreliable, since the information in this object is not guaranteed
+       * to be up to date. As a sanity check, we will also look at the version in the topic name, and
+       * pick whichever number is highest as the max version number.
+       */
+      String storeName = Version.parseStoreFromKafkaTopicName(topic);
+      int maxVersionNumberFromTopicName = Version.parseVersionFromKafkaTopicName(topic);
+      int maxVersionNumberFromMetadataRepo = getStoreMaximumVersionNumber(storeName);
+      if (maxVersionNumberFromTopicName > maxVersionNumberFromMetadataRepo) {
+        logger.warn("Got stale info from metadataRepo. maxVersionNumberFromTopicName: " + maxVersionNumberFromTopicName
+            + ", maxVersionNumberFromMetadataRepo: " + maxVersionNumberFromMetadataRepo
+            + ". Will rely on the topic name's version.");
+      }
+      /**
+       * Notice that the version push for maxVersionNumberFromMetadataRepo might be killed already (this code path will
+       * also be triggered after server restarts).
+       */
+      int maxVersionNumber = Math.max(maxVersionNumberFromMetadataRepo, maxVersionNumberFromTopicName);
+      updateStatsEmission(topicNameToIngestionTaskMap, storeName, maxVersionNumber);
 
-    consumerTask.subscribePartition(topic, partitionId, leaderState);
+      consumerTask.subscribePartition(topic, partitionId, leaderState);
+    }
     logger.info("Started Consuming - Kafka Partition: " + topic + "-" + partitionId + ".");
   }
 
   @Override
-  public synchronized void promoteToLeader(VeniceStoreVersionConfig veniceStoreVersionConfig, int partitionId, LeaderFollowerPartitionStateModel.LeaderSessionIdChecker checker) {
-    String topic = veniceStoreVersionConfig.getStoreVersionName();
-    StoreIngestionTask consumerTask = topicNameToIngestionTaskMap.get(topic);
-    if (consumerTask != null && consumerTask.isRunning()) {
-      consumerTask.promoteToLeader(topic, partitionId, checker);
-    } else {
-      logger.warn("Ignoring standby to leader transition message for Topic " + topic + " Partition " + partitionId);
+  public void promoteToLeader(VeniceStoreVersionConfig veniceStoreVersionConfig, int partitionId, LeaderFollowerPartitionStateModel.LeaderSessionIdChecker checker) {
+    final String topic = veniceStoreVersionConfig.getStoreVersionName();
+
+    try (AutoCloseableLock ignore = topicLockManager.getLockForResource(topic)) {
+      StoreIngestionTask consumerTask = topicNameToIngestionTaskMap.get(topic);
+      if (consumerTask != null && consumerTask.isRunning()) {
+        consumerTask.promoteToLeader(topic, partitionId, checker);
+      } else {
+        logger.warn("Ignoring standby to leader transition message for Topic " + topic + " Partition " + partitionId);
+      }
     }
   }
 
   @Override
-  public synchronized void demoteToStandby(VeniceStoreVersionConfig veniceStoreVersionConfig, int partitionId, LeaderFollowerPartitionStateModel.LeaderSessionIdChecker checker) {
-    String topic = veniceStoreVersionConfig.getStoreVersionName();
-    StoreIngestionTask consumerTask = topicNameToIngestionTaskMap.get(topic);
-    if (consumerTask != null && consumerTask.isRunning()) {
-      consumerTask.demoteToStandby(topic, partitionId, checker);
-    } else {
-      logger.warn("Ignoring leader to standby transition message for Topic " + topic + " Partition " + partitionId);
+  public void demoteToStandby(VeniceStoreVersionConfig veniceStoreVersionConfig, int partitionId, LeaderFollowerPartitionStateModel.LeaderSessionIdChecker checker) {
+    final String topic = veniceStoreVersionConfig.getStoreVersionName();
+
+    try (AutoCloseableLock ignore = topicLockManager.getLockForResource(topic)) {
+      StoreIngestionTask consumerTask = topicNameToIngestionTaskMap.get(topic);
+      if (consumerTask != null && consumerTask.isRunning()) {
+        consumerTask.demoteToStandby(topic, partitionId, checker);
+      } else {
+        logger.warn("Ignoring leader to standby transition message for Topic " + topic + " Partition " + partitionId);
+      }
     }
   }
 
@@ -713,13 +730,16 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
    * @param partitionId Venice partition's id.
    */
   @Override
-  public synchronized void stopConsumption(VeniceStoreVersionConfig veniceStore, int partitionId) {
-    String topic = veniceStore.getStoreVersionName();
-    StoreIngestionTask consumerTask = topicNameToIngestionTaskMap.get(topic);
-    if (consumerTask != null && consumerTask.isRunning()) {
-      consumerTask.unSubscribePartition(topic, partitionId);
-    } else {
-      logger.warn("Ignoring stop consumption message for Topic " + topic + " Partition " + partitionId);
+  public void stopConsumption(VeniceStoreVersionConfig veniceStore, int partitionId) {
+    final String topic = veniceStore.getStoreVersionName();
+
+    try (AutoCloseableLock ignore = topicLockManager.getLockForResource(topic)) {
+      StoreIngestionTask consumerTask = topicNameToIngestionTaskMap.get(topic);
+      if (consumerTask != null && consumerTask.isRunning()) {
+        consumerTask.unSubscribePartition(topic, partitionId);
+      } else {
+        logger.warn("Ignoring stop consumption message for Topic " + topic + " Partition " + partitionId);
+      }
     }
   }
 
@@ -777,14 +797,14 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       throw new VeniceException("KafkaStoreIngestionService is not running.");
     }
 
-    synchronized (this) {
+    boolean killed = false;
+    try (AutoCloseableLock ignore = topicLockManager.getLockForResource(topicName)) {
       StoreIngestionTask consumerTask = topicNameToIngestionTaskMap.get(topicName);
       if (consumerTask == null) {
         logger.info("Ignoring kill request for not-existing consumption task " + topicName);
         return false;
       }
 
-      boolean killed = false;
       if (consumerTask.isRunning()) {
         consumerTask.kill();
         compressorFactory.removeVersionSpecificCompressor(topicName);
@@ -809,8 +829,9 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         consumerTask.disableMetricsEmission();
         updateStatsEmission(topicNameToIngestionTaskMap, Version.parseStoreFromKafkaTopicName(topicName));
       }
-      return killed;
     }
+    topicLockManager.removeLockForResource(topicName);
+    return killed;
   }
 
   @Override
@@ -830,21 +851,25 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   }
 
   @Override
-  public synchronized boolean containsRunningConsumption(VeniceStoreVersionConfig veniceStore) {
+  public boolean containsRunningConsumption(VeniceStoreVersionConfig veniceStore) {
     return containsRunningConsumption(veniceStore.getStoreVersionName());
   }
 
   @Override
-  public synchronized boolean containsRunningConsumption(String topic) {
-    StoreIngestionTask consumerTask = topicNameToIngestionTaskMap.get(topic);
-    return consumerTask != null && consumerTask.isRunning();
+  public boolean containsRunningConsumption(String topic) {
+    try (AutoCloseableLock ignore = topicLockManager.getLockForResource(topic)) {
+      StoreIngestionTask consumerTask = topicNameToIngestionTaskMap.get(topic);
+      return consumerTask != null && consumerTask.isRunning();
+    }
   }
 
   @Override
-  public synchronized boolean isPartitionConsuming(VeniceStoreVersionConfig veniceStore, int partitionId) {
-    String topic = veniceStore.getStoreVersionName();
-    StoreIngestionTask consumerTask = topicNameToIngestionTaskMap.get(topic);
-    return consumerTask != null && consumerTask.isRunning() && consumerTask.isPartitionConsuming(partitionId);
+  public boolean isPartitionConsuming(VeniceStoreVersionConfig veniceStore, int partitionId) {
+    final String topic = veniceStore.getStoreVersionName();
+    try (AutoCloseableLock ignore = topicLockManager.getLockForResource(topic)) {
+      StoreIngestionTask consumerTask = topicNameToIngestionTaskMap.get(topic);
+      return consumerTask != null && consumerTask.isRunning() && consumerTask.isPartitionConsuming(partitionId);
+    }
   }
 
   @Override

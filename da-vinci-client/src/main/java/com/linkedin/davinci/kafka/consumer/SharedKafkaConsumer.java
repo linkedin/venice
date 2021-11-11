@@ -10,6 +10,8 @@ import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.LinkedList;
@@ -18,6 +20,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.common.TopicPartition;
@@ -74,8 +78,15 @@ public class SharedKafkaConsumer implements KafkaConsumerWrapper {
   private final KafkaConsumerService kafkaConsumerService;
   /**
    * This cached assignment is for performance optimization purpose since {@link #hasSubscription} could be invoked frequently.
+   * This set should be unmodifiable.
    */
-  private Set<TopicPartition> currentAssignment = Collections.emptySet();
+  private Set<TopicPartition> currentAssignment;
+
+  /**
+   * This field is used to cache the size information of the current assignment in order to reduce threads contention because
+   * getting the size no longer requires calling the synchronized {@link SharedKafkaConsumer#getAssignment}
+   */
+  private final AtomicInteger currentAssignmentSize;
 
   /**
    * This field contains the mapping between subscribed topics and the corresponding {@link StoreIngestionTask} to handle
@@ -117,20 +128,15 @@ public class SharedKafkaConsumer implements KafkaConsumerWrapper {
     this.nonExistingTopicCleanupDelayMS = nonExistingTopicCleanupDelayMS;
     this.time = time;
     this.topicExistenceChecker = topicExistenceChecker;
+    this.currentAssignment = Collections.emptySet();
+    this.currentAssignmentSize = new AtomicInteger(0);
   }
 
-
-  /**
-   * If {@param isClosed} is true, this function will update the {@link #currentAssignment} to be empty.
-   */
-  private void updateCurrentAssignment(boolean isClosed) {
-    long updateCurrentAssignmentStartTime = System.currentTimeMillis();
-    if (isClosed) {
-      this.currentAssignment = Collections.emptySet();
-    } else {
-      this.currentAssignment = this.delegate.getAssignment();
-    }
-    kafkaConsumerService.setPartitionsNumSubscribed(this, this.currentAssignment.size());
+  private synchronized void updateCurrentAssignment(Set<TopicPartition> newAssignment) {
+    final long updateCurrentAssignmentStartTime = System.currentTimeMillis();
+    currentAssignmentSize.set(newAssignment.size());
+    currentAssignment = Collections.unmodifiableSet(newAssignment);
+    kafkaConsumerService.setPartitionsNumSubscribed(this, newAssignment.size());
     kafkaConsumerService.getStats().recordUpdateCurrentAssignmentLatency(LatencyUtils.getElapsedTimeInMs(updateCurrentAssignmentStartTime));
   }
 
@@ -139,7 +145,7 @@ public class SharedKafkaConsumer implements KafkaConsumerWrapper {
     long delegateSubscribeStartTime = System.currentTimeMillis();
     this.delegate.subscribe(topic, partition, lastReadOffset);
     kafkaConsumerService.getStats().recordDelegateSubscribeLatency(LatencyUtils.getElapsedTimeInMs(delegateSubscribeStartTime));
-    updateCurrentAssignment(false);
+    updateCurrentAssignment(delegate.getAssignment());
   }
 
   /**
@@ -156,7 +162,7 @@ public class SharedKafkaConsumer implements KafkaConsumerWrapper {
 
     LOGGER.info(String.format("Shared consumer %s unsubscribed topic %s partition %d: . Took %d ms.",
         this, topic, partition, Instant.now().toEpochMilli() - startTime.toEpochMilli()));
-    updateCurrentAssignment(false);
+    updateCurrentAssignment(delegate.getAssignment());
     waitAfterUnsubscribe(currentPollTimes);
   }
 
@@ -168,7 +174,7 @@ public class SharedKafkaConsumer implements KafkaConsumerWrapper {
 
     LOGGER.info(String.format("Shared consumer %s unsubscribed %d partitions. Took %d ms.",
         this, topicPartitionSet.size(), System.currentTimeMillis() - startTime));
-    updateCurrentAssignment(false);
+    updateCurrentAssignment(delegate.getAssignment());
     waitAfterUnsubscribe(currentPollTimes);
   }
 
@@ -201,14 +207,14 @@ public class SharedKafkaConsumer implements KafkaConsumerWrapper {
   @Override
   public synchronized void close() {
     this.delegate.close();
-    updateCurrentAssignment(true);
+    updateCurrentAssignment(Collections.emptySet());
   }
 
   @Override
   public synchronized void close(Set<String> topics) {
     // Get the current subscription for this topic and unsubscribe them
     Set<TopicPartition> currentAssignment = getAssignment();
-    List<TopicPartition> newAssignment = new LinkedList<>();
+    Set<TopicPartition> newAssignment = new HashSet<>();
     for (TopicPartition topicPartition : currentAssignment) {
       if (!topics.contains(topicPartition.topic())) {
         newAssignment.add(topicPartition);
@@ -218,8 +224,8 @@ public class SharedKafkaConsumer implements KafkaConsumerWrapper {
       // nothing changed.
       return;
     }
+    updateCurrentAssignment(newAssignment);
     this.delegate.assign(newAssignment);
-    updateCurrentAssignment(false);
   }
 
   /**
@@ -377,10 +383,9 @@ public class SharedKafkaConsumer implements KafkaConsumerWrapper {
     return false;
   }
 
-
   @Override
   public synchronized boolean hasSubscription(String topic, int partition) {
-    return this.currentAssignment.contains(new TopicPartition(topic, partition));
+    return currentAssignment.contains(new TopicPartition(topic, partition));
   }
 
   @Override
@@ -394,9 +399,9 @@ public class SharedKafkaConsumer implements KafkaConsumerWrapper {
   }
 
   @Override
-  public synchronized void assign(List<TopicPartition> topicPartitions) {
+  public synchronized void assign(Collection<TopicPartition> topicPartitions) {
+    updateCurrentAssignment(new HashSet<>(topicPartitions));
     this.delegate.assign(topicPartitions);
-    updateCurrentAssignment(false);
   }
 
   @Override
@@ -421,7 +426,11 @@ public class SharedKafkaConsumer implements KafkaConsumerWrapper {
 
   @Override
   public synchronized Set<TopicPartition> getAssignment() {
-    return Collections.unmodifiableSet(currentAssignment);
+    return currentAssignment; // The assignment set is unmodifiable
+  }
+
+  public int getAssignmentSize() {
+    return currentAssignmentSize.get();
   }
 
   /**
@@ -461,8 +470,9 @@ public class SharedKafkaConsumer implements KafkaConsumerWrapper {
   }
 
   // Visible for testing
-  void setCurrentAssignment(Set<TopicPartition> assignment) {
-     this.currentAssignment = assignment;
+  synchronized void setCurrentAssignment(Set<TopicPartition> assignment) {
+    this.currentAssignment = assignment;
+    this.currentAssignmentSize.set(assignment.size());
   }
 
   @Override

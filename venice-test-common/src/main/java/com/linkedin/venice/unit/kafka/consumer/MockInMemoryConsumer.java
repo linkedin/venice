@@ -6,6 +6,7 @@ import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.unit.kafka.InMemoryKafkaBroker;
 import com.linkedin.venice.unit.kafka.consumer.poll.PollStrategy;
 
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -101,7 +102,7 @@ public class MockInMemoryConsumer implements KafkaConsumerWrapper {
   }
 
   @Override
-  public void assign(List<TopicPartition> topicPartitions) {
+  public void assign(Collection<TopicPartition> topicPartitions) {
     delegate.assign(topicPartitions);
   }
 
