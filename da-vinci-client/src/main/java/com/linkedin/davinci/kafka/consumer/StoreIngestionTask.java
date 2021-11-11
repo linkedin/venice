@@ -3153,7 +3153,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    */
   public synchronized void close() {
     isRunning.set(false);
-
     // KafkaConsumer is closed at the end of the run method.
     // The operation is executed on a single thread in run method.
     // This method signals the run method to end, which closes the

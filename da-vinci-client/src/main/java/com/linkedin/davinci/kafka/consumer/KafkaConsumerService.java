@@ -178,8 +178,7 @@ public class KafkaConsumerService extends AbstractVeniceService {
       }
 
       // Find the least loaded consumer by partitions
-      // TODO Try to use a consumer pool level lock mechanism to ultimately eliminate the inconsistency of late assignment.
-      int assignedPartitions = consumer.getAssignment().size();
+      final int assignedPartitions = consumer.getAssignmentSize();
       if (assignedPartitions < minAssignmentPerConsumer) {
         minAssignmentPerConsumer = assignedPartitions;
         chosenConsumer = consumer;

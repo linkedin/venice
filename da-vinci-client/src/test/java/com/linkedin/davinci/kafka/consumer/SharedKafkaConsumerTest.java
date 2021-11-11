@@ -78,9 +78,13 @@ public class SharedKafkaConsumerTest {
     sharedConsumer.attach(nonExistingTopic1, ingestionTaskForNonExistingTopic1);
 
     Map<TopicPartition, List<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>>> consumerRecordsReturnedByConsumer = new HashMap<>();
-    consumerRecordsReturnedByConsumer.put(new TopicPartition(existingTopic1, 1), Arrays.asList(new ConsumerRecord<>(existingTopic1, 1, 0, null, null)));
-    consumerRecordsReturnedByConsumer.put(new TopicPartition(existingTopic2, 1), Arrays.asList(new ConsumerRecord<>(existingTopic2, 1, 0, null, null)));
-    consumerRecordsReturnedByConsumer.put(new TopicPartition(existingTopicWithoutIngestionTask1, 1), Arrays.asList(new ConsumerRecord<>(existingTopicWithoutIngestionTask1, 1, 0, null, null)));
+    consumerRecordsReturnedByConsumer.put(new TopicPartition(existingTopic1, 1),
+        Collections.singletonList(new ConsumerRecord<>(existingTopic1, 1, 0, null, null)));
+    consumerRecordsReturnedByConsumer.put(new TopicPartition(existingTopic2, 1),
+        Collections.singletonList(new ConsumerRecord<>(existingTopic2, 1, 0, null, null)));
+    consumerRecordsReturnedByConsumer.put(new TopicPartition(existingTopicWithoutIngestionTask1, 1),
+        Collections.singletonList(new ConsumerRecord<>(existingTopicWithoutIngestionTask1, 1, 0, null, null)));
+
     doReturn(new ConsumerRecords(consumerRecordsReturnedByConsumer)).when(consumer).poll(anyLong());
 
     sharedConsumer.poll(1000);
@@ -93,7 +97,7 @@ public class SharedKafkaConsumerTest {
     // Shared consumer should cleanup the subscriptions without corresponding ingestion task
     newAssignment = new HashSet<>(assignmentReturnedConsumer);
     newAssignment.remove(new TopicPartition(existingTopicWithoutIngestionTask1, 1));
-    verify(consumer).assign(new ArrayList<>(newAssignment));
+    verify(consumer).assign(new HashSet<>(newAssignment));
     verify(consumerServiceStats).recordDetectedNoRunningIngestionTopicNum(1);
     // Shared Consumer should cleanup the subscriptions to the non-existing topics since the delay is exhausted
     mockTime.sleep(nonExistingTopicCleanupDelayMS);
@@ -101,7 +105,7 @@ public class SharedKafkaConsumerTest {
     newAssignment = new HashSet<>(assignmentReturnedConsumer);
     newAssignment.remove(new TopicPartition(nonExistingTopic1, 1));
     newAssignment.remove(new TopicPartition(existingTopicWithoutIngestionTask1, 1));
-    verify(consumer).assign(new ArrayList<>(newAssignment));
+    verify(consumer).assign(new HashSet<>(newAssignment));
     verify(consumerServiceStats, times(2)).recordDetectedDeletedTopicNum(1);
     verify(ingestionTaskForNonExistingTopic1).setLastConsumerException(any());
   }
