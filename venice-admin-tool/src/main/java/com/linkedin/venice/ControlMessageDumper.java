@@ -59,11 +59,7 @@ public class ControlMessageDumper {
 
         if (MessageType.valueOf(envelope) == MessageType.CONTROL_MESSAGE) {
           GUID producerGUID = envelope.producerMetadata.producerGUID;
-          producerToRecords.computeIfAbsent(producerGUID, x -> {
-            List<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>> value = new LinkedList<>();
-            value.add(record);
-            return value;
-          }).add(record);
+          producerToRecords.computeIfAbsent(producerGUID, x -> new LinkedList<>()).add(record);
         }
       }
 
