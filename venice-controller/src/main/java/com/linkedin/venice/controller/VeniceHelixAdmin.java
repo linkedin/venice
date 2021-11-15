@@ -43,6 +43,7 @@ import com.linkedin.venice.exceptions.VeniceRetriableException;
 import com.linkedin.venice.exceptions.VeniceStoreAlreadyExistsException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
+import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
 import com.linkedin.venice.helix.HelixReadOnlyZKSharedSchemaRepository;
@@ -78,6 +79,7 @@ import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.PartitionerConfigImpl;
 import com.linkedin.venice.meta.PersistenceType;
+import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.ReadWriteSchemaRepository;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.RoutersClusterConfig;
@@ -5690,5 +5692,44 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     @Override
     public long getBackupVersionDefaultRetentionMs() {
         return backupVersionDefaultRetentionMs;
+    }
+
+    private Pair<Boolean, List<Replica>> areAllCurrentVersionReplicasReady(HelixCustomizedViewOfflinePushRepository customizedViewRepo,
+        ReadWriteStoreRepository storeRepo, String nodeId) {
+        List<Replica> unreadyReplicas = new ArrayList<>();
+
+        List<Replica> localReplicas = Utils.getReplicasForInstance(customizedViewRepo, nodeId);
+        ResourceAssignment resourceAssn = customizedViewRepo.getResourceAssignment();
+        for (Replica replica : localReplicas) {
+            // Skip if replica is a stale version.
+            if (!Utils.isCurrentVersion(replica.getResource(), storeRepo)) {
+                continue;
+            }
+
+            List<Instance> readyToServeInstances = customizedViewRepo.getReadyToServeInstances(
+                resourceAssn.getPartitionAssignment(replica.getResource()),
+                replica.getPartitionId());
+
+            // A current replica is unready if its running instance is unready and it is not an extra replica.
+            if (!readyToServeInstances.contains(replica.getInstance()) &&
+                !Utils.isExtraReplica(storeRepo, replica, readyToServeInstances)) {
+                unreadyReplicas.add(replica);
+            }
+        }
+        return new Pair<>(unreadyReplicas.isEmpty(), unreadyReplicas);
+    }
+
+    @Override
+    public Pair<Boolean, List<Replica>> nodeReplicaReadiness(String cluster, String helixNodeId) {
+        checkControllerLeadershipFor(cluster);
+        List<String> instances = helixAdminClient.getInstancesInCluster(cluster);
+        HelixCustomizedViewOfflinePushRepository customizedViewRepo =
+            getHelixVeniceClusterResources(cluster).getCustomizedViewRepository();
+        ReadWriteStoreRepository storeRepo = getHelixVeniceClusterResources(cluster).getStoreMetadataRepository();
+
+        if (!instances.contains(helixNodeId)) {
+            throw new VeniceException("Node: " + helixNodeId + " is not in the cluster: " + cluster);
+        }
+        return areAllCurrentVersionReplicasReady(customizedViewRepo, storeRepo, helixNodeId);
     }
 }

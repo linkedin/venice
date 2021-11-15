@@ -3,6 +3,15 @@ package com.linkedin.venice.utils;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
+import com.linkedin.venice.helix.Replica;
+import com.linkedin.venice.helix.ResourceAssignment;
+import com.linkedin.venice.meta.Instance;
+import com.linkedin.venice.meta.Partition;
+import com.linkedin.venice.meta.PartitionAssignment;
+import com.linkedin.venice.meta.ReadOnlyStoreRepository;
+import com.linkedin.venice.meta.RoutingDataRepository;
+import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
@@ -21,6 +30,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.text.DecimalFormat;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
@@ -755,5 +765,66 @@ public class Utils {
 
   public static void closeQuietlyWithErrorLogged(final Closeable closeables) {
     IOUtils.closeQuietly(closeables, LOGGER::error);
+  }
+
+
+  public static List<Replica> getReplicasForInstance(RoutingDataRepository routingDataRepo, String instanceId) {
+    ResourceAssignment resourceAssignment = routingDataRepo.getResourceAssignment();
+    List<Replica> replicas = new ArrayList<>();
+    // lock resource assignment to avoid it's updated by routing data repository during the searching.
+    synchronized (resourceAssignment) {
+      Set<String> resourceNames = resourceAssignment.getAssignedResources();
+
+      for (String resourceName : resourceNames) {
+        PartitionAssignment partitionAssignment = resourceAssignment.getPartitionAssignment(resourceName);
+        for (Partition partition : partitionAssignment.getAllPartitions()) {
+          String status = partition.getInstanceStatusById(instanceId);
+          if (status != null) {
+            Replica replica = new Replica(Instance.fromNodeId(instanceId), partition.getId(), resourceName);
+            replica.setStatus(status);
+            replicas.add(replica);
+          }
+        }
+      }
+    }
+    return replicas;
+  }
+
+  public static boolean isCurrentVersion(String resourceName, ReadOnlyStoreRepository metadataRepo) {
+    try{
+      String storeName = Version.parseStoreFromKafkaTopicName(resourceName);
+      int version = Version.parseVersionFromKafkaTopicName(resourceName);
+
+      Store store = metadataRepo.getStore(storeName);
+      if (store != null) {
+        return store.getCurrentVersion() == version;
+      } else {
+        LOGGER.error("Store " + storeName + " is not in store repository.");
+        // If a store doesn't exist, it doesn't have current version
+        return false;
+      }
+    } catch (VeniceException e) {
+      return false;
+    }
+  }
+
+  /**
+   * When Helix thinks some host is overloaded or a new host joins the cluster, it might move some replicas from
+   * one host to another. The partition to be moved is usually in a healthy state, i.e. 3/3 running replicas.
+   * We will now build an extra replica in the new host before dropping one replica in an old host.
+   * i.e. replica changes 3 -> 4 -> 3. In this scenario, we may see an extra replica appear.
+   *
+   * This function determines if a replica is an extra replica.
+   * @return true, if the input replica is an extra one.
+   *         false, otherwise.
+   */
+  public static boolean isExtraReplica(ReadOnlyStoreRepository metadataRepo, Replica replica,
+      List<Instance> readyInstances) {
+    String storeName = Version.parseStoreFromKafkaTopicName(replica.getResource());
+    Store store = metadataRepo.getStore(storeName);
+
+    return readyInstances.contains(replica.getInstance())
+        ? readyInstances.size() > store.getReplicationFactor()
+        : readyInstances.size() >= store.getReplicationFactor();
   }
 }

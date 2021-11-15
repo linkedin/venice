@@ -15,6 +15,7 @@ import com.linkedin.venice.pushmonitor.PushMonitor;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Pair;
+import com.linkedin.venice.utils.Utils;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -31,25 +32,7 @@ public class InstanceStatusDecider {
 
   protected static List<Replica> getReplicasForInstance(HelixVeniceClusterResources resources, String instanceId) {
     RoutingDataRepository routingDataRepository = resources.getRoutingDataRepository();
-    ResourceAssignment resourceAssignment = routingDataRepository.getResourceAssignment();
-    List<Replica> replicas = new ArrayList<>();
-    // lock resource assignment to avoid it's updated by routing data repository during the searching.
-    synchronized (resourceAssignment) {
-      Set<String> resourceNames = resourceAssignment.getAssignedResources();
-
-      for (String resourceName : resourceNames) {
-        PartitionAssignment partitionAssignment = resourceAssignment.getPartitionAssignment(resourceName);
-        for (Partition partition : partitionAssignment.getAllPartitions()) {
-          String status = partition.getInstanceStatusById(instanceId);
-          if (status != null) {
-            Replica replica = new Replica(Instance.fromNodeId(instanceId), partition.getId(), resourceName);
-            replica.setStatus(status);
-            replicas.add(replica);
-          }
-        }
-      }
-    }
-    return replicas;
+    return Utils.getReplicasForInstance(routingDataRepository, instanceId);
   }
 
   protected static NodeRemovableResult isRemovable(HelixVeniceClusterResources resources, String clusterName,
@@ -88,7 +71,7 @@ public class InstanceStatusDecider {
         Set<String> resourceNameSet = replicas.stream().map(Replica::getResource).collect(Collectors.toSet());
 
         for (String resourceName : resourceNameSet) {
-          if (isCurrentVersion(resourceName, resources.getStoreMetadataRepository())) {
+          if (Utils.isCurrentVersion(resourceName, resources.getStoreMetadataRepository())) {
             // Get partition assignments that if we removed the given instance from cluster.
             PartitionAssignment partitionAssignmentAfterRemoving =
                 getPartitionAssignmentAfterRemoving(instanceId, resourceAssignment, resourceName, isInstanceView);
@@ -195,23 +178,5 @@ public class InstanceStatusDecider {
       return VersionStatus.NOT_CREATED;
     }
     return store.getVersionStatus(Version.parseVersionFromKafkaTopicName(resourceName));
-  }
-
-  private static boolean isCurrentVersion(String resourceName, ReadWriteStoreRepository metadataRepo) {
-    try{
-      String storeName = Version.parseStoreFromKafkaTopicName(resourceName);
-      int version = Version.parseVersionFromKafkaTopicName(resourceName);
-
-      Store store = metadataRepo.getStore(storeName);
-      if (store != null) {
-        return store.getCurrentVersion() == version;
-      } else {
-        logger.error("Store " + storeName + " is not in store repository.");
-        // If a store doesn't exist, it doesn't have current version
-        return false;
-      }
-    } catch (VeniceException e) {
-      return false;
-    }
   }
 }

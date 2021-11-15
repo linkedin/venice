@@ -2365,6 +2365,11 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
+  public Pair<Boolean, List<Replica>> nodeReplicaReadiness(String cluster, String helixNodeId) {
+    throw new VeniceUnsupportedOperationException("nodeReplicaReadiness is not supported");
+  }
+
+  @Override
   public Instance getLeaderController(String clusterName) {
     return getVeniceHelixAdmin().getLeaderController(clusterName);
   }
