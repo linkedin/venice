@@ -139,7 +139,7 @@ public class D2ControllerClient extends ControllerClient{
   public static D2ControllerClient constructClusterControllerClient(String clusterName, String d2ServiceName, String d2ZkHost, Optional<SSLFactory> sslFactory) {
     if (!clusterToClientMapContains(clusterName, d2ServiceName))
       addClusterToClientMapEntry(clusterName, d2ServiceName, new D2ControllerClient(d2ServiceName, clusterName, d2ZkHost, sslFactory));
-    return (D2ControllerClient) getClusterToClientMap().get(clusterName);
+    return (D2ControllerClient) getClusterToClientMapEntry(clusterName, d2ServiceName);
   }
 
   @Override
