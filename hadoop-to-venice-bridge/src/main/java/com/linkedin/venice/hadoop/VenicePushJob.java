@@ -33,6 +33,8 @@ import com.linkedin.venice.hadoop.ssl.TempFileSSLConfigurator;
 import com.linkedin.venice.hadoop.ssl.UserCredentialsFactory;
 import com.linkedin.venice.hadoop.utils.AvroSchemaParseUtils;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.meta.BufferReplayPolicy;
+import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
@@ -402,6 +404,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
     long reducerInactiveTimeoutInMs;
     boolean allowKifRepushForIncPushFromVTToVT;
     boolean kafkaInputCombinerEnabled;
+    BufferReplayPolicy validateRemoteReplayPolicy;
   }
   protected PushJobSetting pushJobSetting;
 
@@ -655,6 +658,9 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
         // from start of push to the provided timestamp with some extra buffer time since things aren't perfecty instantaneous
         long bufferTime = props.getLong(REWIND_EPOCH_TIME_BUFFER_IN_SECONDS_OVERRIDE, 60);
         pushJobSetting.rewindTimeInSecondsOverride = (nowInSeconds - rewindTimestamp) + bufferTime;
+        // In order for this config to make sense to the user, the remote rewind policy needs to be validated to be
+        // REWIND_FROM_SOP
+        pushJobSetting.validateRemoteReplayPolicy = BufferReplayPolicy.REWIND_FROM_SOP;
       }
     }
 
@@ -842,6 +848,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
       initControllerClient(sslFactory, pushJobSetting.veniceControllerUrl, clusterName);
       sendPushJobDetailsToController();
       validateKafkaMessageEnvelopeSchema(pushJobSetting);
+      validateRemoteHybridSettings(pushJobSetting);
       pushJobHeartbeatSender = createPushJobHeartbeatSender(sslEnabled);
       inputDirectory = getInputURI(props);
       storeSetting = getSettingsFromController(controllerClient, pushJobSetting);
@@ -1525,6 +1532,24 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
           "\n\t\tschema defined in HDFS: \t" + schemaInfo.keySchemaString +
           "\n\t\tschema defined in Venice: \t" + serverSchema.toString());
       throw new VeniceException(briefErrorMessage);
+    }
+  }
+
+  protected void validateRemoteHybridSettings() {
+    validateRemoteHybridSettings(pushJobSetting);
+  }
+
+  protected void validateRemoteHybridSettings(PushJobSetting setting) {
+    if(setting.validateRemoteReplayPolicy != null) {
+      StoreResponse response = ControllerClient.retryableRequest(controllerClient, setting.controllerRetries, c -> c.getStore(setting.storeName));
+      if (response.isError()) {
+        throw new VeniceException("Failed to get store information to validate push settings! Error: " + response.getError());
+      }
+      HybridStoreConfig hybridStoreConfig = response.getStore().getHybridStoreConfig();
+      if(!setting.validateRemoteReplayPolicy.equals(hybridStoreConfig.getBufferReplayPolicy())) {
+        throw new VeniceException(String.format("Remote rewind policy is {} but push settings require a policy of {}.  "
+            + "Please adjust hybrid settings or push job configuration!", hybridStoreConfig.getBufferReplayPolicy(), setting.validateRemoteReplayPolicy));
+      }
     }
   }
 
