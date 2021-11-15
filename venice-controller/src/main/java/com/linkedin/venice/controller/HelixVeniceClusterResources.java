@@ -7,6 +7,7 @@ import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controller.stats.AggPartitionHealthStats;
 import com.linkedin.venice.controller.stats.VeniceAdminStats;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.helix.HelixReadWriteSchemaRepositoryAdapter;
 import com.linkedin.venice.helix.HelixReadWriteStoreRepositoryAdapter;
 import com.linkedin.venice.helix.VeniceOfflinePushMonitorAccessor;
@@ -58,6 +59,7 @@ public class HelixVeniceClusterResources implements VeniceResource {
   private final ClusterLockManager clusterLockManager;
   private final ReadWriteStoreRepository storeMetadataRepository;
   private final HelixExternalViewRepository routingDataRepository;
+  private final HelixCustomizedViewOfflinePushRepository customizedViewRepo;
   private final ReadWriteSchemaRepository schemaRepository;
   private final HelixStatusMessageChannel messageChannel;
   private final VeniceControllerClusterConfig config;
@@ -123,6 +125,7 @@ public class HelixVeniceClusterResources implements VeniceResource {
       spectatorManager = getSpectatorManager(clusterName, zkClient.getServers());
     }
     this.routingDataRepository = new HelixExternalViewRepository(spectatorManager);
+    this.customizedViewRepo = new HelixCustomizedViewOfflinePushRepository(this.helixManager);
     this.messageChannel = new HelixStatusMessageChannel(helixManager,
         new HelixMessageChannelStats(metricsRepository, clusterName), config.getHelixSendMessageTimeoutMs());
     VeniceOfflinePushMonitorAccessor offlinePushMonitorAccessor = new VeniceOfflinePushMonitorAccessor(clusterName, zkClient,
@@ -209,6 +212,7 @@ public class HelixVeniceClusterResources implements VeniceResource {
     }
     schemaRepository.refresh();
     routingDataRepository.refresh();
+    customizedViewRepo.refresh();
     pushMonitor.loadAllPushes();
     routersClusterManager.refresh();
   }
@@ -224,6 +228,7 @@ public class HelixVeniceClusterResources implements VeniceResource {
     storeMetadataRepository.clear();
     schemaRepository.clear();
     routingDataRepository.clear();
+    customizedViewRepo.clear();
     routersClusterManager.clear();
   }
 
@@ -272,6 +277,8 @@ public class HelixVeniceClusterResources implements VeniceResource {
   public HelixExternalViewRepository getRoutingDataRepository() {
     return routingDataRepository;
   }
+
+  public HelixCustomizedViewOfflinePushRepository getCustomizedViewRepository() { return customizedViewRepo; }
 
   public HelixStatusMessageChannel getMessageChannel() {
     return messageChannel;
