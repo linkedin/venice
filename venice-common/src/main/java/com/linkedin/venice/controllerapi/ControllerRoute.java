@@ -47,6 +47,7 @@ public enum ControllerRoute {
   LIST_REPLICAS("/list_replicas", HttpMethod.GET, Arrays.asList(NAME, VERSION)),
   NODE_REPLICAS("/storage_node_replicas", HttpMethod.GET, Collections.singletonList(STORAGE_NODE_ID)),
   NODE_REMOVABLE("/node_removable", HttpMethod.GET, Collections.singletonList(STORAGE_NODE_ID), INSTANCE_VIEW),
+  NODE_REPLICAS_READINESS("/node_replicas_readiness", HttpMethod.GET, Collections.singletonList(STORAGE_NODE_ID)),
   WHITE_LIST_ADD_NODE("/white_list_add_node", HttpMethod.POST, Collections.singletonList(STORAGE_NODE_ID)),
   WHITE_LIST_REMOVE_NODE("/white_list_remove_node", HttpMethod.POST, Collections.singletonList(STORAGE_NODE_ID)),
   REMOVE_NODE("/remove_node", HttpMethod.POST, Collections.singletonList(STORAGE_NODE_ID)),
@@ -74,7 +75,6 @@ public enum ControllerRoute {
   ENABLE_MAX_CAPACITY_PROTECTION("/enable_max_capacity_protection", HttpMethod.POST, Collections.singletonList(STATUS)),
   ENABLE_QUOTA_REBALANCED("/enable_quota_rebalanced", HttpMethod.POST, Arrays.asList(STATUS, EXPECTED_ROUTER_COUNT)),
   GET_ROUTERS_CLUSTER_CONFIG("/get_routers_cluster_config", HttpMethod.GET, Collections.emptyList()),
-
   // TODO: those operations don't require param: cluster.
   // This could be resolved in multi-cluster support project.
   GET_ALL_MIGRATION_PUSH_STRATEGIES("/get_all_push_strategies", HttpMethod.GET, Collections.emptyList()),

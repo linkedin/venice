@@ -670,4 +670,12 @@ public interface Admin extends AutoCloseable, Closeable {
         Optional<IncrementalPushPolicy> incrementalPushPolicyToFilter, Optional<String> regionsFilter);
 
     void wipeCluster(String clusterName, String fabric, Optional<String> storeName, Optional<Integer> versionNum);
+
+    /**
+     *
+     * helixNodeId nodeId of helix participant. HOST_PORT.
+     * Returns ture, if all current version replicas of the input node are ready to serve.
+     *         false and all unready replicas otherwise.
+     */
+    Pair<Boolean, List<Replica>> nodeReplicaReadiness(String cluster, String helixNodeId);
 }

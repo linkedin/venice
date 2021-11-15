@@ -8,8 +8,10 @@ import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.MultiNodesStatusResponse;
 import com.linkedin.venice.controllerapi.MultiNodeResponse;
 import com.linkedin.venice.controllerapi.MultiReplicaResponse;
+import com.linkedin.venice.controllerapi.NodeReplicasReadinessResponse;
 import com.linkedin.venice.controllerapi.NodeStatusResponse;
 import com.linkedin.venice.helix.Replica;
+import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.Utils;
 import java.util.List;
@@ -258,6 +260,33 @@ public class NodesAndReplicas extends AbstractRoute {
         AdminSparkServer.handleError(e, request, response);
       }
       return AdminSparkServer.mapper.writeValueAsString(responseObject);
+    };
+  }
+
+  public Route nodeReplicasReadiness(Admin admin) {
+    return (request, response) -> {
+      NodeReplicasReadinessResponse responseObj = new NodeReplicasReadinessResponse();
+      response.type(HttpConstants.JSON);
+      try {
+        // Only allow whitelist users to run this command
+        if (!isWhitelistUsers(request)) {
+          response.status(HttpStatus.SC_FORBIDDEN);
+          responseObj.setError("Only admin users are allowed to run " + request.url());
+          return AdminSparkServer.mapper.writeValueAsString(responseObj);
+        }
+
+        AdminSparkServer.validateParams(request, NODE_REPLICAS_READINESS.getParams(), admin);
+        responseObj.setCluster(request.queryParams(CLUSTER));
+        String nodeId = request.queryParams(STORAGE_NODE_ID);
+
+        Pair<Boolean, List<Replica>> result = admin.nodeReplicaReadiness(responseObj.getCluster(), nodeId);
+        responseObj.setNodeReady(result.getFirst());
+        responseObj.setUnreadyReplicas(result.getSecond());
+      } catch (Throwable e) {
+        responseObj.setError(e.getMessage());
+        AdminSparkServer.handleError(e, request, response);
+      }
+      return AdminSparkServer.mapper.writeValueAsString(responseObj);
     };
   }
 }

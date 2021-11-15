@@ -672,6 +672,11 @@ public class ControllerClient implements Closeable {
     return request(ControllerRoute.NODE_REPLICAS, params, MultiReplicaResponse.class);
   }
 
+  public NodeReplicasReadinessResponse nodeReplicasReadiness(String instanceId) {
+    QueryParams params = newParams().add(STORAGE_NODE_ID, instanceId);
+    return request(ControllerRoute.NODE_REPLICAS_READINESS, params, NodeReplicasReadinessResponse.class);
+  }
+
   public ChildAwareResponse listChildControllers(String clusterName) {
     QueryParams params = newParams().add(CLUSTER, clusterName);
     return request(ControllerRoute.LIST_CHILD_CLUSTERS, params, ChildAwareResponse.class);
