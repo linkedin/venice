@@ -103,12 +103,11 @@ public class UpdateStoreQueryParams extends QueryParams {
     this.params.putAll(updateStoreQueryParams.params);
   }
 
-  public boolean diff(UpdateStoreQueryParams newParams, UpdateStoreQueryParams diffResult) {
+  public boolean isDifferent(UpdateStoreQueryParams newParams) {
     boolean isDifferent = false;
     for (Map.Entry<String, String> entry : newParams.params.entrySet()) {
       if (!Objects.equals(this.params.get(entry.getKey()), entry.getValue())) {
         isDifferent = true;
-        diffResult.params.put(entry.getKey(), entry.getValue());
       }
     }
     return isDifferent;

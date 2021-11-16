@@ -23,8 +23,6 @@ public class TestUpdateStoreQueryParams {
     StoreInfo storeInfo2 = StoreInfo.fromStore(store2);
     UpdateStoreQueryParams params1 = new UpdateStoreQueryParams(storeInfo1);
     UpdateStoreQueryParams params2 = new UpdateStoreQueryParams(storeInfo2);
-    UpdateStoreQueryParams diffResult = new UpdateStoreQueryParams();
-    Assert.assertTrue(params1.diff(params2, diffResult));
-    Assert.assertEquals(diffResult.getLeaderFollowerModelEnabled(), Optional.of(Boolean.TRUE));
+    Assert.assertTrue(params1.isDifferent(params2));
   }
 }
