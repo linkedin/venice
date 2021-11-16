@@ -994,19 +994,23 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         }
 
         // Copy remaining properties that will make the cloned store almost identical to the original
-        UpdateStoreQueryParams paramsInParentColo = new UpdateStoreQueryParams(srcStore);
-        destControllerClient.updateStore(storeName, paramsInParentColo);
-
-        // Src parent controller calls dest parent controller to update colo-specific store configs in child colos.
+        UpdateStoreQueryParams params = new UpdateStoreQueryParams(srcStore);
+        Set<String> remainingRegions = new HashSet<>();
+        remainingRegions.add(multiClusterConfigs.getRegionName());
         for (Map.Entry<String, StoreInfo> entry : srcStoresInChildColos.get(storeName).entrySet()) {
               UpdateStoreQueryParams paramsInChildColo = new UpdateStoreQueryParams(entry.getValue());
-              UpdateStoreQueryParams diffResult = new UpdateStoreQueryParams();
-              if (paramsInParentColo.diff(paramsInChildColo, diffResult)) {
-                  diffResult.setRegionsFilter(entry.getKey());
-                  logger.info("Sending colo-specific update-store request " + diffResult + " to " + entry.getKey());
-                  destControllerClient.updateStore(storeName, diffResult);
-            }
+              if (params.isDifferent(paramsInChildColo)) {
+                  // Src parent controller calls dest parent controller to update store with store configs in child colo.
+                  paramsInChildColo.setRegionsFilter(entry.getKey());
+                  logger.info("Sending update-store request " + paramsInChildColo + " to " + entry.getKey());
+                  destControllerClient.updateStore(storeName, paramsInChildColo);
+              } else {
+                  remainingRegions.add(entry.getKey());
+              }
         }
+        params.setRegionsFilter(String.join(",", remainingRegions));
+        logger.info("Sending update-store request " + params + " to " + remainingRegions);
+        destControllerClient.updateStore(storeName, params);
 
         Consumer<String> versionMigrationConsumer = migratingStoreName -> {
             Store migratingStore = this.getStore(srcClusterName, migratingStoreName);
