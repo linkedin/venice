@@ -5,7 +5,9 @@ import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.AdminCommandExecutionTracker;
 import com.linkedin.venice.controller.kafka.TopicCleanupService;
+import com.linkedin.venice.controllerapi.ClusterStaleDataAuditResponse;
 import com.linkedin.venice.controllerapi.ControllerResponse;
+import com.linkedin.venice.controllerapi.MultiStoreInfoResponse;
 import com.linkedin.venice.controllerapi.MultiStoreResponse;
 import com.linkedin.venice.controllerapi.MultiStoreStatusResponse;
 import com.linkedin.venice.controllerapi.MultiStoreTopicsResponse;
@@ -26,6 +28,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.kafka.TopicDoesNotExistException;
 import com.linkedin.venice.meta.IncrementalPushPolicy;
+import com.linkedin.venice.meta.StoreDataAudit;
 import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
@@ -812,6 +815,31 @@ public class StoresRoutes extends AbstractRoute {
         } catch (Exception e) {
           veniceResponse.setError("Failed to compare store. Message: " + e.getMessage());
         }
+      }
+    };
+  }
+  public Route getStaleStoresInCluster(Admin admin) {
+    return new VeniceRouteHandler<ClusterStaleDataAuditResponse>(ClusterStaleDataAuditResponse.class) {
+      @Override
+      public void internalHandle(Request request, ClusterStaleDataAuditResponse veniceResponse) {
+        AdminSparkServer.validateParams(request, GET_STALE_STORES_IN_CLUSTER.getParams(), admin);
+        String cluster = request.queryParams(CLUSTER);
+        Map<String, StoreDataAudit> staleStores = admin.getClusterStaleStores(cluster, Optional.empty());
+        veniceResponse.setAuditMap(staleStores);
+        veniceResponse.setCluster(cluster);
+      }
+    };
+  }
+
+  public Route getStoresInCluster(Admin admin) {
+    return new VeniceRouteHandler<MultiStoreInfoResponse>(MultiStoreInfoResponse.class) {
+      @Override
+      public void internalHandle(Request request, MultiStoreInfoResponse veniceResponse) {
+        AdminSparkServer.validateParams(request, GET_STORES_IN_CLUSTER.getParams(), admin);
+        String cluster = request.queryParams(CLUSTER);
+        List<StoreInfo> response = admin.getClusterStores(cluster);
+        veniceResponse.setStoreInfoList(response);
+        veniceResponse.setCluster(cluster);
       }
     };
   }

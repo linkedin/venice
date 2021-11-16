@@ -14,6 +14,8 @@ import com.linkedin.venice.helix.HelixReadOnlyZKSharedSchemaRepository;
 import com.linkedin.venice.helix.HelixReadOnlyZKSharedSystemStoreRepository;
 import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.meta.IncrementalPushPolicy;
+import com.linkedin.venice.meta.StoreDataAudit;
+import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Instance;
@@ -700,4 +702,12 @@ public interface Admin extends AutoCloseable, Closeable {
     default boolean isAdminTopicConsumptionEnabled(String clusterName) {
         return true;
     }
+
+    /**
+     * Return all stores in a cluster.
+     * @return
+     */
+    public List<StoreInfo> getClusterStores(String clusterName);
+
+    public Map<String, StoreDataAudit> getClusterStaleStores(String clusterName, Optional<String> regionFilter);
 }
