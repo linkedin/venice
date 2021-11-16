@@ -765,7 +765,7 @@ public class StoresRoutes extends AbstractRoute {
         String storeName = request.queryParams(NAME);
         int versionNumber = Utils.parseIntFromString(request.queryParams(VERSION), VERSION);
 
-        admin.dematerializeMetadataStoreVersion(clusterName, storeName, versionNumber, false);
+        admin.dematerializeMetadataStoreVersion(clusterName, storeName, versionNumber, true);
 
         responseObject.setCluster(clusterName);
         responseObject.setName(storeName);
