@@ -4,6 +4,7 @@ import com.linkedin.venice.client.store.QueryTool;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.AclResponse;
+import com.linkedin.venice.controllerapi.ClusterStaleDataAuditResponse;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
@@ -13,6 +14,7 @@ import com.linkedin.venice.controllerapi.MultiNodeResponse;
 import com.linkedin.venice.controllerapi.MultiNodesStatusResponse;
 import com.linkedin.venice.controllerapi.MultiReplicaResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
+import com.linkedin.venice.controllerapi.MultiStoreInfoResponse;
 import com.linkedin.venice.controllerapi.MultiStoreResponse;
 import com.linkedin.venice.controllerapi.MultiStoreStatusResponse;
 import com.linkedin.venice.controllerapi.MultiStoreTopicsResponse;
@@ -417,6 +419,9 @@ public class AdminTool {
           break;
         case REPLICAS_READINESS_ON_STORAGE_NODE:
           printReplicasReadinessStorageNode(cmd);
+          break ;
+        case LIST_CLUSTER_STALE_STORES:
+          listClusterStaleStores(cmd);
           break;
         case COMPARE_STORE:
           compareStore(cmd);
@@ -1928,6 +1933,14 @@ public class AdminTool {
     Optional<String> storeName = Optional.ofNullable(getOptionalArgument(cmd, Arg.STORE));
     Optional<Integer> versionNum = Optional.ofNullable(getOptionalArgument(cmd, Arg.VERSION)).map(Integer::parseInt);
     ControllerResponse response = controllerClient.wipeCluster(fabric, storeName, versionNum);
+  }
+
+  private static void listClusterStaleStores(CommandLine cmd) {
+    String clusterParam = getRequiredArgument(cmd, Arg.CLUSTER);
+    String urlParam = getRequiredArgument(cmd, Arg.URL);
+    Optional<String> regionsFilterParam = Optional.ofNullable(getOptionalArgument(cmd, Arg.REGIONS_FILTER));
+    ClusterStaleDataAuditResponse
+        response = controllerClient.getClusterStaleStores(clusterParam, urlParam, regionsFilterParam);
     printObject(response);
   }
 

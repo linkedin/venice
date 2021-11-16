@@ -872,6 +872,22 @@ public class ControllerClient implements Closeable {
     return request(ControllerRoute.GET_DELETABLE_STORE_TOPICS, newParams(), MultiStoreTopicsResponse.class);
   }
 
+  public ClusterStaleDataAuditResponse getClusterStaleStores(String clusterName, String parentControllerUrl, Optional<String> regionsFilter) {
+    QueryParams params = newParams()
+        .add(CLUSTER, clusterName);
+    regionsFilter.ifPresent(f -> params.add(REGIONS_FILTER, f));
+    try (ControllerTransport transport = new ControllerTransport(sslFactory)) {
+      return transport.request(parentControllerUrl, ControllerRoute.GET_STALE_STORES_IN_CLUSTER, params, ClusterStaleDataAuditResponse.class);
+    } catch (Exception e) {
+      return makeErrorResponse("controllerapi:ControllerClient:getClusterStaleStores - " + e.toString(), e, ClusterStaleDataAuditResponse.class);
+    }
+  }
+
+  public MultiStoreInfoResponse getClusterStores(String clusterName) {
+    QueryParams params = newParams().add(CLUSTER, clusterName);
+    return request(ControllerRoute.GET_STORES_IN_CLUSTER, params, MultiStoreInfoResponse.class);
+  }
+
   public ControllerResponse configureIncrementalPushForCluster(IncrementalPushPolicy incrementalPushPolicyToApply, Optional<IncrementalPushPolicy> incrementalPushPolicyToFilter, Optional<String> regionsFilter) {
     QueryParams params = newParams()
         .add(INCREMENTAL_PUSH_POLICY, incrementalPushPolicyToApply.name());
