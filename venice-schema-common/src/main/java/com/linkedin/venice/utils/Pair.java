@@ -57,6 +57,10 @@ public class Pair<F, S> implements Serializable {
 
   @Override
   public final int hashCode() {
+    return calculateHashCode(first, second);
+  }
+
+  public static<F, S> int calculateHashCode(F first, S second) {
     final int PRIME = 31;
     int result = 1;
     result = PRIME * result + ((first == null) ? 0 : first.hashCode());

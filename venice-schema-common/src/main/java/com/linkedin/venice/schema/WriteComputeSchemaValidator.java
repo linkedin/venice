@@ -4,7 +4,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import java.util.List;
 import org.apache.avro.Schema;
 
-import static com.linkedin.venice.schema.WriteComputeSchemaAdapter.WriteComputeOperation.*;
+import static com.linkedin.venice.schema.WriteComputeSchemaConverter.WriteComputeOperation.*;
 import static org.apache.avro.Schema.Type.*;
 
 /**
@@ -86,7 +86,7 @@ public class WriteComputeSchemaValidator {
   }
 
   private static boolean validateCollectionSchema(Schema originalSchema, Schema writeComputeSchema) {
-    WriteComputeSchemaAdapter.WriteComputeOperation operation;
+    WriteComputeSchemaConverter.WriteComputeOperation operation;
     if (originalSchema.getType() == ARRAY) {
       operation = LIST_OPS;
     } else if (originalSchema.getType() == MAP) {

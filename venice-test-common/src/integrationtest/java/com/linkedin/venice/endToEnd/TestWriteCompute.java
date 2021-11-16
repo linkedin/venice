@@ -14,7 +14,7 @@ import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionTask;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.schema.WriteComputeSchemaAdapter;
+import com.linkedin.venice.schema.WriteComputeSchemaConverter;
 import com.linkedin.venice.server.VeniceServer;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.TestUtils;
@@ -26,7 +26,6 @@ import java.util.Arrays;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import org.apache.avro.Schema;
-import org.apache.avro.SchemaCompatibility;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.samza.system.SystemProducer;
@@ -101,7 +100,7 @@ public class TestWriteCompute {
         SchemaResponse schemaResponse = controllerClient.addValueSchema(storeName, NESTED_SCHEMA_STRING_V2);
 
         // Add derived schema associated to v2
-        Schema writeComputeSchema = WriteComputeSchemaAdapter.parse(NESTED_SCHEMA_STRING_V2).getTypes().get(0);
+        Schema writeComputeSchema = WriteComputeSchemaConverter.convert(NESTED_SCHEMA_STRING_V2).getTypes().get(0);
         controllerClient.addDerivedSchema(storeName, schemaResponse.getId(), writeComputeSchema.toString());
 
         // H2V push

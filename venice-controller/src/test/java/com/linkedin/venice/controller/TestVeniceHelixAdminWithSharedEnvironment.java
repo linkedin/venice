@@ -39,9 +39,9 @@ import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.KillOfflinePushMessage;
 import com.linkedin.venice.pushmonitor.PushMonitor;
-import com.linkedin.venice.schema.ReplicationMetadataSchemaAdapter;
+import com.linkedin.venice.schema.ReplicationMetadataSchemaGenerator;
 import com.linkedin.venice.schema.ReplicationMetadataSchemaEntry;
-import com.linkedin.venice.schema.WriteComputeSchemaAdapter;
+import com.linkedin.venice.schema.WriteComputeSchemaConverter;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.MockTestStateModelFactory;
 import com.linkedin.venice.utils.Pair;
@@ -1228,7 +1228,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
   public void testAddAndRemoveDerivedSchema() {
     String storeName = TestUtils.getUniqueString("write_compute_store");
     String recordSchemaStr = TestPushUtils.USER_SCHEMA_STRING_WITH_DEFAULT;
-    Schema derivedSchema = WriteComputeSchemaAdapter.parse(recordSchemaStr);
+    Schema derivedSchema = WriteComputeSchemaConverter.convert(recordSchemaStr);
 
     veniceAdmin.createStore(clusterName, storeName, storeOwner, KEY_SCHEMA, recordSchemaStr);
     veniceAdmin.addDerivedSchema(clusterName, storeName, 1, derivedSchema.toString());
@@ -1625,7 +1625,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     String storeName = TestUtils.getUniqueString("aa_store");
     String recordSchemaStr = TestPushUtils.USER_SCHEMA_STRING_WITH_DEFAULT;
     int replicationMetadataVersionId = multiClusterConfig.getCommonConfig().getReplicationMetadataVersionId();
-    Schema metadataSchema = ReplicationMetadataSchemaAdapter.parse(recordSchemaStr, replicationMetadataVersionId);
+    Schema metadataSchema = ReplicationMetadataSchemaGenerator.generateMetadataSchema(recordSchemaStr, replicationMetadataVersionId);
 
     veniceAdmin.createStore(clusterName, storeName, storeOwner, KEY_SCHEMA, recordSchemaStr);
     veniceAdmin.addReplicationMetadataSchema(clusterName, storeName, 1,  replicationMetadataVersionId, metadataSchema.toString());

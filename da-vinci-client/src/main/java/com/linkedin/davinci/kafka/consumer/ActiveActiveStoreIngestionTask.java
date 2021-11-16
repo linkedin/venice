@@ -240,7 +240,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       long lookupStartTimeInNS = System.nanoTime();
       byte[] replicationMetadataWithValueSchemaBytes = storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic).getReplicationMetadata(subPartition, key);
       storeIngestionStats.recordIngestionReplicationMetadataLookUpLatency(storeName, LatencyUtils.getLatencyInMS(lookupStartTimeInNS));
-      return ReplicationMetadataWithValueSchemaId.getFromStorageEngineBytes(replicationMetadataWithValueSchemaBytes);
+      return ReplicationMetadataWithValueSchemaId.convertStorageEngineBytes(replicationMetadataWithValueSchemaBytes);
     } else {
       storeIngestionStats.recordIngestionReplicationMetadataCacheHitCount(storeName);
       return new ReplicationMetadataWithValueSchemaId(transientRecord.getReplicationMetadata(), transientRecord.getValueSchemaId());
@@ -284,15 +284,15 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     ReplicationMetadataWithValueSchemaId replicationMetadataWithValueSchemaId = getReplicationMetadataAndSchemaId(partitionConsumptionState, keyBytes, subPartition);
 
     ByteBuffer replicationMetadataOfOldValue = null;
-    int schemaIdOfOldValue = -1;
+    int oldValueSchemaId = -1;
     if (replicationMetadataWithValueSchemaId != null) {
       replicationMetadataOfOldValue = replicationMetadataWithValueSchemaId.getReplicationMetadata();
-      schemaIdOfOldValue = replicationMetadataWithValueSchemaId.getValueSchemaId();
+      oldValueSchemaId = replicationMetadataWithValueSchemaId.getValueSchemaId();
     }
 
     long writeTimestamp = mergeConflictResolver.getWriteTimestampFromKME(kafkaValue);
-    long offsetSumPreOperation = mergeConflictResolver.extractOffsetVectorSumFromReplicationMetadata(replicationMetadataOfOldValue, schemaIdOfOldValue);
-    List<Long> recordTimestampsPreOperation = mergeConflictResolver.extractTimestampFromReplicationMetadata(replicationMetadataOfOldValue, schemaIdOfOldValue);
+    long offsetSumPreOperation = mergeConflictResolver.extractOffsetVectorSumFromReplicationMetadata(replicationMetadataOfOldValue, oldValueSchemaId);
+    List<Long> recordTimestampsPreOperation = mergeConflictResolver.extractTimestampFromReplicationMetadata(replicationMetadataOfOldValue, oldValueSchemaId);
     // get the source offset and the id
     int sourceKafkaClusterId = kafkaClusterUrlToIdMap.getOrDefault(consumerRecordWrapper.kafkaUrl(), -1);
     long sourceOffset = consumerRecordWrapper.consumerRecord().offset();
@@ -301,10 +301,10 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     switch (msgType) {
       case PUT:
         mergeConflictResult = mergeConflictResolver.put(lazyOldValue, replicationMetadataOfOldValue,
-            ((Put) kafkaValue.payloadUnion).putValue, writeTimestamp, schemaIdOfOldValue, incomingValueSchemaId, sourceOffset, sourceKafkaClusterId);
+            ((Put) kafkaValue.payloadUnion).putValue, writeTimestamp, oldValueSchemaId, incomingValueSchemaId, sourceOffset, sourceKafkaClusterId);
         break;
       case DELETE:
-        mergeConflictResult = mergeConflictResolver.delete(replicationMetadataOfOldValue, schemaIdOfOldValue, writeTimestamp, sourceOffset, sourceKafkaClusterId);
+        mergeConflictResult = mergeConflictResolver.delete(replicationMetadataOfOldValue, oldValueSchemaId, writeTimestamp, sourceOffset, sourceKafkaClusterId);
         break;
       case UPDATE:
         throw new VeniceUnsupportedOperationException("Update operation not yet supported in Active/Active.");
@@ -407,7 +407,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       boolean isChunkedTopic, VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope> consumerRecordWrapper) {
     final ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord = consumerRecordWrapper.consumerRecord();
 
-    final ByteBuffer updatedValueBytes = mergeConflictResult.getValue();
+    final ByteBuffer updatedValueBytes = mergeConflictResult.getNewValue();
     final int valueSchemaId = mergeConflictResult.getValueSchemaID();
     final ByteBuffer updatedReplicationMetadataBytes = mergeConflictResult.getReplicationMetadata();
     // finally produce and update the transient record map.

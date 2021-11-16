@@ -150,7 +150,7 @@ public class ReplicationMetadataRocksDBStoragePartitionTest extends AbstractStor
       byte[] value = storagePartition.get(key);
       Assert.assertEquals(value, entry.getValue().getFirst().getBytes());
       ReplicationMetadataWithValueSchemaId replicationMetadataWithValueSchemaId =
-          ReplicationMetadataWithValueSchemaId.getFromStorageEngineBytes(storagePartition.getReplicationMetadata(key));
+          ReplicationMetadataWithValueSchemaId.convertStorageEngineBytes(storagePartition.getReplicationMetadata(key));
       byte[] metadata = ByteUtils.extractByteArray(replicationMetadataWithValueSchemaId.getReplicationMetadata());
       Assert.assertEquals(replicationMetadataWithValueSchemaId.getValueSchemaId(), valueSchemaId);
       Assert.assertEquals(metadata, entry.getValue().getSecond().getBytes());
@@ -166,7 +166,7 @@ public class ReplicationMetadataRocksDBStoragePartitionTest extends AbstractStor
       byte[] value = storagePartition.get(entry.getKey().getBytes());
       Assert.assertNull(value);
       ReplicationMetadataWithValueSchemaId replicationMetadataWithValueSchemaId =
-          ReplicationMetadataWithValueSchemaId.getFromStorageEngineBytes(storagePartition.getReplicationMetadata(entry.getKey().getBytes()));
+          ReplicationMetadataWithValueSchemaId.convertStorageEngineBytes(storagePartition.getReplicationMetadata(entry.getKey().getBytes()));
       byte[] metadata = ByteUtils.extractByteArray(replicationMetadataWithValueSchemaId.getReplicationMetadata());
       Assert.assertNotNull(metadata);
       Assert.assertEquals(replicationMetadataWithValueSchemaId.getValueSchemaId(), updatedValueSchemaId);
@@ -206,7 +206,7 @@ public class ReplicationMetadataRocksDBStoragePartitionTest extends AbstractStor
       byte[] value = storagePartition.get(entry.getKey().getBytes());
       Assert.assertNull(value);
       ReplicationMetadataWithValueSchemaId replicationMetadataWithValueSchemaId =
-          ReplicationMetadataWithValueSchemaId.getFromStorageEngineBytes(storagePartition.getReplicationMetadata(entry.getKey().getBytes()));
+          ReplicationMetadataWithValueSchemaId.convertStorageEngineBytes(storagePartition.getReplicationMetadata(entry.getKey().getBytes()));
       byte[] metadata = ByteUtils.extractByteArray(replicationMetadataWithValueSchemaId.getReplicationMetadata());
       Assert.assertNotNull(metadata);
       Assert.assertEquals(replicationMetadataWithValueSchemaId.getValueSchemaId(), updatedValueSchemaId);

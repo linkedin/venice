@@ -50,7 +50,7 @@ public interface ReadOnlySchemaRepository extends VeniceResource {
    */
   Pair<Integer, Integer> getDerivedSchemaId(String storeName, String derivedSchemaStr);
 
-  DerivedSchemaEntry getDerivedSchema(String storeName, int valueSchemaId, int derivedSchemaId);
+  DerivedSchemaEntry getDerivedSchema(String storeName, int valueSchemaId, int writeComputeSchemaId);
 
   Collection<DerivedSchemaEntry> getDerivedSchemas(String storeName);
 

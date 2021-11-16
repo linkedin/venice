@@ -8,12 +8,12 @@ import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 
-import static com.linkedin.venice.schema.WriteComputeSchemaAdapter.WriteComputeOperation.*;
-import static com.linkedin.venice.schema.WriteComputeSchemaAdapter.*;
+import static com.linkedin.venice.schema.WriteComputeSchemaConverter.WriteComputeOperation.*;
+import static com.linkedin.venice.schema.WriteComputeSchemaConverter.*;
 
 
 /**
- * A utility class that is able to read write-computed value and apply it to original value.
+ * This class is able to read write-computed value and apply it to original value.
  *
  * Notice: though it's possible, we only support GenericRecord updating at this point. That's
  * being said, both original and write compute object need to be GenericRecord.
@@ -24,27 +24,27 @@ import static com.linkedin.venice.schema.WriteComputeSchemaAdapter.*;
  * TODO: since this class is very performance sensitive, we should add metrics to measure the
  * TODO: time it spends and keep optimizing the operations
  */
-public class WriteComputeAdapter {
+public class WriteComputeHandler {
   private final Schema originalSchema;
   private final Schema writeComputeSchema;
 
   //GenericData is a singleton util class Avro provides. We're using it to construct the default field values
-  private GenericData genericData = GenericData.get();
+  private final GenericData genericData = GenericData.get();
 
   /**
    * Generate a new write compute adapter that can be used given a pair of original schema and its write-compute
    * schema.
    * @param originalSchema the original schema that write compute schema is derived from
    * @param writeComputeSchema the write compute schema that is auto-generated and paired with original Schema.
-   *                           See {@link WriteComputeSchemaAdapter} for more details that how it's generated.
+   *                           See {@link WriteComputeSchemaConverter} for more details that how it's generated.
    */
-  public static WriteComputeAdapter getWriteComputeAdapter(Schema originalSchema, Schema writeComputeSchema) {
+  public static WriteComputeHandler getWriteComputeAdapter(Schema originalSchema, Schema writeComputeSchema) {
     WriteComputeSchemaValidator.validate(originalSchema, writeComputeSchema);
 
-    return new WriteComputeAdapter(originalSchema, writeComputeSchema);
+    return new WriteComputeHandler(originalSchema, writeComputeSchema);
   }
 
-  WriteComputeAdapter(Schema originalSchema, Schema writeComputeSchema) {
+  WriteComputeHandler(Schema originalSchema, Schema writeComputeSchema) {
     this.originalSchema = originalSchema;
     this.writeComputeSchema = writeComputeSchema;
   }
@@ -86,55 +86,60 @@ public class WriteComputeAdapter {
       return writeComputeRecord;
     }
 
-    if (originalRecord == null) {
-      originalRecord = constructNewRecord(originalSchema);
-    }
-
     if (originalSchema.getType() == Schema.Type.RECORD && writeComputeSchema.getType() == Schema.Type.UNION) {
       //if DEL_OP is in writeComputeRecord, return empty record
       if (writeComputeRecord.getSchema().getName().equals(DEL_OP.name)) {
         return null;
       } else {
-        return updateRecord(originalSchema, writeComputeSchema.getTypes().get(0), originalRecord, writeComputeRecord, false);
+        return updateRecord(
+            originalSchema,
+            writeComputeSchema.getTypes().get(0),
+            originalRecord == null ? constructNewRecord(originalSchema) : originalRecord,
+            writeComputeRecord,
+            false
+        );
       }
     }
 
-
-    for (Schema.Field field : originalSchema.getFields()) {
-      String fieldName = field.name();
-      Object writeComputeFieldObject = writeComputeRecord.get(fieldName);
+    if (originalRecord == null) {
+      originalRecord = constructNewRecord(originalSchema);
+    }
+    for (Schema.Field originalField : originalSchema.getFields()) {
+      final String originalFieldName = originalField.name();
+      Object writeComputeFieldValue = writeComputeRecord.get(originalFieldName);
 
       //skip the fields if it's NoOp
-      if (writeComputeFieldObject instanceof GenericRecord &&
-          ((GenericRecord) writeComputeFieldObject).getSchema().getName().equals(NO_OP.name)) {
+      if (writeComputeFieldValue instanceof GenericRecord &&
+          ((GenericRecord) writeComputeFieldValue).getSchema().getName().equals(NO_OP.name)) {
         continue;
       }
 
-      Object fieldObject = update(field.schema(), writeComputeSchema.getField(fieldName).schema(),
-          originalRecord.get(fieldName), writeComputeFieldObject);
-      originalRecord.put(fieldName, fieldObject);
+      Object updatedFieldObject = update(originalField.schema(), writeComputeSchema.getField(originalFieldName).schema(),
+          originalRecord.get(originalFieldName), writeComputeFieldValue);
+      originalRecord.put(originalFieldName, updatedFieldObject);
     }
 
     return originalRecord;
   }
 
   private GenericRecord constructNewRecord(Schema originalSchema) {
-    GenericData.Record record = new GenericData.Record(originalSchema);
+    final GenericData.Record newRecord = new GenericData.Record(originalSchema);
 
-    for (Schema.Field field : originalSchema.getFields()) {
-      if (field.defaultValue() != null) {
+    for (Schema.Field originalField : originalSchema.getFields()) {
+      if (originalField.defaultValue() != null) {
         //make a deep copy here since genericData caches each default value internally. If we
         //use what it returns, we will mutate the cache.
-        record.put(field.name(), genericData.deepCopy(field.schema(), genericData.getDefaultValue(field)));
+        newRecord.put(originalField.name(), genericData.deepCopy(originalField.schema(), genericData.getDefaultValue(originalField)));
       } else {
         throw new VeniceException(String.format("Cannot apply updates because Field: %s is null and "
-            + "default value is not defined", field.name()));
+            + "default value is not defined", originalField.name()));
       }
     }
 
-    return record;
+    return newRecord;
   }
 
+  // Visible for testing
   Object updateArray(Schema originalSchema, List originalArray, Object writeComputeArray) {
     if (writeComputeArray instanceof List) {
       return writeComputeArray;
@@ -152,13 +157,13 @@ public class WriteComputeAdapter {
       }
     }
 
-    for (Object element : (List) ((GenericRecord) writeComputeArray).get(SET_DIFF)) {
+    for (Object elementToRemove : (List) ((GenericRecord) writeComputeArray).get(SET_DIFF)) {
       /**
        * we need to iterate the list by our own because #remove(T object) is not
        * supported by GenericRecord.Array
        */
       for (int i = 0; i < originalArray.size(); i ++) {
-        if (originalArray.get(i).equals(element)) {
+        if (originalArray.get(i).equals(elementToRemove)) {
           originalArray.remove(i);
           break;
         }
@@ -168,6 +173,7 @@ public class WriteComputeAdapter {
     return originalArray;
   }
 
+  // Visible for testing
   Object updateMap(Map originalMap, Object writeComputeMap) {
     if (writeComputeMap instanceof Map) {
       return writeComputeMap;
@@ -189,14 +195,15 @@ public class WriteComputeAdapter {
     return originalMap;
   }
 
+  // Visible for testing
   Object updateUnion(Schema originalSchema, Object originalObject, Object writeComputeObject) {
-    for (Schema schema : originalSchema.getTypes()) {
-      if (schema.getType() == Schema.Type.ARRAY && writeComputeObject instanceof GenericRecord &&
+    for (Schema subSchema : originalSchema.getTypes()) {
+      if (subSchema.getType() == Schema.Type.ARRAY && writeComputeObject instanceof GenericRecord &&
           ((GenericRecord) writeComputeObject).getSchema().getName().endsWith(LIST_OPS.name)) {
-        return updateArray(schema, (List) originalObject, writeComputeObject);
+        return updateArray(subSchema, (List) originalObject, writeComputeObject);
       }
 
-      if (schema.getType() == Schema.Type.MAP && writeComputeObject instanceof GenericRecord &&
+      if (subSchema.getType() == Schema.Type.MAP && writeComputeObject instanceof GenericRecord &&
           ((GenericRecord) writeComputeObject).getSchema().getName().endsWith(MAP_OPS.name)) {
         return updateMap((Map) originalObject, writeComputeObject);
       }

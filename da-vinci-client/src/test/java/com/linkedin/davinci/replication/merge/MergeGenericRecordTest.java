@@ -1,8 +1,8 @@
 package com.linkedin.davinci.replication.merge;
 
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.schema.ReplicationMetadataSchemaAdapter;
-import com.linkedin.venice.schema.WriteComputeSchemaAdapter;
+import com.linkedin.venice.schema.ReplicationMetadataSchemaGenerator;
+import com.linkedin.venice.schema.WriteComputeSchemaConverter;
 import com.linkedin.venice.utils.Lazy;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -14,7 +14,7 @@ import org.testng.annotations.Test;
 import org.testng.Assert;
 
 import static com.linkedin.venice.VeniceConstants.*;
-import static com.linkedin.venice.schema.WriteComputeSchemaAdapter.*;
+import static com.linkedin.venice.schema.WriteComputeSchemaConverter.*;
 
 
 public class MergeGenericRecordTest {
@@ -68,7 +68,7 @@ public class MergeGenericRecordTest {
   @Test
   public void testDelete() throws Exception {
     Schema schema = Schema.parse(recordSchemaStr);
-    Schema aaSchema = ReplicationMetadataSchemaAdapter.parse(schema, 1);
+    Schema aaSchema = ReplicationMetadataSchemaGenerator.generateMetadataSchema(schema, 1);
     GenericRecord valueRecord = new GenericData.Record(schema);
     valueRecord.put("id", "id1");
     valueRecord.put("name", "name1");
@@ -124,7 +124,7 @@ public class MergeGenericRecordTest {
   @Test
   public void testPut() throws Exception {
     Schema schema = Schema.parse(recordSchemaStr);
-    Schema aaSchema = ReplicationMetadataSchemaAdapter.parse(schema, 1);
+    Schema aaSchema = ReplicationMetadataSchemaGenerator.generateMetadataSchema(schema, 1);
     GenericRecord valueRecord = new GenericData.Record(schema);
     valueRecord.put("id", "id1");
     valueRecord.put("name", "name1");
@@ -172,7 +172,7 @@ public class MergeGenericRecordTest {
   @Test(enabled = false)
   public void testUpdate() throws Exception {
     Schema schema = Schema.parse(recordSchemaStr);
-    Schema aaSchema = ReplicationMetadataSchemaAdapter.parse(schema, 1);
+    Schema aaSchema = ReplicationMetadataSchemaGenerator.generateMetadataSchema(schema, 1);
     GenericRecord valueRecord = new GenericData.Record(schema);
     valueRecord.put("id", "id1");
     valueRecord.put("name", "name1");
@@ -187,7 +187,7 @@ public class MergeGenericRecordTest {
     ValueAndReplicationMetadata<GenericRecord>
         valueAndReplicationMetadata = new ValueAndReplicationMetadata<>(valueRecord, timeStampRecord);
 
-    Schema recordWriteComputeSchema = WriteComputeSchemaAdapter.parse(schema);
+    Schema recordWriteComputeSchema = WriteComputeSchemaConverter.convert(schema);
 
     //construct write compute operation record
     Schema noOpSchema = recordWriteComputeSchema.getTypes().get(0).getField("name").schema().getTypes().get(0);
@@ -226,7 +226,7 @@ public class MergeGenericRecordTest {
     schema = Schema.parse(arrSchemaStr);
     Schema innerArraySchema = schema.getField("hits").schema();
     GenericData.Record collectionUpdateRecord =
-        new GenericData.Record(WriteComputeSchemaAdapter.parse(innerArraySchema).getTypes().get(0));
+        new GenericData.Record(WriteComputeSchemaConverter.convert(innerArraySchema).getTypes().get(0));
     collectionUpdateRecord.put(SET_UNION, Collections.singletonList(timeStampRecord));
     collectionUpdateRecord.put(SET_DIFF, Collections.emptyList());
     wcRecord.put("name", collectionUpdateRecord);
@@ -240,7 +240,7 @@ public class MergeGenericRecordTest {
     List<GenericRecord> payload = new ArrayList<>();
     List<Long> writeTs = new ArrayList<>();
     GenericRecord origRecord = new GenericData.Record(schema);
-    Schema aaSchema = ReplicationMetadataSchemaAdapter.parse(schema, 1);
+    Schema aaSchema = ReplicationMetadataSchemaGenerator.generateMetadataSchema(schema, 1);
     GenericRecord timeStampRecord = new GenericData.Record(aaSchema);
 
     GenericRecord ts = new GenericData.Record(aaSchema.getFields().get(0).schema().getTypes().get(1));

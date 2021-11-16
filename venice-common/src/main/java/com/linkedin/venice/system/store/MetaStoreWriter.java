@@ -14,7 +14,7 @@ import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.ReplicaStatus;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
-import com.linkedin.venice.schema.WriteComputeSchemaAdapter;
+import com.linkedin.venice.schema.WriteComputeSchemaConverter;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.systemstore.schemas.StoreKeySchemas;
@@ -44,7 +44,7 @@ import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.log4j.Logger;
 
-import static com.linkedin.venice.schema.WriteComputeSchemaAdapter.*;
+import static com.linkedin.venice.schema.WriteComputeSchemaConverter.*;
 
 
 /**
@@ -74,7 +74,7 @@ public class MetaStoreWriter implements Closeable {
       HelixReadOnlyZKSharedSchemaRepository schemaRepo) {
     this.topicManager = topicManager;
     this.writerFactory = writerFactory;
-    this.derivedComputeSchema = WriteComputeSchemaAdapter.parse(
+    this.derivedComputeSchema = WriteComputeSchemaConverter.convert(
         AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.getCurrentProtocolVersionSchema());
     this.zkSharedSchemaRepository = schemaRepo;
   }

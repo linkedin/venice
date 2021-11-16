@@ -11,12 +11,12 @@ import org.apache.avro.generic.GenericData;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-import static com.linkedin.venice.schema.WriteComputeSchemaAdapter.*;
+import static com.linkedin.venice.schema.WriteComputeSchemaConverter.*;
 
 import static org.apache.avro.Schema.Type.*;
 
 
-public class testWriteComputeAdapter {
+public class testWriteComputeHandler {
   private String recordSchemaStr = "{\n" +
       "  \"type\" : \"record\",\n" +
       "  \"name\" : \"testRecord\",\n" +
@@ -97,9 +97,9 @@ public class testWriteComputeAdapter {
   @Test
   public void testCanUpdateArray() {
     Schema arraySchema = Schema.createArray(Schema.create(INT));
-    Schema arrayWriteComputeSchema = WriteComputeSchemaAdapter.parse(arraySchema);
+    Schema arrayWriteComputeSchema = WriteComputeSchemaConverter.convert(arraySchema);
 
-    WriteComputeAdapter arrayAdapter = new WriteComputeAdapter(arraySchema, arrayWriteComputeSchema);
+    WriteComputeHandler arrayAdapter = new WriteComputeHandler(arraySchema, arrayWriteComputeSchema);
 
     GenericData.Record collectionUpdateRecord = new GenericData.Record(arrayWriteComputeSchema.getTypes().get(0));
     collectionUpdateRecord.put(SET_UNION, Arrays.asList(1, 2));
@@ -129,9 +129,9 @@ public class testWriteComputeAdapter {
   @Test
   public void testCanUpdateMap() {
     Schema mapSchema = Schema.createMap(Schema.create(INT));
-    Schema mapWriteComputeSchema = WriteComputeSchemaAdapter.parse(mapSchema);
+    Schema mapWriteComputeSchema = WriteComputeSchemaConverter.convert(mapSchema);
 
-    WriteComputeAdapter mapAdapter = new WriteComputeAdapter(mapSchema, mapWriteComputeSchema);
+    WriteComputeHandler mapAdapter = new WriteComputeHandler(mapSchema, mapWriteComputeSchema);
 
     GenericData.Record mapUpdateRecord = new GenericData.Record(mapWriteComputeSchema.getTypes().get(0));
     Map map = new HashMap();
@@ -169,9 +169,10 @@ public class testWriteComputeAdapter {
   @Test
   public void testCanUpdateRecord() {
     Schema recordSchema = Schema.parse(recordSchemaStr);
-    Schema recordWriteComputeSchema = WriteComputeSchemaAdapter.parse(recordSchema);
+    Schema recordWriteComputeSchema = WriteComputeSchemaConverter.convert(recordSchema);
 
-    WriteComputeAdapter recordAdapter = WriteComputeAdapter.getWriteComputeAdapter(recordSchema, recordWriteComputeSchema);
+    WriteComputeHandler
+        recordAdapter = WriteComputeHandler.getWriteComputeAdapter(recordSchema, recordWriteComputeSchema);
 
     //construct original record
     Schema innerArraySchema = recordSchema.getField("hits").schema();
@@ -207,7 +208,7 @@ public class testWriteComputeAdapter {
     newInnerRecord.put("searchId", 20L);
 
     GenericData.Record collectionUpdateRecord =
-        new GenericData.Record(WriteComputeSchemaAdapter.parse(innerArraySchema).getTypes().get(0));
+        new GenericData.Record(WriteComputeSchemaConverter.convert(innerArraySchema).getTypes().get(0));
     collectionUpdateRecord.put(SET_UNION, Collections.singletonList(newInnerRecord));
     collectionUpdateRecord.put(SET_DIFF, Collections.emptyList());
     recordUpdateRecord.put("hits", collectionUpdateRecord);
@@ -228,10 +229,10 @@ public class testWriteComputeAdapter {
   @Test
   public void testCanUpdateNullableUnion() {
     Schema nullableRecord = Schema.parse(nullableRecordStr);
-    Schema writeComputeSchema = WriteComputeSchemaAdapter.parse(nullableRecord);
+    Schema writeComputeSchema = WriteComputeSchemaConverter.convert(nullableRecord);
 
-    WriteComputeAdapter recordAdapter =
-        WriteComputeAdapter.getWriteComputeAdapter(nullableRecord, writeComputeSchema);
+    WriteComputeHandler recordAdapter =
+        WriteComputeHandler.getWriteComputeAdapter(nullableRecord, writeComputeSchema);
 
     //construct an empty write compute schema. WC adapter is supposed to construct the
     //original value by using default values.
@@ -263,10 +264,10 @@ public class testWriteComputeAdapter {
   @Test
   public void testCanDeleteFullRecord() {
     Schema recordSchema = Schema.parse(simpleRecordSchemaStr);
-    Schema recordWriteComputeSchema = WriteComputeSchemaAdapter.parse(recordSchema);
+    Schema recordWriteComputeSchema = WriteComputeSchemaConverter.convert(recordSchema);
 
-    WriteComputeAdapter recordAdapter =
-        WriteComputeAdapter.getWriteComputeAdapter(recordSchema, recordWriteComputeSchema);
+    WriteComputeHandler recordAdapter =
+        WriteComputeHandler.getWriteComputeAdapter(recordSchema, recordWriteComputeSchema);
 
     //construct original record
     GenericData.Record originalRecord = new GenericData.Record(recordSchema);
@@ -284,10 +285,10 @@ public class testWriteComputeAdapter {
   @Test
   public void testCanHandleNestedRecord() {
     Schema recordSchema = Schema.parse(nestedRecordStr);
-    Schema recordWriteComputeUnionSchema = WriteComputeSchemaAdapter.parse(recordSchema);
+    Schema recordWriteComputeUnionSchema = WriteComputeSchemaConverter.convert(recordSchema);
 
-    WriteComputeAdapter recordAdapter =
-        WriteComputeAdapter.getWriteComputeAdapter(recordSchema, recordWriteComputeUnionSchema);
+    WriteComputeHandler recordAdapter =
+        WriteComputeHandler.getWriteComputeAdapter(recordSchema, recordWriteComputeUnionSchema);
 
     Schema nestedRecordSchema =  recordSchema.getField("nestedRecord").schema();
     GenericData.Record nestedRecord = new GenericData.Record(nestedRecordSchema);
