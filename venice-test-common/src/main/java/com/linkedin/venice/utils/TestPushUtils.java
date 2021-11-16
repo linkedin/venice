@@ -13,7 +13,7 @@ import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.samza.VeniceSystemFactory;
-import com.linkedin.venice.schema.WriteComputeSchemaAdapter;
+import com.linkedin.venice.schema.WriteComputeSchemaConverter;
 import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
 import com.linkedin.venice.schema.vson.VsonAvroSerializer;
 import com.linkedin.venice.schema.vson.VsonSchema;
@@ -996,7 +996,7 @@ public class TestPushUtils {
 
     if (addDerivedSchemaToStore) {
       // Generate write compute schema
-      Schema writeComputeSchema = WriteComputeSchemaAdapter.parse(valueSchemaStr);
+      Schema writeComputeSchema = WriteComputeSchemaConverter.convert(valueSchemaStr);
       SchemaResponse derivedValueSchemaResponse = controllerClient.retryableRequest(5,
           c -> c.addDerivedSchema(props.getProperty(VenicePushJob.VENICE_STORE_NAME_PROP), +1,
               writeComputeSchema.toString()));

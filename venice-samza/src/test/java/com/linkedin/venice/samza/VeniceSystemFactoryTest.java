@@ -9,7 +9,7 @@ import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.schema.WriteComputeSchemaAdapter;
+import com.linkedin.venice.schema.WriteComputeSchemaConverter;
 import com.linkedin.venice.utils.TestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 
@@ -32,7 +32,6 @@ import java.util.Collections;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
 
-import static com.linkedin.venice.schema.WriteComputeSchemaAdapter.*;
 import static com.linkedin.venice.utils.TestPushUtils.*;
 import static org.testng.Assert.*;
 
@@ -79,7 +78,7 @@ public class VeniceSystemFactoryTest {
         "}";
 
     String storeName = TestUtils.getUniqueString("store");
-    Schema writeComputeSchema = WriteComputeSchemaAdapter.parse(valueSchema);
+    Schema writeComputeSchema = WriteComputeSchemaConverter.convert(valueSchema);
 
     try (ControllerClient client = cluster.getControllerClient()) {
       client.createNewStore(storeName, "owner", keySchema, valueSchema);

@@ -28,7 +28,7 @@ public class TestWriteComputeSchemaValidator {
   @Test
   public void testCanValidateNullableUnionField() {
     Schema originalSchema = Schema.parse(recordOfNullableArrayStr);
-    Schema writeComputeSchema = WriteComputeSchemaAdapter.parse(originalSchema);
+    Schema writeComputeSchema = WriteComputeSchemaConverter.convert(originalSchema);
 
     validate(originalSchema, writeComputeSchema);
   }
@@ -36,7 +36,7 @@ public class TestWriteComputeSchemaValidator {
   @Test
   public void testCanValidateNestedRecord() {
     Schema originalSchema = Schema.parse(nestedRecordStr);
-    Schema writeComputeSchema = WriteComputeSchemaAdapter.parse(originalSchema);
+    Schema writeComputeSchema = WriteComputeSchemaConverter.convert(originalSchema);
 
     validate(originalSchema, writeComputeSchema);
   }

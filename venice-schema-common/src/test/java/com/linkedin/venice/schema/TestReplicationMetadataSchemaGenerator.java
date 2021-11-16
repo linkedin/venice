@@ -10,8 +10,8 @@ import static com.linkedin.venice.VeniceConstants.*;
 import static org.apache.avro.Schema.Type.*;
 
 
-public class TestReplicationMetadataSchemaAdapter {
-  private static final Logger logger = Logger.getLogger(TestReplicationMetadataSchemaAdapter.class);
+public class TestReplicationMetadataSchemaGenerator {
+  private static final Logger logger = Logger.getLogger(TestReplicationMetadataSchemaGenerator.class);
 
 
   static String primitiveTypedSchemaStr = "{\"type\": \"string\"}";
@@ -186,7 +186,7 @@ public class TestReplicationMetadataSchemaAdapter {
   @Test
   public void testMetadataSchemaForPrimitive() {
     Schema origSchema = Schema.create(INT);
-    Schema aaSchema = ReplicationMetadataSchemaAdapter.parse(origSchema, 1);
+    Schema aaSchema = ReplicationMetadataSchemaGenerator.generateMetadataSchema(origSchema, 1);
     String aaSchemaStr = aaSchema.toString(true);
     logger.info(aaSchemaStr);
 
@@ -196,7 +196,7 @@ public class TestReplicationMetadataSchemaAdapter {
   @Test
   public void testMetadataSchemaForPrimitiveTyped() {
     Schema origSchema = Schema.parse(primitiveTypedSchemaStr);
-    Schema aaSchema = ReplicationMetadataSchemaAdapter.parse(origSchema, 1);
+    Schema aaSchema = ReplicationMetadataSchemaGenerator.generateMetadataSchema(origSchema, 1);
     String aaSchemaStr = aaSchema.toString(true);
     logger.info(aaSchemaStr);
     Assert.assertEquals(aaSchema, Schema.parse(aaSchema.toString()));
@@ -209,7 +209,7 @@ public class TestReplicationMetadataSchemaAdapter {
   public void testMetadataSchemaForRecord() {
     Schema origSchema = Schema.parse(recordSchemaStr);
     String OrigSchemaStr = origSchema.toString(true);
-    Schema aaSchema = ReplicationMetadataSchemaAdapter.parse(origSchema, 1);
+    Schema aaSchema = ReplicationMetadataSchemaGenerator.generateMetadataSchema(origSchema, 1);
     String aaSchemaStr = aaSchema.toString(true);
     logger.info(OrigSchemaStr);
     logger.info(aaSchemaStr);
@@ -235,7 +235,7 @@ public class TestReplicationMetadataSchemaAdapter {
   public void testMetadataSchemaForArray() {
     Schema origSchema = Schema.parse(arraySchemaStr);
     String OrigSchemaStr = origSchema.toString(true);
-    Schema aaSchema = ReplicationMetadataSchemaAdapter.parse(origSchema, 1);
+    Schema aaSchema = ReplicationMetadataSchemaGenerator.generateMetadataSchema(origSchema, 1);
     String aaSchemaStr = aaSchema.toString(true);
     logger.info(OrigSchemaStr);
     logger.info(aaSchemaStr);
@@ -247,7 +247,7 @@ public class TestReplicationMetadataSchemaAdapter {
   public void testMetadataSchemaForMap() {
     Schema origSchema = Schema.parse(mapSchemaStr);
     String OrigSchemaStr = origSchema.toString(true);
-    Schema aaSchema = ReplicationMetadataSchemaAdapter.parse(origSchema, 1);
+    Schema aaSchema = ReplicationMetadataSchemaGenerator.generateMetadataSchema(origSchema, 1);
     String aaSchemaStr = aaSchema.toString(true);
     logger.info(OrigSchemaStr);
     logger.info(aaSchemaStr);
@@ -259,7 +259,7 @@ public class TestReplicationMetadataSchemaAdapter {
   public void testMetadataSchemaForUnion() {
     Schema origSchema = Schema.parse(unionSchemaStr);
     String OrigSchemaStr = origSchema.toString(true);
-    Schema aaSchema = ReplicationMetadataSchemaAdapter.parse(origSchema, 1);
+    Schema aaSchema = ReplicationMetadataSchemaGenerator.generateMetadataSchema(origSchema, 1);
     String aaSchemaStr = aaSchema.toString(true);
     logger.info(OrigSchemaStr);
     logger.info(aaSchemaStr);

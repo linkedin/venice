@@ -94,7 +94,7 @@ import com.linkedin.venice.participant.protocol.ParticipantMessageValue;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreRecordDeleter;
 import com.linkedin.venice.schema.DerivedSchemaEntry;
-import com.linkedin.venice.schema.ReplicationMetadataSchemaAdapter;
+import com.linkedin.venice.schema.ReplicationMetadataSchemaGenerator;
 import com.linkedin.venice.schema.ReplicationMetadataSchemaEntry;
 import com.linkedin.venice.schema.ReplicationMetadataVersionId;
 import com.linkedin.venice.schema.SchemaData;
@@ -210,7 +210,7 @@ public class VeniceParentHelixAdmin implements Admin {
    * Here is the way how Parent Controller is keeping errored topics when {@link #maxErroredTopicNumToKeep} > 0:
    * 1. For errored topics, {@link #getOfflineJobProgress(String, String, Map)} won't truncate them;
    * 2. For errored topics, {@link #killOfflinePush(String, String, boolean)} won't truncate them;
-   * 3. {@link #getTopicForCurrentPushJob(String, String, boolean)} will truncate the errored topics based on
+   * 3. {@link #getTopicForCurrentPushJob(String, String, boolean, boolean)} will truncate the errored topics based on
    * {@link #maxErroredTopicNumToKeep};
    *
    * It means error topic retiring is only be triggered by next push.
@@ -2104,8 +2104,8 @@ public class VeniceParentHelixAdmin implements Admin {
 
   private void updateActiveActiveSchema(String clusterName, String storeName, Schema valueSchema, int valueSchemaId) {
     int replicationMetadataVersionId = getMultiClusterConfigs().getCommonConfig().getReplicationMetadataVersionId();
-    String replicationMetadataSchema = ReplicationMetadataSchemaAdapter.parse(valueSchema, replicationMetadataVersionId).toString();
-    addReplicationMetadataSchema(clusterName, storeName, valueSchemaId, replicationMetadataVersionId, replicationMetadataSchema);
+    String replicationMetadataSchemaStr = ReplicationMetadataSchemaGenerator.generateMetadataSchema(valueSchema, replicationMetadataVersionId).toString();
+    addReplicationMetadataSchema(clusterName, storeName, valueSchemaId, replicationMetadataVersionId, replicationMetadataSchemaStr);
   }
 
   @Override

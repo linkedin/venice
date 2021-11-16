@@ -8,7 +8,7 @@ import org.apache.avro.Schema;
  * available operations that SN could apply on top of the record. Derived
  * schemas can be generated automatically from value schemas and each value
  * schema can have multiple derived schemas.Check out
- * {@link WriteComputeSchemaAdapter} for all
+ * {@link WriteComputeSchemaConverter} for all
  * available operations and how it gets generated.
  */
 public class DerivedSchemaEntry extends GeneratedSchemaEntry {

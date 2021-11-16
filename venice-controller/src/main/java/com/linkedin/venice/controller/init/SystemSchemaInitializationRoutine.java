@@ -9,7 +9,7 @@ import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
-import com.linkedin.venice.schema.WriteComputeSchemaAdapter;
+import com.linkedin.venice.schema.WriteComputeSchemaConverter;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.Pair;
@@ -156,7 +156,7 @@ public class SystemSchemaInitializationRoutine implements ClusterLeaderInitializ
         }
         if (autoRegisterDerivedComputeSchema) {
           // Check and register derived compute schema
-          String derivedSchema = WriteComputeSchemaAdapter.parse(schemaInLocalResources).toString();
+          String derivedSchema = WriteComputeSchemaConverter.convert(schemaInLocalResources).toString();
           Pair<Integer, Integer> derivedSchemaInfo = admin.getDerivedSchemaId(clusterToInit, systemStoreName, derivedSchema);
           if (derivedSchemaInfo.getFirst() == SchemaData.INVALID_VALUE_SCHEMA_ID) {
             /**

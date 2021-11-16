@@ -52,7 +52,13 @@ interface Merge<T> {
    *                                 the ReplicationMetadata for the newly inserted record.
    * @return the resulting {@link ValueAndReplicationMetadata} after merging the old one with the incoming write operation
    */
-  ValueAndReplicationMetadata<T> put(ValueAndReplicationMetadata<T> oldValueAndReplicationMetadata, T newValue, long writeOperationTimestamp, long sourceOffsetOfNewValue, int sourceBrokerIDOfNewValue);
+  ValueAndReplicationMetadata<T> put(
+      ValueAndReplicationMetadata<T> oldValueAndReplicationMetadata,
+      T newValue,
+      long writeOperationTimestamp,
+      long sourceOffsetOfNewValue,
+      int sourceBrokerIDOfNewValue
+  );
 
   /**
    * @param oldValueAndReplicationMetadata the old value and replication metadata which are persisted in the server prior to the write operation
@@ -64,7 +70,12 @@ interface Merge<T> {
    *                                 the ReplicationMetadata for the newly inserted record.
    * @return the resulting {@link ValueAndReplicationMetadata} after merging the old one with the incoming delete operation
    */
-  ValueAndReplicationMetadata<T> delete(ValueAndReplicationMetadata<T> oldValueAndReplicationMetadata, long writeOperationTimestamp, long sourceOffsetOfNewValue, int sourceBrokerIDOfNewValue);
+  ValueAndReplicationMetadata<T> delete(
+      ValueAndReplicationMetadata<T> oldValueAndReplicationMetadata,
+      long writeOperationTimestamp,
+      long sourceOffsetOfNewValue,
+      int sourceBrokerIDOfNewValue
+  );
 
   /**
    * @param oldValueAndReplicationMetadata the old value and replication metadata which are persisted in the server prior to the write operation
@@ -77,7 +88,13 @@ interface Merge<T> {
    *                                 the ReplicationMetadata for the newly inserted record.
    * @return the resulting {@link ValueAndReplicationMetadata} after merging the old one with the incoming write operation
    */
-  ValueAndReplicationMetadata<T> update(ValueAndReplicationMetadata<T> oldValueAndReplicationMetadata, Lazy<GenericRecord> writeOperation, long writeOperationTimestamp, long sourceOffsetOfNewValue, int sourceBrokerIDOfNewValue);
+  ValueAndReplicationMetadata<T> update(
+      ValueAndReplicationMetadata<T> oldValueAndReplicationMetadata,
+      Lazy<GenericRecord> writeOperation,
+      long writeOperationTimestamp,
+      long sourceOffsetOfNewValue,
+      int sourceBrokerIDOfNewValue
+  );
 
   /**
    * Returns the type of union record given tsObject is. Right now it will be either root level long or

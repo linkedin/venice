@@ -10,15 +10,15 @@ import java.nio.ByteBuffer;
 public class MergeConflictResult {
   private static final MergeConflictResult IGNORED_RESULT = new MergeConflictResult();
 
-  private ByteBuffer value;
+  private ByteBuffer newValue;
   private int valueSchemaID;
-  private boolean updateIgnored; // Whether we should skip the incoming message since it could be a stale message.
+  private final boolean updateIgnored; // Whether we should skip the incoming message since it could be a stale message.
   private ByteBuffer replicationMetadata;
   private boolean resultReusesInput;
 
-  public MergeConflictResult(ByteBuffer value, int valueSchemaID, ByteBuffer replicationMetadata, boolean resultReusesInput) {
+  public MergeConflictResult(ByteBuffer newValue, int valueSchemaID, ByteBuffer replicationMetadata, boolean resultReusesInput) {
     this.updateIgnored = false;
-    this.value = value;
+    this.newValue = newValue;
     this.valueSchemaID = valueSchemaID;
     this.replicationMetadata = replicationMetadata;
     this.resultReusesInput = resultReusesInput;
@@ -36,8 +36,8 @@ public class MergeConflictResult {
     return this.valueSchemaID;
   }
 
-  public ByteBuffer getValue() {
-    return this.value;
+  public ByteBuffer getNewValue() {
+    return this.newValue;
   }
 
   public boolean isUpdateIgnored() {

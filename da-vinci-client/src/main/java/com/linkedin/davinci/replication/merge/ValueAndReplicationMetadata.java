@@ -1,5 +1,6 @@
 package com.linkedin.davinci.replication.merge;
 
+import com.linkedin.venice.utils.Utils;
 import org.apache.avro.generic.GenericRecord;
 
 
@@ -10,12 +11,12 @@ import org.apache.avro.generic.GenericRecord;
 public class ValueAndReplicationMetadata<T> {
   private T value;
   private GenericRecord replicationMetadata;
-  boolean updateIgnored; // Whether we should skip the incoming message since it could be a stale message.
-  int resolvedSchemaID;
+  private boolean updateIgnored; // Whether we should skip the incoming message since it could be a stale message.
+  private int resolvedSchemaID;
 
   public ValueAndReplicationMetadata(T value, GenericRecord replicationMetadata) {
-    this.value = value;
-    this.replicationMetadata = replicationMetadata;
+    this.value = Utils.notNull(value);
+    this.replicationMetadata = Utils.notNull(replicationMetadata);
   }
 
   public T getValue() {

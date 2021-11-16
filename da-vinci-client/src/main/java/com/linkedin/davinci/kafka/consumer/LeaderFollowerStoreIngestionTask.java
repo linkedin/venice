@@ -29,7 +29,6 @@ import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
-import com.linkedin.venice.kafka.protocol.StartOfPush;
 import com.linkedin.venice.kafka.protocol.TopicSwitch;
 import com.linkedin.venice.kafka.protocol.Update;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
@@ -131,7 +130,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    */
   private final long newLeaderInactiveTime;
 
-  private final IngestionTaskWriteComputeAdapter ingestionTaskWriteComputeAdapter;
+  private final IngestionTaskWriteComputeHandler ingestionTaskWriteComputeAdapter;
 
   private final boolean isNativeReplicationEnabled;
   private final String nativeReplicationSourceVersionTopicKafkaURL;
@@ -244,7 +243,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       newLeaderInactiveTime = serverConfig.getServerPromotionToLeaderReplicaDelayMs();
     }
 
-    this.ingestionTaskWriteComputeAdapter = new IngestionTaskWriteComputeAdapter(storeName, schemaRepository);
+    this.ingestionTaskWriteComputeAdapter = new IngestionTaskWriteComputeHandler(storeName, schemaRepository);
 
     this.isNativeReplicationEnabled = version.isNativeReplicationEnabled();
     this.nativeReplicationSourceVersionTopicKafkaURL = version.getPushStreamSourceAddress();
@@ -2057,9 +2056,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
       case UPDATE:
         Update update = (Update) kafkaValue.payloadUnion;
-        int valueSchemaId = update.schemaId;
-        int derivedSchemaId = update.updateSchemaId;
-        GenericRecord originalValue;
+        final int valueSchemaId = update.schemaId;
+        final int writeComputeSchemaId = update.updateSchemaId;
+        final GenericRecord originalValue;
 
         /**
          *  Few Notes:
@@ -2115,12 +2114,12 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         }
 
         //compute.
-        byte[] updatedValueBytes;
+        final byte[] updatedValueBytes;
         try {
           long writeComputeStartTimeInNS = System.nanoTime();
           updatedValueBytes =
               ingestionTaskWriteComputeAdapter.getUpdatedValueBytes(originalValue, update.updateValue,
-                  valueSchemaId, derivedSchemaId);
+                  valueSchemaId, writeComputeSchemaId);
           storeIngestionStats.recordWriteComputeUpdateLatency(storeName, LatencyUtils.getLatencyInMS(writeComputeStartTimeInNS));
         } catch (Exception e) {
           writeComputeFailureCode = StatsErrorCode.WRITE_COMPUTE_UPDATE_FAILURE.code;

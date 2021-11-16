@@ -12,13 +12,13 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 
-import static com.linkedin.venice.schema.WriteComputeSchemaAdapter.WriteComputeOperation.*;
+import static com.linkedin.venice.schema.WriteComputeSchemaConverter.WriteComputeOperation.*;
 import static org.apache.avro.Schema.*;
 import static org.apache.avro.Schema.Type.*;
 
 
 /**
- * A util class that parses arbitrary Avro schema to its' write compute schema.
+ * This class converts an arbitrary Avro schema to its write compute schema.
  *
  * Currently, it supports record partial update, collection merging and deletion
  * See {@link WriteComputeOperation} for details.
@@ -30,10 +30,11 @@ import static org.apache.avro.Schema.Type.*;
  * 2. We should ask partners to assign a default value or wrap the field with nullable union if they intent to use
  * "partial put" to create new k/v pair (when the key is not existing in the store).
  *
- * 3. nested parsing is not allowed in order to reduce the complexity. Only the top level fields will be parsed.
+ * 3. nested parsing is not allowed in order to reduce the complexity. Only the top level fields will be converted.
  * Nested Record/Array/Map will remain the same after parsing.
  */
-public class WriteComputeSchemaAdapter {
+public class WriteComputeSchemaConverter {
+  private final static WriteComputeSchemaConverter instance = new WriteComputeSchemaConverter();
 
   /**
    * This enum describe the possible write compute operations Venice supports
@@ -116,24 +117,23 @@ public class WriteComputeSchemaAdapter {
   public static final String MAP_UNION = "mapUnion";
   public static final String MAP_DIFF = "mapDiff";
 
-  private WriteComputeSchemaAdapter() {}
+  private WriteComputeSchemaConverter() {}
 
-  public static Schema parse(String schemaStr) {
-    return parse(Schema.parse(schemaStr));
+  public static Schema convert(String schemaStr) {
+    return convert(Schema.parse(schemaStr));
   }
 
-  public static Schema parse(Schema schema) {
+  public static Schema convert(Schema schema) {
     String name = null;
 
-    /*if this is a record, we'd like to append a suffix to the name so that the write
-    schema name wouldn't collide with the original schema name
-    */
+    /**
+     * If this is a record, we'd like to append a suffix to the name so that the write
+     * schema name wouldn't collide with the original schema name
+     */
     if (schema.getType() == RECORD) {
       name = schema.getName() + WRITE_COMPUTE_RECORD_SCHEMA_SUFFIX;
     }
-
-    WriteComputeSchemaAdapter adapter = new WriteComputeSchemaAdapter();
-    return adapter.wrapDelOpUnion(parse(schema, name, null));
+    return instance.wrapDelOpUnion(convert(schema, name, null));
   }
 
   /**
@@ -145,18 +145,16 @@ public class WriteComputeSchemaAdapter {
    *                  definition error might occur when a Record contains multiple arrays/maps. In case it happens,
    *                  we inherit field name as the namespace to distinguish them.
    */
-  private static Schema parse(Schema originSchema, String derivedSchemaName, String namespace) {
-    WriteComputeSchemaAdapter adapter = new WriteComputeSchemaAdapter();
-
+  private static Schema convert(Schema originSchema, String derivedSchemaName, String namespace) {
     switch (originSchema.getType()) {
       case RECORD:
-        return adapter.parseRecord(originSchema, derivedSchemaName);
+        return instance.convertRecord(originSchema, derivedSchemaName);
       case ARRAY:
-        return adapter.parseArray(originSchema, derivedSchemaName, namespace);
+        return instance.convertArray(originSchema, derivedSchemaName, namespace);
       case MAP:
-        return adapter.parseMap(originSchema, derivedSchemaName, namespace);
+        return instance.convertMap(originSchema, derivedSchemaName, namespace);
       case UNION:
-        return adapter.parseUnion(originSchema, derivedSchemaName, namespace);
+        return instance.convertUnion(originSchema, derivedSchemaName, namespace);
       default:
         return originSchema;
     }
@@ -229,7 +227,7 @@ public class WriteComputeSchemaAdapter {
    *
    * @param recordSchema the original record schema
    */
-  private Schema parseRecord(Schema recordSchema, String derivedSchemaName) {
+  private Schema convertRecord(Schema recordSchema, String derivedSchemaName) {
     String recordNamespace = recordSchema.getNamespace();
 
     if (derivedSchemaName == null) {
@@ -245,9 +243,9 @@ public class WriteComputeSchemaAdapter {
             + "does not have a default value.", field.name()));
       }
 
-      //parse each field. We'd like to skip parsing "RECORD" type in order to avoid recursive parsing
+      // Convert each field. We'd like to skip parsing "RECORD" type in order to avoid recursive parsing
       fieldList.add(AvroCompatibilityHelper.createSchemaField(field.name(), wrapNoopUnion(recordNamespace, field.schema().getType() == RECORD ?
-          field.schema() : parse(field.schema(), field.name(), recordNamespace)), field.doc(), Collections.emptyMap(),
+          field.schema() : convert(field.schema(), field.name(), recordNamespace)), field.doc(), Collections.emptyMap(),
           field.order()));
     }
 
@@ -292,9 +290,9 @@ public class WriteComputeSchemaAdapter {
    *
    * @param arraySchema the original array schema
    * @param name
-   * @param namespace The namespace in "ListOps" record. See {@link #parse(Schema, String, String)} for details.
+   * @param namespace The namespace in "ListOps" record. See {@link #convert(Schema, String, String)} for details.
    */
-  private Schema parseArray(Schema arraySchema, String name, String namespace) {
+  private Schema convertArray(Schema arraySchema, String name, String namespace) {
     return Schema.createUnion(Arrays.asList(getCollectionOperation(LIST_OPS, arraySchema, name, namespace),
         arraySchema));
   }
@@ -330,9 +328,9 @@ public class WriteComputeSchemaAdapter {
    * } ]
    *
    * @param mapSchema the original map schema
-   * @param namespace the namespace in "MapOps" record. See {@link #parse(Schema, String, String)} for details.
+   * @param namespace the namespace in "MapOps" record. See {@link #convert(Schema, String, String)} for details.
    */
-  private Schema parseMap(Schema mapSchema, String name, String namespace) {
+  private Schema convertMap(Schema mapSchema, String name, String namespace) {
     return Schema.createUnion(Arrays.asList(getCollectionOperation(MAP_OPS, mapSchema, name, namespace),
         mapSchema));
   }
@@ -340,7 +338,7 @@ public class WriteComputeSchemaAdapter {
   /**
    * Wrap up a union schema with possible write compute operations.
    *
-   * N.B.: if it's an top level union field, the parse will try to parse the elements(except for RECORD)
+   * N.B.: if it's an top level union field, the convert will try to convert the elements(except for RECORD)
    * inside the union. It's not supported if an union contains more than 1 collections since it will
    * confuse the interpreter about which elements the operation is supposed to be applied.
    *
@@ -415,7 +413,7 @@ public class WriteComputeSchemaAdapter {
    *   "fields" : [ ]
    * } ]
    */
-  private Schema parseUnion(Schema unionSchema, String name, String namespace) {
+  private Schema convertUnion(Schema unionSchema, String name, String namespace) {
     containsOnlyOneCollection(unionSchema);
     return createFlattenedUnion(unionSchema.getTypes().stream().sequential()
         .map(schema ->{
@@ -424,7 +422,7 @@ public class WriteComputeSchemaAdapter {
             return schema;
           }
 
-          return parse(schema, name, namespace);
+          return convert(schema, name, namespace);
         })
         .collect(Collectors.toList()));
   }
@@ -489,8 +487,6 @@ public class WriteComputeSchemaAdapter {
 
     return createFlattenedUnion(list);
   }
-
-
 
   public static Schema createFlattenedUnion(List<Schema> schemaList) {
     List<Schema> flattenedSchemaList = new ArrayList<>();

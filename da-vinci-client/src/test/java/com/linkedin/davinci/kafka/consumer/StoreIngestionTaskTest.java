@@ -58,7 +58,7 @@ import com.linkedin.venice.offsets.InMemoryStorageMetadataService;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.partitioner.UserPartitionAwarePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
-import com.linkedin.venice.schema.ReplicationMetadataSchemaAdapter;
+import com.linkedin.venice.schema.ReplicationMetadataSchemaGenerator;
 import com.linkedin.venice.schema.ReplicationMetadataSchemaEntry;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.serialization.DefaultSerializer;
@@ -233,7 +233,7 @@ public class StoreIngestionTaskTest {
   private static final byte[] deleteKeyFoo = getRandomKey(PARTITION_FOO);
 
   private static final int REPLICATION_METADATA_VERSION_ID = 1;
-  private static final Schema REPLICATION_METADATA_SCHEMA = ReplicationMetadataSchemaAdapter.parse(STRING_SCHEMA, 1);
+  private static final Schema REPLICATION_METADATA_SCHEMA = ReplicationMetadataSchemaGenerator.generateMetadataSchema(STRING_SCHEMA, 1);
   private static final RecordSerializer REPLICATION_METADATA_SERIALIZER = FastSerializerDeserializerFactory.getFastAvroGenericSerializer(REPLICATION_METADATA_SCHEMA);
 
   private static final long putKeyFooTimestamp = 1L;
@@ -241,8 +241,8 @@ public class StoreIngestionTaskTest {
   private static final long putKeyFooOffset = 1L;
   private static final long deleteKeyFooOffset = 2L;
 
-  private static final byte[] putKeyFooReplicationMetadataWithValueSchemaIdBytes = getReplicationMetadataWithValueSchemaId(putKeyFooTimestamp, putKeyFooOffset, EXISTING_SCHEMA_ID);
-  private static final byte[] deleteKeyFooReplicationMetadataWithValueSchemaIdBytes = getReplicationMetadataWithValueSchemaId(deleteKeyFooTimestamp, deleteKeyFooOffset, EXISTING_SCHEMA_ID);
+  private static final byte[] putKeyFooReplicationMetadataWithValueSchemaIdBytes = createReplicationMetadataWithValueSchemaId(putKeyFooTimestamp, putKeyFooOffset, EXISTING_SCHEMA_ID);
+  private static final byte[] deleteKeyFooReplicationMetadataWithValueSchemaIdBytes = createReplicationMetadataWithValueSchemaId(deleteKeyFooTimestamp, deleteKeyFooOffset, EXISTING_SCHEMA_ID);
 
   private boolean databaseChecksumVerificationEnabled = false;
 
@@ -256,7 +256,7 @@ public class StoreIngestionTaskTest {
         .array();
   }
 
-  private static byte[] getReplicationMetadataWithValueSchemaId(long timestamp, long offset, int valueSchemaId) {
+  private static byte[] createReplicationMetadataWithValueSchemaId(long timestamp, long offset, int valueSchemaId) {
     GenericRecord replicationMetadataRecord = new GenericData.Record(REPLICATION_METADATA_SCHEMA);
     replicationMetadataRecord.put(TIMESTAMP_FIELD, timestamp);
     replicationMetadataRecord.put(REPLICATION_CHECKPOINT_VECTOR_FIELD, Collections.singletonList(offset));
