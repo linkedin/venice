@@ -763,7 +763,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             if (store.isStoreMetadataSystemStoreEnabled()) {
                 // Attempt to dematerialize all possible versions, no-op if a version doesn't actually exist.
                 for (Version version : storeRepository.getStore(VeniceSystemStoreType.METADATA_STORE.getPrefix()).getVersions()) {
-                    dematerializeMetadataStoreVersion(clusterName, storeName, version.getNumber(), !store.isMigrating());
+                    dematerializeMetadataStoreVersion(clusterName, storeName, version.getNumber(), true);
                 }
             }
             // Delete All versions and push statues
@@ -2162,13 +2162,22 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
         try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
             String resourceName = Version.composeKafkaTopic(storeName, versionNumber);
-            logger.info("Deleting helix resource:" + resourceName + " in cluster:" + clusterName);
-            deleteHelixResource(clusterName, resourceName);
-            logger.info("Killing offline push for:" + resourceName + " in cluster:" + clusterName);
-            killOfflinePush(clusterName, resourceName, true);
             String realTimeTopic = Version.composeRealTimeTopic(storeName);
-            onlineOfflineTopicReplicator.get().terminateReplication(realTimeTopic, resourceName);
-            truncateKafkaTopic(Version.composeKafkaTopic(storeName, versionNumber));
+            killOfflinePush(clusterName, resourceName, true);
+            if (!isParent()) {
+                logger.info("Deleting helix resource:" + resourceName + " in cluster:" + clusterName);
+                deleteHelixResource(clusterName, resourceName);
+                try {
+                    logger.info("Terminating topic replication from: " + realTimeTopic + " to: " + realTimeTopic);
+                    onlineOfflineTopicReplicator.get().terminateReplication(realTimeTopic, resourceName);
+                } catch (Exception e) {
+                    logger.warn("Failed to terminate topic replication from: " + realTimeTopic + " to: "
+                        + realTimeTopic + ". It's possible online offline topic replicator is no longer in use. "
+                        + "Will proceed with topic deletion.", e);
+                }
+            }
+            logger.info("Killing offline push for:" + resourceName + " in cluster:" + clusterName);
+            truncateKafkaTopic(resourceName);
         }
     }
 
@@ -4979,10 +4988,14 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             metadataStoreWriter.removeMetadataStoreWriter(storeName);
             truncateKafkaTopic(Version.composeRealTimeTopic(metadataStoreName));
         }
-        storeMetadataUpdate(clusterName, storeName, store -> {
-            store.setStoreMetadataSystemStoreEnabled(false);
-            return store;
-        });
+        try {
+            storeMetadataUpdate(clusterName, storeName, store -> {
+                store.setStoreMetadataSystemStoreEnabled(false);
+                return store;
+            });
+        } catch (VeniceNoStoreException noStoreException) {
+            logger.warn("Corresponding Venice store no longer exist, skipping updating the metadata system store enabled flag");
+        }
     }
 
     public void setStoreConfigForMigration(String storeName, String srcClusterName, String destClusterName) {
