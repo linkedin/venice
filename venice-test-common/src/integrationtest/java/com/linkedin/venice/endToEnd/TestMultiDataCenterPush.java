@@ -15,6 +15,7 @@ import com.linkedin.venice.controller.kafka.protocol.admin.UpdateStore;
 import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
 import com.linkedin.venice.controller.kafka.protocol.enums.SchemaType;
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
+import com.linkedin.venice.controllerapi.ClusterStaleDataAuditResponse;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
@@ -69,7 +70,6 @@ import java.util.stream.IntStream;
 
 import static com.linkedin.venice.hadoop.VenicePushJob.*;
 import static com.linkedin.venice.utils.TestPushUtils.*;
-
 
 public class TestMultiDataCenterPush {
   private static final Logger LOGGER = Logger.getLogger(TestMultiDataCenterPush.class);

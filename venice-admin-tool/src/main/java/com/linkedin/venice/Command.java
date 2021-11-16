@@ -205,8 +205,9 @@ public enum Command {
   COMPARE_STORE("compare-store", "Compare a store between two fabrics",
       new Arg[] {URL, CLUSTER, STORE, FABRIC_A, FABRIC_B}),
   REPLICATE_META_DATA("replicate-meta-data", "Copy a cluster's all stores schemas and store level configs from source fabric to destination fabric",
-      new Arg[] {URL, CLUSTER, SOURCE_FABRIC, DEST_FABRIC});
-
+      new Arg[] {URL, CLUSTER, SOURCE_FABRIC, DEST_FABRIC}),
+  LIST_CLUSTER_STALE_STORES("list-cluster-stale-stores", "List all stores in a cluster which have stale replicas.",
+      new Arg[] {REGIONS_FILTER, URL, CLUSTER}, new Arg[] {MESSAGE_COUNT});
   private final String commandName;
   private final String description;
   private final Arg[] requiredArgs;

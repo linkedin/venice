@@ -91,6 +91,7 @@ import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreCleaner;
 import com.linkedin.venice.meta.StoreConfig;
+import com.linkedin.venice.meta.StoreDataAudit;
 import com.linkedin.venice.meta.StoreGraveyard;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.VeniceUserStoreType;
@@ -5342,6 +5343,19 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 }
             });
         }
+    }
+
+    @Override
+    public List<StoreInfo> getClusterStores(String clusterName) {
+        //Return all stores at this step in the process
+        List<StoreInfo> ret = getAllStores(clusterName).stream()
+            .map(store -> StoreInfo.fromStore(store)).collect(Collectors.toList());
+        return ret;
+    }
+
+    @Override
+    public Map<String, StoreDataAudit> getClusterStaleStores(String clusterName, Optional<String> regionFilter) {
+        throw new UnsupportedOperationException("This function has not been implemented.");
     }
 
     @Override
