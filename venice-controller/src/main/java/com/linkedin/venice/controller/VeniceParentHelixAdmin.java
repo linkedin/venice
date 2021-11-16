@@ -61,6 +61,7 @@ import com.linkedin.venice.controllerapi.IncrementalPushVersionsResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.MultiStoreResponse;
+import com.linkedin.venice.controllerapi.MultiStoreInfoResponse;
 import com.linkedin.venice.controllerapi.MultiStoreStatusResponse;
 import com.linkedin.venice.controllerapi.NodeReplicasReadinessState;
 import com.linkedin.venice.controllerapi.ReadyForDataRecoveryResponse;
@@ -93,6 +94,7 @@ import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.RoutersClusterConfig;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.StoreDataAudit;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
@@ -3045,6 +3047,48 @@ public class VeniceParentHelixAdmin implements Admin {
       releaseAdminMessageLock(clusterName);
     }
   }
+
+  /**
+   * This function will iterate over all of Helix Parent Admin's child controllers,
+   * in order to ask about stale stores.
+   */
+
+  @Override
+  public Map<String, StoreDataAudit> getClusterStaleStores(String clusterName, Optional<String> regionsFilter) {
+    Map<String, StoreDataAudit> dataMap = new HashMap<>();
+    Map<String, StoreDataAudit> retMap = new HashMap<>();
+    try {
+      Map<String, ControllerClient> childControllers = getVeniceHelixAdmin().getControllerClientMap(clusterName);
+
+      //iterate through child controllers
+      for (Map.Entry<String, ControllerClient> controller : childControllers.entrySet()) {
+        MultiStoreInfoResponse response = controller.getValue().getClusterStores(clusterName); // get all stores from child
+        response.getStoreInfoList().forEach((storeInfo) -> {
+          dataMap.putIfAbsent(storeInfo.getName(), new StoreDataAudit());
+          dataMap.get(storeInfo.getName()).setStoreName(storeInfo.getName());
+          dataMap.get(storeInfo.getName()).insert(controller.getKey(), storeInfo); // StoreDataAudit.insert manages version, and healthy/stale region delineation
+        });
+      }
+
+      //filter out
+      for (Map.Entry<String, StoreDataAudit> store : dataMap.entrySet()) {
+        StoreDataAudit audit = store.getValue();
+        Optional<String> currentPushJobTopic = getTopicForCurrentPushJob(
+            clusterName,
+            store.getValue().getStoreName(),
+            false,
+            false
+        );
+        if (audit.getLatestCreatedVersion() != audit.getLatestSuccessfulPushVersion() && currentPushJobTopic.isPresent() == false)
+          retMap.put(store.getKey(), audit);
+      }
+    } catch (Exception e) {
+      throw new VeniceException("Something went wrong trying to fetch stale stores.", e);
+    }
+    return retMap;
+  }
+
+  public List<StoreInfo> getClusterStores(String clusterName) { throw new UnsupportedOperationException("This function has no implementation."); }
 
   /**
    * This function will check whether there are still resources left for the requested store in the requested
