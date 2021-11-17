@@ -1438,7 +1438,6 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     } else if (currentSegment.isEnded()) {
       logger.warn("endSegment(partition " + partition + ") called but currentSegment.ended == true. Ignoring.");
     } else {
-      logger.info("endSegment(partition " + partition + ") called. Proceeding.");
       sendEndOfSegment(
           partition,
           new HashMap<>(), // TODO: Add extra debugging info
