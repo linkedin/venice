@@ -9,6 +9,7 @@ import com.linkedin.venice.pushmonitor.PartitionStatus;
 import com.linkedin.venice.pushmonitor.ReadOnlyPartitionStatus;
 import com.linkedin.venice.routerapi.ReplicaState;
 import com.linkedin.venice.utils.HelixUtils;
+import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -17,6 +18,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.stream.Collectors;
 import org.apache.helix.PropertyKey;
 import org.apache.helix.PropertyType;
@@ -26,7 +28,7 @@ import org.apache.helix.model.IdealState;
 import org.apache.helix.spectator.RoutingTableSnapshot;
 import org.apache.log4j.Logger;
 
-import static com.linkedin.venice.helix.ResourceAssignment.ResourceAssignmentChanges;
+import static com.linkedin.venice.helix.ResourceAssignment.*;
 
 
 /**
@@ -34,7 +36,7 @@ import static com.linkedin.venice.helix.ResourceAssignment.ResourceAssignmentCha
  */
 public class HelixCustomizedViewOfflinePushRepository extends HelixBaseRoutingRepository {
   private static final Logger logger = Logger.getLogger(HelixCustomizedViewOfflinePushRepository.class);
-
+  private final ReentrantReadWriteLock resourceAssignmentRWLock = new ReentrantReadWriteLock();
   private static final String LEADER_FOLLOWER_VENICE_STATE_FILLER = "N/A";
 
   public HelixCustomizedViewOfflinePushRepository(SafeHelixManager manager) {
@@ -44,18 +46,21 @@ public class HelixCustomizedViewOfflinePushRepository extends HelixBaseRoutingRe
 
   @Override
   public List<ReplicaState> getReplicaStates(String kafkaTopic, int partitionId) {
-      Partition partition = resourceAssignment.getPartition(kafkaTopic, partitionId);
-      if (partition == null) {
-        return Collections.emptyList();
-      }
-      return partition.getAllInstances()
-          .entrySet()
-          .stream()
-          .flatMap(e -> e.getValue()
-              .stream()
-              .map(instance -> new ReplicaState(partitionId, instance.getNodeId(), LEADER_FOLLOWER_VENICE_STATE_FILLER,
-                  e.getKey(), e.getKey().equals(ExecutionStatus.COMPLETED.name()))))
-          .collect(Collectors.toList());
+    Partition partition;
+    try (AutoCloseableLock ignored = new AutoCloseableLock(resourceAssignmentRWLock.readLock())) {
+       partition = resourceAssignment.getPartition(kafkaTopic, partitionId);
+    }
+    if (partition == null) {
+      return Collections.emptyList();
+    }
+    return partition.getAllInstances()
+        .entrySet()
+        .stream()
+        .flatMap(e -> e.getValue()
+            .stream()
+            .map(instance -> new ReplicaState(partitionId, instance.getNodeId(), LEADER_FOLLOWER_VENICE_STATE_FILLER,
+                e.getKey(), e.getKey().equals(ExecutionStatus.COMPLETED.name()))))
+        .collect(Collectors.toList());
   }
 
   @Override
@@ -147,9 +152,9 @@ public class HelixCustomizedViewOfflinePushRepository extends HelixBaseRoutingRe
         newResourceAssignment.setPartitionAssignment(resourceName, partitionAssignment);
       }
       final ResourceAssignmentChanges updates;
-      synchronized (resourceAssignment) {
-        // Update the live instances as well. Helix updates live instances in this routing data
-        // changed event.
+      try (AutoCloseableLock ignored = new AutoCloseableLock(resourceAssignmentRWLock.writeLock())) {
+            // Update the live instances as well. Helix updates live instances in this routing data
+            // changed event.
         this.liveInstancesMap = Collections.unmodifiableMap(liveInstanceSnapshot);
         updates = resourceAssignment.updateResourceAssignment(newResourceAssignment);
         logger.info("Updated resource assignment and live instances for .");
@@ -158,7 +163,10 @@ public class HelixCustomizedViewOfflinePushRepository extends HelixBaseRoutingRe
           + ", and the deleted resources are " + updates.getDeletedResource());
       // Notify listeners that listen on customized view data change
       for (String kafkaTopic : updates.getUpdatedResources()) {
-        PartitionAssignment partitionAssignment = resourceAssignment.getPartitionAssignment(kafkaTopic);
+        PartitionAssignment partitionAssignment;
+        try (AutoCloseableLock ignored = new AutoCloseableLock(resourceAssignmentRWLock.readLock())) {
+          partitionAssignment = resourceAssignment.getPartitionAssignment(kafkaTopic);
+        }
         listenerManager.trigger(kafkaTopic, listener -> listener.onCustomizedViewChange(partitionAssignment));
       }
       // Notify events to the listeners which listen on deleted resources.
