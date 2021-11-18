@@ -847,10 +847,11 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     reportStatusAdapter.reportTopicSwitchReceived(partitionConsumptionState);
     String sourceKafkaURL = kafkaServerUrls.get(0).toString();
 
-    // Calculate the start offset based on start timestamp
+    // Venice servers calculate the start offset based on start timestamp
     String newSourceTopicName = topicSwitch.sourceTopicName.toString();
     long upstreamStartOffset = OffsetRecord.LOWEST_OFFSET;
-    if (topicSwitch.rewindStartTimestamp > 0) {
+    // Since DaVinci clients might not have network ACLs to remote RT, they will skip upstream start offset calculation.
+    if (!isDaVinciClient && topicSwitch.rewindStartTimestamp > 0) {
       int newSourceTopicPartition = partitionConsumptionState.getSourceTopicPartition(newSourceTopicName);
       upstreamStartOffset = getTopicManager(sourceKafkaURL).getPartitionOffsetByTime(newSourceTopicName, newSourceTopicPartition, topicSwitch.rewindStartTimestamp);
       if (upstreamStartOffset != OffsetRecord.LOWEST_OFFSET) {
