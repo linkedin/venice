@@ -1960,19 +1960,24 @@ public class AdminTool {
   }
   protected static void printObject(Object response, Consumer<String> printFunction){
     try {
-      if (fieldsToDisplay.size() == 0){
-        printFunction.accept(jsonWriter.writeValueAsString(response));
-      } else { // Only display specified keys
-        ObjectMapper mapper = new ObjectMapper();
-        ObjectWriter plainJsonWriter = mapper.writer();
-        String jsonString = plainJsonWriter.writeValueAsString(response);
-        Map<String, Object> printMap = mapper.readValue(jsonString, new TypeReference<Map<String, Object>>() {});
-        Map<String, Object> filteredPrintMap = new HashMap<>();
+      ObjectMapper mapper = new ObjectMapper();
+      ObjectWriter plainJsonWriter = mapper.writer();
+      String jsonString = plainJsonWriter.writeValueAsString(response);
+      Map<String, Object> printMap = mapper.readValue(jsonString, new TypeReference<Map<String, Object>>() {});
+      Map<String, Object> filteredPrintMap = new HashMap<>();
+      if (fieldsToDisplay.size() > 0 ) {
         printMap.entrySet().stream().filter(entry -> fieldsToDisplay.contains(entry.getKey())).forEach(entry -> {
           filteredPrintMap.put(entry.getKey(), entry.getValue());
-            });
-        printFunction.accept(jsonWriter.writeValueAsString(filteredPrintMap));
+        });
+      } else {
+        filteredPrintMap.putAll(printMap);
       }
+      // Always filter out exceptionType if error is null.
+      if (filteredPrintMap.containsKey("error") && printMap.get("error") == null) {
+        filteredPrintMap.remove("error");
+        filteredPrintMap.remove("exceptionType");
+      }
+      printFunction.accept(jsonWriter.writeValueAsString(filteredPrintMap));
       printFunction.accept("\n");
     } catch (IOException e) {
       printFunction.accept("{\"" + ERROR + "\":\"" + e.getMessage() + "\"}");
