@@ -10,6 +10,7 @@ import java.net.URISyntaxException;
 import java.net.URLDecoder;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Optional;
 import org.apache.log4j.Logger;
 
 import static com.linkedin.venice.router.api.VenicePathParser.*;
@@ -53,7 +54,10 @@ public class VenicePathParserHelper {
   public Map<String,String> extractQueryParameters(HttpRequest request) {
     Map<String, String> queryPairs = new LinkedHashMap<String, String>();
     try {
-    String query = new URI(request.uri()).getQuery();
+    String query = Optional.ofNullable(new URI(request.uri()).getQuery()).orElse("");
+    if (query.isEmpty()) {
+      return queryPairs;
+    }
     String[] pairs = query.split("&");
     for (String pair : pairs) {
       int idx = pair.indexOf("=");

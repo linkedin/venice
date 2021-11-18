@@ -83,6 +83,10 @@ public class TestVenicePathParserHelper {
     Assert.assertEquals(helper.getResourceName(), storeName);
     Assert.assertNull(helper.getKey());
 
+    // Test null case for path
+    Map<String, String> emptyParams = helper.extractQueryParameters(request);
+    Assert.assertEquals(emptyParams.size(), 0);
+
     String valueSchemaUriForSingleSchema = host + TYPE_VALUE_SCHEMA + "/" + storeName + "/" + valueSchemaId;
     request = new BasicFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET,
         valueSchemaUriForSingleSchema, -1, -1);
