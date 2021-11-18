@@ -8,15 +8,8 @@ import java.io.UnsupportedEncodingException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URLDecoder;
-import java.nio.charset.Charset;
-import java.util.Collections;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
-import org.apache.http.NameValuePair;
-import org.apache.http.client.utils.URLEncodedUtils;
 import org.apache.log4j.Logger;
 
 import static com.linkedin.venice.router.api.VenicePathParser.*;
@@ -58,18 +51,18 @@ public class VenicePathParserHelper {
    * @return a map keyed by the parameter name and accompanied by it's associated value.
    */
   public Map<String,String> extractQueryParameters(HttpRequest request) {
-    Map<String, String> query_pairs = new LinkedHashMap<String, String>();
+    Map<String, String> queryPairs = new LinkedHashMap<String, String>();
     try {
     String query = new URI(request.uri()).getQuery();
     String[] pairs = query.split("&");
     for (String pair : pairs) {
       int idx = pair.indexOf("=");
-      query_pairs.put(URLDecoder.decode(pair.substring(0, idx), "UTF-8"), URLDecoder.decode(pair.substring(idx + 1), "UTF-8"));
+      queryPairs.put(URLDecoder.decode(pair.substring(0, idx), "UTF-8"), URLDecoder.decode(pair.substring(idx + 1), "UTF-8"));
     }
     } catch (UnsupportedEncodingException | URISyntaxException ex) {
       logger.warn("Failed to parse uri query string: " + request.uri(), ex);
     }
-    return query_pairs;
+    return queryPairs;
   }
 
   private VenicePathParserHelper(String uri){
