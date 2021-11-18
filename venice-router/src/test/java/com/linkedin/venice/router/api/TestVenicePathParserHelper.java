@@ -3,6 +3,7 @@ package com.linkedin.venice.router.api;
 import com.linkedin.ddsstorage.netty4.misc.BasicFullHttpRequest;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpVersion;
+import java.util.Map;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -32,6 +33,11 @@ public class TestVenicePathParserHelper {
     Assert.assertEquals(storageHelper.getResourceName(), "storename");
     Assert.assertEquals(storageHelper.getKey(), "key");
     Assert.assertFalse(storageHelper.isInvalidStorageRequest());
+
+    Map<String, String> params = storageHelper.extractQueryParameters(request);
+    Assert.assertTrue(params.containsKey("f"));
+    Assert.assertTrue(params.containsValue("b64"));
+    Assert.assertEquals(params.size(), 1);
 
     // verify the attr map content.
     VenicePathParserHelper helper = request.attr(PATHPARSER_ATTRIBUTE_KEY).get();

@@ -121,7 +121,7 @@ public class AdminOperationsHandler extends SimpleChannelInboundHandler<HttpRequ
     if (HttpMethod.GET.equals(method)) {
       handleGet(pathHelper, ctx);
     } else if (HttpMethod.POST.equals(method)) {
-      handlePost(pathHelper, ctx, pathHelper.extractQueryParamters(req));
+      handlePost(pathHelper, ctx, pathHelper.extractQueryParameters(req));
     } else {
       sendUserErrorResponse("Unsupported request method " + method, ctx);
     }

@@ -4,11 +4,14 @@ import com.linkedin.ddsstorage.netty4.misc.BasicFullHttpRequest;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.router.utils.VeniceRouterUtils;
 import io.netty.handler.codec.http.HttpRequest;
+import java.io.UnsupportedEncodingException;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.net.URLDecoder;
 import java.nio.charset.Charset;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -28,7 +31,6 @@ public class VenicePathParserHelper {
   private String resourceType = null;
   private String resourceName = null;
   private String key = null;
-  private Map<String,String> queryParameters = null;
 
   public static VenicePathParserHelper parseRequest(HttpRequest request) {
     if (request instanceof BasicFullHttpRequest) {
@@ -55,16 +57,19 @@ public class VenicePathParserHelper {
    * @param request request to have it's query parameters extracted
    * @return a map keyed by the parameter name and accompanied by it's associated value.
    */
-  public Map<String,String> extractQueryParamters(HttpRequest request) {
-    List<NameValuePair> params = null;
-    Map<String, String> queryParams = new HashMap<>();
+  public Map<String,String> extractQueryParameters(HttpRequest request) {
+    Map<String, String> query_pairs = new LinkedHashMap<String, String>();
     try {
-      params = URLEncodedUtils.parse(new URI(request.uri()), Charset.forName("UTF-8"));
-      queryParams = params.stream().collect(Collectors.toMap(NameValuePair::getName, NameValuePair::getValue));
-    } catch (URISyntaxException e) {
-      logger.warn("Failed to parse uri: " + request.uri());
+    String query = new URI(request.uri()).getQuery();
+    String[] pairs = query.split("&");
+    for (String pair : pairs) {
+      int idx = pair.indexOf("=");
+      query_pairs.put(URLDecoder.decode(pair.substring(0, idx), "UTF-8"), URLDecoder.decode(pair.substring(idx + 1), "UTF-8"));
     }
-    return queryParams;
+    } catch (UnsupportedEncodingException | URISyntaxException ex) {
+      logger.warn("Failed to parse uri query string: " + request.uri(), ex);
+    }
+    return query_pairs;
   }
 
   private VenicePathParserHelper(String uri){
