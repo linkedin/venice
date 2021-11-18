@@ -202,28 +202,20 @@ public class DaVinciBackend implements Closeable {
       String kafkaTopicName = storageEngine.getStoreName();
       String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopicName);
 
-      // If the store is not-managed, all its versions will be removed.
-      StoreBackend storeBackend = getStoreOrThrow(storeName);
-      if (managedClients.isPresent()) {
-        if (storeBackend.isManaged() && !managedClients.get().contains(storeName)) {
+      try {
+        StoreBackend storeBackend = getStoreOrThrow(storeName); // throws VeniceNoStoreException
+        if (managedClients.isPresent() && !managedClients.get().contains(storeName) && storeBackend.isManaged()) {
+          // If the store is not-managed, all its versions will be removed.
           logger.info("Deleting unused managed version " + kafkaTopicName);
           deleteStore(storeName);
           storageService.removeStorageEngine(kafkaTopicName);
           continue;
         }
-      }
-
-      // If the store does not exist in Venice system anymore, remove all of its versions.
-      try {
-        storeRepository.subscribe(storeName);
       } catch (VeniceNoStoreException e) {
-        // The version does not exist in Venice anymore, so it will be deleted.
+        // The store does not exist in Venice anymore, so it will be deleted.
         logger.info("Deleting invalid local version " + kafkaTopicName);
         storageService.removeStorageEngine(kafkaTopicName);
         continue;
-      } catch (InterruptedException e) {
-        logger.info("StoreRepository::subscribe was interrupted", e);
-        currentThread().interrupt();
       }
 
       // Initialize expected version numbers for each store.

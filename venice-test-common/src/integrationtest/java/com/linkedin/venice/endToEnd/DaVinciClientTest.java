@@ -56,7 +56,6 @@ import com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils;
 import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
 
-import java.util.concurrent.Callable;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
@@ -329,6 +328,12 @@ public class DaVinciClientTest {
           assertThrows(VeniceClientException.class, () -> client2.get(KEY_COUNT / 3).get());
         });
       }
+    }
+
+    // Test bootstrap-time junk removal
+    try (ControllerClient controllerClient = cluster.getControllerClient()) {
+      ControllerResponse response = controllerClient.disableAndDeleteStore(storeName3);
+      assertFalse(response.isError(), response.getError());
     }
 
     // Test managed clients & data cleanup
@@ -728,7 +733,6 @@ public class DaVinciClientTest {
     try (DaVinciClient<Integer, Integer> client = ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster, baseDataPath, daVinciConfig)) {
       client.subscribeAll().get();
     }
-
 
     VersionCreationResponse newVersion = cluster.getNewVersion(storeName, 1024);
     String topic = newVersion.getKafkaTopic();
