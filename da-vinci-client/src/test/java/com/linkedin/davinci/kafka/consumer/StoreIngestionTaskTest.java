@@ -2343,6 +2343,56 @@ public class StoreIngestionTaskTest {
     Assert.assertEquals(storeIngestionTaskUnderTest.isReadyToServe(mockPcsOffsetLagCaughtUpTimestampLagging), isDaVinciClient);
   }
 
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testProcessTopicSwitch(boolean isDaVinciClient) {
+    int amplificationFactor = 1;
+    VenicePartitioner partitioner = getVenicePartitioner(amplificationFactor);
+    PartitionerConfig partitionerConfig = new PartitionerConfigImpl();
+    partitionerConfig.setPartitionerClass(partitioner.getClass().getName());
+    partitionerConfig.setAmplificationFactor(amplificationFactor);
+    HybridStoreConfig hybridStoreConfig = new HybridStoreConfigImpl(100,
+        100,
+        100,
+        DataReplicationPolicy.AGGREGATE,
+        BufferReplayPolicy.REWIND_FROM_EOP
+    );
+    MockStoreVersionConfigs storeAndVersionConfigs = setupStoreAndVersionMocks(2, partitionerConfig,
+        Optional.of(hybridStoreConfig), false, true, true, false);
+    Store mockStore = storeAndVersionConfigs.store;
+    Version version = storeAndVersionConfigs.version;
+    VeniceStoreVersionConfig storeConfig = storeAndVersionConfigs.storeVersionConfig;
+    StoreIngestionTaskFactory ingestionTaskFactory = getIngestionTaskFactoryBuilder(new RandomPollStrategy(),
+        Utils.setOf(PARTITION_FOO), Optional.of(hybridStoreConfig), Optional.empty(), amplificationFactor, new HashMap<>())
+        .setIsDaVinciClient(isDaVinciClient)
+        .setTopicManagerRepositoryJavaBased(mockTopicManagerRepository)
+        .build();
+    int leaderSubPartition = PartitionUtils.getLeaderSubPartition(PARTITION_FOO, amplificationFactor);
+    Properties kafkaProps = new Properties();
+    kafkaProps.put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, inMemoryLocalKafkaBroker.getKafkaBootstrapServer());
+
+    storeIngestionTaskUnderTest = ingestionTaskFactory.getNewIngestionTask(mockStore, version, kafkaProps,
+        isCurrentVersion, storeConfig, leaderSubPartition, false,
+        new StorageEngineBackedCompressorFactory(mockStorageMetadataService), Optional.empty());
+
+    TopicManager mockTopicManagerRemoteKafka = mock(TopicManager.class);
+    doReturn(mockTopicManagerRemoteKafka).when(mockTopicManagerRepository).getTopicManager(inMemoryRemoteKafkaBroker.getKafkaBootstrapServer());
+
+    TopicSwitch topicSwitchWithRemoteRealTimeTopic = new TopicSwitch();
+    topicSwitchWithRemoteRealTimeTopic.sourceKafkaServers = new ArrayList<>();
+    topicSwitchWithRemoteRealTimeTopic.sourceKafkaServers.add(inMemoryRemoteKafkaBroker.getKafkaBootstrapServer());
+    topicSwitchWithRemoteRealTimeTopic.sourceTopicName = Version.composeRealTimeTopic(mockStore.getName());
+    topicSwitchWithRemoteRealTimeTopic.rewindStartTimestamp = System.currentTimeMillis();
+    ControlMessage controlMessage = new ControlMessage();
+    controlMessage.controlMessageUnion = topicSwitchWithRemoteRealTimeTopic;
+    PartitionConsumptionState mockPcs = mock(PartitionConsumptionState.class);
+    OffsetRecord mockOffsetRecord = mock(OffsetRecord.class);
+    doReturn(mockOffsetRecord).when(mockPcs).getOffsetRecord();
+    storeIngestionTaskUnderTest.processTopicSwitch(controlMessage, PARTITION_FOO, 10, mockPcs);
+
+    verify(mockTopicManagerRemoteKafka, isDaVinciClient ? never() : times(1))
+        .getPartitionOffsetByTime(anyString(), anyInt(), anyLong());
+  }
+
   private static class MockStoreVersionConfigs {
     Store store;
     Version version;

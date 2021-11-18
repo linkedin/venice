@@ -836,7 +836,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           // producer timestamp in RT. Only use latest producer time in local RT.
           if (isDaVinciClient) {
             lagMeasurementKafkaUrl = localKafkaServer;
-            lagMeasurementTopic = kafkaVersionTopic;
+            lagMeasurementTopic = realTimeTopic;
           } else {
             lagMeasurementKafkaUrl = realTimeTopicKafkaURL;
             lagMeasurementTopic = realTimeTopic;
@@ -2416,7 +2416,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   protected void processTopicSwitch(ControlMessage controlMessage, int partition, long offset,
-      PartitionConsumptionState partitionConsumptionState) throws InterruptedException {
+      PartitionConsumptionState partitionConsumptionState) {
     throw new VeniceException(ControlMessageType.TOPIC_SWITCH.name() + " control message should not be received in"
         + "Online/Offline state model. Topic " + kafkaVersionTopic + " partition " + partition);
   }
