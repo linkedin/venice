@@ -2,6 +2,7 @@ package com.linkedin.venice.router;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.linkedin.venice.RequestConstants;
 import com.linkedin.venice.acl.AccessController;
 import com.linkedin.venice.acl.AclException;
 import com.linkedin.venice.router.api.VenicePathParserHelper;
@@ -120,7 +121,7 @@ public class AdminOperationsHandler extends SimpleChannelInboundHandler<HttpRequ
     if (HttpMethod.GET.equals(method)) {
       handleGet(pathHelper, ctx);
     } else if (HttpMethod.POST.equals(method)) {
-      handlePost(pathHelper, ctx);
+      handlePost(pathHelper, ctx, pathHelper.extractQueryParamters(req));
     } else {
       sendUserErrorResponse("Unsupported request method " + method, ctx);
     }
@@ -153,7 +154,7 @@ public class AdminOperationsHandler extends SimpleChannelInboundHandler<HttpRequ
     }
   }
 
-  private void handlePost(VenicePathParserHelper pathHelper, ChannelHandlerContext ctx) throws IOException {
+  private void handlePost(VenicePathParserHelper pathHelper, ChannelHandlerContext ctx, Map<String, String> queryParams) throws IOException {
     final String task = pathHelper.getResourceName();
     final String action = pathHelper.getKey();
 
@@ -165,7 +166,7 @@ public class AdminOperationsHandler extends SimpleChannelInboundHandler<HttpRequ
     if (TASK_READ_QUOTA_THROTTLE.equals(task)) {
       if (ACTION_ENABLE.equals(action)) {
         // A REST call to enable quota will only enable it if the router was initially configured to enable quota
-        resetReadQuotaThrottling();
+        resetReadQuotaThrottling(queryParams);
         sendReadQuotaThrottleStatus(ctx);
       } else if (ACTION_DISABLE.equals(action)) {
         disableReadQuotaThrottling();
@@ -175,6 +176,20 @@ public class AdminOperationsHandler extends SimpleChannelInboundHandler<HttpRequ
       }
     } else {
       sendUnimplementedErrorResponse(task, ctx);
+    }
+  }
+
+  private void resetReadQuotaThrottling(Map<String, String> queryParams) {
+    String delay = queryParams.get(RequestConstants.DELAY_EXECUTION);
+    if (delay != null) {
+      if (routerReadQuotaThrottlingLeaseFuture != null && !routerReadQuotaThrottlingLeaseFuture.isDone()) {
+        logger.info("Cancelling existing read quota timer.");
+        routerReadQuotaThrottlingLeaseFuture.cancel(true);
+      }
+
+      routerReadQuotaThrottlingLeaseFuture = executor.schedule((Runnable) this::resetReadQuotaThrottling, Long.parseLong(delay), TimeUnit.MILLISECONDS);
+    } else {
+      resetReadQuotaThrottling();
     }
   }
 
@@ -200,7 +215,7 @@ public class AdminOperationsHandler extends SimpleChannelInboundHandler<HttpRequ
 
     if (initialReadThrottlingEnabled || initialEarlyThrottleEnabled) {
       routerReadQuotaThrottlingLeaseFuture =
-          executor.schedule(this::resetReadQuotaThrottling, routerConfig.getReadQuotaThrottlingLeaseTimeoutMs(), TimeUnit.MILLISECONDS);
+          executor.schedule((Runnable) this::resetReadQuotaThrottling, routerConfig.getReadQuotaThrottlingLeaseTimeoutMs(), TimeUnit.MILLISECONDS);
     }
   }
 
