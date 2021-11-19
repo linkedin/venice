@@ -79,14 +79,6 @@ public class MergeConflictResolverTest {
     return ByteBuffer.wrap(serializer.serialize(record));
   }
 
-  private ByteBuffer getByteBufferOfReplicationMetadata(GenericRecord record) {
-    return ByteBuffer.wrap(rmdSerializer.serialize(record));
-  }
-
-  private GenericRecord getReplicationMetadataFromByteBuffer(ByteBuffer replicationMetadataBytes) {
-    return (GenericRecord) rmdDeserializer.deserialize(replicationMetadataBytes);
-  }
-
   @Test
   public void testPut() {
     GenericRecord valueRecord = new GenericData.Record(recordSchema);
@@ -110,7 +102,7 @@ public class MergeConflictResolverTest {
     ByteBuffer oldBB = getByteBufferOfRecord(valueRecord);
     ByteBuffer newBB = getByteBufferOfRecord(newRecord);
     MergeConflictResult mergeConflictResult  = mergeConflictResolver.put(Lazy.of(() -> oldBB),
-        getByteBufferOfReplicationMetadata(timestampRecord), newBB, 30, 1, 1, 1, 0);
+        GenericData.get().deepCopy(aaSchema, timestampRecord), newBB, 30, 1, 1, 1, 0);
 
     // verify id and name fields are from new record
     GenericRecord result = deserializer.deserialize(mergeConflictResult.getNewValue());
@@ -118,12 +110,12 @@ public class MergeConflictResolverTest {
 
     // verify update ignored.
     mergeConflictResult  = mergeConflictResolver.put(Lazy.of(() -> oldBB),
-        getByteBufferOfReplicationMetadata(timestampRecord), newBB, 10, 1, 1, 1, 0);
+        GenericData.get().deepCopy(aaSchema, timestampRecord), newBB, 10, 1, 1, 1, 0);
     Assert.assertTrue(mergeConflictResult.isUpdateIgnored());
 
     // verify same timestamp case
     mergeConflictResult  = mergeConflictResolver.put(Lazy.of(() -> oldBB),
-        getByteBufferOfReplicationMetadata(timestampRecord), newBB, 20, 1, 1,1, 0);
+        GenericData.get().deepCopy(aaSchema, timestampRecord), newBB, 20, 1, 1,1, 0);
 
     if (Merge.compareAndReturn(oldBB, newBB) == oldBB) {
       Assert.assertNull(mergeConflictResult.getNewValue());
@@ -133,16 +125,16 @@ public class MergeConflictResolverTest {
 
     // verify overwrite with new value case
     mergeConflictResult  = mergeConflictResolver.put(Lazy.of(() -> oldBB),
-        getByteBufferOfReplicationMetadata(timestampRecord), newBB, 30, 1, 1,1, 0);
+        GenericData.get().deepCopy(aaSchema, timestampRecord), newBB, 30, 1, 1,1, 0);
     Assert.assertEquals(mergeConflictResult.getNewValue(), newBB);
 
     // verify put with invalid schema id
     Assert.assertThrows(VeniceException.class, () -> mergeConflictResolver.put(Lazy.of(() -> oldBB),
-        getByteBufferOfReplicationMetadata(timestampRecord), newBB, 30, -1, 1,1, 0));
+        timestampRecord, newBB, 30, -1, 1,1, 0));
 
     // validate null old value
     mergeConflictResult  = mergeConflictResolver.put(Lazy.of(() -> null),
-        getByteBufferOfReplicationMetadata(timestampRecord), newBB, 30, 1, 1,1, 0);
+        GenericData.get().deepCopy(aaSchema, timestampRecord), newBB, 30, 1, 1,1, 0);
     result = deserializer.deserialize(mergeConflictResult.getNewValue());
     Assert.assertEquals(GenericData.get().compare(result, newRecord, recordSchema), 0);
 
@@ -153,7 +145,7 @@ public class MergeConflictResolverTest {
     // validate error on per field TS record
     timestampRecord.put(0,  ts);
     Assert.assertThrows(VeniceException.class,() -> mergeConflictResolver.put(Lazy.of(() -> oldBB),
-        getByteBufferOfReplicationMetadata(timestampRecord), newBB, 10, 1, 1,1, 0));
+        timestampRecord, newBB, 10, 1, 1,1, 0));
   }
 
   @Test
@@ -172,17 +164,17 @@ public class MergeConflictResolverTest {
     timestampRecord.put(1, new ArrayList<Long>());
 
     MergeConflictResolver mergeConflictResolver = new MergeConflictResolver(schemaRepository, storeName, replicationMetadataVersionId);
-    MergeConflictResult mergeConflictResult  = mergeConflictResolver.delete(getByteBufferOfReplicationMetadata(timestampRecord), 1, 30,1, 0);
+    MergeConflictResult mergeConflictResult  = mergeConflictResolver.delete(timestampRecord, 1, 30,1, 0);
 
     // verify delete null value
     Assert.assertNull(mergeConflictResult.getNewValue());
 
     // verify update ignored.
-    mergeConflictResult  = mergeConflictResolver.delete(getByteBufferOfReplicationMetadata(timestampRecord), 1, 10,1, 0);
+    mergeConflictResult  = mergeConflictResolver.delete(timestampRecord, 1, 10,1, 0);
     Assert.assertTrue(mergeConflictResult.isUpdateIgnored());
 
     // verify same timestamp case
-    mergeConflictResult  = mergeConflictResolver.delete(getByteBufferOfReplicationMetadata(timestampRecord), 1, 30,1, 0);
+    mergeConflictResult  = mergeConflictResolver.delete(timestampRecord, 1, 30,1, 0);
     Assert.assertNull(mergeConflictResult.getNewValue());
 
     // Validate null RMD for existing old value
@@ -196,11 +188,11 @@ public class MergeConflictResolverTest {
     Assert.assertEquals(mergeConflictResult.getValueSchemaID(), 1);
 
     // verify invalid schema id for existing old value
-    Assert.assertThrows(VeniceException.class, () -> mergeConflictResolver.delete(getByteBufferOfReplicationMetadata(timestampRecord), -1, 30,1, 0));
+    Assert.assertThrows(VeniceException.class, () -> mergeConflictResolver.delete(timestampRecord, -1, 30,1, 0));
 
     // validate error on per field TS record
     timestampRecord.put(0,  ts);
-    Assert.assertThrows(VeniceException.class, () -> mergeConflictResolver.delete(getByteBufferOfReplicationMetadata(timestampRecord), 1, 10,1, 0));
+    Assert.assertThrows(VeniceException.class, () -> mergeConflictResolver.delete(timestampRecord, 1, 10,1, 0));
   }
 
   @Test
@@ -234,26 +226,28 @@ public class MergeConflictResolverTest {
     for (int i = 0; i < 100; i++) {
       ByteBuffer newBB = getByteBufferOfRecord(payload.get(i));
       for (int j = 0; j < 100; j++) {
-        mergeConflictResult =  mergeConflictResolver.put(Lazy.of(() -> oldBB), getByteBufferOfReplicationMetadata(tsRecord.get(j)),  newBB,
+        GenericRecord rmd = GenericData.get().deepCopy(aaSchema, tsRecord.get(j));
+        mergeConflictResult =  mergeConflictResolver.put(Lazy.of(() -> oldBB), rmd,  newBB,
             writeTs.get(j), 1, 1,1, 0);
       }
     }
 
     GenericRecord result1 = deserializer.deserialize(mergeConflictResult.getNewValue());
 
-    Assert.assertEquals((long)getReplicationMetadataFromByteBuffer(mergeConflictResult.getReplicationMetadata()).get(0), 115L);
+    Assert.assertEquals((long)(mergeConflictResult.getReplicationMetadataRecord()).get(0), 115L);
 
     for (int i = 0; i < 100; i++) {
       for (int j = 0; j < 100; j++) {
         ByteBuffer newBB = getByteBufferOfRecord(payload.get(j));
-        mergeConflictResult =  mergeConflictResolver.put(Lazy.of(() -> oldBB), getByteBufferOfReplicationMetadata(tsRecord.get(i)),  newBB,
+        GenericRecord rmd = GenericData.get().deepCopy(aaSchema, tsRecord.get(j));
+        mergeConflictResult =  mergeConflictResolver.put(Lazy.of(() -> oldBB), rmd,  newBB,
             writeTs.get(i), 1, 1,1, 0);
       }
     }
     GenericRecord result2 = deserializer.deserialize(mergeConflictResult.getNewValue());
 
     // validate order of operation change results in a same object
-    Assert.assertEquals((long)getReplicationMetadataFromByteBuffer(mergeConflictResult.getReplicationMetadata()).get(0), 115L);
+    Assert.assertEquals((long)(mergeConflictResult.getReplicationMetadataRecord()).get(0), 115L);
     Assert.assertEquals(GenericData.get().compare(result1, result2, recordSchema), 0);
   }
 

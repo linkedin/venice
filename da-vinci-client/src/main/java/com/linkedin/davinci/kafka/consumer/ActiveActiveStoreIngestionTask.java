@@ -63,6 +63,7 @@ import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.BooleanSupplier;
+import org.apache.avro.generic.GenericRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.producer.Callback;
 import org.apache.log4j.Logger;
@@ -238,17 +239,19 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         partitionConsumptionState.getTransientRecord(key);
     if (transientRecord == null) {
       long lookupStartTimeInNS = System.nanoTime();
-      byte[] replicationMetadataWithValueSchemaBytes = storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic).getReplicationMetadata(subPartition, key);
+      byte[] replicationMetadataWithValueSchemaBytes = storageEngineRepository
+          .getLocalStorageEngine(kafkaVersionTopic).getReplicationMetadata(subPartition, key);
       storeIngestionStats.recordIngestionReplicationMetadataLookUpLatency(storeName, LatencyUtils.getLatencyInMS(lookupStartTimeInNS));
-      return ReplicationMetadataWithValueSchemaId.convertStorageEngineBytes(replicationMetadataWithValueSchemaBytes);
+      return ReplicationMetadataWithValueSchemaId.convertStorageEngineBytes(replicationMetadataWithValueSchemaBytes, mergeConflictResolver);
     } else {
       storeIngestionStats.recordIngestionReplicationMetadataCacheHitCount(storeName);
-      return new ReplicationMetadataWithValueSchemaId(transientRecord.getReplicationMetadata(), transientRecord.getValueSchemaId());
+      return new ReplicationMetadataWithValueSchemaId(transientRecord.getValueSchemaId(), transientRecord.getReplicationMetadataRecord());
     }
   }
 
   // This function may modify the original record in KME and it is unsafe to use the payload from KME directly after this function.
-  protected void processMessageAndMaybeProduceToKafka(VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope> consumerRecordWrapper, PartitionConsumptionState partitionConsumptionState, int subPartition) {
+  protected void processMessageAndMaybeProduceToKafka(VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope> consumerRecordWrapper,
+      PartitionConsumptionState partitionConsumptionState, int subPartition) {
     /**
      * With {@link com.linkedin.davinci.replication.BatchConflictResolutionPolicy.BATCH_WRITE_LOSES} there is no need
      * to perform DCR before EOP and L/F DIV passthrough mode should be used.
@@ -279,20 +282,22 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         throw new VeniceMessageException(consumerTaskId + " : Invalid/Unrecognized operation type submitted: " + kafkaValue.messageType);
     }
 
-    Lazy<ByteBuffer>
-        lazyOldValue = Lazy.of(() -> getValueBytesForKey(partitionConsumptionState, keyBytes, consumerRecord.topic(), consumerRecord.partition(), isChunkedTopic));
-    ReplicationMetadataWithValueSchemaId replicationMetadataWithValueSchemaId = getReplicationMetadataAndSchemaId(partitionConsumptionState, keyBytes, subPartition);
+    Lazy<ByteBuffer> lazyOldValue = Lazy.of(() ->
+        getValueBytesForKey(partitionConsumptionState, keyBytes, consumerRecord.topic(), consumerRecord.partition(), isChunkedTopic));
 
-    ByteBuffer replicationMetadataOfOldValue = null;
+    ReplicationMetadataWithValueSchemaId replicationMetadataWithValueSchemaId =
+        getReplicationMetadataAndSchemaId(partitionConsumptionState, keyBytes, subPartition);
+
     int oldValueSchemaId = -1;
-    if (replicationMetadataWithValueSchemaId != null) {
-      replicationMetadataOfOldValue = replicationMetadataWithValueSchemaId.getReplicationMetadata();
-      oldValueSchemaId = replicationMetadataWithValueSchemaId.getValueSchemaId();
-    }
+    GenericRecord oldReplicationMetadataRecord = null;
 
+    if (replicationMetadataWithValueSchemaId != null) {
+      oldValueSchemaId = replicationMetadataWithValueSchemaId.getValueSchemaId();
+      oldReplicationMetadataRecord = replicationMetadataWithValueSchemaId.getReplicationMetadataRecord();
+    }
     long writeTimestamp = mergeConflictResolver.getWriteTimestampFromKME(kafkaValue);
-    long offsetSumPreOperation = mergeConflictResolver.extractOffsetVectorSumFromReplicationMetadata(replicationMetadataOfOldValue, oldValueSchemaId);
-    List<Long> recordTimestampsPreOperation = mergeConflictResolver.extractTimestampFromReplicationMetadata(replicationMetadataOfOldValue, oldValueSchemaId);
+    long offsetSumPreOperation = mergeConflictResolver.extractOffsetVectorSumFromReplicationMetadata(oldReplicationMetadataRecord);
+    List<Long> recordTimestampsPreOperation = mergeConflictResolver.extractTimestampFromReplicationMetadata(oldReplicationMetadataRecord);
     // get the source offset and the id
     int sourceKafkaClusterId = kafkaClusterUrlToIdMap.getOrDefault(consumerRecordWrapper.kafkaUrl(), -1);
     long sourceOffset = consumerRecordWrapper.consumerRecord().offset();
@@ -300,11 +305,11 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
 
     switch (msgType) {
       case PUT:
-        mergeConflictResult = mergeConflictResolver.put(lazyOldValue, replicationMetadataOfOldValue,
+        mergeConflictResult = mergeConflictResolver.put(lazyOldValue, oldReplicationMetadataRecord,
             ((Put) kafkaValue.payloadUnion).putValue, writeTimestamp, oldValueSchemaId, incomingValueSchemaId, sourceOffset, sourceKafkaClusterId);
         break;
       case DELETE:
-        mergeConflictResult = mergeConflictResolver.delete(replicationMetadataOfOldValue, oldValueSchemaId, writeTimestamp, sourceOffset, sourceKafkaClusterId);
+        mergeConflictResult = mergeConflictResolver.delete(oldReplicationMetadataRecord, oldValueSchemaId, writeTimestamp, sourceOffset, sourceKafkaClusterId);
         break;
       case UPDATE:
         throw new VeniceUnsupportedOperationException("Update operation not yet supported in Active/Active.");
@@ -334,24 +339,25 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       return;
     }
     // Post Validation checks on resolution
-    if (offsetSumPreOperation > mergeConflictResolver.extractOffsetVectorSumFromReplicationMetadata(mergeConflictResult.getReplicationMetadata(), mergeConflictResult.getValueSchemaID())) {
+    GenericRecord replicationMetadataRecord = mergeConflictResult.getReplicationMetadataRecord();
+    if (offsetSumPreOperation > mergeConflictResolver.extractOffsetVectorSumFromReplicationMetadata(replicationMetadataRecord)) {
       // offsets went backwards, raise an alert!
       storeIngestionStats.recordOffsetRegressionDCRError();
       aggVersionedStorageIngestionStats.recordOffsetRegressionDCRError(storeName, versionNumber);
       logger.error(String.format("Offset vector found to have gone backwards!! New invalid replication metadata result:%s",
-          mergeConflictResolver.printReplicationMetadata(mergeConflictResult.getReplicationMetadata(), mergeConflictResult.getValueSchemaID())));
+          replicationMetadataRecord));
     }
 
     // TODO: This comparison doesn't work well for write compute+schema evolution (can spike up). VENG-8129
     // this works fine for now however as we do not fully support A/A write compute operations (as we only do root timestamp comparisons).
-    List<Long> timestampsPostOperation = mergeConflictResolver.extractTimestampFromReplicationMetadata(mergeConflictResult.getReplicationMetadata(), mergeConflictResult.getValueSchemaID());
+
+    List<Long> timestampsPostOperation = mergeConflictResolver.extractTimestampFromReplicationMetadata(replicationMetadataRecord);
     for(int i = 0; i < timestampsPreOperation.size(); i++) {
       if (timestampsPreOperation.get(i) > timestampsPostOperation.get(i)) {
         // timestamps went backwards, raise an alert!
         storeIngestionStats.recordTimeStampRegressionDCRError();
         aggVersionedStorageIngestionStats.recordTimestampRegressionDCRError(storeName, versionNumber);
-        logger.error(String.format("Timestamp found to have gone backwards!! Invalid replication metadata result:%s",
-            mergeConflictResolver.printReplicationMetadata(mergeConflictResult.getReplicationMetadata(), mergeConflictResult.getValueSchemaID())));
+        logger.error(String.format("Timestamp found to have gone backwards!! Invalid replication metadata result:%s", mergeConflictResult.getReplicationMetadataRecord()));
       }
     }
   }
@@ -409,12 +415,16 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
 
     final ByteBuffer updatedValueBytes = mergeConflictResult.getNewValue();
     final int valueSchemaId = mergeConflictResult.getValueSchemaID();
-    final ByteBuffer updatedReplicationMetadataBytes = mergeConflictResult.getReplicationMetadata();
+
+    GenericRecord replicationMetadataRecord = mergeConflictResult.getReplicationMetadataRecord();
+    final ByteBuffer updatedReplicationMetadataBytes = mergeConflictResolver.getByteBufferFromReplicationMetadata(
+        mergeConflictResult.getValueSchemaID(), mergeConflictResult.getReplicationMetadataRecord());
+
     // finally produce and update the transient record map.
     if (updatedValueBytes == null) {
       storeIngestionStats.recorTombstoneCreatedDCR();
       aggVersionedStorageIngestionStats.recordTombStoneCreationDCR(storeName, versionNumber);
-      partitionConsumptionState.setTransientRecord(consumerRecordWrapper.kafkaUrl(), consumerRecord.offset(), key, valueSchemaId, updatedReplicationMetadataBytes);
+      partitionConsumptionState.setTransientRecord(consumerRecordWrapper.kafkaUrl(), consumerRecord.offset(), key, valueSchemaId, replicationMetadataRecord);
       Delete deletePayload = new Delete();
       deletePayload.schemaId = valueSchemaId;
       deletePayload.replicationMetadataVersionId = replicationMetadataVersionId;
@@ -426,7 +436,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     } else {
       int valueLen = updatedValueBytes.remaining();
       partitionConsumptionState.setTransientRecord(consumerRecordWrapper.kafkaUrl(), consumerRecord.offset(), key, updatedValueBytes.array(), updatedValueBytes.position(),
-          valueLen, valueSchemaId, updatedReplicationMetadataBytes);
+          valueLen, valueSchemaId, replicationMetadataRecord);
 
       boolean doesResultReuseInput = mergeConflictResult.doesResultReuseInput();
       final int previousHeaderForPutValue = doesResultReuseInput ? ByteUtils.getIntHeaderFromByteBuffer(updatedValueBytes) : -1;

@@ -3,15 +3,20 @@ package com.linkedin.davinci.store.rocksdb;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.replication.ReplicationMetadataWithValueSchemaId;
+import com.linkedin.davinci.replication.merge.MergeConflictResolver;
 import com.linkedin.davinci.stats.AggVersionedStorageEngineStats;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.store.AbstractStorageEngineTest;
 import com.linkedin.davinci.store.StoragePartitionConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.PersistenceType;
+import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.schema.ReplicationMetadataSchemaEntry;
+import com.linkedin.venice.schema.ReplicationMetadataSchemaGenerator;
+import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.Pair;
@@ -23,6 +28,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
+import org.apache.avro.Schema;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -44,7 +50,7 @@ public class ReplicationMetadataRocksDBStoragePartitionTest extends AbstractStor
   private static final String valuePrefix = "value_";
   private static final String metadataPrefix = "metadata_";
   private static final RocksDBThrottler rocksDbThrottler = new RocksDBThrottler(3);
-
+  private  MergeConflictResolver mergeConflictResolver;
   private StorageService storageService;
   private VeniceStoreVersionConfig storeConfig;
 
@@ -98,6 +104,20 @@ public class ReplicationMetadataRocksDBStoragePartitionTest extends AbstractStor
     storeConfig = new VeniceStoreVersionConfig(topicName, serverProps, PersistenceType.ROCKS_DB);
     testStoreEngine = storageService.openStoreForNewPartition(storeConfig , PARTITION_ID);
     createStoreForTest();
+    String stringSchema = "\"string\"";
+    Schema aaSchema = ReplicationMetadataSchemaGenerator.generateMetadataSchema(stringSchema, 1);
+    ReadOnlySchemaRepository schemaRepository = mock(ReadOnlySchemaRepository.class);
+
+    ReplicationMetadataSchemaEntry
+        rmdSchemaEntry = new ReplicationMetadataSchemaEntry(1, 1, aaSchema);
+    doReturn(rmdSchemaEntry).when(schemaRepository).getReplicationMetadataSchema(anyString(), anyInt(), anyInt());
+
+    SchemaEntry valueSchemaEntry = new SchemaEntry(1, stringSchema);
+    ReplicationMetadataSchemaEntry rmdSchemaEnry = new ReplicationMetadataSchemaEntry(1, 1, aaSchema);
+    doReturn(valueSchemaEntry).when(schemaRepository).getLatestValueSchema(anyString());
+    doReturn(rmdSchemaEnry).when(schemaRepository).getReplicationMetadataSchema(anyString(), anyInt(), anyInt());
+
+    mergeConflictResolver = new MergeConflictResolver(schemaRepository, storeName, 1);
   }
 
   @BeforeClass
@@ -149,28 +169,32 @@ public class ReplicationMetadataRocksDBStoragePartitionTest extends AbstractStor
       byte[] key = entry.getKey().getBytes();
       byte[] value = storagePartition.get(key);
       Assert.assertEquals(value, entry.getValue().getFirst().getBytes());
-      ReplicationMetadataWithValueSchemaId replicationMetadataWithValueSchemaId =
-          ReplicationMetadataWithValueSchemaId.convertStorageEngineBytes(storagePartition.getReplicationMetadata(key));
-      byte[] metadata = ByteUtils.extractByteArray(replicationMetadataWithValueSchemaId.getReplicationMetadata());
-      Assert.assertEquals(replicationMetadataWithValueSchemaId.getValueSchemaId(), valueSchemaId);
-      Assert.assertEquals(metadata, entry.getValue().getSecond().getBytes());
+      byte[] metadata = storagePartition.getReplicationMetadata(key);
+      ByteBuffer replicationMetadataWithValueSchema = ByteBuffer.wrap(metadata);
+      int replicationMetadataWithValueSchemaInt = replicationMetadataWithValueSchema.getInt();
+
+      Assert.assertEquals(replicationMetadataWithValueSchemaInt, valueSchemaId);
+      Assert.assertEquals(replicationMetadataWithValueSchema, ByteBuffer.wrap(entry.getValue().getSecond().getBytes()));
     }
 
     for (Map.Entry<String, Pair<String, String>> entry : inputRecords.entrySet()) {
       byte[] updatedMetadataBytes = "updated_metadata".getBytes();
+      byte[] key = entry.getKey().getBytes();
       int updatedValueSchemaId = 2;
       byte[] updatedReplicationMetadataWitValueSchemaIdBytes = getReplicationMetadataWithValueSchemaId(updatedMetadataBytes, updatedValueSchemaId);
 
-      storagePartition.deleteWithReplicationMetadata(entry.getKey().getBytes(), updatedReplicationMetadataWitValueSchemaIdBytes);
+      storagePartition.deleteWithReplicationMetadata(key, updatedReplicationMetadataWitValueSchemaIdBytes);
 
-      byte[] value = storagePartition.get(entry.getKey().getBytes());
+      byte[] value = storagePartition.get(key);
       Assert.assertNull(value);
-      ReplicationMetadataWithValueSchemaId replicationMetadataWithValueSchemaId =
-          ReplicationMetadataWithValueSchemaId.convertStorageEngineBytes(storagePartition.getReplicationMetadata(entry.getKey().getBytes()));
-      byte[] metadata = ByteUtils.extractByteArray(replicationMetadataWithValueSchemaId.getReplicationMetadata());
+
+      byte[] metadata = storagePartition.getReplicationMetadata(key);
+      ByteBuffer replicationMetadataWithValueSchema = ByteBuffer.wrap(metadata);
+      int replicationMetadataWithValueSchemaInt = replicationMetadataWithValueSchema.getInt();
+
       Assert.assertNotNull(metadata);
-      Assert.assertEquals(replicationMetadataWithValueSchemaId.getValueSchemaId(), updatedValueSchemaId);
-      Assert.assertEquals(metadata, updatedMetadataBytes);
+      Assert.assertEquals(replicationMetadataWithValueSchema, ByteBuffer.wrap(updatedMetadataBytes));
+      Assert.assertEquals(replicationMetadataWithValueSchemaInt, updatedValueSchemaId);
     }
 
 
@@ -198,19 +222,22 @@ public class ReplicationMetadataRocksDBStoragePartitionTest extends AbstractStor
     for (Map.Entry<String, Pair<String, String>> entry : inputRecordsBatch.entrySet()) {
       byte[] updatedMetadataBytes = "updated_metadata".getBytes();
       int updatedValueSchemaId = 2;
+      byte[] key = entry.getKey().getBytes();
       byte[] updatedReplicationMetadataWitValueSchemaIdBytes = getReplicationMetadataWithValueSchemaId(updatedMetadataBytes, updatedValueSchemaId);
 
-      storagePartition.deleteWithReplicationMetadata(entry.getKey().getBytes(), updatedReplicationMetadataWitValueSchemaIdBytes);
+      storagePartition.deleteWithReplicationMetadata(key, updatedReplicationMetadataWitValueSchemaIdBytes);
 
 
-      byte[] value = storagePartition.get(entry.getKey().getBytes());
+      byte[] value = storagePartition.get(key);
       Assert.assertNull(value);
-      ReplicationMetadataWithValueSchemaId replicationMetadataWithValueSchemaId =
-          ReplicationMetadataWithValueSchemaId.convertStorageEngineBytes(storagePartition.getReplicationMetadata(entry.getKey().getBytes()));
-      byte[] metadata = ByteUtils.extractByteArray(replicationMetadataWithValueSchemaId.getReplicationMetadata());
+
+      byte[] metadata = storagePartition.getReplicationMetadata(key);
+      ByteBuffer replicationMetadataWithValueSchema = ByteBuffer.wrap(metadata);
+      int replicationMetadataWithValueSchemaInt = replicationMetadataWithValueSchema.getInt();
+
       Assert.assertNotNull(metadata);
-      Assert.assertEquals(replicationMetadataWithValueSchemaId.getValueSchemaId(), updatedValueSchemaId);
-      Assert.assertEquals(metadata, updatedMetadataBytes);
+      Assert.assertEquals(replicationMetadataWithValueSchemaInt, updatedValueSchemaId);
+      Assert.assertEquals(replicationMetadataWithValueSchema, ByteBuffer.wrap(updatedMetadataBytes));
     }
 
     storagePartition.drop();
