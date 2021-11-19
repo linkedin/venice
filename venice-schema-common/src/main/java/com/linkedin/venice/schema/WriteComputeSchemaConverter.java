@@ -99,7 +99,7 @@ public class WriteComputeSchemaConverter {
 
     String getUpperCamelName() {
       if (name.isEmpty()) {
-        return  name;
+        return name;
       }
 
       return name.substring(0, 1).toUpperCase() + name.substring(1);
@@ -414,7 +414,10 @@ public class WriteComputeSchemaConverter {
    * } ]
    */
   private Schema convertUnion(Schema unionSchema, String name, String namespace) {
-    containsOnlyOneCollection(unionSchema);
+    if (unionSchema.getType() != UNION) {
+      throw new VeniceException("Expect schema to be UNION type. Got: " + unionSchema);
+    }
+    DerivedSchemaUtils.containsOnlyOneCollection(unionSchema);
     return createFlattenedUnion(unionSchema.getTypes().stream().sequential()
         .map(schema ->{
           Schema.Type type = schema.getType();
@@ -425,35 +428,6 @@ public class WriteComputeSchemaConverter {
           return convert(schema, name, namespace);
         })
         .collect(Collectors.toList()));
-  }
-
-  /**
-   * Utility function that checks to make sure that given a union schema, there only exists 1 collection type amongst the
-   * provided types.  Multiple collections will make the result of the flattened write compute schema lead to ambiguous behavior
-   *
-   * @param unionSchema a union schema to validate.
-   * @throws VeniceException When the unionSchema contains more then one collection type
-   */
-  private void containsOnlyOneCollection(Schema unionSchema) {
-    List<Schema> types = unionSchema.getTypes();
-    boolean hasCollectionType = false;
-    for (Schema type : types) {
-      switch (type.getType()) {
-        case ARRAY:
-        case MAP:
-          if (hasCollectionType) {
-            // More then one collection type found, this won't work.
-            throw new VeniceException("Multiple collection types in a union are not allowedSchema: "
-                + unionSchema.toString(true));
-          }
-          hasCollectionType = true;
-          continue;
-        case RECORD:
-        case UNION:
-        default:
-          continue;
-      }
-    }
   }
 
   /**
@@ -523,7 +497,7 @@ public class WriteComputeSchemaConverter {
 
     //Avro requires every record to have a list of fields even if it's empty... Otherwise, NPE
     //will be thrown out during parsing the schema.
-    noOpSchema.setFields(Collections.EMPTY_LIST);
+    noOpSchema.setFields(Collections.emptyList());
 
     return noOpSchema;
   }

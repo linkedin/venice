@@ -258,7 +258,7 @@ public class StoreIngestionTaskTest {
 
   private static byte[] createReplicationMetadataWithValueSchemaId(long timestamp, long offset, int valueSchemaId) {
     GenericRecord replicationMetadataRecord = new GenericData.Record(REPLICATION_METADATA_SCHEMA);
-    replicationMetadataRecord.put(TIMESTAMP_FIELD, timestamp);
+    replicationMetadataRecord.put(TIMESTAMP_FIELD_NAME, timestamp);
     replicationMetadataRecord.put(REPLICATION_CHECKPOINT_VECTOR_FIELD, Collections.singletonList(offset));
 
     byte[] replicationMetadata = REPLICATION_METADATA_SERIALIZER.serialize(replicationMetadataRecord);

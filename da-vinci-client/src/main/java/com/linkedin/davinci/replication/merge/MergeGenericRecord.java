@@ -46,7 +46,7 @@ class MergeGenericRecord implements Merge<GenericRecord> {
       throw new VeniceException("Incoming schema " + newValue.getSchema() + " is not same as existing schema" + oldValue.getSchema());
     }
 
-    Object tsObject = oldReplicationMetadata.get(TIMESTAMP_FIELD);
+    Object tsObject = oldReplicationMetadata.get(TIMESTAMP_FIELD_NAME);
     ReplicationMetadataType replicationMetadataType = Merge.getReplicationMetadataType(tsObject);
 
     switch (replicationMetadataType) {
@@ -54,7 +54,7 @@ class MergeGenericRecord implements Merge<GenericRecord> {
         long oldTimeStamp = (long) tsObject;
         if (oldTimeStamp < writeOperationTimestamp) {
           oldValueAndReplicationMetadata.setValue(newValue);
-          oldReplicationMetadata.put(TIMESTAMP_FIELD, writeOperationTimestamp);
+          oldReplicationMetadata.put(TIMESTAMP_FIELD_NAME, writeOperationTimestamp);
           oldReplicationMetadata.put(REPLICATION_CHECKPOINT_VECTOR_FIELD,
               Merge.mergeOffsetVectors((List<Long>)oldReplicationMetadata.get(REPLICATION_CHECKPOINT_VECTOR_FIELD), sourceOffsetOfNewValue, sourceBrokerIDOfNewValue));
         } else if (oldTimeStamp == writeOperationTimestamp) {
@@ -103,7 +103,7 @@ class MergeGenericRecord implements Merge<GenericRecord> {
           }
         }
         if (allFieldsNew) {
-          oldReplicationMetadata.put(TIMESTAMP_FIELD, writeOperationTimestamp);
+          oldReplicationMetadata.put(TIMESTAMP_FIELD_NAME, writeOperationTimestamp);
         }
         return oldValueAndReplicationMetadata;
 
@@ -123,7 +123,7 @@ class MergeGenericRecord implements Merge<GenericRecord> {
 
     GenericRecord oldReplicationMetadata = oldValueAndReplicationMetadata.getReplicationMetadata();
 
-    Object tsObject = oldReplicationMetadata.get(TIMESTAMP_FIELD);
+    Object tsObject = oldReplicationMetadata.get(TIMESTAMP_FIELD_NAME);
     ReplicationMetadataType replicationMetadataType = Merge.getReplicationMetadataType(tsObject);
 
     // Always update the vector field
@@ -136,7 +136,7 @@ class MergeGenericRecord implements Merge<GenericRecord> {
         // delete wins when old and new write operation timestamps are equal.
         if (oldTimeStamp <= writeOperationTimestamp) {
           oldValueAndReplicationMetadata.setValue(null);
-          oldReplicationMetadata.put(TIMESTAMP_FIELD, writeOperationTimestamp);
+          oldReplicationMetadata.put(TIMESTAMP_FIELD_NAME, writeOperationTimestamp);
         }
         return oldValueAndReplicationMetadata;
 
@@ -161,7 +161,7 @@ class MergeGenericRecord implements Merge<GenericRecord> {
         if (!newerField) {
           oldValueAndReplicationMetadata.setValue(null);
           // update the timestamp since writeOperationTimestamp wins
-          oldReplicationMetadata.put(TIMESTAMP_FIELD, writeOperationTimestamp);
+          oldReplicationMetadata.put(TIMESTAMP_FIELD_NAME, writeOperationTimestamp);
         }
         return oldValueAndReplicationMetadata;
 
