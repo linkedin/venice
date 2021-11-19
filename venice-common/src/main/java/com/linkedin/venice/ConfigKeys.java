@@ -1656,7 +1656,7 @@ public class ConfigKeys {
   public static final String CONTROLLER_AUTO_MATERIALIZE_DAVINCI_PUSH_STATUS_SYSTEM_STORE = "controller.auto.materialize.davinci.push.status.system.store";
 
   /**
-   * This will indicate which ReplicationMetadataSchemaAdapter version to use to generate replication metadata schema.
+   * This will indicate which ReplicationMetadataSchemaGenerator version to use to generate replication metadata schema.
    */
   public static final String REPLICATION_METADATA_VERSION_ID = "replication.metadata.version.id";
 

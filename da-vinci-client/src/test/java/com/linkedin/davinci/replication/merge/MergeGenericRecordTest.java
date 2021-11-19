@@ -89,7 +89,7 @@ public class MergeGenericRecordTest {
     Assert.assertEquals(valueAndReplicationMetadata.getValue().get("id").toString(), "id");
     Assert.assertEquals(valueAndReplicationMetadata.getValue().get("name").toString(), "name");
     Assert.assertEquals(valueAndReplicationMetadata.getValue().get("age"), 10);
-    ts = (GenericRecord) valueAndReplicationMetadata.getReplicationMetadata().get(TIMESTAMP_FIELD);
+    ts = (GenericRecord) valueAndReplicationMetadata.getReplicationMetadata().get(TIMESTAMP_FIELD_NAME);
     Assert.assertEquals(ts.get("id"), 20L);
     Assert.assertEquals(ts.get("name"), 20L);
     Assert.assertEquals(ts.get("age"), 25L);
@@ -110,7 +110,7 @@ public class MergeGenericRecordTest {
     valueAndReplicationMetadata.setValue(valueRecord);
     valueAndReplicationMetadata = merge.delete(valueAndReplicationMetadata, 30, 1, 0);
     Assert.assertNull(valueAndReplicationMetadata.getValue());
-    Assert.assertEquals(valueAndReplicationMetadata.getReplicationMetadata().get(TIMESTAMP_FIELD), 30L);
+    Assert.assertEquals(valueAndReplicationMetadata.getReplicationMetadata().get(TIMESTAMP_FIELD_NAME), 30L);
 
 
     // no delete, return same object
@@ -204,7 +204,7 @@ public class MergeGenericRecordTest {
     Assert.assertEquals(valueAndReplicationMetadata.getValue().get("id"), wcRecord.get(0));
     Assert.assertEquals(valueAndReplicationMetadata.getValue().get("name"), valueRecord.get(1));
     Assert.assertEquals(valueAndReplicationMetadata.getValue().get("age"), wcRecord.get(2));
-    ts = (GenericRecord) valueAndReplicationMetadata.getReplicationMetadata().get(TIMESTAMP_FIELD);
+    ts = (GenericRecord) valueAndReplicationMetadata.getReplicationMetadata().get(TIMESTAMP_FIELD_NAME);
     Assert.assertEquals(ts.get("id"), 30L);
     Assert.assertEquals(ts.get("name"), 10L);
     Assert.assertEquals(ts.get("age"), 30L);
@@ -217,7 +217,7 @@ public class MergeGenericRecordTest {
     // validate ts record change from LONG to GenericRecord.
     timeStampRecord.put(0, 10L);
     valueAndReplicationMetadata = merge.update(valueAndReplicationMetadata, Lazy.of(() -> wcRecord), 30, 1, 0);
-    ts = (GenericRecord) valueAndReplicationMetadata.getReplicationMetadata().get(TIMESTAMP_FIELD);
+    ts = (GenericRecord) valueAndReplicationMetadata.getReplicationMetadata().get(TIMESTAMP_FIELD_NAME);
     Assert.assertEquals(ts.get("id"), 30L);
     Assert.assertEquals(ts.get("name"), 10L);
     Assert.assertEquals(ts.get("age"), 30L);
@@ -273,7 +273,7 @@ public class MergeGenericRecordTest {
     Assert.assertEquals(valueAndReplicationMetadata.getValue().get("id").toString(), "id99");
     Assert.assertEquals(valueAndReplicationMetadata.getValue().get("name").toString(), "name99");
     Assert.assertEquals(valueAndReplicationMetadata.getValue().get("age"), 109);
-    Assert.assertEquals((long) valueAndReplicationMetadata.getReplicationMetadata().get(TIMESTAMP_FIELD), 110);
+    Assert.assertEquals((long) valueAndReplicationMetadata.getReplicationMetadata().get(TIMESTAMP_FIELD_NAME), 110);
 
 
     valueAndReplicationMetadata = new ValueAndReplicationMetadata<>(origRecord, timeStampRecord);
@@ -287,6 +287,6 @@ public class MergeGenericRecordTest {
     Assert.assertEquals(valueAndReplicationMetadata.getValue().get("id").toString(), "id99");
     Assert.assertEquals(valueAndReplicationMetadata.getValue().get("name").toString(), "name99");
     Assert.assertEquals(valueAndReplicationMetadata.getValue().get("age"), 109);
-    Assert.assertEquals((long) valueAndReplicationMetadata.getReplicationMetadata().get(TIMESTAMP_FIELD), 110);
+    Assert.assertEquals((long) valueAndReplicationMetadata.getReplicationMetadata().get(TIMESTAMP_FIELD_NAME), 110);
   }
 }

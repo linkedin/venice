@@ -27,7 +27,7 @@ public class TestWriteComputeSchemaValidator {
 
   @Test
   public void testCanValidateNullableUnionField() {
-    Schema originalSchema = Schema.parse(recordOfNullableArrayStr);
+    Schema originalSchema = Schema.parse(TestAvroSchemaStrConstants.recordOfNullableArrayStr);
     Schema writeComputeSchema = WriteComputeSchemaConverter.convert(originalSchema);
 
     validate(originalSchema, writeComputeSchema);

@@ -1,6 +1,10 @@
 package com.linkedin.venice.schema;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import io.tehuti.utils.Utils;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
 import org.apache.avro.Schema;
 
 
@@ -9,7 +13,18 @@ import org.apache.avro.Schema;
  */
 
 public class ReplicationMetadataSchemaGenerator {
-  private static final ReplicationMetadataSchemaGeneratorV1 V1_REPLICATION_METADATA_SCHEMA_GENERATOR = new ReplicationMetadataSchemaGeneratorV1();
+  private static final int LATEST_VERSION = 2;
+  // It's fine to use V1 object in the map as V2 extends from V1. We'll need to abstract
+  // a new generator in the future if we bring some incompatible changes to the generator. (
+  // in case a newer adapter cannot extend from the older ones.)
+  private static final Map<Integer, ReplicationMetadataSchemaGeneratorV1> REPLICATION_METADATA_SCHEMA_GENERATOR;
+
+  static {
+    Map<Integer, ReplicationMetadataSchemaGeneratorV1> tmpMap = new HashMap<>(LATEST_VERSION);
+    tmpMap.put(1, new ReplicationMetadataSchemaGeneratorV1());
+    tmpMap.put(2, new ReplicationMetadataSchemaGeneratorV2());
+    REPLICATION_METADATA_SCHEMA_GENERATOR = Collections.unmodifiableMap(tmpMap);
+  }
 
   private ReplicationMetadataSchemaGenerator() {}
 
@@ -17,12 +32,16 @@ public class ReplicationMetadataSchemaGenerator {
     return generateMetadataSchema(Schema.parse(schemaStr), version);
   }
 
+  public static Schema generateMetadataSchema(Schema schema) {
+    return generateMetadataSchema(schema, LATEST_VERSION);
+  }
+
   public static Schema generateMetadataSchema(Schema schema, int version) {
-    switch (version) {
-      case 1:
-        return V1_REPLICATION_METADATA_SCHEMA_GENERATOR.generateMetadataSchema(schema);
-      default:
-        throw new VeniceException("Unknown replication metadata version id");
+    Utils.notNull(schema);
+    ReplicationMetadataSchemaGeneratorV1 metadataSchemaGenerator = REPLICATION_METADATA_SCHEMA_GENERATOR.get(version);
+    if (metadataSchemaGenerator == null) {
+      throw new VeniceException("Unknown replication metadata version id: " + version);
     }
+    return metadataSchemaGenerator.generateMetadataSchema(schema);
   }
 }

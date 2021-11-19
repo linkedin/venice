@@ -4,7 +4,6 @@ import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.exceptions.VeniceException;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.LinkedList;
 import java.util.List;
 import org.apache.avro.Schema;
 
@@ -30,10 +29,10 @@ import static org.apache.avro.Schema.Type.*;
  */
 
 public class ReplicationMetadataSchemaGeneratorV1 {
-  private static final String METADATA_RECORD_SUFFIX = "MetadataRecord";
-  private static final String NAME_SPACE = "com.linkedin.venice";
-  private static final Schema TIMESTAMP_SCHEMA = Schema.create(LONG);
-  private static final Schema OFFSET_VECTOR_SCHEMA = Schema.createArray(Schema.create(LONG));
+  protected static final String METADATA_RECORD_SUFFIX = "MetadataRecord";
+  protected static final String NAME_SPACE = "com.linkedin.venice";
+  protected static final Schema TIMESTAMP_SCHEMA = Schema.create(LONG);
+  protected static final Schema OFFSET_VECTOR_SCHEMA = Schema.createArray(Schema.create(LONG));
 
   public ReplicationMetadataSchemaGeneratorV1() {}
 
@@ -41,37 +40,13 @@ public class ReplicationMetadataSchemaGeneratorV1 {
     return generateMetadataSchema(Schema.parse(valueSchemaStr));
   }
 
-  public Schema generateMetadataSchema(Schema valueSchema) {
-    String origSchemaName = valueSchema.getName();
-    final String nameSpace;
-    if (valueSchema.getType() == RECORD) {
-      nameSpace = valueSchema.getNamespace();
-    } else {
-      nameSpace = NAME_SPACE;
-    }
-    return createMetadataRecord(origSchemaName, nameSpace, generateMetadataSchema(valueSchema, null));
+  public Schema generateMetadataSchema(Schema originalSchema) {
+    String nameSpace = (originalSchema.getType() == RECORD ? originalSchema.getNamespace() : NAME_SPACE);
+    return generateMetadataSchema(originalSchema, nameSpace);
   }
 
-  /**
-   * Currently it supports timestamps/offsets for only root level field of a record. Nested fields are not supported.
-   * @param originSchema
-   * @param namespace
-   * @return
-   */
-  private Schema generateMetadataSchema(Schema originSchema, String namespace) {
-    switch (originSchema.getType()) {
-      case RECORD:
-        return generateMetadataSchemaFromRecord(originSchema);
-      default:
-        return null;
-    }
-  }
-
-  private Schema generateMetadataSchemaFromRecord(Schema recordSchema) {
-    if (recordSchema.getType() != RECORD) {
-      throw new VeniceException("Expect schema with type RECORD. Got: " + recordSchema.getType() + " with name " + recordSchema.getName());
-    }
-
+  protected Schema generateMetadataSchemaFromRecord(Schema recordSchema, String namespace) {
+    validateSchemaType(recordSchema, RECORD);
     Schema newSchema = Schema.createRecord(recordSchema.getName(), recordSchema.getDoc(), recordSchema.getNamespace(),
         recordSchema.isError());
     List<Schema.Field> newFields = new ArrayList<>(recordSchema.getFields().size());
@@ -91,35 +66,53 @@ public class ReplicationMetadataSchemaGeneratorV1 {
     return newSchema;
   }
 
+  protected void validateSchemaType(Schema schema, Schema.Type expectedType) {
+    if (schema.getType() != expectedType) {
+      throw new VeniceException(String.format("Expect schema with type %s. Got: %s with name %s", expectedType, schema.getType(), schema.getName()));
+    }
+  }
+
   /**
-   * This function creates a record having fields called "timestamp" and "replication_checkpoint_vector". The timestamp field is a union of a "long" and a optional
-   * recordFieldsSchema.  replication_checkpoint_vector is an array with the high watermark of events which tried to update this vector (which may or may not actually
-   * altered the state).
+   * This function creates a record having fields called "timestamp" and "replication_checkpoint_vector".
+   * The timestamp field is a union of a "long" and a optional recordFieldsSchema.
    *
-   * @param origSchemaName name of the original value schema.
-   * @param nameSpace namespace
-   * @param recordFieldsSchema a generated record schema containing a timestamp for each field of the original record schema. This should
-   *                           be non-null only if the original value schema is a record schema type.
-   * @return
+   * replication_checkpoint_vector is an array with the high watermark of events which tried to update this
+   * record (which may or may not actually altered the state).
+   *
+   * @param originalSchema The original value schema.
+   * @param namespace namespace
    */
-  private Schema createMetadataRecord(String origSchemaName, String nameSpace, Schema recordFieldsSchema) {
-    LinkedList<Schema> schemaList = new LinkedList<>();
+  Schema generateMetadataSchema(Schema originalSchema, String namespace) {
+    List<Schema> rawTimestampSchemas = new ArrayList<>();
 
     //Root level timestamp field to indicate when was the full record updated.
-    schemaList.add(TIMESTAMP_SCHEMA);
-    if (recordFieldsSchema != null) {
-      schemaList.add(recordFieldsSchema);
+    rawTimestampSchemas.add(TIMESTAMP_SCHEMA);
+    // for RECORD, generate timestamp for each field
+    if (originalSchema.getType() == RECORD) {
+      rawTimestampSchemas.add(generateMetadataSchemaFromRecord(originalSchema, namespace));
     }
-    Schema tsUnionSchema = createFlattenedUnion(schemaList);
+    Schema tsUnionSchema = createFlattenedUnion(rawTimestampSchemas);
 
-    Schema metadataRecord = Schema.createRecord(origSchemaName + "_" + METADATA_RECORD_SUFFIX, null, nameSpace, false);
-    Schema.Field timeStampField = AvroCompatibilityHelper.createSchemaField(TIMESTAMP_FIELD, tsUnionSchema, "timestamp when the full record was last updated", 0);
+    Schema.Field timeStampField = AvroCompatibilityHelper.newField(null)
+        .setName(TIMESTAMP_FIELD_NAME)
+        .setSchema(tsUnionSchema)
+        .setDoc("timestamp when the full record was last updated")
+        .setDefault(0)
+        .setOrder(Schema.Field.Order.ASCENDING)
+        .build();
 
     // Offset vector is only stored at the record level (NOT the field level)
-    Schema.Field offsetVectorField = AvroCompatibilityHelper.createSchemaField(REPLICATION_CHECKPOINT_VECTOR_FIELD, OFFSET_VECTOR_SCHEMA, "high watermark remote checkpoints which touched this record",
-        new ArrayList<>());
-    metadataRecord.setFields(Arrays.asList(timeStampField, offsetVectorField));
+    Schema.Field offsetVectorField = AvroCompatibilityHelper.newField(null)
+        .setName(REPLICATION_CHECKPOINT_VECTOR_FIELD)
+        .setSchema(OFFSET_VECTOR_SCHEMA)
+        .setDoc("high watermark remote checkpoints which touched this record")
+        .setDefault(new ArrayList<>())
+        .setOrder(Schema.Field.Order.ASCENDING)
+        .build();
 
+    final Schema metadataRecord =
+        Schema.createRecord(originalSchema.getName() + "_" + METADATA_RECORD_SUFFIX, null, namespace, false);
+    metadataRecord.setFields(Arrays.asList(timeStampField, offsetVectorField));
     return metadataRecord;
   }
 }
