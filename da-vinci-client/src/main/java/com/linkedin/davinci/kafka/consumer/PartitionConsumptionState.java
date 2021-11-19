@@ -19,6 +19,7 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Future;
+import org.apache.avro.generic.GenericRecord;
 
 
 /**
@@ -91,7 +92,7 @@ public class PartitionConsumptionState {
 
   /**
    * This hash map will keep a temporary mapping between a key and it's value.
-   * get {@link #getTransientRecord(byte[])} and put {@link #setTransientRecord(String, long, byte[], byte[], int, int, int, ByteBuffer)}
+   * get {@link #getTransientRecord(byte[])} and put {@link #setTransientRecord(String, long, byte[], int, GenericRecord)}
    * operation on this map will be invoked from from kafka consumer thread.
    * delete {@link #mayRemoveTransientRecord(String, long, byte[])} operation will be invoked from drainer thread after persisting it in DB.
    * because of the properties of the above operations the caller is guaranteed to get the latest value for a key either from
@@ -393,12 +394,16 @@ public class PartitionConsumptionState {
     return consumptionStartTimeInMs;
   }
 
-  public void setTransientRecord(String kafkaUrl, long kafkaConsumedOffset, byte[] key, int valueSchemaId, ByteBuffer replicationMetadata) {
-    setTransientRecord(kafkaUrl, kafkaConsumedOffset, key, null, -1, -1, valueSchemaId, replicationMetadata);
+  public void setTransientRecord(String kafkaUrl, long kafkaConsumedOffset, byte[] key, int valueSchemaId , GenericRecord replicationMetadataRecord) {
+    setTransientRecord(kafkaUrl, kafkaConsumedOffset, key, null, -1, -1, valueSchemaId, replicationMetadataRecord);
   }
 
-  public void setTransientRecord(String kafkaUrl, long kafkaConsumedOffset, byte[] key, byte[] value, int valueOffset, int valueLen, int valueSchemaId, ByteBuffer replicationMetadata) {
-    transientRecordMap.put(ByteBuffer.wrap(key), new TransientRecord(value, valueOffset, valueLen, valueSchemaId, kafkaUrl, kafkaConsumedOffset, replicationMetadata));
+  public void setTransientRecord(String kafkaUrl, long kafkaConsumedOffset, byte[] key, byte[] value, int valueOffset, int valueLen, int valueSchemaId, GenericRecord replicationMetadataRecord) {
+    TransientRecord transientRecord = new TransientRecord(value, valueOffset, valueLen, valueSchemaId, kafkaUrl, kafkaConsumedOffset);
+    if (replicationMetadataRecord != null) {
+      transientRecord.setReplicationMetadataRecord(replicationMetadataRecord);
+    }
+    transientRecordMap.put(ByteBuffer.wrap(key), transientRecord);
   }
 
   public TransientRecord getTransientRecord(byte[] key) {
@@ -464,29 +469,29 @@ public class PartitionConsumptionState {
     private final int valueSchemaId;
     private final String kafkaUrl;
     private final long kafkaConsumedOffset;
-    private final ByteBuffer replicationMetadata;
+    private GenericRecord replicationMetadataRecord;
 
-    TransientRecord(byte[] value, int valueOffset, int valueLen, int valueSchemaId, String kafkaUrl, long kafkaConsumedOffset, ByteBuffer replicationMetadata) {
+    TransientRecord(byte[] value, int valueOffset, int valueLen, int valueSchemaId, String kafkaUrl, long kafkaConsumedOffset) {
       this.value = value;
       this.valueOffset = valueOffset;
       this.valueLen = valueLen;
       this.valueSchemaId = valueSchemaId;
       this.kafkaUrl = kafkaUrl;
       this.kafkaConsumedOffset = kafkaConsumedOffset;
-      this.replicationMetadata = (replicationMetadata == null ? null : ByteBuffer.wrap(replicationMetadata.array(), replicationMetadata.position(), replicationMetadata.remaining()));
+    }
 
-      if (valueSchemaId == -1 && replicationMetadata != null) {
-        throw new IllegalStateException("valueSchemaId is -1 but replicationMetadata is not null. replicationMetadata "
-            + "is: 0x" + ByteUtils.toHexString(ByteUtils.extractByteArray(replicationMetadata)));
-      }
+    public void setReplicationMetadataRecord(GenericRecord replicationMetadataRecord) {
+      this.replicationMetadataRecord = replicationMetadataRecord;
+    }
+
+    public GenericRecord getReplicationMetadataRecord() {
+      return replicationMetadataRecord;
     }
 
     public byte[] getValue() {return value;}
     public int getValueOffset() {return valueOffset;}
     public int getValueLen() {return valueLen;}
     public int getValueSchemaId() {return valueSchemaId;}
-    public ByteBuffer getReplicationMetadata() {return replicationMetadata;}
-
   }
 
   public void updateLeaderConsumedUpstreamRTOffset(String kafkaUrl, long offset) {

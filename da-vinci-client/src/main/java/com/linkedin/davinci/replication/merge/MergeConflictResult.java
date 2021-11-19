@@ -1,6 +1,7 @@
 package com.linkedin.davinci.replication.merge;
 
 import java.nio.ByteBuffer;
+import org.apache.avro.generic.GenericRecord;
 
 
 /**
@@ -13,15 +14,15 @@ public class MergeConflictResult {
   private ByteBuffer newValue;
   private int valueSchemaID;
   private final boolean updateIgnored; // Whether we should skip the incoming message since it could be a stale message.
-  private ByteBuffer replicationMetadata;
   private boolean resultReusesInput;
+  private GenericRecord replicationMetadataRecord;
 
-  public MergeConflictResult(ByteBuffer newValue, int valueSchemaID, ByteBuffer replicationMetadata, boolean resultReusesInput) {
+  public MergeConflictResult(ByteBuffer newValue, int valueSchemaID, boolean resultReusesInput, GenericRecord replicationMetadataRecord) {
     this.updateIgnored = false;
     this.newValue = newValue;
     this.valueSchemaID = valueSchemaID;
-    this.replicationMetadata = replicationMetadata;
     this.resultReusesInput = resultReusesInput;
+    this.replicationMetadataRecord = replicationMetadataRecord;
   }
 
   private MergeConflictResult() {
@@ -44,11 +45,11 @@ public class MergeConflictResult {
     return this.updateIgnored;
   }
 
-  public ByteBuffer getReplicationMetadata() {
-    return this.replicationMetadata;
-  }
-
   public boolean doesResultReuseInput() {
     return resultReusesInput;
+  }
+
+  public GenericRecord getReplicationMetadataRecord() {
+    return replicationMetadataRecord;
   }
 }
