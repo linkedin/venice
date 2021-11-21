@@ -1,15 +1,20 @@
 package com.linkedin.venice.schema;
 
 import com.linkedin.venice.exceptions.VeniceException;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
+
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
+import org.apache.avro.generic.IndexedRecord;
 
-import static com.linkedin.venice.schema.WriteComputeSchemaConverter.WriteComputeOperation.*;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
 import static com.linkedin.venice.schema.WriteComputeSchemaConverter.*;
+import static com.linkedin.venice.schema.WriteComputeSchemaConverter.WriteComputeOperation.*;
 
 
 /**
@@ -109,8 +114,8 @@ public class WriteComputeHandler {
       Object writeComputeFieldValue = writeComputeRecord.get(originalFieldName);
 
       //skip the fields if it's NoOp
-      if (writeComputeFieldValue instanceof GenericRecord &&
-          ((GenericRecord) writeComputeFieldValue).getSchema().getName().equals(NO_OP.name)) {
+      if (writeComputeFieldValue instanceof IndexedRecord &&
+          ((IndexedRecord) writeComputeFieldValue).getSchema().getName().equals(NO_OP.name)) {
         continue;
       }
 
@@ -126,7 +131,7 @@ public class WriteComputeHandler {
     final GenericData.Record newRecord = new GenericData.Record(originalSchema);
 
     for (Schema.Field originalField : originalSchema.getFields()) {
-      if (originalField.defaultValue() != null) {
+      if (AvroCompatibilityHelper.fieldHasDefault(originalField)) {
         //make a deep copy here since genericData caches each default value internally. If we
         //use what it returns, we will mutate the cache.
         newRecord.put(originalField.name(), genericData.deepCopy(originalField.schema(), genericData.getDefaultValue(originalField)));
@@ -198,13 +203,13 @@ public class WriteComputeHandler {
   // Visible for testing
   Object updateUnion(Schema originalSchema, Object originalObject, Object writeComputeObject) {
     for (Schema subSchema : originalSchema.getTypes()) {
-      if (subSchema.getType() == Schema.Type.ARRAY && writeComputeObject instanceof GenericRecord &&
-          ((GenericRecord) writeComputeObject).getSchema().getName().endsWith(LIST_OPS.name)) {
+      if (subSchema.getType() == Schema.Type.ARRAY && writeComputeObject instanceof IndexedRecord &&
+          ((IndexedRecord) writeComputeObject).getSchema().getName().endsWith(LIST_OPS.name)) {
         return updateArray(subSchema, (List) originalObject, writeComputeObject);
       }
 
-      if (subSchema.getType() == Schema.Type.MAP && writeComputeObject instanceof GenericRecord &&
-          ((GenericRecord) writeComputeObject).getSchema().getName().endsWith(MAP_OPS.name)) {
+      if (subSchema.getType() == Schema.Type.MAP && writeComputeObject instanceof IndexedRecord &&
+          ((IndexedRecord) writeComputeObject).getSchema().getName().endsWith(MAP_OPS.name)) {
         return updateMap((Map) originalObject, writeComputeObject);
       }
     }

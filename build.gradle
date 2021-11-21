@@ -4,7 +4,7 @@ buildscript {
   dependencies {
     classpath 'com.gradle:gradle-enterprise-gradle-plugin:3.5.2'
     classpath 'gradle.plugin.com.dorongold.plugins:task-tree:1.5'
-    classpath "com.github.spotbugs:spotbugs-gradle-plugin:4.7.1"
+    classpath 'com.github.spotbugs:spotbugs-gradle-plugin:4.7.1'
   }
 }
 
@@ -47,7 +47,6 @@ if (project.hasProperty('overrideBuildEnvironment')) {
   }
 }
 
-// Internal LinkedIn Kafka release
 def internalKafkaGroup = 'com.linkedin.kafka'
 def internalKafkaVersion = '2.3.0.30'
 
@@ -72,7 +71,7 @@ ext.libraries = [
     kafkaClientsTest: internalKafkaGroup + ':kafka-clients:' + internalKafkaVersion + ':test',
     mockito: 'org.mockito:mockito-core:3.3.3',
     netty: 'io.netty:netty-all:4.1.42.Final',
-    zkclient: 'com.101tec:zkclient:0.7', //for Kafka AdminUtils
+    zkclient: 'com.101tec:zkclient:0.7', // For Kafka AdminUtils
     d2: 'com.linkedin.container:pegasus-d2-server-factory:30.1.265',
     d2Client: 'com.linkedin.container:pegasus-d2-client-factory:38.4.175',
     r2Client: 'com.linkedin.container:pegasus-r2-client-factory:38.4.175',
@@ -118,7 +117,7 @@ ext.libraries = [
     mapreduceClientJobClient: 'org.apache.hadoop:hadoop-mapreduce-client-jobclient:2.3.0',
 
     // Samza dependencies
-    samzaApi: 'com.linkedin.samza-li:samza-api:311.1050.0.66', //equivalent to Samza-1.5
+    samzaApi: 'com.linkedin.samza-li:samza-api:311.1050.0.66', // Equivalent to Samza-1.5
 
     // Added during dds-storage-core v2 => v3
     // Transitive dependency, to replace implicit version 11.0.17 which caused 4 test cases to fail:
@@ -143,13 +142,14 @@ ext.libraries = [
     failsafe: 'net.jodah:failsafe:2.4.0',
 
     spotbugs: 'com.github.spotbugs:spotbugs:4.2.3',
-    spotbugsPlugins: 'com.linkedin.avroutil1:spotbugs-plugin:0.2.51'
+    spotbugsAvroPlugin: 'com.linkedin.avroutil1:spotbugs-plugin:0.2.54'
 ]
 
 subprojects {
   apply plugin: 'java-library'
   apply plugin: 'idea'
   apply plugin: 'jacoco'
+  apply plugin: 'com.github.spotbugs'
   apply plugin: 'org.gradle.test-retry'
 
   sourceCompatibility = 1.8
@@ -158,7 +158,7 @@ subprojects {
   }
 
   repositories {
-    ivy {  //TODO: remove this before opensourcing
+    ivy {  // TODO: remove this before opensourcing
       url 'http://artifactory.corp.linkedin.com:8081/artifactory/release/'
       patternLayout {
         ivy '[organisation]/[module]/[revision]/[module]-[revision].ivy'
@@ -199,6 +199,9 @@ subprojects {
     testImplementation libraries.mockito
     // Test utils and framework for all unit tests and integration tests.
     testImplementation project(':venice-test-common')
+
+    spotbugs libraries.spotbugs
+    spotbugsPlugins libraries.spotbugsAvroPlugin
   }
 
   idea {
@@ -208,24 +211,51 @@ subprojects {
     }
   }
 
-  tasks.withType(Test) {
-    useTestNG() {
-      excludeGroups 'flaky'
-      Set<String> suiteListeners = ["com.linkedin.venice.testng.VeniceSuiteListener"]
-      setListeners(suiteListeners)
-    }
+  spotbugs {
+    toolVersion = '4.2.3'
+    includeFilter = file("../findbugs-include.xml")
+    ignoreFailures = false
+  }
 
+  spotbugsMain {
+    reports {
+      html {
+        enabled = true
+        stylesheet = 'fancy-hist.xsl'
+        destination = file("$buildDir/reports/spotbugs/main/spotbugs.html")
+      }
+    }
+  }
+
+  spotbugsTest {
+    reports {
+      html {
+        enabled = true
+        stylesheet = 'fancy-hist.xsl'
+        destination = file("$buildDir/reports/spotbugs/test/spotbugs.html")
+      }
+    }
+  }
+
+  tasks.withType(Test) {
     // The ALPN version should match the JVM version
-    String osName = System.getProperty("os.name").toLowerCase(Locale.ENGLISH);
     if (JavaVersion.current().compareTo(JavaVersion.VERSION_11) < 0) {
       if (Os.isFamily(Os.FAMILY_MAC)) {
         jvmArgs '-Xbootclasspath/p:/Library/Java/Boot/1_8_0_172/alpn-boot-8.1.12.v20180117.jar'
       } else if (Os.isFamily(Os.FAMILY_UNIX)) {
         jvmArgs '-Xbootclasspath/p:/export/apps/jdkboot/1_8_0_172/alpn-boot-8.1.12.v20180117.jar'
       } else {
-        throw new GradleException(osName + " is not supported since alpn only works for either Mac or Linux right now.")
+        String osName = System.getProperty('os.name').toLowerCase(Locale.ENGLISH);
+        throw new GradleException("$osName is not supported since ALPN only works for either Mac or Linux right now.")
       }
     }
+
+    useTestNG() {
+      excludeGroups 'flaky'
+      Set<String> suiteListeners = ['com.linkedin.venice.testng.VeniceSuiteListener']
+      setListeners(suiteListeners)
+    }
+
     retry {
       maxRetries = 4 // 5 attempts in total
       maxFailures = 100
@@ -255,45 +285,19 @@ subprojects {
     useTestNG() {
       includeGroups 'flaky'
     }
-    mustRunAfter test
   }
 }
 
-// For now, only enable spotbugs in 'venice-thin-client' and 'da-vinci-client' since they are customer facing and so far
-// only avro rules are enabled, and in the future, we would like to apply spotbugs to every module and include more rules.
-allprojects.findAll { it.name in ['venice-thin-client', 'da-vinci-client'] }.each { p ->
-  configure(p) {
-    apply plugin: 'com.github.spotbugs'
-
-    dependencies {
-      spotbugs libraries.spotbugs
-
-      //register spotbugs plugin(s)
-      spotbugsPlugins libraries.spotbugsPlugins
-    }
-
-    spotbugs {
-      //see https://spotbugs-gradle-plugin.netlify.app/com/github/spotbugs/snom/spotbugsextension for docs
-      toolVersion = '4.2.3'
-      includeFilter = file("../findbugs-include.xml")
-      ignoreFailures = false
-      showProgress = true
-    }
-
-    spotbugsMain {
-      reports {
-        html {
-          enabled = true
-          destination = file("$buildDir/reports/spotbugs/main/spotbugs.html")
-          stylesheet = 'fancy-hist.xsl'
-        }
-      }
-    }
-  }
+task spotbugs {
+  dependsOn subprojects.spotbugsMain
+  dependsOn subprojects.spotbugsTest
+  dependsOn 'venice-test-common:spotbugsJmh'
+  dependsOn 'venice-test-common:spotbugsIntegrationTest'
 }
 
 task unitTests {
-  dependsOn subprojects.check
+  mustRunAfter spotbugs
+  dependsOn subprojects.test
 }
 
 task flakyTests {
@@ -302,20 +306,20 @@ task flakyTests {
 }
 
 task integrationTests {
+  mustRunAfter spotbugs
+  mustRunAfter unitTests
   dependsOn 'venice-test-common:integrationTests'
 }
 
-task buildAll {
-  dependsOn unitTests
-  dependsOn integrationTests
-  dependsOn 'venice-common:buildJar'
-  dependsOn 'venice-router:installDist'
-  dependsOn 'venice-server:installDist'
-  dependsOn 'venice-controller:installDist'
-}
+check.dependsOn spotbugs
+check.dependsOn unitTests
+check.dependsOn integrationTests
 
-task compile {
-  dependsOn compileJava
-  dependsOn compileTestJava
-  dependsOn 'venice-test-common:compileIntegrationTestJava'
-}
+assemble.dependsOn testClasses
+assemble.dependsOn 'venice-test-common:jmhClasses'
+assemble.dependsOn 'venice-test-common:integrationTestClasses'
+
+build.dependsOn 'venice-common:buildJar'
+build.dependsOn 'venice-router:installDist'
+build.dependsOn 'venice-server:installDist'
+build.dependsOn 'venice-controller:installDist'

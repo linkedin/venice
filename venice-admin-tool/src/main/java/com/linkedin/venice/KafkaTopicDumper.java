@@ -12,7 +12,11 @@ import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.utils.AvroSchemaUtils;
 import com.linkedin.venice.utils.ByteUtils;
+
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
+
 import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -161,13 +165,16 @@ public class KafkaTopicDumper {
     List<Schema.Field> outputSchemaFields = new ArrayList<>();
     for (Schema.Field field : VeniceKafkaDecodedRecord.SCHEMA$.getFields()) {
       if (field.name().equals(VENICE_ETL_KEY_FIELD)) {
-        outputSchemaFields.add(new Schema.Field(field.name(), Schema.parse(this.keySchemaStr), field.doc(), field.defaultValue(), field.order()));
+        outputSchemaFields.add(AvroCompatibilityHelper.newField(field).setSchema(Schema.parse(this.keySchemaStr)).build());
       } else if (field.name().equals(VENICE_ETL_VALUE_FIELD)) {
-        outputSchemaFields.add(new Schema.Field(field.name(), Schema.createUnion(
-            Arrays.asList(Schema.create(Schema.Type.NULL), Schema.parse(this.latestValueSchemaStr))), field.doc(), field.defaultValue(), field.order()));
+        outputSchemaFields.add(AvroCompatibilityHelper.newField(field)
+                                  .setSchema(Schema.createUnion(Arrays.asList(
+                                           Schema.create(Schema.Type.NULL),
+                                           Schema.parse(this.latestValueSchemaStr))))
+                                  .build());
       } else {
         // any fields except key and value will be added using the original schemas, like the offset field and the DELETED_TS field
-        outputSchemaFields.add(new Schema.Field(field.name(), field.schema(), field.doc(), field.defaultValue(), field.order()));
+        outputSchemaFields.add(AvroCompatibilityHelper.newField(field).build());
       }
     }
     Schema outputSchema = Schema.createRecord("KafkaRecord", "", "none", false);
@@ -183,7 +190,8 @@ public class KafkaTopicDumper {
       // build key/value reader
       GenericDatumReader<Object> keyReader = null;
       GenericDatumReader<Object>[] valueReaders = null;
-      keyReader = new GenericDatumReader<>(Schema.parse(this.keySchemaStr));
+      Schema keySchema = Schema.parse(keySchemaStr);
+      keyReader = new GenericDatumReader<>(keySchema, keySchema);
 
       int valueSchemaNum = allValueSchemas.length;
       valueReaders = new GenericDatumReader[valueSchemaNum];

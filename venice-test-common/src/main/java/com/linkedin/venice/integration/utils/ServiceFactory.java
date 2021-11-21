@@ -661,7 +661,7 @@ public class ServiceFactory {
     return client;
   }
 
-    public static <K, V> DaVinciClient<K, V> getGenericAvroDaVinciClient(String storeName, String zkAddress, String dataBasePath) {
+  public static <K, V> DaVinciClient<K, V> getGenericAvroDaVinciClient(String storeName, String zkAddress, String dataBasePath) {
     VeniceProperties backendConfig = new PropertyBuilder()
         .put(ConfigKeys.DATA_BASE_PATH, dataBasePath)
         .put(ConfigKeys.PERSISTENCE_TYPE, PersistenceType.ROCKS_DB)

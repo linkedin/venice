@@ -22,7 +22,7 @@ import org.apache.log4j.Logger;
 public class ClassPathSupplierForVeniceCluster implements Supplier<String> {
   private static final Logger LOGGER = Logger.getLogger(ClassPathSupplierForVeniceCluster.class);
 
-  private static final String AVRO_177_JAR_FILE = "avro-1.7.7.jar";
+  private static final String AVRO_192_JAR_FILE = "avro-1.9.2.jar";
 
   @Override
   public String get() {
@@ -55,7 +55,7 @@ public class ClassPathSupplierForVeniceCluster implements Supplier<String> {
         /**
          * Append avro-1.7 jar to the classpath, which is the one being used by the backend.
          */
-        paths.add(extractAvro177JarFileBasedOnExistingAvroJarFile(existingAvroJarFile));
+        paths.add(extractAvro192JarFileBasedOnExistingAvroJarFile(existingAvroJarFile));
       } catch (Exception e) {
         throw new VeniceException("Failed to compose class path", e);
       }
@@ -63,25 +63,25 @@ public class ClassPathSupplierForVeniceCluster implements Supplier<String> {
     }
   }
 
-  private File extractAvro177JarFileBasedOnExistingAvroJarFile(File existingAvroJarFile) {
+  private File extractAvro192JarFileBasedOnExistingAvroJarFile(File existingAvroJarFile) {
     LOGGER.info("Existing avro jar file: " + existingAvroJarFile.getAbsolutePath());
-    if (existingAvroJarFile.getName().equals(AVRO_177_JAR_FILE)) {
+    if (existingAvroJarFile.getName().equals(AVRO_192_JAR_FILE)) {
       return existingAvroJarFile;
     }
     /**
      * The file path should be in the following way:
      * .../org.apache.avro/avro/1.4.1/3548c0bc136e71006f3fc34e22d34a29e5069e50/avro-1.4.1.jar
      * And the target file should be here:
-     * /org.apache.avro/avro/1.7.7/.../avro-1.7.7.jar
+     * /org.apache.avro/avro/1.9.2/.../avro-1.9.2.jar
      */
     File avroRootDir = existingAvroJarFile.getParentFile().getParentFile().getParentFile();
     Collection<File> jarFiles = FileUtils.listFiles(avroRootDir, new String[]{"jar"}, true);
     for (File jarFile : jarFiles) {
-      if (jarFile.getName().equals(AVRO_177_JAR_FILE)) {
-        LOGGER.info("Found the jar file: " + jarFile.getAbsolutePath() + " for " + AVRO_177_JAR_FILE);
+      if (jarFile.getName().equals(AVRO_192_JAR_FILE)) {
+        LOGGER.info("Found the jar file: " + jarFile.getAbsolutePath() + " for " + AVRO_192_JAR_FILE);
         return jarFile;
       }
     }
-    throw new VeniceException("Failed to find out " + AVRO_177_JAR_FILE + " in the existing class path");
+    throw new VeniceException("Failed to find out " + AVRO_192_JAR_FILE + " in the existing class path");
   }
 }

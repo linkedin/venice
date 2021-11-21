@@ -18,6 +18,9 @@ import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
 import com.linkedin.venice.schema.vson.VsonAvroSerializer;
 import com.linkedin.venice.schema.vson.VsonSchema;
 import com.linkedin.venice.writer.VeniceWriter;
+
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
+
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -721,20 +724,22 @@ public class TestPushUtils {
         GenericRecord newRecord = new GenericData.Record(schemaWithSymbolDoc);
         GenericRecord keyRecord = new GenericData.Record(schemaWithSymbolDoc.getField("key").schema());
         keyRecord.put("memberId", (long) i);
+        Schema sourceSchema = keyRecord.getSchema().getField("source").schema();
         if (0 == i % 2) {
-          keyRecord.put("source", testRecordType.NEARLINE);
+          keyRecord.put("source", AvroCompatibilityHelper.newEnumSymbol(sourceSchema, testRecordType.NEARLINE.toString()));
         } else {
-          keyRecord.put("source", testRecordType.OFFLINE);
+          keyRecord.put("source", AvroCompatibilityHelper.newEnumSymbol(sourceSchema, testRecordType.OFFLINE.toString()));
         }
 
         GenericRecord valueRecord = new GenericData.Record(schemaWithSymbolDoc.getField("value").schema());
+        Schema targetSchema = valueRecord.getSchema().getField("targetedField").schema();
         valueRecord.put("priority", i);
         if (0 == i % 3) {
-          valueRecord.put("targetedField", testTargetedField.WEBSITE_URL);
+          valueRecord.put("targetedField", AvroCompatibilityHelper.newEnumSymbol(targetSchema, testTargetedField.WEBSITE_URL.toString()));
         } else if (1 == i % 3) {
-          valueRecord.put("targetedField", testTargetedField.LOGO);
+          valueRecord.put("targetedField", AvroCompatibilityHelper.newEnumSymbol(targetSchema, testTargetedField.LOGO.toString()));
         } else {
-          valueRecord.put("targetedField", testTargetedField.INDUSTRY);
+          valueRecord.put("targetedField", AvroCompatibilityHelper.newEnumSymbol(targetSchema, testTargetedField.INDUSTRY.toString()));
         }
 
         newRecord.put("key", keyRecord);

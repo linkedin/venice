@@ -14,14 +14,18 @@ import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.status.protocol.PushJobStatusRecordKey;
 import com.linkedin.venice.utils.Utils;
-import java.util.Collections;
-import java.util.Optional;
+
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
+
+import spark.Route;
+
 import org.apache.avro.io.DatumReader;
-import org.apache.avro.io.DecoderFactory;
 import org.apache.avro.specific.SpecificDatumReader;
 import org.apache.http.HttpStatus;
 import org.apache.log4j.Logger;
-import spark.Route;
+
+import java.util.Collections;
+import java.util.Optional;
 
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
 import static com.linkedin.venice.controllerapi.ControllerRoute.*;
@@ -147,9 +151,8 @@ public class JobRoutes extends AbstractRoute {
         // TODO remove passing PushJobDetails as JSON string once all H2V plugins are updated.
         if (request.queryParams().contains(PUSH_JOB_DETAILS)) {
           String pushJobDetailsString = request.queryParams(PUSH_JOB_DETAILS);
-          DatumReader<PushJobDetails> reader = new SpecificDatumReader<>(PushJobDetails.SCHEMA$);
-          pushJobDetails = reader.read(null,
-              DecoderFactory.defaultFactory().jsonDecoder(PushJobDetails.SCHEMA$, pushJobDetailsString));
+          DatumReader<PushJobDetails> reader = new SpecificDatumReader<>(PushJobDetails.SCHEMA$, PushJobDetails.SCHEMA$);
+          pushJobDetails = reader.read(null, AvroCompatibilityHelper.newCompatibleJsonDecoder(PushJobDetails.SCHEMA$, pushJobDetailsString));
         } else {
           pushJobDetails = pushJobDetailsSerializer.deserialize(null, request.bodyAsBytes());
         }

@@ -88,7 +88,7 @@ public class QueryTool {
           break;
         case RECORD:
           try {
-            key = new GenericDatumReader<>(keySchema).read(null,
+            key = new GenericDatumReader<>(keySchema, keySchema).read(null,
                 AvroCompatibilityHelper.newJsonDecoder(keySchema, new ByteArrayInputStream(keyString.getBytes())));
           } catch (IOException e) {
             throw new VeniceException("Invalid input key:" + key, e);

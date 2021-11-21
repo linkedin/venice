@@ -1,6 +1,6 @@
 pluginManagement {
   repositories {
-    ivy {  //TODO: remove this before opensourcing
+    ivy {  // TODO: remove this before opensourcing
       url 'http://artifactory.corp.linkedin.com:8081/artifactory/release/'
       patternLayout {
         ivy '[organisation]/[module]/[revision]/[module]-[revision].ivy'

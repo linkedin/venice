@@ -1,10 +1,13 @@
 package com.linkedin.venice.schema;
 
-import java.util.Collections;
+import com.linkedin.venice.utils.AvroSchemaUtils;
+
 import org.apache.avro.Schema;
 import org.apache.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.Test;
+
+import java.util.Collections;
 
 import static com.linkedin.venice.VeniceConstants.*;
 import static org.apache.avro.Schema.Type.*;
@@ -224,11 +227,9 @@ public class TestReplicationMetadataSchemaGenerator {
     Assert.assertEquals(recordTsSchema.getField("id").schema().getType(), LONG);
     Assert.assertEquals(recordTsSchema.getField("name").schema().getType(), LONG);
     Assert.assertEquals(recordTsSchema.getField("age").schema().getType(), LONG);
-    Assert.assertEquals(recordTsSchema.getField("id").defaultValue().asLong(), 0);
-    Assert.assertEquals(recordTsSchema.getField("name").defaultValue().asLong(), 0);
-    Assert.assertEquals(recordTsSchema.getField("age").defaultValue().asLong(), 0);
-
-
+    Assert.assertEquals(AvroSchemaUtils.getFieldDefault(recordTsSchema.getField("id")), 0L);
+    Assert.assertEquals(AvroSchemaUtils.getFieldDefault(recordTsSchema.getField("name")), 0L);
+    Assert.assertEquals(AvroSchemaUtils.getFieldDefault(recordTsSchema.getField("age")), 0L);
   }
 
   @Test
@@ -272,12 +273,12 @@ public class TestReplicationMetadataSchemaGenerator {
     Assert.assertEquals(aaSchema.getFields().size(), 2);
     Schema.Field tsField = aaSchema.getField(TIMESTAMP_FIELD);
     Assert.assertEquals(tsField.schema().getType(), UNION);
-    Assert.assertEquals(tsField.defaultValue().asLong(), 0);
+    Assert.assertEquals(AvroSchemaUtils.getFieldDefault(tsField), 0L);
 
     Assert.assertEquals(aaSchema.getType(), RECORD);
     Schema.Field vectorField = aaSchema.getField(REPLICATION_CHECKPOINT_VECTOR_FIELD);
     Assert.assertEquals(vectorField.schema().getType(), ARRAY);
-    Assert.assertEquals(vectorField.defaultValue(), Collections.EMPTY_LIST);
+    Assert.assertEquals(AvroSchemaUtils.getFieldDefault(vectorField), Collections.EMPTY_LIST);
 
     if (onlyRootTsPresent) {
       Assert.assertEquals(tsField.schema().getTypes().size(), 1);

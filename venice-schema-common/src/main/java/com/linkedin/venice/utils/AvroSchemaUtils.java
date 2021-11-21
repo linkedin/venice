@@ -1,13 +1,22 @@
 package com.linkedin.venice.utils;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
-import com.linkedin.avroutil1.compatibility.AvroIncompatibleSchemaException;
-import com.linkedin.avroutil1.compatibility.AvroSchemaVerifier;
 import com.linkedin.venice.exceptions.InvalidVeniceSchemaException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.schema.SchemaEntry;
+
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
+import com.linkedin.avroutil1.compatibility.AvroIncompatibleSchemaException;
+import com.linkedin.avroutil1.compatibility.AvroSchemaVerifier;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+
+import org.apache.avro.Schema;
+import org.apache.avro.io.ResolvingDecoder;
+import org.apache.avro.io.parsing.Symbol;
+import org.apache.commons.lang.StringUtils;
+
+import javax.annotation.Nullable;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -15,10 +24,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Collectors;
-import org.apache.avro.Schema;
-import org.apache.avro.io.ResolvingDecoder;
-import org.apache.avro.io.parsing.Symbol;
-import org.apache.commons.lang.StringUtils;
 
 
 public class AvroSchemaUtils {
@@ -160,7 +165,7 @@ public class AvroSchemaUtils {
   }
 
   /**
-   * Compares two schema with possible re-ordering of the fields. Otherwise If compares every fields at every level.
+   * Compares two schema with possible re-ordering of the fields. Otherwise, If compares every field at every level.
    * @param s1
    * @param s2
    * @return true is the schemas are same with possible reordered fields.
@@ -170,7 +175,7 @@ public class AvroSchemaUtils {
       return false;
     }
 
-    // Special handling for String vs Avro string comparision
+    // Special handling for String vs Avro string comparison
     if (Objects.equals(s1, s2) || s1.getType() == Schema.Type.STRING) {
       return true;
     }
@@ -205,6 +210,14 @@ public class AvroSchemaUtils {
     return true;
   }
 
+  /**
+   * Non-throwing flavor of AvroCompatibilityHelper.getGenericDefaultValue, returns null if there is no default.
+   */
+  @Nullable
+  public static Object getFieldDefault(Schema.Field field) {
+    return AvroCompatibilityHelper.fieldHasDefault(field) ? AvroCompatibilityHelper.getGenericDefaultValue(field) : null;
+  }
+
   private static boolean compareFields(Schema s1, Schema s2) {
     if (s1.getFields().size() != s2.getFields().size()) {
       return false;
@@ -212,7 +225,7 @@ public class AvroSchemaUtils {
 
     for (Schema.Field f1 : s1.getFields()) {
       Schema.Field f2 = s2.getField(f1.name());
-      if (f2  == null || !Objects.equals(f1.defaultValue(), f2.defaultValue()) || !compareSchemaIgnoreFieldOrder(f1.schema(), f2.schema())) {
+      if (f2 == null || !Objects.equals(getFieldDefault(f1), getFieldDefault(f2)) || !compareSchemaIgnoreFieldOrder(f1.schema(), f2.schema())) {
         return false;
       }
     }
@@ -222,7 +235,7 @@ public class AvroSchemaUtils {
   /**
    * Generate super-set schema of two Schemas. If we have {A,B,C} and {A,B,D} it will generate {A,B,C,D}, where
    * C/D could be nested record change as well eg, array/map of records, or record of records.
-   * Prerequisite: The top-level schema are of type RECORD only and each fields have default values. ie they are compatible
+   * Prerequisite: The top-level schema are of type RECORD only and each field have default values. ie they are compatible
    * schemas and the generated schema will pick the default value from s1.
    * @param s1 1st input schema
    * @param s2 2nd input schema
@@ -237,10 +250,10 @@ public class AvroSchemaUtils {
       return s1;
     }
 
-    // Special handling for String vs Avro string comparision,
+    // Special handling for String vs Avro string comparison,
     // return the schema with avro.java.string property for string type
     if (s1.getType() == Schema.Type.STRING) {
-      return s1.getJsonProps() == null ? s2 : s1;
+      return AvroCompatibilityHelper.getSchemaPropAsJsonString(s1, "avro.java.string") != null ? s1 : s2;
     }
 
     switch (s1.getType()) {
@@ -284,16 +297,18 @@ public class AvroSchemaUtils {
     for (Schema.Field f1 : s1.getFields()) {
       Schema.Field f2 = s2.getField(f1.name());
       if (f2 == null) {
-        fields.add(new Schema.Field(f1.name(), f1.schema(), f1.doc(), f1.defaultValue(), f1.order()));
+        fields.add(AvroCompatibilityHelper.newField(f1).build());
       } else {
-        fields.add(new Schema.Field(f1.name(), generateSuperSetSchema(f1.schema(), f2.schema()),
-            f1.doc() != null ? f1.doc() : f2.doc(), f1.defaultValue()));
+        fields.add(AvroCompatibilityHelper.newField(f1)
+                .setSchema(generateSuperSetSchema(f1.schema(), f2.schema()))
+                .setDoc(f1.doc() != null ? f1.doc() : f2.doc())
+                .build());
       }
     }
 
     for (Schema.Field f2 : s2.getFields()) {
       if (s1.getField(f2.name()) == null) {
-        fields.add(new Schema.Field(f2.name(), f2.schema(), f2.doc(), f2.defaultValue()));
+        fields.add(AvroCompatibilityHelper.newField(f2).build());
       }
     }
     return fields;
