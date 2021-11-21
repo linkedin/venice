@@ -1,14 +1,27 @@
 package com.linkedin.venice;
 
-import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.utils.ClassPathSupplierForVeniceCluster;
 import com.linkedin.venice.utils.ForkedJavaProcess;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
+
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
+import com.linkedin.davinci.client.DaVinciClient;
+
+import org.apache.avro.generic.GenericRecord;
+import org.apache.avro.util.Utf8;
+import org.apache.log4j.Logger;
+import org.testng.Assert;
+import org.testng.annotations.AfterClass;
+import org.testng.annotations.BeforeClass;
+import org.testng.annotations.DataProvider;
+import org.testng.annotations.Test;
+
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -19,14 +32,6 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
-import org.apache.avro.generic.GenericRecord;
-import org.apache.avro.util.Utf8;
-import org.apache.log4j.Logger;
-import org.testng.Assert;
-import org.testng.annotations.AfterClass;
-import org.testng.annotations.BeforeClass;
-import org.testng.annotations.Test;
 
 import static com.linkedin.venice.VeniceClusterInitializer.*;
 
@@ -39,16 +44,15 @@ import static com.linkedin.venice.VeniceClusterInitializer.*;
  * 2. The test cases will use Venice-thin-client to hit the Router endpoint with different Avro Versions by
  *    exercising all different APIs.
  */
-public class VeniceThinClientCompatibilityTest {
-  private static final Logger LOGGER = Logger.getLogger(VeniceThinClientCompatibilityTest.class);
+public class VeniceClientCompatibilityTest {
+  private static final Logger LOGGER = Logger.getLogger(VeniceClientCompatibilityTest.class);
 
-  private ForkedJavaProcess process;
-  private String routerAddr;
-  private AvroGenericStoreClient<String, GenericRecord> storeClient;
-  private String storeName = TestUtils.getUniqueString("venice-store");
+  private ForkedJavaProcess clusterProcess;
+  private AvroGenericStoreClient<String, GenericRecord> veniceClient;
+  private DaVinciClient<String, GenericRecord> daVinciClient;
 
   @BeforeClass(alwaysRun = true)
-  private void setup() {
+  private void setup() throws Exception {
     LOGGER.info("Avro version in unit test: " + AvroCompatibilityHelper.getRuntimeAvroVersion());
     /**
      * The following port selection is not super safe since this port could be occupied when it is being used
@@ -57,61 +61,79 @@ public class VeniceThinClientCompatibilityTest {
      * If it is flaky, maybe we could add some retry logic to make it more resilient in the future.
      */
     String routerPort = Integer.toString(Utils.getFreePort());
-    routerAddr = "http://localhost:" + routerPort;
-    try {
-      process = ForkedJavaProcess.exec(VeniceClusterInitializer.class, Arrays.asList(storeName, routerPort), Collections.emptyList(),
-          Optional.empty(), false, Optional.of(new ClassPathSupplierForVeniceCluster()));
-    } catch (Exception e) {
-      throw new VeniceException("Received an exception when forking a process", e);
-    }
+    String routerAddress = "http://localhost:" + routerPort;
+    LOGGER.info("Router address in unit test: " + routerAddress);
+
+    String storeName = TestUtils.getUniqueString("venice-store");
+    clusterProcess = ForkedJavaProcess.exec(
+        VeniceClusterInitializer.class,
+        Arrays.asList(storeName, routerPort),
+        Collections.emptyList(),
+        Optional.empty(),
+        true,
+        Optional.of(new ClassPathSupplierForVeniceCluster()));
+
+    veniceClient = ClientFactory.getGenericAvroClient(
+        ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerAddress));
 
     // Block until the store is ready.
-    Utils.sleep(TimeUnit.SECONDS.toMillis(10));
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
       try {
-        LOGGER.info("router addr in unit test: " + routerAddr);
-        this.storeClient = ClientFactory.getAndStartGenericAvroClient(
-            ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerAddr));
-      } catch (Exception e) {
-        Assert.fail("Store client is not ready yet.");
+        veniceClient.start();
+      } catch (VeniceException e) {
+        Assert.fail("Store is not ready yet.", e);
       }
-        });
-    String testKey = KEY_PREFIX + "0";
-    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-      GenericRecord value = null;
-      try {
-        value = storeClient.get(testKey).get();
-      } catch (Exception e) {}
-      Assert.assertNotNull(value);
     });
+
+    String[] zkAddress = new String[1];
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+      try {
+        GenericRecord value = veniceClient.get(KEY_PREFIX + "0").get();
+        Assert.assertNotNull(value);
+        zkAddress[0] = value.get(ZK_ADDRESS_FIELD).toString();
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+      } catch (VeniceException | ExecutionException  e) {
+        Assert.fail("Failed to query test key.", e);
+      }
+    });
+    Assert.assertNotNull(zkAddress[0]);
+    LOGGER.info("Zookeeper address in unit test: " + zkAddress[0]);
+
+    daVinciClient = ServiceFactory.getGenericAvroDaVinciClient(
+        storeName, zkAddress[0], TestUtils.getTempDataDirectory().getAbsolutePath());
+    daVinciClient.subscribeAll().get(30, TimeUnit.SECONDS);
   }
 
   @AfterClass(alwaysRun = true)
-  private void cleanup() throws InterruptedException {
-    if (storeClient != null) {
-      Utils.closeQuietlyWithErrorLogged(storeClient);
-    }
-    if (process != null) {
-      process.destroy();
-      process.waitFor();
+  private void cleanup() {
+    Utils.closeQuietlyWithErrorLogged(veniceClient);
+    Utils.closeQuietlyWithErrorLogged(daVinciClient);
+    if (clusterProcess != null) {
+      clusterProcess.destroy();
     }
   }
 
-  @Test
-  public void testSingleGet() throws ExecutionException, InterruptedException {
+  @DataProvider(name = "clientProvider")
+  public Object[][] clientProvider() {
+    return new Object[][]{{veniceClient}, {daVinciClient}};
+  }
+
+  @Test(dataProvider = "clientProvider")
+  public void testSingleGet(AvroGenericStoreClient<String, GenericRecord> client) throws Exception {
     String testKey = KEY_PREFIX + "1";
-    GenericRecord value = storeClient.get(testKey).get();
+    GenericRecord value = client.get(testKey).get();
     Assert.assertEquals(value.get("id").toString(), ID_FIELD_PREFIX + "1");
   }
 
-  @Test
-  public void testBatchGet() throws ExecutionException, InterruptedException {
+  @Test(dataProvider = "clientProvider")
+  public void testBatchGet(AvroGenericStoreClient<String, GenericRecord> client) throws Exception {
     Set<String> keySet = new HashSet<>();
     int keyCount = 10;
     for (int i = 0; i < keyCount; ++i) {
       keySet.add(KEY_PREFIX + i);
     }
-    Map<String, GenericRecord> resultMap = storeClient.batchGet(keySet).get();
+    Map<String, GenericRecord> resultMap = client.batchGet(keySet).get();
     Assert.assertEquals(resultMap.size(), keyCount);
     for (int i = 0; i < keyCount; ++i) {
       GenericRecord value = resultMap.get(KEY_PREFIX + i);
@@ -126,8 +148,8 @@ public class VeniceThinClientCompatibilityTest {
     return Integer.valueOf(key.substring(keyPrefix.length()));
   }
 
-  @Test
-  public void testReadCompute() throws InterruptedException, ExecutionException, TimeoutException {
+  @Test(dataProvider = "clientProvider")
+  public void testReadCompute(AvroGenericStoreClient<String, GenericRecord> client) throws Exception {
     int keyCount = 10;
     Set<String> keySet = new HashSet<>();
     for (int i = 0; i < keyCount; ++i) {
@@ -137,7 +159,7 @@ public class VeniceThinClientCompatibilityTest {
     List<Float> p = Arrays.asList(100.0f, 0.1f);
     List<Float> cosP = Arrays.asList(123.4f, 5.6f);
     List<Float> hadamardP = Arrays.asList(135.7f, 246.8f);
-    Map<String, GenericRecord> computeResult = storeClient.compute()
+    Map<String, GenericRecord> computeResult = client.compute()
         .project("id", "boolean_field", "int_field", "float_field", "member_feature")
         .dotProduct("member_feature", p, "member_score")
         .cosineSimilarity("member_feature", cosP, "cosine_similarity_result")

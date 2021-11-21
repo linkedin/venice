@@ -22,6 +22,9 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;
+
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
+
 import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
@@ -905,8 +908,9 @@ public abstract class TestBatch {
           String schemaWithoutSymbolDocStr = loadFileAsString("SchemaWithoutSymbolDoc.avsc");
           Schema schemaWithoutSymbolDoc = Schema.parse(schemaWithoutSymbolDocStr);
           GenericRecord keyRecord = new GenericData.Record(schemaWithoutSymbolDoc.getField("key").schema());
+          Schema sourceSchema = keyRecord.getSchema().getField("source").schema();
           keyRecord.put("memberId", (long)1);
-          keyRecord.put("source", testRecordType.OFFLINE);
+          keyRecord.put("source", AvroCompatibilityHelper.newEnumSymbol(sourceSchema, testRecordType.OFFLINE.toString()));
           IndexedRecord value = (IndexedRecord)avroClient.get(keyRecord).get();
           Assert.assertEquals(value.get(0).toString(), "LOGO");
           Assert.assertEquals(value.get(1), 1);
@@ -915,7 +919,7 @@ public abstract class TestBatch {
           Schema schemaWithSymbolDoc = Schema.parse(schemaWithSymbolDocStr);
           GenericRecord keyRecord2 = new GenericData.Record(schemaWithSymbolDoc.getField("key").schema());
           keyRecord2.put("memberId", (long)2);
-          keyRecord2.put("source", testRecordType.NEARLINE);
+          keyRecord2.put("source", AvroCompatibilityHelper.newEnumSymbol(sourceSchema, testRecordType.NEARLINE.toString()));
           IndexedRecord value2 = (IndexedRecord)avroClient.get(keyRecord2).get();
           Assert.assertEquals(value2.get(0).toString(), "INDUSTRY");
           Assert.assertEquals(value2.get(1), 2);

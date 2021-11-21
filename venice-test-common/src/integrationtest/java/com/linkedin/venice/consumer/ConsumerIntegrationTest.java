@@ -35,14 +35,12 @@ import com.linkedin.venice.writer.VeniceWriter;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 
-import java.util.Optional;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericDatumWriter;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.Encoder;
 import org.apache.avro.specific.SpecificRecord;
 import org.apache.kafka.clients.producer.ProducerConfig;
-import org.codehaus.jackson.node.JsonNodeFactory;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.AfterMethod;
@@ -54,6 +52,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
@@ -84,16 +83,19 @@ public class ConsumerIntegrationTest {
     AvroProtocolDefinition protocolDef = AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE;
     Schema currentProtocolSchema = protocolDef.getCurrentProtocolVersionSchema();
     List<Schema.Field> protocolSchemaFields = currentProtocolSchema.getFields().stream()
-        .map(field -> new Schema.Field(field.name(), field.schema(), field.doc(), field.defaultValue(), field.order()))
+        .map(field -> AvroCompatibilityHelper.newField(field).build())
         .collect(Collectors.toList());
 
     // Generation of a new protocol version by adding an optional field to the current protocol version
     Schema newFieldSchema = Schema.createUnion(Arrays.asList(
         Schema.create(Schema.Type.NULL),
         Schema.create(Schema.Type.INT)));
-    String newFieldName = "newField";
-    Schema.Field newField = new Schema.Field(newFieldName, newFieldSchema, "New field!", JsonNodeFactory.instance.nullNode());
-    protocolSchemaFields.add(newField);
+    protocolSchemaFields.add(AvroCompatibilityHelper.newField(null)
+        .setName("newField")
+        .setSchema(newFieldSchema)
+        .setOrder(Schema.Field.Order.ASCENDING)
+        .setDefault(null)
+        .build());
     NEW_PROTOCOL_SCHEMA = Schema.createRecord(
         currentProtocolSchema.getName(),
         currentProtocolSchema.getDoc(),

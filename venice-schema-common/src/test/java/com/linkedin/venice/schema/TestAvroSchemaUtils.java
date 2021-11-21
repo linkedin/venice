@@ -1,16 +1,18 @@
 package com.linkedin.venice.schema;
 
-import com.linkedin.avroutil1.compatibility.AvroIncompatibleSchemaException;
-import com.linkedin.avroutil1.compatibility.AvroSchemaVerifier;
 import com.linkedin.venice.exceptions.InvalidVeniceSchemaException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.AvroSchemaUtils;
+
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
+import com.linkedin.avroutil1.compatibility.AvroSchemaVerifier;
+
+import org.apache.avro.AvroTypeException;
 import org.apache.avro.Schema;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
 public class TestAvroSchemaUtils {
-
   @Test
   public void testWithDifferentDocField() {
     String schemaStr1 = "{\"type\":\"record\",\"name\":\"KeyRecord\",\"fields\":[{\"name\":\"name\",\"type\":\"string\",\"doc\":\"name field\"},{\"name\":\"company\",\"type\":\"string\"}]}";
@@ -36,7 +38,7 @@ public class TestAvroSchemaUtils {
 
     Schema s3 = AvroSchemaUtils.generateSuperSetSchema(s2, s1);
     Assert.assertNotNull(s3);
-    Assert.assertNotNull(s3.getField("name").schema().getJsonProps());
+    Assert.assertNotNull(AvroCompatibilityHelper.getSchemaPropAsJsonString(s3.getField("name").schema(), "avro.java.string"));
   }
 
   @Test
@@ -201,10 +203,12 @@ public class TestAvroSchemaUtils {
       Assert.assertFalse(AvroSchemaUtils.isValidAvroSchema(Schema.parse(schemaStr)));
       AvroSchemaUtils.validateAvroSchemaStr(schemaStr);
       Assert.fail("Default null should fail with int first union field");
+    } catch (AvroTypeException e) {
+      Assert.assertEquals(e.getMessage(), "Invalid default for field experience: null not a [\"int\",\"float\",\"null\"]");
     } catch (InvalidVeniceSchemaException e) {
-      Assert.assertTrue(e.getMessage().equals("Union field KeyRecord.experience has invalid default value." + ""
+      Assert.assertEquals(e.getMessage(), "Union field KeyRecord.experience has invalid default value." + ""
           + " A union's default value type should match the first branch of the union." + ""
-          + " Excepting int as its the first branch of : [\"int\",\"float\",\"null\"] instead got null"));
+          + " Excepting int as its the first branch of : [\"int\",\"float\",\"null\"] instead got null");
     }
 
     schemaStr = "{\"type\":\"record\",\"name\":\"KeyRecord\",\"fields\":[{\"name\":\"name\",\"type\":\"string\",\"doc\":\"name field\", \"default\": \"default_name\"},{\"name\":\"experience\",\"type\":[\"null\", \"int\", \"float\"], \"default\" : null},{\"name\":\"company\",\"type\":\"string\"}]}";
@@ -364,7 +368,7 @@ public class TestAvroSchemaUtils {
     Assert.assertTrue(AvroSchemaUtils.compareSchemaIgnoreFieldOrder(s1,s2));
 
     Schema s3 = AvroSchemaUtils.generateSuperSetSchema(s1, s2);
-    Assert.assertNotNull(s3.getField("salary").defaultValue());
+    Assert.assertNotNull(AvroSchemaUtils.getFieldDefault(s3.getField("salary")));
   }
 
   @Test

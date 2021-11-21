@@ -16,18 +16,15 @@ def AVRO_1_8 = "org.apache.avro:avro:1.8.2"
 def AVRO_1_9 = "org.apache.avro:avro:1.9.2"
 def AVRO_1_10 = "org.apache.avro:avro:1.10.0"
 
-
 dependencies {
-  testImplementation libraries.testng
+  testImplementation project(':da-vinci-client')
   testImplementation project(':venice-thin-client')
   testImplementation project(':venice-common')
 
+  testImplementation libraries.testng
   testImplementation libraries.avroUtilCompatibilityHelper
-
   testImplementation libraries.classgraph
-
   testImplementation libraries.kafkaClients
-
   testImplementation libraries.commonsIo
 
   avro1_4 (AVRO_1_4) {
@@ -69,19 +66,21 @@ dependencies {
 def avroVersions = ["1_4", "1_5", "1_6", "1_7", "1_8", "1_9", "1_10"]
 
 for (String avroVersion : avroVersions) {
-
-  task "testAvro${avroVersion}" (type: Test, group: "Verification", description: "runs unit tests with avro ${avroVersion}") {
-
+  task "testAvro${avroVersion}" (type: Test, group: "Verification", description: "Runs tests with avro ${avroVersion}") {
     useTestNG() {
+      Set<String> suiteListeners = ['com.linkedin.venice.testng.VeniceSuiteListener']
+      setListeners(suiteListeners)
     }
 
     testLogging {
-      events "passed", "skipped", "failed"
+      events 'started', 'passed', 'failed', 'skipped'
+      showStandardStreams = false // to mute the DDS Router's noisy behavior...
+      exceptionFormat = 'full'
     }
 
-    classpath = project.sourceSets.test.runtimeClasspath.filter {
-      File file -> !(file.name.contains("avro-1."))
-    }.plus (configurations."avro${avroVersion}")
+    classpath = project.sourceSets.test.runtimeClasspath
+        .filter{ File file -> !(file.name.contains("avro-1.")) }
+        .plus(configurations."avro${avroVersion}")
 
     /*
     // For the debugging purpose to print out all the dependencies.

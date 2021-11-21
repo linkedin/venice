@@ -1,4 +1,13 @@
 package com.linkedin.venice.utils;
+
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
+
+import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericData;
+import org.apache.avro.generic.GenericEnumSymbol;
+import org.apache.avro.generic.GenericFixed;
+import org.apache.avro.generic.GenericRecord;
+
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -7,12 +16,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
-import org.apache.avro.Schema;
-import org.apache.avro.generic.GenericData;
-import org.apache.avro.generic.GenericFixed;
-import org.apache.avro.generic.GenericRecord;
-import org.apache.avro.generic.GenericEnumSymbol;
-import org.apache.avro.generic.GenericRecordBuilder;
 
 
 public class RandomAvroObjectGenerator {
@@ -90,14 +93,13 @@ public class RandomAvroObjectGenerator {
 
   private GenericEnumSymbol generateEnumSymbol(Schema schema) {
     List<String> enums = schema.getEnumSymbols();
-    return new GenericData.EnumSymbol(schema, enums.get(random.nextInt(enums.size())));
+    return AvroCompatibilityHelper.newEnumSymbol(schema, enums.get(random.nextInt(enums.size())));
   }
 
   private GenericFixed generateFixed(Schema schema) {
-    byte[] bytes;
-    bytes = new byte[schema.getFixedSize()];
+    byte[] bytes = new byte[schema.getFixedSize()];
     random.nextBytes(bytes);
-    return new GenericData.Fixed(schema, bytes);
+    return AvroCompatibilityHelper.newFixed(schema, bytes);
   }
 
   private Float generateFloat() {
@@ -125,11 +127,11 @@ public class RandomAvroObjectGenerator {
   }
 
   private GenericRecord generateRecord(Schema schema) {
-    GenericRecordBuilder builder = new GenericRecordBuilder(schema);
+    GenericRecord record = new GenericData.Record(schema);
     for (Schema.Field field : schema.getFields()) {
-      builder.set(field, generateObject(field.schema()));
+      record.put(field.name(), generateObject(field.schema()));
     }
-    return builder.build();
+    return record;
   }
 
   private String generateRandomString(int length) {

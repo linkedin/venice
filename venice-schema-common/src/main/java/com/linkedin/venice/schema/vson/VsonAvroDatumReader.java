@@ -19,7 +19,7 @@ import org.apache.avro.io.ResolvingDecoder;
 
 public class VsonAvroDatumReader<D> extends GenericDatumReader<D> {
   public VsonAvroDatumReader(Schema schema) {
-    super(schema);
+    super(schema, schema);
   }
 
   public VsonAvroDatumReader(Schema writer, Schema reader) {

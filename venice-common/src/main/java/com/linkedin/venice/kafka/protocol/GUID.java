@@ -5,10 +5,26 @@
  */
 package com.linkedin.venice.kafka.protocol;
 
+import java.io.IOException;
+import java.io.ObjectInput;
+import java.io.ObjectOutput;
+import java.io.UnsupportedEncodingException;
+
 @SuppressWarnings("all")
 @org.apache.avro.specific.FixedSize(16)
 public class GUID extends org.apache.avro.specific.SpecificFixed {
   public static final org.apache.avro.Schema SCHEMA$ = org.apache.avro.Schema.parse("{\"type\":\"fixed\",\"name\":\"GUID\",\"namespace\":\"com.linkedin.venice.kafka.protocol\",\"size\":16}");
   public static org.apache.avro.Schema getClassSchema() { return SCHEMA$; }
   public org.apache.avro.Schema getSchema() { return SCHEMA$; }
+
+  /*
+   * The following methods were added manually, this is a temporary measure to make it binary compatible with Avro 1.9.2.
+   */
+  public void readExternal(ObjectInput in) throws IOException {
+    throw new UnsupportedEncodingException("GUID::readExternal is not implemented.");
+  }
+
+  public void writeExternal(ObjectOutput out) throws IOException {
+    throw new UnsupportedEncodingException("GUID::writeExternal is not implemented.");
+  }
 }

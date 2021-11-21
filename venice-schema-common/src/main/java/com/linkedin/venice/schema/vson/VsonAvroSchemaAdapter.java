@@ -1,12 +1,16 @@
 package com.linkedin.venice.schema.vson;
 
 import com.linkedin.venice.serializer.VsonSerializationException;
+
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
+
+import org.apache.avro.Schema;
+import org.codehaus.jackson.JsonNode;
+
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
-import org.apache.avro.Schema;
-import org.codehaus.jackson.JsonNode;
 
 
 /**
@@ -17,7 +21,7 @@ public class VsonAvroSchemaAdapter extends AbstractVsonSchemaAdapter<Schema> {
   private static final String DEFAULT_RECORD_NAME = "record";
   public static final String DEFAULT_DOC = null;
   public static final String DEFAULT_NAMESPACE = null;
-  private static final JsonNode DEFAULT_VALUE = null;
+  private static final Object DEFAULT_VALUE = null;
 
   //both vson int8 and int16 would be wrapped as Avro fixed.
   public static final String BYTE_WRAPPER = "byteWrapper";
@@ -37,7 +41,14 @@ public class VsonAvroSchemaAdapter extends AbstractVsonSchemaAdapter<Schema> {
   @Override
   Schema readMap(Map<String, Object> vsonMap) {
     List<Schema.Field> fields = new ArrayList<>();
-    vsonMap.forEach((key, value) -> fields.add(new Schema.Field(key, fromVsonObjects(value), DEFAULT_DOC, DEFAULT_VALUE)));
+    vsonMap.forEach((key, value) ->
+                        fields.add(AvroCompatibilityHelper.newField(null)
+                            .setName(key)
+                            .setSchema(fromVsonObjects(value))
+                            .setOrder(Schema.Field.Order.ASCENDING)
+                            .setDoc(DEFAULT_DOC)
+                            .setDefault(DEFAULT_VALUE)
+                            .build()));
 
     Schema recordSchema = Schema.createRecord(DEFAULT_RECORD_NAME + (recordCount++), DEFAULT_DOC, DEFAULT_NAMESPACE, false);
     recordSchema.setFields(fields);

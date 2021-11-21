@@ -24,14 +24,6 @@ public class ByteBufferToHexFormatJsonEncoder extends JsonEncoder {
     super(sc, out);
   }
 
-  public ByteBufferToHexFormatJsonEncoder(Schema sc, OutputStream out, boolean pretty) throws IOException {
-    super(sc, out, pretty);
-  }
-
-  public ByteBufferToHexFormatJsonEncoder(Schema sc, JsonGenerator out) throws IOException {
-    super(sc, out);
-  }
-
   @Override
   public void writeBytes(byte[] bytes, int start, int len) throws IOException {
     parser.advance(Symbol.BYTES);

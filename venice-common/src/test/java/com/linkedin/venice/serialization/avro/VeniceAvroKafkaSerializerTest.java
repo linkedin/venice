@@ -1,6 +1,7 @@
 package com.linkedin.venice.serialization.avro;
 
-import java.io.IOException;
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
+
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
@@ -9,6 +10,8 @@ import org.apache.avro.io.DecoderFactory;
 import org.apache.avro.specific.SpecificDatumReader;
 import org.testng.Assert;
 import org.testng.annotations.Test;
+
+import java.io.IOException;
 
 
 public class VeniceAvroKafkaSerializerTest {
@@ -32,7 +35,7 @@ public class VeniceAvroKafkaSerializerTest {
     byte[] bytes = serializer.serialize(topic, specificRecord);
 
     GenericRecord genericRecordResult = (GenericRecord) serializer.deserialize(topic, bytes);
-    Assert.assertEquals(genericRecordResult.get("union"), new GenericData.EnumSymbol(enumSchema, "B"));
+    Assert.assertEquals(genericRecordResult.get("union"), AvroCompatibilityHelper.newEnumSymbol(enumSchema, "B"));
 
     Decoder decoder = DecoderFactory.defaultFactory().createBinaryDecoder(bytes, null);
     SpecificDatumReader<UnionOfEnumRecord> reader = new SpecificDatumReader<>(UnionOfEnumRecord.class);
@@ -41,7 +44,7 @@ public class VeniceAvroKafkaSerializerTest {
 
     //test serializing genericRecord
     GenericRecord genericRecord = new GenericData.Record(recordSchema);
-    genericRecord.put("union", new GenericData.EnumSymbol(enumSchema, "B"));
+    genericRecord.put("union", AvroCompatibilityHelper.newEnumSymbol(enumSchema, "B"));
 
     Assert.assertEquals(serializer.serialize(topic, specificRecord), bytes);
   }

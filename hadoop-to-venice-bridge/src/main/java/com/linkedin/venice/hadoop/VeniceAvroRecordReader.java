@@ -5,9 +5,13 @@ import com.linkedin.venice.etl.ETLValueSchemaTransformation;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.exceptions.VeniceSchemaFieldNotFoundException;
 import com.linkedin.venice.hadoop.utils.AvroSchemaParseUtils;
+import com.linkedin.venice.utils.AvroSchemaUtils;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.Collections;
@@ -118,7 +122,7 @@ public class VeniceAvroRecordReader extends AbstractVeniceRecordReader<AvroWrapp
         if (fileField.name().equals(valueFieldStr)) {
           fieldSchema = ETLUtils.getValueSchemaFromETLValueSchema(fieldSchema, etlValueSchemaTransformation);
         }
-        storeSchemaFields.add(new Schema.Field(fileField.name(), fieldSchema, fileField.doc(), fileField.defaultValue(), fileField.order()));
+        storeSchemaFields.add(AvroCompatibilityHelper.newField(fileField).setSchema(fieldSchema).build());
       }
 
       storeSchema = Schema.createRecord(fileSchema.getName(), fileSchema.getDoc(), fileSchema.getNamespace(), fileSchema.isError());

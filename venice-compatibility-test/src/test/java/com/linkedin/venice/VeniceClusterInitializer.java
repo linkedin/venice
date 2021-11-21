@@ -1,7 +1,5 @@
 package com.linkedin.venice;
 
-import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
-import com.linkedin.avroutil1.compatibility.AvroVersion;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
@@ -23,6 +21,17 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
+
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
+import com.linkedin.avroutil1.compatibility.AvroVersion;
+
+import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericData;
+import org.apache.avro.generic.GenericRecord;
+import org.apache.avro.generic.IndexedRecord;
+import org.apache.log4j.Logger;
+import org.testng.Assert;
+
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -32,11 +41,6 @@ import java.util.Properties;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
-import org.apache.avro.Schema;
-import org.apache.avro.generic.GenericData;
-import org.apache.avro.generic.GenericRecord;
-import org.apache.log4j.Logger;
-import org.testng.Assert;
 
 
 /**
@@ -56,12 +60,14 @@ public class VeniceClusterInitializer implements AutoCloseable {
       "         { \"name\": \"int_field\", \"type\": \"int\", \"default\": 0},           " +
       "         { \"name\": \"float_field\", \"type\": \"float\", \"default\": 0},           " +
       "         { \"name\": \"namemap\", \"type\":  {\"type\" : \"map\", \"values\" : \"int\" }},           " +
-      "         { \"name\": \"member_feature\", \"type\": { \"type\": \"array\", \"items\": \"float\" }, \"default\": []}        " +
+      "         { \"name\": \"member_feature\", \"type\": { \"type\": \"array\", \"items\": \"float\" }, \"default\": []}," +
+      "         { \"name\": \"ZookeeperAddress\", \"type\": \"string\"}" +
       "  ]       " +
       " }       ";
   public static final String KEY_SCHEMA_STR = "\"string\"";
   public static final String KEY_PREFIX = "key_";
   public static final String ID_FIELD_PREFIX = "id_";
+  public static final String ZK_ADDRESS_FIELD = "ZookeeperAddress";
   public static final int ENTRY_COUNT = 1000;
 
   private final VeniceClusterWrapper veniceCluster;
@@ -77,7 +83,9 @@ public class VeniceClusterInitializer implements AutoCloseable {
   private final VeniceKafkaSerializer valueSerializer;
 
   public VeniceClusterInitializer(String storeName, int routerPort) {
-    this.veniceCluster = ServiceFactory.getVeniceCluster(1, 1, 0, 2, 100, false, false);
+    Properties clusterConfig = new Properties();
+    clusterConfig.put(ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 1L);
+    this.veniceCluster = ServiceFactory.getVeniceCluster(1, 1, 1, 2, 100, false, false, clusterConfig);
     Properties serverProperties = new Properties();
     serverProperties.put(ConfigKeys.SERVER_COMPUTE_FAST_AVRO_ENABLED, true);
     this.veniceCluster.addVeniceServer(new Properties(), serverProperties);
@@ -90,7 +98,7 @@ public class VeniceClusterInitializer implements AutoCloseable {
     routerProperties.put(ConfigKeys.LISTENER_PORT, Integer.toString(routerPort));
     this.veniceCluster.addVeniceRouter(routerProperties);
     this.routerAddr = "http://" + veniceCluster.getVeniceRouters().get(0).getAddress();
-    LOGGER.info("router addr: " + this.routerAddr);
+    LOGGER.info("Router address: " + this.routerAddr);
 
     this.storeName = storeName;
     // Create test store
@@ -146,10 +154,10 @@ public class VeniceClusterInitializer implements AutoCloseable {
     if (value == null) {
       throw new VeniceException("Failed to retrieve value for key: " + key0);
     }
-    if (!(value instanceof GenericRecord)) {
+    if (!(value instanceof IndexedRecord && AvroCompatibilityHelper.isGenericRecord((IndexedRecord) value))) {
       throw new VeniceException("The returned value should be a GenericRecord");
     }
-    GenericRecord genericRecord = (GenericRecord)value;
+    GenericRecord genericRecord = (GenericRecord) value;
     String id = genericRecord.get("id").toString();
     String expectedId = ID_FIELD_PREFIX + "0";
     if (!id.equals(expectedId)) {
@@ -170,6 +178,7 @@ public class VeniceClusterInitializer implements AutoCloseable {
       value.put("boolean_field", true);
       value.put("int_field", 10);
       value.put("float_field", 10.0f);
+      value.put(ZK_ADDRESS_FIELD, veniceCluster.getZk().getAddress());
 
       List<Float> features = new ArrayList<>();
       features.add(Float.valueOf((float)(i + 1)));
@@ -196,6 +205,7 @@ public class VeniceClusterInitializer implements AutoCloseable {
       // Write end of push message to make node become ONLINE from BOOTSTRAP
       veniceWriter.broadcastEndOfPush(new HashMap<>());
     }
+
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
       String status = controllerClient.queryJobStatus(pushVersionTopic).getStatus();
       if (status.equals(ExecutionStatus.ERROR.name())) {
