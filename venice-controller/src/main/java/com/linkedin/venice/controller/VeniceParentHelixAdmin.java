@@ -64,6 +64,7 @@ import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateClusterConfigQueryParams;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.ConfigurationException;
+import com.linkedin.venice.exceptions.ExceptionType;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
@@ -1527,10 +1528,10 @@ public class VeniceParentHelixAdmin implements Admin {
         // Update-store message copied to the other cluster during store migration also has partitionCount.
         // Allow updating store if the partitionCount is equal to the existing value.
         if (partitionCount.isPresent() && partitionCount.get() != store.getPartitionCount()){
-          throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, "Cannot change partition count for hybrid stores");
+          throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, "Cannot change partition count for hybrid stores", ExceptionType.BAD_REQUEST);
         }
         if (partitionerClass.isPresent() || partitionerParams.isPresent()) {
-          throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, "Cannot change partitioner class and parameters for hybrid stores");
+          throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, "Cannot change partitioner class and parameters for hybrid stores", ExceptionType.BAD_REQUEST);
         }
       }
 
@@ -1539,11 +1540,11 @@ public class VeniceParentHelixAdmin implements Admin {
         int maxPartitionNum = getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName).getConfig().getMaxNumberOfPartition();
         if (setStore.partitionNum > maxPartitionNum) {
           throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, "Partition count: "
-              + partitionCount + " should be less than max: " + maxPartitionNum);
+              + partitionCount + " should be less than max: " + maxPartitionNum, ExceptionType.INVALID_CONFIG);
         }
         if (setStore.partitionNum < 0) {
           throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, "Partition count: "
-              + partitionCount + " should NOT be negative");
+              + partitionCount + " should NOT be negative", ExceptionType.INVALID_CONFIG);
         }
         updatedConfigsList.add(PARTITION_COUNT);
       } else {
@@ -1792,7 +1793,7 @@ public class VeniceParentHelixAdmin implements Admin {
     final boolean isLfModelDependencyCheckDisabled =
         getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName).getConfig().isLfModelDependencyCheckDisabled();
     if(!isLeaderFollowerModelEnabled && !isLfModelDependencyCheckDisabled) {
-      throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, "Native Replication cannot be enabled for store " + store.getName() + " since it's not on L/F state model");
+      throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, "Native Replication cannot be enabled for store " + store.getName() + " since it's not on L/F state model", ExceptionType.INVALID_CONFIG);
     }
   }
 
@@ -1811,7 +1812,7 @@ public class VeniceParentHelixAdmin implements Admin {
 
     if (!nativeReplicationEnabled) {
       throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, "Active/Active Replication cannot be enabled for store "
-          + store.getName() + " since Native Replication is not enabled on it.");
+          + store.getName() + " since Native Replication is not enabled on it.", ExceptionType.INVALID_CONFIG);
     }
   }
 

@@ -7,6 +7,7 @@ import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.stats.SparkServerStats;
 import com.linkedin.venice.controllerapi.ControllerRoute;
+import com.linkedin.venice.exceptions.ExceptionType;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.service.AbstractVeniceService;
@@ -322,16 +323,16 @@ public class AdminSparkServer extends AbstractVeniceService {
   protected static void validateParams(Request request, List<String> requiredParams, Admin admin) {
     String clusterName = request.queryParams(CLUSTER);
     if (Utils.isNullOrEmpty(clusterName) && !CLUSTER_DISCOVERY.pathEquals(request.pathInfo())) {
-      throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, CLUSTER + " is a required parameter");
+      throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, CLUSTER + " is a required parameter", ExceptionType.BAD_REQUEST);
     }
     if (!MASTER_CONTROLLER.pathEquals(request.pathInfo())
         && !CLUSTER_DISCOVERY.pathEquals(request.pathInfo()) && !admin.isLeaderControllerFor(clusterName)) {
       // Skip master controller check for '/master_controller' and '/discover_cluster' request
-      throw new VeniceHttpException(HttpConstants.SC_MISDIRECTED_REQUEST, "This controller " + Utils.getHostName() + " is not the active controller");
+      throw new VeniceHttpException(HttpConstants.SC_MISDIRECTED_REQUEST, "This controller " + Utils.getHostName() + " is not the active controller", ExceptionType.INCORRECT_CONTROLLER);
     }
     for (String param : requiredParams) {
       if (Utils.isNullOrEmpty(request.queryParams(param))) {
-        throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, param + " is a required parameter");
+        throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, param + " is a required parameter", ExceptionType.BAD_REQUEST);
       }
     }
   }

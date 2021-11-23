@@ -1,6 +1,7 @@
 package com.linkedin.venice.controllerapi;
 
 import com.linkedin.venice.HttpMethod;
+import com.linkedin.venice.exceptions.ExceptionType;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -161,7 +162,7 @@ public class ControllerTransport implements AutoCloseable {
     ContentType contentType = ContentType.getOrDefault(response.getEntity());
     if (!contentType.getMimeType().equals(ContentType.APPLICATION_JSON.getMimeType())) {
       logger.warn("Bad controller response, request=" + request + ", response=" + response + ", content=" + content);
-      throw new VeniceHttpException(statusCode, "Controller returned unsupported content-type: " + contentType + " with content: " + content);
+      throw new VeniceHttpException(statusCode, "Controller returned unsupported content-type: " + contentType + " with content: " + content, ExceptionType.BAD_REQUEST);
     }
 
     T result;
@@ -173,7 +174,7 @@ public class ControllerTransport implements AutoCloseable {
     }
 
     if (result.isError()) {
-      throw new VeniceHttpException(statusCode, result.getError());
+      throw new VeniceHttpException(statusCode, result.getError(), result.getExceptionType());
     }
 
     if (statusCode != HttpStatus.SC_OK) {

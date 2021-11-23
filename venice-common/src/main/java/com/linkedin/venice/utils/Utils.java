@@ -1,6 +1,7 @@
 package com.linkedin.venice.utils;
 
 import com.linkedin.venice.exceptions.ConfigurationException;
+import com.linkedin.venice.exceptions.ExceptionType;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.helix.Replica;
@@ -328,7 +329,7 @@ public class Utils {
     try {
       return Integer.parseInt(value);
     } catch (NumberFormatException e) {
-      throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, fieldName + " must be an integer, but value: " + value, e);
+      throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, fieldName + " must be an integer, but value: " + value, e, ExceptionType.BAD_REQUEST);
     }
   }
 
@@ -336,7 +337,7 @@ public class Utils {
     try {
       return Long.parseLong(value);
     } catch (NumberFormatException e) {
-      throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, fieldName + " must be a long, but value: " + value, e);
+      throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, fieldName + " must be a long, but value: " + value, e, ExceptionType.BAD_REQUEST);
     }
   }
 
@@ -348,7 +349,7 @@ public class Utils {
     if (value.equalsIgnoreCase("true") || value.equalsIgnoreCase("false")) {
       return Boolean.valueOf(value);
     } else {
-      throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, fieldName + " must be a boolean, but value: " + value);
+      throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, fieldName + " must be a boolean, but value: " + value, ExceptionType.BAD_REQUEST);
     }
   }
 

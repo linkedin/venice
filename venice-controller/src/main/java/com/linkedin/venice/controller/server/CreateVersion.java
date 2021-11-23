@@ -6,6 +6,7 @@ import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.controllerapi.VersionResponse;
+import com.linkedin.venice.exceptions.ExceptionType;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
@@ -130,7 +131,7 @@ public class CreateVersion extends AbstractRoute {
         if (!store.isLeaderFollowerModelEnabled()
             && store.getPartitionerConfig() != null && store.getPartitionerConfig().getAmplificationFactor() != 1) {
           throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, "amplificationFactor can only be specified "
-              + "when leaderFollower enabled");
+              + "when leaderFollower enabled", ExceptionType.BAD_REQUEST);
         }
 
         String pushTypeString = request.queryParams(PUSH_TYPE);
@@ -138,7 +139,7 @@ public class CreateVersion extends AbstractRoute {
         try {
           pushType = PushType.valueOf(pushTypeString);
         } catch (RuntimeException e){
-          throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, pushTypeString + " is an invalid " + PUSH_TYPE, e);
+          throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, pushTypeString + " is an invalid " + PUSH_TYPE, e, ExceptionType.BAD_REQUEST);
         }
         validatePushType(pushType, store);
 
@@ -387,16 +388,16 @@ public class CreateVersion extends AbstractRoute {
   private void validatePushType(PushType pushType, Store store) {
     if (pushType.equals(PushType.STREAM) && !store.isHybrid()){
       throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, "requesting topic for streaming writes to store "
-          + store.getName() + " which is not configured to be a hybrid store");
+          + store.getName() + " which is not configured to be a hybrid store", ExceptionType.BAD_REQUEST);
     }
     if (pushType.equals(PushType.STREAM) && store.getHybridStoreConfig().getDataReplicationPolicy().equals(DataReplicationPolicy.NONE)) {
       throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, "requesting topic for streaming writes to store " +
           store.getName() + " which is configured to have a hybrid data replication policy " +
-          store.getHybridStoreConfig().getDataReplicationPolicy());
+          store.getHybridStoreConfig().getDataReplicationPolicy(), ExceptionType.BAD_REQUEST);
     }
     if (pushType.isIncremental() && !store.isIncrementalPushEnabled()) {
       throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, "requesting topic for incremental push to store " +
-          store.getName() + " which does not have incremental push enabled.");
+          store.getName() + " which does not have incremental push enabled.", ExceptionType.BAD_REQUEST);
     }
   }
 
@@ -425,7 +426,7 @@ public class CreateVersion extends AbstractRoute {
           pushType = PushType.valueOf(request.queryParams(PUSH_TYPE));
         } catch (RuntimeException parseException) {
           throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, request.queryParams(PUSH_TYPE) + " is an invalid "
-              + PUSH_TYPE, parseException);
+              + PUSH_TYPE, parseException, ExceptionType.BAD_REQUEST);
         }
         String remoteKafkaBootstrapServers = null;
         if (request.queryParams().contains(REMOTE_KAFKA_BOOTSTRAP_SERVERS)) {

@@ -19,7 +19,7 @@ import java.util.concurrent.TimeUnit;
  * A common base class to provide setup and teardown routines to be used in venice AdminSparkServer related test cases.
  */
 public class AbstractTestAdminSparkServer {
-  protected static final int TEST_TIMEOUT = 30 * Time.MS_PER_SECOND;
+  protected static final int TEST_TIMEOUT = 300 * Time.MS_PER_SECOND;
   protected static final int STORAGE_NODE_COUNT = 1;
 
   protected VeniceClusterWrapper cluster;
