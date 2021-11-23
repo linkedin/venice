@@ -2,6 +2,7 @@ package com.linkedin.venice.pushstatushelper;
 
 import com.linkedin.venice.common.PushStatusStoreUtils;
 import com.linkedin.venice.pushstatus.PushStatusKey;
+import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.util.Optional;
@@ -29,7 +30,11 @@ public class PushStatusStoreRecordDeleter implements AutoCloseable {
   }
 
   public void removePushStatusStoreVeniceWriter(String storeName) {
+    logger.info("Removing push status store writer for store " + storeName);
+    long veniceWriterRemovingStartTimeInNs = System.nanoTime();
     veniceWriterCache.removeVeniceWriter(storeName);
+    logger.info("Removed push status store writer for store " + storeName + " in "
+        + LatencyUtils.getLatencyInMS(veniceWriterRemovingStartTimeInNs) + "ms.");
   }
 
   public VeniceWriter getPushStatusStoreVeniceWriter(String storeName) {
@@ -38,6 +43,9 @@ public class PushStatusStoreRecordDeleter implements AutoCloseable {
 
   @Override
   public void close() {
+    logger.info("Closing VeniceWriter cache");
+    long cacheClosingStartTimeInNs = System.nanoTime();
     veniceWriterCache.close();
+    logger.info("Closed VeniceWriter cache in " + LatencyUtils.getLatencyInMS(cacheClosingStartTimeInNs) + "ms.");
   }
 }

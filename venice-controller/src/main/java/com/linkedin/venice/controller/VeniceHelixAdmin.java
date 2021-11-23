@@ -792,7 +792,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
             // Cleanup system stores if applicable
             UserSystemStoreLifeCycleHelper.maybeDeleteSystemStoresForUserStore(this, storeRepository,
-                resources.getPushMonitor(), clusterName, store, metaStoreWriter, logger);
+                resources.getPushMonitor(), clusterName, store, metaStoreWriter, pushStatusStoreDeleter, logger);
 
             if (isForcedDelete) {
                 storeGraveyard.removeStoreFromGraveyard(clusterName, storeName);

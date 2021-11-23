@@ -3,10 +3,12 @@ package com.linkedin.venice.controller;
 import com.linkedin.venice.authorization.AuthorizerService;
 import com.linkedin.venice.authorization.Resource;
 import com.linkedin.venice.common.VeniceSystemStoreType;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.PushMonitorDelegator;
+import com.linkedin.venice.pushstatushelper.PushStatusStoreRecordDeleter;
 import com.linkedin.venice.system.store.MetaStoreWriter;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -15,6 +17,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import org.apache.log4j.Logger;
+
+import static com.linkedin.venice.common.VeniceSystemStoreType.*;
 
 
 /**
@@ -80,14 +84,29 @@ public class UserSystemStoreLifeCycleHelper {
 
   public static void deleteSystemStore(VeniceHelixAdmin admin, ReadWriteStoreRepository storeRepository,
       PushMonitorDelegator pushMonitor, String clusterName, String systemStoreName, boolean isStoreMigrating,
-      MetaStoreWriter metaStoreWriter, Logger logger) {
+      MetaStoreWriter metaStoreWriter, Optional<PushStatusStoreRecordDeleter> pushStatusStoreRecordDeleter, Logger logger) {
     logger.info("Start deleting system store: " + systemStoreName);
     admin.deleteAllVersionsInStore(clusterName, systemStoreName);
     pushMonitor.cleanupStoreStatus(systemStoreName);
     if (!isStoreMigrating) {
-      if (VeniceSystemStoreType.getSystemStoreType(systemStoreName) == VeniceSystemStoreType.META_STORE) {
-        // Clean up venice writer before truncating RT topic
-        metaStoreWriter.removeMetaStoreWriter(systemStoreName);
+      switch (VeniceSystemStoreType.getSystemStoreType(systemStoreName)) {
+        case META_STORE:
+          // Clean up venice writer before truncating RT topic
+          metaStoreWriter.removeMetaStoreWriter(systemStoreName);
+          break;
+        case DAVINCI_PUSH_STATUS_STORE:
+          pushStatusStoreRecordDeleter.ifPresent(deleter ->
+              deleter.removePushStatusStoreVeniceWriter(DAVINCI_PUSH_STATUS_STORE.extractRegularStoreName(systemStoreName)));
+          break;
+        case BATCH_JOB_HEARTBEAT_STORE:
+          // TODO: do we need to do any clean up here? HEARTBEAT_STORE is not coupled with any specific user store.
+          logger.error("Venice store " + BATCH_JOB_HEARTBEAT_STORE.extractRegularStoreName(systemStoreName) + " has a coupled batch job heartbeat system store?");
+          break;
+        case METADATA_STORE:
+          logger.info("Ignoring " + METADATA_STORE.toString() + " for system store " + systemStoreName + "; nothing to cleanup.");
+          break;
+        default:
+          throw new VeniceException("Unknown system store type: " + systemStoreName);
       }
       admin.truncateKafkaTopic(Version.composeRealTimeTopic(systemStoreName));
     } else {
@@ -102,16 +121,16 @@ public class UserSystemStoreLifeCycleHelper {
 
   public static void maybeDeleteSystemStoresForUserStore(VeniceHelixAdmin admin,
       ReadWriteStoreRepository storeRepository, PushMonitorDelegator pushMonitor, String clusterName, Store userStore,
-      MetaStoreWriter metaStoreWriter, Logger logger) {
+      MetaStoreWriter metaStoreWriter, Optional<PushStatusStoreRecordDeleter> pushStatusStoreRecordDeleter, Logger logger) {
     if (userStore.isStoreMetaSystemStoreEnabled()) {
       deleteSystemStore(admin, storeRepository, pushMonitor, clusterName,
           VeniceSystemStoreType.META_STORE.getSystemStoreName(userStore.getName()), userStore.isMigrating(),
-          metaStoreWriter, logger);
+          metaStoreWriter, pushStatusStoreRecordDeleter, logger);
     }
     if (userStore.isDaVinciPushStatusStoreEnabled()) {
       deleteSystemStore(admin, storeRepository, pushMonitor, clusterName,
-          VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(userStore.getName()),
-          userStore.isMigrating(), metaStoreWriter, logger);
+          DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(userStore.getName()),
+          userStore.isMigrating(), metaStoreWriter, pushStatusStoreRecordDeleter, logger);
     }
   }
 }
