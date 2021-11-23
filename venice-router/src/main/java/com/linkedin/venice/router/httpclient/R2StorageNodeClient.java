@@ -24,6 +24,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Random;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
@@ -31,10 +32,12 @@ import java.util.function.Consumer;
 
 public class R2StorageNodeClient implements StorageNodeClient {
   private final Optional<SSLEngineComponentFactory> sslFactory;
-  private final Map<String, Client> nodeIdToR2ClientMap = new VeniceConcurrentHashMap<>();
+  private final Random random = new Random();
+  private final Map<String, List<Client>> nodeIdToR2ClientMap = new VeniceConcurrentHashMap<>();
   private final List<TransportClientFactory> transportClientFactoryList = Collections.synchronizedList(new ArrayList());
   private final boolean http2Enabled;
   private int requestTimeout;
+  private int clientPoolSize;
 
   private final int httpMaxResponseSize;
 
@@ -44,7 +47,7 @@ public class R2StorageNodeClient implements StorageNodeClient {
     this.httpMaxResponseSize = config.getRouterHTTPMaxResponseSize();
     this.http2Enabled = config.isRouterHTTP2R2ClientEnabled();
     this.requestTimeout = config.getSocketTimeout();
-
+    this.clientPoolSize = config.getR2ClientPoolSize();;
   }
 
   @Override
@@ -61,11 +64,22 @@ public class R2StorageNodeClient implements StorageNodeClient {
     RequestContext requestContext = new RequestContext();
     requestContext.getLocalAttrs().put(R2Constants.REQUEST_TIMEOUT, requestTimeout);
 
-    Client selectedClient = nodeIdToR2ClientMap.computeIfAbsent(host.getNodeId(), h -> buildR2Client(sslFactory));
+    List<Client> clientList = nodeIdToR2ClientMap.computeIfAbsent(host.getNodeId(), h -> buildR2ClientList(sslFactory));
+    // randomly select a client
+    Client selectedClient = clientList.get(random.nextInt() % clientPoolSize);
     selectedClient.restRequest(request, requestContext, new R2ClientCallback(completedCallBack, failedCallBack, cancelledCallBack));
   }
 
-  public Client buildR2Client(Optional<SSLEngineComponentFactory> sslEngineComponentFactory) {
+  private List<Client> buildR2ClientList(Optional<SSLEngineComponentFactory> sslEngineComponentFactory) {
+    List<Client> clientList = new ArrayList<>();
+
+    for (int i = 0; i < clientPoolSize; i++) {
+      clientList.add(buildR2Client(sslEngineComponentFactory));
+    }
+    return clientList;
+  }
+
+  private Client buildR2Client(Optional<SSLEngineComponentFactory> sslEngineComponentFactory) {
     TransportClientFactory transportClientFactory = new HttpClientFactory.Builder()
         .setUsePipelineV2(http2Enabled)
         .build();
@@ -96,7 +110,7 @@ public class R2StorageNodeClient implements StorageNodeClient {
     }
     RestRequest restRequest = new RestRequestBuilder(requestUri).setMethod(request.getMethod()).build();
 
-    Client selectedClient = nodeIdToR2ClientMap.computeIfAbsent(request.getNodeId(), h -> buildR2Client(sslFactory));
+    Client selectedClient = nodeIdToR2ClientMap.computeIfAbsent(request.getNodeId(), h -> buildR2ClientList(sslFactory)).get(random.nextInt() % clientPoolSize);
 
     if (request.hasTimeout()) {
       RequestContext requestContext = new RequestContext();
@@ -119,6 +133,8 @@ public class R2StorageNodeClient implements StorageNodeClient {
     for (TransportClientFactory factory: transportClientFactoryList) {
       factory.shutdown(null);
     }
-    nodeIdToR2ClientMap.forEach((k,v) ->  v.shutdown(null));
+    nodeIdToR2ClientMap.forEach((k,v) -> {
+      v.forEach(client -> client.shutdown(null));
+    });
   }
 }

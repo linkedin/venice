@@ -768,6 +768,9 @@ public class ConfigKeys {
    * The http client pool size being used in one Router;
    */
   public static final String ROUTER_HTTP_CLIENT_POOL_SIZE = "router.http.client.pool.size";
+
+  public static final String ROUTER_R2_CLIENT_POOL_SIZE = "router.r2.client.pool.size";
+
   /**
    * The max connection number per route (to one storage node);
    */
