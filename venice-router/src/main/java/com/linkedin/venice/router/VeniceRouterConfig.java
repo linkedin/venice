@@ -42,6 +42,7 @@ public class VeniceRouterConfig {
   private int maxKeyCountInMultiGetReq;
   private int connectionLimit;
   private int httpClientPoolSize;
+  private int r2ClientPoolSize;
   private int maxOutgoingConnPerRoute;
   private int maxOutgoingConn;
   private Map<String, String> clusterToD2Map;
@@ -151,6 +152,7 @@ public class VeniceRouterConfig {
     maxKeyCountInMultiGetReq = props.getInt(ROUTER_MAX_KEY_COUNT_IN_MULTIGET_REQ, 500);
     connectionLimit = props.getInt(ROUTER_CONNECTION_LIMIT, 10000);
     httpClientPoolSize = props.getInt(ROUTER_HTTP_CLIENT_POOL_SIZE, 12);
+    r2ClientPoolSize = props.getInt(ROUTER_R2_CLIENT_POOL_SIZE, 2);
     maxOutgoingConnPerRoute = props.getInt(ROUTER_MAX_OUTGOING_CONNECTION_PER_ROUTE, 120);
     maxOutgoingConn = props.getInt(ROUTER_MAX_OUTGOING_CONNECTION, 1200);
     clusterToD2Map = props.getMap(CLUSTER_TO_D2);
@@ -331,6 +333,10 @@ public class VeniceRouterConfig {
 
   public int getHttpClientPoolSize() {
     return httpClientPoolSize;
+  }
+
+  public int getR2ClientPoolSize() {
+    return r2ClientPoolSize;
   }
 
   public int getMaxOutgoingConnPerRoute() {
