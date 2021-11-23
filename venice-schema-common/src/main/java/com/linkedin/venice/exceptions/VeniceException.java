@@ -25,6 +25,11 @@ public class VeniceException extends RuntimeException {
     super(s,t);
   }
 
+  public VeniceException(String s, Throwable t, ExceptionType exceptionType){
+    super(s,t);
+    this.exceptionType = exceptionType;
+  }
+
   /**
    * If this exception is caught in handling an http request, what status code should be returned?
    * Exceptions that extend VeniceException can override this for different behavior

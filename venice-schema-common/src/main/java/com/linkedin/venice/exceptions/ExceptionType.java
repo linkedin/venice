@@ -10,5 +10,6 @@ public enum ExceptionType {
     STORE_NOT_FOUND,
     SCHEMA_NOT_FOUND,
     CONNECTION_ERROR,
-    GENERAL_ERROR
+    GENERAL_ERROR,
+    BAD_REQUEST
 }

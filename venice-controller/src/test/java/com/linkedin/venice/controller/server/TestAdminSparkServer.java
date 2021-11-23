@@ -26,6 +26,7 @@ import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.controllerapi.VersionResponse;
 import com.linkedin.venice.controllerapi.routes.AdminCommandExecutionResponse;
+import com.linkedin.venice.exceptions.ExceptionType;
 import com.linkedin.venice.httpclient.HttpClientUtils;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
@@ -247,6 +248,7 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
       // Add incompatible schema
       SchemaResponse sr5 = controllerClient.addValueSchema(storeToCreate, incompatibleSchema);
       Assert.assertTrue(sr5.isError());
+      Assert.assertEquals(sr5.getExceptionType(), ExceptionType.INVALID_SCHEMA);
 
       // Formatted schema string
       String formattedSchemaStr1 = formatSchema(schema1);

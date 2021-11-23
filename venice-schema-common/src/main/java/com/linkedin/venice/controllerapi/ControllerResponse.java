@@ -14,7 +14,7 @@ public class ControllerResponse { /* Uses Json Reflective Serializer, get withou
   private String cluster;
   private String name;
   private String error;
-  private ExceptionType exceptionType = ExceptionType.GENERAL_ERROR;
+  private ExceptionType exceptionType = null;
 
   /**
    * Starting with Jackson 1.9, if this is the only annotation: {@link JsonIgnore}
