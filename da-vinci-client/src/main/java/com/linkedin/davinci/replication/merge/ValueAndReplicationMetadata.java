@@ -14,6 +14,11 @@ public class ValueAndReplicationMetadata<T> {
   private boolean updateIgnored; // Whether we should skip the incoming message since it could be a stale message.
   private int resolvedSchemaID;
 
+  public ValueAndReplicationMetadata() {
+    this.value = null;
+    this.replicationMetadata = null;
+  }
+
   public ValueAndReplicationMetadata(T value, GenericRecord replicationMetadata) {
     this.value = Utils.notNull(value);
     this.replicationMetadata = Utils.notNull(replicationMetadata);

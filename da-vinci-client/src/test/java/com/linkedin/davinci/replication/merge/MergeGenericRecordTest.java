@@ -1,10 +1,12 @@
 package com.linkedin.davinci.replication.merge;
 
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.schema.ReplicationMetadataSchemaGenerator;
 import com.linkedin.venice.schema.WriteComputeSchemaConverter;
 import com.linkedin.venice.utils.Lazy;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import org.apache.avro.Schema;
@@ -19,7 +21,7 @@ import static com.linkedin.venice.schema.WriteComputeSchemaConverter.*;
 
 public class MergeGenericRecordTest {
 
-  private static String recordSchemaStr = "{\n"
+  private static final String RECORD_SCHEMA_STR = "{\n"
       + "  \"type\" : \"record\",\n"
       + "  \"name\" : \"User\",\n"
       + "  \"namespace\" : \"example.avro\",\n"
@@ -38,7 +40,7 @@ public class MergeGenericRecordTest {
       + "  } ]\n"
       + "}";
 
-  private String arrSchemaStr = "{\n" +
+  private static final String ARRAY_SCHEMA_STR = "{\n" +
       "  \"type\" : \"record\",\n" +
       "  \"name\" : \"testRecord\",\n" +
       "  \"namespace\" : \"com.linkedin.avro\",\n" +
@@ -66,8 +68,8 @@ public class MergeGenericRecordTest {
       "  } ]\n" +
       "}";
   @Test
-  public void testDelete() throws Exception {
-    Schema schema = Schema.parse(recordSchemaStr);
+  public void testDelete() {
+    Schema schema = AvroCompatibilityHelper.parse(RECORD_SCHEMA_STR);
     Schema aaSchema = ReplicationMetadataSchemaGenerator.generateMetadataSchema(schema, 1);
     GenericRecord valueRecord = new GenericData.Record(schema);
     valueRecord.put("id", "id1");
@@ -75,9 +77,9 @@ public class MergeGenericRecordTest {
     valueRecord.put("age", 10);
     GenericRecord timeStampRecord = new GenericData.Record(aaSchema);
     GenericRecord ts = new GenericData.Record(aaSchema.getFields().get(0).schema().getTypes().get(1));
-    ts.put("id", 10l);
-    ts.put("name", 10l);
-    ts.put("age", 25l);
+    ts.put("id", 10L);
+    ts.put("name", 10L);
+    ts.put("age", 25L);
     timeStampRecord.put(0, ts);
 
     ValueAndReplicationMetadata<GenericRecord>
@@ -93,7 +95,6 @@ public class MergeGenericRecordTest {
     Assert.assertEquals(ts.get("id"), 20L);
     Assert.assertEquals(ts.get("name"), 20L);
     Assert.assertEquals(ts.get("age"), 25L);
-
 
     // full delete. expect null value
     timeStampRecord.put(0, 20L);
@@ -117,13 +118,15 @@ public class MergeGenericRecordTest {
     timeStampRecord.put(0, ts);
     valueAndReplicationMetadata.setReplicationMetadata(timeStampRecord);
     valueAndReplicationMetadata.setValue(valueRecord);
-    ValueAndReplicationMetadata record = merge.delete(valueAndReplicationMetadata, 5, 1, 0);
-    Assert.assertEquals(record, valueAndReplicationMetadata);
+    ValueAndReplicationMetadata mergedRecord = merge.delete(valueAndReplicationMetadata, 5, 1, 0);
+
+    Assert.assertEquals(mergedRecord.getValue(), valueAndReplicationMetadata.getValue());
+    Assert.assertEquals((List<Long>) mergedRecord.getReplicationMetadata().get(REPLICATION_CHECKPOINT_VECTOR_FIELD), Arrays.asList(1L));
   }
 
   @Test
-  public void testPut() throws Exception {
-    Schema schema = Schema.parse(recordSchemaStr);
+  public void testPut() {
+    Schema schema = AvroCompatibilityHelper.parse(RECORD_SCHEMA_STR);
     Schema aaSchema = ReplicationMetadataSchemaGenerator.generateMetadataSchema(schema, 1);
     GenericRecord valueRecord = new GenericData.Record(schema);
     valueRecord.put("id", "id1");
@@ -131,9 +134,9 @@ public class MergeGenericRecordTest {
     valueRecord.put("age", 10);
     GenericRecord timeStampRecord = new GenericData.Record(aaSchema);
     GenericRecord ts = new GenericData.Record(aaSchema.getFields().get(0).schema().getTypes().get(1));
-    ts.put("id", 10l);
-    ts.put("name", 10l);
-    ts.put("age", 20l);
+    ts.put("id", 10L);
+    ts.put("name", 10L);
+    ts.put("age", 20L);
     timeStampRecord.put(0, ts);
 
     ValueAndReplicationMetadata<GenericRecord>
@@ -157,7 +160,7 @@ public class MergeGenericRecordTest {
     Assert.assertEquals(valueAndReplicationMetadata1.getValue(), valueAndReplicationMetadata.getValue());
 
     ValueAndReplicationMetadata<GenericRecord> finalValueAndReplicationMetadata = valueAndReplicationMetadata;
-    Schema schema2 = Schema.parse("{"
+    Schema schema2 = AvroCompatibilityHelper.parse("{"
         + "\"fields\": ["
         + "   {\"default\": \"\", \"doc\": \"test field\", \"name\": \"testField1\", \"type\": \"string\"},"
         + "   {\"default\": -1, \"doc\": \"test field two\", \"name\": \"testField2\", \"type\": \"float\"}"
@@ -170,8 +173,8 @@ public class MergeGenericRecordTest {
   }
 
   @Test(enabled = false)
-  public void testUpdate() throws Exception {
-    Schema schema = Schema.parse(recordSchemaStr);
+  public void testUpdate() {
+    Schema schema = AvroCompatibilityHelper.parse(RECORD_SCHEMA_STR);
     Schema aaSchema = ReplicationMetadataSchemaGenerator.generateMetadataSchema(schema, 1);
     GenericRecord valueRecord = new GenericData.Record(schema);
     valueRecord.put("id", "id1");
@@ -179,9 +182,9 @@ public class MergeGenericRecordTest {
     valueRecord.put("age", 10);
     GenericRecord timeStampRecord = new GenericData.Record(aaSchema);
     GenericRecord ts = new GenericData.Record(aaSchema.getFields().get(0).schema().getTypes().get(1));
-    ts.put("id", 10l);
-    ts.put("name", 10l);
-    ts.put("age", 20l);
+    ts.put("id", 10L);
+    ts.put("name", 10L);
+    ts.put("age", 20L);
     timeStampRecord.put(0, ts);
 
     ValueAndReplicationMetadata<GenericRecord>
@@ -223,7 +226,7 @@ public class MergeGenericRecordTest {
     Assert.assertEquals(ts.get("age"), 30L);
 
     // validate exception on list operations.
-    schema = Schema.parse(arrSchemaStr);
+    schema = AvroCompatibilityHelper.parse(ARRAY_SCHEMA_STR);
     Schema innerArraySchema = schema.getField("hits").schema();
     GenericData.Record collectionUpdateRecord =
         new GenericData.Record(WriteComputeSchemaConverter.convert(innerArraySchema).getTypes().get(0));
@@ -236,7 +239,7 @@ public class MergeGenericRecordTest {
 
   @Test
   public void testPutPermutation() {
-    Schema schema = Schema.parse(recordSchemaStr);
+    Schema schema = AvroCompatibilityHelper.parse(RECORD_SCHEMA_STR);
     List<GenericRecord> payload = new ArrayList<>();
     List<Long> writeTs = new ArrayList<>();
     GenericRecord origRecord = new GenericData.Record(schema);
@@ -244,9 +247,9 @@ public class MergeGenericRecordTest {
     GenericRecord timeStampRecord = new GenericData.Record(aaSchema);
 
     GenericRecord ts = new GenericData.Record(aaSchema.getFields().get(0).schema().getTypes().get(1));
-    ts.put("id", 10l);
-    ts.put("name", 10l);
-    ts.put("age", 20l);
+    ts.put("id", 10L);
+    ts.put("name", 10L);
+    ts.put("age", 20L);
     timeStampRecord.put(0, ts);
     origRecord.put("id", "id0");
     origRecord.put("name", "name0");

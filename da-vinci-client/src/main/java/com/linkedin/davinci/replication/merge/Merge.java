@@ -3,7 +3,9 @@ package com.linkedin.davinci.replication.merge;
 import com.linkedin.venice.utils.Lazy;
 import java.util.ArrayList;
 import java.util.List;
+import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
+import org.apache.avro.specific.SpecificData;
 
 
 /**
@@ -160,5 +162,9 @@ interface Merge<T> {
       return 0L;
     }
     return ((List<Long>)offsetVector).stream().reduce(0L, Long::sum);
+  }
+
+  static GenericRecord deepCopyGenericRecord(GenericRecord genericRecord) {
+    return GenericData.get().deepCopy(genericRecord.getSchema(), genericRecord);
   }
 }
