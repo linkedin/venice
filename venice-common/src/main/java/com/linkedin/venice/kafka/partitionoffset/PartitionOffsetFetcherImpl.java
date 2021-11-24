@@ -163,7 +163,7 @@ public class PartitionOffsetFetcherImpl implements PartitionOffsetFetcher {
                 ignoredParam -> timestamp));
 
         return convertKeyFromPartitionToPartitionId(
-            getOffsetsByTimeWithRetry(timestampsToSearch, 1, Duration.ofMillis(1)),
+            getOffsetsByTimeWithRetry(timestampsToSearch, 3, Duration.ofSeconds(5)),
             topic
         );
       }
@@ -187,8 +187,8 @@ public class PartitionOffsetFetcherImpl implements PartitionOffsetFetcher {
     final TopicPartition topicPartition = new TopicPartition(topic, partition);
     return getOffsetsByTimeWithRetry(
             Collections.singletonMap(topicPartition, timestamp),
-            1,
-            Duration.ofMillis(1) // Placeholder
+            3,
+            Duration.ofSeconds(5)
     ).get(topicPartition);
   }
 
@@ -261,8 +261,7 @@ public class PartitionOffsetFetcherImpl implements PartitionOffsetFetcher {
   ) {
     try (AutoCloseableLock ignore = new AutoCloseableLock(rawConsumerLock)) {
       return RetryUtils.executeWithMaxAttempt(
-          () -> kafkaRawBytesConsumer.get().offsetsForTimes(
-              timestampsToSearch, kafkaOperationTimeout),
+          () -> kafkaRawBytesConsumer.get().offsetsForTimes(timestampsToSearch, kafkaOperationTimeout),
           maxAttempt,
           delay,
           KAFKA_RETRIABLE_FAILURES
