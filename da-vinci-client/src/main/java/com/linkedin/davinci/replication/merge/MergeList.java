@@ -10,7 +10,7 @@ class MergeList implements Merge<List<Object>> {
 
   private MergeList() {}
 
-  static MergeList getMergeList() {
+  static MergeList getInstance() {
     return INSTANCE;
   }
 

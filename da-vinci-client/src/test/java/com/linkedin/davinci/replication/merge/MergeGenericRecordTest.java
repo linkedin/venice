@@ -86,21 +86,25 @@ public class MergeGenericRecordTest {
         valueAndReplicationMetadata = new ValueAndReplicationMetadata<>(valueRecord, timeStampRecord);
 
     Merge<GenericRecord> merge = MergeGenericRecord.getInstance();
-    valueAndReplicationMetadata = merge.delete(valueAndReplicationMetadata, 20, 1, 0);
+    ValueAndReplicationMetadata<GenericRecord> deletedValueAndReplicationMetadata1 = merge.delete(valueAndReplicationMetadata, 20, 1, 0);
     // verify id and name fields are default (deleted)
-    Assert.assertEquals(valueAndReplicationMetadata.getValue().get("id").toString(), "id");
-    Assert.assertEquals(valueAndReplicationMetadata.getValue().get("name").toString(), "name");
-    Assert.assertEquals(valueAndReplicationMetadata.getValue().get("age"), 10);
-    ts = (GenericRecord) valueAndReplicationMetadata.getReplicationMetadata().get(TIMESTAMP_FIELD_NAME);
+    Assert.assertEquals(deletedValueAndReplicationMetadata1.getValue().get("id").toString(), "id");
+    Assert.assertEquals(deletedValueAndReplicationMetadata1.getValue().get("name").toString(), "name");
+    Assert.assertEquals(deletedValueAndReplicationMetadata1.getValue().get("age"), 10);
+    ts = (GenericRecord) deletedValueAndReplicationMetadata1.getReplicationMetadata().get(TIMESTAMP_FIELD_NAME);
     Assert.assertEquals(ts.get("id"), 20L);
     Assert.assertEquals(ts.get("name"), 20L);
     Assert.assertEquals(ts.get("age"), 25L);
+    // Verify that the same object is returned
+    Assert.assertTrue(deletedValueAndReplicationMetadata1 == valueAndReplicationMetadata);
 
     // full delete. expect null value
     timeStampRecord.put(0, 20L);
     valueAndReplicationMetadata.setReplicationMetadata(timeStampRecord);
-    valueAndReplicationMetadata = merge.delete(valueAndReplicationMetadata, 30, 1, 0);
-    Assert.assertNull(valueAndReplicationMetadata.getValue());
+    ValueAndReplicationMetadata<GenericRecord> deletedValueAndReplicationMetadata2 = merge.delete(valueAndReplicationMetadata, 30, 1, 0);
+    Assert.assertNull(deletedValueAndReplicationMetadata2.getValue());
+    // Verify that the same object is returned
+    Assert.assertTrue(deletedValueAndReplicationMetadata2 == valueAndReplicationMetadata);
 
     // full delete based on field timestamp values
     ts.put("id", 10L);
@@ -113,15 +117,16 @@ public class MergeGenericRecordTest {
     Assert.assertNull(valueAndReplicationMetadata.getValue());
     Assert.assertEquals(valueAndReplicationMetadata.getReplicationMetadata().get(TIMESTAMP_FIELD_NAME), 30L);
 
-
     // no delete, return same object
     timeStampRecord.put(0, ts);
     valueAndReplicationMetadata.setReplicationMetadata(timeStampRecord);
     valueAndReplicationMetadata.setValue(valueRecord);
-    ValueAndReplicationMetadata mergedRecord = merge.delete(valueAndReplicationMetadata, 5, 1, 0);
+    ValueAndReplicationMetadata<GenericRecord> deletedValueAndReplicationMetadata3 = merge.delete(valueAndReplicationMetadata, 5, 1, 0);
 
-    Assert.assertEquals(mergedRecord.getValue(), valueAndReplicationMetadata.getValue());
-    Assert.assertEquals((List<Long>) mergedRecord.getReplicationMetadata().get(REPLICATION_CHECKPOINT_VECTOR_FIELD), Arrays.asList(1L));
+    Assert.assertEquals(deletedValueAndReplicationMetadata3.getValue(), valueAndReplicationMetadata.getValue());
+    Assert.assertEquals((List<Long>) deletedValueAndReplicationMetadata3.getReplicationMetadata().get(REPLICATION_CHECKPOINT_VECTOR_FIELD), Arrays.asList(1L));
+    // Verify that the same object is returned
+    Assert.assertTrue(deletedValueAndReplicationMetadata3 == valueAndReplicationMetadata);
   }
 
   @Test
@@ -147,19 +152,22 @@ public class MergeGenericRecordTest {
     newRecord.put("name", "name10");
     newRecord.put("age", 20);
     Merge<GenericRecord> merge = MergeGenericRecord.getInstance();
-    valueAndReplicationMetadata = merge.put(valueAndReplicationMetadata, newRecord, 30, 1, 0);
+    ValueAndReplicationMetadata<GenericRecord> mergedValueAndReplicationMetadata1 = merge.put(valueAndReplicationMetadata, newRecord, 30, 1, 0);
 
     // verify id and name fields are from new record
-    Assert.assertEquals(valueAndReplicationMetadata.getValue().get("id"), newRecord.get(0));
-    Assert.assertEquals(valueAndReplicationMetadata.getValue().get("name"), newRecord.get(1));
-    Assert.assertEquals(valueAndReplicationMetadata.getValue().get("age"), newRecord.get(2));
+    Assert.assertEquals(mergedValueAndReplicationMetadata1.getValue().get("id"), newRecord.get(0));
+    Assert.assertEquals(mergedValueAndReplicationMetadata1.getValue().get("name"), newRecord.get(1));
+    Assert.assertEquals(mergedValueAndReplicationMetadata1.getValue().get("age"), newRecord.get(2));
+    // Verify that the same object is returned
+    Assert.assertTrue(mergedValueAndReplicationMetadata1 == valueAndReplicationMetadata);
 
     // verify we reuse the same instance when nothings changed.
     ValueAndReplicationMetadata<GenericRecord>
-        valueAndReplicationMetadata1 = merge.put(valueAndReplicationMetadata, newRecord, 10, 1, 0);
-    Assert.assertEquals(valueAndReplicationMetadata1.getValue(), valueAndReplicationMetadata.getValue());
+        mergedValueAndReplicationMetadata2 = merge.put(valueAndReplicationMetadata, newRecord, 10, 1, 0);
+    Assert.assertEquals(mergedValueAndReplicationMetadata2.getValue(), valueAndReplicationMetadata.getValue());
+    // Verify that the same object is returned
+    Assert.assertTrue(mergedValueAndReplicationMetadata2 == valueAndReplicationMetadata);
 
-    ValueAndReplicationMetadata<GenericRecord> finalValueAndReplicationMetadata = valueAndReplicationMetadata;
     Schema schema2 = AvroCompatibilityHelper.parse("{"
         + "\"fields\": ["
         + "   {\"default\": \"\", \"doc\": \"test field\", \"name\": \"testField1\", \"type\": \"string\"},"
@@ -169,7 +177,7 @@ public class MergeGenericRecordTest {
         +"}");
     newRecord = new GenericData.Record(schema2);
     GenericRecord finalNewRecord = newRecord;
-    Assert.assertThrows(VeniceException.class, () -> merge.put(finalValueAndReplicationMetadata, finalNewRecord, 10, 1, 0));
+    Assert.assertThrows(VeniceException.class, () -> merge.put(valueAndReplicationMetadata, finalNewRecord, 10, 1, 0));
   }
 
   @Test(enabled = false)
