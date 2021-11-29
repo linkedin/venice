@@ -5,7 +5,6 @@ import java.util.ArrayList;
 import java.util.List;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
-import org.apache.avro.specific.SpecificData;
 
 
 /**
@@ -35,12 +34,9 @@ import org.apache.avro.specific.SpecificData;
  * 3. In case of equal timestamps, the value of the field or of the element is compared to that of the old field
  *    or element in order to deterministically decide which one wins the conflict resolution.
  *
- * Note: an implementation is allowed to return the same {@link ValueAndReplicationMetadata} instance which was
- * passed in, and to mutate or replace its inner variables. As such, a caller of this function should not expect
- * the passed in parameter to remain unchanged. The reverse assumption is also invalid, as there may be cases
- * where an implementation cannot mutate the inner variables (such as when the write operation and old value use
- * different schemas) and it is therefore possible that new objects will be instantiated to replace the old ones,
- * rather than mutating them.
+ * Note: all implementation must return the reference of the same {@link ValueAndReplicationMetadata} instance that was
+ * passed in. The input {@link ValueAndReplicationMetadata} object may be mutated or replaced its inner variables. As such,
+ * a caller of this function should not expect the passed in parameter to remain unchanged.
  */
 interface Merge<T> {
   /**
@@ -52,7 +48,9 @@ interface Merge<T> {
    * @param sourceBrokerIDOfNewValue The ID of the broker from which the new value originates.  ID's should correspond
    *                                 to the kafkaClusterUrlIdMap configured in the LeaderFollowerIngestionTask.  Used to build
    *                                 the ReplicationMetadata for the newly inserted record.
-   * @return the resulting {@link ValueAndReplicationMetadata} after merging the old one with the incoming write operation
+   * @return the resulting {@link ValueAndReplicationMetadata} after merging the old one with the incoming write operation.
+   *         The returned object is guaranteed to be "==" to the input oldValueAndReplicationMetadata object and the internal
+   *         members of the object are possibly mutated.
    */
   ValueAndReplicationMetadata<T> put(
       ValueAndReplicationMetadata<T> oldValueAndReplicationMetadata,
@@ -70,7 +68,9 @@ interface Merge<T> {
    * @param sourceBrokerIDOfNewValue The ID of the broker from which the new value originates.  ID's should correspond
    *                                 to the kafkaClusterUrlIdMap configured in the LeaderFollowerIngestionTask.  Used to build
    *                                 the ReplicationMetadata for the newly inserted record.
-   * @return the resulting {@link ValueAndReplicationMetadata} after merging the old one with the incoming delete operation
+   * @return the resulting {@link ValueAndReplicationMetadata} after merging the old one with the incoming delete operation.
+   *         The returned object is guaranteed to be "==" to the input oldValueAndReplicationMetadata object and the internal
+   *         members of the object are possibly mutated.
    */
   ValueAndReplicationMetadata<T> delete(
       ValueAndReplicationMetadata<T> oldValueAndReplicationMetadata,
@@ -88,7 +88,9 @@ interface Merge<T> {
    * @param sourceBrokerIDOfNewValue The ID of the broker from which the new value originates.  ID's should correspond
    *                                 to the kafkaClusterUrlIdMap configured in the LeaderFollowerIngestionTask.  Used to build
    *                                 the ReplicationMetadata for the newly inserted record.
-   * @return the resulting {@link ValueAndReplicationMetadata} after merging the old one with the incoming write operation
+   * @return the resulting {@link ValueAndReplicationMetadata} after merging the old one with the incoming write operation.
+   *         The returned object is guaranteed to be "==" to the input oldValueAndReplicationMetadata object and the internal
+   *         members of the object are possibly mutated.
    */
   ValueAndReplicationMetadata<T> update(
       ValueAndReplicationMetadata<T> oldValueAndReplicationMetadata,

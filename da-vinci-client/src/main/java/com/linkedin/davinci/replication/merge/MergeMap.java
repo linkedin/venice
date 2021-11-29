@@ -10,7 +10,7 @@ class MergeMap implements Merge<Map<CharSequence, Object>> {
 
   private MergeMap() {}
 
-  static MergeMap getMergeMap() {
+  static MergeMap getInstance() {
     return INSTANCE;
   }
 
