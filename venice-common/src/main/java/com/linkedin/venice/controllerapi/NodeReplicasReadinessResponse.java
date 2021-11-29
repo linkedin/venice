@@ -5,12 +5,12 @@ import java.util.List;
 
 
 public class NodeReplicasReadinessResponse extends ControllerResponse {
-  private boolean nodeReady;
+  private NodeReplicasReadinessState nodeState;
   private List<Replica> unreadyReplicas;
 
-  public boolean isNodeReady() { return nodeReady; }
-  public void setNodeReady(boolean val) {
-    nodeReady = val;
+  public NodeReplicasReadinessState getNodeState() { return nodeState; }
+  public void setNodeState(NodeReplicasReadinessState val) {
+    nodeState = val;
   }
 
   public List<Replica> getUnreadyReplicas() { return unreadyReplicas; }
