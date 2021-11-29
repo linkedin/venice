@@ -9,6 +9,7 @@ import com.linkedin.venice.controllerapi.MultiNodesStatusResponse;
 import com.linkedin.venice.controllerapi.MultiNodeResponse;
 import com.linkedin.venice.controllerapi.MultiReplicaResponse;
 import com.linkedin.venice.controllerapi.NodeReplicasReadinessResponse;
+import com.linkedin.venice.controllerapi.NodeReplicasReadinessState;
 import com.linkedin.venice.controllerapi.NodeStatusResponse;
 import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.utils.Pair;
@@ -279,8 +280,8 @@ public class NodesAndReplicas extends AbstractRoute {
         responseObj.setCluster(request.queryParams(CLUSTER));
         String nodeId = request.queryParams(STORAGE_NODE_ID);
 
-        Pair<Boolean, List<Replica>> result = admin.nodeReplicaReadiness(responseObj.getCluster(), nodeId);
-        responseObj.setNodeReady(result.getFirst());
+        Pair<NodeReplicasReadinessState, List<Replica>> result = admin.nodeReplicaReadiness(responseObj.getCluster(), nodeId);
+        responseObj.setNodeState(result.getFirst());
         responseObj.setUnreadyReplicas(result.getSecond());
       } catch (Throwable e) {
         responseObj.setError(e.getMessage());

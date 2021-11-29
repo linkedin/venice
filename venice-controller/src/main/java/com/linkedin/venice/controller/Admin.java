@@ -4,6 +4,7 @@ import com.linkedin.venice.acl.AclException;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.controller.kafka.consumer.VeniceControllerConsumerFactory;
 import com.linkedin.venice.controller.lingeringjob.IdentityParser;
+import com.linkedin.venice.controllerapi.NodeReplicasReadinessState;
 import com.linkedin.venice.controllerapi.RepushInfo;
 import com.linkedin.venice.controllerapi.UpdateClusterConfigQueryParams;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
@@ -677,5 +678,5 @@ public interface Admin extends AutoCloseable, Closeable {
      * Returns ture, if all current version replicas of the input node are ready to serve.
      *         false and all unready replicas otherwise.
      */
-    Pair<Boolean, List<Replica>> nodeReplicaReadiness(String cluster, String helixNodeId);
+    Pair<NodeReplicasReadinessState, List<Replica>> nodeReplicaReadiness(String cluster, String helixNodeId);
 }

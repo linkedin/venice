@@ -26,6 +26,7 @@ import com.linkedin.venice.controller.kafka.consumer.VeniceControllerConsumerFac
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
+import com.linkedin.venice.controllerapi.NodeReplicasReadinessState;
 import com.linkedin.venice.controllerapi.RepushInfo;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
@@ -169,6 +170,7 @@ import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 import org.apache.avro.specific.SpecificRecord;
 import org.apache.helix.HelixAdmin;
+import org.apache.helix.HelixManager;
 import org.apache.helix.HelixManagerFactory;
 import org.apache.helix.InstanceType;
 import org.apache.helix.PropertyKey;
@@ -4900,7 +4902,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         }
     }
 
-    protected HelixVeniceClusterResources getHelixVeniceClusterResources(String cluster) {
+    public HelixVeniceClusterResources getHelixVeniceClusterResources(String cluster) {
         Optional<HelixVeniceClusterResources> resources = controllerStateModelFactory.getModel(cluster).getResources();
         if (!resources.isPresent()) {
             throwClusterNotInitialized(cluster);
@@ -5694,11 +5696,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         return backupVersionDefaultRetentionMs;
     }
 
-    private Pair<Boolean, List<Replica>> areAllCurrentVersionReplicasReady(HelixCustomizedViewOfflinePushRepository customizedViewRepo,
+    private Pair<NodeReplicasReadinessState, List<Replica>> areAllCurrentVersionReplicasReady(HelixCustomizedViewOfflinePushRepository customizedViewRepo,
         ReadWriteStoreRepository storeRepo, String nodeId) {
         List<Replica> unreadyReplicas = new ArrayList<>();
-
         List<Replica> localReplicas = Utils.getReplicasForInstance(customizedViewRepo, nodeId);
+
         ResourceAssignment resourceAssn = customizedViewRepo.getResourceAssignment();
         for (Replica replica : localReplicas) {
             // Skip if replica is a stale version.
@@ -5716,11 +5718,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 unreadyReplicas.add(replica);
             }
         }
-        return new Pair<>(unreadyReplicas.isEmpty(), unreadyReplicas);
+        return new Pair<>(unreadyReplicas.isEmpty()
+            ? NodeReplicasReadinessState.READY
+            : NodeReplicasReadinessState.UNREADY, unreadyReplicas);
     }
 
     @Override
-    public Pair<Boolean, List<Replica>> nodeReplicaReadiness(String cluster, String helixNodeId) {
+    public Pair<NodeReplicasReadinessState, List<Replica>> nodeReplicaReadiness(String cluster, String helixNodeId) {
         checkControllerLeadershipFor(cluster);
         List<String> instances = helixAdminClient.getInstancesInCluster(cluster);
         HelixCustomizedViewOfflinePushRepository customizedViewRepo =
@@ -5729,6 +5733,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
         if (!instances.contains(helixNodeId)) {
             throw new VeniceException("Node: " + helixNodeId + " is not in the cluster: " + cluster);
+        }
+
+        if (!HelixUtils.isLiveInstance(cluster, helixNodeId, getHelixVeniceClusterResources(cluster).getHelixManager())) {
+            return new Pair<>(NodeReplicasReadinessState.INANIMATE, Collections.emptyList());
         }
         return areAllCurrentVersionReplicasReady(customizedViewRepo, storeRepo, helixNodeId);
     }

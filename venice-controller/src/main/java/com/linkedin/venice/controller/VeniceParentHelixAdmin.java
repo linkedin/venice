@@ -59,6 +59,7 @@ import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.IncrementalPushVersionsResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.MultiStoreStatusResponse;
+import com.linkedin.venice.controllerapi.NodeReplicasReadinessState;
 import com.linkedin.venice.controllerapi.RepushInfo;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateClusterConfigQueryParams;
@@ -2366,7 +2367,7 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
-  public Pair<Boolean, List<Replica>> nodeReplicaReadiness(String cluster, String helixNodeId) {
+  public Pair<NodeReplicasReadinessState, List<Replica>> nodeReplicaReadiness(String cluster, String helixNodeId) {
     throw new VeniceUnsupportedOperationException("nodeReplicaReadiness is not supported");
   }
 

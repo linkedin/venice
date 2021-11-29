@@ -59,7 +59,7 @@ public class HelixVeniceClusterResources implements VeniceResource {
   private final ClusterLockManager clusterLockManager;
   private final ReadWriteStoreRepository storeMetadataRepository;
   private final HelixExternalViewRepository routingDataRepository;
-  private final HelixCustomizedViewOfflinePushRepository customizedViewRepo;
+  private HelixCustomizedViewOfflinePushRepository customizedViewRepo;
   private final ReadWriteSchemaRepository schemaRepository;
   private final HelixStatusMessageChannel messageChannel;
   private final VeniceControllerClusterConfig config;
@@ -279,6 +279,9 @@ public class HelixVeniceClusterResources implements VeniceResource {
   }
 
   public HelixCustomizedViewOfflinePushRepository getCustomizedViewRepository() { return customizedViewRepo; }
+
+  // setCustomizedViewRepository is used for testing only.
+  void setCustomizedViewRepository(HelixCustomizedViewOfflinePushRepository repo) { customizedViewRepo = repo; }
 
   public HelixStatusMessageChannel getMessageChannel() {
     return messageChannel;
