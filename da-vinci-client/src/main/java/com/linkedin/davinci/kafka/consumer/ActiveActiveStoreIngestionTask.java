@@ -462,12 +462,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   }
 
   @Override
-  protected void startConsumingAsLeaderInTransitionFromStandby(PartitionConsumptionState partitionConsumptionState) {
-    if (partitionConsumptionState.getLeaderFollowerState() != IN_TRANSITION_FROM_STANDBY_TO_LEADER) {
-      throw new VeniceException(String.format("Expect state %s but got %s",
-          IN_TRANSITION_FROM_STANDBY_TO_LEADER, partitionConsumptionState.toString()
-      ));
-    }
+  protected void startConsumingAsLeader(PartitionConsumptionState partitionConsumptionState) {
     final int partition = partitionConsumptionState.getPartition();
     final OffsetRecord offsetRecord = partitionConsumptionState.getOffsetRecord();
 
@@ -487,21 +482,21 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     Map<String, Long> leaderOffsetByKafkaURL = new HashMap<>(leaderSourceKafkaURLs.size());
     leaderSourceKafkaURLs.forEach(kafkaURL -> leaderOffsetByKafkaURL.put(kafkaURL, offsetRecord.getLeaderOffset(kafkaURL)));
     logger.info(String.format("%s is promoted to leader for partition %d and it is going to start consuming from " +
-                    "topic %s with offset by Kafka URL mapping %s",
-            consumerTaskId, partition, leaderTopic, leaderOffsetByKafkaURL));
+            "topic %s with offset by Kafka URL mapping %s",
+        consumerTaskId, partition, leaderTopic, leaderOffsetByKafkaURL));
 
     // subscribe to the new upstream
     leaderOffsetByKafkaURL.forEach((kafkaURL, leaderStartOffset) -> {
       consumerSubscribe(
-              leaderTopic,
-              partitionConsumptionState.getSourceTopicPartition(leaderTopic),
-              leaderStartOffset,
-              kafkaURL
+          leaderTopic,
+          partitionConsumptionState.getSourceTopicPartition(leaderTopic),
+          leaderStartOffset,
+          kafkaURL
       );
     });
 
     logger.info(String.format("%s, as a leader, started consuming from topic %s partition %d with offset by Kafka URL mapping %s",
-            consumerTaskId, offsetRecord.getLeaderTopic(), partition, leaderOffsetByKafkaURL));
+        consumerTaskId, offsetRecord.getLeaderTopic(), partition, leaderOffsetByKafkaURL));
   }
 
   private long calculateRewindStartTime(PartitionConsumptionState partitionConsumptionState) {

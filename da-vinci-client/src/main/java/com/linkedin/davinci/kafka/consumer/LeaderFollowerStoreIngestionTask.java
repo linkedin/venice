@@ -560,14 +560,15 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
   }
 
-  @Override
   protected void startConsumingAsLeaderInTransitionFromStandby(PartitionConsumptionState partitionConsumptionState) {
     if (partitionConsumptionState.getLeaderFollowerState() != IN_TRANSITION_FROM_STANDBY_TO_LEADER) {
-      throw new VeniceException(String.format("Expect state %s but got %s",
-          IN_TRANSITION_FROM_STANDBY_TO_LEADER, partitionConsumptionState.toString()
-      ));
+      throw new VeniceException(String.format("Expect state %s but got %s", IN_TRANSITION_FROM_STANDBY_TO_LEADER, partitionConsumptionState));
     }
+    startConsumingAsLeader(partitionConsumptionState);
+  }
 
+  @Override
+  protected void startConsumingAsLeader(PartitionConsumptionState partitionConsumptionState) {
     /**
      * When a leader replica is actually promoted to LEADER role and if native replication is enabled, there could
      * be 4 cases:
@@ -586,9 +587,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
      * this case, the newly selected leader will resume the consumption from RT specified in TS at the offset
      * checkpointed in leader offset metadata.
      */
+
     final int partition = partitionConsumptionState.getPartition();
     final OffsetRecord offsetRecord = partitionConsumptionState.getOffsetRecord();
-
     if (isNativeReplicationEnabled) {
       if (null == nativeReplicationSourceVersionTopicKafkaURL || nativeReplicationSourceVersionTopicKafkaURL.isEmpty()) {
         throw new VeniceException("Native replication is enabled but remote source address is not found");
@@ -608,19 +609,19 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     final String leaderTopic = offsetRecord.getLeaderTopic();
     final long leaderStartOffset = offsetRecord.getLeaderOffset(OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY);
     logger.info(String.format("%s is promoted to leader for partition %d and it is going to start consuming from " +
-                    "topic %s at offset %d",
-            consumerTaskId, partition, leaderTopic, leaderStartOffset));
+            "topic %s at offset %d",
+        consumerTaskId, partition, leaderTopic, leaderStartOffset));
 
     // subscribe to the new upstream
     String leaderSourceKafkaURL = leaderSourceKafkaURLs.iterator().next();
     consumerSubscribe(
-            leaderTopic,
-            partitionConsumptionState.getSourceTopicPartition(leaderTopic),
-            leaderStartOffset,
-            leaderSourceKafkaURL
+        leaderTopic,
+        partitionConsumptionState.getSourceTopicPartition(leaderTopic),
+        leaderStartOffset,
+        leaderSourceKafkaURL
     );
     logger.info(String.format("%s, as a leader, started consuming from topic %s partition %d at offset %d",
-            consumerTaskId, offsetRecord.getLeaderTopic(), partition, leaderStartOffset));
+        consumerTaskId, offsetRecord.getLeaderTopic(), partition, leaderStartOffset));
   }
 
   private boolean switchAwayFromStreamReprocessingTopic(String currentLeaderTopic, TopicSwitch topicSwitch) {

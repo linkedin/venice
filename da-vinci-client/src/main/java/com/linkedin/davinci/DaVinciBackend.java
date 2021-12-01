@@ -279,7 +279,7 @@ public class DaVinciBackend implements Closeable {
       }
     }
 
-    ingestionBackend = isIsolatedIngestion() ? new IsolatedIngestionBackend(configLoader, metricsRepository, storageMetadataService, ingestionService, storageService) :
+    ingestionBackend = isIsolatedIngestion() ? new IsolatedIngestionBackend(configLoader, storeRepository, metricsRepository, storageMetadataService, ingestionService, storageService) :
         new DefaultIngestionBackend(storageMetadataService, ingestionService, storageService);
     ingestionBackend.addIngestionNotifier(ingestionListener);
 

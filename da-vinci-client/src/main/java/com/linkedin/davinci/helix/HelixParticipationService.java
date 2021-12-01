@@ -99,7 +99,7 @@ public class HelixParticipationService extends AbstractVeniceService implements 
       throw new VeniceException("Expecting " + KafkaStoreIngestionService.class.getName() + " for ingestion backend!");
     }
     if (veniceConfigLoader.getVeniceServerConfig().getIngestionMode().equals(IngestionMode.ISOLATED)) {
-      this.ingestionBackend = new IsolatedIngestionBackend(veniceConfigLoader, metricsRepository, storageMetadataService, (KafkaStoreIngestionService) storeIngestionService, storageService);
+      this.ingestionBackend = new IsolatedIngestionBackend(veniceConfigLoader, helixReadOnlyStoreRepository, metricsRepository, storageMetadataService, (KafkaStoreIngestionService) storeIngestionService, storageService);
     } else {
       this.ingestionBackend = new DefaultIngestionBackend(storageMetadataService, (KafkaStoreIngestionService) storeIngestionService, storageService);
     }

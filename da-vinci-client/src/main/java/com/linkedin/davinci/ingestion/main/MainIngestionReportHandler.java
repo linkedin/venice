@@ -59,35 +59,35 @@ public class MainIngestionReportHandler extends SimpleChannelInboundHandler<Full
         mainIngestionMonitorService.removeVersionPartitionFromIngestionMap(topicName, partitionId);
         // Set LeaderState passed from child process to cache.
         LeaderFollowerStateType leaderFollowerStateType = LeaderFollowerStateType.valueOf(report.leaderFollowerState);
-        notifierHelper(notifier -> notifier.completed(topicName, partitionId, report.offset, "", Optional.of(leaderFollowerStateType)));
+        notifierHelper(topicName, notifier -> notifier.completed(topicName, partitionId, report.offset, "", Optional.of(leaderFollowerStateType)));
         break;
       case ERROR:
         mainIngestionMonitorService.removeVersionPartitionFromIngestionMap(topicName, partitionId);
-        notifierHelper(notifier -> notifier.error(topicName, partitionId, report.message.toString(), new VeniceException(report.message.toString())));
+        notifierHelper(topicName, notifier -> notifier.error(topicName, partitionId, report.message.toString(), new VeniceException(report.message.toString())));
         break;
       case STARTED:
-        notifierHelper(notifier -> notifier.started(topicName, partitionId));
+        notifierHelper(topicName, notifier -> notifier.started(topicName, partitionId));
         break;
       case RESTARTED:
-        notifierHelper(notifier -> notifier.restarted(topicName, partitionId, offset));
+        notifierHelper(topicName, notifier -> notifier.restarted(topicName, partitionId, offset));
         break;
       case PROGRESS:
-        notifierHelper(notifier -> notifier.progress(topicName, partitionId, offset));
+        notifierHelper(topicName, notifier -> notifier.progress(topicName, partitionId, offset));
         break;
       case END_OF_PUSH_RECEIVED:
-        notifierHelper(notifier -> notifier.endOfPushReceived(topicName, partitionId, offset));
+        notifierHelper(topicName, notifier -> notifier.endOfPushReceived(topicName, partitionId, offset));
         break;
       case START_OF_BUFFER_REPLAY_RECEIVED:
-        notifierHelper(notifier -> notifier.startOfBufferReplayReceived(topicName, partitionId, offset));
+        notifierHelper(topicName, notifier -> notifier.startOfBufferReplayReceived(topicName, partitionId, offset));
         break;
       case START_OF_INCREMENTAL_PUSH_RECEIVED:
-        notifierHelper(notifier -> notifier.startOfIncrementalPushReceived(topicName, partitionId, offset));
+        notifierHelper(topicName, notifier -> notifier.startOfIncrementalPushReceived(topicName, partitionId, offset));
         break;
       case END_OF_INCREMENTAL_PUSH_RECEIVED:
-        notifierHelper(notifier -> notifier.endOfIncrementalPushReceived(topicName, partitionId, offset));
+        notifierHelper(topicName, notifier -> notifier.endOfIncrementalPushReceived(topicName, partitionId, offset));
         break;
       case TOPIC_SWITCH_RECEIVED:
-        notifierHelper(notifier -> notifier.topicSwitchReceived(topicName, partitionId, offset));
+        notifierHelper(topicName, notifier -> notifier.topicSwitchReceived(topicName, partitionId, offset));
         break;
       default:
         logger.warn("Received unsupported ingestion report:\n" + report.toString() + "\n it will be ignored for now.");
@@ -102,9 +102,13 @@ public class MainIngestionReportHandler extends SimpleChannelInboundHandler<Full
     ctx.close();
   }
 
-  private void notifierHelper(Consumer<VeniceNotifier> lambda) {
+  private void notifierHelper(String topicName, Consumer<VeniceNotifier> lambda) {
     mainIngestionMonitorService.getPushStatusNotifierList().forEach(lambda);
-    mainIngestionMonitorService.getIngestionNotifierList().forEach(lambda);
+    if (mainIngestionMonitorService.isTopicInLeaderFollowerMode(topicName)) {
+      mainIngestionMonitorService.getLeaderFollowerIngestionNotifier().forEach(lambda);
+    } else {
+      mainIngestionMonitorService.getOnlineOfflineIngestionNotifier().forEach(lambda);
+    }
   }
 
   private void updateLocalStorageMetadata(IngestionTaskReport report) {

@@ -120,6 +120,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
+import javax.mail.Part;
 import org.apache.avro.Schema;
 import org.apache.commons.codec.binary.Hex;
 import org.apache.kafka.clients.CommonClientConfigs;
@@ -1772,9 +1773,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
          * to main process when it completed ingestion in the forked process.
          */
         if (leaderState.equals(LeaderFollowerStateType.LEADER)) {
-          // Need to set the leader state back to IN_TRANSITION_FROM_STANDBY_TO_LEADER to bypass check logic below.
-          newPartitionConsumptionState.setLeaderFollowerState(LeaderFollowerStateType.IN_TRANSITION_FROM_STANDBY_TO_LEADER);
-          startConsumingAsLeaderInTransitionFromStandby(newPartitionConsumptionState);
+          startConsumingAsLeader(newPartitionConsumptionState);
         } else {
           // Subscribe to local version topic.
           consumerSubscribe(topic, newPartitionConsumptionState.getSourceTopicPartition(topic), offsetRecord.getLocalVersionTopicOffset(), localKafkaServer);
@@ -1874,8 +1873,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected abstract void processConsumerAction(ConsumerAction message) throws InterruptedException;
   protected abstract Set<String> getConsumptionSourceKafkaAddress(PartitionConsumptionState partitionConsumptionState);
 
-  protected void startConsumingAsLeaderInTransitionFromStandby(PartitionConsumptionState partitionConsumptionState) {
-    throw new UnsupportedOperationException("Leader transition should only happen in L/F mode!");
+  protected void startConsumingAsLeader(PartitionConsumptionState partitionConsumptionState) {
+    throw new UnsupportedOperationException("Leader consumption should only happen in L/F mode!");
   }
 
   protected Set<String> getRealTimeDataSourceKafkaAddress(PartitionConsumptionState partitionConsumptionState) {
