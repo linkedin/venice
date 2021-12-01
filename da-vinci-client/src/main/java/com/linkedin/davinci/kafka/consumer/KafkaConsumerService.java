@@ -1,6 +1,5 @@
 package com.linkedin.davinci.kafka.consumer;
 
-import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.stats.KafkaConsumerServiceStats;
 import com.linkedin.davinci.utils.KafkaRecordWrapper;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -22,6 +21,7 @@ import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
@@ -31,6 +31,7 @@ import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
+import org.apache.kafka.common.TopicPartition;
 import org.apache.log4j.Logger;
 
 
@@ -248,9 +249,8 @@ public class KafkaConsumerService extends AbstractVeniceService {
     @Override
     public void run() {
       boolean addSomeDelay = false;
-      Map<String, List<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>>> topicRecordsMap = new HashMap<>();
-
-      while (! stopped) {
+      Map<TopicPartition, List<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>>> topicPartitionRecordsMap = new HashMap<>();
+      while (!stopped) {
         try {
           if (addSomeDelay) {
             Thread.sleep(readCycleDelayMs);
@@ -267,23 +267,25 @@ public class KafkaConsumerService extends AbstractVeniceService {
           stats.recordPollResultNum(records.count());
           long totalBytes = 0;
           if (!records.isEmpty()) {
-            topicRecordsMap.clear();
+            topicPartitionRecordsMap.clear();
             for (ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record : records) {
               totalBytes += record.serializedKeySize() + record.serializedValueSize();
               String topic = record.topic();
-              List<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>> recordsOfCurrentTopic = topicRecordsMap.computeIfAbsent(topic, k -> new LinkedList<>());
-              recordsOfCurrentTopic.add(record);
+              int partitionId = record.partition();
+              TopicPartition topicPartition = new TopicPartition(topic, partitionId);
+              topicPartitionRecordsMap.computeIfAbsent(topicPartition, k -> new LinkedList<>()).add(record);
             }
             long beforeProducingToWriteBufferTimestamp = System.currentTimeMillis();
-            for (Map.Entry<String, List<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>>> entry : topicRecordsMap.entrySet()) {
-              String topic = entry.getKey();
-              List<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>> topicRecords = entry.getValue();
-              StoreIngestionTask ingestionTask = consumer.getIngestionTaskForTopic(topic);
-              if (null == ingestionTask) {
+            for (Map.Entry<TopicPartition, List<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>>> entry : topicPartitionRecordsMap.entrySet()) {
+              TopicPartition topicPartition = entry.getKey();
+              Optional<StoreIngestionTask> ingestionTask = consumer.getIngestionTaskForTopicPartition(topicPartition);
+              if (!ingestionTask.isPresent()) {
                 // defensive code
-                LOGGER.error("Couldn't find IngestionTask for topic: " + topic + " after receiving records from `poll` request");
+                LOGGER.error("Couldn't find IngestionTask for topic partition : " + topicPartition + " after receiving records from `poll` request");
                 continue;
               }
+              String topic = topicPartition.topic();
+              List<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>> topicRecords = entry.getValue();
               try {
                 /**
                  * This function could be blocked by the following reasons:
@@ -317,11 +319,11 @@ public class KafkaConsumerService extends AbstractVeniceService {
                  *
                  */
                 Iterable<VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope>> veniceConsumerRecords = KafkaRecordWrapper
-                    .wrap(kafkaUrl, topicRecords, ingestionTask.getAmplificationFactor());
-                ingestionTask.produceToStoreBufferServiceOrKafka(veniceConsumerRecords, false);
+                    .wrap(kafkaUrl, topicRecords, ingestionTask.get().getAmplificationFactor());
+                ingestionTask.get().produceToStoreBufferServiceOrKafka(veniceConsumerRecords, false);
               } catch (Exception e) {
                 LOGGER.error("Received exception when StoreIngestionTask is processing the polled consumer record for topic: " + topic, e);
-                ingestionTask.setLastConsumerException(e);
+                ingestionTask.get().setLastConsumerException(e);
               }
             }
             stats.recordConsumerRecordsProducingToWriterBufferLatency(LatencyUtils.getElapsedTimeInMs(beforeProducingToWriteBufferTimestamp));

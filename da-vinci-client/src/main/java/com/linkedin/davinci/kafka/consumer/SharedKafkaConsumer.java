@@ -10,18 +10,15 @@ import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
-import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicReference;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.common.TopicPartition;
@@ -71,11 +68,11 @@ public class SharedKafkaConsumer implements KafkaConsumerWrapper {
    */
   private Set<String> topicsWithoutCorrespondingIngestionTask = new HashSet<>();
 
-  private final KafkaConsumerWrapper delegate;
+  protected final KafkaConsumerWrapper delegate;
   /**
    * This field records the reference to the {@link KafkaConsumerService} that creates this {@link SharedKafkaConsumer}
    */
-  private final KafkaConsumerService kafkaConsumerService;
+  protected final KafkaConsumerService kafkaConsumerService;
   /**
    * This cached assignment is for performance optimization purpose since {@link #hasSubscription} could be invoked frequently.
    * This set should be unmodifiable.
@@ -104,7 +101,7 @@ public class SharedKafkaConsumer implements KafkaConsumerWrapper {
   /**
    * an ever increasing count of number of time poll has been invoked.
    */
-  private volatile long pollTimes = 0 ;
+  protected volatile long pollTimes = 0 ;
 
   private final Time time;
 
@@ -132,7 +129,7 @@ public class SharedKafkaConsumer implements KafkaConsumerWrapper {
     this.currentAssignmentSize = new AtomicInteger(0);
   }
 
-  private synchronized void updateCurrentAssignment(Set<TopicPartition> newAssignment) {
+  protected synchronized void updateCurrentAssignment(Set<TopicPartition> newAssignment) {
     final long updateCurrentAssignmentStartTime = System.currentTimeMillis();
     currentAssignmentSize.set(newAssignment.size());
     currentAssignment = Collections.unmodifiableSet(newAssignment);
@@ -230,7 +227,7 @@ public class SharedKafkaConsumer implements KafkaConsumerWrapper {
 
   /**
    * This function is used to detect whether there is any subscription to the non-existing topics.
-   * If yes, this function will remove the subscriptions to these non-existing topics.
+   * If yes, this function will remove the topic partition subscriptions to these non-existing topics.
    */
   private void sanitizeConsumerSubscription() {
     // Get the subscriptions
@@ -264,40 +261,46 @@ public class SharedKafkaConsumer implements KafkaConsumerWrapper {
       LOGGER.error("Detected the following non-existing topics: " + nonExistingTopics);
       nonExistingTopics.forEach( topic -> {
         Long firstDetectedTimestamp = nonExistingTopicDiscoverTimestampMap.get(topic);
-        StoreIngestionTask task = getIngestionTaskForTopic(topic);
-        if (task != null) {
-          if (null == firstDetectedTimestamp) {
-            // The first time to detect this non-existing topic.
-            nonExistingTopicDiscoverTimestampMap.put(topic, currentTimestamp);
-            firstDetectedTimestamp = currentTimestamp;
-          }
-          /**
-           * Calculate the delay, and compare it with {@link nonExistingTopicCleanupDelayMS},
-           * if the delay is over the threshold, will fail the attached ingestion task
-           */
-          long diff = currentTimestamp - firstDetectedTimestamp;
-          if (diff >= nonExistingTopicCleanupDelayMS) {
-            LOGGER.error("The non-existing topic hasn't showed up after " + diff +
-                " ms, so we will fail the attached ingestion task");
-            task.setLastConsumerException(new VeniceException("Topic: " + topic + " got deleted"));
-            nonExistingTopicDiscoverTimestampMap.remove(topic);
-          } else {
+        Set<StoreIngestionTask> storeIngestionTasks = getIngestionTasksForTopic(topic);
+        for (StoreIngestionTask storeIngestionTask : storeIngestionTasks) {
+          if (storeIngestionTask != null) {
+            if (null == firstDetectedTimestamp) {
+              // The first time to detect this non-existing topic.
+              nonExistingTopicDiscoverTimestampMap.put(topic, currentTimestamp);
+              firstDetectedTimestamp = currentTimestamp;
+            }
             /**
-             * We shouldn't unsubscribe the non-existing topic now since currently the delay hasn't been exhausted yet.
+             * Calculate the delay, and compare it with {@link nonExistingTopicCleanupDelayMS},
+             * if the delay is over the threshold, will fail the attached ingestion task
              */
-            topicsToUnsubscribe.remove(topic);
-          }
-        } else {
-          // defensive coding
-          LOGGER.error("Detected an non-existing topic: " + topic + ", which is present in consumer assignment, but without any attached ingestion task");
-          if (firstDetectedTimestamp != null) {
-            LOGGER.info("There is no associated ingestion task with this non-existing topic: " + topic +
-                ", so it will be" + " removed from `nonExistingTopicDiscoverTimestampMap` directly");
-            nonExistingTopicDiscoverTimestampMap.remove(topic);
+            long diff = currentTimestamp - firstDetectedTimestamp;
+            if (diff >= nonExistingTopicCleanupDelayMS) {
+              LOGGER.error("The non-existing topic hasn't showed up after " + diff +
+                  " ms, so we will fail the attached ingestion task");
+              storeIngestionTask.setLastConsumerException(new VeniceException("Topic: " + topic + " got deleted"));
+              nonExistingTopicDiscoverTimestampMap.remove(topic);
+            } else {
+              /**
+               * We shouldn't unsubscribe the non-existing topic now since currently the delay hasn't been exhausted yet.
+               */
+              topicsToUnsubscribe.remove(topic);
+            }
+          } else {
+            // defensive coding
+            LOGGER.error("Detected an non-existing topic: " + topic + ", which is present in consumer assignment, but without any attached ingestion task");
+            if (firstDetectedTimestamp != null) {
+              LOGGER.info("There is no associated ingestion task with this non-existing topic: " + topic +
+                  ", so it will be" + " removed from `nonExistingTopicDiscoverTimestampMap` directly");
+              nonExistingTopicDiscoverTimestampMap.remove(topic);
+            }
           }
         }
       });
       close(topicsToUnsubscribe);
+      /*
+      TODO: This metric will not be accurate when the shared consumer is not topic-wise, we need to let KafkaConsumerService
+            aggregate this topic level metric from all consumers.
+      */
       kafkaConsumerService.getStats().recordDetectedDeletedTopicNum(nonExistingTopics.size());
     }
   }
@@ -332,6 +335,7 @@ public class SharedKafkaConsumer implements KafkaConsumerWrapper {
      */
     try {
       if (!hasSubscription()) {
+        // TODO: removing this sleep inside the poll with synchronization, this sleep should be added by the logic calling this poll method.
         Thread.sleep(timeoutMs);
         return ConsumerRecords.empty();
       }
@@ -340,6 +344,21 @@ public class SharedKafkaConsumer implements KafkaConsumerWrapper {
     }
 
     ConsumerRecords<KafkaKey, KafkaMessageEnvelope> records = this.delegate.poll(timeoutMs);
+    sanitizeTopicsWithoutCorrespondingIngestionTask(records);
+    /**
+     * Here, this function still returns the original records because of the following reasons:
+     * 1. The behavior of not having corresponding ingestion tasks is not common, and most-likely it is caused by resource leaking/partial failure in edge cases.
+     * 2. Copying them to a new {@link ConsumerRecords} is not GC friendly.
+     * 3. Even copying them to  a new {@link ConsumerRecords} couldn't guarantee the consistency between returned consumer records
+     *    and the corresponding ingestion tasks since the caller will try to fetch the ingestion task for each record again, and
+     *    {@link #detach} could happen in-between, so the caller has to handle this situation of non corresponding ingestion task anyway.
+     *
+     * The consumer subscription cleanup will take effect in the next {@link #poll} request.
+     */
+    return records;
+  }
+
+  protected void sanitizeTopicsWithoutCorrespondingIngestionTask(ConsumerRecords<KafkaKey, KafkaMessageEnvelope> records) {
     // Check whether the returned records, which don't have the corresponding ingestion tasks
     topicsWithoutCorrespondingIngestionTask.clear();
     for (ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record : records) {
@@ -352,17 +371,6 @@ public class SharedKafkaConsumer implements KafkaConsumerWrapper {
       close(topicsWithoutCorrespondingIngestionTask);
       kafkaConsumerService.getStats().recordDetectedNoRunningIngestionTopicNum(topicsWithoutCorrespondingIngestionTask.size());
     }
-    /**
-     * Here, this function still returns the original records because of the following reasons:
-     * 1. The behavior of not having corresponding ingestion tasks is not common, and most-likely it is caused by resource leaking/partial failure in edge cases.
-     * 2. Copying them to a new {@link ConsumerRecords} is not GC friendly.
-     * 3. Even copying them to  a new {@link ConsumerRecords} couldn't guarantee the consistency between returned consumer records
-     *    and the corresponding ingestion tasks since the caller will try to fetch the ingestion task for each record again, and
-     *    {@link #detach} could happen in-between, so the caller has to handle this situation of non corresponding ingestion task anyway.
-     *
-     * The consumer subscription cleanup will take effect in the next {@link #poll} request.
-     */
-    return records;
   }
 
   @Override
@@ -456,10 +464,24 @@ public class SharedKafkaConsumer implements KafkaConsumerWrapper {
   }
 
   /**
+   * Get the all corresponding {@link StoreIngestionTask}s for a particular topic.
+   */
+  protected Set<StoreIngestionTask> getIngestionTasksForTopic(String topic) {
+    return Collections.singleton(getIngestionTaskForTopic(topic));
+  }
+
+  /**
    * Get the corresponding {@link StoreIngestionTask} for the subscribed topic.
    */
-  public StoreIngestionTask getIngestionTaskForTopic(String topic) {
+  private StoreIngestionTask getIngestionTaskForTopic(String topic) {
     return topicToIngestionTaskMap.get(topic);
+  }
+
+  /**
+   * Get the corresponding {@link StoreIngestionTask} for the subscribed topic partition.
+   */
+  public Optional<StoreIngestionTask> getIngestionTaskForTopicPartition(TopicPartition topicPartition) {
+    return Optional.ofNullable(topicToIngestionTaskMap.get(topicPartition.topic()));
   }
 
   /**
