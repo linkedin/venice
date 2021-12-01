@@ -18,6 +18,7 @@ public class KafkaConsumerServiceStats extends AbstractVeniceStats {
   private final Sensor pollRequestError;
   private final Sensor consumerRecordsProducingToWriterBufferLatencySensor;
   private final Sensor detectedDeletedTopicNumSensor;
+  private final Sensor detectedNoRunningIngestionTopicPartitionNumSensor;
   private final Sensor detectedNoRunningIngestionTopicNumSensor;
   private final Sensor delegateSubscribeLatencySensor;
   private final Sensor updateCurrentAssignmentLatencySensor;
@@ -39,6 +40,7 @@ public class KafkaConsumerServiceStats extends AbstractVeniceStats {
     consumerRecordsProducingToWriterBufferLatencySensor = registerSensor("consumer_records_producing_to_write_buffer_latency", new Avg(), new Max());
     detectedDeletedTopicNumSensor = registerSensor("detected_deleted_topic_num", new Total());
     detectedNoRunningIngestionTopicNumSensor = registerSensor("detected_no_running_ingestion_topic_num", new Total());
+    detectedNoRunningIngestionTopicPartitionNumSensor = registerSensor("detected_no_running_ingestion_topic_partition_num", new Total());
     delegateSubscribeLatencySensor = registerSensor("delegate_subscribe_latency", new Avg(), new Max());
     updateCurrentAssignmentLatencySensor = registerSensor("update_current_assignment_latency", new Avg(), new Max());
 
@@ -73,6 +75,10 @@ public class KafkaConsumerServiceStats extends AbstractVeniceStats {
 
   public void recordDetectedNoRunningIngestionTopicNum(int count) {
     detectedNoRunningIngestionTopicNumSensor.record(count);
+  }
+
+  public void recordDetectedNoRunningIngestionTopicPartitionNum(int count) {
+    detectedNoRunningIngestionTopicPartitionNumSensor.record(count);
   }
 
   public void recordDelegateSubscribeLatency(double value) {
