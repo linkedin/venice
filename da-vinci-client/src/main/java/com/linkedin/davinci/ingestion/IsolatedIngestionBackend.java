@@ -17,7 +17,7 @@ import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionComponentType;
-import com.linkedin.venice.security.SSLFactory;
+import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.utils.Time;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Optional;
@@ -48,7 +48,7 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend implements
 
   private Process isolatedIngestionServiceProcess;
 
-  public IsolatedIngestionBackend(VeniceConfigLoader configLoader, MetricsRepository metricsRepository,
+  public IsolatedIngestionBackend(VeniceConfigLoader configLoader, ReadOnlyStoreRepository storeRepository, MetricsRepository metricsRepository,
       StorageMetadataService storageMetadataService, KafkaStoreIngestionService storeIngestionService, StorageService storageService) {
     super(storageMetadataService, storeIngestionService, storageService);
     int servicePort = configLoader.getVeniceServerConfig().getIngestionServicePort();
@@ -63,9 +63,11 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend implements
     // Create and start the ingestion report listener.
     try {
       mainIngestionMonitorService = new MainIngestionMonitorService(this, configLoader, sslFactory);
+      mainIngestionMonitorService.setStoreRepository(storeRepository);
       mainIngestionMonitorService.setMetricsRepository(metricsRepository);
       mainIngestionMonitorService.setStoreIngestionService(storeIngestionService);
       mainIngestionMonitorService.setStorageMetadataService((MainIngestionStorageMetadataService) storageMetadataService);
+
       mainIngestionMonitorService.startInner();
       logger.info("Ingestion Report Listener started.");
     } catch (Exception e) {
@@ -77,8 +79,10 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend implements
   @Override
   public void startConsumption(VeniceStoreVersionConfig storeConfig, int partition, Optional<LeaderFollowerStateType> leaderState) {
     if (isTopicPartitionInLocal(storeConfig.getStoreVersionName(), partition)) {
+      logger.info("Start consumption of topic: " + storeConfig.getStoreVersionName() + ", partition: " + partition + " in main process.");
       super.startConsumption(storeConfig, partition, leaderState);
     } else {
+      logger.info("Sending consumption request of topic: " + storeConfig.getStoreVersionName() + ", partition: " + partition + " to fork process.");
       mainIngestionMonitorService.addVersionPartitionToIngestionMap(storeConfig.getStoreVersionName(), partition);
       mainIngestionRequestClient.startConsumption(storeConfig.getStoreVersionName(), partition);
     }
@@ -175,7 +179,8 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend implements
   public void addIngestionNotifier(VeniceNotifier ingestionListener) {
     if (ingestionListener != null) {
       super.addIngestionNotifier(ingestionListener);
-      mainIngestionMonitorService.addIngestionNotifier(getIsolatedIngestionNotifier(ingestionListener));
+      mainIngestionMonitorService.addOnlineOfflineIngestionNotifier(getIsolatedIngestionNotifier(ingestionListener));
+      mainIngestionMonitorService.addLeaderFollowerIngestionNotifier(getIsolatedIngestionNotifier(ingestionListener));
     }
   }
 
@@ -183,7 +188,7 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend implements
   public void addOnlineOfflineIngestionNotifier(VeniceNotifier ingestionListener) {
     if (ingestionListener != null) {
       super.addOnlineOfflineIngestionNotifier(ingestionListener);
-      mainIngestionMonitorService.addIngestionNotifier(getIsolatedIngestionNotifier(ingestionListener));
+      mainIngestionMonitorService.addOnlineOfflineIngestionNotifier(getIsolatedIngestionNotifier(ingestionListener));
     }
   }
 
@@ -191,7 +196,7 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend implements
   public void addLeaderFollowerIngestionNotifier(VeniceNotifier ingestionListener) {
     if (ingestionListener != null) {
       super.addLeaderFollowerIngestionNotifier(ingestionListener);
-      mainIngestionMonitorService.addIngestionNotifier(getIsolatedIngestionNotifier(ingestionListener));
+      mainIngestionMonitorService.addLeaderFollowerIngestionNotifier(getIsolatedIngestionNotifier(ingestionListener));
     }
   }
 

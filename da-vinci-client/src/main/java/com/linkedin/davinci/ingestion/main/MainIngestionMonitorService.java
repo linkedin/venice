@@ -8,7 +8,9 @@ import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.stats.IsolatedIngestionProcessHeartbeatStats;
 import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
-import com.linkedin.venice.security.SSLFactory;
+import com.linkedin.venice.meta.ReadOnlyStoreRepository;
+import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -65,7 +67,9 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
   private final Map<String, Set<Integer>> topicNameToPartitionSetMap = new VeniceConcurrentHashMap<>();
   // Topic name to partition set map, representing all topic partitions that have completed ingestion in isolated process.
   private final Map<String, Set<Integer>> completedTopicPartitions = new VeniceConcurrentHashMap<>();
-  private final List<VeniceNotifier> ingestionNotifierList = new ArrayList<>();
+  private final Map<String, Boolean> topicNameToLeaderFollowerEnabledFlagMap = new VeniceConcurrentHashMap<>();
+  private final List<VeniceNotifier> onlineOfflineIngestionNotifierList = new ArrayList<>();
+  private final List<VeniceNotifier> leaderFollowerIngestionNotifierList = new ArrayList<>();
   private final List<VeniceNotifier> pushStatusNotifierList = new ArrayList<>();
   private final Optional<SSLEngineComponentFactory> sslFactory;
 
@@ -75,6 +79,7 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
   private IsolatedIngestionProcessStats isolatedIngestionProcessStats;
   private MainIngestionStorageMetadataService storageMetadataService;
   private KafkaStoreIngestionService storeIngestionService;
+  private ReadOnlyStoreRepository storeRepository;
   private final VeniceConfigLoader configLoader;
   private long heartbeatTimeoutMs;
   private volatile long latestHeartbeatTimestamp = -1;
@@ -129,14 +134,28 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
     shutdown.sync();
   }
 
-  public void addIngestionNotifier(VeniceNotifier ingestionListener) {
+  public boolean isTopicInLeaderFollowerMode(String topicName) {
+    return topicNameToLeaderFollowerEnabledFlagMap.getOrDefault(topicName, false);
+  }
+
+  public void addLeaderFollowerIngestionNotifier(VeniceNotifier ingestionListener) {
     if (ingestionListener != null) {
-      ingestionNotifierList.add(ingestionListener);
+      leaderFollowerIngestionNotifierList.add(ingestionListener);
     }
   }
 
-  public List<VeniceNotifier> getIngestionNotifierList() {
-    return ingestionNotifierList;
+  public List<VeniceNotifier> getLeaderFollowerIngestionNotifier() {
+    return leaderFollowerIngestionNotifierList;
+  }
+
+  public void addOnlineOfflineIngestionNotifier(VeniceNotifier ingestionListener) {
+    if (ingestionListener != null) {
+      onlineOfflineIngestionNotifierList.add(ingestionListener);
+    }
+  }
+
+  public List<VeniceNotifier> getOnlineOfflineIngestionNotifier() {
+    return onlineOfflineIngestionNotifierList;
   }
 
   public void addPushStatusNotifier(VeniceNotifier pushStatusNotifier) {
@@ -177,6 +196,14 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
     return storeIngestionService;
   }
 
+  public void setStoreRepository(ReadOnlyStoreRepository storeRepository) {
+    this.storeRepository = storeRepository;
+  }
+
+  public ReadOnlyStoreRepository getStoreRepository() {
+    return storeRepository;
+  }
+
   public boolean isTopicPartitionIngestedInIsolatedProcess(String topicName, int partitionId) {
     if (completedTopicPartitions.containsKey(topicName)) {
       return completedTopicPartitions.get(topicName).contains(partitionId);
@@ -203,17 +230,13 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
   }
 
   public void addVersionPartitionToIngestionMap(String topicName, int partitionId) {
+    topicNameToLeaderFollowerEnabledFlagMap.putIfAbsent(topicName, isTopicLeaderFollowerModeEnabled(topicName));
     // Add topic partition to ongoing task pool.
     topicNameToPartitionSetMap.putIfAbsent(topicName, new HashSet<>());
     topicNameToPartitionSetMap.computeIfPresent(topicName, (key, val) -> {
       val.add(partitionId);
       return val;
     });
-  }
-
-  // Remove the topic entry in the subscription topic partition map.
-  public void removedSubscribedTopicName(String topicName) {
-    topicNameToPartitionSetMap.remove(topicName);
   }
 
   public void cleanupTopicPartitionState(String topicName, int partitionId) {
@@ -224,6 +247,7 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
   public void cleanupTopicState(String topicName) {
     topicNameToPartitionSetMap.remove(topicName);
     completedTopicPartitions.remove(topicName);
+    topicNameToLeaderFollowerEnabledFlagMap.remove(topicName);
   }
 
   private void setupMetricsCollection() {
@@ -321,5 +345,23 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
     } catch (InterruptedException e) {
       currentThread().interrupt();
     }
+  }
+
+  /**
+   * Return whether a topic is L/F enabled.
+   * The current LeaderFollowerIngestionProgressNotifier and OnlineOfflineIngestionProgressNotifier is actually the same
+   * and we are in process of deprecating OBO mode, so in the future we will only have one StateModelNotifier implementation.
+   * Thus, we don't throw exception here and fail ingestion when store/version could not be found in StoreRepository in
+   * any case, but instead just simply return false.
+   */
+  private boolean isTopicLeaderFollowerModeEnabled(String topicName) {
+    String storeName = Version.parseStoreFromKafkaTopicName(topicName);
+    int versionNumber = Version.parseVersionFromKafkaTopicName(topicName);
+    Store store = storeRepository.getStore(storeName);
+    if (store == null) {
+      return false;
+    }
+    Optional<Version> versionOptional = store.getVersion(versionNumber);
+    return versionOptional.map(Version::isLeaderFollowerModelEnabled).orElse(false);
   }
 }

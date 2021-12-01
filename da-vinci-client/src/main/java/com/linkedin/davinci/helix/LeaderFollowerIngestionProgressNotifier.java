@@ -10,8 +10,4 @@ package com.linkedin.davinci.helix;
  * TODO: remove the class when every store is running in L/F model!
  */
 public class LeaderFollowerIngestionProgressNotifier extends StateModelIngestionProgressNotifier {
-  @Override
-  public void catchUpBaseTopicOffsetLag(String kafkaTopic, int partitionId) {
-    //no ops
-  }
 }
