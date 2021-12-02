@@ -8,13 +8,13 @@ configurations {
   avro1_10
 }
 
-def AVRO_1_4 = "org.apache.avro:avro:1.4.1"
-def AVRO_1_5 = "org.apache.avro:avro:1.5.4"
-def AVRO_1_6 = "org.apache.avro:avro:1.6.3"
-def AVRO_1_7 = "org.apache.avro:avro:1.7.7"
-def AVRO_1_8 = "org.apache.avro:avro:1.8.2"
-def AVRO_1_9 = "org.apache.avro:avro:1.9.2"
-def AVRO_1_10 = "org.apache.avro:avro:1.10.0"
+def AVRO_1_4 = 'org.apache.avro:avro:1.4.1'
+def AVRO_1_5 = 'org.apache.avro:avro:1.5.4'
+def AVRO_1_6 = 'org.apache.avro:avro:1.6.3'
+def AVRO_1_7 = 'org.apache.avro:avro:1.7.7'
+def AVRO_1_8 = 'org.apache.avro:avro:1.8.2'
+def AVRO_1_9 = 'org.apache.avro:avro:1.9.2'
+def AVRO_1_10 = 'org.apache.avro:avro:1.10.0'
 
 dependencies {
   testImplementation project(':da-vinci-client')
@@ -27,71 +27,66 @@ dependencies {
   testImplementation libraries.kafkaClients
   testImplementation libraries.commonsIo
 
+  // ClassPathSupplierForVeniceCluster requires this one to be present in the Gradle cache.
+  testImplementation (AVRO_1_9) {
+    exclude group: 'org.slf4j'
+    force = true
+  }
+
   avro1_4 (AVRO_1_4) {
-    exclude group: "org.mortbay.jetty"
-    exclude group: "org.apache.velocity"
-    exclude group: "commons-lang"
-    exclude group: "org.jboss.netty"
-    exclude group: "com.thoughtworks.paranamer", module: "paranamer-ant"
-    exclude group: "org.slf4j"
+    exclude group: 'org.mortbay.jetty'
+    exclude group: 'org.apache.velocity'
+    exclude group: 'commons-lang'
+    exclude group: 'org.jboss.netty'
+    exclude group: 'com.thoughtworks.paranamer', module: 'paranamer-ant'
+    exclude group: 'org.slf4j'
     force = true
   }
 
   avro1_5 (AVRO_1_5) {
-    exclude group: "org.slf4j"
+    exclude group: 'org.slf4j'
     force = true
   }
   avro1_6 (AVRO_1_6) {
-    exclude group: "org.slf4j"
+    exclude group: 'org.slf4j'
     force = true
   }
   avro1_7 (AVRO_1_7) {
-    exclude group: "org.slf4j"
+    exclude group: 'org.slf4j'
     force = true
   }
   avro1_8 (AVRO_1_8) {
-    exclude group: "org.slf4j"
+    exclude group: 'org.slf4j'
     force = true
   }
   avro1_9 (AVRO_1_9) {
-    exclude group: "org.slf4j"
+    exclude group: 'org.slf4j'
     force = true
   }
   avro1_10 (AVRO_1_10) {
-    exclude group: "org.slf4j"
+    exclude group: 'org.slf4j'
     force = true
   }
 }
 
-def avroVersions = ["1_4", "1_5", "1_6", "1_7", "1_8", "1_9", "1_10"]
-
-for (String avroVersion : avroVersions) {
-  task "testAvro${avroVersion}" (type: Test, group: "Verification", description: "Runs tests with avro ${avroVersion}") {
-    useTestNG() {
-      Set<String> suiteListeners = ['com.linkedin.venice.testng.VeniceSuiteListener']
-      setListeners(suiteListeners)
-    }
-
-    testLogging {
-      events 'started', 'passed', 'failed', 'skipped'
-      showStandardStreams = false // to mute the DDS Router's noisy behavior...
-      exceptionFormat = 'full'
-    }
-
+for (version in ['1_4', '1_5', '1_6', '1_7', '1_8', '1_9', '1_10']) {
+  task "testAvro${version}" (type: Test) {
     classpath = project.sourceSets.test.runtimeClasspath
-        .filter{ File file -> !(file.name.contains("avro-1.")) }
-        .plus(configurations."avro${avroVersion}")
-
-    /*
-    // For the debugging purpose to print out all the dependencies.
-    def gradleIsFun = avroVersion
-
-    doFirst {
-      System.out.println("classpath for avro " + gradleIsFun + " is:")
-      classpath.each { System.out.println(it) }
-    }
-     */
+        .filter { !it.name.contains('avro-1.') }
+        .plus(configurations."avro${version}")
+    systemProperty 'clientAvroVersion', "AVRO_$version"
   }
 }
 
-test.dependsOn testAvro1_4, testAvro1_5, testAvro1_6, testAvro1_7, testAvro1_8, testAvro1_9, testAvro1_10
+test {
+  dependsOn (
+    testAvro1_4,
+    testAvro1_5,
+    testAvro1_6,
+    testAvro1_7,
+    testAvro1_8,
+    testAvro1_9,
+    testAvro1_10
+  )
+  exclude '**/VeniceClientCompatibilityTest.class'
+}

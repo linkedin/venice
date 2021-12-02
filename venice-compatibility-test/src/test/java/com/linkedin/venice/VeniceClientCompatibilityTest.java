@@ -11,6 +11,7 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
+import com.linkedin.avroutil1.compatibility.AvroVersion;
 import com.linkedin.davinci.client.DaVinciClient;
 
 import org.apache.avro.generic.GenericRecord;
@@ -51,9 +52,10 @@ public class VeniceClientCompatibilityTest {
   private AvroGenericStoreClient<String, GenericRecord> veniceClient;
   private DaVinciClient<String, GenericRecord> daVinciClient;
 
-  @BeforeClass(alwaysRun = true)
+  @BeforeClass
   private void setup() throws Exception {
     LOGGER.info("Avro version in unit test: " + AvroCompatibilityHelper.getRuntimeAvroVersion());
+    Assert.assertEquals(AvroCompatibilityHelper.getRuntimeAvroVersion(), AvroVersion.valueOf(System.getProperty("clientAvroVersion")));
     /**
      * The following port selection is not super safe since this port could be occupied when it is being used
      * by the {@link VeniceClusterInitializer}.
@@ -78,6 +80,10 @@ public class VeniceClientCompatibilityTest {
 
     // Block until the store is ready.
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+      if (!clusterProcess.isAlive()) {
+        throw new VeniceException("Cluster process exited unexpectedly.");
+      }
+      Assert.assertTrue(clusterProcess.isAlive());
       try {
         veniceClient.start();
       } catch (VeniceException e) {
@@ -87,6 +93,9 @@ public class VeniceClientCompatibilityTest {
 
     String[] zkAddress = new String[1];
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+      if (!clusterProcess.isAlive()) {
+        throw new VeniceException("Cluster process exited unexpectedly.");
+      }
       try {
         GenericRecord value = veniceClient.get(KEY_PREFIX + "0").get();
         Assert.assertNotNull(value);
@@ -105,7 +114,7 @@ public class VeniceClientCompatibilityTest {
     daVinciClient.subscribeAll().get(30, TimeUnit.SECONDS);
   }
 
-  @AfterClass(alwaysRun = true)
+  @AfterClass
   private void cleanup() {
     Utils.closeQuietlyWithErrorLogged(veniceClient);
     Utils.closeQuietlyWithErrorLogged(daVinciClient);

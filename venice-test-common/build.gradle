@@ -104,32 +104,34 @@ dependencies {
 task compileFlatBuffers(type: FlatBuffers) {
   language = 'java'
   inputDir = file('src/jmh/flatbuffers')
-  outputDir = file('src/jmh/generated/flatbuffers')
+  outputDir = file("$buildDir/generated/sources/jmh/flatbuffers")
 }
 compileJava.dependsOn(compileFlatBuffers)
 
 task jmh(type: JavaExec, dependsOn: jmhClasses) {
   main = 'org.openjdk.jmh.Main'
-  classpath = sourceSets.jmh.compileClasspath + sourceSets.jmh.runtimeClasspath
-  classpath += sourceSets.integrationTest.compileClasspath + sourceSets.integrationTest.runtimeClasspath
+  classpath = sourceSets.jmh.runtimeClasspath + sourceSets.integrationTest.runtimeClasspath
 }
+
 classes.finalizedBy(jmhClasses)
 
 def applyConcurrencyConfig(task) {
-  String forkEveryConfigName = 'integrationTest.forkEvery'
-  if (project.hasProperty(forkEveryConfigName)) {
-    println "$forkEveryConfigName set to ${project.getProperty(forkEveryConfigName)}"
-    task.forkEvery = Integer.parseInt(project.getProperty(forkEveryConfigName))
-  } else {
-    println "$forkEveryConfigName not set, will use the default ($task.forkEvery)."
-  }
+  task.doFirst {
+    String forkEveryProperty = 'integrationTest.forkEvery'
+    if (project.hasProperty(forkEveryProperty)) {
+      println "$forkEveryProperty set to ${project.getProperty(forkEveryProperty)}"
+      task.forkEvery = Integer.parseInt(project.getProperty(forkEveryProperty))
+    } else {
+      println "$forkEveryProperty not set, will use the default ($task.forkEvery)."
+    }
 
-  String maxParallelForksConfigName = 'integrationTest.maxParallelForks'
-  if (project.hasProperty(maxParallelForksConfigName)) {
-    println "$maxParallelForksConfigName set to ${project.getProperty(maxParallelForksConfigName)}"
-    task.maxParallelForks = Integer.parseInt(project.getProperty(maxParallelForksConfigName))
-  } else {
-    println "$maxParallelForksConfigName not set, will use the default ($task.maxParallelForks)."
+    String maxParallelForksProperty = 'integrationTest.maxParallelForks'
+    if (project.hasProperty(maxParallelForksProperty)) {
+      println "$maxParallelForksProperty set to ${project.getProperty(maxParallelForksProperty)}"
+      task.maxParallelForks = Integer.parseInt(project.getProperty(maxParallelForksProperty))
+    } else {
+      println "$maxParallelForksProperty not set, will use the default ($task.maxParallelForks)."
+    }
   }
 }
 
