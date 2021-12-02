@@ -117,6 +117,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.BiFunction;
 import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
 import org.apache.avro.Schema;
@@ -3646,7 +3647,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return ControlMessageType.START_OF_SEGMENT.equals(msgType) || ControlMessageType.END_OF_SEGMENT.equals(msgType);
   }
 
-  protected long getUpstreamOffsetForHybridOffsetLagMeasurement(PartitionConsumptionState pcs, String upstreamKafkaUrl) {
+  protected long getLatestPersistedUpstreamOffsetForHybridOffsetLagMeasurement(PartitionConsumptionState pcs, String upstreamKafkaUrl) {
+    throw new VeniceException("This API is for L/F model only!");
+  }
+
+  protected long getLatestConsumedUpstreamOffsetForHybridOffsetLagMeasurement(PartitionConsumptionState pcs, String upstreamKafkaUrl) {
     throw new VeniceException("This API is for L/F model only!");
   }
 
@@ -3953,11 +3958,28 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
 
     /**
-     * This method fetches/calculates latest leader offset and last offset in RT topic. The method relies on
-     * {@link StoreIngestionTask#getUpstreamOffsetForHybridOffsetLagMeasurement} to fetch latest leader offset for different
-     * data replication policy. The return value is a pair of [latestLeaderOffset, lastOffsetInRealTimeTopic]
+     * This method fetches/calculates latest leader persisted offset and last offset in RT topic. The method relies on
+     * {@link StoreIngestionTask#getLatestPersistedUpstreamOffsetForHybridOffsetLagMeasurement} to fetch latest leader
+     * persisted offset for different data replication policy. The return value is a pair of [latestPersistedLeaderOffset, lastOffsetInRealTimeTopic]
      */
-    public Pair<Long, Long> getLatestLeaderOffsetAndHybridTopicOffset(String sourceRealTimeTopicKafkaURL, String leaderTopic, PartitionConsumptionState pcs) {
+    public Pair<Long, Long> getLatestLeaderPersistedOffsetAndHybridTopicOffset(String sourceRealTimeTopicKafkaURL, String leaderTopic, PartitionConsumptionState pcs) {
+      return getLatestLeaderOffsetAndHybridTopicOffset(sourceRealTimeTopicKafkaURL, leaderTopic, pcs,
+          (partitionConsumptionState, sourceKafkaUrl)
+              -> getLatestPersistedUpstreamOffsetForHybridOffsetLagMeasurement(partitionConsumptionState, sourceKafkaUrl));
+    }
+
+    /**
+     * This method fetches/calculates latest leader consumed offset and last offset in RT topic. The method relies on
+     * {@link StoreIngestionTask#getLatestConsumedUpstreamOffsetForHybridOffsetLagMeasurement} to fetch latest leader
+     * consumed offset for different data replication policy. The return value is a pair of [latestConsumedLeaderOffset, lastOffsetInRealTimeTopic]
+     */
+    public Pair<Long, Long> getLatestLeaderConsumedOffsetAndHybridTopicOffset(String sourceRealTimeTopicKafkaURL, String leaderTopic, PartitionConsumptionState pcs) {
+      return getLatestLeaderOffsetAndHybridTopicOffset(sourceRealTimeTopicKafkaURL, leaderTopic, pcs,
+          (partitionConsumptionState, sourceKafkaUrl)
+              -> getLatestConsumedUpstreamOffsetForHybridOffsetLagMeasurement(partitionConsumptionState, sourceKafkaUrl));
+    }
+
+    private Pair<Long, Long> getLatestLeaderOffsetAndHybridTopicOffset(String sourceRealTimeTopicKafkaURL, String leaderTopic, PartitionConsumptionState pcs, BiFunction<PartitionConsumptionState, String, Long> getLeaderLatestOffset) {
       int partition = pcs.getPartition();
       long latestLeaderOffset;
       long lastOffsetInRealTimeTopic;
@@ -3978,12 +4000,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           long upstreamOffset = -1;
           if (partitionConsumptionStateMap.get(subPartition) != null
               && partitionConsumptionStateMap.get(subPartition).getOffsetRecord() != null) {
-            upstreamOffset = getUpstreamOffsetForHybridOffsetLagMeasurement(partitionConsumptionStateMap.get(subPartition), sourceRealTimeTopicKafkaURL);
+            upstreamOffset = getLeaderLatestOffset.apply(partitionConsumptionStateMap.get(subPartition), sourceRealTimeTopicKafkaURL);
           }
           latestLeaderOffset = (upstreamOffset >= 0 ? Math.max(upstreamOffset, latestLeaderOffset) : latestLeaderOffset);
         }
       } else {
-        latestLeaderOffset = getUpstreamOffsetForHybridOffsetLagMeasurement(pcs, sourceRealTimeTopicKafkaURL);
+        latestLeaderOffset = getLeaderLatestOffset.apply(pcs, sourceRealTimeTopicKafkaURL);
         lastOffsetInRealTimeTopic = cachedKafkaMetadataGetter.getOffset(sourceRealTimeTopicKafkaURL, leaderTopic, partition);
       }
       return new Pair<>(latestLeaderOffset, lastOffsetInRealTimeTopic);

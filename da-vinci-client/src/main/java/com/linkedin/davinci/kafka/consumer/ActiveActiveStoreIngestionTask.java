@@ -737,7 +737,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
    * otherwise, only check the upstream offset lag from the local region.
    */
   @Override
-  protected long getUpstreamOffsetForHybridOffsetLagMeasurement(PartitionConsumptionState pcs, String upstreamKafkaUrl) {
+  protected long getLatestPersistedUpstreamOffsetForHybridOffsetLagMeasurement(PartitionConsumptionState pcs, String upstreamKafkaUrl) {
     return pcs.getOffsetRecord().getUpstreamOffset(upstreamKafkaUrl);
   }
 

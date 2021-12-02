@@ -483,7 +483,7 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
      */
     public double getLeaderStalledHybridIngestion() {
       if (ingestionTask == null) {
-        return INACTIVE_STORE_INGESTION_TASK.code;
+        return 0;
       }
       if (getLeaderOffsetLag() > 0 && getLeaderBytesConsumed() == 0) {
         return 1;
