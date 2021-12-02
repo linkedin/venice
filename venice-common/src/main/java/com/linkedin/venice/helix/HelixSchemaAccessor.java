@@ -2,8 +2,8 @@ package com.linkedin.venice.helix;
 
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.meta.VeniceSerializer;
-import com.linkedin.venice.schema.ReplicationMetadataSchemaEntry;
-import com.linkedin.venice.schema.DerivedSchemaEntry;
+import com.linkedin.venice.schema.rmd.ReplicationMetadataSchemaEntry;
+import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.PathResourceRegistry;

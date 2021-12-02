@@ -1,5 +1,6 @@
-package com.linkedin.venice.schema;
+package com.linkedin.venice.schema.rmd;
 
+import com.linkedin.venice.schema.GeneratedSchemaEntry;
 import org.apache.avro.Schema;
 
 

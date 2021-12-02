@@ -130,7 +130,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    */
   private final long newLeaderInactiveTime;
 
-  private final IngestionTaskWriteComputeHandler ingestionTaskWriteComputeAdapter;
+  private final StoreIngestionWriteComputeProcessor ingestionTaskWriteComputeHandler;
 
   private final boolean isNativeReplicationEnabled;
   private final String nativeReplicationSourceVersionTopicKafkaURL;
@@ -243,7 +243,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       newLeaderInactiveTime = serverConfig.getServerPromotionToLeaderReplicaDelayMs();
     }
 
-    this.ingestionTaskWriteComputeAdapter = new IngestionTaskWriteComputeHandler(storeName, schemaRepository);
+    this.ingestionTaskWriteComputeHandler = new StoreIngestionWriteComputeProcessor(storeName, schemaRepository);
 
     this.isNativeReplicationEnabled = version.isNativeReplicationEnabled();
     this.nativeReplicationSourceVersionTopicKafkaURL = version.getPushStreamSourceAddress();
@@ -2135,7 +2135,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         try {
           long writeComputeStartTimeInNS = System.nanoTime();
           updatedValueBytes =
-              ingestionTaskWriteComputeAdapter.getUpdatedValueBytes(originalValue, update.updateValue,
+              ingestionTaskWriteComputeHandler.getUpdatedValueBytes(originalValue, update.updateValue,
                   valueSchemaId, writeComputeSchemaId);
           storeIngestionStats.recordWriteComputeUpdateLatency(storeName, LatencyUtils.getLatencyInMS(writeComputeStartTimeInNS));
         } catch (Exception e) {

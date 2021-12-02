@@ -2,8 +2,8 @@ package com.linkedin.davinci.replication.merge;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.schema.ReplicationMetadataSchemaGenerator;
-import com.linkedin.venice.schema.WriteComputeSchemaConverter;
+import com.linkedin.venice.schema.rmd.ReplicationMetadataSchemaGenerator;
+import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.utils.Lazy;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -16,7 +16,7 @@ import org.testng.annotations.Test;
 import org.testng.Assert;
 
 import static com.linkedin.venice.VeniceConstants.*;
-import static com.linkedin.venice.schema.WriteComputeSchemaConverter.*;
+import static com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter.*;
 
 
 public class MergeGenericRecordTest {
@@ -209,7 +209,7 @@ public class MergeGenericRecordTest {
     wcRecord.put("name", noOpRecord);
     wcRecord.put("age", 20);
     Merge<GenericRecord> merge = MergeGenericRecord.getInstance();
-    valueAndReplicationMetadata = merge.update(valueAndReplicationMetadata, Lazy.of(() -> wcRecord), 30, 1, 0);
+    valueAndReplicationMetadata = merge.update(valueAndReplicationMetadata, Lazy.of(() -> wcRecord), schema, recordWriteComputeSchema, 30, 1, 0);
 
     // verify id and name fields are from new record
     Assert.assertEquals(valueAndReplicationMetadata.getValue().get("id"), wcRecord.get(0));
@@ -222,12 +222,12 @@ public class MergeGenericRecordTest {
 
     // verify we reuse the same instance when nothings changed.
     ValueAndReplicationMetadata<GenericRecord>
-        valueAndReplicationMetadata1 = merge.update(valueAndReplicationMetadata, Lazy.of(() -> wcRecord), 10, 1, 0);
+        valueAndReplicationMetadata1 = merge.update(valueAndReplicationMetadata, Lazy.of(() -> wcRecord), schema, recordWriteComputeSchema, 10, 1, 0);
     Assert.assertEquals(valueAndReplicationMetadata1.getValue(), valueAndReplicationMetadata.getValue());
 
     // validate ts record change from LONG to GenericRecord.
     timeStampRecord.put(0, 10L);
-    valueAndReplicationMetadata = merge.update(valueAndReplicationMetadata, Lazy.of(() -> wcRecord), 30, 1, 0);
+    valueAndReplicationMetadata = merge.update(valueAndReplicationMetadata, Lazy.of(() -> wcRecord), schema, recordWriteComputeSchema, 30, 1, 0);
     ts = (GenericRecord) valueAndReplicationMetadata.getReplicationMetadata().get(TIMESTAMP_FIELD_NAME);
     Assert.assertEquals(ts.get("id"), 30L);
     Assert.assertEquals(ts.get("name"), 10L);
@@ -242,7 +242,7 @@ public class MergeGenericRecordTest {
     collectionUpdateRecord.put(SET_DIFF, Collections.emptyList());
     wcRecord.put("name", collectionUpdateRecord);
     ValueAndReplicationMetadata finalValueAndReplicationMetadata = valueAndReplicationMetadata;
-    Assert.assertThrows(VeniceException.class, () -> merge.update(finalValueAndReplicationMetadata, Lazy.of(() ->wcRecord), 10, 1, 0));
+    Assert.assertThrows(VeniceException.class, () -> merge.update(finalValueAndReplicationMetadata, Lazy.of(() ->wcRecord), innerArraySchema, recordWriteComputeSchema, 10, 1, 0));
   }
 
   @Test

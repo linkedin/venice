@@ -1,4 +1,4 @@
-package com.linkedin.venice.schema;
+package com.linkedin.venice.schema.rmd;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.utils.AvroSchemaUtils;

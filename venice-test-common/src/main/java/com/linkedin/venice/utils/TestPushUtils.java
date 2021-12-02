@@ -13,7 +13,7 @@ import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.samza.VeniceSystemFactory;
-import com.linkedin.venice.schema.WriteComputeSchemaConverter;
+import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
 import com.linkedin.venice.schema.vson.VsonAvroSerializer;
 import com.linkedin.venice.schema.vson.VsonSchema;

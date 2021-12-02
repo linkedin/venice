@@ -1,7 +1,8 @@
-package com.linkedin.venice.schema;
+package com.linkedin.venice.schema.writecompute;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.schema.SchemaUtils;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -12,7 +13,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 
-import static com.linkedin.venice.schema.WriteComputeSchemaConverter.WriteComputeOperation.*;
+import static com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter.WriteComputeOperation.*;
 import static org.apache.avro.Schema.*;
 import static org.apache.avro.Schema.Type.*;
 
@@ -417,7 +418,7 @@ public class WriteComputeSchemaConverter {
     if (unionSchema.getType() != UNION) {
       throw new VeniceException("Expect schema to be UNION type. Got: " + unionSchema);
     }
-    DerivedSchemaUtils.containsOnlyOneCollection(unionSchema);
+    SchemaUtils.containsOnlyOneCollection(unionSchema);
     return createFlattenedUnion(unionSchema.getTypes().stream().sequential()
         .map(schema ->{
           Schema.Type type = schema.getType();

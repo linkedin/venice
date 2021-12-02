@@ -2,6 +2,7 @@ package com.linkedin.davinci.replication.merge;
 
 import com.linkedin.venice.utils.Lazy;
 import java.util.Map;
+import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 
 
@@ -31,7 +32,13 @@ class MergeMap implements Merge<Map<CharSequence, Object>> {
   @Override
   public ValueAndReplicationMetadata<Map<CharSequence, Object>> update(
       ValueAndReplicationMetadata<Map<CharSequence, Object>> oldValueAndReplicationMetadata,
-      Lazy<GenericRecord> writeOperation, long writeOperationTimestamp, long sourceOffsetOfNewValue, int sourceBrokerIDOfNewValue) {
+      Lazy<GenericRecord> writeOperation,
+      Schema valueSchema,
+      Schema writeComputeSchema,
+      long writeOperationTimestamp,
+      long sourceOffsetOfNewValue,
+      int sourceBrokerIDOfNewValue
+  ) {
     return null;
   }
 }

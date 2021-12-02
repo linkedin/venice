@@ -4,7 +4,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import java.util.List;
 import org.apache.avro.Schema;
 
-public class DerivedSchemaUtils {
+public class SchemaUtils {
   /**
    * Utility function that checks to make sure that given a union schema, there only exists 1 collection type amongst the
    * provided types.  Multiple collections will make the result of the flattened write compute schema lead to ambiguous behavior

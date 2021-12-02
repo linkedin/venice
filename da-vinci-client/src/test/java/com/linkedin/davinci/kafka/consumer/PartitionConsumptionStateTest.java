@@ -2,7 +2,7 @@ package com.linkedin.davinci.kafka.consumer;
 
 import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.offsets.OffsetRecord;
-import com.linkedin.venice.schema.ReplicationMetadataSchemaGenerator;
+import com.linkedin.venice.schema.rmd.ReplicationMetadataSchemaGenerator;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;

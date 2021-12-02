@@ -2,13 +2,15 @@ package com.linkedin.davinci.kafka.consumer;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
-import com.linkedin.venice.schema.WriteComputeHandler;
+import com.linkedin.venice.schema.writecompute.WriteComputeProcessor;
+import com.linkedin.venice.schema.writecompute.WriteComputeSchemaValidator;
 import com.linkedin.venice.serializer.AvroGenericDeserializer;
 import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.nio.ByteBuffer;
+import java.util.Map;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 
@@ -17,19 +19,21 @@ import org.apache.avro.generic.GenericRecord;
  * Utils class that handles operations related to write compute in {@link LeaderFollowerStoreIngestionTask}.
  * TODO: We make a couple of additional copies here. Optimize the process to reduce the footprint.
  */
-public class IngestionTaskWriteComputeHandler {
+public class StoreIngestionWriteComputeProcessor {
   private final String storeName;
   private final ReadOnlySchemaRepository schemaRepo;
+  private final WriteComputeProcessor writeComputeProcessor;
+  private Map<SchemaIds, ValueAndWriteComputeSchemas> schemaIdsToSchemasMap;
+  private Map<SchemaIds, AvroGenericDeserializer<GenericRecord>> idToWriteComputeSchemaDeserializerMap;
+  private Map<Schema, AvroSerializer> valueSchemaSerializerMap;
 
-  private VeniceConcurrentHashMap<SchemaIds, WriteComputeHandler> idToWriteComputeAdapterMap =
-      new VeniceConcurrentHashMap<>();
-  private VeniceConcurrentHashMap<SchemaIds, AvroGenericDeserializer<GenericRecord>> idToWriteComputeSchemaDeserializerMap
-      = new VeniceConcurrentHashMap<>();
-  private VeniceConcurrentHashMap<Schema, AvroSerializer> valueSchemaSerializerMap = new VeniceConcurrentHashMap<>();
-
-  public IngestionTaskWriteComputeHandler(String storeName, ReadOnlySchemaRepository schemaRepo) {
+  public StoreIngestionWriteComputeProcessor(String storeName, ReadOnlySchemaRepository schemaRepo) {
     this.storeName = Utils.notNull(storeName);
     this.schemaRepo = Utils.notNull(schemaRepo);
+    this.writeComputeProcessor = new WriteComputeProcessor();
+    this.schemaIdsToSchemasMap = new VeniceConcurrentHashMap<>();
+    this.idToWriteComputeSchemaDeserializerMap = new VeniceConcurrentHashMap<>();
+    this.valueSchemaSerializerMap = new VeniceConcurrentHashMap<>();
   }
 
   /**
@@ -47,15 +51,30 @@ public class IngestionTaskWriteComputeHandler {
   public byte[] getUpdatedValueBytes(GenericRecord originalValue, ByteBuffer writeComputeBytes, int valueSchemaId,
       int writeComputeSchemaId) {
     GenericRecord writeComputeRecord = deserializeWriteComputeRecord(writeComputeBytes, valueSchemaId, writeComputeSchemaId);
-    GenericRecord updatedValue = getWriteComputeHandler(valueSchemaId, writeComputeSchemaId)
-        .updateRecord(originalValue, writeComputeRecord);
+    ValueAndWriteComputeSchemas valueAndWriteComputeSchemas = getValueAndWriteComputeSchemas(valueSchemaId, writeComputeSchemaId);
+    GenericRecord updatedValue = writeComputeProcessor.updateRecord(
+        valueAndWriteComputeSchemas.getValueSchema(),
+        valueAndWriteComputeSchemas.getWriteComputeSchema(),
+        originalValue,
+        writeComputeRecord
+    );
 
-    //If write compute is enabled and the record is deleted, the updatedValue will be null.
+    // If write compute is enabled and the record is deleted, the updatedValue will be null.
     if (updatedValue == null) {
       return null;
     }
-
     return getValueSerializer(getValueSchema(valueSchemaId)).serialize(updatedValue);
+  }
+
+  private ValueAndWriteComputeSchemas getValueAndWriteComputeSchemas(int valueSchemaId, int writeComputeSchemaId) {
+    final SchemaIds schemaIds = new SchemaIds(valueSchemaId, writeComputeSchemaId);
+
+    return schemaIdsToSchemasMap.computeIfAbsent(schemaIds, ids -> {
+      final Schema valueSchema = getValueSchema(valueSchemaId);
+      final Schema writeComputeSchema = getWriteComputeSchema(valueSchemaId, writeComputeSchemaId);
+      WriteComputeSchemaValidator.validate(valueSchema, writeComputeSchema);
+      return new ValueAndWriteComputeSchemas(valueSchema, writeComputeSchema);
+    });
   }
 
   private GenericRecord deserializeWriteComputeRecord(ByteBuffer writeComputeBytes, int valueSchemaId,
@@ -64,16 +83,10 @@ public class IngestionTaskWriteComputeHandler {
         .deserialize(writeComputeBytes);
   }
 
-  private WriteComputeHandler getWriteComputeHandler(int valueSchemaId, int writeComputeSchemaId) {
-    return idToWriteComputeAdapterMap.computeIfAbsent(new SchemaIds(valueSchemaId, writeComputeSchemaId),
-        schemaIds -> WriteComputeHandler.getWriteComputeAdapter(getValueSchema(valueSchemaId),
-            getWriteComputeSchema(valueSchemaId, writeComputeSchemaId)));
-  }
-
   private AvroGenericDeserializer<GenericRecord> getWriteComputeUpdateDeserializer(int valueSchemaId, int writeComputeSchemaId) {
     return idToWriteComputeSchemaDeserializerMap.computeIfAbsent(new SchemaIds(valueSchemaId, writeComputeSchemaId),
         schemaIds -> {
-          Schema writeComputeSchema = getWriteComputeSchema(valueSchemaId, writeComputeSchemaId);
+          Schema writeComputeSchema = getValueAndWriteComputeSchemas(valueSchemaId, writeComputeSchemaId).getWriteComputeSchema();
           return new AvroGenericDeserializer(writeComputeSchema, writeComputeSchema);
         });
   }
@@ -113,8 +126,7 @@ public class IngestionTaskWriteComputeHandler {
       this.writeComputeSchemaId = writeComputeSchemaId;
     }
 
-    @Override
-    public int hashCode() {
+    @Override public int hashCode() {
       return Pair.calculateHashCode(valueSchemaId, writeComputeSchemaId);
     }
 
@@ -127,6 +139,27 @@ public class IngestionTaskWriteComputeHandler {
         return false;
       }
       return this.valueSchemaId == ((SchemaIds) other).valueSchemaId && this.writeComputeSchemaId == ((SchemaIds) other).writeComputeSchemaId;
+    }
+  }
+
+  /**
+   * A POJO to encapsulate value schema and write compute schema
+   */
+  private static class ValueAndWriteComputeSchemas {
+    private final Schema valueSchema;
+    private final Schema writeComputeSchema;
+
+    ValueAndWriteComputeSchemas(Schema valueSchema, Schema writeComputeSchema) {
+      this.valueSchema = Utils.notNull(valueSchema);
+      this.writeComputeSchema = Utils.notNull(writeComputeSchema);
+    }
+
+    Schema getValueSchema() {
+      return valueSchema;
+    }
+
+    Schema getWriteComputeSchema() {
+      return writeComputeSchema;
     }
   }
 }

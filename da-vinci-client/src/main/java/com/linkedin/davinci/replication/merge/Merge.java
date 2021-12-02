@@ -3,6 +3,7 @@ package com.linkedin.davinci.replication.merge;
 import com.linkedin.venice.utils.Lazy;
 import java.util.ArrayList;
 import java.util.List;
+import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 
@@ -95,6 +96,8 @@ interface Merge<T> {
   ValueAndReplicationMetadata<T> update(
       ValueAndReplicationMetadata<T> oldValueAndReplicationMetadata,
       Lazy<GenericRecord> writeOperation,
+      Schema valueSchema,
+      Schema writeComputeSchema,
       long writeOperationTimestamp,
       long sourceOffsetOfNewValue,
       int sourceBrokerIDOfNewValue

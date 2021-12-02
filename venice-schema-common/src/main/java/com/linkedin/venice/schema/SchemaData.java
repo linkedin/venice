@@ -1,5 +1,8 @@
 package com.linkedin.venice.schema;
 
+import com.linkedin.venice.schema.rmd.ReplicationMetadataSchemaEntry;
+import com.linkedin.venice.schema.rmd.ReplicationMetadataVersionId;
+import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.utils.Pair;
 import java.util.ArrayList;
 import java.util.Collection;

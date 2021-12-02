@@ -1,6 +1,6 @@
 package com.linkedin.venice.helix;
 
-import com.linkedin.venice.schema.DerivedSchemaEntry;
+import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 
 /**
  * This class is registered in ZKClient to handle derive schema serialization.
