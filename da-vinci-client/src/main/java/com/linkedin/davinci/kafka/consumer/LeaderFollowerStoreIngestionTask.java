@@ -1200,7 +1200,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   protected long measureRTOffsetLagForSingleRegion(String sourceRealTimeTopicKafkaURL,
       PartitionConsumptionState partitionConsumptionState, boolean shouldLogLag) {
     Pair<Long, Long> hybridLagPair =
-        amplificationAdapter.getLatestLeaderOffsetAndHybridTopicOffset(sourceRealTimeTopicKafkaURL,
+        amplificationAdapter.getLatestLeaderPersistedOffsetAndHybridTopicOffset(sourceRealTimeTopicKafkaURL,
             partitionConsumptionState.getOffsetRecord().getLeaderTopic(), partitionConsumptionState);
     long latestLeaderOffset = hybridLagPair.getFirst();
     long lastOffsetInRealTimeTopic = hybridLagPair.getSecond();
@@ -1855,7 +1855,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           // Fall back to calculate offset lag in the original approach
           if (Version.isRealTimeTopic(currentLeaderTopic)) {
             // Since partition count in RT : partition count in VT = 1 : AMP, we will need amplification factor adaptor to calculate the offset for every subPartitions.
-            Pair<Long, Long> hybridOffsetPair = amplificationAdapter.getLatestLeaderOffsetAndHybridTopicOffset(kafkaSourceAddress, currentLeaderTopic, pcs);
+            Pair<Long, Long> hybridOffsetPair = amplificationAdapter.getLatestLeaderConsumedOffsetAndHybridTopicOffset(kafkaSourceAddress, currentLeaderTopic, pcs);
             return (hybridOffsetPair.getSecond() - 1) - hybridOffsetPair.getFirst();
           } else {
             return (cachedKafkaMetadataGetter.getOffset(kafkaSourceAddress, currentLeaderTopic, pcs.getPartition()) - 1)
@@ -1950,8 +1950,17 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    * Return the value of the entry.
    */
   @Override
-  protected long getUpstreamOffsetForHybridOffsetLagMeasurement(PartitionConsumptionState pcs, String ignoredUpstreamKafkaUrl) {
+  protected long getLatestPersistedUpstreamOffsetForHybridOffsetLagMeasurement(PartitionConsumptionState pcs, String ignoredUpstreamKafkaUrl) {
     return pcs.getOffsetRecord().getUpstreamOffset(OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY);
+  }
+
+  /**
+   * Different from the persisted upstream offset map in OffsetRecord, latest consumed upstream offset map is maintained
+   * for each individual Kafka url.
+   */
+  @Override
+  protected long getLatestConsumedUpstreamOffsetForHybridOffsetLagMeasurement(PartitionConsumptionState pcs, String upstreamKafkaUrl) {
+    return pcs.getLeaderConsumedUpstreamRTOffset(upstreamKafkaUrl);
   }
 
   @Override
