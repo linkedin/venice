@@ -1,17 +1,15 @@
-package com.linkedin.venice.schema;
+package com.linkedin.venice.schema.writecompute;
 
 import java.util.Arrays;
 import org.apache.avro.Schema;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-import static com.linkedin.venice.schema.WriteComputeSchemaConverter.WriteComputeOperation.*;
-
+import static com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter.WriteComputeOperation.*;
 import static org.apache.avro.Schema.Type.*;
 
 
-
-public class TestWriteComputeSchemaAdapter {
+public class TestWriteComputeSchemaConverter {
   static String recordSchemaStr = "{" +
       "  \"namespace\" : \"example.avro\",  " +
       "  \"type\": \"record\",   " +

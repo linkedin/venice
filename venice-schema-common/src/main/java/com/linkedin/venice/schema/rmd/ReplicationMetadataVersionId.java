@@ -1,4 +1,4 @@
-package com.linkedin.venice.schema;
+package com.linkedin.venice.schema.rmd;
 
 public class ReplicationMetadataVersionId {
   int valueSchemaVersion;

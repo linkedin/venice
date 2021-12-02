@@ -95,7 +95,7 @@ public class TestAvroSchemaStrConstants {
       + "  ]\n"
       + "}";
 
-  static String recordOfNullableArrayStr = "{\n"
+  public static String recordOfNullableArrayStr = "{\n"
       + "  \"type\" : \"record\",\n"
       + "  \"name\" : \"testRecord\",\n"
       + "  \"fields\" : [ {\n"

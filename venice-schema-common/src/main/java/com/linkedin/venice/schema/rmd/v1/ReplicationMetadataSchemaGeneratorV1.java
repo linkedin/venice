@@ -1,4 +1,4 @@
-package com.linkedin.venice.schema;
+package com.linkedin.venice.schema.rmd.v1;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -8,7 +8,7 @@ import java.util.List;
 import org.apache.avro.Schema;
 
 import static com.linkedin.venice.VeniceConstants.*;
-import static com.linkedin.venice.schema.WriteComputeSchemaConverter.*;
+import static com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter.*;
 import static org.apache.avro.Schema.Type.*;
 
 
@@ -31,7 +31,7 @@ import static org.apache.avro.Schema.Type.*;
 public class ReplicationMetadataSchemaGeneratorV1 {
   protected static final String METADATA_RECORD_SUFFIX = "MetadataRecord";
   protected static final String NAME_SPACE = "com.linkedin.venice";
-  protected static final Schema TIMESTAMP_SCHEMA = Schema.create(LONG);
+  public static final Schema TIMESTAMP_SCHEMA = Schema.create(LONG);
   protected static final Schema OFFSET_VECTOR_SCHEMA = Schema.createArray(Schema.create(LONG));
 
   public ReplicationMetadataSchemaGeneratorV1() {}

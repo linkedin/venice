@@ -1,16 +1,21 @@
-package com.linkedin.venice.schema;
+package com.linkedin.venice.schema.writecompute;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import java.util.List;
 import org.apache.avro.Schema;
 
-import static com.linkedin.venice.schema.WriteComputeSchemaConverter.WriteComputeOperation.*;
+import static com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter.WriteComputeOperation.*;
 import static org.apache.avro.Schema.Type.*;
 
 /**
  * validate if a write-compute schema can be pair with value schema
  */
 public class WriteComputeSchemaValidator {
+
+  private WriteComputeSchemaValidator() {
+    // Utility class
+  }
+
   public static void validate(Schema originalSchema, Schema writeComputeSchema) {
     if (originalSchema.getType() != RECORD) {
       throw new InvalidWriteComputeException("write compute is only supported for generic record");

@@ -1,6 +1,8 @@
-package com.linkedin.venice.schema;
+package com.linkedin.venice.schema.rmd;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.schema.rmd.v1.ReplicationMetadataSchemaGeneratorV1;
+import com.linkedin.venice.schema.rmd.v2.ReplicationMetadataSchemaGeneratorV2;
 import io.tehuti.utils.Utils;
 import java.util.Collections;
 import java.util.HashMap;

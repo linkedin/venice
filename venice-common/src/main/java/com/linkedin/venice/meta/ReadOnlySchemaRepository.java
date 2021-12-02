@@ -1,9 +1,9 @@
 package com.linkedin.venice.meta;
 
 import com.linkedin.venice.VeniceResource;
-import com.linkedin.venice.schema.ReplicationMetadataSchemaEntry;
-import com.linkedin.venice.schema.DerivedSchemaEntry;
-import com.linkedin.venice.schema.ReplicationMetadataVersionId;
+import com.linkedin.venice.schema.rmd.ReplicationMetadataSchemaEntry;
+import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
+import com.linkedin.venice.schema.rmd.ReplicationMetadataVersionId;
 import com.linkedin.venice.schema.SchemaEntry;
 
 import com.linkedin.venice.utils.Pair;

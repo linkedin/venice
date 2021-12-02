@@ -1,6 +1,6 @@
 package com.linkedin.venice.helix;
 
-import com.linkedin.venice.schema.ReplicationMetadataSchemaEntry;
+import com.linkedin.venice.schema.rmd.ReplicationMetadataSchemaEntry;
 
 
 /**

@@ -9,7 +9,7 @@ import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.exceptions.InvalidVeniceSchemaException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Store;
-import com.linkedin.venice.schema.DerivedSchemaEntry;
+import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.utils.Pair;

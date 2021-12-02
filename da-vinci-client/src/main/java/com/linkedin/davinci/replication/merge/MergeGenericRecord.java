@@ -4,7 +4,8 @@ import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.avroutil1.compatibility.AvroVersion;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
-import com.linkedin.venice.schema.ReplicationMetadataSchemaGeneratorV1;
+import com.linkedin.venice.schema.rmd.v1.ReplicationMetadataSchemaGeneratorV1;
+import com.linkedin.venice.schema.writecompute.WriteComputeProcessor;
 import com.linkedin.venice.utils.Lazy;
 import java.util.List;
 import org.apache.avro.Schema;
@@ -27,8 +28,11 @@ class MergeGenericRecord implements Merge<GenericRecord> {
   private static final MergeGenericRecord INSTANCE = new MergeGenericRecord();
 
   private static final AvroVersion RUNTIME_AVRO_VERSION = AvroCompatibilityHelper.getRuntimeAvroVersion();
+  private final WriteComputeProcessor writeComputeProcessor;
 
-  private MergeGenericRecord() {}
+  private MergeGenericRecord() {
+    this.writeComputeProcessor = new WriteComputeProcessor();
+  }
 
   static MergeGenericRecord getInstance() {
     return INSTANCE;
@@ -172,7 +176,13 @@ class MergeGenericRecord implements Merge<GenericRecord> {
   @Override
   public ValueAndReplicationMetadata<GenericRecord> update(
       ValueAndReplicationMetadata<GenericRecord> oldValueAndReplicationMetadata,
-      Lazy<GenericRecord> writeComputeRecord, long writeOperationTimestamp, long sourceOffsetOfNewValue, int sourceBrokerIDOfNewValue) {
-    throw new VeniceUnsupportedOperationException("update operation not yet supported.");
+      Lazy<GenericRecord> writeComputeRecord,
+      Schema valueSchema,
+      Schema writeComputeSchema,
+      long writeOperationTimestamp,
+      long sourceOffsetOfNewValue,
+      int sourceBrokerIDOfNewValue
+  ) {
+    throw new VeniceUnsupportedOperationException("MergeGenericRecord#update method has not been implemented yet.");
   }
 }

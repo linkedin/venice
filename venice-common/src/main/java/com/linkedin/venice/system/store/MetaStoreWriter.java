@@ -14,7 +14,7 @@ import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.ReplicaStatus;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
-import com.linkedin.venice.schema.WriteComputeSchemaConverter;
+import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.systemstore.schemas.StoreKeySchemas;
@@ -44,7 +44,7 @@ import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.log4j.Logger;
 
-import static com.linkedin.venice.schema.WriteComputeSchemaConverter.*;
+import static com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter.*;
 
 
 /**

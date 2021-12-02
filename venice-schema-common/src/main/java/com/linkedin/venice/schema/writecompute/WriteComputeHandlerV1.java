@@ -1,87 +1,30 @@
-package com.linkedin.venice.schema;
-
-import com.linkedin.venice.exceptions.VeniceException;
+package com.linkedin.venice.schema.writecompute;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
-
+import com.linkedin.venice.exceptions.VeniceException;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import javax.annotation.concurrent.ThreadSafe;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.generic.IndexedRecord;
 
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-
-import static com.linkedin.venice.schema.WriteComputeSchemaConverter.*;
-import static com.linkedin.venice.schema.WriteComputeSchemaConverter.WriteComputeOperation.*;
+import static com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter.*;
+import static com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter.WriteComputeOperation.*;
 
 
 /**
- * This class is able to read write-computed value and apply it to original value.
- *
- * Notice: though it's possible, we only support GenericRecord updating at this point. That's
- * being said, both original and write compute object need to be GenericRecord.
- *
- * Currently, Venice supports 2 kinds of updates.
- * 1. Record partial update.
- * 2. Collection merging.
- * TODO: since this class is very performance sensitive, we should add metrics to measure the
- * TODO: time it spends and keep optimizing the operations
+ * Write compute V1 handles value records that do not have replication metadata.
  */
-public class WriteComputeHandler {
-  private final Schema originalSchema;
-  private final Schema writeComputeSchema;
+@ThreadSafe
+public class WriteComputeHandlerV1 implements WriteComputeHandler {
+  // GenericData is a singleton util class Avro provides. We're using it to construct the default field values
+  protected static final GenericData genericData = GenericData.get();
 
-  //GenericData is a singleton util class Avro provides. We're using it to construct the default field values
-  private final GenericData genericData = GenericData.get();
-
-  /**
-   * Generate a new write compute adapter that can be used given a pair of original schema and its write-compute
-   * schema.
-   * @param originalSchema the original schema that write compute schema is derived from
-   * @param writeComputeSchema the write compute schema that is auto-generated and paired with original Schema.
-   *                           See {@link WriteComputeSchemaConverter} for more details that how it's generated.
-   */
-  public static WriteComputeHandler getWriteComputeAdapter(Schema originalSchema, Schema writeComputeSchema) {
-    WriteComputeSchemaValidator.validate(originalSchema, writeComputeSchema);
-
-    return new WriteComputeHandler(originalSchema, writeComputeSchema);
-  }
-
-  WriteComputeHandler(Schema originalSchema, Schema writeComputeSchema) {
-    this.originalSchema = originalSchema;
-    this.writeComputeSchema = writeComputeSchema;
-  }
-
-  /**
-   * Apply write compute updates recursively.
-   * @param originalSchema the original schema that write compute schema is derived from
-   * @param originalValue current value before write compute updates are applied. Notice that this is nullable.
-   *                      A key can be nonexistent in the DB or a field is designed to be nullable. In this
-   *                      case, Venice will create an empty record/field and apply the updates
-   * @param writeComputeValue write-computed value that is going to be applied
-   *                          on top of original value.
-   * @return The updated value
-   */
-  private Object update(Schema originalSchema, Schema writeComputeSchema, Object originalValue,
-      Object writeComputeValue) {
-    switch (originalSchema.getType()) {
-      case RECORD:
-        return updateRecord(originalSchema, writeComputeSchema, (GenericRecord) originalValue,
-            (GenericRecord) writeComputeValue, true);
-      case ARRAY:
-        return updateArray(originalSchema, (List) originalValue, writeComputeValue);
-      case MAP:
-        return updateMap((Map) originalValue, writeComputeValue);
-      case UNION:
-        return updateUnion(originalSchema, originalValue, writeComputeValue);
-      default:
-        return writeComputeValue;
-    }
-  }
-
-  public GenericRecord updateRecord(GenericRecord originalRecord, GenericRecord writeComputeRecord) {
+  @Override
+  public GenericRecord updateRecord(Schema originalSchema, Schema writeComputeSchema, GenericRecord originalRecord, GenericRecord writeComputeRecord) {
     return updateRecord(originalSchema, writeComputeSchema, originalRecord, writeComputeRecord, false);
   }
 
@@ -142,6 +85,33 @@ public class WriteComputeHandler {
     }
 
     return newRecord;
+  }
+
+  /**
+   * Apply write compute updates recursively.
+   * @param originalSchema the original schema that write compute schema is derived from
+   * @param originalValue current value before write compute updates are applied. Notice that this is nullable.
+   *                      A key can be nonexistent in the DB or a field is designed to be nullable. In this
+   *                      case, Venice will create an empty record/field and apply the updates
+   * @param writeComputeValue write-computed value that is going to be applied
+   *                          on top of original value.
+   * @return The updated value
+   */
+  private Object update(Schema originalSchema, Schema writeComputeSchema, Object originalValue,
+      Object writeComputeValue) {
+    switch (originalSchema.getType()) {
+      case RECORD:
+        return updateRecord(originalSchema, writeComputeSchema, (GenericRecord) originalValue,
+            (GenericRecord) writeComputeValue, true);
+      case ARRAY:
+        return updateArray(originalSchema, (List) originalValue, writeComputeValue);
+      case MAP:
+        return updateMap((Map) originalValue, writeComputeValue);
+      case UNION:
+        return updateUnion(originalSchema, originalValue, writeComputeValue);
+      default:
+        return writeComputeValue;
+    }
   }
 
   // Visible for testing

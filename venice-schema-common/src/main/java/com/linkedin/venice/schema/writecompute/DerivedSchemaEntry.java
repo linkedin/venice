@@ -1,5 +1,6 @@
-package com.linkedin.venice.schema;
+package com.linkedin.venice.schema.writecompute;
 
+import com.linkedin.venice.schema.GeneratedSchemaEntry;
 import org.apache.avro.Schema;
 
 
@@ -24,5 +25,4 @@ public class DerivedSchemaEntry extends GeneratedSchemaEntry {
   public DerivedSchemaEntry(int valueSchemaId, int protocolVersion, byte[] bytes) {
     super(valueSchemaId, protocolVersion, bytes);
   }
-
 }

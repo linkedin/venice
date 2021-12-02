@@ -1,10 +1,12 @@
-package com.linkedin.venice.schema;
+package com.linkedin.venice.schema.writecompute;
 
+import com.linkedin.venice.schema.TestAvroSchemaStrConstants;
+import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
+import com.linkedin.venice.schema.writecompute.WriteComputeSchemaValidator;
 import org.apache.avro.Schema;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-import static com.linkedin.venice.schema.TestWriteComputeSchemaAdapter.recordOfNullableArrayStr;
 
 public class TestWriteComputeSchemaValidator {
   static String nestedRecordStr = "{\n" +

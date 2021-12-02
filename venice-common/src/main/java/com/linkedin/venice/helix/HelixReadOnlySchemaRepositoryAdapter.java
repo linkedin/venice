@@ -2,9 +2,9 @@ package com.linkedin.venice.helix;
 
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
-import com.linkedin.venice.schema.ReplicationMetadataSchemaEntry;
-import com.linkedin.venice.schema.DerivedSchemaEntry;
-import com.linkedin.venice.schema.ReplicationMetadataVersionId;
+import com.linkedin.venice.schema.rmd.ReplicationMetadataSchemaEntry;
+import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
+import com.linkedin.venice.schema.rmd.ReplicationMetadataVersionId;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.utils.Pair;
 import java.util.Collection;

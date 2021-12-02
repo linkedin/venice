@@ -14,8 +14,8 @@ import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiColoMultiCluster
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.schema.ReplicationMetadataSchemaGenerator;
-import com.linkedin.venice.schema.ReplicationMetadataSchemaEntry;
+import com.linkedin.venice.schema.rmd.ReplicationMetadataSchemaGenerator;
+import com.linkedin.venice.schema.rmd.ReplicationMetadataSchemaEntry;
 import com.linkedin.venice.utils.TestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import java.util.Collection;

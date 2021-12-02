@@ -1,4 +1,4 @@
-package com.linkedin.venice.schema;
+package com.linkedin.venice.schema.writecompute;
 
 import java.util.Arrays;
 import java.util.Collections;
@@ -11,12 +11,11 @@ import org.apache.avro.generic.GenericData;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-import static com.linkedin.venice.schema.WriteComputeSchemaConverter.*;
-
+import static com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter.*;
 import static org.apache.avro.Schema.Type.*;
 
 
-public class testWriteComputeHandler {
+public class TestWriteComputeProcessor {
   private String recordSchemaStr = "{\n" +
       "  \"type\" : \"record\",\n" +
       "  \"name\" : \"testRecord\",\n" +
@@ -98,29 +97,28 @@ public class testWriteComputeHandler {
   public void testCanUpdateArray() {
     Schema arraySchema = Schema.createArray(Schema.create(INT));
     Schema arrayWriteComputeSchema = WriteComputeSchemaConverter.convert(arraySchema);
-
-    WriteComputeHandler arrayAdapter = new WriteComputeHandler(arraySchema, arrayWriteComputeSchema);
+    WriteComputeHandlerV2 writeComputeHandler = new WriteComputeHandlerV2();
 
     GenericData.Record collectionUpdateRecord = new GenericData.Record(arrayWriteComputeSchema.getTypes().get(0));
     collectionUpdateRecord.put(SET_UNION, Arrays.asList(1, 2));
     collectionUpdateRecord.put(SET_DIFF, Arrays.asList(3, 4));
 
     GenericData.Array originalArray = new GenericData.Array(arraySchema, Arrays.asList(1, 3));
-    Object result = arrayAdapter.updateArray(arraySchema, originalArray, collectionUpdateRecord);
+    Object result = writeComputeHandler.updateArray(arraySchema, originalArray, collectionUpdateRecord);
     Assert.assertTrue(result instanceof List);
     Assert.assertTrue(((List) result).contains(1));
     Assert.assertFalse(((List) result).contains(3));
 
     //test passing a "null" as the original value. WriteComputeAdapter is supposed to construct
     //a new list
-    result = arrayAdapter.updateArray(arraySchema, null, collectionUpdateRecord);
+    result = writeComputeHandler.updateArray(arraySchema, null, collectionUpdateRecord);
 
     Assert.assertTrue(((List) result).contains(1));
     Assert.assertTrue(((List) result).contains(2));
 
     //test replacing original array entirely
     GenericData.Array updatedArray = new GenericData.Array(arraySchema, Arrays.asList(2));
-    result = arrayAdapter.updateArray(arraySchema, originalArray, updatedArray);
+    result = writeComputeHandler.updateArray(arraySchema, originalArray, updatedArray);
     Assert.assertTrue(((List) result).contains(2));
     Assert.assertFalse(((List) result).contains(1));
     Assert.assertFalse(((List) result).contains(3));
@@ -130,8 +128,7 @@ public class testWriteComputeHandler {
   public void testCanUpdateMap() {
     Schema mapSchema = Schema.createMap(Schema.create(INT));
     Schema mapWriteComputeSchema = WriteComputeSchemaConverter.convert(mapSchema);
-
-    WriteComputeHandler mapAdapter = new WriteComputeHandler(mapSchema, mapWriteComputeSchema);
+    WriteComputeHandlerV2 writeComputeHandler = new WriteComputeHandlerV2();
 
     GenericData.Record mapUpdateRecord = new GenericData.Record(mapWriteComputeSchema.getTypes().get(0));
     Map map = new HashMap();
@@ -144,7 +141,7 @@ public class testWriteComputeHandler {
     originalMap.put(1, 1);
     originalMap.put(4, 4);
 
-    Object result = mapAdapter.updateMap(originalMap, mapUpdateRecord);
+    Object result = writeComputeHandler.updateMap(originalMap, mapUpdateRecord);
     Assert.assertTrue(result instanceof Map);
     Assert.assertEquals(((Map) result).get(1), 1);
     Assert.assertEquals(((Map) result).get(2), 2);
@@ -152,7 +149,7 @@ public class testWriteComputeHandler {
     Assert.assertFalse( ((Map) result).containsKey(4));
 
     //test passing a "null" as the original value
-    result = mapAdapter.updateMap(null, mapUpdateRecord);
+    result = writeComputeHandler.updateMap(null, mapUpdateRecord);
     Assert.assertEquals(((Map) result).get(2), 2);
     Assert.assertEquals(((Map) result).get(3), 3);
 
@@ -160,7 +157,7 @@ public class testWriteComputeHandler {
     Map updatedMap = new HashMap();
     updatedMap.put(5, 5);
 
-    result = mapAdapter.updateMap(originalMap, updatedMap);
+    result = writeComputeHandler.updateMap(originalMap, updatedMap);
     Assert.assertEquals(((Map) result).get(5), 5);
     Assert.assertFalse( ((Map) result).containsKey(1));
     Assert.assertFalse( ((Map) result).containsKey(4));
@@ -170,9 +167,7 @@ public class testWriteComputeHandler {
   public void testCanUpdateRecord() {
     Schema recordSchema = Schema.parse(recordSchemaStr);
     Schema recordWriteComputeSchema = WriteComputeSchemaConverter.convert(recordSchema);
-
-    WriteComputeHandler
-        recordAdapter = WriteComputeHandler.getWriteComputeAdapter(recordSchema, recordWriteComputeSchema);
+    WriteComputeHandlerV2 writeComputeHandler = new WriteComputeHandlerV2();
 
     //construct original record
     Schema innerArraySchema = recordSchema.getField("hits").schema();
@@ -197,7 +192,7 @@ public class testWriteComputeHandler {
     recordUpdateRecord.put("hits", noOpRecord);
     recordUpdateRecord.put("hasNext", true);
 
-    Object result = recordAdapter.updateRecord(originalRecord, recordUpdateRecord);
+    Object result = writeComputeHandler.updateRecord(recordSchema, recordWriteComputeSchema, originalRecord, recordUpdateRecord);
     Assert.assertTrue(result instanceof GenericData.Record);
     Assert.assertEquals(((GenericData.Record)result).get("hits"), innerArray);
     Assert.assertEquals(((GenericData.Record)result).get("hasNext"), true);
@@ -213,7 +208,7 @@ public class testWriteComputeHandler {
     collectionUpdateRecord.put(SET_DIFF, Collections.emptyList());
     recordUpdateRecord.put("hits", collectionUpdateRecord);
 
-    result = recordAdapter.updateRecord(originalRecord, recordUpdateRecord);
+    result = writeComputeHandler.updateRecord(recordSchema, recordWriteComputeSchema, originalRecord, recordUpdateRecord);
     List hitsList = (List) ((GenericData.Record) result).get("hits");
     Assert.assertEquals(hitsList.size(), 2);
     Assert.assertTrue(hitsList.contains(innerRecord));
@@ -222,17 +217,15 @@ public class testWriteComputeHandler {
     //test passing a "null" as the original value. The write compute adapter should set noOp field to
     //its default value if it's possible
     recordUpdateRecord.put("hasNext", noOpRecord);
-    result = recordAdapter.updateRecord(null, recordUpdateRecord);
+    result = writeComputeHandler.updateRecord(recordSchema, recordWriteComputeSchema, null, recordUpdateRecord);
     Assert.assertEquals(((GenericData.Record)result).get("hasNext"), false);
   }
 
   @Test
   public void testCanUpdateNullableUnion() {
-    Schema nullableRecord = Schema.parse(nullableRecordStr);
-    Schema writeComputeSchema = WriteComputeSchemaConverter.convert(nullableRecord);
-
-    WriteComputeHandler recordAdapter =
-        WriteComputeHandler.getWriteComputeAdapter(nullableRecord, writeComputeSchema);
+    Schema nullableRecordSchema = Schema.parse(nullableRecordStr);
+    Schema writeComputeSchema = WriteComputeSchemaConverter.convert(nullableRecordSchema);
+    WriteComputeProcessor writeComputeProcessor = new WriteComputeProcessor();
 
     //construct an empty write compute schema. WC adapter is supposed to construct the
     //original value by using default values.
@@ -244,7 +237,13 @@ public class testWriteComputeHandler {
     writeComputeRecord.put("nullableArray", noOpRecord);
     writeComputeRecord.put("intField", noOpRecord);
 
-    GenericData.Record result = (GenericData.Record) recordAdapter.updateRecord(null, writeComputeRecord);
+    GenericData.Record result = (GenericData.Record) writeComputeProcessor.updateRecord(
+        nullableRecordSchema,
+        writeComputeSchema,
+        null,
+        writeComputeRecord
+    );
+
     Assert.assertNull(result.get("nullableArray"));
     Assert.assertEquals(result.get("intField"), 0);
 
@@ -255,7 +254,7 @@ public class testWriteComputeHandler {
     listOpsRecord.put(SET_DIFF, Collections.emptyList());
     writeComputeRecord.put("nullableArray", listOpsRecord);
 
-    result = (GenericData.Record) recordAdapter.updateRecord(result, writeComputeRecord);
+    result = (GenericData.Record) writeComputeProcessor.updateRecord(nullableRecordSchema, writeComputeSchema, result, writeComputeRecord);
     GenericArray array = (GenericArray) result.get("nullableArray");
     Assert.assertEquals(array.size(), 2);
     Assert.assertTrue(array.contains(1) && array.contains(2));
@@ -265,9 +264,7 @@ public class testWriteComputeHandler {
   public void testCanDeleteFullRecord() {
     Schema recordSchema = Schema.parse(simpleRecordSchemaStr);
     Schema recordWriteComputeSchema = WriteComputeSchemaConverter.convert(recordSchema);
-
-    WriteComputeHandler recordAdapter =
-        WriteComputeHandler.getWriteComputeAdapter(recordSchema, recordWriteComputeSchema);
+    WriteComputeProcessor writeComputeProcessor = new WriteComputeProcessor();
 
     //construct original record
     GenericData.Record originalRecord = new GenericData.Record(recordSchema);
@@ -278,7 +275,7 @@ public class testWriteComputeHandler {
     Schema deleteSchema = recordWriteComputeSchema.getTypes().get(1);
     GenericData.Record deleteRecord = new GenericData.Record(deleteSchema);
 
-    Object result = recordAdapter.updateRecord(originalRecord, deleteRecord);
+    Object result = writeComputeProcessor.updateRecord(recordSchema, recordWriteComputeSchema, originalRecord, deleteRecord);
     Assert.assertEquals(result, null);
   }
 
@@ -286,9 +283,7 @@ public class testWriteComputeHandler {
   public void testCanHandleNestedRecord() {
     Schema recordSchema = Schema.parse(nestedRecordStr);
     Schema recordWriteComputeUnionSchema = WriteComputeSchemaConverter.convert(recordSchema);
-
-    WriteComputeHandler recordAdapter =
-        WriteComputeHandler.getWriteComputeAdapter(recordSchema, recordWriteComputeUnionSchema);
+    WriteComputeProcessor writeComputeProcessor = new WriteComputeProcessor();
 
     Schema nestedRecordSchema =  recordSchema.getField("nestedRecord").schema();
     GenericData.Record nestedRecord = new GenericData.Record(nestedRecordSchema);
@@ -298,7 +293,13 @@ public class testWriteComputeHandler {
     GenericData.Record writeComputeRecord = new GenericData.Record(writeComputeRecordSchema);
     writeComputeRecord.put("nestedRecord", nestedRecord);
 
-    GenericData.Record result = (GenericData.Record) recordAdapter.updateRecord(null, writeComputeRecord);
+    GenericData.Record result = (GenericData.Record) writeComputeProcessor.updateRecord(
+        recordSchema,
+        recordWriteComputeUnionSchema,
+        null,
+        writeComputeRecord
+    );
+
     Assert.assertNotNull(result);
     Assert.assertEquals(result.get("nestedRecord"), nestedRecord);
   }
