@@ -1,10 +1,12 @@
+import groovy.io.FileType
+import com.github.spotbugs.snom.SpotBugsTask
 import org.apache.tools.ant.taskdefs.condition.Os
 
 buildscript {
   dependencies {
     classpath 'com.gradle:gradle-enterprise-gradle-plugin:3.5.2'
-    classpath 'gradle.plugin.com.dorongold.plugins:task-tree:1.5'
     classpath 'com.github.spotbugs:spotbugs-gradle-plugin:4.7.1'
+    classpath 'gradle.plugin.com.dorongold.plugins:task-tree:1.5'
   }
 }
 
@@ -24,7 +26,7 @@ try {
     }
   }
 } catch (Exception e) {
-  println "$e"
+  println e
 }
 
 try {
@@ -33,7 +35,7 @@ try {
     noRepeat = true
   }
 } catch (Exception e) {
-  println "$e"
+  println e
 }
 
 if (project.hasProperty('overrideBuildEnvironment')) {
@@ -142,7 +144,10 @@ ext.libraries = [
     failsafe: 'net.jodah:failsafe:2.4.0',
 
     spotbugs: 'com.github.spotbugs:spotbugs:4.2.3',
-    spotbugsAvroPlugin: 'com.linkedin.avroutil1:spotbugs-plugin:0.2.54'
+    spotbugsAvroPlugin: 'com.linkedin.avroutil1:spotbugs-plugin:0.2.69',
+
+    // TODO: switch to avro-util once it's able to generate version agnostic code.
+    avroSchemasBuilder: 'com.linkedin.avro-schemas:avro-schemas-builder:63.1.428'
 ]
 
 subprojects {
@@ -189,6 +194,7 @@ subprojects {
       // These dependencies are transitively used at runtime, so we cannot exclude them further than compileOnly
       exclude group: 'com.google.guava', module: 'guava' // Used by Brooklin at runtime
     }
+    toolRuntime.extendsFrom(compileOnly)
   }
 
   dependencies {
@@ -202,6 +208,83 @@ subprojects {
 
     spotbugs libraries.spotbugs
     spotbugsPlugins libraries.spotbugsAvroPlugin
+
+    toolRuntime libraries.avroSchemasBuilder
+    toolRuntime 'org.slf4j:slf4j-simple:1.7.32'
+  }
+
+  task compileAvro(type: JavaExec, dependsOn: configurations.toolRuntime) {
+    def inputDir = file('src/main/resources/avro')
+    def outputDir = file("$buildDir/generated/sources/main/avro")
+
+    def versionOverrides = [
+//      'venice-common/src/main/resources/avro/StoreVersionState/v5'
+    ]
+
+    onlyIf { inputDir.exists() }
+    inputs.files(configurations.toolRuntime).withNormalizer(ClasspathNormalizer)
+    inputs.dir(inputDir)
+    outputs.dir(outputDir)
+
+    doFirst {
+      def schemas = [:]
+      def copySchemas = { dir ->
+        logger.lifecycle("Copying avro schemas from ${relativePath(dir)}")
+        dir.eachFileMatch(FileType.FILES, ~/.*\.avsc/) { schema ->
+          def original = schemas.put(schema.name, schema)
+          if (original) {
+            throw new GradleException("Duplicate avro schemas: \n $original\n $schema")
+          }
+          copy { from schema into temporaryDir }
+        }
+      }
+
+      // Copy not versioned schemas from the avro root
+      copySchemas(inputDir)
+
+      // Copy latest versioned schemas from sub-folders
+      inputDir.eachDir { typeDir ->
+        def versionId = { dir ->
+          if (!dir) {
+            null
+          } else if (rootProject.relativePath(dir) in versionOverrides) {
+            Integer.MAX_VALUE
+          } else {
+            dir.name.substring(1).toInteger()
+          }
+        }
+        def latestVersionDir = null
+        typeDir.eachDirMatch(~/v-?\d+/) { versionDir ->
+          if (versionId(versionDir) > versionId(latestVersionDir)) {
+            latestVersionDir = versionDir
+          }
+        }
+        if (latestVersionDir) {
+          copySchemas(latestVersionDir)
+        }
+      }
+
+      logger.lifecycle("Compiling avro schemas ${temporaryDir.list()}")
+      classpath = configurations.toolRuntime
+      main = 'com.linkedin.avro.Builder'
+      args = [
+        '--input', temporaryDir,
+        '--output', outputDir,
+        '--includeClasspath', 'true'
+      ]
+    }
+  }
+  sourceSets.main.java.srcDir(compileAvro)
+
+  task sourceSets {
+    doLast {
+      sourceSets.each {
+        println "[$it.name]"
+        println "Sources: $it.allJava.srcDirs"
+        println "Outputs: $it.output.classesDirs.files"
+        println ""
+      }
+    }
   }
 
   idea {
@@ -213,31 +296,25 @@ subprojects {
 
   spotbugs {
     toolVersion = '4.2.3'
-    includeFilter = file("../findbugs-include.xml")
+    includeFilter = file('../findbugs-include.xml')
     ignoreFailures = false
   }
 
-  spotbugsMain {
+  tasks.withType(SpotBugsTask) {
     reports {
       html {
-        enabled = true
         stylesheet = 'fancy-hist.xsl'
-        destination = file("$buildDir/reports/spotbugs/main/spotbugs.html")
       }
     }
   }
 
-  spotbugsTest {
-    reports {
-      html {
-        enabled = true
-        stylesheet = 'fancy-hist.xsl'
-        destination = file("$buildDir/reports/spotbugs/test/spotbugs.html")
-      }
-    }
+  task spotbugs {
+    dependsOn tasks.withType(SpotBugsTask)
   }
 
   tasks.withType(Test) {
+    mustRunAfter ':spotbugs'
+
     // The ALPN version should match the JVM version
     if (JavaVersion.current().compareTo(JavaVersion.VERSION_11) < 0) {
       if (Os.isFamily(Os.FAMILY_MAC)) {
@@ -289,37 +366,50 @@ subprojects {
 }
 
 task spotbugs {
-  dependsOn subprojects.spotbugsMain
-  dependsOn subprojects.spotbugsTest
-  dependsOn 'venice-test-common:spotbugsJmh'
-  dependsOn 'venice-test-common:spotbugsIntegrationTest'
+  dependsOn subprojects.collect { it.tasks.getByName('spotbugs') }
 }
 
-task unitTests {
+test {
   mustRunAfter spotbugs
   dependsOn subprojects.test
 }
 
 task flakyTests {
-  dependsOn subprojects.flakyTests
-  dependsOn 'venice-test-common:flakyIntegrationTests'
+  dependsOn (
+    subprojects.flakyTests,
+    'venice-test-common:flakyIntegrationTests'
+  )
 }
 
 task integrationTests {
-  mustRunAfter spotbugs
-  mustRunAfter unitTests
+  mustRunAfter (
+    spotbugs,
+    test
+  )
   dependsOn 'venice-test-common:integrationTests'
 }
 
-check.dependsOn spotbugs
-check.dependsOn unitTests
-check.dependsOn integrationTests
+check {
+  dependsOn (
+    spotbugs,
+    test,
+    integrationTests
+  )
+}
 
-assemble.dependsOn testClasses
-assemble.dependsOn 'venice-test-common:jmhClasses'
-assemble.dependsOn 'venice-test-common:integrationTestClasses'
+assemble {
+  dependsOn (
+    testClasses,
+    'venice-test-common:jmhClasses',
+    'venice-test-common:integrationTestClasses'
+  )
+}
 
-build.dependsOn 'venice-common:buildJar'
-build.dependsOn 'venice-router:installDist'
-build.dependsOn 'venice-server:installDist'
-build.dependsOn 'venice-controller:installDist'
+build {
+  dependsOn (
+    'venice-common:buildJar',
+    'venice-router:installDist',
+    'venice-server:installDist',
+    'venice-controller:installDist'
+  )
+}

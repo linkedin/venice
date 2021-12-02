@@ -237,11 +237,9 @@ public class VeniceClusterInitializer implements AutoCloseable {
    */
   public static void main(String[] args) {
     LOGGER.info("Avro version in VeniceClusterInitializer: " + AvroCompatibilityHelper.getRuntimeAvroVersion());
-    assert(AvroCompatibilityHelper.getRuntimeAvroVersion().equals(AvroVersion.AVRO_1_7));
+    Assert.assertEquals(AvroCompatibilityHelper.getRuntimeAvroVersion(), AvroVersion.AVRO_1_9);
+    Assert.assertEquals(args.length, 2, "Store name and router port arguments are expected");
 
-    if (args.length < 2) {
-      throw new VeniceException("Store name and router port arguments are expected");
-    }
     String storeName = args[0];
     int routerPort = Integer.parseInt(args[1]);
     VeniceClusterInitializer clusterInitializer = new VeniceClusterInitializer(storeName, routerPort);

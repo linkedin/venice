@@ -1,6 +1,6 @@
 {
   "type": "record",
-  "name": "ComputeRequestV2",
+  "name": "ComputeRequestV3",
   "namespace": "com.linkedin.venice.compute.protocol.request",
   "doc": "This record only contains the operations and result schema, and keys will be appended after during serialization",
   "fields": [
@@ -90,6 +90,22 @@
                         "name": "resultFieldName",
                         "type": "string",
                         "doc": "The field name used to store the calculated result"
+                      }
+                    ]
+                  },
+                  {
+                    "name": "Count",
+                    "type": "record",
+                    "fields": [
+                      {
+                        "name": "field",
+                        "type": "string",
+                        "doc": "The field name in the original value record of type array or map, which will used to execute count operation on"
+                      },
+                      {
+                        "name": "resultFieldName",
+                        "type": "string",
+                        "doc": "The field name used to store the count operation result"
                       }
                     ]
                   }

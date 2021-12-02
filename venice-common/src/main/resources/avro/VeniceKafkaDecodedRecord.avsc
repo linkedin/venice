@@ -1,0 +1,39 @@
+{
+  "type": "record",
+  "name": "VeniceKafkaDecodedRecord",
+  "namespace": "com.linkedin.venice.etl",
+  "fields": [
+    {
+      "name": "key",
+      "type": "bytes",
+      "doc": "Raw bytes of the key"
+    },
+    {
+      "name": "value",
+      "type": "bytes",
+      "doc": "Raw bytes of the value"
+    },
+    {
+      "name": "offset",
+      "type": "long",
+      "doc": "The offset of this record in Kafka"
+    },
+    {
+      "name": "DELETED_TS",
+      "type": [
+        "null",
+        "long"
+      ],
+      "doc": "If the current record is a PUT, this field will be null; if it's a DELETE, this field will be the offset of the record in Kafka",
+      "default": null
+    },
+    {
+      "name": "metadata",
+      "type": {
+        "type": "map",
+        "values": "string"
+      },
+      "doc": "Metadata of the record; currently it contains the schemaId of the record"
+    }
+  ]
+}

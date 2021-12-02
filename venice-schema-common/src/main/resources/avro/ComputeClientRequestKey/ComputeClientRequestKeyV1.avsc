@@ -1,6 +1,0 @@
-{
-  "name": "ComputeClientRequestKeyV1",
-  "namespace": "com.linkedin.venice.compute.protocol.request.client",
-  "doc": "Avro serialized key",
-  "type": "bytes"
-}

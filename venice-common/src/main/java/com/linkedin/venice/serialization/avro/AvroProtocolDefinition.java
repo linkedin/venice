@@ -128,7 +128,7 @@ public enum AvroProtocolDefinition {
   /**
    * Value schema for metadata system store.
    */
-  METADATA_SYSTEM_SCHEMA_STORE(7, StoreMetaValue.class, "StoreMeta"),
+  METADATA_SYSTEM_SCHEMA_STORE(7, StoreMetaValue.class),
 
   /**
    * Key schema for push status system store.
@@ -138,7 +138,7 @@ public enum AvroProtocolDefinition {
   /**
    * Value schema for push status system store.
    */
-  PUSH_STATUS_SYSTEM_SCHEMA_STORE(1, PushStatusValue.class, "PushStatus"),
+  PUSH_STATUS_SYSTEM_SCHEMA_STORE(1, PushStatusValue.class),
 
   /**
    * Response record for admin request v1
@@ -194,12 +194,6 @@ public enum AvroProtocolDefinition {
   final boolean protocolVersionStoredInHeader;
 
   /**
-   * Parent folder to include all the schemas, and this is mostly applicable to the system stores,
-   * which will have both key schema and value schema in the same parent folder.
-   */
-  final Optional<String> schemaParentFolder;
-
-  /**
    * Constructor for protocols where the Avro record is prepended by a protocol
    * definition header, which includes a magic byte and protocol version.
    */
@@ -209,7 +203,6 @@ public enum AvroProtocolDefinition {
     this.protocolVersionStoredInHeader = true;
     this.className = specificRecordClass.getSimpleName();
     this.schema = SpecificData.get().getSchema(specificRecordClass);
-    this.schemaParentFolder = Optional.empty();
   }
 
   /**
@@ -222,16 +215,11 @@ public enum AvroProtocolDefinition {
    * the protocol version.
    */
   AvroProtocolDefinition(int currentProtocolVersion, Class<? extends SpecificRecord> specificRecordClass) {
-    this(currentProtocolVersion, specificRecordClass, "");
-  }
-
-  AvroProtocolDefinition(int currentProtocolVersion, Class<? extends SpecificRecord> specificRecordClass, String schemaParentFolder) {
     this.magicByte = Optional.empty();
     this.currentProtocolVersion = Optional.of(currentProtocolVersion);
     this.protocolVersionStoredInHeader = false;
     this.className = specificRecordClass.getSimpleName();
     this.schema = SpecificData.get().getSchema(specificRecordClass);
-    this.schemaParentFolder = schemaParentFolder.isEmpty() ? Optional.empty() : Optional.of(schemaParentFolder);
   }
 
   /**
@@ -244,7 +232,6 @@ public enum AvroProtocolDefinition {
     this.protocolVersionStoredInHeader = false;
     this.className = specificRecordClass.getSimpleName();
     this.schema = SpecificData.get().getSchema(specificRecordClass);
-    this.schemaParentFolder = Optional.empty();
   }
 
   /**
@@ -257,7 +244,6 @@ public enum AvroProtocolDefinition {
     this.protocolVersionStoredInHeader = false;
     this.className = name;
     this.schema = schema;
-    this.schemaParentFolder = Optional.empty();
   }
 
   public <T extends SpecificRecord> InternalAvroSpecificSerializer<T> getSerializer() {
@@ -286,9 +272,5 @@ public enum AvroProtocolDefinition {
 
   public String getSystemStoreName() {
     return String.format(Store.SYSTEM_STORE_FORMAT, name());
-  }
-
-  public Optional<String>  getSchemaParentFolder() {
-    return schemaParentFolder;
   }
 }

@@ -1,6 +1,6 @@
 {
   "type": "record",
-  "name": "ComputeRequestV3",
+  "name": "ComputeRequestV1",
   "namespace": "com.linkedin.venice.compute.protocol.request",
   "doc": "This record only contains the operations and result schema, and keys will be appended after during serialization",
   "fields": [

@@ -429,11 +429,10 @@ public class Utils {
     }
     final String sep = "/"; // TODO: Make sure that jar resources are always forward-slash delimited, even on Windows
     int version = initialVersion;
-    String schemaParentFolderDir = protocolDef.getSchemaParentFolder().isPresent() ? (protocolDef.getSchemaParentFolder().get() + sep) : "";
     while (true) {
-      String versionPath = "avro" + sep + schemaParentFolderDir + className + sep;
+      String versionPath = "avro" + sep;
       if (currentProtocolVersion != SENTINEL_PROTOCOL_VERSION_USED_FOR_UNVERSIONED_PROTOCOL) {
-        versionPath += "v" + version + sep;
+        versionPath += className + sep + "v" + version + sep;
       }
       versionPath += className + ".avsc";
       try {
