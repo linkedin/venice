@@ -20,6 +20,7 @@ import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.davinci.stats.AggVersionedStorageEngineStats;
 import com.linkedin.davinci.stats.RocksDBMemoryStats;
 import com.linkedin.davinci.store.AbstractStorageEngine;
+import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.Utils;
@@ -33,6 +34,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import org.apache.log4j.Logger;
+import org.rocksdb.RocksDBException;
 import org.rocksdb.Statistics;
 
 import static com.linkedin.venice.meta.PersistenceType.*;
@@ -125,9 +127,20 @@ public class StorageService extends AbstractVeniceService {
         // Load the metadata & data restore settings from config loader.
         storeConfig.setRestoreDataPartitions(restoreDataPartitions);
         storeConfig.setRestoreMetadataPartition(restoreMetadataPartitions);
-        AbstractStorageEngine storageEngine = openStore(storeConfig);
-        Set<Integer> partitionIds = storageEngine.getPartitionIds();
+        AbstractStorageEngine storageEngine;
 
+        try {
+          storageEngine = openStore(storeConfig);
+        } catch (Exception e){
+          if (ExceptionUtils.recursiveClassEquals(e, RocksDBException.class)) {
+            logger.error("Could not load the following store : " + storeName , e);
+            aggVersionedStorageEngineStats.recordRocksDBOpenFailure(storeName);
+            continue;
+          }
+          throw new VeniceException("Error caught during opening store " + storeName, e);
+        }
+
+        Set<Integer> partitionIds = storageEngine.getPartitionIds();
         logger.info("Loaded the following partitions: " + Arrays.toString(partitionIds.toArray()) + ", for store: " + storeName);
         logger.info("Done restoring store: " + storeName + " with type: " + pType);
       }
