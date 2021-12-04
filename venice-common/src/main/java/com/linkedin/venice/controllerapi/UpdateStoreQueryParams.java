@@ -140,7 +140,7 @@ public class UpdateStoreQueryParams extends QueryParams {
   }
 
   public UpdateStoreQueryParams setPartitionerParams(Map<String, String> partitionerParams) {
-    return putStringMap(PARTITIONER_PARAMS, partitionerParams);
+    return (UpdateStoreQueryParams) putStringMap(PARTITIONER_PARAMS, partitionerParams);
   }
   public Optional<Map<String, String>> getPartitionerParams() {
     return getStringMap(PARTITIONER_PARAMS);
@@ -507,29 +507,6 @@ public class UpdateStoreQueryParams extends QueryParams {
 
   private Optional<String> getString(String name) {
     return Optional.ofNullable(params.get(name));
-  }
-
-  private UpdateStoreQueryParams putStringMap(String name, Map<String, String> value) {
-    try {
-      return (UpdateStoreQueryParams) add(
-          name,
-          mapper.writeValueAsString(value)
-      );
-    } catch (JsonProcessingException e) {
-      throw new VeniceException(e.getMessage());
-    }
-  }
-
-  private Optional<Map<String, String>> getStringMap(String name) {
-    if (!params.containsKey(name)) {
-      return Optional.empty();
-    } else {
-      try {
-        return Optional.of(mapper.readValue(params.get(name), Map.class));
-      } catch (IOException e) {
-        throw new VeniceException(e.getMessage());
-      }
-    }
   }
 
   private UpdateStoreQueryParams putStringList(String name, List<String> value) {

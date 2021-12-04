@@ -2,6 +2,7 @@ package com.linkedin.venice.meta;
 
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.systemstore.schemas.DataRecoveryConfig;
 import com.linkedin.venice.systemstore.schemas.StoreETLConfig;
 import com.linkedin.venice.systemstore.schemas.StoreHybridConfig;
 import com.linkedin.venice.systemstore.schemas.StorePartitionerConfig;
@@ -199,6 +200,45 @@ public class ReadOnlyStore implements Store {
     }
   }
   /**
+   * A read-only wrapper of {@link DataRecoveryVersionConfig}
+   */
+  private static class ReadOnlyDataRecoveryVersionConfig implements DataRecoveryVersionConfig {
+    private final DataRecoveryVersionConfig delegate;
+    private ReadOnlyDataRecoveryVersionConfig(DataRecoveryVersionConfig delegate) {
+      this.delegate = delegate;
+    }
+
+    @Override
+    public DataRecoveryConfig dataModel() {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public String getDataRecoverySourceFabric() {
+      return delegate.getDataRecoverySourceFabric();
+    }
+
+    @Override
+    public void setDataRecoverySourceFabric(String dataRecoverySourceFabric) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public boolean isDataRecoveryComplete() {
+      return delegate.isDataRecoveryComplete();
+    }
+
+    @Override
+    public void setDataRecoveryComplete(boolean dataRecoveryComplete) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public DataRecoveryVersionConfig clone() {
+      return this.delegate.clone();
+    }
+  }
+  /**
    * A read-only wrapper of {@link Version}
    */
   public static class ReadOnlyVersion implements Version {
@@ -380,6 +420,20 @@ public class ReadOnlyStore implements Store {
     }
     @Override
     public void setActiveActiveReplicationEnabled(boolean activeActiveReplicationEnabled) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public DataRecoveryVersionConfig getDataRecoveryVersionConfig() {
+      DataRecoveryVersionConfig config = this.delegate.getDataRecoveryVersionConfig();
+      if (null == config) {
+        return null;
+      }
+      return new ReadOnlyDataRecoveryVersionConfig(config);
+    }
+
+    @Override
+    public void setDataRecoveryVersionConfig(DataRecoveryVersionConfig dataRecoveryVersionConfig) {
       throw new UnsupportedOperationException();
     }
 

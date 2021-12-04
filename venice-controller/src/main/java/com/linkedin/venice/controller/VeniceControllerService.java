@@ -13,6 +13,7 @@ import com.linkedin.venice.controller.lingeringjob.HeartbeatBasedLingeringStoreV
 import com.linkedin.venice.controller.lingeringjob.LingeringStoreVersionChecker;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.service.AbstractVeniceService;
+import com.linkedin.venice.service.ICProvider;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.HashMap;
 import java.util.Map;
@@ -36,10 +37,11 @@ public class VeniceControllerService extends AbstractVeniceService {
   public VeniceControllerService(VeniceControllerMultiClusterConfig multiClusterConfigs,
       MetricsRepository metricsRepository, boolean sslEnabled, Optional<SSLConfig> sslConfig,
       Optional<DynamicAccessController> accessController, Optional<AuthorizerService> authorizerService, D2Client d2Client,
-      Optional<ClientConfig> routerClientConfig) {
+      Optional<ClientConfig> routerClientConfig, Optional<ICProvider> icProvider) {
 
     this.multiClusterConfigs = multiClusterConfigs;
-    VeniceHelixAdmin internalAdmin = new VeniceHelixAdmin(multiClusterConfigs, metricsRepository, sslEnabled, d2Client, sslConfig, accessController);
+    VeniceHelixAdmin internalAdmin = new VeniceHelixAdmin(multiClusterConfigs, metricsRepository, sslEnabled, d2Client,
+        sslConfig, accessController, icProvider);
 
     if (multiClusterConfigs.isParent()) {
       this.admin = new VeniceParentHelixAdmin(internalAdmin, multiClusterConfigs, sslEnabled, sslConfig, accessController,

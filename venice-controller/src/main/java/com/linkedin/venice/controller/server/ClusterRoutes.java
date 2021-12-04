@@ -6,6 +6,7 @@ import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.StoreMigrationResponse;
 import com.linkedin.venice.controllerapi.UpdateClusterConfigQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.utils.Utils;
 import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
@@ -35,21 +36,7 @@ public class ClusterRoutes  extends AbstractRoute {
 
         veniceResponse.setCluster(clusterName);
 
-        Map<String, String[]> sparkRequestParams = request.queryMap().toMap();
-
-        boolean anyParamContainsMoreThanOneValue = sparkRequestParams.values().stream()
-            .anyMatch(strings -> strings.length > 1);
-
-        if (anyParamContainsMoreThanOneValue) {
-          String errMsg =
-              "Array parameters are not supported. Provided request parameters: " + sparkRequestParams.toString();
-          veniceResponse.setError(errMsg);
-          throw new VeniceException(errMsg);
-        }
-
-        Map<String, String> params = sparkRequestParams.entrySet().stream()
-            // Extract the first (and only) value of each param
-            .collect(Collectors.toMap(e -> e.getKey(), e -> e.getValue()[0]));
+        Map<String, String> params = Utils.extractQueryParamsFromRequest(request.queryMap().toMap(), veniceResponse);
 
         try {
           admin.updateClusterConfig(clusterName, new UpdateClusterConfigQueryParams(params));

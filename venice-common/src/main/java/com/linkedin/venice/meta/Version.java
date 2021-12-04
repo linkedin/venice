@@ -154,6 +154,10 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
 
   void setActiveActiveReplicationEnabled(boolean activeActiveReplicationEnabled);
 
+  DataRecoveryVersionConfig getDataRecoveryVersionConfig();
+
+  void setDataRecoveryVersionConfig(DataRecoveryVersionConfig dataRecoveryVersionConfig);
+
   /**
    * Get the replication metadata version id.
    * @deprecated

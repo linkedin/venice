@@ -7,6 +7,7 @@ import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controllerapi.routes.AdminCommandExecutionResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
+import com.linkedin.venice.helix.VeniceJsonSerializer;
 import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
@@ -16,6 +17,7 @@ import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.Closeable;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -48,6 +50,7 @@ public class ControllerClient implements Closeable {
   private final Optional<SSLFactory> sslFactory;
   private final String clusterName;
   private final String localHostName;
+  private final VeniceJsonSerializer<Version> versionVeniceJsonSerializer = new VeniceJsonSerializer<>(Version.class);
   private String masterControllerUrl;
   private final List<String> controllerDiscoveryUrls;
 
@@ -920,6 +923,54 @@ public class ControllerClient implements Closeable {
     }
     QueryParams params = addCommonParams(queryParams);
     return request(ControllerRoute.UPDATE_CLUSTER_CONFIG, params, ControllerResponse.class);
+  }
+
+  public ControllerResponse prepareDataRecovery(String sourceFabric, String destinationFabric, String storeName,
+      int versionNumber, Optional<Integer> sourceAmplificationFactor) {
+    QueryParams params = newParams()
+        .add(NAME, storeName)
+        .add(SOURCE_FABRIC, sourceFabric)
+        .add(FABRIC, destinationFabric)
+        .add(VERSION, versionNumber);
+    sourceAmplificationFactor.ifPresent(integer -> params.add(AMPLIFICATION_FACTOR, integer));
+    return request(ControllerRoute.PREPARE_DATA_RECOVERY, params, ControllerResponse.class);
+  }
+
+  public ReadyForDataRecoveryResponse isStoreVersionReadyForDataRecovery(String sourceFabric, String destinationFabric,
+      String storeName, int versionNumber, Optional<Integer> sourceAmplificationFactor) {
+    QueryParams params = newParams()
+        .add(NAME, storeName)
+        .add(SOURCE_FABRIC, sourceFabric)
+        .add(FABRIC, destinationFabric)
+        .add(VERSION, versionNumber);
+    sourceAmplificationFactor.ifPresent(integer -> params.add(AMPLIFICATION_FACTOR, integer));
+    return request(ControllerRoute.IS_STORE_VERSION_READY_FOR_DATA_RECOVERY, params, ReadyForDataRecoveryResponse.class);
+  }
+
+  public ControllerResponse dataRecovery(String sourceFabric, String destinationFabric, String storeName,
+      int versionNumber, boolean sourceVersionIncluded, boolean copyAllVersionConfigs,
+      Optional<Version> sourceVersion) {
+    if (sourceVersionIncluded && !sourceVersion.isPresent()) {
+      throw new VeniceException("Missing source Version but sourceVersionConfigIsIncluded is set to true");
+    }
+    QueryParams params = newParams();
+    params
+        .add(NAME, storeName)
+        .add(SOURCE_FABRIC, sourceFabric)
+        .add(FABRIC, destinationFabric)
+        .add(VERSION, versionNumber)
+        .add(SOURCE_FABRIC_VERSION_INCLUDED, sourceVersionIncluded)
+        .add(DATA_RECOVERY_COPY_ALL_VERSION_CONFIGS, copyAllVersionConfigs);
+    if (sourceVersionIncluded) {
+      try {
+        byte[] sourceVersionByteArray = versionVeniceJsonSerializer.serialize(sourceVersion.get(), "");
+        return request(ControllerRoute.DATA_RECOVERY, params, ControllerResponse.class, sourceVersionByteArray);
+      } catch (IOException e) {
+        throw new VeniceException("Failed to serialize source Version object", e);
+      }
+    } else {
+      return request(ControllerRoute.DATA_RECOVERY, params, ControllerResponse.class);
+    }
   }
 
   /***

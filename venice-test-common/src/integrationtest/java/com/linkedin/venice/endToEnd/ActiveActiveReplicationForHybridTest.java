@@ -172,10 +172,10 @@ public class ActiveActiveReplicationForHybridTest {
         ControllerClient dc1Client = new ControllerClient(clusterName, childDatacenters.get(1).getControllerConnectString());
         ControllerClient dc2Client = new ControllerClient(clusterName, childDatacenters.get(2).getControllerConnectString())) {
       List<ControllerClient> dcControllerClientList = Arrays.asList(dc0Client, dc1Client, dc2Client);
-      createAndVerifyStoreInAllRegions(storeName1, parentControllerClient, dcControllerClientList);
-      createAndVerifyStoreInAllRegions(storeName2, parentControllerClient, dcControllerClientList);
-      createAndVerifyStoreInAllRegions(storeName3, parentControllerClient, dcControllerClientList);
-      createAndVerifyStoreInAllRegions(storeName4, parentControllerClient, dcControllerClientList);
+      TestUtils.createAndVerifyStoreInAllRegions(storeName1, parentControllerClient, dcControllerClientList);
+      TestUtils.createAndVerifyStoreInAllRegions(storeName2, parentControllerClient, dcControllerClientList);
+      TestUtils.createAndVerifyStoreInAllRegions(storeName3, parentControllerClient, dcControllerClientList);
+      TestUtils.createAndVerifyStoreInAllRegions(storeName4, parentControllerClient, dcControllerClientList);
 
       Assert.assertFalse(parentControllerClient.updateStore(storeName1, new UpdateStoreQueryParams()
           .setLeaderFollowerModel(true)
@@ -636,7 +636,7 @@ public class ActiveActiveReplicationForHybridTest {
         ControllerClient dc1Client = new ControllerClient(clusterName, childDatacenters.get(1).getControllerConnectString());
         ControllerClient dc2Client = new ControllerClient(clusterName, childDatacenters.get(2).getControllerConnectString())) {
       List<ControllerClient> dcControllerClientList = Arrays.asList(dc0Client, dc1Client, dc2Client);
-      createAndVerifyStoreInAllRegions(storeName, parentControllerClient, dcControllerClientList);
+      TestUtils.createAndVerifyStoreInAllRegions(storeName, parentControllerClient, dcControllerClientList);
       Assert.assertFalse(parentControllerClient.updateStore(storeName, new UpdateStoreQueryParams()
           .setLeaderFollowerModel(true)
           .setHybridRewindSeconds(10)
@@ -650,9 +650,9 @@ public class ActiveActiveReplicationForHybridTest {
           new UpdateStoreQueryParams()
               .setActiveActiveReplicationEnabled(true)
               .setRegionsFilter("dc-0,parent.parent")).isError());
-      verifyDCConfigNativeAndActiveRepl(dc0Client, storeName, true, true);
-      verifyDCConfigNativeAndActiveRepl(dc1Client, storeName, true, false);
-      verifyDCConfigNativeAndActiveRepl(dc2Client, storeName, true, false);
+      TestUtils.verifyDCConfigNativeAndActiveRepl(dc0Client, storeName, true, true);
+      TestUtils.verifyDCConfigNativeAndActiveRepl(dc1Client, storeName, true, false);
+      TestUtils.verifyDCConfigNativeAndActiveRepl(dc2Client, storeName, true, false);
       // Write some batch data, value would be the same as the key.
       VersionCreationResponse response = TestUtils.createVersionWithBatchData(parentControllerClient, storeName,
           STRING_SCHEMA, STRING_SCHEMA, IntStream.range(0, batchDataRangeEnd)
@@ -730,23 +730,5 @@ public class ActiveActiveReplicationForHybridTest {
         Assert.assertEquals(policy, DataReplicationPolicy.NON_AGGREGATE, "The active active replication policy does not match.");
       }
     });
-  }
-
-  public static void createAndVerifyStoreInAllRegions(String storeName, ControllerClient parentControllerClient, List<ControllerClient> controllerClientList) {
-    Assert.assertFalse(parentControllerClient.createNewStore(storeName, "owner", STRING_SCHEMA, STRING_SCHEMA).isError());
-    TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
-      for (ControllerClient client : controllerClientList) {
-        Assert.assertFalse(client.getStore(storeName).isError());
-      }
-    });
-  }
-
-  public static void verifyDCConfigNativeAndActiveRepl(ControllerClient controllerClient, String storeName, boolean enabledNR, boolean enabledAA) {
-     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
-      StoreResponse storeResponse = controllerClient.getStore(storeName);
-      Assert.assertFalse(storeResponse.isError());
-      Assert.assertEquals(storeResponse.getStore().isNativeReplicationEnabled(), enabledNR, "The native replication config does not match.");
-      Assert.assertEquals(storeResponse.getStore().isActiveActiveReplicationEnabled(), enabledAA, "The active active replication config does not match.");
-     });
   }
 }

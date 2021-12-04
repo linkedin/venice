@@ -112,7 +112,12 @@ public enum ControllerRoute {
   GET_REPUSH_INFO("/get_repush_info", HttpMethod.GET, Arrays.asList(NAME), FABRIC),
   WIPE_CLUSTER("/wipe_cluster", HttpMethod.POST,  Arrays.asList(CLUSTER, FABRIC), NAME, VERSION),
   COMPARE_STORE("/compare_store", HttpMethod.GET, Arrays.asList(CLUSTER, NAME, FABRIC_A, FABRIC_B)),
-  REPLICATE_META_DATA("/replicate_meta_data", HttpMethod.POST,  Arrays.asList(SOURCE_FABRIC, DEST_FABRIC, CLUSTER));
+  REPLICATE_META_DATA("/replicate_meta_data", HttpMethod.POST,  Arrays.asList(SOURCE_FABRIC, DEST_FABRIC, CLUSTER)),
+  DATA_RECOVERY("/data_recovery", HttpMethod.POST, Arrays.asList(CLUSTER, SOURCE_FABRIC, FABRIC, NAME, VERSION,
+      SOURCE_FABRIC_VERSION_INCLUDED, DATA_RECOVERY_COPY_ALL_VERSION_CONFIGS)),
+  PREPARE_DATA_RECOVERY("/prepare_data_recovery", HttpMethod.POST, Arrays.asList(CLUSTER, SOURCE_FABRIC, FABRIC, NAME, VERSION), AMPLIFICATION_FACTOR),
+  IS_STORE_VERSION_READY_FOR_DATA_RECOVERY("/is_store_version_ready_for_data_recovery", HttpMethod.GET,
+      Arrays.asList(CLUSTER, SOURCE_FABRIC, FABRIC, NAME, VERSION), AMPLIFICATION_FACTOR);
 
   private final String path;
   private final HttpMethod httpMethod;

@@ -1,5 +1,6 @@
 package com.linkedin.venice.utils;
 
+import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.ExceptionType;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -44,6 +45,7 @@ import java.util.TreeMap;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
+import java.util.stream.Collectors;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import org.apache.avro.Schema;
@@ -849,5 +851,23 @@ public class Utils {
     return readyInstances.contains(replica.getInstance())
         ? readyInstances.size() > store.getReplicationFactor()
         : readyInstances.size() >= store.getReplicationFactor();
+  }
+
+  public static Map<String, String> extractQueryParamsFromRequest(Map<String, String[]> sparkRequestParams,
+      ControllerResponse response) {
+    boolean anyParamContainsMoreThanOneValue = sparkRequestParams.values().stream()
+        .anyMatch(strings -> strings.length > 1);
+
+    if (anyParamContainsMoreThanOneValue) {
+      String errMsg =
+          "Array parameters are not supported. Provided request parameters: " + sparkRequestParams;
+      response.setError(errMsg);
+      throw new VeniceException(errMsg);
+    }
+
+    Map<String, String> params = sparkRequestParams.entrySet().stream()
+        // Extract the first (and only) value of each param
+        .collect(Collectors.toMap(e -> e.getKey(), e -> e.getValue()[0]));
+    return params;
   }
 }

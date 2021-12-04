@@ -662,4 +662,35 @@ public interface Admin extends AutoCloseable, Closeable {
      *         false and all unready replicas otherwise.
      */
     Pair<NodeReplicasReadinessState, List<Replica>> nodeReplicaReadiness(String cluster, String helixNodeId);
+
+    /**
+     * Initiate data recovery for a store version given a source fabric.
+     * @param clusterName of the store.
+     * @param storeName of the store.
+     * @param version of the store.
+     * @param sourceFabric to be used as the source for data recovery.
+     * @param copyAllVersionConfigs a boolean to indicate whether all version configs should be copied from the source
+     *                              fabric or only the essential version configs and generate the rest based on
+     *                              destination fabric's Store configs.
+     * @param sourceFabricVersion source fabric's Version configs used to configure the recovering version in the
+     *                            destination fabric.
+     */
+    void initiateDataRecovery(String clusterName, String storeName, int version, String sourceFabric,
+        String destinationFabric, boolean copyAllVersionConfigs, Optional<Version> sourceFabricVersion);
+
+    /**
+     * Prepare for data recovery in the destination fabric. The interested store version might have lingering states
+     * and resources in the destination fabric from previous failed attempts. Perform some basic checks to make sure
+     * the store version in the destination fabric is capable of performing data recovery and cleanup any lingering
+     * states and resources.
+     */
+    void prepareDataRecovery(String clusterName, String storeName, int version, String sourceFabric,
+        String destinationFabric, Optional<Integer> sourceAmplificationFactor);
+
+    /**
+     * Check if the store version's previous states and resources are cleaned up and ready to start data recovery.
+     * @return whether is ready to start data recovery and the reason if it's not ready.
+     */
+    Pair<Boolean, String> isStoreVersionReadyForDataRecovery(String clusterName, String storeName, int version,
+        String sourceFabric, String destinationFabric, Optional<Integer> sourceAmplificationFactor);
 }

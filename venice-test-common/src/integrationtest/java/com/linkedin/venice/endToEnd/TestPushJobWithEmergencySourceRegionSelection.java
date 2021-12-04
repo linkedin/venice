@@ -154,9 +154,9 @@ public class TestPushJobWithEmergencySourceRegionSelection {
        * Check the update store command in parent controller has been propagated into child controllers, before
        * sending any commands directly into child controllers, which can help avoid race conditions.
        */
-      ActiveActiveReplicationForHybridTest.verifyDCConfigNativeAndActiveRepl(dc0Client, storeName, true, true);
-      ActiveActiveReplicationForHybridTest.verifyDCConfigNativeAndActiveRepl(dc1Client, storeName, true, true);
-      ActiveActiveReplicationForHybridTest.verifyDCConfigNativeAndActiveRepl(dc2Client, storeName, true, true);
+      TestUtils.verifyDCConfigNativeAndActiveRepl(dc0Client, storeName, true, true);
+      TestUtils.verifyDCConfigNativeAndActiveRepl(dc1Client, storeName, true, true);
+      TestUtils.verifyDCConfigNativeAndActiveRepl(dc2Client, storeName, true, true);
     }
 
     try (VenicePushJob job = new VenicePushJob("Test push job", props)) {

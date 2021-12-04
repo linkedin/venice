@@ -444,7 +444,7 @@ public abstract class NativeMetadataRepository
               storeVersionState.partitionerConfig.amplificationFactor);
 
       Version version = new VersionImpl(storeName, storeVersionState.versionNumber, storeVersionState.creationTime,
-          storeVersionState.pushJobId.toString(), storeVersionState.partitionCount, partitionerConfig);
+          storeVersionState.pushJobId.toString(), storeVersionState.partitionCount, partitionerConfig, null);
       version.setChunkingEnabled(storeVersionState.chunkingEnabled);
       version.setCompressionStrategy(CompressionStrategy.valueOf(storeVersionState.compressionStrategy.toString()));
       version.setLeaderFollowerModelEnabled(storeVersionState.leaderFollowerModelEnabled);

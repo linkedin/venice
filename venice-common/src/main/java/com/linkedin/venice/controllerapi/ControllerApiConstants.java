@@ -169,4 +169,17 @@ public class ControllerApiConstants {
   public static final String SOURCE_FABRIC = "source_fabric";
 
   public static final String DEST_FABRIC = "dest_fabric";
+
+  /**
+   * Whether or not to copy all version configs from the source fabric when performing data recovery in a destination
+   * fabric. This config is set to false by default and only essential configs (such as partition count etc.) are copied
+   * from the source fabric and the remaining configs will be generated based on destination fabric's Store configs.
+   */
+  public static final String DATA_RECOVERY_COPY_ALL_VERSION_CONFIGS = "data.recovery.copy.all.version.configs";
+
+  /**
+   * Boolean flag to indicate whether the {@link com.linkedin.venice.meta.Version} needed for data recover from the
+   * source fabric is included in the request body as byte array or not.
+   */
+  public static final String SOURCE_FABRIC_VERSION_INCLUDED = "source.fabric.version.included";
 }
