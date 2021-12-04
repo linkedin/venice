@@ -171,6 +171,7 @@ public class AdminSparkServer extends AbstractVeniceService {
     VersionRoute versionRoute = new VersionRoute(accessController);
     ClusterRoutes clusterRoutes = new ClusterRoutes(accessController);
     NewClusterBuildOutRoutes newClusterBuildOutRoutes = new NewClusterBuildOutRoutes(accessController);
+    DataRecoveryRoutes dataRecoveryRoutes = new DataRecoveryRoutes(accessController);
 
     httpService.get(SET_VERSION.getPath(), (request, response) -> {
       response.type(HttpConstants.TEXT_HTML);
@@ -274,6 +275,10 @@ public class AdminSparkServer extends AbstractVeniceService {
     httpService.get(GET_ONGOING_INCREMENTAL_PUSH_VERSIONS.getPath(), jobRoutes.getOngoingIncrementalPushVersions(admin));
     httpService.get(GET_REPUSH_INFO.getPath(), storesRoutes.getRepushInfo(admin));
     httpService.get(COMPARE_STORE.getPath(), storesRoutes.compareStore(admin));
+
+    httpService.post(PREPARE_DATA_RECOVERY.getPath(), dataRecoveryRoutes.prepareDataRecovery(admin));
+    httpService.get(IS_STORE_VERSION_READY_FOR_DATA_RECOVERY.getPath(), dataRecoveryRoutes.isStoreVersionReadyForDataRecovery(admin));
+    httpService.post(DATA_RECOVERY.getPath(), dataRecoveryRoutes.dataRecovery(admin));
 
     httpService.awaitInitialization(); // Wait for server to be initialized
     Exception e = initFailure.get();

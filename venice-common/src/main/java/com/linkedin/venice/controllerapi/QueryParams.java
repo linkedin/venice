@@ -1,5 +1,9 @@
 package com.linkedin.venice.controllerapi;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.linkedin.venice.exceptions.VeniceException;
+import java.io.IOException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -14,6 +18,7 @@ import org.apache.http.message.BasicNameValuePair;
  */
 public class QueryParams {
   protected final Map<String, String> params;
+  private final ObjectMapper mapper = new ObjectMapper();
 
   public QueryParams(Map<String, String> initialParams) {
     this.params = initialParams;
@@ -55,6 +60,26 @@ public class QueryParams {
     return params.entrySet().stream()
         .map(entry -> new BasicNameValuePair(entry.getKey(), StringUtils.abbreviate(entry.getValue(), 500)))
         .collect(Collectors.toList());
+  }
+
+  public QueryParams putStringMap(String name, Map<String, String> value) {
+    try {
+      return add(name, mapper.writeValueAsString(value));
+    } catch (JsonProcessingException e) {
+      throw new VeniceException(e.getMessage());
+    }
+  }
+
+  public Optional<Map<String, String>> getStringMap(String name) {
+    if (!params.containsKey(name)) {
+      return Optional.empty();
+    } else {
+      try {
+        return Optional.of(mapper.readValue(params.get(name), Map.class));
+      } catch (IOException e) {
+        throw new VeniceException(e.getMessage());
+      }
+    }
   }
 
   @Override

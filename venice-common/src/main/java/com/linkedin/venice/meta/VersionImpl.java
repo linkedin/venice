@@ -28,15 +28,15 @@ public class VersionImpl implements Version {
    */
   @Deprecated
   public VersionImpl(String storeName, int number) {
-    this(storeName , number, System.currentTimeMillis(), Version.numberBasedDummyPushId(number), 0, new PartitionerConfigImpl());
+    this(storeName , number, System.currentTimeMillis(), Version.numberBasedDummyPushId(number), 0, new PartitionerConfigImpl(), null);
   }
 
   public VersionImpl(String storeName, int number, String pushJobId) {
-    this(storeName, number, System.currentTimeMillis(), pushJobId, 0, new PartitionerConfigImpl());
+    this(storeName, number, System.currentTimeMillis(), pushJobId, 0, new PartitionerConfigImpl(), null);
   }
 
   public VersionImpl(String storeName, int number, String pushJobId, int partitionCount) {
-    this(storeName, number, System.currentTimeMillis(), pushJobId, partitionCount, new PartitionerConfigImpl());
+    this(storeName, number, System.currentTimeMillis(), pushJobId, partitionCount, new PartitionerConfigImpl(), null);
   }
 
   public VersionImpl(
@@ -45,7 +45,8 @@ public class VersionImpl implements Version {
       @JsonProperty("createdTime")  @com.fasterxml.jackson.annotation.JsonProperty("createdTime") long createdTime,
       @JsonProperty("pushJobId") @com.fasterxml.jackson.annotation.JsonProperty("pushJobId") String pushJobId,
       @JsonProperty("partitionCount") @com.fasterxml.jackson.annotation.JsonProperty("partitionCount") int partitionCount,
-      @JsonProperty("partitionerConfig") @com.fasterxml.jackson.annotation.JsonProperty("partitionerConfig") PartitionerConfig partitionerConfig) {
+      @JsonProperty("partitionerConfig") @com.fasterxml.jackson.annotation.JsonProperty("partitionerConfig") PartitionerConfig partitionerConfig,
+      @JsonProperty("dataRecoveryConfig") @com.fasterxml.jackson.annotation.JsonProperty("dataRecoveryConfig") DataRecoveryVersionConfig dataRecoveryVersionConfig) {
     this.storeVersion = Store.prefillAvroRecordWithDefaultValue(new StoreVersion());
     this.storeVersion.storeName = storeName;
     this.storeVersion.number = number;
@@ -54,6 +55,9 @@ public class VersionImpl implements Version {
     this.storeVersion.partitionCount = partitionCount;
     if (partitionerConfig != null) {
       this.storeVersion.partitionerConfig = partitionerConfig.dataModel();
+    }
+    if (dataRecoveryVersionConfig != null) {
+      this.storeVersion.dataRecoveryConfig = dataRecoveryVersionConfig.dataModel();
     }
 
     this.kafkaTopicName = Version.composeKafkaTopic(storeName, number);
@@ -287,6 +291,21 @@ public class VersionImpl implements Version {
   }
 
   @Override
+  public DataRecoveryVersionConfig getDataRecoveryVersionConfig() {
+    if (null == this.storeVersion.dataRecoveryConfig) {
+      return null;
+    }
+    return new DataRecoveryVersionConfigImpl(this.storeVersion.dataRecoveryConfig);
+  }
+
+  @Override
+  public void setDataRecoveryVersionConfig(DataRecoveryVersionConfig dataRecoveryVersionConfig) {
+    if (dataRecoveryVersionConfig != null) {
+      this.storeVersion.dataRecoveryConfig = dataRecoveryVersionConfig.dataModel();
+    }
+  }
+
+  @Override
   public int getReplicationMetadataVersionId() {
     return this.storeVersion.timestampMetadataVersionId;
   }
@@ -360,7 +379,8 @@ public class VersionImpl implements Version {
    */
   @JsonIgnore
   public Version cloneVersion() {
-    Version clonedVersion = new VersionImpl(getStoreName(), getNumber(), getCreatedTime(), getPushJobId(), getPartitionCount(), getPartitionerConfig());
+    Version clonedVersion = new VersionImpl(getStoreName(), getNumber(), getCreatedTime(), getPushJobId(),
+        getPartitionCount(), getPartitionerConfig(), getDataRecoveryVersionConfig());
     clonedVersion.setStatus(getStatus());
     clonedVersion.setCompressionStrategy(getCompressionStrategy());
     clonedVersion.setLeaderFollowerModelEnabled(isLeaderFollowerModelEnabled());

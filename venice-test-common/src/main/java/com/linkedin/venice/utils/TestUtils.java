@@ -5,6 +5,7 @@ import com.linkedin.venice.controller.VeniceControllerConfig;
 import com.linkedin.venice.controller.VeniceControllerMultiClusterConfig;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
+import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.helix.HelixInstanceConverter;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
@@ -44,6 +45,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
@@ -61,6 +63,7 @@ import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
 
 import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.utils.TestPushUtils.*;
 import static org.testng.Assert.*;
 
 
@@ -442,5 +445,23 @@ public class TestUtils {
 
   public static void restoreSystemExit() {
     System.setSecurityManager(null);
+  }
+
+  public static void createAndVerifyStoreInAllRegions(String storeName, ControllerClient parentControllerClient, List<ControllerClient> controllerClientList) {
+    Assert.assertFalse(parentControllerClient.createNewStore(storeName, "owner", STRING_SCHEMA, STRING_SCHEMA).isError());
+    TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
+      for (ControllerClient client : controllerClientList) {
+        Assert.assertFalse(client.getStore(storeName).isError());
+      }
+    });
+  }
+
+  public static void verifyDCConfigNativeAndActiveRepl(ControllerClient controllerClient, String storeName, boolean enabledNR, boolean enabledAA) {
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+      StoreResponse storeResponse = controllerClient.getStore(storeName);
+      Assert.assertFalse(storeResponse.isError());
+      Assert.assertEquals(storeResponse.getStore().isNativeReplicationEnabled(), enabledNR, "The native replication config does not match.");
+      Assert.assertEquals(storeResponse.getStore().isActiveActiveReplicationEnabled(), enabledAA, "The active active replication config does not match.");
+    });
   }
 }

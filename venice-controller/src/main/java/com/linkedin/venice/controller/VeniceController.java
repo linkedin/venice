@@ -10,6 +10,7 @@ import com.linkedin.venice.controller.kafka.TopicCleanupService;
 import com.linkedin.venice.controller.kafka.TopicCleanupServiceForParentController;
 import com.linkedin.venice.controller.server.AdminSparkServer;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.stats.KafkaClientStats;
 import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.utils.Utils;
@@ -44,6 +45,7 @@ public class VeniceController {
   private final Optional<AuthorizerService> authorizerService;
   private final D2Client d2Client;
   private final Optional<ClientConfig> routerClientConfig;
+  private final Optional<ICProvider> icProvider;
   private final static String CONTROLLER_SERVICE_NAME = "venice-controller";
 
   // This constructor is being used in integration test
@@ -61,6 +63,13 @@ public class VeniceController {
   public VeniceController(List<VeniceProperties> propertiesList, MetricsRepository metricsRepository, List<D2Server> d2ServerList,
       Optional<DynamicAccessController> accessController, Optional<AuthorizerService> authorizerService, D2Client d2Client,
       Optional<ClientConfig> routerClientConfig) {
+    this(propertiesList, metricsRepository, d2ServerList, accessController, authorizerService, d2Client,
+        routerClientConfig, Optional.empty());
+  }
+
+  public VeniceController(List<VeniceProperties> propertiesList, MetricsRepository metricsRepository, List<D2Server> d2ServerList,
+      Optional<DynamicAccessController> accessController, Optional<AuthorizerService> authorizerService, D2Client d2Client,
+      Optional<ClientConfig> routerClientConfig, Optional<ICProvider> icProvider) {
     this.multiClusterConfigs = new VeniceControllerMultiClusterConfig(propertiesList);
     this.metricsRepository = metricsRepository;
     this.d2ServerList = d2ServerList;
@@ -70,6 +79,7 @@ public class VeniceController {
     this.authorizerService = authorizerService;
     this.d2Client = d2Client;
     this.routerClientConfig = routerClientConfig;
+    this.icProvider = icProvider;
 
     createServices();
     KafkaClientStats.registerKafkaClientStats(metricsRepository, "KafkaClientStats", Optional.empty());
@@ -77,7 +87,7 @@ public class VeniceController {
 
   private void createServices() {
     controllerService = new VeniceControllerService(multiClusterConfigs, metricsRepository, sslEnabled,
-        multiClusterConfigs.getSslConfig(), accessController, authorizerService, d2Client, routerClientConfig);
+        multiClusterConfigs.getSslConfig(), accessController, authorizerService, d2Client, routerClientConfig, icProvider);
     adminServer = new AdminSparkServer(
         multiClusterConfigs.getAdminPort(),
         controllerService.getVeniceHelixAdmin(),

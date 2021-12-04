@@ -14,6 +14,7 @@ import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.TestPushUtils;
+import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.File;
@@ -191,10 +192,10 @@ public class TestActiveActiveReplicationForIncPush {
       //verify store configs
       enableAARepl.setRegionsFilter("dc-0,parent.parent");
       TestPushUtils.updateStore(clusterName, storeName, parentControllerClient, enableAARepl);
-      ActiveActiveReplicationForHybridTest.verifyDCConfigNativeAndActiveRepl(parentControllerClient, storeName, true, true);
-      ActiveActiveReplicationForHybridTest.verifyDCConfigNativeAndActiveRepl(dc0ControllerClient, storeName, true, true);
-      ActiveActiveReplicationForHybridTest.verifyDCConfigNativeAndActiveRepl(dc1ControllerClient, storeName, true, false);
-      ActiveActiveReplicationForHybridTest.verifyDCConfigNativeAndActiveRepl(dc2ControllerClient, storeName, true, false);
+      TestUtils.verifyDCConfigNativeAndActiveRepl(parentControllerClient, storeName, true, true);
+      TestUtils.verifyDCConfigNativeAndActiveRepl(dc0ControllerClient, storeName, true, true);
+      TestUtils.verifyDCConfigNativeAndActiveRepl(dc1ControllerClient, storeName, true, false);
+      TestUtils.verifyDCConfigNativeAndActiveRepl(dc2ControllerClient, storeName, true, false);
 
       //Run a batch push first
       try (VenicePushJob job = new VenicePushJob("Test push job batch with NR + A/A first fabric", propsBatch)) {
@@ -219,10 +220,10 @@ public class TestActiveActiveReplicationForIncPush {
       //Phase 2 and Phase 3 rollout of A/A combined together.
       enableAARepl.setRegionsFilter("dc-1,dc-2");
       TestPushUtils.updateStore(clusterName, storeName, parentControllerClient, enableAARepl);
-      ActiveActiveReplicationForHybridTest.verifyDCConfigNativeAndActiveRepl(parentControllerClient, storeName, true, true);
-      ActiveActiveReplicationForHybridTest.verifyDCConfigNativeAndActiveRepl(dc0ControllerClient, storeName, true, true);
-      ActiveActiveReplicationForHybridTest.verifyDCConfigNativeAndActiveRepl(dc1ControllerClient, storeName, true, true);
-      ActiveActiveReplicationForHybridTest.verifyDCConfigNativeAndActiveRepl(dc2ControllerClient, storeName, true, true);
+      TestUtils.verifyDCConfigNativeAndActiveRepl(parentControllerClient, storeName, true, true);
+      TestUtils.verifyDCConfigNativeAndActiveRepl(dc0ControllerClient, storeName, true, true);
+      TestUtils.verifyDCConfigNativeAndActiveRepl(dc1ControllerClient, storeName, true, true);
+      TestUtils.verifyDCConfigNativeAndActiveRepl(dc2ControllerClient, storeName, true, true);
       //Run a batch push first to create a new version.
       try (VenicePushJob job = new VenicePushJob("Test push job batch with NR + A/A other fabrics", propsBatch)) {
         job.run();

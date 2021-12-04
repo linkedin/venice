@@ -13,6 +13,7 @@ import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.controller.datarecovery.DataRecoveryManager;
 import com.linkedin.venice.controller.exception.HelixClusterMaintenanceModeException;
 import com.linkedin.venice.controller.helix.SharedHelixReadOnlyZKSharedSchemaRepository;
 import com.linkedin.venice.controller.helix.SharedHelixReadOnlyZKSharedSystemStoreRepository;
@@ -123,6 +124,7 @@ import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
+import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.stats.AbstractVeniceAggStats;
 import com.linkedin.venice.stats.ZkClientStatusStats;
 import com.linkedin.venice.status.StatusMessageChannel;
@@ -316,12 +318,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     private long backupVersionDefaultRetentionMs;
 
+    private DataRecoveryManager dataRecoveryManager;
+
     public VeniceHelixAdmin(
         VeniceControllerMultiClusterConfig multiClusterConfigs,
         MetricsRepository metricsRepository,
         D2Client d2Client
     ) {
-        this(multiClusterConfigs, metricsRepository, false, d2Client, Optional.empty(), Optional.empty());
+        this(multiClusterConfigs, metricsRepository, false, d2Client, Optional.empty(), Optional.empty(),
+            Optional.empty());
     }
 
     //TODO Use different configs for different clusters when creating helix admin.
@@ -331,7 +336,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         boolean sslEnabled,
         D2Client d2Client,
         Optional<SSLConfig> sslConfig,
-        Optional<DynamicAccessController> accessController
+        Optional<DynamicAccessController> accessController,
+        Optional<ICProvider> icProvider
     ) {
         this.multiClusterConfigs = multiClusterConfigs;
         VeniceControllerConfig commonConfig = multiClusterConfigs.getCommonConfig();
@@ -434,6 +440,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         metaStoreWriter = new MetaStoreWriter(topicManagerRepository.getTopicManager(), veniceWriterFactory, zkSharedSchemaRepository);
 
         clusterToLiveClusterConfigRepo = new VeniceConcurrentHashMap();
+        dataRecoveryManager = new DataRecoveryManager(this, d2Client, icProvider);
 
         List<ClusterLeaderInitializationRoutine> initRoutines = new ArrayList<>();
         initRoutines.add(new SystemSchemaInitializationRoutine(
@@ -1462,6 +1469,100 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 + hybridStoreConfig.getRewindTimeInSeconds());
             hybridStoreConfig.setRewindTimeInSeconds(rewindTimeInSecondsOverride);
             version.setHybridStoreConfig(hybridStoreConfig);
+        }
+    }
+
+    /**
+     * TODO refactor addVersion to these broken down methods instead of doing everything in one giant method.
+     * Perform add version to a given store with the provided {@link Version}
+     */
+    public boolean addSpecificVersion(String clusterName, String storeName, Version version) {
+        if (version == null) {
+            throw new VeniceException("Version cannot be null");
+        }
+        int versionNumber = version.getNumber();
+        checkControllerLeadershipFor(clusterName);
+        HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
+        ReadWriteStoreRepository storeRepository = resources.getStoreMetadataRepository();
+        try {
+            try (AutoCloseableLock ignore = resources.getClusterLockManager().createClusterReadLock()) {
+                try (AutoCloseableLock ignored = resources.getClusterLockManager().createStoreWriteLockOnly(storeName)) {
+                    Optional<Version> existingVersionWithSamePushId =
+                        getVersionWithPushId(clusterName, storeName, version.getPushJobId());
+                    if (existingVersionWithSamePushId.isPresent()) {
+                        return false;
+                    }
+                    Store store = storeRepository.getStore(storeName);
+                    if (store == null) {
+                        throwStoreDoesNotExist(clusterName, storeName);
+                    } else {
+                        if (store.containsVersion(versionNumber)) {
+                            throwVersionAlreadyExists(storeName, versionNumber);
+                        }  else {
+                            store.addVersion(version);
+                        }
+                        storeRepository.updateStore(store);
+                    }
+                }
+            }
+            logger.info("Added version: " + versionNumber + " to store: " + storeName);
+            return true;
+        } catch (Throwable e) {
+            throw new VeniceException("Failed to add provided version with version number: " + versionNumber
+                + " to store: " + storeName + ". Detailed stack trace: " + ExceptionUtils.stackTraceToString(e), e);
+        }
+    }
+
+    /**
+     * Create the corresponding version topic based on the provided {@link Version}
+     */
+    public void createSpecificVersionTopic(String clusterName, String storeName, Version version) {
+        if (version == null) {
+            throw new VeniceException("Version cannot be null");
+        }
+        checkControllerLeadershipFor(clusterName);
+        try {
+            VeniceControllerClusterConfig clusterConfig = getHelixVeniceClusterResources(clusterName).getConfig();
+            int amplificationFactor = version.getPartitionerConfig().getAmplificationFactor();
+            topicToCreationTime.computeIfAbsent(version.kafkaTopicName(), topic -> System.currentTimeMillis());
+            getTopicManager().createTopic(
+                version.kafkaTopicName(),
+                version.getPartitionCount() * amplificationFactor,
+                clusterConfig.getKafkaReplicationFactor(),
+                true,
+                false,
+                clusterConfig.getMinIsr(),
+                false
+            );
+            if (version.getPushType().isStreamReprocessing()) {
+                getTopicManager().createTopic(
+                    Version.composeStreamReprocessingTopic(storeName, version.getNumber()),
+                    version.getPartitionCount() * amplificationFactor,
+                    clusterConfig.getKafkaReplicationFactor(),
+                    true,
+                    false,
+                    clusterConfig.getMinIsr(),
+                    false
+                );
+            }
+        } finally {
+            topicToCreationTime.remove(version.kafkaTopicName());
+        }
+    }
+
+    public void createHelixResourceAndStartMonitoring(String clusterName, String storeName, Version version) {
+        if (version == null) {
+            throw new VeniceException("Version cannot be null");
+        }
+        checkControllerLeadershipFor(clusterName);
+        Store store = getStore(clusterName, storeName);
+        if (store == null) {
+            throwStoreDoesNotExist(clusterName, storeName);
+        } else {
+            startMonitorOfflinePush(clusterName, version.kafkaTopicName(), version.getPartitionCount(),
+                store.getReplicationFactor(), store.getOffLinePushStrategy());
+            helixAdminClient.createVeniceStorageClusterResources(clusterName, version.kafkaTopicName(),
+                version.getPartitionCount(), store.getReplicationFactor(), version.isLeaderFollowerModelEnabled());
         }
     }
 
@@ -4560,6 +4661,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         }
     }
 
+    public void deleteParticipantStoreKillMessage(String clusterName, String kafkaTopic) {
+        VeniceWriter writer = getParticipantStoreWriter(clusterName);
+        ParticipantMessageKey key = new ParticipantMessageKey();
+        key.resourceName = kafkaTopic;
+        key.messageType = ParticipantMessageType.KILL_PUSH_JOB.getValue();
+        writer.delete(key, null);
+        writer.flush();
+    }
+
     private void sendKillMessageToParticipantStore(String clusterName, String kafkaTopic) {
         VeniceWriter writer = getParticipantStoreWriter(clusterName);
         ParticipantMessageType killPushJobType = ParticipantMessageType.KILL_PUSH_JOB;
@@ -4854,6 +4964,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         jobTrackingVeniceWriterMap.clear();
         participantMessageWriterMap.forEach( (k, v) -> Utils.closeQuietlyWithErrorLogged(v));
         participantMessageWriterMap.clear();
+        dataRecoveryManager.close();
         Utils.closeQuietlyWithErrorLogged(topicManagerRepository);
         pushStatusStoreReader.ifPresent(PushStatusStoreReader::close);
         pushStatusStoreDeleter.ifPresent(PushStatusStoreRecordDeleter::close);
@@ -5349,10 +5460,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     @Override
     public void wipeCluster(String clusterName, String fabric, Optional<String> storeName, Optional<Integer> versionNum) {
         checkControllerLeadershipFor(clusterName);
-        if (!multiClusterConfigs.getRegionName().equals(fabric)) {
-            throw new VeniceException("Current fabric " + multiClusterConfigs.getRegionName()
-                + " does not match with parameter " + fabric);
-        }
+        checkCurrentFabricMatchesExpectedFabric(fabric);
         if (!multiClusterConfigs.getControllerConfig(clusterName).isClusterWipeAllowed()) {
             throw new VeniceException("Current fabric " + fabric + " does not allow cluster wipe");
         }
@@ -5670,5 +5778,61 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             return new Pair<>(NodeReplicasReadinessState.INANIMATE, Collections.emptyList());
         }
         return areAllCurrentVersionReplicasReady(customizedViewRepo, storeRepo, helixNodeId);
+    }
+
+    private void checkCurrentFabricMatchesExpectedFabric(String fabric) {
+        if (!multiClusterConfigs.getRegionName().equals(fabric)) {
+            throw new VeniceException("Current fabric: " + multiClusterConfigs.getRegionName()
+                + " does not match with request parameter fabric: " + fabric);
+        }
+    }
+
+    private void checkSourceAmplificationFactorIsAvailable(Optional<Integer> sourceAmplificationFactor) {
+      if (!sourceAmplificationFactor.isPresent()) {
+        throw new VeniceException("Source fabric store amplification factor is required by the child controller "
+            + "to validate if data recovery is allowed");
+      }
+    }
+
+    @Override
+    public void initiateDataRecovery(String clusterName, String storeName, int version, String sourceFabric,
+        String destinationFabric, boolean copyAllVersionConfigs, Optional<Version> sourceFabricVersion) {
+        checkControllerLeadershipFor(clusterName);
+        checkCurrentFabricMatchesExpectedFabric(destinationFabric);
+        if (!sourceFabricVersion.isPresent()) {
+            throw new VeniceException("Source fabric version object is required for data recovery");
+        }
+        dataRecoveryManager.verifyStoreVersionIsReadyForDataRecovery(clusterName, storeName, version,
+            sourceFabricVersion.get().getPartitionerConfig().getAmplificationFactor());
+        dataRecoveryManager.initiateDataRecovery(clusterName, storeName, version, sourceFabric, copyAllVersionConfigs,
+            sourceFabricVersion.get());
+    }
+
+    @Override
+    public void prepareDataRecovery(String clusterName, String storeName, int version, String sourceFabric,
+        String destinationFabric, Optional<Integer> sourceAmplificationFactor) {
+        checkControllerLeadershipFor(clusterName);
+        checkSourceAmplificationFactorIsAvailable(sourceAmplificationFactor);
+        checkCurrentFabricMatchesExpectedFabric(destinationFabric);
+        dataRecoveryManager.prepareStoreVersionForDataRecovery(clusterName, storeName, destinationFabric, version,
+            sourceAmplificationFactor.get());
+    }
+
+    @Override
+    public Pair<Boolean, String> isStoreVersionReadyForDataRecovery(String clusterName, String storeName, int version,
+        String sourceFabric, String destinationFabric, Optional<Integer> sourceAmplificationFactor) {
+        checkControllerLeadershipFor(clusterName);
+        boolean isReady = true;
+        String reason = "";
+        try {
+            checkSourceAmplificationFactorIsAvailable(sourceAmplificationFactor);
+            checkCurrentFabricMatchesExpectedFabric(destinationFabric);
+            dataRecoveryManager.verifyStoreVersionIsReadyForDataRecovery(clusterName, storeName, version,
+                sourceAmplificationFactor.get());
+        } catch (Exception e) {
+            isReady = false;
+            reason = e.getMessage();
+        }
+        return new Pair<>(isReady, reason);
     }
 }

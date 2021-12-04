@@ -1,12 +1,13 @@
 package com.linkedin.venice.integration.utils;
 
+import com.linkedin.d2.balancer.D2Client;
+import com.linkedin.venice.D2.D2ClientUtils;
+import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
-import org.apache.commons.io.IOUtils;
-
 import java.io.File;
 import java.util.HashMap;
 import java.util.Map;
@@ -14,6 +15,7 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
+import org.apache.commons.io.IOUtils;
 
 import static com.linkedin.venice.ConfigKeys.*;
 
@@ -26,10 +28,11 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
   private final KafkaBrokerWrapper kafkaBrokerWrapper;
   private final BrooklinWrapper brooklinWrapper;
   private final String clusterToD2;
+  private final D2Client clientConfigD2Client;
 
   VeniceMultiClusterWrapper(File dataDirectory, ZkServerWrapper zkServerWrapper, KafkaBrokerWrapper kafkaBrokerWrapper,
       BrooklinWrapper brooklinWrapper, Map<String, VeniceClusterWrapper> clusters,
-      Map<Integer, VeniceControllerWrapper> controllers, String clusterToD2) {
+      Map<Integer, VeniceControllerWrapper> controllers, String clusterToD2, D2Client clientConfigD2Client) {
     super(SERVICE_NAME, dataDirectory);
     this.zkServerWrapper = zkServerWrapper;
     this.kafkaBrokerWrapper = kafkaBrokerWrapper;
@@ -37,6 +40,7 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
     this.controllers = controllers;
     this.clusters = clusters;
     this.clusterToD2 = clusterToD2;
+    this.clientConfigD2Client = clientConfigD2Client;
   }
 
   static ServiceProvider<VeniceMultiClusterWrapper> generateService(
@@ -88,6 +92,10 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
       // Setup D2 for controller
       String zkAddress = zkServerWrapper.getAddress();
       D2TestUtils.setupD2Config(zkAddress, false, D2TestUtils.CONTROLLER_CLUSTER_NAME, D2TestUtils.CONTROLLER_SERVICE_NAME, false);
+      D2Client clientConfigD2Client = D2TestUtils.getAndStartD2Client(zkAddress);
+      controllerProperties.put(VeniceServerWrapper.CLIENT_CONFIG_FOR_CONSUMER, ClientConfig.defaultGenericClientConfig("")
+          .setD2ServiceName(D2TestUtils.DEFAULT_TEST_SERVICE_NAME)
+          .setD2Client(clientConfigD2Client));
       for (int i = 0; i < numberOfControllers; i++) {
         VeniceControllerWrapper controllerWrapper = ServiceFactory.getVeniceController(clusterNames, kafkaBrokerWrapper, replicationFactor, partitionSize,
             rebalanceDelayMs, minActiveReplica, brooklinWrapper, clusterToD2, false, true, controllerProperties);
@@ -114,7 +122,7 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
       final BrooklinWrapper finalBrooklinWrapper = brooklinWrapper;
       final String finalClusterToD2 = clusterToD2;
       return (serviceName) -> new VeniceMultiClusterWrapper(null, finalZkServerWrapper, finalKafkaBrokerWrapper,
-          finalBrooklinWrapper, clusterWrapperMap, controllerMap, finalClusterToD2);
+          finalBrooklinWrapper, clusterWrapperMap, controllerMap, finalClusterToD2, clientConfigD2Client);
     } catch (Exception e) {
       controllerMap.values().forEach(Utils::closeQuietlyWithErrorLogged);
       clusterWrapperMap.values().forEach(Utils::closeQuietlyWithErrorLogged);
@@ -144,6 +152,9 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
   protected void internalStop() throws Exception {
     controllers.values().forEach(IOUtils::closeQuietly);
     clusters.values().forEach(IOUtils::closeQuietly);
+    if (clientConfigD2Client != null) {
+      D2ClientUtils.shutdownClient(clientConfigD2Client);
+    }
     IOUtils.closeQuietly(brooklinWrapper);
     IOUtils.closeQuietly(kafkaBrokerWrapper);
     IOUtils.closeQuietly(zkServerWrapper);

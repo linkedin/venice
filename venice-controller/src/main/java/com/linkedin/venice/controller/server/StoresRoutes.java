@@ -401,21 +401,7 @@ public class StoresRoutes extends AbstractRoute {
         veniceResponse.setCluster(clusterName);
         veniceResponse.setName(storeName);
 
-        Map<String, String[]> sparkRequestParams = request.queryMap().toMap();
-
-        boolean anyParamContainsMoreThanOneValue = sparkRequestParams.values().stream()
-            .anyMatch(strings -> strings.length > 1);
-
-        if (anyParamContainsMoreThanOneValue) {
-          String errMsg =
-              "Array parameters are not supported. Provided request parameters: " + sparkRequestParams.toString();
-          veniceResponse.setError(errMsg);
-          throw new VeniceException(errMsg);
-        }
-
-        Map<String, String> params = sparkRequestParams.entrySet().stream()
-            // Extract the first (and only) value of each param
-            .collect(Collectors.toMap(e -> e.getKey(), e -> e.getValue()[0]));
+        Map<String, String> params = Utils.extractQueryParamsFromRequest(request.queryMap().toMap(), veniceResponse);
 
         try {
           admin.updateStore(clusterName, storeName, new UpdateStoreQueryParams(params));

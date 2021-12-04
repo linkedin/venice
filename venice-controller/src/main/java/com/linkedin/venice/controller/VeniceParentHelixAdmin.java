@@ -14,6 +14,7 @@ import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controller.authorization.SystemStoreAclSynchronizationTask;
+import com.linkedin.venice.controller.datarecovery.DataRecoveryManager;
 import com.linkedin.venice.controller.kafka.AdminTopicUtils;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumptionTask;
@@ -62,6 +63,7 @@ import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.MultiStoreResponse;
 import com.linkedin.venice.controllerapi.MultiStoreStatusResponse;
 import com.linkedin.venice.controllerapi.NodeReplicasReadinessState;
+import com.linkedin.venice.controllerapi.ReadyForDataRecoveryResponse;
 import com.linkedin.venice.controllerapi.RepushInfo;
 import com.linkedin.venice.controllerapi.StoreComparisonInfo;
 import com.linkedin.venice.controllerapi.StoreResponse;
@@ -2388,6 +2390,57 @@ public class VeniceParentHelixAdmin implements Admin {
   @Override
   public Pair<NodeReplicasReadinessState, List<Replica>> nodeReplicaReadiness(String cluster, String helixNodeId) {
     throw new VeniceUnsupportedOperationException("nodeReplicaReadiness is not supported");
+  }
+
+  @Override
+  public void initiateDataRecovery(String clusterName, String storeName, int version, String sourceFabric,
+      String destinationFabric, boolean copyAllVersionConfigs, Optional<Version> ignored) {
+    Map<String, ControllerClient> childControllerClientMap = veniceHelixAdmin.getControllerClientMap(clusterName);
+    DataRecoveryManager.validateSourceAndDestinationFabrics(childControllerClientMap, sourceFabric, destinationFabric);
+    StoreInfo storeInfo = childControllerClientMap.get(sourceFabric).getStore(storeName).getStore();
+    Optional<Version> sourceVersion = storeInfo.getVersion(version);
+    if (!sourceVersion.isPresent()) {
+      throw new VeniceException("Version: " + version + " does not exist in the given source fabric: " + sourceFabric);
+    }
+    ControllerResponse destinationFabricResponse = childControllerClientMap.get(destinationFabric)
+        .dataRecovery(sourceFabric, destinationFabric, storeName, version, true, copyAllVersionConfigs,
+            sourceVersion);
+    if (destinationFabricResponse.isError()) {
+      throw new VeniceException("Failed to initiate data recovery in destination fabric, error: "
+          + destinationFabricResponse.getError());
+    }
+  }
+
+  @Override
+  public void prepareDataRecovery(String clusterName, String storeName, int version, String sourceFabric,
+      String destinationFabric, Optional<Integer> ignored) {
+    Map<String, ControllerClient> childControllerClientMap = veniceHelixAdmin.getControllerClientMap(clusterName);
+    DataRecoveryManager.validateSourceAndDestinationFabrics(childControllerClientMap, sourceFabric, destinationFabric);
+    StoreInfo sourceStoreInfo = childControllerClientMap.get(sourceFabric).getStore(storeName).getStore();
+    int amplificationFactor = sourceStoreInfo.getPartitionerConfig().getAmplificationFactor();
+    ControllerResponse destinationFabricResponse = childControllerClientMap.get(destinationFabric)
+        .prepareDataRecovery(sourceFabric, destinationFabric, storeName, version, Optional.of(amplificationFactor));
+    if (destinationFabricResponse.isError()) {
+      throw new VeniceException("Failed to prepare for data recovery in destination fabric, error: "
+          + destinationFabricResponse.getError());
+    }
+  }
+
+  @Override
+  public Pair<Boolean, String> isStoreVersionReadyForDataRecovery(String clusterName, String storeName, int version,
+      String sourceFabric, String destinationFabric, Optional<Integer> ignored) {
+    Map<String, ControllerClient> childControllerClientMap = veniceHelixAdmin.getControllerClientMap(clusterName);
+    try {
+      DataRecoveryManager.validateSourceAndDestinationFabrics(childControllerClientMap, sourceFabric, destinationFabric);
+      StoreInfo sourceStoreInfo = childControllerClientMap.get(sourceFabric).getStore(storeName).getStore();
+      int amplificationFactor = sourceStoreInfo.getPartitionerConfig().getAmplificationFactor();
+      ReadyForDataRecoveryResponse destinationFabricResponse = childControllerClientMap
+          .get(destinationFabric).isStoreVersionReadyForDataRecovery(sourceFabric, destinationFabric, storeName,
+              version, Optional.of(amplificationFactor));
+      return new Pair<>(destinationFabricResponse.isReady(), destinationFabricResponse.getReason());
+    } catch (Exception e) {
+      return new Pair<>(false, e.getMessage());
+    }
   }
 
   @Override
