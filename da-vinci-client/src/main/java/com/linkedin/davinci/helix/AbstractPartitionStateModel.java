@@ -13,11 +13,12 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.HybridStoreQuotaStatus;
-import com.linkedin.venice.utils.LatencyUtils;
+import com.linkedin.venice.utils.Timer;
 import com.linkedin.venice.utils.Utils;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 import org.apache.helix.NotificationContext;
 import org.apache.helix.model.LeaderStandbySMD;
 import org.apache.helix.model.Message;
@@ -181,27 +182,37 @@ public abstract class AbstractPartitionStateModel extends StateModel {
      * Otherwise, it's possible that store ingestion starts without having the
      * accessor ready to get notified.
      */
-    long startTimeInWaitingPushStatusAccessorInNs = System.nanoTime();
-    try {
-      waitPartitionPushStatusAccessor();
-      initializePartitionPushStatus();
+    final Consumer<Double> waitTimeLogging = elapsedTimeInMs -> {
+      //TODO Evaluate if debugLoggingEnabled config can be removed, as logging level can be changed at run time.
+      if (storeConfig.isDebugLoggingEnabled()) {
+        logger.info(
+            "Completed waiting for partition push status accessor for resource " + storeConfig.getStoreVersionName()
+                + " partition " + partition + ". Total elapsed time: " + elapsedTimeInMs + " ms");
+      }
+    };
+
+    try (Timer t = Timer.run(waitTimeLogging)) {
+        waitPartitionPushStatusAccessor();
+        initializePartitionPushStatus();
     } catch (Exception e) {
       throw new VeniceException("Error when initializing partition push status accessor, "
           + "will not start ingestion for store partition. ", e);
     }
-    if (storeConfig.isDebugLoggingEnabled()) {
-      logger.info("Completed waiting for partition push status accessor for resource " + storeConfig.getStoreVersionName()
-          + " partition " + partition + ". Total elapsed time: " + LatencyUtils.getLatencyInMS(startTimeInWaitingPushStatusAccessorInNs) + " ms");
-    }
+
     /**
      * If given store and partition have already exist in this node, openStoreForNewPartition is idempotent so it
      * will not create them again.
      */
-    long startTimeInStartingConsumptionInNs = System.nanoTime();
-    ingestionBackend.startConsumption(storeConfig, partition);
-    if (storeConfig.isDebugLoggingEnabled()) {
-      logger.info("Completed starting the consumption for resource " + storeConfig.getStoreVersionName() + " partition "
-          + partition + ". Total elapsed time: " + LatencyUtils.getLatencyInMS(startTimeInStartingConsumptionInNs) + " ms");
+    final Consumer<Double> setupTimeLogging = elapsedTimeInMs -> {
+      //TODO Evaluate if debugLoggingEnabled config can be removed, as logging level can be changed at run time.
+      if (storeConfig.isDebugLoggingEnabled()) {
+        logger.info(
+            "Completed starting the consumption for resource " + storeConfig.getStoreVersionName() + " partition "
+                + partition + ". Total elapsed time: " + elapsedTimeInMs + " ms");
+      }
+    };
+    try (Timer t = Timer.run(setupTimeLogging)) {
+      ingestionBackend.startConsumption(storeConfig, partition);
     }
   }
 
