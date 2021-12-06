@@ -20,6 +20,7 @@ import com.linkedin.venice.controllerapi.MultiStoreTopicsResponse;
 import com.linkedin.venice.controllerapi.MultiVersionResponse;
 import com.linkedin.venice.controllerapi.MultiVersionStatusResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
+import com.linkedin.venice.controllerapi.NodeReplicasReadinessResponse;
 import com.linkedin.venice.controllerapi.NodeStatusResponse;
 import com.linkedin.venice.controllerapi.OwnerResponse;
 import com.linkedin.venice.controllerapi.PartitionResponse;
@@ -415,6 +416,9 @@ public class AdminTool {
           break;
         case WIPE_CLUSTER:
           wipeCluster(cmd);
+          break;
+        case REPLICAS_READINESS_ON_STORAGE_NODE:
+          printReplicasReadinessStorageNode(cmd);
           break;
         default:
           StringJoiner availableCommands = new StringJoiner(", ");
@@ -1963,6 +1967,12 @@ public class AdminTool {
     String fullPath = path.replace("~", System.getProperty("user.home"));
     byte[] encoded = Files.readAllBytes(Paths.get(fullPath));
     return new String(encoded, StandardCharsets.UTF_8).trim();
+  }
+
+  private static void printReplicasReadinessStorageNode(CommandLine cmd){
+    String storageNodeId = getRequiredArgument(cmd, Arg.STORAGE_NODE);
+    NodeReplicasReadinessResponse response = controllerClient.nodeReplicasReadiness(storageNodeId);
+    printObject(response);
   }
 
   ///// Print Output ////

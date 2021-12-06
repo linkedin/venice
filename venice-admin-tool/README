@@ -96,6 +96,9 @@ Commands:
     --white-list-remove-node     Remove a storage node from the white
                                  list..  Requires: --url, --cluster,
                                  --storage-node
+    --node-replicas-readiness    Get the status of all current version
+                                 replicas that a storage node assigned to.
+                                 Requires: --url, --cluster, --storage-node
 usage: Parameters:
  -c,--cluster <arg>                  Name of Venice cluster
  -e,--execution <arg>                Execution ID of async admin command
@@ -180,7 +183,7 @@ java -jar venice-admin-tool-0.1.jar --convert-vson-schema --key-schema-file <key
 java -jar venice-admin-tool-0.1.jar --get-all-migration-push-strategies --url <url> --cluster <cluster>
 java -jar venice-admin-tool-0.1.jar --get-migration-push-strategy --url <url> --cluster <cluster> --voldemort-store <voldemort-store>
 java -jar venice-admin-tool-0.1.jar --set-migration-push-strategy --url <url> --cluster <cluster> --voldemort-store <voldemort-store> --migration-push-strategy <migration-push-strategy>
-
+java -jar venice-admin-tool-0.1.jar --node-replicas-readiness --url <url> --cluster <cluster> --storage-node <storage-node>
 
 
 
