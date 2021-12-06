@@ -5,7 +5,7 @@ import com.linkedin.davinci.ingestion.VeniceIngestionBackend;
 import com.linkedin.venice.helix.HelixPartitionStatusAccessor;
 import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
-import com.linkedin.venice.utils.LatencyUtils;
+import com.linkedin.venice.utils.Timer;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.helix.NotificationContext;
@@ -50,11 +50,12 @@ public class OnlineOfflinePartitionStateModel extends AbstractPartitionStateMode
     public void onBecomeOnlineFromBootstrap(Message message, NotificationContext context) {
         partitionNumberFromBootstrapToOnline.incrementAndGet();
         executeStateTransition(message, context, () -> {
-            long startTimeForWaitingConsumptionCompletedInNs = System.nanoTime();
-            waitConsumptionCompleted(message.getResourceName(), notifier);
-            logger.info("Consumption completed for " + message.getResourceName() + " partition " + getPartition()
-                + ". Total elapsed time: " + LatencyUtils.getLatencyInMS(startTimeForWaitingConsumptionCompletedInNs) + " ms");
-            });
+            try (Timer t = Timer.run(elapsedTimeInMs -> logger.info(
+                "Completed setting up new store partition for " + message.getResourceName() + " partition "
+                    + getPartition() + ". Total elapsed time: " + elapsedTimeInMs + " ms"))) {
+                waitConsumptionCompleted(message.getResourceName(), notifier);
+            }
+        });
         partitionNumberFromBootstrapToOnline.decrementAndGet();
     }
 
@@ -62,10 +63,11 @@ public class OnlineOfflinePartitionStateModel extends AbstractPartitionStateMode
     public void onBecomeBootstrapFromOffline(Message message, NotificationContext context) {
         partitionNumberFromOfflineToBootstrap.incrementAndGet();
         executeStateTransition(message, context, () -> {
-            long startTimeForSettingUpNewStorePartitionInNs = System.nanoTime();
-            setupNewStorePartition();
-            logger.info("Completed setting up new store partition for " + message.getResourceName() + " partition " + getPartition()
-                + ". Total elapsed time: " + LatencyUtils.getLatencyInMS(startTimeForSettingUpNewStorePartitionInNs) + " ms");
+            try (Timer t = Timer.run(elapsedTimeInMs -> logger.info(
+                "Completed setting up new store partition for " + message.getResourceName() + " partition "
+                    + getPartition() + ". Total elapsed time: " + elapsedTimeInMs + " ms"))) {
+                setupNewStorePartition();
+            }
             notifier.startConsumption(message.getResourceName(), getPartition());
         });
         partitionNumberFromOfflineToBootstrap.decrementAndGet();
