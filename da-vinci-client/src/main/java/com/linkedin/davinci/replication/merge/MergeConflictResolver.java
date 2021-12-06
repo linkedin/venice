@@ -151,7 +151,7 @@ public class MergeConflictResolver {
   }
 
   /**
-   * Perform conflict resolution when the incoming operation is a PUT operation.
+   * Perform conflict resolution when the incoming operation is a DELETE operation.
    * @param oldReplicationMetadata The replication metadata of the currently persisted value.
    * @param schemaIdOfOldValue The schema id of the currently persisted value.
    * @param writeOperationTimestamp The logical timestamp of the incoming record.

@@ -59,17 +59,10 @@ class MergeGenericRecord implements Merge<GenericRecord> {
           oldReplicationMetadata.put(REPLICATION_CHECKPOINT_VECTOR_FIELD,
               Merge.mergeOffsetVectors((List<Long>)oldReplicationMetadata.get(REPLICATION_CHECKPOINT_VECTOR_FIELD), sourceOffsetOfNewValue, sourceBrokerIDOfNewValue));
         } else if (oldTimeStamp == writeOperationTimestamp) {
-          // for timestamp tie, if old value was null persist new value.
-          if (oldValue == null) {
-            oldValueAndReplicationMetadata.setValue(newValue);
-            oldReplicationMetadata.put(REPLICATION_CHECKPOINT_VECTOR_FIELD,
-                Merge.mergeOffsetVectors((List<Long>) oldReplicationMetadata.get(REPLICATION_CHECKPOINT_VECTOR_FIELD), sourceOffsetOfNewValue, sourceBrokerIDOfNewValue));
-          } else {
-            // else let compare decide which one to store.
+          // for timestamp tie compare decide which one to store.
             oldValueAndReplicationMetadata.setValue((GenericRecord) Merge.compareAndReturn(oldValue, newValue));
             oldReplicationMetadata.put(REPLICATION_CHECKPOINT_VECTOR_FIELD,
                 Merge.mergeOffsetVectors((List<Long>) oldReplicationMetadata.get(REPLICATION_CHECKPOINT_VECTOR_FIELD), sourceOffsetOfNewValue, sourceBrokerIDOfNewValue));
-          }
         } else {
           oldValueAndReplicationMetadata.setValue(oldValue);
         }
