@@ -17,8 +17,8 @@ import com.linkedin.davinci.store.StoragePartitionConfig;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.davinci.utils.KafkaRecordWrapper;
-import com.linkedin.venice.common.Measurable;
 import com.linkedin.davinci.utils.StoragePartitionDiskUsage;
+import com.linkedin.venice.common.Measurable;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.PersistenceFailureException;
 import com.linkedin.venice.exceptions.UnsubscribedTopicPartitionException;
@@ -117,10 +117,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
-import javax.mail.Part;
 import org.apache.avro.Schema;
 import org.apache.commons.codec.binary.Hex;
 import org.apache.kafka.clients.CommonClientConfigs;
@@ -1170,13 +1168,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       // Emit disk quota usage metric
       Store store = storeRepository.getStoreOrThrow(storeName);
       long diskQuota = store.getStorageQuotaInByte();
-      long diskPartitionNum = store.getPartitionCount();
-      long diskQuotaPerPartition = diskPartitionNum != 0 ? diskQuota / diskPartitionNum : 0;
+      double storeDiskUsage = 0.0D;
       for (Integer partition : partitionConsumptionSizeMap.keySet()) {
-        long partitionQuotaUsage = partitionConsumptionSizeMap.get(partition).getUsage();
-        storeIngestionStats.recordStorageQuotaUsed(storeName, diskQuotaPerPartition > 0 ? (partitionQuotaUsage / diskQuota) : 0);
+        long partitionDiskUsage = partitionConsumptionSizeMap.get(partition).getUsage();
+        storeDiskUsage += partitionDiskUsage;
       }
-
+      storeIngestionStats.recordStorageQuotaUsed(storeName, diskQuota > 0 ? (storeDiskUsage / diskQuota) : 0);
     }
 
     if (whetherToApplyThrottling) {
