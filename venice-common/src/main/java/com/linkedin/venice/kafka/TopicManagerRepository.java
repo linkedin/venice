@@ -1,7 +1,7 @@
 package com.linkedin.venice.kafka;
 
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.kafka.partitionoffset.PartitionOffsetFetcherFactory;
+import com.linkedin.venice.kafka.KafkaClientFactory.MetricsParameters;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
@@ -26,7 +26,6 @@ public class TopicManagerRepository implements Closeable {
   private final int topicDeletionStatusPollIntervalMs;
   private final long topicMinLogCompactionLagMs;
   private final KafkaClientFactory kafkaClientFactory;
-  private final boolean isConcurrentTopicDeleteRequestsEnabled;
   private final Function<Pair<String, String>, TopicManager> topicManagerCreator;
   private final Map<String, TopicManager> topicManagersMap = new VeniceConcurrentHashMap<>();
 
@@ -36,7 +35,6 @@ public class TopicManagerRepository implements Closeable {
       int kafkaOperationTimeoutMs,
       int topicDeletionStatusPollIntervalMs,
       long topicMinLogCompactionLagMs,
-      boolean isConcurrentTopicDeleteRequestsEnabled,
       KafkaClientFactory kafkaClientFactory,
       MetricsRepository metricsRepository
   ) {
@@ -45,44 +43,25 @@ public class TopicManagerRepository implements Closeable {
     this.kafkaOperationTimeoutMs = kafkaOperationTimeoutMs;
     this.topicDeletionStatusPollIntervalMs = topicDeletionStatusPollIntervalMs;
     this.topicMinLogCompactionLagMs = topicMinLogCompactionLagMs;
-    this.isConcurrentTopicDeleteRequestsEnabled = isConcurrentTopicDeleteRequestsEnabled;
     this.kafkaClientFactory = kafkaClientFactory;
     this.topicManagerCreator = (kafkaServerAndZk) -> {
-        final KafkaClientFactory kafkaClientFactoryClone = this.kafkaClientFactory.clone(kafkaServerAndZk.getFirst(), kafkaServerAndZk.getSecond());
-        return new TopicManager(
-            this.kafkaOperationTimeoutMs,
-            this.topicDeletionStatusPollIntervalMs,
-            this.topicMinLogCompactionLagMs,
-            this.isConcurrentTopicDeleteRequestsEnabled,
-            kafkaClientFactoryClone,
-            Optional.of(metricsRepository),
-            Optional.of(PartitionOffsetFetcherFactory.createDefaultPartitionOffsetFetcher(
-                kafkaClientFactoryClone,
-                Optional.of(metricsRepository),
-                this.kafkaOperationTimeoutMs
-            )));
+      MetricsParameters metricsParameters = new MetricsParameters(
+          this.kafkaClientFactory.getClass().getSimpleName() + "_for_" + kafkaServerAndZk.getFirst(),
+          metricsRepository
+      );
+      final KafkaClientFactory kafkaClientFactoryClone = this.kafkaClientFactory.clone(
+          kafkaServerAndZk.getFirst(),
+          kafkaServerAndZk.getSecond(),
+          Optional.of(metricsParameters)
+      );
+      return new TopicManager(
+          this.kafkaOperationTimeoutMs,
+          this.topicDeletionStatusPollIntervalMs,
+          this.topicMinLogCompactionLagMs,
+          kafkaClientFactoryClone,
+          Optional.of(metricsRepository)
+      );
     };
-  }
-
-  public TopicManagerRepository(
-      String localKafkaBootstrapServers,
-      String localKafkaZkAddress,
-      int kafkaOperationTimeoutMs,
-      int topicDeletionStatusPollIntervalMs,
-      long topicMinLogCompactionLagMs,
-      KafkaClientFactory kafkaClientFactory,
-      MetricsRepository metricsRepository
-  ) {
-    this(
-        localKafkaBootstrapServers,
-        localKafkaZkAddress,
-        kafkaOperationTimeoutMs,
-        topicDeletionStatusPollIntervalMs,
-        topicMinLogCompactionLagMs,
-        DEFAULT_CONCURRENT_TOPIC_DELETION_REQUEST_POLICY,
-        kafkaClientFactory,
-        metricsRepository
-    );
   }
 
   public TopicManagerRepository(
@@ -97,7 +76,6 @@ public class TopicManagerRepository implements Closeable {
         DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
         DEFAULT_TOPIC_DELETION_STATUS_POLL_INTERVAL_MS,
         DEFAULT_KAFKA_MIN_LOG_COMPACTION_LAG_MS,
-        DEFAULT_CONCURRENT_TOPIC_DELETION_REQUEST_POLICY,
         kafkaClientFactory,
         metricsRepository
     );

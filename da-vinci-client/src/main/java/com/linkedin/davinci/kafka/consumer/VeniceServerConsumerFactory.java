@@ -5,8 +5,6 @@ import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.venice.client.schema.SchemaReader;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.KafkaClientFactory;
-import com.linkedin.venice.kafka.consumer.ApacheKafkaConsumer;
-import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
 import com.linkedin.venice.utils.KafkaSSLUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Optional;
@@ -21,8 +19,12 @@ import static org.apache.kafka.common.config.SslConfigs.*;
 public class VeniceServerConsumerFactory extends KafkaClientFactory {
   protected final VeniceServerConfig serverConfig;
 
-  public VeniceServerConsumerFactory(VeniceServerConfig serverConfig, Optional<SchemaReader> kafkaMessageEnvelopeSchemaReader) {
-    super(kafkaMessageEnvelopeSchemaReader);
+  public VeniceServerConsumerFactory(
+      VeniceServerConfig serverConfig,
+      Optional<SchemaReader> kafkaMessageEnvelopeSchemaReader,
+      Optional<MetricsParameters> metricsParameters
+  ) {
+    super(kafkaMessageEnvelopeSchemaReader, metricsParameters, serverConfig.isAutoCloseIdleConsumersEnabled());
     this.serverConfig = serverConfig;
   }
 
@@ -66,15 +68,19 @@ public class VeniceServerConsumerFactory extends KafkaClientFactory {
   }
 
   @Override
-  protected KafkaClientFactory clone(String kafkaBootstrapServers, String kafkaZkAddress) {
-    Properties clonedProperties = this.serverConfig.getClusterProperties().toProperties();
-    clonedProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, kafkaBootstrapServers);
-    clonedProperties.setProperty(KAFKA_ZK_ADDRESS, kafkaZkAddress);
-    return new VeniceServerConsumerFactory(new VeniceServerConfig(new VeniceProperties(clonedProperties)), kafkaMessageEnvelopeSchemaReader);
+  protected boolean isKafkaConsumerOffsetCollectionEnabled() {
+    return serverConfig.isKafkaConsumerOffsetCollectionEnabled();
   }
 
   @Override
-  public KafkaConsumerWrapper getConsumer(Properties props) {
-    return new ApacheKafkaConsumer(setupSSL(props), serverConfig.isKafkaConsumerOffsetCollectionEnabled());
+  protected KafkaClientFactory clone(String kafkaBootstrapServers, String kafkaZkAddress, Optional<MetricsParameters> metricsParameters) {
+    Properties clonedProperties = this.serverConfig.getClusterProperties().toProperties();
+    clonedProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, kafkaBootstrapServers);
+    clonedProperties.setProperty(KAFKA_ZK_ADDRESS, kafkaZkAddress);
+    return new VeniceServerConsumerFactory(
+        new VeniceServerConfig(new VeniceProperties(clonedProperties)),
+        kafkaMessageEnvelopeSchemaReader,
+        metricsParameters
+    );
   }
 }

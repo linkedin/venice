@@ -12,9 +12,7 @@ import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
-import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
-import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.TestUtils;
@@ -31,12 +29,10 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
-import java.util.function.Consumer;
 import org.apache.kafka.clients.CommonClientConfigs;
-import org.apache.kafka.clients.consumer.ConsumerConfig;
+import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
-import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.common.TopicPartition;
 import org.mockito.ArgumentCaptor;
 import org.testng.Assert;
@@ -67,7 +63,8 @@ public class VeniceWriterTest {
     topicManager.close();
   }
 
-  private void testThreadSafety(int numberOfThreads, Consumer<VeniceWriter<KafkaKey, byte[], byte[]>> veniceWriterTask)
+  private void testThreadSafety(
+      int numberOfThreads, java.util.function.Consumer<VeniceWriter<KafkaKey, byte[], byte[]>> veniceWriterTask)
       throws ExecutionException, InterruptedException {
     String topicName = TestUtils.getUniqueString("topic-for-vw-thread-safety");
     topicManager.createTopic(topicName, 1, 1, true);
@@ -93,11 +90,7 @@ public class VeniceWriterTest {
       }
     }
 
-    Properties consumerProps = new Properties();
-    consumerProps.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, KafkaKeySerializer.class);
-    consumerProps.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, KafkaValueSerializer.class);
-
-    try (KafkaConsumer<KafkaKey, KafkaMessageEnvelope> consumer = kafkaClientFactory.getKafkaConsumer(consumerProps)) {
+    try (Consumer<KafkaKey, KafkaMessageEnvelope> consumer = kafkaClientFactory.getRecordKafkaConsumer()) {
       List<TopicPartition> partitions = Collections.singletonList(new TopicPartition(topicName, 0));
       consumer.assign(partitions);
       consumer.seekToBeginning(partitions);

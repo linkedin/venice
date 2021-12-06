@@ -5,15 +5,21 @@ import com.linkedin.venice.client.schema.SchemaReader;
 import com.linkedin.venice.kafka.admin.InstrumentedKafkaAdmin;
 import com.linkedin.venice.kafka.admin.KafkaAdminWrapper;
 import com.linkedin.venice.kafka.consumer.ApacheKafkaConsumer;
+import com.linkedin.venice.kafka.consumer.AutoClosingKafkaConsumer;
+import com.linkedin.venice.kafka.consumer.AutoClosingKafkaConsumerStats;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
+import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
+import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
-import com.linkedin.venice.stats.TehutiUtils;
+import com.linkedin.venice.utils.Lazy;
 import com.linkedin.venice.utils.ReflectUtils;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Optional;
 import java.util.Properties;
+import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.common.serialization.ByteArrayDeserializer;
@@ -25,22 +31,65 @@ import static com.linkedin.venice.serialization.avro.InternalAvroSpecificSeriali
 
 public abstract class KafkaClientFactory {
   private static final Logger logger = Logger.getLogger(KafkaClientFactory.class);
+  public static final boolean DEFAULT_AUTO_CLOSE_IDLE_CONSUMERS_ENABLED = false;
+
   protected final Optional<SchemaReader> kafkaMessageEnvelopeSchemaReader;
+  private final Optional<AutoClosingKafkaConsumerStats> stats;
+  private final boolean autoCloseIdleConsumersEnabled;
 
   protected KafkaClientFactory() {
-    this(Optional.empty());
+    this(Optional.empty(), Optional.empty(), DEFAULT_AUTO_CLOSE_IDLE_CONSUMERS_ENABLED);
   }
 
-  protected KafkaClientFactory(Optional<SchemaReader> kafkaMessageEnvelopeSchemaReader) {
+  protected KafkaClientFactory(
+      Optional<SchemaReader> kafkaMessageEnvelopeSchemaReader,
+      Optional<MetricsParameters> metricsParameters,
+      boolean autoCloseIdleConsumersEnabled) {
     this.kafkaMessageEnvelopeSchemaReader = Utils.notNull(kafkaMessageEnvelopeSchemaReader);
+    this.stats = metricsParameters.map(m -> new AutoClosingKafkaConsumerStats(m.metricsRepository, m.uniqueName));
+    this.autoCloseIdleConsumersEnabled = autoCloseIdleConsumersEnabled;
   }
 
   public KafkaConsumerWrapper getConsumer(Properties props) {
-    return new ApacheKafkaConsumer(setupSSL(props), false);
+    return new ApacheKafkaConsumer(getKafkaConsumer(props), new VeniceProperties(props), isKafkaConsumerOffsetCollectionEnabled());
   }
 
-  public <K, V> KafkaConsumer<K, V> getKafkaConsumer(Properties properties) {
-    return new KafkaConsumer<>(setupSSL(properties));
+  public Consumer<byte[], byte[]> getRawBytesKafkaConsumer() {
+    Properties props = getConsumerProps();
+    //This is a temporary fix for the issue described here
+    //https://stackoverflow.com/questions/37363119/kafka-producer-org-apache-kafka-common-serialization-stringserializer-could-no
+    //In our case "org.apache.kafka.common.serialization.ByteArrayDeserializer" class can not be found
+    //because class loader has no venice-common in class path. This can be only reproduced on JDK11
+    //Trying to avoid class loading via Kafka's ConfigDef class
+    props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
+    props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
+    // Increase receive buffer to 1MB to check whether it can solve the metadata timing out issue
+    props.put(ConsumerConfig.RECEIVE_BUFFER_CONFIG, 1024 * 1024);
+
+    return getKafkaConsumer(props);
+  }
+
+  public Consumer<KafkaKey, KafkaMessageEnvelope> getRecordKafkaConsumer() {
+    Properties props = getConsumerProps();
+    props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, KafkaKeySerializer.class);
+    props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, OptimizedKafkaValueSerializer.class);
+    if (kafkaMessageEnvelopeSchemaReader.isPresent()) {
+      props.put(VENICE_SCHEMA_READER_CONFIG, kafkaMessageEnvelopeSchemaReader.get());
+    }
+
+    return getKafkaConsumer(props);
+  }
+
+  private  <K, V> Consumer<K, V> getKafkaConsumer(Properties properties) {
+    Properties propertiesWithSSL = setupSSL(properties);
+    if (autoCloseIdleConsumersEnabled) {
+      AutoClosingKafkaConsumer<K, V> consumer =  new AutoClosingKafkaConsumer<>(propertiesWithSSL, stats);
+      stats.ifPresent(s -> {
+        s.addConsumerToTrack(consumer);
+      });
+      return consumer;
+    }
+    return new KafkaConsumer<>(propertiesWithSSL);
   }
 
   public KafkaAdminWrapper getKafkaAdminClient(Optional<MetricsRepository> optionalMetricsRepository) {
@@ -71,35 +120,21 @@ public abstract class KafkaClientFactory {
     return adminWrapper;
   }
 
-  public Properties getKafkaRawBytesConsumerProps() {
+  /**
+   * N.B. These props are only used by {@link #getRecordKafkaConsumer()} and {@link #getRawBytesKafkaConsumer()}
+   *      which in turn are used by {@link com.linkedin.venice.kafka.partitionoffset.PartitionOffsetFetcherImpl}
+   *      and {@link TopicManager}, and therefore only for metadata operations. The data path is using
+   *      {@link #getConsumer(Properties)} and is thus more flexible in terms of configurability.
+   */
+  private Properties getConsumerProps() {
     Properties props = new Properties();
-    //This is a temporary fix for the issue described here
-    //https://stackoverflow.com/questions/37363119/kafka-producer-org-apache-kafka-common-serialization-stringserializer-could-no
-    //In our case "org.apache.kafka.common.serialization.ByteArrayDeserializer" class can not be found
-    //because class loader has no venice-common in class path. This can be only reproduced on JDK11
-    //Trying to avoid class loading via Kafka's ConfigDef class
-    props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
-    props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
     // Increase receive buffer to 1MB to check whether it can solve the metadata timing out issue
     props.put(ConsumerConfig.RECEIVE_BUFFER_CONFIG, 1024 * 1024);
     return props;
   }
 
-  public Properties getKafkaRecordConsumerProps() {
-    Properties props = new Properties();
-    //This is a temporary fix for the issue described here
-    //https://stackoverflow.com/questions/37363119/kafka-producer-org-apache-kafka-common-serialization-stringserializer-could-no
-    //In our case "org.apache.kafka.common.serialization.ByteArrayDeserializer" class can not be found
-    //because class loader has no venice-common in class path. This can be only reproduced on JDK11
-    //Trying to avoid class loading via Kafka's ConfigDef class
-    props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, KafkaKeySerializer.class);
-    props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, OptimizedKafkaValueSerializer.class);
-    // Increase receive buffer to 1MB to check whether it can solve the metadata timing out issue
-    props.put(ConsumerConfig.RECEIVE_BUFFER_CONFIG, 1024 * 1024);
-    if (kafkaMessageEnvelopeSchemaReader.isPresent()) {
-      props.put(VENICE_SCHEMA_READER_CONFIG, kafkaMessageEnvelopeSchemaReader.get());
-    }
-    return props;
+  protected boolean isKafkaConsumerOffsetCollectionEnabled() {
+    return false;
   }
 
   /**
@@ -113,5 +148,14 @@ public abstract class KafkaClientFactory {
 
   public abstract String getKafkaBootstrapServers();
 
-  abstract protected KafkaClientFactory clone(String kafkaBootstrapServers, String kafkaZkAddress);
+  abstract protected KafkaClientFactory clone(String kafkaBootstrapServers, String kafkaZkAddress, Optional<MetricsParameters> metricsParameters);
+
+  public static class MetricsParameters {
+    final String uniqueName;
+    final MetricsRepository metricsRepository;
+    public MetricsParameters(String uniqueMetricNamePrefix, MetricsRepository metricsRepository) {
+      this.uniqueName = uniqueMetricNamePrefix;
+      this.metricsRepository = metricsRepository;
+    }
+  }
 }

@@ -6,6 +6,7 @@ import com.linkedin.venice.exceptions.UndefinedPropertyException;
 import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.admin.KafkaAdminClient;
 import com.linkedin.venice.utils.VeniceProperties;
+import java.util.Optional;
 import java.util.Properties;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.log4j.Logger;
@@ -48,7 +49,7 @@ public class VeniceKafkaConsumerFactory extends KafkaClientFactory {
   }
 
   @Override
-  protected KafkaClientFactory clone(String kafkaBootstrapServers, String kafkaZkAddress) {
+  protected KafkaClientFactory clone(String kafkaBootstrapServers, String kafkaZkAddress, Optional<MetricsParameters> metricsParameters) {
     Properties clonedProperties = this.veniceProperties.toProperties();
     clonedProperties.setProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, kafkaBootstrapServers);
     clonedProperties.setProperty(ConfigKeys.KAFKA_ZK_ADDRESS, kafkaZkAddress);

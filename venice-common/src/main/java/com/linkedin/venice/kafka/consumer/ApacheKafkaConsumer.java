@@ -18,6 +18,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
+import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.common.PartitionInfo;
@@ -40,7 +41,7 @@ public class ApacheKafkaConsumer implements KafkaConsumerWrapper {
   private static final int CONSUMER_POLL_RETRY_TIMES_DEFAULT = 3;
   private static final int CONSUMER_POLL_RETRY_BACKOFF_MS_DEFAULT = 0;
 
-  private final KafkaConsumer<KafkaKey, KafkaMessageEnvelope> kafkaConsumer;
+  private final Consumer<KafkaKey, KafkaMessageEnvelope> kafkaConsumer;
   private final int consumerPollRetryTimes;
   private final int consumerPollRetryBackoffMs;
   private final Optional<TopicPartitionsOffsetsTracker> topicPartitionsOffsetsTracker;
@@ -49,15 +50,14 @@ public class ApacheKafkaConsumer implements KafkaConsumerWrapper {
     this(props, DEFAULT_PARTITIONS_OFFSETS_COLLECTION_ENABLE);
   }
 
-  public ApacheKafkaConsumer(VeniceProperties props) {
-    this(props.toProperties(), DEFAULT_PARTITIONS_OFFSETS_COLLECTION_ENABLE);
+  public ApacheKafkaConsumer(Properties props, boolean isKafkaConsumerOffsetCollectionEnabled) {
+    this(new KafkaConsumer<>(props), new VeniceProperties(props), isKafkaConsumerOffsetCollectionEnabled);
   }
 
-  public ApacheKafkaConsumer(Properties props, boolean isKafkaConsumerOffsetCollectionEnabled) {
-    this.kafkaConsumer = new KafkaConsumer<>(props);
-    VeniceProperties veniceProperties = new VeniceProperties(props);
-    this.consumerPollRetryTimes = veniceProperties.getInt(CONSUMER_POLL_RETRY_TIMES_CONFIG, CONSUMER_POLL_RETRY_TIMES_DEFAULT);
-    this.consumerPollRetryBackoffMs = veniceProperties.getInt(CONSUMER_POLL_RETRY_BACKOFF_MS_CONFIG, CONSUMER_POLL_RETRY_BACKOFF_MS_DEFAULT);
+  public ApacheKafkaConsumer(Consumer<KafkaKey, KafkaMessageEnvelope> consumer, VeniceProperties props, boolean isKafkaConsumerOffsetCollectionEnabled) {
+    this.kafkaConsumer = consumer;
+    this.consumerPollRetryTimes = props.getInt(CONSUMER_POLL_RETRY_TIMES_CONFIG, CONSUMER_POLL_RETRY_TIMES_DEFAULT);
+    this.consumerPollRetryBackoffMs = props.getInt(CONSUMER_POLL_RETRY_BACKOFF_MS_CONFIG, CONSUMER_POLL_RETRY_BACKOFF_MS_DEFAULT);
     this.topicPartitionsOffsetsTracker = isKafkaConsumerOffsetCollectionEnabled ?
             Optional.of(new TopicPartitionsOffsetsTracker()) : Optional.empty();
     logger.info("Consumer poll retry times: " + this.consumerPollRetryTimes);

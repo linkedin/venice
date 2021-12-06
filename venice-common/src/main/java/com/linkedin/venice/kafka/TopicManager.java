@@ -25,7 +25,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-import org.apache.kafka.clients.consumer.KafkaConsumer;
+import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.common.PartitionInfo;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.config.TopicConfig;
@@ -40,7 +40,7 @@ import static com.linkedin.venice.ConfigConstants.*;
 /**
  * Topic Manager is shared by multiple cluster's controllers running in one physical Venice controller instance.
  *
- * This class contains one global {@link KafkaConsumer}, which is not thread-safe, so when you add new functions,
+ * This class contains one global {@link Consumer}, which is not thread-safe, so when you add new functions,
  * which is using this global consumer, please add 'synchronized' keyword, otherwise this {@link TopicManager}
  * won't be thread-safe, and Kafka consumer will report the following error when multiple threads are trying to
  * use the same consumer: KafkaConsumer is not safe for multi-threaded access.
@@ -58,6 +58,7 @@ public class TopicManager implements Closeable {
   public static final int DEFAULT_KAFKA_OPERATION_TIMEOUT_MS = 30 * Time.MS_PER_SECOND;
   public static final long UNKNOWN_TOPIC_RETENTION = Long.MIN_VALUE;
   public static final int MAX_TOPIC_DELETE_RETRIES = 3;
+
   /**
    * Default setting is that no log compaction should happen for hybrid store version topics
    * if the messages are produced within 24 hours; otherwise servers could encounter MISSING
@@ -65,9 +66,12 @@ public class TopicManager implements Closeable {
    * duplicate keys.
    */
   public static final long DEFAULT_KAFKA_MIN_LOG_COMPACTION_LAG_MS = 24 * Time.MS_PER_HOUR;
-  // admin tool and venice topic consumer create this class.  We'll set this policy to false by default so those paths
-  // aren't necessarily compromised with potentially new bad behavior.
-  public static final boolean DEFAULT_CONCURRENT_TOPIC_DELETION_REQUEST_POLICY = false;
+
+  /**
+   * admin tool and venice topic consumer create this class.  We'll set this policy to false by default so those paths
+   * aren't necessarily compromised with potentially new bad behavior.
+   */
+  public static final boolean CONCURRENT_TOPIC_DELETION_REQUEST_POLICY = false;
 
   // Immutable state
   private final String kafkaBootstrapServers;
@@ -75,9 +79,8 @@ public class TopicManager implements Closeable {
   private final long topicDeletionStatusPollIntervalMs;
   private final long topicMinLogCompactionLagMs;
   private final KafkaClientFactory kafkaClientFactory;
-  private final boolean isConcurrentTopicDeleteRequestsEnabled;
 
-  private KafkaConsumer<byte[], byte[]> kafkaRawBytesConsumer;
+  private Consumer<byte[], byte[]> kafkaRawBytesConsumer;
   private final Lazy<KafkaAdminWrapper> kafkaAdmin;
   private final PartitionOffsetFetcher partitionOffsetFetcher;
 
@@ -92,15 +95,12 @@ public class TopicManager implements Closeable {
       long kafkaOperationTimeoutMs,
       long topicDeletionStatusPollIntervalMs,
       long topicMinLogCompactionLagMs,
-      boolean isConcurrentTopicDeleteRequestsEnabled,
       KafkaClientFactory kafkaClientFactory,
-      Optional<MetricsRepository> optionalMetricsRepository,
-      Optional<PartitionOffsetFetcher> optionalPartitionOffsetFetcher
+      Optional<MetricsRepository> optionalMetricsRepository
   ) {
     this.kafkaOperationTimeoutMs = kafkaOperationTimeoutMs;
     this.topicDeletionStatusPollIntervalMs = topicDeletionStatusPollIntervalMs;
     this.topicMinLogCompactionLagMs = topicMinLogCompactionLagMs;
-    this.isConcurrentTopicDeleteRequestsEnabled = isConcurrentTopicDeleteRequestsEnabled;
     this.kafkaClientFactory = kafkaClientFactory;
     this.kafkaBootstrapServers = kafkaClientFactory.getKafkaBootstrapServers();
     this.kafkaAdmin = Lazy.of(() -> {
@@ -108,16 +108,12 @@ public class TopicManager implements Closeable {
       logger.info(this.getClass().getSimpleName() + " is using kafka admin client: " + kafkaAdmin.getClassName());
       return kafkaAdmin;
     });
-    if (optionalPartitionOffsetFetcher.isPresent()) {
-      this.partitionOffsetFetcher = optionalPartitionOffsetFetcher.get();
-    } else {
-      this.partitionOffsetFetcher = PartitionOffsetFetcherFactory.createDefaultPartitionOffsetFetcher(
-          kafkaClientFactory,
-          kafkaAdmin,
-          kafkaOperationTimeoutMs,
-          optionalMetricsRepository
-      );
-    }
+    this.partitionOffsetFetcher = PartitionOffsetFetcherFactory.createDefaultPartitionOffsetFetcher(
+        kafkaClientFactory,
+        kafkaAdmin,
+        kafkaOperationTimeoutMs,
+        optionalMetricsRepository
+    );
   }
 
   // This constructor is used mostly for testing purpose
@@ -130,9 +126,7 @@ public class TopicManager implements Closeable {
         kafkaOperationTimeoutMs,
         topicDeletionStatusPollIntervalMs,
         topicMinLogCompactionLagMs,
-        DEFAULT_CONCURRENT_TOPIC_DELETION_REQUEST_POLICY,
         kafkaClientFactory,
-        Optional.empty(),
         Optional.empty()
     );
   }
@@ -467,7 +461,7 @@ public class TopicManager implements Closeable {
     // TODO: Remove the isConcurrentTopicDeleteRequestsEnabled flag and make topic deletion to be always blocking or
     // refactor this method to actually support concurrent topic deletion if that's something we want.
     // This is trying to guard concurrent topic deletion in Kafka.
-    if (!isConcurrentTopicDeleteRequestsEnabled &&
+    if (!CONCURRENT_TOPIC_DELETION_REQUEST_POLICY &&
         /**
          * TODO: Add support for this call in the {@link com.linkedin.venice.kafka.admin.KafkaAdminClient}
          * This is the last remaining call that depends on {@link kafka.utils.ZkUtils}.
@@ -739,12 +733,19 @@ public class TopicManager implements Closeable {
     return partitionOffsetFetcher.partitionsFor(topic);
   }
 
-  private synchronized KafkaConsumer<byte[], byte[]> getRawBytesConsumer(boolean closeAndRecreate) {
+  /**
+   * @deprecated this is only used by {@link #isTopicFullyDeleted(String, boolean)} in cases where the
+   *             {@link com.linkedin.venice.kafka.admin.ScalaAdminUtils} is used. We should deprecate
+   *             both the Scala admin as well as this function, so please do not proliferate its usage
+   *             in new code paths.
+   */
+  @Deprecated
+  private synchronized Consumer<byte[], byte[]> getRawBytesConsumer(boolean closeAndRecreate) {
     if (this.kafkaRawBytesConsumer == null) {
-      this.kafkaRawBytesConsumer = kafkaClientFactory.getKafkaConsumer(kafkaClientFactory.getKafkaRawBytesConsumerProps());
+      this.kafkaRawBytesConsumer = kafkaClientFactory.getRawBytesKafkaConsumer();
     } else if (closeAndRecreate) {
       this.kafkaRawBytesConsumer.close(kafkaOperationTimeoutMs, TimeUnit.MILLISECONDS);
-      this.kafkaRawBytesConsumer = kafkaClientFactory.getKafkaConsumer(kafkaClientFactory.getKafkaRawBytesConsumerProps());
+      this.kafkaRawBytesConsumer = kafkaClientFactory.getRawBytesKafkaConsumer();
       logger.info("Closed and recreated consumer.");
     }
     return this.kafkaRawBytesConsumer;
