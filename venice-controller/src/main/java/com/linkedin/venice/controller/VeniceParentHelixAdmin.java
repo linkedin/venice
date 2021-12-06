@@ -1028,7 +1028,7 @@ public class VeniceParentHelixAdmin implements Admin {
 
         // Kill the existing job if incoming push type is not an inc push and also not a repush job.
         logger.info("Found running repush job with push id: " + existingPushJobId + " and incoming push is a batch "
-            + "job or stream reprocessing job with push id: " + pushJobId + ". Killing the repush job");
+            + "job or stream reprocessing job with push id: " + pushJobId + ". Killing the repush job for store " + storeName);
         killOfflinePush(clusterName, currentPushTopic.get(), true);
       } else if (isExistingPushJobARepush && pushType.isIncremental()
           && INCREMENTAL_PUSH_SAME_AS_REAL_TIME.equals(version.get().getIncrementalPushPolicy())) {
@@ -1036,7 +1036,7 @@ public class VeniceParentHelixAdmin implements Admin {
         // as INCREMENTAL_PUSH_SAME_AS_REAL_TIME.
         logger.info("Found running repush job with push id: " + existingPushJobId + " and incoming push is an "
             + "incremental push with push id: " + pushJobId + " with incremental push policy: " +
-            INCREMENTAL_PUSH_SAME_AS_REAL_TIME + ". Letting the push continue");
+            INCREMENTAL_PUSH_SAME_AS_REAL_TIME + ". Letting the push continue for store " + storeName);
       } else {
         throw new VeniceException("Unable to start the push with pushJobId " + pushJobId + " for store " + storeName
             + ". An ongoing push with pushJobId " + existingPushJobId + " and topic " + currentPushTopic
