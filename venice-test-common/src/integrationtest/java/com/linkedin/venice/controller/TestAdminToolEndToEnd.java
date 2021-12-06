@@ -15,9 +15,11 @@ import com.linkedin.venice.helix.HelixReadOnlyLiveClusterConfigRepository;
 import com.linkedin.venice.helix.ZkClientFactory;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.Utils;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
@@ -209,5 +211,15 @@ public class TestAdminToolEndToEnd {
       Assert.assertFalse(versionCreationResponse.isError());
       Assert.assertEquals(versionCreationResponse.getVersion(), 1);
     }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testNodeReplicasReadinessCommand() throws Exception {
+    VeniceServerWrapper server =  venice.getVeniceServers().get(0);
+    String[] nodeReplicasReadinessArgs =
+        {"--node-replicas-readiness", "--url", venice.getMasterVeniceController().getControllerUrl(),
+            "--cluster", clusterName,
+            "--storage-node", Utils.getHelixNodeIdentifier(server.getPort())};
+    AdminTool.main(nodeReplicasReadinessArgs);
   }
 }
