@@ -3,6 +3,7 @@ package com.linkedin.venice.controller;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.admin.ScalaAdminUtils;
 import com.linkedin.venice.status.BatchJobHeartbeatConfigs;
 import com.linkedin.venice.utils.RegionUtils;
@@ -154,6 +155,8 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   private final boolean useKafkaMirrorMaker;
 
+  private final boolean autoCloseIdleConsumersEnabled;
+
   public VeniceControllerConfig(VeniceProperties props) {
     super(props);
     this.adminPort = props.getInt(ADMIN_PORT);
@@ -297,6 +300,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     this.emergencySourceRegion = props.getString(EMERGENCY_SOURCE_REGION, "");
     this.allowClusterWipe = props.getBoolean(ALLOW_CLUSTER_WIPE, false);
     this.useKafkaMirrorMaker = props.getBoolean(USE_KAFKA_MIRROR_MAKER, true);
+    this.autoCloseIdleConsumersEnabled = props.getBoolean(AUTO_CLOSE_IDLE_CONSUMERS_ENABLED, KafkaClientFactory.DEFAULT_AUTO_CLOSE_IDLE_CONSUMERS_ENABLED);
   }
 
   private void validateActiveActiveConfigs() {
@@ -595,6 +599,10 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   public boolean isUsingKMM() {
     return useKafkaMirrorMaker;
+  }
+
+  public boolean isAutoCloseIdleConsumersEnabled() {
+    return autoCloseIdleConsumersEnabled;
   }
 
   /**

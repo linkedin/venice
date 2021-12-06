@@ -443,7 +443,7 @@ public class TestUtils {
     }
 
     @Override
-    protected KafkaClientFactory clone(String kafkaBootstrapServers, String kafkaZkAddress) {
+    protected KafkaClientFactory clone(String kafkaBootstrapServers, String kafkaZkAddress, Optional<MetricsParameters> metricsParameters) {
       return new TestKafkaClientFactory(kafkaBootstrapServers, kafkaZkAddress);
     }
   }

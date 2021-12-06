@@ -59,6 +59,8 @@ import com.linkedin.venice.helix.ZkClientFactory;
 import com.linkedin.venice.helix.ZkRoutersClusterManager;
 import com.linkedin.venice.helix.ZkStoreConfigAccessor;
 import com.linkedin.venice.helix.ZkWhitelistAccessor;
+import com.linkedin.venice.kafka.KafkaClientFactory;
+import com.linkedin.venice.kafka.KafkaClientFactory.MetricsParameters;
 import com.linkedin.venice.kafka.TopicDoesNotExistException;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.TopicManagerRepository;
@@ -268,7 +270,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     private final HelixReadOnlyStoreConfigRepository storeConfigRepo;
     private final VeniceWriterFactory veniceWriterFactory;
     private final VeniceControllerConsumerFactory veniceConsumerFactory;
-    private final int minNumberOfUnusedKafkaTopicsToPreserve;
     private final int minNumberOfStoreVersionsToPreserve;
     private final StoreGraveyard storeGraveyard;
     private final Map<String, String> participantMessageStoreRTTMap;
@@ -345,7 +346,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         this.deprecatedJobTopicMaxRetentionMs = multiClusterConfigs.getDeprecatedJobTopicMaxRetentionMs();
         this.backupVersionDefaultRetentionMs = multiClusterConfigs.getBackupVersionDefaultRetentionMs();
 
-        this.minNumberOfUnusedKafkaTopicsToPreserve = multiClusterConfigs.getMinNumberOfUnusedKafkaTopicsToPreserve();
         this.minNumberOfStoreVersionsToPreserve = multiClusterConfigs.getMinNumberOfStoreVersionsToPreserve();
         this.d2Client = Utils.notNull(d2Client, "D2 client cannot be null.");
 
@@ -378,12 +378,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             throw new VeniceException("Failed to connect to ZK within " + ZkClient.DEFAULT_CONNECTION_TIMEOUT + " ms!");
         }
         this.admin = new ZKHelixAdmin(zkClientForHelixAdmin);
-        helixAdminClient = new ZkHelixAdminClient(multiClusterConfigs, metricsRepository);
+        this.helixAdminClient = new ZkHelixAdminClient(multiClusterConfigs, metricsRepository);
         //There is no way to get the internal zkClient from HelixManager or HelixAdmin. So create a new one here.
         this.zkClient = ZkClientFactory.newZkClient(multiClusterConfigs.getZkAddress());
         this.zkClient.subscribeStateChanges(new ZkClientStatusStats(metricsRepository, "controller-zk-client"));
         this.adapterSerializer = new HelixAdapterSerializer();
-        veniceConsumerFactory = new VeniceControllerConsumerFactory(commonConfig);
+        this.veniceConsumerFactory = new VeniceControllerConsumerFactory(
+            commonConfig,
+            Optional.of(new MetricsParameters(VeniceControllerConsumerFactory.class.getSimpleName(), metricsRepository))
+        );
 
         this.topicManagerRepository = new TopicManagerRepository(getKafkaBootstrapServers(isSslToKafka()),
                                                                  multiClusterConfigs.getKafkaZkAddress(),

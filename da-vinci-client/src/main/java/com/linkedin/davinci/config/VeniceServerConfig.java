@@ -3,6 +3,7 @@ package com.linkedin.davinci.config;
 import com.linkedin.davinci.store.rocksdb.RocksDBServerConfig;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.admin.KafkaAdminClient;
 import com.linkedin.venice.meta.IngestionMode;
 import com.linkedin.venice.utils.Time;
@@ -262,6 +263,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   private final boolean enableLiveConfigBasedKafkaThrottling;
 
+  private final boolean autoCloseIdleConsumersEnabled;
+
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     this(serverProperties, Optional.empty());
   }
@@ -408,6 +411,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     fastClassSchemaWarmupTimeout = serverProperties.getLong(SERVER_SCHEMA_FAST_CLASS_WARMUP_TIMEOUT, 2*Time.MS_PER_MINUTE);
     schemaPresenceCheckEnabled = serverProperties.getBoolean(SERVER_SCHEMA_PRESENCE_CHECK_ENABLED, true);
     enableLiveConfigBasedKafkaThrottling = serverProperties.getBoolean(SERVER_ENABLE_LIVE_CONFIG_BASED_KAFKA_THROTTLING, false);
+    autoCloseIdleConsumersEnabled = serverProperties.getBoolean(AUTO_CLOSE_IDLE_CONSUMERS_ENABLED, KafkaClientFactory.DEFAULT_AUTO_CLOSE_IDLE_CONSUMERS_ENABLED);
   }
 
   public int getListenerPort() {
@@ -783,5 +787,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public boolean isLiveConfigBasedKafkaThrottlingEnabled() {
     return enableLiveConfigBasedKafkaThrottling;
+  }
+
+  public boolean isAutoCloseIdleConsumersEnabled() {
+    return autoCloseIdleConsumersEnabled;
   }
 }

@@ -24,9 +24,9 @@ import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
 import org.apache.commons.io.IOUtils;
+import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
-import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.clients.consumer.OffsetAndTimestamp;
 import org.apache.kafka.common.PartitionInfo;
 import org.apache.kafka.common.TopicPartition;
@@ -45,14 +45,14 @@ public class PartitionOffsetFetcherImpl implements PartitionOffsetFetcher {
 
   private final Lock rawConsumerLock;
   private final Lock kafkaRecordConsumerLock;
-  private final Lazy<KafkaConsumer<byte[], byte[]>> kafkaRawBytesConsumer;
-  private final Lazy<KafkaConsumer<KafkaKey, KafkaMessageEnvelope>> kafkaRecordConsumer;
+  private final Lazy<Consumer<byte[], byte[]>> kafkaRawBytesConsumer;
+  private final Lazy<Consumer<KafkaKey, KafkaMessageEnvelope>> kafkaRecordConsumer;
   private final Lazy<KafkaAdminWrapper> kafkaAdminWrapper;
   private final Duration kafkaOperationTimeout;
 
   public PartitionOffsetFetcherImpl(
-      Lazy<KafkaConsumer<byte[], byte[]>> kafkaRawBytesConsumer,
-      Lazy<KafkaConsumer<KafkaKey, KafkaMessageEnvelope>> kafkaRecordConsumer,
+      Lazy<Consumer<byte[], byte[]>> kafkaRawBytesConsumer,
+      Lazy<Consumer<KafkaKey, KafkaMessageEnvelope>> kafkaRecordConsumer,
       Lazy<KafkaAdminWrapper> kafkaAdminWrapper,
       long kafkaOperationTimeoutMs
   ) {
@@ -525,7 +525,7 @@ public class PartitionOffsetFetcherImpl implements PartitionOffsetFetcher {
         if (timestamp <= record.timestamp()) {
           /**
            * There could be a race condition in this function:
-           * 1. In function: {@link #getPartitionsOffsetsByTime}, {@link KafkaConsumer#offsetsForTimes} is invoked.
+           * 1. In function: {@link #getPartitionsOffsetsByTime}, {@link Consumer#offsetsForTimes} is invoked.
            * 2. The asked timestamp is out of range.
            * 3. Some messages get produced to the topic.
            * 4. {@link #getOffsetByTimeIfOutOfRange} gets invoked, and it realizes that the latest message's timestamp

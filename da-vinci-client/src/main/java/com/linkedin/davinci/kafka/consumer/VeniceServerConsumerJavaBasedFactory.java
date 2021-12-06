@@ -5,6 +5,7 @@ import com.linkedin.venice.client.schema.SchemaReader;
 import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.admin.KafkaAdminClient;
 import com.linkedin.venice.utils.VeniceProperties;
+import io.tehuti.metrics.MetricsRepository;
 import java.util.Optional;
 import java.util.Properties;
 
@@ -12,8 +13,12 @@ import static com.linkedin.venice.ConfigKeys.*;
 
 
 public class VeniceServerConsumerJavaBasedFactory extends VeniceServerConsumerFactory {
-  public VeniceServerConsumerJavaBasedFactory(VeniceServerConfig serverConfig, Optional<SchemaReader> kafkaMessageEnvelopeSchemaReader) {
-    super(serverConfig, kafkaMessageEnvelopeSchemaReader);
+  public VeniceServerConsumerJavaBasedFactory(
+      VeniceServerConfig serverConfig,
+      Optional<SchemaReader> kafkaMessageEnvelopeSchemaReader,
+      Optional<MetricsParameters> metricsParameters
+  ) {
+    super(serverConfig, kafkaMessageEnvelopeSchemaReader, metricsParameters);
   }
 
   @Override
@@ -22,10 +27,14 @@ public class VeniceServerConsumerJavaBasedFactory extends VeniceServerConsumerFa
   }
 
   @Override
-  protected KafkaClientFactory clone(String kafkaBootstrapServers, String kafkaZkAddress) {
+  protected KafkaClientFactory clone(String kafkaBootstrapServers, String kafkaZkAddress, Optional<MetricsParameters> metricsParameters) {
     Properties clonedProperties = this.serverConfig.getClusterProperties().toProperties();
     clonedProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, kafkaBootstrapServers);
     clonedProperties.setProperty(KAFKA_ZK_ADDRESS, kafkaZkAddress);
-    return new VeniceServerConsumerJavaBasedFactory(new VeniceServerConfig(new VeniceProperties(clonedProperties)), kafkaMessageEnvelopeSchemaReader);
+    return new VeniceServerConsumerJavaBasedFactory(
+        new VeniceServerConfig(new VeniceProperties(clonedProperties)),
+        kafkaMessageEnvelopeSchemaReader,
+        metricsParameters
+    );
   }
 }

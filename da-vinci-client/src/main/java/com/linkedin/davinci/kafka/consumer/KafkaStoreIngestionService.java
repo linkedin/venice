@@ -26,6 +26,7 @@ import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.helix.HelixReadOnlyZKSharedSchemaRepository;
+import com.linkedin.venice.kafka.KafkaClientFactory.MetricsParameters;
 import com.linkedin.venice.kafka.TopicManagerRepository;
 import com.linkedin.venice.kafka.consumer.ApacheKafkaConsumer;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
@@ -199,15 +200,20 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     this.topicLockManager = new ResourceAutoClosableLockManager(() -> new ReentrantLock());
 
     VeniceServerConfig serverConfig = veniceConfigLoader.getVeniceServerConfig();
-    VeniceServerConsumerFactory veniceConsumerFactory = new VeniceServerConsumerFactory(serverConfig, kafkaMessageEnvelopeSchemaReader);
+    VeniceServerConsumerFactory veniceConsumerFactory = new VeniceServerConsumerFactory(
+        serverConfig,
+        kafkaMessageEnvelopeSchemaReader,
+        Optional.of(new MetricsParameters(VeniceServerConsumerFactory.class.getSimpleName(), metricsRepository))
+    );
 
     /**
      * This new veniceConsumerJavaBasedFactory (underneath it works with java based admin client only) is needed for leader_offset_lag metrics to work.
      * TODO: This should be removed once the VeniceServerConsumerFactory uses java based admin client in production reliably.
      */
     VeniceServerConsumerJavaBasedFactory veniceConsumerJavaBasedFactory = new VeniceServerConsumerJavaBasedFactory(
-            serverConfig,
-            kafkaMessageEnvelopeSchemaReader
+        serverConfig,
+        kafkaMessageEnvelopeSchemaReader,
+        Optional.of(new MetricsParameters(VeniceServerConsumerJavaBasedFactory.class.getSimpleName(), metricsRepository))
     );
 
     Properties veniceWriterProperties = veniceConfigLoader.getVeniceClusterConfig().getClusterProperties().toProperties();

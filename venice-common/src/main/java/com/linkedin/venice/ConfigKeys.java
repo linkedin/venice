@@ -1709,5 +1709,10 @@ public class ConfigKeys {
 
   public static final String SERVER_ENABLE_LIVE_CONFIG_BASED_KAFKA_THROTTLING = "server.enable.live.config.based.kafka.throttling";
 
+  /**
+   * Enable usage of {@link com.linkedin.venice.kafka.consumer.AutoClosingKafkaConsumer} instead of the raw
+   * {@link org.apache.kafka.clients.consumer.KafkaConsumer}.
+   */
+  public static final String AUTO_CLOSE_IDLE_CONSUMERS_ENABLED = "auto.close.idle.consumers";
 }
 

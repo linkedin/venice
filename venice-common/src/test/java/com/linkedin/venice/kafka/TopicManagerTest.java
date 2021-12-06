@@ -505,7 +505,7 @@ public class TopicManagerTest {
     // Throw Kafka TimeoutException when trying to get max offset
     KafkaConsumer<byte[], byte[]> mockKafkaConsumer = mock(KafkaConsumer.class);
     doThrow(new TimeoutException()).when(mockKafkaConsumer).endOffsets(any(), any());
-    doReturn(mockKafkaConsumer).when(mockKafkaClientFactory).getKafkaConsumer(any());
+    doReturn(mockKafkaConsumer).when(mockKafkaClientFactory).getRawBytesKafkaConsumer();
 
     TopicManager topicManager = new TopicManager(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, MIN_COMPACTION_LAG, mockKafkaClientFactory);
     Assert.assertThrows(VeniceOperationAgainstKafkaTimedOut.class, () -> topicManager.getPartitionLatestOffsetAndRetry(topic, 0, 10));

@@ -22,7 +22,8 @@ public class AbstractVeniceStats {
 
   public AbstractVeniceStats(MetricsRepository metricsRepository, String name) {
     this.metricsRepository = metricsRepository;
-    this.name = name;
+    // N.B. colons are illegal characters in mbeans so they cause issues if we let them slip in...
+    this.name = name == null ? name : name.replace(':', '_');
     this.sensors = new VeniceConcurrentHashMap<>();
   }
 
@@ -36,11 +37,11 @@ public class AbstractVeniceStats {
   }
 
   protected Sensor registerSensor(String sensorName, MeasurableStat... stats) {
-    return registerSensor(sensorName, null, stats);
+    return registerSensor(getSensorFullName(getName(), sensorName), null, null, stats);
   }
 
-  protected Sensor registerSensor(String sensorName, MetricConfig config, MeasurableStat... stats) {
-    return registerSensor(getSensorFullName(getName(), sensorName), config, null, stats);
+  protected Sensor registerSensor(String sensorName, Sensor[] parents, MeasurableStat... stats) {
+    return registerSensor(getSensorFullName(getName(), sensorName), null, parents, stats);
   }
 
   protected Sensor registerSensor(String sensorFullName, MetricConfig config, Sensor[] parents, MeasurableStat... stats) {

@@ -8,6 +8,7 @@ import com.linkedin.venice.controller.ZkAdminTopicMetadataAccessor;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
 import com.linkedin.venice.kafka.KafkaClientFactory;
+import com.linkedin.venice.kafka.KafkaClientFactory.MetricsParameters;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
@@ -56,7 +57,10 @@ public class AdminConsumerService extends AbstractVeniceService {
       String adminTopicSourceRegion = config.getAdminTopicSourceRegion();
       remoteKafkaServerUrl = Optional.of(config.getChildDataCenterKafkaUrlMap().get(adminTopicSourceRegion));
       remoteKafkaZkAddress = Optional.of(config.getChildDataCenterKafkaZkMap().get(adminTopicSourceRegion));
-      this.consumerFactory = admin.getVeniceConsumerFactory().clone(remoteKafkaServerUrl.get(), remoteKafkaZkAddress.get());
+      String localFactoryName = admin.getVeniceConsumerFactory().getClass().getSimpleName();
+      String remoteFactoryName = localFactoryName + "_for_remote_" + remoteKafkaServerUrl.get();
+      Optional<MetricsParameters> metricsParameters = Optional.of(new MetricsParameters(remoteFactoryName, metricsRepository));
+      this.consumerFactory = admin.getVeniceConsumerFactory().clone(remoteKafkaServerUrl.get(), remoteKafkaZkAddress.get(), metricsParameters);
     } else {
       this.consumerFactory = admin.getVeniceConsumerFactory();
       remoteKafkaServerUrl = Optional.empty();
