@@ -1,5 +1,6 @@
 package com.linkedin.davinci.repository;
 
+import com.linkedin.venice.client.exceptions.ServiceDiscoveryException;
 import com.linkedin.venice.client.store.AvroSpecificStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
@@ -9,8 +10,6 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.ZKStore;
-import com.linkedin.venice.meta.systemstore.schemas.StoreMetadataKey;
-import com.linkedin.venice.meta.systemstore.schemas.StoreMetadataValue;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.system.store.MetaStoreDataType;
@@ -19,6 +18,7 @@ import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
 import com.linkedin.venice.systemstore.schemas.StoreProperties;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+
 import java.util.HashMap;
 import java.util.Map;
 
@@ -48,7 +48,7 @@ public class ThinClientMetaStoreBasedRepository extends NativeMetadataRepository
   public void subscribe(String storeName) throws InterruptedException {
     if (VeniceSystemStoreType.getSystemStoreType(storeName) != null) {
       throw new UnsupportedOperationException(
-          "The implementation " + this.getClass().getSimpleName() + " should not be subscribing to system store: "
+          "The implementation " + getClass().getSimpleName() + " should not be subscribing to system store: "
               + storeName + ". Something is mis-configured");
     } else {
       super.subscribe(storeName);
@@ -80,15 +80,16 @@ public class ThinClientMetaStoreBasedRepository extends NativeMetadataRepository
     StoreMetaValue value;
     try {
       if (icProvider != null) {
-        value = icProvider.call(this.getClass().getCanonicalName(), () -> getAvroClientForMetaStore(storeName).get(key))
+        value = icProvider.call(getClass().getCanonicalName(), () -> getAvroClientForMetaStore(storeName).get(key))
             .get();
       } else {
         value = getAvroClientForMetaStore(storeName).get(key).get();
       }
+    } catch (ServiceDiscoveryException e) {
+      throw e;
     } catch (Exception e) {
       throw new VeniceException(
-          "Failed to get data from meta store using thin client for store: " + storeName + " with key: "
-              + key.toString());
+          "Failed to get data from meta store using thin client for store: " + storeName + " with key: " + key, e);
     }
     if (value == null) {
       throw new MissingKeyInStoreMetadataException(key.toString(), StoreMetaValue.class.getSimpleName());

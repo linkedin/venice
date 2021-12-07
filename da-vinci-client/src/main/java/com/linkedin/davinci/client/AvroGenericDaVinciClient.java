@@ -10,6 +10,8 @@ import com.linkedin.davinci.storage.chunking.GenericChunkingAdapter;
 import com.linkedin.davinci.storage.chunking.GenericRecordChunkingAdapter;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheConfig;
+
+import com.linkedin.venice.client.exceptions.ServiceDiscoveryException;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.stats.ClientStats;
 import com.linkedin.venice.client.store.AvroComputeRequestBuilderV4;
@@ -580,7 +582,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
                       ", kafkaBootstrapServers=" + response.getKafkaBootstrapServers());
       return response;
     } catch (Throwable e) {
-      throw new VeniceClientException("Unable to discover Venice service, storeName=" + getStoreName(), e);
+      throw new ServiceDiscoveryException("Failed to discover Venice service, storeName=" + getStoreName(), e);
     }
   }
 

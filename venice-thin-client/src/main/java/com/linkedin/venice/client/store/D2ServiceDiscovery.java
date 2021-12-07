@@ -1,19 +1,21 @@
 package com.linkedin.venice.client.store;
 
-import com.linkedin.venice.client.exceptions.VeniceClientException;
+import com.linkedin.venice.client.exceptions.ServiceDiscoveryException;
 import com.linkedin.venice.client.store.transport.D2TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponseV2;
-import com.linkedin.venice.exceptions.VeniceException;
+
 import io.tehuti.utils.SystemTime;
 import io.tehuti.utils.Time;
-import java.util.Collections;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
+
 import org.apache.log4j.Logger;
 import org.codehaus.jackson.map.DeserializationConfig;
 import org.codehaus.jackson.map.ObjectMapper;
+
+import java.util.Collections;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 
 import static com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponseV2.*;
 
@@ -45,7 +47,7 @@ public class D2ServiceDiscovery {
       final long SLEEP_TIME_BETWEEN_ATTEMPTS = 5 * Time.MS_PER_SECOND;
       while (response == null) {
         if (currentAttempt >= MAX_ATTEMPT) {
-          throw new VeniceException("Could not fetch from the service discovery endpoint after " + MAX_ATTEMPT + " attempts.");
+          throw new ServiceDiscoveryException("Failed to find d2 service for store " + storeName + " after " + MAX_ATTEMPT + " attempts.");
         }
         if (currentAttempt > 0) {
           // Back off
@@ -53,12 +55,13 @@ public class D2ServiceDiscovery {
               + ". Will sleep " + SLEEP_TIME_BETWEEN_ATTEMPTS + " ms and retry.");
           time.sleep(SLEEP_TIME_BETWEEN_ATTEMPTS);
         }
-        CompletableFuture<TransportClientResponse> responseFuture = client.get(TYPE_D2_SERVICE_DISCOVERY + "/" + storeName,
+        CompletableFuture<TransportClientResponse> responseFuture = client.get(
+            TYPE_D2_SERVICE_DISCOVERY + "/" + storeName,
             Collections.singletonMap(D2_SERVICE_DISCOVERY_RESPONSE_V2_ENABLED, "true"));
         try {
           response = responseFuture.get();
-        } catch (ExecutionException getResponseException) {
-          LOGGER.warn("ExecutionException when trying to get the service discovery response", getResponseException);
+        } catch (ExecutionException e) {
+          LOGGER.warn("ExecutionException when trying to get the service discovery response", e);
           response = null;
         }
         currentAttempt++;
@@ -68,13 +71,13 @@ public class D2ServiceDiscovery {
           .configure(DeserializationConfig.Feature.FAIL_ON_UNKNOWN_PROPERTIES, false);
       D2ServiceDiscoveryResponseV2 d2ServiceDiscoveryResponse = mapper.readValue(body, D2ServiceDiscoveryResponseV2.class);
       if (d2ServiceDiscoveryResponse.isError()) {
-        throw new VeniceClientException(
-            "Unable to find d2 service for store: " + storeName + ". " + d2ServiceDiscoveryResponse.getError());
+        throw new ServiceDiscoveryException(
+            "Failed to find d2 service for store: " + storeName + ". " + d2ServiceDiscoveryResponse.getError());
       }
       LOGGER.info("Found d2 service: " + d2ServiceDiscoveryResponse.getD2Service() + " for store: " + storeName);
       return d2ServiceDiscoveryResponse;
     } catch (Exception e) {
-      throw new VeniceClientException("Unable to find d2 service for store: " + storeName, e);
+      throw new ServiceDiscoveryException("Failed to find d2 service for store: " + storeName, e);
     }
   }
 }
