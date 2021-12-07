@@ -64,9 +64,7 @@ public class R2StorageNodeClient implements StorageNodeClient {
     RequestContext requestContext = new RequestContext();
     requestContext.getLocalAttrs().put(R2Constants.REQUEST_TIMEOUT, requestTimeout);
 
-    List<Client> clientList = nodeIdToR2ClientMap.computeIfAbsent(host.getNodeId(), h -> buildR2ClientList(sslFactory));
-    // randomly select a client
-    Client selectedClient = clientList.get(random.nextInt() % clientPoolSize);
+    Client selectedClient = getRandomR2Client(host.getNodeId());
     selectedClient.restRequest(request, requestContext, new R2ClientCallback(completedCallBack, failedCallBack, cancelledCallBack));
   }
 
@@ -77,6 +75,17 @@ public class R2StorageNodeClient implements StorageNodeClient {
       clientList.add(buildR2Client(sslEngineComponentFactory));
     }
     return clientList;
+  }
+
+  // randomly select a client
+  private Client getRandomR2Client(String node) {
+    List<Client> clientList = nodeIdToR2ClientMap.computeIfAbsent(node, h -> buildR2ClientList(sslFactory));
+    return getRandomClientFromList(clientList);
+  }
+  // For testing only
+  public Client getRandomClientFromList(List<Client> clientList) {
+    int selectedId = random.nextInt(clientPoolSize);
+    return clientList.get(selectedId);
   }
 
   private Client buildR2Client(Optional<SSLEngineComponentFactory> sslEngineComponentFactory) {
@@ -110,7 +119,7 @@ public class R2StorageNodeClient implements StorageNodeClient {
     }
     RestRequest restRequest = new RestRequestBuilder(requestUri).setMethod(request.getMethod()).build();
 
-    Client selectedClient = nodeIdToR2ClientMap.computeIfAbsent(request.getNodeId(), h -> buildR2ClientList(sslFactory)).get(random.nextInt() % clientPoolSize);
+    Client selectedClient = getRandomR2Client(request.getNodeId());
 
     if (request.hasTimeout()) {
       RequestContext requestContext = new RequestContext();
