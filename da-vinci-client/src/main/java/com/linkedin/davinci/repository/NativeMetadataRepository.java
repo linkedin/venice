@@ -1,5 +1,6 @@
 package com.linkedin.davinci.repository;
 
+import com.linkedin.venice.client.exceptions.ServiceDiscoveryException;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.compression.CompressionStrategy;
@@ -64,13 +65,11 @@ import static java.lang.Thread.*;
  */
 public abstract class NativeMetadataRepository
     implements SubscriptionBasedReadOnlyStoreRepository, ReadOnlySchemaRepository, ClusterInfoProvider {
-  protected static final int SUBSCRIBE_TIMEOUT_IN_SECONDS = 60;
   protected static final int THIN_CLIENT_RETRY_COUNT = 3;
   protected static final long THIN_CLIENT_RETRY_BACKOFF_MS = 10000;
 
   private static final long DEFAULT_REFRESH_INTERVAL_IN_SECONDS = 60;
   private static final Logger logger = Logger.getLogger(NativeMetadataRepository.class);
-  private static final int WAIT_TIME_FOR_NON_DETERMINISTIC_ACTIONS = Time.MS_PER_SECOND;
 
   protected final ClientConfig clientConfig;
 
@@ -113,22 +112,8 @@ public abstract class NativeMetadataRepository
 
   @Override
   public void subscribe(String storeName) throws InterruptedException {
-    if (subscribedStoreMap.containsKey(storeName)) {
-      return;
-    }
-    long timeoutTime = System.currentTimeMillis() + TimeUnit.SECONDS.toMillis(SUBSCRIBE_TIMEOUT_IN_SECONDS);
-    while (true) {
-      try {
-        refreshOneStore(storeName);
-        return;
-      } catch (MissingKeyInStoreMetadataException e) {
-        if (System.currentTimeMillis() > timeoutTime) {
-          // Unable to subscribe to the given store, cleanup so periodic refresh thread won't throw exceptions.
-          subscribedStoreMap.remove(storeName);
-          throw e;
-        }
-        Thread.sleep(WAIT_TIME_FOR_NON_DETERMINISTIC_ACTIONS);
-      }
+    if (!subscribedStoreMap.containsKey(storeName)) {
+      refreshOneStore(storeName);
     }
   }
 
@@ -162,20 +147,24 @@ public abstract class NativeMetadataRepository
 
   @Override
   public Store refreshOneStore(String storeName) {
-    getAndSetStoreConfigFromSystemStore(storeName);
-    StoreConfig storeConfig = storeConfigMap.get(storeName);
-    if (storeConfig == null) {
-      throw new VeniceException("StoreConfig is missing unexpectedly for store: " + storeName);
+    try {
+      getAndSetStoreConfigFromSystemStore(storeName);
+      StoreConfig storeConfig = storeConfigMap.get(storeName);
+      if (storeConfig == null) {
+        throw new VeniceException("StoreConfig is missing unexpectedly for store: " + storeName);
+      }
+      Store newStore = getStoreFromSystemStore(storeName, storeConfig.getCluster());
+      // isDeleting check to detect deleted store is only supported by meta system store based implementation.
+      if (newStore != null && !storeConfig.isDeleting()) {
+        putStore(newStore);
+        putStoreSchema(storeName);
+      } else {
+        removeStore(storeName);
+      }
+      return newStore;
+    } catch (ServiceDiscoveryException | MissingKeyInStoreMetadataException e) {
+      throw new VeniceNoStoreException(storeName, e);
     }
-    Store newStore = getStoreFromSystemStore(storeName, storeConfig.getCluster());
-    // isDeleting check to detect deleted store is only supported by meta system store based implementation.
-    if (newStore != null && !storeConfig.isDeleting()) {
-      putStore(newStore);
-      putStoreSchema(storeName);
-    } else {
-      removeStore(storeName);
-    }
-    return newStore;
   }
 
   // Unlike getStore, this method does not clone the store objects.
@@ -350,16 +339,16 @@ public abstract class NativeMetadataRepository
    */
   @Override
   public void refresh() {
-    try {
-      logger.debug("Refresh started for " + getClass().getSimpleName());
-      for (String storeName : subscribedStoreMap.keySet()) {
+    logger.debug("Refresh started for " + getClass().getSimpleName());
+    for (String storeName : subscribedStoreMap.keySet()) {
+      try {
         refreshOneStore(storeName);
+      } catch (Exception e) {
+        // Catch all exceptions here so the scheduled periodic refresh doesn't break and transient errors can be retried.
+        logger.warn("Caught an exception when trying to refresh " + getClass().getSimpleName(), e);
       }
-      logger.debug("Refresh finished for " + getClass().getSimpleName());
-    } catch (Exception e) {
-      // Catch all exceptions here so the scheduled periodic refresh doesn't break and transient errors can be retried.
-      logger.warn("Caught an exception when trying to refresh " + getClass().getSimpleName(), e);
     }
+    logger.debug("Refresh finished for " + getClass().getSimpleName());
   }
 
   /**

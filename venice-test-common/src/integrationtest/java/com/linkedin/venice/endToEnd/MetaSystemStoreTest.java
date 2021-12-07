@@ -18,6 +18,7 @@ import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
+import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
@@ -283,7 +284,7 @@ public class MetaSystemStoreTest {
     LOGGER.info("Resource cleanup is done for meta system store: " + metaSystemStoreName);
   }
 
-  @Test(timeOut = 60 * Time.MS_PER_SECOND)
+  @Test(timeOut = 120 * Time.MS_PER_SECOND)
   public void testThinClientMetaStoreBasedRepository() throws InterruptedException {
     String regularVeniceStoreName = TestUtils.getUniqueString("venice_store");
     createStoreAndMaterializeMetaSystemStore(regularVeniceStoreName);
@@ -314,7 +315,7 @@ public class MetaSystemStoreTest {
     }
   }
 
-  @Test(timeOut = 60 * Time.MS_PER_SECOND)
+  @Test(timeOut = 120 * Time.MS_PER_SECOND)
   public void testDaVinciClientMetaStoreBasedRepository() throws InterruptedException {
     String regularVeniceStoreName = TestUtils.getUniqueString("venice_store");
     createStoreAndMaterializeMetaSystemStore(regularVeniceStoreName);
@@ -495,6 +496,12 @@ public class MetaSystemStoreTest {
 
   private void verifyRepository(NativeMetadataRepository nativeMetadataRepository, String regularVeniceStoreName)
       throws InterruptedException {
+    assertNull(nativeMetadataRepository.getStore("Non-existing-store"));
+    expectThrows(VeniceNoStoreException.class,
+        () -> nativeMetadataRepository.getStoreOrThrow("Non-existing-store"));
+    expectThrows(VeniceNoStoreException.class,
+        () -> nativeMetadataRepository.subscribe("Non-existing-store"));
+
     nativeMetadataRepository.subscribe(regularVeniceStoreName);
     Store store = nativeMetadataRepository.getStore(regularVeniceStoreName);
     Store controllerStore = new ReadOnlyStore(
