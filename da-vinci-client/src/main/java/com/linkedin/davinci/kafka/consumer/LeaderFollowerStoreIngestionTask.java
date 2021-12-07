@@ -54,12 +54,12 @@ import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Lazy;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.PartitionUtils;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.ChunkAwareCallback;
 import com.linkedin.venice.writer.LeaderMetadataWrapper;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.nio.ByteBuffer;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -1046,11 +1046,15 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
        * otherwise, don't fail the push job, it's streaming ingestion now so it's serving online traffic already.
        */
       String logMsg = String.format(consumerTaskId + " partition %d received message with upstreamOffset: %d;"
-              + " but recorded upstreamOffset is: %d. New GUID: %s; previous producer GUID: %s."
-              + " Multiple leaders are producing.", consumerRecord.partition(), newUpstreamOffset,
+              + " but recorded upstreamOffset is: %d. Recorded producer GUID: %s; Received message producer GUID: %s; "
+              + "Received message producer host: %s. Multiple leaders are producing. ",
+          consumerRecord.partition(),
+          newUpstreamOffset,
           previousUpstreamOffset,
+          GuidUtils.getHexFromGuid(offsetRecord.getLeaderGUID()),
           GuidUtils.getHexFromGuid(kafkaValue.producerMetadata.producerGUID),
-          GuidUtils.getHexFromGuid(offsetRecord.getLeaderGUID()));
+          kafkaValue.leaderMetadataFooter == null ? "unknown" : kafkaValue.leaderMetadataFooter.hostName.toString()
+      );
 
       boolean lossy = true;
       try {
@@ -1069,8 +1073,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                 if (ByteUtils.equals(put.putValue.array(), put.putValue.position(), actualValue,
                     ValueRecord.SCHEMA_HEADER_LENGTH)) {
                   lossy = false;
-                  logMsg +=
-                      "\nBut this rewound PUT is not lossy because the data in the rewind message is the same as the data inside Venice";
+                  logMsg += Utils.NEW_LINE_CHAR;
+                  logMsg += "But this rewound PUT is not lossy because the data in the rewind message is the same as the data inside Venice";
                 }
               }
             }
@@ -1082,8 +1086,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             actualValue = storageEngine.get(consumerRecord.partition(), key.getKey());
             if (actualValue == null) {
               lossy = false;
-              logMsg +=
-                  "\nBut this rewound DELETE is not lossy because the data in the rewind message is deleted already";
+              logMsg += Utils.NEW_LINE_CHAR;
+              logMsg += "But this rewound DELETE is not lossy because the data in the rewind message is deleted already";
             }
             break;
           default:
@@ -1096,14 +1100,16 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
       if (lossy) {
         if (!partitionConsumptionState.isEndOfPushReceived()) {
-          logMsg += "\nFailing the job because lossy rewind happens during Grandfathering job";
+          logMsg += Utils.NEW_LINE_CHAR;
+          logMsg += "Failing the job because lossy rewind happens before receiving EndOfPush";
           logger.error(logMsg);
           versionedDIVStats.recordPotentiallyLossyLeaderOffsetRewind(storeName, versionNumber);
           VeniceException e = new VeniceException(logMsg);
-          reportStatusAdapter.reportError(Arrays.asList(partitionConsumptionState), logMsg, e);
+          reportStatusAdapter.reportError(Collections.singletonList(partitionConsumptionState), logMsg, e);
           throw e;
         } else {
-          logMsg += "\nDon't fail the job during streaming ingestion";
+          logMsg += Utils.NEW_LINE_CHAR;
+          logMsg += "Don't fail the job during streaming ingestion";
           logger.error(logMsg);
           versionedDIVStats.recordPotentiallyLossyLeaderOffsetRewind(storeName, versionNumber);
         }
