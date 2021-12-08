@@ -146,6 +146,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
   public final static String ETL_VALUE_SCHEMA_TRANSFORMATION = "etl.value.schema.transformation";
   public final static String TARGET_VERSION_FOR_INCREMENTAL_PUSH = "target.version.for.incremental.push";
   public final static String ALLOW_KIF_REPUSH_FOR_INC_PUSH_FROM_VT_TO_VT = "allow.kif.repush.for.inc.push.from.vt.to.vt";
+  public final static String SKIP_KIF_SAFETY_CHECKS_AND_TREAT_REPUSH_AS_REGULAR_PUSH = "skip.kif.safety.checks.and.treat.repush.as.regular.push";
 
   /**
    * Configs used to enable Kafka Input.
@@ -404,6 +405,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
     long reducerInactiveTimeoutInMs;
     boolean allowKifRepushForIncPushFromVTToVT;
     boolean kafkaInputCombinerEnabled;
+    boolean skipKifSafetyChecks;
     BufferReplayPolicy validateRemoteReplayPolicy;
   }
   protected PushJobSetting pushJobSetting;
@@ -617,6 +619,8 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
     pushJobSetting.isSourceETL = props.getBoolean(SOURCE_ETL, false);
     pushJobSetting.isSourceKafka = props.getBoolean(SOURCE_KAFKA, false);
     pushJobSetting.allowKifRepushForIncPushFromVTToVT = props.getBoolean(ALLOW_KIF_REPUSH_FOR_INC_PUSH_FROM_VT_TO_VT, false);
+    pushJobSetting.skipKifSafetyChecks = props.getBoolean(
+        SKIP_KIF_SAFETY_CHECKS_AND_TREAT_REPUSH_AS_REGULAR_PUSH, false);
     pushJobSetting.kafkaInputCombinerEnabled = props.getBoolean(KAFKA_INPUT_COMBINER_ENABLED, false);
 
     if (pushJobSetting.isSourceKafka) {
@@ -902,7 +906,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
         Optional<ByteBuffer> optionalCompressionDictionary = getCompressionDictionary();
         long pushStartTimeMs = System.currentTimeMillis();
         String pushId = pushStartTimeMs + "_" + props.getString(JOB_EXEC_URL, "failed_to_obtain_execution_url");
-        if (pushJobSetting.isSourceKafka) {
+        if (pushJobSetting.isSourceKafka && !pushJobSetting.skipKifSafetyChecks) {
           pushId = Version.generateRePushId(pushId);
           checkConflictWithIncrementalPush(pushJobSetting.kafkaInputTopic, storeSetting.sourceKafkaInputVersionInfo);
         }
