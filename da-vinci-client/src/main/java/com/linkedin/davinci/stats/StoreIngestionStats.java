@@ -157,6 +157,8 @@ public class StoreIngestionStats extends AbstractVeniceStats {
    */
   private final Sensor tombstoneCreationDCRSensor;
 
+  private final Sensor leaderDelegateRealTimeRecordLatencySensor;
+
   public StoreIngestionStats(MetricsRepository metricsRepository, VeniceServerConfig serverConfig,
                              String storeName) {
     super(metricsRepository, storeName);
@@ -246,6 +248,8 @@ public class StoreIngestionStats extends AbstractVeniceStats {
 
     timestampRegresssionDCRErrorRate = registerSensor("timestamp_regression_dcr_error", new Rate());
     offsetRegressionDCRErrorRate = registerSensor("offset_regression_dcr_error", new Rate());
+
+    leaderDelegateRealTimeRecordLatencySensor = registerSensor("leader_delegate_real_time_record_latency", new Avg(), new Max());
   }
 
   public StoreIngestionTask getStoreIngestionTask() {
@@ -424,6 +428,10 @@ public class StoreIngestionStats extends AbstractVeniceStats {
 
   public void recordOffsetRegressionDCRError() {
     offsetRegressionDCRErrorRate.record();
+  }
+
+  public void recordLeaderDelegateRealTimeRecordLatency(double latency) {
+    leaderDelegateRealTimeRecordLatencySensor.record(latency);
   }
 
   private static class StoreIngestionStatsCounter extends LambdaStat {

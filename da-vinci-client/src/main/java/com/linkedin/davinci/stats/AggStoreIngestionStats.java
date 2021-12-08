@@ -209,4 +209,9 @@ public class AggStoreIngestionStats extends AbstractVeniceAggStats<StoreIngestio
   public void recordTimeStampRegressionDCRError() {
     totalStats.recordTimeStampRegressionDCRError();
   }
+
+  public void recordLeaderDelegateRealTimeRecordLatency(String storeName, double latency) {
+    totalStats.recordLeaderDelegateRealTimeRecordLatency(latency);
+    getStoreStats(storeName).recordLeaderDelegateRealTimeRecordLatency(latency);
+  }
 }
