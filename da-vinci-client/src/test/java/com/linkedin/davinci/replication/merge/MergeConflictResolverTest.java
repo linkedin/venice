@@ -141,7 +141,7 @@ public class MergeConflictResolverTest {
     // validate null old value BUT with an existing timestamp telling us that this was a deleted record, deletes should win on a tie, meaning
     // this should get an ignore result
     mergeConflictResult  = mergeConflictResolver.put(Lazy.of(() -> null),
-        getByteBufferOfReplicationMetadata(timestampRecord), newBB, 20L, 1, 1,1, 0);
+        timestampRecord, newBB, 20L, 1, 1,1, 0);
     Assert.assertTrue(mergeConflictResult.isUpdateIgnored());
 
     // Validate null RMD for existing old value
@@ -194,7 +194,7 @@ public class MergeConflictResolverTest {
     Assert.assertEquals(mergeConflictResult.getValueSchemaID(), 1);
 
     // Validate delete wins on same timestamp
-    mergeConflictResult  = mergeConflictResolver.delete(getByteBufferOfReplicationMetadata(timestampRecord), 1, 20L,1, 0);
+    mergeConflictResult  = mergeConflictResolver.delete(timestampRecord, 1, 30L,1, 0);
     Assert.assertFalse(mergeConflictResult.isUpdateIgnored());
     Assert.assertEquals(mergeConflictResult.getValueSchemaID(), 1);
 
