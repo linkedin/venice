@@ -25,7 +25,6 @@ import com.linkedin.venice.kafka.TopicManagerRepository;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.Delete;
-import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.TopicSwitch;
@@ -47,7 +46,6 @@ import com.linkedin.venice.utils.DiskUsage;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Lazy;
 import com.linkedin.venice.utils.Time;
-import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.writer.DeleteMetadata;
 import com.linkedin.venice.writer.PutMetadata;
 import com.linkedin.venice.writer.VeniceWriterFactory;
@@ -79,7 +77,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   private static final Logger logger = Logger.getLogger(ActiveActiveStoreIngestionTask.class);
   private final int replicationMetadataVersionId;
   private final MergeConflictResolver mergeConflictResolver;
-  private final Map<GUID, Map<Integer, ReentrantLock>> partitionLockMapPerProducer = new VeniceConcurrentHashMap<>();
+  private final Lazy<KeyLevelLocksManager> keyLevelLocksManager;
   private final AggVersionedStorageIngestionStats aggVersionedStorageIngestionStats;
 
   public ActiveActiveStoreIngestionTask(
@@ -158,6 +156,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     this.replicationMetadataVersionId = version.getReplicationMetadataVersionId();
     this.mergeConflictResolver = new MergeConflictResolver(schemaRepo, storeName, replicationMetadataVersionId);
     this.aggVersionedStorageIngestionStats = versionedStorageIngestionStats;
+    int knownKafkaClusterNumber = serverConfig.getKafkaClusterIdToUrlMap().size();
+    this.keyLevelLocksManager = Lazy.of(() -> new KeyLevelLocksManager(getVersionTopic(), knownKafkaClusterNumber + 1));
   }
 
   @Override
@@ -171,23 +171,26 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       return super.delegateConsumerRecord(consumerRecordWrapper);
     } else {
       /**
-       * With Active-Active replication during multi-colo RT consumption same records from same producer GUID may be processed in
-       * different consumer threads. Even though DIV is thread safe and will correctly detect DUPLICATE message the
-       * consumer threads might produce the unique records in local VT out of order.
-       * {@link LeaderFollowerStoreIngestionTask#delegateConsumerRecord(VeniceConsumerRecordWrapper)} functions performs
-       * both the DIV + producing to kafka operations during RT consumption.
-       * Taking a lock here on the partition level for the producerGUID makes sure that DIV + producing to Kafka of records
-       * happen in order for a single partition.
+       * The below flow must be executed in a critical session for the same key:
+       * Read existing value/RMD from transient record cache/disk -> perform DCR and decide incoming value wins
+       * -> update transient record cache -> produce to VT (just call send, no need to wait for the produce future in the critical session)
+       *
+       * Otherwise, there could be race conditions:
+       * [fabric A thread]Read from transient record cache -> [fabric A thread]perform DCR and decide incoming value wins
+       * -> [fabric B thread]read from transient record cache -> [fabric B thread]perform DCR and decide incoming value wins
+       * -> [fabric B thread]update transient record cache -> [fabric B thread]produce to VT -> [fabric A thread]update transient record cache
+       * -> [fabric A thread]produce to VT
        */
-      final GUID producerGUID = consumerRecord.value().producerMetadata.producerGUID;
-      int partition = consumerRecord.partition();
-      Map<Integer, ReentrantLock> partitionLockMap = partitionLockMapPerProducer.computeIfAbsent(producerGUID, guid -> new VeniceConcurrentHashMap<>());
-      ReentrantLock partitionLock = partitionLockMap.computeIfAbsent(partition, key -> new ReentrantLock());
-      partitionLock.lock();
+      final long delegateRealTimeTopicRecordStartTimeInNs = System.nanoTime();
+      final ByteBuffer keyByteBuffer = ByteBuffer.wrap(consumerRecord.key().getKey());
+      ReentrantLock keyLevelLock = this.keyLevelLocksManager.get().acquireLockByKey(keyByteBuffer);
+      keyLevelLock.lock();
       try {
         return super.delegateConsumerRecord(consumerRecordWrapper);
       } finally {
-        partitionLock.unlock();
+        keyLevelLock.unlock();
+        this.keyLevelLocksManager.get().releaseLock(keyByteBuffer);
+        storeIngestionStats.recordLeaderDelegateRealTimeRecordLatency(storeName, LatencyUtils.getLatencyInMS(delegateRealTimeTopicRecordStartTimeInNs));
       }
     }
   }
