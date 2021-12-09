@@ -236,11 +236,12 @@ public class StoreIngestionTaskTest {
   private static final Schema REPLICATION_METADATA_SCHEMA = ReplicationMetadataSchemaGenerator.generateMetadataSchema(STRING_SCHEMA, 1);
   private static final RecordSerializer REPLICATION_METADATA_SERIALIZER = FastSerializerDeserializerFactory.getFastAvroGenericSerializer(REPLICATION_METADATA_SCHEMA);
 
-  private static final long putKeyFooTimestamp = 1L;
+  private static final long putKeyFooTimestamp = 2L;
   private static final long deleteKeyFooTimestamp = 2L;
   private static final long putKeyFooOffset = 1L;
   private static final long deleteKeyFooOffset = 2L;
 
+  private static final byte[] putKeyFooReplicationMetadataWithValueSchemaIdBytesDefault = createReplicationMetadataWithValueSchemaId(putKeyFooTimestamp - 1, putKeyFooOffset, EXISTING_SCHEMA_ID);
   private static final byte[] putKeyFooReplicationMetadataWithValueSchemaIdBytes = createReplicationMetadataWithValueSchemaId(putKeyFooTimestamp, putKeyFooOffset, EXISTING_SCHEMA_ID);
   private static final byte[] deleteKeyFooReplicationMetadataWithValueSchemaIdBytes = createReplicationMetadataWithValueSchemaId(deleteKeyFooTimestamp, deleteKeyFooOffset, EXISTING_SCHEMA_ID);
 
@@ -741,7 +742,7 @@ public class StoreIngestionTaskTest {
     AbstractStoragePartition mockStoragePartition = mock(AbstractStoragePartition.class);
     doReturn(mockStoragePartition).when(mockAbstractStorageEngine).getPartitionOrThrow(anyInt());
 
-    doReturn(putKeyFooReplicationMetadataWithValueSchemaIdBytes).when(mockStoragePartition).getReplicationMetadata(putKeyFoo);
+    doReturn(putKeyFooReplicationMetadataWithValueSchemaIdBytesDefault).when(mockStoragePartition).getReplicationMetadata(putKeyFoo);
     doReturn(deleteKeyFooReplicationMetadataWithValueSchemaIdBytes).when(mockStoragePartition).getReplicationMetadata(deleteKeyFoo);
 
     SchemaEntry schemaEntry = new SchemaEntry(1, "\"string\"");
