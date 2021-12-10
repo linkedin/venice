@@ -44,6 +44,7 @@ import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpVersion;
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -376,8 +377,10 @@ public class IsolatedIngestionUtils {
         long pid = properties.getLong(PID);
         destroyIsolatedIngestionProcessByPid(pid);
       }
+    } catch (FileNotFoundException e) {
+      logger.info("No lingering ingestion process was found, so there is nothing to cleanup. Moving on.");
     } catch (Exception e) {
-      logger.warn("Failed to load forked process metadata file:", e);
+      logger.warn("Caught an exception while trying to clean up a lingering ingestion process.", e);
     }
     releaseTargetPortBinding(configLoader.getVeniceServerConfig().getIngestionServicePort());
   }
@@ -440,9 +443,9 @@ public class IsolatedIngestionUtils {
     storeVenicePropertiesToFile(configBasePath, FORKED_PROCESS_METADATA_FILENAME, veniceProperties);
   }
 
-  public static VeniceProperties loadVenicePropertiesFromFile(String configPath) {
+  public static VeniceProperties loadVenicePropertiesFromFile(String configPath) throws FileNotFoundException {
     if (!(new File(configPath).exists())) {
-      throw new VeniceException("Config file: " + configPath + " does not exist.");
+      throw new FileNotFoundException("Config file: " + configPath + " does not exist.");
     }
     try {
       return Utils.parseProperties(configPath);
@@ -451,7 +454,8 @@ public class IsolatedIngestionUtils {
     }
   }
 
-  public static VeniceProperties loadVenicePropertiesFromFile(String basePath, String fileName) {
+  public static VeniceProperties loadVenicePropertiesFromFile(String basePath, String fileName)
+      throws FileNotFoundException {
     return loadVenicePropertiesFromFile(Paths.get(basePath, fileName).toAbsolutePath().toString());
   }
 
