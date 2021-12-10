@@ -1,27 +1,5 @@
 apply plugin: 'java-library'
 
-task buildJar(type: Jar) {
-  zip64 true
-  manifest {
-    attributes 'Implementation-Title': 'Venice Common',
-        'Implementation-Version': version
-  }
-  baseName = project.name
-  from { configurations.compile
-          .filter {!it.absolutePath.endsWith('.xml')}
-          .collect { it.isDirectory() ? it : zipTree(it) }
-  }
-  exclude 'META-INF/*.RSA', 'META-INF/*.SF','META-INF/*.DSA' // Necessary, otherwise Bouncy Castle introduces DSA files that mess with our build
-  with jar
-}
-
-jar {
-  manifest {
-    attributes 'Implementation-Title': 'Venice Common',
-        'Implementation-Version': version
-  }
-}
-
 dependencies {
   // Let's try to keep it clean! (i.e.: alphabetical)
 
@@ -77,3 +55,26 @@ dependencies {
   testImplementation libraries.kafkaClientsTest // TODO: Get rid of Kafka dependency in venice-common (used by TopicCreator)
   testImplementation project(':venice-controller')
 }
+
+jar {
+  manifest {
+    attributes 'Implementation-Title': 'Venice Common',
+      'Implementation-Version': version
+  }
+}
+
+task buildJar(type: Jar) {
+  zip64 true
+  manifest {
+    attributes 'Implementation-Title': 'Venice Common',
+      'Implementation-Version': version
+  }
+  baseName = project.name
+  from { configurations.compile
+    .filter {!it.absolutePath.endsWith('.xml')}
+    .collect { it.isDirectory() ? it : zipTree(it) }
+  }
+  exclude 'META-INF/*.RSA', 'META-INF/*.SF','META-INF/*.DSA' // Necessary, otherwise Bouncy Castle introduces DSA files that mess with our build
+  with jar
+}
+assemble.dependsOn(buildJar)

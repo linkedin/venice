@@ -141,6 +141,7 @@ task integrationTests(type: Test) {
   testClassesDirs = project.files(sourceSets.integrationTest.output.classesDirs)
   applyConcurrencyConfig(integrationTests)
 }
+check.dependsOn(integrationTests)
 
 task flakyIntegrationTests(type: Test) {
   useTestNG() {

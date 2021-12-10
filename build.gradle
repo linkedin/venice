@@ -308,12 +308,8 @@ subprojects {
     }
   }
 
-  task spotbugs {
-    dependsOn tasks.withType(SpotBugsTask)
-  }
-
   tasks.withType(Test) {
-    mustRunAfter ':spotbugs'
+    mustRunAfter tasks.withType(SpotBugsTask)
 
     // The ALPN version should match the JVM version
     if (JavaVersion.current().compareTo(JavaVersion.VERSION_11) < 0) {
@@ -366,8 +362,9 @@ subprojects {
 }
 
 task spotbugs {
-  dependsOn subprojects.collect { it.tasks.getByName('spotbugs') }
+  dependsOn subprojects.collect { it.tasks.withType(SpotBugsTask) }
 }
+check.dependsOn(spotbugs)
 
 test {
   mustRunAfter spotbugs
@@ -381,22 +378,6 @@ task flakyTests {
   )
 }
 
-task integrationTests {
-  mustRunAfter (
-    spotbugs,
-    test
-  )
-  dependsOn 'venice-test-common:integrationTests'
-}
-
-check {
-  dependsOn (
-    spotbugs,
-    test,
-    integrationTests
-  )
-}
-
 assemble {
   dependsOn (
     testClasses,
@@ -407,7 +388,6 @@ assemble {
 
 build {
   dependsOn (
-    'venice-common:buildJar',
     'venice-router:installDist',
     'venice-server:installDist',
     'venice-controller:installDist'
