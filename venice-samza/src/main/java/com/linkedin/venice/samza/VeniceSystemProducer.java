@@ -1,6 +1,7 @@
 package com.linkedin.venice.samza;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
+import com.linkedin.avroutil1.compatibility.SchemaParseConfiguration;
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.d2.balancer.D2ClientBuilder;
 import com.linkedin.venice.D2.D2ClientUtils;
@@ -60,6 +61,7 @@ import org.apache.samza.system.OutgoingMessageEnvelope;
 import org.apache.samza.system.SystemProducer;
 
 import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.schema.AvroSchemaParseUtils.*;
 
 
 public class VeniceSystemProducer implements SystemProducer {
@@ -302,14 +304,14 @@ public class VeniceSystemProducer implements SystemProducer {
         () -> this.controllerClient.getKeySchema(this.storeName)
     );
     LOGGER.info("Got [store: " + this.storeName + "] SchemaResponse for key schema: " + keySchemaResponse);
-    this.keySchema = Schema.parse(keySchemaResponse.getSchemaStr());
+    this.keySchema = parseSchemaFromJSONStrictValidation(keySchemaResponse.getSchemaStr());
 
     MultiSchemaResponse valueSchemaResponse = (MultiSchemaResponse)controllerRequestWithRetry(
         () -> this.controllerClient.getAllValueAndDerivedSchema(this.storeName)
     );
     LOGGER.info("Got [store: " + this.storeName + "] SchemaResponse for value schemas: " + valueSchemaResponse);
     for (MultiSchemaResponse.Schema valueSchema : valueSchemaResponse.getSchemas()) {
-      valueSchemaIds.put(Schema.parse(valueSchema.getSchemaStr()), new Pair<>(valueSchema.getId(), valueSchema.getDerivedSchemaId()));
+      valueSchemaIds.put(parseSchemaFromJSONLooseValidation(valueSchema.getSchemaStr()), new Pair<>(valueSchema.getId(), valueSchema.getDerivedSchemaId()));
     }
 
     if (pushType.equals(Version.PushType.STREAM_REPROCESSING)) {

@@ -31,7 +31,7 @@ import com.linkedin.venice.hadoop.pbnj.PostBulkLoadAnalysisMapper;
 import com.linkedin.venice.hadoop.ssl.SSLConfigurator;
 import com.linkedin.venice.hadoop.ssl.TempFileSSLConfigurator;
 import com.linkedin.venice.hadoop.ssl.UserCredentialsFactory;
-import com.linkedin.venice.hadoop.utils.AvroSchemaParseUtils;
+import com.linkedin.venice.schema.AvroSchemaParseUtils;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
@@ -1085,7 +1085,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
     boolean parseSchemaFailed = false;
 
     try {
-      AvroSchemaParseUtils.parseSchemaFromJSONWithExtendedValidation(fileSchemaString);
+      AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(fileSchemaString);
     } catch (Exception e) {
       if (extendedSchemaValidityCheckEnabled) {
         updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.EXTENDED_FILE_SCHEMA_VALIDATION_FAILED);
@@ -1096,7 +1096,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
 
     if (parseSchemaFailed) {
       try {
-        AvroSchemaParseUtils.parseSchemaFromJSONWithNoExtendedValidation(fileSchemaString);
+        AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation(fileSchemaString);
       } catch (Exception e) {
         updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.FILE_SCHEMA_VALIDATION_FAILED);
         throw new VeniceException(e);
