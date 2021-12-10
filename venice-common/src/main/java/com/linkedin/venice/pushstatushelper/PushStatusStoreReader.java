@@ -34,9 +34,15 @@ public class PushStatusStoreReader implements Closeable {
     this.heartbeatExpirationTimeInSeconds = heartbeatExpirationTimeInSeconds;
   }
 
-  public Map<CharSequence, Integer> getPartitionStatus(String storeName, int version, int partitionId, Optional<String> incrementalPushVersion) {
+  public Map<CharSequence, Integer> getPartitionStatus(String storeName, int version, int partitionId,
+      Optional<String> incrementalPushVersion) {
+    return getPartitionStatus(storeName, version, partitionId, incrementalPushVersion, Optional.empty());
+  }
+
+  public Map<CharSequence, Integer> getPartitionStatus(String storeName, int version, int partitionId,
+      Optional<String> incrementalPushVersion, Optional<String> incrementalPushPrefix) {
     AvroSpecificStoreClient<PushStatusKey, PushStatusValue> client = getVeniceClient(storeName);
-    PushStatusKey pushStatusKey = PushStatusStoreUtils.getPushKey(version, partitionId, incrementalPushVersion);
+    PushStatusKey pushStatusKey = PushStatusStoreUtils.getPushKey(version, partitionId, incrementalPushVersion, incrementalPushPrefix);
     try {
       PushStatusValue pushStatusValue = client.get(pushStatusKey).get();
       if (pushStatusValue == null) {
