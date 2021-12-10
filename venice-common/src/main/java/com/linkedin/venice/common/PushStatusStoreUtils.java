@@ -10,7 +10,7 @@ import java.util.Optional;
  */
 public class PushStatusStoreUtils {
   public enum PushStatusKeyType {
-    HEARTBEAT, FULL_PUSH, INCREMENTAL_PUSH;
+    HEARTBEAT, FULL_PUSH, INCREMENTAL_PUSH, SERVER_INCREMENTAL_PUSH;
   }
 
   public static PushStatusKey getHeartbeatKey(String instanceName) {
@@ -21,11 +21,18 @@ public class PushStatusStoreUtils {
   }
 
   public static PushStatusKey getPushKey(int version, int partitionId, Optional<String> incrementalPushVersion) {
+    return getPushKey(version, partitionId, incrementalPushVersion, Optional.empty());
+  }
+
+  public static PushStatusKey getPushKey(int version, int partitionId,
+      Optional<String> incrementalPushVersion, Optional<String> incrementalPushPrefix) {
     if (incrementalPushVersion.isPresent()) {
+      if (incrementalPushPrefix.isPresent()) {
+        return getServerIncrementalPushKey(version, partitionId, incrementalPushVersion.get(), incrementalPushPrefix.get());
+      }
       return getIncrementalPushKey(version, partitionId, incrementalPushVersion.get());
-    } else {
-      return getFullPushKey(version, partitionId);
     }
+    return getFullPushKey(version, partitionId);
   }
 
   public static PushStatusKey getFullPushKey(int version, int partitionId) {
@@ -39,6 +46,14 @@ public class PushStatusStoreUtils {
     PushStatusKey pushStatusKey = new PushStatusKey();
     pushStatusKey.keyStrings = Arrays.asList(version, partitionId, incrementalPushVersion);
     pushStatusKey.messageType = PushStatusKeyType.INCREMENTAL_PUSH.ordinal();
+    return pushStatusKey;
+  }
+
+  public static PushStatusKey getServerIncrementalPushKey(int version, int partitionId,
+      String incrementalPushVersion, String incrementalPushPrefix) {
+    PushStatusKey pushStatusKey = new PushStatusKey();
+    pushStatusKey.keyStrings = Arrays.asList(version, partitionId, incrementalPushVersion, incrementalPushPrefix);
+    pushStatusKey.messageType = PushStatusKeyType.SERVER_INCREMENTAL_PUSH.ordinal();
     return pushStatusKey;
   }
 }

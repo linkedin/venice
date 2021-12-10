@@ -5,12 +5,12 @@
   "fields": [
     {
       "name": "keyStrings",
-      "doc": "Composite key. For a heartbeat message, this is a string containing [instanceId + app_name]. For full push status, this is [version, partitionId]. For incremental push status, it could be a combination of version, push id and partition id.",
+      "doc": "Composite key. For a heartbeat message, this is a string containing [instanceId + app_name]. For full push status, this is [version, partitionId]. For Da-Vinci incremental push status, it could be a combination of version, push id and partition id. For a server incremental push status, version, push id, partition id, and incremental push prefix.",
       "type": {"type":  "array", "items": ["int", "string"]}
     },
     {
       "name": "messageType",
-      "doc": "0 -> Heartbeat Message, 1 -> Full Push, 2 -> Incremental Push.",
+      "doc": "0 -> Heartbeat Message, 1 -> Full Push, 2 -> Da-Vinci Incremental Push, 3 -> Server Incremental Push.",
       "type": "int"
     }
   ]

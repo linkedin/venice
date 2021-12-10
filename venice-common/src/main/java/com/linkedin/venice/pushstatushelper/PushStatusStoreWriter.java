@@ -1,4 +1,4 @@
-package com.linkedin.davinci;
+package com.linkedin.venice.pushstatushelper;
 
 import com.linkedin.venice.common.PushStatusStoreUtils;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
@@ -6,7 +6,6 @@ import com.linkedin.venice.pushstatus.NoOp;
 import com.linkedin.venice.pushstatus.PushStatusKey;
 import com.linkedin.venice.pushstatus.PushStatusValueWriteOpRecord;
 import com.linkedin.venice.pushstatus.instancesMapOps;
-import com.linkedin.venice.pushstatushelper.PushStatusStoreVeniceWriterCache;
 import com.linkedin.venice.pushstatus.PushStatusValue;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.writer.VeniceWriter;
@@ -53,8 +52,12 @@ public class PushStatusStoreWriter implements AutoCloseable {
   }
 
   public void writePushStatus(String storeName, int version, int partitionId, ExecutionStatus status, Optional<String> incrementalPushVersion) {
+    writePushStatus(storeName, version, partitionId, status, incrementalPushVersion, Optional.empty());
+  }
+
+  public void writePushStatus(String storeName, int version, int partitionId, ExecutionStatus status, Optional<String> incrementalPushVersion, Optional<String> incrementalPushPrefix) {
     VeniceWriter writer = veniceWriterCache.prepareVeniceWriter(storeName);
-    PushStatusKey pushStatusKey = PushStatusStoreUtils.getPushKey(version, partitionId, incrementalPushVersion);
+    PushStatusKey pushStatusKey = PushStatusStoreUtils.getPushKey(version, partitionId, incrementalPushVersion, incrementalPushPrefix);
     PushStatusValueWriteOpRecord writeComputeRecord = new PushStatusValueWriteOpRecord();
     instancesMapOps instances = new instancesMapOps();
     instances.mapUnion = Collections.singletonMap(instanceName, status.getValue());
