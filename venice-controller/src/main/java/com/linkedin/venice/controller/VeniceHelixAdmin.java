@@ -4008,7 +4008,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             details = Optional.of(moreDetailsBuilder.toString());
         }
 
-        // Retrive Da Vinci push status
+        // Retrieve Da Vinci push status
         // Da Vinci can only subscribe to an existing version, so skip 1st push
         if (store.isDaVinciPushStatusStoreEnabled() && (versionNumber > 1 || incrementalPushVersion.isPresent())) {
             Version version = store.getVersion(versionNumber)
@@ -4032,18 +4032,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         return new OfflinePushStatusInfo(executionStatus, details);
     }
 
+    // The method merges push status from Venice Server replicas and online Da Vinci hosts and return the unified status.
     private ExecutionStatus getOverallPushStatus(ExecutionStatus veniceStatus, ExecutionStatus daVinciStatus) {
         List<ExecutionStatus> statuses = Arrays.asList(veniceStatus, daVinciStatus);
-        Collections.sort(statuses, Comparator.comparingInt(STATUS_PRIORITIES::indexOf));
-        long failCount = statuses.stream().filter(s -> s == ExecutionStatus.ERROR).count();
-        ExecutionStatus currentStatus = statuses.get(0);
-        if (failCount == 1) {
-            currentStatus = ExecutionStatus.PROGRESS;
-        }
-        if (currentStatus.isTerminal() && failCount != 0) {
-            currentStatus = ExecutionStatus.ERROR;
-        }
-        return currentStatus;
+        statuses.sort(Comparator.comparingInt(STATUS_PRIORITIES::indexOf));
+        return statuses.get(0);
     }
 
     /**
