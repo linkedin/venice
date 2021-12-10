@@ -53,6 +53,7 @@ import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
@@ -134,7 +135,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
   private int stopConsumptionWaitRetriesNum;
   private DefaultIngestionBackend ingestionBackend;
 
-  public IsolatedIngestionServer(String configPath) {
+  public IsolatedIngestionServer(String configPath) throws FileNotFoundException {
     VeniceProperties loadedVeniceProperties = IsolatedIngestionUtils.loadVenicePropertiesFromFile(configPath);
     String configBasePath = (new VeniceConfigLoader(loadedVeniceProperties, loadedVeniceProperties)).getVeniceServerConfig().getDataBasePath();
     Optional<Map<String, Map<String, String>>> kafkaClusterMap = IsolatedIngestionUtils.loadForkedIngestionKafkaClusterMapConfig(configBasePath);
