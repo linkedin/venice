@@ -1,5 +1,6 @@
 package com.linkedin.venice.hadoop.utils;
 
+import com.linkedin.venice.schema.AvroSchemaParseUtils;
 import com.linkedin.venice.exceptions.VeniceException;
 import org.apache.avro.Schema;
 import org.testng.Assert;
@@ -55,12 +56,12 @@ public class TestAvroSchemaParseUtils {
     public void testParseSchemaFailExtendedValidation() {
         Exception expectedException = null;
         try {
-            AvroSchemaParseUtils.parseSchemaFromJSONWithExtendedValidation(SCHEMA_FAIL_EXTENDED_VALIDATION);
+            AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(SCHEMA_FAIL_EXTENDED_VALIDATION);
         } catch (Exception e) {
             expectedException = e;
         }
         Assert.assertNotNull(expectedException, "Expect to fail on parsing this schema with extended schema validation");
-        Schema schema = AvroSchemaParseUtils.parseSchemaFromJSONWithNoExtendedValidation(SCHEMA_FAIL_EXTENDED_VALIDATION);
+        Schema schema = AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation(SCHEMA_FAIL_EXTENDED_VALIDATION);
         Assert.assertNotNull(schema, "Expected to have a successfully parsed schema");
     }
 

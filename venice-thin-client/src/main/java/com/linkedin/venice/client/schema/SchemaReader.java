@@ -21,6 +21,8 @@ import org.apache.log4j.Logger;
 import org.codehaus.jackson.map.DeserializationConfig;
 import org.codehaus.jackson.map.ObjectMapper;
 
+import static com.linkedin.venice.schema.AvroSchemaParseUtils.*;
+
 
 /**
  * This class is used to fetch key/value schema for a given store.
@@ -201,7 +203,7 @@ public class SchemaReader extends MetadataReader implements SchemaRetriever {
           Schema writerSchema = preemptiveSchemaVerification(
                   // Use the "LOOSE" mode here since we might have registered schemas that do not pass the STRICT validation
                   // and that is allowed for now
-                  AvroCompatibilityHelper.parse(schemaStr, SchemaParseConfiguration.LOOSE, null).getMainSchema(),
+                  parseSchemaFromJSONLooseValidation(schemaStr),
                   schemaStr,
                   schema.getId()
           );
