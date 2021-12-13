@@ -494,7 +494,7 @@ public class TopicManagerTest {
   }
 
   @Test
-  public void testTimeoutOnGettingMaxOffset() {
+  public void testTimeoutOnGettingMaxOffset() throws IOException {
     String topic = TestUtils.getUniqueString("topic");
 
     KafkaClientFactory mockKafkaClientFactory = mock(KafkaClientFactory.class);
@@ -505,10 +505,17 @@ public class TopicManagerTest {
     // Throw Kafka TimeoutException when trying to get max offset
     KafkaConsumer<byte[], byte[]> mockKafkaConsumer = mock(KafkaConsumer.class);
     doThrow(new TimeoutException()).when(mockKafkaConsumer).endOffsets(any(), any());
+    doReturn(mockKafkaClientFactory).when(mockKafkaClientFactory).clone(any(), any(), any());
     doReturn(mockKafkaConsumer).when(mockKafkaClientFactory).getRawBytesKafkaConsumer();
 
-    TopicManager topicManager = new TopicManager(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, MIN_COMPACTION_LAG, mockKafkaClientFactory);
-    Assert.assertThrows(VeniceOperationAgainstKafkaTimedOut.class, () -> topicManager.getPartitionLatestOffsetAndRetry(topic, 0, 10));
+    try (TopicManager topicManagerForThisTest = new TopicManager(
+        DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
+        100,
+        MIN_COMPACTION_LAG,
+        mockKafkaClientFactory)
+    ) {
+      Assert.assertThrows(VeniceOperationAgainstKafkaTimedOut.class, () -> topicManagerForThisTest.getPartitionLatestOffsetAndRetry(topic, 0, 10));
+    }
   }
 
   @Test
@@ -610,17 +617,22 @@ public class TopicManagerTest {
   }
 
   @Test
-  public void testGetPartitionOffsetByTimeWithRetryFails() {
+  public void testGetPartitionOffsetByTimeWithRetryFails() throws IOException {
     String nonExistingTopic = TestUtils.getUniqueString("non-existing-topic");
     int[] maxAttempts = {1, 3, 5};
     // Create a new topic manager instance so that we can set the kafkaOperationTimeoutMs parameter to be shorter to make
     // this test case run more efficiently.
-    TopicManager topicManager = new TopicManager(TimeUnit.SECONDS.toMillis(1), 100, MIN_COMPACTION_LAG, TestUtils.getVeniceConsumerFactory(kafka));
-
-    for (int maxAttempt : maxAttempts) {
-      // Still fail even with retry
-      Assert.assertThrows(org.apache.kafka.common.errors.TimeoutException.class,
-          () -> topicManager.getPartitionOffsetByTimeWithRetry(nonExistingTopic, 0, 0, maxAttempt, Duration.ofMillis(1)));
+    try (TopicManager topicManagerForThisTest = new TopicManager(
+        TimeUnit.SECONDS.toMillis(1),
+        100,
+        MIN_COMPACTION_LAG,
+        TestUtils.getVeniceConsumerFactory(kafka))
+    ) {
+      for (int maxAttempt : maxAttempts) {
+        // Still fail even with retry
+        Assert.assertThrows(org.apache.kafka.common.errors.TimeoutException.class,
+            () -> topicManagerForThisTest.getPartitionOffsetByTimeWithRetry(nonExistingTopic, 0, 0, maxAttempt, Duration.ofMillis(1)));
+      }
     }
   }
 }

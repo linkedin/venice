@@ -9,7 +9,7 @@ import io.tehuti.metrics.stats.Count;
 import io.tehuti.metrics.stats.Max;
 import io.tehuti.metrics.stats.Min;
 import io.tehuti.metrics.stats.OccurrenceRate;
-import io.tehuti.metrics.stats.Total;
+import io.tehuti.metrics.stats.SampledCount;
 import java.util.Map;
 import java.util.WeakHashMap;
 
@@ -32,9 +32,9 @@ public class AutoClosingKafkaConsumerStats extends AbstractVeniceStats {
     // The replace is to avoid: javax.management.MalformedObjectNameException: Invalid character ':' in value part of property
     super(metricsRepository, name.replace(':', '_'));
     this.autoClose = registerSensor("auto_close",
-        new OccurrenceRate(), new Count(), new Total());
+        new OccurrenceRate(), new Count(), new SampledCount());
     this.autoCreate = registerSensor("auto_create",
-        new OccurrenceRate(), new Count(), new Total());
+        new OccurrenceRate(), new Count(), new SampledCount());
 
     this.durationFromCloseToCreate = registerSensor("duration_from_close_to_create_ms",
         new Sensor[]{this.autoCreate}, new Min(), new Max(), new Avg());

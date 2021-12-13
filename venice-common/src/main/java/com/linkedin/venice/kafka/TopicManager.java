@@ -4,6 +4,7 @@ import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.admin.KafkaAdminWrapper;
+import com.linkedin.venice.kafka.KafkaClientFactory.MetricsParameters;
 import com.linkedin.venice.kafka.partitionoffset.PartitionOffsetFetcher;
 import com.linkedin.venice.kafka.partitionoffset.PartitionOffsetFetcherFactory;
 import com.linkedin.venice.meta.HybridStoreConfig;
@@ -108,8 +109,20 @@ public class TopicManager implements Closeable {
       logger.info(this.getClass().getSimpleName() + " is using kafka admin client: " + kafkaAdmin.getClassName());
       return kafkaAdmin;
     });
+    Optional<MetricsParameters> metricsForPartitionOffsetFetcher = kafkaClientFactory.getMetricsParameters().map(mp ->
+        new MetricsParameters(
+            this.kafkaClientFactory.getClass(),
+            PartitionOffsetFetcher.class,
+            kafkaClientFactory.getKafkaBootstrapServers(),
+            mp.metricsRepository
+        )
+    );
     this.partitionOffsetFetcher = PartitionOffsetFetcherFactory.createDefaultPartitionOffsetFetcher(
-        kafkaClientFactory,
+        kafkaClientFactory.clone(
+            kafkaClientFactory.getKafkaBootstrapServers(),
+            kafkaClientFactory.getKafkaZkAddress(),
+            metricsForPartitionOffsetFetcher
+        ),
         kafkaAdmin,
         kafkaOperationTimeoutMs,
         optionalMetricsRepository

@@ -385,7 +385,14 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         this.adapterSerializer = new HelixAdapterSerializer();
         this.veniceConsumerFactory = new VeniceControllerConsumerFactory(
             commonConfig,
-            Optional.of(new MetricsParameters(VeniceControllerConsumerFactory.class.getSimpleName(), metricsRepository))
+            Optional.of(
+                new MetricsParameters(
+                    VeniceControllerConsumerFactory.class,
+                    this.getClass(),
+                    kafkaBootstrapServers,
+                    metricsRepository
+                )
+            )
         );
 
         this.topicManagerRepository = new TopicManagerRepository(getKafkaBootstrapServers(isSslToKafka()),

@@ -46,7 +46,9 @@ public class TopicManagerRepository implements Closeable {
     this.kafkaClientFactory = kafkaClientFactory;
     this.topicManagerCreator = (kafkaServerAndZk) -> {
       MetricsParameters metricsParameters = new MetricsParameters(
-          this.kafkaClientFactory.getClass().getSimpleName() + "_for_" + kafkaServerAndZk.getFirst(),
+          this.kafkaClientFactory.getClass(),
+          TopicManager.class,
+          kafkaServerAndZk.getFirst(),
           metricsRepository
       );
       final KafkaClientFactory kafkaClientFactoryClone = this.kafkaClientFactory.clone(

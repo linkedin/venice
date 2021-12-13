@@ -36,6 +36,7 @@ public abstract class KafkaClientFactory {
   protected final Optional<SchemaReader> kafkaMessageEnvelopeSchemaReader;
   private final Optional<AutoClosingKafkaConsumerStats> stats;
   private final boolean autoCloseIdleConsumersEnabled;
+  private final Optional<MetricsParameters> metricsParameters;
 
   protected KafkaClientFactory() {
     this(Optional.empty(), Optional.empty(), DEFAULT_AUTO_CLOSE_IDLE_CONSUMERS_ENABLED);
@@ -46,8 +47,13 @@ public abstract class KafkaClientFactory {
       Optional<MetricsParameters> metricsParameters,
       boolean autoCloseIdleConsumersEnabled) {
     this.kafkaMessageEnvelopeSchemaReader = Utils.notNull(kafkaMessageEnvelopeSchemaReader);
+    this.metricsParameters = metricsParameters;
     this.stats = metricsParameters.map(m -> new AutoClosingKafkaConsumerStats(m.metricsRepository, m.uniqueName));
     this.autoCloseIdleConsumersEnabled = autoCloseIdleConsumersEnabled;
+  }
+
+  public Optional<MetricsParameters> getMetricsParameters() {
+    return metricsParameters;
   }
 
   public KafkaConsumerWrapper getConsumer(Properties props) {
@@ -153,9 +159,14 @@ public abstract class KafkaClientFactory {
   public static class MetricsParameters {
     final String uniqueName;
     final MetricsRepository metricsRepository;
+
     public MetricsParameters(String uniqueMetricNamePrefix, MetricsRepository metricsRepository) {
       this.uniqueName = uniqueMetricNamePrefix;
       this.metricsRepository = metricsRepository;
+    }
+
+    public MetricsParameters(Class kafkaFactoryClass, Class usingClass, String kafkaBootstrapUrl, MetricsRepository metricsRepository) {
+      this(kafkaFactoryClass.getSimpleName() + "_used_by_" + usingClass + "_for_" + kafkaBootstrapUrl, metricsRepository);
     }
   }
 }

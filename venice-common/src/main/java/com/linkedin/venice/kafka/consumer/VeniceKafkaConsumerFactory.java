@@ -38,9 +38,12 @@ public class VeniceKafkaConsumerFactory extends KafkaClientFactory {
     return KafkaAdminClient.class.getName();
   }
 
+  /**
+   * @return the ZK address, or empty string if it was not specified
+   */
   @Override
   protected String getKafkaZkAddress() {
-    return veniceProperties.getString(ConfigKeys.KAFKA_ZK_ADDRESS);
+    return veniceProperties.getString(ConfigKeys.KAFKA_ZK_ADDRESS, "");
   }
 
   @Override
