@@ -46,7 +46,11 @@ public class AdminConsumerService extends AbstractVeniceService {
   private final Optional<SchemaReader> kafkaMessageEnvelopeSchemaReader;
 
 
-  public AdminConsumerService(VeniceHelixAdmin admin, VeniceControllerConfig config, MetricsRepository metricsRepository,
+  public AdminConsumerService(
+      String cluster,
+      VeniceHelixAdmin admin,
+      VeniceControllerConfig config,
+      MetricsRepository metricsRepository,
       Optional<SchemaReader> kafkaMessageEnvelopeSchemaReader) {
     this.config = config;
     this.admin = admin;
@@ -57,9 +61,14 @@ public class AdminConsumerService extends AbstractVeniceService {
       String adminTopicSourceRegion = config.getAdminTopicSourceRegion();
       remoteKafkaServerUrl = Optional.of(config.getChildDataCenterKafkaUrlMap().get(adminTopicSourceRegion));
       remoteKafkaZkAddress = Optional.of(config.getChildDataCenterKafkaZkMap().get(adminTopicSourceRegion));
-      String localFactoryName = admin.getVeniceConsumerFactory().getClass().getSimpleName();
-      String remoteFactoryName = localFactoryName + "_for_remote_" + remoteKafkaServerUrl.get();
-      Optional<MetricsParameters> metricsParameters = Optional.of(new MetricsParameters(remoteFactoryName, metricsRepository));
+      Optional<MetricsParameters> metricsParameters = Optional.of(
+          new MetricsParameters(
+              admin.getVeniceConsumerFactory().getClass(),
+              this.getClass(),
+              cluster + "_" + remoteKafkaServerUrl.get(),
+              metricsRepository
+          )
+      );
       this.consumerFactory = admin.getVeniceConsumerFactory().clone(remoteKafkaServerUrl.get(), remoteKafkaZkAddress.get(), metricsParameters);
     } else {
       this.consumerFactory = admin.getVeniceConsumerFactory();
