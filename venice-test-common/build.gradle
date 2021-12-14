@@ -117,21 +117,8 @@ classes.finalizedBy(jmhClasses)
 
 def applyConcurrencyConfig(task) {
   task.doFirst {
-    String forkEveryProperty = 'integrationTest.forkEvery'
-    if (project.hasProperty(forkEveryProperty)) {
-      println "$forkEveryProperty set to ${project.getProperty(forkEveryProperty)}"
-      task.forkEvery = Integer.parseInt(project.getProperty(forkEveryProperty))
-    } else {
-      println "$forkEveryProperty not set, will use the default ($task.forkEvery)."
-    }
-
-    String maxParallelForksProperty = 'integrationTest.maxParallelForks'
-    if (project.hasProperty(maxParallelForksProperty)) {
-      println "$maxParallelForksProperty set to ${project.getProperty(maxParallelForksProperty)}"
-      task.maxParallelForks = Integer.parseInt(project.getProperty(maxParallelForksProperty))
-    } else {
-      println "$maxParallelForksProperty not set, will use the default ($task.maxParallelForks)."
-    }
+    task.forkEvery = Integer.parseInt(project.properties.get('integrationTest.forkEvery', "$task.forkEvery"))
+    task.maxParallelForks = Integer.parseInt(project.properties.get('integrationTest.maxParallelForks', "$task.maxParallelForks"))
   }
 }
 

@@ -294,15 +294,20 @@ subprojects {
     }
   }
 
-  spotbugs {
-    toolVersion = '4.2.3'
-    includeFilter = file('../findbugs-include.xml')
-    ignoreFailures = false
-  }
-
   tasks.withType(SpotBugsTask) {
+    effort = 'max'
+    reportLevel = 'low'
+    includeFilter = file(
+      project.hasProperty('spotallbugs') ?
+        "$rootDir/gradle/spotbugs/include-all.xml" :
+        "$rootDir/gradle/spotbugs/include.xml"
+    )
+    excludeFilter = file("$rootDir/gradle/spotbugs/exclude.xml")
+    ignoreFailures = project.hasProperty('spotbugs.ignoreFailures')
+    showStackTraces = false
     reports {
       html {
+        enabled = !project.hasProperty('spotbugs.xml')
         stylesheet = 'fancy-hist.xsl'
       }
     }
