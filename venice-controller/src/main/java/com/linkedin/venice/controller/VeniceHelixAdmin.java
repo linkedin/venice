@@ -29,6 +29,7 @@ import com.linkedin.venice.controllerapi.D2ControllerClient;
 import com.linkedin.venice.controllerapi.NodeReplicasReadinessState;
 import com.linkedin.venice.controllerapi.RepushInfo;
 import com.linkedin.venice.controllerapi.SchemaResponse;
+import com.linkedin.venice.controllerapi.StoreComparisonInfo;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateClusterConfigQueryParams;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
@@ -5455,6 +5456,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 }
             }
         }
+    }
+
+    @Override
+    public StoreComparisonInfo compareStore(String clusterName, String storeName, String fabricA, String fabricB) {
+        throw new VeniceUnsupportedOperationException("compareStore is not supported in child controller!");
     }
 
     protected ZkStoreConfigAccessor getStoreConfigAccessor(String clusterName) {

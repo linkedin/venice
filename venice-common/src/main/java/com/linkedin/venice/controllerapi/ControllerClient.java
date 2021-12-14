@@ -454,6 +454,14 @@ public class ControllerClient implements Closeable {
     return request(ControllerRoute.WIPE_CLUSTER, params, ControllerResponse.class);
   }
 
+  public StoreComparisonResponse compareStore(String storeName, String fabricA, String fabricB) {
+    QueryParams params = newParams()
+        .add(NAME, storeName)
+        .add(FABRIC_A, fabricA)
+        .add(FABRIC_B, fabricB);
+    return request(ControllerRoute.COMPARE_STORE, params, StoreComparisonResponse.class);
+  }
+
   public ControllerResponse disableAndDeleteStore(String storeName) {
     UpdateStoreQueryParams updateParams = new UpdateStoreQueryParams()
             .setEnableWrites(false)

@@ -313,7 +313,7 @@ public class ConfigKeys {
   public static final String ALLOW_CLUSTER_WIPE = "allow.cluster.wipe";
 
   /**
-   * Whether a cluster is still using Kafka Mirror Maker (KMM). Default is true.
+   * Whether a cluster is still using Kafka Mirror Maker (KMM) to replicate store topics. Default is true.
    */
   public static final String USE_KAFKA_MIRROR_MAKER = "use.kafka.mirror.maker";
 
