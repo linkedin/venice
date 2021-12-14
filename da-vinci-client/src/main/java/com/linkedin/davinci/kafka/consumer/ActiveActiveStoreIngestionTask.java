@@ -200,7 +200,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   protected void putInStorageEngine(AbstractStorageEngine storageEngine, int partition, byte[] keyBytes,
       Put put) {
     // TODO: Honor BatchConflictResolutionPolicy and maybe persist RMD for batch push records.
-    if (partitionConsumptionStateMap.get(partition).isEndOfPushReceived()) {
+    if (partitionConsumptionStateMap.get(partition).isEndOfPushReceived() && !isDaVinciClient) {
       byte[] metadataBytesWithValueSchemaId = prependReplicationMetadataBytesWithValueSchemaId(put.replicationMetadataPayload, put.schemaId);
       storageEngine.putWithReplicationMetadata(partition, keyBytes, put.putValue, metadataBytesWithValueSchemaId);
     } else {
@@ -212,7 +212,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   protected void removeFromStorageEngine(AbstractStorageEngine storageEngine, int partition, byte[] keyBytes,
       Delete delete) {
     // TODO: Honor BatchConflictResolutionPolicy and maybe persist RMD for batch push records.
-    if (partitionConsumptionStateMap.get(partition).isEndOfPushReceived()) {
+    if (partitionConsumptionStateMap.get(partition).isEndOfPushReceived() && !isDaVinciClient) {
       byte[] metadataBytesWithValueSchemaId = prependReplicationMetadataBytesWithValueSchemaId(delete.replicationMetadataPayload, delete.schemaId);
       storageEngine.deleteWithReplicationMetadata(partition, keyBytes, metadataBytesWithValueSchemaId);
     } else {
@@ -617,37 +617,40 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     // Calculate the start offset based on start timestamp
     final String newSourceTopicName = topicSwitch.sourceTopicName.toString();
     Map<String, Long> upstreamStartOffsetByKafkaURL = new HashMap<>(topicSwitch.sourceKafkaServers.size());
-    final int newSourceTopicPartition = partitionConsumptionState.getSourceTopicPartition(newSourceTopicName);
-    topicSwitch.sourceKafkaServers.forEach(sourceKafkaURL -> {
-      long rewindStartTimestamp = 0;
-      //calculate the rewind start time here if controller asked to do so by using this sentinel value.
-      if (topicSwitch.rewindStartTimestamp == REWIND_TIME_DECIDED_BY_SERVER) {
-        rewindStartTimestamp = calculateRewindStartTime(partitionConsumptionState);
-        logger.info(String.format("%s leader calculated rewindStartTimestamp %d for topic %s partition %d", consumerTaskId, rewindStartTimestamp, newSourceTopicName, newSourceTopicPartition));
-      } else {
-        rewindStartTimestamp = topicSwitch.rewindStartTimestamp;
-      }
-       if (rewindStartTimestamp > 0) {
-        long upstreamStartOffset = getTopicManager(sourceKafkaURL.toString())
-            .getPartitionOffsetByTime(newSourceTopicName, newSourceTopicPartition, rewindStartTimestamp);
-        if (upstreamStartOffset != OffsetRecord.LOWEST_OFFSET) {
-          upstreamStartOffset -= 1;
+    if (!isDaVinciClient) {
+      final int newSourceTopicPartition = partitionConsumptionState.getSourceTopicPartition(newSourceTopicName);
+      topicSwitch.sourceKafkaServers.forEach(sourceKafkaURL -> {
+        long rewindStartTimestamp = 0;
+        //calculate the rewind start time here if controller asked to do so by using this sentinel value.
+        if (topicSwitch.rewindStartTimestamp == REWIND_TIME_DECIDED_BY_SERVER) {
+          rewindStartTimestamp = calculateRewindStartTime(partitionConsumptionState);
+          logger.info(
+              String.format("%s leader calculated rewindStartTimestamp %d for topic %s partition %d", consumerTaskId,
+                  rewindStartTimestamp, newSourceTopicName, newSourceTopicPartition));
+        } else {
+          rewindStartTimestamp = topicSwitch.rewindStartTimestamp;
         }
-        upstreamStartOffsetByKafkaURL.put(sourceKafkaURL.toString(), upstreamStartOffset);
-      } else {
-        upstreamStartOffsetByKafkaURL.put(sourceKafkaURL.toString(), OffsetRecord.LOWEST_OFFSET);
-      }
-    });
+        if (rewindStartTimestamp > 0) {
+          long upstreamStartOffset = getTopicManager(sourceKafkaURL.toString()).getPartitionOffsetByTime(newSourceTopicName,
+              newSourceTopicPartition, rewindStartTimestamp);
+          if (upstreamStartOffset != OffsetRecord.LOWEST_OFFSET) {
+            upstreamStartOffset -= 1;
+          }
+          upstreamStartOffsetByKafkaURL.put(sourceKafkaURL.toString(), upstreamStartOffset);
+        } else {
+          upstreamStartOffsetByKafkaURL.put(sourceKafkaURL.toString(), OffsetRecord.LOWEST_OFFSET);
+        }
+      });
 
-    syncTopicSwitchToIngestionMetadataService(
-        topicSwitch,
-        partitionConsumptionState,
-        upstreamStartOffsetByKafkaURL
-    );
-
-    upstreamStartOffsetByKafkaURL.forEach((sourceKafkaURL, upstreamStartOffset) -> {
-      partitionConsumptionState.getOffsetRecord().setLeaderUpstreamOffset(sourceKafkaURL, upstreamStartOffset);
-    });
+      upstreamStartOffsetByKafkaURL.forEach((sourceKafkaURL, upstreamStartOffset) -> {
+        partitionConsumptionState.getOffsetRecord().setLeaderUpstreamOffset(sourceKafkaURL, upstreamStartOffset);
+      });
+    }
+    /**
+     * TopicSwitch needs to be persisted locally for both servers and DaVinci clients so that read-to-serve check
+     * can make the correct decision.
+     */
+    syncTopicSwitchToIngestionMetadataService(topicSwitch, partitionConsumptionState, upstreamStartOffsetByKafkaURL);
     if (!isLeader(partitionConsumptionState)) {
       partitionConsumptionState.getOffsetRecord().setLeaderTopic(newSourceTopicName);
       this.defaultReadyToServeChecker.apply(partitionConsumptionState);
@@ -670,47 +673,49 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       KafkaMessageEnvelope kafkaValue = consumerRecord.value();
       offsetRecord.setLocalVersionTopicOffset(consumerRecord.offset());
 
-      // also update the leader topic offset using the upstream offset in ProducerMetadata
-      if (kafkaValue.producerMetadata.upstreamOffset >= 0
-          || (kafkaValue.leaderMetadataFooter != null && kafkaValue.leaderMetadataFooter.upstreamOffset >= 0)) {
+      // DaVinci clients don't need to maintain leader production states
+      if (!isDaVinciClient) {
+        // also update the leader topic offset using the upstream offset in ProducerMetadata
+        if (kafkaValue.producerMetadata.upstreamOffset >= 0 || (kafkaValue.leaderMetadataFooter != null
+            && kafkaValue.leaderMetadataFooter.upstreamOffset >= 0)) {
 
-        final long newUpstreamOffset =
-            kafkaValue.leaderMetadataFooter == null ? kafkaValue.producerMetadata.upstreamOffset : kafkaValue.leaderMetadataFooter.upstreamOffset;
-        final String upstreamKafkaURL;
-        if (isLeader(partitionConsumptionState)) {
-          upstreamKafkaURL = consumerRecordWrapper.kafkaUrl(); // Wherever leader consumes from is considered as "upstream"
-        } else {
-          if (kafkaValue.leaderMetadataFooter == null) {
-            /**
-             * This "leaderMetadataFooter" field do not get populated in 2 cases:
-             *
-             * 1. The source fabric is the same as the local fabric since the VT source will be one of the prod fabric after
-             *    batch NR is fully ramped.
-             *
-             * 2. Leader/Follower stores that have not ramped to NR yet. KMM mirrors data to local VT.
-             *
-             * In both 2 above cases, the leader replica consumes from local Kafka URL. Hence, from a follower's perspective,
-             * the upstream Kafka cluster which the leader consumes from should be the local Kafka URL.
-             */
-            upstreamKafkaURL = localKafkaServer;
+          final long newUpstreamOffset =
+              kafkaValue.leaderMetadataFooter == null ? kafkaValue.producerMetadata.upstreamOffset : kafkaValue.leaderMetadataFooter.upstreamOffset;
+          final String upstreamKafkaURL;
+          if (isLeader(partitionConsumptionState)) {
+            upstreamKafkaURL = consumerRecordWrapper.kafkaUrl(); // Wherever leader consumes from is considered as "upstream"
           } else {
-            upstreamKafkaURL = getUpstreamKafkaUrlFromKafkaValue(kafkaValue);
+            if (kafkaValue.leaderMetadataFooter == null) {
+              /**
+               * This "leaderMetadataFooter" field do not get populated in 2 cases:
+               *
+               * 1. The source fabric is the same as the local fabric since the VT source will be one of the prod fabric after
+               *    batch NR is fully ramped.
+               *
+               * 2. Leader/Follower stores that have not ramped to NR yet. KMM mirrors data to local VT.
+               *
+               * In both 2 above cases, the leader replica consumes from local Kafka URL. Hence, from a follower's perspective,
+               * the upstream Kafka cluster which the leader consumes from should be the local Kafka URL.
+               */
+              upstreamKafkaURL = localKafkaServer;
+            } else {
+              upstreamKafkaURL = getUpstreamKafkaUrlFromKafkaValue(kafkaValue);
+            }
           }
-        }
 
-        final long previousUpstreamOffset = offsetRecord.getUpstreamOffset(upstreamKafkaURL);
-        checkAndHandleUpstreamOffsetRewind(
-            partitionConsumptionState, offsetRecord, consumerRecordWrapper.consumerRecord(), newUpstreamOffset, previousUpstreamOffset);
-        /**
-         * Keep updating the upstream offset no matter whether there is a rewind or not; rewind could happen
-         * to the true leader when the old leader doesn't stop producing.
-         */
-        offsetRecord.setLeaderUpstreamOffset(upstreamKafkaURL, newUpstreamOffset);
-      }
-      // update leader producer GUID
-      offsetRecord.setLeaderGUID(kafkaValue.producerMetadata.producerGUID);
-      if (kafkaValue.leaderMetadataFooter != null) {
-        offsetRecord.setLeaderHostId(kafkaValue.leaderMetadataFooter.hostName.toString());
+          final long previousUpstreamOffset = offsetRecord.getUpstreamOffset(upstreamKafkaURL);
+          checkAndHandleUpstreamOffsetRewind(partitionConsumptionState, offsetRecord, consumerRecordWrapper.consumerRecord(), newUpstreamOffset, previousUpstreamOffset);
+          /**
+           * Keep updating the upstream offset no matter whether there is a rewind or not; rewind could happen
+           * to the true leader when the old leader doesn't stop producing.
+           */
+          offsetRecord.setLeaderUpstreamOffset(upstreamKafkaURL, newUpstreamOffset);
+        }
+        // update leader producer GUID
+        offsetRecord.setLeaderGUID(kafkaValue.producerMetadata.producerGUID);
+        if (kafkaValue.leaderMetadataFooter != null) {
+          offsetRecord.setLeaderHostId(kafkaValue.leaderMetadataFooter.hostName.toString());
+        }
       }
     } else {
       updateOffsetRecordAsRemoteConsumeLeader(
