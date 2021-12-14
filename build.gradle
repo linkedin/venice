@@ -50,7 +50,7 @@ if (project.hasProperty('overrideBuildEnvironment')) {
 }
 
 def internalKafkaGroup = 'com.linkedin.kafka'
-def internalKafkaVersion = '2.3.0.30'
+def internalKafkaVersion = '2.3.0.32'
 
 def ddsStorageCoreVersion = '13.0.16'
 
