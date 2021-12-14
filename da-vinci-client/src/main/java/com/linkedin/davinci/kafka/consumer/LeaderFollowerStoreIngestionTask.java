@@ -950,26 +950,29 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       KafkaMessageEnvelope kafkaValue = consumerRecord.value();
       offsetRecord.setLocalVersionTopicOffset(consumerRecord.offset());
 
-      // also update the leader topic offset using the upstream offset in ProducerMetadata
-      if (kafkaValue.producerMetadata.upstreamOffset >= 0
-          || (kafkaValue.leaderMetadataFooter != null && kafkaValue.leaderMetadataFooter.upstreamOffset >= 0)) {
+      // DaVinci clients don't need to maintain leader production states
+      if (!isDaVinciClient) {
+        // also update the leader topic offset using the upstream offset in ProducerMetadata
+        if (kafkaValue.producerMetadata.upstreamOffset >= 0 || (kafkaValue.leaderMetadataFooter != null
+            && kafkaValue.leaderMetadataFooter.upstreamOffset >= 0)) {
 
-        final long newUpstreamOffset =
-            kafkaValue.leaderMetadataFooter == null ? kafkaValue.producerMetadata.upstreamOffset : kafkaValue.leaderMetadataFooter.upstreamOffset;
+          final long newUpstreamOffset =
+              kafkaValue.leaderMetadataFooter == null ? kafkaValue.producerMetadata.upstreamOffset : kafkaValue.leaderMetadataFooter.upstreamOffset;
 
-        final long previousUpstreamOffset = offsetRecord.getUpstreamOffset(OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY);
-        checkAndHandleUpstreamOffsetRewind(
-            partitionConsumptionState, offsetRecord, consumerRecordWrapper.consumerRecord(), newUpstreamOffset, previousUpstreamOffset);
-        /**
-         * Keep updating the upstream offset no matter whether there is a rewind or not; rewind could happen
-         * to the true leader when the old leader doesn't stop producing.
-         */
-        offsetRecord.setLeaderUpstreamOffset(OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY, newUpstreamOffset);
-      }
-      // update leader producer GUID
-      offsetRecord.setLeaderGUID(kafkaValue.producerMetadata.producerGUID);
-      if (kafkaValue.leaderMetadataFooter != null) {
-        offsetRecord.setLeaderHostId(kafkaValue.leaderMetadataFooter.hostName.toString());
+          final long previousUpstreamOffset = offsetRecord.getUpstreamOffset(OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY);
+          checkAndHandleUpstreamOffsetRewind(partitionConsumptionState, offsetRecord, consumerRecordWrapper.consumerRecord(), newUpstreamOffset, previousUpstreamOffset);
+          /**
+           * Keep updating the upstream offset no matter whether there is a rewind or not; rewind could happen
+           * to the true leader when the old leader doesn't stop producing.
+           */
+          offsetRecord.setLeaderUpstreamOffset(OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY,
+              newUpstreamOffset);
+        }
+        // update leader producer GUID
+        offsetRecord.setLeaderGUID(kafkaValue.producerMetadata.producerGUID);
+        if (kafkaValue.leaderMetadataFooter != null) {
+          offsetRecord.setLeaderHostId(kafkaValue.leaderMetadataFooter.hostName.toString());
+        }
       }
     } else {
       updateOffsetRecordAsRemoteConsumeLeader(

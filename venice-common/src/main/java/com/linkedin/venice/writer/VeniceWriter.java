@@ -847,7 +847,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
                 throw new VeniceException(
                     "Chunking enabled config shouldn't be updated after VeniceWriter has explicitly produced a regular or chunked message");
               }
-              logger.info("Chunking enabled config is updated from " + this.isChunkingEnabled + " to " + isChunkingEnabled);
+              logger.info("Chunking enabled config is updated from " + this.isChunkingEnabled + " to " + startOfPush.chunked);
               if (this.isChunkingEnabled != startOfPush.chunked) {
                 this.isChunkingEnabled = startOfPush.chunked;
               }

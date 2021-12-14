@@ -1,6 +1,12 @@
 package com.linkedin.venice.endToEnd;
 
+import com.linkedin.d2.balancer.D2Client;
+import com.linkedin.d2.balancer.D2ClientBuilder;
+import com.linkedin.davinci.client.DaVinciClient;
+import com.linkedin.davinci.client.DaVinciConfig;
+import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionTask;
+import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
@@ -27,10 +33,12 @@ import com.linkedin.venice.samza.VeniceSystemProducer;
 import com.linkedin.venice.server.VeniceServer;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.MockCircularTime;
+import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import io.tehuti.metrics.MetricsRepository;
 import java.lang.reflect.Field;
 import java.util.AbstractMap;
 import java.util.Arrays;
@@ -41,6 +49,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.IntStream;
 import org.apache.http.HttpStatus;
@@ -57,6 +66,7 @@ import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.*;
 import static com.linkedin.venice.CommonConfigKeys.*;
 import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.*;
+import static com.linkedin.venice.meta.PersistenceType.*;
 import static com.linkedin.venice.samza.VeniceSystemFactory.*;
 import static com.linkedin.venice.utils.TestPushUtils.*;
 
@@ -66,7 +76,7 @@ import static com.linkedin.venice.utils.TestPushUtils.*;
  *       is done.
  */
 public class ActiveActiveReplicationForHybridTest {
-  private static final int TEST_TIMEOUT = 90_000; // ms
+  private static final int TEST_TIMEOUT = 120_000; // ms
 
   private static final int NUMBER_OF_CHILD_DATACENTERS = 3;
   private static final int NUMBER_OF_CLUSTERS = 1;
@@ -77,6 +87,8 @@ public class ActiveActiveReplicationForHybridTest {
   private List<VeniceMultiClusterWrapper> childDatacenters;
   private List<VeniceControllerWrapper> parentControllers;
   private VeniceTwoLayerMultiColoMultiClusterWrapper multiColoMultiClusterWrapper;
+
+  private D2Client d2ClientForDC0Region;
 
   public Map<String, String> getExtraServerProperties() {
     return Collections.emptyMap();
@@ -127,10 +139,21 @@ public class ActiveActiveReplicationForHybridTest {
             Optional.of(parentKafkaPort));
     childDatacenters = multiColoMultiClusterWrapper.getClusters();
     parentControllers = multiColoMultiClusterWrapper.getParentControllers();
+
+    // Set up a d2 client for DC0 region
+    d2ClientForDC0Region = new D2ClientBuilder()
+        .setZkHosts(childDatacenters.get(0).getZkServerWrapper().getAddress())
+        .setZkSessionTimeout(3, TimeUnit.SECONDS)
+        .setZkStartupTimeout(3, TimeUnit.SECONDS)
+        .build();
+    D2ClientUtils.startClient(d2ClientForDC0Region);
   }
 
   @AfterClass(alwaysRun = true)
   public void cleanUp() {
+    if (d2ClientForDC0Region != null) {
+      D2ClientUtils.shutdownClient(d2ClientForDC0Region);
+    }
     multiColoMultiClusterWrapper.close();
   }
 
@@ -258,7 +281,7 @@ public class ActiveActiveReplicationForHybridTest {
    */
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testAAReplicationCanConsumeFromAllRegions(boolean isChunkingEnabled, boolean useTransientRecordCache)
-      throws NoSuchFieldException, IllegalAccessException {
+      throws NoSuchFieldException, IllegalAccessException, InterruptedException, ExecutionException {
     String clusterName = CLUSTER_NAMES[0];
     String storeName = Utils.getUniqueString("test-store");
     VeniceControllerWrapper parentController =
@@ -276,7 +299,7 @@ public class ActiveActiveReplicationForHybridTest {
         for (VeniceMultiClusterWrapper veniceColo : multiColoMultiClusterWrapper.getClusters()) {
           VeniceClusterWrapper veniceCluster = veniceColo.getClusters().get(clusterName);
           // Wait for push to complete in the colo
-          TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () ->
+          TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, true, () ->
               Assert.assertEquals(veniceCluster.getControllerClient().getStore(storeName).getStore().getCurrentVersion(),
                   Version.parseVersionFromKafkaTopicName(versionCreationResponse.getKafkaTopic())));
           for (VeniceServerWrapper veniceServerWrapper : veniceCluster.getVeniceServers()){
@@ -390,6 +413,35 @@ public class ActiveActiveReplicationForHybridTest {
 
       for (SystemProducer veniceProducer : childDatacenterToSystemProducer.values()) {
         veniceProducer.stop();
+      }
+
+      // Verify that DaVinci client can successfully bootstrap all partitions from AA enabled stores
+      String baseDataPath = Utils.getTempDataDirectory().getAbsolutePath();
+      VeniceProperties backendConfig = new PropertyBuilder()
+          .put(DATA_BASE_PATH, baseDataPath)
+          .put(PERSISTENCE_TYPE, ROCKS_DB)
+          .build();
+
+      MetricsRepository metricsRepository = new MetricsRepository();
+      try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(d2ClientForDC0Region, metricsRepository, backendConfig)) {
+        DaVinciClient<String, Object> daVinciClient = factory.getAndStartGenericAvroClient(storeName, new DaVinciConfig());
+        daVinciClient.subscribeAll().get();
+        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, true, () -> {
+          for (int dataCenterIndex = 0; dataCenterIndex < NUMBER_OF_CHILD_DATACENTERS; dataCenterIndex++) {
+            // Verify the data sent by Samza producer from different regions
+            String keyPrefix = "dc-" + dataCenterIndex + "_key_";
+            Assert.assertNull(daVinciClient.get(keyPrefix + (streamingRecordCount - 1)).get(),
+                "DaVinci clients in dc-0 haven't consumed real-time data from region dc-" + dataCenterIndex);
+            String expectedValue = "stream_" + streamingRecordCount;
+            Object valueObject = daVinciClient.get(keyPrefix + streamingRecordCount).get();
+            if (valueObject == null) {
+              Assert.fail("DaVinci clients in dc-0 haven't consumed real-time data from region dc-" + dataCenterIndex);
+            } else {
+              Assert.assertEquals(valueObject.toString(), expectedValue, "DaVinci clients in dc-0 contain corrupted data sent from region dc-" + dataCenterIndex);
+            }
+          }
+        });
+        daVinciClient.close();
       }
     }
   }
