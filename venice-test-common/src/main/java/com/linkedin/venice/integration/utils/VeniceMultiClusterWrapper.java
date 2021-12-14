@@ -1,6 +1,5 @@
 package com.linkedin.venice.integration.utils;
 
-import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
@@ -78,9 +77,9 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
       } else {
         controllerProperties = childControllerProperties.get();
       }
-      if (multiColoSetup) {
+      if (multiColoSetup && !controllerProperties.containsKey(CONTROLLER_ENABLE_BATCH_PUSH_FROM_ADMIN_IN_CHILD)) {
         // In multi-colo setup, we don't allow batch push to each individual child colo, but just parent colo
-        controllerProperties.put(ConfigKeys.CONTROLLER_ENABLE_BATCH_PUSH_FROM_ADMIN_IN_CHILD, "false");
+        controllerProperties.put(CONTROLLER_ENABLE_BATCH_PUSH_FROM_ADMIN_IN_CHILD, "false");
       }
       if (coloName != null) {
         controllerProperties.setProperty(LOCAL_REGION_NAME, coloName);

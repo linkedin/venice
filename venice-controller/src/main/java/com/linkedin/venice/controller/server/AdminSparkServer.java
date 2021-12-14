@@ -182,6 +182,7 @@ public class AdminSparkServer extends AbstractVeniceService {
     httpService.get(STORE.getPath(), storesRoutes.getStore(admin));
     httpService.get(FUTURE_VERSION.getPath(), storesRoutes.getFutureVersion(admin));
     httpService.post(SET_TOPIC_COMPACTION.getPath(), storesRoutes.setTopicCompaction(admin));
+
     httpService.post(UPDATE_CLUSTER_CONFIG.getPath(), clusterRoutes.updateClusterConfig(admin));
     httpService.post(WIPE_CLUSTER.getPath(), clusterRoutes.wipeCluster(admin));
 
@@ -204,11 +205,8 @@ public class AdminSparkServer extends AbstractVeniceService {
     httpService.post(ABORT_MIGRATION.getPath(), storesRoutes.abortMigration(admin));
 
     httpService.post(ENABLE_STORE.getPath(), storesRoutes.enableStore(admin));
-
     httpService.post(DELETE_ALL_VERSIONS.getPath(), storesRoutes.deleteAllVersions(admin));
     httpService.post(DELETE_OLD_VERSION.getPath(), storesRoutes.deleteOldVersions(admin));
-
-
     httpService.post(SET_VERSION.getPath(), storesRoutes.setCurrentVersion(admin));
 
     httpService.get(ClUSTER_HEALTH_INSTANCES.getPath(), nodesAndReplicas.listAllNodesStatus(admin));
@@ -275,7 +273,7 @@ public class AdminSparkServer extends AbstractVeniceService {
     httpService.post(CONFIGURE_INCREMENTAL_PUSH_FOR_CLUSTER.getPath(), storesRoutes.configureIncrementalPushForCluster(admin));
     httpService.get(GET_ONGOING_INCREMENTAL_PUSH_VERSIONS.getPath(), jobRoutes.getOngoingIncrementalPushVersions(admin));
     httpService.get(GET_REPUSH_INFO.getPath(), storesRoutes.getRepushInfo(admin));
-
+    httpService.get(COMPARE_STORE.getPath(), storesRoutes.compareStore(admin));
 
     httpService.awaitInitialization(); // Wait for server to be initialized
     Exception e = initFailure.get();

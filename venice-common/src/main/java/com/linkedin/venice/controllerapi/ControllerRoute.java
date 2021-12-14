@@ -111,7 +111,8 @@ public enum ControllerRoute {
   GET_ONGOING_INCREMENTAL_PUSH_VERSIONS("/get_ongoing_incremental_push_versions", HttpMethod.GET,
       Collections.singletonList(TOPIC)),
   GET_REPUSH_INFO("/get_repush_info", HttpMethod.GET, Arrays.asList(NAME), FABRIC),
-  WIPE_CLUSTER("/wipe_cluster", HttpMethod.POST,  Arrays.asList(CLUSTER, FABRIC), NAME, VERSION);
+  WIPE_CLUSTER("/wipe_cluster", HttpMethod.POST,  Arrays.asList(CLUSTER, FABRIC), NAME, VERSION),
+  COMPARE_STORE("/compare_store", HttpMethod.GET, Arrays.asList(CLUSTER, NAME, FABRIC_A, FABRIC_B));
 
 
 

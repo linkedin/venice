@@ -6,6 +6,8 @@ import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.MultiStoreResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
+import com.linkedin.venice.controllerapi.SchemaResponse;
+import com.linkedin.venice.controllerapi.StoreComparisonResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
@@ -13,13 +15,18 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixReadOnlyLiveClusterConfigRepository;
 import com.linkedin.venice.helix.ZkClientFactory;
+import com.linkedin.venice.integration.utils.MirrorMakerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
+import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiColoMultiClusterWrapper;
 import com.linkedin.venice.meta.IncrementalPushPolicy;
+import com.linkedin.venice.utils.TestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
@@ -35,31 +42,49 @@ public class TestAdminToolEndToEnd {
   private static final int TEST_TIMEOUT = 30 * Time.MS_PER_SECOND;
 
   String clusterName;
-  VeniceClusterWrapper venice;
+  VeniceClusterWrapper clusterInColo0;
+  VeniceClusterWrapper clusterInColo1;
+  VeniceControllerWrapper parentController;
+  VeniceTwoLayerMultiColoMultiClusterWrapper multiColoWrapper;
 
   @BeforeClass
   public void setup() {
     Properties properties = new Properties();
-    properties.setProperty(LOCAL_REGION_NAME, "region0");
+    properties.setProperty(CONTROLLER_ENABLE_BATCH_PUSH_FROM_ADMIN_IN_CHILD, "true");
     properties.setProperty(ALLOW_CLUSTER_WIPE, "true");
     properties.setProperty(USE_KAFKA_MIRROR_MAKER, "false");
-    venice = ServiceFactory.getVeniceCluster(1, 1, 1, 1, 100000, false, false, properties);
-    clusterName = venice.getClusterName();
+    multiColoWrapper = ServiceFactory.getVeniceTwoLayerMultiColoMultiClusterWrapper(
+        2,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        Optional.empty(),
+        Optional.of(properties),
+        Optional.empty(),
+        true,
+        MirrorMakerWrapper.DEFAULT_TOPIC_WHITELIST);
+    clusterName = multiColoWrapper.getClusters().get(0).getClusterNames()[0];
+    clusterInColo0 = multiColoWrapper.getClusters().get(0).getClusters().get(clusterName);
+    clusterInColo1 = multiColoWrapper.getClusters().get(1).getClusters().get(clusterName);
+    parentController = multiColoWrapper.getParentControllers().get(0);
   }
 
   @AfterClass
   public void cleanup() {
-    venice.close();
+    multiColoWrapper.close();
   }
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testUpdateClusterConfig() throws Exception {
-    ZkClient zkClient = ZkClientFactory.newZkClient(venice.getZk().getAddress());
+    ZkClient zkClient = ZkClientFactory.newZkClient(clusterInColo0.getZk().getAddress());
     HelixAdapterSerializer adapterSerializer = new HelixAdapterSerializer();
     HelixReadOnlyLiveClusterConfigRepository liveClusterConfigRepository =
         new HelixReadOnlyLiveClusterConfigRepository(zkClient, adapterSerializer, clusterName);
 
-    String regionName = "region0";
+    String regionName = "dc-0";
     int kafkaFetchQuota = 1000;
 
     Assert.assertNotEquals(
@@ -67,7 +92,7 @@ public class TestAdminToolEndToEnd {
         kafkaFetchQuota);
 
     String[] adminToolArgs =
-        {"--update-cluster-config", "--url", venice.getMasterVeniceController().getControllerUrl(),
+        {"--update-cluster-config", "--url", clusterInColo0.getMasterVeniceController().getControllerUrl(),
             "--cluster", clusterName,
             "--fabric", regionName,
             "--" + Arg.SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND.getArgName(), String.valueOf(kafkaFetchQuota)};
@@ -82,7 +107,7 @@ public class TestAdminToolEndToEnd {
     });
 
     String[] disallowStoreMigrationArg =
-        {"--update-cluster-config", "--url", venice.getMasterVeniceController().getControllerUrl(),
+        {"--update-cluster-config", "--url", clusterInColo0.getMasterVeniceController().getControllerUrl(),
             "--cluster", clusterName,
             "--" + Arg.ALLOW_STORE_MIGRATION.getArgName(), String.valueOf(false)};
     AdminTool.main(disallowStoreMigrationArg);
@@ -94,7 +119,7 @@ public class TestAdminToolEndToEnd {
 
     try {
       String[] startMigrationArgs =
-          {"--migrate-store", "--url", venice.getMasterVeniceController().getControllerUrl(),
+          {"--migrate-store", "--url", clusterInColo0.getMasterVeniceController().getControllerUrl(),
               "--store", "anyStore",
               "--cluster-src", clusterName,
               "--cluster-dest", "anyCluster"};
@@ -107,8 +132,7 @@ public class TestAdminToolEndToEnd {
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testIncrementalPushBatchMigrationCommand() throws Exception {
-    System.out.println("venice.getMasterVeniceController().getControllerUrl() = " + venice.getMasterVeniceController().getControllerUrl());
-    try (ControllerClient controllerClient = new ControllerClient(clusterName, venice.getMasterVeniceController().getControllerUrl())) {
+    try (ControllerClient controllerClient = new ControllerClient(clusterName, clusterInColo0.getMasterVeniceController().getControllerUrl())) {
       // Create 2 inc push stores with Incremental Push to VT policy
       String testStoreName1 = Utils.getUniqueString("test-store");
       NewStoreResponse newStoreResponse = controllerClient.createNewStore(testStoreName1, "test",
@@ -130,7 +154,7 @@ public class TestAdminToolEndToEnd {
 
       // Migrate all of them to Incremental Push to RT policy
       String[] adminToolArgs =
-          {"--configure-incremental-push-for-cluster", "--url", venice.getMasterVeniceController().getControllerUrl(),
+          {"--configure-incremental-push-for-cluster", "--url", clusterInColo0.getMasterVeniceController().getControllerUrl(),
               "--cluster", clusterName,
               "--incremental-push-policy-to-filter", "PUSH_TO_VERSION_TOPIC",
               "--incremental-push-policy-to-apply", "INCREMENTAL_PUSH_SAME_AS_REAL_TIME"};
@@ -152,7 +176,7 @@ public class TestAdminToolEndToEnd {
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testWipeClusterCommand() throws Exception {
-    try (ControllerClient controllerClient = new ControllerClient(clusterName, venice.getMasterVeniceController().getControllerUrl())) {
+    try (ControllerClient controllerClient = new ControllerClient(clusterName, clusterInColo0.getMasterVeniceController().getControllerUrl())) {
       // Create 2 stores. Store 1 has 2 versions
       String testStoreName1 = Utils.getUniqueString("test-store");
       NewStoreResponse newStoreResponse = controllerClient.createNewStore(testStoreName1, "test",
@@ -172,9 +196,9 @@ public class TestAdminToolEndToEnd {
 
       // Delete a version
       String[] wipeClusterArgs1 =
-          {"--wipe-cluster", "--url", venice.getMasterVeniceController().getControllerUrl(),
+          {"--wipe-cluster", "--url", clusterInColo0.getMasterVeniceController().getControllerUrl(),
               "--cluster", clusterName,
-              "--fabric", "region0",
+              "--fabric", "dc-0",
               "--store", testStoreName1,
               "--version", "1"};
       AdminTool.main(wipeClusterArgs1);
@@ -185,9 +209,9 @@ public class TestAdminToolEndToEnd {
 
       // Delete a store
       String[] wipeClusterArgs2 =
-          {"--wipe-cluster", "--url", venice.getMasterVeniceController().getControllerUrl(),
+          {"--wipe-cluster", "--url", clusterInColo0.getMasterVeniceController().getControllerUrl(),
               "--cluster", clusterName,
-              "--fabric", "region0",
+              "--fabric", "dc-0",
               "--store", testStoreName1};
       AdminTool.main(wipeClusterArgs2);
       storeResponse = controllerClient.getStore(testStoreName1);
@@ -195,9 +219,9 @@ public class TestAdminToolEndToEnd {
 
       // Wipe a cluster
       String[] wipeClusterArgs3 =
-          {"--wipe-cluster", "--url", venice.getMasterVeniceController().getControllerUrl(),
+          {"--wipe-cluster", "--url", clusterInColo0.getMasterVeniceController().getControllerUrl(),
               "--cluster", clusterName,
-              "--fabric", "region0"};
+              "--fabric", "dc-0"};
       AdminTool.main(wipeClusterArgs3);
       MultiStoreResponse multiStoreResponse = controllerClient.queryStoreList();
       Assert.assertEquals(multiStoreResponse.getStores().length, 0);
@@ -215,11 +239,54 @@ public class TestAdminToolEndToEnd {
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testNodeReplicasReadinessCommand() throws Exception {
-    VeniceServerWrapper server =  venice.getVeniceServers().get(0);
+    VeniceServerWrapper server =  clusterInColo0.getVeniceServers().get(0);
     String[] nodeReplicasReadinessArgs =
-        {"--node-replicas-readiness", "--url", venice.getMasterVeniceController().getControllerUrl(),
+        {"--node-replicas-readiness", "--url", clusterInColo0.getMasterVeniceController().getControllerUrl(),
             "--cluster", clusterName,
             "--storage-node", Utils.getHelixNodeIdentifier(server.getPort())};
     AdminTool.main(nodeReplicasReadinessArgs);
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testCompareStoreCommand() throws Exception {
+    try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentController.getControllerUrl());
+        ControllerClient childControllerClient0 = new ControllerClient(clusterName, clusterInColo0.getMasterVeniceController().getControllerUrl());
+        ControllerClient childControllerClient1 = new ControllerClient(clusterName, clusterInColo1.getMasterVeniceController().getControllerUrl())) {
+      String testStoreName = Utils.getUniqueString("test-store");
+      NewStoreResponse newStoreResponse = parentControllerClient.createNewStore(testStoreName, "test",
+          "\"string\"", TestPushUtils.NESTED_SCHEMA_STRING);
+      Assert.assertFalse(newStoreResponse.isError());
+
+      TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
+        StoreResponse storeResponse = childControllerClient0.getStore(testStoreName);
+        Assert.assertFalse(storeResponse.isError());
+        storeResponse = childControllerClient1.getStore(testStoreName);
+        Assert.assertFalse(storeResponse.isError());
+      });
+
+      // Only modify the store in dc-0
+      VersionCreationResponse versionCreationResponse = childControllerClient0.emptyPush(testStoreName,
+          Utils.getUniqueString("empty-push-1"), 1L);
+      Assert.assertFalse(versionCreationResponse.isError());
+      SchemaResponse schemaResponse = childControllerClient0.addValueSchema(testStoreName, TestPushUtils.NESTED_SCHEMA_STRING_V2);
+      Assert.assertFalse(schemaResponse.isError());
+
+      String fabricA = "dc-0";
+      String fabricB = "dc-1";
+      // Make sure compare-cluster command does not fail with error.
+      String[] compareStoreArg =
+          {"--compare-store", "--url", parentController.getControllerUrl(),
+              "--cluster", clusterName,
+              "--store", testStoreName,
+              "--fabric-a", fabricA,
+              "--fabric-b", fabricB};
+      AdminTool.main(compareStoreArg);
+
+      // Make sure the diffs are discovered.
+      StoreComparisonResponse response = parentControllerClient.compareStore(testStoreName, fabricA, fabricB);
+      Assert.assertFalse(response.getPropertyDiff().isEmpty());
+      Assert.assertFalse(response.getSchemaDiff().isEmpty());
+      Assert.assertFalse(response.getVersionStateDiff().isEmpty());
+    }
   }
 }

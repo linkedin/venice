@@ -26,6 +26,7 @@ import com.linkedin.venice.controllerapi.OwnerResponse;
 import com.linkedin.venice.controllerapi.PartitionResponse;
 import com.linkedin.venice.controllerapi.RoutersClusterConfigResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
+import com.linkedin.venice.controllerapi.StoreComparisonResponse;
 import com.linkedin.venice.controllerapi.StoreMigrationResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.TrackableControllerResponse;
@@ -419,6 +420,9 @@ public class AdminTool {
           break;
         case REPLICAS_READINESS_ON_STORAGE_NODE:
           printReplicasReadinessStorageNode(cmd);
+          break;
+        case COMPARE_STORE:
+          compareStore(cmd);
           break;
         default:
           StringJoiner availableCommands = new StringJoiner(", ");
@@ -1943,6 +1947,35 @@ public class AdminTool {
     Optional<Integer> versionNum = Optional.ofNullable(getOptionalArgument(cmd, Arg.VERSION)).map(Integer::parseInt);
     ControllerResponse response = controllerClient.wipeCluster(fabric, storeName, versionNum);
     printObject(response);
+  }
+
+  private static void compareStore(CommandLine cmd) {
+    String clusterName = getRequiredArgument(cmd, Arg.CLUSTER);
+    String storeName = getRequiredArgument(cmd, Arg.STORE);
+    String fabricA = getRequiredArgument(cmd, Arg.FABRIC_A);
+    String fabricB = getRequiredArgument(cmd, Arg.FABRIC_B);
+
+    StoreComparisonResponse response = controllerClient.compareStore(storeName, fabricA, fabricB);
+    if (response.isError()) {
+      throw new VeniceException("Error comparing store " + storeName + ". Error: " + response.getError());
+    }
+    if (isStoreReadyInFabricB(response)) {
+      System.out.println("Store " + storeName + " is ready in " + fabricB + " " + clusterName);
+    } else {
+      System.out.println("Store " + storeName + " is not ready in " + fabricB + " " + clusterName + ". Details:");
+      printObject(response);
+    }
+  }
+
+  private static boolean isStoreReadyInFabricB(StoreComparisonResponse response) {
+    // Criteria: store properties, schemas, version states must be identical. Criteria could be relaxed in the future.
+    if (!response.getPropertyDiff().isEmpty()) {
+      return false;
+    }
+    if (!response.getSchemaDiff().isEmpty()) {
+      return false;
+    }
+    return response.getVersionStateDiff().isEmpty();
   }
 
   private static void printErrAndExit(String err) {

@@ -203,8 +203,9 @@ public enum Command {
   WIPE_CLUSTER("wipe-cluster", "Delete data and metadata of a cluster/store/version in a child fabric", new Arg[] {URL, CLUSTER, FABRIC}, new Arg[] {STORE, VERSION}),
   REPLICAS_READINESS_ON_STORAGE_NODE("node-replicas-readiness",
       "Get the readiness of all current replicas on a storage node from a child controller",
-      new Arg[]{URL, CLUSTER, STORAGE_NODE});
-
+      new Arg[]{URL, CLUSTER, STORAGE_NODE}),
+  COMPARE_STORE("compare-store", "Compare a store between two fabrics",
+      new Arg[] {URL, CLUSTER, STORE, FABRIC_A, FABRIC_B});
   private final String commandName;
   private final String description;
   private final Arg[] requiredArgs;

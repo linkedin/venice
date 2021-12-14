@@ -58,9 +58,11 @@ import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.IncrementalPushVersionsResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
+import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.MultiStoreStatusResponse;
 import com.linkedin.venice.controllerapi.NodeReplicasReadinessState;
 import com.linkedin.venice.controllerapi.RepushInfo;
+import com.linkedin.venice.controllerapi.StoreComparisonInfo;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateClusterConfigQueryParams;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
@@ -91,6 +93,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.participant.protocol.ParticipantMessageKey;
 import com.linkedin.venice.participant.protocol.ParticipantMessageValue;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
@@ -122,6 +125,7 @@ import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
+import java.io.IOException;
 import java.security.cert.X509Certificate;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -3094,6 +3098,125 @@ public class VeniceParentHelixAdmin implements Admin {
     ControllerResponse response = childControllerClient.wipeCluster(fabric, storeName, versionNum);
     if (response.isError()) {
       throw new VeniceException("Could not wipe cluster " + clusterName + " in colo: " + fabric + ". " + response.getError());
+    }
+  }
+
+  @Override
+  public StoreComparisonInfo compareStore(String clusterName, String storeName, String fabricA, String fabricB)
+      throws IOException {
+    String childControllerUrlA = multiClusterConfigs.getControllerConfig(clusterName).getChildControllerUrl(fabricA);
+    if (Utils.isNullOrEmpty(childControllerUrlA)) {
+      throw new VeniceException("child.cluster.url." + fabricA + " is missing in parent controller.");
+    }
+    String childControllerUrlB = multiClusterConfigs.getControllerConfig(clusterName).getChildControllerUrl(fabricB);
+    if (Utils.isNullOrEmpty(childControllerUrlB)) {
+      throw new VeniceException("child.cluster.url." + fabricB + " is missing in parent controller.");
+    }
+    ControllerClient controllerClientA = ControllerClient.constructClusterControllerClient(clusterName,
+        childControllerUrlA, sslFactory);
+    ControllerClient controllerClientB = ControllerClient.constructClusterControllerClient(clusterName,
+        childControllerUrlB, sslFactory);
+
+    StoreComparisonInfo result = new StoreComparisonInfo();
+    compareStoreProperties(storeName, fabricA, fabricB, controllerClientA, controllerClientB, result);
+    compareStoreSchemas(storeName, fabricA, fabricB, controllerClientA, controllerClientB, result);
+    compareStoreVersions(storeName, fabricA, fabricB, controllerClientA, controllerClientB, result);
+
+    return result;
+  }
+
+  private static void compareStoreProperties(String storeName, String fabricA, String fabricB,
+      ControllerClient controllerClientA, ControllerClient controllerClientB, StoreComparisonInfo result) {
+    StoreInfo storeA = checkControllerResponse(controllerClientA.getStore(storeName), fabricA).getStore();
+    StoreInfo storeB = checkControllerResponse(controllerClientB.getStore(storeName), fabricB).getStore();
+    ObjectMapper mapper = new ObjectMapper();
+    Map<String, Object> storePropertiesA = mapper.convertValue(storeA, Map.class);
+    Map<String, Object> storePropertiesB = mapper.convertValue(storeB, Map.class);
+
+    for (Map.Entry<String, Object> entry : storePropertiesA.entrySet()) {
+      // Filter out non-store-level configs
+      if (entry.getKey().equals("coloToCurrentVersions") || entry.getKey().equals("versions") || entry.getKey().equals("kafkaBrokerUrl")) {
+        continue;
+      }
+      if (!Objects.equals(entry.getValue(), storePropertiesB.get(entry.getKey()))) {
+        result.addPropertyDiff(fabricA, fabricB, entry.getKey(), entry.getValue().toString(),
+            storePropertiesB.get(entry.getKey()).toString());
+      }
+    }
+  }
+
+  private static void compareStoreSchemas(String storeName, String fabricA, String fabricB,
+      ControllerClient controllerClientA, ControllerClient controllerClientB, StoreComparisonInfo result) {
+    String keySchemaA = checkControllerResponse(controllerClientA.getKeySchema(storeName), fabricA).getSchemaStr();
+    String keySchemaB = checkControllerResponse(controllerClientB.getKeySchema(storeName), fabricB).getSchemaStr();
+
+    if (!Objects.equals(keySchemaA, keySchemaB)) {
+      result.addSchemaDiff(fabricA, fabricB, "key-schema", keySchemaA, keySchemaB);
+    }
+    populateSchemaDiff(fabricA, fabricB,
+        checkControllerResponse(controllerClientA.getAllValueAndDerivedSchema(storeName), fabricA).getSchemas(),
+        checkControllerResponse(controllerClientB.getAllValueAndDerivedSchema(storeName), fabricB).getSchemas(),
+        "derived-schema", result);
+    populateSchemaDiff(fabricA, fabricB,
+        checkControllerResponse(controllerClientA.getAllReplicationMetadataSchemas(storeName), fabricA).getSchemas(),
+        checkControllerResponse(controllerClientB.getAllReplicationMetadataSchemas(storeName), fabricB).getSchemas(),
+        "timestamp-metadata-schema", result);
+  }
+
+  private static void compareStoreVersions(String storeName, String fabricA, String fabricB,
+      ControllerClient controllerClientA, ControllerClient controllerClientB, StoreComparisonInfo result) {
+    StoreInfo storeA = checkControllerResponse(controllerClientA.getStore(storeName), fabricA).getStore();
+    StoreInfo storeB = checkControllerResponse(controllerClientB.getStore(storeName), fabricB).getStore();
+    List<Version> versionsB = storeB.getVersions();
+
+    for (Version version : storeA.getVersions()) {
+      int versionNum = version.getNumber();
+      Optional<Version> versionB = storeB.getVersion(versionNum);
+      if (versionB.isPresent()) {
+        if (!version.getStatus().equals(versionB.get().getStatus())) {
+          result.addVersionStateDiff(fabricA, fabricB, versionNum, version.getStatus(), versionB.get().getStatus());
+        }
+        versionsB.remove(versionB.get());
+      } else {
+        result.addVersionStateDiff(fabricA, fabricB, versionNum, version.getStatus(),
+            VersionStatus.NOT_CREATED);
+      }
+    }
+    for (Version version : versionsB) {
+      result.addVersionStateDiff(fabricA, fabricB, version.getNumber(),
+          VersionStatus.NOT_CREATED, version.getStatus());
+    }
+  }
+
+  private static <T extends ControllerResponse> T checkControllerResponse(T controllerResponse, String fabric) {
+    if (controllerResponse.isError()) {
+      throw new VeniceException("ControllerResponse from fabric " + fabric + " has error " + controllerResponse);
+    }
+    return controllerResponse;
+  }
+
+  private static void populateSchemaDiff(String fabricA, String fabricB, MultiSchemaResponse.Schema[] schemasA,
+      MultiSchemaResponse.Schema[] schemasB, String derivedSchemaName, StoreComparisonInfo storeComparisonInfo) {
+    Map<String, String> schemaMapB = new HashMap<>();
+    for (MultiSchemaResponse.Schema schema : schemasB) {
+      String key = schema.getDerivedSchemaId() == -1 ?
+          "value-schema-" + schema.getId() : derivedSchemaName + "-" + schema.getId() + "-" + schema.getDerivedSchemaId();
+      schemaMapB.put(key, schema.getSchemaStr());
+    }
+    for (MultiSchemaResponse.Schema schema : schemasA) {
+      String key = schema.getDerivedSchemaId() == -1 ?
+          "value-schema-" + schema.getId() : derivedSchemaName + "-" + schema.getId() + "-" + schema.getDerivedSchemaId();
+      if (schemaMapB.containsKey(key)) {
+        if (!schema.getSchemaStr().equals(schemaMapB.get(key))) {
+          storeComparisonInfo.addSchemaDiff(fabricA, fabricB, key, schema.getSchemaStr(), schemaMapB.get(key));
+        }
+        schemaMapB.remove(key);
+      } else {
+        storeComparisonInfo.addSchemaDiff(fabricA, fabricB, key, schema.getSchemaStr(), "N/A");
+      }
+    }
+    for (Map.Entry<String, String> entry : schemaMapB.entrySet()) {
+      storeComparisonInfo.addSchemaDiff(fabricA, fabricB, entry.getKey(), "N/A", entry.getValue());
     }
   }
 

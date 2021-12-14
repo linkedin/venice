@@ -6,6 +6,7 @@ import com.linkedin.venice.controller.kafka.consumer.ControllerKafkaClientFactor
 import com.linkedin.venice.controller.lingeringjob.IdentityParser;
 import com.linkedin.venice.controllerapi.NodeReplicasReadinessState;
 import com.linkedin.venice.controllerapi.RepushInfo;
+import com.linkedin.venice.controllerapi.StoreComparisonInfo;
 import com.linkedin.venice.controllerapi.UpdateClusterConfigQueryParams;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
@@ -34,6 +35,7 @@ import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.io.Closeable;
+import java.io.IOException;
 import java.security.cert.X509Certificate;
 import java.util.Collection;
 import java.util.HashMap;
@@ -654,6 +656,12 @@ public interface Admin extends AutoCloseable, Closeable {
         Optional<IncrementalPushPolicy> incrementalPushPolicyToFilter, Optional<String> regionsFilter);
 
     void wipeCluster(String clusterName, String fabric, Optional<String> storeName, Optional<Integer> versionNum);
+
+    /**
+     * Compare store metadata and version states between two fabrics.
+     */
+    StoreComparisonInfo compareStore(String clusterName, String storeName, String fabricA, String fabricB)
+        throws IOException;
 
     /**
      *

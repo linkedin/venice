@@ -15,6 +15,8 @@ import com.linkedin.venice.controllerapi.PartitionResponse;
 import com.linkedin.venice.controllerapi.RepushInfoResponse;
 import com.linkedin.venice.controllerapi.RepushInfo;
 import com.linkedin.venice.controllerapi.StorageEngineOverheadRatioResponse;
+import com.linkedin.venice.controllerapi.StoreComparisonInfo;
+import com.linkedin.venice.controllerapi.StoreComparisonResponse;
 import com.linkedin.venice.controllerapi.StoreMigrationResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.TrackableControllerResponse;
@@ -824,6 +826,29 @@ public class StoresRoutes extends AbstractRoute {
           veniceResponse.setTopics(deletableTopicsList);
         } catch (Exception e){
           veniceResponse.setError("Failed to list deletable store topics. Message: " + e.getMessage());
+        }
+      }
+    };
+  }
+
+  public Route compareStore(Admin admin) {
+    return new VeniceRouteHandler<StoreComparisonResponse>(StoreComparisonResponse.class) {
+      @Override
+      public void internalHandle(Request request, StoreComparisonResponse veniceResponse) {
+        AdminSparkServer.validateParams(request, COMPARE_STORE.getParams(), admin);
+        try {
+          String clusterName = request.queryParams(CLUSTER);
+          String storeName = request.queryParams(NAME);
+          String fabricA = request.queryParams(FABRIC_A);
+          String fabricB = request.queryParams(FABRIC_B);
+          StoreComparisonInfo info = admin.compareStore(clusterName, storeName, fabricA, fabricB);
+          veniceResponse.setCluster(clusterName);
+          veniceResponse.setName(storeName);
+          veniceResponse.setPropertyDiff(info.getPropertyDiff());
+          veniceResponse.setSchemaDiff(info.getSchemaDiff());
+          veniceResponse.setVersionStateDiff(info.getVersionStateDiff());
+        } catch (Exception e) {
+          veniceResponse.setError("Failed to compare store. Message: " + e.getMessage());
         }
       }
     };
