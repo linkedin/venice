@@ -1247,18 +1247,27 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         ZkStoreConfigAccessor storeConfigAccessor = getHelixVeniceClusterResources(clusterName).getStoreConfigAccessor();
         if (storeConfigAccessor.containsConfig(storeName)) {
             StoreConfig storeConfig = storeConfigAccessor.getStoreConfig(storeName);
-            // Controller was trying to delete the old store but failed.
-            // Delete again before re-creating.
-            // We lock the resource during deletion, so it's impossible to access the store which is being
-            // deleted from here. So the only possible case is the deletion failed before.
             if (!storeConfig.isDeleting()) {
-                // It is ok to create the same store in destination cluster during store migration.
                 if (!clusterName.equals(storeConfig.getMigrationDestCluster())) {
                     throw new VeniceStoreAlreadyExistsException(storeName);
                 } else {
                     skipLingeringResourceCheck = true;
                 }
             } else {
+                /**
+                 * Store config could exist with deleting flag in the following situations:
+                 * 1. Controller of the same cluster tried to delete the store but failed. In this case, store will be
+                 *    deleted again in {@link VeniceHelixAdmin#createStore}.
+                 * 2. Controller of another cluster is deleting the store but has not removed storeConfig yet. In this
+                 *    case, since there is no lock between controllers of the two clusters, the other controller might
+                 *    delete the storeConfig when current controller is creating the store. To avoid the race condition,
+                 *    throw an exception to wait for storeConfig deletion.
+                 */
+                if (!clusterName.equals(storeConfig.getCluster())) {
+                    throw new VeniceStoreAlreadyExistsException("StoreConfig points to a different cluster "
+                        + storeConfig.getCluster()
+                        + ". Please wait for storeConfig deletion or use delete-store command to remove storeConfig.");
+                }
                 isLegacyStore = true;
                 skipLingeringResourceCheck = true;
             }
