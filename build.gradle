@@ -103,8 +103,8 @@ ext.libraries = [
     jdom: 'org.jdom:jdom:1.1',
     joptSimple: 'net.sf.jopt-simple:jopt-simple:3.2',
     log4j: 'log4j:log4j:1.2.17',
-    log4j2api: 'org.apache.logging.log4j:log4j-api:2.15.0',
-    log4j2core: 'org.apache.logging.log4j:log4j-core:2.15.0',
+    log4j2api: 'org.apache.logging.log4j:log4j-api:2.16.0',
+    log4j2core: 'org.apache.logging.log4j:log4j-core:2.16.0',
     snappy: 'org.xerial.snappy:snappy-java:1.0.4.1',
     // TODO: move back to open source sparkjava once they fix Jetty SSL.
     // spark: 'com.sparkjava:spark-core:2.9.1',
