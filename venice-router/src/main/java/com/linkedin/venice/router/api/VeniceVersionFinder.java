@@ -2,8 +2,6 @@ package com.linkedin.venice.router.api;
 
 import com.linkedin.ddsstorage.netty4.misc.BasicFullHttpRequest;
 import com.linkedin.venice.HttpConstants;
-import com.linkedin.venice.common.VeniceSystemStoreType;
-import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.CompressorFactory;
 import com.linkedin.venice.exceptions.StoreDisabledException;
@@ -67,10 +65,8 @@ public class VeniceVersionFinder {
     if (!veniceStore.isEnableReads()) {
       throw new StoreDisabledException(store, "read");
     }
-    Store storeToCheckMigration = VeniceSystemStoreUtils.getSystemStoreType(store) == VeniceSystemStoreType.METADATA_STORE ?
-        metadataRepository.getStore(VeniceSystemStoreUtils.getStoreNameFromSystemStoreName(store)) : veniceStore;
-    if (storeToCheckMigration != null && storeToCheckMigration.isMigrating() &&
-        request.headers().contains(HttpConstants.VENICE_ALLOW_REDIRECT)) {
+    Store storeToCheckMigration = veniceStore;
+    if (storeToCheckMigration.isMigrating() && request.headers().contains(HttpConstants.VENICE_ALLOW_REDIRECT)) {
       Optional<StoreConfig> config = storeConfigRepo.getStoreConfig(store);
       if (config.isPresent()) {
         String newCluster = config.get().getCluster();

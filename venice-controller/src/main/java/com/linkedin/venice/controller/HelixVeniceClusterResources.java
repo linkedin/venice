@@ -86,7 +86,6 @@ public class HelixVeniceClusterResources implements VeniceResource {
       Optional<TopicReplicator> onlineOfflineTopicReplicator,
       Optional<TopicReplicator> leaderFollowerTopicReplicator,
       Optional<DynamicAccessController> accessController,
-      MetadataStoreWriter metadataStoreWriter,
       HelixAdminClient helixAdminClient) {
     this.clusterName = clusterName;
     this.config = config;
@@ -135,8 +134,8 @@ public class HelixVeniceClusterResources implements VeniceResource {
 
     this.pushMonitor = new PushMonitorDelegator(config.getPushMonitorType(), clusterName, routingDataRepository,
         offlinePushMonitorAccessor, admin, storeMetadataRepository, new AggPushHealthStats(clusterName, metricsRepository),
-        onlineOfflineTopicReplicator, leaderFollowerTopicReplicator, metadataStoreWriter, clusterLockManager,
-        aggregateRealTimeSourceKafkaUrl, getActiveActiveRealTimeSourceKafkaURLs(config));
+        onlineOfflineTopicReplicator, leaderFollowerTopicReplicator, clusterLockManager, aggregateRealTimeSourceKafkaUrl,
+        getActiveActiveRealTimeSourceKafkaURLs(config));
 
     this.leakedPushStatusCleanUpService = new LeakedPushStatusCleanUpService(clusterName, offlinePushMonitorAccessor, storeMetadataRepository,
         new AggPushStatusCleanUpStats(clusterName, metricsRepository), this.config.getLeakedPushStatusCleanUpServiceSleepIntervalInMs());

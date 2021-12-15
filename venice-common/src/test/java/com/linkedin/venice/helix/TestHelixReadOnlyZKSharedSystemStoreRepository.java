@@ -28,14 +28,12 @@ public class TestHelixReadOnlyZKSharedSystemStoreRepository {
   private String clusterPath = "/test-metadata-cluster";
   private String storesPath = "/stores";
   private ZkServerWrapper zkServerWrapper;
-  private HelixAdapterSerializer adapter = new HelixAdapterSerializer();
+  private final HelixAdapterSerializer adapter = new HelixAdapterSerializer();
 
   private HelixReadOnlyZKSharedSystemStoreRepository repo;
   private HelixReadWriteStoreRepository writeRepo;
 
   private final VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.META_STORE;
-  private final VeniceSystemStoreType unsupportedSystemStoreType = VeniceSystemStoreType.METADATA_STORE;
-  private final String unsupportedZKSharedStoreName = unsupportedSystemStoreType.getSystemStoreName(cluster);
   private String regularStoreName;
 
   @BeforeClass
@@ -56,10 +54,7 @@ public class TestHelixReadOnlyZKSharedSystemStoreRepository {
     Store zkSharedStore = TestUtils.createTestStore(systemStoreType.getZkSharedStoreName(), "test_system_store_owner", 1);
     writeRepo.addStore(zkSharedStore);
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> assertTrue(writeRepo.hasStore(systemStoreType.getZkSharedStoreName())));
-    // Create zk shared store per cluster for the unsupported system store type
-    Store unsupportedZKSharedStore = TestUtils.createTestStore(unsupportedZKSharedStoreName, "test_unsupported_system_store_owner", 1);
-    writeRepo.addStore(unsupportedZKSharedStore);
-    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> assertTrue(writeRepo.hasStore(unsupportedZKSharedStoreName)));
+
     // Create one regular store
     regularStoreName = Utils.getUniqueString("test_store");
     Store s1 = TestUtils.createTestStore(regularStoreName, "owner", System.currentTimeMillis());
@@ -85,7 +80,6 @@ public class TestHelixReadOnlyZKSharedSystemStoreRepository {
       assertNotNull(repo.getStore(systemStoreType.getZkSharedStoreName()));
       assertNull(repo.getStore(regularStoreName));
       assertFalse(repo.hasStore(regularStoreName));
-      assertFalse(repo.hasStore(unsupportedZKSharedStoreName));
     });
   }
 
@@ -95,7 +89,6 @@ public class TestHelixReadOnlyZKSharedSystemStoreRepository {
       assertTrue(writeRepo.hasStore(regularStoreName));
       assertNotNull(repo.getStoreOrThrow(systemStoreType.getZkSharedStoreName()));
       assertThrows(() -> repo.getStoreOrThrow(regularStoreName));
-      assertThrows(() -> repo.getStoreOrThrow(unsupportedZKSharedStoreName));
     });
   }
 
@@ -105,7 +98,6 @@ public class TestHelixReadOnlyZKSharedSystemStoreRepository {
       assertThrows(() -> repo.refreshOneStore(regularStoreName));
       Store zkSharedStore = repo.refreshOneStore(systemStoreType.getZkSharedStoreName());
       assertNotNull(zkSharedStore);
-      assertThrows(() -> repo.refreshOneStore(unsupportedZKSharedStoreName));
     });
   }
 
@@ -114,7 +106,6 @@ public class TestHelixReadOnlyZKSharedSystemStoreRepository {
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
       assertThrows(() -> repo.getBatchGetLimit(regularStoreName));
       assertEquals(repo.getBatchGetLimit(systemStoreType.getZkSharedStoreName()), -1);
-      assertThrows(() -> repo.getBatchGetLimit(unsupportedZKSharedStoreName));
     });
   }
 
@@ -123,7 +114,6 @@ public class TestHelixReadOnlyZKSharedSystemStoreRepository {
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
       assertThrows(() -> repo.isReadComputationEnabled(regularStoreName));
       assertFalse(repo.isReadComputationEnabled(systemStoreType.getZkSharedStoreName()));
-      assertThrows(() -> repo.isReadComputationEnabled(unsupportedZKSharedStoreName));
     });
   }
 

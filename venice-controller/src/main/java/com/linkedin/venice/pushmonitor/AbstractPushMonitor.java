@@ -2,7 +2,6 @@ package com.linkedin.venice.pushmonitor;
 
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
-import com.linkedin.venice.controller.MetadataStoreWriter;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.Instance;
@@ -59,15 +58,13 @@ public abstract class AbstractPushMonitor
   private final AggPushHealthStats aggPushHealthStats;
   private final Map<String, OfflinePushStatus> topicToPushMap = new VeniceConcurrentHashMap<>();
   private Optional<TopicReplicator> topicReplicator;
-  private final MetadataStoreWriter metadataStoreWriter;
   private final ClusterLockManager clusterLockManager;
   private final String aggregateRealTimeSourceKafkaUrl;
   private final List<String> activeActiveRealTimeSourceKafkaURLs;
 
   public AbstractPushMonitor(String clusterName, OfflinePushAccessor offlinePushAccessor, StoreCleaner storeCleaner,
       ReadWriteStoreRepository metadataRepository, RoutingDataRepository routingDataRepository,
-      AggPushHealthStats aggPushHealthStats, Optional<TopicReplicator> topicReplicator,
-      MetadataStoreWriter metadataStoreWriter, ClusterLockManager clusterLockManager, String aggregateRealTimeSourceKafkaUrl,
+      AggPushHealthStats aggPushHealthStats, Optional<TopicReplicator> topicReplicator, ClusterLockManager clusterLockManager, String aggregateRealTimeSourceKafkaUrl,
       List<String> activeActiveRealTimeSourceKafkaURLs) {
     this.clusterName = clusterName;
     this.offlinePushAccessor = offlinePushAccessor;
@@ -76,7 +73,6 @@ public abstract class AbstractPushMonitor
     this.routingDataRepository = routingDataRepository;
     this.aggPushHealthStats = aggPushHealthStats;
     this.topicReplicator = topicReplicator;
-    this.metadataStoreWriter = metadataStoreWriter;
     this.clusterLockManager = clusterLockManager;
     this.aggregateRealTimeSourceKafkaUrl = aggregateRealTimeSourceKafkaUrl;
     this.activeActiveRealTimeSourceKafkaURLs = activeActiveRealTimeSourceKafkaURLs;
@@ -607,10 +603,7 @@ public abstract class AbstractPushMonitor
       aggPushHealthStats.recordFailedPush(storeName, getDurationInSec(pushStatus));
       // If we met some error to delete error version, we should not throw the exception out to fail this operation,
       // because it will be collected once a new push is completed for this store.
-      if (VeniceSystemStoreUtils.getSystemStoreType(storeName) != VeniceSystemStoreType.METADATA_STORE) {
-        // Do not delete the store version for Zk shared stores upon a single failure
-        storeCleaner.deleteOneStoreVersion(clusterName, storeName, versionNumber);
-      }
+      storeCleaner.deleteOneStoreVersion(clusterName, storeName, versionNumber);
     } catch (Exception e) {
       logger.warn("Could not delete error version: " + versionNumber + " for store: " + storeName + " in cluster: "
           + clusterName, e);
@@ -619,10 +612,6 @@ public abstract class AbstractPushMonitor
   }
 
   private void updateStoreVersionStatus(String storeName, int versionNumber, VersionStatus status) {
-    if (VeniceSystemStoreUtils.getSystemStoreType(storeName) == VeniceSystemStoreType.METADATA_STORE) {
-      // Do not update Zk shared store version status.
-      return;
-    }
     VersionStatus newStatus = status;
     try (AutoCloseableLock ignore = clusterLockManager.createStoreWriteLock(storeName)) {
       Store store = metadataRepository.getStore(storeName);

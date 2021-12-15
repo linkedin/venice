@@ -29,14 +29,12 @@ public class VeniceDistClusterControllerStateModelFactory extends StateModelFact
   private final Optional<TopicReplicator> onlineOfflineTopicReplicator;
   private final Optional<TopicReplicator> leaderFollowerTopicReplicator;
   private final Optional<DynamicAccessController> accessController;
-  private final MetadataStoreWriter metadataStoreWriter;
   private final HelixAdminClient helixAdminClient;
 
   public VeniceDistClusterControllerStateModelFactory(ZkClient zkClient, HelixAdapterSerializer adapterSerializer,
       VeniceHelixAdmin admin, VeniceControllerMultiClusterConfig clusterConfigs, MetricsRepository metricsRepository,
       ClusterLeaderInitializationRoutine controllerInitialization, Optional<TopicReplicator> onlineOfflineTopicReplicator,
-      Optional<TopicReplicator> leaderFollowerTopicReplicator, Optional<DynamicAccessController> accessController,
-      MetadataStoreWriter metadataStoreWriter, HelixAdminClient helixAdminClient) {
+      Optional<TopicReplicator> leaderFollowerTopicReplicator, Optional<DynamicAccessController> accessController, HelixAdminClient helixAdminClient) {
     this.zkClient = zkClient;
     this.adapterSerializer = adapterSerializer;
     this.clusterConfigs = clusterConfigs;
@@ -46,7 +44,6 @@ public class VeniceDistClusterControllerStateModelFactory extends StateModelFact
     this.onlineOfflineTopicReplicator = onlineOfflineTopicReplicator;
     this.leaderFollowerTopicReplicator = leaderFollowerTopicReplicator;
     this.accessController = accessController;
-    this.metadataStoreWriter = metadataStoreWriter;
     this.helixAdminClient = helixAdminClient;
   }
 
@@ -55,8 +52,8 @@ public class VeniceDistClusterControllerStateModelFactory extends StateModelFact
     String veniceClusterName =
         VeniceControllerStateModel.getVeniceClusterNameFromPartitionName(partitionName);
     VeniceControllerStateModel model =
-        new VeniceControllerStateModel(veniceClusterName, zkClient, adapterSerializer, clusterConfigs, admin, metricsRepository, controllerInitialization, onlineOfflineTopicReplicator,
-            leaderFollowerTopicReplicator, accessController, metadataStoreWriter, helixAdminClient);
+        new VeniceControllerStateModel(veniceClusterName, zkClient, adapterSerializer, clusterConfigs, admin, metricsRepository,
+            controllerInitialization, onlineOfflineTopicReplicator, leaderFollowerTopicReplicator, accessController, helixAdminClient);
     clusterToStateModelsMap.put(veniceClusterName, model);
     return model;
   }

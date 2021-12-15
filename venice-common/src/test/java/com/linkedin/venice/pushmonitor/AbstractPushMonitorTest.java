@@ -1,6 +1,5 @@
 package com.linkedin.venice.pushmonitor;
 
-import com.linkedin.venice.controller.MetadataStoreWriter;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.meta.BufferReplayPolicy;
@@ -49,7 +48,6 @@ public abstract class AbstractPushMonitorTest {
   private StoreCleaner mockStoreCleaner;
   private AggPushHealthStats mockPushHealthStats;
   private MetricsRepository metricsRepository;
-  private MetadataStoreWriter metadataStoreWriter;
   private ClusterLockManager clusterLockManager;
 
   private String clusterName = Utils.getUniqueString("test_cluster");
@@ -79,7 +77,6 @@ public abstract class AbstractPushMonitorTest {
     mockRoutingDataRepo = mock(RoutingDataRepository.class);
     mockPushHealthStats = mock(AggPushHealthStats.class);
     metricsRepository = new MetricsRepository();
-    metadataStoreWriter = mock(MetadataStoreWriter.class);
     clusterLockManager = new ClusterLockManager(clusterName);
     monitor = getPushMonitor();
   }
@@ -606,10 +603,6 @@ public abstract class AbstractPushMonitorTest {
 
   protected int getReplicationFactor() {
     return replicationFactor;
-  }
-
-  protected MetadataStoreWriter getMockMetadataStoreWriter() {
-    return metadataStoreWriter;
   }
 
   protected ClusterLockManager getClusterLockManager() {

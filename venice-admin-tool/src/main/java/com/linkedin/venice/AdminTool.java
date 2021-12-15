@@ -2,7 +2,6 @@ package com.linkedin.venice;
 
 import com.linkedin.venice.client.store.QueryTool;
 import com.linkedin.venice.common.VeniceSystemStoreType;
-import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.AclResponse;
 import com.linkedin.venice.controllerapi.ControllerClient;
@@ -38,10 +37,10 @@ import com.linkedin.venice.controllerapi.routes.AdminCommandExecutionResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.MirrorMakerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.VeniceOperationAgainstKafkaTimedOut;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerFactoryImpl;
-import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.DataReplicationPolicy;
@@ -375,9 +374,6 @@ public class AdminTool {
           break;
         case DISABLE_LF_MODEL:
           disableLFModel(cmd);
-          break;
-        case DEMATERIALIZE_METADATA_STORE_VERSION:
-          dematerializeMetadataStoreVersion(cmd);
           break;
         case NEW_STORE_ACL:
           createNewStoreWithAcl(cmd);
@@ -1247,17 +1243,6 @@ public class AdminTool {
       destVersions.stream().forEach(System.err::println);
     }
 
-    boolean destMetadataStoreOnline = true;
-    if (srcStore.isStoreMetadataSystemStoreEnabled()) {
-      String metadataStoreName = VeniceSystemStoreUtils.getMetadataStoreName(storeName);
-      StoreInfo destZkSharedStore = destControllerClient.getStore(metadataStoreName).getStore();
-      if (null == destZkSharedStore) {
-        throw new VeniceException("Zk shared store does not exist in the destination cluster " + destControllerClient.getClusterName());
-      }
-      JobStatusQueryResponse jobStatusResponse =
-          destControllerClient.queryJobStatus(Version.composeKafkaTopic(metadataStoreName, destZkSharedStore.getCurrentVersion()));
-      destMetadataStoreOnline = jobStatusResponse.getStatus().equals(ExecutionStatus.COMPLETED.toString());
-    }
     /**
      * The following logic is to check whether the corresponding meta system store is fully migrated or not.
      */
@@ -1279,7 +1264,7 @@ public class AdminTool {
       int destLatestOnlineVersionOfDaVinciPushStatusSystemStore = getLatestOnlineVersionNum(destDaVinciPushStatusSystemStore.getVersions());
       destDaVinciPushStatusStoreOnline = destLatestOnlineVersionOfDaVinciPushStatusSystemStore >= srcLatestOnlineVersionOfDaVinciPushStatusSystemStore;
     }
-    return (destLatestOnlineVersion >= srcLatestOnlineVersion) && destMetadataStoreOnline && destMetaStoreOnline && destDaVinciPushStatusStoreOnline;
+    return (destLatestOnlineVersion >= srcLatestOnlineVersion) && destMetaStoreOnline && destDaVinciPushStatusStoreOnline;
   }
 
   private static ControllerClient[] createControllerClients(String clusterName, List<String> controllerUrls) {
@@ -1516,13 +1501,6 @@ public class AdminTool {
     String storeType = getRequiredArgument(cmd, Arg.STORE_TYPE);
 
     MultiStoreResponse response = controllerClient.enableLFModel(false, storeType);
-    printObject(response);
-  }
-
-  private static void dematerializeMetadataStoreVersion(CommandLine cmd) {
-    String veniceStoreName = getRequiredArgument(cmd, Arg.STORE);
-    int version = Utils.parseIntFromString(getRequiredArgument(cmd, Arg.VERSION), Arg.VERSION.name());
-    ControllerResponse response = controllerClient.dematerializeMetadataStoreVersion(veniceStoreName, version);
     printObject(response);
   }
 

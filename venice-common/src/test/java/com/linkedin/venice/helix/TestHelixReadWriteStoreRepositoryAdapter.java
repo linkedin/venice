@@ -94,19 +94,6 @@ public class TestHelixReadWriteStoreRepositoryAdapter {
     });
     // Adding a system store directly will fail
     assertThrows(() -> writeRepoAdapter.addStore(TestUtils.createTestStore(systemStoreType.getSystemStoreName(anotherRegularStoreName), "test_owner", 0)));
-    // Other existing types of zk shared system store can still be added
-    String newRepositoryUnSupportedZKSharedSystemStoreName = VeniceSystemStoreType.METADATA_STORE.getSystemStoreName(cluster);
-    writeRepoAdapter.addStore(TestUtils.createTestStore(newRepositoryUnSupportedZKSharedSystemStoreName, "test_unsupported_system_store_owner", 0));
-    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
-      assertTrue(readOnlyRepo.hasStore(newRepositoryUnSupportedZKSharedSystemStoreName));
-      assertTrue(writeRepoAdapter.hasStore(newRepositoryUnSupportedZKSharedSystemStoreName));
-    });
-    writeRepoAdapter.deleteStore(newRepositoryUnSupportedZKSharedSystemStoreName);
-    // Verify the store via read only repo
-    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
-      assertFalse(readOnlyRepo.hasStore(newRepositoryUnSupportedZKSharedSystemStoreName));
-      assertFalse(writeRepoAdapter.hasStore(newRepositoryUnSupportedZKSharedSystemStoreName));
-    });
   }
 
   @Test
@@ -128,20 +115,6 @@ public class TestHelixReadWriteStoreRepositoryAdapter {
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
       assertFalse(readOnlyRepo.hasStore(anotherRegularStoreName));
       assertFalse(writeRepoAdapter.hasStore(systemStoreType.getSystemStoreName(anotherRegularStoreName)));
-    });
-
-    // Other existing types of zk shared system store can still be added/deleted
-    String newRepositoryUnSupportedZKSharedSystemStoreName = VeniceSystemStoreType.METADATA_STORE.getSystemStoreName(cluster);
-    writeRepoAdapter.addStore(TestUtils.createTestStore(newRepositoryUnSupportedZKSharedSystemStoreName, "test_unsupported_system_store_owner", 0));
-    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
-      assertTrue(readOnlyRepo.hasStore(newRepositoryUnSupportedZKSharedSystemStoreName));
-      assertTrue(writeRepoAdapter.hasStore(newRepositoryUnSupportedZKSharedSystemStoreName));
-    });
-    writeRepoAdapter.deleteStore(newRepositoryUnSupportedZKSharedSystemStoreName);
-    // Verify the store via read only repo
-    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
-      assertFalse(readOnlyRepo.hasStore(newRepositoryUnSupportedZKSharedSystemStoreName));
-      assertFalse(writeRepoAdapter.hasStore(newRepositoryUnSupportedZKSharedSystemStoreName));
     });
   }
 

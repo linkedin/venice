@@ -13,6 +13,7 @@ import com.linkedin.venice.utils.Utils;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -43,7 +44,7 @@ public class TestTopicCleanupService {
     topicManager = mock(TopicManager.class);
     doReturn(topicManager).when(admin).getTopicManager();
     VeniceControllerMultiClusterConfig config = mock(VeniceControllerMultiClusterConfig.class);
-    doReturn(0l).when(config).getTopicCleanupSleepIntervalBetweenTopicListFetchMs();
+    doReturn(0L).when(config).getTopicCleanupSleepIntervalBetweenTopicListFetchMs();
     doReturn(1).when(config).getMinNumberOfUnusedKafkaTopicsToPreserve();
     doReturn(1).when(admin).getMinNumberOfUnusedKafkaTopicsToPreserve();
     topicCleanupService = new TopicCleanupService(admin, config);
@@ -57,11 +58,11 @@ public class TestTopicCleanupService {
   @Test
   public void testGetAllVeniceStoreTopics() {
     Map<String, Long> storeTopics = new HashMap<>();
-    storeTopics.put("store1_v1", 1000l);
-    storeTopics.put("store1_v2", 5000l);
+    storeTopics.put("store1_v1", 1000L);
+    storeTopics.put("store1_v2", 5000L);
     storeTopics.put("store1_v3", Long.MAX_VALUE);
     storeTopics.put("store1_rt", Long.MAX_VALUE);
-    storeTopics.put("store2_v10", 5000l);
+    storeTopics.put("store2_v10", 5000L);
     storeTopics.put("store2_v11", Long.MAX_VALUE);
     storeTopics.put("non_venice_topic1", Long.MAX_VALUE);
 
@@ -76,7 +77,7 @@ public class TestTopicCleanupService {
   @Test
   public void testExtractVeniceTopicsToCleanup() {
     // minNumberOfUnusedKafkaTopicsToPreserve = 1
-    final long LOW_RETENTION_POLICY = 1000l;
+    final long LOW_RETENTION_POLICY = 1000L;
     final long HIGH_RETENTION_POLICY = Long.MAX_VALUE;
     doReturn(true).when(admin).isTopicTruncatedBasedOnRetention(LOW_RETENTION_POLICY);
     doReturn(false).when(admin).isTopicTruncatedBasedOnRetention(HIGH_RETENTION_POLICY);
@@ -101,7 +102,7 @@ public class TestTopicCleanupService {
     topicRetentions2.put("store1_v2", HIGH_RETENTION_POLICY);
     topicRetentions2.put("store1_v3", LOW_RETENTION_POLICY);
     topicRetentions2.put("store1_v4", LOW_RETENTION_POLICY);
-    List<String> expectedResult2 = Arrays.asList("store1_v3");
+    List<String> expectedResult2 = Collections.singletonList("store1_v3");
     List<String> actualResult2 = TopicCleanupService.extractVersionTopicsToCleanup(admin, topicRetentions2,
         admin.getMinNumberOfUnusedKafkaTopicsToPreserve(), true);
     actualResult2.sort(String::compareTo);
@@ -129,33 +130,22 @@ public class TestTopicCleanupService {
         admin.getMinNumberOfUnusedKafkaTopicsToPreserve(), true);
     actualResult4.sort(String::compareTo);
     Assert.assertEquals(actualResult4, expectedResult4);
-
-    Map<String, Long> topicRetentions5 = new HashMap<>();
-    String systemStoreName = VeniceSystemStoreType.METADATA_STORE.getSystemStoreName("store1");
-    topicRetentions5.put(Version.composeKafkaTopic(systemStoreName, 1), LOW_RETENTION_POLICY);
-    topicRetentions5.put(Version.composeKafkaTopic(systemStoreName, 2), LOW_RETENTION_POLICY);
-    List<String> expectedResult5 = Arrays.asList(Version.composeKafkaTopic(systemStoreName, 1),
-        Version.composeKafkaTopic(systemStoreName, 2));
-    List<String> actualResult5 = TopicCleanupService.extractVersionTopicsToCleanup(admin, topicRetentions5,
-        admin.getMinNumberOfUnusedKafkaTopicsToPreserve(), true);
-    actualResult5.sort(String::compareTo);
-    Assert.assertEquals(actualResult5, expectedResult5);
   }
 
   @Test
   public void testCleanupVeniceTopics() throws ExecutionException {
     String storeName1 = Utils.getUniqueString("store1");
     Map<String, Long> storeTopics = new HashMap<>();
-    storeTopics.put(storeName1 + "_v1", 1000l);
-    storeTopics.put(storeName1 + "_v2", 1000l);
+    storeTopics.put(storeName1 + "_v1", 1000L);
+    storeTopics.put(storeName1 + "_v2", 1000L);
     storeTopics.put(storeName1 + "_v3", Long.MAX_VALUE);
-    storeTopics.put(storeName1 + "_v4", 1000l);
+    storeTopics.put(storeName1 + "_v4", 1000L);
     storeTopics.put(storeName1 + "_rt", Long.MAX_VALUE);
     storeTopics.put("non_venice_topic1", Long.MAX_VALUE);
 
     doReturn(storeTopics).when(topicManager).getAllTopicRetentions();
     doReturn(false).when(admin).isTopicTruncatedBasedOnRetention(Long.MAX_VALUE);
-    doReturn(true).when(admin).isTopicTruncatedBasedOnRetention(1000l);
+    doReturn(true).when(admin).isTopicTruncatedBasedOnRetention(1000L);
     doReturn(Optional.of(new StoreConfig(storeName1))).when(storeConfigRepository).getStoreConfig(storeName1);
 
     topicCleanupService.cleanupVeniceTopics();
@@ -167,7 +157,7 @@ public class TestTopicCleanupService {
     verify(topicManager, never()).ensureTopicIsDeletedAndBlockWithRetry(storeName1 + "_v4");
 
     // Updated real-time topic to use low retention policy
-    storeTopics.put(storeName1 + "_rt", 1000l);
+    storeTopics.put(storeName1 + "_rt", 1000L);
     topicCleanupService.cleanupVeniceTopics();
 
     verify(topicManager, atLeastOnce()).ensureTopicIsDeletedAndBlockWithRetry(storeName1 + "_rt");
@@ -183,19 +173,19 @@ public class TestTopicCleanupService {
     doReturn(Optional.of(new StoreConfig(storeName3))).when(storeConfigRepository).getStoreConfig(storeName3);
 
     Map<String, Long> storeTopics1 = new HashMap<>();
-    storeTopics1.put(storeName1 + "_v1", 1000l);
-    storeTopics1.put(storeName1 + "_v2", 1000l);
+    storeTopics1.put(storeName1 + "_v1", 1000L);
+    storeTopics1.put(storeName1 + "_v2", 1000L);
     storeTopics1.put(storeName1 + "_v3", Long.MAX_VALUE);
-    storeTopics1.put(storeName1 + "_v4", 1000l);
+    storeTopics1.put(storeName1 + "_v4", 1000L);
     storeTopics1.put(storeName1 + "_rt", Long.MAX_VALUE);
     storeTopics1.put("non_venice_topic1", Long.MAX_VALUE);
 
     Map<String, Long> storeTopics2 = new HashMap<>();
-    storeTopics2.put(storeName2 + "_v1", 1000l);
-    storeTopics2.put(storeName2 + "_v2", 1000l);
+    storeTopics2.put(storeName2 + "_v1", 1000L);
+    storeTopics2.put(storeName2 + "_v2", 1000L);
     storeTopics2.put(storeName2 + "_v3", Long.MAX_VALUE);
-    storeTopics2.put(storeName3 + "_v4", 1000l);
-    storeTopics2.put(storeName3 + "_rt", 1000l);
+    storeTopics2.put(storeName3 + "_v4", 1000L);
+    storeTopics2.put(storeName3 + "_rt", 1000L);
 
     Map<String, Long> storeTopics3 = new HashMap<>();
 
@@ -203,7 +193,7 @@ public class TestTopicCleanupService {
         .thenReturn(storeTopics3).thenReturn(new HashMap<>());
 
     doReturn(false).when(admin).isTopicTruncatedBasedOnRetention(Long.MAX_VALUE);
-    doReturn(true).when(admin).isTopicTruncatedBasedOnRetention(1000l);
+    doReturn(true).when(admin).isTopicTruncatedBasedOnRetention(1000L);
     doReturn(true).when(admin).isMasterControllerOfControllerCluster();
     // Resource is still alive
     doReturn(true).when(admin).isResourceStillAlive(storeName2 + "_v2");
@@ -232,17 +222,17 @@ public class TestTopicCleanupService {
     String storeName1 = Utils.getUniqueString("store1");
     doReturn(Optional.of(new StoreConfig(storeName1))).when(storeConfigRepository).getStoreConfig(storeName1);
     Map<String, Long> storeTopics1 = new HashMap<>();
-    storeTopics1.put(storeName1 + "_v1", 1000l);
-    storeTopics1.put(storeName1 + "_v2", 1000l);
+    storeTopics1.put(storeName1 + "_v1", 1000L);
+    storeTopics1.put(storeName1 + "_v2", 1000L);
     storeTopics1.put(storeName1 + "_v3", Long.MAX_VALUE);
-    storeTopics1.put(storeName1 + "_v4", 1000l);
+    storeTopics1.put(storeName1 + "_v4", 1000L);
     storeTopics1.put(storeName1 + "_rt", Long.MAX_VALUE);
     storeTopics1.put("non_venice_topic1", Long.MAX_VALUE);
 
     when(topicManager.getAllTopicRetentions()).thenReturn(storeTopics1);
 
     doReturn(false).when(admin).isTopicTruncatedBasedOnRetention(Long.MAX_VALUE);
-    doReturn(true).when(admin).isTopicTruncatedBasedOnRetention(1000l);
+    doReturn(true).when(admin).isTopicTruncatedBasedOnRetention(1000L);
     when(admin.isMasterControllerOfControllerCluster()).thenReturn(true).thenReturn(false);
 
     topicCleanupService.start();
@@ -263,17 +253,17 @@ public class TestTopicCleanupService {
     String storeName1 = Utils.getUniqueString("store1");
     doReturn(Optional.of(new StoreConfig(storeName1))).when(storeConfigRepository).getStoreConfig(storeName1);
     Map<String, Long> storeTopics1 = new HashMap<>();
-    storeTopics1.put(storeName1 + "_v1", 1000l);
-    storeTopics1.put(storeName1 + "_v2", 1000l);
+    storeTopics1.put(storeName1 + "_v1", 1000L);
+    storeTopics1.put(storeName1 + "_v2", 1000L);
     storeTopics1.put(storeName1 + "_v3", Long.MAX_VALUE);
-    storeTopics1.put(storeName1 + "_v4", 1000l);
+    storeTopics1.put(storeName1 + "_v4", 1000L);
     storeTopics1.put(storeName1 + "_rt", Long.MAX_VALUE);
     storeTopics1.put("non_venice_topic1", Long.MAX_VALUE);
 
     when(topicManager.getAllTopicRetentions()).thenReturn(storeTopics1).thenReturn(new HashMap<>());
 
     doReturn(false).when(admin).isTopicTruncatedBasedOnRetention(Long.MAX_VALUE);
-    doReturn(true).when(admin).isTopicTruncatedBasedOnRetention(1000l);
+    doReturn(true).when(admin).isTopicTruncatedBasedOnRetention(1000L);
     when(admin.isMasterControllerOfControllerCluster()).thenReturn(false).thenReturn(true);
 
     topicCleanupService.start();

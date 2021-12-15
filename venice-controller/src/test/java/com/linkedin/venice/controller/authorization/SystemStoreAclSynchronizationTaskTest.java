@@ -65,14 +65,12 @@ public class SystemStoreAclSynchronizationTaskTest {
     String storeName1 = "userStore1";
     Store store1 = mock(Store.class);
     when(store1.getName()).thenReturn(storeName1);
-    when(store1.isStoreMetadataSystemStoreEnabled()).thenReturn(true);
     when(store1.isDaVinciPushStatusStoreEnabled()).thenReturn(true);
     when(veniceParentHelixAdmin.getStore(defaultCluster, storeName1)).thenReturn(store1);
     allStores.add(store1);
     String storeName2 = "userStore2";
     Store store2 = mock(Store.class);
     when(store2.getName()).thenReturn(storeName2);
-    when(store2.isStoreMetadataSystemStoreEnabled()).thenReturn(true);
     when(store2.isDaVinciPushStatusStoreEnabled()).thenReturn(false);
     when(veniceParentHelixAdmin.getStore(defaultCluster, storeName2)).thenReturn(store2);
     allStores.add(store2);
@@ -89,11 +87,6 @@ public class SystemStoreAclSynchronizationTaskTest {
     aclBinding2.addAceEntry(new AceEntry(p2, Method.Read, Permission.ALLOW));
     when(authorizerService.describeAcls(r2)).thenReturn(aclBinding2);
 
-    Resource systemStoreR1 = new Resource(VeniceSystemStoreType.METADATA_STORE.getSystemStoreName(storeName1));
-    AclBinding systemStoreAclBinding1 = new AclBinding(systemStoreR1);
-    systemStoreAclBinding1.addAceEntry(new AceEntry(p1, Method.Read, Permission.ALLOW));
-    when(authorizerService.describeAcls(systemStoreR1)).thenReturn(systemStoreAclBinding1);
-
     SystemStoreAclSynchronizationTask task = new SystemStoreAclSynchronizationTask(authorizerService,
         veniceParentHelixAdmin, SYNCHRONIZATION_CYCLE_DELAY);
     executorService.submit(task);
@@ -105,18 +98,12 @@ public class SystemStoreAclSynchronizationTaskTest {
     verify(veniceParentHelixAdmin, atLeastOnce()).updateSystemStoreAclForStore(eq(defaultCluster), eq(storeName1),
         aclBindingArgumentCaptor.capture());
     Set<AclBinding> aclBindingSet = new HashSet<>(aclBindingArgumentCaptor.getAllValues());
-    Assert.assertEquals(aclBindingSet.size(), 2);
-    Assert.assertTrue(aclBindingArgumentCaptor.getAllValues()
-        .contains(VeniceSystemStoreType.METADATA_STORE.generateSystemStoreAclBinding(aclBinding1)));
+    Assert.assertEquals(aclBindingSet.size(), 1);
     Assert.assertTrue(aclBindingArgumentCaptor.getAllValues()
         .contains(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.generateSystemStoreAclBinding(aclBinding1)));
 
     aclBindingArgumentCaptor = ArgumentCaptor.forClass(AclBinding.class);
-    verify(veniceParentHelixAdmin, atLeastOnce()).updateSystemStoreAclForStore(eq(defaultCluster), eq(storeName2),
-        aclBindingArgumentCaptor.capture());
     aclBindingSet = new HashSet<>(aclBindingArgumentCaptor.getAllValues());
-    Assert.assertEquals(aclBindingSet.size(), 1);
-    Assert.assertTrue(aclBindingArgumentCaptor.getAllValues()
-        .contains(VeniceSystemStoreType.METADATA_STORE.generateSystemStoreAclBinding(aclBinding2)));
+    Assert.assertEquals(aclBindingSet.size(), 0);
   }
 }
