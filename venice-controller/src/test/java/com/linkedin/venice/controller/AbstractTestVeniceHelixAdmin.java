@@ -1,6 +1,5 @@
 package com.linkedin.venice.controller;
 
-import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.VeniceStateModel;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -23,9 +22,7 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
-import java.nio.file.Paths;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
@@ -166,17 +163,7 @@ class AbstractTestVeniceHelixAdmin {
   }
 
   Properties getControllerProperties(String clusterName) throws IOException {
-    String currentPath = Paths.get("").toAbsolutePath().toString();
-    if (currentPath.endsWith("venice-controller")) {
-      currentPath += "/..";
-    }
-    VeniceProperties clusterProps = Utils.parseProperties(currentPath + "/venice-server/config/cluster.properties");
-    VeniceProperties baseControllerProps =
-        Utils.parseProperties(currentPath + "/venice-controller/config/controller.properties");
-    clusterProps.getString(ConfigKeys.CLUSTER_NAME);
-    Properties properties = new Properties();
-    properties.putAll(clusterProps.toProperties());
-    properties.putAll(baseControllerProps.toProperties());
+    Properties properties = TestUtils.getPropertiesForControllerConfig();
     properties.put(ENABLE_TOPIC_REPLICATOR, false);
     properties.put(KAFKA_ZK_ADDRESS, kafkaZkAddress);
     properties.put(ZOOKEEPER_ADDRESS, zkAddress);

@@ -76,6 +76,7 @@ import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
+import java.nio.file.Paths;
 import java.security.Permission;
 import java.util.ArrayDeque;
 import java.util.Arrays;
@@ -363,27 +364,6 @@ public class TestUtils {
     });
   }
 
-  public static void waitForNonDeterministicIncrementalPushCompletion(String topicName, String incrementalPushVersion,
-      ControllerClient controllerClient, long timeout, TimeUnit timeoutUnit, Optional<Logger> logger) {
-    waitForNonDeterministicCompletion(timeout, timeoutUnit, () -> {
-      String emptyPushStatus = controllerClient.queryJobStatus(topicName, Optional.of(incrementalPushVersion)).getStatus();
-      boolean ignoreError = false;
-      try {
-        assertNotEquals(emptyPushStatus, ExecutionStatus.ERROR.toString(), "Unexpected incremental push failure");
-        ignoreError = true;
-        assertEquals(emptyPushStatus, ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED.toString(),
-            "Incremental push is yet to complete");
-        return true;
-      } catch (AssertionError | VerifyError e) {
-        if (ignoreError) {
-          logger.ifPresent(value -> value.info(e.getMessage()));
-          return false;
-        }
-        throw e;
-      }
-    });
-  }
-
   public static Store createTestStore(String name, String owner, long createdTime) {
       Store store = new ZKStore(name, owner, createdTime, PersistenceType.IN_MEMORY, RoutingStrategy.CONSISTENT_HASH,
           ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_ALL_REPLICAS,
@@ -450,6 +430,21 @@ public class TestUtils {
     Map<String,VeniceControllerConfig> configMap = new HashMap<>();
     configMap.put(controllerConfig.getClusterName(),controllerConfig);
     return new VeniceControllerMultiClusterConfig(configMap);
+  }
+
+  public static Properties getPropertiesForControllerConfig() throws IOException {
+    String currentPath = Paths.get("").toAbsolutePath().toString();
+    if (currentPath.endsWith("venice-controller")) {
+      currentPath += "/..";
+    }
+    VeniceProperties clusterProps =
+        Utils.parseProperties(currentPath + "/venice-server/config/cluster.properties");
+    VeniceProperties baseControllerProps =
+        Utils.parseProperties(currentPath + "/venice-controller/config/controller.properties");
+    Properties properties = new Properties();
+    properties.putAll(clusterProps.toProperties());
+    properties.putAll(baseControllerProps.toProperties());
+    return properties;
   }
 
   public static String getClusterToDefaultD2String(String cluster) {
@@ -589,8 +584,10 @@ public class TestUtils {
     });
   }
 
-  public static void verifySystemStoreInAllRegions(String regularStoreName, VeniceSystemStoreType systemStoreType,
-      ControllerClient parentControllerClient, List<ControllerClient> controllerClientList) {
+  public static void verifySystemStoreInAllRegions(
+      String regularStoreName,
+      VeniceSystemStoreType systemStoreType,
+      List<ControllerClient> controllerClientList) {
     String systemStoreName = systemStoreType.getSystemStoreName(regularStoreName);
     TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
       for (ControllerClient client : controllerClientList) {
@@ -637,7 +634,7 @@ public class TestUtils {
     }
   }
 
-  public static StoreIngestionTaskFactory.Builder getStoreIngestionTaskBuilder(String storeName, int versionNumber) {
+  public static StoreIngestionTaskFactory.Builder getStoreIngestionTaskBuilder(String storeName) {
     VeniceServerConfig mockVeniceServerConfig = mock(VeniceServerConfig.class);
     doReturn(false).when(mockVeniceServerConfig).isHybridQuotaEnabled();
     VeniceProperties mockVeniceProperties = mock(VeniceProperties.class);
