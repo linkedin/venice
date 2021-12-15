@@ -8,6 +8,7 @@ import com.linkedin.venice.stats.AbstractVeniceStatsReporter;
 import com.linkedin.venice.stats.Gauge;
 import com.linkedin.venice.stats.StatsErrorCode;
 import io.tehuti.metrics.MetricsRepository;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.log4j.Logger;
 
 public class AggVersionedStorageEngineStats extends AbstractVeniceAggVersionedStats<
@@ -33,9 +34,23 @@ public class AggVersionedStorageEngineStats extends AbstractVeniceAggVersionedSt
     }
   }
 
+  public void recordRocksDBOpenFailure(String topicName) {
+    if (!Version.isVersionTopicOrStreamReprocessingTopic(topicName)) {
+      LOGGER.warn("Invalid topic name: " + topicName);
+      return;
+    }
+    String storeName = Version.parseStoreFromKafkaTopicName(topicName);
+    int version = Version.parseVersionFromKafkaTopicName(topicName);
+    try {
+      getStats(storeName, version).recordRocksDBOpenFailure();
+    } catch (Exception e) {
+      LOGGER.warn("Failed to record open failure for store: " + storeName + ", version: " + version);
+    }
+  }
+
   static class StorageEngineStats {
     private AbstractStorageEngine storageEngine;
-
+    private AtomicInteger rocksDBOpenFailureCount = new AtomicInteger(0);
     public void setStorageEngine(AbstractStorageEngine storageEngine) {
       this.storageEngine = storageEngine;
     }
@@ -47,10 +62,12 @@ public class AggVersionedStorageEngineStats extends AbstractVeniceAggVersionedSt
       return 0;
     }
 
+    public void recordRocksDBOpenFailure() {
+      rocksDBOpenFailureCount.incrementAndGet();
+    }
   }
 
   static class StorageEngineStatsReporter extends AbstractVeniceStatsReporter<StorageEngineStats> {
-
     public StorageEngineStatsReporter(MetricsRepository metricsRepository, String storeName) {
       super(metricsRepository, storeName);
     }
@@ -63,6 +80,14 @@ public class AggVersionedStorageEngineStats extends AbstractVeniceAggVersionedSt
           return StatsErrorCode.NULL_STORAGE_ENGINE_STATS.code;
         } else {
           return stats.getDiskUsageInBytes();
+        }
+      }));
+      registerSensor("rocksdb_open_failure_count", new Gauge(() -> {
+        StorageEngineStats stats = getStats();
+        if (null == stats) {
+          return StatsErrorCode.NULL_STORAGE_ENGINE_STATS.code;
+        } else {
+          return stats.rocksDBOpenFailureCount.get();
         }
       }));
     }
