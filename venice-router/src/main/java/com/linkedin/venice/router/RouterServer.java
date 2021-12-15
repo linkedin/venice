@@ -374,7 +374,7 @@ public class RouterServer extends AbstractVeniceService {
       serverSocketChannelClass = EpollServerSocketChannel.class;
     } catch (LinkageError error) {
       useEpoll = false;
-      logger.info("Epoll is only supported on Linux; switching to NIO", error);
+      logger.info("Epoll is only supported on Linux; switching to NIO");
       workerEventLoopGroup = new NioEventLoopGroup(config.getNettyClientEventLoopThreads(), workerExecutor);
       channelClass = NioSocketChannel.class;
       serverEventLoopGroup = new NioEventLoopGroup(ROUTER_BOSS_THREAD_NUM);

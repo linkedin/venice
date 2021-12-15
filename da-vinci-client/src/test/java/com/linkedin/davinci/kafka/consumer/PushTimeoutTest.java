@@ -34,7 +34,7 @@ public class PushTimeoutTest {
     Queue<VeniceNotifier> notifiers = new ArrayDeque<>();
     notifiers.add(exceptionCaptorNotifier);
 
-    StoreIngestionTaskFactory.Builder builder = TestUtils.getStoreIngestionTaskBuilder(storeName, versionNumber)
+    StoreIngestionTaskFactory.Builder builder = TestUtils.getStoreIngestionTaskBuilder(storeName)
         .setLeaderFollowerNotifiersQueue(notifiers);
 
     Store mockStore = builder.getMetadataRepo().getStoreOrThrow(storeName);
@@ -81,7 +81,7 @@ public class PushTimeoutTest {
 
     StorageMetadataService mockStorageMetadataService = mock(StorageMetadataService.class);
 
-    StoreIngestionTaskFactory.Builder builder = TestUtils.getStoreIngestionTaskBuilder(storeName, versionNumber)
+    StoreIngestionTaskFactory.Builder builder = TestUtils.getStoreIngestionTaskBuilder(storeName)
         .setLeaderFollowerNotifiersQueue(notifiers)
         .setStorageMetadataService(mockStorageMetadataService);
 

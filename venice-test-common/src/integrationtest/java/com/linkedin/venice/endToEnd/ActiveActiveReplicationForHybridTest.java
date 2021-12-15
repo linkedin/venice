@@ -299,13 +299,15 @@ public class ActiveActiveReplicationForHybridTest {
       VersionCreationResponse versionCreationResponse = parentControllerClient.emptyPush(storeName, Utils.getUniqueString("empty-hybrid-push"), 1L);
 
       //disable the purging of transientRecord buffer using reflection.
+      // TODO: Clean up this reflection stuff... Why do we even need this at all? And is there not a better way?
       if (useTransientRecordCache) {
         for (VeniceMultiClusterWrapper veniceColo : multiColoMultiClusterWrapper.getClusters()) {
           VeniceClusterWrapper veniceCluster = veniceColo.getClusters().get(clusterName);
           // Wait for push to complete in the colo
-          TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, true, () ->
-              Assert.assertEquals(veniceCluster.getControllerClient().getStore(storeName).getStore().getCurrentVersion(),
-                  Version.parseVersionFromKafkaTopicName(versionCreationResponse.getKafkaTopic())));
+          veniceCluster.useControllerClient(controllerClient ->
+              TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, true, () ->
+                  Assert.assertEquals(controllerClient.getStore(storeName).getStore().getCurrentVersion(),
+                      Version.parseVersionFromKafkaTopicName(versionCreationResponse.getKafkaTopic()))));
           for (VeniceServerWrapper veniceServerWrapper : veniceCluster.getVeniceServers()){
             VeniceServer veniceServer = veniceServerWrapper.getVeniceServer();
             StoreIngestionTask ingestionTask = veniceServer.getKafkaStoreIngestionService().getStoreIngestionTask(versionCreationResponse.getKafkaTopic());
@@ -639,8 +641,9 @@ public class ActiveActiveReplicationForHybridTest {
         ControllerClient dc2Client = new ControllerClient(clusterName, childDatacenters.get(2).getControllerConnectString())) {
       List<ControllerClient> dcControllerClientList = Arrays.asList(dc0Client, dc1Client, dc2Client);
       TestUtils.createAndVerifyStoreInAllRegions(storeName, parentControllerClient, dcControllerClientList);
-      TestUtils.verifySystemStoreInAllRegions(storeName, VeniceSystemStoreType.META_STORE, parentControllerClient, dcControllerClientList);
-      TestUtils.verifySystemStoreInAllRegions(storeName, VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE, parentControllerClient, dcControllerClientList);
+      TestUtils.verifySystemStoreInAllRegions(storeName, VeniceSystemStoreType.META_STORE, dcControllerClientList);
+      TestUtils.verifySystemStoreInAllRegions(storeName, VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE,
+          dcControllerClientList);
       TestUtils.assertCommand(parentControllerClient.updateStore(storeName, new UpdateStoreQueryParams()
           .setLeaderFollowerModel(true)
           .setHybridRewindSeconds(10)

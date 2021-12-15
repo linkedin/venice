@@ -2554,7 +2554,7 @@ public class StoreIngestionTaskTest {
     doReturn(true).when(mockVeniceProperties).isEmpty();
     doReturn(mockVeniceProperties).when(mockVeniceServerConfig).getKafkaConsumerConfigsForLocalConsumption();
 
-    StoreIngestionTaskFactory.Builder builder = TestUtils.getStoreIngestionTaskBuilder(storeName, 1)
+    StoreIngestionTaskFactory.Builder builder = TestUtils.getStoreIngestionTaskBuilder(storeName)
         .setTopicManagerRepository(mockTopicManagerRepository)
         .setStorageMetadataService(mockStorageMetadataService)
         .setMetadataRepository(mockReadOnlyStoreRepository)
