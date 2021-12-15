@@ -703,12 +703,6 @@ public class AdminConsumptionTask implements Runnable, Closeable {
               + " because it does not contain a storeName field");
         }
     }
-    // TODO to be removed once legacy system store resources are cleaned up.
-    if (VeniceSystemStoreUtils.getSystemStoreType(storeName) == VeniceSystemStoreType.METADATA_STORE
-        && !VeniceSystemStoreUtils.getSharedZkNameForMetadataStore(clusterName).equals(storeName)
-        && !VeniceSystemStoreType.METADATA_STORE.getPrefix().equals(storeName)) {
-      storeName = VeniceSystemStoreUtils.getStoreNameFromSystemStoreName(storeName);
-    }
     return storeName;
   }
 

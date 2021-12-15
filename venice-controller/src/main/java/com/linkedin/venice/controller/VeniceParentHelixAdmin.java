@@ -2699,24 +2699,6 @@ public class VeniceParentHelixAdmin implements Admin {
     sendAdminMessageAndWaitForConsumed(srcClusterName, storeName, message);
   }
 
-  @Override
-  public void dematerializeMetadataStoreVersion(String clusterName, String storeName, int versionNumber, boolean deleteRT) {
-    String metadataStoreName = VeniceSystemStoreUtils.getMetadataStoreName(storeName);
-    DeleteOldVersion deleteOldVersion = (DeleteOldVersion) AdminMessageType.DELETE_OLD_VERSION.getNewInstance();
-    deleteOldVersion.clusterName = clusterName;
-    deleteOldVersion.storeName = metadataStoreName;
-    deleteOldVersion.versionNum = versionNumber;
-    AdminOperation message = new AdminOperation();
-    message.operationType = AdminMessageType.DELETE_OLD_VERSION.getValue();
-    message.payloadUnion = deleteOldVersion;
-    acquireAdminMessageLock(clusterName, storeName);
-    try {
-      sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
-    } finally {
-      releaseAdminMessageLock(clusterName);
-    }
-  }
-
   /**
    * Check if etled proxy account is set before enabling any ETL and return a {@link ETLStoreConfigRecord}
    */

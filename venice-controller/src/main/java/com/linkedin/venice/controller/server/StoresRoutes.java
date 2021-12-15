@@ -757,28 +757,6 @@ public class StoresRoutes extends AbstractRoute {
     };
   }
 
-  public Route dematerializeMetadataStoreVersion(Admin admin) {
-    return (request, response) -> {
-      ControllerResponse responseObject = new ControllerResponse();
-      response.type(HttpConstants.JSON);
-      try {
-        AdminSparkServer.validateParams(request, DEMATERIALIZE_METADATA_STORE_VERSION.getParams(), admin);
-        String clusterName = request.queryParams(CLUSTER);
-        String storeName = request.queryParams(NAME);
-        int versionNumber = Utils.parseIntFromString(request.queryParams(VERSION), VERSION);
-
-        admin.dematerializeMetadataStoreVersion(clusterName, storeName, versionNumber, true);
-
-        responseObject.setCluster(clusterName);
-        responseObject.setName(storeName);
-      } catch (Throwable e) {
-        responseObject.setError(e.getMessage());
-        AdminSparkServer.handleError(e, request, response);
-      }
-      return AdminSparkServer.mapper.writeValueAsString(responseObject);
-    };
-  }
-
   public Route setTopicCompaction(Admin admin) {
     return new VeniceRouteHandler<StoreResponse>(StoreResponse.class) {
       @Override
@@ -788,8 +766,6 @@ public class StoresRoutes extends AbstractRoute {
           return;
         }
         AdminSparkServer.validateParams(request, SET_TOPIC_COMPACTION.getParams(), admin);
-        //String clusterName = request.queryParams(CLUSTER);
-        String storeName = request.queryParams(NAME);
         try {
           admin.getTopicManager().updateTopicCompactionPolicy(request.queryParams(TOPIC), Boolean.getBoolean(request.queryParams(TOPIC_COMPACTION_POLICY)));
           veniceResponse.setName(request.queryParams(TOPIC));

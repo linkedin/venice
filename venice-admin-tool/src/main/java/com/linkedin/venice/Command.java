@@ -169,8 +169,6 @@ public enum Command {
       new Arg[] {URL, CLUSTER, STORE_TYPE}),
   DISABLE_LF_MODEL("disable-lf-model", "disable leader/follower model for certain stores based on the param",
       new Arg[] {URL, CLUSTER, STORE_TYPE}),
-  DEMATERIALIZE_METADATA_STORE_VERSION("dematerialize-metadata-store-version", "Dematerialize the metadata system store for an existing Venice store",
-      new Arg[] {URL, CLUSTER, STORE, VERSION}),
   CREATE_DAVINCI_PUSH_STATUS_STORE("create-davinci-push-status-store", "Create a Da Vinci push status store for an existing Venice store",
       new Arg[] {URL, CLUSTER, STORE}),
   DELETE_DAVINCI_PUSH_STATUS_STORE("delete-davinci-push-status-store", "Delete the Da Vinci push status store for an existing Venice store",

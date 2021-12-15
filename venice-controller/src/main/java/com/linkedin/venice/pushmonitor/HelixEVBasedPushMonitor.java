@@ -1,10 +1,9 @@
 package com.linkedin.venice.pushmonitor;
 
-import com.linkedin.venice.controller.MetadataStoreWriter;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
-import com.linkedin.venice.meta.RoutingDataRepository;;
+import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.StoreCleaner;
 import com.linkedin.venice.replication.TopicReplicator;
 import com.linkedin.venice.utils.Pair;
@@ -23,10 +22,10 @@ public class HelixEVBasedPushMonitor extends AbstractPushMonitor implements Rout
   public HelixEVBasedPushMonitor(String clusterName, RoutingDataRepository routingDataRepository,
       OfflinePushAccessor offlinePushAccessor, StoreCleaner storeCleaner, ReadWriteStoreRepository metadataRepository,
       AggPushHealthStats aggPushHealthStats, Optional<TopicReplicator> topicReplicator,
-      MetadataStoreWriter metadataStoreWriter, ClusterLockManager clusterLockManager, String aggregateRealTimeSourceKafkaUrl,
+      ClusterLockManager clusterLockManager, String aggregateRealTimeSourceKafkaUrl,
       List<String> activeActiveRealTimeSourceKafkaURLs) {
     super(clusterName, offlinePushAccessor, storeCleaner, metadataRepository, routingDataRepository, aggPushHealthStats,
-        topicReplicator, metadataStoreWriter, clusterLockManager, aggregateRealTimeSourceKafkaUrl,
+        topicReplicator, clusterLockManager, aggregateRealTimeSourceKafkaUrl,
         activeActiveRealTimeSourceKafkaURLs);
   }
   /**

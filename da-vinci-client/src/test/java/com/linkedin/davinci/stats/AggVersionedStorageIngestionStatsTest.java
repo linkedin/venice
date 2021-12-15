@@ -2,7 +2,6 @@ package com.linkedin.davinci.stats;
 
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionTask;
-import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
@@ -40,27 +39,6 @@ public class AggVersionedStorageIngestionStatsTest {
     mockStoreRepository = mock(ReadOnlyStoreRepository.class);
     mockServerConfig = mock(VeniceServerConfig.class);
     versionedIngestionStats = new AggVersionedStorageIngestionStats(metricsRepository, mockStoreRepository, mockServerConfig);
-  }
-
-  @Test
-  public void testWithMetadataStoreIngestion() {
-    String regularStoreName = "test-store";
-    String metadataStoreName = VeniceSystemStoreUtils.getMetadataStoreName(regularStoreName);
-    String zkSharedStoreName = VeniceSystemStoreUtils.getSharedZkNameForMetadataStore("test-cluster");
-    Store zkSharedStore = getMockStore(zkSharedStoreName);
-    zkSharedStore.addVersion(new VersionImpl(zkSharedStoreName, 1, ""));
-    zkSharedStore.setCurrentVersion(1);
-    doReturn(zkSharedStore).when(mockStoreRepository).getStoreOrThrow(zkSharedStoreName);
-    doReturn(zkSharedStore).when(mockStoreRepository).getStoreOrThrow(metadataStoreName);
-    StoreIngestionTask mockMetadataStoreIngestionTask = mock(StoreIngestionTask.class);
-    doReturn(zkSharedStore).when(mockMetadataStoreIngestionTask).getIngestionStore();
-    doReturn(true).when(mockMetadataStoreIngestionTask).isHybridMode();
-    doReturn(100L).when(mockMetadataStoreIngestionTask).getRealTimeBufferOffsetLag();
-    doReturn(0L).when(mockMetadataStoreIngestionTask).getOffsetLagThreshold();
-    versionedIngestionStats.setIngestionTask(Version.composeKafkaTopic(metadataStoreName, 1), mockMetadataStoreIngestionTask);
-    // Expected to see v1's records consumed on future reporter
-    Assert.assertEquals(reporter.query("." + metadataStoreName + "_current--rt_topic_offset_lag.IngestionStatsGauge").value(),
-        100d);
   }
 
   @Test

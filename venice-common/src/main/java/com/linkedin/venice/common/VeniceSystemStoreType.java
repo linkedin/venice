@@ -6,8 +6,6 @@ import com.linkedin.venice.authorization.Method;
 import com.linkedin.venice.authorization.Permission;
 import com.linkedin.venice.authorization.Resource;
 import com.linkedin.venice.meta.Store;
-import com.linkedin.venice.meta.systemstore.schemas.StoreMetadataKey;
-import com.linkedin.venice.meta.systemstore.schemas.StoreMetadataValue;
 import com.linkedin.venice.pushstatus.PushStatusKey;
 import com.linkedin.venice.pushstatus.PushStatusValue;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -26,10 +24,6 @@ import java.util.List;
  * store types should be added here especially if they also would like to share metadata in Zookeeper.
  */
 public enum VeniceSystemStoreType {
-
-  METADATA_STORE(String.format(Store.SYSTEM_STORE_FORMAT, "metadata_store"), true,
-      StoreMetadataKey.SCHEMA$.toString(), StoreMetadataValue.SCHEMA$.toString(), "", false, Method.READ_SYSTEM_STORE),
-
   DAVINCI_PUSH_STATUS_STORE(String.format(Store.SYSTEM_STORE_FORMAT, "davinci_push_status_store"), true,
       PushStatusKey.SCHEMA$.toString(), PushStatusValue.SCHEMA$.toString(), AvroProtocolDefinition.PUSH_STATUS_SYSTEM_SCHEMA_STORE.getSystemStoreName(), true, Method.WRITE_SYSTEM_STORE),
 
@@ -217,9 +211,6 @@ public enum VeniceSystemStoreType {
       return Collections.emptyList();
     }
     List<VeniceSystemStoreType> enabledSystemStoreTypes = new ArrayList<>();
-    if (regularStore.isStoreMetadataSystemStoreEnabled()) {
-      enabledSystemStoreTypes.add(VeniceSystemStoreType.METADATA_STORE);
-    }
     if (regularStore.isDaVinciPushStatusStoreEnabled()) {
       enabledSystemStoreTypes.add(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE);
     }

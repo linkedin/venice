@@ -54,14 +54,6 @@ public class HelixReadOnlyStoreRepositoryAdapter implements ReadOnlyStoreReposit
   @Override
   public Store getStore(String storeName) {
     VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(storeName);
-    // TODO to be removed once legacy system store resources are cleaned up.
-    if (systemStoreType != null) {
-      if (VeniceSystemStoreType.METADATA_STORE.getPrefix().equals(storeName)
-          || systemStoreType.getZkSharedStoreNameInCluster(clusterName).equals(storeName)) {
-        // Legacy system store zk shared store objects, get them from the regularStoreRepository.
-        return regularStoreRepository.getStore(storeName);
-      }
-    }
     if (forwardToRegularRepository(systemStoreType)) {
       return regularStoreRepository.getStore(storeName);
     }

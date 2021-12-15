@@ -1,6 +1,5 @@
 package com.linkedin.venice.pushmonitor;
 
-import com.linkedin.venice.controller.MetadataStoreWriter;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.Instance;
@@ -51,19 +50,19 @@ public class PushMonitorDelegator implements PushMonitor {
       RoutingDataRepository routingDataRepository, OfflinePushAccessor offlinePushAccessor,
       StoreCleaner storeCleaner, ReadWriteStoreRepository metadataRepository,
       AggPushHealthStats aggPushHealthStats, Optional<TopicReplicator> onlineOfflineTopicReplicator,
-      Optional<TopicReplicator> leaderFollowerTopicReplicator, MetadataStoreWriter metadataStoreWriter,
-      ClusterLockManager clusterLockManager, String aggregateRealTimeSourceKafkaUrl, List<String> activeActiveRealTimeSourceKafkaURLs) {
+      Optional<TopicReplicator> leaderFollowerTopicReplicator, ClusterLockManager clusterLockManager,
+      String aggregateRealTimeSourceKafkaUrl, List<String> activeActiveRealTimeSourceKafkaURLs) {
     this.clusterName = clusterName;
     this.pushMonitorType = pushMonitorType;
     this.metadataRepository = metadataRepository;
     this.offlinePushAccessor = offlinePushAccessor;
 
     this.helixEVPushMonitor = new HelixEVBasedPushMonitor(clusterName, routingDataRepository, offlinePushAccessor,
-        storeCleaner, metadataRepository, aggPushHealthStats, onlineOfflineTopicReplicator,
-        metadataStoreWriter, clusterLockManager, aggregateRealTimeSourceKafkaUrl, activeActiveRealTimeSourceKafkaURLs);
+        storeCleaner, metadataRepository, aggPushHealthStats, onlineOfflineTopicReplicator, clusterLockManager,
+        aggregateRealTimeSourceKafkaUrl, activeActiveRealTimeSourceKafkaURLs);
     this.partitionStatusBasedPushStatusMonitor = new PartitionStatusBasedPushMonitor(clusterName, offlinePushAccessor,
-        storeCleaner, metadataRepository, routingDataRepository, aggPushHealthStats,
-        leaderFollowerTopicReplicator, metadataStoreWriter, clusterLockManager, aggregateRealTimeSourceKafkaUrl, activeActiveRealTimeSourceKafkaURLs);
+        storeCleaner, metadataRepository, routingDataRepository, aggPushHealthStats, leaderFollowerTopicReplicator,
+        clusterLockManager, aggregateRealTimeSourceKafkaUrl, activeActiveRealTimeSourceKafkaURLs);
     this.clusterLockManager = clusterLockManager;
 
     this.topicToPushMonitorMap = new VeniceConcurrentHashMap<>();

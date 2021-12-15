@@ -277,7 +277,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     private final String coloMasterClusterName;
     private final Optional<SSLFactory> sslFactory;
     private final String pushJobStatusStoreClusterName;
-    private final MetadataStoreWriter metadataStoreWriter;
     private final Optional<PushStatusStoreReader> pushStatusStoreReader;
     private final Optional<PushStatusStoreRecordDeleter> pushStatusStoreDeleter;
     private final SharedHelixReadOnlyZKSharedSystemStoreRepository zkSharedSystemStoreRepository;
@@ -417,7 +416,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         isControllerClusterHAAS = commonConfig.isControllerClusterLeaderHAAS();
         coloMasterClusterName = commonConfig.getClusterName();
         pushJobStatusStoreClusterName = commonConfig.getPushJobStatusStoreClusterName();
-        metadataStoreWriter = new MetadataStoreWriter(topicManagerRepository.getTopicManager(), veniceWriterFactory, this);
         if (commonConfig.isDaVinciPushStatusStoreEnabled()) {
             pushStatusStoreReader = Optional.of(
                 new PushStatusStoreReader(d2Client, commonConfig.getPushStatusStoreHeartbeatExpirationTimeInSeconds())
@@ -483,8 +481,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         }
         controllerStateModelFactory = new VeniceDistClusterControllerStateModelFactory(
             zkClient, adapterSerializer, this, multiClusterConfigs, metricsRepository, controllerInitialization,
-            onlineOfflineTopicReplicator, leaderFollowerTopicReplicator, accessController, metadataStoreWriter,
-            helixAdminClient);
+            onlineOfflineTopicReplicator, leaderFollowerTopicReplicator, accessController, helixAdminClient);
         // Initialized the helix manger for the level1 controller. If the controller cluster leader is going to be in
         // HaaS then level1 controllers should be only in participant mode.
         initLevel1Controller(isControllerClusterHAAS);
@@ -589,16 +586,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         // Find out the cluster first
         Optional<StoreConfig> storeConfig = storeConfigRepo.getStoreConfig(storeName);
         if (!storeConfig.isPresent()) {
-            if (VeniceSystemStoreUtils.getSystemStoreType(storeName) == VeniceSystemStoreType.METADATA_STORE) {
-                // Use the corresponding Venice store name to get cluster information
-                storeConfig = storeConfigRepo.getStoreConfig(
-                    VeniceSystemStoreUtils.getStoreNameFromSystemStoreName(storeName));
-            }
-            if (!storeConfig.isPresent()) {
-                logger.info(
-                    "StoreConfig doesn't exist for store: " + storeName + ", will treat resource:" + resourceName + " as deprecated");
-                return false;
-            }
+            logger.info(
+                "StoreConfig doesn't exist for store: " + storeName + ", will treat resource:" + resourceName + " as deprecated");
+            return false;
         }
         String clusterName = storeConfig.get().getCluster();
         return isResourceStillAlive(clusterName, resourceName);
@@ -737,12 +727,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 }
             }
             if (store != null) {
-                if (store.isStoreMetadataSystemStoreEnabled()) {
-                    // Attempt to dematerialize all possible versions, no-op if a version doesn't actually exist.
-                    for (Version version : storeRepository.getStore(VeniceSystemStoreType.METADATA_STORE.getPrefix()).getVersions()) {
-                        dematerializeMetadataStoreVersion(clusterName, storeName, version.getNumber(), true);
-                    }
-                }
                 // Delete All versions and push statues
                 deleteAllVersionsInStore(clusterName, storeName);
                 resources.getPushMonitor().cleanupStoreStatus(storeName);
@@ -753,11 +737,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                     truncateKafkaTopic(rtTopic);
                     if (waitOnRTTopicDeletion && getTopicManager().containsTopic(rtTopic)) {
                         throw new VeniceRetriableException("Waiting for RT topic deletion for store: " + storeName);
-                    }
-                    String metadataSystemStoreRTTopic = Version.composeRealTimeTopic(VeniceSystemStoreUtils.getMetadataStoreName(storeName));
-                    if (getTopicManager().containsTopic(metadataSystemStoreRTTopic)) {
-                        truncateKafkaTopic(metadataSystemStoreRTTopic);
-                        // Don't need to block on deletion for metadata system store RT topic because it's handled in materializeMetadataStoreVersion.
                     }
                 }
                 truncateOldTopics(clusterName, store, true);
@@ -2108,27 +2087,22 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         checkControllerLeadershipFor(clusterName);
         HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
         try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
-            if (VeniceSystemStoreType.getSystemStoreType(storeName) == VeniceSystemStoreType.METADATA_STORE) {
-                logger.info("Deleting version: " + versionNum + " in store: " + storeName + " in cluster: " + clusterName);
-                deleteMetadataStoreVersion(clusterName, storeName, versionNum);
-            } else {
-                ReadWriteStoreRepository repository = resources.getStoreMetadataRepository();
-                Store store = repository.getStore(storeName);
-                // Here we do not require the store be disabled. So it might impact reads
-                // The thing is a new version is just online, now we delete the old version. So some of routers
-                // might still use the old one as the current version, so when they send the request to that version,
-                // they will get error response.
-                // TODO the way to solve this could be: Introduce a timestamp to represent when the version is online.
-                // TOOD And only allow to delete the old version that the newer version has been online for a while.
-                checkPreConditionForSingleVersionDeletion(clusterName, storeName, store, versionNum);
-                if (!store.containsVersion(versionNum)) {
-                    logger.warn("Ignore the deletion request. Could not find version: " + versionNum + " in store: " + storeName
-                        + " in cluster: " + clusterName);
-                    return;
-                }
-                logger.info("Deleting version: " + versionNum + " in store: " + storeName + " in cluster: " + clusterName);
-                deleteOneStoreVersion(clusterName, storeName, versionNum);
+            ReadWriteStoreRepository repository = resources.getStoreMetadataRepository();
+            Store store = repository.getStore(storeName);
+            // Here we do not require the store be disabled. So it might impact reads
+            // The thing is a new version is just online, now we delete the old version. So some of routers
+            // might still use the old one as the current version, so when they send the request to that version,
+            // they will get error response.
+            // TODO the way to solve this could be: Introduce a timestamp to represent when the version is online.
+            // TOOD And only allow to delete the old version that the newer version has been online for a while.
+            checkPreConditionForSingleVersionDeletion(clusterName, storeName, store, versionNum);
+            if (!store.containsVersion(versionNum)) {
+                logger.warn("Ignore the deletion request. Could not find version: " + versionNum + " in store: " + storeName
+                    + " in cluster: " + clusterName);
+                return;
             }
+            logger.info("Deleting version: " + versionNum + " in store: " + storeName + " in cluster: " + clusterName);
+            deleteOneStoreVersion(clusterName, storeName, versionNum);
             logger.info("Deleted version: " + versionNum + " in store: " + storeName + " in cluster: " + clusterName);
         }
     }
@@ -2148,10 +2122,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             if (store == null) {
                 throwStoreDoesNotExist(clusterName, storeName);
             }
-            Store storeToCheckOngoingMigration =
-                VeniceSystemStoreUtils.getSystemStoreType(storeName) == VeniceSystemStoreType.METADATA_STORE ?
-                    resources.getStoreMetadataRepository()
-                        .getStore(VeniceSystemStoreUtils.getStoreNameFromSystemStoreName(storeName)) : store;
             Optional<Version> versionToBeDeleted = store.getVersion(versionNumber);
             if (!versionToBeDeleted.isPresent()) {
                 logger.info("Version: " + versionNumber + " doesn't exist in store: " + storeName + ", will skip `deleteOneStoreVersion`");
@@ -2166,7 +2136,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             if (!versionToBeDeleted.get().isLeaderFollowerModelEnabled() && onlineOfflineTopicReplicator.isPresent()) {
                 // Do not delete topic replicator during store migration
                 // In such case, the topic replicator will be deleted after store migration, triggered by a new push job
-                if (!storeToCheckOngoingMigration.isMigrating()) {
+                if (!store.isMigrating()) {
                     String realTimeTopic = Version.composeRealTimeTopic(storeName);
                     onlineOfflineTopicReplicator.get().terminateReplication(realTimeTopic, resourceName);
                 }
@@ -2177,7 +2147,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             if (deletedVersion.isPresent()) {
                 // Do not delete topic during store migration
                 // In such case, the topic will be deleted after store migration, triggered by a new push job
-                if (!storeToCheckOngoingMigration.isMigrating()) {
+                if (!store.isMigrating()) {
                     // Not using deletedVersion.get().kafkaTopicName() because it's incorrect for Zk shared stores.
                     truncateKafkaTopic(Version.composeKafkaTopic(storeName, deletedVersion.get().getNumber()));
                     if (deletedVersion.get().getPushType().isStreamReprocessing()) {
@@ -2188,35 +2158,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                     pushStatusStoreDeleter.get().deletePushStatus(storeName, deletedVersion.get().getNumber(), Optional.empty(), deletedVersion.get().getPartitionCount());
                 }
             }
-        }
-    }
-
-    // TODO to be removed once legacy system store resources are cleaned up.
-    private void deleteMetadataStoreVersion(String clusterName, String storeName, int versionNumber) {
-        if (VeniceSystemStoreUtils.getSharedZkNameForMetadataStore(clusterName).equals(storeName)
-            || VeniceSystemStoreType.METADATA_STORE.getPrefix().equals(storeName)) {
-            // Versions of the Zk shared store object itself will never be materialized.
-            return;
-        }
-        HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
-        try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
-            String resourceName = Version.composeKafkaTopic(storeName, versionNumber);
-            String realTimeTopic = Version.composeRealTimeTopic(storeName);
-            killOfflinePush(clusterName, resourceName, true);
-            if (!isParent()) {
-                logger.info("Deleting helix resource:" + resourceName + " in cluster:" + clusterName);
-                deleteHelixResource(clusterName, resourceName);
-                try {
-                    logger.info("Terminating topic replication from: " + realTimeTopic + " to: " + realTimeTopic);
-                    onlineOfflineTopicReplicator.get().terminateReplication(realTimeTopic, resourceName);
-                } catch (Exception e) {
-                    logger.warn("Failed to terminate topic replication from: " + realTimeTopic + " to: "
-                        + realTimeTopic + ". It's possible online offline topic replicator is no longer in use. "
-                        + "Will proceed with topic deletion.", e);
-                }
-            }
-            logger.info("Killing offline push for:" + resourceName + " in cluster:" + clusterName);
-            truncateKafkaTopic(resourceName);
         }
     }
 
@@ -2306,22 +2247,17 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             if (store == null) {
                 throw new VeniceNoStoreException(storeName);
             }
-            VeniceSystemStoreType systemStore = VeniceSystemStoreUtils.getSystemStoreType(storeName);
 
-            if (systemStore != null && systemStore.isStoreZkShared()) {
-                deletedVersion = store.getVersion(versionNumber);
+          /**
+           * If the system store type is {@link VeniceSystemStoreType.META_STORE}, we will use the same logic
+           * as the regular Venice store here since it also contains multiple versions maintained on system store basis.
+           */
+            Version version = store.deleteVersion(versionNumber);
+            if (version == null) {
+                deletedVersion = Optional.empty();
             } else {
-              /**
-               * If the system store type is {@link VeniceSystemStoreType.META_STORE}, we will use the same logic
-               * as the regular Venice store here since it also contains multiple versions maintained on system store basis.
-               */
-                Version version = store.deleteVersion(versionNumber);
-                if (version == null) {
-                    deletedVersion = Optional.empty();
-                } else {
-                    deletedVersion = Optional.of(version);
-                    storeRepository.updateStore(store);
-                }
+                deletedVersion = Optional.of(version);
+                storeRepository.updateStore(store);
             }
             if (!deletedVersion.isPresent()) {
                 logger.warn("Can not find version: " + versionNumber + " in store: " + storeName + ".  It has probably already been deleted");
@@ -4918,7 +4854,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         jobTrackingVeniceWriterMap.clear();
         participantMessageWriterMap.forEach( (k, v) -> Utils.closeQuietlyWithErrorLogged(v));
         participantMessageWriterMap.clear();
-        metadataStoreWriter.close();
         Utils.closeQuietlyWithErrorLogged(topicManagerRepository);
         pushStatusStoreReader.ifPresent(PushStatusStoreReader::close);
         pushStatusStoreDeleter.ifPresent(PushStatusStoreRecordDeleter::close);
@@ -5001,25 +4936,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             return false;
         }
         return leader.getId().equals(this.controllerName);
-    }
-
-    @Override
-    public void dematerializeMetadataStoreVersion(String clusterName, String storeName, int versionNumber, boolean deleteRT) {
-        String metadataStoreName = VeniceSystemStoreUtils.getMetadataStoreName(storeName);
-        deleteOldVersionInStore(clusterName, metadataStoreName, versionNumber);
-        if (deleteRT) {
-            // Clean up venice writer before truncating RT topic
-            metadataStoreWriter.removeMetadataStoreWriter(storeName);
-            truncateKafkaTopic(Version.composeRealTimeTopic(metadataStoreName));
-        }
-        try {
-            storeMetadataUpdate(clusterName, storeName, store -> {
-                store.setStoreMetadataSystemStoreEnabled(false);
-                return store;
-            });
-        } catch (VeniceNoStoreException noStoreException) {
-            logger.warn("Corresponding Venice store no longer exist, skipping updating the metadata system store enabled flag");
-        }
     }
 
     public void setStoreConfigForMigration(String storeName, String srcClusterName, String destClusterName) {

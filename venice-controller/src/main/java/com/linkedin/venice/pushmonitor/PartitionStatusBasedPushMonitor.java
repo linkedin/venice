@@ -1,6 +1,5 @@
 package com.linkedin.venice.pushmonitor;
 
-import com.linkedin.venice.controller.MetadataStoreWriter;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
@@ -20,11 +19,10 @@ import java.util.Optional;
 public class PartitionStatusBasedPushMonitor extends AbstractPushMonitor {
   public PartitionStatusBasedPushMonitor(String clusterName, OfflinePushAccessor offlinePushAccessor,
       StoreCleaner storeCleaner, ReadWriteStoreRepository metadataRepository, RoutingDataRepository routingDataRepository,
-      AggPushHealthStats aggPushHealthStats, Optional<TopicReplicator> topicReplicator,
-      MetadataStoreWriter metadataStoreWriter, ClusterLockManager clusterLockManager, String aggregateRealTimeSourceKafkaUrl,
-      List<String> childDataCenterKafkaUrls) {
+      AggPushHealthStats aggPushHealthStats, Optional<TopicReplicator> topicReplicator, ClusterLockManager clusterLockManager,
+      String aggregateRealTimeSourceKafkaUrl, List<String> childDataCenterKafkaUrls) {
     super(clusterName, offlinePushAccessor, storeCleaner, metadataRepository, routingDataRepository, aggPushHealthStats,
-        topicReplicator, metadataStoreWriter, clusterLockManager, aggregateRealTimeSourceKafkaUrl,
+        topicReplicator, clusterLockManager, aggregateRealTimeSourceKafkaUrl,
         childDataCenterKafkaUrls);
   }
 

@@ -345,14 +345,8 @@ public class AdminExecutionTask implements Callable<Void> {
     String clusterName = message.clusterName.toString();
     String storeName = message.storeName.toString();
     int versionNum = message.versionNum;
-    if (VeniceSystemStoreUtils.getSystemStoreType(storeName) == VeniceSystemStoreType.METADATA_STORE) {
-      // Dematerialize a metadata store version.
-      admin.dematerializeMetadataStoreVersion(clusterName,
-          VeniceSystemStoreUtils.getStoreNameFromSystemStoreName(storeName), versionNum, true);
-    } else {
-      // Delete an old version for a Venice store.
-      admin.deleteOldVersionInStore(clusterName, storeName, versionNum);
-    }
+    // Delete an old version for a Venice store.
+    admin.deleteOldVersionInStore(clusterName, storeName, versionNum);
     logger.info("Deleted version: " + versionNum + " in store:" + storeName + " in cluster: " + clusterName);
   }
 

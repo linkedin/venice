@@ -535,16 +535,6 @@ public interface Admin extends AutoCloseable, Closeable {
     boolean whetherEnableBatchPushFromAdmin();
 
     /**
-     * Dematerialize the specified Zk shared metadata store version for the given Venice store name and set the
-     * storeMetadataSystemStoreEnabled flag to false. This should only be called when we no longer want metadata system
-     * store for a Venice store. Version retirement will be handled by {@link VeniceHelixAdmin}.retireOldStoreVersions
-     * invoked by {@link com.linkedin.venice.pushmonitor.AbstractPushMonitor} upon new push completion. The method will
-     * be called with deleteRT=true by default except when invoked as part of delete store to prevent RT deleted
-     * unintentionally when store migration is finishing.
-     */
-    void dematerializeMetadataStoreVersion(String clusterName, String storeName, int versionNumber, boolean deleteRT);
-
-    /**
      * provision a new set of ACL for a venice store and it's associated kafka topic.
      * @param clusterName
      * @param storeName

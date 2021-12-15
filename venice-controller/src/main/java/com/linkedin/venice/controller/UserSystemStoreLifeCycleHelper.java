@@ -102,9 +102,6 @@ public class UserSystemStoreLifeCycleHelper {
           // TODO: do we need to do any clean up here? HEARTBEAT_STORE is not coupled with any specific user store.
           logger.error("Venice store " + BATCH_JOB_HEARTBEAT_STORE.extractRegularStoreName(systemStoreName) + " has a coupled batch job heartbeat system store?");
           break;
-        case METADATA_STORE:
-          logger.info("Ignoring " + METADATA_STORE.toString() + " for system store " + systemStoreName + "; nothing to cleanup.");
-          break;
         default:
           throw new VeniceException("Unknown system store type: " + systemStoreName);
       }

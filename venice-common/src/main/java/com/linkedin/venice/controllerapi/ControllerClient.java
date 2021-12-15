@@ -382,21 +382,6 @@ public class ControllerClient implements Closeable {
     return request(ControllerRoute.NEW_STORE, params, NewStoreResponse.class);
   }
 
-  public NewStoreResponse createNewZkSharedStore(String storeName, String owner) {
-    VeniceSystemStoreType systemStore = VeniceSystemStoreUtils.getSystemStoreType(storeName);
-    if (systemStore == null || !systemStore.isStoreZkShared()) {
-      throw new VeniceException("Cannot create new Zk shared store, " + storeName + "is not a known Zk shared store");
-    }
-    QueryParams params = newParams()
-        .add(NAME, storeName)
-        .add(OWNER, owner)
-        .add(KEY_SCHEMA, systemStore.getKeySchema())
-        .add(VALUE_SCHEMA, systemStore.getValueSchema())
-        .add(IS_SYSTEM_STORE, true);
-    NewStoreResponse response = request(ControllerRoute.NEW_STORE, params, NewStoreResponse.class);
-    return response;
-  }
-
   public NewStoreResponse createNewStore(String storeName, String owner, String keySchema, String valueSchema, String accessPermissions) {
     QueryParams params = newParams()
         .add(NAME, storeName)
@@ -405,13 +390,6 @@ public class ControllerClient implements Closeable {
         .add(VALUE_SCHEMA, valueSchema)
         .add(ACCESS_PERMISSION, accessPermissions);
     return request(ControllerRoute.NEW_STORE, params, NewStoreResponse.class);
-  }
-
-  public ControllerResponse dematerializeMetadataStoreVersion(String storeName, int versionNumber) {
-    QueryParams params = newParams()
-        .add(NAME, storeName)
-        .add(VERSION, versionNumber);
-    return request(ControllerRoute.DEMATERIALIZE_METADATA_STORE_VERSION, params, ControllerResponse.class);
   }
 
   public StoreMigrationResponse isStoreMigrationAllowed() {

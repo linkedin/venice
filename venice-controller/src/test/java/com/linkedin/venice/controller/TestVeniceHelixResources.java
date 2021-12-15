@@ -15,15 +15,13 @@ import org.apache.helix.InstanceType;
 import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.helix.manager.zk.ZKHelixManager;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
-import org.apache.log4j.Logger;
-import static org.mockito.Mockito.*;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
+import static org.mockito.Mockito.*;
+
 
 public class TestVeniceHelixResources {
-  private static final Logger LOGGER = Logger.getLogger(TestVeniceHelixResources.class);
-
   private HelixVeniceClusterResources getVeniceHelixResources(String cluster) {
     return getVeniceHelixResources(cluster, new MetricsRepository());
   }
@@ -39,13 +37,12 @@ public class TestVeniceHelixResources {
     doReturn(mock(HelixReadOnlyZKSharedSystemStoreRepository.class)).when(veniceHelixAdmin).getReadOnlyZKSharedSystemStoreRepository();
     doReturn(mock(HelixReadOnlyZKSharedSchemaRepository.class)).when(veniceHelixAdmin).getReadOnlyZKSharedSchemaRepository();
     return new HelixVeniceClusterResources(cluster, zkClient, new HelixAdapterSerializer(), new SafeHelixManager(controller),
-        mock(VeniceControllerConfig.class), veniceHelixAdmin, metricsRepository, Optional.empty(),
-        Optional.empty(), Optional.empty(), mock(MetadataStoreWriter.class), mock(HelixAdminClient.class));
+        mock(VeniceControllerConfig.class), veniceHelixAdmin, metricsRepository, Optional.empty(), Optional.empty(),
+        Optional.empty(), mock(HelixAdminClient.class));
   }
 
   @Test
-  public void testShutdownLock()
-      throws Exception {
+  public void testShutdownLock() throws Exception {
     final HelixVeniceClusterResources rs = getVeniceHelixResources("test");
     int[] test = new int[]{0};
     try (AutoCloseableLock ignore1 = rs.getClusterLockManager().createStoreWriteLock("store")) {

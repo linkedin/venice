@@ -97,8 +97,7 @@ public class HelixReadOnlyStoreConfigRepository implements ReadOnlyStoreConfigRe
    */
   @Override
   public Optional<StoreConfig> getStoreConfig(String storeName) {
-    String veniceStoreName = VeniceSystemStoreUtils.isSystemStore(storeName) ?
-        VeniceSystemStoreUtils.getStoreNameFromSystemStoreName(storeName) : storeName;
+    String veniceStoreName = storeName;
     // To handle meta system store specifically
     VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(storeName);
     if (systemStoreType != null && systemStoreType.equals(VeniceSystemStoreType.META_STORE)) {
