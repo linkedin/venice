@@ -6,6 +6,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoClusterException;
 import com.linkedin.venice.helix.HelixExternalViewRepository;
 import com.linkedin.venice.helix.ResourceAssignment;
+import com.linkedin.venice.helix.ZkStoreConfigAccessor;
 import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
@@ -431,5 +432,33 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
     }
     // If there is a deadlock and then version cannot become online
     TestUtils.waitForNonDeterministicCompletion(10000, TimeUnit.MILLISECONDS, () -> veniceAdmin.getCurrentVersion(clusterName, storeName) == 1);
+  }
+
+  @Test
+  public void testIdempotentStoreDeletion() {
+    String storeName = TestUtils.getUniqueString("test_delete_store");
+    veniceAdmin.createStore(clusterName, storeName, storeOwner, KEY_SCHEMA, VALUE_SCHEMA);
+    veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams()
+        .setEnableReads(false)
+        .setEnableWrites(false));
+    // Mimic a partial deletion where only the StoreConfig is deleted.
+    ZkStoreConfigAccessor storeConfigAccessor = veniceAdmin.getHelixVeniceClusterResources(clusterName).getStoreConfigAccessor();
+    storeConfigAccessor.deleteConfig(storeName);
+    Assert.assertNull(storeConfigAccessor.getStoreConfig(storeName), "StoreConfig should have been deleted");
+    Assert.assertNotNull(veniceAdmin.getStore(clusterName, storeName));
+    veniceAdmin.deleteStore(clusterName, storeName, Store.IGNORE_VERSION, true);
+    Assert.assertNull(veniceAdmin.getStore(clusterName, storeName));
+
+    // Mimic another case where Store object is deleted but StoreConfig still exists.
+    String newStoreName = TestUtils.getUniqueString("test_delete_store2");
+    veniceAdmin.createStore(clusterName, newStoreName, storeOwner, KEY_SCHEMA, VALUE_SCHEMA);
+    veniceAdmin.updateStore(clusterName, newStoreName, new UpdateStoreQueryParams()
+        .setEnableReads(false)
+        .setEnableWrites(false));
+    veniceAdmin.getHelixVeniceClusterResources(clusterName).getStoreMetadataRepository().deleteStore(newStoreName);
+    Assert.assertNull(veniceAdmin.getStore(clusterName, newStoreName));
+    Assert.assertNotNull(storeConfigAccessor.getStoreConfig(newStoreName));
+    veniceAdmin.deleteStore(clusterName, newStoreName, Store.IGNORE_VERSION, true);
+    Assert.assertNull(storeConfigAccessor.getStoreConfig(newStoreName));
   }
 }

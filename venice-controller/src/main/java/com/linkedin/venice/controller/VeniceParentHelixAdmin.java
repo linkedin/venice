@@ -643,12 +643,19 @@ public class VeniceParentHelixAdmin implements Admin {
     acquireAdminMessageLock(clusterName, storeName);
     try {
       logger.info("Deleting store: " + storeName + " from cluster: " + clusterName);
-      Store store = getVeniceHelixAdmin().checkPreConditionForDeletion(clusterName, storeName);
+      Store store = null;
+      try {
+        store = getVeniceHelixAdmin().checkPreConditionForDeletion(clusterName, storeName);
+      } catch (VeniceNoStoreException e) {
+        // It's possible for a store to partially exist due to partial delete/creation failures.
+        logger.warn("Store object is missing for store: " + storeName
+            + " will proceed with the rest of store deletion");
+      }
       DeleteStore deleteStore = (DeleteStore) AdminMessageType.DELETE_STORE.getNewInstance();
       deleteStore.clusterName = clusterName;
       deleteStore.storeName = storeName;
       // Tell each prod colo the largest used version number in corp to make it consistent.
-      deleteStore.largestUsedVersionNumber = store.getLargestUsedVersionNumber();
+      deleteStore.largestUsedVersionNumber = store == null ? Store.IGNORE_VERSION : store.getLargestUsedVersionNumber();
       AdminOperation message = new AdminOperation();
       message.operationType = AdminMessageType.DELETE_STORE.getValue();
       message.payloadUnion = deleteStore;
@@ -656,11 +663,14 @@ public class VeniceParentHelixAdmin implements Admin {
       sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
 
       //Deleting ACL needs to be the last step in store deletion process.
-      if (!store.isMigrating()) {
-        cleanUpAclsForStore(storeName, VeniceSystemStoreType.getEnabledSystemStoreTypes(store));
-
+      if (store != null) {
+        if (!store.isMigrating()) {
+          cleanUpAclsForStore(storeName, VeniceSystemStoreType.getEnabledSystemStoreTypes(store));
+        } else {
+          logger.info("Store " + storeName + " is migrating! Skipping acl deletion!");
+        }
       } else {
-        logger.info("Store " + storeName + " is migrating! Skipping acl deletion!");
+        logger.warn("Store object for " + storeName + " is missing! Skipping acl deletion!");
       }
     } finally {
       releaseAdminMessageLock(clusterName);

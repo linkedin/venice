@@ -735,92 +735,108 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             ZkStoreConfigAccessor storeConfigAccessor = getHelixVeniceClusterResources(clusterName).getStoreConfigAccessor();
             StoreConfig storeConfig = storeConfigAccessor.getStoreConfig(storeName);
             Store store = storeRepository.getStore(storeName);
-            checkPreConditionForDeletion(clusterName, storeName, store);
-            if (largestUsedVersionNumber == Store.IGNORE_VERSION) {
-                // ignore and use the local largest used version number.
-                logger.info("Give largest used version number is: " + largestUsedVersionNumber
-                    + " will skip overwriting the local store.");
-            } else if (largestUsedVersionNumber < store.getLargestUsedVersionNumber()) {
-                throw new VeniceException("Given largest used version number: " + largestUsedVersionNumber
-                    + " is smaller than the largest used version number: " + store.getLargestUsedVersionNumber() +
-                    " found in repository. Cluster: " + clusterName + ", store: " + storeName);
-            } else {
-                store.setLargestUsedVersionNumber(largestUsedVersionNumber);
+            try {
+                checkPreConditionForDeletion(clusterName, storeName, store);
+                setLargestUsedVersionForStoreDeletion(store, largestUsedVersionNumber);
+                storeRepository.updateStore(store);
+            } catch (VeniceNoStoreException e) {
+                // It's possible for a store to partially exist due to partial delete/creation failures.
+                logger.warn("Store object is missing for store: " + storeName
+                    + " will proceed with the rest of store deletion");
             }
-
-            String currentlyDiscoveredClusterName = storeConfig.getCluster(); // This is for store migration
-            if (!currentlyDiscoveredClusterName.equals(clusterName)) {
-                // This is most likely the deletion after a store migration operation.
-                // In this case the storeConfig should not be deleted,
-                // because it is still being used to discover the cloned store
-                logger.warn("storeConfig for this store " + storeName + " in cluster " + clusterName
-                    + " will not be deleted because it is currently pointing to another cluster: "
-                    + currentlyDiscoveredClusterName);
-            } else if (store.isMigrating()) {
-                // Cluster discovery is correct but store migration flag has not been reset.
-                // This is most likely a direct deletion command from admin-tool sent to the wrong cluster.
-                // i.e. instead of using the proper --end-migration command, a --delete-store command was issued AND sent to the wrong cluster
-                String errMsg = "Abort storeConfig deletion for store " + storeName + " in cluster " + clusterName
-                    + " because this is either the cloned store after a successful migration"
-                    + " or the original store after a failed migration.";
-                logger.warn(errMsg);
-            } else {
-                // Update deletion flag in Store to start deleting. In case of any failures during the deletion, the store
-                // could be deleted later after controller is recovered.
-                // A worse case is deletion succeeded in parent controller but failed in production controller. After skip
-                // the admin message offset, a store was left in some prod colos. While user re-create the store, we will
-                // delete this legacy store if isDeleting is true for this store.
-                storeConfig.setDeleting(true);
-                storeConfigAccessor.updateConfig(storeConfig, store.isStoreMetaSystemStoreEnabled());
-            }
-            storeRepository.updateStore(store);
-
-            if (store.isStoreMetadataSystemStoreEnabled()) {
-                // Attempt to dematerialize all possible versions, no-op if a version doesn't actually exist.
-                for (Version version : storeRepository.getStore(VeniceSystemStoreType.METADATA_STORE.getPrefix()).getVersions()) {
-                    dematerializeMetadataStoreVersion(clusterName, storeName, version.getNumber(), true);
+            if (storeConfig != null) {
+                setStoreConfigDeletingFlag(storeConfig, clusterName, storeName, store);
+                if (storeConfig.isDeleting()) {
+                    boolean isMetaSystemStoreEnabled = store != null && store.isStoreMetaSystemStoreEnabled();
+                    storeConfigAccessor.updateConfig(storeConfig, isMetaSystemStoreEnabled);
                 }
             }
-            // Delete All versions and push statues
-            deleteAllVersionsInStore(clusterName, storeName);
-            resources.getPushMonitor().cleanupStoreStatus(storeName);
-            // Clean up topics
-            if (!store.isMigrating()) {
-                // for RT topic block on deletion so that next create store does not see the lingering RT topic which could have different partition count
-                String rtTopic = Version.composeRealTimeTopic(storeName);
-                truncateKafkaTopic(rtTopic);
-                if (waitOnRTTopicDeletion && getTopicManager().containsTopic(rtTopic)) {
-                    throw new VeniceRetriableException("Waiting for RT topic deletion for store: " + storeName);
+            if (store != null) {
+                if (store.isStoreMetadataSystemStoreEnabled()) {
+                    // Attempt to dematerialize all possible versions, no-op if a version doesn't actually exist.
+                    for (Version version : storeRepository.getStore(VeniceSystemStoreType.METADATA_STORE.getPrefix()).getVersions()) {
+                        dematerializeMetadataStoreVersion(clusterName, storeName, version.getNumber(), true);
+                    }
                 }
-                String metadataSystemStoreRTTopic =
-                    Version.composeRealTimeTopic(VeniceSystemStoreUtils.getMetadataStoreName(storeName));
-                if (getTopicManager().containsTopic(metadataSystemStoreRTTopic)) {
-                    truncateKafkaTopic(metadataSystemStoreRTTopic);
-                    // Don't need to block on deletion for metadata system store RT topic because it's handled in materializeMetadataStoreVersion.
+                // Delete All versions and push statues
+                deleteAllVersionsInStore(clusterName, storeName);
+                resources.getPushMonitor().cleanupStoreStatus(storeName);
+                // Clean up topics
+                if (!store.isMigrating()) {
+                    // for RT topic block on deletion so that next create store does not see the lingering RT topic which could have different partition count
+                    String rtTopic = Version.composeRealTimeTopic(storeName);
+                    truncateKafkaTopic(rtTopic);
+                    if (waitOnRTTopicDeletion && getTopicManager().containsTopic(rtTopic)) {
+                        throw new VeniceRetriableException("Waiting for RT topic deletion for store: " + storeName);
+                    }
+                    String metadataSystemStoreRTTopic = Version.composeRealTimeTopic(VeniceSystemStoreUtils.getMetadataStoreName(storeName));
+                    if (getTopicManager().containsTopic(metadataSystemStoreRTTopic)) {
+                        truncateKafkaTopic(metadataSystemStoreRTTopic);
+                        // Don't need to block on deletion for metadata system store RT topic because it's handled in materializeMetadataStoreVersion.
+                    }
                 }
+                truncateOldTopics(clusterName, store, true);
+
+                // Cleanup system stores if applicable
+                UserSystemStoreLifeCycleHelper.maybeDeleteSystemStoresForUserStore(this, storeRepository, resources.getPushMonitor(), clusterName, store, metaStoreWriter, pushStatusStoreDeleter, logger);
+
+                if (isForcedDelete) {
+                    storeGraveyard.removeStoreFromGraveyard(clusterName, storeName);
+                } else {
+                    // Move the store to graveyard. It will only re-create the znode for store's metadata excluding key and
+                    // value schemas.
+                    logger.info("Putting store: " + storeName + " into graveyard");
+                    storeGraveyard.putStoreIntoGraveyard(clusterName, storeRepository.getStore(storeName));
+                }
+                // Helix will remove all data under this store's znode including key and value schemas.
+                resources.getStoreMetadataRepository().deleteStore(storeName);
             }
-            truncateOldTopics(clusterName, store, true);
-
-            // Cleanup system stores if applicable
-            UserSystemStoreLifeCycleHelper.maybeDeleteSystemStoresForUserStore(this, storeRepository,
-                resources.getPushMonitor(), clusterName, store, metaStoreWriter, pushStatusStoreDeleter, logger);
-
-            if (isForcedDelete) {
-                storeGraveyard.removeStoreFromGraveyard(clusterName, storeName);
-            } else {
-                // Move the store to graveyard. It will only re-create the znode for store's metadata excluding key and
-                // value schemas.
-                logger.info("Putting store: " + storeName + " into graveyard");
-                storeGraveyard.putStoreIntoGraveyard(clusterName, storeRepository.getStore(storeName));
-            }
-            // Helix will remove all data under this store's znode including key and value schemas.
-            resources.getStoreMetadataRepository().deleteStore(storeName);
-
+            storeConfig = storeConfigAccessor.getStoreConfig(storeName);
             // Delete the config for this store after deleting the store.
-            if (storeConfig.isDeleting()) {
+            if (storeConfig != null && storeConfig.isDeleting()) {
                 storeConfigAccessor.deleteConfig(storeName);
             }
             logger.info("Store " + storeName + " in cluster " + clusterName + " has been deleted.");
+        }
+    }
+
+    private void setLargestUsedVersionForStoreDeletion(Store store, int providedLargestUsedVersion) {
+        if (providedLargestUsedVersion == Store.IGNORE_VERSION) {
+            // ignore and use the local largest used version number.
+            logger.info("Provided largest used version number is: " + providedLargestUsedVersion
+                + " will use local largest used version for store graveyard.");
+        } else if (providedLargestUsedVersion < store.getLargestUsedVersionNumber()) {
+            throw new VeniceException("Provided largest used version number: " + providedLargestUsedVersion
+                + " is smaller than the local largest used version number: "
+                + store.getLargestUsedVersionNumber() + " for store: " + store.getName());
+        } else {
+            store.setLargestUsedVersionNumber(providedLargestUsedVersion);
+        }
+    }
+
+    private void setStoreConfigDeletingFlag(StoreConfig storeConfig, String clusterName, String storeName, Store store) {
+        String currentlyDiscoveredClusterName = storeConfig.getCluster();
+        if (!currentlyDiscoveredClusterName.equals(clusterName)) {
+            // This is most likely the deletion after a store migration operation. In this case the storeConfig should
+            // not be deleted because it's still being used to discover the cloned store
+            logger.warn("storeConfig for this store " + storeName + " in cluster " + clusterName
+                + " will not be deleted because it is currently pointing to another cluster: "
+                + currentlyDiscoveredClusterName);
+        } else if (store != null && store.isMigrating()) {
+            // Cluster discovery is correct but store migration flag has not been set.
+            // This is most likely a direct deletion command from admin-tool sent to the wrong cluster.
+            // i.e. instead of using the proper --end-migration command, a --delete-store command was issued AND sent to the wrong cluster
+            String errMsg = "Skipping storeConfig deletion for store " + storeName + " in cluster " + clusterName
+                + " because this is either the cloned store after a successful migration"
+                + " or the original store after a failed migration.";
+            logger.warn(errMsg);
+        } else {
+            // Update deletion flag in Store to start deleting. In case of any failures during the deletion, the store
+            // could be deleted later after controller is recovered.
+            // A worse case is deletion succeeded in parent controller but failed in production controller. After skip
+            // the admin message offset, a store was left in some prod colos. While user re-create the store, we will
+            // delete this legacy store if isDeleting is true for this store.
+            storeConfig.setDeleting(true);
         }
     }
 
