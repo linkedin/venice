@@ -33,6 +33,8 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.StatusSnapshot;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
+import com.linkedin.venice.utils.DataProviderUtils;
+import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.TestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
@@ -44,6 +46,7 @@ import io.tehuti.Metric;
 
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -209,10 +212,8 @@ public class TestMultiDataCenterPush {
      * Set a high rewind time, higher than the default 5 days retention time.
      */
     long highRewindTimeInSecond = 30L * Time.SECONDS_PER_DAY; // Rewind time is one month.
-    try (ControllerClient controllerClientToParent = new ControllerClient(clusterName, parentController.getControllerUrl())) {
-      controllerClientToParent.updateStore(hybridStoreName,
-          new UpdateStoreQueryParams().setHybridRewindSeconds(highRewindTimeInSecond).setHybridOffsetLagThreshold(10));
-    }
+    updateStore(clusterName, pushJobPropsForHybrid, new UpdateStoreQueryParams().setHybridRewindSeconds(highRewindTimeInSecond).setHybridOffsetLagThreshold(10));
+
     /**
      * A batch push for hybrid store would trigger the child fabrics to create RT topic.
      */
@@ -224,6 +225,20 @@ public class TestMultiDataCenterPush {
     String realTimeTopic = hybridStoreName + "_rt";
     long topicRetentionTimeInSecond = TimeUnit.MILLISECONDS.toSeconds(childTopicManager.getTopicRetention(realTimeTopic));
     Assert.assertTrue(topicRetentionTimeInSecond >= highRewindTimeInSecond);
+
+    /**
+     * Test for store deletion and recreation
+     */
+
+    // Delete the hybrid store and create a new one
+    disableStore(clusterName, pushJobPropsForHybrid);
+    deleteStore(clusterName, pushJobPropsForHybrid);
+    createStoreForJob(clusterName, recordSchema, pushJobPropsForHybrid).close();
+
+    // Create RT topic and a collision should not be reported
+    updateStore(clusterName, pushJobPropsForHybrid, new UpdateStoreQueryParams().setHybridRewindSeconds(highRewindTimeInSecond).setHybridOffsetLagThreshold(10));
+
+    TestPushUtils.runPushJob("Test push for hybrid 2", pushJobPropsForHybrid);
   }
 
   @Test (expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Failed to create new store version.*", timeOut = TEST_TIMEOUT)
@@ -241,12 +256,7 @@ public class TestMultiDataCenterPush {
     TestPushUtils.runPushJob("Test push job", props);
   }
 
-  @DataProvider (name = "testEmptyPushDataProvider")
-  public Object[][] testEmptyPushDataProvider() {
-    return new Object[][] { {true}, {false} };
-  }
-
-  @Test (dataProvider = "testEmptyPushDataProvider", timeOut = TEST_TIMEOUT)
+  @Test (dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT)
   public void testEmptyPush(boolean toParent) {
     String clusterName = CLUSTER_NAMES[0];
     String storeName = TestUtils.getUniqueString("store");
