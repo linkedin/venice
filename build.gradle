@@ -143,7 +143,7 @@ ext.libraries = [
     jmhGenerator: 'org.openjdk.jmh:jmh-generator-annprocess:1.28',
     failsafe: 'net.jodah:failsafe:2.4.0',
 
-    spotbugs: 'com.github.spotbugs:spotbugs:4.5.2',
+    spotbugs: 'com.github.spotbugs:spotbugs:4.2.3',
     spotbugsAvroPlugin: 'com.linkedin.avroutil1:spotbugs-plugin:0.2.69',
 
     // TODO: switch to avro-util once it's able to generate version agnostic code.
