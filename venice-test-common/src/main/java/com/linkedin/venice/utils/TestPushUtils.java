@@ -1,10 +1,12 @@
 package com.linkedin.venice.utils;
 
 import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.controller.kafka.protocol.admin.UpdateStore;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
+import com.linkedin.venice.controllerapi.TrackableControllerResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.etl.ETLUtils;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -990,9 +992,7 @@ public class TestPushUtils {
       String keySchemaStr, String valueSchemaStr, Properties props,
       UpdateStoreQueryParams storeParams, boolean addDerivedSchemaToStore) {
 
-    String veniceUrl = props.containsKey(VENICE_DISCOVER_URL_PROP) ? props.getProperty(VENICE_DISCOVER_URL_PROP) : props.getProperty(VENICE_URL_PROP);
-
-    ControllerClient controllerClient = ControllerClient.constructClusterControllerClient(veniceClusterName, veniceUrl);
+    ControllerClient controllerClient = getControllerClient(veniceClusterName, props);
     NewStoreResponse newStoreResponse = controllerClient.retryableRequest(5, c -> c.createNewStore(props.getProperty(
         VenicePushJob.VENICE_STORE_NAME_PROP),
         "test@linkedin.com", keySchemaStr, valueSchemaStr));
@@ -1010,12 +1010,39 @@ public class TestPushUtils {
           "The DerivedValueSchemaResponse returned an error: " + derivedValueSchemaResponse.getError());
     }
 
-    ControllerResponse controllerResponse = controllerClient.retryableRequest(5, c -> c.updateStore(
-        props.getProperty(VenicePushJob.VENICE_STORE_NAME_PROP), storeParams.setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)));
-
-    Assert.assertFalse(controllerResponse.isError(), "The UpdateStore response returned an error: " + controllerResponse.getError());
-
+    updateStore(veniceClusterName, props, storeParams.setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA));
     return controllerClient;
+  }
+
+  public static void deleteStore(String veniceClusterName, Properties props) {
+    try(ControllerClient controllerClient = getControllerClient(veniceClusterName, props)) {
+      TrackableControllerResponse deleteStoreResponse = controllerClient.retryableRequest(5, c -> c.deleteStore(props.getProperty(VenicePushJob.VENICE_STORE_NAME_PROP)));
+
+      Assert.assertFalse(deleteStoreResponse.isError(), "The delete store request returned an error: " + deleteStoreResponse.getError());
+    }
+  }
+
+  public static void disableStore(String veniceClusterName, Properties props) {
+    try(ControllerClient controllerClient = getControllerClient(veniceClusterName, props)) {
+      ControllerResponse disableStoreResponse = controllerClient.retryableRequest(5, c -> c.enableStoreReadWrites(props.getProperty(VenicePushJob.VENICE_STORE_NAME_PROP), false));
+
+      Assert.assertFalse(disableStoreResponse.isError(), "The disable store request returned an error: " + disableStoreResponse.getError());
+    }
+  }
+
+  public static void updateStore(String veniceClusterName, Properties props, UpdateStoreQueryParams params) {
+    try(ControllerClient controllerClient = getControllerClient(veniceClusterName, props)) {
+      ControllerResponse updateStoreResponse = controllerClient.retryableRequest(5, c -> c.updateStore(
+          props.getProperty(VenicePushJob.VENICE_STORE_NAME_PROP), params)
+      );
+
+      Assert.assertFalse(updateStoreResponse.isError(), "The UpdateStore response returned an error: " + updateStoreResponse.getError());
+    }
+  }
+
+  private static ControllerClient getControllerClient(String veniceClusterName, Properties props) {
+    String veniceUrl = props.containsKey(VENICE_DISCOVER_URL_PROP) ? props.getProperty(VENICE_DISCOVER_URL_PROP) : props.getProperty(VENICE_URL_PROP);
+    return ControllerClient.constructClusterControllerClient(veniceClusterName, veniceUrl);
   }
 
   public static void makeStoreLF(VeniceClusterWrapper venice, String storeName) {

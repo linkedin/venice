@@ -141,7 +141,20 @@ public abstract class TestBatch {
             props.setProperty(ALLOW_DUPLICATE_KEY, "true");
           }
         },
-        (avroClient, vsonClient, metricsRepository) -> {});
+        (avroClient, vsonClient, metricsRepository) -> {
+          if (!isDuplicateKeyAllowed) {
+            Assert.fail("Push should have failed since duplicate keys are not allowed");
+          } else {
+            // If duplicate keys are allowed, then the reads for those keys should not be null
+            for (int i = 0; i < 100; i ++) {
+              if (i % 10 == 0) {
+                Assert.assertNotNull(avroClient.get("0").get());
+              } else {
+                Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name" + i);
+              }
+            }
+          }
+        });
   }
 
   @Test(timeOut = TEST_TIMEOUT)
