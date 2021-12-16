@@ -639,41 +639,21 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 config.getRoutingStrategy(), config.getReadStrategy(), config.getOfflinePushStrategy(),
                 config.getReplicationFactor());
 
-            if (config.isLeaderFollowerEnabledForBatchOnlyStores()) {
-                // Enable L/F for the new store (no matter which type it is) if the config is set to true.
-                newStore.setLeaderFollowerModelEnabled(true);
-            }
-            if (newStore.isLeaderFollowerModelEnabled()) {
-                newStore.setNativeReplicationEnabled(config.isNativeReplicationEnabledAsDefaultForBatchOnly());
-                newStore.setActiveActiveReplicationEnabled(config.isActiveActiveReplicationEnabledAsDefaultForBatchOnly());
-            } else {
-                newStore.setNativeReplicationEnabled(false);
-                newStore.setActiveActiveReplicationEnabled(false);
-            }
-
-            /**
-             * Initialize default NR source fabric base on default config for different store types.
-             */
-            if (newStore.isIncrementalPushEnabled()) {
-                newStore.setNativeReplicationSourceFabric(config.getNativeReplicationSourceFabricAsDefaultForIncremental());
-            } else if (newStore.isHybrid()) {
-                newStore.setNativeReplicationSourceFabric(config.getNativeReplicationSourceFabricAsDefaultForHybrid());
-            } else {
-                newStore.setNativeReplicationSourceFabric(config.getNativeReplicationSourceFabricAsDefaultForBatchOnly());
-            }
-
-            configureNewStore(newStore, config);
             ReadWriteStoreRepository storeRepo = clusterResources.getStoreMetadataRepository();
             Store existingStore = storeRepo.getStore(storeName);
             if (existingStore != null) {
-                // We already check the pre-condition before, so if we could find a store with the same name,
-                // it means the store is a legacy store which is left by a failed deletion. So we should delete it.
+                /*
+                 * We already check the pre-condition before, so if we could find a store with the same name,
+                 * it means the store is a legacy store which is left by a failed deletion. So we should delete it.
+                 */
                 deleteStore(clusterName, storeName, existingStore.getLargestUsedVersionNumber(), true);
             }
-            // Now there is not store exists in the store repository, we will try to retrieve the info from the graveyard.
-            // Get the largestUsedVersionNumber from graveyard to avoid resource conflict.
-            final int largestUsedVersionNumber = storeGraveyard.getLargestUsedVersionNumber(storeName);
-            newStore.setLargestUsedVersionNumber(largestUsedVersionNumber);
+            /*
+             * Now there is not store exists in the store repository, we will try to retrieve the info from the graveyard.
+             * Get the largestUsedVersionNumber from graveyard to avoid resource conflict.
+             */
+            configureNewStore(newStore, config, storeGraveyard.getLargestUsedVersionNumber(storeName));
+
             storeRepo.addStore(newStore);
             // Create global config for that store.
             ZkStoreConfigAccessor storeConfigAccessor = getHelixVeniceClusterResources(clusterName).getStoreConfigAccessor();
@@ -691,15 +671,17 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         }
     }
 
-    private void configureNewStore(Store newStore, VeniceControllerClusterConfig config) {
+    private void configureNewStore(Store newStore, VeniceControllerClusterConfig config, int largestUsedVersionNumber) {
         if (config.isLeaderFollowerEnabledForBatchOnlyStores()) {
             // Enable L/F for the new store (no matter which type it is) if the config is set to true.
             newStore.setLeaderFollowerModelEnabled(true);
         }
         if (newStore.isLeaderFollowerModelEnabled()) {
             newStore.setNativeReplicationEnabled(config.isNativeReplicationEnabledAsDefaultForBatchOnly());
+            newStore.setActiveActiveReplicationEnabled(config.isActiveActiveReplicationEnabledAsDefaultForBatchOnly());
         } else {
             newStore.setNativeReplicationEnabled(false);
+            newStore.setActiveActiveReplicationEnabled(false);
         }
 
         /**
@@ -712,6 +694,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         } else {
             newStore.setNativeReplicationSourceFabric(config.getNativeReplicationSourceFabricAsDefaultForBatchOnly());
         }
+        newStore.setLargestUsedVersionNumber(largestUsedVersionNumber);
     }
 
     @Override
