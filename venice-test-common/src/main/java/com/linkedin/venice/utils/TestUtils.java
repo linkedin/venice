@@ -73,6 +73,7 @@ public class TestUtils {
   /** In milliseconds */
   private static final int WAIT_TIME_FOR_NON_DETERMINISTIC_ACTIONS = Time.MS_PER_SECOND / 5;
   private static final int MAX_WAIT_TIME_FOR_NON_DETERMINISTIC_ACTIONS = 60 * Time.MS_PER_SECOND;
+  private static final int GRACE_PERIOD_FOR_NON_DETERMINISTIC_ACTIONS = Time.MS_PER_SECOND;
 
   private final static InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer = AvroProtocolDefinition.PARTITION_STATE.getSerializer();
 
@@ -173,6 +174,7 @@ public class TestUtils {
                                                       boolean retryForThrowable,
                                                       NonDeterministicAssertion assertionToWaitFor) throws AssertionError {
     long timeoutTime = System.currentTimeMillis() + timeoutUnits.toMillis(timeout);
+    long graceTimeout = timeoutTime - GRACE_PERIOD_FOR_NON_DETERMINISTIC_ACTIONS;
     long waitTime = WAIT_TIME_FOR_NON_DETERMINISTIC_ACTIONS;
     while (true) {
       try {
@@ -195,7 +197,10 @@ public class TestUtils {
       } finally {
         Utils.sleep(waitTime);
         if (exponentialBackOff) {
-          waitTime = Math.max(Time.MS_PER_SECOND, Math.min(waitTime * 2, MAX_WAIT_TIME_FOR_NON_DETERMINISTIC_ACTIONS));
+          waitTime = Math.min(Math.min(waitTime * 2, graceTimeout - System.currentTimeMillis()),
+              MAX_WAIT_TIME_FOR_NON_DETERMINISTIC_ACTIONS);
+          // Round up to min sleep time.
+          waitTime = Math.max(waitTime, WAIT_TIME_FOR_NON_DETERMINISTIC_ACTIONS);
         }
       }
     }
