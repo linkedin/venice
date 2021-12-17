@@ -1318,8 +1318,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         // The cannot delete current version restriction is only applied to non-system stores.
         if (!store.isSystemStore() && store.getCurrentVersion() == versionNum) {
             String errorMsg =
-                "Unable to delete the version: " + versionNum + ". The current version could be deleted from store: "
-                    + storeName;
+                "Unable to delete the version: " + versionNum
+                    + ". The current version could not be deleted from store: " + storeName;
             logger.error(errorMsg);
             throw new VeniceUnsupportedOperationException("delete single version", errorMsg);
         }
@@ -1843,11 +1843,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         return false;
     }
 
-    protected void handleVersionCreationFailure(String clusterName, String storeName, int versionNumber, String statusDetails){
-        // Mark offline push job as Error and clean up resources because add version failed.
-        PushMonitor offlinePushMonitor = getHelixVeniceClusterResources(clusterName).getPushMonitor();
-        offlinePushMonitor.markOfflinePushAsError(Version.composeKafkaTopic(storeName, versionNumber), statusDetails);
-        deleteOneStoreVersion(clusterName, storeName, versionNumber);
+    protected void handleVersionCreationFailure(String clusterName, String storeName, int versionNumber, String statusDetails) {
+        HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
+        try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
+            checkPreConditionForSingleVersionDeletion(clusterName, storeName, versionNumber);
+            // Mark offline push job as Error and clean up resources because add version failed.
+            PushMonitor offlinePushMonitor = resources.getPushMonitor();
+            offlinePushMonitor.markOfflinePushAsError(Version.composeKafkaTopic(storeName, versionNumber), statusDetails);
+            deleteOneStoreVersion(clusterName, storeName, versionNumber);
+        }
     }
 
     /**
