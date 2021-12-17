@@ -942,7 +942,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 : getVeniceWriterFactory().createVeniceWriter(topicToReceiveEndOfPush),
             veniceWriter -> {
                 if (alsoWriteStartOfPush) {
-                    veniceWriter.broadcastStartOfPush(new HashMap<>());
+                    veniceWriter.broadcastStartOfPush(false, version.get().isChunkingEnabled(), version.get().getCompressionStrategy(), new HashMap<>());
                 }
                 veniceWriter.broadcastEndOfPush(new HashMap<>());
             }
