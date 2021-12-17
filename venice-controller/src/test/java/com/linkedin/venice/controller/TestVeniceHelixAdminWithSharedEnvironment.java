@@ -8,6 +8,7 @@ import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
+import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.helix.HelixReadOnlyLiveClusterConfigRepository;
 import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.helix.HelixStatusMessageChannel;
@@ -243,6 +244,28 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     delayParticipantJobCompletion(false);
     stateModelFactoryByNodeID.forEach((nodeId, stateModelFactory) ->
         stateModelFactory.makeTransitionCompleted(version.kafkaTopicName(), 0));
+  }
+
+  @Test
+  public void testHandleVersionCreationFailureWithCurrentVersion() {
+    String storeName = TestUtils.getUniqueString("test");
+    veniceAdmin.createStore(clusterName, storeName, "owner", KEY_SCHEMA, VALUE_SCHEMA);
+    Version version =
+        veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(),1, 1);
+    int versionNumber = version.getNumber();
+    TestUtils.waitForNonDeterministicCompletion(30000, TimeUnit.MILLISECONDS,
+        () -> veniceAdmin.getCurrentVersion(clusterName, storeName) == versionNumber);
+
+    String statusDetails = "synthetic error message";
+    try {
+      veniceAdmin.handleVersionCreationFailure(clusterName, storeName, versionNumber, statusDetails);
+    } catch (VeniceUnsupportedOperationException e) {
+      Assert.assertTrue(e.getMessage().contains("The current version could not be deleted from store"));
+    }
+    Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getCurrentVersion(), 1);
+    Admin.OfflinePushStatusInfo offlinePushStatus
+        = veniceAdmin.getOffLinePushStatus(clusterName, Version.composeKafkaTopic(storeName, versionNumber));
+    Assert.assertEquals(offlinePushStatus.getExecutionStatus(), ExecutionStatus.COMPLETED);
   }
 
   @Test
