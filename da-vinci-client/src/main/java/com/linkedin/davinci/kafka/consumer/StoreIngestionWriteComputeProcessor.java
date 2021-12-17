@@ -1,11 +1,11 @@
 package com.linkedin.davinci.kafka.consumer;
 
 import com.linkedin.davinci.serialization.avro.MapOrderingPreservingSeDeFactory;
+import com.linkedin.venice.schema.merge.MergeRecordHelper;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.schema.writecompute.WriteComputeProcessor;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaValidator;
-import com.linkedin.davinci.serialization.avro.MapOrderPreservingDeserializer;
 import com.linkedin.venice.serializer.AvroGenericDeserializer;
 import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.utils.Pair;
@@ -31,12 +31,12 @@ public class StoreIngestionWriteComputeProcessor {
   private Map<SchemaIds, AvroGenericDeserializer<GenericRecord>> idToWriteComputeSchemaDeserializerMap;
   private Map<Schema, AvroSerializer> valueSchemaSerializerMap;
 
-  public StoreIngestionWriteComputeProcessor(@Nonnull String storeName, @Nonnull ReadOnlySchemaRepository schemaRepo) {
+  public StoreIngestionWriteComputeProcessor(@Nonnull String storeName, @Nonnull ReadOnlySchemaRepository schemaRepo, MergeRecordHelper mergeRecordHelper) {
     Validate.notEmpty(storeName);
     Validate.notNull(schemaRepo);
     this.storeName = storeName;
     this.schemaRepo = schemaRepo;
-    this.writeComputeProcessor = new WriteComputeProcessor();
+    this.writeComputeProcessor = new WriteComputeProcessor(mergeRecordHelper);
     this.schemaIdsToSchemasMap = new VeniceConcurrentHashMap<>();
     this.idToWriteComputeSchemaDeserializerMap = new VeniceConcurrentHashMap<>();
     this.valueSchemaSerializerMap = new VeniceConcurrentHashMap<>();

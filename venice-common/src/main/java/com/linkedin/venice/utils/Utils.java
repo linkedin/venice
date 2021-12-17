@@ -1,6 +1,7 @@
 package com.linkedin.venice.utils;
 
 import com.linkedin.venice.controllerapi.ControllerResponse;
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.ExceptionType;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -17,6 +18,16 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
+import org.apache.avro.Schema;
+import org.apache.avro.generic.IndexedRecord;
+import org.apache.commons.io.FileUtils;
+import org.apache.commons.io.IOUtils;
+import org.apache.commons.lang.StringUtils;
+import org.apache.http.HttpStatus;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
 import java.io.Closeable;
 import java.io.File;
 import java.io.FileInputStream;
@@ -46,16 +57,7 @@ import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
-import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
-import org.apache.avro.Schema;
-import org.apache.commons.io.FileUtils;
-import org.apache.commons.io.IOUtils;
-import org.apache.commons.lang.StringUtils;
 import org.apache.commons.lang.Validate;
-import org.apache.http.HttpStatus;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 
 import static com.linkedin.venice.HttpConstants.*;
 
@@ -824,12 +826,11 @@ public class Utils {
 
   public static Map<String, String> extractQueryParamsFromRequest(Map<String, String[]> sparkRequestParams,
       ControllerResponse response) {
-    boolean anyParamContainsMoreThanOneValue = sparkRequestParams.values().stream()
-        .anyMatch(strings -> strings.length > 1);
+    boolean anyParamContainsMoreThanOneValue =
+        sparkRequestParams.values().stream().anyMatch(strings -> strings.length > 1);
 
     if (anyParamContainsMoreThanOneValue) {
-      String errMsg =
-          "Array parameters are not supported. Provided request parameters: " + sparkRequestParams;
+      String errMsg = "Array parameters are not supported. Provided request parameters: " + sparkRequestParams;
       response.setError(errMsg);
       throw new VeniceException(errMsg);
     }
@@ -838,5 +839,12 @@ public class Utils {
         // Extract the first (and only) value of each param
         .collect(Collectors.toMap(e -> e.getKey(), e -> e.getValue()[0]));
     return params;
+  }
+
+  public static boolean isGenericRecord(Object object) {
+    if (!(object instanceof IndexedRecord)) {
+      return false;
+    }
+    return AvroCompatibilityHelper.isGenericRecord((IndexedRecord) object);
   }
 }

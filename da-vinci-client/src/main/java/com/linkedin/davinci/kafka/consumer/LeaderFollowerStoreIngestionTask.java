@@ -5,6 +5,8 @@ import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
 import com.linkedin.davinci.notifier.VeniceNotifier;
+import com.linkedin.venice.schema.merge.CollectionTimestampMergeRecordHelper;
+import com.linkedin.venice.schema.merge.MergeRecordHelper;
 import com.linkedin.davinci.stats.AggStoreIngestionStats;
 import com.linkedin.davinci.stats.AggVersionedDIVStats;
 import com.linkedin.davinci.stats.AggVersionedStorageIngestionStats;
@@ -252,8 +254,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     } else {
       newLeaderInactiveTime = serverConfig.getServerPromotionToLeaderReplicaDelayMs();
     }
-
-    this.ingestionTaskWriteComputeHandler = new StoreIngestionWriteComputeProcessor(storeName, schemaRepository);
+    MergeRecordHelper mergeRecordHelper = new CollectionTimestampMergeRecordHelper();
+    this.ingestionTaskWriteComputeHandler = new StoreIngestionWriteComputeProcessor(storeName, schemaRepository, mergeRecordHelper);
 
     this.isNativeReplicationEnabled = version.isNativeReplicationEnabled();
     this.nativeReplicationSourceVersionTopicKafkaURL = version.getPushStreamSourceAddress();

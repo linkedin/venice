@@ -1,24 +1,21 @@
 package com.linkedin.venice.schema.writecompute;
 
-import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
-import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.schema.SchemaUtils;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import javax.annotation.concurrent.ThreadSafe;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.generic.IndexedRecord;
 
-import static com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter.*;
-import static com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter.WriteComputeOperation.*;
+import static com.linkedin.venice.schema.writecompute.WriteComputeConstants.*;
+import static com.linkedin.venice.schema.writecompute.WriteComputeOperation.*;
 
 
 /**
  * Write compute V1 handles value records that do not have replication metadata.
  */
-@ThreadSafe
 public class WriteComputeHandlerV1 implements WriteComputeHandler {
   // GenericData is a singleton util class Avro provides. We're using it to construct the default field values
   protected static final GenericData genericData = GenericData.get();
@@ -34,15 +31,16 @@ public class WriteComputeHandlerV1 implements WriteComputeHandler {
       return writeComputeRecord;
     }
 
+    // Question: maybe we do not need to check if writeComputeSchema is an UNION at all here??
     if (originalSchema.getType() == Schema.Type.RECORD && writeComputeSchema.getType() == Schema.Type.UNION) {
       //if DEL_OP is in writeComputeRecord, return empty record
-      if (writeComputeRecord.getSchema().getName().equals(DEL_OP.name)) {
+      if (WriteComputeSchemaConverter.isDeleteRecordOp(writeComputeRecord)) {
         return null;
       } else {
         return updateRecord(
             originalSchema,
             writeComputeSchema.getTypes().get(0),
-            originalRecord == null ? constructNewRecord(originalSchema) : originalRecord,
+            originalRecord == null ? SchemaUtils.constructGenericRecord(originalSchema) : originalRecord,
             writeComputeRecord,
             false
         );
@@ -50,7 +48,7 @@ public class WriteComputeHandlerV1 implements WriteComputeHandler {
     }
 
     if (originalRecord == null) {
-      originalRecord = constructNewRecord(originalSchema);
+      originalRecord = SchemaUtils.constructGenericRecord(originalSchema);
     }
     for (Schema.Field originalField : originalSchema.getFields()) {
       final String originalFieldName = originalField.name();
@@ -58,7 +56,7 @@ public class WriteComputeHandlerV1 implements WriteComputeHandler {
 
       //skip the fields if it's NoOp
       if (writeComputeFieldValue instanceof IndexedRecord &&
-          ((IndexedRecord) writeComputeFieldValue).getSchema().getName().equals(NO_OP.name)) {
+          ((IndexedRecord) writeComputeFieldValue).getSchema().getName().equals(NO_OP_ON_FIELD.name)) {
         continue;
       }
 
@@ -68,23 +66,6 @@ public class WriteComputeHandlerV1 implements WriteComputeHandler {
     }
 
     return originalRecord;
-  }
-
-  private GenericRecord constructNewRecord(Schema originalSchema) {
-    final GenericData.Record newRecord = new GenericData.Record(originalSchema);
-
-    for (Schema.Field originalField : originalSchema.getFields()) {
-      if (AvroCompatibilityHelper.fieldHasDefault(originalField)) {
-        //make a deep copy here since genericData caches each default value internally. If we
-        //use what it returns, we will mutate the cache.
-        newRecord.put(originalField.name(), genericData.deepCopy(originalField.schema(), genericData.getDefaultValue(originalField)));
-      } else {
-        throw new VeniceException(String.format("Cannot apply updates because Field: %s is null and "
-            + "default value is not defined", originalField.name()));
-      }
-    }
-
-    return newRecord;
   }
 
   /**
@@ -115,15 +96,15 @@ public class WriteComputeHandlerV1 implements WriteComputeHandler {
   }
 
   // Visible for testing
-  Object updateArray(Schema originalSchema, List originalArray, Object writeComputeArray) {
+  Object updateArray(Schema arraySchema, List originalArray, Object writeComputeArray) {
     if (writeComputeArray instanceof List) {
-      return writeComputeArray;
+      return writeComputeArray; // Partial update on a list field
     }
 
-    //if originalArray is null, use the elements in the "setUnion" as the base list
+    //if originalArray is null, use the elements in the "setUnion" as the base list to conduct collection merging.
     List newElements = (List) ((GenericRecord) writeComputeArray).get(SET_UNION);
     if (originalArray == null) {
-      originalArray = new GenericData.Array(originalSchema, newElements);
+      originalArray = new GenericData.Array(arraySchema, newElements);
     } else {
       for (Object element : newElements) {
         if (!(originalArray).contains(element)) { //TODO: profile the performance since this is pretty expensive
@@ -133,11 +114,8 @@ public class WriteComputeHandlerV1 implements WriteComputeHandler {
     }
 
     for (Object elementToRemove : (List) ((GenericRecord) writeComputeArray).get(SET_DIFF)) {
-      /**
-       * we need to iterate the list by our own because #remove(T object) is not
-       * supported by GenericRecord.Array
-       */
-      for (int i = 0; i < originalArray.size(); i ++) {
+      // We need to iterate the list by our own because #remove(T object) is not supported by GenericRecord.Array
+      for (int i = 0; i < originalArray.size(); i++) {
         if (originalArray.get(i).equals(elementToRemove)) {
           originalArray.remove(i);
           break;
@@ -151,9 +129,10 @@ public class WriteComputeHandlerV1 implements WriteComputeHandler {
   // Visible for testing
   Object updateMap(Map originalMap, Object writeComputeMap) {
     if (writeComputeMap instanceof Map) {
-      return writeComputeMap;
+      return writeComputeMap; // Partial update on a map field
     }
 
+    // Conduct collection merging
     Map newEntries = ((Map) ((GenericRecord) writeComputeMap).get(MAP_UNION));
     if (originalMap == null) {
       originalMap = new HashMap(newEntries);
@@ -184,6 +163,11 @@ public class WriteComputeHandlerV1 implements WriteComputeHandler {
       }
     }
 
+    // TODO: There is an edge case that is not handled and that is when writeComputeObject wants to do collection
+    //       modification. But the original union schema does not contain List nor Map schema. That is an illegal state
+    //       and should be caught and thrown.
+    //       If the above situation happens, the field value becomes writeComputeObject which represents collection merging
+    //       operation instead of a real field value.
     return writeComputeObject;
   }
 }

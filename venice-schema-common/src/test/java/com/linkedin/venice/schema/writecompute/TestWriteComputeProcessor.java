@@ -1,5 +1,10 @@
 package com.linkedin.venice.schema.writecompute;
 
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
+import com.linkedin.venice.schema.merge.CollectionTimestampMergeRecordHelper;
+import com.linkedin.venice.schema.writecompute.WriteComputeHandlerV2;
+import com.linkedin.venice.schema.writecompute.WriteComputeProcessor;
+import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
@@ -11,12 +16,12 @@ import org.apache.avro.generic.GenericData;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-import static com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter.*;
+import static com.linkedin.venice.schema.writecompute.WriteComputeConstants.*;
 import static org.apache.avro.Schema.Type.*;
 
 
 public class TestWriteComputeProcessor {
-  private String recordSchemaStr = "{\n" +
+  private final String recordSchemaStr = "{\n" +
       "  \"type\" : \"record\",\n" +
       "  \"name\" : \"testRecord\",\n" +
       "  \"namespace\" : \"com.linkedin.avro\",\n" +
@@ -45,7 +50,7 @@ public class TestWriteComputeProcessor {
       "}";
 
 
-  private String simpleRecordSchemaStr = "{\n" +
+  private final String simpleRecordSchemaStr = "{\n" +
       "  \"type\" : \"record\",\n" +
       "  \"name\" : \"simpleTestRecord\",\n" +
       "  \"namespace\" : \"com.linkedin.avro\",\n" +
@@ -60,7 +65,7 @@ public class TestWriteComputeProcessor {
       " } ]\n" +
       "}";
 
-  private String nullableRecordStr = "{\n" +
+  private final String nullableRecordStr = "{\n" +
       "  \"type\" : \"record\",\n" +
       "  \"name\" : \"nullableRecord\",\n" +
       "  \"fields\" : [ {\n" + "    \"name\" : \"nullableArray\",\n" +
@@ -74,7 +79,7 @@ public class TestWriteComputeProcessor {
       "  } ]\n" +
       "}";
 
-  private String nestedRecordStr = "{\n" +
+  private final String nestedRecordStr = "{\n" +
       "  \"type\" : \"record\",\n" +
       "  \"name\" : \"testRecord\",\n" +
       "  \"fields\" : [ {\n" +
@@ -97,7 +102,7 @@ public class TestWriteComputeProcessor {
   public void testCanUpdateArray() {
     Schema arraySchema = Schema.createArray(Schema.create(INT));
     Schema arrayWriteComputeSchema = WriteComputeSchemaConverter.convert(arraySchema);
-    WriteComputeHandlerV2 writeComputeHandler = new WriteComputeHandlerV2();
+    WriteComputeHandlerV2 writeComputeHandler = new WriteComputeHandlerV2(new CollectionTimestampMergeRecordHelper());
 
     GenericData.Record collectionUpdateRecord = new GenericData.Record(arrayWriteComputeSchema.getTypes().get(0));
     collectionUpdateRecord.put(SET_UNION, Arrays.asList(1, 2));
@@ -128,7 +133,7 @@ public class TestWriteComputeProcessor {
   public void testCanUpdateMap() {
     Schema mapSchema = Schema.createMap(Schema.create(INT));
     Schema mapWriteComputeSchema = WriteComputeSchemaConverter.convert(mapSchema);
-    WriteComputeHandlerV2 writeComputeHandler = new WriteComputeHandlerV2();
+    WriteComputeHandlerV2 writeComputeHandler = new WriteComputeHandlerV2(new CollectionTimestampMergeRecordHelper());
 
     GenericData.Record mapUpdateRecord = new GenericData.Record(mapWriteComputeSchema.getTypes().get(0));
     Map map = new HashMap();
@@ -165,9 +170,9 @@ public class TestWriteComputeProcessor {
 
   @Test
   public void testCanUpdateRecord() {
-    Schema recordSchema = Schema.parse(recordSchemaStr);
+    Schema recordSchema = AvroCompatibilityHelper.parse(recordSchemaStr);
     Schema recordWriteComputeSchema = WriteComputeSchemaConverter.convert(recordSchema);
-    WriteComputeHandlerV2 writeComputeHandler = new WriteComputeHandlerV2();
+    WriteComputeHandlerV2 writeComputeHandler = new WriteComputeHandlerV2(new CollectionTimestampMergeRecordHelper());
 
     //construct original record
     Schema innerArraySchema = recordSchema.getField("hits").schema();
@@ -223,9 +228,9 @@ public class TestWriteComputeProcessor {
 
   @Test
   public void testCanUpdateNullableUnion() {
-    Schema nullableRecordSchema = Schema.parse(nullableRecordStr);
+    Schema nullableRecordSchema = AvroCompatibilityHelper.parse(nullableRecordStr);
     Schema writeComputeSchema = WriteComputeSchemaConverter.convert(nullableRecordSchema);
-    WriteComputeProcessor writeComputeProcessor = new WriteComputeProcessor();
+    WriteComputeProcessor writeComputeProcessor = new WriteComputeProcessor(new CollectionTimestampMergeRecordHelper());
 
     //construct an empty write compute schema. WC adapter is supposed to construct the
     //original value by using default values.
@@ -262,9 +267,9 @@ public class TestWriteComputeProcessor {
 
   @Test
   public void testCanDeleteFullRecord() {
-    Schema recordSchema = Schema.parse(simpleRecordSchemaStr);
+    Schema recordSchema = AvroCompatibilityHelper.parse(simpleRecordSchemaStr);
     Schema recordWriteComputeSchema = WriteComputeSchemaConverter.convert(recordSchema);
-    WriteComputeProcessor writeComputeProcessor = new WriteComputeProcessor();
+    WriteComputeProcessor writeComputeProcessor = new WriteComputeProcessor(new CollectionTimestampMergeRecordHelper());
 
     //construct original record
     GenericData.Record originalRecord = new GenericData.Record(recordSchema);
@@ -281,9 +286,9 @@ public class TestWriteComputeProcessor {
 
   @Test
   public void testCanHandleNestedRecord() {
-    Schema recordSchema = Schema.parse(nestedRecordStr);
+    Schema recordSchema = AvroCompatibilityHelper.parse(nestedRecordStr);
     Schema recordWriteComputeUnionSchema = WriteComputeSchemaConverter.convert(recordSchema);
-    WriteComputeProcessor writeComputeProcessor = new WriteComputeProcessor();
+    WriteComputeProcessor writeComputeProcessor = new WriteComputeProcessor(new CollectionTimestampMergeRecordHelper());
 
     Schema nestedRecordSchema =  recordSchema.getField("nestedRecord").schema();
     GenericData.Record nestedRecord = new GenericData.Record(nestedRecordSchema);

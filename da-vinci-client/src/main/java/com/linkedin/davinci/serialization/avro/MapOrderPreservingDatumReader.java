@@ -1,7 +1,7 @@
 package com.linkedin.davinci.serialization.avro;
 
-import com.linkedin.davinci.utils.IndexedHashMap;
-import com.linkedin.davinci.utils.IndexedMap;
+import com.linkedin.venice.utils.IndexedHashMap;
+import com.linkedin.venice.utils.IndexedMap;
 import java.util.Map;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericDatumReader;

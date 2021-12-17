@@ -117,7 +117,7 @@ public class MergeConflictResolverTest {
     mergeConflictResult  = mergeConflictResolver.put(Lazy.of(() -> oldBB),
         GenericData.get().deepCopy(aaSchema, timestampRecord), newBB, 20, 1, 1,1, 0);
 
-    if (Merge.compareAndReturn(oldBB, newBB) == oldBB) {
+    if (MergeUtils.compareAndReturn(oldBB, newBB) == oldBB) {
       Assert.assertNull(mergeConflictResult.getNewValue());
     } else {
       Assert.assertEquals(mergeConflictResult.getNewValue(), newBB);
@@ -274,27 +274,27 @@ public class MergeConflictResolverTest {
 
   @Test(dataProvider = "Long-Lists-and-null")
   public void testOffsetVectorMergeAndSum(List<Long> newVector) {
-    newVector = (List<Long>) Merge.mergeOffsetVectors(newVector, 1L, 0);
-    newVector = (List<Long>) Merge.mergeOffsetVectors(newVector, 2L, 1);
-    newVector = (List<Long>) Merge.mergeOffsetVectors(newVector, 3L, 4);
-    newVector = (List<Long>) Merge.mergeOffsetVectors(newVector, 7L, 1);
-    newVector = (List<Long>) Merge.mergeOffsetVectors(newVector, 8L, 1);
-    newVector = (List<Long>) Merge.mergeOffsetVectors(newVector, 9L, 1);
-    newVector = (List<Long>) Merge.mergeOffsetVectors(newVector, 3L, 5);
+    newVector = MergeUtils.mergeOffsetVectors(newVector, 1L, 0);
+    newVector = MergeUtils.mergeOffsetVectors(newVector, 2L, 1);
+    newVector = MergeUtils.mergeOffsetVectors(newVector, 3L, 4);
+    newVector = MergeUtils.mergeOffsetVectors(newVector, 7L, 1);
+    newVector = MergeUtils.mergeOffsetVectors(newVector, 8L, 1);
+    newVector = MergeUtils.mergeOffsetVectors(newVector, 9L, 1);
+    newVector = MergeUtils.mergeOffsetVectors(newVector, 3L, 5);
     List<Long> expectedVector = Arrays.asList(1L, 9L, 0L, 0L, 3L, 3L);
     Assert.assertEquals(newVector, expectedVector);
-    Assert.assertEquals(Merge.sumOffsetVector(newVector), 16L);
+    Assert.assertEquals(MergeUtils.sumOffsetVector(newVector), 16L);
 
     newVector.clear();
-    newVector = (List<Long>) Merge.mergeOffsetVectors(newVector, 3L, 5);
-    newVector = (List<Long>) Merge.mergeOffsetVectors(newVector, 9L, 1);
-    newVector = (List<Long>) Merge.mergeOffsetVectors(newVector, 1L, 0);
-    newVector = (List<Long>) Merge.mergeOffsetVectors(newVector, 2L, 1);
-    newVector = (List<Long>) Merge.mergeOffsetVectors(newVector, 3L, 4);
-    newVector = (List<Long>) Merge.mergeOffsetVectors(newVector, 7L, 1);
-    newVector = (List<Long>) Merge.mergeOffsetVectors(newVector, 8L, 1);
+    newVector = MergeUtils.mergeOffsetVectors(newVector, 3L, 5);
+    newVector = MergeUtils.mergeOffsetVectors(newVector, 9L, 1);
+    newVector = MergeUtils.mergeOffsetVectors(newVector, 1L, 0);
+    newVector = MergeUtils.mergeOffsetVectors(newVector, 2L, 1);
+    newVector = MergeUtils.mergeOffsetVectors(newVector, 3L, 4);
+    newVector = MergeUtils.mergeOffsetVectors(newVector, 7L, 1);
+    newVector = MergeUtils.mergeOffsetVectors(newVector, 8L, 1);
     expectedVector = Arrays.asList(1L, 8L, 0L, 0L, 3L, 3L);
     Assert.assertEquals(newVector, expectedVector);
-    Assert.assertEquals(Merge.sumOffsetVector(newVector), 15L);
+    Assert.assertEquals(MergeUtils.sumOffsetVector(newVector), 15L);
   }
 }

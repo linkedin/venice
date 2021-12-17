@@ -19,7 +19,7 @@ public class ReplicationMetadataSchemaGeneratorV2 extends ReplicationMetadataSch
   public ReplicationMetadataSchemaGeneratorV2() {}
 
   @Override
-  protected Schema generateMetadataSchemaFromRecord(Schema recordSchema, String namespace) {
+  public Schema generateMetadataSchemaFromRecord(Schema recordSchema, String namespace) {
     final RecordMetadataSchemaBuilder recordMetadataSchemaBuilder = new RecordMetadataSchemaBuilder();
     recordMetadataSchemaBuilder.setValueRecordSchema(recordSchema);
     recordMetadataSchemaBuilder.setNamespace(namespace);

@@ -4,7 +4,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import java.util.List;
 import org.apache.avro.Schema;
 
-import static com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter.WriteComputeOperation.*;
+import static com.linkedin.venice.schema.writecompute.WriteComputeOperation.*;
 import static org.apache.avro.Schema.Type.*;
 
 /**
@@ -51,7 +51,7 @@ public class WriteComputeSchemaValidator {
     }
     if (writeComputeSchema.getType() != RECORD) {
       //If writeComputeSchema is a union type and contains DelOp, recurse on initial record
-      if (writeComputeSchema.getType() == UNION && writeComputeSchema.getTypes().get(1).getName().equals(DEL_OP.name)) {
+      if (writeComputeSchema.getType() == UNION && writeComputeSchema.getTypes().get(1).getName().equals(DEL_RECORD_OP.name)) {
         return validateSchema(originalSchema, writeComputeSchema.getTypes().get(0));
       }
       return false;
@@ -68,7 +68,7 @@ public class WriteComputeSchemaValidator {
       }
 
       List<Schema> unionSubTypes = writeComputeFieldSchema.getTypes();
-      if (!unionSubTypes.get(0).getName().equals(NO_OP.name)) {
+      if (!unionSubTypes.get(0).getName().equals(NO_OP_ON_FIELD.name)) {
         return false;
       }
 
@@ -91,7 +91,7 @@ public class WriteComputeSchemaValidator {
   }
 
   private static boolean validateCollectionSchema(Schema originalSchema, Schema writeComputeSchema) {
-    WriteComputeSchemaConverter.WriteComputeOperation operation;
+    WriteComputeOperation operation;
     if (originalSchema.getType() == ARRAY) {
       operation = LIST_OPS;
     } else if (originalSchema.getType() == MAP) {

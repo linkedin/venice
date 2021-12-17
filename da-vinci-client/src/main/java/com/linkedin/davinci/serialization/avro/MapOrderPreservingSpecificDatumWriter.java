@@ -1,6 +1,6 @@
 package com.linkedin.davinci.serialization.avro;
 
-import com.linkedin.davinci.utils.IndexedHashMap;
+import com.linkedin.venice.utils.IndexedHashMap;
 import java.io.IOException;
 import java.util.LinkedHashMap;
 import java.util.SortedMap;
