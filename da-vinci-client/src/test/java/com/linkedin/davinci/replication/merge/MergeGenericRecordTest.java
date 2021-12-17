@@ -1,6 +1,10 @@
 package com.linkedin.davinci.replication.merge;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
+import com.linkedin.venice.schema.merge.CollectionTimestampMergeRecordHelper;
+import com.linkedin.venice.schema.merge.MergeRecordHelper;
+import com.linkedin.venice.schema.merge.ValueAndReplicationMetadata;
+import com.linkedin.venice.schema.writecompute.WriteComputeProcessor;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.schema.rmd.ReplicationMetadataSchemaGenerator;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
@@ -16,7 +20,7 @@ import org.testng.annotations.Test;
 import org.testng.Assert;
 
 import static com.linkedin.venice.VeniceConstants.*;
-import static com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter.*;
+import static com.linkedin.venice.schema.writecompute.WriteComputeConstants.*;
 
 
 public class MergeGenericRecordTest {
@@ -85,8 +89,8 @@ public class MergeGenericRecordTest {
     ValueAndReplicationMetadata<GenericRecord>
         valueAndReplicationMetadata = new ValueAndReplicationMetadata<>(valueRecord, timeStampRecord);
 
-    Merge<GenericRecord> merge = MergeGenericRecord.getInstance();
-    ValueAndReplicationMetadata<GenericRecord> deletedValueAndReplicationMetadata1 = merge.delete(valueAndReplicationMetadata, 20, 1, 0);
+    Merge<GenericRecord> genericRecordMerge = createMergeGenericRecord();
+    ValueAndReplicationMetadata<GenericRecord> deletedValueAndReplicationMetadata1 = genericRecordMerge.delete(valueAndReplicationMetadata, 20, -1, 1, 0);
     // verify id and name fields are default (deleted)
     Assert.assertEquals(deletedValueAndReplicationMetadata1.getValue().get("id").toString(), "id");
     Assert.assertEquals(deletedValueAndReplicationMetadata1.getValue().get("name").toString(), "name");
@@ -101,7 +105,7 @@ public class MergeGenericRecordTest {
     // full delete. expect null value
     timeStampRecord.put(0, 20L);
     valueAndReplicationMetadata.setReplicationMetadata(timeStampRecord);
-    ValueAndReplicationMetadata<GenericRecord> deletedValueAndReplicationMetadata2 = merge.delete(valueAndReplicationMetadata, 30, 1, 0);
+    ValueAndReplicationMetadata<GenericRecord> deletedValueAndReplicationMetadata2 = genericRecordMerge.delete(valueAndReplicationMetadata, 30, -1, 1, 0);
     Assert.assertNull(deletedValueAndReplicationMetadata2.getValue());
     // Verify that the same object is returned
     Assert.assertTrue(deletedValueAndReplicationMetadata2 == valueAndReplicationMetadata);
@@ -113,7 +117,7 @@ public class MergeGenericRecordTest {
     timeStampRecord.put(0, ts);
     valueAndReplicationMetadata.setReplicationMetadata(timeStampRecord);
     valueAndReplicationMetadata.setValue(valueRecord);
-    valueAndReplicationMetadata = merge.delete(valueAndReplicationMetadata, 30, 1, 0);
+    valueAndReplicationMetadata = genericRecordMerge.delete(valueAndReplicationMetadata, 30, 1, -1, 0);
     Assert.assertNull(valueAndReplicationMetadata.getValue());
     Assert.assertEquals(valueAndReplicationMetadata.getReplicationMetadata().get(TIMESTAMP_FIELD_NAME), 30L);
 
@@ -121,7 +125,7 @@ public class MergeGenericRecordTest {
     timeStampRecord.put(0, ts);
     valueAndReplicationMetadata.setReplicationMetadata(timeStampRecord);
     valueAndReplicationMetadata.setValue(valueRecord);
-    ValueAndReplicationMetadata<GenericRecord> deletedValueAndReplicationMetadata3 = merge.delete(valueAndReplicationMetadata, 5, 1, 0);
+    ValueAndReplicationMetadata<GenericRecord> deletedValueAndReplicationMetadata3 = genericRecordMerge.delete(valueAndReplicationMetadata, 5, -1, 1, 0);
 
     Assert.assertEquals(deletedValueAndReplicationMetadata3.getValue(), valueAndReplicationMetadata.getValue());
     Assert.assertEquals((List<Long>) deletedValueAndReplicationMetadata3.getReplicationMetadata().get(REPLICATION_CHECKPOINT_VECTOR_FIELD), Arrays.asList(1L));
@@ -151,8 +155,8 @@ public class MergeGenericRecordTest {
     newRecord.put("id", "id10");
     newRecord.put("name", "name10");
     newRecord.put("age", 20);
-    Merge<GenericRecord> merge = MergeGenericRecord.getInstance();
-    ValueAndReplicationMetadata<GenericRecord> mergedValueAndReplicationMetadata1 = merge.put(valueAndReplicationMetadata, newRecord, 30, 1, 0);
+    Merge<GenericRecord> genericRecordMerge = createMergeGenericRecord();
+    ValueAndReplicationMetadata<GenericRecord> mergedValueAndReplicationMetadata1 = genericRecordMerge.put(valueAndReplicationMetadata, newRecord, 30, -1, 1, 0);
 
     // verify id and name fields are from new record
     Assert.assertEquals(mergedValueAndReplicationMetadata1.getValue().get("id"), newRecord.get(0));
@@ -163,7 +167,7 @@ public class MergeGenericRecordTest {
 
     // verify we reuse the same instance when nothings changed.
     ValueAndReplicationMetadata<GenericRecord>
-        mergedValueAndReplicationMetadata2 = merge.put(valueAndReplicationMetadata, newRecord, 10, 1, 0);
+        mergedValueAndReplicationMetadata2 = genericRecordMerge.put(valueAndReplicationMetadata, newRecord, 10, -1, 1, 0);
     Assert.assertEquals(mergedValueAndReplicationMetadata2.getValue(), valueAndReplicationMetadata.getValue());
     // Verify that the same object is returned
     Assert.assertTrue(mergedValueAndReplicationMetadata2 == valueAndReplicationMetadata);
@@ -177,7 +181,7 @@ public class MergeGenericRecordTest {
         +"}");
     newRecord = new GenericData.Record(schema2);
     GenericRecord finalNewRecord = newRecord;
-    Assert.assertThrows(VeniceException.class, () -> merge.put(valueAndReplicationMetadata, finalNewRecord, 10, 1, 0));
+    Assert.assertThrows(VeniceException.class, () -> genericRecordMerge.put(valueAndReplicationMetadata, finalNewRecord, 10, -1, 1, 0));
   }
 
   @Test(enabled = false)
@@ -208,8 +212,17 @@ public class MergeGenericRecordTest {
     wcRecord.put("id", "id10");
     wcRecord.put("name", noOpRecord);
     wcRecord.put("age", 20);
-    Merge<GenericRecord> merge = MergeGenericRecord.getInstance();
-    valueAndReplicationMetadata = merge.update(valueAndReplicationMetadata, Lazy.of(() -> wcRecord), schema, recordWriteComputeSchema, 30, 1, 0);
+    Merge<GenericRecord> genericRecordMerge = createMergeGenericRecord();
+    valueAndReplicationMetadata = genericRecordMerge.update(
+        valueAndReplicationMetadata,
+        Lazy.of(() -> wcRecord),
+        wcRecord.getSchema(),
+        recordWriteComputeSchema,
+        30,
+        -1,
+        1,
+        0
+    );
 
     // verify id and name fields are from new record
     Assert.assertEquals(valueAndReplicationMetadata.getValue().get("id"), wcRecord.get(0));
@@ -222,12 +235,29 @@ public class MergeGenericRecordTest {
 
     // verify we reuse the same instance when nothings changed.
     ValueAndReplicationMetadata<GenericRecord>
-        valueAndReplicationMetadata1 = merge.update(valueAndReplicationMetadata, Lazy.of(() -> wcRecord), schema, recordWriteComputeSchema, 10, 1, 0);
+        valueAndReplicationMetadata1 = genericRecordMerge.update(
+            valueAndReplicationMetadata,
+        Lazy.of(() -> wcRecord),
+        wcRecord.getSchema(),
+        recordWriteComputeSchema,
+        10,
+        -1,
+        1,
+        0
+    );
     Assert.assertEquals(valueAndReplicationMetadata1.getValue(), valueAndReplicationMetadata.getValue());
 
     // validate ts record change from LONG to GenericRecord.
     timeStampRecord.put(0, 10L);
-    valueAndReplicationMetadata = merge.update(valueAndReplicationMetadata, Lazy.of(() -> wcRecord), schema, recordWriteComputeSchema, 30, 1, 0);
+    valueAndReplicationMetadata = genericRecordMerge.update(
+        valueAndReplicationMetadata, Lazy.of(() -> wcRecord),
+        wcRecord.getSchema(),
+        recordWriteComputeSchema,
+        30,
+        -1,
+        1,
+        0
+    );
     ts = (GenericRecord) valueAndReplicationMetadata.getReplicationMetadata().get(TIMESTAMP_FIELD_NAME);
     Assert.assertEquals(ts.get("id"), 30L);
     Assert.assertEquals(ts.get("name"), 10L);
@@ -242,7 +272,16 @@ public class MergeGenericRecordTest {
     collectionUpdateRecord.put(SET_DIFF, Collections.emptyList());
     wcRecord.put("name", collectionUpdateRecord);
     ValueAndReplicationMetadata finalValueAndReplicationMetadata = valueAndReplicationMetadata;
-    Assert.assertThrows(VeniceException.class, () -> merge.update(finalValueAndReplicationMetadata, Lazy.of(() ->wcRecord), innerArraySchema, recordWriteComputeSchema, 10, 1, 0));
+    Assert.assertThrows(VeniceException.class, () -> genericRecordMerge.update(
+        finalValueAndReplicationMetadata,
+        Lazy.of(() ->wcRecord),
+        wcRecord.getSchema(),
+        recordWriteComputeSchema,
+        10,
+        -1,
+        1,
+        0
+    ));
   }
 
   @Test
@@ -273,11 +312,11 @@ public class MergeGenericRecordTest {
     }
     ValueAndReplicationMetadata<GenericRecord>
         valueAndReplicationMetadata = new ValueAndReplicationMetadata<>(origRecord, timeStampRecord);
-    Merge<GenericRecord> merge = MergeGenericRecord.getInstance();
+    Merge<GenericRecord> genericRecordMerge = createMergeGenericRecord();
 
     for (int i = 0; i < 100; i++) {
       for (int j = 0; j < 100; j++) {
-        valueAndReplicationMetadata = merge.put(valueAndReplicationMetadata, GenericData.get().deepCopy(schema, payload.get(j)), writeTs.get(i), 1, 0);
+        valueAndReplicationMetadata = genericRecordMerge.put(valueAndReplicationMetadata, GenericData.get().deepCopy(schema, payload.get(j)), writeTs.get(i), -1, 1, 0);
       }
     }
     // timestamp record should always contain the latest value
@@ -291,7 +330,7 @@ public class MergeGenericRecordTest {
     // swap timestamp and record order
     for (int i = 0; i < 100; i++) {
       for (int j = 0; j < 100; j++) {
-        valueAndReplicationMetadata = merge.put(valueAndReplicationMetadata, GenericData.get().deepCopy(schema, payload.get(i)), writeTs.get(j), 1, 0);
+        valueAndReplicationMetadata = genericRecordMerge.put(valueAndReplicationMetadata, GenericData.get().deepCopy(schema, payload.get(i)), writeTs.get(j), -1, 1, 0);
       }
     }
     // timestamp record should always contain the latest value
@@ -299,5 +338,11 @@ public class MergeGenericRecordTest {
     Assert.assertEquals(valueAndReplicationMetadata.getValue().get("name").toString(), "name99");
     Assert.assertEquals(valueAndReplicationMetadata.getValue().get("age"), 109);
     Assert.assertEquals((long) valueAndReplicationMetadata.getReplicationMetadata().get(TIMESTAMP_FIELD_NAME), 110);
+  }
+
+  private Merge<GenericRecord> createMergeGenericRecord() {
+    MergeRecordHelper mergeRecordHelper = new CollectionTimestampMergeRecordHelper();
+    WriteComputeProcessor writeComputeProcessor = new WriteComputeProcessor(mergeRecordHelper);
+    return new MergeGenericRecord(writeComputeProcessor, mergeRecordHelper);
   }
 }

@@ -374,8 +374,8 @@ public class TestReplicationMetadataSchemaGenerator {
   private void validateCollectionFieldReplicationMetadata(Schema recordTsSchema, String fieldName, Schema.Type expectedElementSchemaType) {
     Schema field1TsSchema = recordTsSchema.getField(fieldName).schema();
     Assert.assertEquals(field1TsSchema.getType(), RECORD);
-    Assert.assertEquals(field1TsSchema.getFields().size(), 4);
-    Assert.assertEquals(field1TsSchema.getField("topLevelTimestamp").schema().getType(), LONG);
+    Assert.assertEquals(field1TsSchema.getFields().size(), 6);
+    Assert.assertEquals(field1TsSchema.getField("topLevelFieldTimestamp").schema().getType(), LONG);
     Assert.assertEquals(field1TsSchema.getField("activeElementsTimestamps").schema().getType(), ARRAY);
     Assert.assertEquals(field1TsSchema.getField("activeElementsTimestamps").schema().getElementType().getType(), LONG);
     Assert.assertEquals(field1TsSchema.getField("deletedElementsIdentities").schema().getType(), ARRAY);

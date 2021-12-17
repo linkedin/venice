@@ -1,5 +1,7 @@
 package com.linkedin.venice.schema.writecompute;
 
+import com.linkedin.venice.schema.merge.ValueAndReplicationMetadata;
+import com.linkedin.venice.schema.merge.MergeRecordHelper;
 import io.tehuti.utils.Utils;
 import javax.annotation.concurrent.ThreadSafe;
 import org.apache.avro.Schema;
@@ -38,8 +40,8 @@ public class WriteComputeProcessor {
    */
   private final WriteComputeHandlerV2 writeComputeHandlerV2;
 
-  public WriteComputeProcessor() {
-    this.writeComputeHandlerV2 = new WriteComputeHandlerV2();
+  public WriteComputeProcessor(MergeRecordHelper mergeRecordHelper) {
+    this.writeComputeHandlerV2 = new WriteComputeHandlerV2(mergeRecordHelper);
   }
 
   /**
@@ -64,21 +66,21 @@ public class WriteComputeProcessor {
     );
   }
 
-  public GenericRecord updateRecord(
-      Schema originalSchema,
+  public ValueAndReplicationMetadata<GenericRecord> updateRecordWithRmd(
+      Schema currValueSchema,
       Schema writeComputeSchema,
-      GenericRecord replicationMetadata,
-      GenericRecord originalRecord,
+      ValueAndReplicationMetadata<GenericRecord> oldRecordAndReplicationMetadata,
       GenericRecord writeComputeRecord,
-      long updateOperationTimestamp
+      long updateOperationTimestamp,
+      int updateOperationColoID
   ) {
     return writeComputeHandlerV2.updateRecord(
-        Utils.notNull(originalSchema),
+        Utils.notNull(currValueSchema),
         Utils.notNull(writeComputeSchema),
-        Utils.notNull(replicationMetadata),
-        Utils.notNull(originalRecord),
+        Utils.notNull(oldRecordAndReplicationMetadata),
         Utils.notNull(writeComputeRecord),
-        updateOperationTimestamp
+        updateOperationTimestamp,
+        updateOperationColoID
     );
   }
 }

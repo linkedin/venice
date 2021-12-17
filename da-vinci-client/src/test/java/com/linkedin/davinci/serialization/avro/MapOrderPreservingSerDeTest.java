@@ -1,7 +1,7 @@
 package com.linkedin.davinci.serialization.avro;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
-import com.linkedin.davinci.utils.IndexedHashMap;
+import com.linkedin.venice.utils.IndexedHashMap;
 import com.linkedin.venice.utils.Pair;
 import java.util.ArrayList;
 import java.util.Arrays;

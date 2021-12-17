@@ -1,4 +1,4 @@
-package com.linkedin.davinci.utils;
+package com.linkedin.venice.utils;
 
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
@@ -547,10 +547,13 @@ public class IndexedHashMap <K,V>
 
   /**
    * Constant-time, as {@link Map#get(Object)}
+   *
+   * @return Index of the key or -1 if the key does not exist.
    */
   @Override
   public int indexOf(K key) {
-    return getNode(hash(key), key).index;
+    Node nodeForKey = getNode(hash(key), key);
+    return nodeForKey == null ? -1 : nodeForKey.index;
   }
 
   /**

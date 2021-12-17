@@ -77,7 +77,7 @@ public class MergeConflictResolver {
       newReplicationMetadata.put(TIMESTAMP_FIELD_NAME, writeOperationTimestamp);
       // A record which didn't come from an RT topic or has null metadata should have no offset vector.
       newReplicationMetadata.put(REPLICATION_CHECKPOINT_VECTOR_FIELD,
-          Merge.mergeOffsetVectors(new ArrayList<>(), newValueSourceOffset, newValueSourceBrokerID));
+          MergeUtils.mergeOffsetVectors(new ArrayList<>(), newValueSourceOffset, newValueSourceBrokerID));
 
       return new MergeConflictResult(newValue, newValueSchemaId, true, newReplicationMetadata);
     }
@@ -88,26 +88,26 @@ public class MergeConflictResolver {
     }
 
     Object existingTimestampObject = oldReplicationMetadataRecord.get(TIMESTAMP_FIELD_NAME);
-    Merge.ReplicationMetadataType replicationMetadataType = Merge.getReplicationMetadataType(existingTimestampObject);
+    Merge.ReplicationMetadataType replicationMetadataType = MergeUtils.getReplicationMetadataType(existingTimestampObject);
 
     if (replicationMetadataType == Merge.ReplicationMetadataType.ROOT_LEVEL_TIMESTAMP) {
       final long existingTimestamp = (long) existingTimestampObject;
       // if new write timestamp is larger, new value wins.
       if (existingTimestamp < writeOperationTimestamp) {
         oldReplicationMetadataRecord.put(REPLICATION_CHECKPOINT_VECTOR_FIELD,
-            Merge.mergeOffsetVectors((List<Long>)oldReplicationMetadataRecord.get(REPLICATION_CHECKPOINT_VECTOR_FIELD), newValueSourceOffset, newValueSourceBrokerID));
+            MergeUtils.mergeOffsetVectors((List<Long>)oldReplicationMetadataRecord.get(REPLICATION_CHECKPOINT_VECTOR_FIELD), newValueSourceOffset, newValueSourceBrokerID));
         oldReplicationMetadataRecord.put(TIMESTAMP_FIELD_NAME, writeOperationTimestamp);
         return new MergeConflictResult(newValue, newValueSchemaId,true, oldReplicationMetadataRecord);
       } else if (existingTimestamp > writeOperationTimestamp) { // no-op as new ts is stale, ignore update
         return MergeConflictResult.getIgnoredResult();
       } else { // tie in old and new ts, decide persistence based on object comparison
-        ByteBuffer compareResult = (ByteBuffer) Merge.compareAndReturn(oldValue.get(), newValue);
+        ByteBuffer compareResult = (ByteBuffer) MergeUtils.compareAndReturn(oldValue.get(), newValue);
         if (compareResult != newValue) {
           return MergeConflictResult.getIgnoredResult();
         }
         // no need to update RMD ts, but do need to update the offset vector, so return a new set of metadata
         oldReplicationMetadataRecord.put(REPLICATION_CHECKPOINT_VECTOR_FIELD,
-            Merge.mergeOffsetVectors((List<Long>)oldReplicationMetadataRecord.get(REPLICATION_CHECKPOINT_VECTOR_FIELD), newValueSourceOffset, newValueSourceBrokerID));
+            MergeUtils.mergeOffsetVectors((List<Long>)oldReplicationMetadataRecord.get(REPLICATION_CHECKPOINT_VECTOR_FIELD), newValueSourceOffset, newValueSourceBrokerID));
         return new MergeConflictResult(compareResult, newValueSchemaId,true, oldReplicationMetadataRecord);
       }
     } else if (replicationMetadataType == Merge.ReplicationMetadataType.PER_FIELD_TIMESTAMP) {
@@ -124,7 +124,7 @@ public class MergeConflictResolver {
       return 0;
     }
     Object offsetVectorObject = replicationMetadataRecord.get(REPLICATION_CHECKPOINT_VECTOR_FIELD);
-    return Merge.sumOffsetVector(offsetVectorObject);
+    return MergeUtils.sumOffsetVector(offsetVectorObject);
   }
 
   public GenericRecord getReplicationMetadataRecordFromByteBuffer(ByteBuffer replicationMetadata, int schemaIdOfValue) {
@@ -148,7 +148,7 @@ public class MergeConflictResolver {
       return Collections.singletonList(0L);
     }
     Object timestampObject = replicationMetadataRecord.get(TIMESTAMP_FIELD_NAME);
-    Merge.ReplicationMetadataType replicationMetadataType = Merge.getReplicationMetadataType(timestampObject);
+    Merge.ReplicationMetadataType replicationMetadataType = MergeUtils.getReplicationMetadataType(timestampObject);
 
     if (replicationMetadataType == Merge.ReplicationMetadataType.ROOT_LEVEL_TIMESTAMP) {
       return Collections.singletonList((long) timestampObject);
@@ -192,7 +192,7 @@ public class MergeConflictResolver {
       GenericRecord newReplicationMetadata = new GenericData.Record(getReplicationMetadataSchema(schemaIdOfOldValue));
       newReplicationMetadata.put(TIMESTAMP_FIELD_NAME, writeOperationTimestamp);
       newReplicationMetadata.put(REPLICATION_CHECKPOINT_VECTOR_FIELD,
-          Merge.mergeOffsetVectors(null, newValueSourceOffset, newValueSourceBrokerID));
+          MergeUtils.mergeOffsetVectors(null, newValueSourceOffset, newValueSourceBrokerID));
       return new MergeConflictResult(null, schemaIdOfOldValue, false, newReplicationMetadata);
     }
 
@@ -201,7 +201,7 @@ public class MergeConflictResolver {
     }
 
     Object tsObject = oldReplicationMetadataRecord.get(TIMESTAMP_FIELD_NAME);
-    Merge.ReplicationMetadataType replicationMetadataType = Merge.getReplicationMetadataType(tsObject);
+    Merge.ReplicationMetadataType replicationMetadataType = MergeUtils.getReplicationMetadataType(tsObject);
 
     if (replicationMetadataType == Merge.ReplicationMetadataType.ROOT_LEVEL_TIMESTAMP) {
       long oldTimestamp = (long) tsObject;
@@ -210,7 +210,7 @@ public class MergeConflictResolver {
         // update RMD ts
         oldReplicationMetadataRecord.put(TIMESTAMP_FIELD_NAME, writeOperationTimestamp);
         oldReplicationMetadataRecord.put(REPLICATION_CHECKPOINT_VECTOR_FIELD,
-            Merge.mergeOffsetVectors((List<Long>)oldReplicationMetadataRecord.get(REPLICATION_CHECKPOINT_VECTOR_FIELD), newValueSourceOffset, newValueSourceBrokerID));
+            MergeUtils.mergeOffsetVectors((List<Long>)oldReplicationMetadataRecord.get(REPLICATION_CHECKPOINT_VECTOR_FIELD), newValueSourceOffset, newValueSourceBrokerID));
 
         return new MergeConflictResult(null, schemaIdOfOldValue,false, oldReplicationMetadataRecord);
       } else { // keep the old value

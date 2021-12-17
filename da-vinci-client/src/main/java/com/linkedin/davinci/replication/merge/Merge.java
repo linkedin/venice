@@ -1,10 +1,8 @@
 package com.linkedin.davinci.replication.merge;
 
+import com.linkedin.venice.schema.merge.ValueAndReplicationMetadata;
 import com.linkedin.venice.utils.Lazy;
-import java.util.ArrayList;
-import java.util.List;
 import org.apache.avro.Schema;
-import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 
 
@@ -39,11 +37,12 @@ import org.apache.avro.generic.GenericRecord;
  * passed in. The input {@link ValueAndReplicationMetadata} object may be mutated or replaced its inner variables. As such,
  * a caller of this function should not expect the passed in parameter to remain unchanged.
  */
-interface Merge<T> {
+public interface Merge<T> {
   /**
    * @param oldValueAndReplicationMetadata the old value and replication metadata which are persisted in the server prior to the write operation
    * @param newValue a record with all fields populated and with one of the registered value schemas
    * @param writeOperationTimestamp the timestamp of the incoming write operation
+   * @param writeOperationColoID ID of the colo/fabric where this PUT request was originally received.
    * @param sourceOffsetOfNewValue The offset from which the new value originates in the realtime stream.  Used to build
    *                               the ReplicationMetadata for the newly inserted record.
    * @param sourceBrokerIDOfNewValue The ID of the broker from which the new value originates.  ID's should correspond
@@ -57,15 +56,16 @@ interface Merge<T> {
       ValueAndReplicationMetadata<T> oldValueAndReplicationMetadata,
       T newValue,
       long writeOperationTimestamp,
+      int writeOperationColoID,
       long sourceOffsetOfNewValue,
       int sourceBrokerIDOfNewValue
   );
 
   /**
    * @param oldValueAndReplicationMetadata the old value and replication metadata which are persisted in the server prior to the write operation
-   * @param writeOperationTimestamp the timestamp of the incoming write operation
    * @param sourceOffsetOfNewValue The offset from which the new value originates in the realtime stream.  Used to build
    *                               the ReplicationMetadata for the newly inserted record.
+   * @param deleteOperationColoID ID of the colo/fabric where this DELETE request was originally received.
    * @param sourceBrokerIDOfNewValue The ID of the broker from which the new value originates.  ID's should correspond
    *                                 to the kafkaClusterUrlIdMap configured in the LeaderFollowerIngestionTask.  Used to build
    *                                 the ReplicationMetadata for the newly inserted record.
@@ -75,7 +75,8 @@ interface Merge<T> {
    */
   ValueAndReplicationMetadata<T> delete(
       ValueAndReplicationMetadata<T> oldValueAndReplicationMetadata,
-      long writeOperationTimestamp,
+      long deleteOperationTimestamp,
+      int deleteOperationColoID,
       long sourceOffsetOfNewValue,
       int sourceBrokerIDOfNewValue
   );
@@ -83,7 +84,11 @@ interface Merge<T> {
   /**
    * @param oldValueAndReplicationMetadata the old value and replication metadata which are persisted in the server prior to the write operation
    * @param writeOperation a record with a write compute schema
+   * @param currValueSchema Schema of the current value that is to-be-updated here.
+   * @param writeComputeSchema Schema used to generate the write compute record. This schema could be a union and that is
+   *                           why this schema is needed when we already pass in the {@code writeOperation} generic record.
    * @param writeOperationTimestamp the timestamp of the incoming write operation
+   * @param updateOperationColoID ID of the colo/fabric where this UPDATE request was originally received.
    * @param sourceOffsetOfNewValue The offset from which the new value originates in the realtime stream.  Used to build
    *                               the ReplicationMetadata for the newly inserted record.
    * @param sourceBrokerIDOfNewValue The ID of the broker from which the new value originates.  ID's should correspond
@@ -96,82 +101,19 @@ interface Merge<T> {
   ValueAndReplicationMetadata<T> update(
       ValueAndReplicationMetadata<T> oldValueAndReplicationMetadata,
       Lazy<GenericRecord> writeOperation,
-      Schema valueSchema,
+      Schema currValueSchema,
       Schema writeComputeSchema,
       long writeOperationTimestamp,
+      int updateOperationColoID,
       long sourceOffsetOfNewValue,
       int sourceBrokerIDOfNewValue
   );
 
-  /**
-   * Returns the type of union record given tsObject is. Right now it will be either root level long or
-   * generic record of per field timestamp.
-   * @param tsObject
-   * @return
-   */
-  static ReplicationMetadataType getReplicationMetadataType(Object tsObject) {
-    if (tsObject instanceof Long) {
-      return ReplicationMetadataType.ROOT_LEVEL_TIMESTAMP;
-    } else {
-      return ReplicationMetadataType.PER_FIELD_TIMESTAMP;
-    }
-  }
-
-  static Object compareAndReturn(Object o1, Object o2) {
-    // nulls win comparison on the basis that we prefer deletes to win in the case
-    // where there is a tie on RMD timestamp comparison.
-    if (o1 == null) {
-      return o1;
-    } else if (o2 == null) {
-      return o2;
-    }
-    // for same object always return first object o1
-    if (o1.hashCode() >= o2.hashCode()) {
-      return o1;
-    } else {
-      return o2;
-    }
-  }
-
-   enum ReplicationMetadataType {
+  enum ReplicationMetadataType {
     ROOT_LEVEL_TIMESTAMP(0), PER_FIELD_TIMESTAMP(1);
     int val;
     ReplicationMetadataType(int val) {
       this.val = val;
     }
-  }
-
-  static List<Long> mergeOffsetVectors(List<Long> oldOffsetVector, Long newOffset, int sourceBrokerID) {
-    if (sourceBrokerID < 0) {
-      // Can happen if we could not deduce the sourceBrokerID (can happen due to a misconfiguration)
-      // in such cases, we will not try to alter the existing offsetVector, instead just returning it.
-      return oldOffsetVector;
-    }
-    if (oldOffsetVector == null) {
-      oldOffsetVector = new ArrayList<>(sourceBrokerID);
-    }
-    // Making sure there is room available for the insertion (fastserde LongList can't be cast to arraylist)
-    // Lists in java require that gaps be filled, so first we fill any gaps by adding some initial offset values
-    for(int i = oldOffsetVector.size(); i <= sourceBrokerID; i++) {
-      oldOffsetVector.add(i, 0L);
-    }
-    oldOffsetVector.set(sourceBrokerID, newOffset);
-    return oldOffsetVector;
-  }
-
-  /**
-   * Returns a summation of all component parts to an offsetVector for vector comparison
-   * @param offsetVector offsetVector to be summed
-   * @return the sum of all offset vectors
-   */
-  static long sumOffsetVector(Object offsetVector) {
-    if (offsetVector == null) {
-      return 0L;
-    }
-    return ((List<Long>)offsetVector).stream().reduce(0L, Long::sum);
-  }
-
-  static GenericRecord deepCopyGenericRecord(GenericRecord genericRecord) {
-    return GenericData.get().deepCopy(genericRecord.getSchema(), genericRecord);
   }
 }

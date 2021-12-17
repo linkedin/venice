@@ -1,8 +1,15 @@
 package com.linkedin.venice.schema;
 
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.exceptions.VeniceException;
+import java.util.ArrayList;
 import java.util.List;
 import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericData;
+import org.apache.avro.generic.GenericRecord;
+
+import static org.apache.avro.Schema.Type.*;
+
 
 public class SchemaUtils {
   /**
@@ -49,5 +56,37 @@ public class SchemaUtils {
 
     return types.get(0).getType() == Schema.Type.NULL
         || types.get(1).getType() == Schema.Type.NULL;
+  }
+
+  public static Schema createFlattenedUnionSchema(List<Schema> schemasInUnion) {
+    List<Schema> flattenedSchemaList = new ArrayList<>(schemasInUnion.size());
+    for (Schema schemaInUnion : schemasInUnion) {
+      //if the origin schema is union, we'd like to flatten it
+      //we don't need to do it recursively because Avro doesn't support nested union
+      if (schemaInUnion.getType() == UNION) {
+        flattenedSchemaList.addAll(schemaInUnion.getTypes());
+      } else {
+        flattenedSchemaList.add(schemaInUnion);
+      }
+    }
+
+    return Schema.createUnion(flattenedSchemaList);
+  }
+
+  public static GenericRecord constructGenericRecord(Schema originalSchema) {
+    final GenericData.Record newRecord = new GenericData.Record(originalSchema);
+
+    for (Schema.Field originalField : originalSchema.getFields()) {
+      if (AvroCompatibilityHelper.fieldHasDefault(originalField)) {
+        //make a deep copy here since genericData caches each default value internally. If we
+        //use what it returns, we will mutate the cache.
+        newRecord.put(originalField.name(), GenericData.get().deepCopy(originalField.schema(), AvroCompatibilityHelper.getGenericDefaultValue(originalField)));
+      } else {
+        throw new VeniceException(String.format("Cannot apply updates because Field: %s is null and "
+            + "default value is not defined", originalField.name()));
+      }
+    }
+
+    return newRecord;
   }
 }

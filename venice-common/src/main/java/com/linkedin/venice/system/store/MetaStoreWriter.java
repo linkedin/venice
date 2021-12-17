@@ -45,6 +45,7 @@ import org.apache.avro.generic.GenericRecord;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import static com.linkedin.venice.schema.writecompute.WriteComputeConstants.*;
 import static com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter.*;
 
 

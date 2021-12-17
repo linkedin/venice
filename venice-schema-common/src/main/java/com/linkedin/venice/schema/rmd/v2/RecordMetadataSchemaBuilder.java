@@ -19,7 +19,7 @@ import static org.apache.avro.Schema.Type.*;
  * This class build replication metadata schema given a record schema of a value
  */
 class RecordMetadataSchemaBuilder {
-  private static final String COLLECTION_TS_RECORD_SUFFIX = "CollectionMetadata";
+  public static final String COLLECTION_TS_RECORD_SUFFIX = "CollectionMetadata";
   private Schema valueRecordSchema;
   private String namespace;
   private Map<String, Schema> normalizedSchemaToMetadataSchemaMap;
@@ -59,11 +59,22 @@ class RecordMetadataSchemaBuilder {
 
   private Schema.Field generateMetadataField(Schema.Field existingField, String namespace) {
     Schema fieldSchema = generateMetadataSchemaForField(existingField, namespace);
+
+    Object defaultValue;
+
+    if (fieldSchema == LONG_TYPE_TIMESTAMP_SCHEMA) {
+      defaultValue = 0;
+    } else if (fieldSchema.getType() == RECORD) {
+      defaultValue = SchemaUtils.constructGenericRecord(fieldSchema);
+    } else {
+      defaultValue = null;
+    }
+
     return AvroCompatibilityHelper.newField(null)
         .setName(existingField.name())
         .setSchema(fieldSchema)
         .setDoc("timestamp when " + existingField.name()  + " of the record was last updated")
-        .setDefault(fieldSchema == TIMESTAMP_SCHEMA ? 0 : null)
+        .setDefault(defaultValue)
         .setOrder(existingField.order())
         .build();
   }
@@ -81,7 +92,7 @@ class RecordMetadataSchemaBuilder {
         mdSchemaForField = generateSchemaForUnionField(existingField, namespace);
         break;
       default:
-        mdSchemaForField = TIMESTAMP_SCHEMA;
+        mdSchemaForField = LONG_TYPE_TIMESTAMP_SCHEMA;
     }
     return mdSchemaForField;
   }
@@ -106,7 +117,7 @@ class RecordMetadataSchemaBuilder {
 
   private Schema generateSchemaForUnionField(Schema.Field unionField, String namespace) {
     if (!SchemaUtils.isNullableUnionPair(unionField.schema())) {
-      return TIMESTAMP_SCHEMA;
+      return LONG_TYPE_TIMESTAMP_SCHEMA;
     }
     List<Schema> internalSchemas = unionField.schema().getTypes();
     Schema actualSchema = internalSchemas.get(0).getType() == NULL ?

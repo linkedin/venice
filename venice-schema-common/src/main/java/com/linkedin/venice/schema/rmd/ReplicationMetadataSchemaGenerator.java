@@ -1,5 +1,6 @@
 package com.linkedin.venice.schema.rmd;
 
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.schema.rmd.v1.ReplicationMetadataSchemaGeneratorV1;
 import com.linkedin.venice.schema.rmd.v2.ReplicationMetadataSchemaGeneratorV2;
@@ -15,7 +16,9 @@ import org.apache.avro.Schema;
  */
 
 public class ReplicationMetadataSchemaGenerator {
-  private static final int LATEST_VERSION = 2;
+  private static final int GENERATOR_V1 = 1;
+  private static final int GENERATOR_V2 = 2;
+  private static final int LATEST_VERSION = GENERATOR_V2;
   // It's fine to use V1 object in the map as V2 extends from V1. We'll need to abstract
   // a new generator in the future if we bring some incompatible changes to the generator. (
   // in case a newer adapter cannot extend from the older ones.)
@@ -23,17 +26,23 @@ public class ReplicationMetadataSchemaGenerator {
 
   static {
     Map<Integer, ReplicationMetadataSchemaGeneratorV1> tmpMap = new HashMap<>(LATEST_VERSION);
-    tmpMap.put(1, new ReplicationMetadataSchemaGeneratorV1());
-    tmpMap.put(2, new ReplicationMetadataSchemaGeneratorV2());
+    tmpMap.put(GENERATOR_V1, new ReplicationMetadataSchemaGeneratorV1());
+    tmpMap.put(GENERATOR_V2, new ReplicationMetadataSchemaGeneratorV2());
     REPLICATION_METADATA_SCHEMA_GENERATOR = Collections.unmodifiableMap(tmpMap);
   }
 
   private ReplicationMetadataSchemaGenerator() {}
 
   public static Schema generateMetadataSchema(String schemaStr, int version) {
-    return generateMetadataSchema(Schema.parse(schemaStr), version);
+    return generateMetadataSchema(AvroCompatibilityHelper.parse(schemaStr), version);
   }
 
+  /**
+   * Generate the latest replication metadata schema.
+   *
+   * @param schema source schema from which replication metadata schema is generated
+   * @return Generated replication metadata schema
+   */
   public static Schema generateMetadataSchema(Schema schema) {
     return generateMetadataSchema(schema, LATEST_VERSION);
   }

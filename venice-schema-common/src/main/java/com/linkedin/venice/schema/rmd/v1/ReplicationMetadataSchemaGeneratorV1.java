@@ -2,13 +2,13 @@ package com.linkedin.venice.schema.rmd.v1;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.schema.SchemaUtils;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import org.apache.avro.Schema;
 
 import static com.linkedin.venice.VeniceConstants.*;
-import static com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter.*;
 import static org.apache.avro.Schema.Type.*;
 
 
@@ -31,13 +31,13 @@ import static org.apache.avro.Schema.Type.*;
 public class ReplicationMetadataSchemaGeneratorV1 {
   protected static final String METADATA_RECORD_SUFFIX = "MetadataRecord";
   protected static final String NAME_SPACE = "com.linkedin.venice";
-  public static final Schema TIMESTAMP_SCHEMA = Schema.create(LONG);
+  public static final Schema LONG_TYPE_TIMESTAMP_SCHEMA = Schema.create(LONG);
   protected static final Schema OFFSET_VECTOR_SCHEMA = Schema.createArray(Schema.create(LONG));
 
   public ReplicationMetadataSchemaGeneratorV1() {}
 
   public Schema generateMetadataSchema(String valueSchemaStr) {
-    return generateMetadataSchema(Schema.parse(valueSchemaStr));
+    return generateMetadataSchema(AvroCompatibilityHelper.parse(valueSchemaStr));
   }
 
   public Schema generateMetadataSchema(Schema originalSchema) {
@@ -45,7 +45,7 @@ public class ReplicationMetadataSchemaGeneratorV1 {
     return generateMetadataSchema(originalSchema, nameSpace);
   }
 
-  protected Schema generateMetadataSchemaFromRecord(Schema recordSchema, String namespace) {
+  public Schema generateMetadataSchemaFromRecord(Schema recordSchema, String namespace) {
     validateSchemaType(recordSchema, RECORD);
     Schema newSchema = Schema.createRecord(recordSchema.getName(), recordSchema.getDoc(), recordSchema.getNamespace(),
         recordSchema.isError());
@@ -55,7 +55,7 @@ public class ReplicationMetadataSchemaGeneratorV1 {
     for (Schema.Field existingField : recordSchema.getFields()) {
       Schema.Field newField = AvroCompatibilityHelper.newField(null)
           .setName(existingField.name())
-          .setSchema(TIMESTAMP_SCHEMA)
+          .setSchema(LONG_TYPE_TIMESTAMP_SCHEMA)
           .setDoc("timestamp when " + existingField.name()  + " of the record was last updated")
           .setDefault(0)
           .setOrder(existingField.order())
@@ -83,15 +83,15 @@ public class ReplicationMetadataSchemaGeneratorV1 {
    * @param namespace namespace
    */
   Schema generateMetadataSchema(Schema originalSchema, String namespace) {
-    List<Schema> rawTimestampSchemas = new ArrayList<>();
+    List<Schema> timestampSchemas = new ArrayList<>();
 
-    //Root level timestamp field to indicate when was the full record updated.
-    rawTimestampSchemas.add(TIMESTAMP_SCHEMA);
-    // for RECORD, generate timestamp for each field
+    // Value root level timestamp field to indicate when was the whole value updated.
+    timestampSchemas.add(LONG_TYPE_TIMESTAMP_SCHEMA);
+    // For RECORD value, generate timestamp for each field
     if (originalSchema.getType() == RECORD) {
-      rawTimestampSchemas.add(generateMetadataSchemaFromRecord(originalSchema, namespace));
+      timestampSchemas.add(generateMetadataSchemaFromRecord(originalSchema, namespace));
     }
-    Schema tsUnionSchema = createFlattenedUnion(rawTimestampSchemas);
+    Schema tsUnionSchema = SchemaUtils.createFlattenedUnionSchema(timestampSchemas);
 
     Schema.Field timeStampField = AvroCompatibilityHelper.newField(null)
         .setName(TIMESTAMP_FIELD_NAME)

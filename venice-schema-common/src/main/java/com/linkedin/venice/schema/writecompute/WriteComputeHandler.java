@@ -1,6 +1,5 @@
 package com.linkedin.venice.schema.writecompute;
 
-import javax.annotation.concurrent.ThreadSafe;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 
@@ -8,7 +7,6 @@ import org.apache.avro.generic.GenericRecord;
 /**
  * This interface provides methods to execute write-compute operation a value
  */
-@ThreadSafe
 public interface WriteComputeHandler {
 
   /**

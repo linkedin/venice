@@ -1,4 +1,4 @@
-package com.linkedin.davinci.replication.merge;
+package com.linkedin.venice.schema.merge;
 
 import org.apache.avro.generic.GenericRecord;
 import org.apache.commons.lang.Validate;
@@ -19,6 +19,8 @@ public class ValueAndReplicationMetadata<T> {
   public ValueAndReplicationMetadata() {
     this.value = null;
     this.replicationMetadata = null;
+    // TODO: by default, update is not ignore to guarantee correctness. We need to ensure that it is set correctly in all cases.
+    this.updateIgnored = false;
   }
 
   public ValueAndReplicationMetadata(@Nonnull T value, @Nonnull GenericRecord replicationMetadata) {

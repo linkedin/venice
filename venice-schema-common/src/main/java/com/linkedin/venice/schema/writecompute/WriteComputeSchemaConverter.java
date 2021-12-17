@@ -3,17 +3,19 @@ package com.linkedin.venice.schema.writecompute;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.schema.SchemaUtils;
+import io.tehuti.utils.Utils;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.LinkedList;
 import java.util.List;
-import java.util.Optional;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericRecord;
+import org.apache.avro.generic.IndexedRecord;
 
-import static com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter.WriteComputeOperation.*;
+import static com.linkedin.venice.schema.writecompute.WriteComputeConstants.*;
+import static com.linkedin.venice.schema.writecompute.WriteComputeOperation.*;
 import static org.apache.avro.Schema.*;
 import static org.apache.avro.Schema.Type.*;
 
@@ -37,91 +39,10 @@ import static org.apache.avro.Schema.Type.*;
 public class WriteComputeSchemaConverter {
   private final static WriteComputeSchemaConverter instance = new WriteComputeSchemaConverter();
 
-  /**
-   * This enum describe the possible write compute operations Venice supports
-   */
-  public enum WriteComputeOperation {
-    /**
-     * Mark to ignore the field. It's used for "partial put" and can be applied to any kind of schema.
-     * It's also the default for all record fields in the write compute schema.
-     */
-    NO_OP("NoOp"),
-
-    /**
-     * Perform list operations on top of the original array. It can be only applied to Avro array.
-     * Currently support:
-     * 1. setUnion: add elements into the original array, as if it was a sorted set. (e.g.: duplicates will be pruned.)
-     * 2. setDiff: remove elements from the original array, as if it was a sorted set.
-     */
-    LIST_OPS("ListOps", new Function[] {
-        schema -> AvroCompatibilityHelper.createSchemaField(SET_UNION, (Schema) schema, null, Collections.emptyList()),
-        schema -> AvroCompatibilityHelper.createSchemaField(SET_DIFF, (Schema) schema, null, Collections.emptyList())
-    }),
-
-    /**
-     * Perform map operations on top of the original map. It can be only applied to Avro map.
-     * Currently support:
-     * 1. mapUnion: add new entries into the original map. It overrides the value if a key has already existed in the map.
-     * 2. mapDiff: remove entries from the original array.
-     */
-    MAP_OPS("MapOps", new Function[] {
-        schema -> AvroCompatibilityHelper.createSchemaField(MAP_UNION, (Schema) schema, null, Collections.emptyMap()),
-        schema -> AvroCompatibilityHelper.createSchemaField(MAP_DIFF, Schema.createArray(Schema.create(Schema.Type.STRING)), null, Collections.emptyList())
-    }),
-
-    /**
-     * Marked to remove a record completely. This is used when returning writeComputeSchema with
-     * a RECORD type. The returned schema is a union of the record type and a delete operation
-     * record.
-     *
-     * Note: This is only used for non-nested records (it's only intended for removing the whole
-     * record. Removing fields inside of a record is not supported.
-     */
-    DEL_OP("DelOp");
-
-    //a name that meets class naming convention
-    final String name;
-
-    final Optional<Function<Schema, Schema.Field>[]> params;
-
-    WriteComputeOperation(String name) {
-      this.name = name;
-      this.params = Optional.empty();
-    }
-
-    WriteComputeOperation(String name, Function<Schema, Schema.Field>[] params) {
-      this.name = name;
-      this.params = Optional.of(params);
-    }
-
-    public String getName() {
-      return name;
-    }
-
-    String getUpperCamelName() {
-      if (name.isEmpty()) {
-        return name;
-      }
-
-      return name.substring(0, 1).toUpperCase() + name.substring(1);
-    }
-  }
-
-  //Instantiate some constants here so that they could be reused.
-  private static final String WRITE_COMPUTE_RECORD_SCHEMA_SUFFIX = "WriteOpRecord";
-
-  //List operations
-  public static final String SET_UNION = "setUnion";
-  public static final String SET_DIFF = "setDiff";
-
-  //Map operations
-  public static final String MAP_UNION = "mapUnion";
-  public static final String MAP_DIFF = "mapDiff";
-
   private WriteComputeSchemaConverter() {}
 
   public static Schema convert(String schemaStr) {
-    return convert(Schema.parse(schemaStr));
+    return convert(AvroCompatibilityHelper.parse(schemaStr));
   }
 
   public static Schema convert(Schema schema) {
@@ -134,7 +55,8 @@ public class WriteComputeSchemaConverter {
     if (schema.getType() == RECORD) {
       name = schema.getName() + WRITE_COMPUTE_RECORD_SCHEMA_SUFFIX;
     }
-    return instance.wrapDelOpUnion(convert(schema, name, null));
+    Schema convertedSchema = convert(schema, name, null);
+    return convertedSchema.getType() == RECORD ? instance.wrapDelOpUnion(convertedSchema) : convertedSchema;
   }
 
   /**
@@ -237,7 +159,7 @@ public class WriteComputeSchemaConverter {
 
     Schema newSchema = Schema.createRecord(derivedSchemaName, recordSchema.getDoc(), recordNamespace,
         recordSchema.isError());
-    List<Field> fieldList = new ArrayList<>();
+    List<Field> fieldList = new ArrayList<>(recordSchema.getFields().size());
     for (Field field : recordSchema.getFields()) {
       if (!AvroCompatibilityHelper.fieldHasDefault(field)) {
         throw new VeniceException(String.format("Cannot generate derived schema because field: \"%s\" "
@@ -245,13 +167,20 @@ public class WriteComputeSchemaConverter {
       }
 
       // Convert each field. We'd like to skip parsing "RECORD" type in order to avoid recursive parsing
-      fieldList.add(AvroCompatibilityHelper.createSchemaField(field.name(), wrapNoopUnion(recordNamespace, field.schema().getType() == RECORD ?
-          field.schema() : convert(field.schema(), field.name(), recordNamespace)), field.doc(), Collections.emptyMap(),
-          field.order()));
+      fieldList.add(AvroCompatibilityHelper.createSchemaField(
+          field.name(),
+          wrapNoopUnion(
+              recordNamespace, field.schema().getType() == RECORD ?
+                  field.schema() :
+                  convert(field.schema(), field.name(), recordNamespace)
+          ),
+          field.doc(),
+          Collections.emptyMap(),
+          field.order())
+      );
     }
 
     newSchema.setFields(fieldList);
-
     return newSchema;
   }
 
@@ -294,7 +223,7 @@ public class WriteComputeSchemaConverter {
    * @param namespace The namespace in "ListOps" record. See {@link #convert(Schema, String, String)} for details.
    */
   private Schema convertArray(Schema arraySchema, String name, String namespace) {
-    return Schema.createUnion(Arrays.asList(getCollectionOperation(LIST_OPS, arraySchema, name, namespace),
+    return Schema.createUnion(Arrays.asList(createCollectionOperationSchema(LIST_OPS, arraySchema, name, namespace),
         arraySchema));
   }
 
@@ -332,7 +261,7 @@ public class WriteComputeSchemaConverter {
    * @param namespace the namespace in "MapOps" record. See {@link #convert(Schema, String, String)} for details.
    */
   private Schema convertMap(Schema mapSchema, String name, String namespace) {
-    return Schema.createUnion(Arrays.asList(getCollectionOperation(MAP_OPS, mapSchema, name, namespace),
+    return Schema.createUnion(Arrays.asList(createCollectionOperationSchema(MAP_OPS, mapSchema, name, namespace),
         mapSchema));
   }
 
@@ -419,8 +348,8 @@ public class WriteComputeSchemaConverter {
       throw new VeniceException("Expect schema to be UNION type. Got: " + unionSchema);
     }
     SchemaUtils.containsOnlyOneCollection(unionSchema);
-    return createFlattenedUnion(unionSchema.getTypes().stream().sequential()
-        .map(schema ->{
+    return SchemaUtils.createFlattenedUnionSchema(unionSchema.getTypes().stream().sequential()
+        .map(schema -> {
           Schema.Type type = schema.getType();
           if (type == RECORD) {
             return schema;
@@ -442,7 +371,7 @@ public class WriteComputeSchemaConverter {
     //always put NO_OP at the first place so that it will be the default value of the union
     list.addFirst(getNoOpOperation(namespace));
 
-    return createFlattenedUnion(list);
+    return SchemaUtils.createFlattenedUnionSchema(list);
   }
 
   /**
@@ -455,31 +384,15 @@ public class WriteComputeSchemaConverter {
     if (schema.getType() != RECORD) {
       return schema;
     }
-
-    LinkedList<Schema> list = new LinkedList<>();
-    list.add(schema);
-    list.add(getDelOpOperation(schema.getNamespace()));
-
-    return createFlattenedUnion(list);
+    return SchemaUtils.createFlattenedUnionSchema(Arrays.asList(schema, getDelOpOperation(schema.getNamespace())));
   }
 
-  public static Schema createFlattenedUnion(List<Schema> schemaList) {
-    List<Schema> flattenedSchemaList = new ArrayList<>();
-    for (Schema schema : schemaList) {
-      //if the origin schema is union, we'd like to flatten it
-      //we don't need to do it recursively because Avro doesn't support nested union
-      if (schema.getType() == UNION) {
-        flattenedSchemaList.addAll(schema.getTypes());
-      } else {
-        flattenedSchemaList.add(schema);
-      }
-    }
-
-    return Schema.createUnion(flattenedSchemaList);
-  }
-
-  private Schema getCollectionOperation(WriteComputeOperation collectionOperation, Schema collectionSchema, String name,
-      String namespace) {
+  private Schema createCollectionOperationSchema(
+      WriteComputeOperation collectionOperation,
+      Schema collectionSchema,
+      String name,
+      String namespace
+  ) {
     if (name == null) {
       name = collectionOperation.getName();
     } else {
@@ -494,22 +407,46 @@ public class WriteComputeSchemaConverter {
   }
 
   public Schema getNoOpOperation(String namespace) {
-    Schema noOpSchema = Schema.createRecord(NO_OP.getName(), null, namespace, false);
+    Schema noOpSchema = Schema.createRecord(NO_OP_ON_FIELD.getName(), null, namespace, false);
 
     //Avro requires every record to have a list of fields even if it's empty... Otherwise, NPE
     //will be thrown out during parsing the schema.
     noOpSchema.setFields(Collections.emptyList());
-
     return noOpSchema;
   }
 
   public Schema getDelOpOperation(String namespace) {
-    Schema delOpSchema = Schema.createRecord(DEL_OP.getName(), null, namespace, false);
+    Schema delOpSchema = Schema.createRecord(DEL_RECORD_OP.getName(), null, namespace, false);
 
     //Avro requires every record to have a list of fields even if it's empty... Otherwise, NPE
     //will be thrown out during parsing the schema.
-    delOpSchema.setFields(Collections.EMPTY_LIST);
-
+    delOpSchema.setFields(Collections.emptyList());
     return delOpSchema;
+  }
+
+  public static WriteComputeOperation getFieldOperationType(Object writeComputeFieldValue) {
+    Utils.notNull(writeComputeFieldValue);
+
+    if (writeComputeFieldValue instanceof IndexedRecord) {
+      IndexedRecord writeComputeFieldRecord = (IndexedRecord) writeComputeFieldValue;
+      String writeComputeFieldSchemaName = writeComputeFieldRecord.getSchema().getName();
+
+      if (writeComputeFieldSchemaName.equals(NO_OP_ON_FIELD.name)) {
+        return NO_OP_ON_FIELD;
+      }
+
+      if (writeComputeFieldSchemaName.endsWith(LIST_OPS.name)) {
+        return LIST_OPS;
+      }
+
+      if (writeComputeFieldSchemaName.endsWith(MAP_OPS.name)) {
+        return MAP_OPS;
+      }
+    }
+    return PUT_NEW_FIELD;
+  }
+
+  public static boolean isDeleteRecordOp(GenericRecord writeComputeRecord) {
+    return writeComputeRecord.getSchema().getName().equals(DEL_RECORD_OP.name);
   }
 }
