@@ -5,48 +5,32 @@ plugins {
 }
 
 configurations {
+  all {
+    resolutionStrategy {
+      force libraries.kafka
+      force libraries.javax
+    }
+  }
+  implementation {
+    exclude group: 'org.apache.kafka'
+    exclude group: 'org.mortbay.jetty', module: 'servlet-api'
+  }
   jmhImplementation.extendsFrom testImplementation
   integrationTestImplementation.extendsFrom testImplementation
-}
-
-configurations.all {
-  resolutionStrategy {
-    force libraries.kafka
-    force libraries.javax
-  }
-}
-
-configurations.implementation {
-  exclude group: 'org.apache.kafka'
-  exclude group: 'org.mortbay.jetty', module: 'servlet-api'
 }
 
 sourceSets {
   jmh {
     java.srcDirs = ['src/jmh/java']
-    compileClasspath += main.output
-    runtimeClasspath += main.output
   }
 
   integrationTest {
     java.srcDirs = ['src/integrationtest/java']
     resources.srcDirs = ['src/integrationtest/resources']
-    compileClasspath += main.output
-    runtimeClasspath += main.output
   }
 }
 
 dependencies {
-  implementation libraries.testng
-
-  implementation (libraries.brooklinTest) {
-    exclude group: 'org.testng'
-    exclude group: 'org.mockito' //brooklin tries to pull in Mockito 1, we depend on Mockito 2
-    exclude group: 'org.apache.kafka' //brooklin tries to pull in Kafka 0.11, but we have not upgraded to that yet.
-    exclude group: 'kafka' //brooklin tries to pull in Kafka 0.11, but we have not upgraded to that yet.
-    exclude group: 'com.linkedin.linkedin-kafka-clients' //brooklin tries to pull in Kafka 0.11, but we have not upgraded to that yet.
-  }
-
   implementation project(':da-vinci-client')
   implementation project(':hadoop-to-venice-bridge')
   implementation project(':venice-brooklin')
@@ -58,37 +42,41 @@ dependencies {
   implementation project(':venice-server')
   implementation project(':venice-thin-client')
 
-  implementation libraries.brooklinKafka
-  implementation libraries.brooklinKafkaTransport
   implementation (libraries.d2) {
     exclude group: 'com.oracle', module: 'ojdbc14' // unused transitive dependencies, doesn't exist in repo
     // this will introduce another different mockito-all version
     exclude group: 'org.mockito', module: 'mockito-all'
   }
+
+  implementation (libraries.brooklinTest) {
+    exclude group: 'org.testng'
+    exclude group: 'org.mockito' //brooklin tries to pull in Mockito 1, we depend on Mockito 2
+    exclude group: 'org.apache.kafka' //brooklin tries to pull in Kafka 0.11, but we have not upgraded to that yet.
+    exclude group: 'kafka' //brooklin tries to pull in Kafka 0.11, but we have not upgraded to that yet.
+    exclude group: 'com.linkedin.linkedin-kafka-clients' //brooklin tries to pull in Kafka 0.11, but we have not upgraded to that yet.
+  }
+
+  implementation libraries.avroUtilCompatibilityHelper
+  implementation libraries.avroUtilFastserde
+  implementation libraries.brooklinKafka
+  implementation libraries.brooklinKafkaTransport
+  implementation libraries.conscrypt
   implementation libraries.hadoopCommon
   implementation libraries.helix
   implementation libraries.javax
-  implementation libraries.mockito
-
   implementation libraries.kafka
   implementation libraries.kafkaClients
-  implementation libraries.conscrypt
   implementation libraries.kafkaClientsTest
+  implementation libraries.mockito
+  implementation libraries.netty4Lnkd
   implementation libraries.rocksdbjni
   implementation libraries.routerApi
-  implementation libraries.spark
   implementation libraries.samzaApi
-  implementation libraries.avroUtilCompatibilityHelper
-  implementation libraries.avroUtilFastserde
   implementation libraries.scalaLogging
-  implementation libraries.netty4Lnkd
+  implementation libraries.spark
+  implementation libraries.testng
 
-  runtime libraries.commonsConfiguration
-  runtime libraries.commonsLang
-  runtime libraries.httpCore
-  runtime libraries.httpClient
-
-  compileOnly libraries.flatbuffersJava
+  compileOnly libraries.flatbuffersJava // FlatBuffersPlugin implicitly adds output to main source set
 
   testImplementation (libraries.mapreduceClientJobClient) {
     exclude group: 'org.apache.avro'
@@ -101,41 +89,28 @@ dependencies {
   jmhImplementation libraries.flatbuffersJava
 }
 
-task compileFlatBuffers(type: FlatBuffers) {
+task compileJmhFlatBuffers(type: FlatBuffers) {
   language = 'java'
   inputDir = file('src/jmh/flatbuffers')
-  outputDir = file("$buildDir/generated/sources/jmh/flatbuffers")
+  outputDir = file("$buildDir/generated/sources/flatbuffers/java/jmh")
 }
-compileJava.dependsOn(compileFlatBuffers)
+sourceSets.jmh.java.srcDir(compileJmhFlatBuffers)
 
 task jmh(type: JavaExec, dependsOn: jmhClasses) {
   main = 'org.openjdk.jmh.Main'
-  classpath = sourceSets.jmh.runtimeClasspath + sourceSets.integrationTest.runtimeClasspath
+  classpath = sourceSets.jmh.runtimeClasspath
 }
 
-classes.finalizedBy(jmhClasses)
-
-def applyConcurrencyConfig(task) {
-  task.doFirst {
-    task.forkEvery = Integer.parseInt(project.properties.get('integrationTest.forkEvery', "$task.forkEvery"))
-    task.maxParallelForks = Integer.parseInt(project.properties.get('integrationTest.maxParallelForks', "$task.maxParallelForks"))
-  }
-}
-
-task integrationTests(type: Test) {
+task integrationTest(type: Test) {
   mustRunAfter test
   classpath = sourceSets.integrationTest.runtimeClasspath
-  testClassesDirs = project.files(sourceSets.integrationTest.output.classesDirs)
-  applyConcurrencyConfig(integrationTests)
+  testClassesDirs = sourceSets.integrationTest.output.classesDirs
+  forkEvery = Integer.parseInt(project.properties.get('integrationTest.forkEvery', "$forkEvery"))
+  maxParallelForks = Integer.parseInt(project.properties.get('integrationTest.maxParallelForks', "$maxParallelForks"))
 }
-check.dependsOn(integrationTests)
+check.dependsOn(integrationTest)
 
-task flakyIntegrationTests(type: Test) {
-  useTestNG() {
-    includeGroups 'flaky'
-  }
-  mustRunAfter test
-  classpath = sourceSets.integrationTest.runtimeClasspath
-  testClassesDirs = project.files(sourceSets.integrationTest.output.classesDirs)
-  applyConcurrencyConfig(flakyIntegrationTests)
+flakyTest {
+  classpath += sourceSets.integrationTest.runtimeClasspath
+  testClassesDirs += sourceSets.integrationTest.output.classesDirs
 }
