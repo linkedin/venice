@@ -25,7 +25,7 @@ try {
       value 'CommitId', commitId
     }
   }
-} catch (Exception e) {
+} catch (e) {
   println e
 }
 
@@ -34,7 +34,7 @@ try {
   taskTree {
     noRepeat = true
   }
-} catch (Exception e) {
+} catch (e) {
   println e
 }
 
@@ -143,7 +143,7 @@ ext.libraries = [
     jmhGenerator: 'org.openjdk.jmh:jmh-generator-annprocess:1.28',
     failsafe: 'net.jodah:failsafe:2.4.0',
 
-    spotbugs: 'com.github.spotbugs:spotbugs:4.2.3',
+    spotbugs: 'com.github.spotbugs:spotbugs:4.5.2',
     spotbugsAvroPlugin: 'com.linkedin.avroutil1:spotbugs-plugin:0.2.69',
 
     // TODO: switch to avro-util once it's able to generate version agnostic code.
@@ -196,7 +196,7 @@ subprojects {
       // These dependencies are transitively used at runtime, so we cannot exclude them further than compileOnly
       exclude group: 'com.google.guava', module: 'guava' // Used by Brooklin at runtime
     }
-    toolRuntime.extendsFrom(compileOnly)
+    avroCompiler.extendsFrom compileOnly
   }
 
   dependencies {
@@ -211,27 +211,46 @@ subprojects {
     spotbugs libraries.spotbugs
     spotbugsPlugins libraries.spotbugsAvroPlugin
 
-    toolRuntime libraries.avroSchemasBuilder
-    toolRuntime 'org.slf4j:slf4j-simple:1.7.32'
+    avroCompiler libraries.avroSchemasBuilder
+    avroCompiler 'org.slf4j:slf4j-simple:1.7.32'
   }
 
-  task compileAvro(type: JavaExec, dependsOn: configurations.toolRuntime) {
+  idea {
+    module {
+      downloadJavadoc = true
+      downloadSources = true
+    }
+  }
+
+  task sourceSets {
+    doLast {
+      sourceSets.each {
+        println "[$it.name]"
+        println "Sources: $it.allJava.srcDirs"
+        println "Output Sources: $it.output.generatedSourcesDirs.files"
+        println "Output Classes: $it.output.classesDirs.files"
+        println ""
+      }
+    }
+  }
+
+  task compileAvro(type: JavaExec) {
     def inputDir = file('src/main/resources/avro')
-    def outputDir = file("$buildDir/generated/sources/main/avro")
+    def outputDir = file("$buildDir/generated/sources/avro/java/main")
 
     def versionOverrides = [
 //      'venice-common/src/main/resources/avro/StoreVersionState/v5'
     ]
 
     onlyIf { inputDir.exists() }
-    inputs.files(configurations.toolRuntime).withNormalizer(ClasspathNormalizer)
+    inputs.files(configurations.avroCompiler).withNormalizer(ClasspathNormalizer)
     inputs.dir(inputDir)
     outputs.dir(outputDir)
 
     doFirst {
       def schemas = [:]
       def copySchemas = { dir ->
-        logger.lifecycle("Copying avro schemas from ${relativePath(dir)}")
+        println "Copying avro schemas from ${project.relativePath(dir)}"
         dir.eachFileMatch(FileType.FILES, ~/.*\.avsc/) { schema ->
           def original = schemas.put(schema.name, schema)
           if (original) {
@@ -246,7 +265,7 @@ subprojects {
 
       // Copy latest versioned schemas from sub-folders
       inputDir.eachDir { typeDir ->
-        def versionId = { dir ->
+        def parseVersionId = { dir ->
           if (!dir) {
             null
           } else if (rootProject.relativePath(dir) in versionOverrides) {
@@ -257,7 +276,7 @@ subprojects {
         }
         def latestVersionDir = null
         typeDir.eachDirMatch(~/v-?\d+/) { versionDir ->
-          if (versionId(versionDir) > versionId(latestVersionDir)) {
+          if (parseVersionId(versionDir) > parseVersionId(latestVersionDir)) {
             latestVersionDir = versionDir
           }
         }
@@ -266,8 +285,8 @@ subprojects {
         }
       }
 
-      logger.lifecycle("Compiling avro schemas ${temporaryDir.list()}")
-      classpath = configurations.toolRuntime
+      println "Compiling avro schemas ${temporaryDir.list().toSorted()}"
+      classpath = configurations.avroCompiler
       main = 'com.linkedin.avro.Builder'
       args = [
         '--input', temporaryDir,
@@ -277,24 +296,6 @@ subprojects {
     }
   }
   sourceSets.main.java.srcDir(compileAvro)
-
-  task sourceSets {
-    doLast {
-      sourceSets.each {
-        println "[$it.name]"
-        println "Sources: $it.allJava.srcDirs"
-        println "Outputs: $it.output.classesDirs.files"
-        println ""
-      }
-    }
-  }
-
-  idea {
-    module {
-      downloadJavadoc = true
-      downloadSources = true
-    }
-  }
 
   tasks.withType(SpotBugsTask) {
     effort = 'max'
@@ -306,11 +307,29 @@ subprojects {
     )
     excludeFilter = file("$rootDir/gradle/spotbugs/exclude.xml")
     ignoreFailures = project.hasProperty('spotbugs.ignoreFailures')
-    showStackTraces = false
-    reports {
+    reports ({
+      xml {
+        enabled = project.hasProperty('spotbugs.xml')
+      }
       html {
-        enabled = !project.hasProperty('spotbugs.xml')
+        enabled = !reports.getByName('XML').enabled
         stylesheet = 'fancy-hist.xsl'
+      }
+    })
+    doFirst {
+      sourceDirs += sourceSets.getByName(baseName).output.generatedSourcesDirs
+      def generatedSources = sourceDirs.sum { dir ->
+        dir.path =~ "^$buildDir/generated/sources/" ?
+          fileTree(dir: dir, include: '**/*.java').collect { dir.relativePath(it) } : []
+      }
+      if (generatedSources) {
+        def generatedClasses = generatedSources*.replaceFirst('.java$', '').sum {
+          [ it + '.class', it + '\$*.class' ]
+        }
+        classes = classDirs.asFileTree.matching { exclude generatedClasses }
+        auxClassPaths += classDirs.asFileTree.matching { include generatedClasses }.each {
+          println "Excluding generated class ${project.relativePath(it)}"
+        }
       }
     }
   }
@@ -319,27 +338,15 @@ subprojects {
     mustRunAfter tasks.withType(SpotBugsTask)
 
     // The ALPN version should match the JVM version
-    if (JavaVersion.current().compareTo(JavaVersion.VERSION_11) < 0) {
+    if (JavaVersion.current() < JavaVersion.VERSION_11) {
       if (Os.isFamily(Os.FAMILY_MAC)) {
-        jvmArgs '-Xbootclasspath/p:/Library/Java/Boot/1_8_0_172/alpn-boot-8.1.12.v20180117.jar'
+        jvmArgs = ['-Xbootclasspath/p:/Library/Java/Boot/1_8_0_172/alpn-boot-8.1.12.v20180117.jar']
       } else if (Os.isFamily(Os.FAMILY_UNIX)) {
-        jvmArgs '-Xbootclasspath/p:/export/apps/jdkboot/1_8_0_172/alpn-boot-8.1.12.v20180117.jar'
+        jvmArgs = ['-Xbootclasspath/p:/export/apps/jdkboot/1_8_0_172/alpn-boot-8.1.12.v20180117.jar']
       } else {
         String osName = System.getProperty('os.name').toLowerCase(Locale.ENGLISH);
         throw new GradleException("$osName is not supported since ALPN only works for either Mac or Linux right now.")
       }
-    }
-
-    useTestNG() {
-      excludeGroups 'flaky'
-      Set<String> suiteListeners = ['com.linkedin.venice.testng.VeniceSuiteListener']
-      setListeners(suiteListeners)
-    }
-
-    retry {
-      maxRetries = 4 // 5 attempts in total
-      maxFailures = 100
-      failOnPassedAfterRetry = false
     }
 
     forkEvery = Integer.valueOf(System.getProperty('forkEvery', '0'))
@@ -354,6 +361,18 @@ subprojects {
       println "maxHeapSize=$maxHeapSize"
     }
 
+    useTestNG() {
+      excludeGroups 'flaky'
+      Set<String> suiteListeners = ['com.linkedin.venice.testng.VeniceSuiteListener']
+      setListeners(suiteListeners)
+    }
+
+    retry {
+      maxRetries = 4 // 5 attempts in total
+      maxFailures = 100
+      failOnPassedAfterRetry = false
+    }
+
     testLogging {
       events 'started', 'passed', 'failed', 'skipped'
       showStandardStreams = false // to mute the DDS Router's noisy behavior...
@@ -361,7 +380,7 @@ subprojects {
     }
   }
 
-  task flakyTests(type: Test) {
+  task flakyTest(type: Test) {
     useTestNG() {
       includeGroups 'flaky'
     }
@@ -369,20 +388,13 @@ subprojects {
 }
 
 task spotbugs {
-  dependsOn subprojects.collect { it.tasks.withType(SpotBugsTask) }
+  dependsOn subprojects.tasks*.withType(SpotBugsTask)
 }
 check.dependsOn(spotbugs)
 
 test {
   mustRunAfter spotbugs
   dependsOn subprojects.test
-}
-
-task flakyTests {
-  dependsOn (
-    subprojects.flakyTests,
-    'venice-test-common:flakyIntegrationTests'
-  )
 }
 
 assemble {
