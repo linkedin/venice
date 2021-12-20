@@ -85,6 +85,7 @@ import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
+import com.linkedin.venice.utils.Timer;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.writer.LeaderMetadataWrapper;
@@ -118,6 +119,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiFunction;
 import java.util.function.BooleanSupplier;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 import org.apache.avro.Schema;
 import org.apache.commons.codec.binary.Hex;
@@ -775,11 +777,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   public abstract void promoteToLeader(String topic, int partitionId, LeaderFollowerPartitionStateModel.LeaderSessionIdChecker checker);
   public abstract void demoteToStandby(String topic, int partitionId, LeaderFollowerPartitionStateModel.LeaderSessionIdChecker checker);
 
-  public synchronized void kill() {
-    throwIfNotRunning();
-    consumerActionsQueue.add(ConsumerAction.createKillAction(kafkaVersionTopic, nextSeqNum()));
+  public void kill() {
+    synchronized (this) {
+      throwIfNotRunning();
+      consumerActionsQueue.add(ConsumerAction.createKillAction(kafkaVersionTopic, nextSeqNum()));
+    }
 
-    try {
+    try (Timer ignored = Timer.run(elapsedTimeInMs -> logger.info(
+        "Completed waiting for kill action to take effect. Total elapsed time: " + elapsedTimeInMs + " ms"))) {
       for (int attempt = 0; isRunning() && attempt < MAX_KILL_CHECKING_ATTEMPTS; ++attempt) {
         MILLISECONDS.sleep(KILL_WAIT_TIME_MS / MAX_KILL_CHECKING_ATTEMPTS);
       }
@@ -787,14 +792,19 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       logger.warn("StoreIngestionTask::kill was interrupted.", e);
     }
 
-    if (isRunning()) {
-      // If task is still running, force close it.
-      reportStatusAdapter.reportError(partitionConsumptionStateMap.values(), "Received the signal to kill this consumer. Topic "
-              + kafkaVersionTopic, new VeniceException("Kill the consumer"));
-      // close can not stop the consumption synchronously, but the status of helix would be set to ERROR after
-      // reportError. The only way to stop it synchronously is interrupt the current running thread, but it's an unsafe
-      // operation, for example it could break the ongoing db operation, so we should avoid that.
-      close();
+    synchronized (this) {
+      if (isRunning()) {
+        // If task is still running, force close it.
+        reportStatusAdapter.reportError(partitionConsumptionStateMap.values(),
+            "Received the signal to kill this consumer. Topic " + kafkaVersionTopic,
+            new VeniceException("Kill the consumer"));
+        /*
+         * close can not stop the consumption synchronously, but the status of helix would be set to ERROR after
+         * reportError. The only way to stop it synchronously is interrupt the current running thread, but it's an unsafe
+         * operation, for example it could break the ongoing db operation, so we should avoid that.
+         */
+        close();
+      }
     }
   }
 
@@ -1743,7 +1753,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     } catch (Exception e) {
       logger.error("Caught exception while trying to close the current ingestion task", e);
     }
-    isRunning.set(false);
+    close();
     logger.info("Store ingestion task for store: " + kafkaVersionTopic + " is closed");
   }
 
