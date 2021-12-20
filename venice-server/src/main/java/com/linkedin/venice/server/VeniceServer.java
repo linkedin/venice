@@ -60,12 +60,13 @@ import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 // TODO curate all comments later
 public class VeniceServer {
-  private static final Logger logger = Logger.getLogger(VeniceServer.class);
+  private static final Logger logger = LogManager.getLogger(VeniceServer.class);
 
   public final static String SERVER_SERVICE_NAME = "venice-server";
 

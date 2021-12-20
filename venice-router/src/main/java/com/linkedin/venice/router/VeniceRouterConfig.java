@@ -11,7 +11,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 import java.util.concurrent.TimeUnit;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.helix.HelixInstanceConfigRepository.*;
@@ -23,7 +24,7 @@ import static com.linkedin.venice.router.api.routing.helix.HelixGroupSelectionSt
  * Configuration for Venice Router.
  */
 public class VeniceRouterConfig {
-  private static final Logger logger = Logger.getLogger(VeniceRouterConfig.class);
+  private static final Logger logger = LogManager.getLogger(VeniceRouterConfig.class);
 
   private String clusterName;
   private String zkConnection;

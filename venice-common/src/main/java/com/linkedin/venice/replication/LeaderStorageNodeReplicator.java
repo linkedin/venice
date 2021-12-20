@@ -7,20 +7,19 @@ import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Optional;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 public class LeaderStorageNodeReplicator extends TopicReplicator {
 
-  private static final Logger logger = Logger.getLogger(LeaderStorageNodeReplicator.class);
+  private static final Logger logger = LogManager.getLogger(LeaderStorageNodeReplicator.class);
 
   /**
    * Constructor used by reflection.

@@ -14,16 +14,17 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
+import org.apache.helix.PropertyKey;
 import org.apache.helix.PropertyType;
 import org.apache.helix.api.exceptions.HelixMetaDataAccessException;
 import org.apache.helix.api.listeners.BatchMode;
-import org.apache.helix.PropertyKey;
 import org.apache.helix.model.ExternalView;
 import org.apache.helix.model.IdealState;
 import org.apache.helix.spectator.RoutingTableSnapshot;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
-import static com.linkedin.venice.helix.ResourceAssignment.ResourceAssignmentChanges;
+import static com.linkedin.venice.helix.ResourceAssignment.*;
 
 
 /**
@@ -31,7 +32,7 @@ import static com.linkedin.venice.helix.ResourceAssignment.ResourceAssignmentCha
  */
 @BatchMode
 public class HelixExternalViewRepository extends HelixBaseRoutingRepository {
-    private static final Logger logger = Logger.getLogger(HelixExternalViewRepository.class);
+    private static final Logger logger = LogManager.getLogger(HelixExternalViewRepository.class);
 
     private static final String ONLINE_OFFLINE_VENICE_STATE_FILLER = "N/A";
 

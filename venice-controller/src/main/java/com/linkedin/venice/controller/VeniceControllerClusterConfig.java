@@ -19,7 +19,8 @@ import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import org.apache.helix.controller.rebalancer.strategy.CrushRebalanceStrategy;
 import org.apache.kafka.common.protocol.SecurityProtocol;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import static com.linkedin.venice.CommonConfigKeys.*;
 import static com.linkedin.venice.ConfigKeys.*;
@@ -31,7 +32,7 @@ import static com.linkedin.venice.kafka.TopicManager.*;
  * Configuration which is specific to a Venice cluster used by Venice controller.
  */
 public class VeniceControllerClusterConfig {
-  private static final Logger logger = Logger.getLogger(VeniceControllerClusterConfig.class);
+  private static final Logger logger = LogManager.getLogger(VeniceControllerClusterConfig.class);
 
   private final VeniceProperties props;
   private String clusterName;

@@ -4,14 +4,14 @@ import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.Store;
-import com.linkedin.venice.meta.StoreDataChangedListener;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -21,7 +21,7 @@ import org.apache.log4j.Logger;
  * will be constrained by the healthiness of system store cluster.
  */
 public class HelixReadOnlyZKSharedSystemStoreRepository extends HelixReadOnlyStoreRepository {
-  protected static final Logger logger = Logger.getLogger(HelixReadOnlyZKSharedSystemStoreRepository.class);
+  protected static final Logger logger = LogManager.getLogger(HelixReadOnlyZKSharedSystemStoreRepository.class);
 
   /**
    * This set is used to keep all the zk shared stores the current repo will monitor.

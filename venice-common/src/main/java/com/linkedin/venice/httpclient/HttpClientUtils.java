@@ -22,15 +22,16 @@ import org.apache.http.nio.reactor.ConnectingIOReactor;
 import org.apache.http.nio.reactor.IOReactorException;
 import org.apache.http.nio.reactor.SessionRequest;
 import org.apache.http.nio.reactor.SessionRequestCallback;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import static com.linkedin.venice.HttpConstants.*;
 
 
 public class HttpClientUtils {
-  private static final Logger LOGGER = Logger.getLogger(HttpClientUtils.class);
+  private static final Logger LOGGER = LogManager.getLogger(HttpClientUtils.class);
 
-  private static RedundantExceptionFilter filter = RedundantExceptionFilter.getRedundantExceptionFilter();
+  private static final RedundantExceptionFilter filter = RedundantExceptionFilter.getRedundantExceptionFilter();
 
   public static class ClosableHttpAsyncClientWithConnManager {
     private final CloseableHttpAsyncClient client;
@@ -93,7 +94,7 @@ public class HttpClientUtils {
    * Created a customized {@link DefaultConnectingIOReactor} to capture connection lease request latency.
    */
   private static class VeniceConnectingIOReactor extends DefaultConnectingIOReactor {
-    private static Logger LOGGER = Logger.getLogger(VeniceConnectingIOReactor.class);
+    private static final Logger LOGGER = LogManager.getLogger(VeniceConnectingIOReactor.class);
     private final Optional<HttpConnectionPoolStats> poolStats;
 
     private static class VeniceSessionRequestCallback implements SessionRequestCallback {

@@ -11,7 +11,6 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
-
 import java.util.Map;
 import org.apache.helix.AccessOption;
 import org.apache.helix.HelixAdmin;
@@ -24,7 +23,8 @@ import org.apache.helix.model.InstanceConfig;
 import org.apache.helix.model.LiveInstance;
 import org.apache.helix.model.builder.HelixConfigScopeBuilder;
 import org.apache.helix.zookeeper.zkclient.DataUpdater;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -32,7 +32,7 @@ import org.apache.log4j.Logger;
  */
 public class HelixUtils {
 
-  private static final Logger logger = Logger.getLogger(HelixUtils.class);
+  private static final Logger logger = LogManager.getLogger(HelixUtils.class);
 
   /**
    * Retry 3 times for each helix operation in case of getting the error by default.
@@ -56,7 +56,7 @@ public class HelixUtils {
     if(lastUnderscoreIdx == -1) {
       throw new IllegalArgumentException("Incorrect Helix Partition Name " + helixPartitionName);
     }
-    return Integer.valueOf(helixPartitionName.substring(lastUnderscoreIdx+1));
+    return Integer.parseInt(helixPartitionName.substring(lastUnderscoreIdx+1));
   }
 
   public static String getPartitionName(String resourceName, int partitionId) {

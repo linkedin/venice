@@ -26,11 +26,12 @@ import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.PathFilter;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
-  private static final Logger LOGGER = Logger.getLogger(DefaultInputDataInfoProvider.class);
+  private static final Logger LOGGER = LogManager.getLogger(DefaultInputDataInfoProvider.class);
   /**
    * ignore hdfs files with prefix "_" and "."
    */

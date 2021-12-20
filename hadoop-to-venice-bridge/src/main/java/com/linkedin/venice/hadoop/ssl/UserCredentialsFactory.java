@@ -1,16 +1,16 @@
 package com.linkedin.venice.hadoop.ssl;
 
-
 import java.io.File;
 import java.io.IOException;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.security.Credentials;
 import org.apache.hadoop.security.UserGroupInformation;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 public class UserCredentialsFactory {
-  private static final Logger logger = Logger.getLogger(UserCredentialsFactory.class);
+  private static final Logger logger = LogManager.getLogger(UserCredentialsFactory.class);
   public static final int REQUIRED_SECRET_KEY_COUNT = 4;
 
   /**

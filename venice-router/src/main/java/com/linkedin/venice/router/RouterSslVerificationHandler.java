@@ -1,8 +1,7 @@
 package com.linkedin.venice.router;
 
-import com.linkedin.venice.utils.NettyUtils;
 import com.linkedin.venice.router.stats.SecurityStats;
-
+import com.linkedin.venice.utils.NettyUtils;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
@@ -11,13 +10,14 @@ import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.ssl.SslHandler;
 import io.netty.handler.ssl.SslHandshakeCompletionEvent;
 import io.netty.util.ReferenceCountUtil;
-
 import java.io.IOException;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 
 @ChannelHandler.Sharable
 public class RouterSslVerificationHandler extends SimpleChannelInboundHandler<HttpRequest> {
-  private static final Logger logger = Logger.getLogger(RouterSslVerificationHandler.class);
+  private static final Logger logger = LogManager.getLogger(RouterSslVerificationHandler.class);
   private final SecurityStats stats;
   private final boolean requireSsl;
 

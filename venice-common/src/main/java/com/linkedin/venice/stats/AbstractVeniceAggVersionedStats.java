@@ -11,14 +11,15 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
-import static com.linkedin.venice.meta.Store.NON_EXISTING_VERSION;
+import static com.linkedin.venice.meta.Store.*;
 
 
 public abstract class AbstractVeniceAggVersionedStats<STATS, STATS_REPORTER extends AbstractVeniceStatsReporter<STATS>>
     implements StoreDataChangedListener {
-  private static final Logger logger = Logger.getLogger(AbstractVeniceAggVersionedStats.class);
+  private static final Logger logger = LogManager.getLogger(AbstractVeniceAggVersionedStats.class);
 
   private final Supplier<STATS> statsInitiator;
   private final StatsSupplier<STATS_REPORTER> reporterSupplier;

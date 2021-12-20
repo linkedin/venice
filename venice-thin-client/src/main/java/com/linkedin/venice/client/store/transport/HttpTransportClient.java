@@ -1,9 +1,14 @@
 package com.linkedin.venice.client.store.transport;
 
 import com.linkedin.venice.HttpConstants;
-import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
+import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.schema.SchemaData;
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import org.apache.commons.httpclient.HttpStatus;
 import org.apache.commons.io.IOUtils;
 import org.apache.http.Header;
@@ -14,18 +19,15 @@ import org.apache.http.concurrent.FutureCallback;
 import org.apache.http.entity.BasicHttpEntity;
 import org.apache.http.impl.nio.client.CloseableHttpAsyncClient;
 import org.apache.http.impl.nio.client.HttpAsyncClients;
-import org.apache.log4j.Logger;
-import java.io.ByteArrayInputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.util.Map;
-import java.util.concurrent.CompletableFuture;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 
 /**
  * {@link CloseableHttpAsyncClient} based TransportClient implementation.
  */
 public class HttpTransportClient extends TransportClient {
-  private Logger logger = Logger.getLogger(HttpTransportClient.class);
+  private final Logger logger = LogManager.getLogger(HttpTransportClient.class);
 
   // Example: 'http://router-host:80/'
   protected final String routerUrl;

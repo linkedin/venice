@@ -10,7 +10,6 @@ import com.linkedin.davinci.storage.chunking.GenericChunkingAdapter;
 import com.linkedin.davinci.storage.chunking.GenericRecordChunkingAdapter;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheConfig;
-
 import com.linkedin.venice.client.exceptions.ServiceDiscoveryException;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.stats.ClientStats;
@@ -58,7 +57,8 @@ import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.BinaryDecoder;
 import org.apache.avro.io.BinaryEncoder;
 import org.apache.avro.io.DecoderFactory;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.*;
 import static com.linkedin.venice.ConfigKeys.*;
@@ -67,7 +67,7 @@ import static org.apache.avro.Schema.Type.*;
 
 
 public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, AvroGenericReadComputeStoreClient<K,V> {
-  protected final Logger logger = Logger.getLogger(getClass());
+  protected final Logger logger = LogManager.getLogger(getClass());
 
   private static class ReusableObjects {
     final ByteBuffer rawValue = ByteBuffer.allocate(1024 * 1024);

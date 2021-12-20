@@ -22,7 +22,8 @@ import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -57,14 +58,14 @@ import org.apache.log4j.Logger;
  *    2.4 For deprecated version topics, will keep pre-configured minimal unused topics to avoid MM crash and remove others;
  */
 public class TopicCleanupService extends AbstractVeniceService {
-  private static final Logger LOGGER = Logger.getLogger(TopicCleanupService.class);
+  private static final Logger LOGGER = LogManager.getLogger(TopicCleanupService.class);
 
   private final Admin admin;
   private final Thread cleanupThread;
   protected final long sleepIntervalBetweenTopicListFetchMs;
   protected final int delayFactor;
   private final int minNumberOfUnusedKafkaTopicsToPreserve;
-  private AtomicBoolean stop = new AtomicBoolean(false);
+  private final AtomicBoolean stop = new AtomicBoolean(false);
   private boolean isMasterControllerOfControllerCluster = false;
   private long refreshQueueCycle = Time.MS_PER_MINUTE;
   protected final VeniceControllerMultiClusterConfig multiClusterConfigs;

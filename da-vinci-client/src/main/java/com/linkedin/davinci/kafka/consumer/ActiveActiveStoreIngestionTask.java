@@ -50,8 +50,8 @@ import com.linkedin.venice.writer.DeleteMetadata;
 import com.linkedin.venice.writer.PutMetadata;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.nio.ByteBuffer;
-import java.util.List;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -64,7 +64,8 @@ import java.util.function.BooleanSupplier;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.producer.Callback;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.*;
 import static com.linkedin.venice.VeniceConstants.*;
@@ -74,7 +75,7 @@ import static com.linkedin.venice.VeniceConstants.*;
  * This class contains logic that SNs must perform if a store-version is running in Active/Active mode.
  */
 public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestionTask {
-  private static final Logger logger = Logger.getLogger(ActiveActiveStoreIngestionTask.class);
+  private static final Logger logger = LogManager.getLogger(ActiveActiveStoreIngestionTask.class);
   private final int replicationMetadataVersionId;
   private final MergeConflictResolver mergeConflictResolver;
   private final Lazy<KeyLevelLocksManager> keyLevelLocksManager;

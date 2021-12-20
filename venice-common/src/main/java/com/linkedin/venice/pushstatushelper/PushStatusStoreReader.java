@@ -15,7 +15,8 @@ import java.util.Collections;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -24,7 +25,7 @@ import org.apache.log4j.Logger;
  * Don't keep a map of [storeName->client] to minimize states kept by controller.
  */
 public class PushStatusStoreReader implements Closeable {
-  private static final Logger logger = Logger.getLogger(PushStatusStoreReader.class);
+  private static final Logger logger = LogManager.getLogger(PushStatusStoreReader.class);
   private final Map<String, AvroSpecificStoreClient<PushStatusKey, PushStatusValue>> veniceClients = new VeniceConcurrentHashMap<>();
   private final D2Client d2Client;
   private final long heartbeatExpirationTimeInSeconds;

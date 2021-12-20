@@ -5,7 +5,8 @@ import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.Lock;
 import java.util.function.Supplier;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -13,7 +14,7 @@ import org.apache.log4j.Logger;
  * @param <T> Type of the resource
  */
 public class ResourceAutoClosableLockManager<T> {
-  private static final Logger logger = Logger.getLogger(ResourceAutoClosableLockManager.class);
+  private static final Logger logger = LogManager.getLogger(ResourceAutoClosableLockManager.class);
 
   private final ConcurrentHashMap<T, Lock> resourceToLockMap;
   private final Supplier<Lock> lockCreator; // User defines how and what kind of lock is created

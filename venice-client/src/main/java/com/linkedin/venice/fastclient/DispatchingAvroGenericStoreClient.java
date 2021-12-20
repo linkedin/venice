@@ -25,7 +25,8 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.avro.Schema;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import static com.linkedin.venice.client.store.AbstractAvroStoreClient.*;
 
@@ -34,9 +35,9 @@ import static com.linkedin.venice.client.store.AbstractAvroStoreClient.*;
  * This class is in charge of routing and serialization/de-serialization.
  */
 public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreClient<K, V> {
-  private static final Logger LOGGER = Logger.getLogger(DispatchingAvroGenericStoreClient.class);
+  private static final Logger LOGGER = LogManager.getLogger(DispatchingAvroGenericStoreClient.class);
   private static final String URI_SEPARATOR = "/";
-  private static Executor DESERIALIZATION_EXECUTOR = AbstractAvroStoreClient.getDefaultDeserializationExecutor();
+  private static final Executor DESERIALIZATION_EXECUTOR = AbstractAvroStoreClient.getDefaultDeserializationExecutor();
 
   private final StoreMetadata metadata;
   private final int requiredReplicaCount;

@@ -14,7 +14,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.BiFunction;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import static com.linkedin.venice.client.store.StatTrackingStoreClient.*;
 
@@ -23,7 +24,7 @@ import static com.linkedin.venice.client.store.StatTrackingStoreClient.*;
  * This class is in charge of all the metric emissions per request.
  */
 public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient<K, V> {
-  private static final Logger LOGGER = Logger.getLogger(StatsAvroGenericStoreClient.class);
+  private static final Logger LOGGER = LogManager.getLogger(StatsAvroGenericStoreClient.class);
 
   private final ClientStats clientStatsForSingleGet;
   private final ClusterStats clusterStats;

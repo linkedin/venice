@@ -26,7 +26,8 @@ import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import java.net.URI;
 import java.util.HashMap;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import static com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils.*;
 
@@ -48,7 +49,7 @@ import static com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils.*;
  * status reporting to main process.
  */
 public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<FullHttpRequest> {
-  private static final Logger logger = Logger.getLogger(IsolatedIngestionServerHandler.class);
+  private static final Logger logger = LogManager.getLogger(IsolatedIngestionServerHandler.class);
 
   private final IsolatedIngestionServer isolatedIngestionServer;
 

@@ -26,10 +26,12 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 
 public class VeniceVersionFinder {
-  private static final Logger logger = Logger.getLogger(VeniceVersionFinder.class);
+  private static final Logger logger = LogManager.getLogger(VeniceVersionFinder.class);
   private static final RedundantExceptionFilter filter = RedundantExceptionFilter.getRedundantExceptionFilter();
 
   private final ReadOnlyStoreRepository metadataRepository;
@@ -39,7 +41,7 @@ public class VeniceVersionFinder {
   private final String clusterName;
   private final ConcurrentMap<String, Integer> lastCurrentVersion = new ConcurrentHashMap<>();
   private final OnlineInstanceFinder onlineInstanceFinder;
-  private CompressorFactory compressorFactory;
+  private final CompressorFactory compressorFactory;
 
   public VeniceVersionFinder(ReadOnlyStoreRepository metadataRepository, OnlineInstanceFinder onlineInstanceFinder,
       StaleVersionStats stats, HelixReadOnlyStoreConfigRepository storeConfigRepo,

@@ -50,7 +50,8 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import static com.linkedin.venice.router.api.VeniceResponseAggregator.*;
 import static com.linkedin.venice.streaming.StreamingConstants.*;
@@ -78,7 +79,7 @@ import static com.linkedin.venice.streaming.StreamingConstants.*;
 public class VeniceChunkedResponse {
   public static final ByteBuf EMPTY_BYTE_BUF = new EmptyByteBuf(ByteBufAllocator.DEFAULT);
 
-  private static final Logger LOGGER = Logger.getLogger(VeniceChunkedResponse.class);
+  private static final Logger LOGGER = LogManager.getLogger(VeniceChunkedResponse.class);
 
   /**
    * The following objects are used to construct a footer record for streaming response

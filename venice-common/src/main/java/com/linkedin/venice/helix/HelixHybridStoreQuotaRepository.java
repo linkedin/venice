@@ -2,8 +2,8 @@ package com.linkedin.venice.helix;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.pushmonitor.HybridStoreQuotaStatus;
-import java.util.Arrays;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -15,14 +15,15 @@ import org.apache.helix.api.listeners.RoutingTableChangeListener;
 import org.apache.helix.model.CustomizedView;
 import org.apache.helix.spectator.RoutingTableProvider;
 import org.apache.helix.spectator.RoutingTableSnapshot;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
  * Extend RoutingTableChangeListener to leverage customized view data for hybrid store quota.
  */
 public class HelixHybridStoreQuotaRepository implements RoutingTableChangeListener {
-  private static final Logger logger = Logger.getLogger(HelixHybridStoreQuotaRepository.class);
+  private static final Logger logger = LogManager.getLogger(HelixHybridStoreQuotaRepository.class);
   private final SafeHelixManager manager;
   private final Map<PropertyType, List<String>> dataSource;
 
@@ -33,7 +34,8 @@ public class HelixHybridStoreQuotaRepository implements RoutingTableChangeListen
     this.manager = manager;
     resourceToStatusMap = new HashMap<>();
     dataSource = new HashMap<>();
-    dataSource.put(PropertyType.CUSTOMIZEDVIEW, Arrays.asList(HelixPartitionState.HYBRID_STORE_QUOTA.name()));
+    dataSource.put(PropertyType.CUSTOMIZEDVIEW,
+        Collections.singletonList(HelixPartitionState.HYBRID_STORE_QUOTA.name()));
   }
 
   /**

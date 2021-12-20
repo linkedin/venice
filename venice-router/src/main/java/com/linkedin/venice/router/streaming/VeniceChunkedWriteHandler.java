@@ -8,7 +8,6 @@ import io.netty.handler.stream.ChunkedWriteHandler;
 import io.netty.util.AttributeKey;
 import io.netty.util.ReferenceCountUtil;
 import java.util.Optional;
-import org.apache.log4j.Logger;
 
 
 /**

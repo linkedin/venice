@@ -6,7 +6,8 @@ import com.linkedin.venice.exceptions.VeniceException;
 import java.security.cert.X509Certificate;
 import java.util.Optional;
 import javax.servlet.http.HttpServletRequest;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import spark.Request;
 
 import static com.linkedin.venice.HttpConstants.*;
@@ -15,23 +16,17 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
 
 
 public class AbstractRoute {
-  private static final Logger logger = Logger.getLogger(AbstractRoute.class);
+  private static final Logger logger = LogManager.getLogger(AbstractRoute.class);
 
   private static final String USER_UNKNOWN = "USER_UNKNOWN";
   private static final String STORE_UNKNOWN = "STORE_UNKNOWN";
 
   // A singleton of acl check function against store resource
-  private static final ResourceAclCheck getAccessToStore = (cert, resourceName, aclClient) -> {
-    return aclClient.hasAccess(cert, resourceName, HTTP_GET);
-  };
+  private static final ResourceAclCheck getAccessToStore = (cert, resourceName, aclClient) -> aclClient.hasAccess(cert, resourceName, HTTP_GET);
   // A singleton of acl check function against topic resource
-  private static final ResourceAclCheck writeAccessToTopic = (cert, resourceName, aclClient) -> {
-    return aclClient.hasAccessToTopic(cert, resourceName, "Write");
-  };
+  private static final ResourceAclCheck writeAccessToTopic = (cert, resourceName, aclClient) -> aclClient.hasAccessToTopic(cert, resourceName, "Write");
 
-  private static final ResourceAclCheck readAccessToTopic = (cert, resourceName, aclClient) -> {
-    return aclClient.hasAccessToTopic(cert, resourceName, "Read");
-  };
+  private static final ResourceAclCheck readAccessToTopic = (cert, resourceName, aclClient) -> aclClient.hasAccessToTopic(cert, resourceName, "Read");
 
   private final Optional<DynamicAccessController> accessController;
 

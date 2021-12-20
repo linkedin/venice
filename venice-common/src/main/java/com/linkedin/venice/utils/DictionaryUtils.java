@@ -17,11 +17,12 @@ import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.common.TopicPartition;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 public class DictionaryUtils {
-  private static final Logger LOGGER = Logger.getLogger(DictionaryUtils.class);
+  private static final Logger LOGGER = LogManager.getLogger(DictionaryUtils.class);
 
   private static Properties getKafkaConsumerProps() {
     Properties props = new Properties();

@@ -21,7 +21,8 @@ import java.net.InetSocketAddress;
 import java.util.Optional;
 import org.apache.avro.io.OptimizedBinaryDecoder;
 import org.apache.avro.io.OptimizedBinaryDecoderFactory;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import static com.linkedin.venice.HttpConstants.*;
 import static com.linkedin.venice.router.api.VenicePathParser.*;
@@ -34,10 +35,10 @@ import static io.netty.handler.codec.http.HttpResponseStatus.*;
 public class RouterThrottleHandler extends SimpleChannelInboundHandler<HttpRequest> {
   public static final AttributeKey<byte[]> THROTTLE_HANDLER_BYTE_ATTRIBUTE_KEY =
       AttributeKey.valueOf("THROTTLE_HANDLER_BYTE_ATTRIBUTE_KEY");
-  private static final Logger logger = Logger.getLogger(RouterThrottleHandler.class);
+  private static final Logger logger = LogManager.getLogger(RouterThrottleHandler.class);
   private static final byte[] EMPTY_BYTES = new byte[0];
 
-  private static RedundantExceptionFilter filter = RedundantExceptionFilter.getRedundantExceptionFilter();
+  private static final RedundantExceptionFilter filter = RedundantExceptionFilter.getRedundantExceptionFilter();
 
   private final RouterThrottleStats routerStats;
   private final EventThrottler throttler;

@@ -15,7 +15,8 @@ import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.util.List;
 import java.util.Optional;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import static com.linkedin.venice.VeniceConstants.*;
 
@@ -26,7 +27,7 @@ import static com.linkedin.venice.VeniceConstants.*;
  */
 public abstract class TopicReplicator {
 
-  private static final Logger LOGGER = Logger.getLogger(TopicReplicator.class);
+  private static final Logger LOGGER = LogManager.getLogger(TopicReplicator.class);
 
   public static final String TOPIC_REPLICATOR_CONFIG_PREFIX = "topic.replicator.";
   public static final String TOPIC_REPLICATOR_CLASS_NAME = TOPIC_REPLICATOR_CONFIG_PREFIX + "class.name";

@@ -65,14 +65,15 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import static com.linkedin.venice.ConfigKeys.*;
 import static java.lang.Thread.*;
 
 
 public class DaVinciBackend implements Closeable {
-  private static final Logger logger = Logger.getLogger(DaVinciBackend.class);
+  private static final Logger logger = LogManager.getLogger(DaVinciBackend.class);
 
   private final ZkClient zkClient;
   private final VeniceConfigLoader configLoader;

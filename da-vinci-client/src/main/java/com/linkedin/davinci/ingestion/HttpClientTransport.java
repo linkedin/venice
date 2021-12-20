@@ -4,8 +4,8 @@ import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.exceptions.VeniceTimeoutException;
-import com.linkedin.venice.ingestion.protocol.enums.IngestionAction;
 import com.linkedin.venice.httpclient.HttpClientUtils;
+import com.linkedin.venice.ingestion.protocol.enums.IngestionAction;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import java.util.Optional;
@@ -18,13 +18,14 @@ import org.apache.http.client.methods.HttpPost;
 import org.apache.http.entity.ByteArrayEntity;
 import org.apache.http.impl.nio.client.CloseableHttpAsyncClient;
 import org.apache.http.util.EntityUtils;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import static com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils.*;
 
 
 public class HttpClientTransport implements AutoCloseable {
-  private static final Logger logger = Logger.getLogger(HttpClientTransport.class);
+  private static final Logger logger = LogManager.getLogger(HttpClientTransport.class);
   private static final int DEFAULT_CONNECTION_TIMEOUT_MS = 30 * Time.MS_PER_SECOND;
   private static final int DEFAULT_SOCKET_TIMEOUT_MS = 30 * Time.MS_PER_SECOND;
   private static final int DEFAULT_REQUEST_TIMEOUT_MS = 60 * Time.MS_PER_SECOND;

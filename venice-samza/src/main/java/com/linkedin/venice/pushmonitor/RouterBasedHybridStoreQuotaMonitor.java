@@ -12,7 +12,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.codehaus.jackson.map.DeserializationConfig;
 import org.codehaus.jackson.map.ObjectMapper;
 
@@ -21,15 +22,15 @@ import org.codehaus.jackson.map.ObjectMapper;
  * This push monitor is able to query hybrid store quota status from routers; it will be built for STREAM job.
  */
 public class RouterBasedHybridStoreQuotaMonitor implements Closeable {
-  private static final Logger logger = Logger.getLogger(RouterBasedHybridStoreQuotaMonitor.class);
+  private static final Logger logger = LogManager.getLogger(RouterBasedHybridStoreQuotaMonitor.class);
 
   private static final int POLL_CYCLE_DELAY_MS = 10000;
-  private static final long POLL_TIMEOUT_MS = 10000l;
+  private static final long POLL_TIMEOUT_MS = 10000L;
 
   private final String resourceName;
   private final ExecutorService executor;
 
-  private HybridQuotaMonitorTask hybridQuotaMonitorTask;
+  private final HybridQuotaMonitorTask hybridQuotaMonitorTask;
   private HybridStoreQuotaStatus currentStatus = HybridStoreQuotaStatus.QUOTA_NOT_VIOLATED;
 
   public RouterBasedHybridStoreQuotaMonitor(D2TransportClient transportClient, String resourceName) {

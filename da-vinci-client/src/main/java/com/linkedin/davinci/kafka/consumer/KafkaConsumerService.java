@@ -32,7 +32,8 @@ import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.common.TopicPartition;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -51,7 +52,7 @@ import org.apache.log4j.Logger;
  *
  */
 public class KafkaConsumerService extends AbstractVeniceService {
-  private static final Logger LOGGER = Logger.getLogger(KafkaConsumerService.class);
+  private static final Logger LOGGER = LogManager.getLogger(KafkaConsumerService.class);
 
   private final long readCycleDelayMs;
   private final long sharedConsumerNonExistingTopicCleanupDelayMS;

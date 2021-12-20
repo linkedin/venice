@@ -13,13 +13,12 @@ import com.linkedin.venice.utils.LatencyUtils;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
-import java.util.Random;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-import org.apache.http.client.config.RequestConfig;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import static com.linkedin.venice.HttpConstants.*;
 import static org.apache.http.HttpStatus.*;
@@ -27,7 +26,7 @@ import static org.apache.http.HttpStatus.*;
 
 public class RouterHeartbeat extends AbstractVeniceService {
   private final Thread heartBeatThread;
-  private static final Logger logger = Logger.getLogger(RouterHeartbeat.class);
+  private static final Logger logger = LogManager.getLogger(RouterHeartbeat.class);
 
   /**
    *

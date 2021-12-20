@@ -7,9 +7,10 @@ import io.tehuti.metrics.stats.Count;
 import io.tehuti.metrics.stats.Max;
 import io.tehuti.metrics.stats.Min;
 import org.apache.helix.zookeeper.zkclient.IZkStateListener;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
-import static org.apache.zookeeper.Watcher.Event.KeeperState;
+import static org.apache.zookeeper.Watcher.Event.*;
 
 
 /**
@@ -21,7 +22,7 @@ import static org.apache.zookeeper.Watcher.Event.KeeperState;
  * {@link KeeperState#SyncConnected} code: 3
  */
 public class ZkClientStatusStats extends AbstractVeniceStats implements IZkStateListener {
-  private static final Logger LOGGER = Logger.getLogger(ZkClientStatusStats.class);
+  private static final Logger LOGGER = LogManager.getLogger(ZkClientStatusStats.class);
   private final Sensor zkClientDisconnectedSensor, zkClientExpiredSensor, zkClientSyncConnectedSensor,
       zkClientNewSessionSensor, zkClientSessionEstablishmentErrorSensor, zkClientReconnectionLatencySensor;
 

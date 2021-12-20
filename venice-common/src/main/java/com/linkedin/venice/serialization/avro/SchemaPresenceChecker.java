@@ -6,7 +6,8 @@ import com.linkedin.venice.exceptions.VeniceMessageException;
 import com.linkedin.venice.utils.Utils;
 import java.util.Optional;
 import org.apache.avro.Schema;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import static com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer.*;
 
@@ -16,12 +17,12 @@ import static com.linkedin.venice.serialization.avro.InternalAvroSpecificSeriali
  * protocol gets upgraded.
  */
 public class SchemaPresenceChecker {
-  private static final Logger LOGGER = Logger.getLogger(SchemaPresenceChecker.class);
+  private static final Logger LOGGER = LogManager.getLogger(SchemaPresenceChecker.class);
 
   /** Used to fetch and verify a schema version is present in ZK. */
   private SchemaReader schemaReader = null;
 
-  private AvroProtocolDefinition avroProtocolDefinition;
+  private final AvroProtocolDefinition avroProtocolDefinition;
 
   public SchemaPresenceChecker(SchemaReader schemaReader, AvroProtocolDefinition avroProtocolDefinition) {
     this.schemaReader = schemaReader;

@@ -1,12 +1,12 @@
 package com.linkedin.venice.helix;
 
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.pushmonitor.KillOfflinePushMessage;
 import com.linkedin.venice.stats.HelixMessageChannelStats;
 import com.linkedin.venice.status.StatusMessage;
 import com.linkedin.venice.status.StatusMessageChannel;
 import com.linkedin.venice.status.StatusMessageHandler;
 import com.linkedin.venice.status.StoreStatusMessage;
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.Utils;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -19,7 +19,8 @@ import org.apache.helix.messaging.handling.HelixTaskResult;
 import org.apache.helix.messaging.handling.MessageHandler;
 import org.apache.helix.messaging.handling.MessageHandlerFactory;
 import org.apache.helix.model.Message;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -31,7 +32,7 @@ import org.apache.log4j.Logger;
  * dispatch them to related handlers.
  */
 public class HelixStatusMessageChannel implements StatusMessageChannel {
-  private static final Logger logger = Logger.getLogger(HelixStatusMessageChannel.class);
+  private static final Logger logger = LogManager.getLogger(HelixStatusMessageChannel.class);
 
   public static final int DEFAULT_SEND_MESSAGE_TIME_OUT = 1000;
 

@@ -7,8 +7,13 @@ import com.linkedin.venice.exceptions.VeniceMessageException;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.Utils;
-
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Properties;
+import java.util.Set;
+import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 import org.apache.avro.io.BinaryDecoder;
 import org.apache.avro.io.Decoder;
@@ -17,14 +22,8 @@ import org.apache.avro.io.Encoder;
 import org.apache.avro.specific.SpecificDatumReader;
 import org.apache.avro.specific.SpecificDatumWriter;
 import org.apache.avro.specific.SpecificRecord;
-import org.apache.log4j.Logger;
-
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Set;
-import java.util.stream.Collectors;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -43,7 +42,7 @@ public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends SpecificReco
   /** Used to configure the {@link #schemaReader}. */
   public static final String VENICE_SCHEMA_READER_CONFIG = "venice.schema-reader";
 
-  private static final Logger logger = Logger.getLogger(InternalAvroSpecificSerializer.class);
+  private static final Logger logger = LogManager.getLogger(InternalAvroSpecificSerializer.class);
   public static final int MAX_ATTEMPTS_FOR_SCHEMA_READER = 60;
   public static final int WAIT_TIME_BETWEEN_SCHEMA_READER_ATTEMPTS_IN_MS = 1000;
   public static final int SENTINEL_PROTOCOL_VERSION_USED_FOR_UNDETECTABLE_COMPILED_SCHEMA = -1;

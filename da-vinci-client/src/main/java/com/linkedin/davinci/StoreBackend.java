@@ -12,11 +12,12 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 public class StoreBackend {
-  private static final Logger logger = Logger.getLogger(StoreBackend.class);
+  private static final Logger logger = LogManager.getLogger(StoreBackend.class);
 
   private final DaVinciBackend backend;
   private final String storeName;

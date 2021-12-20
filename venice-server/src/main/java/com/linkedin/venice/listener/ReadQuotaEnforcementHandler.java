@@ -1,10 +1,8 @@
 package com.linkedin.venice.listener;
 
-import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoHelixResourceException;
 import com.linkedin.venice.helix.ResourceAssignment;
-import com.linkedin.venice.kafka.protocol.Update;
 import com.linkedin.venice.listener.request.RouterRequest;
 import com.linkedin.venice.listener.response.HttpShortcutResponse;
 import com.linkedin.venice.meta.Instance;
@@ -35,14 +33,16 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import static java.util.concurrent.TimeUnit.*;
+
 
 @ChannelHandler.Sharable
 public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<RouterRequest> implements RoutingDataRepository.RoutingDataChangedListener, StoreDataChangedListener {
 
-  private static final Logger logger = Logger.getLogger(ReadQuotaEnforcementHandler.class);
+  private static final Logger logger = LogManager.getLogger(ReadQuotaEnforcementHandler.class);
   private final ConcurrentMap<String, TokenBucket> storeVersionBuckets = new VeniceConcurrentHashMap<>();
   private final TokenBucket storageNodeBucket;
   private final ReadOnlyStoreRepository storeRepository;
@@ -51,7 +51,7 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
   private final AggServerQuotaUsageStats stats;
   private final Clock clock;
   private boolean enforcing = true;
-  private ExpiringSet<String> noBucketStores = new ExpiringSet<>(30, TimeUnit.SECONDS);
+  private final ExpiringSet<String> noBucketStores = new ExpiringSet<>(30, TimeUnit.SECONDS);
 
   private volatile boolean initializedVolatile = false;
   private boolean initialized = false;

@@ -8,7 +8,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Supplier;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -17,7 +18,7 @@ import org.apache.log4j.Logger;
  * on the storage-partition model.
  */
 public abstract class AbstractStoragePartition {
-  protected final Logger logger = Logger.getLogger(getClass());
+  protected final Logger logger = LogManager.getLogger(getClass());
   protected final Integer partitionId;
 
   public AbstractStoragePartition(Integer partitionId) { this.partitionId = partitionId; }

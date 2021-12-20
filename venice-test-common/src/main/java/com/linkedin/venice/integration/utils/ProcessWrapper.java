@@ -3,20 +3,20 @@ package com.linkedin.venice.integration.utils;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.Utils;
-
-import org.apache.commons.io.FileUtils;
-import org.apache.log4j.Logger;
-
 import java.io.Closeable;
 import java.io.File;
 import java.io.IOException;
+import org.apache.commons.io.FileUtils;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 
 /**
  * A class used for wrapping external systems and Venice components and
  * taking care of cleaning up after them when finished.
  */
 public abstract class ProcessWrapper implements Closeable {
-  private static final Logger LOGGER = Logger.getLogger(ProcessWrapper.class);
+  private static final Logger LOGGER = LogManager.getLogger(ProcessWrapper.class);
 
   protected static final String DEFAULT_HOST_NAME = "localhost"; // Utils.getHostName();
 

@@ -5,8 +5,8 @@ import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.NodeRemovableResult;
 import com.linkedin.venice.controllerapi.ControllerResponse;
-import com.linkedin.venice.controllerapi.MultiNodesStatusResponse;
 import com.linkedin.venice.controllerapi.MultiNodeResponse;
+import com.linkedin.venice.controllerapi.MultiNodesStatusResponse;
 import com.linkedin.venice.controllerapi.MultiReplicaResponse;
 import com.linkedin.venice.controllerapi.NodeReplicasReadinessResponse;
 import com.linkedin.venice.controllerapi.NodeReplicasReadinessState;
@@ -19,7 +19,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import org.apache.http.HttpStatus;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import spark.Route;
 
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
@@ -27,7 +28,7 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.*;
 
 
 public class NodesAndReplicas extends AbstractRoute {
-  private static final Logger LOGGER = Logger.getLogger(NodesAndReplicas.class);
+  private static final Logger LOGGER = LogManager.getLogger(NodesAndReplicas.class);
   private static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER = RedundantExceptionFilter.getRedundantExceptionFilter();
 
   /**

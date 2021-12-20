@@ -20,7 +20,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.common.TopicPartition;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import static java.util.Collections.reverseOrder;
 import static java.util.Comparator.*;
@@ -123,7 +124,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
    * each {@link VeniceConsumerRecordWrapper} buffered in {@link BlockingQueue}.
    */
   private static class StoreBufferDrainer implements Runnable {
-    private static final Logger LOGGER = Logger.getLogger(StoreBufferDrainer.class);
+    private static final Logger LOGGER = LogManager.getLogger(StoreBufferDrainer.class);
     private final BlockingQueue<QueueNode> blockingQueue;
     private final AtomicBoolean isRunning = new AtomicBoolean(true);
     private final int drainerIndex;
@@ -220,7 +221,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
     }
   }
 
-  private static final Logger LOGGER =  Logger.getLogger(StoreBufferService.class);
+  private static final Logger LOGGER = LogManager.getLogger(StoreBufferService.class);
   private final int drainerNum;
   private final ArrayList<MemoryBoundBlockingQueue<QueueNode>> blockingQueueArr;
   private ExecutorService executorService;

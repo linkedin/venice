@@ -25,7 +25,8 @@ import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -46,7 +47,7 @@ import org.apache.log4j.Logger;
  * The team agreed to take (2.2) as default storage-partition model for now, and run performance tests to see if it goes well.
  */
 public abstract class AbstractStorageEngine<Partition extends AbstractStoragePartition> implements Closeable {
-  private static final Logger logger = Logger.getLogger(AbstractStorageEngine.class);
+  private static final Logger logger = LogManager.getLogger(AbstractStorageEngine.class);
 
   private static final byte[] VERSION_METADATA_KEY = "VERSION_METADATA".getBytes();
   private static final byte[] METADATA_MIGRATION_KEY = "METADATA_MIGRATION".getBytes();

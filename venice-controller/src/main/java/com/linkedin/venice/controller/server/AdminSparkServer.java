@@ -1,10 +1,10 @@
 package com.linkedin.venice.controller.server;
 
+import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.acl.DynamicAccessController;
-import com.linkedin.venice.controller.AuditInfo;
-import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.controller.Admin;
+import com.linkedin.venice.controller.AuditInfo;
 import com.linkedin.venice.controller.stats.SparkServerStats;
 import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.exceptions.ExceptionType;
@@ -21,7 +21,8 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import org.apache.http.HttpStatus;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.codehaus.jackson.map.ObjectMapper;
 import spark.Request;
 import spark.Response;
@@ -38,7 +39,7 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.*;
  * AdminSparkServer is shared by multiple clusters' controllers running in one physical Venice controller instance.
  */
 public class AdminSparkServer extends AbstractVeniceService {
-  private static final Logger logger = Logger.getLogger(AdminSparkServer.class);
+  private static final Logger logger = LogManager.getLogger(AdminSparkServer.class);
 
   private final int port;
   private final Admin admin;

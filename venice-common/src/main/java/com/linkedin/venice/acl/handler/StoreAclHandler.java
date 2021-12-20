@@ -3,7 +3,6 @@ package com.linkedin.venice.acl.handler;
 import com.linkedin.venice.acl.AclCreationDeletionListener;
 import com.linkedin.venice.acl.AclException;
 import com.linkedin.venice.acl.DynamicAccessController;
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
@@ -19,7 +18,8 @@ import java.net.URI;
 import java.security.cert.X509Certificate;
 import java.util.stream.Collectors;
 import javax.net.ssl.SSLPeerUnverifiedException;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -27,7 +27,7 @@ import org.apache.log4j.Logger;
  */
 @ChannelHandler.Sharable
 public class StoreAclHandler extends SimpleChannelInboundHandler<HttpRequest> {
-  private static final Logger logger = Logger.getLogger(StoreAclHandler.class);
+  private static final Logger logger = LogManager.getLogger(StoreAclHandler.class);
 
   private final ReadOnlyStoreRepository metadataRepository;
   private final DynamicAccessController accessController;

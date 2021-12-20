@@ -1,14 +1,15 @@
 package com.linkedin.venice.utils;
 
 import java.util.concurrent.ThreadFactory;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
  * A thread factory that sets the threads to create threads with a specific prefix name.
  */
 public class NamedThreadFactory implements ThreadFactory {
-  private static final Logger LOGGER = Logger.getLogger(NamedThreadFactory.class);
+  private static final Logger LOGGER = LogManager.getLogger(NamedThreadFactory.class);
   private String threadName;
   private final Runnable uncaughtExceptionHook;
   private int threadSequenceNum;

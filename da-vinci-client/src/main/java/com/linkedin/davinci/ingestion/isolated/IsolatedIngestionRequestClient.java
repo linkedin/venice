@@ -7,14 +7,15 @@ import com.linkedin.venice.ingestion.protocol.enums.IngestionAction;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionReportType;
 import java.io.Closeable;
 import java.util.Optional;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
  * IsolatedIngestionRequestClient sends requests to monitor service in main process and retrieves responses.
  */
 public class IsolatedIngestionRequestClient implements Closeable {
-  private static final Logger logger = Logger.getLogger(IsolatedIngestionRequestClient.class);
+  private static final Logger logger = LogManager.getLogger(IsolatedIngestionRequestClient.class);
 
   private final HttpClientTransport httpClientTransport;
 

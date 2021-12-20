@@ -4,7 +4,8 @@ import com.linkedin.venice.VeniceResource;
 import com.linkedin.venice.utils.Utils;
 import java.util.concurrent.TimeUnit;
 import org.apache.helix.zookeeper.zkclient.IZkStateListener;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.apache.zookeeper.Watcher;
 
 
@@ -32,7 +33,7 @@ public class CachedResourceZkStateListener implements IZkStateListener {
 
   public CachedResourceZkStateListener(VeniceResource resource, int retryLoadAttempts, long retryLoadIntervalInMs) {
     this.resource = resource;
-    this.logger = Logger.getLogger(this.getClass().getSimpleName() + " [" + getResourceName() + "]");
+    this.logger = LogManager.getLogger(this.getClass().getSimpleName() + " [" + getResourceName() + "]");
     this.retryLoadAttempts = retryLoadAttempts;
     this.retryLoadIntervalInMs = retryLoadIntervalInMs;
   }

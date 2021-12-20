@@ -19,9 +19,9 @@ package com.linkedin.venice.kafka.validation.checksum;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.validation.IncomingDataAfterSegmentEndedException;
 import com.linkedin.venice.utils.ByteUtils;
-import org.apache.log4j.Logger;
-
 import java.util.Optional;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -37,7 +37,7 @@ import java.util.Optional;
  */
 public abstract class CheckSum {
 
-  private static final Logger LOGGER = Logger.getLogger(CheckSum.class);
+  private static final Logger LOGGER = LogManager.getLogger(CheckSum.class);
 
   private boolean writeEnabled = true;
 

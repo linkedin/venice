@@ -14,7 +14,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentMap;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.*;
 
@@ -34,7 +35,7 @@ import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.*;
  */
 public class HybridStoreQuotaEnforcement implements StoreDataChangedListener {
 
-  private static final Logger logger = Logger.getLogger(HybridStoreQuotaEnforcement.class);
+  private static final Logger logger = LogManager.getLogger(HybridStoreQuotaEnforcement.class);
 
   private final StoreIngestionTask storeIngestionTask;
   private final ConcurrentMap<Integer, PartitionConsumptionState> partitionConsumptionStateMap;

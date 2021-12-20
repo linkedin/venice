@@ -7,7 +7,8 @@ import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Map;
 import java.util.Optional;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -17,7 +18,7 @@ import org.apache.log4j.Logger;
  * Since there are very different characteristics, it will be helpful to decouple these two types of ingestions to avoid one blocking the other.
  */
 public class SeparatedStoreBufferService extends AbstractStoreBufferService {
-  private static final Logger LOGGER =  Logger.getLogger(SeparatedStoreBufferService.class);
+  private static final Logger LOGGER = LogManager.getLogger(SeparatedStoreBufferService.class);
   protected final StoreBufferService sortedServiceDelegate;
   protected final StoreBufferService unsortedServiceDelegate;
   private final int sortedPoolSize;

@@ -42,7 +42,8 @@ import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import static com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter.*;
 
@@ -61,7 +62,7 @@ public class MetaStoreWriter implements Closeable {
   public static final String KEY_STRING_PARTITION_ID = "KEY_PARTITION_ID";
   public static final String KEY_STRING_SCHEMA_ID = "KEY_SCHEMA_ID";
 
-  private static final Logger LOGGER = Logger.getLogger(MetaStoreWriter.class);
+  private static final Logger LOGGER = LogManager.getLogger(MetaStoreWriter.class);
 
   private final Map<String, VeniceWriter> metaStoreWriterMap = new VeniceConcurrentHashMap<>();
   private final TopicManager topicManager;

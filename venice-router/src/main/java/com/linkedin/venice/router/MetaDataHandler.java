@@ -47,7 +47,8 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.codehaus.jackson.map.ObjectMapper;
 
 import static com.linkedin.venice.VeniceConstants.*;
@@ -72,10 +73,12 @@ import static io.netty.handler.codec.http.HttpResponseStatus.*;
  */
 @ChannelHandler.Sharable
 public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
-  private static final Logger logger = Logger.getLogger(MetaDataHandler.class);
+  private static final Logger logger = LogManager.getLogger(MetaDataHandler.class);
   private static final ObjectMapper mapper = new ObjectMapper();
   private static final StoreJSONSerializer storeSerializer = new StoreJSONSerializer();
   private static final SystemStoreJSONSerializer systemStoreSerializer = new SystemStoreJSONSerializer();
+  private static final RedundantExceptionFilter filter = RedundantExceptionFilter.getRedundantExceptionFilter();
+
   private final RoutingDataRepository routing;
   private final ReadOnlySchemaRepository schemaRepo;
   private final ReadOnlyStoreConfigRepository storeConfigRepo;
@@ -88,7 +91,6 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
   private final String kafkaZkAddress;
   private final String kafkaBootstrapServers;
 
-  private static RedundantExceptionFilter filter = RedundantExceptionFilter.getRedundantExceptionFilter();
 
   public MetaDataHandler(RoutingDataRepository routing, ReadOnlySchemaRepository schemaRepo,
       ReadOnlyStoreConfigRepository storeConfigRepo, Map<String, String> clusterToD2Map,

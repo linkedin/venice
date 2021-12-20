@@ -1,27 +1,27 @@
 package com.linkedin.venice.helix;
 
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.listener.ListenerManager;
-import com.linkedin.venice.pushmonitor.OfflinePushStatus;
+import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.OfflinePushAccessor;
+import com.linkedin.venice.pushmonitor.OfflinePushStatus;
 import com.linkedin.venice.pushmonitor.PartitionStatus;
 import com.linkedin.venice.pushmonitor.ReadOnlyPartitionStatus;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.PathResourceRegistry;
+import com.linkedin.venice.utils.Utils;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
-
-import com.linkedin.venice.utils.Utils;
 import java.util.concurrent.TimeUnit;
 import org.apache.helix.AccessOption;
 import org.apache.helix.manager.zk.ZkBaseDataAccessor;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.helix.zookeeper.zkclient.IZkChildListener;
 import org.apache.helix.zookeeper.zkclient.IZkDataListener;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -43,16 +43,16 @@ public class VeniceOfflinePushMonitorAccessor implements OfflinePushAccessor {
   private static final int DEFAULT_ZK_REFRESH_ATTEMPTS = 3;
   private static final long DEFAULT_ZK_REFRESH_INTERVAL = TimeUnit.SECONDS.toMillis(10);
 
-  private static final Logger logger = Logger.getLogger(VeniceOfflinePushMonitorAccessor.class);
+  private static final Logger logger = LogManager.getLogger(VeniceOfflinePushMonitorAccessor.class);
   private final String clusterName;
   /**
    * Zk accessor for offline push status ZNodes.
    */
-  private ZkBaseDataAccessor<OfflinePushStatus> offlinePushStatusAccessor;
+  private final ZkBaseDataAccessor<OfflinePushStatus> offlinePushStatusAccessor;
   /**
    * Zk accessor for partition status ZNodes.
    */
-  private ZkBaseDataAccessor<PartitionStatus> partitionStatusAccessor;
+  private final ZkBaseDataAccessor<PartitionStatus> partitionStatusAccessor;
 
   private final String offlinePushStatusParentPath;
   private final ZkClient zkClient;

@@ -7,14 +7,15 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.system.store.MetaStoreWriter;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
  * This notifier is used to report partition replica status change during ingestion.
  */
 public class MetaSystemStoreReplicaStatusNotifier implements VeniceNotifier {
-  private static final Logger LOGGER = Logger.getLogger(MetaSystemStoreReplicaStatusNotifier.class);
+  private static final Logger LOGGER = LogManager.getLogger(MetaSystemStoreReplicaStatusNotifier.class);
   private final MetaStoreWriter metaStoreWriter;
   private final String clusterName;
   private final ReadOnlyStoreRepository storeRepository;

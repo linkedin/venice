@@ -12,7 +12,6 @@ import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
-import com.linkedin.venice.utils.Lazy;
 import com.linkedin.venice.utils.ReflectUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -23,14 +22,15 @@ import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.common.serialization.ByteArrayDeserializer;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import static com.linkedin.venice.ConfigConstants.*;
-import static com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer.VENICE_SCHEMA_READER_CONFIG;
+import static com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer.*;
 
 
 public abstract class KafkaClientFactory {
-  private static final Logger logger = Logger.getLogger(KafkaClientFactory.class);
+  private static final Logger logger = LogManager.getLogger(KafkaClientFactory.class);
   public static final boolean DEFAULT_AUTO_CLOSE_IDLE_CONSUMERS_ENABLED = false;
 
   protected final Optional<SchemaReader> kafkaMessageEnvelopeSchemaReader;

@@ -19,19 +19,20 @@ import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.BytesWritable;
 import org.apache.hadoop.io.SequenceFile;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import static com.linkedin.venice.hadoop.VenicePushJob.*;
 
 
 public class VeniceVsonRecordReader extends AbstractVeniceRecordReader<BytesWritable, BytesWritable> {
-  private static final Logger LOGGER = Logger.getLogger(VeniceVsonRecordReader.class);
+  private static final Logger LOGGER = LogManager.getLogger(VeniceVsonRecordReader.class);
 
   private VsonAvroSerializer keyDeserializer;
   private VsonAvroSerializer valueDeserializer;
 
-  private String keyField;
-  private String valueField;
+  private final String keyField;
+  private final String valueField;
 
   private TreeMap<String, String> metadataMap;
 

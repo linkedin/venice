@@ -8,7 +8,8 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -16,7 +17,7 @@ import org.apache.log4j.Logger;
  * topic with low retention policy.
  */
 public class TopicCleanupServiceForParentController extends TopicCleanupService {
-  private static final Logger LOGGER = Logger.getLogger(TopicCleanupServiceForParentController.class);
+  private static final Logger LOGGER = LogManager.getLogger(TopicCleanupServiceForParentController.class);
   private static final Map<String, Integer> storeToCountdownForDeletion = new HashMap<>();
 
   public TopicCleanupServiceForParentController(Admin admin, VeniceControllerMultiClusterConfig multiClusterConfigs) {

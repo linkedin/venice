@@ -7,10 +7,12 @@ import java.util.function.Supplier;
 import net.jodah.failsafe.Failsafe;
 import net.jodah.failsafe.RetryPolicy;
 import net.jodah.failsafe.event.ExecutionAttemptedEvent;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 
 public class RetryUtils {
-    private static final Logger logger = Logger.getLogger(RetryUtils.class);
+    private static final Logger logger = LogManager.getLogger(RetryUtils.class);
 
     private RetryUtils() {
         // Util class

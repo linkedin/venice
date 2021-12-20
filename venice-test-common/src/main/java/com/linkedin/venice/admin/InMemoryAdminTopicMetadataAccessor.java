@@ -3,14 +3,15 @@ package com.linkedin.venice.admin;
 import com.linkedin.venice.controller.AdminTopicMetadataAccessor;
 import java.util.HashMap;
 import java.util.Map;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
  * In memory implementation of {@link AdminTopicMetadataAccessor}, should only be used for testing purposes.
  */
-public class InMemoryAdminTopicMetadataAccssor extends AdminTopicMetadataAccessor {
-  private static final Logger logger = Logger.getLogger(InMemoryAdminTopicMetadataAccssor.class);
+public class InMemoryAdminTopicMetadataAccessor extends AdminTopicMetadataAccessor {
+  private static final Logger logger = LogManager.getLogger(InMemoryAdminTopicMetadataAccessor.class);
   private Map<String, Long> inMemoryMetadata = new HashMap<>();
 
   @Override

@@ -2,9 +2,9 @@ package com.linkedin.venice.helix;
 
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.meta.VeniceSerializer;
+import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.rmd.ReplicationMetadataSchemaEntry;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
-import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.PathResourceRegistry;
 import java.util.List;
@@ -13,11 +13,12 @@ import org.apache.helix.AccessOption;
 import org.apache.helix.manager.zk.ZkBaseDataAccessor;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.helix.zookeeper.zkclient.IZkChildListener;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 public class HelixSchemaAccessor {
-  protected final Logger logger = Logger.getLogger(getClass().getSimpleName());
+  protected final Logger logger = LogManager.getLogger(getClass().getSimpleName());
 
   private static final int DEFAULT_ZK_REFRESH_ATTEMPTS = 3;
   private static final long DEFAULT_ZK_REFRESH_INTERVAL = TimeUnit.SECONDS.toMillis(10);

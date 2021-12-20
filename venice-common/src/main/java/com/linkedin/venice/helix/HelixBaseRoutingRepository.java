@@ -15,18 +15,19 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import javax.validation.constraints.NotNull;
+import org.apache.helix.NotificationContext;
+import org.apache.helix.PropertyKey;
 import org.apache.helix.PropertyType;
 import org.apache.helix.api.listeners.BatchMode;
 import org.apache.helix.api.listeners.ControllerChangeListener;
 import org.apache.helix.api.listeners.IdealStateChangeListener;
-import org.apache.helix.NotificationContext;
-import org.apache.helix.PropertyKey;
 import org.apache.helix.api.listeners.RoutingTableChangeListener;
 import org.apache.helix.model.IdealState;
 import org.apache.helix.model.LiveInstance;
 import org.apache.helix.spectator.RoutingTableProvider;
 import org.apache.helix.spectator.RoutingTableSnapshot;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -44,7 +45,7 @@ import org.apache.log4j.Logger;
 @BatchMode
 public abstract class HelixBaseRoutingRepository
     implements RoutingDataRepository, ControllerChangeListener, IdealStateChangeListener, RoutingTableChangeListener {
-  private static final Logger logger = Logger.getLogger(HelixBaseRoutingRepository.class);
+  private static final Logger logger = LogManager.getLogger(HelixBaseRoutingRepository.class);
 
   /**
    * Manager used to communicate with Helix.

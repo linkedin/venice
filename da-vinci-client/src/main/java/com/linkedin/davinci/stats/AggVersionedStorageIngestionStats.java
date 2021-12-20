@@ -22,7 +22,8 @@ import io.tehuti.metrics.stats.Rate;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.function.Supplier;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import static com.linkedin.venice.stats.StatsErrorCode.*;
 
@@ -34,7 +35,7 @@ import static com.linkedin.venice.stats.StatsErrorCode.*;
 public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersionedStats<
     AggVersionedStorageIngestionStats.StorageIngestionStats,
     AggVersionedStorageIngestionStats.StorageIngestionStatsReporter> {
-  private static final Logger LOGGER = Logger.getLogger(AggVersionedStorageIngestionStats.class);
+  private static final Logger LOGGER = LogManager.getLogger(AggVersionedStorageIngestionStats.class);
 
   private static final String RECORDS_CONSUMED_METRIC_NAME = "records_consumed";
   private static final String BYTES_CONSUMED_METRIC_NAME = "bytes_consumed";

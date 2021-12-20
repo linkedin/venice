@@ -3,20 +3,21 @@ package com.linkedin.venice.helix;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import com.linkedin.venice.utils.locks.ClusterLockManager;
-import java.util.stream.Collectors;
-import org.apache.helix.zookeeper.impl.client.ZkClient;
-import org.apache.helix.zookeeper.zkclient.IZkChildListener;
-import org.apache.helix.zookeeper.zkclient.IZkDataListener;
-import org.apache.log4j.Logger;
-
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.stream.Collectors;
+import org.apache.helix.zookeeper.impl.client.ZkClient;
+import org.apache.helix.zookeeper.zkclient.IZkChildListener;
+import org.apache.helix.zookeeper.zkclient.IZkDataListener;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 
 public class HelixReadOnlyStoreRepository extends CachedReadOnlyStoreRepository {
-  private static final Logger logger = Logger.getLogger(HelixReadOnlyStoreRepository.class);
+  private static final Logger logger = LogManager.getLogger(HelixReadOnlyStoreRepository.class);
 
   public HelixReadOnlyStoreRepository(
       ZkClient zkClient,

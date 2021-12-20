@@ -14,27 +14,29 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.apache.samza.system.SystemProducer;
 import org.codehaus.jackson.map.DeserializationConfig;
 import org.codehaus.jackson.map.ObjectMapper;
 
 import static com.linkedin.venice.VeniceConstants.*;
 
+
 /**
  * This push monitor is able to query push job status from routers; it only works for
  * stores running in Leader/Follower mode and it will be built for STREAM_REPROCESSING job.
  */
 public class RouterBasedPushMonitor implements Closeable {
-  private static final Logger logger = Logger.getLogger(RouterBasedPushMonitor.class);
+  private static final Logger logger = LogManager.getLogger(RouterBasedPushMonitor.class);
 
   private static final int POLL_CYCLE_DELAY_MS = 10000;
-  private static final long POLL_TIMEOUT_MS = 10000l;
+  private static final long POLL_TIMEOUT_MS = 10000L;
 
   private final String topicName;
   private final ExecutorService executor;
 
-  private PushMonitorTask pushMonitorTask;
+  private final PushMonitorTask pushMonitorTask;
   private ExecutionStatus currentStatus = ExecutionStatus.UNKNOWN;
 
   public RouterBasedPushMonitor(D2TransportClient d2TransportClient, String resourceName, VeniceSystemFactory factory, SystemProducer producer) {

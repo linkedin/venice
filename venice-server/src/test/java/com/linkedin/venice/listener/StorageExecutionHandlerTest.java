@@ -39,16 +39,16 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
-import org.apache.log4j.AsyncAppender;
-import org.apache.log4j.Level;
-import org.apache.log4j.Logger;
-import org.apache.log4j.spi.LoggingEvent;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.core.LoggerContext;
+import org.apache.logging.log4j.core.config.Configuration;
 import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
 import static com.linkedin.venice.router.api.VenicePathParser.*;
 import static org.mockito.Mockito.*;
+
 
 public class StorageExecutionHandlerTest {
   @Test
@@ -213,17 +213,16 @@ public class StorageExecutionHandlerTest {
 
 
     AtomicInteger errorLogCount = new AtomicInteger();
-    Logger logger = Logger.getLogger(StorageExecutionHandler.class);
-
     // Adding a custom appender to track the count of error logs we are interested in
-    logger.addAppender(new AsyncAppender(){
-      @Override
-      public void append(final LoggingEvent event) {
-        if(event.getLevel().equals(Level.ERROR) && event.getThrowableInformation().getThrowable().getLocalizedMessage().contains(exceptionMessage)) {
-          errorLogCount.addAndGet(1);
-        }
-      }
-    });
+    ErrorCountAppender errorCountAppender = new ErrorCountAppender.Builder()
+        .setErrorMessageCounter(errorLogCount)
+        .setExceptionMessage(exceptionMessage)
+        .build();
+    errorCountAppender.start();
+
+    LoggerContext ctx = ((LoggerContext)LogManager.getContext(false));
+    Configuration config = ctx.getConfiguration();
+    config.addLoggerAppender((org.apache.logging.log4j.core.Logger) LogManager.getLogger(StorageExecutionHandler.class), errorCountAppender);
 
     //Actual test
     StorageExecutionHandler testHandler = new StorageExecutionHandler(threadPoolExecutor, threadPoolExecutor, testRepository, metadataRepo, schemaRepo,

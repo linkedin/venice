@@ -1,7 +1,5 @@
 package com.linkedin.venice.client.schema;
 
-import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
-import com.linkedin.avroutil1.compatibility.SchemaParseConfiguration;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.AbstractAvroStoreClient;
 import com.linkedin.venice.client.store.MetadataReader;
@@ -17,7 +15,8 @@ import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import org.apache.avro.Schema;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.codehaus.jackson.map.DeserializationConfig;
 import org.codehaus.jackson.map.ObjectMapper;
 
@@ -37,7 +36,7 @@ public class SchemaReader extends MetadataReader implements SchemaRetriever {
     mapper.configure(DeserializationConfig.Feature.FAIL_ON_UNKNOWN_PROPERTIES, false);
   }
 
-  private final static Logger logger = Logger.getLogger(SchemaReader.class);
+  private final static Logger logger = LogManager.getLogger(SchemaReader.class);
   private final Optional<Schema> readerSchema;
   private Schema keySchema;
   private Map<Integer, Schema> valueSchemaMap = new VeniceConcurrentHashMap<>();

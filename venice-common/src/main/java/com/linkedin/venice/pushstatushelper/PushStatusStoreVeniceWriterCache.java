@@ -10,14 +10,15 @@ import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.util.Map;
 import java.util.Optional;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
  * Wrapper class for acquiring VeniceWriter for push status stores.
  */
 public class PushStatusStoreVeniceWriterCache implements AutoCloseable {
-  private static final Logger logger = Logger.getLogger(PushStatusStoreVeniceWriterCache.class);
+  private static final Logger logger = LogManager.getLogger(PushStatusStoreVeniceWriterCache.class);
 
   private final VeniceWriterFactory writerFactory;
   // Local cache of VeniceWriters.

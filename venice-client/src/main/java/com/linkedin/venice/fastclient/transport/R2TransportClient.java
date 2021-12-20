@@ -16,7 +16,8 @@ import java.io.IOException;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import org.apache.commons.httpclient.HttpStatus;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -47,7 +48,7 @@ public class R2TransportClient extends InternalTransportClient {
   }
 
   private static class R2TransportClientCallback extends TransportClientCallback implements Callback<RestResponse> {
-    private Logger logger = Logger.getLogger(R2TransportClientCallback.class);
+    private final Logger logger = LogManager.getLogger(R2TransportClientCallback.class);
 
     public R2TransportClientCallback(CompletableFuture<TransportClientResponse> valueFuture) {
       super(valueFuture);
@@ -81,7 +82,7 @@ public class R2TransportClient extends InternalTransportClient {
       CompressionStrategy compressionStrategy = CompressionStrategy.NO_OP;
       String compressionHeader = result.getHeader(HttpConstants.VENICE_COMPRESSION_STRATEGY);
       if (compressionHeader != null) {
-        compressionStrategy = CompressionStrategy.valueOf(Integer.valueOf(compressionHeader));
+        compressionStrategy = CompressionStrategy.valueOf(Integer.parseInt(compressionHeader));
       }
 
       /**

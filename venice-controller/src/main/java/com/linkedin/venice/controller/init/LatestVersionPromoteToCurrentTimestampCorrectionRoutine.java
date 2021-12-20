@@ -5,11 +5,12 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.Time;
 import java.util.Optional;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 public class LatestVersionPromoteToCurrentTimestampCorrectionRoutine implements ClusterLeaderInitializationRoutine {
-  private static final Logger LOGGER = Logger.getLogger(ClusterLeaderInitializationManager.class);
+  private static final Logger LOGGER = LogManager.getLogger(ClusterLeaderInitializationManager.class);
   VeniceHelixAdmin veniceHelixAdmin;
 
   public LatestVersionPromoteToCurrentTimestampCorrectionRoutine(VeniceHelixAdmin veniceHelixAdmin) {

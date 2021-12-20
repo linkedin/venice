@@ -9,10 +9,12 @@ import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import java.util.HashSet;
 import java.util.Set;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 
 public class SubscriptionBasedStoreRepository extends HelixReadOnlyStoreRepository implements SubscriptionBasedReadOnlyStoreRepository {
-  private static final Logger logger = Logger.getLogger(HelixReadOnlyStoreRepository.class);
+  private static final Logger logger = LogManager.getLogger(HelixReadOnlyStoreRepository.class);
 
   private final Set<String> subscription = new HashSet<>();
 

@@ -8,12 +8,12 @@ import io.tehuti.metrics.Quota;
 import io.tehuti.metrics.QuotaViolationException;
 import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.Rate;
-
 import io.tehuti.utils.Time;
 import java.util.concurrent.TimeUnit;
-
 import java.util.function.Supplier;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 
 /**
  * A class to throttle Events to a certain rate
@@ -31,7 +31,7 @@ import org.apache.log4j.Logger;
  */
 public class EventThrottler {
 
-  private static final Logger logger = Logger.getLogger(EventThrottler.class);
+  private static final Logger logger = LogManager.getLogger(EventThrottler.class);
   private static final long DEFAULT_CHECK_INTERVAL_MS = TimeUnit.SECONDS.toMillis(30); //30 sec
   private static final String THROTTLER_NAME = "event-throttler";
   private static final String UNIT_POSTFIX = " event/sec";

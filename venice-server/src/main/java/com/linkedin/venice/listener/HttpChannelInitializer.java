@@ -1,12 +1,12 @@
 package com.linkedin.venice.listener;
 
+import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.ddsstorage.netty4.handlers.BasicHttpServerCodec;
 import com.linkedin.ddsstorage.netty4.http2.Http2PipelineInitializer;
 import com.linkedin.ddsstorage.router.lnkd.netty4.SSLInitializer;
 import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.acl.StaticAccessController;
-import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.RoutingDataRepository;
@@ -26,11 +26,12 @@ import io.netty.handler.timeout.IdleStateHandler;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
-  private static final Logger LOGGER = Logger.getLogger(HttpChannelInitializer.class);
+  private static final Logger LOGGER = LogManager.getLogger(HttpChannelInitializer.class);
 
   private final StorageExecutionHandler requestHandler;
   private final AggServerHttpRequestStats singleGetStats;

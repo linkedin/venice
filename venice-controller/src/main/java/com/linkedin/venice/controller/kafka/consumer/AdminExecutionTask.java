@@ -48,7 +48,7 @@ import java.util.Optional;
 import java.util.Queue;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.Logger;
 
 import static com.linkedin.venice.controller.kafka.consumer.AdminConsumptionTask.*;
 

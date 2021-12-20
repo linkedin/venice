@@ -9,15 +9,17 @@ import com.linkedin.venice.stats.Gauge;
 import com.linkedin.venice.stats.StatsErrorCode;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.concurrent.atomic.AtomicInteger;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 
 public class AggVersionedStorageEngineStats extends AbstractVeniceAggVersionedStats<
     AggVersionedStorageEngineStats.StorageEngineStats,
     AggVersionedStorageEngineStats.StorageEngineStatsReporter> {
-  private static final Logger LOGGER = Logger.getLogger(AggVersionedStorageEngineStats.class);
+  private static final Logger LOGGER = LogManager.getLogger(AggVersionedStorageEngineStats.class);
 
   public AggVersionedStorageEngineStats(MetricsRepository metricsRepository, ReadOnlyStoreRepository metadataRepository) {
-    super(metricsRepository, metadataRepository, () -> new StorageEngineStats(), (mr, name) -> new StorageEngineStatsReporter(mr, name));
+    super(metricsRepository, metadataRepository, StorageEngineStats::new, StorageEngineStatsReporter::new);
   }
 
   public void setStorageEngine(String topicName, AbstractStorageEngine storageEngine) {
@@ -50,7 +52,7 @@ public class AggVersionedStorageEngineStats extends AbstractVeniceAggVersionedSt
 
   static class StorageEngineStats {
     private AbstractStorageEngine storageEngine;
-    private AtomicInteger rocksDBOpenFailureCount = new AtomicInteger(0);
+    private final AtomicInteger rocksDBOpenFailureCount = new AtomicInteger(0);
     public void setStorageEngine(AbstractStorageEngine storageEngine) {
       this.storageEngine = storageEngine;
     }

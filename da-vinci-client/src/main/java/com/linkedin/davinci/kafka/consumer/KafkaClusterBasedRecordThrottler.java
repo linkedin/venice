@@ -9,7 +9,8 @@ import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Map;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import static com.linkedin.davinci.kafka.consumer.StoreIngestionTask.*;
 
@@ -18,7 +19,7 @@ import static com.linkedin.davinci.kafka.consumer.StoreIngestionTask.*;
  * This class is used to throttle records consumed per Kafka cluster
  */
 public class KafkaClusterBasedRecordThrottler {
-  private static final Logger logger = Logger.getLogger(KafkaClusterBasedRecordThrottler.class);
+  private static final Logger logger = LogManager.getLogger(KafkaClusterBasedRecordThrottler.class);
   // Kafka URL to records throttler
   private final Map<String, EventThrottler> kafkaUrlToRecordsThrottler;
   // Kafka URL to throttled records

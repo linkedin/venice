@@ -9,10 +9,11 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import org.apache.helix.zookeeper.zkclient.IZkChildListener;
-import org.apache.helix.zookeeper.impl.client.ZkClient;
 import java.util.concurrent.CopyOnWriteArraySet;
-import org.apache.log4j.Logger;
+import org.apache.helix.zookeeper.impl.client.ZkClient;
+import org.apache.helix.zookeeper.zkclient.IZkChildListener;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -29,7 +30,7 @@ import org.apache.log4j.Logger;
  * This way is a little hacky since this class is reading from Helix ZK directory directly.
  */
 public class HelixLiveInstanceMonitor implements IZkChildListener, VeniceResource, LiveInstanceMonitor {
-  private static final Logger LOGGER = Logger.getLogger(HelixLiveInstanceMonitor.class);
+  private static final Logger LOGGER = LogManager.getLogger(HelixLiveInstanceMonitor.class);
   private static final String LIVE_INSTANCE_PATH = "/LIVEINSTANCES";
   private final String clusterName;
   private final ZkClient zkClient;

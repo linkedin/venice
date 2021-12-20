@@ -22,7 +22,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.common.TopicPartition;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -35,7 +36,7 @@ import org.apache.log4j.Logger;
  * {@link #detach}, which will be used by {@link KafkaConsumerService}.
  */
 public class SharedKafkaConsumer implements KafkaConsumerWrapper {
-  private static final Logger LOGGER = Logger.getLogger(SharedKafkaConsumer.class);
+  private static final Logger LOGGER = LogManager.getLogger(SharedKafkaConsumer.class);
 
   /**
    * After this number of poll requests, shared consumer will check whether all the subscribed topics exist or not.

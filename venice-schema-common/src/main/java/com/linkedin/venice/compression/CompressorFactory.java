@@ -6,13 +6,14 @@ import java.io.Closeable;
 import java.io.IOException;
 import java.util.Map;
 import org.apache.commons.io.IOUtils;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 public class CompressorFactory implements Closeable, AutoCloseable {
-  private static final Logger logger = Logger.getLogger(CompressorFactory.class);
-  private Map<CompressionStrategy, VeniceCompressor> compressorMap = new VeniceConcurrentHashMap<>();
-  private Map<String, VeniceCompressor> versionSpecificCompressorMap = new VeniceConcurrentHashMap<>();
+  private static final Logger logger = LogManager.getLogger(CompressorFactory.class);
+  private final Map<CompressionStrategy, VeniceCompressor> compressorMap = new VeniceConcurrentHashMap<>();
+  private final Map<String, VeniceCompressor> versionSpecificCompressorMap = new VeniceConcurrentHashMap<>();
 
   public VeniceCompressor getCompressor(CompressionStrategy compressionStrategy) {
     return compressorMap.computeIfAbsent(compressionStrategy, key -> createCompressor(compressionStrategy));

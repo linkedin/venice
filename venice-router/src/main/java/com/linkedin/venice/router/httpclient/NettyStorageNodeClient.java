@@ -59,7 +59,8 @@ import java.util.Optional;
 import java.util.concurrent.ConcurrentMap;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.apache.logging.log4j.util.StringBuilderFormattable;
 
 import static com.linkedin.venice.HttpConstants.*;
@@ -77,11 +78,11 @@ import static com.linkedin.venice.HttpConstants.*;
  * The performance of the netty client can be scaled up by increasing the number of event loop (#threads).
  */
 public class NettyStorageNodeClient implements StorageNodeClient  {
-  private static final Logger logger = Logger.getLogger(NettyStorageNodeClient.class);
+  private static final Logger logger = LogManager.getLogger(NettyStorageNodeClient.class);
   private static final boolean loggerDebugEnabled = logger.isDebugEnabled();
   private static final AsciiString X_QUEUE_NAME = AsciiString.of("X-Queue-Name");
   private static final AsciiString X_QOS = AsciiString.of("X-QOS");
-  private ByteToMessageDecoder.Cumulator cumulator = ByteToMessageDecoder.MERGE_CUMULATOR;
+  private final ByteToMessageDecoder.Cumulator cumulator = ByteToMessageDecoder.MERGE_CUMULATOR;
 
   private final ChannelPoolManager manager;
   private final String scheme;

@@ -51,7 +51,8 @@ import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.commons.io.IOUtils;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
 
 import static com.linkedin.venice.ConfigKeys.*;
@@ -66,7 +67,7 @@ import static com.linkedin.venice.integration.utils.VeniceServerWrapper.*;
  * - {@link VeniceServerWrapper}
  */
 public class VeniceClusterWrapper extends ProcessWrapper {
-  public static final Logger logger = Logger.getLogger(VeniceClusterWrapper.class);
+  public static final Logger logger = LogManager.getLogger(VeniceClusterWrapper.class);
   public static final String SERVICE_NAME = "VeniceCluster";
 
   private static final int VALUE_LENGTH = 100;

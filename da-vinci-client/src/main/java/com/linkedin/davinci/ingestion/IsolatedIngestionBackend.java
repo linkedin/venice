@@ -21,7 +21,8 @@ import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.utils.Time;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Optional;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -38,7 +39,7 @@ import org.apache.log4j.Logger;
  * to make sure we send the command to the correct process which holds the target storage engine.
  */
 public class IsolatedIngestionBackend extends DefaultIngestionBackend implements DaVinciIngestionBackend, VeniceIngestionBackend {
-  private static final Logger logger = Logger.getLogger(IsolatedIngestionBackend.class);
+  private static final Logger logger = LogManager.getLogger(IsolatedIngestionBackend.class);
   private static final int RETRY_WAIT_TIME_IN_MS = 10 * Time.MS_PER_SECOND;
 
   private final MainIngestionRequestClient mainIngestionRequestClient;

@@ -81,7 +81,8 @@ import java.util.stream.Collectors;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.producer.RecordMetadata;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.*;
 import static com.linkedin.venice.kafka.protocol.enums.ControlMessageType.*;
@@ -122,7 +123,7 @@ import static java.util.concurrent.TimeUnit.*;
  *           follower can subscribe back to VT using the recently updated VT offset.
  */
 public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
-  private static final Logger logger = Logger.getLogger(LeaderFollowerStoreIngestionTask.class);
+  private static final Logger logger = LogManager.getLogger(LeaderFollowerStoreIngestionTask.class);
 
   /**
    * The new leader will stay inactive (not switch to any new topic or produce anything) for

@@ -1,14 +1,14 @@
 package com.linkedin.davinci.store.rocksdb;
 
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
+import com.linkedin.davinci.stats.RocksDBMemoryStats;
+import com.linkedin.davinci.store.AbstractStorageEngine;
+import com.linkedin.davinci.store.StoragePartitionConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
-import com.linkedin.davinci.stats.RocksDBMemoryStats;
-import com.linkedin.davinci.store.AbstractStorageEngine;
-import com.linkedin.davinci.store.StoragePartitionConfig;
 import com.linkedin.venice.store.rocksdb.RocksDBUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -18,13 +18,14 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.Set;
 import org.apache.commons.io.FileUtils;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.*;
 
 
 class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePartition> {
-  private static final Logger LOGGER = Logger.getLogger(RocksDBStorageEngine.class);
+  private static final Logger LOGGER = LogManager.getLogger(RocksDBStorageEngine.class);
 
   public static final String SERVER_CONFIG_FILE_NAME = "rocksdbConfig";
 

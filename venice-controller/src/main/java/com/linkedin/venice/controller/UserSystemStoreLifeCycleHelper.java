@@ -16,7 +16,7 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.Logger;
 
 import static com.linkedin.venice.common.VeniceSystemStoreType.*;
 

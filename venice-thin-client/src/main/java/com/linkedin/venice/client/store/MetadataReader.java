@@ -3,13 +3,13 @@ package com.linkedin.venice.client.store;
 import java.io.Closeable;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Future;
-import org.apache.log4j.Logger;
 import org.apache.commons.io.IOUtils;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 public abstract class MetadataReader implements Closeable {
-  private final static Logger logger = Logger.getLogger(MetadataReader.class);
+  private final static Logger logger = LogManager.getLogger(MetadataReader.class);
 
   protected final AbstractAvroStoreClient storeClient;
 

@@ -20,7 +20,6 @@ import com.linkedin.r2.message.stream.entitystream.EntityStreams;
 import com.linkedin.r2.message.stream.entitystream.ReadHandle;
 import com.linkedin.r2.message.stream.entitystream.Reader;
 import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
-
 import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
@@ -34,7 +33,8 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import org.apache.commons.httpclient.HttpStatus;
 import org.apache.http.HttpHeaders;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import static com.linkedin.venice.HttpConstants.*;
 
@@ -43,7 +43,7 @@ import static com.linkedin.venice.HttpConstants.*;
  * {@link D2Client} based TransportClient implementation.
  */
 public class D2TransportClient extends TransportClient {
-  private static final Logger logger = Logger.getLogger(D2TransportClient.class);
+  private static final Logger logger = LogManager.getLogger(D2TransportClient.class);
 
   private final D2Client d2Client;
 

@@ -14,11 +14,12 @@ import java.util.Set;
 import org.apache.helix.AccessOption;
 import org.apache.helix.manager.zk.ZkBaseDataAccessor;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 public class HelixStoreGraveyard implements StoreGraveyard {
-  private static final Logger logger = Logger.getLogger(StoreGraveyard.class);
+  private static final Logger logger = LogManager.getLogger(StoreGraveyard.class);
 
   public static final String STORE_GRAVEYARD_PATH = "/StoreGraveyard";
 

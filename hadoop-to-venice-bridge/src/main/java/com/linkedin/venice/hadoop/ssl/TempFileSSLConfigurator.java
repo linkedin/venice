@@ -5,21 +5,22 @@ import com.linkedin.venice.hadoop.VenicePushJob;
 import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.IOException;
-import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Properties;
 import org.apache.hadoop.io.IOUtils;
 import org.apache.hadoop.io.Text;
 import org.apache.hadoop.security.Credentials;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import static com.linkedin.venice.CommonConfigKeys.*;
 import static com.linkedin.venice.ConfigKeys.*;
 
 
 public class TempFileSSLConfigurator implements SSLConfigurator {
-  private static Logger logger = Logger.getLogger(TempFileSSLConfigurator.class);
+  private static final Logger logger = LogManager.getLogger(TempFileSSLConfigurator.class);
 
   @Override
   public Properties setupSSLConfig(Properties props, Credentials userCredentials) {
@@ -82,7 +83,7 @@ public class TempFileSSLConfigurator implements SSLConfigurator {
   }
 
   protected String getPassword(Credentials credentials, Text propertyName) {
-    return new String(credentials.getSecretKey(propertyName), Charset.forName("UTF-8"));
+    return new String(credentials.getSecretKey(propertyName), StandardCharsets.UTF_8);
   }
 
   protected byte[] getCertification(Credentials credentials, Text certName) {

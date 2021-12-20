@@ -8,6 +8,18 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.hadoop.utils.HadoopUtils;
 import com.linkedin.venice.utils.VeniceProperties;
+import java.io.IOException;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CompletionService;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorCompletionService;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.IndexedRecord;
 import org.apache.avro.mapred.AvroWrapper;
@@ -17,13 +29,8 @@ import org.apache.hadoop.mapred.Mapper;
 import org.apache.hadoop.mapred.OutputCollector;
 import org.apache.hadoop.mapred.Reporter;
 import org.apache.hadoop.util.Progressable;
-import org.apache.log4j.Logger;
-
-import java.io.IOException;
-import java.util.concurrent.*;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicLong;
-import java.util.concurrent.atomic.AtomicReference;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -32,7 +39,7 @@ import java.util.concurrent.atomic.AtomicReference;
  */
 
 public class PostBulkLoadAnalysisMapper implements Mapper<AvroWrapper<IndexedRecord>, NullWritable, NullWritable, NullWritable> {
-  private static Logger logger = Logger.getLogger(PostBulkLoadAnalysisMapper.class);
+  private static final Logger logger = LogManager.getLogger(PostBulkLoadAnalysisMapper.class);
 
   private static final int NUM_THREADS = 200;
   private static final int REQUEST_TIME_OUT_MS = 10000;

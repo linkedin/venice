@@ -8,7 +8,8 @@ import com.linkedin.venice.router.stats.RouterStats;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import java.util.Optional;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import static io.netty.handler.codec.http.HttpResponseStatus.*;
 
@@ -30,9 +31,9 @@ public class RouterExceptionAndTrackingUtils {
 
   private static RouterStats<AggRouterHttpRequestStats> ROUTER_STATS;
 
-  private static Logger logger = Logger.getLogger(RouterExceptionAndTrackingUtils.class);
+  private static final Logger logger = LogManager.getLogger(RouterExceptionAndTrackingUtils.class);
 
-  private static RedundantExceptionFilter filter = RedundantExceptionFilter.getRedundantExceptionFilter();
+  private static final RedundantExceptionFilter filter = RedundantExceptionFilter.getRedundantExceptionFilter();
 
   public static void setRouterStats(RouterStats<AggRouterHttpRequestStats> routerStats) {
     ROUTER_STATS = routerStats;

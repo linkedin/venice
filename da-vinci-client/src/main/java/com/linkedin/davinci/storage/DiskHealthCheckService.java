@@ -2,11 +2,9 @@ package com.linkedin.davinci.storage;
 
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.LatencyUtils;
-import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
-
-
+import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
@@ -16,7 +14,8 @@ import java.nio.charset.StandardCharsets;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -34,24 +33,26 @@ import org.apache.log4j.Logger;
  * disk operation hang due to disk failure and start reporting unhealthy for this server.
  */
 public class DiskHealthCheckService extends AbstractVeniceService {
-  private static final Logger logger = Logger.getLogger(DiskHealthCheckService.class);
+  private static final Logger logger = LogManager.getLogger(DiskHealthCheckService.class);
 
   private static final long HEALTH_CHECK_HARD_TIMEOUT = TimeUnit.SECONDS.toMillis(30); // 30 seconds
+
+  private static final String tmpFileName = ".health_check_file";
+  private static final int tmpFileSizeInBytes = 64 * 1024; // 64KB
+
   // lock object protects diskHealthy and lastStatusUpdateTimeInNS.
   private final Lock lock = new ReentrantLock();
+  private final long healthCheckIntervalMs;
+  private final long healthCheckTimeoutMs;
+  private final boolean serviceEnabled;
+  private final String databasePath;
+  private final long diskFailServerShutdownTimeMs;
 
   private boolean diskHealthy = true;
-  private long healthCheckIntervalMs;
-  private long healthCheckTimeoutMs;
   private long lastStatusUpdateTimeInNS;
-  private boolean serviceEnabled;
-  private String databasePath;
-  private static String tmpFileName = ".health_check_file";
-  private static int tmpFileSizeInBytes = 64 * 1024; // 64KB
   private String errorMessage;
   private DiskHealthCheckTask healthCheckTask;
   private Thread runner;
-  private long diskFailServerShutdownTimeMs;
 
   private void setDiskHealthy(boolean diskHealthy) {
     try (AutoCloseableLock ignore = new AutoCloseableLock(lock)) {

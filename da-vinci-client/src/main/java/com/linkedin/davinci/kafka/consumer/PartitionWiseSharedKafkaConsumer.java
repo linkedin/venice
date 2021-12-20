@@ -14,7 +14,9 @@ import java.util.Set;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.common.TopicPartition;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 
 /**
  * This class is a synchronized version of {@link KafkaConsumerWrapper}.
@@ -25,10 +27,10 @@ import org.apache.log4j.Logger;
  */
 public class PartitionWiseSharedKafkaConsumer extends SharedKafkaConsumer {
 
-  private static final Logger LOGGER = Logger.getLogger(PartitionWiseSharedKafkaConsumer.class);
+  private static final Logger LOGGER = LogManager.getLogger(PartitionWiseSharedKafkaConsumer.class);
 
-  private Map<TopicPartition, StoreIngestionTask> topicPartitionStoreIngestionTaskMap = new VeniceConcurrentHashMap<>();
-  private Set<TopicPartition> topicPartitionsWithoutCorrespondingIngestionTask = new HashSet<>();
+  private final Map<TopicPartition, StoreIngestionTask> topicPartitionStoreIngestionTaskMap = new VeniceConcurrentHashMap<>();
+  private final Set<TopicPartition> topicPartitionsWithoutCorrespondingIngestionTask = new HashSet<>();
 
   public PartitionWiseSharedKafkaConsumer(KafkaConsumerWrapper delegate, KafkaConsumerService service,
       long nonExistingTopicCleanupDelayMS, TopicExistenceChecker topicExistenceChecker) {

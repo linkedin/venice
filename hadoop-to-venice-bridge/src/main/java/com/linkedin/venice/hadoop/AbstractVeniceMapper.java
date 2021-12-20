@@ -16,7 +16,8 @@ import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapred.Mapper;
 import org.apache.hadoop.mapred.OutputCollector;
 import org.apache.hadoop.mapred.Reporter;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import static com.linkedin.venice.hadoop.VenicePushJob.*;
 
@@ -32,7 +33,7 @@ import static com.linkedin.venice.hadoop.VenicePushJob.*;
 public abstract class AbstractVeniceMapper<INPUT_KEY, INPUT_VALUE>
     extends AbstractMapReduceTask
     implements Mapper<INPUT_KEY, INPUT_VALUE, BytesWritable, BytesWritable> {
-  private static final Logger LOGGER = Logger.getLogger(AbstractVeniceMapper.class);
+  private static final Logger LOGGER = LogManager.getLogger(AbstractVeniceMapper.class);
   private static final int TASK_ID_WHICH_SHOULD_SPRAY_ALL_PARTITIONS = 0;
 
   private CompressorFactory compressorFactory;

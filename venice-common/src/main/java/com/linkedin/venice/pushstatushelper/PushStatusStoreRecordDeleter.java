@@ -6,14 +6,15 @@ import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.util.Optional;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
  * PushStatusRecordDeleter is a class help controller purge push status of outdated versions.
  */
 public class PushStatusStoreRecordDeleter implements AutoCloseable {
-  private static final Logger logger = Logger.getLogger(PushStatusStoreRecordDeleter.class);
+  private static final Logger logger = LogManager.getLogger(PushStatusStoreRecordDeleter.class);
   private final PushStatusStoreVeniceWriterCache veniceWriterCache;
 
   public PushStatusStoreRecordDeleter(VeniceWriterFactory veniceWriterFactory) {

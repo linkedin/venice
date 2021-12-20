@@ -31,7 +31,6 @@ import com.linkedin.venice.hadoop.pbnj.PostBulkLoadAnalysisMapper;
 import com.linkedin.venice.hadoop.ssl.SSLConfigurator;
 import com.linkedin.venice.hadoop.ssl.TempFileSSLConfigurator;
 import com.linkedin.venice.hadoop.ssl.UserCredentialsFactory;
-import com.linkedin.venice.schema.AvroSchemaParseUtils;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
@@ -42,6 +41,7 @@ import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreRecordDeleter;
+import com.linkedin.venice.schema.AvroSchemaParseUtils;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
@@ -94,7 +94,8 @@ import org.apache.hadoop.mapred.RunningJob;
 import org.apache.hadoop.mapred.lib.NullOutputFormat;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.producer.ProducerConfig;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import static com.linkedin.venice.CommonConfigKeys.*;
 import static com.linkedin.venice.ConfigKeys.*;
@@ -103,6 +104,7 @@ import static com.linkedin.venice.status.BatchJobHeartbeatConfigs.*;
 import static com.linkedin.venice.utils.ByteUtils.*;
 import static org.apache.hadoop.mapreduce.MRJobConfig.*;
 import static org.apache.hadoop.security.UserGroupInformation.*;
+
 
 /**
  * This class sets up the Hadoop job used to push data to Venice.
@@ -302,7 +304,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
    * The rewind override when performing re-push with an ongoing incremental push to RT to prevent data loss.
    */
   public static final long RE_PUSH_REWIND_OVERRIDE_WITH_INCREMENTAL_PUSH_TO_RT_IN_SECONDS = 7 * Time.SECONDS_PER_DAY;
-  private static final Logger logger = Logger.getLogger(VenicePushJob.class);
+  private static final Logger logger = LogManager.getLogger(VenicePushJob.class);
 
   /**
    * Since the job is calculating the raw data file size, which is not accurate because of compression,

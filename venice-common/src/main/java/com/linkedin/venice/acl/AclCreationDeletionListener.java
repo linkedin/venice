@@ -2,14 +2,15 @@ package com.linkedin.venice.acl;
 
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
  * Update access controller resource list when a store is created/deleted
  */
 public class AclCreationDeletionListener implements StoreDataChangedListener {
-  private static final Logger logger = Logger.getLogger(AclCreationDeletionListener.class);
+  private static final Logger logger = LogManager.getLogger(AclCreationDeletionListener.class);
   private final DynamicAccessController accessController;
 
   public AclCreationDeletionListener(DynamicAccessController accessController) {

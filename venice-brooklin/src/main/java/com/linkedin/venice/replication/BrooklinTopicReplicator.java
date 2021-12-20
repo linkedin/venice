@@ -11,8 +11,8 @@ import com.linkedin.datastream.common.RestliUtils;
 import com.linkedin.r2.transport.common.bridge.client.TransportClientAdapter;
 import com.linkedin.r2.transport.http.client.HttpClientFactory;
 import com.linkedin.restli.client.RestClient;
-import com.linkedin.security.ssl.access.control.SSLEngineComponentFactoryImpl;
 import com.linkedin.restli.client.RestLiResponseException;
+import com.linkedin.security.ssl.access.control.SSLEngineComponentFactoryImpl;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -35,7 +35,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLParameters;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.codehaus.jackson.map.ObjectMapper;
 
 import static com.linkedin.venice.offsets.OffsetRecord.*;
@@ -59,9 +60,9 @@ public class BrooklinTopicReplicator extends TopicReplicator {
   public static final String KAFKA_PPREFIX = "kafka://";
   public static final String SSL_KAFKA_PREFIX = "kafkassl://";
 
-  private static final Logger logger = Logger.getLogger(TopicManager.class);
+  private static final Logger logger = LogManager.getLogger(TopicManager.class);
 
-  private boolean isSSLToKafka;
+  private final boolean isSSLToKafka;
 
   /**
    * Main constructor. Used by reflection.

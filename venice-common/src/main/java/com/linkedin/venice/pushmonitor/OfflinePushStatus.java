@@ -13,14 +13,14 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.codehaus.jackson.annotate.JsonIgnore;
 
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.*;
@@ -30,7 +30,7 @@ import static com.linkedin.venice.pushmonitor.ExecutionStatus.*;
  * Class stores all the statuses and history of one offline push.
  */
 public class OfflinePushStatus {
-  private static final Logger logger = Logger.getLogger(OfflinePushStatus.class);
+  private static final Logger logger = LogManager.getLogger(OfflinePushStatus.class);
   private final String kafkaTopic;
   private final int numberOfPartition;
   private final int replicationFactor;

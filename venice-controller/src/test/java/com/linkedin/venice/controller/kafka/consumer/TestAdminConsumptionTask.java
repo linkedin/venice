@@ -1,6 +1,6 @@
 package com.linkedin.venice.controller.kafka.consumer;
 
-import com.linkedin.venice.admin.InMemoryAdminTopicMetadataAccssor;
+import com.linkedin.venice.admin.InMemoryAdminTopicMetadataAccessor;
 import com.linkedin.venice.admin.InMemoryExecutionIdAccessor;
 import com.linkedin.venice.controller.AdminTopicMetadataAccessor;
 import com.linkedin.venice.controller.ExecutionIdAccessor;
@@ -137,7 +137,7 @@ public class TestAdminConsumptionTask {
     doReturn(true).when(admin).isLeaderControllerFor(clusterName);
 
     offsetManager = new InMemoryOffsetManager();
-    adminTopicMetadataAccessor = new InMemoryAdminTopicMetadataAccssor();
+    adminTopicMetadataAccessor = new InMemoryAdminTopicMetadataAccessor();
 
     TopicManager topicManager = mock(TopicManager.class);
     // By default, topic has already been created

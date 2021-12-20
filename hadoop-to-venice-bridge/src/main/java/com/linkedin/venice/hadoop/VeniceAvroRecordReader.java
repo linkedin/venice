@@ -1,5 +1,6 @@
 package com.linkedin.venice.hadoop;
 
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.etl.ETLUtils;
 import com.linkedin.venice.etl.ETLValueSchemaTransformation;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -8,9 +9,6 @@ import com.linkedin.venice.schema.AvroSchemaParseUtils;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
-
-import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
-
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.Collections;
@@ -26,13 +24,14 @@ import org.apache.avro.mapred.AvroWrapper;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.NullWritable;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import static com.linkedin.venice.hadoop.VenicePushJob.*;
 
 
 public class VeniceAvroRecordReader extends AbstractVeniceRecordReader<AvroWrapper<IndexedRecord>, NullWritable> {
-  private static final Logger LOGGER = Logger.getLogger(VeniceAvroRecordReader.class);
+  private static final Logger LOGGER = LogManager.getLogger(VeniceAvroRecordReader.class);
 
   private int keyFieldPos;
   private int valueFieldPos;
@@ -43,7 +42,7 @@ public class VeniceAvroRecordReader extends AbstractVeniceRecordReader<AvroWrapp
   private Schema storeSchema;
   private Schema fileSchema;
 
-  private ETLValueSchemaTransformation etlValueSchemaTransformation;
+  private final ETLValueSchemaTransformation etlValueSchemaTransformation;
 
   /**
    * This constructor is used when data is read from HDFS.

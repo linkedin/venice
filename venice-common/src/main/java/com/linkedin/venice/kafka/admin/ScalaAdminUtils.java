@@ -24,7 +24,8 @@ import org.apache.kafka.clients.admin.TopicDescription;
 import org.apache.kafka.common.KafkaFuture;
 import org.apache.kafka.common.config.TopicConfig;
 import org.apache.kafka.common.internals.Topic;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import scala.collection.JavaConversions;
 
 
@@ -34,7 +35,7 @@ import scala.collection.JavaConversions;
  * to make sure no one is using ScalaAdminUtils.class for kafka.admin.class.
  */
 public class ScalaAdminUtils implements KafkaAdminWrapper {
-  private static final Logger logger = Logger.getLogger(ScalaAdminUtils.class);
+  private static final Logger logger = LogManager.getLogger(ScalaAdminUtils.class);
   public static final int DEFAULT_SESSION_TIMEOUT_MS = 10 * Time.MS_PER_SECOND;
   public static final int DEFAULT_CONNECTION_TIMEOUT_MS = 8 * Time.MS_PER_SECOND;
 

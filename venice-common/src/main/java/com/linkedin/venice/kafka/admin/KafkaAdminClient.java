@@ -31,14 +31,15 @@ import org.apache.kafka.common.errors.InvalidReplicationFactorException;
 import org.apache.kafka.common.errors.InvalidTopicException;
 import org.apache.kafka.common.errors.TopicExistsException;
 import org.apache.kafka.common.errors.UnknownTopicOrPartitionException;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.utils.Time.*;
 
 
 public class KafkaAdminClient implements KafkaAdminWrapper {
-  private static final Logger logger = Logger.getLogger(KafkaAdminClient.class);
+  private static final Logger logger = LogManager.getLogger(KafkaAdminClient.class);
   private AdminClient kafkaAdminClient;
   private Long maxRetryInMs;
 

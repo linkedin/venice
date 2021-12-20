@@ -5,17 +5,15 @@ import com.linkedin.venice.client.store.transport.D2TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponseV2;
-
 import io.tehuti.utils.SystemTime;
 import io.tehuti.utils.Time;
-
-import org.apache.log4j.Logger;
-import org.codehaus.jackson.map.DeserializationConfig;
-import org.codehaus.jackson.map.ObjectMapper;
-
 import java.util.Collections;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+import org.codehaus.jackson.map.DeserializationConfig;
+import org.codehaus.jackson.map.ObjectMapper;
 
 import static com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponseV2.*;
 
@@ -25,7 +23,7 @@ import static com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponseV2.*;
  * d2://VeniceRouter. Then build the transport client based on the d2 service it found.
  */
 public class D2ServiceDiscovery {
-  private static final Logger LOGGER = Logger.getLogger(D2ServiceDiscovery.class);
+  private static final Logger LOGGER = LogManager.getLogger(D2ServiceDiscovery.class);
   public static final String TYPE_D2_SERVICE_DISCOVERY = "discover_cluster";
   private final Time time = new SystemTime(); // TODO: Make it injectable if we need to control time via tests.
 

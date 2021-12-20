@@ -7,15 +7,9 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.PathResourceRegistry;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import com.linkedin.venice.utils.locks.ClusterLockManager;
-import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
-
-import org.apache.helix.AccessOption;
-import org.apache.helix.manager.zk.ZkBaseDataAccessor;
-import org.apache.helix.zookeeper.impl.client.ZkClient;
-import org.apache.log4j.Logger;
-
 import java.nio.file.Paths;
 import java.util.Collection;
 import java.util.List;
@@ -25,12 +19,17 @@ import java.util.Set;
 import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
+import org.apache.helix.AccessOption;
+import org.apache.helix.manager.zk.ZkBaseDataAccessor;
+import org.apache.helix.zookeeper.impl.client.ZkClient;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import static com.linkedin.venice.common.VeniceSystemStoreUtils.*;
 
 
 public class CachedReadOnlyStoreRepository implements ReadOnlyStoreRepository {
-  protected static final Logger logger = Logger.getLogger(CachedReadOnlyStoreRepository.class);
+  protected static final Logger logger = LogManager.getLogger(CachedReadOnlyStoreRepository.class);
 
   public static final String STORE_REPOSITORY_PATH = "/Stores";
 

@@ -5,9 +5,9 @@ import com.linkedin.venice.hadoop.MRJobCounterHelper;
 import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperValue;
 import com.linkedin.venice.hadoop.input.kafka.avro.MapperValueType;
+import com.linkedin.venice.hadoop.input.kafka.chunk.ChunkKeyValueTransformer;
 import com.linkedin.venice.hadoop.input.kafka.chunk.ChunkKeyValueTransformerImpl;
 import com.linkedin.venice.hadoop.input.kafka.chunk.RawKeyBytesAndChunkedKeySuffix;
-import com.linkedin.venice.hadoop.input.kafka.chunk.ChunkKeyValueTransformer;
 import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
 import com.linkedin.venice.kafka.protocol.Delete;
@@ -30,7 +30,8 @@ import org.apache.hadoop.mapred.Reporter;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.common.TopicPartition;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -49,7 +50,7 @@ public class KafkaInputRecordReader implements RecordReader<BytesWritable, Kafka
   public static final String KIF_RECORD_READER_KAFKA_CONFIG_PREFIX = "kif.record.reader.kafka.";
 
   private static final ByteBuffer EMPTY_BYTE_BUFFER = ByteBuffer.wrap(new byte[0]);
-  private static final Logger LOGGER = Logger.getLogger(KafkaInputRecordReader.class);
+  private static final Logger LOGGER = LogManager.getLogger(KafkaInputRecordReader.class);
   private static final Long CONSUMER_POLL_TIMEOUT = TimeUnit.SECONDS.toMillis(1); // 1 second
   private static final long LOG_RECORD_INTERVAL = 100000; //100K
   /**

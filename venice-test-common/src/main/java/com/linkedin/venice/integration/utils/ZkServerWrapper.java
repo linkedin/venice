@@ -4,8 +4,14 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
-
-import org.apache.log4j.Logger;
+import java.io.File;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Properties;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.TimeUnit;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.apache.zookeeper.CreateMode;
 import org.apache.zookeeper.ZooDefs;
 import org.apache.zookeeper.ZooKeeper;
@@ -15,12 +21,6 @@ import org.apache.zookeeper.server.ZooKeeperServer;
 import org.apache.zookeeper.server.persistence.FileTxnSnapLog;
 import org.apache.zookeeper.server.quorum.QuorumPeerConfig;
 
-import java.io.File;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Properties;
-import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.concurrent.TimeUnit;
 
 /**
  * This class contains a ZK server, and provides facilities for cleaning up
@@ -28,7 +28,7 @@ import java.util.concurrent.TimeUnit;
  */
 public class ZkServerWrapper extends ProcessWrapper {
   // Class-level state and APIs
-  private static final Logger LOGGER = Logger.getLogger(ZkServerWrapper.class);
+  private static final Logger LOGGER = LogManager.getLogger(ZkServerWrapper.class);
 
   public static final String SERVICE_NAME = "Zookeeper";
   private static final int MAX_WAIT_TIME_DURING_STARTUP = 5 * Time.MS_PER_SECOND;

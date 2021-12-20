@@ -14,11 +14,12 @@ import io.tehuti.metrics.stats.Rate;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.util.Map;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 public class ClientStats extends com.linkedin.venice.client.stats.ClientStats {
-  private static final Logger LOGGER = Logger.getLogger(ClientStats.class);
+  private static final Logger LOGGER = LogManager.getLogger(ClientStats.class);
 
   private final String storeName;
 

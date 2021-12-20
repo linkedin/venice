@@ -30,7 +30,6 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
-import io.netty.handler.codec.http.DefaultFullHttpResponse;
 import io.netty.handler.codec.http.FullHttpResponse;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpResponseStatus;
@@ -48,14 +47,15 @@ import java.util.concurrent.locks.ReentrantLock;
 import javax.annotation.Nonnull;
 import org.apache.http.HttpHeaders;
 import org.apache.http.HttpStatus;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import static com.linkedin.venice.HttpConstants.*;
 import static io.netty.handler.codec.http.HttpResponseStatus.*;
 
 
 public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, VenicePath, RouterKey> {
-  private static final Logger logger = Logger.getLogger(VeniceDispatcher.class);
+  private static final Logger logger = LogManager.getLogger(VeniceDispatcher.class);
   /**
    * This map is used to capture all the {@link CompletableFuture} returned by {@link #storageNodeClient},
    * and it is used to clean up the leaked futures in {@link LeakedCompletableFutureCleanupService}.

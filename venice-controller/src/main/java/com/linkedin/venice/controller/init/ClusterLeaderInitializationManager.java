@@ -3,9 +3,10 @@ package com.linkedin.venice.controller.init;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.List;
 import java.util.Map;
-
 import java.util.concurrent.CompletableFuture;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 
 /**
  * Takes care of executing each routine once per cluster. If a routine fails, it will have
@@ -13,7 +14,7 @@ import org.apache.log4j.Logger;
  * for which the routine previously failed.
  */
 public class ClusterLeaderInitializationManager implements ClusterLeaderInitializationRoutine {
-  private static final Logger LOGGER = Logger.getLogger(ClusterLeaderInitializationManager.class);
+  private static final Logger LOGGER = LogManager.getLogger(ClusterLeaderInitializationManager.class);
 
   /**
    * Used to keep track of which clusters have been initialized with which routine.

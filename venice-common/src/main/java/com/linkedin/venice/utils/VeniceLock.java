@@ -6,13 +6,15 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Lock;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 
 /**
  * Venice wrapper around a {@link Lock} object to record metrics and emit logs when lock acquisition is taking too long.
  */
 public class VeniceLock {
-  protected static final Logger LOGGER = Logger.getLogger(VeniceLock.class);
+  protected static final Logger LOGGER = LogManager.getLogger(VeniceLock.class);
   private static final long DEFAULT_LOCK_OPERATION_REPORTING_THRESHOLD_MS = 1000;
   private final Lock lock;
   private final String lockDescription;

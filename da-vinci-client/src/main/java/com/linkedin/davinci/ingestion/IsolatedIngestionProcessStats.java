@@ -7,7 +7,8 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -18,7 +19,7 @@ import org.apache.log4j.Logger;
  * In order to distinguish the collected metrics from the main process metrics, prefix "ingestion_isolation" is added to every metric names.
  */
 public class IsolatedIngestionProcessStats extends AbstractVeniceStats {
-    private static final Logger logger = Logger.getLogger(IsolatedIngestionProcessStats.class);
+    private static final Logger logger = LogManager.getLogger(IsolatedIngestionProcessStats.class);
 
     private static final String METRIC_PREFIX = "ingestion_isolation";
 

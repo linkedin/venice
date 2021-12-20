@@ -32,13 +32,15 @@ import java.util.concurrent.TimeoutException;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.apache.http.client.utils.URLEncodedUtils;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
 import static com.linkedin.venice.meta.Version.*;
 
+
 public class ControllerClient implements Closeable {
-  private final static Logger logger = Logger.getLogger(ControllerClient.class);
+  private final static Logger logger = LogManager.getLogger(ControllerClient.class);
 
   private static final int DEFAULT_MAX_ATTEMPTS = 10;
   private static final int QUERY_JOB_STATUS_TIMEOUT = 60 * Time.MS_PER_SECOND;
@@ -47,7 +49,7 @@ public class ControllerClient implements Closeable {
   private final String clusterName;
   private final String localHostName;
   private String masterControllerUrl;
-  private List<String> controllerDiscoveryUrls;
+  private final List<String> controllerDiscoveryUrls;
 
   private static final Map<String, ControllerClient> clusterToClientMap = new VeniceConcurrentHashMap<>();
 
@@ -67,7 +69,7 @@ public class ControllerClient implements Closeable {
   }
 
   public static ControllerClient getClusterToClientMapEntry(String clusterName, String url) {
-    return (ControllerClient)getClusterToClientMap().get(clusterName + url);
+    return getClusterToClientMap().get(clusterName + url);
   }
 
   public static boolean clusterToClientMapContains(String clusterName, String url) {

@@ -6,7 +6,6 @@ import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
-
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.File;
@@ -15,7 +14,8 @@ import java.io.FileWriter;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -68,7 +68,7 @@ import org.apache.log4j.Logger;
  *  patterns are narrowed down, checks can be enforced if necessary.
  */
 public class VeniceConfigLoader {
-  private static final Logger logger = Logger.getLogger(VeniceConfigLoader.class);
+  private static final Logger logger = LogManager.getLogger(VeniceConfigLoader.class);
 
   public static final String VENICE_CONFIG_DIR = "VENICE_CONFIG_DIR";
   public static final String CLUSTER_PROPERTIES_FILE = "cluster.properties";

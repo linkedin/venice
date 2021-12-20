@@ -1,6 +1,8 @@
 package com.linkedin.venice.integration.utils;
 
+import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.ddsstorage.linetty4.ssl.SslEngineComponentFactoryImpl;
+import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
 import com.linkedin.security.ssl.access.control.SSLEngineComponentFactoryImpl;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -15,16 +17,16 @@ import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
-
-import com.linkedin.davinci.config.VeniceConfigLoader;
-import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
-
 import io.tehuti.metrics.MetricsRepository;
-
+import java.io.File;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.Properties;
+import java.util.concurrent.TimeUnit;
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.CommandLineParser;
 import org.apache.commons.cli.DefaultParser;
@@ -32,13 +34,8 @@ import org.apache.commons.cli.Option;
 import org.apache.commons.cli.Options;
 import org.apache.commons.io.FileUtils;
 import org.apache.kafka.common.protocol.SecurityProtocol;
-
-import java.io.File;
-import java.io.IOException;
-import java.util.Optional;
-import java.util.Properties;
-import java.util.concurrent.TimeUnit;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.*;
 import static com.linkedin.venice.ConfigKeys.*;
@@ -49,7 +46,7 @@ import static com.linkedin.venice.meta.PersistenceType.*;
  * A wrapper for the {@link com.linkedin.venice.server.VeniceServer}.
  */
 public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware {
-  private static final Logger logger = Logger.getLogger(VeniceServerWrapper.class);
+  private static final Logger logger = LogManager.getLogger(VeniceServerWrapper.class);
   public static final String SERVICE_NAME = "VeniceServer";
 
   /**

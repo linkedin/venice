@@ -13,7 +13,8 @@ import com.linkedin.venice.pushmonitor.ReadOnlyPartitionStatus;
 import com.linkedin.venice.stats.AbstractVeniceAggStats;
 import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -23,7 +24,7 @@ import org.apache.log4j.Logger;
  */
 public class AggPartitionHealthStats extends AbstractVeniceAggStats<PartitionHealthStats> implements RoutingDataRepository.RoutingDataChangedListener {
 
-  private static final Logger logger = Logger.getLogger(AggPartitionHealthStats.class);
+  private static final Logger logger = LogManager.getLogger(AggPartitionHealthStats.class);
 
   private final ReadOnlyStoreRepository storeRepository;
 
@@ -40,7 +41,7 @@ public class AggPartitionHealthStats extends AbstractVeniceAggStats<PartitionHea
 
   public AggPartitionHealthStats(String clusterName, MetricsRepository metricsRepository, RoutingDataRepository routingDataRepository,
       ReadOnlyStoreRepository storeRepository, PushMonitor pushMonitor) {
-    super(clusterName, metricsRepository, (metricsRepo, resourceName) -> new PartitionHealthStats(metricsRepo, resourceName));
+    super(clusterName, metricsRepository, PartitionHealthStats::new);
     this.storeRepository = storeRepository;
     this.pushMonitor = pushMonitor;
 

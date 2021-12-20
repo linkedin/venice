@@ -10,7 +10,8 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import org.apache.helix.participant.statemachine.StateModel;
 import org.apache.helix.participant.statemachine.StateModelFactory;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -19,7 +20,7 @@ import org.apache.log4j.Logger;
  * model definition and model factory, each factory could only create 1 type of model.
  */
 public abstract class AbstractStateModelFactory extends StateModelFactory<StateModel> {
-  protected final Logger logger = Logger.getLogger(getClass().getSimpleName());
+  protected final Logger logger = LogManager.getLogger(getClass().getSimpleName());
   private final VeniceIngestionBackend ingestionBackend;
   private final VeniceConfigLoader configService;
   private final ReadOnlyStoreRepository storeMetadataRepo;

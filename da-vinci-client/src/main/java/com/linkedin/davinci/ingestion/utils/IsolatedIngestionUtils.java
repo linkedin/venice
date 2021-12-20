@@ -63,9 +63,9 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import org.apache.avro.specific.SpecificRecordBase;
 import org.apache.commons.io.IOUtils;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
-import static com.linkedin.parseq.Task.*;
 import static com.linkedin.venice.CommonConfigKeys.*;
 import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.ingestion.protocol.enums.IngestionAction.*;
@@ -82,7 +82,7 @@ public class IsolatedIngestionUtils {
 
   public static final String PID = "pid";
 
-  private static final Logger logger = Logger.getLogger(IsolatedIngestionUtils.class);
+  private static final Logger logger = LogManager.getLogger(IsolatedIngestionUtils.class);
   private static final int D2_STARTUP_TIMEOUT = 60000;
   private static final int SHELL_COMMAND_WAIT_TIME = 1000;
 

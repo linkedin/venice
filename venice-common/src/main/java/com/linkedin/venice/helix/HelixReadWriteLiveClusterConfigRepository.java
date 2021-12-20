@@ -4,14 +4,15 @@ import com.linkedin.venice.meta.LiveClusterConfig;
 import com.linkedin.venice.meta.ReadWriteLiveClusterConfigRepository;
 import com.linkedin.venice.utils.HelixUtils;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
  * This class is used to modify live cluster configs. The expected user is Venice Controller.
  */
 public class HelixReadWriteLiveClusterConfigRepository extends HelixReadOnlyLiveClusterConfigRepository implements ReadWriteLiveClusterConfigRepository {
-  private final Logger logger = Logger.getLogger(HelixReadWriteLiveClusterConfigRepository.class);
+  private final Logger logger = LogManager.getLogger(HelixReadWriteLiveClusterConfigRepository.class);
 
   public HelixReadWriteLiveClusterConfigRepository(ZkClient zkClient, HelixAdapterSerializer adapter, String clusterName) {
     super(zkClient, adapter, clusterName);

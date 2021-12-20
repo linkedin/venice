@@ -13,14 +13,15 @@ import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
  * DefaultIngestionBackend is the default ingestion backend implementation. Ingestion will be done in the same JVM as the application.
  */
 public class DefaultIngestionBackend implements DaVinciIngestionBackend, VeniceIngestionBackend {
-  private static final Logger logger = Logger.getLogger(DefaultIngestionBackend.class);
+  private static final Logger logger = LogManager.getLogger(DefaultIngestionBackend.class);
   private final StorageMetadataService storageMetadataService;
   private final StorageService storageService;
   private final KafkaStoreIngestionService storeIngestionService;

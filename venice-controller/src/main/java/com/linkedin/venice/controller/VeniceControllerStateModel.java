@@ -8,9 +8,8 @@ import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.replication.TopicReplicator;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
-
 import io.tehuti.metrics.MetricsRepository;
-
+import java.util.Optional;
 import org.apache.helix.HelixManagerFactory;
 import org.apache.helix.InstanceType;
 import org.apache.helix.NotificationContext;
@@ -21,9 +20,8 @@ import org.apache.helix.participant.statemachine.StateModelParser;
 import org.apache.helix.participant.statemachine.StateTransitionError;
 import org.apache.helix.participant.statemachine.Transition;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
-import org.apache.log4j.Logger;
-
-import java.util.Optional;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -36,7 +34,7 @@ import java.util.Optional;
 @StateModelInfo(initialState = HelixState.OFFLINE_STATE, states = {HelixState.LEADER_STATE, HelixState.STANDBY_STATE})
 public class VeniceControllerStateModel extends StateModel {
   public static final String PARTITION_SUFFIX = "_0";
-  private static final Logger logger = Logger.getLogger(VeniceControllerStateModel.class);
+  private static final Logger logger = LogManager.getLogger(VeniceControllerStateModel.class);
 
   private final ZkClient zkClient;
   private final HelixAdapterSerializer adapterSerializer;

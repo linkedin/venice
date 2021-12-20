@@ -1,6 +1,7 @@
 package com.linkedin.davinci.notifier;
 
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -8,7 +9,7 @@ import org.apache.log4j.Logger;
  */
 public class LogNotifier implements VeniceNotifier {
 
-  private static final Logger logger = Logger.getLogger(LogNotifier.class);
+  private static final Logger logger = LogManager.getLogger(LogNotifier.class);
   @Override
   public void started(String kafkaTopic, int partitionId, String message) {
     logger.info(logMessage("Push started", kafkaTopic, partitionId, null, message));

@@ -21,11 +21,11 @@ import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.meta.systemstore.schemas.CurrentVersionStates;
 import com.linkedin.venice.meta.systemstore.schemas.StoreVersionState;
-import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.rmd.ReplicationMetadataSchemaEntry;
 import com.linkedin.venice.schema.rmd.ReplicationMetadataVersionId;
+import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.system.store.MetaStoreDataType;
 import com.linkedin.venice.systemstore.schemas.StoreClusterConfig;
@@ -47,7 +47,8 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.system.store.MetaStoreWriter.*;
@@ -68,7 +69,7 @@ public abstract class NativeMetadataRepository
   protected static final long THIN_CLIENT_RETRY_BACKOFF_MS = 10000;
 
   private static final long DEFAULT_REFRESH_INTERVAL_IN_SECONDS = 60;
-  private static final Logger logger = Logger.getLogger(NativeMetadataRepository.class);
+  private static final Logger logger = LogManager.getLogger(NativeMetadataRepository.class);
 
   protected final ClientConfig clientConfig;
 

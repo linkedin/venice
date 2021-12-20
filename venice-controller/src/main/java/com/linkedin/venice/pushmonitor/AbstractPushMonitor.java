@@ -17,10 +17,9 @@ import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.replication.TopicReplicator;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import com.linkedin.venice.utils.locks.ClusterLockManager;
-import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
-
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -31,8 +30,8 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
-
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -50,7 +49,7 @@ public abstract class AbstractPushMonitor
     implements PushMonitor, OfflinePushAccessor.PartitionStatusListener, RoutingDataRepository.RoutingDataChangedListener {
   public static final int MAX_PUSH_TO_KEEP = 5;
 
-  protected final Logger logger = Logger.getLogger(getClass().getSimpleName());
+  protected final Logger logger = LogManager.getLogger(getClass().getSimpleName());
 
   private final OfflinePushAccessor offlinePushAccessor;
   private final String clusterName;

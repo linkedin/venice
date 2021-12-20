@@ -11,7 +11,6 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -21,10 +20,10 @@ import java.util.Set;
 import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
-import org.apache.kafka.common.PartitionInfo;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.errors.RetriableException;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -33,7 +32,7 @@ import org.apache.log4j.Logger;
  */
 @NotThreadsafe
 public class ApacheKafkaConsumer implements KafkaConsumerWrapper {
-  private static final Logger logger = Logger.getLogger(ApacheKafkaConsumer.class);
+  private static final Logger logger = LogManager.getLogger(ApacheKafkaConsumer.class);
 
   public static final String CONSUMER_POLL_RETRY_TIMES_CONFIG = "consumer.poll.retry.times";
   public static final String CONSUMER_POLL_RETRY_BACKOFF_MS_CONFIG = "consumer.poll.retry.backoff.ms";

@@ -7,7 +7,8 @@ import java.nio.ReadOnlyBufferException;
 import java.util.LinkedList;
 import java.util.List;
 import org.apache.avro.io.BinaryDecoder;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -22,10 +23,10 @@ import org.apache.log4j.Logger;
  * @param <V>
  */
 public abstract class ReadEnvelopeChunkedDeserializer<V> {
-  protected static final Logger LOGGER = Logger.getLogger(ReadEnvelopeChunkedDeserializer.class);
+  protected static final Logger LOGGER = LogManager.getLogger(ReadEnvelopeChunkedDeserializer.class);
 
   // All available deserialized bytes
-  private LinkedList<BytesContainer> buffers = new LinkedList<>();
+  private final LinkedList<BytesContainer> buffers = new LinkedList<>();
   // Current offset to deserialize
   private int currentOffset = 0;
   private int totalBytes = 0;

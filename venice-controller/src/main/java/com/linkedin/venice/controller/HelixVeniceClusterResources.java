@@ -7,24 +7,25 @@ import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controller.stats.AggPartitionHealthStats;
 import com.linkedin.venice.controller.stats.VeniceAdminStats;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
+import com.linkedin.venice.helix.HelixExternalViewRepository;
+import com.linkedin.venice.helix.HelixReadWriteSchemaRepository;
 import com.linkedin.venice.helix.HelixReadWriteSchemaRepositoryAdapter;
+import com.linkedin.venice.helix.HelixReadWriteStoreRepository;
 import com.linkedin.venice.helix.HelixReadWriteStoreRepositoryAdapter;
-import com.linkedin.venice.helix.VeniceOfflinePushMonitorAccessor;
 import com.linkedin.venice.helix.HelixStatusMessageChannel;
 import com.linkedin.venice.helix.SafeHelixManager;
+import com.linkedin.venice.helix.VeniceOfflinePushMonitorAccessor;
 import com.linkedin.venice.helix.ZkRoutersClusterManager;
 import com.linkedin.venice.helix.ZkStoreConfigAccessor;
 import com.linkedin.venice.meta.ReadWriteSchemaRepository;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.pushmonitor.AggPushHealthStats;
-import com.linkedin.venice.helix.HelixAdapterSerializer;
-import com.linkedin.venice.helix.HelixReadWriteSchemaRepository;
-import com.linkedin.venice.helix.HelixReadWriteStoreRepository;
-import com.linkedin.venice.helix.HelixExternalViewRepository;
 import com.linkedin.venice.pushmonitor.AggPushStatusCleanUpStats;
 import com.linkedin.venice.pushmonitor.LeakedPushStatusCleanUpService;
+import com.linkedin.venice.pushmonitor.PushMonitorDelegator;
 import com.linkedin.venice.replication.TopicReplicator;
 import com.linkedin.venice.stats.HelixMessageChannelStats;
 import com.linkedin.venice.system.store.MetaStoreWriter;
@@ -35,7 +36,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
-import com.linkedin.venice.pushmonitor.PushMonitorDelegator;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -43,7 +43,8 @@ import java.util.stream.Collectors;
 import org.apache.helix.HelixManagerFactory;
 import org.apache.helix.InstanceType;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -52,7 +53,7 @@ import org.apache.log4j.Logger;
  * All resources in this class is dedicated for one Venice cluster.
  */
 public class HelixVeniceClusterResources implements VeniceResource {
-  private static final Logger logger = Logger.getLogger(HelixVeniceClusterResources.class);
+  private static final Logger logger = LogManager.getLogger(HelixVeniceClusterResources.class);
 
   private final String clusterName;
   private final SafeHelixManager helixManager;

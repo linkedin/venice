@@ -1,31 +1,29 @@
 package com.linkedin.davinci.client.factory;
 
-import com.linkedin.venice.client.store.ClientConfig;
-import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.utils.VeniceProperties;
-
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.davinci.client.AvroGenericDaVinciClient;
 import com.linkedin.davinci.client.AvroSpecificDaVinciClient;
 import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.davinci.client.DaVinciConfig;
+import com.linkedin.venice.client.store.ClientConfig;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.service.ICProvider;
+import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
-
 import java.io.Closeable;
-import org.apache.avro.specific.SpecificRecord;
-import org.apache.log4j.Logger;
-
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import org.apache.avro.specific.SpecificRecord;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 public class CachingDaVinciClientFactory implements DaVinciClientFactory, Closeable {
-  private static final Logger logger = Logger.getLogger(CachingDaVinciClientFactory.class);
+  private static final Logger logger = LogManager.getLogger(CachingDaVinciClientFactory.class);
 
   protected boolean closed;
   protected final D2Client d2Client;

@@ -8,18 +8,18 @@ import com.linkedin.venice.utils.HelixUtils;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.helix.AccessOption;
 import org.apache.helix.manager.zk.ZkBaseDataAccessor;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.helix.zookeeper.zkclient.DataUpdater;
+import org.apache.helix.zookeeper.zkclient.IZkChildListener;
+import org.apache.helix.zookeeper.zkclient.IZkDataListener;
 import org.apache.helix.zookeeper.zkclient.IZkStateListener;
 import org.apache.helix.zookeeper.zkclient.exception.ZkNoNodeException;
 import org.apache.helix.zookeeper.zkclient.exception.ZkNodeExistsException;
-import org.apache.helix.zookeeper.zkclient.IZkChildListener;
-import org.apache.helix.zookeeper.zkclient.IZkDataListener;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.apache.zookeeper.Watcher;
 
 
@@ -28,12 +28,12 @@ import org.apache.zookeeper.Watcher;
  * connected to ZK cluster or not and monitor all routers' ZNodes to get how many routers live right now.
  */
 public class ZkRoutersClusterManager implements RoutersClusterManager, IZkChildListener, IZkDataListener, VeniceResource, IZkStateListener {
-  private static final Logger logger = Logger.getLogger(ZkRoutersClusterManager.class);
+  private static final Logger logger = LogManager.getLogger(ZkRoutersClusterManager.class);
   private static final String PREFIX_PATH = "/routers";
   private final String clusterName;
   private final ZkClient zkClient;
   private volatile int liveRouterCount = 0;
-  private AtomicBoolean isConnected = new AtomicBoolean(true);
+  private final AtomicBoolean isConnected = new AtomicBoolean(true);
   private volatile RoutersClusterConfig routersClusterConfig;
 
   private final ZkBaseDataAccessor<RoutersClusterConfig> dataAccessor;

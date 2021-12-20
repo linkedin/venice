@@ -24,7 +24,8 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.apache.helix.zookeeper.zkclient.IZkChildListener;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -37,7 +38,7 @@ import org.apache.log4j.Logger;
 public class PartitionStatusOnlineInstanceFinder
     implements OfflinePushAccessor.PartitionStatusListener, OnlineInstanceFinder, VeniceResource, IZkChildListener {
 
-  private static final Logger logger = Logger.getLogger(PartitionStatusOnlineInstanceFinder.class);
+  private static final Logger logger = LogManager.getLogger(PartitionStatusOnlineInstanceFinder.class);
   private final OfflinePushAccessor offlinePushAccessor;
   private final RoutingDataRepository routingDataRepository;
   private final ReadOnlyStoreRepository metadataRepo;

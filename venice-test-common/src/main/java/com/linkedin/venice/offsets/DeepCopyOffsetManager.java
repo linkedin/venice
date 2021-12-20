@@ -4,14 +4,16 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 
 /**
  * This class is used to systematically copy {@link OffsetRecord} instances rather than
  * passing them as is. This is necessary in TestAdminConsumptionTask and StoreConsumptionTaskTest.
  */
 public class DeepCopyOffsetManager implements OffsetManager {
-  private static final Logger LOGGER = Logger.getLogger(DeepCopyOffsetManager.class);
+  private static final Logger LOGGER = LogManager.getLogger(DeepCopyOffsetManager.class);
 
   private final static InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer = AvroProtocolDefinition.PARTITION_STATE.getSerializer();
 

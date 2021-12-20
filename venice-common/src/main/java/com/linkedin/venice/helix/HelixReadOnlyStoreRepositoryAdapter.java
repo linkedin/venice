@@ -10,14 +10,15 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArraySet;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
  * This repository provides an read only interface to access both system store and regular venice store.
  */
 public class HelixReadOnlyStoreRepositoryAdapter implements ReadOnlyStoreRepository {
-  private static final Logger LOGGER = Logger.getLogger(HelixReadOnlyStoreRepositoryAdapter.class);
+  private static final Logger LOGGER = LogManager.getLogger(HelixReadOnlyStoreRepositoryAdapter.class);
 
   private final HelixReadOnlyZKSharedSystemStoreRepository systemStoreRepository;
   private final ReadOnlyStoreRepository regularStoreRepository;

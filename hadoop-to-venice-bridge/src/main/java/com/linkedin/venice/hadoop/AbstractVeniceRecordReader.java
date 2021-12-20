@@ -5,10 +5,12 @@ import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.utils.Pair;
 import java.io.Closeable;
 import java.util.Iterator;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 
 public abstract class AbstractVeniceRecordReader<INPUT_KEY, INPUT_VALUE> implements Closeable {
-  private static final Logger LOGGER = Logger.getLogger(AbstractVeniceRecordReader.class);
+  private static final Logger LOGGER = LogManager.getLogger(AbstractVeniceRecordReader.class);
 
   protected String topicName;
 
