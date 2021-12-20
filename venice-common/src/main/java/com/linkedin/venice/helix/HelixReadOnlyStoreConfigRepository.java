@@ -20,7 +20,8 @@ import java.util.stream.Collectors;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.helix.zookeeper.zkclient.IZkChildListener;
 import org.apache.helix.zookeeper.zkclient.IZkDataListener;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -31,16 +32,13 @@ import org.apache.log4j.Logger;
  * This class is non-cluster specified.
  */
 public class HelixReadOnlyStoreConfigRepository implements ReadOnlyStoreConfigRepository, VeniceResource {
-  public static final Logger logger = Logger.getLogger(HelixReadOnlyStoreConfigRepository.class);
+  public static final Logger logger = LogManager.getLogger(HelixReadOnlyStoreConfigRepository.class);
 
-  private AtomicReference<Map<String, StoreConfig>> storeConfigMap;
-
-  private ZkStoreConfigAccessor accessor;
-
-  private StoreConfigChangedListener storeConfigChangedListener;
-  private StoreConfigAddedOrDeletedChangedListener storeConfigAddedOrDeletedListener;
-
-  private ZkClient zkClient;
+  private final AtomicReference<Map<String, StoreConfig>> storeConfigMap;
+  private final ZkStoreConfigAccessor accessor;
+  private final StoreConfigChangedListener storeConfigChangedListener;
+  private final StoreConfigAddedOrDeletedChangedListener storeConfigAddedOrDeletedListener;
+  private final ZkClient zkClient;
   private final CachedResourceZkStateListener zkStateListener;
   private final int refreshAttemptsForZkReconnect;
   private final long refreshIntervalForZkReconnectInMs;

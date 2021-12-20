@@ -26,7 +26,8 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import static com.linkedin.venice.router.api.VenicePathParser.*;
 import static com.linkedin.venice.router.api.VenicePathParserHelper.*;
@@ -36,7 +37,7 @@ import static io.netty.handler.codec.http.HttpResponseStatus.*;
 
 @ChannelHandler.Sharable
 public class AdminOperationsHandler extends SimpleChannelInboundHandler<HttpRequest> {
-  private static final Logger logger = Logger.getLogger(AdminOperationsHandler.class);
+  private static final Logger logger = LogManager.getLogger(AdminOperationsHandler.class);
   private static final byte[] EMPTY_BYTES = new byte[0];
   private static final RedundantExceptionFilter filter = RedundantExceptionFilter.getRedundantExceptionFilter();
   private static final ObjectMapper mapper = new ObjectMapper();

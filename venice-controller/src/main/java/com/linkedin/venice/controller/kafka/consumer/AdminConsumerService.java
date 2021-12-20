@@ -3,12 +3,12 @@ package com.linkedin.venice.controller.kafka.consumer;
 import com.linkedin.venice.client.schema.SchemaReader;
 import com.linkedin.venice.controller.VeniceControllerConfig;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
-import com.linkedin.venice.controller.stats.AdminConsumptionStats;
 import com.linkedin.venice.controller.ZkAdminTopicMetadataAccessor;
+import com.linkedin.venice.controller.stats.AdminConsumptionStats;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
 import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.KafkaClientFactory.MetricsParameters;
+import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
@@ -17,17 +17,14 @@ import com.linkedin.venice.utils.DaemonThreadFactory;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Optional;
 import java.util.Properties;
-import org.apache.kafka.clients.consumer.ConsumerConfig;
-import org.apache.log4j.Logger;
-
 import java.util.concurrent.ThreadFactory;
+import org.apache.kafka.clients.consumer.ConsumerConfig;
 
 
 /**
  * One consumer service for one cluster.
  */
 public class AdminConsumerService extends AbstractVeniceService {
-  private static final Logger logger = Logger.getLogger(AdminConsumerService.class);
   private static final long WAITING_TIME_FOR_STOP_IN_MS = 5000;
 
   private final VeniceControllerConfig config;
@@ -40,7 +37,7 @@ public class AdminConsumerService extends AbstractVeniceService {
   private final Optional<String> remoteKafkaZkAddress;
   // Only support single cluster right now
   private AdminConsumptionTask consumerTask;
-  private ThreadFactory threadFactory = new DaemonThreadFactory("AdminTopicConsumer");
+  private final ThreadFactory threadFactory = new DaemonThreadFactory("AdminTopicConsumer");
   private Thread consumerThread;
 
   private final Optional<SchemaReader> kafkaMessageEnvelopeSchemaReader;

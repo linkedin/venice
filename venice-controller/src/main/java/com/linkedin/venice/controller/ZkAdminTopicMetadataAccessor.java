@@ -11,11 +11,12 @@ import java.util.Map;
 import org.apache.helix.AccessOption;
 import org.apache.helix.manager.zk.ZkBaseDataAccessor;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 public class ZkAdminTopicMetadataAccessor extends AdminTopicMetadataAccessor {
-  private static final Logger LOGGER = Logger.getLogger(ZkAdminTopicMetadataAccessor.class);
+  private static final Logger LOGGER = LogManager.getLogger(ZkAdminTopicMetadataAccessor.class);
   private static final int ZK_UPDATE_RETRY = 3;
   private static final long ZK_UPDATE_RETRY_DELAY_MS = 1000;
   private static final String ADMIN_TOPIC_METADATA_NODE = "/adminTopicMetadata";

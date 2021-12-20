@@ -4,7 +4,6 @@ import java.util.AbstractSet;
 import java.util.Iterator;
 import java.util.NoSuchElementException;
 import java.util.Set;
-import org.apache.log4j.Logger;
 
 
 /**
@@ -12,7 +11,6 @@ import org.apache.log4j.Logger;
  * but it's slow in add(), contains(), remove(), etc.
  */
 public class ArrayBasedPrimitiveIntegerSet extends AbstractSet<Integer> implements Set<Integer> {
-  private static final Logger logger = Logger.getLogger(ArrayBasedPrimitiveIntegerSet.class);
   private static final int[] EMPTY = new int[0];
   private int size;
   private int[] elements = EMPTY;

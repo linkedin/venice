@@ -7,13 +7,14 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
-import java.io.IOException;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 
 public class R2ClientCallback implements Callback<RestResponse> {
-  private static final Logger logger = Logger.getLogger(R2ClientCallback.class);
+  private static final Logger logger = LogManager.getLogger(R2ClientCallback.class);
   private final Consumer<PortableHttpResponse> responseConsumer;
   private final Consumer<Throwable>  failedCallback;
   private final BooleanSupplier cancelledCallBack;

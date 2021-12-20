@@ -14,12 +14,13 @@ import io.netty.handler.ssl.SslHandler;
 import io.netty.util.ReferenceCountUtil;
 import java.security.cert.X509Certificate;
 import java.util.Optional;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 @ChannelHandler.Sharable
 public class IsolatedIngestionServerAclHandler extends SimpleChannelInboundHandler<HttpRequest> {
-  private static final Logger logger = Logger.getLogger(IsolatedIngestionServerAclHandler.class);
+  private static final Logger logger = LogManager.getLogger(IsolatedIngestionServerAclHandler.class);
   private final String allowedPrincipalName;
 
   public IsolatedIngestionServerAclHandler(String allowedPrincipalName) {

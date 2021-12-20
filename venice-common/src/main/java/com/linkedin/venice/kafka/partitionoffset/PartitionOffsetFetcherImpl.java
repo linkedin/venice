@@ -30,13 +30,14 @@ import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.OffsetAndTimestamp;
 import org.apache.kafka.common.PartitionInfo;
 import org.apache.kafka.common.TopicPartition;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import static com.linkedin.venice.offsets.OffsetRecord.*;
 
 
 public class PartitionOffsetFetcherImpl implements PartitionOffsetFetcher {
-  private static final Logger logger = Logger.getLogger(PartitionOffsetFetcherImpl.class);
+  private static final Logger logger = LogManager.getLogger(PartitionOffsetFetcherImpl.class);
   private static final List<Class<? extends Throwable>> KAFKA_RETRIABLE_FAILURES =
       Collections.singletonList(org.apache.kafka.common.errors.RetriableException.class);
   public static final Duration DEFAULT_KAFKA_OFFSET_API_TIMEOUT = Duration.ofMinutes(1);

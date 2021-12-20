@@ -9,12 +9,12 @@ import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.ReadWriteSchemaRepository;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.Store;
-import com.linkedin.venice.schema.rmd.ReplicationMetadataSchemaEntry;
-import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
-import com.linkedin.venice.schema.rmd.ReplicationMetadataVersionId;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
+import com.linkedin.venice.schema.rmd.ReplicationMetadataSchemaEntry;
+import com.linkedin.venice.schema.rmd.ReplicationMetadataVersionId;
+import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.utils.AvroSchemaUtils;
 import com.linkedin.venice.utils.Pair;
@@ -28,7 +28,9 @@ import java.util.Optional;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 
 /**
  * This class is used to add schema entries for stores.
@@ -65,12 +67,12 @@ import org.apache.log4j.Logger;
  * ZK.
  */
 public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository {
-  private Logger logger = Logger.getLogger(HelixReadWriteSchemaRepository.class);
+  private final Logger logger = LogManager.getLogger(HelixReadWriteSchemaRepository.class);
 
   private final HelixSchemaAccessor accessor;
 
   // Store repository to check store related info
-  private ReadWriteStoreRepository storeRepository;
+  private final ReadWriteStoreRepository storeRepository;
 
   private final String clusterName;
   private final Optional<MetaStoreWriter> metaStoreWriter;

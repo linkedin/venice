@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller.server;
 
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.Admin;
@@ -14,26 +15,22 @@ import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.status.protocol.PushJobStatusRecordKey;
 import com.linkedin.venice.utils.Utils;
-
-import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
-
-import spark.Route;
-
+import java.util.Collections;
+import java.util.Optional;
 import org.apache.avro.io.DatumReader;
 import org.apache.avro.specific.SpecificDatumReader;
 import org.apache.http.HttpStatus;
-import org.apache.log4j.Logger;
-
-import java.util.Collections;
-import java.util.Optional;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+import spark.Route;
 
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
 import static com.linkedin.venice.controllerapi.ControllerRoute.*;
 
 
 public class JobRoutes extends AbstractRoute {
-  private static final Logger logger = Logger.getLogger(JobRoutes.class);
-  private InternalAvroSpecificSerializer<PushJobDetails> pushJobDetailsSerializer =
+  private static final Logger logger = LogManager.getLogger(JobRoutes.class);
+  private final InternalAvroSpecificSerializer<PushJobDetails> pushJobDetailsSerializer =
       AvroProtocolDefinition.PUSH_JOB_DETAILS.getSerializer();
 
   public JobRoutes(Optional<DynamicAccessController> accessController) {

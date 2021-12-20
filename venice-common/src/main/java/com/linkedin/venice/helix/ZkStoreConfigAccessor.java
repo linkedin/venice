@@ -13,7 +13,8 @@ import org.apache.helix.manager.zk.ZkBaseDataAccessor;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.helix.zookeeper.zkclient.IZkChildListener;
 import org.apache.helix.zookeeper.zkclient.IZkDataListener;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -22,7 +23,7 @@ import org.apache.log4j.Logger;
  * This class is non-cluster specified.
  */
 public class ZkStoreConfigAccessor {
-  public static final Logger logger = Logger.getLogger(ZkStoreConfigAccessor.class);
+  public static final Logger logger = LogManager.getLogger(ZkStoreConfigAccessor.class);
   private static final String ROOT_PATH = "/storeConfigs";
 
   private final ZkClient zkClient;

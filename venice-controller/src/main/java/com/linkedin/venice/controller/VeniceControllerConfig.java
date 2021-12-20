@@ -21,7 +21,8 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import static com.linkedin.venice.ConfigConstants.*;
 import static com.linkedin.venice.ConfigKeys.*;
@@ -34,7 +35,7 @@ import static com.linkedin.venice.ConfigKeys.*;
  * {@link VeniceControllerClusterConfig}. TODO: remove one of them
  */
 public class VeniceControllerConfig extends VeniceControllerClusterConfig {
-  private static final Logger LOGGER = Logger.getLogger(VeniceControllerConfig.class);
+  private static final Logger LOGGER = LogManager.getLogger(VeniceControllerConfig.class);
 
   private final int adminPort;
   private final int adminSecurePort;

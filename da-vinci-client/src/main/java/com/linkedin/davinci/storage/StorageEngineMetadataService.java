@@ -10,7 +10,8 @@ import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.service.AbstractVeniceService;
 import java.util.Optional;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -18,7 +19,7 @@ import org.apache.log4j.Logger;
  * It contains methods to read/write/clear the store version state and partition offset that are stored in metadata partition.
  */
 public class StorageEngineMetadataService extends AbstractVeniceService implements StorageMetadataService  {
-  private static final Logger logger = Logger.getLogger(StorageEngineMetadataService.class);
+  private static final Logger logger = LogManager.getLogger(StorageEngineMetadataService.class);
 
   private final StorageEngineRepository storageEngineRepository;
   private final InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer;

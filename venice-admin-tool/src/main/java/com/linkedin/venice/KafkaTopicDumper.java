@@ -1,5 +1,6 @@
 package com.linkedin.venice;
 
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.etl.VeniceKafkaDecodedRecord;
@@ -12,11 +13,7 @@ import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.utils.AvroSchemaUtils;
 import com.linkedin.venice.utils.ByteUtils;
-
-import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
-
 import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -42,10 +39,12 @@ import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.record.TimestampType;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 
 public class KafkaTopicDumper {
-  private static final Logger logger = Logger.getLogger(KafkaTopicDumper.class);
+  private static final Logger logger = LogManager.getLogger(KafkaTopicDumper.class);
   public static final String VENICE_ETL_KEY_FIELD = "key";
   public static final String VENICE_ETL_VALUE_FIELD = "value";
   public static final String VENICE_ETL_OFFSET_FIELD = "offset";
@@ -56,22 +55,22 @@ public class KafkaTopicDumper {
   public static final String VENICE_ETL_PRODUCER_TIMESTAMP_FIELD = "producerTimestamp";
   public static final String VENICE_ETL_PARTITION_FIELD = "partition";
 
-  private String storeName;
-  private String topicName;
-  private int partition;
-  private String keySchemaStr;
-  private String latestValueSchemaStr;
-  private Schema[] allValueSchemas;
-  private String parentDirectory;
-  private List<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>> kafkaRecordList;
-  private KafkaConsumer consumer;
-  private long messageCount;
-  private long endOffset;
-  private int max_consume_attempts;
-  private boolean logMetadataOnly;
+  private final String storeName;
+  private final String topicName;
+  private final int partition;
+  private final String keySchemaStr;
+  private final String latestValueSchemaStr;
+  private final Schema[] allValueSchemas;
+  private final String parentDirectory;
+  private final List<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>> kafkaRecordList;
+  private final KafkaConsumer consumer;
+  private final long messageCount;
+  private final long endOffset;
+  private final int maxConsumeAttempts;
+  private final boolean logMetadataOnly;
 
   public KafkaTopicDumper(ControllerClient controllerClient, Properties consumerProps, String topic, int partitionNumber,  long startingOffset, int messageCount, String parentDir, int maxConsumeAttempts, boolean logMetadataOnly) {
-    this.max_consume_attempts = maxConsumeAttempts;
+    this.maxConsumeAttempts = maxConsumeAttempts;
     if (Version.isVersionTopic(topic)) {
       this.storeName = Version.parseStoreFromKafkaTopicName(topic);
     } else {
@@ -124,7 +123,7 @@ public class KafkaTopicDumper {
    * 2. Discard non-control messages.
    */
   public KafkaTopicDumper fetch() {
-    int countdownBeforeStop = max_consume_attempts;
+    int countdownBeforeStop = maxConsumeAttempts;
     int currentMessageCount = 0;
 
     int lastReportedConsumedCount = 0;
@@ -146,7 +145,7 @@ public class KafkaTopicDumper {
         logger.info("Consumed " + currentMessageCount + " messages; last consumed message offset: " + lastProcessRecord.offset());
         lastReportedConsumedCount = currentMessageCount;
       }
-      countdownBeforeStop = records.count() == 0 ? countdownBeforeStop - 1 : max_consume_attempts;
+      countdownBeforeStop = records.count() == 0 ? countdownBeforeStop - 1 : maxConsumeAttempts;
       if (lastProcessRecord.offset() >= (this.endOffset - 2)) {
         return this;
       }

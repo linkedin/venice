@@ -2,17 +2,13 @@ package com.linkedin.davinci.store.cache.backend;
 
 import com.github.benmanes.caffeine.cache.AsyncCacheLoader;
 import com.linkedin.davinci.store.AbstractStorageEngine;
-import com.linkedin.davinci.store.StoragePartitionConfig;
-import com.linkedin.davinci.store.blackhole.BlackHoleStorageEngine;
 import com.linkedin.davinci.store.cache.VeniceStoreCacheStorageEngine;
 import com.linkedin.venice.client.store.ClientConfig;
-import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.stats.TehutiUtils;
-import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.HashMap;
@@ -22,7 +18,9 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Function;
 import java.util.stream.Collectors;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 
 /**
  * This class is in charge of managing access and maintenance of a VeniceStoreCache.  It makes available simple CRUD
@@ -30,7 +28,7 @@ import org.apache.log4j.Logger;
  */
 public class ObjectCacheBackend {
 
-  private static final Logger logger = Logger.getLogger(ObjectCacheBackend.class);
+  private static final Logger logger = LogManager.getLogger(ObjectCacheBackend.class);
 
   private final VeniceConcurrentHashMap<String, VeniceStoreCacheStorageEngine> versionTopicToCacheEngineMap = new VeniceConcurrentHashMap<>();
   private final ObjectCacheConfig storeCacheConfig;

@@ -128,7 +128,8 @@ import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.producer.Callback;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.TopicPartition;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import static java.util.concurrent.TimeUnit.*;
 
@@ -138,7 +139,7 @@ import static java.util.concurrent.TimeUnit.*;
  */
 public abstract class StoreIngestionTask implements Runnable, Closeable {
   // TODO: Make this logger prefix everything with the CONSUMER_TASK_ID_FORMAT
-  private static final Logger logger = Logger.getLogger(StoreIngestionTask.class);
+  private static final Logger logger = LogManager.getLogger();
 
   // Constants
   private static final String CONSUMER_TASK_ID_FORMAT = StoreIngestionTask.class.getSimpleName() + " for [ Topic: %s ]";

@@ -5,7 +5,8 @@ import com.linkedin.venice.pushmonitor.HybridStoreQuotaStatus;
 import java.util.HashMap;
 import java.util.Map;
 import org.apache.helix.HelixManager;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -15,8 +16,8 @@ import org.apache.log4j.Logger;
 
 public class HelixPartitionStatusAccessor extends HelixPartitionStateAccessor {
   static final String PARTITION_DELIMITER = "_";
-  private boolean helixHybridStoreQuotaEnabled;
-  private static final Logger logger = Logger.getLogger(HelixPartitionStatusAccessor.class);
+  private final boolean helixHybridStoreQuotaEnabled;
+  private static final Logger logger = LogManager.getLogger(HelixPartitionStatusAccessor.class);
 
   public HelixPartitionStatusAccessor(HelixManager helixManager, String instanceId, boolean isHelixHybridStoreQuotaEnabled) {
     super(helixManager, instanceId);

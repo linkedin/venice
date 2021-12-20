@@ -25,7 +25,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -60,7 +61,7 @@ public class ErrorPartitionResetTask implements Runnable, Closeable {
       ReadOnlyStoreRepository readOnlyStoreRepository, HelixExternalViewRepository routingDataRepository,
       PushMonitor pushMonitor, MetricsRepository metricsRepository, int errorPartitionAutoResetLimit, long processingCycleDelayMs) {
     taskId = String.format(TASK_ID_FORMAT, clusterName);
-    logger = Logger.getLogger(taskId);
+    logger = LogManager.getLogger(taskId);
     this.clusterName = clusterName;
     this.helixAdminClient = helixAdminClient;
     this.readOnlyStoreRepository = readOnlyStoreRepository;

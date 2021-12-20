@@ -38,7 +38,7 @@ import static com.linkedin.venice.ConfigKeys.*;
 import static org.testng.Assert.*;
 
 public class VeniceParentHelixAdminTest {
-  private static Logger LOGGER = LogManager.getLogger(VeniceParentHelixAdminTest.class);
+  private static final Logger LOGGER = LogManager.getLogger(VeniceParentHelixAdminTest.class);
   private static final long DEFAULT_TEST_TIMEOUT = 30000;
   VeniceClusterWrapper venice;
   ZkServerWrapper zkServerWrapper;

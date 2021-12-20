@@ -37,13 +37,14 @@ import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.BinaryDecoder;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import static com.linkedin.venice.ConfigKeys.*;
 
 
 public class VersionBackend {
-  private static final Logger logger = Logger.getLogger(VersionBackend.class);
+  private static final Logger logger = LogManager.getLogger(VersionBackend.class);
 
   private static final int DEFAULT_PUSH_STATUS_HEARTBEAT_INTERVAL_IN_SECONDS = 10;
 

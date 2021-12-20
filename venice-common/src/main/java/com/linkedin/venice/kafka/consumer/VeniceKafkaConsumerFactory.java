@@ -9,11 +9,12 @@ import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Optional;
 import java.util.Properties;
 import org.apache.kafka.clients.CommonClientConfigs;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 public class VeniceKafkaConsumerFactory extends KafkaClientFactory {
-  private static final Logger logger = Logger.getLogger(VeniceKafkaConsumerFactory.class);
+  private static final Logger logger = LogManager.getLogger(VeniceKafkaConsumerFactory.class);
   private final VeniceProperties veniceProperties;
 
   public VeniceKafkaConsumerFactory(VeniceProperties veniceProperties) {

@@ -6,11 +6,12 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Supplier;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 public class VeniceVersionedStats<STATS, STATS_REPORTER extends AbstractVeniceStatsReporter<STATS>> {
-  private static final Logger logger = Logger.getLogger(VeniceVersionedStats.class);
+  private static final Logger logger = LogManager.getLogger(VeniceVersionedStats.class);
 
   private final String storeName;
   private final Map<Integer, STATS> versionedStats;

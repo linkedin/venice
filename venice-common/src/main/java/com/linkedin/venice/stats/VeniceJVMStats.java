@@ -7,7 +7,9 @@ import java.lang.management.ManagementFactory;
 import java.lang.management.MemoryMXBean;
 import java.util.List;
 import java.util.function.Function;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 
 /**
  * Simple class that spins JVM platform stats into Venice stats. Explanations for these
@@ -16,7 +18,7 @@ import org.apache.log4j.Logger;
 
 public class VeniceJVMStats extends AbstractVeniceStats{
 
-  private static final Logger logger = Logger.getLogger(VeniceJVMStats.class);
+  private static final Logger logger = LogManager.getLogger(VeniceJVMStats.class);
 
   /**
    * Returns an estimate of the memory that the Java virtual machine is using

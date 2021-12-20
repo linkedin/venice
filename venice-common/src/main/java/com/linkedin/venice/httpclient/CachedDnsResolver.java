@@ -11,7 +11,8 @@ import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.http.conn.DnsResolver;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -26,7 +27,7 @@ import org.apache.log4j.Logger;
  * with TTL will still cause latency spike because of #1;
  */
 public class CachedDnsResolver implements DnsResolver, Closeable {
-  private static final Logger LOGGER = Logger.getLogger(CachedDnsResolver.class);
+  private static final Logger LOGGER = LogManager.getLogger(CachedDnsResolver.class);
 
   private final String cachedHostPattern;
   private final long refreshIntervalInMs;

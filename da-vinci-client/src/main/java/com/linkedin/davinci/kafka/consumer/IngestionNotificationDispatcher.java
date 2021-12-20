@@ -8,7 +8,8 @@ import java.util.Collection;
 import java.util.Queue;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -28,7 +29,7 @@ class IngestionNotificationDispatcher {
   private HybridStoreQuotaStatus lastQuotaStatusReported = HybridStoreQuotaStatus.UNKNOWN;
 
   public IngestionNotificationDispatcher(Queue<VeniceNotifier> notifiers, String topic, BooleanSupplier isCurrentVersion) {
-    this.logger = Logger.getLogger(IngestionNotificationDispatcher.class.getSimpleName() + " for [ Topic: " + topic + " ] ");
+    this.logger = LogManager.getLogger(IngestionNotificationDispatcher.class.getSimpleName() + " for [ Topic: " + topic + " ] ");
     this.notifiers = notifiers;
     this.topic = topic;
     this.isCurrentVersion = isCurrentVersion;

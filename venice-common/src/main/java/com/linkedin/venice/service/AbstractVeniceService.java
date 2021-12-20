@@ -3,15 +3,15 @@ package com.linkedin.venice.service;
 import com.linkedin.venice.exceptions.VeniceException;
 import java.io.Closeable;
 import java.util.concurrent.atomic.AtomicReference;
-
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
  * Blueprint for all Services initiated from Venice Server
  */
 public abstract class AbstractVeniceService implements Closeable {
-  protected final Logger logger = Logger.getLogger(getClass());
+  protected final Logger logger = LogManager.getLogger(getClass());
 
   protected enum ServiceState {
     STOPPED,

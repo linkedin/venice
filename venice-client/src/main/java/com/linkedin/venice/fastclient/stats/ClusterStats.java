@@ -10,7 +10,8 @@ import io.tehuti.metrics.stats.Max;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.util.Map;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -18,7 +19,7 @@ import org.apache.log4j.Logger;
  * So far it is per store.
  */
 public class ClusterStats extends AbstractVeniceStats {
-  private static final Logger LOGGER = Logger.getLogger(ClusterStats.class);
+  private static final Logger LOGGER = LogManager.getLogger(ClusterStats.class);
 
   private final String storeName;
   private final Map<String, RouteStats> perRouteStats = new VeniceConcurrentHashMap<>();

@@ -10,11 +10,12 @@ import com.linkedin.venice.pushmonitor.PushMonitor;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 public class StoreStatusDecider {
-  private final static Logger logger = Logger.getLogger(StoreStatusDecider.class);
+  private final static Logger logger = LogManager.getLogger(StoreStatusDecider.class);
 
   /**
    * Get the statuses of given stores based on the replicas statues in the given assignment.

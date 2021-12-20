@@ -9,21 +9,22 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import org.apache.helix.HelixAdmin;
 import org.apache.helix.controller.rebalancer.DelayedAutoRebalancer;
 import org.apache.helix.controller.rebalancer.strategy.AutoRebalanceStrategy;
 import org.apache.helix.controller.rebalancer.strategy.CrushRebalanceStrategy;
-import org.apache.helix.model.IdealState;
-import org.apache.helix.model.InstanceConfig;
-import org.apache.log4j.Logger;
-import org.apache.helix.HelixAdmin;
 import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.helix.manager.zk.ZKHelixManager;
 import org.apache.helix.manager.zk.ZNRecordSerializer;
 import org.apache.helix.model.ClusterConfig;
 import org.apache.helix.model.HelixConfigScope;
+import org.apache.helix.model.IdealState;
+import org.apache.helix.model.InstanceConfig;
 import org.apache.helix.model.LeaderStandbySMD;
 import org.apache.helix.model.builder.HelixConfigScopeBuilder;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -32,7 +33,7 @@ import org.apache.helix.zookeeper.impl.client.ZkClient;
  * API. In the future we might move to the Helix REST API.
  */
 public class ZkHelixAdminClient implements HelixAdminClient {
-  private static final Logger LOGGER = Logger.getLogger(ZkHelixAdminClient.class);
+  private static final Logger LOGGER = LogManager.getLogger(ZkHelixAdminClient.class);
   private static final int CONTROLLER_CLUSTER_PARTITION_COUNT = 1;
   private static final String CONTROLLER_HAAS_ZK_CLIENT_NAME = "controller-zk-client-for-haas-admin";
 

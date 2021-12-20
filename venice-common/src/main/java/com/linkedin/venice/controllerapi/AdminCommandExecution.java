@@ -6,7 +6,8 @@ import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -23,7 +24,7 @@ public class AdminCommandExecution {
    */
   private ConcurrentMap<String, AdminCommandExecutionStatus> fabricToExecutionStatusMap;
 
-  private static final Logger logger = Logger.getLogger(AdminCommandExecution.class);
+  private static final Logger logger = LogManager.getLogger(AdminCommandExecution.class);
 
   /**
    * CTOR used by JSON serializer.

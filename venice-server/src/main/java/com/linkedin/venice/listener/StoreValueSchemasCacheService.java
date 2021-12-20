@@ -6,10 +6,10 @@ import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
-import com.linkedin.venice.schema.rmd.ReplicationMetadataSchemaEntry;
-import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
-import com.linkedin.venice.schema.rmd.ReplicationMetadataVersionId;
 import com.linkedin.venice.schema.SchemaEntry;
+import com.linkedin.venice.schema.rmd.ReplicationMetadataSchemaEntry;
+import com.linkedin.venice.schema.rmd.ReplicationMetadataVersionId;
+import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.Pair;
@@ -19,7 +19,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import org.apache.avro.Schema;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -50,10 +51,10 @@ import org.apache.log4j.Logger;
  * So far, this class only supports value schema by id lookup and latest value schema lookup.
  */
 public class StoreValueSchemasCacheService extends AbstractVeniceService implements ReadOnlySchemaRepository {
-  private static final Logger LOGGER = Logger.getLogger(StoreValueSchemasCacheService.class);
+  private static final Logger LOGGER = LogManager.getLogger(StoreValueSchemasCacheService.class);
 
   private static class StoreValueSchemas {
-    private Map<Integer, SchemaEntry> valueSchemaMap = new VeniceConcurrentHashMap<>();
+    private final Map<Integer, SchemaEntry> valueSchemaMap = new VeniceConcurrentHashMap<>();
     private SchemaEntry latestValueSchema;
   }
 

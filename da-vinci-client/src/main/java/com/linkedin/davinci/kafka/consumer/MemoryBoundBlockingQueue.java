@@ -2,8 +2,6 @@ package com.linkedin.davinci.kafka.consumer;
 
 import com.linkedin.venice.common.Measurable;
 import com.linkedin.venice.exceptions.VeniceException;
-import org.apache.log4j.Logger;
-
 import java.util.Collection;
 import java.util.Iterator;
 import java.util.LinkedList;
@@ -14,6 +12,9 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 
 /**
  * This class is a generic implementation of a memory bound blocking queue.
@@ -43,7 +44,7 @@ import java.util.concurrent.locks.ReentrantLock;
  * @param <T>
  */
 public class MemoryBoundBlockingQueue<T extends Measurable> implements BlockingQueue<T> {
-  private static final Logger LOGGER = Logger.getLogger(MemoryBoundBlockingQueue.class);
+  private static final Logger LOGGER = LogManager.getLogger(MemoryBoundBlockingQueue.class);
   /**
    * Considering the node implementation: {@link java.util.LinkedList.Node}, the overhead
    * is three references, which could be about 24 bytes, and the 'Node' object type itself could take 24 bytes.
@@ -53,7 +54,7 @@ public class MemoryBoundBlockingQueue<T extends Measurable> implements BlockingQ
   private final Queue<T> queue;
   private final long memoryCapacityInByte;
   private final long notifyDeltaInByte;
-  private AtomicLong remainingMemoryCapacityInByte;
+  private final AtomicLong remainingMemoryCapacityInByte;
   private final Lock memoryLock = new ReentrantLock();
   private final Condition hasEnoughMemory = memoryLock.newCondition();
   private final Condition notEmpty = memoryLock.newCondition();

@@ -11,14 +11,15 @@ import org.apache.avro.io.DatumWriter;
 import org.apache.avro.io.Encoder;
 import org.apache.avro.specific.MapAwareSpecificDatumWriter;
 import org.apache.avro.specific.SpecificRecord;
-import org.apache.log4j.Logger;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 public class AvroSerializer<K> implements RecordSerializer<K> {
-  private static final Logger logger = Logger.getLogger(AvroSerializer.class);
+  private static final Logger logger = LogManager.getLogger(AvroSerializer.class);
   private final DatumWriter<K> genericDatumWriter;
   private final DatumWriter<K> specificDatumWriter;
   private final boolean buffered;

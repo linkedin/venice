@@ -45,7 +45,8 @@ import org.apache.helix.LiveInstanceInfoProvider;
 import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.helix.model.LeaderStandbySMD;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -53,7 +54,7 @@ import org.apache.log4j.Logger;
  */
 public class HelixParticipationService extends AbstractVeniceService implements StatusMessageHandler<KillOfflinePushMessage> {
 
-  private static final Logger logger = Logger.getLogger(HelixParticipationService.class);
+  private static final Logger logger = LogManager.getLogger(HelixParticipationService.class);
 
   private static final String ONLINE_OFFLINE_MODEL_NAME = "PartitionOnlineOfflineModel";
 

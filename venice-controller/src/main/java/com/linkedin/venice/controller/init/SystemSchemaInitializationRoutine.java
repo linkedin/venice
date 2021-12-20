@@ -9,25 +9,24 @@ import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
-import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
+import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.Utils;
-
-import java.util.Optional;
-import org.apache.avro.Schema;
-import org.apache.log4j.Logger;
-
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
+import org.apache.avro.Schema;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import static com.linkedin.venice.ConfigKeys.*;
 
 
 public class SystemSchemaInitializationRoutine implements ClusterLeaderInitializationRoutine {
-  private static final Logger LOGGER = Logger.getLogger(SystemSchemaInitializationRoutine.class);
+  private static final Logger LOGGER = LogManager.getLogger(SystemSchemaInitializationRoutine.class);
   private static final String DEFAULT_KEY_SCHEMA_STR = "\"int\"";
 
   private final AvroProtocolDefinition protocolDefinition;

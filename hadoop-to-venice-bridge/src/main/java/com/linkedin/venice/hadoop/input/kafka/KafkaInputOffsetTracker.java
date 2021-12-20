@@ -1,13 +1,11 @@
 package com.linkedin.venice.hadoop.input.kafka;
 
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.TopicManager;
-import java.io.IOException;
 import java.util.Map;
 import org.apache.hadoop.mapred.JobConf;
-import org.apache.kafka.common.TopicPartition;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import static com.linkedin.venice.hadoop.VenicePushJob.*;
 import static com.linkedin.venice.hadoop.input.kafka.KafkaInputUtils.*;
@@ -17,12 +15,12 @@ import static com.linkedin.venice.hadoop.input.kafka.KafkaInputUtils.*;
  * This class is used in the KIF repush job to track the offsets of the source kafka topic.
  */
 public class KafkaInputOffsetTracker {
-  private static final Logger logger = Logger.getLogger(KafkaInputOffsetTracker.class);
+  private static final Logger logger = LogManager.getLogger(KafkaInputOffsetTracker.class);
   private Map<Integer, Long> latestOffsetsAtBeginning;
   private Map<Integer, Long> latestOffsetsAtEnd;
-  private String kafkaTopic;
-  private KafkaClientFactory consumerFactory;
-  private TopicManager topicManager;
+  private final String kafkaTopic;
+  private final KafkaClientFactory consumerFactory;
+  private final TopicManager topicManager;
 
   public KafkaInputOffsetTracker(JobConf config) {
     consumerFactory = getConsumerFactory(config);

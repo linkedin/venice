@@ -4,7 +4,8 @@ import java.util.List;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.rocksdb.ColumnFamilyDescriptor;
 import org.rocksdb.ColumnFamilyHandle;
 import org.rocksdb.DBOptions;
@@ -19,7 +20,7 @@ import org.rocksdb.RocksDBException;
  * check {@link RocksDBServerConfig#ROCKSDB_DB_OPEN_OPERATION_THROTTLE} to find more details.
  */
 public class RocksDBThrottler {
-  private static final Logger LOGGER = Logger.getLogger(RocksDBThrottler.class);
+  private static final Logger LOGGER = LogManager.getLogger(RocksDBThrottler.class);
 
   private final int allowedMaxOpenOperationsInParallel;
   private int currentOngoingOpenOperations = 0;

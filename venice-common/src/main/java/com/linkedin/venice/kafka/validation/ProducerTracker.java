@@ -1,6 +1,5 @@
 package com.linkedin.venice.kafka.validation;
 
-import com.linkedin.venice.annotation.NotThreadsafe;
 import com.linkedin.venice.annotation.Threadsafe;
 import com.linkedin.venice.exceptions.validation.CorruptDataException;
 import com.linkedin.venice.exceptions.validation.DataValidationException;
@@ -34,7 +33,8 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Function;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import static com.linkedin.venice.utils.RedundantExceptionFilter.*;
 
@@ -70,7 +70,7 @@ public class ProducerTracker {
   public ProducerTracker(GUID producerGUID, String topicName) {
     this.producerGUID = producerGUID;
     this.topicName = topicName;
-    this.logger = Logger.getLogger(this.toString());
+    this.logger = LogManager.getLogger(this.toString());
   }
 
   public String toString() {

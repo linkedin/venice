@@ -3,15 +3,15 @@ package com.linkedin.venice.router.throttle;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.exceptions.QuotaExceededException;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.helix.ZkRoutersClusterManager;
 import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.RoutersClusterConfig;
+import com.linkedin.venice.meta.RoutersClusterManager;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.meta.RoutersClusterManager;
-import com.linkedin.venice.helix.ZkRoutersClusterManager;
 import com.linkedin.venice.pushmonitor.ReadOnlyPartitionStatus;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
 import com.linkedin.venice.throttle.EventThrottler;
@@ -21,7 +21,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import static com.linkedin.venice.meta.Store.*;
 
@@ -38,7 +39,7 @@ public class ReadRequestThrottler implements RouterThrottler, RoutersClusterMana
   public static final long DEFAULT_STORE_QUOTA_TIME_WINDOW = TimeUnit.SECONDS.toMillis(10); // 10sec
   public static final long DEFAULT_STORAGE_NODE_QUOTA_TIME_WINDOW = TimeUnit.SECONDS.toMillis(30);; // 30sec
 
-  private static final Logger logger = Logger.getLogger(ReadRequestThrottler.class);
+  private static final Logger logger = LogManager.getLogger(ReadRequestThrottler.class);
   private final ZkRoutersClusterManager zkRoutersManager;
   private final ReadOnlyStoreRepository storeRepository;
   private final RoutingDataRepository routingDataRepository;

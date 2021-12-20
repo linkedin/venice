@@ -12,13 +12,14 @@ import java.io.InputStream;
 import java.nio.file.Files;
 import java.util.Properties;
 import java.util.UUID;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import static com.linkedin.venice.CommonConfigKeys.*;
 
 
 public class SslUtils {
-  private static final Logger logger = Logger.getLogger(SslUtils.class);
+  private static final Logger logger = LogManager.getLogger(SslUtils.class);
 
   /**
    * Self-signed cert, expires 2027, use keystore as truststore since self-signed.

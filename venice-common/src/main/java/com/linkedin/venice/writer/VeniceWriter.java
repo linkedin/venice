@@ -60,7 +60,8 @@ import org.apache.kafka.clients.producer.Callback;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.errors.TopicAuthorizationException;
 import org.apache.kafka.common.protocol.Errors;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import static com.linkedin.venice.ConfigKeys.*;
 
@@ -282,7 +283,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         this.numberOfPartitions = producer.getNumberOfPartitions(topicName);
       }
       this.producerGUID = GuidUtils.getGUID(props);
-      this.logger = Logger.getLogger(VeniceWriter.class.getSimpleName() + " [" + GuidUtils.getHexFromGuid(producerGUID) + "]");
+      this.logger = LogManager.getLogger(VeniceWriter.class.getSimpleName() + " [" + GuidUtils.getHexFromGuid(producerGUID) + "]");
       OPEN_VENICE_WRITER_COUNT.incrementAndGet();
     } catch (Exception e) {
       throw new VeniceException("Error while constructing VeniceWriter for store name: " + topicName + ", props: " + props.toString(), e);

@@ -10,7 +10,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -23,7 +24,7 @@ import org.apache.log4j.Logger;
 public class TerminalStateTopicCheckerForParentController implements Runnable, Closeable {
   private static final long MAX_BACKOFF_MS = TimeUnit.HOURS.toMillis(6);
 
-  private final Logger logger = Logger.getLogger(TerminalStateTopicCheckerForParentController.class);
+  private final Logger logger = LogManager.getLogger(TerminalStateTopicCheckerForParentController.class);
   private final AtomicBoolean isRunning = new AtomicBoolean(true);
   private final VeniceParentHelixAdmin parentController;
   private final HelixReadOnlyStoreConfigRepository storeConfigRepository;

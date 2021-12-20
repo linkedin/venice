@@ -1,12 +1,13 @@
 package com.linkedin.venice.router.api.routing.helix;
 
 import com.linkedin.ddsstorage.base.concurrency.TimeoutProcessor;
-import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.utils.Pair;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -19,7 +20,7 @@ import org.apache.log4j.Logger;
  * This class is also leveraging {@link TimeoutProcessor} to handle potential group counter leaking issue.
  */
 public class HelixGroupLeastLoadedStrategy implements HelixGroupSelectionStrategy {
-  private static final Logger LOGGER = Logger.getLogger(HelixGroupLeastLoadedStrategy.class);
+  private static final Logger LOGGER = LogManager.getLogger(HelixGroupLeastLoadedStrategy.class);
 
   public static final int MAX_ALLOWED_GROUP = 100;
   private final int[] counters = new int[MAX_ALLOWED_GROUP];

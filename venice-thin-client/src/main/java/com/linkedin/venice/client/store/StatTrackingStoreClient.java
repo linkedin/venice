@@ -29,7 +29,8 @@ import java.util.function.BiFunction;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.BinaryEncoder;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -37,7 +38,7 @@ import org.apache.log4j.Logger;
  * @param <V>
  */
 public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
-  private static final Logger LOGGER = Logger.getLogger(StatTrackingStoreClient.class);
+  private static final Logger LOGGER = LogManager.getLogger(StatTrackingStoreClient.class);
 
   private static String STAT_VENICE_CLIENT_NAME = "venice_client";
   private static String STAT_SCHEMA_READER = "schema_reader";

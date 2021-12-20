@@ -1,51 +1,33 @@
 package com.linkedin.venice.writer;
 
-import com.linkedin.venice.stats.StatsErrorCode;
-import com.linkedin.venice.client.exceptions.VeniceClientException;
-import com.linkedin.venice.exceptions.ConfigurationException;
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
-import com.linkedin.venice.serialization.KafkaKeySerializer;
-import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.stats.AbstractVeniceStats;
 import com.linkedin.venice.stats.Gauge;
-import com.linkedin.venice.utils.KafkaSSLUtils;
+import com.linkedin.venice.stats.StatsErrorCode;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Time;
-import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.Avg;
 import io.tehuti.metrics.stats.Max;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Map;
-import java.util.Optional;
-import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
-import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.producer.Callback;
-import org.apache.kafka.clients.producer.KafkaProducer;
-import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.clients.producer.RecordMetadata;
-import org.apache.kafka.common.Metric;
-import org.apache.kafka.common.MetricName;
-import org.apache.kafka.common.Node;
-import org.apache.kafka.common.config.SslConfigs;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
  * Implementation of the shared Kafka Producer for sending messages to Kafka.
  */
 public class SharedKafkaProducer implements KafkaProducerWrapper  {
-  private static final Logger LOGGER = Logger.getLogger(SharedKafkaProducer.class);
+  private static final Logger LOGGER = LogManager.getLogger(SharedKafkaProducer.class);
 
   private final SharedKafkaProducerService sharedKafkaProducerService;
   private final int id;

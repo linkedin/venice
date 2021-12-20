@@ -26,14 +26,15 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Supplier;
 import nonapi.io.github.classgraph.utils.JarUtils;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
  * Adapted from https://stackoverflow.com/a/723914/791758
  */
 public final class ForkedJavaProcess extends Process {
-  private static final Logger LOGGER = Logger.getLogger(ForkedJavaProcess.class);
+  private static final Logger LOGGER = LogManager.getLogger(ForkedJavaProcess.class);
 
   private static final String JAVA_PATH = Paths.get(System.getProperty("java.home"), "bin", "java").toString();
   private static final List<String> DEFAULT_JAVA_ARGS = new ArrayList() {{
@@ -95,7 +96,7 @@ public final class ForkedJavaProcess extends Process {
     command.addAll(args);
 
     Process process = new ProcessBuilder(command).redirectErrorStream(true).start();
-    Logger logger = Logger.getLogger((extraLoggerName.isPresent() ? extraLoggerName.get() + ", " : "") + appClass.getSimpleName() + ", PID=" + getPidOfProcess(process));
+    Logger logger = LogManager.getLogger((extraLoggerName.map(s -> s + ", ").orElse("")) + appClass.getSimpleName() + ", PID=" + getPidOfProcess(process));
     return new ForkedJavaProcess(process, logger, registerShutdownHook);
   }
 

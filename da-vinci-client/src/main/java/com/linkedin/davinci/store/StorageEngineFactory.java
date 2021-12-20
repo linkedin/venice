@@ -5,7 +5,6 @@ import com.linkedin.venice.exceptions.StorageInitializationException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.PersistenceType;
 import java.util.Set;
-import org.apache.log4j.Logger;
 
 
 /**
@@ -16,7 +15,6 @@ import org.apache.log4j.Logger;
  * connection pool reference
  */
 public abstract class StorageEngineFactory {
-  private static final Logger logger = Logger.getLogger(StorageEngineFactory.class.getName());
   /**
    * Get an initialized storage implementation
    *

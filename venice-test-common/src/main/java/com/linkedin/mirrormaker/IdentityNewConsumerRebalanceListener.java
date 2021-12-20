@@ -25,21 +25,20 @@ import kafka.admin.AdminUtils;
 import kafka.admin.RackAwareMode;
 import kafka.common.TopicAlreadyMarkedForDeletionException;
 import kafka.utils.ZkUtils;
-import org.apache.kafka.clients.CommonClientConfigs;
-import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
+import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.common.PartitionInfo;
+import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.errors.TopicExistsException;
 import org.apache.kafka.common.errors.UnknownTopicOrPartitionException;
 import org.apache.kafka.common.serialization.ByteArrayDeserializer;
-import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.utils.PoisonPill;
 import org.apache.kafka.common.utils.Utils;
-import org.apache.log4j.Logger;
-import org.apache.log4j.LogManager;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
-import static java.lang.Integer.parseInt;
+import static java.lang.Integer.*;
 
 
 public class IdentityNewConsumerRebalanceListener implements org.apache.kafka.clients.consumer.ConsumerRebalanceListener {
@@ -87,7 +86,7 @@ public class IdentityNewConsumerRebalanceListener implements org.apache.kafka.cl
   public static final String CONFIG_DELIMITER = "#";
   private static final int DEFAULT_MAX_HEAP_DUMP_WAIT_MS = 10000;
 
-  static final Logger logger = Logger.getLogger(IdentityNewConsumerRebalanceListener.class.getName());
+  static final Logger logger = LogManager.getLogger(IdentityNewConsumerRebalanceListener.class.getName());
   private static final File HEAP_DUMP_FOLDER = new File(System.getProperty("user.dir"));
 
   public IdentityNewConsumerRebalanceListener(String parameters) {

@@ -26,9 +26,8 @@ import io.tehuti.metrics.MetricsRepository;
 import java.util.Collections;
 import java.util.Optional;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
-import org.apache.log4j.Logger;
-
-import static com.linkedin.venice.ConfigKeys.*;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -37,7 +36,7 @@ import static com.linkedin.venice.ConfigKeys.*;
  * for Da Vinci, Venice Service and Isolated Ingestion Service.
  */
 public class VeniceMetadataRepositoryBuilder {
-  private static final Logger logger = Logger.getLogger(VeniceMetadataRepositoryBuilder.class);
+  private static final Logger logger = LogManager.getLogger(VeniceMetadataRepositoryBuilder.class);
 
   private final VeniceConfigLoader configLoader;
   private final ClientConfig clientConfig;

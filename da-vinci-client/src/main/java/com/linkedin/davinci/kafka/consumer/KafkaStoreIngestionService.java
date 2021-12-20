@@ -88,7 +88,8 @@ import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import static com.linkedin.venice.ConfigConstants.*;
 import static java.lang.Thread.*;
@@ -106,7 +107,7 @@ import static org.apache.kafka.common.config.SslConfigs.*;
 public class KafkaStoreIngestionService extends AbstractVeniceService implements StoreIngestionService {
   private static final String GROUP_ID_FORMAT = "%s_%s";
 
-  private static final Logger logger = Logger.getLogger(KafkaStoreIngestionService.class);
+  private static final Logger logger = LogManager.getLogger(KafkaStoreIngestionService.class);
 
   private final VeniceConfigLoader veniceConfigLoader;
 

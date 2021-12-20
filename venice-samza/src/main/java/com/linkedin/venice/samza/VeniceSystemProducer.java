@@ -56,7 +56,8 @@ import org.apache.avro.io.DatumWriter;
 import org.apache.avro.util.Utf8;
 import org.apache.commons.io.FileUtils;
 import org.apache.kafka.clients.producer.Callback;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.apache.samza.SamzaException;
 import org.apache.samza.system.OutgoingMessageEnvelope;
 import org.apache.samza.system.SystemProducer;
@@ -66,7 +67,7 @@ import static com.linkedin.venice.schema.AvroSchemaParseUtils.*;
 
 
 public class VeniceSystemProducer implements SystemProducer {
-  private static final Logger LOGGER = Logger.getLogger(VeniceSystemProducer.class);
+  private static final Logger LOGGER = LogManager.getLogger(VeniceSystemProducer.class);
 
   private static final Schema STRING_SCHEMA = Schema.create(Schema.Type.STRING);
   private static final Schema INT_SCHEMA = Schema.create(Schema.Type.INT);
@@ -100,13 +101,13 @@ public class VeniceSystemProducer implements SystemProducer {
 
   // Mutable, lazily initialized, state
   private Schema keySchema;
-  private VeniceConcurrentHashMap<Schema, Pair<Integer, Integer>> valueSchemaIds = new VeniceConcurrentHashMap<>();
+  private final VeniceConcurrentHashMap<Schema, Pair<Integer, Integer>> valueSchemaIds = new VeniceConcurrentHashMap<>();
 
   /**
    * key is schema
    * value is Avro serializer
    */
-  private Map<String, VeniceAvroKafkaSerializer> serializers = new VeniceConcurrentHashMap<>();
+  private final Map<String, VeniceAvroKafkaSerializer> serializers = new VeniceConcurrentHashMap<>();
   private D2Client d2Client;
   private D2ControllerClient controllerClient;
   // It can be version topic, real-time topic or stream reprocessing topic, depending on push type

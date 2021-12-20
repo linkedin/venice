@@ -1,15 +1,14 @@
 package com.linkedin.venice.helix;
 
-import java.util.Map;
-
-import com.linkedin.data.Null;
 import com.linkedin.venice.exceptions.VeniceException;
+import java.util.Map;
 import org.apache.helix.HelixManager;
 import org.apache.helix.api.exceptions.HelixMetaDataAccessException;
 import org.apache.helix.customizedstate.CustomizedStateProvider;
 import org.apache.helix.customizedstate.CustomizedStateProviderFactory;
 import org.apache.helix.model.CustomizedState;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -24,7 +23,7 @@ import org.apache.log4j.Logger;
 
 public abstract class HelixPartitionStateAccessor {
 
-  private static Logger logger = Logger.getLogger(HelixPartitionStateAccessor.class);
+  private static final Logger logger = LogManager.getLogger(HelixPartitionStateAccessor.class);
   CustomizedStateProvider customizedStateProvider;
 
   public HelixPartitionStateAccessor(HelixManager helixManager, String instanceId) {

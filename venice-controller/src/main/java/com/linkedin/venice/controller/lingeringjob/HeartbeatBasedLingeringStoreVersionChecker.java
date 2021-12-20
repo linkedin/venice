@@ -14,13 +14,14 @@ import java.security.cert.X509Certificate;
 import java.time.Duration;
 import java.util.Map;
 import java.util.Optional;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import static com.linkedin.venice.status.BatchJobHeartbeatConfigs.*;
 
 
 public class HeartbeatBasedLingeringStoreVersionChecker implements LingeringStoreVersionChecker {
-  private static final Logger logger = Logger.getLogger(HeartbeatBasedLingeringStoreVersionChecker.class);
+  private static final Logger logger = LogManager.getLogger(HeartbeatBasedLingeringStoreVersionChecker.class);
   private final Duration heartbeatTimeout;
   private final Duration initialHeartbeatBufferTime; // If a push job was started less than this much time ago, do not check heartbeat
   private final DefaultLingeringStoreVersionChecker defaultLingeringStoreVersionChecker;

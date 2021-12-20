@@ -1,13 +1,8 @@
 package com.linkedin.venice.writer;
 
-import com.codahale.metrics.MetricRegistry;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.service.AbstractVeniceService;
-import com.linkedin.venice.stats.AbstractVeniceStats;
-import com.linkedin.venice.stats.KafkaClientStats;
-import com.linkedin.venice.utils.LatencyUtils;
-import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
@@ -15,12 +10,12 @@ import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import static com.linkedin.venice.writer.ApacheKafkaProducer.*;
 import static com.linkedin.venice.writer.VeniceWriter.*;
@@ -32,13 +27,13 @@ import static org.apache.kafka.clients.producer.ProducerConfig.*;
  * It does lazy initialization of producers. Also producers are assigned based on least loaded manner.
  */
 public class SharedKafkaProducerService extends AbstractVeniceService {
-  private static final Logger LOGGER = Logger.getLogger(SharedKafkaProducerService.class);
+  private static final Logger LOGGER = LogManager.getLogger(SharedKafkaProducerService.class);
 
   //This helps override kafka config for shared producer seperately than dedicated producer.
   public static final String SHARED_KAFKA_PRODUCER_CONFIG_PREFIX = "shared.producer.";
 
   private final int numOfProducersPerKafkaCluster;
-  private Properties producerProperties;
+  private final Properties producerProperties;
   private final String localKafkaBootstrapServers;
   private final int kafkaProducerCloseTimeout;
 
@@ -48,8 +43,8 @@ public class SharedKafkaProducerService extends AbstractVeniceService {
   private volatile boolean isRunning = true;
 
   //stats
-  private MetricsRepository metricsRepository;
-  private Set<String> producerMetricsToBeReported;
+  private final MetricsRepository metricsRepository;
+  private final Set<String> producerMetricsToBeReported;
   final AtomicLong activeSharedProducerTasksCount = new AtomicLong(0);
   final AtomicLong activeSharedProducerCount = new AtomicLong(0);
 
@@ -64,7 +59,7 @@ public class SharedKafkaProducerService extends AbstractVeniceService {
   public SharedKafkaProducerService(Properties properties, int sharedProducerPoolCount,
       KafkaProducerSupplier kafkaProducerSupplier, MetricsRepository metricsRepository, Set<String> producerMetricsToBeReported) {
     this.kafkaProducerSupplier = kafkaProducerSupplier;
-    boolean sslToKafka = Boolean.valueOf(properties.getProperty(ConfigKeys.SSL_TO_KAFKA, "false"));
+    boolean sslToKafka = Boolean.parseBoolean(properties.getProperty(ConfigKeys.SSL_TO_KAFKA, "false"));
     if (!sslToKafka) {
       localKafkaBootstrapServers = properties.getProperty(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS);
     } else {

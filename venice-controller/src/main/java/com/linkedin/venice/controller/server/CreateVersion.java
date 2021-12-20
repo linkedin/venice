@@ -27,12 +27,13 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import org.apache.http.HttpStatus;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import spark.Route;
 
 import static com.linkedin.venice.ConfigKeys.*;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REPLICATION_METADATA_VERSION_ID;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
 import static com.linkedin.venice.controllerapi.ControllerRoute.*;
 import static com.linkedin.venice.meta.Version.*;
 
@@ -41,7 +42,7 @@ import static com.linkedin.venice.meta.Version.*;
  * This class will add a new version to the given store.
  */
 public class CreateVersion extends AbstractRoute {
-  private static final Logger LOGGER = Logger.getLogger(CreateVersion.class);
+  private static final Logger LOGGER = LogManager.getLogger(CreateVersion.class);
   private final boolean checkReadMethodForKafka;
 
   public CreateVersion(Optional<DynamicAccessController> accessController, boolean checkReadMethodForKafka) {

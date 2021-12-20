@@ -1,27 +1,25 @@
 package com.linkedin.venice.integration.utils;
 
+import com.linkedin.mirrormaker.IdentityNewConsumerRebalanceListener;
+import com.linkedin.mirrormaker.IdentityPartitioningMessageHandler;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.ForkedJavaProcess;
 import com.linkedin.venice.utils.PropertyBuilder;
-
-import com.linkedin.mirrormaker.IdentityNewConsumerRebalanceListener;
-import com.linkedin.mirrormaker.IdentityPartitioningMessageHandler;
-
+import java.io.File;
+import java.util.Arrays;
 import java.util.Optional;
+import java.util.Properties;
+import java.util.concurrent.TimeUnit;
 import kafka.tools.MirrorMaker;
-
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.common.utils.Utils;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
-import java.io.File;
-import java.util.Arrays;
-import java.util.Properties;
-import java.util.concurrent.TimeUnit;
 
 public class MirrorMakerWrapper extends ProcessWrapper {
-  public static final Logger logger = Logger.getLogger(MirrorMakerWrapper.class);
+  public static final Logger logger = LogManager.getLogger(MirrorMakerWrapper.class);
   public static final String SERVICE_NAME = "MirrorMaker";
   public static final String DEFAULT_TOPIC_WHITELIST = ".*";
 

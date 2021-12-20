@@ -25,7 +25,8 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import static com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils.*;
 import static com.linkedin.venice.ingestion.protocol.enums.IngestionCommandType.*;
@@ -35,7 +36,7 @@ import static com.linkedin.venice.ingestion.protocol.enums.IngestionCommandType.
  * MainIngestionRequestClient sends requests to isolated ingestion process and retrieves responses.
  */
 public class MainIngestionRequestClient implements Closeable {
-  private static final Logger logger = Logger.getLogger(MainIngestionRequestClient.class);
+  private static final Logger logger = LogManager.getLogger(MainIngestionRequestClient.class);
   private static final int REQUEST_MAX_ATTEMPT = 10;
   private static final int HEARTBEAT_REQUEST_TIMEOUT_MS = 10 * Time.MS_PER_SECOND;
   private final HttpClientTransport httpClientTransport;

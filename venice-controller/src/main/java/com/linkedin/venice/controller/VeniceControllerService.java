@@ -17,7 +17,8 @@ import io.tehuti.metrics.MetricsRepository;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import static com.linkedin.venice.client.store.ClientFactory.*;
 
@@ -26,7 +27,7 @@ import static com.linkedin.venice.client.store.ClientFactory.*;
  * A service venice controller. Wraps Helix Controller.
  */
 public class VeniceControllerService extends AbstractVeniceService {
-  private static final Logger logger = Logger.getLogger(VeniceControllerService.class);
+  private static final Logger logger = LogManager.getLogger(VeniceControllerService.class);
 
   private final Admin admin;
   private final VeniceControllerMultiClusterConfig multiClusterConfigs;

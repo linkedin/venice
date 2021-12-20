@@ -1,13 +1,16 @@
 package com.linkedin.davinci.storage;
 
 import com.linkedin.davinci.config.VeniceConfigLoader;
+import com.linkedin.davinci.config.VeniceServerConfig;
+import com.linkedin.davinci.config.VeniceStoreVersionConfig;
+import com.linkedin.davinci.stats.AggVersionedStorageEngineStats;
+import com.linkedin.davinci.stats.RocksDBMemoryStats;
+import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.StorageEngineFactory;
 import com.linkedin.davinci.store.blackhole.BlackHoleStorageEngineFactory;
 import com.linkedin.davinci.store.memory.InMemoryStorageEngineFactory;
 import com.linkedin.davinci.store.rocksdb.RocksDBStorageEngineFactory;
 import com.linkedin.venice.ConfigKeys;
-import com.linkedin.davinci.config.VeniceServerConfig;
-import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
@@ -17,9 +20,6 @@ import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.service.AbstractVeniceService;
-import com.linkedin.davinci.stats.AggVersionedStorageEngineStats;
-import com.linkedin.davinci.stats.RocksDBMemoryStats;
-import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.PartitionUtils;
@@ -33,7 +33,8 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.rocksdb.RocksDBException;
 import org.rocksdb.Statistics;
 
@@ -46,7 +47,7 @@ import static com.linkedin.venice.meta.PersistenceType.*;
  * Use StorageEngineRepository, if read only access is desired for the Storage Engines.
  */
 public class StorageService extends AbstractVeniceService {
-  private static final Logger logger = Logger.getLogger(StorageService.class);
+  private static final Logger logger = LogManager.getLogger(StorageService.class);
 
   private final StorageEngineRepository storageEngineRepository;
   private final VeniceConfigLoader configLoader;

@@ -10,16 +10,12 @@ import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceStoreIsMigratedException;
 import com.linkedin.venice.read.RequestType;
-import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
 import com.linkedin.venice.router.api.path.VenicePath;
 import com.linkedin.venice.router.api.routing.helix.HelixGroupSelector;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
 import com.linkedin.venice.router.stats.RouterStats;
 import com.linkedin.venice.router.streaming.SuccessfulStreamingResponse;
 import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
-import com.linkedin.venice.serializer.RecordDeserializer;
-import com.linkedin.venice.serializer.RecordSerializer;
-import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Utils;
 import io.netty.buffer.CompositeByteBuf;
@@ -39,16 +35,18 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import javax.annotation.Nonnull;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import static com.linkedin.ddsstorage.router.api.MetricNames.*;
 import static com.linkedin.venice.HttpConstants.*;
 import static io.netty.handler.codec.http.HttpResponseStatus.*;
 
+
 public class VeniceResponseAggregator implements ResponseAggregatorFactory<BasicFullHttpRequest, FullHttpResponse> {
   private static final List<HttpResponseStatus> HEALTHY_STATUSES = Arrays.asList(OK, NOT_FOUND);
 
-  private static final Logger LOGGER = Logger.getLogger(VeniceResponseAggregator.class);
+  private static final Logger LOGGER = LogManager.getLogger(VeniceResponseAggregator.class);
 
   private final RouterStats<AggRouterHttpRequestStats> routerStats;
 

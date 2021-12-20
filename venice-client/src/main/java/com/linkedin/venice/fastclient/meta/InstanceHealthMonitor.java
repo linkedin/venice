@@ -10,7 +10,8 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -28,7 +29,7 @@ import org.apache.log4j.Logger;
  *
  */
 public class InstanceHealthMonitor {
-  private static final Logger LOGGER = Logger.getLogger(InstanceHealthMonitor.class);
+  private static final Logger LOGGER = LogManager.getLogger(InstanceHealthMonitor.class);
   private final ClientConfig clientConfig;
 
   private final Map<String, Integer> pendingRequestCounterMap = new VeniceConcurrentHashMap<>();

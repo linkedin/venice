@@ -15,13 +15,14 @@ import org.apache.helix.manager.zk.ZkBaseDataAccessor;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.helix.zookeeper.zkclient.DataUpdater;
 import org.apache.helix.zookeeper.zkclient.exception.ZkNoNodeException;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 public class ZkExecutionIdAccessor implements ExecutionIdAccessor {
   public static final String EXECUTION_ID_DIR = "/executionids";
   private static final int ZK_RETRY_COUNT = 3;
-  private static final Logger logger = Logger.getLogger(ZkExecutionIdAccessor.class);
+  private static final Logger logger = LogManager.getLogger(ZkExecutionIdAccessor.class);
   private final ZkClient zkclient;
   private final ZkBaseDataAccessor<Map<String, Long>> zkMapAccessor;
   private final ZkBaseDataAccessor<String> executionIdAccessor;

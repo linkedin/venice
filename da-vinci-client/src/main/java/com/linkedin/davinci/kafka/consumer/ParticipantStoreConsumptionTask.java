@@ -19,11 +19,12 @@ import java.io.Closeable;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 public class ParticipantStoreConsumptionTask implements Runnable, Closeable {
-  private static final Logger logger = Logger.getLogger(ParticipantStoreConsumptionTask.class);
+  private static final Logger logger = LogManager.getLogger(ParticipantStoreConsumptionTask.class);
 
   private static final String CLIENT_STATS_PREFIX = "venice-client";
   private static final RedundantExceptionFilter filter = RedundantExceptionFilter.getRedundantExceptionFilter();

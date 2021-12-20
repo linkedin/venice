@@ -36,7 +36,8 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import static com.linkedin.venice.HttpConstants.*;
 import static org.apache.http.HttpStatus.*;
@@ -56,7 +57,7 @@ import static org.apache.http.HttpStatus.*;
  * maintained by CompressorFactory.
  */
 public class DictionaryRetrievalService extends AbstractVeniceService {
-  private static final Logger logger = Logger.getLogger(DictionaryRetrievalService.class);
+  private static final Logger logger = LogManager.getLogger(DictionaryRetrievalService.class);
   private static final int DEFAULT_DICTIONARY_DOWNLOAD_INTERVAL_IN_MS = 100;
   private final OnlineInstanceFinder onlineInstanceFinder;
   private final Optional<SSLEngineComponentFactory> sslFactory;
@@ -67,7 +68,7 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
   private final CompressorFactory compressorFactory;
 
   // Shared queue between producer and consumer where topics whose dictionaries have to be downloaded are put in.
-  private BlockingQueue<String> dictionaryDownloadCandidates = new LinkedBlockingQueue<>();
+  private final BlockingQueue<String> dictionaryDownloadCandidates = new LinkedBlockingQueue<>();
 
   // This map is used as a collection of futures that were created to download dictionaries for each store version.
   // The future's status also acts as an indicator of which dictionaries are currently active in memory.
@@ -77,7 +78,7 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
   //  3) If an entry exists for the topic and it's state is "running", the dictionary download is currently in progress.
   //  4) If an entry doesn't exists for the topic, the version is unknown since it could have been retired/new or it
   //     doesn't exist at all.
-  private VeniceConcurrentHashMap<String, CompletableFuture<Void>> downloadingDictionaryFutures = new VeniceConcurrentHashMap<>();
+  private final VeniceConcurrentHashMap<String, CompletableFuture<Void>> downloadingDictionaryFutures = new VeniceConcurrentHashMap<>();
 
   private final int dictionaryRetrievalTimeMs;
 

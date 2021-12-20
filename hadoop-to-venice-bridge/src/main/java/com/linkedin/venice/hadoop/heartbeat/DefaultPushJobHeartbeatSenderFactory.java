@@ -20,13 +20,15 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.status.BatchJobHeartbeatConfigs.*;
 
+
 public class DefaultPushJobHeartbeatSenderFactory implements PushJobHeartbeatSenderFactory {
-  private static final Logger logger = Logger.getLogger(DefaultPushJobHeartbeatSenderFactory.class);
+  private static final Logger logger = LogManager.getLogger(DefaultPushJobHeartbeatSenderFactory.class);
 
   @Override
   public PushJobHeartbeatSender createHeartbeatSender(

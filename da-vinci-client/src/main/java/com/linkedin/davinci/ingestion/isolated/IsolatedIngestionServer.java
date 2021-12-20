@@ -52,9 +52,7 @@ import io.netty.channel.ServerChannel;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.tehuti.metrics.MetricsRepository;
-import java.io.File;
 import java.io.FileNotFoundException;
-import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.Map;
@@ -67,7 +65,8 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.client.store.ClientFactory.*;
@@ -94,7 +93,7 @@ import static java.lang.Thread.*;
  * tasks for fault tolerance purpose.
  */
 public class IsolatedIngestionServer extends AbstractVeniceService {
-  private static final Logger logger = Logger.getLogger(IsolatedIngestionServer.class);
+  private static final Logger logger = LogManager.getLogger(IsolatedIngestionServer.class);
 
   private final RedundantExceptionFilter redundantExceptionFilter = new RedundantExceptionFilter(RedundantExceptionFilter.DEFAULT_BITSET_SIZE, TimeUnit.MINUTES.toMillis(10));
   private final ServerBootstrap bootstrap;

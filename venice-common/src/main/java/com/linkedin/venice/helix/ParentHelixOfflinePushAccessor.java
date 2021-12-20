@@ -8,18 +8,16 @@ import java.util.List;
 import org.apache.helix.AccessOption;
 import org.apache.helix.manager.zk.ZkBaseDataAccessor;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
-import org.apache.log4j.Logger;
 
 
 public class ParentHelixOfflinePushAccessor {
   // Use the different path from the normal offline push status znodes to prevent impacting the offline push monitor.
   public static final String OFFLINE_PUSH_SUB_PATH = "ParentOfflinePushes";
-  private static final Logger logger = Logger.getLogger(ParentHelixOfflinePushAccessor.class);
   private final ZkClient zkClient;
   /**
    * Zk accessor for offline push status ZNodes.
    */
-  private ZkBaseDataAccessor<OfflinePushStatus> offlinePushStatusAccessor;
+  private final ZkBaseDataAccessor<OfflinePushStatus> offlinePushStatusAccessor;
 
   public ParentHelixOfflinePushAccessor(ZkClient zkClient, HelixAdapterSerializer adapter) {
     this.zkClient = zkClient;

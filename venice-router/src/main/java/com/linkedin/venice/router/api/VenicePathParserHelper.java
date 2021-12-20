@@ -1,8 +1,8 @@
 package com.linkedin.venice.router.api;
 
 import com.linkedin.ddsstorage.netty4.misc.BasicFullHttpRequest;
-import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.router.utils.VeniceRouterUtils;
+import com.linkedin.venice.utils.Utils;
 import io.netty.handler.codec.http.HttpRequest;
 import java.io.UnsupportedEncodingException;
 import java.net.URI;
@@ -11,7 +11,8 @@ import java.net.URLDecoder;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import static com.linkedin.venice.router.api.VenicePathParser.*;
 
@@ -20,7 +21,7 @@ import static com.linkedin.venice.router.api.VenicePathParser.*;
  * Created by mwise on 4/25/16.
  */
 public class VenicePathParserHelper {
-  private static final Logger logger = Logger.getLogger(VenicePathParserHelper.class);
+  private static final Logger logger = LogManager.getLogger(VenicePathParserHelper.class);
 
   private String resourceType = null;
   private String resourceName = null;
@@ -52,7 +53,7 @@ public class VenicePathParserHelper {
    * @return a map keyed by the parameter name and accompanied by it's associated value.
    */
   public Map<String,String> extractQueryParameters(HttpRequest request) {
-    Map<String, String> queryPairs = new LinkedHashMap<String, String>();
+    Map<String, String> queryPairs = new LinkedHashMap<>();
     try {
     String query = Optional.ofNullable(new URI(request.uri()).getQuery()).orElse("");
     if (query.isEmpty()) {
@@ -81,9 +82,9 @@ public class VenicePathParserHelper {
         if (path.length - offset >= 1) {
           resourceType = path[0 + offset];
           if (path.length - offset >= 2){
-            resourceName = path[1+offset];
+            resourceName = path[1 + offset];
             if (path.length - offset >= 3){
-              key = path[2+offset];
+              key = path[2 + offset];
             }
           }
         }

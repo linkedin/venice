@@ -1,14 +1,15 @@
 package com.linkedin.venice.utils;
 
 import java.util.Objects;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.VeniceConstants.*;
 
 
 public class RegionUtils {
-  public static final Logger logger = Logger.getLogger(RegionUtils.class.getName());
+  public static final Logger logger = LogManager.getLogger(RegionUtils.class.getName());
 
   public static String getLocalRegionName(VeniceProperties props, boolean isParentRegion) {
     String regionName;

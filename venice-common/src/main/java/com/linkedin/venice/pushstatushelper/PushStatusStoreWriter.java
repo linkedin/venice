@@ -4,15 +4,17 @@ import com.linkedin.venice.common.PushStatusStoreUtils;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushstatus.NoOp;
 import com.linkedin.venice.pushstatus.PushStatusKey;
+import com.linkedin.venice.pushstatus.PushStatusValue;
 import com.linkedin.venice.pushstatus.PushStatusValueWriteOpRecord;
 import com.linkedin.venice.pushstatus.instancesMapOps;
-import com.linkedin.venice.pushstatus.PushStatusValue;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.util.Collections;
 import java.util.Optional;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 
 /**
  * PushStatusStoreWriter is a helper class for Da Vinci to write PushStatus and heartbeat message into PushStatus store
@@ -21,7 +23,7 @@ import org.apache.log4j.Logger;
  * PushStatus update is via a map-merge of Write-Compute.
  */
 public class PushStatusStoreWriter implements AutoCloseable {
-  private static final Logger logger = Logger.getLogger(PushStatusStoreWriter.class);
+  private static final Logger logger = LogManager.getLogger(PushStatusStoreWriter.class);
   private final String instanceName;
   private final PushStatusStoreVeniceWriterCache veniceWriterCache;
   private final int derivedSchemaId;

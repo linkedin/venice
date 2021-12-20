@@ -26,7 +26,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import static java.lang.Thread.*;
 
@@ -38,7 +39,7 @@ import static java.lang.Thread.*;
  * through IPC protocol.
  */
 public class MainIngestionStorageMetadataService extends AbstractVeniceService implements StorageMetadataService {
-  private static final Logger logger = Logger.getLogger(MainIngestionStorageMetadataService.class);
+  private static final Logger logger = LogManager.getLogger(MainIngestionStorageMetadataService.class);
 
   private final MainIngestionRequestClient client;
   private final InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer;

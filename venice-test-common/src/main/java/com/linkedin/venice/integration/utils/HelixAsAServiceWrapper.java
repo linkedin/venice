@@ -2,7 +2,6 @@ package com.linkedin.venice.integration.utils;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.SafeHelixManager;
-
 import java.io.File;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -20,7 +19,8 @@ import org.apache.helix.model.LeaderStandbySMD;
 import org.apache.helix.model.LiveInstance;
 import org.apache.helix.model.builder.HelixConfigScopeBuilder;
 import org.apache.helix.participant.DistClusterControllerStateModelFactory;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -34,7 +34,7 @@ public class HelixAsAServiceWrapper extends ProcessWrapper {
 
   private static final int NUM_OF_SUPER_CLUSTER_CONTROLLERS = 2;
 
-  private static final Logger logger = Logger.getLogger(HelixAsAServiceWrapper.class);
+  private static final Logger logger = LogManager.getLogger(HelixAsAServiceWrapper.class);
 
   private final List<SafeHelixManager> managers;
   private final HelixAdmin admin;

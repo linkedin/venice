@@ -3,7 +3,6 @@ package com.linkedin.venice.router.api;
 import com.linkedin.ddsstorage.router.api.HostFinder;
 import com.linkedin.ddsstorage.router.api.HostHealthMonitor;
 import com.linkedin.ddsstorage.router.api.RouterException;
-import com.linkedin.venice.helix.HelixBaseRoutingRepository;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.OnlineInstanceFinder;
 import com.linkedin.venice.meta.Version;
@@ -17,13 +16,14 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import static com.linkedin.venice.read.RequestType.*;
 
 
 public class VeniceHostFinder implements HostFinder<Instance, VeniceRole> {
-  private static final Logger logger = Logger.getLogger(VeniceHostFinder.class);
+  private static final Logger logger = LogManager.getLogger(VeniceHostFinder.class);
   private static final Comparator<Instance> INSTANCE_COMPARATOR = Comparator.comparing(Instance::getNodeId);
 
   private final OnlineInstanceFinder onlineInstanceFinder;

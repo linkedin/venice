@@ -29,13 +29,15 @@ import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 
 /**
  * Service that listens on configured port to accept incoming GET requests
  */
 public class ListenerService extends AbstractVeniceService {
-  private static final Logger logger = Logger.getLogger(ListenerService.class);
+  private static final Logger logger = LogManager.getLogger(ListenerService.class);
 
   private final ServerBootstrap bootstrap;
   private EventLoopGroup bossGroup;

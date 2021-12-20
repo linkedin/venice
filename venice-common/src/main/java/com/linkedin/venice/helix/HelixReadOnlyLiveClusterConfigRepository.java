@@ -10,7 +10,8 @@ import org.apache.helix.AccessOption;
 import org.apache.helix.manager.zk.ZkBaseDataAccessor;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.helix.zookeeper.zkclient.IZkDataListener;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -18,7 +19,7 @@ import org.apache.log4j.Logger;
  * The expected users are all venice-backend components.
  */
 public class HelixReadOnlyLiveClusterConfigRepository implements ReadOnlyLiveClusterConfigRepository {
-  private static final Logger logger = Logger.getLogger(HelixReadOnlyLiveClusterConfigRepository.class);
+  private static final Logger logger = LogManager.getLogger(HelixReadOnlyLiveClusterConfigRepository.class);
 
   private static final RedundantExceptionFilter REDUNDANT_EXCEPTION_FILTER = RedundantExceptionFilter.getRedundantExceptionFilter();
   private static final LiveClusterConfig DEFAULT_LIVE_CLUSTER_CONFIG = new LiveClusterConfig();
@@ -28,7 +29,7 @@ public class HelixReadOnlyLiveClusterConfigRepository implements ReadOnlyLiveClu
   protected LiveClusterConfig liveClusterConfig = DEFAULT_LIVE_CLUSTER_CONFIG;
 
   // Listener to handle modifications to cluster config
-  private IZkDataListener clusterConfigListener = new ClusterConfigZkListener();
+  private final IZkDataListener clusterConfigListener = new ClusterConfigZkListener();
 
   private static final String CLUSTER_CONFIG_PATH = "/ClusterConfig";
 

@@ -1,9 +1,6 @@
 package com.linkedin.davinci.config;
 
 import com.linkedin.venice.exceptions.VeniceException;
-
-import org.apache.log4j.Logger;
-
 import java.io.BufferedOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
@@ -15,9 +12,12 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Properties;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 
 public class StoreBackendConfig {
-  private static final Logger logger = Logger.getLogger(StoreBackendConfig.class);
+  private static final Logger logger = LogManager.getLogger(StoreBackendConfig.class);
 
   public static final String CONFIG_DIRECTORY = "config";
   public static final String IS_MANAGED = "managed";
@@ -71,7 +71,7 @@ public class StoreBackendConfig {
   }
 
   public boolean isManaged() {
-    return Boolean.valueOf(props.getProperty(IS_MANAGED));
+    return Boolean.parseBoolean(props.getProperty(IS_MANAGED));
   }
 
   public void setManaged(boolean isManaged) {

@@ -1,21 +1,22 @@
 package com.linkedin.venice.offsets;
 
+import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
-import com.linkedin.davinci.storage.StorageMetadataService;
-import org.apache.log4j.Logger;
-
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 
 /**
  * In memory implementation of StorageMetadataService, should really only be used for tests
  */
 public class InMemoryStorageMetadataService extends InMemoryOffsetManager implements StorageMetadataService {
-  private static final Logger LOGGER = Logger.getLogger(InMemoryStorageMetadataService.class);
+  private static final Logger LOGGER = LogManager.getLogger(InMemoryStorageMetadataService.class);
 
-  private ConcurrentMap<String, StoreVersionState> topicToStoreVersionStateMap = new ConcurrentHashMap<>();
+  private final ConcurrentMap<String, StoreVersionState> topicToStoreVersionStateMap = new ConcurrentHashMap<>();
 
   @Override
   public void put(String topicName, StoreVersionState record) throws VeniceException {

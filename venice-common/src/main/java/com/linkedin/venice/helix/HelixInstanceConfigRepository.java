@@ -12,7 +12,8 @@ import org.apache.helix.NotificationContext;
 import org.apache.helix.PropertyKey;
 import org.apache.helix.api.listeners.InstanceConfigChangeListener;
 import org.apache.helix.model.InstanceConfig;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -20,7 +21,7 @@ import org.apache.log4j.Logger;
  * So far it only stores group/zone info, and we could add more if necessary in the future.
  */
 public class HelixInstanceConfigRepository implements VeniceResource, InstanceConfigChangeListener {
-  private static final Logger LOGGER = Logger.getLogger(HelixInstanceConfigRepository.class);
+  private static final Logger LOGGER = LogManager.getLogger(HelixInstanceConfigRepository.class);
 
   public static final int DEFAULT_INSTANCE_GROUP_ID = 0;
   public static final String GROUP_FIELD_NAME_IN_DOMAIN = "group";
@@ -38,7 +39,7 @@ public class HelixInstanceConfigRepository implements VeniceResource, InstanceCo
    * in case this issue is happening very frequently.
    * The current implementation is to do 1% logging.
    */
-  private AtomicLong unknownInstanceCall = new AtomicLong();
+  private final AtomicLong unknownInstanceCall = new AtomicLong();
 
   public HelixInstanceConfigRepository(SafeHelixManager manager, boolean useGroupFieldInDomain) {
     this.manager = manager;

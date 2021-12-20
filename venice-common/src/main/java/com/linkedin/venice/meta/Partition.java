@@ -8,7 +8,8 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -22,7 +23,7 @@ import org.apache.log4j.Logger;
  * In the future, if Venice need more flexibility to manage cluster, some update/delete methods could be added here.
  */
 public class Partition {
-  private static final Logger logger = Logger.getLogger(Partition.class);
+  private static final Logger logger = LogManager.getLogger(Partition.class);
   /**
    * Id of partition. One of the number between [0 ~ total number of partition)
    */

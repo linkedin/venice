@@ -110,12 +110,12 @@ import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreRecordDeleter;
 import com.linkedin.venice.replication.LeaderStorageNodeReplicator;
 import com.linkedin.venice.replication.TopicReplicator;
-import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
-import com.linkedin.venice.schema.rmd.ReplicationMetadataSchemaEntry;
-import com.linkedin.venice.schema.rmd.ReplicationMetadataVersionId;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
+import com.linkedin.venice.schema.rmd.ReplicationMetadataSchemaEntry;
+import com.linkedin.venice.schema.rmd.ReplicationMetadataVersionId;
+import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
@@ -189,7 +189,8 @@ import org.apache.helix.model.builder.HelixConfigScopeBuilder;
 import org.apache.helix.participant.StateMachineEngine;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.http.HttpStatus;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.*;
 import static com.linkedin.venice.meta.Version.*;
@@ -227,7 +228,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED,
         ExecutionStatus.ARCHIVED);
 
-    private static final Logger logger = Logger.getLogger(VeniceHelixAdmin.class);
+    private static final Logger logger = LogManager.getLogger(VeniceHelixAdmin.class);
     private static final int RECORD_COUNT = 10;
     private static final String REGION_FILTER_LIST_SEPARATOR = ",\\s*";
 
@@ -4927,7 +4928,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         Utils.closeQuietlyWithErrorLogged(topicManagerRepository);
         pushStatusStoreReader.ifPresent(PushStatusStoreReader::close);
         pushStatusStoreDeleter.ifPresent(PushStatusStoreRecordDeleter::close);
-        clusterControllerClientPerColoMap.forEach((clusterName, controllerClientMap) -> controllerClientMap.values().forEach(c -> Utils.closeQuietlyWithErrorLogged(c)));
+        clusterControllerClientPerColoMap.forEach((clusterName, controllerClientMap) -> controllerClientMap.values().forEach(
+            Utils::closeQuietlyWithErrorLogged));
         D2ClientUtils.shutdownClient(d2Client);
     }
 

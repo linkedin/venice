@@ -1,7 +1,6 @@
 package com.linkedin.venice.integration.utils;
 
 import com.linkedin.venice.utils.Utils;
-
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelFuture;
@@ -23,25 +22,25 @@ import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpServerCodec;
 import io.netty.handler.codec.http.HttpVersion;
 import java.net.URI;
-import org.apache.log4j.Logger;
-
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 //TODO: It is worth taking a look of Netty handler here.
 //TODO: It seems that each request goes through the channel twice. (checkout AvroGenericStoreClientImplTest)
 //TODO: The request has no msg at the second time and trigger ""Unknown message type" exception.
 
 public class  MockHttpServerWrapper extends ProcessWrapper {
-  private static final Logger logger = Logger.getLogger(MockHttpServerWrapper.class);
+  private static final Logger logger = LogManager.getLogger(MockHttpServerWrapper.class);
 
-  private ServerBootstrap bootstrap;
-  private EventLoopGroup bossGroup;
-  private EventLoopGroup workerGroup;
+  private final ServerBootstrap bootstrap;
+  private final EventLoopGroup bossGroup;
+  private final EventLoopGroup workerGroup;
   private ChannelFuture serverFuture;
-  private int port;
-  private Map<String, FullHttpResponse> uriToResponseMap = new ConcurrentHashMap<>();
-  private Map<String, FullHttpResponse> uriPatternToResponseMap = new ConcurrentHashMap<>();
+  private final int port;
+  private final Map<String, FullHttpResponse> uriToResponseMap = new ConcurrentHashMap<>();
+  private final Map<String, FullHttpResponse> uriPatternToResponseMap = new ConcurrentHashMap<>();
 
   static StatefulServiceProvider<MockHttpServerWrapper> generateService() {
     return (serviceName, dataDirectory) -> new MockHttpServerWrapper(serviceName, Utils.getFreePort());
@@ -120,7 +119,7 @@ public class  MockHttpServerWrapper extends ProcessWrapper {
 
 
   private static class MockServerHandler extends SimpleChannelInboundHandler {
-    private static final Logger logger = Logger.getLogger(MockServerHandler.class);
+    private static final Logger logger = LogManager.getLogger(MockServerHandler.class);
     private final Map<String, FullHttpResponse> responseMap;
     private final Map<String, FullHttpResponse> uriPatternToResponseMap;
     private final FullHttpResponse notFoundResponse;
@@ -154,7 +153,7 @@ public class  MockHttpServerWrapper extends ProcessWrapper {
 
         if (responseMap.containsKey(uriStr)) {
           logger.trace("Found matched response");
-          ctx.writeAndFlush(responseMap.get(uriStr).copy()); //.addListener(ChannelFutureListener.CLOSE);
+          ctx.writeAndFlush(responseMap.get(uriStr).copy());
         } else {
           for (Map.Entry<String, FullHttpResponse> entry : uriPatternToResponseMap.entrySet()) {
             String uriPattern = entry.getKey();

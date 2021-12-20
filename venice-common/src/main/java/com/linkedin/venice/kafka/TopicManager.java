@@ -3,8 +3,8 @@ package com.linkedin.venice.kafka;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.kafka.admin.KafkaAdminWrapper;
 import com.linkedin.venice.kafka.KafkaClientFactory.MetricsParameters;
+import com.linkedin.venice.kafka.admin.KafkaAdminWrapper;
 import com.linkedin.venice.kafka.partitionoffset.PartitionOffsetFetcher;
 import com.linkedin.venice.kafka.partitionoffset.PartitionOffsetFetcherFactory;
 import com.linkedin.venice.meta.HybridStoreConfig;
@@ -33,7 +33,8 @@ import org.apache.kafka.common.config.TopicConfig;
 import org.apache.kafka.common.errors.InvalidReplicationFactorException;
 import org.apache.kafka.common.errors.TopicExistsException;
 import org.apache.kafka.common.errors.UnknownTopicOrPartitionException;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import static com.linkedin.venice.ConfigConstants.*;
 
@@ -47,7 +48,7 @@ import static com.linkedin.venice.ConfigConstants.*;
  * use the same consumer: KafkaConsumer is not safe for multi-threaded access.
  */
 public class TopicManager implements Closeable {
-  private static final Logger logger = Logger.getLogger(TopicManager.class);
+  private static final Logger logger = LogManager.getLogger(TopicManager.class);
 
   private static final int MINIMUM_TOPIC_DELETION_STATUS_POLL_TIMES = 10;
   private static final int FAST_KAFKA_OPERATION_TIMEOUT_MS = Time.MS_PER_SECOND;

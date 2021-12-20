@@ -22,12 +22,15 @@ import com.linkedin.venice.writer.AbstractVeniceWriter;
 import com.linkedin.venice.writer.PutMetadata;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
+import java.io.ByteArrayOutputStream;
 import java.io.Closeable;
+import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -35,11 +38,11 @@ import java.util.Properties;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericDatumWriter;
 import org.apache.avro.io.Encoder;
 import org.apache.hadoop.io.BytesWritable;
-import org.apache.hadoop.io.NullWritable;
 import org.apache.hadoop.mapred.Counters;
 import org.apache.hadoop.mapred.JobClient;
 import org.apache.hadoop.mapred.JobConf;
@@ -50,14 +53,10 @@ import org.apache.hadoop.mapred.Reporter;
 import org.apache.hadoop.util.Progressable;
 import org.apache.kafka.clients.producer.Callback;
 import org.apache.kafka.clients.producer.RecordMetadata;
-import org.apache.log4j.Logger;
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
-import java.util.Iterator;
-import java.util.concurrent.atomic.AtomicLong;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import static com.linkedin.venice.hadoop.VenicePushJob.*;
-import static com.linkedin.venice.writer.VeniceWriter.*;
 
 
 /**
@@ -76,11 +75,11 @@ public class VeniceReducer
     implements Reducer<BytesWritable, BytesWritable, BytesWritable, BytesWritable> {
 
   public static class VeniceWriterMessage {
-    private byte[] keyBytes;
-    private byte[] valueBytes;
-    private int valueSchemaId;
-    private int replicationMetadataVersionId;
-    private ByteBuffer replicationMetadataPayload;
+    private final byte[] keyBytes;
+    private final byte[] valueBytes;
+    private final int valueSchemaId;
+    private final int replicationMetadataVersionId;
+    private final ByteBuffer replicationMetadataPayload;
 
     public VeniceWriterMessage(byte[] keyBytes, byte[] valueBytes, int valueSchemaId) {
       this(keyBytes, valueBytes, valueSchemaId, -1, null);
@@ -116,7 +115,7 @@ public class VeniceReducer
   }
 
   public static final String MAP_REDUCE_JOB_ID_PROP = "mapred.job.id";
-  private static final Logger LOGGER = Logger.getLogger(VeniceReducer.class);
+  private static final Logger LOGGER = LogManager.getLogger(VeniceReducer.class);
   private static final String NON_INITIALIZED_LEADER = "N/A";
 
   private long lastTimeThroughputWasLoggedInNS = System.nanoTime();

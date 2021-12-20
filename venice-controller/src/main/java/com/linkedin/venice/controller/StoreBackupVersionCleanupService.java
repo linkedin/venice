@@ -10,7 +10,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -24,7 +25,7 @@ import org.apache.log4j.Logger;
  * to accommodate the delay between Controller and Router.
  */
 public class StoreBackupVersionCleanupService extends AbstractVeniceService {
-  private static final Logger LOGGER = Logger.getLogger(StoreBackupVersionCleanupService.class);
+  private static final Logger LOGGER = LogManager.getLogger(StoreBackupVersionCleanupService.class);
   /**
    * The minimal delay to cleanup backup version, and this is used to make sure all the Routers have enough
    * time to switch to the new promoted version.

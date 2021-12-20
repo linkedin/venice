@@ -1,22 +1,23 @@
 package com.linkedin.venice.cleaner;
 
 import com.linkedin.davinci.kafka.consumer.ParticipantStoreConsumptionTask;
-import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionService;
+import com.linkedin.davinci.storage.StorageEngineRepository;
+import com.linkedin.davinci.storage.StorageService;
+import com.linkedin.davinci.store.AbstractStorageEngine;
+import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.stats.LeakedResourceCleanerStats;
-import com.linkedin.davinci.storage.StorageService;
-import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.venice.utils.Time;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -24,7 +25,7 @@ import org.apache.log4j.Logger;
  * to release leaked resources from local disk.
  */
 public class LeakedResourceCleaner extends AbstractVeniceService {
-  private static final Logger logger = Logger.getLogger(LeakedResourceCleaner.class);
+  private static final Logger logger = LogManager.getLogger(LeakedResourceCleaner.class);
 
   private final long pollIntervalMs;
   private LeakedResourceCleanerRunnable cleaner;

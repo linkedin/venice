@@ -17,8 +17,6 @@ import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.meta.SystemStore;
 import com.linkedin.venice.meta.ZKStore;
-import com.linkedin.venice.meta.systemstore.schemas.StoreMetadataKey;
-import com.linkedin.venice.meta.systemstore.schemas.StoreMetadataValue;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -35,7 +33,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ExecutionException;
 import org.apache.avro.Schema;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import static com.linkedin.venice.system.store.MetaStoreWriter.*;
 
@@ -47,7 +46,7 @@ import static com.linkedin.venice.system.store.MetaStoreWriter.*;
 public class DaVinciClientMetaStoreBasedRepository extends NativeMetadataRepository {
   private static final int KEY_SCHEMA_ID = 1;
   private static final long DEFAULT_DA_VINCI_CLIENT_ROCKS_DB_MEMORY_LIMIT = 1024 * 1024 * 1024; // 1GB
-  private static final Logger logger = Logger.getLogger(DaVinciClientMetaStoreBasedRepository.class);
+  private static final Logger logger = LogManager.getLogger(DaVinciClientMetaStoreBasedRepository.class);
 
   // Map of user store name to their corresponding meta store which is used for finding the correct current version.
   // TODO Store objects in this map are mocked locally based on client.meta.system.store.version.map config.

@@ -14,7 +14,8 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.apache.samza.SamzaException;
 import org.apache.samza.config.Config;
 import org.apache.samza.metrics.MetricsRegistry;
@@ -29,7 +30,7 @@ import static com.linkedin.venice.VeniceConstants.*;
 
 
 public class VeniceSystemFactory implements SystemFactory, Serializable {
-  private static final Logger LOGGER = Logger.getLogger(VeniceSystemFactory.class);
+  private static final Logger LOGGER = LogManager.getLogger(VeniceSystemFactory.class);
 
   public static final String D2_ZK_HOSTS_PROPERTY = "__r2d2DefaultClient__.r2d2Client.zkHosts";
 

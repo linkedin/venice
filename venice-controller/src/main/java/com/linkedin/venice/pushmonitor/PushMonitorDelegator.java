@@ -13,9 +13,9 @@ import com.linkedin.venice.meta.StoreCleaner;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.replication.TopicReplicator;
 import com.linkedin.venice.utils.Pair;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import com.linkedin.venice.utils.locks.ClusterLockManager;
-import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -23,7 +23,8 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -32,7 +33,7 @@ import org.apache.log4j.Logger;
  * configurable in controller's configs.
  */
 public class PushMonitorDelegator implements PushMonitor {
-  private static final Logger logger = Logger.getLogger(PushMonitorDelegator.class);
+  private static final Logger logger = LogManager.getLogger(PushMonitorDelegator.class);
 
   private final PushMonitorType pushMonitorType;
   private final ReadWriteStoreRepository metadataRepository;
@@ -40,8 +41,8 @@ public class PushMonitorDelegator implements PushMonitor {
   private final String clusterName;
   private final ClusterLockManager clusterLockManager;
 
-  private HelixEVBasedPushMonitor helixEVPushMonitor;
-  private PartitionStatusBasedPushMonitor partitionStatusBasedPushStatusMonitor;
+  private final HelixEVBasedPushMonitor helixEVPushMonitor;
+  private final PartitionStatusBasedPushMonitor partitionStatusBasedPushStatusMonitor;
 
   //Cache the relationship between kafka topic and push monitor here.
   private final Map<String, AbstractPushMonitor> topicToPushMonitorMap;

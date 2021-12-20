@@ -8,7 +8,8 @@ import java.util.Arrays;
 import org.apache.avro.AvroTypeException;
 import org.apache.avro.Schema;
 import org.apache.avro.SchemaParseException;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import static com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType.*;
 import static com.linkedin.venice.schema.avro.SchemaCompatibility.*;
@@ -22,7 +23,7 @@ public class SchemaEntry {
   // To ensure we don't accidentally use different compatibility type for schema creation in Venice.
   public static final DirectionalSchemaCompatibilityType DEFAULT_SCHEMA_CREATION_COMPATIBILITY_TYPE =
       DirectionalSchemaCompatibilityType.FULL;
-  private static final Logger logger = Logger.getLogger(SchemaEntry.class);
+  private static final Logger logger = LogManager.getLogger(SchemaEntry.class);
 
   private final int id;
   private Schema schema;

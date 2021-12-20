@@ -1,16 +1,9 @@
 package com.linkedin.venice.meta;
 
-import com.linkedin.venice.exceptions.VeniceException;
-import java.util.HashMap;
-import java.util.Map;
-import org.apache.log4j.Logger;
-
-
 /**
  * Cluster level metadata for all routers.
  */
 public class RoutersClusterConfig {
-  private final static Logger logger = Logger.getLogger(RoutersClusterConfig.class);
 
   private int expectedRouterCount;
 

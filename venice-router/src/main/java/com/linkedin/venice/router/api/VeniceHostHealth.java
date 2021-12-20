@@ -11,23 +11,24 @@ import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentSkipListSet;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 public class VeniceHostHealth implements HostHealthMonitor<Instance> {
 
-  private static final Logger logger = Logger.getLogger(VeniceHostHealth.class);
+  private static final Logger logger = LogManager.getLogger(VeniceHostHealth.class);
   private final int maxPendingConnectionPerHost;
   private final int routerPendingConnResumeThreshold;
   private final boolean statefulRouterHealthCheckEnabled;
   private final long fullPendingQueueServerOORMs;
   protected Set<String> unhealthyHosts = new ConcurrentSkipListSet<>();
-  private Map<String, Long> pendingRequestUnhealthyTimeMap = new VeniceConcurrentHashMap<>();
+  private final Map<String, Long> pendingRequestUnhealthyTimeMap = new VeniceConcurrentHashMap<>();
 
 
   private final LiveInstanceMonitor liveInstanceMonitor;
   private final StorageNodeClient storageNodeClient;
-  private RouteHttpRequestStats routeHttpRequestStats;
+  private final RouteHttpRequestStats routeHttpRequestStats;
   private final AggHostHealthStats aggHostHealthStats;
 
   public VeniceHostHealth(LiveInstanceMonitor liveInstanceMonitor, StorageNodeClient storageNodeClient, VeniceRouterConfig config,

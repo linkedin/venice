@@ -33,7 +33,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.apache.avro.Schema;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import static com.linkedin.venice.system.store.MetaStoreWriter.*;
 import static java.lang.Thread.*;
@@ -46,7 +47,7 @@ import static java.lang.Thread.*;
  * deserialized meta system store data directly.
  */
 public class DaVinciClientBasedMetadata extends AbstractStoreMetadata {
-  private static final Logger logger = Logger.getLogger(DaVinciClientBasedMetadata.class);
+  private static final Logger logger = LogManager.getLogger(DaVinciClientBasedMetadata.class);
   private static final String STORE_PROPERTIES_KEY = "store_properties";
   private static final String STORE_KEY_SCHEMAS_KEY = "store_key_schemas";
   private static final String STORE_VALUE_SCHEMAS_KEY = "store_value_schemas";

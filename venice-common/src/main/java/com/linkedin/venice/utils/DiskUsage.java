@@ -3,11 +3,11 @@ package com.linkedin.venice.utils;
 import com.linkedin.venice.exceptions.VeniceException;
 import java.io.IOException;
 import java.nio.file.FileStore;
-import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.concurrent.atomic.AtomicLong;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -24,7 +24,7 @@ import org.apache.log4j.Logger;
  */
 public class DiskUsage {
 
-  private static final Logger LOGGER = Logger.getLogger(DiskUsage.class);
+  private static final Logger LOGGER = LogManager.getLogger(DiskUsage.class);
   private final String diskPath;
   private final long totalSpaceBytes;
   private final long freeSpaceBytesRequired; // less than this means disk full (over threshold)
@@ -35,7 +35,7 @@ public class DiskUsage {
   private final long reserveSpaceBytes;
 
   private long freeSpaceBytes; //This doesn't stay up-to-date, but is refreshed periodically
-  private AtomicLong reserveSpaceBytesRemaining = new AtomicLong();
+  private final AtomicLong reserveSpaceBytesRemaining = new AtomicLong();
 
   public DiskUsage(String path, double diskFullThreshold){
     this.diskPath = path;

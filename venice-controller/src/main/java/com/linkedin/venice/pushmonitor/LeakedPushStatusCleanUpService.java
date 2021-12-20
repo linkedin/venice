@@ -12,7 +12,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.PriorityQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import static com.linkedin.venice.pushmonitor.PushStatusCleanUpServiceState.*;
 
@@ -31,7 +32,7 @@ import static com.linkedin.venice.pushmonitor.PushStatusCleanUpServiceState.*;
  * write push status after controllers think they have cleaned up the push status.
  */
 public class LeakedPushStatusCleanUpService extends AbstractVeniceService {
-  private static final Logger LOGGER = Logger.getLogger(LeakedPushStatusCleanUpService.class);
+  private static final Logger LOGGER = LogManager.getLogger(LeakedPushStatusCleanUpService.class);
   private static final Comparator<Integer> VERSION_COMPARATOR = new Comparator<Integer>() {
     @Override
     public int compare(Integer o1, Integer o2) {

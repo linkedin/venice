@@ -6,7 +6,8 @@ import io.github.classgraph.ScanResult;
 import java.io.File;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -16,7 +17,7 @@ import org.apache.log4j.Logger;
  * for reflections and need to be discarded then
  */
 public class ReflectUtils {
-  private static final Logger LOGGER = Logger.getLogger(ReflectUtils.class);
+  private static final Logger LOGGER = LogManager.getLogger(ReflectUtils.class);
 
   /**
    * Load the given class using the default constructor

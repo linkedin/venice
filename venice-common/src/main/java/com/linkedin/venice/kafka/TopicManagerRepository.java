@@ -10,7 +10,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import static com.linkedin.venice.ConfigConstants.*;
 import static com.linkedin.venice.VeniceConstants.*;
@@ -18,7 +19,7 @@ import static com.linkedin.venice.kafka.TopicManager.*;
 
 
 public class TopicManagerRepository implements Closeable {
-  private static final Logger logger = Logger.getLogger(TopicManagerRepository.class);
+  private static final Logger logger = LogManager.getLogger(TopicManagerRepository.class);
 
   private final String localKafkaBootstrapServers;
   private final String localKafkaZkAddress;

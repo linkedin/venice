@@ -24,7 +24,8 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Supplier;
 import org.apache.commons.io.FileUtils;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.rocksdb.BlockBasedTableConfig;
 import org.rocksdb.ColumnFamilyDescriptor;
 import org.rocksdb.ColumnFamilyHandle;
@@ -58,7 +59,7 @@ import static com.linkedin.davinci.store.AbstractStorageEngine.*;
  * operations.
  */
 class RocksDBStoragePartition extends AbstractStoragePartition {
-  private static final Logger LOGGER = Logger.getLogger(RocksDBStoragePartition.class);
+  private static final Logger LOGGER = LogManager.getLogger(RocksDBStoragePartition.class);
 
   /**
    * This field is being stored during offset checkpointing in {@link com.linkedin.davinci.kafka.consumer.StoreIngestionTask}.

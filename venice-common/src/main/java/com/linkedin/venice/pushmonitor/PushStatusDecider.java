@@ -9,14 +9,14 @@ import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.systemstore.schemas.StoreReplicaStatus;
 import com.linkedin.venice.utils.Pair;
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.*;
 
@@ -25,7 +25,7 @@ import static com.linkedin.venice.pushmonitor.ExecutionStatus.*;
  * Decide the offline push status by checking all of replicas statuses under different offline push strategies.
  */
 public abstract class PushStatusDecider {
-  private final Logger logger = Logger.getLogger(PushStatusDecider.class);
+  private final Logger logger = LogManager.getLogger(PushStatusDecider.class);
   private final static String REASON_NOT_IN_EV = "not yet in EXTERNALVIEW";
   private final static String REASON_NOT_ENOUGH_PARTITIONS_IN_EV = "not enough partitions in EXTERNALVIEW";
   private final static String REASON_UNDER_REPLICATED = "does not have enough replicas";

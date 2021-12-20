@@ -1,16 +1,12 @@
 package com.linkedin.venice.D2;
 
-import com.linkedin.venice.exceptions.VeniceException;
-
 import com.linkedin.common.callback.Callback;
 import com.linkedin.common.util.None;
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.r2.message.rest.RestRequest;
 import com.linkedin.r2.message.rest.RestRequestBuilder;
 import com.linkedin.r2.message.rest.RestResponse;
-
-import org.apache.log4j.Logger;
-
+import com.linkedin.venice.exceptions.VeniceException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.Collections;
@@ -20,12 +16,14 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import static com.linkedin.venice.HttpConstants.*;
 
 
 public class D2ClientUtils {
-  private static Logger logger = Logger.getLogger(D2ClientUtils.class);
+  private static final Logger logger = LogManager.getLogger(D2ClientUtils.class);
   private static long DEFAULT_D2_STARTUP_TIMEOUT_MS = 5_000;
   private static long DEFAULT_D2_SHUTDOWN_TIMEOUT_MS = 60_000;
 

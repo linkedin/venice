@@ -6,11 +6,11 @@ import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
-import com.linkedin.venice.schema.rmd.ReplicationMetadataSchemaEntry;
-import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
-import com.linkedin.venice.schema.rmd.ReplicationMetadataVersionId;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
+import com.linkedin.venice.schema.rmd.ReplicationMetadataSchemaEntry;
+import com.linkedin.venice.schema.rmd.ReplicationMetadataVersionId;
+import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Collection;
@@ -23,11 +23,13 @@ import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Function;
 import java.util.stream.Collectors;
-import org.apache.helix.zookeeper.zkclient.IZkChildListener;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
-import org.apache.log4j.Logger;
+import org.apache.helix.zookeeper.zkclient.IZkChildListener;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import static com.linkedin.venice.common.VeniceSystemStoreUtils.*;
+
 
 /**
  * This class is used to cache store schema and provide various query operations.
@@ -43,27 +45,27 @@ import static com.linkedin.venice.common.VeniceSystemStoreUtils.*;
  *
  */
 public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, StoreDataChangedListener {
-  private final Logger logger = Logger.getLogger(HelixReadOnlySchemaRepository.class);
+  private final Logger logger = LogManager.getLogger(HelixReadOnlySchemaRepository.class);
 
   public static final int VALUE_SCHEMA_STARTING_ID = 1;
 
   /**
    * Local cache between store name and store schema.
    */
-  private Map<String, SchemaData> schemaMap = new VeniceConcurrentHashMap<>();
+  private final Map<String, SchemaData> schemaMap = new VeniceConcurrentHashMap<>();
 
   private final ZkClient zkClient;
   private final HelixSchemaAccessor accessor;
   private final CachedResourceZkStateListener zkStateListener;
 
   // Store repository to check store related info
-  private ReadOnlyStoreRepository storeRepository;
+  private final ReadOnlyStoreRepository storeRepository;
 
   // Listener to handle adding key/value schema
-  private IZkChildListener keySchemaChildListener = new KeySchemaChildListener();
-  private IZkChildListener valueSchemaChildListener = new ValueSchemaChildListener();
-  private IZkChildListener derivedSchemaChildListener = new DerivedSchemaChildListener();
-  private IZkChildListener replicationMetadataSchemaChildListener = new ReplicationMetadataSchemaChildListener();
+  private final IZkChildListener keySchemaChildListener = new KeySchemaChildListener();
+  private final IZkChildListener valueSchemaChildListener = new ValueSchemaChildListener();
+  private final IZkChildListener derivedSchemaChildListener = new DerivedSchemaChildListener();
+  private final IZkChildListener replicationMetadataSchemaChildListener = new ReplicationMetadataSchemaChildListener();
 
   // Mutex for local cache
   private final ReadWriteLock schemaLock = new ReentrantReadWriteLock();

@@ -62,7 +62,8 @@ import org.apache.avro.io.BinaryEncoder;
 import org.apache.avro.io.ByteBufferOptimizedBinaryDecoder;
 import org.apache.commons.codec.binary.Hex;
 import org.apache.commons.io.IOUtils;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.bouncycastle.crypto.digests.MD5Digest;
 
 import static com.linkedin.venice.HttpConstants.*;
@@ -71,7 +72,7 @@ import static com.linkedin.venice.streaming.StreamingConstants.*;
 
 
 public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreClient<K, V> {
-  private static final Logger logger = Logger.getLogger(AbstractAvroStoreClient.class);
+  private static final Logger logger = LogManager.getLogger(AbstractAvroStoreClient.class);
   public static final String TYPE_STORAGE = "storage";
   public static final String TYPE_COMPUTE = "compute";
   public static final String B64_FORMAT = "?f=b64";

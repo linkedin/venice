@@ -1,21 +1,14 @@
 package com.linkedin.venice.kafka.validation;
 
 import com.linkedin.venice.exceptions.validation.DataValidationException;
-import com.linkedin.venice.exceptions.validation.DuplicateDataException;
-import com.linkedin.venice.exceptions.validation.MissingDataException;
-import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
-import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
-import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
-
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.Function;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
-import org.apache.log4j.Logger;
 
 
 /**
@@ -28,7 +21,6 @@ import org.apache.log4j.Logger;
  * 4. Whether producers have produced duplicate messages, which is fine and expected due to producer retries (DUPLICATE).
  */
 public class KafkaDataIntegrityValidator {
-  private static final Logger logger = Logger.getLogger(KafkaDataIntegrityValidator.class);
   private final String kafkaVersionTopic;
   private final long kafkaLogCompactionDelayInMs;
 

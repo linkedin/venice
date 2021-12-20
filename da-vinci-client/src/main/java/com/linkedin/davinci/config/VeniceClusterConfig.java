@@ -16,7 +16,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.common.protocol.SecurityProtocol;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import static com.linkedin.venice.ConfigKeys.*;
 
@@ -25,7 +26,7 @@ import static com.linkedin.venice.ConfigKeys.*;
  * class that maintains config very specific to a Venice cluster
  */
 public class VeniceClusterConfig {
-  private static final Logger logger = Logger.getLogger(VeniceServerConfig.class.getName());
+  private static final Logger logger = LogManager.getLogger(VeniceServerConfig.class.getName());
 
   private String clusterName;
   //TODO: shouldn't the following configs be moved to VeniceServerConfig??

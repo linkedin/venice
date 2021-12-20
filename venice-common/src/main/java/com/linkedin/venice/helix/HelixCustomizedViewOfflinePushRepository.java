@@ -11,7 +11,6 @@ import com.linkedin.venice.routerapi.ReplicaState;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
@@ -26,7 +25,8 @@ import org.apache.helix.api.exceptions.HelixMetaDataAccessException;
 import org.apache.helix.model.CustomizedView;
 import org.apache.helix.model.IdealState;
 import org.apache.helix.spectator.RoutingTableSnapshot;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import static com.linkedin.venice.helix.ResourceAssignment.*;
 
@@ -35,13 +35,13 @@ import static com.linkedin.venice.helix.ResourceAssignment.*;
  * Extend HelixBaseRoutingRepository to leverage customized view data for offline push.
  */
 public class HelixCustomizedViewOfflinePushRepository extends HelixBaseRoutingRepository {
-  private static final Logger logger = Logger.getLogger(HelixCustomizedViewOfflinePushRepository.class);
+  private static final Logger logger = LogManager.getLogger(HelixCustomizedViewOfflinePushRepository.class);
   private final ReentrantReadWriteLock resourceAssignmentRWLock = new ReentrantReadWriteLock();
   private static final String LEADER_FOLLOWER_VENICE_STATE_FILLER = "N/A";
 
   public HelixCustomizedViewOfflinePushRepository(SafeHelixManager manager) {
     super(manager);
-    dataSource.put(PropertyType.CUSTOMIZEDVIEW, Arrays.asList(HelixPartitionState.OFFLINE_PUSH.name()));
+    dataSource.put(PropertyType.CUSTOMIZEDVIEW, Collections.singletonList(HelixPartitionState.OFFLINE_PUSH.name()));
   }
 
   @Override

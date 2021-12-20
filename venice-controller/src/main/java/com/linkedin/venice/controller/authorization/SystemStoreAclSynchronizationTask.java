@@ -10,7 +10,8 @@ import com.linkedin.venice.meta.Store;
 import java.io.Closeable;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -21,7 +22,7 @@ import org.apache.log4j.Logger;
  * controller and only in the parent controller based on the availability of the AuthorizerService.
  */
 public class SystemStoreAclSynchronizationTask implements Runnable, Closeable {
-  private static final Logger logger = Logger.getLogger(SystemStoreAclSynchronizationTask.class);
+  private static final Logger logger = LogManager.getLogger(SystemStoreAclSynchronizationTask.class);
 
   private final AuthorizerService authorizationService;
   private final VeniceParentHelixAdmin veniceParentHelixAdmin;

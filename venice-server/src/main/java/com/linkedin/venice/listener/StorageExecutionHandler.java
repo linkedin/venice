@@ -84,7 +84,8 @@ import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.BinaryDecoder;
 import org.apache.avro.io.DecoderFactory;
 import org.apache.avro.util.Utf8;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /***
@@ -94,7 +95,7 @@ import org.apache.log4j.Logger;
  */
 @ChannelHandler.Sharable
 public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
-  private static final Logger logger = Logger.getLogger(StorageExecutionHandler.class);
+  private static final Logger logger = LogManager.getLogger(StorageExecutionHandler.class);
 
   /**
    * When constructing a {@link BinaryDecoder}, we pass in this 16 bytes array because if we pass anything

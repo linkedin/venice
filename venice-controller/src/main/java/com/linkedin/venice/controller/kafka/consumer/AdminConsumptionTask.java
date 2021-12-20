@@ -52,7 +52,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -129,7 +130,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
   private final boolean remoteConsumptionEnabled;
 
   private boolean isSubscribed;
-  private KafkaConsumerWrapper consumer;
+  private final KafkaConsumerWrapper consumer;
   private volatile long offsetToSkip = UNASSIGNED_VALUE;
   private volatile long offsetToSkipDIV = UNASSIGNED_VALUE;
   /**
@@ -147,7 +148,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
    * that has the details about the exception and the offset of the problematic admin message.
    */
   private final ConcurrentHashMap<String, AdminErrorInfo> problematicStores;
-  private Queue<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>> undelegatedRecords;
+  private final Queue<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>> undelegatedRecords;
 
 
   private final ExecutionIdAccessor executionIdAccessor;
@@ -239,7 +240,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     this.clusterName = clusterName;
     this.topic = AdminTopicUtils.getTopicNameFromClusterName(clusterName);
     this.consumerTaskId = String.format(CONSUMER_TASK_ID_FORMAT, this.topic);
-    this.logger = Logger.getLogger(consumerTaskId);
+    this.logger = LogManager.getLogger(consumerTaskId);
     this.admin = admin;
     this.isParentController = isParentController;
     this.deserializer = new AdminOperationSerializer();

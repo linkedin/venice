@@ -19,7 +19,8 @@ dependencies {
         exclude group: 'javax.servlet'
     }
 
-    implementation libraries.log4j
+    implementation libraries.log4j2api
+    implementation libraries.log4j2core
     implementation (libraries.hadoopCommon) {
       // Exclude transitive dependency
       exclude group: 'org.apache.avro'

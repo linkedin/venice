@@ -1,16 +1,17 @@
 package com.linkedin.davinci.helix;
 
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionService;
-import com.linkedin.venice.meta.Version;
 import com.linkedin.davinci.notifier.VeniceNotifier;
+import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
-import static com.linkedin.davinci.helix.AbstractStateModelFactory.getStateModelID;
+import static com.linkedin.davinci.helix.AbstractStateModelFactory.*;
 
 
 /**
@@ -19,9 +20,9 @@ import static com.linkedin.davinci.helix.AbstractStateModelFactory.getStateModel
  * need to coordinate with ingestion progress.
  */
 public abstract class StateModelIngestionProgressNotifier implements VeniceNotifier {
-  private final Logger logger = Logger.getLogger(this.getClass().getSimpleName());
-  private Map<String, CountDownLatch> stateModelToIngestionCompleteFlagMap = new VeniceConcurrentHashMap<>();
-  private Map<String, Boolean> stateModelToSuccessMap = new VeniceConcurrentHashMap<>();
+  private final Logger logger = LogManager.getLogger(this.getClass().getSimpleName());
+  private final Map<String, CountDownLatch> stateModelToIngestionCompleteFlagMap = new VeniceConcurrentHashMap<>();
+  private final Map<String, Boolean> stateModelToSuccessMap = new VeniceConcurrentHashMap<>();
 
   void startConsumption(String resourceName, int partitionId) {
     final String stateModelID = getStateModelID(resourceName, partitionId);

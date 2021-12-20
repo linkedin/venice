@@ -20,11 +20,13 @@ import javax.annotation.concurrent.NotThreadSafe;
 import org.apache.avro.Schema;
 import org.apache.kafka.clients.producer.Callback;
 import org.apache.kafka.clients.producer.RecordMetadata;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 
 @NotThreadSafe
 class DefaultPushJobHeartbeatSender implements PushJobHeartbeatSender {
-  private static final Logger LOGGER = Logger.getLogger(DefaultPushJobHeartbeatSender.class);
+  private static final Logger LOGGER = LogManager.getLogger(DefaultPushJobHeartbeatSender.class);
   private static final Duration DEFAULT_SEND_CALLBACK_AWAIT_TIMEOUT = Duration.ofSeconds(10);
 
   private final Duration interval;

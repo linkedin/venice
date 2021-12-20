@@ -25,7 +25,8 @@ import org.apache.helix.model.Message;
 import org.apache.helix.participant.statemachine.StateModel;
 import org.apache.helix.participant.statemachine.StateTransitionError;
 import org.apache.helix.participant.statemachine.Transition;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -47,7 +48,7 @@ import org.apache.log4j.Logger;
  * {@link LeaderFollowerPartitionStateModel} for behavior registry.
  */
 public abstract class AbstractPartitionStateModel extends StateModel {
-  protected final Logger logger = Logger.getLogger(getClass());
+  protected final Logger logger = LogManager.getLogger(getClass());
   private static final String STORE_PARTITION_DESCRIPTION_FORMAT = "%s-%d";
   private static final int RETRY_COUNT = 5;
   private static final int RETRY_DURATION_MS = 1000;

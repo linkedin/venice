@@ -17,7 +17,6 @@ import javax.net.ssl.SSLProtocolException;
 import javax.net.ssl.TrustManagerFactory;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang.StringUtils;
-import org.apache.log4j.Logger;
 
 import static com.linkedin.venice.CommonConfigKeys.*;
 
@@ -32,7 +31,6 @@ import static com.linkedin.venice.CommonConfigKeys.*;
  * 2. Added a helper function that builds a {@link Config} from {@link Properties}
  */
 public class DefaultSSLFactory implements SSLFactory {
-  private static final Logger logger = Logger.getLogger(DefaultSSLFactory.class);
 
   public static final String[] CIPHER_SUITE_WHITELIST = {
       // Preferred ciphersuites:

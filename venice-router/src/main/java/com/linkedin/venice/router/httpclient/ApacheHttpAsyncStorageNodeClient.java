@@ -2,8 +2,8 @@ package com.linkedin.venice.router.httpclient;
 
 import com.linkedin.ddsstorage.router.api.RouterException;
 import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
-import com.linkedin.venice.httpclient.CachedDnsResolver;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.httpclient.CachedDnsResolver;
 import com.linkedin.venice.httpclient.HttpClientUtils;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.LiveInstanceChangedListener;
@@ -11,9 +11,9 @@ import com.linkedin.venice.meta.LiveInstanceMonitor;
 import com.linkedin.venice.meta.QueryAction;
 import com.linkedin.venice.router.VeniceRouterConfig;
 import com.linkedin.venice.router.api.path.VenicePath;
+import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.stats.DnsLookupStats;
 import com.linkedin.venice.stats.HttpConnectionPoolStats;
-import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -53,11 +53,12 @@ import org.apache.http.nio.protocol.HttpAsyncRequestProducer;
 import org.apache.http.nio.protocol.HttpAsyncResponseConsumer;
 import org.apache.http.pool.PoolStats;
 import org.apache.http.protocol.HttpContext;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 public class ApacheHttpAsyncStorageNodeClient implements StorageNodeClient  {
-  private static final Logger logger = Logger.getLogger(ApacheHttpAsyncStorageNodeClient.class);
+  private static final Logger logger = LogManager.getLogger(ApacheHttpAsyncStorageNodeClient.class);
 
   // see: https://hc.apache.org/httpcomponents-asyncclient-dev/quickstart.html
   private final int clientPoolSize;
@@ -67,16 +68,15 @@ public class ApacheHttpAsyncStorageNodeClient implements StorageNodeClient  {
   private final HttpConnectionPoolStats poolStats;
   private final LiveInstanceMonitor liveInstanceMonitor;
   private final VeniceRouterConfig routerConfig;
-
   private final boolean perNodeClientEnabled;
+  private final int socketTimeout;
+  private final int connectionTimeout;
+  private final Optional<SSLEngineComponentFactory> sslFactory;
+
   private int ioThreadNumPerClient;
   private int maxConnPerRoutePerClient;
   private int totalMaxConnPerClient;
-  private int socketTimeout;
-  private int connectionTimeout;
-  private Optional<SSLEngineComponentFactory> sslFactory;
   private Optional<CachedDnsResolver> dnsResolver = Optional.empty();
-
   private ClientConnectionWarmingService clientConnectionWarmingService = null;
 
   public ApacheHttpAsyncStorageNodeClient(VeniceRouterConfig config, Optional<SSLEngineComponentFactory> sslFactory,

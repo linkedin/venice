@@ -19,11 +19,11 @@ import com.linkedin.venice.compression.CompressorFactory;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixBaseRoutingRepository;
+import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.helix.HelixExternalViewRepository;
 import com.linkedin.venice.helix.HelixHybridStoreQuotaRepository;
 import com.linkedin.venice.helix.HelixInstanceConfigRepository;
 import com.linkedin.venice.helix.HelixLiveInstanceMonitor;
-import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepositoryAdapter;
 import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
@@ -116,13 +116,14 @@ import javax.annotation.Nonnull;
 import org.apache.helix.InstanceType;
 import org.apache.helix.manager.zk.ZKHelixManager;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import static com.linkedin.venice.router.api.VeniceMultiKeyRoutingStrategy.*;
 
 
 public class RouterServer extends AbstractVeniceService {
-  private static final Logger logger = Logger.getLogger(RouterServer.class);
+  private static final Logger logger = LogManager.getLogger(RouterServer.class);
 
   // Immutable state
   private final List<D2Server> d2ServerList;
@@ -135,7 +136,7 @@ public class RouterServer extends AbstractVeniceService {
 
   // Mutable state
   // TODO: Make these final once the test constructors are cleaned up.
-  private ZkClient zkClient;
+  private final ZkClient zkClient;
   private SafeHelixManager manager;
   private ReadOnlySchemaRepository schemaRepository;
   private HelixBaseRoutingRepository routingDataRepository;
@@ -158,7 +159,7 @@ public class RouterServer extends AbstractVeniceService {
   private VeniceDispatcher dispatcher;
   private RouterHeartbeat heartbeat = null;
   private VeniceDelegateMode scatterGatherMode;
-  private HelixAdapterSerializer adapter;
+  private final HelixAdapterSerializer adapter;
   private ZkRoutersClusterManager routersClusterManager;
   private Optional<Router> router = Optional.empty();
   private Router secureRouter;

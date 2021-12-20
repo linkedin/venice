@@ -18,7 +18,9 @@ import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.common.Metric;
 import org.apache.kafka.common.MetricName;
 import org.apache.kafka.common.TopicPartition;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 
 /**
  * This class tracks consumed topic partitions' offsets
@@ -30,7 +32,7 @@ class TopicPartitionsOffsetsTracker {
         INVALID_OFFSET_LAG
     }
 
-    private static final Logger logger = Logger.getLogger(TopicPartitionsOffsetsTracker.class);
+    private static final Logger logger = LogManager.getLogger(TopicPartitionsOffsetsTracker.class);
     private static final Duration DEFAULT_OFFSETS_UPDATE_INTERVAL = Duration.ofSeconds(30);
     private static final Duration DEFAULT_MIN_LOG_INTERVAL = Duration.ofMinutes(3);
 
@@ -38,7 +40,7 @@ class TopicPartitionsOffsetsTracker {
     private final Map<TopicPartition, Double> topicPartitionEndOffset;
     private Instant lastMetricsCollectedTime;
     private final Duration offsetsUpdateInterval;
-    private StatsAccumulator statsAccumulator;
+    private final StatsAccumulator statsAccumulator;
 
     TopicPartitionsOffsetsTracker() {
         this(DEFAULT_OFFSETS_UPDATE_INTERVAL);

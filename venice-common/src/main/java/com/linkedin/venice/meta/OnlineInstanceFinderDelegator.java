@@ -6,11 +6,12 @@ import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 public class OnlineInstanceFinderDelegator implements OnlineInstanceFinder {
-  private static final Logger logger = Logger.getLogger(OnlineInstanceFinderDelegator.class);
+  private static final Logger logger = LogManager.getLogger(OnlineInstanceFinderDelegator.class);
 
   private final ReadOnlyStoreRepository metadataRepo;
   private final RoutingDataRepository routingDataOnlineInstanceFinder;

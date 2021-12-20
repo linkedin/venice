@@ -8,21 +8,22 @@ import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.partitioner.UserPartitionAwarePartitioner;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
+import com.linkedin.venice.partitioner.UserPartitionAwarePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
+import java.util.List;
 import java.util.Optional;
 import java.util.Properties;
 import org.apache.avro.Schema;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.List;
 
 public class PartitionUtils {
-  private static final Logger logger = Logger.getLogger(PartitionUtils.class);
+  private static final Logger logger = LogManager.getLogger(PartitionUtils.class);
 
   /**
    * Calculate partition count for new version. If the version is the first one of the given store,

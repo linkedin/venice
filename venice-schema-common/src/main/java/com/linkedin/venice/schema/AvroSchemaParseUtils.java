@@ -4,10 +4,12 @@ import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.avroutil1.compatibility.SchemaParseConfiguration;
 import com.linkedin.venice.exceptions.VeniceException;
 import org.apache.avro.Schema;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 
 public class AvroSchemaParseUtils {
-    private static final Logger LOGGER = Logger.getLogger(AvroSchemaParseUtils.class);
+    private static final Logger LOGGER = LogManager.getLogger(AvroSchemaParseUtils.class);
 
     private AvroSchemaParseUtils() {
         // Util class

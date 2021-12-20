@@ -9,11 +9,12 @@ import com.linkedin.venice.client.store.ClientFactory;
 import java.util.HashMap;
 import java.util.Map;
 import org.apache.avro.specific.SpecificRecord;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 public class CachingVeniceStoreClientFactory implements VeniceStoreClientFactory {
-  private static final Logger LOGGER = Logger.getLogger(CachingVeniceStoreClientFactory.class);
+  private static final Logger LOGGER = LogManager.getLogger(CachingVeniceStoreClientFactory.class);
 
   private final Map<String, AvroGenericStoreClient> genericStoreClientMap = new HashMap<>();
   private final Map<String, AvroSpecificStoreClient> specificStoreClientMap = new HashMap<>();

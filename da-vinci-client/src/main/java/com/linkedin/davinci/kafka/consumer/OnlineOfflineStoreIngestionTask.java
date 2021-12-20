@@ -31,7 +31,6 @@ import com.linkedin.venice.stats.StatsErrorCode;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.DiskUsage;
 import java.util.Collections;
-import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Queue;
@@ -39,12 +38,13 @@ import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.function.BooleanSupplier;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
   // TOOD: Make this logger prefix everything with the CONSUMER_TASK_ID_FORMAT
-  private static final Logger logger = Logger.getLogger(OnlineOfflineStoreIngestionTask.class);
+  private static final Logger logger = LogManager.getLogger(OnlineOfflineStoreIngestionTask.class);
 
   public OnlineOfflineStoreIngestionTask(
       Store store,

@@ -2,42 +2,39 @@ package com.linkedin.venice.controllerapi;
 
 import com.linkedin.venice.HttpMethod;
 import com.linkedin.venice.exceptions.ExceptionType;
-import com.linkedin.venice.security.SSLFactory;
-import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
-
+import com.linkedin.venice.security.SSLFactory;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
+import java.nio.charset.StandardCharsets;
 import java.util.Optional;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-import java.util.concurrent.ExecutionException;
-
-import java.nio.charset.StandardCharsets;
-
-import org.apache.commons.lang.StringUtils;
-import org.apache.http.entity.ByteArrayEntity;
-import org.apache.http.nio.conn.ssl.SSLIOSessionStrategy;
-import org.apache.log4j.Logger;
 import org.apache.commons.httpclient.HttpStatus;
-
-import org.apache.http.impl.nio.client.HttpAsyncClients;
-import org.apache.http.impl.nio.client.CloseableHttpAsyncClient;
+import org.apache.commons.lang.StringUtils;
 import org.apache.http.HttpResponse;
-import org.apache.http.entity.ContentType;
-import org.apache.http.util.EntityUtils;
 import org.apache.http.client.config.RequestConfig;
 import org.apache.http.client.entity.UrlEncodedFormEntity;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.methods.HttpPost;
 import org.apache.http.client.methods.HttpRequestBase;
 import org.apache.http.client.utils.URLEncodedUtils;
-
-import org.codehaus.jackson.map.ObjectMapper;
+import org.apache.http.entity.ByteArrayEntity;
+import org.apache.http.entity.ContentType;
+import org.apache.http.impl.nio.client.CloseableHttpAsyncClient;
+import org.apache.http.impl.nio.client.HttpAsyncClients;
+import org.apache.http.nio.conn.ssl.SSLIOSessionStrategy;
+import org.apache.http.util.EntityUtils;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.codehaus.jackson.map.DeserializationConfig;
+import org.codehaus.jackson.map.ObjectMapper;
+
 
 public class ControllerTransport implements AutoCloseable {
-  private static final Logger logger = Logger.getLogger(ControllerTransport.class);
+  private static final Logger logger = LogManager.getLogger(ControllerTransport.class);
   private static final int CONNECTION_TIMEOUT_MS = 30 * Time.MS_PER_SECOND;
   private static final int DEFAULT_REQUEST_TIMEOUT_MS = 60 * Time.MS_PER_SECOND;
 
@@ -54,7 +51,7 @@ public class ControllerTransport implements AutoCloseable {
         .build();
   }
 
-  private CloseableHttpAsyncClient httpClient;
+  private final CloseableHttpAsyncClient httpClient;
 
   public ControllerTransport(Optional<SSLFactory> sslFactory) {
     this.httpClient = HttpAsyncClients.custom()

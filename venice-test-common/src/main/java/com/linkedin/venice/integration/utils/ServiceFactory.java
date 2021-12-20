@@ -36,7 +36,8 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import static com.linkedin.venice.ConfigKeys.*;
 
@@ -46,7 +47,7 @@ import static com.linkedin.venice.ConfigKeys.*;
  * used in integration tests.
  */
 public class ServiceFactory {
-  private static final Logger LOGGER = Logger.getLogger(ZkServerWrapper.class);
+  private static final Logger LOGGER = LogManager.getLogger(ZkServerWrapper.class);
   private static final VeniceProperties EMPTY_VENICE_PROPS = new VeniceProperties();
   private static final String ULIMIT;
   private static final String VM_ARGS;

@@ -10,11 +10,12 @@ import java.util.Map;
 import org.apache.helix.AccessOption;
 import org.apache.helix.manager.zk.ZkBaseDataAccessor;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 public class MigrationPushStrategyZKAccessor {
-  private static Logger LOGGER = Logger.getLogger(MigrationPushStrategy.class);
+  private static final Logger LOGGER = LogManager.getLogger(MigrationPushStrategy.class);
 
   public static final String MIGRATION_PUSH_STRATEGY_PATH = "/migration-push-strategy";
 

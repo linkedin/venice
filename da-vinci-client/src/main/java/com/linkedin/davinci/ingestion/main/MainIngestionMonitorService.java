@@ -33,7 +33,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import static com.linkedin.venice.ConfigKeys.*;
 import static java.lang.Thread.*;
@@ -49,7 +50,7 @@ import static java.lang.Thread.*;
  * when child process crashed and restarted.
  */
 public class MainIngestionMonitorService extends AbstractVeniceService {
-  private static final Logger logger = Logger.getLogger(MainIngestionMonitorService.class);
+  private static final Logger logger = LogManager.getLogger(MainIngestionMonitorService.class);
   private final ServerBootstrap bootstrap;
   private final EventLoopGroup bossGroup;
   private final EventLoopGroup workerGroup;

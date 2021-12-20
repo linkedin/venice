@@ -4,12 +4,13 @@ import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 public class MetadataRepoBasedTopicExistingCheckerImpl implements TopicExistenceChecker {
   private final ReadOnlyStoreRepository readOnlyStoreRepository;
-  private final Logger logger = Logger.getLogger(MetadataRepoBasedTopicExistingCheckerImpl.class);
+  private final Logger logger = LogManager.getLogger(MetadataRepoBasedTopicExistingCheckerImpl.class);
 
   public MetadataRepoBasedTopicExistingCheckerImpl(ReadOnlyStoreRepository readOnlyStoreRepository) {
     this.readOnlyStoreRepository = readOnlyStoreRepository;

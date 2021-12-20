@@ -2,6 +2,9 @@ package com.linkedin.davinci.store.rocksdb;
 
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
+import com.linkedin.davinci.stats.RocksDBMemoryStats;
+import com.linkedin.davinci.store.AbstractStorageEngine;
+import com.linkedin.davinci.store.StorageEngineFactory;
 import com.linkedin.venice.exceptions.StorageInitializationException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
@@ -9,9 +12,6 @@ import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
-import com.linkedin.davinci.stats.RocksDBMemoryStats;
-import com.linkedin.davinci.store.AbstractStorageEngine;
-import com.linkedin.davinci.store.StorageEngineFactory;
 import java.io.File;
 import java.util.Arrays;
 import java.util.EnumSet;
@@ -20,7 +20,8 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.rocksdb.Cache;
 import org.rocksdb.ClockCache;
 import org.rocksdb.Env;
@@ -45,7 +46,7 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
     RocksDB.loadLibrary();
   }
 
-  private static final Logger LOGGER = Logger.getLogger(RocksDBStorageEngineFactory.class);
+  private static final Logger LOGGER = LogManager.getLogger(RocksDBStorageEngineFactory.class);
 
   private final RocksDBServerConfig rocksDBServerConfig;
 

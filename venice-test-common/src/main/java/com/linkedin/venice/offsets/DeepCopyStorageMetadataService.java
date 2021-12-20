@@ -6,14 +6,16 @@ import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import java.util.Optional;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 
 /**
  * This class is used to systematically copy {@link OffsetRecord} instances rather than
  * passing them as is. This is necessary in StoreConsumptionTaskTest.
  */
 public class DeepCopyStorageMetadataService extends DeepCopyOffsetManager implements StorageMetadataService {
-  private static final Logger LOGGER = Logger.getLogger(DeepCopyStorageMetadataService.class);
+  private static final Logger LOGGER = LogManager.getLogger(DeepCopyStorageMetadataService.class);
 
   private final InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer =
       AvroProtocolDefinition.STORE_VERSION_STATE.getSerializer();

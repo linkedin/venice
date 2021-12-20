@@ -17,7 +17,8 @@ import io.netty.handler.codec.http.FullHttpRequest;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import java.util.Optional;
 import java.util.function.Consumer;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import static com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils.*;
 
@@ -28,7 +29,7 @@ import static com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils.*;
  * the registered notifiers in main process.
  */
 public class MainIngestionReportHandler extends SimpleChannelInboundHandler<FullHttpRequest> {
-  private static final Logger logger = Logger.getLogger(MainIngestionReportHandler.class);
+  private static final Logger logger = LogManager.getLogger(MainIngestionReportHandler.class);
   private static final InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer = AvroProtocolDefinition.PARTITION_STATE.getSerializer();
   private final MainIngestionMonitorService mainIngestionMonitorService;
 

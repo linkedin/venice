@@ -12,7 +12,8 @@ import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import static com.linkedin.venice.common.VeniceSystemStoreUtils.*;
 
@@ -24,7 +25,7 @@ import static com.linkedin.venice.common.VeniceSystemStoreUtils.*;
  * stores.
  */
 public class HelixReadWriteStoreRepository extends CachedReadOnlyStoreRepository implements ReadWriteStoreRepository {
-  protected static final Logger logger = Logger.getLogger(HelixReadWriteStoreRepository.class);
+  protected static final Logger logger = LogManager.getLogger(HelixReadWriteStoreRepository.class);
 
   private final Optional<MetaStoreWriter> metaStoreWriter;
   private final String clusterName;

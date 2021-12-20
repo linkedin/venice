@@ -15,7 +15,9 @@ import io.netty.util.ReferenceCountUtil;
 import java.security.cert.X509Certificate;
 import java.util.Optional;
 import javax.net.ssl.SSLPeerUnverifiedException;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 
 /**
  * Together with {@link ServerStoreAclHandler}, Server will allow two kinds of access pattern:
@@ -27,7 +29,7 @@ import org.apache.log4j.Logger;
  */
 @ChannelHandler.Sharable
 public class ServerAclHandler extends SimpleChannelInboundHandler<HttpRequest> {
-  private static final Logger logger = Logger.getLogger(ServerAclHandler.class);
+  private static final Logger logger = LogManager.getLogger(ServerAclHandler.class);
 
   public static final AttributeKey<Boolean> SERVER_ACL_APPROVED_ATTRIBUTE_KEY =
       AttributeKey.valueOf("SERVER_ACL_APPROVED_ATTRIBUTE_KEY");

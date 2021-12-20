@@ -1,14 +1,13 @@
 package com.linkedin.venice.partitioner;
 
 import com.linkedin.venice.exceptions.VeniceException;
-
 import com.linkedin.venice.utils.VeniceProperties;
 import java.nio.ByteBuffer;
-import org.apache.avro.Schema;
-import org.apache.log4j.Logger;
-
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import org.apache.avro.Schema;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 /**
  * Default implementation of the {@link VenicePartitioner} class.
@@ -17,8 +16,7 @@ import java.security.NoSuchAlgorithmException;
  * for each message.
  */
 public class DefaultVenicePartitioner extends VenicePartitioner {
-
-  static final Logger logger = Logger.getLogger(DefaultVenicePartitioner.class);
+  static final Logger logger = LogManager.getLogger(DefaultVenicePartitioner.class);
 
   public static final String MD5_HASH_ALGORITHM = "MD5";
   private static final int MD5_DIGEST_SIZE = 16;

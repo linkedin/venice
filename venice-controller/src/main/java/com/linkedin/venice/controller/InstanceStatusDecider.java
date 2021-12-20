@@ -3,7 +3,6 @@ package com.linkedin.venice.controller;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.helix.ResourceAssignment;
-import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
@@ -16,19 +15,19 @@ import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.Utils;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
  * This class is not Thread-safe.
  */
 public class InstanceStatusDecider {
-  private static final Logger logger = Logger.getLogger(InstanceStatusDecider.class);
+  private static final Logger logger = LogManager.getLogger(InstanceStatusDecider.class);
 
   protected static List<Replica> getReplicasForInstance(HelixVeniceClusterResources resources, String instanceId) {
     RoutingDataRepository routingDataRepository = resources.getRoutingDataRepository();

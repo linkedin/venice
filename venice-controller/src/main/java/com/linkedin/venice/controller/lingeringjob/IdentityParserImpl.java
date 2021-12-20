@@ -3,11 +3,12 @@ package com.linkedin.venice.controller.lingeringjob;
 import com.linkedin.security.datavault.common.principal.PrincipalBuilder;
 import java.security.cert.CertificateParsingException;
 import java.security.cert.X509Certificate;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 public class IdentityParserImpl implements IdentityParser {
-  private static final Logger logger = Logger.getLogger(IdentityParserImpl.class);
+  private static final Logger logger = LogManager.getLogger(IdentityParserImpl.class);
 
   /**
    * Firstly, it tries to parse the principal from the given certificate. If it works, use the principal's toString as

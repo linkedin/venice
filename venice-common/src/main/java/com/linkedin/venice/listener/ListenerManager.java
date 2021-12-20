@@ -9,8 +9,8 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.function.Consumer;
-import java.util.function.Function;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -27,7 +27,7 @@ public class ListenerManager<T> {
   //TODO make thread count and keepAlive time configurable.
   private final int threadCount = 1;
 
-  private static final Logger logger = Logger.getLogger(ListenerManager.class);
+  private static final Logger logger = LogManager.getLogger(ListenerManager.class);
 
   public ListenerManager() {
     listenerMap = new ConcurrentHashMap<>();

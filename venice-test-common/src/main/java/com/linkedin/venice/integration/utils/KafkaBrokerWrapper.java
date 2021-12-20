@@ -4,23 +4,22 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.KafkaSSLUtils;
 import com.linkedin.venice.utils.MockTime;
 import com.linkedin.venice.utils.Utils;
-
-import kafka.metrics.KafkaMetricsReporter;
-import kafka.server.KafkaConfig;
-import kafka.server.KafkaServer;
-import scala.Option;
-import scala.collection.JavaConversions;
-import scala.collection.Seq;
-
-import org.apache.kafka.common.utils.SystemTime;
-import org.apache.log4j.Logger;
-
 import java.io.File;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
+import kafka.metrics.KafkaMetricsReporter;
+import kafka.server.KafkaConfig;
+import kafka.server.KafkaServer;
+import org.apache.kafka.common.utils.SystemTime;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+import scala.Option;
+import scala.collection.JavaConversions;
+import scala.collection.Seq;
+
 
 /**
  * This class contains a Kafka Broker, and provides facilities for cleaning up
@@ -35,7 +34,7 @@ public class KafkaBrokerWrapper extends ProcessWrapper {
   private static final boolean LOG_CLEANER_ENABLE = false;
 
   private final int sslPort;
-  private static final Logger logger = Logger.getLogger(KafkaBrokerWrapper.class);
+  private static final Logger logger = LogManager.getLogger(KafkaBrokerWrapper.class);
 
   /**
    * This is package private because the only way to call this should be from
