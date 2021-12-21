@@ -3,6 +3,7 @@ package com.linkedin.venice.meta;
 import com.linkedin.venice.exceptions.StoreDisabledException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Utils;
 
 import java.util.Arrays;
 import java.util.List;
@@ -206,7 +207,7 @@ public class TestZKStore {
 
   @Test
   public void canCloneDisabledStore(){
-    String storeName = TestUtils.getUniqueString("store");
+    String storeName = Utils.getUniqueString("store");
     Store store = TestUtils.createTestStore(storeName, "owner", System.currentTimeMillis());
     store.addVersion(new VersionImpl(storeName, 1));
     store.setEnableWrites(false);
@@ -219,7 +220,7 @@ public class TestZKStore {
 
   @Test
   public void testEnableStoreWrite() {
-    String storeName = TestUtils.getUniqueString("store");
+    String storeName = Utils.getUniqueString("store");
     Store store = TestUtils.createTestStore(storeName, "owner", System.currentTimeMillis());
     Version pushedVersion = new VersionImpl(storeName, 1);
     //Add a pushed version
@@ -260,7 +261,7 @@ public class TestZKStore {
 
   @Test
   public void testUseTheDeletedVersionNumber() {
-    String storeName = TestUtils.getUniqueString("store");
+    String storeName = Utils.getUniqueString("store");
     Store store = TestUtils.createTestStore(storeName, "owner", System.currentTimeMillis());
     store.increaseVersion();
     store.increaseVersion();
@@ -273,7 +274,7 @@ public class TestZKStore {
 
   @Test
   public void testAddVersion() {
-    String storeName = TestUtils.getUniqueString("store");
+    String storeName = Utils.getUniqueString("store");
     Store store = TestUtils.createTestStore(storeName, "owner", System.currentTimeMillis());
     store.addVersion(new VersionImpl(storeName, 5));
     Assert.assertEquals(store.getVersions().size(), 1);
@@ -290,8 +291,8 @@ public class TestZKStore {
   @Test
   public void testNativeReplicationConfigOnVersionPush() {
     // Test that it's set to false if the cluster is set to false
-    String storeName = TestUtils.getUniqueString("store");
-    String pushJobID = TestUtils.getUniqueString("FOO-ID");
+    String storeName = Utils.getUniqueString("store");
+    String pushJobID = Utils.getUniqueString("FOO-ID");
     Store store = TestUtils.createTestStore(storeName, "owner", System.currentTimeMillis());
     store.setNativeReplicationEnabled(false);
     store.addVersion(new VersionImpl(storeName, 0, pushJobID));
@@ -299,7 +300,7 @@ public class TestZKStore {
 
     // Test that tne next new version is true if the cluster is later set to true
     store.setNativeReplicationEnabled(true);
-    String anotherPushJonID = TestUtils.getUniqueString("FOO-ID-AGAIN");
+    String anotherPushJonID = Utils.getUniqueString("FOO-ID-AGAIN");
     store.addVersion(new VersionImpl(storeName, 1, anotherPushJonID));
     Assert.assertTrue(store.getVersion(1).get().isNativeReplicationEnabled());
   }

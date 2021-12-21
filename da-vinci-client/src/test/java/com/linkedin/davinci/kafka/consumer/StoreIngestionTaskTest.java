@@ -250,7 +250,7 @@ public class StoreIngestionTaskTest {
   private Supplier<Optional<StoreVersionState>> storeVersionStateSupplier = (Optional::empty);
 
   private static byte[] getRandomKey(Integer partition) {
-    String randomString = getUniqueString("KeyForPartition" + partition);
+    String randomString = Utils.getUniqueString("KeyForPartition" + partition);
     return ByteBuffer.allocate(randomString.length() + 1)
         .put(partition.byteValue())
         .put(randomString.getBytes())
@@ -285,7 +285,7 @@ public class StoreIngestionTaskTest {
 
   @BeforeMethod(alwaysRun = true)
   public void methodSetUp() throws Exception {
-    storeNameWithoutVersionInfo = TestUtils.getUniqueString("TestTopic");
+    storeNameWithoutVersionInfo = Utils.getUniqueString("TestTopic");
     topic = Version.composeKafkaTopic(storeNameWithoutVersionInfo, 1);
 
     inMemoryLocalKafkaBroker = new InMemoryKafkaBroker("local");

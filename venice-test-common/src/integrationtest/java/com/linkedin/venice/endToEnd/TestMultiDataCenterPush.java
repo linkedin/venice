@@ -38,6 +38,7 @@ import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.TestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
@@ -131,7 +132,7 @@ public class TestMultiDataCenterPush {
     File inputDir = getTempDataDirectory();
     Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir);
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
-    String storeName = TestUtils.getUniqueString("store");
+    String storeName = Utils.getUniqueString("store");
     VeniceControllerWrapper parentController =
         parentControllers.stream().filter(c -> c.isMasterController(clusterName)).findAny().get();
     Properties props = defaultH2VProps(parentController.getControllerUrl(), inputDirPath, storeName);
@@ -204,7 +205,7 @@ public class TestMultiDataCenterPush {
     /**
      * In order to speed up integration test, reuse the multi data center cluster for hybrid store RT topic retention time testing
      */
-    String hybridStoreName = TestUtils.getUniqueString("hybrid_store");
+    String hybridStoreName = Utils.getUniqueString("hybrid_store");
     Properties pushJobPropsForHybrid = defaultH2VProps(parentController.getControllerUrl(), inputDirPath, hybridStoreName);
     // Create a hybrid store.
     createStoreForJob(clusterName, recordSchema, pushJobPropsForHybrid).close();
@@ -248,7 +249,7 @@ public class TestMultiDataCenterPush {
     File inputDir = getTempDataDirectory();
     Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir);
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
-    String storeName = TestUtils.getUniqueString("store");
+    String storeName = Utils.getUniqueString("store");
     String childControllerUrl = childControllers.get(0).get(0).getControllerUrl();
     Properties props = defaultH2VProps(childControllerUrl, inputDirPath, storeName);
     createStoreForJob(clusterName, recordSchema, props).close();
@@ -259,7 +260,7 @@ public class TestMultiDataCenterPush {
   @Test (dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT)
   public void testEmptyPush(boolean toParent) {
     String clusterName = CLUSTER_NAMES[0];
-    String storeName = TestUtils.getUniqueString("store");
+    String storeName = Utils.getUniqueString("store");
     String parentControllerUrl = parentControllers.get(0).getControllerUrl();
     String childControllerUrl = childControllers.get(0).get(0).getControllerUrl();
 
@@ -279,7 +280,7 @@ public class TestMultiDataCenterPush {
   @Test(timeOut = TEST_TIMEOUT)
   public void testHybridConfigPartitionerConfigConflict() {
     String clusterName = CLUSTER_NAMES[0];
-    String storeName = TestUtils.getUniqueString("store");
+    String storeName = Utils.getUniqueString("store");
     String parentControllerUrl = parentControllers.get(0).getControllerUrl();
 
     // Create store first
@@ -313,7 +314,7 @@ public class TestMultiDataCenterPush {
     File inputDir = getTempDataDirectory();
     Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir);
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
-    String storeName = TestUtils.getUniqueString("store");
+    String storeName = Utils.getUniqueString("store");
     Properties props = defaultH2VProps(parentControllers.get(0).getControllerUrl(), inputDirPath, storeName);
     String keySchemaStr = recordSchema.getField(props.getProperty(VenicePushJob.KEY_FIELD_PROP)).schema().toString();
     String valueSchemaStr = recordSchema.getField(props.getProperty(VenicePushJob.VALUE_FIELD_PROP)).schema().toString();
@@ -380,7 +381,7 @@ public class TestMultiDataCenterPush {
             adminOperationSerializer),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
 
-    TestUtils.waitForNonDeterministicCompletion(60000, TimeUnit.MILLISECONDS, () -> {
+    TestUtils.waitForNonDeterministicCompletion(60, TimeUnit.SECONDS, () -> {
       boolean allDataCenterReceivedFailedAdminMessage = true;
       for (List<VeniceControllerWrapper> controllers : childControllers) {
         AdminConsumerService adminConsumerService = controllers.get(0).getAdminConsumerServiceByCluster(CLUSTER_NAMES[1]);
@@ -405,7 +406,7 @@ public class TestMultiDataCenterPush {
     // still function with the blocking admin message.
     AdminConsumerService adminConsumerService = parentController.getAdminConsumerServiceByCluster(clusterName);
     adminConsumerService.setOffsetToSkip(clusterName, adminConsumerService.getFailingOffset(), false);
-    TestUtils.waitForNonDeterministicCompletion(5000, TimeUnit.MILLISECONDS, () -> {
+    TestUtils.waitForNonDeterministicCompletion(5, TimeUnit.SECONDS, () -> {
       boolean allFailedMessagesSkipped = adminConsumerService.getFailingOffset() == -1;
       for (List<VeniceControllerWrapper> controllerWrappers : childControllers) {
         AdminConsumerService childAdminConsumerService =
@@ -422,7 +423,7 @@ public class TestMultiDataCenterPush {
     File inputDir = getTempDataDirectory();
     Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir);
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
-    String storeName = TestUtils.getUniqueString("test-re-push-store");
+    String storeName = Utils.getUniqueString("test-re-push-store");
     long userSetHybridRewindInSeconds = Time.SECONDS_PER_DAY;
     VeniceControllerWrapper parentController =
         parentControllers.stream().filter(c -> c.isMasterController(clusterName)).findAny().get();

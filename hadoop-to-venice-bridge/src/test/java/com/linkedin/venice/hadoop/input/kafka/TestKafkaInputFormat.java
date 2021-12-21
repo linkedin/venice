@@ -5,6 +5,7 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.io.IOException;
@@ -44,7 +45,7 @@ public class TestKafkaInputFormat {
   }
 
   public String getTopic(int numRecord, int numPartition) {
-    String topicName = TestUtils.getUniqueString("test_kafka_input_format");
+    String topicName = Utils.getUniqueString("test_kafka_input_format");
     manager.createTopic(topicName, numPartition, 1, true);
     VeniceWriterFactory veniceWriterFactory = TestUtils.getVeniceWriterFactory(kafka.getAddress());
     try(VeniceWriter<byte[], byte[], byte[]> veniceWriter = veniceWriterFactory.createBasicVeniceWriter(topicName)) {

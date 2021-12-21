@@ -13,6 +13,8 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.Utils;
+
 import java.io.File;
 import java.util.HashMap;
 import java.util.Map;
@@ -138,7 +140,7 @@ public class TestMetadataOperationInMultiCluster {
       throws Exception {
 
     long h2vStart = System.currentTimeMillis();
-    String jobName = TestUtils.getUniqueString("job-" + expectedVersionNumber);
+    String jobName = Utils.getUniqueString("job-" + expectedVersionNumber);
     // job will talk to any controller to do cluster discover then do the push.
     try (VenicePushJob job = new VenicePushJob(jobName, h2vProperties)) {
       job.run();

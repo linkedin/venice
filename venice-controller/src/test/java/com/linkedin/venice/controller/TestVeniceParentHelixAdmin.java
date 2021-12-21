@@ -54,6 +54,7 @@ import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.util.ArrayList;
@@ -189,7 +190,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
   @Test (timeOut = TIMEOUT_IN_MS)
   public void testAsyncSetupForSystemStores() {
-    String arbitraryCluster = TestUtils.getUniqueString("test-cluster");
+    String arbitraryCluster = Utils.getUniqueString("test-cluster");
     String participantStoreName = VeniceSystemStoreUtils.getParticipantStoreNameForCluster(arbitraryCluster);
     doReturn(true).when(internalAdmin).isLeaderControllerFor(arbitraryCluster);
     doReturn(Version.composeRealTimeTopic(PUSH_JOB_DETAILS_STORE_NAME)).when(internalAdmin)
@@ -707,8 +708,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
   @Test
   public void testIdempotentIncrementVersionWhenNoPreviousTopics() {
-    String storeName = TestUtils.getUniqueString("test_store");
-    String pushJobId = TestUtils.getUniqueString("push_job_id");
+    String storeName = Utils.getUniqueString("test_store");
+    String pushJobId = Utils.getUniqueString("push_job_id");
     doReturn(new Pair<>(true, new VersionImpl(storeName, 1, pushJobId))).when(internalAdmin)
         .addVersionAndTopicOnly(clusterName, storeName, pushJobId, 1, 1, false,
             false, Version.PushType.BATCH, null, null, Optional.empty(), -1, 1, Optional.empty());
@@ -769,7 +770,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
   @Test
   public void testIncrementVersionWhenPreviousTopicsExistAndOfflineJobIsStillRunning() {
-    String storeName = TestUtils.getUniqueString("test_store");
+    String storeName = Utils.getUniqueString("test_store");
     String previousKafkaTopic = storeName + "_v1";
     String unknownTopic = "1unknown_topic_v1";
     doReturn(new HashSet<>(Arrays.asList(unknownTopic, previousKafkaTopic)))
@@ -797,8 +798,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
    */
   @Test
   public void testIdempotentIncrementVersionWhenPreviousTopicsExistAndOfflineJobIsNotDoneForSamePushId() {
-    String storeName = TestUtils.getUniqueString("test_store");
-    String pushJobId = TestUtils.getUniqueString("push_job_id");
+    String storeName = Utils.getUniqueString("test_store");
+    String pushJobId = Utils.getUniqueString("push_job_id");
     String previousKafkaTopic = storeName + "_v1";
     doReturn(new HashSet<>(Arrays.asList(previousKafkaTopic)))
         .when(topicManager)
@@ -834,8 +835,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
    */
   @Test
   public void testIdempotentIncrementVersionWhenPreviousTopicsExistButTruncated() {
-    String storeName = TestUtils.getUniqueString("test_store");
-    String pushJobId = TestUtils.getUniqueString("push_job_id");
+    String storeName = Utils.getUniqueString("test_store");
+    String pushJobId = Utils.getUniqueString("push_job_id");
     String previousKafkaTopic = storeName + "_v1";
     doReturn(new HashSet<>(Arrays.asList(previousKafkaTopic)))
         .when(topicManager)
@@ -871,8 +872,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
    */
   @Test
   public void testIdempotentIncrementVersionWhenPreviousTopicsExistAndOfflineJobIsNotDoneForDifferentPushId() {
-    String storeName = TestUtils.getUniqueString("test_store");
-    String pushJobId = TestUtils.getUniqueString("push_job_id");
+    String storeName = Utils.getUniqueString("test_store");
+    String pushJobId = Utils.getUniqueString("push_job_id");
     String previousKafkaTopic = storeName + "_v1";
     doReturn(new HashSet<>(Arrays.asList(previousKafkaTopic)))
         .when(topicManager)
@@ -895,8 +896,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
   @Test
   public void testIdempotentIncrementVersionWhenPreviousTopicsDoNotExistButVersionExistsForSamePushId() {
-    String storeName = TestUtils.getUniqueString("test_store");
-    String pushJobId = TestUtils.getUniqueString("push_job_id");
+    String storeName = Utils.getUniqueString("test_store");
+    String pushJobId = Utils.getUniqueString("push_job_id");
     Store store = new ZKStore(storeName, "owner", System.currentTimeMillis(), PersistenceType.IN_MEMORY,
         RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION,
         1);
@@ -917,7 +918,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
   @Test
   public void testIdempotentIncrementVersionWhenPreviousPushIsARepushAndIncomingPushIsABatchPush() {
-    String storeName = TestUtils.getUniqueString("test-store");
+    String storeName = Utils.getUniqueString("test-store");
     VeniceParentHelixAdmin mockParentAdmin = mock(VeniceParentHelixAdmin.class);
     VeniceHelixAdmin mockInternalAdmin = mock(VeniceHelixAdmin.class);
 
@@ -959,7 +960,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
   @Test
   public void testIdempotentIncrementVersionWhenPreviousPushIsARepushAndIncomingPushIsARepush() {
-    String storeName = TestUtils.getUniqueString("test-store");
+    String storeName = Utils.getUniqueString("test-store");
     VeniceParentHelixAdmin mockParentAdmin = mock(VeniceParentHelixAdmin.class);
     VeniceHelixAdmin mockInternalAdmin = mock(VeniceHelixAdmin.class);
 
@@ -1001,7 +1002,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
   @Test
   public void testIdempotentIncrementVersionWhenPreviousPushIsARepushAndIncomingPushIsAnIncPushToVT() {
-    String storeName = TestUtils.getUniqueString("test-store");
+    String storeName = Utils.getUniqueString("test-store");
     VeniceParentHelixAdmin mockParentAdmin = mock(VeniceParentHelixAdmin.class);
     VeniceHelixAdmin mockInternalAdmin = mock(VeniceHelixAdmin.class);
 
@@ -1040,7 +1041,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
   @Test
   public void testIdempotentIncrementVersionWhenPreviousPushIsARepushAndIncomingPushIsAnIncPushToRT() {
-    String storeName = TestUtils.getUniqueString("test-store");
+    String storeName = Utils.getUniqueString("test-store");
     VeniceParentHelixAdmin mockParentAdmin = mock(VeniceParentHelixAdmin.class);
     VeniceHelixAdmin mockInternalAdmin = mock(VeniceHelixAdmin.class);
 
@@ -1390,7 +1391,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
   @Test
   public void testUpdateStore() {
-    String storeName = TestUtils.getUniqueString("testUpdateStore");
+    String storeName = Utils.getUniqueString("testUpdateStore");
     Store store = TestUtils.createTestStore(storeName, "test", System.currentTimeMillis());
     doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
 
@@ -1499,7 +1500,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
   @Test
   public void testUpdateStoreNativeReplicationSourceFabric() {
-    String storeName = TestUtils.getUniqueString("testUpdateStore");
+    String storeName = Utils.getUniqueString("testUpdateStore");
     Store store = TestUtils.createTestStore(storeName, "test", System.currentTimeMillis());
     doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
 
@@ -1529,7 +1530,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
   @Test
   public void testUpdateStoreWithBadPartitionerConfigs() {
-    String storeName = TestUtils.getUniqueString("testUpdateStore");
+    String storeName = Utils.getUniqueString("testUpdateStore");
     Store store = TestUtils.createTestStore(storeName, "test", System.currentTimeMillis());
     doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
 
@@ -1635,7 +1636,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
   @Test
   public void testGetKafkaTopicsByAge() {
-    String storeName = TestUtils.getUniqueString("test-store");
+    String storeName = Utils.getUniqueString("test-store");
     List<String> versionTopics = parentAdmin.getKafkaTopicsByAge(storeName);
     Assert.assertTrue(versionTopics.isEmpty());
 
@@ -1654,7 +1655,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
   @Test
   public void testGetTopicForCurrentPushJob() {
-    String storeName = TestUtils.getUniqueString("test-store");
+    String storeName = Utils.getUniqueString("test-store");
     VeniceParentHelixAdmin mockParentAdmin = mock(VeniceParentHelixAdmin.class);
     doReturn(internalAdmin).when(mockParentAdmin).getVeniceHelixAdmin();
     doReturn(new ArrayList<String>()).when(mockParentAdmin).getKafkaTopicsByAge(any());
@@ -1757,7 +1758,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
   @Test
   public void testTruncateTopicsBasedOnMaxErroredTopicNumToKeep() {
-    String storeName = TestUtils.getUniqueString("test-store");
+    String storeName = Utils.getUniqueString("test-store");
     VeniceParentHelixAdmin mockParentAdmin = mock(VeniceParentHelixAdmin.class);
     List<String> topics = new ArrayList<>();
     topics.add(storeName + "_v1");
@@ -1784,7 +1785,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     verify(mockParentAdmin, never()).truncateKafkaTopic(storeName + "_v10");
 
     // Test with more truncated topics
-    String storeName1 = TestUtils.getUniqueString("test-store");
+    String storeName1 = Utils.getUniqueString("test-store");
     List<String> topics1 = new ArrayList<>();
     topics1.add(storeName1 + "_v1");
     topics1.add(storeName1 + "_v10");
@@ -1934,7 +1935,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
   @Test
   public void testIncompatibleHybridAndIncrementalUpdateStoreDontWriteToAdminTopic() {
-    String storeName = TestUtils.getUniqueString("testUpdateStore");
+    String storeName = Utils.getUniqueString("testUpdateStore");
     Store store = TestUtils.createTestStore(storeName, "test", System.currentTimeMillis());
     doReturn(store).when(internalAdmin).getStore(clusterName,storeName);
     doCallRealMethod().when(internalAdmin).checkWhetherStoreWillHaveConflictConfigForIncrementalAndHybrid(any(), any(), any(), any());

@@ -13,6 +13,8 @@ import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiColoMultiCluster
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.utils.TestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Utils;
+
 import java.util.List;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
@@ -59,7 +61,7 @@ public class TestAdminTopicRemoteConsumption {
   @Test(timeOut = TEST_TIMEOUT)
   public void testAdminTopicRemoteConsumptionFeature() {
     String clusterName = CLUSTER_NAMES[0];
-    String storeName = TestUtils.getUniqueString("store");
+    String storeName = Utils.getUniqueString("store");
 
     // Test the admin channel with the regular KMM pipeline
     VeniceControllerWrapper parentController =

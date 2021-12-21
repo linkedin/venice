@@ -39,11 +39,14 @@ import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.nio.file.Paths;
+import java.time.Instant;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Random;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.Supplier;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericDatumWriter;
@@ -140,7 +143,7 @@ public class VeniceSystemProducer implements SystemProducer {
     this.sslFactory = sslFactory;
     this.partitioners = partitioners;
     this.time = time;
-    this.fsBasePath = "./tmp/d2/" + storeName;
+    this.fsBasePath = Utils.getUniqueTempPath("d2");
   }
 
   public String getRunningFabric() {
@@ -350,8 +353,7 @@ public class VeniceSystemProducer implements SystemProducer {
            * Consider there could be hundreds of Samza containers for stream reprocessing job, we shouldn't let all
            * the containers send kill requests to controller at the same time to avoid hammering on controller.
            */
-          Random random = new Random(System.currentTimeMillis());
-          Utils.sleep(random.nextInt(30000));
+          Utils.sleep(ThreadLocalRandom.current().nextInt(30000));
           controllerClient.retryableRequest(3, c -> c.killOfflinePushJob(versionTopic));
           LOGGER.info("Offline push job has been killed, topic: " + versionTopic);
       }

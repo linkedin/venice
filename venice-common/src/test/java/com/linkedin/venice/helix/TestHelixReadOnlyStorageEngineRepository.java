@@ -6,6 +6,7 @@ import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.locks.ClusterLockManager;
 
 import java.util.Optional;
@@ -188,7 +189,7 @@ public class TestHelixReadOnlyStorageEngineRepository {
     writeRepo.updateStore(store);
     assertListenerCounts(testListener, creationCount.get(), changeCount.addAndGet(1), deletionCount.get(), "change of a store-version");
 
-    store.setOwner(TestUtils.getUniqueString("NewRandomOwner"));
+    store.setOwner(Utils.getUniqueString("NewRandomOwner"));
     writeRepo.updateStore(store);
     assertListenerCounts(testListener, creationCount.get(), changeCount.addAndGet(1), deletionCount.get(), "change of owner");
 
@@ -225,7 +226,7 @@ public class TestHelixReadOnlyStorageEngineRepository {
       int expectedChangeCount,
       int expectedDeletionCount,
       String details) {
-    TestUtils.waitForNonDeterministicAssertion(3000, TimeUnit.MILLISECONDS, () -> {
+    TestUtils.waitForNonDeterministicAssertion(3, TimeUnit.SECONDS, () -> {
       Assert.assertEquals(testListener.getCreationCount(), expectedCreationCount,
           "Listener's creation count should be " + expectedCreationCount + " following: " + details);
       Assert.assertEquals(testListener.getChangeCount(), expectedChangeCount,

@@ -12,8 +12,9 @@ import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.tehuti.MockTehutiReporter;
-import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.Utils;
+
 import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
 import java.util.List;
@@ -44,7 +45,7 @@ public class AggVersionedDIVStatsTest {
 
     mockMetaRepository = mock(ReadOnlyStoreRepository.class);
 
-    mockStore = createStore(TestUtils.getUniqueString("store"));
+    mockStore = createStore(Utils.getUniqueString("store"));
     storeList = new ArrayList<>();
     storeList.add(mockStore);
 

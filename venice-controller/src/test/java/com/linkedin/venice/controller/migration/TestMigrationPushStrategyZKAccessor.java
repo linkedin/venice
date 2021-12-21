@@ -6,7 +6,8 @@ import com.linkedin.venice.helix.ZkClientFactory;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.migration.MigrationPushStrategy;
-import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Utils;
+
 import java.util.Map;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.testng.Assert;
@@ -34,7 +35,7 @@ public class TestMigrationPushStrategyZKAccessor {
   @Test
   public void testCreateAndUpdatePushStrategy() {
     MigrationPushStrategyZKAccessor accessor = new MigrationPushStrategyZKAccessor(zkClient, new HelixAdapterSerializer());
-    String voldemortStore = TestUtils.getUniqueString("voldemort_store");
+    String voldemortStore = Utils.getUniqueString("voldemort_store");
     accessor.setPushStrategy(voldemortStore, MigrationPushStrategy.RunBnPAndH2VWaitForBothStrategy.name());
     Map<String, String> pushStrategies = accessor.getAllPushStrategies();
     Assert.assertTrue(pushStrategies.containsKey(voldemortStore));
@@ -49,7 +50,7 @@ public class TestMigrationPushStrategyZKAccessor {
   @Test (expectedExceptions = VeniceException.class)
   public void testSetInvalidStrategy() {
     MigrationPushStrategyZKAccessor accessor = new MigrationPushStrategyZKAccessor(zkClient, new HelixAdapterSerializer());
-    String voldemortStore = TestUtils.getUniqueString("voldemort_store");
+    String voldemortStore = Utils.getUniqueString("voldemort_store");
     accessor.setPushStrategy(voldemortStore, "invalid_strategy");
   }
 }

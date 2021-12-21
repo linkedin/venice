@@ -1,19 +1,9 @@
 package com.linkedin.venice.utils;
 
-import java.util.Random;
+import java.util.concurrent.ThreadLocalRandom;
 
 
-/**
- * Helper utilities for tests
- *
- *
- */
 public class RandomGenUtils {
-
-  public static final Long SEED = System.currentTimeMillis();
-  public static final Random SEEDED_RANDOM = new Random(SEED);
-  private static final CharSequence VENICE_TEST_DATA_DIRECTORY_NAME = "venice-test-data";
-
   /**
    * Generate an array of random bytes
    *
@@ -22,7 +12,7 @@ public class RandomGenUtils {
    */
   public static byte[] getRandomBytes(int length) {
     byte[] bytes = new byte[length];
-    SEEDED_RANDOM.nextBytes(bytes);
+    ThreadLocalRandom.current().nextBytes(bytes);
     return bytes;
   }
 
@@ -30,17 +20,17 @@ public class RandomGenUtils {
    * @return a random float
    */
   public static float getRandomFloat() {
-    return SEEDED_RANDOM.nextFloat();
+    return ThreadLocalRandom.current().nextFloat();
   }
 
   /**
-   * Return a random integer between 0 and max
+   * Return a random integer between 0 and limit (exclusive)
    *
-   * @param max The upper bound for the range of numbers
+   * @param limit The upper bound for the range of numbers
    * @return
    */
-  public static int getRandomIntWithIn(int max){
-    return SEEDED_RANDOM.nextInt(max);
+  public static int getRandomIntWithin(int limit) {
+    return ThreadLocalRandom.current().nextInt(limit);
   }
 
   /**
@@ -49,7 +39,7 @@ public class RandomGenUtils {
    * @param max Maximum value. max must be greater than min.
    * @return Integer between min and max, inclusive.
    */
-  public static int getRandomIntInRange(int min, int max){
-    return (SEEDED_RANDOM.nextInt((max - min) + 1) + min);
+  public static int getRandomIntInRange(int min, int max) {
+    return min + ThreadLocalRandom.current().nextInt((max - min) + 1) ;
   }
 }

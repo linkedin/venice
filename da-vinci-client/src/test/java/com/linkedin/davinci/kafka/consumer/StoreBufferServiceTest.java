@@ -5,7 +5,8 @@ import com.linkedin.venice.exceptions.VeniceChecksumException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
-import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Utils;
+
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -19,7 +20,7 @@ public class StoreBufferServiceTest {
   public void testRun() throws Exception {
     StoreBufferService bufferService = new StoreBufferService(1, 10000, 1000);
     StoreIngestionTask mockTask = mock(StoreIngestionTask.class);
-    String topic = TestUtils.getUniqueString("test_topic");
+    String topic = Utils.getUniqueString("test_topic");
     int partition1 = 1;
     int partition2 = 2;
     VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope>
@@ -41,7 +42,7 @@ public class StoreBufferServiceTest {
   public void testRunWhenThrowException() throws Exception {
     StoreBufferService bufferService = new StoreBufferService(1, 10000, 1000);
     StoreIngestionTask mockTask = mock(StoreIngestionTask.class);
-    String topic = TestUtils.getUniqueString("test_topic");
+    String topic = Utils.getUniqueString("test_topic");
     int partition1 = 1;
     int partition2 = 2;
     VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope>
@@ -66,7 +67,7 @@ public class StoreBufferServiceTest {
   public void testDrainBufferedRecordsWhenNotExists() throws Exception {
     StoreBufferService bufferService = new StoreBufferService(1, 10000, 1000);
     StoreIngestionTask mockTask = mock(StoreIngestionTask.class);
-    String topic = TestUtils.getUniqueString("test_topic");
+    String topic = Utils.getUniqueString("test_topic");
     int partition = 1;
     VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope>
         cr = new VeniceConsumerRecordWrapper<>(new ConsumerRecord<>(topic, partition, -1, null, null));
@@ -81,7 +82,7 @@ public class StoreBufferServiceTest {
   public void testDrainBufferedRecordsWhenExists() throws Exception {
     StoreBufferService bufferService = new StoreBufferService(1, 10000, 1000);
     StoreIngestionTask mockTask = mock(StoreIngestionTask.class);
-    String topic = TestUtils.getUniqueString("test_topic");
+    String topic = Utils.getUniqueString("test_topic");
     int partition = 1;
     VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope>
         cr = new VeniceConsumerRecordWrapper<>(new ConsumerRecord<>(topic, partition, 100, null, null));
@@ -93,7 +94,7 @@ public class StoreBufferServiceTest {
 
   @Test
   public void testGetDrainerIndexForConsumerRecordSeparateDrainer() {
-    String topic = TestUtils.getUniqueString("test_topic");
+    String topic = Utils.getUniqueString("test_topic");
     int partitionCount = 32;
     int drainerNum = 16;
     int[] drainerPartitionCount = new int[drainerNum];
@@ -133,7 +134,7 @@ public class StoreBufferServiceTest {
 
   @Test
   public void testGetDrainerIndexForConsumerRecord() {
-    String topic = TestUtils.getUniqueString("test_topic");
+    String topic = Utils.getUniqueString("test_topic");
     int partitionCount = 64;
     int drainerNum = 8;
     int[] drainerPartitionCount = new int[drainerNum];
@@ -157,7 +158,7 @@ public class StoreBufferServiceTest {
   public void testRunWhenThrowVeniceCheckSumFailException() throws Exception {
     StoreBufferService bufferService = new StoreBufferService(1, 10000, 1000);
     StoreIngestionTask mockTask = mock(StoreIngestionTask.class);
-    String topic = TestUtils.getUniqueString("test_topic");
+    String topic = Utils.getUniqueString("test_topic");
     int partition1 = 1;
     int partition2 = 2;
     VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope>

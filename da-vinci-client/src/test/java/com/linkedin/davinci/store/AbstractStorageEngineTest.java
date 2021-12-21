@@ -8,7 +8,7 @@ import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.RandomGenUtils;
 import com.linkedin.venice.exceptions.PersistenceFailureException;
 import com.linkedin.venice.exceptions.StorageInitializationException;
-import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.File;
 import org.testng.Assert;
@@ -29,7 +29,7 @@ public abstract class AbstractStorageEngineTest extends AbstractStoreTest {
   }
 
   public static VeniceProperties getServerProperties(PersistenceType persistenceType, Properties properties) {
-    File dataDirectory = TestUtils.getTempDataDirectory();
+    File dataDirectory = Utils.getTempDataDirectory();
     return new PropertyBuilder()
         .put(CLUSTER_NAME, "test_offset_manager")
         .put(ENABLE_KAFKA_CONSUMER_OFFSET_MANAGEMENT, "true")
@@ -202,7 +202,7 @@ public abstract class AbstractStorageEngineTest extends AbstractStoreTest {
 
   @Test (expectedExceptions = VeniceException.class)
   public void testAdjustStoragePartitionWithDifferentStoreName() {
-    String storeName = TestUtils.getUniqueString("dummy_store_name");
+    String storeName = Utils.getUniqueString("dummy_store_name");
     int partitionId = 1;
     StoragePartitionConfig partitionConfig = new StoragePartitionConfig(storeName, partitionId);
     testStoreEngine.adjustStoragePartition(partitionConfig);

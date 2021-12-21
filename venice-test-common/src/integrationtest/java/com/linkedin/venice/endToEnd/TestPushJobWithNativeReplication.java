@@ -11,7 +11,6 @@ import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.controllerapi.ControllerClient;
-import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.helix.HelixBaseRoutingRepository;
@@ -28,7 +27,6 @@ import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
-import com.linkedin.venice.samza.SamzaExitMode;
 import com.linkedin.venice.samza.VeniceSystemFactory;
 import com.linkedin.venice.samza.VeniceSystemProducer;
 import com.linkedin.venice.server.VeniceServer;
@@ -260,7 +258,7 @@ public class  TestPushJobWithNativeReplication {
 
           //Test Da-vinci client is able to consume from NR colo which is consuming remotely
           VeniceMultiClusterWrapper childDataCenter = childDatacenters.get(1);
-          String baseDataPath = TestUtils.getTempDataDirectory().getAbsolutePath();
+          String baseDataPath = Utils.getTempDataDirectory().getAbsolutePath();
           int applicationListenerPort = Utils.getFreePort();
           int servicePort = Utils.getFreePort();
           VeniceProperties backendConfig = new PropertyBuilder().put(DATA_BASE_PATH, baseDataPath)
@@ -327,7 +325,7 @@ public class  TestPushJobWithNativeReplication {
             samzaConfig.put(configPrefix + VENICE_AGGREGATE, "true");
             samzaConfig.put(D2_ZK_HOSTS_PROPERTY, "invalid_child_zk_address");
             samzaConfig.put(VENICE_PARENT_D2_ZK_HOSTS, parentController.getKafkaZkAddress());
-            samzaConfig.put(DEPLOYMENT_ID, TestUtils.getUniqueString("venice-push-id"));
+            samzaConfig.put(DEPLOYMENT_ID, Utils.getUniqueString("venice-push-id"));
             samzaConfig.put(SSL_ENABLED, "false");
             VeniceSystemFactory factory = new VeniceSystemFactory();
             veniceProducer = factory.getProducer("venice", new MapConfig(samzaConfig), null);
@@ -430,7 +428,7 @@ public class  TestPushJobWithNativeReplication {
     VeniceControllerWrapper parentController =
         parentControllers.stream().filter(c -> c.isMasterController(clusterName)).findAny().get();
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
-    String storeName = TestUtils.getUniqueString("store");
+    String storeName = Utils.getUniqueString("store");
     Properties props = defaultH2VProps(parentController.getControllerUrl(), inputDirPath, storeName);
     props.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
 

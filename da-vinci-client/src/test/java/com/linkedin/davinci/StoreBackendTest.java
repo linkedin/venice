@@ -19,7 +19,7 @@ import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.utils.ComplementSet;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.ReferenceCounted;
-import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
@@ -57,7 +57,7 @@ public class StoreBackendTest {
 
   @BeforeMethod
   void setup() {
-    baseDataPath = TestUtils.getTempDataDirectory();
+    baseDataPath = Utils.getTempDataDirectory();
     VeniceProperties backendConfig = new PropertyBuilder()
         .put(ConfigKeys.CLUSTER_NAME, "test-cluster")
         .put(ConfigKeys.ZOOKEEPER_ADDRESS, "test-zookeeper")

@@ -26,6 +26,7 @@ import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.systemstore.schemas.StoreProperties;
 import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -78,7 +79,7 @@ public class TopicManagerTest {
 
   private String getTopic() {
     String callingFunction = Thread.currentThread().getStackTrace()[2].getMethodName();
-    String topicName = TestUtils.getUniqueString(callingFunction);
+    String topicName = Utils.getUniqueString(callingFunction);
     int partitions = 1;
     int replicas = 1;
     topicManager.createTopic(topicName, partitions, replicas, false);
@@ -368,7 +369,7 @@ public class TopicManagerTest {
 
   @Test
   public void testGetTopicConfig() {
-    String topic = TestUtils.getUniqueString("topic");
+    String topic = Utils.getUniqueString("topic");
     topicManager.createTopic(topic, 1, 1, true);
     Properties topicProperties = topicManager.getTopicConfig(topic);
     Assert.assertTrue(topicProperties.containsKey(LogConfig.RetentionMsProp()));
@@ -378,13 +379,13 @@ public class TopicManagerTest {
 
   @Test (expectedExceptions = TopicDoesNotExistException.class)
   public void testGetTopicConfigWithUnknownTopic() {
-    String topic = TestUtils.getUniqueString("topic");
+    String topic = Utils.getUniqueString("topic");
     topicManager.getTopicConfig(topic);
   }
 
   @Test
   public void testUpdateTopicRetention() {
-    String topic = TestUtils.getUniqueString("topic");
+    String topic = Utils.getUniqueString("topic");
     topicManager.createTopic(topic, 1, 1, true);
     topicManager.updateTopicRetention(topic, 0);
     Properties topicProperties = topicManager.getTopicConfig(topic);
@@ -394,9 +395,9 @@ public class TopicManagerTest {
   @Test
   public void testListAllTopics() {
     Set<String> expectTopics = new HashSet<>(topicManager.listTopics());
-    String topic1 = TestUtils.getUniqueString("topic");
-    String topic2 = TestUtils.getUniqueString("topic");
-    String topic3 = TestUtils.getUniqueString("topic");
+    String topic1 = Utils.getUniqueString("topic");
+    String topic2 = Utils.getUniqueString("topic");
+    String topic3 = Utils.getUniqueString("topic");
     // Create 1 topic, expect 1 topic in total
     topicManager.createTopic(topic1, 1, 1, true);
     expectTopics.add(topic1);
@@ -418,9 +419,9 @@ public class TopicManagerTest {
 
   @Test
   public void testGetAllTopicRetentions() {
-    String topic1 = TestUtils.getUniqueString("topic");
-    String topic2 = TestUtils.getUniqueString("topic");
-    String topic3 = TestUtils.getUniqueString("topic");
+    String topic1 = Utils.getUniqueString("topic");
+    String topic2 = Utils.getUniqueString("topic");
+    String topic3 = Utils.getUniqueString("topic");
     topicManager.createTopic(topic1, 1, 1, true);
     topicManager.createTopic(topic2, 1, 1, false);
     topicManager.createTopic(topic3, 1, 1, false);
@@ -450,7 +451,7 @@ public class TopicManagerTest {
 
   @Test
   public void testUpdateTopicCompactionPolicy() {
-    String topic = TestUtils.getUniqueString("topic");
+    String topic = Utils.getUniqueString("topic");
     topicManager.createTopic(topic, 1, 1, true);
     Assert.assertFalse(topicManager.isTopicCompactionEnabled(topic), "topic: " + topic + " should be with compaction disabled");
     topicManager.updateTopicCompactionPolicy(topic, true);
@@ -463,39 +464,39 @@ public class TopicManagerTest {
 
   @Test
   public void testGetConfigForNonExistingTopic() {
-    String nonExistingTopic = TestUtils.getUniqueString("non-existing-topic");
+    String nonExistingTopic = Utils.getUniqueString("non-existing-topic");
     Assert.assertThrows(TopicDoesNotExistException.class, () -> topicManager.getTopicConfig(nonExistingTopic));
   }
 
   @Test
   public void testGetLatestOffsetForNonExistingTopic() {
-    String nonExistingTopic = TestUtils.getUniqueString("non-existing-topic");
+    String nonExistingTopic = Utils.getUniqueString("non-existing-topic");
     Assert.assertThrows(TopicDoesNotExistException.class, () -> topicManager.getPartitionLatestOffset(nonExistingTopic, 0));
     Assert.assertThrows(TopicDoesNotExistException.class, () -> topicManager.getPartitionLatestOffsetAndRetry(nonExistingTopic, 0, 10));
   }
 
   @Test
   public void testGetLatestProducerTimestampForNonExistingTopic() {
-    String nonExistingTopic = TestUtils.getUniqueString("non-existing-topic");
+    String nonExistingTopic = Utils.getUniqueString("non-existing-topic");
     Assert.assertThrows(TopicDoesNotExistException.class, () -> topicManager.getProducerTimestampOfLastDataRecord(nonExistingTopic, 0, 10));
   }
 
   @Test
   public void testGetAndUpdateTopicRetentionForNonExistingTopic() {
-    String nonExistingTopic = TestUtils.getUniqueString("non-existing-topic");
+    String nonExistingTopic = Utils.getUniqueString("non-existing-topic");
     Assert.assertThrows(TopicDoesNotExistException.class, () -> topicManager.getTopicRetention(nonExistingTopic));
     Assert.assertThrows(TopicDoesNotExistException.class, () -> topicManager.updateTopicRetention(nonExistingTopic, TimeUnit.DAYS.toMillis(1)));
   }
 
   @Test
   public void testUpdateTopicCompactionPolicyForNonExistingTopic() {
-    String nonExistingTopic = TestUtils.getUniqueString("non-existing-topic");
+    String nonExistingTopic = Utils.getUniqueString("non-existing-topic");
     Assert.assertThrows(TopicDoesNotExistException.class, () -> topicManager.updateTopicCompactionPolicy(nonExistingTopic, true));
   }
 
   @Test
   public void testTimeoutOnGettingMaxOffset() throws IOException {
-    String topic = TestUtils.getUniqueString("topic");
+    String topic = Utils.getUniqueString("topic");
 
     KafkaClientFactory mockKafkaClientFactory = mock(KafkaClientFactory.class);
     // Mock an admin client to pass topic existence check
@@ -521,7 +522,7 @@ public class TopicManagerTest {
   @Test
   public void testContainsTopicWithExpectationAndRetry() throws InterruptedException {
     // Case 1: topic does not exist
-    String nonExistingTopic = TestUtils.getUniqueString("topic");
+    String nonExistingTopic = Utils.getUniqueString("topic");
     Assert.assertFalse(topicManager.containsTopicWithExpectationAndRetry(nonExistingTopic, 3, true));
 
     // Case 2: topic exists
@@ -531,7 +532,7 @@ public class TopicManagerTest {
 
     // Case 3: topic does not exist initially but topic is created later.
     //         This test case is to simulate the situation where the contains topic check fails on initial attempt(s) but succeeds eventually.
-    String initiallyNotExistTopic = TestUtils.getUniqueString("topic");
+    String initiallyNotExistTopic = Utils.getUniqueString("topic");
 
     final long delayedTopicCreationInSeconds = 1;
     CountDownLatch delayedTopicCreationStartedSignal = new CountDownLatch(1);
@@ -597,7 +598,7 @@ public class TopicManagerTest {
 
   @Test
   public void testContainsTopicAndAllPartitionsAreOnline() {
-    String topic = TestUtils.getUniqueString("a-new-topic");
+    String topic = Utils.getUniqueString("a-new-topic");
     Assert.assertFalse(topicManager.containsTopicAndAllPartitionsAreOnline(topic)); // Topic does not exist yet
 
     topicManager.createTopic(topic, 1, 1, true);
@@ -606,7 +607,7 @@ public class TopicManagerTest {
 
   @Test
   public void testGetPartitionOffsetByTimeWithRetrySucceeds() {
-    String topic = TestUtils.getUniqueString("topic");
+    String topic = Utils.getUniqueString("topic");
     topicManager.createTopic(topic, 1, 1, true);
     int[] maxAttempts = {1, 3, 5};
 
@@ -618,7 +619,7 @@ public class TopicManagerTest {
 
   @Test
   public void testGetPartitionOffsetByTimeWithRetryFails() throws IOException {
-    String nonExistingTopic = TestUtils.getUniqueString("non-existing-topic");
+    String nonExistingTopic = Utils.getUniqueString("non-existing-topic");
     int[] maxAttempts = {1, 3, 5};
     // Create a new topic manager instance so that we can set the kafkaOperationTimeoutMs parameter to be shorter to make
     // this test case run more efficiently.

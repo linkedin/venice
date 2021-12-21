@@ -746,8 +746,8 @@ public class VeniceClusterWrapper extends ProcessWrapper {
   }
 
   public VersionCreationResponse getNewStoreVersion(String keySchema, String valueSchema) {
-    String storeName = TestUtils.getUniqueString("venice-store");
-    String storeOwner = TestUtils.getUniqueString("store-owner");
+    String storeName = Utils.getUniqueString("venice-store");
+    String storeOwner = Utils.getUniqueString("store-owner");
     long storeSize =  1024;
 
     try (ControllerClient controllerClient = getControllerClient()) {
@@ -835,7 +835,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
 
   public String createStore(String keySchema, String valueSchema, Stream<Map.Entry> batchData) throws Exception {
     try (ControllerClient client = getControllerClient()) {
-      String storeName = TestUtils.getUniqueString("store");
+      String storeName = Utils.getUniqueString("store");
       NewStoreResponse response = client.createNewStore(
           storeName,
           getClass().getName(),

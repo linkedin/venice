@@ -158,7 +158,7 @@ public class TestHybrid {
     ) {
       long streamingRewindSeconds = 25L;
       long streamingMessageLag = 2L;
-      final String storeName = TestUtils.getUniqueString("multi-colo-hybrid-store");
+      final String storeName = Utils.getUniqueString("multi-colo-hybrid-store");
 
       //Create store at parent, make it a hybrid store
       controllerClient.createNewStore(storeName, "owner", STRING_SCHEMA, STRING_SCHEMA);
@@ -177,7 +177,7 @@ public class TestHybrid {
           0, "The newly created store must have a current version of 0");
 
       // Create a new version, and do an empty push for that version
-      VersionCreationResponse vcr = controllerClient.emptyPush(storeName, TestUtils.getUniqueString("empty-hybrid-push"), 1L);
+      VersionCreationResponse vcr = controllerClient.emptyPush(storeName, Utils.getUniqueString("empty-hybrid-push"), 1L);
       int versionNumber = vcr.getVersion();
       assertNotEquals(versionNumber, 0, "requesting a topic for a push should provide a non zero version number");
 
@@ -268,7 +268,7 @@ public class TestHybrid {
       long streamingRewindSeconds = 10L;
       long streamingMessageLag = 2L;
 
-      String storeName = TestUtils.getUniqueString("hybrid-store");
+      String storeName = Utils.getUniqueString("hybrid-store");
       File inputDir = getTempDataDirectory();
       String inputDirPath = "file://" + inputDir.getAbsolutePath();
       Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir); // records 1-100
@@ -492,7 +492,7 @@ public class TestHybrid {
       try {
         Admin admin = veniceClusterWrapper.getMasterVeniceController().getVeniceAdmin();
         String clusterName = veniceClusterWrapper.getClusterName();
-        String storeName = TestUtils.getUniqueString("test-store");
+        String storeName = Utils.getUniqueString("test-store");
         long streamingRewindSeconds = 25L;
         long streamingMessageLag = 2L;
 
@@ -666,8 +666,8 @@ public class TestHybrid {
       VeniceClusterWrapper veniceClusterWrapper = sharedVenice;
       Admin admin = veniceClusterWrapper.getMasterVeniceController().getVeniceAdmin();
       String clusterName = veniceClusterWrapper.getClusterName();
-      String storeName1 = TestUtils.getUniqueString("test-store1");
-      String storeName2 = TestUtils.getUniqueString("test-store2");
+      String storeName1 = Utils.getUniqueString("test-store1");
+      String storeName2 = Utils.getUniqueString("test-store2");
       long streamingRewindSeconds = 25L;
       long streamingMessageLag = 2L;
 
@@ -751,7 +751,7 @@ public class TestHybrid {
       long streamingRewindSeconds = 25L;
       long streamingMessageLag = 2L;
 
-      String storeName = TestUtils.getUniqueString("hybrid-store");
+      String storeName = Utils.getUniqueString("hybrid-store");
 
       //Create store , make it a hybrid store
       controllerClient.createNewStore(storeName, "owner", STRING_SCHEMA, STRING_SCHEMA);
@@ -763,7 +763,7 @@ public class TestHybrid {
       );
 
       // Create a new version, and do an empty push for that version
-      VersionCreationResponse vcr = TestUtils.assertCommand(controllerClient.emptyPush(storeName, TestUtils.getUniqueString("empty-hybrid-push"), 1L));
+      VersionCreationResponse vcr = TestUtils.assertCommand(controllerClient.emptyPush(storeName, Utils.getUniqueString("empty-hybrid-push"), 1L));
       int versionNumber = vcr.getVersion();
       Assert.assertEquals(versionNumber, 1, "Version number should become 1 after an empty-push");
       int partitionCnt = vcr.getPartitions();
@@ -808,7 +808,7 @@ public class TestHybrid {
       /**
        * Wait for leader to switch over to real-time topic
        */
-      TestUtils.waitForNonDeterministicAssertion(20 * 1000, TimeUnit.MILLISECONDS, true, true, () -> {
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
         StoreResponse store = TestUtils.assertCommand(controllerClient.getStore(storeName));
         Assert.assertEquals(store.getStore().getCurrentVersion(), 1);
       });
@@ -855,7 +855,7 @@ public class TestHybrid {
     VeniceClusterWrapper veniceClusterWrapper = isIngestionIsolationEnabled ? ingestionIsolationEnabledSharedVenice : sharedVenice;
     Admin admin = veniceClusterWrapper.getMasterVeniceController().getVeniceAdmin();
     String clusterName = veniceClusterWrapper.getClusterName();
-    String storeName = TestUtils.getUniqueString("test-store");
+    String storeName = Utils.getUniqueString("test-store");
 
     SystemProducer producer = null;
     try (ControllerClient controllerClient = new ControllerClient(clusterName, veniceClusterWrapper.getAllControllersURLs())) {
@@ -866,7 +866,7 @@ public class TestHybrid {
           .setLeaderFollowerModel(true));
 
       // Create a new version, and do an empty push for that version
-      controllerClient.emptyPush(storeName, TestUtils.getUniqueString("empty-hybrid-push"), 1L);
+      controllerClient.emptyPush(storeName, Utils.getUniqueString("empty-hybrid-push"), 1L);
 
       //write a few of messages from the Samza
       producer = TestPushUtils.getSamzaProducer(veniceClusterWrapper, storeName, Version.PushType.STREAM);
@@ -942,7 +942,7 @@ public class TestHybrid {
         .setHybridOffsetLagThreshold(10)
         .setPartitionCount(partitionCount)
         .setLeaderFollowerModel(true);
-    String storeName = TestUtils.getUniqueString("store");
+    String storeName = Utils.getUniqueString("store");
     try (ControllerClient client = cluster.getControllerClient()) {
       client.createNewStore(storeName, "owner", DEFAULT_KEY_SCHEMA, DEFAULT_VALUE_SCHEMA);
       client.updateStore(storeName, params);
@@ -987,7 +987,7 @@ public class TestHybrid {
       // Time lag threshold is 30 seconds for the test case
       long streamingTimeLag = 30L;
 
-      String storeName = TestUtils.getUniqueString("hybrid-store");
+      String storeName = Utils.getUniqueString("hybrid-store");
       File inputDir = getTempDataDirectory();
       String inputDirPath = "file://" + inputDir.getAbsolutePath();
       Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir); // records 1-100
@@ -1101,7 +1101,7 @@ public class TestHybrid {
       long streamingRewindSeconds = 10L;
       long streamingMessageLag = 2L;
 
-      String storeName = TestUtils.getUniqueString("hybrid-store");
+      String storeName = Utils.getUniqueString("hybrid-store");
       File inputDir = getTempDataDirectory();
       String inputDirPath = "file://" + inputDir.getAbsolutePath();
       Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir); // records 1-100
@@ -1237,7 +1237,7 @@ public class TestHybrid {
     logger.info("Finished creating VeniceClusterWrapper");
     long streamingRewindSeconds = 10L;
     long streamingMessageLag = 2L;
-    String storeName = TestUtils.getUniqueString("hybrid-store");
+    String storeName = Utils.getUniqueString("hybrid-store");
     File inputDir = getTempDataDirectory();
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
     Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir); // records 1-100
@@ -1334,7 +1334,7 @@ public class TestHybrid {
           .setReplicationFactor(2)
           .setAmplificationFactor(5)
           .setLeaderFollowerModel(true);
-      String storeName = TestUtils.getUniqueString("store");
+      String storeName = Utils.getUniqueString("store");
       try (ControllerClient controllerClient = cluster.getControllerClient()) {
         TestUtils.assertCommand(controllerClient.createNewStore(storeName, "owner", STRING_SCHEMA, STRING_SCHEMA));
         TestUtils.assertCommand(controllerClient.updateStore(storeName, params));
@@ -1423,7 +1423,7 @@ public class TestHybrid {
    */
   public static void runH2V(Properties h2vProperties, int expectedVersionNumber, ControllerClient controllerClient) throws Exception {
     long h2vStart = System.currentTimeMillis();
-    String jobName = TestUtils.getUniqueString("hybrid-job-" + expectedVersionNumber);
+    String jobName = Utils.getUniqueString("hybrid-job-" + expectedVersionNumber);
     try (VenicePushJob job = new VenicePushJob(jobName, h2vProperties)) {
       job.run();
       TestUtils.waitForNonDeterministicCompletion(5, TimeUnit.SECONDS,

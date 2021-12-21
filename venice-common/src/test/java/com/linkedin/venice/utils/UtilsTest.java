@@ -122,7 +122,7 @@ public class UtilsTest {
   public void testDirectoryExists() throws Exception {
     Path directoryPath = Files.createTempDirectory(null);
     Path filePath = Files.createTempFile(null, null);
-    Path nonExistingPath = Paths.get(TestUtils.getUniqueTempPath());
+    Path nonExistingPath = Paths.get(Utils.getUniqueTempPath());
     Assert.assertTrue(Utils.directoryExists(directoryPath.toString()));
     Assert.assertFalse(Utils.directoryExists(filePath.toString()));
     Assert.assertFalse(Utils.directoryExists(nonExistingPath.toString()));

@@ -15,6 +15,7 @@ import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.ApacheKafkaProducer;
 import java.io.IOException;
@@ -81,7 +82,7 @@ public class MirrorMakerTest {
         TopicManager topicManager =
             new TopicManager(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, 0l, TestUtils.getVeniceConsumerFactory(sourceKafka))) {
 
-      String topicName = TestUtils.getUniqueString("topic");
+      String topicName = Utils.getUniqueString("topic");
       topicManager.createTopic(topicName, 2, 1, false);
 
       Properties producerJavaProps = new Properties();
@@ -143,7 +144,7 @@ public class MirrorMakerTest {
     kafkaConsumerProperties.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
     // Venice is persisting offset in local offset db.
     kafkaConsumerProperties.setProperty(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "false");
-    String groupId = TestUtils.getUniqueString("group-id");
+    String groupId = Utils.getUniqueString("group-id");
     kafkaConsumerProperties.setProperty(ConsumerConfig.GROUP_ID_CONFIG, groupId);
     /**
      * Temporarily we are going to use group_id as client_id as well since it is unique in cluster level.

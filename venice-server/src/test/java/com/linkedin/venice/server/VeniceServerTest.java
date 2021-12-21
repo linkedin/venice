@@ -7,7 +7,6 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.TestVeniceServer;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
-import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import java.lang.reflect.Field;
@@ -64,7 +63,7 @@ public class VeniceServerTest {
       Assert.assertTrue(repository.getAllLocalStorageEngines().isEmpty(), "New node should not have any storage engine.");
 
       // Create a storage engine.
-      String storeName = TestUtils.getUniqueString("testCheckBeforeJoinCluster");
+      String storeName = Utils.getUniqueString("testCheckBeforeJoinCluster");
       server.getVeniceServer().getStorageService().openStoreForNewPartition(server.getVeniceServer().getConfigLoader().getStoreConfig(storeName), 1);
       Assert.assertEquals(repository.getAllLocalStorageEngines().size(), 1, "We have created one storage engine for store: " + storeName);
 

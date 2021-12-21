@@ -5,7 +5,8 @@ import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionTask;
 import com.linkedin.davinci.stats.AggStoreIngestionStats;
 import com.linkedin.venice.tehuti.MockTehutiReporter;
-import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Utils;
+
 import io.tehuti.metrics.MetricsRepository;
 import org.mockito.Mockito;
 import org.testng.Assert;
@@ -18,8 +19,8 @@ public class AggStoreIngestionStatsTest {
   private MetricsRepository metricsRepository;
   private MockTehutiReporter reporter;
 
-  private static final String STORE_FOO = TestUtils.getUniqueString("store_foo");
-  private static final String STORE_BAR = TestUtils.getUniqueString("store_bar");
+  private static final String STORE_FOO = Utils.getUniqueString("store_foo");
+  private static final String STORE_BAR = Utils.getUniqueString("store_bar");
 
   @BeforeTest
   public void setup() {

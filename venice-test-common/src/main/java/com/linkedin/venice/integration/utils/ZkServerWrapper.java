@@ -272,7 +272,7 @@ public class ZkServerWrapper extends ProcessWrapper {
     }
     List<String> paths = new ArrayList<>(count);
     for (int i = 0; i < count; ++i) {
-      String path = TestUtils.getUniqueString("test");
+      String path = Utils.getUniqueString("test");
       try {
         zooKeeper.create("/" + path, null, ZooDefs.Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
       } catch (Exception e) {

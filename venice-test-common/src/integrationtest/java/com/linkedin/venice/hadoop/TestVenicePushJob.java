@@ -160,7 +160,7 @@ public class TestVenicePushJob {
 
     // Setup job properties
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
-    String storeName = TestUtils.getUniqueString("store");
+    String storeName = Utils.getUniqueString("store");
     veniceCluster.getNewStore(storeName);
     Properties props = defaultH2VProps(veniceCluster, inputDirPath, storeName);
 
@@ -177,7 +177,7 @@ public class TestVenicePushJob {
     File inputDir = getTempDataDirectory();
     writeSimpleAvroFileWithUserSchema(inputDir);
     // Setup job properties
-    String storeName = TestUtils.getUniqueString("store");
+    String storeName = Utils.getUniqueString("store");
     veniceCluster.getNewStore(storeName);
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
     Properties props = defaultH2VProps(veniceCluster, inputDirPath, storeName);
@@ -202,7 +202,7 @@ public class TestVenicePushJob {
 
     // Setup job properties
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
-    String storeName = TestUtils.getUniqueString("store");
+    String storeName = Utils.getUniqueString("store");
     veniceCluster.getNewStore(storeName);
     Properties props = defaultH2VProps(veniceCluster, inputDirPath, storeName);
     // Override with not-existing value field
@@ -225,7 +225,7 @@ public class TestVenicePushJob {
 
     // Setup job properties
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
-    String storeName = TestUtils.getUniqueString("store");
+    String storeName = Utils.getUniqueString("store");
     veniceCluster.getNewStore(storeName);
     Properties props = defaultH2VProps(veniceCluster, inputDirPath, storeName);
     // Override with not-existing value field
@@ -252,7 +252,7 @@ public class TestVenicePushJob {
 
     // Setup job properties
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
-    String storeName = TestUtils.getUniqueString("store");
+    String storeName = Utils.getUniqueString("store");
     veniceCluster.getNewStore(storeName);
     Properties props = defaultH2VProps(veniceCluster, inputDirPath, storeName);
 
@@ -292,7 +292,7 @@ public class TestVenicePushJob {
       expectedExceptionsMessageRegExp = ".*Key schema mis-match for store.*")
   public void testRunJobWithDifferentKeySchemaConfig() throws Exception {
     File inputDir = getTempDataDirectory();
-    String storeName = TestUtils.getUniqueString("store");
+    String storeName = Utils.getUniqueString("store");
     Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir);
 
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
@@ -317,7 +317,7 @@ public class TestVenicePushJob {
     File inputDir = getTempDataDirectory();
     Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir);
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
-    String storeName = TestUtils.getUniqueString("store");
+    String storeName = Utils.getUniqueString("store");
     Properties props = defaultH2VProps(veniceCluster, inputDirPath, storeName);
     createStoreForJob(veniceCluster, recordSchema, props).close();
     String jobName = "Test push job";
@@ -338,7 +338,7 @@ public class TestVenicePushJob {
     Schema recordSchema = writeComplicatedAvroFileWithUserSchema(inputDir, false);
     Schema keySchema = recordSchema.getField("id").schema();
     Schema valueSchema = recordSchema.getField("value").schema();
-    String storeName = TestUtils.getUniqueString("store");
+    String storeName = Utils.getUniqueString("store");
     String routerUrl = veniceCluster.getRandomRouterURL();
     ControllerClient controllerClient = new ControllerClient(veniceCluster.getClusterName(), routerUrl);
 
@@ -359,7 +359,7 @@ public class TestVenicePushJob {
   @Test(timeOut = TEST_TIMEOUT, expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Store does not have write compute enabled.*")
   public void testWCJobWithStoreNotWCEnabled() throws Exception {
     File inputDir = getTempDataDirectory();
-    String storeName = TestUtils.getUniqueString("store");
+    String storeName = Utils.getUniqueString("store");
     String routerUrl = veniceCluster.getRandomRouterURL();
     ControllerClient controllerClient = new ControllerClient(veniceCluster.getClusterName(), routerUrl);
 
@@ -390,7 +390,7 @@ public class TestVenicePushJob {
   @Test(timeOut = TEST_TIMEOUT, expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Write compute is only available for incremental push jobs.*")
   public void testWCBatchJob() throws Exception {
     File inputDir = getTempDataDirectory();
-    String storeName = TestUtils.getUniqueString("store");
+    String storeName = Utils.getUniqueString("store");
     String routerUrl = veniceCluster.getRandomRouterURL();
     ControllerClient controllerClient = new ControllerClient(veniceCluster.getClusterName(), routerUrl);
 
@@ -420,7 +420,7 @@ public class TestVenicePushJob {
   @Test(timeOut = TEST_TIMEOUT, expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Leader follower mode needs to be enabled for write compute.*")
   public void testWCJobWithNoLF() throws Exception {
     File inputDir = getTempDataDirectory();
-    String storeName = TestUtils.getUniqueString("store");
+    String storeName = Utils.getUniqueString("store");
     String routerUrl = veniceCluster.getRandomRouterURL();
     ControllerClient controllerClient = new ControllerClient(veniceCluster.getClusterName(), routerUrl);
 
@@ -450,7 +450,7 @@ public class TestVenicePushJob {
 
     // Setup job properties
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
-    String storeName = TestUtils.getUniqueString("store");
+    String storeName = Utils.getUniqueString("store");
     veniceCluster.getNewStore(storeName);
     TestUtils.assertCommand(veniceCluster.updateStore(storeName, new UpdateStoreQueryParams()
         .setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
@@ -470,7 +470,7 @@ public class TestVenicePushJob {
 
     // Setup job properties
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
-    String storeName = TestUtils.getUniqueString("store");
+    String storeName = Utils.getUniqueString("store");
     veniceCluster.getNewStore(storeName);
     TestUtils.assertCommand(veniceCluster.updateStore(storeName, new UpdateStoreQueryParams()
         .setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
@@ -490,7 +490,7 @@ public class TestVenicePushJob {
 
     // Setup job properties
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
-    String storeName = TestUtils.getUniqueString("store");
+    String storeName = Utils.getUniqueString("store");
     veniceCluster.getNewStore(storeName);
     String nonDeterministicPartitionerClassName = NonDeterministicVenicePartitioner.class.getName();
     TestUtils.assertCommand(veniceCluster.updateStore(storeName, new UpdateStoreQueryParams()
@@ -511,7 +511,7 @@ public class TestVenicePushJob {
     writeSimpleAvroFileWithUserSchema(inputDir);
     // Setup job properties
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
-    String storeName = TestUtils.getUniqueString("store");
+    String storeName = Utils.getUniqueString("store");
     veniceCluster.getNewStore(storeName);
     TestUtils.assertCommand(veniceCluster.updateStore(storeName, new UpdateStoreQueryParams()
         .setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
@@ -558,7 +558,7 @@ public class TestVenicePushJob {
     writeSimpleAvroFileWithUserSchema(inputDir);
     // Setup job properties
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
-    String storeName = TestUtils.getUniqueString("store");
+    String storeName = Utils.getUniqueString("store");
     veniceCluster.getNewStore(storeName);
     TestUtils.assertCommand(veniceCluster.updateStore(storeName, new UpdateStoreQueryParams()
         .setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)

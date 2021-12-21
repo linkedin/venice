@@ -11,7 +11,7 @@ import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
-import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.nio.ByteBuffer;
@@ -29,7 +29,7 @@ import static org.mockito.Mockito.*;
 public class KafkaDataIntegrityValidatorTest {
   @Test
   public void testStatelessDIV() {
-    String kafkaTopic = TestUtils.getUniqueString("TestStore") + "_v1";
+    String kafkaTopic = Utils.getUniqueString("TestStore") + "_v1";
     long kafkaLogCompactionLagInMs = TimeUnit.HOURS.toMillis(24); // 24 hours
     KafkaDataIntegrityValidator stateLessDIVValidator = new KafkaDataIntegrityValidator(kafkaTopic, kafkaLogCompactionLagInMs);
 

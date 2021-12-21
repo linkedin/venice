@@ -11,14 +11,13 @@ import com.linkedin.venice.router.stats.RouterStats;
 import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordSerializer;
-import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Utils;
+
 import io.netty.buffer.Unpooled;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpVersion;
 import io.tehuti.metrics.MetricsRepository;
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
-import java.io.ObjectOutputStream;
+
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
@@ -71,7 +70,7 @@ public class TestVeniceMultiGetPath {
 
   @Test (expectedExceptions = RouterException.class, expectedExceptionsMessageRegExp = ".*exceeds the threshold.*")
   public void testMultiGetReqWithTooManyKeys() throws RouterException {
-    String resourceName = TestUtils.getUniqueString("test_store") + "_v1";
+    String resourceName = Utils.getUniqueString("test_store") + "_v1";
 
     String keyPrefix = "key_";
     List<ByteBuffer> keys = new ArrayList<>();
@@ -87,7 +86,7 @@ public class TestVeniceMultiGetPath {
 
   @Test (expectedExceptions = RouterException.class, expectedExceptionsMessageRegExp = ".*but received.*")
   public void testMultiGetReqWithInvalidAPIVersion() throws RouterException {
-    String resourceName = TestUtils.getUniqueString("test_store") + "_v1";
+    String resourceName = Utils.getUniqueString("test_store") + "_v1";
     String keyPrefix = "key_";
     List<ByteBuffer> keys = new ArrayList<>();
     for (int i = 0; i < 5; ++i) {
@@ -100,7 +99,7 @@ public class TestVeniceMultiGetPath {
 
   @Test
   public void testAllowedRouteRetry() throws RouterException {
-    String resourceName = TestUtils.getUniqueString("test_store") + "_v1";
+    String resourceName = Utils.getUniqueString("test_store") + "_v1";
 
     String keyPrefix = "key_";
     List<ByteBuffer> keys = new ArrayList<>();

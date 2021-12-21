@@ -121,7 +121,7 @@ public class TestHelixCustomizedViewRepository {
     accessor1.updateHybridQuotaReplicaStatus(resourceName, partitionId1, HybridStoreQuotaStatus.QUOTA_NOT_VIOLATED);
     accessor1.updateHybridQuotaReplicaStatus(resourceName, partitionId2, HybridStoreQuotaStatus.QUOTA_VIOLATED);
 
-    TestUtils.waitForNonDeterministicCompletion(500000, TimeUnit.MILLISECONDS,
+    TestUtils.waitForNonDeterministicCompletion(30, TimeUnit.SECONDS,
         () -> offlinePushOnlyRepository.containsKafkaTopic(resourceName)
             && offlinePushOnlyRepository.getReplicaStates(resourceName, partitionId0).size() == 2
             && offlinePushOnlyRepository.getReplicaStates(resourceName, partitionId1).size() == 2);

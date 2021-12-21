@@ -17,6 +17,8 @@ import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.Utils;
+
 import java.util.List;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -58,10 +60,10 @@ public class TestTopicRequestOnHybridDelete {
       controllerClient = new ControllerClient(venice.getClusterName(), venice.getRandomRouterURL());
       final ControllerClient finalControllerClient = controllerClient;
 
-      String storeName = TestUtils.getUniqueString("hybrid-store");
+      String storeName = Utils.getUniqueString("hybrid-store");
       venice.getNewStore(storeName);
       makeStoreHybrid(venice, storeName, 100L, 5L);
-      controllerClient.emptyPush(storeName, TestUtils.getUniqueString("push-id"), 1L);
+      controllerClient.emptyPush(storeName, Utils.getUniqueString("push-id"), 1L);
 
       //write streaming records
       veniceProducer = getSamzaProducer(venice, storeName, Version.PushType.STREAM);
@@ -82,7 +84,7 @@ public class TestTopicRequestOnHybridDelete {
         }
       });
 
-      controllerClient.emptyPush(storeName, TestUtils.getUniqueString("push-id"), 1L);
+      controllerClient.emptyPush(storeName, Utils.getUniqueString("push-id"), 1L);
       TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
         StoreResponse storeResponse = finalControllerClient.getStore(storeName);
         Assert.assertEquals(storeResponse.getStore().getCurrentVersion(), 2);
@@ -123,7 +125,7 @@ public class TestTopicRequestOnHybridDelete {
       venice.getNewStore(storeName);
       Assert.assertEquals(controllerClient.getStore(storeName).getStore().getVersions().size(), 0);
       makeStoreHybrid(venice, storeName, 100L, 5L);
-      controllerClient.emptyPush(storeName, TestUtils.getUniqueString("push-id3"), 1L);
+      controllerClient.emptyPush(storeName, Utils.getUniqueString("push-id3"), 1L);
 
       int expectedCurrentVersion = 3;
 
@@ -181,14 +183,14 @@ public class TestTopicRequestOnHybridDelete {
     ControllerClient controllerClient = new ControllerClient(venice.getClusterName(), venice.getRandomRouterURL());
     TopicManager topicManager = new TopicManager(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, 0l, TestUtils.getVeniceConsumerFactory(venice.getKafka()));
 
-    String storeName = TestUtils.getUniqueString("hybrid-store");
+    String storeName = Utils.getUniqueString("hybrid-store");
     venice.getNewStore(storeName);
     makeStoreHybrid(venice, storeName, 100L, 5L);
 
     //new version, but don't write records
     VersionCreationResponse startedVersion =
         controllerClient.requestTopicForWrites(storeName, 1L, Version.PushType.BATCH,
-            TestUtils.getUniqueString("pushId"), false, true, false, Optional.empty(),
+            Utils.getUniqueString("pushId"), false, true, false, Optional.empty(),
             Optional.empty(), Optional.empty(), false, -1);
     Assert.assertFalse(startedVersion.isError(),
         "The call to controllerClient.requestTopicForWrites() returned an error: " + startedVersion.getError());
@@ -206,7 +208,7 @@ public class TestTopicRequestOnHybridDelete {
         .setEnableReads(true)
         .setEnableWrites(true));
 
-    controllerClient.emptyPush(storeName, TestUtils.getUniqueString("push-id3"), 1L);
+    controllerClient.emptyPush(storeName, Utils.getUniqueString("push-id3"), 1L);
 
     int expectedCurrentVersion = 2;
 

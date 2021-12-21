@@ -12,7 +12,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
-import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Optional;
 import java.util.Set;
@@ -29,7 +29,7 @@ public class RocksDBStorageEngineTest extends AbstractStorageEngineTest {
   private static final int PARTITION_ID = 0;
   private StorageService storageService;
   private VeniceStoreVersionConfig storeConfig;
-  private final String storeName = TestUtils.getUniqueString("rocksdb_store_test");
+  private final String storeName = Utils.getUniqueString("rocksdb_store_test");
   private final ReadOnlyStoreRepository mockReadOnlyStoreRepository = mock(ReadOnlyStoreRepository.class);
   private final int versionNumber = 0;
   private final String topicName = Version.composeKafkaTopic(storeName, versionNumber);

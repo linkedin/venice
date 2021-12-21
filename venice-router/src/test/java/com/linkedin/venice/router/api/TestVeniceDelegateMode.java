@@ -23,7 +23,8 @@ import com.linkedin.venice.router.stats.RouterStats;
 import com.linkedin.venice.router.throttle.ReadRequestThrottler;
 import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
 import com.linkedin.venice.utils.HelixUtils;
-import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Utils;
+
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.handler.codec.http.HttpMethod;
@@ -198,7 +199,7 @@ public class TestVeniceDelegateMode {
 
   @Test
   public void testScatterWithSingleGet() throws RouterException {
-    String storeName = TestUtils.getUniqueString("test_store");
+    String storeName = Utils.getUniqueString("test_store");
     String resourceName = storeName + "_v1";
     RouterKey key = new RouterKey("key_1".getBytes());
     List<RouterKey> keys = new ArrayList<>();
@@ -296,7 +297,7 @@ public class TestVeniceDelegateMode {
 
   @Test (expectedExceptions = RouterException.class, expectedExceptionsMessageRegExp = ".*not available for store.*")
   public void testScatterWithSingleGetWithNotAvailablePartition() throws RouterException {
-    String storeName = TestUtils.getUniqueString("test_store");
+    String storeName = Utils.getUniqueString("test_store");
     String resourceName = storeName + "_v1";
     RouterKey key = new RouterKey("key_1".getBytes());
     List<RouterKey> keys = new ArrayList<>();
@@ -337,7 +338,7 @@ public class TestVeniceDelegateMode {
    */
   @Test
   public void testScatterWithMultiGet() throws RouterException {
-    String storeName = TestUtils.getUniqueString("test_store");
+    String storeName = Utils.getUniqueString("test_store");
     String resourceName = storeName + "_v1";
     RouterKey key1 = new RouterKey("key_1".getBytes());
     key1.setPartitionId(1);
@@ -495,7 +496,7 @@ public class TestVeniceDelegateMode {
 
   @Test
   public void testScatterWithStreamingMultiGet() throws RouterException {
-    String storeName = TestUtils.getUniqueString("test_store");
+    String storeName = Utils.getUniqueString("test_store");
     String resourceName = storeName + "_v1";
     RouterKey key1 = new RouterKey("key_1".getBytes());
     key1.setPartitionId(1);
@@ -641,7 +642,7 @@ public class TestVeniceDelegateMode {
 
   @Test
   public void testScatterForMultiGetWithHelixAssistedRouting() throws RouterException {
-    String storeName = TestUtils.getUniqueString("test_store");
+    String storeName = Utils.getUniqueString("test_store");
     String resourceName = storeName + "_v1";
     RouterKey key1 = new RouterKey("key_1".getBytes());
     key1.setPartitionId(1);

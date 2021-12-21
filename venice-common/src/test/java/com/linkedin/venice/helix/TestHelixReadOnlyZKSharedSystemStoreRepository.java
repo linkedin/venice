@@ -8,6 +8,7 @@ import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.locks.ClusterLockManager;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
@@ -60,7 +61,7 @@ public class TestHelixReadOnlyZKSharedSystemStoreRepository {
     writeRepo.addStore(unsupportedZKSharedStore);
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> assertTrue(writeRepo.hasStore(unsupportedZKSharedStoreName)));
     // Create one regular store
-    regularStoreName = TestUtils.getUniqueString("test_store");
+    regularStoreName = Utils.getUniqueString("test_store");
     Store s1 = TestUtils.createTestStore(regularStoreName, "owner", System.currentTimeMillis());
     s1.increaseVersion();
     s1.setReadQuotaInCU(100);

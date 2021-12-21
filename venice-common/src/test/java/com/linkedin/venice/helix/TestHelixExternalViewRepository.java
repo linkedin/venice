@@ -85,7 +85,7 @@ public class TestHelixExternalViewRepository {
     readManager.connect();
     repository = new HelixExternalViewRepository(readManager);
     repository.refresh();
-    TestUtils.waitForNonDeterministicCompletion(5000, TimeUnit.MILLISECONDS,
+    TestUtils.waitForNonDeterministicCompletion(5, TimeUnit.SECONDS,
         () -> repository.containsKafkaTopic(resourceName));
   }
 

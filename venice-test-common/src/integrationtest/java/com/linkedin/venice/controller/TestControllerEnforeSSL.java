@@ -10,6 +10,8 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.Utils;
+
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 
@@ -20,7 +22,7 @@ import static com.linkedin.venice.ConfigKeys.*;
 
 
 public class TestControllerEnforeSSL {
-  private static final String CLUSTER_NAME = TestUtils.getUniqueString("test-cluster");
+  private static final String CLUSTER_NAME = Utils.getUniqueString("test-cluster");
   private static final String KEY_SCHEMA = "\"string\"";
   private static final String VALUE_SCHEMA = "\"string\"";
 
@@ -43,7 +45,7 @@ public class TestControllerEnforeSSL {
        * Add a test store through backend API directly without going though Controller listener service ({@link com.linkedin.venice.controller.server.AdminSparkServer}).
        */
       Admin admin = controllerWrapper.getVeniceAdmin();
-      String storeName = TestUtils.getUniqueString("test");
+      String storeName = Utils.getUniqueString("test");
       admin.createStore(CLUSTER_NAME, storeName, "dev", KEY_SCHEMA, VALUE_SCHEMA);
 
       /**

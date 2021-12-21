@@ -104,7 +104,7 @@ public class TestAdminConsumptionTask {
   private final byte[] emptyKeyBytes = new byte[]{'a'};
   private final AdminOperationSerializer adminOperationSerializer = new AdminOperationSerializer();
 
-  private final String storeName = TestUtils.getUniqueString("test_store");
+  private final String storeName = Utils.getUniqueString("test_store");
   private final String storeTopicName = storeName + "_v1";
   private final String owner = "test_owner";
   private final String keySchema = "\"string\"";
@@ -122,7 +122,7 @@ public class TestAdminConsumptionTask {
 
   @BeforeMethod
   public void methodSetup() {
-    clusterName = TestUtils.getUniqueString("test-cluster");
+    clusterName = Utils.getUniqueString("test-cluster");
     topicName = AdminTopicUtils.getTopicNameFromClusterName(clusterName);
     executor = Executors.newCachedThreadPool();
     inMemoryKafkaBroker = new InMemoryKafkaBroker("local");

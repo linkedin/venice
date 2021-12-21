@@ -19,6 +19,7 @@ import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.io.File;
 import java.io.FileInputStream;
@@ -62,7 +63,7 @@ public class ProduceWithSSL {
   @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testVeniceWriterSupportSSL()
       throws ExecutionException, InterruptedException {
-    String storeName = TestUtils.getUniqueString("testVeniceWriterSupportSSL");
+    String storeName = Utils.getUniqueString("testVeniceWriterSupportSSL");
     cluster.getNewStore(storeName);
     VersionCreationResponse response = cluster.getNewVersion(storeName, 1000);
     Assert.assertFalse(response.isError());
@@ -112,7 +113,7 @@ public class ProduceWithSSL {
         cluster = ServiceFactory.getVeniceClusterWithKafkaSSL(true);
       }
       File inputDir = getTempDataDirectory();
-      String storeName = TestUtils.getUniqueString("store");
+      String storeName = Utils.getUniqueString("store");
       Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir);
       String inputDirPath = "file://" + inputDir.getAbsolutePath();
       Properties props = sslH2VProps(cluster, inputDirPath, storeName);

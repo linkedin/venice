@@ -6,8 +6,8 @@ import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.throttle.EventThrottler;
-import com.linkedin.venice.utils.TestUtils;
-import java.util.Collections;
+import com.linkedin.venice.utils.Utils;
+
 import java.util.HashSet;
 import java.util.Properties;
 import java.util.Set;
@@ -30,13 +30,13 @@ public class KafkaConsumerServiceTest {
     SharedKafkaConsumer consumer2 = mock(SharedKafkaConsumer.class);
     when(consumer2.hasSubscription()).thenReturn(true);
 
-    String storeName1 = TestUtils.getUniqueString("test_consumer_service1");
+    String storeName1 = Utils.getUniqueString("test_consumer_service1");
     StoreIngestionTask task1 = mock(StoreIngestionTask.class);
     String topicForStoreName1 = Version.composeKafkaTopic(storeName1, 1);
     when(task1.getVersionTopic()).thenReturn(topicForStoreName1);
     when(task1.isHybridMode()).thenReturn(true);
 
-    String storeName2 = TestUtils.getUniqueString("test_consumer_service2");
+    String storeName2 = Utils.getUniqueString("test_consumer_service2");
     String topicForStoreName2 = Version.composeKafkaTopic(storeName2, 1);
     StoreIngestionTask task2 = mock(StoreIngestionTask.class);
     when(task2.getVersionTopic()).thenReturn(topicForStoreName2);
@@ -71,7 +71,7 @@ public class KafkaConsumerServiceTest {
     SharedKafkaConsumer sharedAssignedConsumerForTask2 = (SharedKafkaConsumer) assignedConsumerForTask2;
     sharedAssignedConsumerForTask2.setCurrentAssignment(consumer2AssignedPartitions);
 
-    String storeName3 = TestUtils.getUniqueString("test_consumer_service3");
+    String storeName3 = Utils.getUniqueString("test_consumer_service3");
     String topicForStoreName3 = Version.composeKafkaTopic(storeName3, 1);
     StoreIngestionTask task3 = mock(StoreIngestionTask.class);
     when(task3.getVersionTopic()).thenReturn(topicForStoreName3);
@@ -107,7 +107,7 @@ public class KafkaConsumerServiceTest {
         2, mock(EventThrottler.class), mock(EventThrottler.class), mock(KafkaClusterBasedRecordThrottler.class),
         mock(KafkaConsumerServiceStats.class), TimeUnit.MINUTES.toMillis(1), mock(TopicExistenceChecker.class), true);
 
-    String storeName = TestUtils.getUniqueString("test_consumer_service");
+    String storeName = Utils.getUniqueString("test_consumer_service");
     StoreIngestionTask task1 = mock(StoreIngestionTask.class);
     String topicForStoreVersion1 = Version.composeKafkaTopic(storeName, 1);
     when(task1.getVersionTopic()).thenReturn(topicForStoreVersion1);

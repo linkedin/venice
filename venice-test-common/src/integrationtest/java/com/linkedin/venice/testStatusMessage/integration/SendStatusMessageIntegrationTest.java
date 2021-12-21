@@ -36,7 +36,7 @@ public class SendStatusMessageIntegrationTest {
   private ZkServerWrapper zkServerWrapper;
   private String zkAddress;
   private HelixAdmin admin;
-  private String cluster = TestUtils.getUniqueString("sendStatusMessage");
+  private String cluster = Utils.getUniqueString("sendStatusMessage");
   private SafeHelixManager controller;
   private ArrayList<SafeHelixManager> participants = new ArrayList<>();
   private HelixMessageChannelStats helixMessageChannelStats;

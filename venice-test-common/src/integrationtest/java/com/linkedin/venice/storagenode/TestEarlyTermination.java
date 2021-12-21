@@ -55,7 +55,7 @@ public class TestEarlyTermination {
     veniceCluster = ServiceFactory.getVeniceCluster(1, 0, 1, 2, 100, true, false);
 
     // Create store first
-    storeName = TestUtils.getUniqueString("test_early_termination");
+    storeName = Utils.getUniqueString("test_early_termination");
     NewStoreResponse newStoreResponse = veniceCluster.getNewStore(storeName);
 
     // Create two servers, and one with early termination enabled, and one without

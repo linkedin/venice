@@ -138,7 +138,7 @@ public class SharedKafkaProducerServiceTest {
 
     thread1.join();
 
-    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
       Assert.assertEquals(producedTopicPresent.get(), 100);
       Assert.assertEquals(producedTopicNotPresent.get(), 0);
     });

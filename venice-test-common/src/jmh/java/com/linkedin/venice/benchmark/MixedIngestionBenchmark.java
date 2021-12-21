@@ -32,7 +32,6 @@ import org.openjdk.jmh.runner.Runner;
 import org.openjdk.jmh.runner.RunnerException;
 import org.openjdk.jmh.runner.options.OptionsBuilder;
 import org.rocksdb.ComparatorOptions;
-import org.rocksdb.Slice;
 import org.rocksdb.util.BytewiseComparator;
 import org.testng.Assert;
 
@@ -84,7 +83,7 @@ public class MixedIngestionBenchmark {
 
   @Benchmark
   public void ingestionBenchMark() throws Exception {
-    String storeName = TestUtils.getUniqueString("new_store");
+    String storeName = Utils.getUniqueString("new_store");
     int dataSize = 1000000;
     int partitionCount = dataSize / partitionSize;
     cluster.getNewStore(storeName);

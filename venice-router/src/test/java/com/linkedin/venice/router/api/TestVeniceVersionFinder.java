@@ -27,6 +27,8 @@ import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.pushmonitor.PartitionStatusOnlineInstanceFinder;
 import com.linkedin.venice.router.stats.StaleVersionStats;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Utils;
+
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpVersion;
 import java.nio.ByteBuffer;
@@ -136,7 +138,7 @@ public class TestVeniceVersionFinder {
   @Test
   public void onlySwapsVersionWhenAllPartitionsAreOnline() throws RouterException {
     ReadOnlyStoreRepository storeRepository = mock(ReadOnlyStoreRepository.class);
-    String storeName = TestUtils.getUniqueString("version-finder-test-store");
+    String storeName = Utils.getUniqueString("version-finder-test-store");
     int firstVersion = 1;
     int secondVersion = 2;
     int thirdVersion = 3;
@@ -206,7 +208,7 @@ public class TestVeniceVersionFinder {
   @Test
   public void returnsCurrentVersionWhenTheDictionaryExists() {
     ReadOnlyStoreRepository storeRepository = mock(ReadOnlyStoreRepository.class);
-    String storeName = TestUtils.getUniqueString("version-finder-test-store");
+    String storeName = Utils.getUniqueString("version-finder-test-store");
     int firstVersion = 1;
     ByteBuffer firstVersionDictionary = ByteBuffer.allocate(1);
 
@@ -247,7 +249,7 @@ public class TestVeniceVersionFinder {
     // If the dictionary is not downloaded by the time the records needs to be decompressed, then the router will return
     // an error response.
     ReadOnlyStoreRepository storeRepository = mock(ReadOnlyStoreRepository.class);
-    String storeName = TestUtils.getUniqueString("version-finder-test-store");
+    String storeName = Utils.getUniqueString("version-finder-test-store");
     int firstVersion = 1;
 
     Store store = TestUtils.createTestStore(storeName, "unittest", System.currentTimeMillis());
@@ -284,7 +286,7 @@ public class TestVeniceVersionFinder {
   @Test
   public void returnsPreviousVersionWhenDictionaryNotDownloaded() {
     ReadOnlyStoreRepository storeRepository = mock(ReadOnlyStoreRepository.class);
-    String storeName = TestUtils.getUniqueString("version-finder-test-store");
+    String storeName = Utils.getUniqueString("version-finder-test-store");
     int firstVersion = 1;
     int secondVersion = 2;
 
@@ -331,7 +333,7 @@ public class TestVeniceVersionFinder {
   @Test
   public void returnsNewVersionWhenDictionaryDownloads() {
     ReadOnlyStoreRepository storeRepository = mock(ReadOnlyStoreRepository.class);
-    String storeName = TestUtils.getUniqueString("version-finder-test-store");
+    String storeName = Utils.getUniqueString("version-finder-test-store");
     int firstVersion = 1;
     int secondVersion = 2;
 

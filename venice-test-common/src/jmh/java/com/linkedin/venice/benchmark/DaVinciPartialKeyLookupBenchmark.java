@@ -84,7 +84,7 @@ public class DaVinciPartialKeyLookupBenchmark {
     cluster = getVeniceCluster(1, 1, 1);
 
     String storeName = buildVectorStore(cluster);
-    client = getGenericAvroDaVinciClient(storeName, cluster, TestUtils.getTempDataDirectory().getAbsolutePath(),
+    client = getGenericAvroDaVinciClient(storeName, cluster, Utils.getTempDataDirectory().getAbsolutePath(),
         new DaVinciConfig().setStorageClass(StorageClass.DISK));
     client.subscribeAll().get(5, TimeUnit.MINUTES);
 

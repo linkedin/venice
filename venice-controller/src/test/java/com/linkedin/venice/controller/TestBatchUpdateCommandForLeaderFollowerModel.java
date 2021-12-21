@@ -2,7 +2,8 @@ package com.linkedin.venice.controller;
 
 import com.linkedin.venice.controller.server.AbstractTestAdminSparkServer;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
-import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Utils;
+
 import java.util.Optional;
 import java.util.Properties;
 import org.testng.Assert;
@@ -29,13 +30,13 @@ public class TestBatchUpdateCommandForLeaderFollowerModel extends AbstractTestAd
     /**
      * Create a batch-only store
      */
-    String batchOnlyStoreName = TestUtils.getUniqueString("batch-only");
+    String batchOnlyStoreName = Utils.getUniqueString("batch-only");
     controllerClient.createNewStore(batchOnlyStoreName, "test", "\"string\"", "\"string\"");
 
     /**
      * Create a hybrid store
      */
-    String hybridStoreName = TestUtils.getUniqueString("hybrid-store");
+    String hybridStoreName = Utils.getUniqueString("hybrid-store");
     controllerClient.createNewStore(hybridStoreName, "test", "\"string\"", "\"string\"");
     controllerClient.updateStore(hybridStoreName, new UpdateStoreQueryParams()
         .setHybridOffsetLagThreshold(1000l)
@@ -44,7 +45,7 @@ public class TestBatchUpdateCommandForLeaderFollowerModel extends AbstractTestAd
     /**
      * Create an incremental push enabled store
      */
-    String incrementalPushStoreName = TestUtils.getUniqueString("incremental-push-store");
+    String incrementalPushStoreName = Utils.getUniqueString("incremental-push-store");
     controllerClient.createNewStore(incrementalPushStoreName, "test", "\"string\"", "\"string\"");
     controllerClient.updateStore(incrementalPushStoreName, new UpdateStoreQueryParams().setIncrementalPushEnabled(true));
 

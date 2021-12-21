@@ -7,6 +7,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.SystemStoreAttributes;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.locks.ClusterLockManager;
 import java.util.Map;
 import java.util.Optional;
@@ -59,7 +60,7 @@ public class TestHelixReadWriteStoreRepositoryAdapter {
     writeRepo.addStore(zkSharedStore);
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> assertTrue(writeRepo.hasStore(systemStoreType.getZkSharedStoreName())));
     // Create one regular store
-    regularStoreName = TestUtils.getUniqueString("test_store");
+    regularStoreName = Utils.getUniqueString("test_store");
     Store s1 = TestUtils.createTestStore(regularStoreName, "owner", System.currentTimeMillis());
     s1.increaseVersion();
     s1.setReadQuotaInCU(100);
@@ -83,7 +84,7 @@ public class TestHelixReadWriteStoreRepositoryAdapter {
   @Test
   public void testAddStoreToStoreRepoAdapter() {
     // Create a regular store
-    String anotherRegularStoreName = TestUtils.getUniqueString("test_store");
+    String anotherRegularStoreName = Utils.getUniqueString("test_store");
     Store testStore = TestUtils.createTestStore(anotherRegularStoreName, "test_owner", 0);
     writeRepoAdapter.addStore(testStore);
     // Verify the store via read only repo
@@ -111,7 +112,7 @@ public class TestHelixReadWriteStoreRepositoryAdapter {
   @Test
   public void testDeleteStore() {
     // Add a regular store
-    String anotherRegularStoreName = TestUtils.getUniqueString("test_store");
+    String anotherRegularStoreName = Utils.getUniqueString("test_store");
     Store testStore = TestUtils.createTestStore(anotherRegularStoreName, "test_owner", 0);
     writeRepoAdapter.addStore(testStore);
     // Verify the store via read only repo
@@ -147,7 +148,7 @@ public class TestHelixReadWriteStoreRepositoryAdapter {
   @Test
   public void testUpdateStore() {
     // Add a regular store
-    String anotherRegularStoreName = TestUtils.getUniqueString("test_store");
+    String anotherRegularStoreName = Utils.getUniqueString("test_store");
     Store testStore = TestUtils.createTestStore(anotherRegularStoreName, "test_owner", 0);
     writeRepoAdapter.addStore(testStore);
     // Verify the store via read only repo

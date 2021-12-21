@@ -11,7 +11,8 @@ import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Utils;
+
 import org.apache.helix.HelixManager;
 import org.apache.helix.NotificationContext;
 import org.apache.helix.customizedstate.CustomizedStateProvider;
@@ -50,7 +51,7 @@ public abstract class AbstractVenicePartitionStateModelTest<MODEL_TYPE extends A
 
   @BeforeMethod
   public void setUp() {
-    this.storeName =  TestUtils.getUniqueString("stateModelTestStore");
+    this.storeName =  Utils.getUniqueString("stateModelTestStore");
     this.resourceName = Version.composeKafkaTopic(storeName, version);
     this.instanceName = "testInstance";
 

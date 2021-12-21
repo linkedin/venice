@@ -31,7 +31,7 @@ public class TestStartMultiControllers {
   public void setUp() throws Exception {
     cluster = ServiceFactory.getVeniceCluster(controllerCount, 0, 0);
     helixManager = new SafeHelixManager(new ZKHelixManager(
-        cluster.getClusterName(), TestUtils.getUniqueString(), InstanceType.SPECTATOR, cluster.getZk().getAddress()));
+        cluster.getClusterName(), Utils.getUniqueString(), InstanceType.SPECTATOR, cluster.getZk().getAddress()));
     helixManager.connect();
   }
 

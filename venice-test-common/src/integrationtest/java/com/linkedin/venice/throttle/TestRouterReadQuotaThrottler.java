@@ -17,6 +17,7 @@ import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 
@@ -37,7 +38,6 @@ import static com.linkedin.venice.ConfigKeys.*;
 
 public class TestRouterReadQuotaThrottler {
   private VeniceClusterWrapper cluster;
-  private int testTimeOutMS = 3000;
   private int numberOfRouter = 2;
   private String storeName;
   private int currentVersion;
@@ -58,8 +58,8 @@ public class TestRouterReadQuotaThrottler {
         VeniceKafkaSerializer valueSerializer = new VeniceAvroKafkaSerializer(stringSchema);
         VeniceWriter<Object, Object, Object> writer = writerFactory.createVeniceWriter(response.getKafkaTopic(), keySerializer, valueSerializer)) {
 
-      String key = TestUtils.getUniqueString("key");
-      String value = TestUtils.getUniqueString("value");
+      String key = Utils.getUniqueString("key");
+      String value = Utils.getUniqueString("value");
       int valueSchemaId = HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID;
 
       writer.broadcastStartOfPush(new HashMap<>());
@@ -93,7 +93,7 @@ public class TestRouterReadQuotaThrottler {
         .updateStore(cluster.getClusterName(), storeName, new UpdateStoreQueryParams()
             .setReadQuotaInCU(totalQuota));
 
-    TestUtils.waitForNonDeterministicCompletion(testTimeOutMS, TimeUnit.MILLISECONDS, () -> {
+    TestUtils.waitForNonDeterministicCompletion(3, TimeUnit.SECONDS, () -> {
       Store store = cluster.getRandomVeniceRouter().getMetaDataRepository().getStore(storeName);
       return store.getCurrentVersion() == currentVersion && store.getReadQuotaInCU() == totalQuota;
     });
@@ -121,7 +121,7 @@ public class TestRouterReadQuotaThrottler {
 
     // fail one router
     cluster.stopVeniceRouter(cluster.getRandomVeniceRouter().getPort());
-    TestUtils.waitForNonDeterministicCompletion(testTimeOutMS, TimeUnit.MILLISECONDS,
+    TestUtils.waitForNonDeterministicCompletion(3, TimeUnit.SECONDS,
         () -> cluster.getRandomVeniceRouter().getRoutersClusterManager().getLiveRoutersCount() == 1);
     routerURL = cluster.getRandomRouterURL();
     storeClient =

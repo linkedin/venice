@@ -14,6 +14,8 @@ import com.linkedin.venice.pushmonitor.PushMonitor;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Utils;
+
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -65,7 +67,7 @@ public class ErrorPartitionResetTaskTest {
 
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testErrorPartitionReset(boolean isLeaderFollowerEnabled) {
-    String clusterName = TestUtils.getUniqueString("testCluster");
+    String clusterName = Utils.getUniqueString("testCluster");
     // Setup a store where two of its partitions has exactly one error replica.
     Store store = getStoreWithCurrentVersion();
     String resourceName = store.getVersion(store.getCurrentVersion()).get().kafkaTopicName();
@@ -131,7 +133,7 @@ public class ErrorPartitionResetTaskTest {
 
   @Test
   public void testErrorPartitionResetOnExcessErrorReplicas() {
-    String clusterName = TestUtils.getUniqueString("testCluster");
+    String clusterName = Utils.getUniqueString("testCluster");
     // Setup a store where one of its partitions has excess error replicas.
     Store store = getStoreWithCurrentVersion();
     String resourceName = store.getVersion(store.getCurrentVersion()).get().kafkaTopicName();

@@ -77,7 +77,7 @@ public class VeniceSystemFactoryTest {
         "  } ]\n" +
         "}";
 
-    String storeName = TestUtils.getUniqueString("store");
+    String storeName = Utils.getUniqueString("store");
     Schema writeComputeSchema = WriteComputeSchemaConverter.convert(valueSchema);
 
     try (ControllerClient client = cluster.getControllerClient()) {
@@ -206,7 +206,7 @@ public class VeniceSystemFactoryTest {
    */
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "testSerializationCastParams")
   public void testSerializationCast(Object writeKey, Object readKey, Object value, Object expectedValue, String schema) throws Exception {
-    String storeName = TestUtils.getUniqueString("schema-test-store");
+    String storeName = Utils.getUniqueString("schema-test-store");
 
     try (ControllerClient client = cluster.getControllerClient()) {
       client.createNewStore(storeName, "owner", schema, schema);

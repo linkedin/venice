@@ -9,8 +9,9 @@ import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
-import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.Utils;
+
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.util.Properties;
@@ -19,7 +20,7 @@ import org.testng.annotations.Test;
 
 
 public class TestD2ControllerClient {
-  private static final String CLUSTER_NAME = TestUtils.getUniqueString("test-cluster");
+  private static final String CLUSTER_NAME = Utils.getUniqueString("test-cluster");
 
   @Test(timeOut = 90 * Time.MS_PER_SECOND)
   public void testD2ControllerClientEnd2End() {
@@ -34,7 +35,7 @@ public class TestD2ControllerClient {
 
       try (D2ControllerClient d2ControllerClient = new D2ControllerClient(d2ServiceName, CLUSTER_NAME, d2Client)) {
         // Test store creation
-        String storeName = TestUtils.getUniqueString("test_store");
+        String storeName = Utils.getUniqueString("test_store");
         String schema = "\"string\"";
         d2ControllerClient.createNewStore(storeName, "test_owner", schema, schema);
 

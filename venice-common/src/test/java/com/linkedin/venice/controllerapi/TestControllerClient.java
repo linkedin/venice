@@ -6,7 +6,8 @@ import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.integration.utils.MockD2ServerWrapper;
 import com.linkedin.venice.integration.utils.MockHttpServerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
-import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Utils;
+
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.handler.codec.http.DefaultFullHttpResponse;
@@ -25,7 +26,7 @@ import java.io.IOException;
 public class TestControllerClient {
   @Test
   public static void clientReturnsErrorObjectOnConnectionFailure(){
-    ControllerClient client = new ControllerClient(TestUtils.getUniqueString("cluster"), "http://localhost:17079");
+    ControllerClient client = new ControllerClient(Utils.getUniqueString("cluster"), "http://localhost:17079");
     StoreResponse r3 = client.getStore("mystore");
     Assert.assertTrue(r3.isError());
   }
@@ -59,7 +60,7 @@ public class TestControllerClient {
 
   @Test
   public void testGetMasterControllerUrlWithUrlContainingSpace() throws IOException {
-    String clusterName = TestUtils.getUniqueString("test-cluster");
+    String clusterName = Utils.getUniqueString("test-cluster");
     String fakeMasterControllerUrl = "http://fake.master.controller.url";
     try (MockHttpServerWrapper mockController = ServiceFactory.getMockHttpServer("mock_controller")) {
       MasterControllerResponse controllerResponse = new MasterControllerResponse();
@@ -85,8 +86,8 @@ public class TestControllerClient {
   public void testD2ControllerClient() throws Exception{
     String d2ClusterName = "VeniceRouter";
     String d2ServiceName = "VeniceRouter";
-    String veniceClusterName = TestUtils.getUniqueString("test-cluster");
-    String fakeMasterControllerUri = TestUtils.getUniqueString("http://fake_uri");
+    String veniceClusterName = Utils.getUniqueString("test-cluster");
+    String fakeMasterControllerUri = Utils.getUniqueString("http://fake_uri");
 
     try (MockD2ServerWrapper mockController = ServiceFactory.getMockD2Server("test-controller", d2ClusterName, d2ServiceName)) {
       String uriPattern = ControllerRoute.MASTER_CONTROLLER.getPath() + ".*cluster_name=" + veniceClusterName + ".*";
@@ -102,8 +103,8 @@ public class TestControllerClient {
   public void testD2ControllerClientWithExternalD2Client() throws Exception{
     String d2ClusterName = "VeniceRouter";
     String d2ServiceName = "VeniceRouter";
-    String veniceClusterName = TestUtils.getUniqueString("test-cluster");
-    String fakeMasterControllerUri = TestUtils.getUniqueString("http://fake_uri");
+    String veniceClusterName = Utils.getUniqueString("test-cluster");
+    String fakeMasterControllerUri = Utils.getUniqueString("http://fake_uri");
 
     try (MockD2ServerWrapper mockController = ServiceFactory.getMockD2Server("test-controller", d2ClusterName, d2ServiceName))
     {

@@ -94,8 +94,8 @@ public class ProducerConsumerReaderIntegrationTest {
         .setVeniceURL(routerUrl)
         .setSslEngineComponentFactory(SslUtils.getLocalSslFactory()));
 
-    String key = TestUtils.getUniqueString("key");
-    String value = TestUtils.getUniqueString("value");
+    String key = Utils.getUniqueString("key");
+    String value = Utils.getUniqueString("value");
 
     try {
       storeClient.get(key).get();
@@ -154,7 +154,7 @@ public class ProducerConsumerReaderIntegrationTest {
     while (data.size() < 10) {
       String key = Integer.toString(k);
       if (partitioner.getPartitionId(keySerializer.serialize(topicName, key), partitionCount) == 0) {
-        data.add(new Pair<>(key, TestUtils.getUniqueString("key" + key)));
+        data.add(new Pair<>(key, Utils.getUniqueString("key" + key)));
       }
       k++;
     }

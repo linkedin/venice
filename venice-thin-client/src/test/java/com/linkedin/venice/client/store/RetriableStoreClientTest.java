@@ -1,7 +1,8 @@
 package com.linkedin.venice.client.store;
 
 import com.linkedin.venice.client.exceptions.VeniceClientHttpException;
-import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Utils;
+
 import io.netty.handler.codec.http.HttpResponseStatus;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -14,7 +15,6 @@ import org.testng.Assert;
 import org.testng.annotations.BeforeTest;
 import org.testng.annotations.Test;
 
-import static com.linkedin.venice.client.store.InternalAvroStoreClient.*;
 import static org.mockito.Mockito.*;
 
 public class RetriableStoreClientTest {
@@ -24,7 +24,7 @@ public class RetriableStoreClientTest {
   public void setUp() {
     mockStoreClient = mock(InternalAvroStoreClient.class);
 
-    String storeName = TestUtils.getUniqueString("store");
+    String storeName = Utils.getUniqueString("store");
     doReturn(storeName).when(mockStoreClient).getStoreName();
   }
 

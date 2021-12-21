@@ -230,7 +230,7 @@ public class TestPushUtils {
   public static final String DEFAULT_USER_DATA_VALUE_PREFIX = "test_name_";
 
   public static File getTempDataDirectory() {
-    return TestUtils.getTempDataDirectory();
+    return Utils.getTempDataDirectory();
   }
 
   /**
@@ -1073,7 +1073,7 @@ public class TestPushUtils {
     samzaConfig.put(configPrefix + VENICE_STORE, storeName);
     samzaConfig.put(D2_ZK_HOSTS_PROPERTY, venice.getZk().getAddress());
     samzaConfig.put(VENICE_PARENT_D2_ZK_HOSTS, "invalid_parent_zk_address");
-    samzaConfig.put(DEPLOYMENT_ID, TestUtils.getUniqueString("venice-push-id"));
+    samzaConfig.put(DEPLOYMENT_ID, Utils.getUniqueString("venice-push-id"));
     samzaConfig.put(SSL_ENABLED, "false");
     return samzaConfig;
   }

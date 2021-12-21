@@ -50,7 +50,7 @@ public class RouterRequestThrottlingTest {
   @BeforeMethod(alwaysRun = true)
   public void setup() {
     // mock a ReadRequestThrottler
-    storeName = TestUtils.getUniqueString("store");
+    storeName = Utils.getUniqueString("store");
     store = TestUtils.createTestStore(storeName, "test", System.currentTimeMillis());
     store.setReadQuotaInCU(totalQuota);
     store.setCurrentVersion(1);

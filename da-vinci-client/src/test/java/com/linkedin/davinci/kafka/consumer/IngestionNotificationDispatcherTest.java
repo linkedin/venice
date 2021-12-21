@@ -1,11 +1,11 @@
 package com.linkedin.davinci.kafka.consumer;
 
-import com.linkedin.davinci.kafka.consumer.IngestionNotificationDispatcher;
-import com.linkedin.davinci.kafka.consumer.PartitionConsumptionState;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceIngestionTaskKilledException;
 import com.linkedin.davinci.notifier.VeniceNotifier;
-import com.linkedin.venice.utils.TestUtils;
+
+import com.linkedin.venice.utils.Utils;
+
 import java.util.ArrayDeque;
 import java.util.Arrays;
 import java.util.Queue;
@@ -57,7 +57,7 @@ public class IngestionNotificationDispatcherTest {
 
   @Test
   public void testReportError() {
-    String topic = TestUtils.getUniqueString("test_v1");
+    String topic = Utils.getUniqueString("test_v1");
     int partitionId = 1;
     VeniceNotifier mockNotifier = mock(VeniceNotifier.class);
     Queue<VeniceNotifier> notifiers = new ArrayDeque<>();

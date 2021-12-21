@@ -101,8 +101,8 @@ public class TestSuperSetSchemaRegistration {
 
     @Test(timeOut = TEST_TIMEOUT)
     public void testRegisterSuperSetSchemaAndPush() throws Exception {
-      File inputDir = TestUtils.getTempDataDirectory();
-      String storeName = TestUtils.getUniqueString("store");
+      File inputDir = Utils.getTempDataDirectory();
+      String storeName = Utils.getUniqueString("store");
 
       Schema recordSchema = writeComplicatedAvroFileWithUserSchema(inputDir, false, true);
       Schema keySchema = recordSchema.getField("id").schema();

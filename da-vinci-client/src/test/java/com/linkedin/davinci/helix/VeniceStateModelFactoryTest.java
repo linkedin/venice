@@ -165,15 +165,15 @@ public class VeniceStateModelFactoryTest {
     }
     Assert.assertEquals(queue.size(), taskCount);
     // Test could fail due to the signal() is executed before await()
-    TestUtils.waitForNonDeterministicCompletion(1000, TimeUnit.MILLISECONDS, () -> blockedTask.isWaiting);
+    TestUtils.waitForNonDeterministicCompletion(1, TimeUnit.SECONDS, () -> blockedTask.isWaiting);
     blockedTask.resume();
 
     // After resume the blocking task, it's executed and return true.
-    TestUtils.waitForNonDeterministicCompletion(1000, TimeUnit.MILLISECONDS, () -> blockedTask.result);
+    TestUtils.waitForNonDeterministicCompletion(1, TimeUnit.SECONDS, () -> blockedTask.result);
     // eventually, the queue would be empty because all of task had been executed.
-    TestUtils.waitForNonDeterministicCompletion(1000, TimeUnit.MILLISECONDS, () -> queue.isEmpty());
+    TestUtils.waitForNonDeterministicCompletion(1, TimeUnit.SECONDS, () -> queue.isEmpty());
     // Make sure the idle thread will be collected eventually.
-    TestUtils.waitForNonDeterministicCompletion(3000, TimeUnit.MILLISECONDS, () -> executor.getPoolSize() == 0);
+    TestUtils.waitForNonDeterministicCompletion(3, TimeUnit.SECONDS, () -> executor.getPoolSize() == 0);
   }
 
   private class BlockTask implements Runnable {

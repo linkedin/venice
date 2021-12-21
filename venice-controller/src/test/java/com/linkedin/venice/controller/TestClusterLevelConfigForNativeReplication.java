@@ -5,7 +5,8 @@ import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.TopicManagerRepository;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.Pair;
-import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Utils;
+
 import java.io.IOException;
 import java.util.Optional;
 import java.util.Properties;
@@ -53,7 +54,7 @@ public class TestClusterLevelConfigForNativeReplication extends AbstractTestVeni
     doReturn(mockedTopicManager).when(mockedTopicManageRepository).getTopicManager(any(String.class));
     doReturn(mockedTopicManager).when(mockedTopicManageRepository).getTopicManager(any(Pair.class));
     veniceAdmin.setTopicManagerRepository(mockedTopicManageRepository);
-    String storeName = TestUtils.getUniqueString("test-store");
+    String storeName = Utils.getUniqueString("test-store");
     String pushJobId1 = "test-push-job-id-1";
     /**
      * Do not enable any store-level config for leader/follower mode or native replication feature.

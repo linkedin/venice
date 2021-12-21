@@ -61,7 +61,7 @@ public class TestAdminSparkServerWithMultiServers {
   public void controllerClientShouldListStores() {
     List<String> storeNames = new ArrayList<>();
     for (int i = 0; i < 10; i++) { //add 10 stores;
-      storeNames.add(cluster.getNewStore(TestUtils.getUniqueString("venice-store")).getName());
+      storeNames.add(cluster.getNewStore(Utils.getUniqueString("venice-store")).getName());
     }
 
     MultiStoreResponse storeResponse = controllerClient.queryStoreList();
@@ -74,14 +74,14 @@ public class TestAdminSparkServerWithMultiServers {
 
   public void testListStoreWithConfigFilter() {
     // Add a store with native replication enabled
-    String nativeReplicationEnabledStore = TestUtils.getUniqueString("native-replication-store");
+    String nativeReplicationEnabledStore = Utils.getUniqueString("native-replication-store");
     NewStoreResponse newStoreResponse = controllerClient.createNewStore(nativeReplicationEnabledStore, "test", "\"string\"", "\"string\"");
     Assert.assertFalse(newStoreResponse.isError());
     ControllerResponse updateStoreResponse = controllerClient.updateStore(nativeReplicationEnabledStore, new UpdateStoreQueryParams().setLeaderFollowerModel(true).setNativeReplicationEnabled(true));
     Assert.assertFalse(updateStoreResponse.isError());
 
     // Add a store with incremental push enabled
-    String incrementalPushEnabledStore = TestUtils.getUniqueString("incremental-push-store");
+    String incrementalPushEnabledStore = Utils.getUniqueString("incremental-push-store");
     newStoreResponse = controllerClient.createNewStore(incrementalPushEnabledStore, "test", "\"string\"", "\"string\"");
     Assert.assertFalse(newStoreResponse.isError());
     updateStoreResponse = controllerClient.updateStore(incrementalPushEnabledStore, new UpdateStoreQueryParams().setIncrementalPushEnabled(true));
@@ -106,7 +106,7 @@ public class TestAdminSparkServerWithMultiServers {
     Assert.assertEquals(multiStoreResponse.getStores()[0], nativeReplicationEnabledStore);
 
     // Add a store with hybrid config enabled and the DataReplicationPolicy is non-aggregate
-    String hybridNonAggregateStore = TestUtils.getUniqueString("hybrid-non-aggregate");
+    String hybridNonAggregateStore = Utils.getUniqueString("hybrid-non-aggregate");
     newStoreResponse = controllerClient.createNewStore(hybridNonAggregateStore, "test", "\"string\"", "\"string\"");
     Assert.assertFalse(newStoreResponse.isError());
     updateStoreResponse = controllerClient.updateStore(hybridNonAggregateStore, new UpdateStoreQueryParams()
@@ -116,7 +116,7 @@ public class TestAdminSparkServerWithMultiServers {
     Assert.assertFalse(updateStoreResponse.isError());
 
     // Add a store with hybrid config enabled and the DataReplicationPolicy is aggregate
-    String hybridAggregateStore = TestUtils.getUniqueString("hybrid-aggregate");
+    String hybridAggregateStore = Utils.getUniqueString("hybrid-aggregate");
     newStoreResponse = controllerClient.createNewStore(hybridAggregateStore, "test", "\"string\"", "\"string\"");
     Assert.assertFalse(newStoreResponse.isError());
     updateStoreResponse = controllerClient.updateStore(hybridAggregateStore, new UpdateStoreQueryParams()
@@ -159,11 +159,11 @@ public class TestAdminSparkServerWithMultiServers {
   @Test(timeOut = TEST_TIMEOUT)
   public void controllerClientShouldSendEmptyPushAndWait() {
     // Create a new store
-    String storeName = cluster.getNewStore(TestUtils.getUniqueString("venice-store")).getName();
+    String storeName = cluster.getNewStore(Utils.getUniqueString("venice-store")).getName();
     // Send an empty push
     try{
       ControllerResponse response = controllerClient.sendEmptyPushAndWait(storeName,
-          TestUtils.getUniqueString("emptyPushId"), 10000, TEST_TIMEOUT);
+          Utils.getUniqueString("emptyPushId"), 10000, TEST_TIMEOUT);
       Assert.assertFalse(response.isError(), "Received error response on empty push:" + response.getError());
     } catch(Exception e) {
       Assert.fail("Could not send empty push!!", e);
@@ -172,7 +172,7 @@ public class TestAdminSparkServerWithMultiServers {
 
   @Test(timeOut = TEST_TIMEOUT)
   public void controllerClientShouldCreateStoreWithParameters() {
-    String storeName = TestUtils.getUniqueString("venice-store");
+    String storeName = Utils.getUniqueString("venice-store");
     try {
       UpdateStoreQueryParams updateStore = new UpdateStoreQueryParams()
           .setHybridRewindSeconds(1000)
@@ -194,7 +194,7 @@ public class TestAdminSparkServerWithMultiServers {
 
   @Test(timeOut = TEST_TIMEOUT)
   public void controllerClientShouldCreateStoreWithParametersAndNotDeleteItIfItExists() {
-    String storeName = TestUtils.getUniqueString("venice-store");
+    String storeName = Utils.getUniqueString("venice-store");
     try {
       UpdateStoreQueryParams updateStore = new UpdateStoreQueryParams()
               .setHybridRewindSeconds(1000)
@@ -232,12 +232,12 @@ public class TestAdminSparkServerWithMultiServers {
   @Test(timeOut = TEST_TIMEOUT)
   public void requestTopicIsIdempotent() {
     HashMap<String, Version.PushType> storeToType = new HashMap<>(2);
-    storeToType.put(TestUtils.getUniqueString("BatchStore"), Version.PushType.BATCH);
-    storeToType.put(TestUtils.getUniqueString("StreamStore"), Version.PushType.STREAM);
+    storeToType.put(Utils.getUniqueString("BatchStore"), Version.PushType.BATCH);
+    storeToType.put(Utils.getUniqueString("StreamStore"), Version.PushType.STREAM);
 
-    String pushOne = TestUtils.getUniqueString("pushId");
+    String pushOne = Utils.getUniqueString("pushId");
     String pushTwo = pushOne;
-    String pushThree = TestUtils.getUniqueString("pushId");
+    String pushThree = Utils.getUniqueString("pushId");
 
     for (String storeName : storeToType.keySet()) {
       cluster.getNewStore(storeName);
@@ -245,7 +245,7 @@ public class TestAdminSparkServerWithMultiServers {
       // Stream
       if (storeToType.get(storeName).equals(Version.PushType.STREAM)) {
         controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setHybridRewindSeconds(1000).setHybridOffsetLagThreshold(1000));
-        controllerClient.emptyPush(storeName, TestUtils.getUniqueString("emptyPushId"), 10000);
+        controllerClient.emptyPush(storeName, Utils.getUniqueString("emptyPushId"), 10000);
       }
 
       // Both
@@ -278,12 +278,12 @@ public class TestAdminSparkServerWithMultiServers {
    */
   @Test(timeOut = TEST_TIMEOUT)
   public void requestTopicIsIdempotentWithConcurrency() {
-    String storeName = TestUtils.getUniqueString("store");
+    String storeName = Utils.getUniqueString("store");
     cluster.getNewStore(storeName);
     AtomicReference<String> errString = new AtomicReference<>();
     try {
       for (int i = 0; i < 5; i++) { // number of attempts
-        String pushId = TestUtils.getUniqueString("pushId");
+        String pushId = Utils.getUniqueString("pushId");
         final List<VersionCreationResponse> responses = new ArrayList<>();
         List<Thread> threads = new ArrayList<>();
         int threadCount = 3; // number of concurrent requests
@@ -339,8 +339,8 @@ public class TestAdminSparkServerWithMultiServers {
 
   @Test(timeOut = TEST_TIMEOUT)
   public void endOfPushEndpointTriggersVersionSwap() {
-    String storeName = TestUtils.getUniqueString("store");
-    String pushId = TestUtils.getUniqueString("pushId");
+    String storeName = Utils.getUniqueString("store");
+    String pushId = Utils.getUniqueString("pushId");
     cluster.getNewStore(storeName);
     StoreResponse freshStore = controllerClient.getStore(storeName);
     int oldVersion = freshStore.getStore().getCurrentVersion();

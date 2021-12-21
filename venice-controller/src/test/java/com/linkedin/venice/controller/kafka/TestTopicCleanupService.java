@@ -9,6 +9,8 @@ import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Utils;
+
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -142,7 +144,7 @@ public class TestTopicCleanupService {
 
   @Test
   public void testCleanupVeniceTopics() throws ExecutionException {
-    String storeName1 = TestUtils.getUniqueString("store1");
+    String storeName1 = Utils.getUniqueString("store1");
     Map<String, Long> storeTopics = new HashMap<>();
     storeTopics.put(storeName1 + "_v1", 1000l);
     storeTopics.put(storeName1 + "_v2", 1000l);
@@ -173,9 +175,9 @@ public class TestTopicCleanupService {
 
   @Test
   public void testRun() throws Exception {
-    String storeName1 = TestUtils.getUniqueString("store1");
-    String storeName2 = TestUtils.getUniqueString("store2");
-    String storeName3 = TestUtils.getUniqueString("store3");
+    String storeName1 = Utils.getUniqueString("store1");
+    String storeName2 = Utils.getUniqueString("store2");
+    String storeName3 = Utils.getUniqueString("store3");
     doReturn(Optional.of(new StoreConfig(storeName1))).when(storeConfigRepository).getStoreConfig(storeName1);
     doReturn(Optional.of(new StoreConfig(storeName2))).when(storeConfigRepository).getStoreConfig(storeName2);
     doReturn(Optional.of(new StoreConfig(storeName3))).when(storeConfigRepository).getStoreConfig(storeName3);
@@ -227,7 +229,7 @@ public class TestTopicCleanupService {
 
   @Test
   public void testRunWhenCurrentControllerChangeFromMasterToSlave() throws Exception {
-    String storeName1 = TestUtils.getUniqueString("store1");
+    String storeName1 = Utils.getUniqueString("store1");
     doReturn(Optional.of(new StoreConfig(storeName1))).when(storeConfigRepository).getStoreConfig(storeName1);
     Map<String, Long> storeTopics1 = new HashMap<>();
     storeTopics1.put(storeName1 + "_v1", 1000l);
@@ -258,7 +260,7 @@ public class TestTopicCleanupService {
 
   @Test
   public void testRunWhenCurrentControllerChangeFromSlaveToMaster() throws Exception {
-    String storeName1 = TestUtils.getUniqueString("store1");
+    String storeName1 = Utils.getUniqueString("store1");
     doReturn(Optional.of(new StoreConfig(storeName1))).when(storeConfigRepository).getStoreConfig(storeName1);
     Map<String, Long> storeTopics1 = new HashMap<>();
     storeTopics1.put(storeName1 + "_v1", 1000l);
@@ -305,7 +307,7 @@ public class TestTopicCleanupService {
   @Test
   public void testCleanupReplicaStatusesFromMetaSystemStoreWhenMetaSystemStoreRTTopicNotExist() {
     doReturn(false).when(admin).isParent();
-    String storeName = TestUtils.getUniqueString("test_store");
+    String storeName = Utils.getUniqueString("test_store");
     doReturn(Optional.of(new StoreConfig(storeName))).when(storeConfigRepository).getStoreConfig(storeName);
     int version = 1;
     String versionTopic = Version.composeKafkaTopic(storeName, version);
@@ -325,7 +327,7 @@ public class TestTopicCleanupService {
   @Test
   public void testCleanupReplicaStatusesFromMetaSystemStoreWhenMetaSystemStoreRTTopicExist() {
     doReturn(false).when(admin).isParent();
-    String storeName = TestUtils.getUniqueString("test_store");
+    String storeName = Utils.getUniqueString("test_store");
     doReturn(Optional.of(new StoreConfig(storeName))).when(storeConfigRepository).getStoreConfig(storeName);
     int version = 1;
     String versionTopic = Version.composeKafkaTopic(storeName, version);
@@ -359,7 +361,7 @@ public class TestTopicCleanupService {
 
   @Test
   public void testExtractVersionTopicsToCleanupIgnoresInputWithNonVersionTopics() {
-    String storeName = TestUtils.getUniqueString("test_store");
+    String storeName = Utils.getUniqueString("test_store");
     Map<String, Long> topicRetentions = new HashMap<>();
     topicRetentions.put(Version.composeRealTimeTopic(storeName), Long.MAX_VALUE);
     topicRetentions.put(Version.composeStreamReprocessingTopic(storeName, 1), Long.MAX_VALUE);

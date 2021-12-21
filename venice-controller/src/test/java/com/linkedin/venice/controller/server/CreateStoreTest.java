@@ -6,7 +6,8 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.*;
 
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.controller.Admin;
-import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Utils;
+
 import java.util.Optional;
 import org.apache.commons.httpclient.HttpStatus;
 import org.testng.annotations.Test;
@@ -18,7 +19,7 @@ import spark.Route;
 import java.util.HashMap;
 
 public class CreateStoreTest {
-  private static String clusterName = TestUtils.getUniqueString("test-cluster");
+  private static String clusterName = Utils.getUniqueString("test-cluster");
 
   @Test
   public void testCreateStoreWhenThrowsNPEInternally() throws Exception {

@@ -23,6 +23,7 @@ import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.nio.ByteBuffer;
@@ -38,7 +39,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.Optional;
 import org.apache.avro.Schema;
 import org.rocksdb.ComparatorOptions;
-import org.rocksdb.Slice;
 import org.rocksdb.util.BytewiseComparator;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
@@ -52,7 +52,6 @@ public abstract class TestRestartServerDuringIngestion {
   private VeniceServerWrapper serverWrapper;
   private int replicaFactor = 1;
   private int partitionSize = 1000;
-  private long testTimeOutMS = 20000;
   private final String keyPrefix = "key_";
   private final String valuePrefix = "value_";
 
@@ -109,7 +108,7 @@ public abstract class TestRestartServerDuringIngestion {
     AvroSerializer serializer = new AvroSerializer(Schema.parse(stringSchemaStr));
     AvroGenericDeserializer deserializer = new AvroGenericDeserializer(Schema.parse(stringSchemaStr), Schema.parse(stringSchemaStr));
 
-    String storeName = TestUtils.getUniqueString("test_store");
+    String storeName = Utils.getUniqueString("test_store");
     String veniceUrl = cluster.getMasterVeniceController().getControllerUrl();
     Properties properties = new Properties();
     properties.put(VenicePushJob.VENICE_URL_PROP, veniceUrl);
@@ -149,7 +148,7 @@ public abstract class TestRestartServerDuringIngestion {
         if (restartPointSetForSortedInput.contains(++cur)) {
           // Restart server
           cluster.stopVeniceServer(serverWrapper.getPort());
-          TestUtils.waitForNonDeterministicCompletion(testTimeOutMS, TimeUnit.MILLISECONDS, () -> {
+          TestUtils.waitForNonDeterministicCompletion(20, TimeUnit.SECONDS, () -> {
             PartitionAssignment partitionAssignment =
                 cluster.getRandomVeniceRouter().getRoutingDataRepository().getPartitionAssignments(topic);
             // Ensure all of server are shutdown, no partition assigned.
@@ -163,7 +162,7 @@ public abstract class TestRestartServerDuringIngestion {
       veniceWriter.broadcastEndOfPush(Collections.emptyMap());
 
       // Wait push completed.
-      TestUtils.waitForNonDeterministicCompletion(testTimeOutMS, TimeUnit.MILLISECONDS,
+      TestUtils.waitForNonDeterministicCompletion(20, TimeUnit.SECONDS,
           () -> cluster.getMasterVeniceController()
               .getVeniceAdmin()
               .getOffLinePushStatus(cluster.getClusterName(), topic)
@@ -211,7 +210,7 @@ public abstract class TestRestartServerDuringIngestion {
             if (restartPointSetForUnsortedInput.contains(++cur)) {
               // Restart server
               cluster.stopVeniceServer(serverWrapper.getPort());
-              TestUtils.waitForNonDeterministicCompletion(testTimeOutMS, TimeUnit.MILLISECONDS, () -> {
+              TestUtils.waitForNonDeterministicCompletion(20, TimeUnit.SECONDS, () -> {
                 PartitionAssignment partitionAssignment =
                     cluster.getRandomVeniceRouter().getRoutingDataRepository().getPartitionAssignments(topic);
                 // Ensure all of server are shutdown, no partition assigned.
@@ -224,7 +223,7 @@ public abstract class TestRestartServerDuringIngestion {
         }
 
         // Wait until all partitions have ready-to-serve instances
-        TestUtils.waitForNonDeterministicCompletion(testTimeOutMS, TimeUnit.MILLISECONDS, () -> {
+        TestUtils.waitForNonDeterministicCompletion(20, TimeUnit.SECONDS, () -> {
           PartitionAssignment partitionAssignment =
               cluster.getRandomVeniceRouter().getRoutingDataRepository().getPartitionAssignments(topic);
           boolean allPartitionsReady = true;
@@ -255,7 +254,7 @@ public abstract class TestRestartServerDuringIngestion {
     String stringSchemaStr = "\"string\"";
     AvroSerializer serializer = new AvroSerializer(Schema.parse(stringSchemaStr));
 
-    String storeName = TestUtils.getUniqueString("test_store");
+    String storeName = Utils.getUniqueString("test_store");
     String veniceUrl = cluster.getMasterVeniceController().getControllerUrl();
     Properties properties = new Properties();
     properties.put(VenicePushJob.VENICE_URL_PROP, veniceUrl);
@@ -289,7 +288,7 @@ public abstract class TestRestartServerDuringIngestion {
       veniceWriter.broadcastEndOfPush(Collections.emptyMap());
 
       // Wait push completed.
-      TestUtils.waitForNonDeterministicCompletion(testTimeOutMS, TimeUnit.MILLISECONDS,
+      TestUtils.waitForNonDeterministicCompletion(20, TimeUnit.SECONDS,
           () -> cluster.getMasterVeniceController()
               .getVeniceAdmin()
               .getOffLinePushStatus(cluster.getClusterName(), topic)

@@ -18,6 +18,8 @@ import com.linkedin.venice.schema.rmd.ReplicationMetadataSchemaGenerator;
 import com.linkedin.venice.schema.rmd.ReplicationMetadataSchemaEntry;
 import com.linkedin.venice.utils.TestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Utils;
+
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Iterator;
@@ -76,7 +78,7 @@ public class TestParentControllerWithMultiDataCenter {
   @Test(timeOut = TEST_TIMEOUT)
   public void testUpdateStore() {
     String clusterName = CLUSTER_NAMES[0];
-    String storeName = TestUtils.getUniqueString("store");
+    String storeName = Utils.getUniqueString("store");
 
     VeniceControllerWrapper parentController =
         parentControllers.stream().filter(c -> c.isMasterController(clusterName)).findAny().get();
@@ -162,7 +164,7 @@ public class TestParentControllerWithMultiDataCenter {
   @Test(timeOut = TEST_TIMEOUT)
   public void testUpdateStoreOnParentDoNotChangeIrrelevantConfig() {
     String clusterName = CLUSTER_NAMES[0];
-    String storeName = TestUtils.getUniqueString("store");
+    String storeName = Utils.getUniqueString("store");
 
     VeniceControllerWrapper parentController =
         parentControllers.stream().filter(c -> c.isMasterController(clusterName)).findAny().get();
@@ -279,7 +281,7 @@ public class TestParentControllerWithMultiDataCenter {
   @Test(timeOut = TEST_TIMEOUT)
   public void testEnableActiveActiveReplicationSchema() {
     String clusterName = CLUSTER_NAMES[0];
-    String storeName = TestUtils.getUniqueString("store");
+    String storeName = Utils.getUniqueString("store");
     String recordSchemaStr1 = BASIC_USER_SCHEMA_STRING_WITH_DEFAULT;
     String recordSchemaStr2 = TestPushUtils.USER_SCHEMA_STRING_SIMPLE_WITH_DEFAULT;
     String recordSchemaStr3 = TestPushUtils.USER_SCHEMA_STRING_WITH_DEFAULT;
@@ -341,7 +343,7 @@ public class TestParentControllerWithMultiDataCenter {
 
         //Add a new version for the store and make sure all new metadata schema are generated.
         VersionCreationResponse vcr =
-            parentControllerClient.emptyPush(storeName, TestUtils.getUniqueString("empty-push"), 1L);
+            parentControllerClient.emptyPush(storeName, Utils.getUniqueString("empty-push"), 1L);
         assertEquals(vcr.getVersion(), 1, "requesting a topic for a push should provide version number 1");
 
         TestUtils.waitForNonDeterministicAssertion(90, TimeUnit.SECONDS, false, true, () -> {

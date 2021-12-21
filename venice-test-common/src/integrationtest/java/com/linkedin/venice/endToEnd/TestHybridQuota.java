@@ -99,7 +99,7 @@ public class TestHybridQuota {
     long streamingRewindSeconds = 10L;
     long streamingMessageLag = 2L;
 
-    String storeName = TestUtils.getUniqueString("test-store");
+    String storeName = Utils.getUniqueString("test-store");
     File inputDir = getTempDataDirectory();
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
     Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir); // records 1-100

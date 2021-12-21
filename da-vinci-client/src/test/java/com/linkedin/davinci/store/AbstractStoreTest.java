@@ -58,7 +58,7 @@ public abstract class AbstractStoreTest {
   public void testGetAndPut() {
     byte[] key = RandomGenUtils.getRandomBytes(keySize);
     byte[] value = RandomGenUtils.getRandomBytes(valueSize);
-    int partitionId = RandomGenUtils.getRandomIntWithIn(numOfPartitions);
+    int partitionId = RandomGenUtils.getRandomIntWithin(numOfPartitions);
     byte[] foundValue;
     try {
       doPut(partitionId, key, value);
@@ -71,7 +71,7 @@ public abstract class AbstractStoreTest {
   }
 
   public void testGetByKeyPrefixManyKeys(){
-    int partitionId = RandomGenUtils.getRandomIntWithIn(numOfPartitions);
+    int partitionId = RandomGenUtils.getRandomIntWithin(numOfPartitions);
     String keyPrefixString = "key_";
     String valuePrefixString = "value_";
     String ABCString = "ABC_";
@@ -226,7 +226,7 @@ public abstract class AbstractStoreTest {
 
   private void testGetByKeyPrefix(byte[] prefix, List<byte[]> keysToBeFound, List<byte[]> keysNotToBeFound){
     byte[] value = RandomGenUtils.getRandomBytes(valueSize);
-    int partitionId = RandomGenUtils.getRandomIntWithIn(numOfPartitions);
+    int partitionId = RandomGenUtils.getRandomIntWithin(numOfPartitions);
 
     final Map<ByteArray, ByteArray> getByPartialKeyResultMap = new HashMap<>();
     final boolean[] isCompleted = {false};
@@ -276,7 +276,7 @@ public abstract class AbstractStoreTest {
   public void testDelete() {
     byte[] key = RandomGenUtils.getRandomBytes(keySize);
     byte[] value = RandomGenUtils.getRandomBytes(valueSize);
-    int partitionId = RandomGenUtils.getRandomIntWithIn(numOfPartitions);
+    int partitionId = RandomGenUtils.getRandomIntWithin(numOfPartitions);
     byte[] foundValue;
     try {
       doPut(partitionId, key, value);
@@ -303,7 +303,7 @@ public abstract class AbstractStoreTest {
     byte[] key = RandomGenUtils.getRandomBytes(keySize);
     byte[] value = RandomGenUtils.getRandomBytes(valueSize);
     byte[] updatedValue = RandomGenUtils.getRandomBytes(uniqueKeyOrValueSize);
-    int partitionId = RandomGenUtils.getRandomIntWithIn(numOfPartitions);
+    int partitionId = RandomGenUtils.getRandomIntWithin(numOfPartitions);
     byte[] foundValue;
     try {
       doPut(partitionId, key, value);
@@ -322,7 +322,7 @@ public abstract class AbstractStoreTest {
 
   public void testGetInvalidKeys() {
     byte[] key = RandomGenUtils.getRandomBytes(uniqueKeyOrValueSize);
-    int partitionId = RandomGenUtils.getRandomIntWithIn(numOfPartitions);
+    int partitionId = RandomGenUtils.getRandomIntWithin(numOfPartitions);
     byte[] foundValue = null;
     try {
       foundValue = doGet(partitionId, key);

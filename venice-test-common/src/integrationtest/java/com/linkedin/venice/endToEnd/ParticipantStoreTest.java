@@ -36,7 +36,8 @@ import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.commons.io.IOUtils;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -47,8 +48,7 @@ import static org.testng.Assert.*;
 
 
 public class ParticipantStoreTest {
-  private static final Logger logger = Logger.getLogger(ParticipantStoreTest.class);
-  private final static String INT_KEY_SCHEMA = "\"int\"";
+  private static final Logger logger = LogManager.getLogger(ParticipantStoreTest.class);
 
   private VeniceClusterWrapper venice;
   private VeniceControllerWrapper parentController;
@@ -172,7 +172,7 @@ public class ParticipantStoreTest {
 
   @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testKillWhenVersionIsOnline() {
-    String storeName = TestUtils.getUniqueString("testKillWhenVersionIsOnline");
+    String storeName = Utils.getUniqueString("testKillWhenVersionIsOnline");
     final VersionCreationResponse versionCreationResponseForOnlineVersion = getNewStoreVersion(parentControllerClient, storeName, true);
     final String topicNameForOnlineVersion = versionCreationResponseForOnlineVersion.getKafkaTopic();
     parentControllerClient.writeEndOfPush(storeName, versionCreationResponseForOnlineVersion.getVersion());
@@ -269,7 +269,7 @@ public class ParticipantStoreTest {
                                     int expectedChangeCount,
                                     int expectedDeletionCount,
                                     String details) {
-    TestUtils.waitForNonDeterministicAssertion(3000, TimeUnit.MILLISECONDS, () -> {
+    TestUtils.waitForNonDeterministicAssertion(3, TimeUnit.SECONDS, () -> {
       Assert.assertEquals(testListener.getCreationCount(), expectedCreationCount,
               "Listener's creation count should be " + expectedCreationCount + " following: " + details);
       Assert.assertEquals(testListener.getChangeCount(), expectedChangeCount,
@@ -316,6 +316,6 @@ public class ParticipantStoreTest {
 
 
   private VersionCreationResponse getNewStoreVersion(ControllerClient controllerClient, boolean newStore) {
-    return getNewStoreVersion(controllerClient, TestUtils.getUniqueString("test-kill"), newStore);
+    return getNewStoreVersion(controllerClient, Utils.getUniqueString("test-kill"), newStore);
   }
 }

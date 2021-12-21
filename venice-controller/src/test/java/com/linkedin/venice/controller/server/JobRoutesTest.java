@@ -5,7 +5,8 @@ import com.linkedin.venice.controller.VeniceParentHelixAdmin;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.kafka.TopicManager;
-import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Utils;
+
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
@@ -52,8 +53,8 @@ public class JobRoutesTest {
     doReturn(jobProgress).when(mockAdmin).getOfflinePushProgress(anyString(), anyString());
     doReturn(clusters.size()).when(mockAdmin).getDatacenterCount(anyString());
 
-    String cluster = TestUtils.getUniqueString("cluster");
-    String store = TestUtils.getUniqueString("store");
+    String cluster = Utils.getUniqueString("cluster");
+    String store = Utils.getUniqueString("store");
     int version = 5;
     JobRoutes jobRoutes = new JobRoutes(Optional.empty());
     JobStatusQueryResponse response = jobRoutes.populateJobStatus(cluster, store, version, mockAdmin, Optional.empty());
