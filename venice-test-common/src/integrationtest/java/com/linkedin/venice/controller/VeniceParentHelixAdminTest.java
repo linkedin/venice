@@ -21,12 +21,14 @@ import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import org.apache.avro.Schema;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -36,7 +38,7 @@ import static com.linkedin.venice.ConfigKeys.*;
 import static org.testng.Assert.*;
 
 public class VeniceParentHelixAdminTest {
-  private static Logger LOGGER = Logger.getLogger(VeniceParentHelixAdminTest.class);
+  private static Logger LOGGER = LogManager.getLogger(VeniceParentHelixAdminTest.class);
   private static final long DEFAULT_TEST_TIMEOUT = 30000;
   VeniceClusterWrapper venice;
   ZkServerWrapper zkServerWrapper;
@@ -66,7 +68,7 @@ public class VeniceParentHelixAdminTest {
         new VeniceProperties(properties), false);
     ControllerClient parentControllerClient = new ControllerClient(venice.getClusterName(), parentController.getControllerUrl());
 
-    String storeName = TestUtils.getUniqueString("testStore");
+    String storeName = Utils.getUniqueString("testStore");
     assertFalse(parentControllerClient.createNewStore(storeName, "test", "\"string\"", "\"string\"").isError(),
         "Failed to create test store");
     // Empty push without checking its push status
@@ -170,7 +172,7 @@ public class VeniceParentHelixAdminTest {
         new VeniceProperties(properties), false);
     ControllerClient parentControllerClient = new ControllerClient(venice.getClusterName(), parentController.getControllerUrl());
 
-    String storeName = TestUtils.getUniqueString("testStore");
+    String storeName = Utils.getUniqueString("testStore");
     assertFalse(parentControllerClient.createNewStore(storeName, "test", "\"string\"", "\"string\"").isError(),
         "Failed to create test store");
     // Trying to create the same store will fail
@@ -296,7 +298,7 @@ public class VeniceParentHelixAdminTest {
 
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = DEFAULT_TEST_TIMEOUT*10)
   public void testStoreMetaDataUpdateFromParentToChildController(boolean isControllerSslEnabled) {
-    String clusterName = TestUtils.getUniqueString("testStoreMetadataUpdate");
+    String clusterName = Utils.getUniqueString("testStoreMetadataUpdate");
     try (KafkaBrokerWrapper kafkaBrokerWrapper = ServiceFactory.getKafkaBroker();
         VeniceControllerWrapper childControllerWrapper =
             ServiceFactory.getVeniceController(clusterName, kafkaBrokerWrapper, isControllerSslEnabled);
@@ -323,7 +325,7 @@ public class VeniceParentHelixAdminTest {
   }
 
   private void testBackupVersionRetentionUpdate(ControllerClient parentControllerClient, ControllerClient childControllerClient) {
-    String storeName = TestUtils.getUniqueString("test_store_");
+    String storeName = Utils.getUniqueString("test_store_");
     String owner = "test_owner";
     String keySchemaStr = "\"long\"";
     String valueSchemaStr ="\"string\"";
@@ -342,7 +344,7 @@ public class VeniceParentHelixAdminTest {
     Assert.assertFalse(storeResponseFromParentController.isError(), "Error in store response from Parent Controller: " + storeResponseFromParentController.getError());
     Assert.assertEquals(storeResponseFromParentController.getStore().getBackupVersionRetentionMs(), backupVersionRetentionMs);
     // Verify the update in Child Controller
-    TestUtils.waitForNonDeterministicAssertion(30000, TimeUnit.MILLISECONDS, () -> {
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
       StoreResponse storeResponseFromChildController = childControllerClient.getStore(storeName);
       Assert.assertFalse(storeResponseFromChildController.isError(), "Error in store response from Child Controller: " + storeResponseFromChildController.getError());
       Assert.assertEquals(storeResponseFromChildController.getStore().getBackupVersionRetentionMs(), backupVersionRetentionMs);
@@ -351,7 +353,7 @@ public class VeniceParentHelixAdminTest {
 
   private void testSuperSetSchemaGen(ControllerClient parentControllerClient, ControllerClient childControllerClient) {
     // Adding store
-    String storeName = TestUtils.getUniqueString("test_store");
+    String storeName = Utils.getUniqueString("test_store");
     String owner = "test_owner";
     String keySchemaStr = "\"long\"";
     Schema valueSchema = generateSchema(false);
@@ -398,7 +400,7 @@ public class VeniceParentHelixAdminTest {
 
   private void testSuperSetSchemaGenWithSameUpcomingSchema(ControllerClient parentControllerClient, ControllerClient childControllerClient) {
     // Adding store
-    String storeName = TestUtils.getUniqueString("test_store");;
+    String storeName = Utils.getUniqueString("test_store");;
     String owner = "test_owner";
     String keySchemaStr = "\"long\"";
     Schema valueSchema = generateSchema(false);
@@ -422,7 +424,7 @@ public class VeniceParentHelixAdminTest {
 
   private void testAddValueSchemaDocUpdate(ControllerClient parentControllerClient, ControllerClient childControllerClient) {
     // Adding store
-    String storeName = TestUtils.getUniqueString("test_store");;
+    String storeName = Utils.getUniqueString("test_store");;
     String owner = "test_owner";
     String keySchemaStr = "\"long\"";
     String schemaStr = "{\"type\":\"record\",\"name\":\"KeyRecord\",\"fields\":[{\"name\":\"name\",\"type\":\"string\",\"doc\":\"name field\"},{\"name\":\"id1\",\"type\":\"double\"}]}";
@@ -437,7 +439,7 @@ public class VeniceParentHelixAdminTest {
 
   private void testAddBadValueSchema(ControllerClient parentControllerClient) {
     // Adding store
-    String storeName = TestUtils.getUniqueString("test_store");;
+    String storeName = Utils.getUniqueString("test_store");;
     String owner = "test_owner";
     String keySchemaStr = "\"long\"";
     String schemaStr = "{\"type\":\"record\",\"name\":\"User\",\"namespace\":\"example.avro\",\"fields\":[{\"name\":\"name\",\"type\":\"string\"},{\"name\":\"kind\",\"type\":{\"type\":\"enum\",\"name\":\"Kind\",\"symbols\":[\"ONE\",\"TWO\"]}}]}";

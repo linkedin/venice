@@ -1,7 +1,8 @@
 package com.linkedin.venice.meta;
 
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Utils;
+
 import java.io.IOException;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -33,7 +34,7 @@ public class TestVersion {
 
   @Test
   public void serializes() throws IOException {
-    String storeName = TestUtils.getUniqueString("store");
+    String storeName = Utils.getUniqueString("store");
     int versionNumber = 17;
     Version version = new VersionImpl(storeName, versionNumber);
     String serialized = codehouseMapper.writeValueAsString(version);

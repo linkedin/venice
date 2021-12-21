@@ -19,6 +19,7 @@ import com.linkedin.venice.server.VeniceServer;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.io.File;
 import java.lang.reflect.Field;
@@ -76,7 +77,7 @@ public class TestWriteCompute {
       long streamingRewindSeconds = 10L;
       long streamingMessageLag = 2L;
 
-      String storeName = TestUtils.getUniqueString("write-compute-store");
+      String storeName = Utils.getUniqueString("write-compute-store");
       File inputDir = getTempDataDirectory();
       String inputDirPath = "file://" + inputDir.getAbsolutePath();
       // Records 1-100, id string to name record
@@ -275,7 +276,7 @@ public class TestWriteCompute {
    * Blocking, waits for new version to go online
    */
   private static void runH2V(Properties h2vProperties, int expectedVersionNumber, ControllerClient controllerClient) throws Exception {
-    String jobName = TestUtils.getUniqueString("write-compute-job-" + expectedVersionNumber);
+    String jobName = Utils.getUniqueString("write-compute-job-" + expectedVersionNumber);
     try (VenicePushJob job = new VenicePushJob(jobName, h2vProperties)) {
       job.run();
       TestUtils.waitForNonDeterministicCompletion(5, TimeUnit.SECONDS,

@@ -40,6 +40,7 @@ import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.AbstractMap;
@@ -54,7 +55,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.stream.IntStream;
 import org.apache.avro.Schema;
 import org.apache.avro.util.Utf8;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -66,7 +68,7 @@ import static org.testng.Assert.*;
 
 
 public class MetaSystemStoreTest {
-  private static final Logger LOGGER = Logger.getLogger(MetaSystemStoreTest.class);
+  private static final Logger LOGGER = LogManager.getLogger(MetaSystemStoreTest.class);
   private final static String INT_KEY_SCHEMA = "\"int\"";
 
   private final static String VALUE_SCHEMA_1 =
@@ -106,7 +108,7 @@ public class MetaSystemStoreTest {
   @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void bootstrapMetaSystemStore() throws ExecutionException, InterruptedException {
     // Create a new regular store.
-    String regularVeniceStoreName = TestUtils.getUniqueString("venice_store");
+    String regularVeniceStoreName = Utils.getUniqueString("venice_store");
     NewStoreResponse newStoreResponse =
         controllerClient.createNewStore(regularVeniceStoreName, "test_owner", INT_KEY_SCHEMA, VALUE_SCHEMA_1);
     assertFalse(newStoreResponse.isError(),
@@ -286,7 +288,7 @@ public class MetaSystemStoreTest {
 
   @Test(timeOut = 120 * Time.MS_PER_SECOND)
   public void testThinClientMetaStoreBasedRepository() throws InterruptedException {
-    String regularVeniceStoreName = TestUtils.getUniqueString("venice_store");
+    String regularVeniceStoreName = Utils.getUniqueString("venice_store");
     createStoreAndMaterializeMetaSystemStore(regularVeniceStoreName);
     D2Client d2Client = null;
     NativeMetadataRepository nativeMetadataRepository = null;
@@ -317,7 +319,7 @@ public class MetaSystemStoreTest {
 
   @Test(timeOut = 120 * Time.MS_PER_SECOND)
   public void testDaVinciClientMetaStoreBasedRepository() throws InterruptedException {
-    String regularVeniceStoreName = TestUtils.getUniqueString("venice_store");
+    String regularVeniceStoreName = Utils.getUniqueString("venice_store");
     createStoreAndMaterializeMetaSystemStore(regularVeniceStoreName);
     // Perform another empty push to the meta system store to verify StoreStateReader and StoreState endpoint (system store discovery).
     String metaSystemStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(regularVeniceStoreName);
@@ -352,7 +354,7 @@ public class MetaSystemStoreTest {
 
   @Test(timeOut = 360 * Time.MS_PER_SECOND)
   public void testDaVinciClientMetaStoreBasedRepositoryAutoDetectVersionChange() throws Exception {
-    String regularVeniceStoreName = TestUtils.getUniqueString("venice_store");
+    String regularVeniceStoreName = Utils.getUniqueString("venice_store");
     String metaSystemStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(regularVeniceStoreName);
     String valueSchema = INT_KEY_SCHEMA;
     createStoreAndMaterializeMetaSystemStore(regularVeniceStoreName, valueSchema);
@@ -364,7 +366,7 @@ public class MetaSystemStoreTest {
         .put(CLIENT_USE_DA_VINCI_BASED_SYSTEM_STORE_REPOSITORY, true)
         .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
         .put(PERSISTENCE_TYPE, PersistenceType.ROCKS_DB)
-        .put(DATA_BASE_PATH, TestUtils.getTempDataDirectory().getAbsolutePath())
+        .put(DATA_BASE_PATH, Utils.getTempDataDirectory().getAbsolutePath())
         .build();
     DaVinciConfig daVinciConfig = new DaVinciConfig();
     daVinciConfig.setMemoryLimit(1024 * 1024 * 1024);
@@ -411,7 +413,7 @@ public class MetaSystemStoreTest {
 
   @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testThinClientMetaStoreBasedRepositoryWithLargeValueSchemas() throws InterruptedException {
-    String regularVeniceStoreName = TestUtils.getUniqueString("venice_store");
+    String regularVeniceStoreName = Utils.getUniqueString("venice_store");
     // 1500 fields generate a schema that's roughly 150KB.
     int numberOfLargeSchemaVersions = 15;
     List<String> schemas = generateLargeValueSchemas(1500, numberOfLargeSchemaVersions);
@@ -477,7 +479,7 @@ public class MetaSystemStoreTest {
         Assert.assertTrue(readOnlyStore.isHybrid(),
             "Store: " + zkSharedMetaSystemSchemaStoreName + " should be configured to hybrid");
       });
-      String storeName = TestUtils.getUniqueString("new-user-store");
+      String storeName = Utils.getUniqueString("new-user-store");
       assertFalse(
           parentControllerClient.createNewStore(storeName, "venice-test", INT_KEY_SCHEMA, VALUE_SCHEMA_1).isError(),
           "Unexpected new store creation failure");
@@ -583,17 +585,16 @@ public class MetaSystemStoreTest {
       }
       valueSchemaBuilder.append(generateFieldBlock());
     }
-    schemas.add(valueSchemaBuilder.toString() + "]}");
+    schemas.add(valueSchemaBuilder + "]}");
     for (int v = 1; v < numberOfVersions; v++) {
       valueSchemaBuilder.append(",");
       valueSchemaBuilder.append(generateFieldBlock());
-      schemas.add(valueSchemaBuilder.toString() + "]}");
+      schemas.add(valueSchemaBuilder + "]}");
     }
     return schemas;
   }
 
-  private String generateFieldBlock() {
-    return "{\"name\": \"" + TestUtils.getUniqueAlphanumericString("largeSchema")
-        + "\", \"type\": \"string\", \"default\": \"\"}";
+  private static String generateFieldBlock() {
+    return String.format("{\"name\": \"largeSchema%d\", \"type\": \"string\", \"default\": \"\"}", System.nanoTime());
   }
 }

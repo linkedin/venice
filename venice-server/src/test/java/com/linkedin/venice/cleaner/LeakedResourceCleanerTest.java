@@ -8,8 +8,10 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.store.AbstractStorageEngine;
-import com.linkedin.venice.utils.TestUtils;
+
 import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.Utils;
+
 import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
 import java.util.List;
@@ -67,10 +69,10 @@ public class LeakedResourceCleanerTest {
 
   @Test
   public void testCleanupLeakedResources() throws Exception {
-    String storeNameWithNoVersionInZK = TestUtils.getUniqueString("store_with_no_version_in_zk");
-    String storeNameWithoutLeakedResource = TestUtils.getUniqueString("store_without_leaked_resource");
-    String storeNameWithLeakedResource = TestUtils.getUniqueString("store_with_leaked_resource");
-    String nonExistingStoreName = TestUtils.getUniqueString("store_non_existent");
+    String storeNameWithNoVersionInZK = Utils.getUniqueString("store_with_no_version_in_zk");
+    String storeNameWithoutLeakedResource = Utils.getUniqueString("store_without_leaked_resource");
+    String storeNameWithLeakedResource = Utils.getUniqueString("store_with_leaked_resource");
+    String nonExistingStoreName = Utils.getUniqueString("store_non_existent");
 
     ReadOnlyStoreRepository storeRepository = mock(ReadOnlyStoreRepository.class);
     StorageService storageService = mock(StorageService.class);

@@ -59,7 +59,7 @@ public class InstanceHealthMonitorTest {
     CompletableFuture<HttpStatus> requestFuture = healthMonitor.sendRequestToInstance(instance);
     requestFuture.complete(HttpStatus.S_429_TOO_MANY_REQUESTS);
     assertEquals(healthMonitor.getPendingRequestCounter(instance), 1);
-    TestUtils.waitForNonDeterministicAssertion(3000, TimeUnit.MILLISECONDS,
+    TestUtils.waitForNonDeterministicAssertion(3, TimeUnit.SECONDS,
         () -> assertEquals(healthMonitor.getPendingRequestCounter(instance), 1));
   }
 
@@ -74,7 +74,7 @@ public class InstanceHealthMonitorTest {
     requestFuture.complete(HttpStatus.S_500_INTERNAL_SERVER_ERROR);
     assertEquals(healthMonitor.getPendingRequestCounter(instance), 1);
     assertFalse(healthMonitor.isInstanceHealthy(instance));
-    TestUtils.waitForNonDeterministicAssertion(3000, TimeUnit.MILLISECONDS,
+    TestUtils.waitForNonDeterministicAssertion(3, TimeUnit.SECONDS,
         () -> assertEquals(healthMonitor.getPendingRequestCounter(instance), 0));
     assertFalse(healthMonitor.isInstanceHealthy(instance));
 

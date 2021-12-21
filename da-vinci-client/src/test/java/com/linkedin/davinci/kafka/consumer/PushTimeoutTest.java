@@ -34,12 +34,11 @@ import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.DiskUsage;
-import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.util.ArrayDeque;
 import java.util.Collections;
-import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Queue;
@@ -55,7 +54,7 @@ import static org.mockito.Mockito.*;
 public class PushTimeoutTest {
   @Test
   public void testPushTimeoutForLeaderFollowerStores() {
-    String storeName = TestUtils.getUniqueString("store");
+    String storeName = Utils.getUniqueString("store");
     String versionTopic = Version.composeKafkaTopic(storeName, 1);
 
     VeniceStoreVersionConfig mockVeniceStoreVersionConfig = mock(VeniceStoreVersionConfig.class);
@@ -148,7 +147,7 @@ public class PushTimeoutTest {
 
   @Test
   public void testReportIfCatchUpBaseTopicOffsetRouteWillNotMakePushTimeout() {
-    String storeName = TestUtils.getUniqueString("store");
+    String storeName = Utils.getUniqueString("store");
     String versionTopic = Version.composeKafkaTopic(storeName, 1);
 
     VeniceStoreVersionConfig mockVeniceStoreVersionConfig = mock(VeniceStoreVersionConfig.class);

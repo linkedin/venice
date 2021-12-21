@@ -7,6 +7,7 @@ import com.linkedin.venice.kafka.TopicManagerRepository;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
@@ -37,7 +38,7 @@ public class TestClusterLevelConfigForActiveActiveReplication extends AbstractTe
   @Test
   public void testClusterLevelActiveActiveReplicationConfigForNewHybridStores() throws IOException {
     TopicManagerRepository originalTopicManagerRepository = prepareCluster(true, false, false);
-    String storeNameHybrid = TestUtils.getUniqueString("test-store-hybrid");
+    String storeNameHybrid = Utils.getUniqueString("test-store-hybrid");
     String pushJobId1 = "test-push-job-id-1";
     /**
      * Do not enable any store-level config for leader/follower mode or native replication feature.
@@ -67,7 +68,7 @@ public class TestClusterLevelConfigForActiveActiveReplication extends AbstractTe
   @Test
   public void testClusterLevelActiveActiveReplicationConfigForNewIncrementalPushStores() throws IOException {
     TopicManagerRepository originalTopicManagerRepository =  prepareCluster(false, true, false);
-    String storeNameIncremental = TestUtils.getUniqueString("test-store-incremental");
+    String storeNameIncremental = Utils.getUniqueString("test-store-incremental");
     String pushJobId1 = "test-push-job-id-1";
     /**
      * Do not enable any store-level config for leader/follower mode or native replication feature.
@@ -97,7 +98,7 @@ public class TestClusterLevelConfigForActiveActiveReplication extends AbstractTe
   @Test
   public void testClusterLevelActiveActiveReplicationConfigForNewBatchOnlyStores() throws IOException {
     TopicManagerRepository originalTopicManagerRepository = prepareCluster(false, false, true);
-    String storeNameBatchOnly = TestUtils.getUniqueString("test-store-batch-only");
+    String storeNameBatchOnly = Utils.getUniqueString("test-store-batch-only");
     String pushJobId1 = "test-push-job-id-1";
     /**
      * Do not enable any store-level config for leader/follower mode or native replication feature.
@@ -162,7 +163,7 @@ public class TestClusterLevelConfigForActiveActiveReplication extends AbstractTe
     doReturn(mockedTopicManager).when(mockedTopicManageRepository).getTopicManager(any(String.class));
     doReturn(mockedTopicManager).when(mockedTopicManageRepository).getTopicManager(any(Pair.class));
     veniceAdmin.setTopicManagerRepository(mockedTopicManageRepository);
-    TestUtils.waitForNonDeterministicCompletion(5000, TimeUnit.MILLISECONDS, ()->veniceAdmin.isLeaderControllerFor(clusterName));
+    TestUtils.waitForNonDeterministicCompletion(5, TimeUnit.SECONDS, () -> veniceAdmin.isLeaderControllerFor(clusterName));
     return originalTopicManagerRepository;
   }
 

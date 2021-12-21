@@ -3,7 +3,8 @@ package com.linkedin.venice.listener;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.PartitionAssignment;
-import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Utils;
+
 import java.util.ArrayList;
 import java.util.List;
 import org.testng.Assert;
@@ -64,7 +65,7 @@ public class ReadQuotaEnforcementHandlerCalculationTest {
         if (i==0 && replicasOnThisNode[p]>0){
           instances.add(thisInstance);
         } else {
-          instances.add(new Instance(TestUtils.getUniqueString("nodeid"), "dummyHost-"+i, 1234));
+          instances.add(new Instance(Utils.getUniqueString("nodeid"), "dummyHost-"+i, 1234));
         }
 
       }

@@ -103,7 +103,7 @@ public class TestCachedDnsResolver {
   @Test
   public void testRefreshCacheEntries() throws UnknownHostException {
     Assert.assertEquals(InetAddress.getByName("127.0.0.1"), cachedDnsResolver.resolve(MockCachedDnsResolver.HOST1)[0]);
-    TestUtils.waitForNonDeterministicAssertion(10000, TimeUnit.MILLISECONDS, () -> {
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
       try {
         Assert.assertNotEquals(InetAddress.getByName("127.0.0.1"), cachedDnsResolver.resolve(MockCachedDnsResolver.HOST1)[0]);
       } catch (UnknownHostException e) {

@@ -12,6 +12,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.MockTime;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.util.ArrayList;
@@ -62,7 +63,7 @@ public class TopicReplicatorTest {
 
   @Test
   public void testStartBufferReplayRewindFromEOP() throws TopicException {
-    final Store store = TestUtils.createTestStore(TestUtils.getUniqueString("store"), "owner", 1);
+    final Store store = TestUtils.createTestStore(Utils.getUniqueString("store"), "owner", 1);
     final long REWIND_TIME_IN_SECONDS = 5;
     final long VERSION_CREATION_TIME_MS = 15000;
     Optional<HybridStoreConfig> hybridStoreConfig  = Optional.of((new HybridStoreConfigImpl(REWIND_TIME_IN_SECONDS, 1,
@@ -89,7 +90,7 @@ public class TopicReplicatorTest {
 
   @Test
   public void testStartBufferRewindFromSOP() throws TopicException {
-    final Store store = TestUtils.createTestStore(TestUtils.getUniqueString("store"), "owner", 1);
+    final Store store = TestUtils.createTestStore(Utils.getUniqueString("store"), "owner", 1);
     final long REWIND_TIME_IN_SECONDS = 5;
     final long VERSION_CREATION_TIME_MS = 15000;
     Optional<HybridStoreConfig> hybridStoreConfig  = Optional.of((new HybridStoreConfigImpl(REWIND_TIME_IN_SECONDS, 1,

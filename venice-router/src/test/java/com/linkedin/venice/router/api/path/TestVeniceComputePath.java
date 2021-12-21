@@ -15,7 +15,8 @@ import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
-import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Utils;
+
 import io.netty.buffer.Unpooled;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpVersion;
@@ -84,7 +85,7 @@ public class TestVeniceComputePath {
 
   @Test
   public void testDeserializationCorrectness() throws RouterException {
-    String resourceName = TestUtils.getUniqueString("test_store") + "_v1";
+    String resourceName = Utils.getUniqueString("test_store") + "_v1";
 
     String keyPrefix = "key_";
     List<ByteBuffer> keys = new ArrayList<>();

@@ -27,8 +27,8 @@ public class TestRedundantExceptionFilter {
     Assert.assertFalse(filter.isRedundantException(store, e1), "This is the first time we see this exception.");
     Assert.assertFalse(filter.isRedundantException(store1, e1), "This is the first time we see this exception.");
     Assert.assertTrue(filter.isRedundantException(store, e), "This is the second time we see this exception.");
-    // after duration, the filter's bitset will be cleaned up.
-    TestUtils.waitForNonDeterministicCompletion(duration, TimeUnit.MILLISECONDS,
+    // After duration the filter's bitset will be cleaned up.
+    TestUtils.waitForNonDeterministicCompletion(duration * 2, TimeUnit.MILLISECONDS,
         () -> !filter.isRedundantException(store, e));
   }
 

@@ -66,7 +66,7 @@ public class VeniceClientCompatibilityTest {
     String routerAddress = "http://localhost:" + routerPort;
     LOGGER.info("Router address in unit test: " + routerAddress);
 
-    String storeName = TestUtils.getUniqueString("venice-store");
+    String storeName = Utils.getUniqueString("venice-store");
     clusterProcess = ForkedJavaProcess.exec(
         VeniceClusterInitializer.class,
         Arrays.asList(storeName, routerPort),
@@ -110,7 +110,7 @@ public class VeniceClientCompatibilityTest {
     LOGGER.info("Zookeeper address in unit test: " + zkAddress[0]);
 
     daVinciClient = ServiceFactory.getGenericAvroDaVinciClient(
-        storeName, zkAddress[0], TestUtils.getTempDataDirectory().getAbsolutePath());
+        storeName, zkAddress[0], Utils.getTempDataDirectory().getAbsolutePath());
     daVinciClient.subscribeAll().get(30, TimeUnit.SECONDS);
   }
 

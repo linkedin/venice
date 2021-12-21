@@ -51,7 +51,7 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
 
   @Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST_MS)
   public void testControllerFailOver() throws Exception {
-    String storeName = TestUtils.getUniqueString("test");
+    String storeName = Utils.getUniqueString("test");
     veniceAdmin.createStore(clusterName, storeName, "dev", KEY_SCHEMA, VALUE_SCHEMA);
     Version version =
         veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1);
@@ -161,7 +161,7 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
 
     //Shutdown one instance
     stopParticipant(NODE_ID);
-    TestUtils.waitForNonDeterministicCompletion(5000, TimeUnit.MILLISECONDS, () -> {
+    TestUtils.waitForNonDeterministicCompletion(5, TimeUnit.SECONDS, () -> {
       PartitionAssignment partitionAssignment = veniceAdmin.getHelixVeniceClusterResources(clusterName)
           .getRoutingDataRepository()
           .getPartitionAssignments(version.kafkaTopicName());
@@ -241,7 +241,7 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
 
     //Shutdown one instance
     stopParticipant(newNodeId);
-    TestUtils.waitForNonDeterministicCompletion(5000, TimeUnit.MILLISECONDS, () -> {
+    TestUtils.waitForNonDeterministicCompletion(5, TimeUnit.SECONDS, () -> {
       PartitionAssignment partitionAssignment = veniceAdmin.getHelixVeniceClusterResources(clusterName)
           .getRoutingDataRepository()
           .getPartitionAssignments(version.kafkaTopicName());
@@ -314,7 +314,7 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
 
     veniceAdmin.initVeniceControllerClusterResource(clusterName);
 
-    TestUtils.waitForNonDeterministicCompletion(5000, TimeUnit.MILLISECONDS, ()->veniceAdmin.isLeaderControllerFor(clusterName));
+    TestUtils.waitForNonDeterministicCompletion(5, TimeUnit.SECONDS, ()->veniceAdmin.isLeaderControllerFor(clusterName));
     veniceAdmin.createStore(clusterName, storeName1, "test", KEY_SCHEMA, VALUE_SCHEMA);
     veniceAdmin.createStore(clusterName, storeName2, "test", KEY_SCHEMA, VALUE_SCHEMA);
     veniceAdmin.createStore(clusterName, storeName3, "test", KEY_SCHEMA, VALUE_SCHEMA);
@@ -349,7 +349,7 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
             D2TestUtils.getAndStartD2Client(zkAddress)
     );
     veniceAdmin.initVeniceControllerClusterResource(clusterName);
-    TestUtils.waitForNonDeterministicCompletion(5000, TimeUnit.MILLISECONDS, ()->veniceAdmin.isLeaderControllerFor(clusterName));
+    TestUtils.waitForNonDeterministicCompletion(5, TimeUnit.SECONDS, ()->veniceAdmin.isLeaderControllerFor(clusterName));
     veniceAdmin.createStore(clusterName, storeName1, "test", KEY_SCHEMA, VALUE_SCHEMA);
     veniceAdmin.createStore(clusterName, storeName2, "test", KEY_SCHEMA, VALUE_SCHEMA);
     // Store1 is a hybrid store.
@@ -379,7 +379,7 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
     );
     veniceAdmin.initVeniceControllerClusterResource(clusterName);
 
-    TestUtils.waitForNonDeterministicCompletion(5000, TimeUnit.MILLISECONDS, ()->veniceAdmin.isLeaderControllerFor(clusterName));
+    TestUtils.waitForNonDeterministicCompletion(5, TimeUnit.SECONDS, ()->veniceAdmin.isLeaderControllerFor(clusterName));
     // Store3 is a batch store
     veniceAdmin.createStore(clusterName, storeName3, "test", KEY_SCHEMA, VALUE_SCHEMA);
 
@@ -390,7 +390,7 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
   @Test(timeOut = TOTAL_TIMEOUT_FOR_SHORT_TEST_MS)
   public void testGetFutureVersionsNotBlocked() throws InterruptedException {
     ExecutorService asyncExecutor = Executors.newSingleThreadExecutor();
-    String storeName = TestUtils.getUniqueString("test_store");
+    String storeName = Utils.getUniqueString("test_store");
     asyncExecutor.submit(() -> {
       // A time-consuming store operation that holds cluster-level read lock and store-level write lock.
       HelixVeniceClusterResources resources = veniceAdmin.getHelixVeniceClusterResources(clusterName);
@@ -411,7 +411,7 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
   @Test
   public void testExternalViewDataChangeDeadLock() throws InterruptedException {
     ExecutorService asyncExecutor = Executors.newSingleThreadExecutor();
-    String storeName = TestUtils.getUniqueString("test_store");
+    String storeName = Utils.getUniqueString("test_store");
     veniceAdmin.createStore(clusterName, storeName, storeOwner, KEY_SCHEMA, VALUE_SCHEMA);
     asyncExecutor.submit(() -> {
       // Add version. Hold store write lock and release it before polling EV status.
@@ -431,12 +431,12 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
       }
     }
     // If there is a deadlock and then version cannot become online
-    TestUtils.waitForNonDeterministicCompletion(10000, TimeUnit.MILLISECONDS, () -> veniceAdmin.getCurrentVersion(clusterName, storeName) == 1);
+    TestUtils.waitForNonDeterministicCompletion(10, TimeUnit.SECONDS, () -> veniceAdmin.getCurrentVersion(clusterName, storeName) == 1);
   }
 
   @Test
   public void testIdempotentStoreDeletion() {
-    String storeName = TestUtils.getUniqueString("test_delete_store");
+    String storeName = Utils.getUniqueString("test_delete_store");
     veniceAdmin.createStore(clusterName, storeName, storeOwner, KEY_SCHEMA, VALUE_SCHEMA);
     veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams()
         .setEnableReads(false)
@@ -450,7 +450,7 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
     Assert.assertNull(veniceAdmin.getStore(clusterName, storeName));
 
     // Mimic another case where Store object is deleted but StoreConfig still exists.
-    String newStoreName = TestUtils.getUniqueString("test_delete_store2");
+    String newStoreName = Utils.getUniqueString("test_delete_store2");
     veniceAdmin.createStore(clusterName, newStoreName, storeOwner, KEY_SCHEMA, VALUE_SCHEMA);
     veniceAdmin.updateStore(clusterName, newStoreName, new UpdateStoreQueryParams()
         .setEnableReads(false)

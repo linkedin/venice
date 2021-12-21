@@ -62,5 +62,4 @@ dependencies {
   testImplementation project(':venice-router')
   testImplementation libraries.avroUtilFastserde
   testImplementation libraries.kafkaClientsTest // TODO: Get rid of Kafka dependency in venice-common (used by TopicCreator)
-  testImplementation libraries.log4j2api
 }

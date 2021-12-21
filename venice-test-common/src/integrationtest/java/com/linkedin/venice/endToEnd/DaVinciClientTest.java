@@ -235,7 +235,7 @@ public class DaVinciClientTest {
     String storeName1 = cluster.createStore(KEY_COUNT);
     String storeName2 = cluster.createStore(KEY_COUNT);
 
-    String baseDataPath = TestUtils.getTempDataDirectory().getAbsolutePath();
+    String baseDataPath = Utils.getTempDataDirectory().getAbsolutePath();
     VeniceProperties backendConfig = new PropertyBuilder()
                                          .put(DATA_BASE_PATH, baseDataPath)
                                          .put(PERSISTENCE_TYPE, ROCKS_DB)
@@ -261,7 +261,7 @@ public class DaVinciClientTest {
     String storeName2 = cluster.createStore(KEY_COUNT);
     String storeName3 = cluster.createStore(KEY_COUNT);
 
-    String baseDataPath = TestUtils.getTempDataDirectory().getAbsolutePath();
+    String baseDataPath = Utils.getTempDataDirectory().getAbsolutePath();
     VeniceProperties backendConfig = new PropertyBuilder()
             .put(DATA_BASE_PATH, baseDataPath)
             .put(PERSISTENCE_TYPE, ROCKS_DB)
@@ -357,7 +357,7 @@ public class DaVinciClientTest {
     value.put("number", 10);
     String storeName = cluster.createStore(KEY_COUNT, value);
 
-    String baseDataPath = TestUtils.getTempDataDirectory().getAbsolutePath();
+    String baseDataPath = Utils.getTempDataDirectory().getAbsolutePath();
     VeniceProperties backendConfig = new PropertyBuilder()
             .put(DATA_BASE_PATH, baseDataPath)
             .put(PERSISTENCE_TYPE, ROCKS_DB)
@@ -399,7 +399,7 @@ public class DaVinciClientTest {
 
   @Test(groups = {"flaky"}, timeOut = TEST_TIMEOUT * 2)
   public void testUnstableIngestionIsolation() throws Exception {
-    final String storeName = TestUtils.getUniqueString( "store");
+    final String storeName = Utils.getUniqueString( "store");
     cluster.useControllerClient(client -> {
       NewStoreResponse response = client.createNewStore(storeName, getClass().getName(), DEFAULT_KEY_SCHEMA, DEFAULT_VALUE_SCHEMA);
       if (response.isError()) {
@@ -414,7 +414,7 @@ public class DaVinciClientTest {
     VeniceKafkaSerializer valueSerializer = new VeniceAvroKafkaSerializer(DEFAULT_VALUE_SCHEMA);
 
     MetricsRepository metricsRepository = new MetricsRepository();
-    String baseDataPath = TestUtils.getTempDataDirectory().getAbsolutePath();
+    String baseDataPath = Utils.getTempDataDirectory().getAbsolutePath();
 
     int applicationListenerPort = Utils.getFreePort();
     int servicePort = Utils.getFreePort();
@@ -473,7 +473,7 @@ public class DaVinciClientTest {
     final int partition = 1;
     final int partitionCount = 2;
     final int amplificationFactor = isAmplificationFactorEnabled ? 3 : 1;
-    String storeName = TestUtils.getUniqueString("store");
+    String storeName = Utils.getUniqueString("store");
     String storeName2 = cluster.createStore(KEY_COUNT);
     Consumer<UpdateStoreQueryParams> paramsConsumer =
             params -> params.setAmplificationFactor(amplificationFactor)
@@ -486,7 +486,7 @@ public class DaVinciClientTest {
     setupHybridStore(storeName, paramsConsumer, 1000);
 
     MetricsRepository metricsRepository = new MetricsRepository();
-    String baseDataPath = TestUtils.getTempDataDirectory().getAbsolutePath();
+    String baseDataPath = Utils.getTempDataDirectory().getAbsolutePath();
 
     int applicationListenerPort = Utils.getFreePort();
     int servicePort = Utils.getFreePort();
@@ -575,7 +575,7 @@ public class DaVinciClientTest {
     setupHybridStore(storeName, paramsConsumer);
 
     VeniceProperties backendConfig = new PropertyBuilder()
-            .put(DATA_BASE_PATH, TestUtils.getTempDataDirectory().getAbsolutePath())
+            .put(DATA_BASE_PATH, Utils.getTempDataDirectory().getAbsolutePath())
             .put(PERSISTENCE_TYPE, ROCKS_DB)
             .build();
 
@@ -628,7 +628,7 @@ public class DaVinciClientTest {
     final int partition = 1;
     final int partitionCount = 2;
     final int amplificationFactor = isAmplificationFactorEnabled ? 3 : 1;
-    String storeName = TestUtils.getUniqueString("store");
+    String storeName = Utils.getUniqueString("store");
     Consumer<UpdateStoreQueryParams> paramsConsumer =
         params -> params.setPartitionerClass(ConstantVenicePartitioner.class.getName())
             .setLeaderFollowerModel(isLeaderFollowerModelEnabled)
@@ -640,7 +640,7 @@ public class DaVinciClientTest {
     setupHybridStore(storeName, paramsConsumer);
 
     VeniceProperties backendConfig = new PropertyBuilder()
-            .put(DATA_BASE_PATH, TestUtils.getTempDataDirectory().getAbsolutePath())
+            .put(DATA_BASE_PATH, Utils.getTempDataDirectory().getAbsolutePath())
             .put(PERSISTENCE_TYPE, ROCKS_DB)
             .build();
 
@@ -705,7 +705,7 @@ public class DaVinciClientTest {
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "dv-client-config-provider", dataProviderClass = DataProviderUtils.class)
   public void testBootstrap(DaVinciConfig daVinciConfig) throws Exception {
     String storeName = cluster.createStore(KEY_COUNT);
-    String baseDataPath = TestUtils.getTempDataDirectory().getAbsolutePath();
+    String baseDataPath = Utils.getTempDataDirectory().getAbsolutePath();
     try (DaVinciClient<Integer, Object> client = ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster, baseDataPath)) {
       client.subscribeAll().get();
       for (int k = 0; k < KEY_COUNT; ++k) {
@@ -778,7 +778,7 @@ public class DaVinciClientTest {
   public void testNonLocalAccessPolicy(DaVinciConfig daVinciConfig) throws Exception {
     String storeName = cluster.createStore(KEY_COUNT);
     VeniceProperties backendConfig = new PropertyBuilder()
-            .put(DATA_BASE_PATH, TestUtils.getTempDataDirectory().getAbsolutePath())
+            .put(DATA_BASE_PATH, Utils.getTempDataDirectory().getAbsolutePath())
             .put(PERSISTENCE_TYPE, ROCKS_DB)
             .build();
 
@@ -826,7 +826,7 @@ public class DaVinciClientTest {
   @Test(timeOut = TEST_TIMEOUT)
   public void testMemoryLimit() throws Exception {
     VeniceProperties backendConfig = new PropertyBuilder()
-            .put(DATA_BASE_PATH, TestUtils.getTempDataDirectory().getAbsolutePath())
+            .put(DATA_BASE_PATH, Utils.getTempDataDirectory().getAbsolutePath())
             .put(PERSISTENCE_TYPE, ROCKS_DB)
             .build();
     MetricsRepository metricsRepository = new MetricsRepository();
@@ -853,7 +853,7 @@ public class DaVinciClientTest {
     int servicePort = Utils.getFreePort();
     DaVinciConfig daVinciConfig = new DaVinciConfig();
     VeniceProperties backendConfig = new PropertyBuilder()
-        .put(DATA_BASE_PATH, TestUtils.getTempDataDirectory().getAbsolutePath())
+        .put(DATA_BASE_PATH, Utils.getTempDataDirectory().getAbsolutePath())
         .put(PERSISTENCE_TYPE, ROCKS_DB)
         .put(SERVER_INGESTION_MODE, ISOLATED)
         .put(SERVER_INGESTION_ISOLATION_APPLICATION_PORT, applicationListenerPort)
@@ -876,7 +876,7 @@ public class DaVinciClientTest {
     int applicationListenerPort = Utils.getFreePort();
     int servicePort = Utils.getFreePort();
     VeniceProperties backendConfig = new PropertyBuilder()
-        .put(DATA_BASE_PATH, TestUtils.getTempDataDirectory().getAbsolutePath())
+        .put(DATA_BASE_PATH, Utils.getTempDataDirectory().getAbsolutePath())
         .put(PERSISTENCE_TYPE, ROCKS_DB)
         .put(SERVER_INGESTION_MODE, ISOLATED)
         .put(SERVER_INGESTION_ISOLATION_APPLICATION_PORT, applicationListenerPort)
@@ -897,7 +897,7 @@ public class DaVinciClientTest {
 
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT * 2)
   public void testLiveUpdateSuppression(boolean enableIngestionIsolation) throws Exception {
-    final String storeName = TestUtils.getUniqueString("store");
+    final String storeName = Utils.getUniqueString("store");
     cluster.useControllerClient(client -> {
       NewStoreResponse response = client.createNewStore(storeName, getClass().getName(), DEFAULT_KEY_SCHEMA, DEFAULT_VALUE_SCHEMA);
       if (response.isError()) {
@@ -913,7 +913,7 @@ public class DaVinciClientTest {
     VeniceKafkaSerializer keySerializer = new VeniceAvroKafkaSerializer(DEFAULT_KEY_SCHEMA);
     VeniceKafkaSerializer valueSerializer = new VeniceAvroKafkaSerializer(DEFAULT_VALUE_SCHEMA);
 
-    String baseDataPath = TestUtils.getTempDataDirectory().getAbsolutePath();
+    String baseDataPath = Utils.getTempDataDirectory().getAbsolutePath();
     int applicationListenerPort = Utils.getFreePort();
     int servicePort = Utils.getFreePort();
     // Enable live update suppression
@@ -1020,7 +1020,7 @@ public class DaVinciClientTest {
   @Test(timeOut = TEST_TIMEOUT * 2)
   public void testCrashedDaVinciWithIngestionIsolation() throws Exception {
     String storeName = cluster.createStore(KEY_COUNT);
-    String baseDataPath = TestUtils.getTempDataDirectory().getAbsolutePath();
+    String baseDataPath = Utils.getTempDataDirectory().getAbsolutePath();
     String zkHosts = cluster.getZk().getAddress();
     ForkedJavaProcess forkedDaVinciUserApp = ForkedJavaProcess.exec(
         DaVinciUserApp.class,
@@ -1055,7 +1055,7 @@ public class DaVinciClientTest {
 
   @Test
   public void testComputeOnStoreWithQTFDScompliantSchema() throws Exception {
-    final String storeName = TestUtils.getUniqueString( "store");
+    final String storeName = Utils.getUniqueString( "store");
     cluster.useControllerClient(client -> TestUtils.assertCommand(
         client.createNewStore(storeName, getClass().getName(), DEFAULT_KEY_SCHEMA, VALUE_SCHEMA_FOR_COMPUTE_NULLABLE_LIST_FIELD)));
 
@@ -1067,7 +1067,7 @@ public class DaVinciClientTest {
     VeniceKafkaSerializer valueSerializer = new VeniceAvroKafkaSerializer(VALUE_SCHEMA_FOR_COMPUTE_NULLABLE_LIST_FIELD);
 
     MetricsRepository metricsRepository = new MetricsRepository();
-    String baseDataPath = TestUtils.getTempDataDirectory().getAbsolutePath();
+    String baseDataPath = Utils.getTempDataDirectory().getAbsolutePath();
 
     int applicationListenerPort = Utils.getFreePort();
     int servicePort = Utils.getFreePort();
@@ -1151,7 +1151,7 @@ public class DaVinciClientTest {
   @Test(timeOut = TEST_TIMEOUT * 2)
   public void testReadComputeMissingField() throws Exception {
     //Create DaVinci store
-    final String storeName = TestUtils.getUniqueString( "store");
+    final String storeName = Utils.getUniqueString( "store");
     cluster.useControllerClient(client -> TestUtils.assertCommand(
         client.createNewStore(storeName, getClass().getName(), DEFAULT_KEY_SCHEMA, VALUE_SCHEMA_FOR_COMPUTE)));
 
@@ -1165,7 +1165,7 @@ public class DaVinciClientTest {
         VALUE_SCHEMA_FOR_COMPUTE_MISSING_FIELD);
 
     MetricsRepository metricsRepository = new MetricsRepository();
-    String baseDataPath = TestUtils.getTempDataDirectory().getAbsolutePath();
+    String baseDataPath = Utils.getTempDataDirectory().getAbsolutePath();
 
     int applicationListenerPort = Utils.getFreePort();
     int servicePort = Utils.getFreePort();
@@ -1264,7 +1264,7 @@ public class DaVinciClientTest {
   @Test(timeOut = TEST_TIMEOUT * 2)
   public void testReadComputeSwappedFields() throws Exception {
     //Create DaVinci store
-    final String storeName = TestUtils.getUniqueString( "store");
+    final String storeName = Utils.getUniqueString( "store");
     cluster.useControllerClient(client -> TestUtils.assertCommand(
         client.createNewStore(storeName, getClass().getName(), DEFAULT_KEY_SCHEMA, VALUE_SCHEMA_FOR_COMPUTE_SWAPPED)));
 
@@ -1277,7 +1277,7 @@ public class DaVinciClientTest {
     VeniceKafkaSerializer valueSerializerSwapped = new VeniceAvroKafkaSerializer(VALUE_SCHEMA_FOR_COMPUTE_SWAPPED);
 
     MetricsRepository metricsRepository = new MetricsRepository();
-    String baseDataPath = TestUtils.getTempDataDirectory().getAbsolutePath();
+    String baseDataPath = Utils.getTempDataDirectory().getAbsolutePath();
 
     int applicationListenerPort = Utils.getFreePort();
     int servicePort = Utils.getFreePort();
@@ -1356,7 +1356,7 @@ public class DaVinciClientTest {
   @Test(timeOut = TEST_TIMEOUT * 2)
   public void testComputeStreamingExecute() throws ExecutionException, InterruptedException {
     //Setup Store
-    final String storeName = TestUtils.getUniqueString( "store");
+    final String storeName = Utils.getUniqueString( "store");
     cluster.useControllerClient(client -> TestUtils.assertCommand(
         client.createNewStore(storeName, getClass().getName(), KEY_SCHEMA_STEAMING_COMPUTE,
             VALUE_SCHEMA_STREAMING_COMPUTE)));
@@ -1369,7 +1369,7 @@ public class DaVinciClientTest {
     VeniceKafkaSerializer valueSerializer = new VeniceAvroKafkaSerializer(VALUE_SCHEMA_STREAMING_COMPUTE);
 
     MetricsRepository metricsRepository = new MetricsRepository();
-    String baseDataPath = TestUtils.getTempDataDirectory().getAbsolutePath();
+    String baseDataPath = Utils.getTempDataDirectory().getAbsolutePath();
 
     int applicationListenerPort = Utils.getFreePort();
     int servicePort = Utils.getFreePort();
@@ -1450,7 +1450,7 @@ public class DaVinciClientTest {
 
   @Test(timeOut = TEST_TIMEOUT, dataProvider="LF-And-CompressionStrategy")
   public void testReadCompressedData(boolean leaderFollowerEnabled, CompressionStrategy compressionStrategy) throws Exception {
-    String storeName = TestUtils.getUniqueString("batch-store");
+    String storeName = Utils.getUniqueString("batch-store");
     Consumer<UpdateStoreQueryParams> paramsConsumer =
         params -> params.setLeaderFollowerModel(leaderFollowerEnabled).setCompressionStrategy(compressionStrategy);
     setUpStore(storeName, paramsConsumer, properties -> {});
@@ -1465,7 +1465,7 @@ public class DaVinciClientTest {
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testPartialKeyLookupWithRocksDBBlockBasedTable() throws ExecutionException, InterruptedException {
-    final String storeName = TestUtils.getUniqueString( "store");
+    final String storeName = Utils.getUniqueString( "store");
     cluster.useControllerClient(client -> TestUtils.assertCommand(
         client.createNewStore(storeName, getClass().getName(), KEY_SCHEMA_PARTIAL_KEY_LOOKUP, VALUE_SCHEMA_FOR_COMPUTE)));
 
@@ -1477,7 +1477,7 @@ public class DaVinciClientTest {
     VeniceKafkaSerializer valueSerializer = new VeniceAvroKafkaSerializer(VALUE_SCHEMA_FOR_COMPUTE);
 
     MetricsRepository metricsRepository = new MetricsRepository();
-    String baseDataPath = TestUtils.getTempDataDirectory().getAbsolutePath();
+    String baseDataPath = Utils.getTempDataDirectory().getAbsolutePath();
 
     VeniceProperties backendConfig = new PropertyBuilder()
         .put(DATA_BASE_PATH, baseDataPath)
@@ -1547,7 +1547,7 @@ public class DaVinciClientTest {
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testPartialKeyLookupWithRocksDBPlainTable() throws ExecutionException, InterruptedException {
-    final String storeName = TestUtils.getUniqueString( "store");
+    final String storeName = Utils.getUniqueString( "store");
     cluster.useControllerClient(client -> TestUtils.assertCommand(
         client.createNewStore(storeName, getClass().getName(), KEY_SCHEMA_PARTIAL_KEY_LOOKUP, VALUE_SCHEMA_FOR_COMPUTE)));
 
@@ -1559,7 +1559,7 @@ public class DaVinciClientTest {
     VeniceKafkaSerializer valueSerializer = new VeniceAvroKafkaSerializer(VALUE_SCHEMA_FOR_COMPUTE);
 
     MetricsRepository metricsRepository = new MetricsRepository();
-    String baseDataPath = TestUtils.getTempDataDirectory().getAbsolutePath();
+    String baseDataPath = Utils.getTempDataDirectory().getAbsolutePath();
 
     VeniceProperties backendConfig = new PropertyBuilder()
         .put(DATA_BASE_PATH, baseDataPath)
@@ -1756,7 +1756,7 @@ public class DaVinciClientTest {
 
   private static void runH2V(Properties h2vProperties, int expectedVersionNumber, VeniceClusterWrapper cluster) {
     long h2vStart = System.currentTimeMillis();
-    String jobName = TestUtils.getUniqueString("batch-job-" + expectedVersionNumber);
+    String jobName = Utils.getUniqueString("batch-job-" + expectedVersionNumber);
     TestPushUtils.runPushJob(jobName, h2vProperties);
     String storeName = (String) h2vProperties.get(VenicePushJob.VENICE_STORE_NAME_PROP);
     cluster.waitVersion(storeName, expectedVersionNumber);

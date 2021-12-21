@@ -24,6 +24,4 @@ dependencies {
   }
   implementation project(':venice-schema-common')
   implementation project(':venice-thin-client')
-
-  testImplementation libraries.log4j2api
 }

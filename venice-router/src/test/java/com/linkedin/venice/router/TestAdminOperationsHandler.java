@@ -183,7 +183,7 @@ public class TestAdminOperationsHandler {
     FullHttpResponse disableThrottleResponseLease = passRequestToAdminOperationsHandler(HttpMethod.POST, READ_QUOTA_THROTTLE_DISABLE_URI, isSSL);
     verifyReadThrottlingStatus(disableThrottleResponseLease, isSSL, accessControllerPresent, false, false, adminOperationAuthorized);
 
-    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, false, () -> {
+    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
       FullHttpResponse response = passRequestToAdminOperationsHandler(HttpMethod.GET, READ_QUOTA_THROTTLE_URI, isSSL);
       verifyReadThrottlingStatus(response, isSSL, accessControllerPresent, initialReadThrottlingEnabled, initialEarlyThrottleEnabled, adminOperationAuthorized);
     });

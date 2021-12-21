@@ -11,6 +11,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.server.VeniceServer;
 import com.linkedin.venice.utils.TestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.File;
 import java.util.List;
@@ -73,7 +74,7 @@ public class TestPushJobVersionCleanup {
     File inputDir = getTempDataDirectory();
     Schema recordSchema = TestPushUtils.writeSimpleAvroFileWithUserSchema(inputDir, true, 50);
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
-    String storeName = TestUtils.getUniqueString("store");
+    String storeName = Utils.getUniqueString("store");
     VeniceControllerWrapper parentController =
         parentControllers.stream().filter(c -> c.isMasterController(clusterName)).findAny().get();
     Properties props = defaultH2VProps(parentController.getControllerUrl(), inputDirPath, storeName);

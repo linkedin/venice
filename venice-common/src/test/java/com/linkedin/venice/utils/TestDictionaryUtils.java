@@ -11,7 +11,7 @@ import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.writer.VeniceWriter;
-import com.linkedin.venice.writer.VeniceWriterFactory;
+
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.Optional;
@@ -39,7 +39,7 @@ public class TestDictionaryUtils {
 
   private String getTopic() {
     String callingFunction = Thread.currentThread().getStackTrace()[2].getMethodName();
-    String topicName = TestUtils.getUniqueString(callingFunction);
+    String topicName = Utils.getUniqueString(callingFunction);
     int partitions = 1;
     int replicas = 1;
     manager.createTopic(topicName, partitions, replicas, false);

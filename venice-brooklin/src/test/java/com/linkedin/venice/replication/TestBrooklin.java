@@ -45,7 +45,7 @@ public class TestBrooklin {
 
   @Test
   public void testGetKafkaURL() throws IOException {
-    String dummyVeniceClusterName = TestUtils.getUniqueString("venice");
+    String dummyVeniceClusterName = Utils.getUniqueString("venice");
     String topic = "test-topic";
 
     try (KafkaBrokerWrapper kafka = ServiceFactory.getKafkaBroker();
@@ -121,7 +121,7 @@ public class TestBrooklin {
       Properties properties = new Properties();
       properties.put(TopicReplicator.TOPIC_REPLICATOR_SOURCE_KAFKA_CLUSTER, kafka.getAddress());
       try (TopicManager topicManager = new TopicManager(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, 0l, TestUtils.getVeniceConsumerFactory(kafka))) {
-        String dummyVeniceClusterName = TestUtils.getUniqueString("venice");
+        String dummyVeniceClusterName = Utils.getUniqueString("venice");
         TopicReplicator replicator =
             new BrooklinTopicReplicator(topicManager, TestUtils.getVeniceWriterFactory(kafka.getAddress()),
                 brooklin.getBrooklinDmsUri(), new VeniceProperties(properties), dummyVeniceClusterName, "venice-test-service", false,
@@ -129,8 +129,8 @@ public class TestBrooklin {
 
         //Create topics
         int partitionCount = 1;
-        String sourceTopic = TestUtils.getUniqueString("source");
-        String destinationTopicForEmptySourceTopic = TestUtils.getUniqueString("destination");
+        String sourceTopic = Utils.getUniqueString("source");
+        String destinationTopicForEmptySourceTopic = Utils.getUniqueString("destination");
         topicManager.createTopic(sourceTopic, partitionCount, 1, true);
         topicManager.createTopic(destinationTopicForEmptySourceTopic, partitionCount, 1, true);
 
@@ -142,8 +142,8 @@ public class TestBrooklin {
         }
 
         // Produce a message after setting up the data stream
-        byte[] key1 = TestUtils.getUniqueString("key").getBytes(StandardCharsets.UTF_8);
-        byte[] value1 = TestUtils.getUniqueString("value").getBytes(StandardCharsets.UTF_8);
+        byte[] key1 = Utils.getUniqueString("key").getBytes(StandardCharsets.UTF_8);
+        byte[] value1 = Utils.getUniqueString("value").getBytes(StandardCharsets.UTF_8);
         try (Producer<byte[], byte[]> producer = getKafkaProducer(kafka)) {
           producer.send(new ProducerRecord<>(sourceTopic, key1, value1));
           producer.flush();
@@ -154,11 +154,11 @@ public class TestBrooklin {
         assertEquals(records.get(3).value(), value1);
 
 
-        String destinationTopicWithValidSourceOffset = TestUtils.getUniqueString("destination");
+        String destinationTopicWithValidSourceOffset = Utils.getUniqueString("destination");
         topicManager.createTopic(destinationTopicWithValidSourceOffset, partitionCount, 1, true);
 
-        byte[] key2 = TestUtils.getUniqueString("key").getBytes(StandardCharsets.UTF_8);
-        byte[] value2 = TestUtils.getUniqueString("value").getBytes(StandardCharsets.UTF_8);
+        byte[] key2 = Utils.getUniqueString("key").getBytes(StandardCharsets.UTF_8);
+        byte[] value2 = Utils.getUniqueString("value").getBytes(StandardCharsets.UTF_8);
 
         //Produce another message to the source topic
         try (Producer<byte[], byte[]> producer = getKafkaProducer(kafka)) {
@@ -182,15 +182,15 @@ public class TestBrooklin {
         assertEquals(records.get(4).value(), value2);
 
         // Mirroring the source topic with the latest offset
-        String destinationTopicWithLatestOffset = TestUtils.getUniqueString("destination");
+        String destinationTopicWithLatestOffset = Utils.getUniqueString("destination");
         topicManager.createTopic(destinationTopicWithLatestOffset, partitionCount, 1, true);
         // Add some delay
         Utils.sleep(TimeUnit.SECONDS.toMillis(1));
         // Create a new replication stream
         replicator.beginReplication(sourceTopic, destinationTopicWithLatestOffset, System.currentTimeMillis(), null);
         // Produce a new message
-        byte[] key3 = TestUtils.getUniqueString("key").getBytes(StandardCharsets.UTF_8);
-        byte[] value3 = TestUtils.getUniqueString("value").getBytes(StandardCharsets.UTF_8);
+        byte[] key3 = Utils.getUniqueString("key").getBytes(StandardCharsets.UTF_8);
+        byte[] value3 = Utils.getUniqueString("value").getBytes(StandardCharsets.UTF_8);
         try (Producer<byte[], byte[]> producer = getKafkaProducer(kafka)) {
           producer.send(new ProducerRecord<>(sourceTopic, key3, value3));
           producer.flush();
@@ -229,7 +229,7 @@ public class TestBrooklin {
   private static KafkaConsumer<byte[],byte[]> getKafkaConsumer(KafkaBrokerWrapper kafka){
     Properties props = new Properties();
     props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, kafka.getAddress());
-    props.put(ConsumerConfig.GROUP_ID_CONFIG, TestUtils.getUniqueString("test"));
+    props.put(ConsumerConfig.GROUP_ID_CONFIG, Utils.getUniqueString("test"));
     props.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "false");
     props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, "org.apache.kafka.common.serialization.ByteArrayDeserializer");
     props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, "org.apache.kafka.common.serialization.ByteArrayDeserializer");

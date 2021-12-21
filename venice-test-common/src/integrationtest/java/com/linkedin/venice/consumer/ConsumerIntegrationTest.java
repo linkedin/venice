@@ -139,7 +139,7 @@ public class ConsumerIntegrationTest {
 
   @BeforeMethod
   public void testSetUp() {
-    store = TestUtils.getUniqueString("consumer_integ_test");
+    store = Utils.getUniqueString("consumer_integ_test");
     version = 1;
     topicName = Version.composeKafkaTopic(store, version);
     cluster.getNewStore(store);

@@ -1,9 +1,7 @@
 package com.linkedin.venice.integration.utils;
 
 import com.linkedin.venice.ConfigKeys;
-import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -19,7 +17,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 import static com.linkedin.venice.ConfigKeys.*;
-import static com.linkedin.venice.integration.utils.VeniceServerWrapper.*;
 
 
 public class VeniceMultiClusterWrapper extends ProcessWrapper {
@@ -64,7 +61,7 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
       String clusterToD2 = "";
       String[] clusterNames = new String[numberOfClusters];
       for (int i = 0; i < numberOfClusters; i++) {
-        String clusterName = randomizeClusterName ? TestUtils.getUniqueString("venice-cluster" + i) : "venice-cluster" + i;
+        String clusterName = randomizeClusterName ? Utils.getUniqueString("venice-cluster" + i) : "venice-cluster" + i;
         clusterNames[i] = clusterName;
         if (multiD2) {
           clusterToD2 += clusterName + ":venice-" + i + ",";

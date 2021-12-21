@@ -19,6 +19,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Utils;
 
 import java.util.Collections;
 import java.util.HashSet;
@@ -37,7 +38,7 @@ import static org.mockito.Mockito.*;
 public class TestVeniceHelixAdminWithoutCluster {
   @Test
   public void canFindStartedVersionInStore(){
-    String storeName = TestUtils.getUniqueString("store");
+    String storeName = Utils.getUniqueString("store");
     Store store = new ZKStore(storeName, "owner", System.currentTimeMillis(), PersistenceType.IN_MEMORY, RoutingStrategy.CONSISTENT_HASH,
         ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION, 1);
     store.increaseVersion("123");
@@ -51,8 +52,8 @@ public class TestVeniceHelixAdminWithoutCluster {
    */
   @Test
   public void findStartedVersionIgnoresPushId() {
-    String pushId = TestUtils.getUniqueString("pushid");
-    String storeName = TestUtils.getUniqueString("store");
+    String pushId = Utils.getUniqueString("pushid");
+    String storeName = Utils.getUniqueString("store");
     Store store = new ZKStore(storeName, "owner", System.currentTimeMillis(), PersistenceType.IN_MEMORY, RoutingStrategy.CONSISTENT_HASH,
         ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION, 1);
     store.increaseVersion(pushId);
@@ -66,7 +67,7 @@ public class TestVeniceHelixAdminWithoutCluster {
 
   @Test
   public void canMergeNewHybridConfigValuesToOldStore() {
-    String storeName = TestUtils.getUniqueString("storeName");
+    String storeName = Utils.getUniqueString("storeName");
     Store store = TestUtils.createTestStore(storeName, "owner", System.currentTimeMillis());
     Assert.assertFalse(store.isHybrid());
 
@@ -100,7 +101,7 @@ public class TestVeniceHelixAdminWithoutCluster {
   @Test (expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*still exists in cluster.*")
   public void testCheckResourceCleanupBeforeStoreCreationWhenExistsInOtherCluster() {
     String clusterName = "cluster1";
-    String storeName = TestUtils.getUniqueString("test_store_recreation");
+    String storeName = Utils.getUniqueString("test_store_recreation");
     StoreConfig storeConfig = new StoreConfig(storeName);
     storeConfig.setCluster("cluster2");
     testCheckResourceCleanupBeforeStoreCreationWithParams(clusterName,
@@ -116,7 +117,7 @@ public class TestVeniceHelixAdminWithoutCluster {
   @Test (expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*still exists in cluster.*")
   public void testCheckResourceCleanupBeforeStoreCreationWhenExistsInTheSameCluster() {
     String clusterName = "cluster1";
-    String storeName = TestUtils.getUniqueString("test_store_recreation");
+    String storeName = Utils.getUniqueString("test_store_recreation");
     Store store = TestUtils.getRandomStore();
     testCheckResourceCleanupBeforeStoreCreationWithParams(clusterName,
         storeName,
@@ -135,7 +136,7 @@ public class TestVeniceHelixAdminWithoutCluster {
   @Test
   public void testCheckResourceCleanupBeforeStoreCreationWhenSomeVersionTopicStillExists() {
     String clusterName = "cluster1";
-    String storeName = TestUtils.getUniqueString("test_store_recreation");
+    String storeName = Utils.getUniqueString("test_store_recreation");
     Set<String> topics = new HashSet<>();
     topics.add(Version.composeKafkaTopic(storeName, 1));
     topics.add("unknown_store_v1");
@@ -152,7 +153,7 @@ public class TestVeniceHelixAdminWithoutCluster {
   @Test (expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = "Topic.*still exists for store.*")
   public void testCheckResourceCleanupBeforeStoreCreationWhenRTTopicStillExists() {
     String clusterName = "cluster1";
-    String storeName = TestUtils.getUniqueString("test_store_recreation");
+    String storeName = Utils.getUniqueString("test_store_recreation");
     Set<String> topics = new HashSet<>();
     topics.add(Version.composeRealTimeTopic(storeName));
     topics.add("unknown_store_v1");
@@ -169,7 +170,7 @@ public class TestVeniceHelixAdminWithoutCluster {
   @Test (expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = "Topic.*still exists for store.*")
   public void testCheckResourceCleanupBeforeStoreCreationWhenSomeSystemStoreTopicStillExists() {
     String clusterName = "cluster1";
-    String storeName = TestUtils.getUniqueString("test_store_recreation");
+    String storeName = Utils.getUniqueString("test_store_recreation");
     Set<String> topics = new HashSet<>();
     topics.add(Version.composeRealTimeTopic(VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName)));
     topics.add("unknown_store_v1");
@@ -186,7 +187,7 @@ public class TestVeniceHelixAdminWithoutCluster {
   @Test (expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = "Helix Resource.*still exists for store.*")
   public void testCheckResourceCleanupBeforeStoreCreationWhenSomeSystemStoreHelixResourceStillExists() {
     String clusterName = "cluster1";
-    String storeName = TestUtils.getUniqueString("test_store_recreation");
+    String storeName = Utils.getUniqueString("test_store_recreation");
     List<String> resources = new LinkedList<>();
     resources.add(Version.composeKafkaTopic(VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName), 1));
     resources.add("unknown_store_v1");
@@ -203,7 +204,7 @@ public class TestVeniceHelixAdminWithoutCluster {
   @Test
   public void testCheckResourceCleanupBeforeStoreCreationWhenSomeSystemStoreHelixResourceStillExistsButHelixResourceSkipped() {
     String clusterName = "cluster1";
-    String storeName = TestUtils.getUniqueString("test_store_recreation");
+    String storeName = Utils.getUniqueString("test_store_recreation");
     List<String> resources = new LinkedList<>();
     resources.add(Version.composeKafkaTopic(VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName), 1));
     resources.add("unknown_store_v1");

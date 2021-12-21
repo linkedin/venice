@@ -53,7 +53,7 @@ public class StatTrackingStoreClientTest {
   public void setUp() {
     mockStoreClient = mock(InternalAvroStoreClient.class);
 
-    String storeName = TestUtils.getUniqueString("store");
+    String storeName = Utils.getUniqueString("store");
     doReturn(storeName).when(mockStoreClient).getStoreName();
     metricPrefix = "." + storeName;
   }
@@ -364,7 +364,7 @@ public class StatTrackingStoreClientTest {
       }
     }
 
-    String storeName = TestUtils.getUniqueString("test_store");
+    String storeName = Utils.getUniqueString("test_store");
     InternalAvroStoreClient innerClient = new StoreClientForMultiGetStreamTest(mock(TransportClient.class),
         storeName, false, AbstractAvroStoreClient.getDefaultDeserializationExecutor());
     MetricsRepository repository = new MetricsRepository();
@@ -419,7 +419,7 @@ public class StatTrackingStoreClientTest {
       }
     }
 
-    String storeName = TestUtils.getUniqueString("test_store");
+    String storeName = Utils.getUniqueString("test_store");
     InternalAvroStoreClient innerClient = new StoreClientForMultiGetStreamTest(mock(TransportClient.class),
         storeName, false, AbstractAvroStoreClient.getDefaultDeserializationExecutor(), new VeniceClientHttpException(500));
     MetricsRepository repository = new MetricsRepository();
@@ -485,7 +485,7 @@ public class StatTrackingStoreClientTest {
       }
     }
 
-    String storeName = TestUtils.getUniqueString("test_store");
+    String storeName = Utils.getUniqueString("test_store");
     InternalAvroStoreClient innerClient = new StoreClientForMultiGetStreamTest(mock(TransportClient.class),
         storeName, false, AbstractAvroStoreClient.getDefaultDeserializationExecutor(), new VeniceClientHttpException(500));
     MetricsRepository repository = new MetricsRepository();
@@ -541,7 +541,7 @@ public class StatTrackingStoreClientTest {
       }
     }
 
-    String storeName = TestUtils.getUniqueString("test_store");
+    String storeName = Utils.getUniqueString("test_store");
     InternalAvroStoreClient innerClient = new StoreClientForComputeStreamTest(mock(TransportClient.class),
         storeName, false, AbstractAvroStoreClient.getDefaultDeserializationExecutor(), new VeniceClientHttpException(500));
     MetricsRepository repository = new MetricsRepository();

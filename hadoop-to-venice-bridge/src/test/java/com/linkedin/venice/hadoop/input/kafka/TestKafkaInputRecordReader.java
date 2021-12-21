@@ -11,6 +11,7 @@ import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.io.IOException;
@@ -45,7 +46,7 @@ public class TestKafkaInputRecordReader {
   }
 
   public String getTopic(int numRecord, Pair<Integer, Integer> updateRange, Pair<Integer, Integer> deleteRange) {
-    String topicName = TestUtils.getUniqueString("test_kafka_input_format");
+    String topicName = Utils.getUniqueString("test_kafka_input_format");
     manager.createTopic(topicName, 1, 1, true);
     VeniceWriterFactory veniceWriterFactory = TestUtils.getVeniceWriterFactory(kafka.getAddress());
     try(VeniceWriter<byte[], byte[], byte[]> veniceWriter = veniceWriterFactory.createBasicVeniceWriter(topicName)) {

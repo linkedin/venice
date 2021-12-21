@@ -9,7 +9,6 @@ import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.integration.utils.MirrorMakerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
-import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiColoMultiClusterWrapper;
@@ -36,12 +35,8 @@ import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.*;
-import static com.linkedin.venice.CommonConfigKeys.*;
 import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.hadoop.VenicePushJob.*;
-import static com.linkedin.venice.meta.IngestionMode.*;
-import static com.linkedin.venice.meta.PersistenceType.*;
-import static com.linkedin.venice.samza.VeniceSystemFactory.*;
 import static com.linkedin.venice.utils.TestPushUtils.*;
 import static com.linkedin.venice.writer.SharedKafkaProducerService.*;
 
@@ -123,7 +118,7 @@ public class TestPushJobWithNativeReplicationSharedProducer {
 
     try {
       for (int i = 0; i < storeCount; i++) {
-        String storeName = TestUtils.getUniqueString("store");
+        String storeName = Utils.getUniqueString("store");
         storeNames[i] = storeName;
         Properties props = defaultH2VProps(parentController.getControllerUrl(), inputDirPath, storeName);
         storeProps[i] = props;

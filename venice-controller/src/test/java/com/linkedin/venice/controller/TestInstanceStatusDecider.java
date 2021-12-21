@@ -15,6 +15,8 @@ import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.pushmonitor.PushMonitorDelegator;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Utils;
+
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -40,7 +42,7 @@ public class TestInstanceStatusDecider {
 
   @BeforeMethod
   public void setup() {
-    clusterName = TestUtils.getUniqueString("TestInstanceStatusDecider");
+    clusterName = Utils.getUniqueString("TestInstanceStatusDecider");
     resources = mock(HelixVeniceClusterResources.class);
     routingDataRepository = mock(HelixExternalViewRepository.class);
     readWriteStoreRepository = mock(HelixReadWriteStoreRepository.class);

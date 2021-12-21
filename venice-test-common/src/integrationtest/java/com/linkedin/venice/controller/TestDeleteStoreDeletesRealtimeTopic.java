@@ -4,7 +4,6 @@ import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.controllerapi.ControllerClient;
-import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -45,7 +44,7 @@ public class TestDeleteStoreDeletesRealtimeTopic {
     venice = ServiceFactory.getVeniceCluster();
     controllerClient = ControllerClient.constructClusterControllerClient(venice.getClusterName(), venice.getRandomRouterURL());
     topicManager = new TopicManager(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, 0l, TestUtils.getVeniceConsumerFactory(venice.getKafka()));
-    storeName = TestUtils.getUniqueString("hybrid-store");
+    storeName = Utils.getUniqueString("hybrid-store");
     venice.getNewStore(storeName);
     makeStoreHybrid(venice, storeName, 100L, 5L);
     client = ClientFactory.getAndStartGenericAvroClient(
@@ -63,7 +62,7 @@ public class TestDeleteStoreDeletesRealtimeTopic {
 
   @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void deletingHybridStoreDeletesRealtimeTopic() {
-    TestUtils.assertCommand(controllerClient.emptyPush(storeName, TestUtils.getUniqueString("push-id"), 1L));
+    TestUtils.assertCommand(controllerClient.emptyPush(storeName, Utils.getUniqueString("push-id"), 1L));
 
     //write streaming records
     SystemProducer veniceProducer = null;

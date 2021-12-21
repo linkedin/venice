@@ -53,7 +53,7 @@ public class TestDelayedRebalance {
     String topicName = createVersionAndPushData();
     int failServerPort = stopAServer(topicName);
     //Wait one server disconnected, helix just set replica to OFFLINE but do not do the rebalance
-    TestUtils.waitForNonDeterministicCompletion(testTimeOutMS, TimeUnit.MILLISECONDS, () -> {
+    TestUtils.waitForNonDeterministicCompletion(3, TimeUnit.SECONDS, () -> {
       PartitionAssignment assignment =
           cluster.getRandomVeniceRouter().getRoutingDataRepository().getPartitionAssignments(topicName);
       return assignment.getPartition(0).getReadyToServeInstances().size() == 1
@@ -62,7 +62,7 @@ public class TestDelayedRebalance {
     // restart failed server
     cluster.restartVeniceServer(failServerPort);
     //OFFLINE replica become ONLINE again.
-    TestUtils.waitForNonDeterministicCompletion(testTimeOutMS, TimeUnit.MILLISECONDS, () -> {
+    TestUtils.waitForNonDeterministicCompletion(3, TimeUnit.SECONDS, () -> {
       PartitionAssignment assignment =
           cluster.getRandomVeniceRouter().getRoutingDataRepository().getPartitionAssignments(topicName);
       return assignment.getPartition(0).getReadyToServeInstances().size() == 2;
@@ -83,7 +83,7 @@ public class TestDelayedRebalance {
     // helix would move the partition to other server.
     String topicName = createVersionAndPushData();
     int failServerPort = stopAServer(topicName);
-    TestUtils.waitForNonDeterministicCompletion(testTimeOutMS, TimeUnit.MILLISECONDS, () -> {
+    TestUtils.waitForNonDeterministicCompletion(3, TimeUnit.SECONDS, () -> {
       cluster.refreshAllRouterMetaData();
       PartitionAssignment partitionAssignment =
           cluster.getRandomVeniceRouter().getRoutingDataRepository().getPartitionAssignments(topicName);
@@ -109,7 +109,7 @@ public class TestDelayedRebalance {
 
     Thread.sleep(delayRebalanceMS / 2);
     // Wait rebalance happen due to timeout.
-    TestUtils.waitForNonDeterministicCompletion(testTimeOutMS, TimeUnit.MILLISECONDS, () -> {
+    TestUtils.waitForNonDeterministicCompletion(3, TimeUnit.SECONDS, () -> {
       PartitionAssignment assignment =
           cluster.getRandomVeniceRouter().getRoutingDataRepository().getPartitionAssignments(topicName);
       return assignment.getPartition(0).getReadyToServeInstances().size() == 2;
@@ -136,13 +136,13 @@ public class TestDelayedRebalance {
     int failServerPort = stopAServer(topicName);
 
     // Helix do not do the relanace immediately
-    TestUtils.waitForNonDeterministicCompletion(testTimeOutMS, TimeUnit.MILLISECONDS, () -> {
+    TestUtils.waitForNonDeterministicCompletion(3, TimeUnit.SECONDS, () -> {
       PartitionAssignment assignment =
           cluster.getRandomVeniceRouter().getRoutingDataRepository().getPartitionAssignments(topicName);
       return assignment.getPartition(0).getReadyToServeInstances().size() == 1;
     });
     // Before test time out, helix do the rebalance.
-    TestUtils.waitForNonDeterministicCompletion(testTimeOutMS, TimeUnit.MILLISECONDS, () -> {
+    TestUtils.waitForNonDeterministicCompletion(3, TimeUnit.SECONDS, () -> {
       PartitionAssignment assignment =
           cluster.getRandomVeniceRouter().getRoutingDataRepository().getPartitionAssignments(topicName);
       return assignment.getPartition(0).getReadyToServeInstances().size() == 2;
@@ -163,7 +163,7 @@ public class TestDelayedRebalance {
     Thread.sleep(testTimeOutMS);
     int failServerPort = stopAServer(topicName);
     // Wait rebalance happen immediately and all replica become ONLINE again. Ensure the replica moved to other server.
-    TestUtils.waitForNonDeterministicCompletion(testTimeOutMS, TimeUnit.MILLISECONDS, () -> {
+    TestUtils.waitForNonDeterministicCompletion(3, TimeUnit.SECONDS, () -> {
       PartitionAssignment assignment =
           cluster.getRandomVeniceRouter().getRoutingDataRepository().getPartitionAssignments(topicName);
       return assignment.getPartition(0).getReadyToServeInstances().size() == 2
@@ -197,7 +197,7 @@ public class TestDelayedRebalance {
     // restart failed server
     cluster.restartVeniceServer(failServerPort);
     //OFFLINE replica become ONLINE again.
-    TestUtils.waitForNonDeterministicCompletion(testTimeOutMS, TimeUnit.MILLISECONDS, () -> {
+    TestUtils.waitForNonDeterministicCompletion(3, TimeUnit.SECONDS, () -> {
       PartitionAssignment assignment =
           cluster.getRandomVeniceRouter().getRoutingDataRepository().getPartitionAssignments(topicName);
       return assignment.getPartition(0).getReadyToServeInstances().size() == 2;
@@ -219,7 +219,7 @@ public class TestDelayedRebalance {
   }
 
   private String createVersionAndPushData() {
-    String storeName = TestUtils.getUniqueString("TestDelayedRebalance");
+    String storeName = Utils.getUniqueString("TestDelayedRebalance");
     int partitionCount = 1;
     int dataSize = partitionCount * partitionSize;
 
@@ -235,7 +235,7 @@ public class TestDelayedRebalance {
     }
 
     //Wait push completed and all replica become ONLINE
-    TestUtils.waitForNonDeterministicCompletion(testTimeOutMS, TimeUnit.MILLISECONDS, () -> {
+    TestUtils.waitForNonDeterministicCompletion(3, TimeUnit.SECONDS, () -> {
       PartitionAssignment assignment =
           cluster.getRandomVeniceRouter().getRoutingDataRepository().getPartitionAssignments(topicName);
       return assignment.getPartition(0).getReadyToServeInstances().size() == 2;

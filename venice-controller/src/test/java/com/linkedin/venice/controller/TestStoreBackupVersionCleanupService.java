@@ -6,6 +6,8 @@ import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.utils.MockTime;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Utils;
+
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -25,7 +27,7 @@ public class TestStoreBackupVersionCleanupService {
   private Store mockStore(long backupVersionRetentionMs, long latestVersionPromoteToCurrentTimestamp,
       Map<Integer, VersionStatus> versions, int currentVersion) {
     Store store = mock(Store.class);
-    doReturn(TestUtils.getUniqueString()).when(store).getName();
+    doReturn(Utils.getUniqueString()).when(store).getName();
     doReturn(backupVersionRetentionMs).when(store).getBackupVersionRetentionMs();
     doReturn(latestVersionPromoteToCurrentTimestamp).when(store).getLatestVersionPromoteToCurrentTimestamp();
     doReturn(currentVersion).when(store).getCurrentVersion();
@@ -136,9 +138,9 @@ public class TestStoreBackupVersionCleanupService {
     MockTime time = new MockTime();
     StoreBackupVersionCleanupService service = new StoreBackupVersionCleanupService(admin, config, time);
     service.startInner();
-    TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.SECONDS, true, false, () -> {
-      verify(admin, atLeast(1)).deleteOneStoreVersion(clusterName, storeWithTwoVersions.getName(), 1);
-    });
+    TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.SECONDS,
+        () -> verify(admin, atLeast(1)).deleteOneStoreVersion(clusterName, storeWithTwoVersions.getName(), 1)
+    );
   }
 
 }

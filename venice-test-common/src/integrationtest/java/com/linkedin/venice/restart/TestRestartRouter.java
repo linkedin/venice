@@ -11,6 +11,8 @@ import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.Utils;
+
 import java.util.concurrent.TimeUnit;
 import java.util.Optional;
 import org.testng.Assert;
@@ -21,7 +23,6 @@ import org.testng.annotations.Test;
 @Test(singleThreaded = true)
 public class TestRestartRouter {
   private VeniceClusterWrapper cluster;
-  int testTimeOutMS = 3000;
 
   @BeforeClass
   public void setup() {
@@ -39,8 +40,8 @@ public class TestRestartRouter {
 
   @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testRestartRouter() {
-    String storeName = TestUtils.getUniqueString("testRestartRouter");
-    String storeOwner = TestUtils.getUniqueString("store-owner");
+    String storeName = Utils.getUniqueString("testRestartRouter");
+    String storeOwner = Utils.getUniqueString("store-owner");
     String keySchema = "\"string\"";
     String valueSchema = "\"string\"";
     VeniceRouterWrapper routerWrapper = cluster.getRandomVeniceRouter();
@@ -64,7 +65,7 @@ public class TestRestartRouter {
     //restart
     cluster.restartVeniceRouter(routerWrapper.getPort());
     //wait unit find the master controller.(After restart, it need some time to read data from zk.)
-    TestUtils.waitForNonDeterministicCompletion(testTimeOutMS, TimeUnit.MILLISECONDS, () -> {
+    TestUtils.waitForNonDeterministicCompletion(3, TimeUnit.SECONDS, () -> {
       RoutingDataRepository repository = routerWrapper.getRoutingDataRepository();
       try {
         repository.getMasterController();

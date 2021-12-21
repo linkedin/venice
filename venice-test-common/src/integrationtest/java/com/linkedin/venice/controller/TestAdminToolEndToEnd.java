@@ -110,7 +110,7 @@ public class TestAdminToolEndToEnd {
     System.out.println("venice.getMasterVeniceController().getControllerUrl() = " + venice.getMasterVeniceController().getControllerUrl());
     try (ControllerClient controllerClient = new ControllerClient(clusterName, venice.getMasterVeniceController().getControllerUrl())) {
       // Create 2 inc push stores with Incremental Push to VT policy
-      String testStoreName1 = TestUtils.getUniqueString("test-store");
+      String testStoreName1 = Utils.getUniqueString("test-store");
       NewStoreResponse newStoreResponse = controllerClient.createNewStore(testStoreName1, "test",
           "\"string\"", "\"string\"");
       Assert.assertFalse(newStoreResponse.isError());
@@ -119,7 +119,7 @@ public class TestAdminToolEndToEnd {
           .setIncrementalPushPolicy(IncrementalPushPolicy.PUSH_TO_VERSION_TOPIC));
       Assert.assertFalse(updateStoreResponse.isError());
 
-      String testStoreName2 = TestUtils.getUniqueString("test-store");
+      String testStoreName2 = Utils.getUniqueString("test-store");
       newStoreResponse = controllerClient.createNewStore(testStoreName2, "test",
           "\"string\"", "\"string\"");
       Assert.assertFalse(newStoreResponse.isError());
@@ -154,18 +154,18 @@ public class TestAdminToolEndToEnd {
   public void testWipeClusterCommand() throws Exception {
     try (ControllerClient controllerClient = new ControllerClient(clusterName, venice.getMasterVeniceController().getControllerUrl())) {
       // Create 2 stores. Store 1 has 2 versions
-      String testStoreName1 = TestUtils.getUniqueString("test-store");
+      String testStoreName1 = Utils.getUniqueString("test-store");
       NewStoreResponse newStoreResponse = controllerClient.createNewStore(testStoreName1, "test",
           "\"string\"", "\"string\"");
       Assert.assertFalse(newStoreResponse.isError());
       VersionCreationResponse versionCreationResponse = controllerClient.emptyPush(testStoreName1,
-          TestUtils.getUniqueString("empty-push-1"), 1L);
+          Utils.getUniqueString("empty-push-1"), 1L);
       Assert.assertFalse(versionCreationResponse.isError());
       versionCreationResponse = controllerClient.emptyPush(testStoreName1,
-          TestUtils.getUniqueString("empty-push-2"), 1L);
+          Utils.getUniqueString("empty-push-2"), 1L);
       Assert.assertFalse(versionCreationResponse.isError());
 
-      String testStoreName2 = TestUtils.getUniqueString("test-store");
+      String testStoreName2 = Utils.getUniqueString("test-store");
       newStoreResponse = controllerClient.createNewStore(testStoreName2, "test",
           "\"string\"", "\"string\"");
       Assert.assertFalse(newStoreResponse.isError());
@@ -207,7 +207,7 @@ public class TestAdminToolEndToEnd {
           "\"string\"", "\"string\"");
       Assert.assertFalse(newStoreResponse.isError());
       versionCreationResponse = controllerClient.emptyPush(testStoreName1,
-          TestUtils.getUniqueString("empty-push-1"), 1L);
+          Utils.getUniqueString("empty-push-1"), 1L);
       Assert.assertFalse(versionCreationResponse.isError());
       Assert.assertEquals(versionCreationResponse.getVersion(), 1);
     }

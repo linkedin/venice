@@ -38,8 +38,6 @@ dependencies {
     runtime libraries.commonsLang
     runtime libraries.httpCore
     runtime libraries.httpClient
-
-    testImplementation libraries.log4j2api
 }
 
 configurations {

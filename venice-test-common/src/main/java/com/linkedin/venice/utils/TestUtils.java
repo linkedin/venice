@@ -36,10 +36,9 @@ import com.linkedin.venice.writer.KafkaProducerWrapper;
 import com.linkedin.venice.writer.SharedKafkaProducerService;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
+
 import io.tehuti.metrics.MetricsRepository;
-import java.io.File;
-import java.io.IOException;
-import java.nio.file.Paths;
+
 import java.security.Permission;
 import java.util.Arrays;
 import java.util.Collections;
@@ -51,13 +50,14 @@ import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
 import java.util.stream.Stream;
-import org.apache.commons.io.FileUtils;
+
 import org.apache.helix.HelixManagerFactory;
 import org.apache.helix.InstanceType;
 import org.apache.helix.participant.statemachine.StateModel;
 import org.apache.helix.participant.statemachine.StateModelFactory;
 import org.apache.kafka.clients.CommonClientConfigs;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
 
 import static com.linkedin.venice.ConfigKeys.*;
@@ -68,75 +68,35 @@ import static org.testng.Assert.*;
  * General-purpose utility functions for tests.
  */
 public class TestUtils {
-  private static final Logger LOGGER = Logger.getLogger(TestUtils.class);
+  private static final Logger LOGGER = LogManager.getLogger(TestUtils.class);
 
   /** In milliseconds */
-  private static final int WAIT_TIME_FOR_NON_DETERMINISTIC_ACTIONS = Time.MS_PER_SECOND / 5;
-  private static final int MAX_WAIT_TIME_FOR_NON_DETERMINISTIC_ACTIONS = 60 * Time.MS_PER_SECOND;
-  private static final int GRACE_PERIOD_FOR_NON_DETERMINISTIC_ACTIONS = Time.MS_PER_SECOND;
+  private static final long ND_ASSERTION_MIN_WAIT_TIME_MS = 200;
+  private static final long ND_ASSERTION_MAX_WAIT_TIME_MS = 5000;
 
-  private final static InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer = AvroProtocolDefinition.PARTITION_STATE.getSerializer();
-
-  public static final String TEMP_DIRECTORY_SYSTEM_PROPERTY = "java.io.tmpdir";
-
-  public static String getUniqueString() {
-    return getUniqueString("");
-  }
-
-  public static String getUniqueString(String base) {
-    /**
-     * Dash(-) is an illegal character for avro; both compute and ETL feature uses store name in their avro schema;
-     * so it's better not to use dash in the store name.
-     */
-    return base + "-" + System.nanoTime() + "-" + RandomGenUtils.getRandomIntWithIn(Integer.MAX_VALUE);
-  }
-
-  public static String getUniqueAlphanumericString(String base) {
-    return base + System.nanoTime() + RandomGenUtils.getRandomIntWithIn(Integer.MAX_VALUE);
-  }
-
-  public static String getUniqueTempPath() {
-    return getUniqueTempPath("");
-  }
-
-  public static String getUniqueTempPath(String prefix) {
-    return Paths.get(System.getProperty(TEMP_DIRECTORY_SYSTEM_PROPERTY), TestUtils.getUniqueString(prefix)).toAbsolutePath().toString();
-  }
-
-  public static File getTempDataDirectory(Optional<String> name) {
-    String tmpDirectory = System.getProperty(TestUtils.TEMP_DIRECTORY_SYSTEM_PROPERTY);
-    String directoryName = TestUtils.getUniqueString(name.orElse("Venice-Data"));
-    File dir = new File(tmpDirectory, directoryName).getAbsoluteFile();
-    dir.mkdir();
-    Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-      try {
-        FileUtils.deleteDirectory(dir);
-      } catch (IOException e) {}
-    }));
-    return dir;
-  }
-
-  public static File getTempDataDirectory() {
-    return getTempDataDirectory(Optional.empty());
-  }
+  private static final InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer = AvroProtocolDefinition.PARTITION_STATE.getSerializer();
 
   /**
-   * To be used for tests when we need to wait for an async operation to complete.  Pass a timeout, and a labmda
+   * To be used for tests when we need to wait for an async operation to complete.  Pass a timeout, and a lambda
    * for checking if the operation is complete.
    *
    * @param timeout amount of time to wait
-   * @param timeoutUnits {@link TimeUnit} for the {@param timeout}
-   * @param conditionToWaitFor A {@link BooleanSupplier} which should execute the non-deterministic action and
+   * @param timeoutUnit {@link TimeUnit} for the {@param timeout}
+   * @param condition A {@link BooleanSupplier} which should execute the non-deterministic action and
    *                           return true if it is successful, false otherwise.
    */
-  public static void waitForNonDeterministicCompletion(long timeout, TimeUnit timeoutUnits, BooleanSupplier conditionToWaitFor) {
-    long timeoutTime = System.currentTimeMillis() + timeoutUnits.toMillis(timeout);
-    while (!conditionToWaitFor.getAsBoolean()) {
-      if (System.currentTimeMillis() > timeoutTime) {
-        throw new RuntimeException("Operation did not complete in time");
-      }
-      Utils.sleep(WAIT_TIME_FOR_NON_DETERMINISTIC_ACTIONS);
+  public static void waitForNonDeterministicCompletion(long timeout, TimeUnit timeoutUnit, BooleanSupplier condition) throws AssertionError {
+    long nextDelayMs = ND_ASSERTION_MIN_WAIT_TIME_MS;
+    long deadlineMs = System.currentTimeMillis() + timeoutUnit.toMillis(timeout);
+    while (!condition.getAsBoolean()) {
+      long remainingMs = deadlineMs - System.currentTimeMillis();
+      assertTrue(remainingMs > nextDelayMs, "Non-deterministic condition not met.");
+      assertTrue(Utils.sleep(nextDelayMs), "Waiting for non-deterministic condition was interrupted.");
     }
+  }
+
+  public interface NonDeterministicAssertion {
+    void execute() throws Exception;
   }
 
   /**
@@ -149,58 +109,49 @@ public class TestUtils {
    * TODO: find a better way resolve it
    *
    * @param timeout amount of time to wait
-   * @param timeoutUnits {@link TimeUnit} for the {@param timeout}
-   * @param assertionToWaitFor A {@link NonDeterministicAssertion} which should simply execute without exception
+   * @param timeoutUnit {@link TimeUnit} for the {@param timeout}
+   * @param assertion A {@link NonDeterministicAssertion} which should simply execute without exception
    *                           if it is successful, or throw an {@link AssertionError} otherwise.
    * @throws AssertionError throws the exception thrown by the {@link NonDeterministicAssertion} if the maximum
    *                        wait time has been exceeded.
    */
-  public static void waitForNonDeterministicAssertion(long timeout,
-                                                      TimeUnit timeoutUnits,
-                                                      NonDeterministicAssertion assertionToWaitFor) throws AssertionError {
-    waitForNonDeterministicAssertion(timeout, timeoutUnits, false, assertionToWaitFor);
+  public static void waitForNonDeterministicAssertion(
+      long timeout,
+      TimeUnit timeoutUnit,
+      NonDeterministicAssertion assertion) throws AssertionError {
+    waitForNonDeterministicAssertion(timeout, timeoutUnit, false, assertion);
   }
 
-  public static void waitForNonDeterministicAssertion(long timeout,
-                                                      TimeUnit timeoutUnits,
-                                                      boolean exponentialBackOff,
-                                                      NonDeterministicAssertion assertionToWaitFor) throws AssertionError {
-    waitForNonDeterministicAssertion(timeout, timeoutUnits, exponentialBackOff, false, assertionToWaitFor);
+  public static void waitForNonDeterministicAssertion(
+      long timeout,
+      TimeUnit timeoutUnit,
+      boolean exponentialBackOff,
+      NonDeterministicAssertion assertion) throws AssertionError {
+    waitForNonDeterministicAssertion(timeout, timeoutUnit, exponentialBackOff, false, assertion);
   }
 
-  public static void waitForNonDeterministicAssertion(long timeout,
-                                                      TimeUnit timeoutUnits,
-                                                      boolean exponentialBackOff,
-                                                      boolean retryForThrowable,
-                                                      NonDeterministicAssertion assertionToWaitFor) throws AssertionError {
-    long timeoutTime = System.currentTimeMillis() + timeoutUnits.toMillis(timeout);
-    long graceTimeout = timeoutTime - GRACE_PERIOD_FOR_NON_DETERMINISTIC_ACTIONS;
-    long waitTime = WAIT_TIME_FOR_NON_DETERMINISTIC_ACTIONS;
-    while (true) {
+  public static void waitForNonDeterministicAssertion(
+      long timeout,
+      TimeUnit timeoutUnit,
+      boolean exponentialBackOff,
+      boolean retryOnThrowable,
+      NonDeterministicAssertion assertion) throws AssertionError {
+    long nextDelayMs = ND_ASSERTION_MIN_WAIT_TIME_MS;
+    long deadlineMs = System.currentTimeMillis() + timeoutUnit.toMillis(timeout);
+    for (;;) {
       try {
-        assertionToWaitFor.execute();
+        assertion.execute();
         return;
-      } catch (AssertionError | VerifyError e) {
-        if (System.currentTimeMillis() > timeoutTime) {
-          throw e;
-        } else {
-          LOGGER.info("waitForNonDeterministicAssertion caught an AssertionError. Will retry again in: " + waitTime
-              + " ms. Assertion message: " + e.getMessage());
-        }
       } catch (Throwable e) {
-        if (!retryForThrowable || System.currentTimeMillis() > timeoutTime) {
-          throw new AssertionError(e);
-        } else {
-          LOGGER.info("waitForNonDeterministicAssertion caught a Throwable. Will retry again in: " + waitTime
-              + " ms. Assertion message: " + e.getMessage());
+        long remainingMs = deadlineMs - System.currentTimeMillis();
+        if (remainingMs < nextDelayMs || !(retryOnThrowable || e instanceof AssertionError)) {
+          throw (e instanceof AssertionError ? (AssertionError) e : new AssertionError(e));
         }
-      } finally {
-        Utils.sleep(waitTime);
+        LOGGER.info("Non-deterministic assertion not met: {}. Will retry again in {} ms.", e, nextDelayMs);
+        assertTrue(Utils.sleep(ND_ASSERTION_MIN_WAIT_TIME_MS), "Waiting for non-deterministic assertion was interrupted.");
         if (exponentialBackOff) {
-          waitTime = Math.min(Math.min(waitTime * 2, graceTimeout - System.currentTimeMillis()),
-              MAX_WAIT_TIME_FOR_NON_DETERMINISTIC_ACTIONS);
-          // Round up to min sleep time.
-          waitTime = Math.max(waitTime, WAIT_TIME_FOR_NON_DETERMINISTIC_ACTIONS);
+          nextDelayMs = Math.min(nextDelayMs * 2, remainingMs - nextDelayMs);
+          nextDelayMs = Math.min(nextDelayMs, ND_ASSERTION_MAX_WAIT_TIME_MS);
         }
       }
     }
@@ -266,8 +217,8 @@ public class TestUtils {
    * found to be in ERROR state.
    */
   public static void waitForNonDeterministicPushCompletion(String topicName, ControllerClient controllerClient,
-      long timeout, TimeUnit timeoutUnits, Optional<Logger> logger) {
-    waitForNonDeterministicCompletion(timeout, timeoutUnits, () -> {
+      long timeout, TimeUnit timeoutUnit, Optional<Logger> logger) {
+    waitForNonDeterministicCompletion(timeout, timeoutUnit, () -> {
       String emptyPushStatus = controllerClient.queryJobStatus(topicName, Optional.empty()).getStatus();
       boolean ignoreError = false;
       try {
@@ -286,8 +237,8 @@ public class TestUtils {
   }
 
   public static void waitForNonDeterministicIncrementalPushCompletion(String topicName, String incrementalPushVersion,
-      ControllerClient controllerClient, long timeout, TimeUnit timeoutUnits, Optional<Logger> logger) {
-    waitForNonDeterministicCompletion(timeout, timeoutUnits, () -> {
+      ControllerClient controllerClient, long timeout, TimeUnit timeoutUnit, Optional<Logger> logger) {
+    waitForNonDeterministicCompletion(timeout, timeoutUnit, () -> {
       String emptyPushStatus = controllerClient.queryJobStatus(topicName, Optional.of(incrementalPushVersion)).getStatus();
       boolean ignoreError = false;
       try {
@@ -313,10 +264,6 @@ public class TestUtils {
       // Set the default timestamp to make sure every creation will return the same Store object.
       store.setLatestVersionPromoteToCurrentTimestamp(-1);
       return store;
-  }
-
-  public interface NonDeterministicAssertion {
-    void execute() throws Exception;
   }
 
   /**
@@ -454,8 +401,8 @@ public class TestUtils {
   }
 
   public static Store getRandomStore() {
-    return new ZKStore(TestUtils.getUniqueString("RandomStore"),
-        TestUtils.getUniqueString("RandomOwner"),
+    return new ZKStore(Utils.getUniqueString("RandomStore"),
+        Utils.getUniqueString("RandomOwner"),
         System.currentTimeMillis(),
         PersistenceType.ROCKS_DB,
         RoutingStrategy.CONSISTENT_HASH,

@@ -92,7 +92,7 @@ public class PushStatusStoreTest {
 
   @BeforeMethod
   public void setUpStore() {
-    storeName = TestUtils.getUniqueString("store");
+    storeName = Utils.getUniqueString("store");
     String owner = "test";
     // set up push status store
     TestUtils.assertCommand(controllerClient.createNewStore(storeName, owner, DEFAULT_KEY_SCHEMA, "\"string\""));
@@ -194,7 +194,7 @@ public class PushStatusStoreTest {
         assertTrue(readOnlyStore.isHybrid(),
             "Store: " + zkSharedDaVinciPushStatusSchemaStoreName + " should be configured to hybrid");
       });
-      String storeName = TestUtils.getUniqueString("new-user-store");
+      String storeName = Utils.getUniqueString("new-user-store");
       assertFalse(
           parentControllerClient.createNewStore(storeName, "venice-test", DEFAULT_KEY_SCHEMA, "\"string\"").isError(),
           "Unexpected new store creation failure");
@@ -207,7 +207,7 @@ public class PushStatusStoreTest {
 
   private PropertyBuilder getBackendConfigBuilder() {
     PropertyBuilder backendConfigBuilder = new PropertyBuilder()
-        .put(ConfigKeys.DATA_BASE_PATH, TestUtils.getTempDataDirectory().getAbsolutePath())
+        .put(ConfigKeys.DATA_BASE_PATH, Utils.getTempDataDirectory().getAbsolutePath())
         .put(ConfigKeys.PERSISTENCE_TYPE, PersistenceType.ROCKS_DB)
         .put(CLIENT_USE_META_SYSTEM_STORE_REPOSITORY, true)
         .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 10)
@@ -228,7 +228,7 @@ public class PushStatusStoreTest {
 
   private void runH2V(Properties h2vProperties, int expectedVersionNumber, VeniceClusterWrapper cluster) {
     long h2vStart = System.currentTimeMillis();
-    String jobName = TestUtils.getUniqueString("batch-job-" + expectedVersionNumber);
+    String jobName = Utils.getUniqueString("batch-job-" + expectedVersionNumber);
     try (VenicePushJob job = new VenicePushJob(jobName, h2vProperties)) {
       job.run();
       String storeName = (String) h2vProperties.get(VenicePushJob.VENICE_STORE_NAME_PROP);

@@ -78,7 +78,7 @@ public class IngestionBenchmarkWithTwoProcesses {
 
   @Benchmark
   public void ingestionBenchmarkTest() {
-    File dataBasePath = TestUtils.getTempDataDirectory();
+    File dataBasePath = Utils.getTempDataDirectory();
     try {
       FileUtils.deleteDirectory(dataBasePath);
       DaVinciClient<Long, GenericRecord> client = getGenericAvroDaVinciClient(storeName, zkAddress, dataBasePath.toString());

@@ -10,7 +10,8 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.stats.AggServerQuotaUsageStats;
-import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Utils;
+
 import io.netty.channel.ChannelHandlerContext;
 import java.time.Clock;
 import java.util.Arrays;
@@ -70,7 +71,7 @@ public class ReadQuotaEnforcementHandlerTest {
    */
   @Test
   public void testQuotaEnforcementAtStoreLevel() {
-    String storeName = TestUtils.getUniqueString("store");
+    String storeName = Utils.getUniqueString("store");
     String topic = Version.composeKafkaTopic(storeName, 1);
 
     Instance thisInstance = mock(Instance.class);
@@ -99,7 +100,7 @@ public class ReadQuotaEnforcementHandlerTest {
    */
   @Test
   public void testQuotaEnforcementAtStoreLevelWithMultipleNodes(){
-    String storeName = TestUtils.getUniqueString("store");
+    String storeName = Utils.getUniqueString("store");
     String topic = Version.composeKafkaTopic(storeName, 1);
 
     Instance thisInstance = mock(Instance.class);

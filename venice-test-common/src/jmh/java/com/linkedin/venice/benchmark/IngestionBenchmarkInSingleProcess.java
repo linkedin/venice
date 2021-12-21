@@ -84,7 +84,7 @@ public class IngestionBenchmarkInSingleProcess {
 
   @Benchmark
   public void ingestionBenchmarkTest() {
-    File dataBasePath = TestUtils.getTempDataDirectory();
+    File dataBasePath = Utils.getTempDataDirectory();
     try {
       // Delete and recreate data base folder.
       FileUtils.deleteDirectory(dataBasePath);

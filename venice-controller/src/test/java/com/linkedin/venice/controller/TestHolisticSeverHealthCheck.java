@@ -33,7 +33,6 @@ public class TestHolisticSeverHealthCheck {
   protected ControllerClient controllerClient;
   int replicaFactor = 2;
   int partitionSize = 1000;
-  long testTimeOutMS = 120000;
 
   @BeforeClass
   public void setup() {
@@ -107,7 +106,7 @@ public class TestHolisticSeverHealthCheck {
 
   @Test(timeOut = 120 * Time.MS_PER_SECOND)
   public void testHealthServiceAfterServerRestart() throws Exception {
-    String storeName = TestUtils.getUniqueString("testHealthServiceAfterServerRestart");
+    String storeName = Utils.getUniqueString("testHealthServiceAfterServerRestart");
     int dataSize = 2000;
 
     // Assert both servers are in the ready state before the push.
@@ -127,7 +126,7 @@ public class TestHolisticSeverHealthCheck {
     }
 
     // Wait until push is completed.
-    TestUtils.waitForNonDeterministicCompletion(testTimeOutMS, TimeUnit.MILLISECONDS,
+    TestUtils.waitForNonDeterministicCompletion(120, TimeUnit.SECONDS,
         () -> cluster.getMasterVeniceController()
             .getVeniceAdmin()
             .getOffLinePushStatus(cluster.getClusterName(), topicName)
@@ -143,7 +142,7 @@ public class TestHolisticSeverHealthCheck {
     }
 
     // Wait until the server is shutdown completely from the router's point of view.
-    TestUtils.waitForNonDeterministicCompletion(testTimeOutMS, TimeUnit.MILLISECONDS, () -> {
+    TestUtils.waitForNonDeterministicCompletion(120, TimeUnit.SECONDS, () -> {
       PartitionAssignment partitionAssignment;
       try {
         partitionAssignment =
@@ -167,7 +166,7 @@ public class TestHolisticSeverHealthCheck {
     // Wait until the servers are in the ready state again.
     for (VeniceServerWrapper server : cluster.getVeniceServers()) {
       String nodeId = Utils.getHelixNodeIdentifier(server.getPort());
-      TestUtils.waitForNonDeterministicCompletion(testTimeOutMS, TimeUnit.MILLISECONDS,
+      TestUtils.waitForNonDeterministicCompletion(120, TimeUnit.SECONDS,
           () -> VerifyNodeReplicasState(nodeId, NodeReplicasReadinessState.READY));
     }
 

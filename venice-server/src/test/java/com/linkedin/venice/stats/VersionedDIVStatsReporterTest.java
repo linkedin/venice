@@ -3,7 +3,8 @@ package com.linkedin.venice.stats;
 import com.linkedin.davinci.stats.DIVStats;
 import com.linkedin.davinci.stats.DIVStatsReporter;
 import com.linkedin.venice.tehuti.MockTehutiReporter;
-import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Utils;
+
 import io.tehuti.metrics.MetricsRepository;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -21,7 +22,7 @@ public class VersionedDIVStatsReporterTest {
     MockTehutiReporter reporter = new MockTehutiReporter();
     metricsRepository.addReporter(reporter);
 
-    String storeName = TestUtils.getUniqueString("store");
+    String storeName = Utils.getUniqueString("store");
     VeniceVersionedStatsReporter<DIVStats, DIVStatsReporter> statsReporter =
         new VeniceVersionedStatsReporter<>(metricsRepository, storeName, (mr, name) -> new DIVStatsReporter(mr, name));
     DIVStats stats = new DIVStats();

@@ -35,7 +35,8 @@ import java.util.Properties;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import org.apache.avro.Schema;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
@@ -51,7 +52,7 @@ import static org.testng.Assert.*;
 public class PushJobDetailsTest {
   private final Map<Integer, Schema> schemaVersionMap = new HashMap<>();
   private final int latestSchemaId = 2;
-  private static final Logger logger = Logger.getLogger(PushJobDetailsTest.class);
+  private static final Logger logger = LogManager.getLogger(PushJobDetailsTest.class);
   private VeniceClusterWrapper venice;
   private VeniceControllerWrapper parentController;
   private ZkServerWrapper zkWrapper;

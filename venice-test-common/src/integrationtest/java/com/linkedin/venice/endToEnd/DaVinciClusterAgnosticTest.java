@@ -125,7 +125,7 @@ public class DaVinciClusterAgnosticTest {
       // Create the venice stores and materialize the corresponding meta system store for each store.
       try (ControllerClient parentControllerClient = new ControllerClient(cluster,
           parentController.getControllerUrl())) {
-        String storeName = TestUtils.getUniqueString("test-store");
+        String storeName = Utils.getUniqueString("test-store");
         stores.add(storeName);
         assertFalse(parentControllerClient.createNewStore(storeName, "venice-test", INT_KEY_SCHEMA, INT_VALUE_SCHEMA)
             .isError());
@@ -140,7 +140,7 @@ public class DaVinciClusterAgnosticTest {
       }
     }
     VeniceProperties backendConfig =
-        new PropertyBuilder().put(DATA_BASE_PATH, TestUtils.getTempDataDirectory().getAbsolutePath())
+        new PropertyBuilder().put(DATA_BASE_PATH, Utils.getTempDataDirectory().getAbsolutePath())
             .put(PERSISTENCE_TYPE, PersistenceType.ROCKS_DB)
             .put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
             .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
@@ -227,7 +227,7 @@ public class DaVinciClusterAgnosticTest {
   public void testDaVinciVersionSwap() throws Exception {
     int keyCount = 10;
     String cluster = clusterNames[0];
-    String storeName = TestUtils.getUniqueString("test-version-swap");
+    String storeName = Utils.getUniqueString("test-version-swap");
     Schema schema = Schema.parse(RECORD_VALUE_SCHEMA);
     GenericRecord record1 = new GenericData.Record(schema);
     record1.put("field1", 1);
@@ -245,7 +245,7 @@ public class DaVinciClusterAgnosticTest {
       multiClusterVenice.getClusters().get(cluster).refreshAllRouterMetaData();
 
       VeniceProperties backendConfig =
-          new PropertyBuilder().put(DATA_BASE_PATH, TestUtils.getTempDataDirectory().getAbsolutePath())
+          new PropertyBuilder().put(DATA_BASE_PATH, Utils.getTempDataDirectory().getAbsolutePath())
               .put(PERSISTENCE_TYPE, PersistenceType.ROCKS_DB)
               .put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
               .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)

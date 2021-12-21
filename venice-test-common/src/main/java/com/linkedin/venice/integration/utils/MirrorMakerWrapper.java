@@ -3,7 +3,6 @@ package com.linkedin.venice.integration.utils;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.ForkedJavaProcess;
 import com.linkedin.venice.utils.PropertyBuilder;
-import com.linkedin.venice.utils.TestUtils;
 
 import com.linkedin.mirrormaker.IdentityNewConsumerRebalanceListener;
 import com.linkedin.mirrormaker.IdentityPartitioningMessageHandler;
@@ -72,12 +71,12 @@ public class MirrorMakerWrapper extends ProcessWrapper {
     Properties properties = new PropertyBuilder()
         .put(consumerProperties)
         .put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, sourceKafkaAddress)
-        .putIfAbsent(ConsumerConfig.GROUP_ID_CONFIG, TestUtils.getUniqueString("mm"))
+        .putIfAbsent(ConsumerConfig.GROUP_ID_CONFIG, com.linkedin.venice.utils.Utils.getUniqueString("mm"))
         .putIfAbsent(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest")
         .putIfAbsent(ConsumerConfig.METADATA_MAX_AGE_CONFIG, "0")
         .build()
         .toProperties();
-    return IntegrationTestUtils.getConfigFile(directory, TestUtils.getUniqueString(), properties).getAbsolutePath();
+    return IntegrationTestUtils.getConfigFile(directory, com.linkedin.venice.utils.Utils.getUniqueString(), properties).getAbsolutePath();
   }
 
   public static String createProducerConfig(File directory, String targetKafkaAddress, String targetZkAddress, Properties producerProperties) {
@@ -89,7 +88,7 @@ public class MirrorMakerWrapper extends ProcessWrapper {
         .putIfAbsent("identityMirror.TargetReplicationFactor", "1")
         .build()
         .toProperties();
-    return IntegrationTestUtils.getConfigFile(directory, TestUtils.getUniqueString(), properties).getAbsolutePath();
+    return IntegrationTestUtils.getConfigFile(directory, com.linkedin.venice.utils.Utils.getUniqueString(), properties).getAbsolutePath();
   }
 
   MirrorMakerWrapper(

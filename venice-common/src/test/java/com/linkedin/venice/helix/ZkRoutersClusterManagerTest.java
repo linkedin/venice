@@ -3,12 +3,11 @@ package com.linkedin.venice.helix;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
-import com.linkedin.venice.meta.RoutersClusterConfig;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import java.util.concurrent.TimeUnit;
-import org.apache.helix.AccessOption;
+
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.zookeeper.CreateMode;
 import org.testng.Assert;
@@ -52,7 +51,7 @@ public class ZkRoutersClusterManagerTest {
     }
 
     // Ensure each router manager eventually get the correct router count. And get the correct router cluster config.
-    TestUtils.waitForNonDeterministicCompletion(1000, TimeUnit.MILLISECONDS, () -> {
+    TestUtils.waitForNonDeterministicCompletion(1, TimeUnit.SECONDS, () -> {
       for (ZkRoutersClusterManager manager : managers) {
         if (manager.getLiveRoutersCount() != routersCount) {
           return false;
@@ -72,13 +71,13 @@ public class ZkRoutersClusterManagerTest {
     manager.registerRouter(Utils.getHelixNodeIdentifier(port));
     failedManager.registerRouter(Utils.getHelixNodeIdentifier(port + 1));
     // Eventually both manager wil get notification to update router count.
-    TestUtils.waitForNonDeterministicCompletion(1000, TimeUnit.MILLISECONDS, () -> manager.getLiveRoutersCount() == 2);
-    TestUtils.waitForNonDeterministicCompletion(1000, TimeUnit.MILLISECONDS,
+    TestUtils.waitForNonDeterministicCompletion(1, TimeUnit.SECONDS, () -> manager.getLiveRoutersCount() == 2);
+    TestUtils.waitForNonDeterministicCompletion(1, TimeUnit.SECONDS,
         () -> failedManager.getLiveRoutersCount() == 2);
     // One router failed
     failedZkClient.close();
     // Router count should be updated eventually.
-    TestUtils.waitForNonDeterministicCompletion(1000, TimeUnit.MILLISECONDS, () -> manager.getLiveRoutersCount() == 1);
+    TestUtils.waitForNonDeterministicCompletion(1, TimeUnit.SECONDS, () -> manager.getLiveRoutersCount() == 1);
   }
 
   @Test
@@ -167,16 +166,16 @@ public class ZkRoutersClusterManagerTest {
     int expectedNumber = 100;
     controller.updateExpectedRouterCount(expectedNumber);
     // The controller will know the new router is added.
-    TestUtils.waitForNonDeterministicCompletion(1000, TimeUnit.MILLISECONDS,
+    TestUtils.waitForNonDeterministicCompletion(1, TimeUnit.SECONDS,
         () -> controller.getLiveRoutersCount() == 1);
     // The router will know the expected number is updated.
-    TestUtils.waitForNonDeterministicCompletion(1000, TimeUnit.MILLISECONDS,
+    TestUtils.waitForNonDeterministicCompletion(1, TimeUnit.SECONDS,
         () -> router.getExpectedRoutersCount() == expectedNumber);
 
     controller.enableThrottling(false);
     controller.enableMaxCapacityProtection(false);
     // The router will know the throttling and router protection are disabled.
-    TestUtils.waitForNonDeterministicCompletion(1000, TimeUnit.MILLISECONDS,
+    TestUtils.waitForNonDeterministicCompletion(1, TimeUnit.SECONDS,
         () -> (!router.isThrottlingEnabled()) && (!router.isMaxCapacityProtectionEnabled())
             && router.isQuotaRebalanceEnabled());
   }
@@ -199,12 +198,12 @@ public class ZkRoutersClusterManagerTest {
 
     manager.updateExpectedRouterCount(expectedNumber);
 
-    TestUtils.waitForNonDeterministicCompletion(1000, TimeUnit.MILLISECONDS, () -> isUpdated[0]);
+    TestUtils.waitForNonDeterministicCompletion(1, TimeUnit.SECONDS, () -> isUpdated[0]);
 
     // Trigger event because throttling feature flag was changed.
     isUpdated[0] = false;
     manager.enableThrottling(false);
-    TestUtils.waitForNonDeterministicCompletion(1000, TimeUnit.MILLISECONDS, () -> isUpdated[0]);
+    TestUtils.waitForNonDeterministicCompletion(1, TimeUnit.SECONDS, () -> isUpdated[0]);
   }
 
   private ZkRoutersClusterManager createManager(ZkClient zkClient) {
@@ -216,7 +215,7 @@ public class ZkRoutersClusterManagerTest {
 
   @Test
   public void testRouterClusterConfigCreationWhenZNodeAlreadyExistsWithEmptyContent() {
-    String myClusterName = TestUtils.getUniqueString("test-cluster");
+    String myClusterName = Utils.getUniqueString("test-cluster");
     ZkRoutersClusterManager manager = new ZkRoutersClusterManager(zkClient, adapter, myClusterName, 1, 1000);
     zkClient.create(HelixUtils.getHelixClusterZkPath(myClusterName), null, CreateMode.PERSISTENT);
     zkClient.create(manager.getRouterRootPath(), null, CreateMode.PERSISTENT);

@@ -16,8 +16,16 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
-import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
-import com.linkedin.venice.utils.locks.AutoCloseableLock;
+
+import org.apache.avro.Schema;
+import org.apache.commons.io.FileUtils;
+import org.apache.commons.io.IOUtils;
+import org.apache.commons.lang.StringUtils;
+import org.apache.http.HttpStatus;
+import org.apache.log4j.Logger;
+
+import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
 import java.io.Closeable;
 import java.io.File;
 import java.io.FileInputStream;
@@ -43,18 +51,9 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.TreeMap;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.locks.Lock;
 import java.util.function.Consumer;
-import java.util.function.Supplier;
-import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
-import org.apache.avro.Schema;
-import org.apache.commons.io.IOUtils;
-import org.apache.commons.lang.StringUtils;
-import org.apache.http.HttpStatus;
-import org.apache.log4j.Logger;
 
 import static com.linkedin.venice.HttpConstants.*;
 
@@ -282,25 +281,19 @@ public class Utils {
    * @return current node's host name.
    */
   public static String getHostName() {
-
     if (localhost) {
       return LOCALHOST;
     }
-
-    String hostName;
-
     try {
-      hostName = InetAddress.getLocalHost().getHostName();
+      String hostName = InetAddress.getLocalHost().getHostName();
+      if (StringUtils.isEmpty(hostName)) {
+        throw new VeniceException("Unable to get the hostname.");
+      }
+      return hostName;
     } catch (UnknownHostException e) {
       e.printStackTrace();
       throw new VeniceException("Unable to get the hostname.", e);
     }
-
-    if (StringUtils.isEmpty(hostName)) {
-      throw new VeniceException("Unable to get the hostname.");
-    }
-
-    return hostName;
   }
 
   /***
@@ -555,6 +548,37 @@ public class Utils {
       return socket.getLocalPort();
     } catch (IOException e) {
       throw new RuntimeException(e);
+    }
+  }
+
+  public static String getUniqueString() {
+    return getUniqueString("");
+  }
+
+  public static String getUniqueString(String prefix) {
+    return String.format("%s_%x_%x", prefix, System.nanoTime(), ThreadLocalRandom.current().nextInt());
+  }
+
+  public static String getUniqueTempPath() {
+    return getUniqueTempPath("venice-tmp-");
+  }
+
+  public static String getUniqueTempPath(String prefix) {
+    return Paths.get(FileUtils.getTempDirectoryPath(), getUniqueString(prefix)).toAbsolutePath().toString();
+  }
+
+  public static File getTempDataDirectory() {
+    return getTempDataDirectory("venice-tmp-");
+  }
+
+  public static File getTempDataDirectory(String prefix) {
+    try {
+      File directory = new File(getUniqueTempPath(prefix));
+      FileUtils.forceMkdir(directory);
+      FileUtils.forceDeleteOnExit(directory);
+      return directory;
+    } catch (IOException e) {
+      throw new VeniceException(e);
     }
   }
 

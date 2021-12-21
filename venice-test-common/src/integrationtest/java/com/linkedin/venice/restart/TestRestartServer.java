@@ -8,6 +8,7 @@ import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.util.HashMap;
 import java.util.concurrent.TimeUnit;
@@ -21,7 +22,6 @@ public class TestRestartServer {
   private VeniceClusterWrapper cluster;
   int replicaFactor = 2;
   int partitionSize = 1000;
-  long testTimeOutMS = 20000;
 
   @BeforeClass
   public void setup() {
@@ -40,7 +40,7 @@ public class TestRestartServer {
 
   @Test(timeOut = 120 * Time.MS_PER_SECOND)
   public void testRestartServerAfterPushCompleted() {
-    String storeName = TestUtils.getUniqueString("testRestartServerAfterPushCompleted");
+    String storeName = Utils.getUniqueString("testRestartServerAfterPushCompleted");
     int dataSize = 2000;
     int partitionCount = dataSize / partitionSize;
     cluster.getNewStore(storeName);
@@ -57,7 +57,7 @@ public class TestRestartServer {
     }
 
     // Wait push completed.
-    TestUtils.waitForNonDeterministicCompletion(testTimeOutMS, TimeUnit.MILLISECONDS,
+    TestUtils.waitForNonDeterministicCompletion(20, TimeUnit.SECONDS,
         () -> cluster.getMasterVeniceController()
             .getVeniceAdmin()
             .getOffLinePushStatus(cluster.getClusterName(), topicName)
@@ -69,7 +69,7 @@ public class TestRestartServer {
       cluster.stopVeniceServer(failedServer.getPort());
     }
 
-    TestUtils.waitForNonDeterministicCompletion(testTimeOutMS, TimeUnit.MILLISECONDS, () -> {
+    TestUtils.waitForNonDeterministicCompletion(20, TimeUnit.SECONDS, () -> {
       PartitionAssignment partitionAssignment =
           cluster.getRandomVeniceRouter().getRoutingDataRepository().getPartitionAssignments(topicName);
       // Ensure all of server are shutdown, not partition assigned.
@@ -81,7 +81,7 @@ public class TestRestartServer {
     }
 
     // After restart, all of replica become ONLINE again.
-    TestUtils.waitForNonDeterministicCompletion(testTimeOutMS, TimeUnit.MILLISECONDS, () -> {
+    TestUtils.waitForNonDeterministicCompletion(20, TimeUnit.SECONDS, () -> {
       PartitionAssignment partitionAssignment =
           cluster.getRandomVeniceRouter().getRoutingDataRepository().getPartitionAssignments(topicName);
       if (partitionAssignment.getAssignedNumberOfPartitions() != partitionCount) {

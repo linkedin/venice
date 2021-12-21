@@ -1,7 +1,7 @@
 package com.linkedin.venice.integration.utils;
 
 import com.linkedin.d2.server.factory.D2Server;
-import com.linkedin.r2.transport.common.Client;
+
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.helix.HelixHybridStoreQuotaRepository;
 import com.linkedin.venice.helix.HelixLiveInstanceMonitor;
@@ -102,7 +102,7 @@ public class MockVeniceRouterWrapper extends ProcessWrapper {
       } else {
         d2ServerList = D2TestUtils.getD2Servers(zkAddress, "http://localhost:" + port, "https://localhost:" + sslPortFromPort(port));
       }
-      String clusterName = TestUtils.getUniqueString("mock-venice-router-cluster");
+      String clusterName = Utils.getUniqueString("mock-venice-router-cluster");
       PropertyBuilder builder = new PropertyBuilder()
           .put(CLUSTER_NAME, clusterName)
           .put(LISTENER_PORT, port)

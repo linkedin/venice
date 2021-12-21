@@ -45,7 +45,7 @@ public class TestRebalanceByDefaultStrategy {
   public void setup() {
     cluster = ServiceFactory.getVeniceCluster(numberOfController, numberOfServer, numberOfRouter, replicationFactor,
         partitionSize, false, false);
-    String storeName = TestUtils.getUniqueString("testRollingUpgrade");
+    String storeName = Utils.getUniqueString("testRollingUpgrade");
     cluster.getNewStore(storeName);
     VersionCreationResponse response = cluster.getNewVersion(storeName, partitionSize * partitionNumber);
 

@@ -155,7 +155,7 @@ public class AvroStoreClientEndToEndTest {
       TestUtils.waitForNonDeterministicPushCompletion(metaSystemStoreVersionCreationResponse.getKafkaTopic(), controllerClient, 30,
           TimeUnit.SECONDS, Optional.empty());
       daVinciBackendConfig = new PropertyBuilder()
-          .put(DATA_BASE_PATH, TestUtils.getTempDataDirectory().getAbsolutePath())
+          .put(DATA_BASE_PATH, Utils.getTempDataDirectory().getAbsolutePath())
           .put(PERSISTENCE_TYPE, ROCKS_DB)
           .put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
           .put(CLIENT_USE_DA_VINCI_BASED_SYSTEM_STORE_REPOSITORY, true)

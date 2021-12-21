@@ -175,7 +175,7 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
 
   @Test(timeOut = TEST_TIMEOUT)
   public void controllerClientGetKeySchema() {
-    String storeToCreate = TestUtils.getUniqueString("newTestStore125");
+    String storeToCreate = Utils.getUniqueString("newTestStore125");
     String keySchemaStr = "\"string\"";
     String valueSchemaStr = "\"long\"";
     // Get key schema from non-existed store
@@ -201,7 +201,7 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
 
   @Test(timeOut = TEST_TIMEOUT)
   public void controllerClientManageValueSchema() {
-    String storeToCreate = TestUtils.getUniqueString("newTestStore");
+    String storeToCreate = Utils.getUniqueString("newTestStore");
     String keySchemaStr = "\"string\"";
     String schemaPrefix = "        {\n" + "           \"type\": \"record\",\n" + "           \"name\": \"KeyRecord\",\n"
         + "           \"fields\" : [\n"
@@ -326,7 +326,7 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
   public void controllerClientSchemaOperationsAgainstInvalidStore() {
     String schema1 = "\"string\"";
     // Verify getting operations against non-existed store
-    String nonExistedStore = TestUtils.getUniqueString("test2434095i02");
+    String nonExistedStore = Utils.getUniqueString("test2434095i02");
     SchemaResponse sr1 = controllerClient.getValueSchema(nonExistedStore, 1);
     Assert.assertTrue(sr1.isError());
     SchemaResponse sr2 = controllerClient.getValueSchemaID(nonExistedStore, schema1);
@@ -418,8 +418,8 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
 
   @Test(timeOut = TEST_TIMEOUT)
   public void controllerClientCanSetStoreMetadata() {
-    String storeName = TestUtils.getUniqueString("store");
-    String owner = TestUtils.getUniqueString("owner");
+    String storeName = Utils.getUniqueString("store");
+    String owner = Utils.getUniqueString("owner");
     int partitionCount = 2;
 
     cluster.getNewStore(storeName);
@@ -495,7 +495,7 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
   @Test(timeOut = TEST_TIMEOUT)
   public void controllerClientCanGetExecutionOfDeleteAllVersions() {
     String clusterName = cluster.getClusterName();
-    String storeName = TestUtils.getUniqueString("controllerClientCanDeleteAllVersion");
+    String storeName = Utils.getUniqueString("controllerClientCanDeleteAllVersion");
 
     parentController.getVeniceAdmin().createStore(
         clusterName, storeName, "test", "\"string\"", "\"string\"");
@@ -590,7 +590,7 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
   @Test(timeOut = TEST_TIMEOUT)
   public void controllerClientCanSetStore() {
     //mutable store metadata
-    String owner = TestUtils.getUniqueString("owner");
+    String owner = Utils.getUniqueString("owner");
     int partitionCount = 2;
     int current = 1;
     boolean enableReads = false;
@@ -671,8 +671,8 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
 
   @Test(timeOut = TEST_TIMEOUT)
   public void canCreateAHybridStore() {
-    String storeName = TestUtils.getUniqueString("store");
-    String owner = TestUtils.getUniqueString("owner");
+    String storeName = Utils.getUniqueString("store");
+    String owner = Utils.getUniqueString("owner");
     NewStoreResponse newStoreResponse = controllerClient.createNewStore(storeName, owner, "\"string\"", "\"string\"");
     try {
       controllerClient.updateStore(storeName,
@@ -721,7 +721,7 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
   public void controllerClientCanGetExecutionOfDeleteStore() {
     String clusterName = cluster.getClusterName();
 
-    String storeName = TestUtils.getUniqueString("controllerClientCanGetExecutionOfDeleteStore");
+    String storeName = Utils.getUniqueString("controllerClientCanGetExecutionOfDeleteStore");
     parentController.getVeniceAdmin().createStore(
         clusterName, storeName, "test", "\"string\"", "\"string\"");
 
@@ -745,8 +745,8 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
 
   @Test(timeOut = TEST_TIMEOUT)
   public void controllerClientProvidesErrorWhenRequestingTopicForStoreThatDoesNotExist() throws IOException {
-    String storeNameDoesNotExist = TestUtils.getUniqueString("no-store");
-    String pushId = TestUtils.getUniqueString("no-store-push");
+    String storeNameDoesNotExist = Utils.getUniqueString("no-store");
+    String pushId = Utils.getUniqueString("no-store-push");
 
     VersionCreationResponse vcr =
         controllerClient.requestTopicForWrites(storeNameDoesNotExist, 1L, Version.PushType.BATCH, pushId,
@@ -793,7 +793,7 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
 
   @Test(timeOut = TEST_TIMEOUT)
   public void controllerClientCanDiscoverCluster() {
-    String storeName = TestUtils.getUniqueString("controllerClientCanDiscoverCluster");
+    String storeName = Utils.getUniqueString("controllerClientCanDiscoverCluster");
     controllerClient.createNewStore(storeName, "test", "\"string\"", "\"string\"");
     try {
       Assert.assertEquals(
@@ -806,8 +806,8 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
 
   @Test(timeOut = TEST_TIMEOUT)
   public void controllerCanHandleLargePayload() throws IOException {
-    String storeName = TestUtils.getUniqueString("controllerClientCanDiscoverCluster");
-    String pushId = TestUtils.getUniqueString("no-store-push");
+    String storeName = Utils.getUniqueString("controllerClientCanDiscoverCluster");
+    String pushId = Utils.getUniqueString("no-store-push");
 
     byte[] largeDictionaryBytes = new byte[512 * ByteUtils.BYTES_PER_KB];
     Arrays.fill(largeDictionaryBytes, (byte) 1);
@@ -826,7 +826,7 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
   @Test(timeOut = TEST_TIMEOUT)
   public void controllerCanGetDeletableStoreTopics() {
     // The parent controller here is sharing the same kafka as child controllers.
-    String storeName = TestUtils.getUniqueString("canGetDeletableStoreTopics");
+    String storeName = Utils.getUniqueString("canGetDeletableStoreTopics");
     ControllerClient parentControllerClient =
         new ControllerClient(cluster.getClusterName(), parentController.getControllerUrl());
     try {

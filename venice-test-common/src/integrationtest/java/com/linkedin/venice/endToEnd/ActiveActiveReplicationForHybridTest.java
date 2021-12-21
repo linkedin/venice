@@ -137,10 +137,10 @@ public class ActiveActiveReplicationForHybridTest {
   @Test(timeOut = TEST_TIMEOUT)
   public void testEnableActiveActiveReplicationForCluster() {
     String clusterName = CLUSTER_NAMES[0];
-    String storeName1 = TestUtils.getUniqueString("test-batch-store");
-    String storeName2 = TestUtils.getUniqueString("test-hybrid-agg-store");
-    String storeName3 = TestUtils.getUniqueString("test-hybrid-non-agg-store");
-    String storeName4 = TestUtils.getUniqueString("test-incremental-push-store");
+    String storeName1 = Utils.getUniqueString("test-batch-store");
+    String storeName2 = Utils.getUniqueString("test-hybrid-agg-store");
+    String storeName3 = Utils.getUniqueString("test-hybrid-non-agg-store");
+    String storeName4 = Utils.getUniqueString("test-incremental-push-store");
     VeniceControllerWrapper parentController =
         parentControllers.stream().filter(c -> c.isMasterController(clusterName)).findAny().get();
 
@@ -216,7 +216,7 @@ public class ActiveActiveReplicationForHybridTest {
   @Test
   public void testEnableNRisRequiredBeforeEnablingAA() {
     String clusterName = CLUSTER_NAMES[0];
-    String storeName = TestUtils.getUniqueString("test-store");
+    String storeName = Utils.getUniqueString("test-store");
     VeniceControllerWrapper parentController =
         parentControllers.stream().filter(c -> c.isMasterController(clusterName)).findAny().get();
     try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentController.getControllerUrl())) {
@@ -232,7 +232,7 @@ public class ActiveActiveReplicationForHybridTest {
       Assert.assertFalse(controllerResponse.isError());
 
       // Create a new store
-      String anotherStoreName = TestUtils.getUniqueString("test-store");
+      String anotherStoreName = Utils.getUniqueString("test-store");
       parentControllerClient.createNewStore(anotherStoreName, "owner", STRING_SCHEMA, STRING_SCHEMA);
 
       // Enable NR
@@ -260,7 +260,7 @@ public class ActiveActiveReplicationForHybridTest {
   public void testAAReplicationCanConsumeFromAllRegions(boolean isChunkingEnabled, boolean useTransientRecordCache)
       throws NoSuchFieldException, IllegalAccessException {
     String clusterName = CLUSTER_NAMES[0];
-    String storeName = TestUtils.getUniqueString("test-store");
+    String storeName = Utils.getUniqueString("test-store");
     VeniceControllerWrapper parentController =
         parentControllers.stream().filter(c -> c.isMasterController(clusterName)).findAny().get();
 
@@ -269,7 +269,7 @@ public class ActiveActiveReplicationForHybridTest {
       updateStore(storeName, parentControllerClient, Optional.of(true), Optional.of(true), Optional.of(isChunkingEnabled));
 
       // Empty push to create a version
-      VersionCreationResponse versionCreationResponse = parentControllerClient.emptyPush(storeName, TestUtils.getUniqueString("empty-hybrid-push"), 1L);
+      VersionCreationResponse versionCreationResponse = parentControllerClient.emptyPush(storeName, Utils.getUniqueString("empty-hybrid-push"), 1L);
 
       //disable the purging of transientRecord buffer using reflection.
       if (useTransientRecordCache) {
@@ -312,7 +312,7 @@ public class ActiveActiveReplicationForHybridTest {
         samzaConfig.put(configPrefix + VENICE_AGGREGATE, "false");
         samzaConfig.put(D2_ZK_HOSTS_PROPERTY, childDataCenter.getZkServerWrapper().getAddress());
         samzaConfig.put(VENICE_PARENT_D2_ZK_HOSTS, parentController.getKafkaZkAddress());
-        samzaConfig.put(DEPLOYMENT_ID, TestUtils.getUniqueString("venice-push-id"));
+        samzaConfig.put(DEPLOYMENT_ID, Utils.getUniqueString("venice-push-id"));
         samzaConfig.put(SSL_ENABLED, "false");
         VeniceSystemFactory factory = new VeniceSystemFactory();
         SystemProducer veniceProducer = factory.getProducer("venice", new MapConfig(samzaConfig), null);
@@ -397,7 +397,7 @@ public class ActiveActiveReplicationForHybridTest {
   @Test(timeOut = TEST_TIMEOUT)
   public void controllerClientCanGetStoreReplicationMetadataSchema() {
     String clusterName = CLUSTER_NAMES[0];
-    String storeName = TestUtils.getUniqueString("test-store");
+    String storeName = Utils.getUniqueString("test-store");
     VeniceControllerWrapper parentController =
         parentControllers.stream().filter(c -> c.isMasterController(clusterName)).findAny().get();
     try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentController.getControllerUrl())) {
@@ -405,7 +405,7 @@ public class ActiveActiveReplicationForHybridTest {
       updateStore(storeName, parentControllerClient, Optional.of(true), Optional.of(true), Optional.of(false));
 
       // Empty push to create a version
-      parentControllerClient.emptyPush(storeName, TestUtils.getUniqueString("empty-hybrid-push"), 1L);
+      parentControllerClient.emptyPush(storeName, Utils.getUniqueString("empty-hybrid-push"), 1L);
       MultiSchemaResponse schemaResponse = parentControllerClient.getAllReplicationMetadataSchemas(storeName);
 
       Assert.assertFalse(schemaResponse.isError());
@@ -422,7 +422,7 @@ public class ActiveActiveReplicationForHybridTest {
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testAAReplicationCanResolveConflicts(boolean useLogicalTimestamp) {
     String clusterName = CLUSTER_NAMES[0];
-    String storeName = TestUtils.getUniqueString("test-store");
+    String storeName = Utils.getUniqueString("test-store");
     VeniceControllerWrapper parentController =
         parentControllers.stream().filter(c -> c.isMasterController(clusterName)).findAny().get();
     try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentController.getControllerUrl())) {
@@ -430,7 +430,7 @@ public class ActiveActiveReplicationForHybridTest {
       updateStore(storeName, parentControllerClient, Optional.of(true), Optional.of(true), Optional.of(false));
 
       // Empty push to create a version
-      parentControllerClient.emptyPush(storeName, TestUtils.getUniqueString("empty-hybrid-push"), 1L);
+      parentControllerClient.emptyPush(storeName, Utils.getUniqueString("empty-hybrid-push"), 1L);
 
       // Verify that version 1 is already created in dc-0 region
       try (ControllerClient childControllerClient = new ControllerClient(clusterName, childDatacenters.get(0).getMasterController(clusterName).getControllerUrl())) {
@@ -468,7 +468,7 @@ public class ActiveActiveReplicationForHybridTest {
     // Build the SystemProducer with the mock time
     VeniceMultiClusterWrapper childDataCenter = childDatacenters.get(0);
     SystemProducer producerInDC0 = new VeniceSystemProducer(childDataCenter.getZkServerWrapper().getAddress(), SERVICE_NAME, storeName,
-        Version.PushType.STREAM, TestUtils.getUniqueString("venice-push-id"), "dc-0", true, null, Optional.empty(),
+        Version.PushType.STREAM, Utils.getUniqueString("venice-push-id"), "dc-0", true, null, Optional.empty(),
         Optional.empty(), mockTime);
     producerInDC0.start();
 
@@ -535,7 +535,7 @@ public class ActiveActiveReplicationForHybridTest {
     // Build the SystemProducer with the mock time
     VeniceMultiClusterWrapper childDataCenter1 = childDatacenters.get(1);
     SystemProducer producerInDC1 = new VeniceSystemProducer(childDataCenter1.getZkServerWrapper().getAddress(), SERVICE_NAME, storeName,
-        Version.PushType.STREAM, TestUtils.getUniqueString("venice-push-id"), "dc-1", true, null, Optional.empty(),
+        Version.PushType.STREAM, Utils.getUniqueString("venice-push-id"), "dc-1", true, null, Optional.empty(),
         Optional.empty(), mockTime);
     producerInDC1.start();
 
@@ -573,7 +573,7 @@ public class ActiveActiveReplicationForHybridTest {
   @Test(timeOut = TEST_TIMEOUT)
   public void testAAInOneDCWithHybridAggregateMode() throws Exception {
     String clusterName = CLUSTER_NAMES[0];
-    String storeName = TestUtils.getUniqueString("hybridAA-test-store");
+    String storeName = Utils.getUniqueString("hybridAA-test-store");
     VeniceControllerWrapper parentController =
         parentControllers.stream().filter(c -> c.isMasterController(clusterName)).findAny().get();
     int batchDataRangeEnd = 10;
@@ -614,7 +614,7 @@ public class ActiveActiveReplicationForHybridTest {
       samzaConfig.put(configPrefix + VENICE_AGGREGATE, "true");
       samzaConfig.put(D2_ZK_HOSTS_PROPERTY, "invalid_child_zk_address");
       samzaConfig.put(VENICE_PARENT_D2_ZK_HOSTS, parentController.getKafkaZkAddress());
-      samzaConfig.put(DEPLOYMENT_ID, TestUtils.getUniqueString("venice-push-id"));
+      samzaConfig.put(DEPLOYMENT_ID, Utils.getUniqueString("venice-push-id"));
       samzaConfig.put(SSL_ENABLED, "false");
       VeniceSystemFactory factory = new VeniceSystemFactory();
       SystemProducer veniceProducer = factory.getProducer("venice", new MapConfig(samzaConfig), null);

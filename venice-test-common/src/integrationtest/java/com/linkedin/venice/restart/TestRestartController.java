@@ -9,13 +9,11 @@ import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;
 
-import org.apache.log4j.Logger;
 import org.testng.Assert;
-import org.testng.annotations.AfterClass;
 import org.testng.annotations.AfterMethod;
-import org.testng.annotations.BeforeClass;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
@@ -48,7 +46,7 @@ public class TestRestartController {
    */
   @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testMasterControllerFailover() {
-    String storeName = TestUtils.getUniqueString("testMasterControllerFailover");
+    String storeName = Utils.getUniqueString("testMasterControllerFailover");
     int dataSize = 1000;
     cluster.getNewStore(storeName);
 
@@ -116,7 +114,7 @@ public class TestRestartController {
    */
   @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testControllerRestartFetchesLastSuccessfulPushDuration() {
-    String storeName = TestUtils.getUniqueString("testControllerRestartFetchesLastSuccessfulPushDuration");
+    String storeName = Utils.getUniqueString("testControllerRestartFetchesLastSuccessfulPushDuration");
     int dataSize = 1000;
     cluster.getNewStore(storeName);
     VersionCreationResponse response = cluster.getNewVersion(storeName, dataSize);

@@ -6,8 +6,9 @@ import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.unit.kafka.InMemoryKafkaBroker;
 import com.linkedin.venice.utils.MockTime;
-import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.Utils;
+
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
@@ -25,7 +26,7 @@ import static org.mockito.Mockito.*;
 public class KafkaClusterBasedRecordThrottlerTest {
   @Test
   public void testRecordsCanBeThrottledPerRegion() throws ExecutionException, InterruptedException {
-    String topic = TestUtils.getUniqueString("topic");
+    String topic = Utils.getUniqueString("topic");
     InMemoryKafkaBroker inMemoryLocalKafkaBroker = new InMemoryKafkaBroker("local");
     inMemoryLocalKafkaBroker.createTopic(topic, 2);
     InMemoryKafkaBroker inMemoryRemoteKafkaBroker = new InMemoryKafkaBroker("remote");

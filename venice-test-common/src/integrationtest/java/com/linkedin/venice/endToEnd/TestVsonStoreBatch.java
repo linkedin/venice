@@ -14,7 +14,6 @@ import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
 import com.linkedin.venice.schema.vson.VsonSchema;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.TestPushUtils;
-import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
@@ -26,7 +25,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
-import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
@@ -304,7 +302,7 @@ public class TestVsonStoreBatch {
       TestBatch.H2VValidator dataValidator, UpdateStoreQueryParams storeParms, Optional<String> storeNameOptional, boolean deleteStoreAfterValidation) throws Exception {
     File inputDir = getTempDataDirectory();
     Pair<Schema, Schema> schemas = inputFileWriter.write(inputDir);
-    String storeName = storeNameOptional.isPresent() ? storeNameOptional.get() : TestUtils.getUniqueString("store");
+    String storeName = storeNameOptional.isPresent() ? storeNameOptional.get() : Utils.getUniqueString("store");
     AvroGenericStoreClient avroClient = null;
     AvroGenericStoreClient vsonClient = null;
 

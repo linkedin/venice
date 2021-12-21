@@ -200,11 +200,11 @@ subprojects {
   }
 
   dependencies {
-    implementation 'org.slf4j:slf4j-log4j12:1.7.14'
-    implementation 'javax.validation:validation-api:1.0.0.GA'
+    implementation 'javax.validation:validation-api:2.0.1.Final'
 
     testImplementation libraries.testng
     testImplementation libraries.mockito
+    testImplementation libraries.log4j2api
     // Test utils and framework for all unit tests and integration tests.
     testImplementation project(':venice-test-common')
 
@@ -307,6 +307,7 @@ subprojects {
     )
     excludeFilter = file("$rootDir/gradle/spotbugs/exclude.xml")
     ignoreFailures = project.hasProperty('spotbugs.ignoreFailures')
+    showStackTraces = false
     reports ({
       xml {
         enabled = project.hasProperty('spotbugs.xml')

@@ -206,7 +206,7 @@ public class ServiceFactory {
       properties.put(TopicReplicator.TOPIC_REPLICATOR_CLASS_NAME, "com.linkedin.venice.replication.BrooklinTopicReplicator");
       properties.put(TopicReplicator.TOPIC_REPLICATOR_SOURCE_KAFKA_CLUSTER, kafkaBrokerWrapper.getAddress());
       properties.put(TopicReplicator.TOPIC_REPLICATOR_CONFIG_PREFIX + "brooklin.connection.string", brooklinWrapper.getBrooklinDmsUri());
-      properties.put(TopicReplicator.TOPIC_REPLICATOR_CONFIG_PREFIX + "brooklin.application.id", TestUtils.getUniqueString("venice"));
+      properties.put(TopicReplicator.TOPIC_REPLICATOR_CONFIG_PREFIX + "brooklin.application.id", Utils.getUniqueString("venice"));
 
     }
     return getStatefulService(VeniceControllerWrapper.SERVICE_NAME,
@@ -361,7 +361,7 @@ public class ServiceFactory {
   //TODO There are too many parameters and options that we used to create a venice cluster wrapper.
   //TODO need a builder pattern or option class to simply this.
   public static VeniceClusterWrapper getVeniceClusterWithKafkaSSL(boolean isKafkaOpenSSLEnabled) {
-    return getVeniceCluster(TestUtils.getUniqueString("venice-cluster"), 1, 1, 1, DEFAULT_REPLICATION_FACTOR, DEFAULT_PARTITION_SIZE_BYTES,
+    return getVeniceCluster(Utils.getUniqueString("venice-cluster"), 1, 1, 1, DEFAULT_REPLICATION_FACTOR, DEFAULT_PARTITION_SIZE_BYTES,
         false, false, DEFAULT_DELAYED_TO_REBALANCE_MS, DEFAULT_REPLICATION_FACTOR-1, DEFAULT_SSL_TO_STORAGE_NODES, true, isKafkaOpenSSLEnabled);
   }
 
@@ -419,7 +419,7 @@ public class ServiceFactory {
   public static VeniceClusterWrapper getVeniceCluster(int numberOfControllers, int numberOfServers, int numberOfRouters,
       int replicationFactor, int partitionSize, boolean sslToStorageNodes, boolean sslToKafka, Properties extraProperties) {
     return getService(VeniceClusterWrapper.SERVICE_NAME,
-        VeniceClusterWrapper.generateService(TestUtils.getUniqueString("venice-cluster"), numberOfControllers,
+        VeniceClusterWrapper.generateService(Utils.getUniqueString("venice-cluster"), numberOfControllers,
             numberOfServers, numberOfRouters, replicationFactor, partitionSize, false, false,
             DEFAULT_DELAYED_TO_REBALANCE_MS, replicationFactor - 1, sslToStorageNodes,
             sslToKafka, false, extraProperties));
@@ -439,7 +439,7 @@ public class ServiceFactory {
   public static VeniceClusterWrapper getVeniceCluster(int numberOfControllers, int numberOfServers, int numberOfRouters,
       int replicationFactor, int partitionSize, boolean enableWhitelist, boolean enableAutoJoinWhitelist,
       long delayToRebalanceMS, int minActiveReplica, boolean sslToStorageNodes, boolean sslToKafka) {
-    return getVeniceCluster(TestUtils.getUniqueString("venice-cluster"), numberOfControllers, numberOfServers, numberOfRouters, replicationFactor, partitionSize,
+    return getVeniceCluster(Utils.getUniqueString("venice-cluster"), numberOfControllers, numberOfServers, numberOfRouters, replicationFactor, partitionSize,
         enableWhitelist, enableAutoJoinWhitelist, delayToRebalanceMS, minActiveReplica, sslToStorageNodes, sslToKafka);
   }
 
@@ -635,7 +635,7 @@ public class ServiceFactory {
   }
 
   public static <K, V> DaVinciClient<K, V> getGenericAvroDaVinciClient(String storeName, VeniceClusterWrapper cluster) {
-    return getGenericAvroDaVinciClient(storeName, cluster, TestUtils.getTempDataDirectory().getAbsolutePath());
+    return getGenericAvroDaVinciClient(storeName, cluster, Utils.getTempDataDirectory().getAbsolutePath());
   }
 
   public static <K, V> DaVinciClient<K, V> getGenericAvroDaVinciClient(String storeName, VeniceClusterWrapper cluster, String dataBasePath) {

@@ -72,7 +72,7 @@ class AbstractTestVeniceHelixAdmin {
     zkAddress = zkServerWrapper.getAddress();
     kafkaBrokerWrapper = ServiceFactory.getKafkaBroker();
     kafkaZkAddress = kafkaBrokerWrapper.getZkAddress();
-    clusterName = TestUtils.getUniqueString("test-cluster");
+    clusterName = Utils.getUniqueString("test-cluster");
     controllerProps = new VeniceProperties(getControllerProperties(clusterName));
     helixMessageChannelStats = new HelixMessageChannelStats(new MetricsRepository(), clusterName);
     controllerConfig = new VeniceControllerConfig(controllerProps);
@@ -223,9 +223,9 @@ class AbstractTestVeniceHelixAdmin {
     veniceAdmin.updateStore(clusterName, participantStoreName, queryParams);
     veniceAdmin.incrementVersionIdempotent(clusterName, participantStoreName, Version.guidBasedDummyPushId(),
         participantStorePartitionCount, DEFAULT_REPLICA_COUNT);
-    TestUtils.waitForNonDeterministicAssertion(5000, TimeUnit.MILLISECONDS,
+    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS,
         () -> Assert.assertEquals(veniceAdmin.getStore(clusterName, participantStoreName).getVersions().size(), 1));
-    TestUtils.waitForNonDeterministicAssertion(3000, TimeUnit.MILLISECONDS,
+    TestUtils.waitForNonDeterministicAssertion(3, TimeUnit.SECONDS,
         () -> Assert.assertEquals(veniceAdmin.getRealTimeTopic(clusterName, participantStoreName),
             Version.composeRealTimeTopic(participantStoreName)));
   }

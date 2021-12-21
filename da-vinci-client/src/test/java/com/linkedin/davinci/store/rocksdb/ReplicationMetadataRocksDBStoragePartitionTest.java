@@ -19,7 +19,7 @@ import com.linkedin.venice.schema.rmd.ReplicationMetadataSchemaEntry;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.Pair;
-import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.File;
 import java.nio.ByteBuffer;
@@ -39,12 +39,12 @@ import static org.mockito.Mockito.*;
 public class ReplicationMetadataRocksDBStoragePartitionTest extends AbstractStorageEngineTest {
   private static final int PARTITION_ID = 0;
 
-  private final String storeName = TestUtils.getUniqueString("rocksdb_store_test");
+  private final String storeName = Utils.getUniqueString("rocksdb_store_test");
   private final ReadOnlyStoreRepository mockReadOnlyStoreRepository = mock(ReadOnlyStoreRepository.class);
   private final int versionNumber = 0;
   private final String topicName = Version.composeKafkaTopic(storeName, versionNumber);
 
-  private static final String DATA_BASE_DIR = TestUtils.getUniqueTempPath();
+  private static final String DATA_BASE_DIR = Utils.getUniqueTempPath();
   private static final String keyPrefix = "key_";
   private static final String valuePrefix = "value_";
   private static final String metadataPrefix = "metadata_";

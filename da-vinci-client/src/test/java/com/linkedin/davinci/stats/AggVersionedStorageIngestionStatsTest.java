@@ -13,7 +13,8 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.tehuti.MockTehutiReporter;
-import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Utils;
+
 import io.tehuti.metrics.MetricsRepository;
 import org.testng.Assert;
 import org.testng.annotations.BeforeTest;
@@ -64,7 +65,7 @@ public class AggVersionedStorageIngestionStatsTest {
 
   @Test
   public void testWithRegularStoreIngestion() {
-    String storeName = TestUtils.getUniqueString("test-store");
+    String storeName = Utils.getUniqueString("test-store");
     Store ingestionStore = getMockStore(storeName);
     ingestionStore.addVersion(new VersionImpl(storeName, 1, ""));
     ingestionStore.setCurrentVersion(1);

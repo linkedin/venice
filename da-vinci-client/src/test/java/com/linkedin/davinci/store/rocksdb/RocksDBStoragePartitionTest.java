@@ -7,7 +7,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.validation.checksum.CheckSum;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.meta.PersistenceType;
-import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.File;
 import java.nio.ByteBuffer;
@@ -32,7 +32,7 @@ import static com.linkedin.venice.ConfigKeys.*;
 
 public class RocksDBStoragePartitionTest {
   private static final Logger logger = Logger.getLogger(RocksDBStoragePartitionTest.class);
-  private static final String DATA_BASE_DIR = TestUtils.getUniqueTempPath();
+  private static final String DATA_BASE_DIR = Utils.getUniqueTempPath();
   private static final String keyPrefix = "key_";
   private static final String valuePrefix = "value_";
   private static final RocksDBThrottler rocksDbThrottler = new RocksDBThrottler(3);
@@ -93,7 +93,7 @@ public class RocksDBStoragePartitionTest {
   @Test (dataProvider = "testIngestionDataProvider")
   public void testIngestion(boolean sorted, boolean interrupted, boolean reopenDatabaseDuringInterruption, boolean verifyChecksum) {
     Optional<CheckSum> runningChecksum = CheckSum.getInstance(CheckSumType.MD5);
-    String storeName = TestUtils.getUniqueString("test_store");
+    String storeName = Utils.getUniqueString("test_store");
     String storeDir = getTempDatabaseDir(storeName);
     int partitionId = 0;
     StoragePartitionConfig partitionConfig = new StoragePartitionConfig(storeName, partitionId);
@@ -212,7 +212,7 @@ public class RocksDBStoragePartitionTest {
   @Test (dataProvider = "testIngestionDataProvider")
   public void testIngestionWithClockCache(boolean sorted, boolean interrupted, boolean reopenDatabaseDuringInterruption, boolean verifyChecksum) {
     Optional<CheckSum> runningChecksum = CheckSum.getInstance(CheckSumType.MD5);
-    String storeName = TestUtils.getUniqueString("test_store");
+    String storeName = Utils.getUniqueString("test_store");
     String storeDir = getTempDatabaseDir(storeName);
     int partitionId = 0;
     StoragePartitionConfig partitionConfig = new StoragePartitionConfig(storeName, partitionId);
@@ -360,7 +360,7 @@ public class RocksDBStoragePartitionTest {
 
   @Test
   public void testRocksDBValidityCheck() {
-    String storeName = TestUtils.getUniqueString("test_store");
+    String storeName = Utils.getUniqueString("test_store");
     String storeDir = getTempDatabaseDir(storeName);
     int partitionId = 0;
     StoragePartitionConfig partitionConfig = new StoragePartitionConfig(storeName, partitionId);
@@ -387,7 +387,7 @@ public class RocksDBStoragePartitionTest {
 
   @Test
   public void testPlainTableCompactionTriggerSetting() {
-    String storeName = TestUtils.getUniqueString("test_store");
+    String storeName = Utils.getUniqueString("test_store");
     String storeDir = getTempDatabaseDir(storeName);
     Properties properties = new Properties();
     properties.put(PERSISTENCE_TYPE, PersistenceType.ROCKS_DB.toString());

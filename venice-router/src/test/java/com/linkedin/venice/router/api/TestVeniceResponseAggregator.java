@@ -16,7 +16,8 @@ import com.linkedin.venice.router.stats.RouterStats;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
-import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Utils;
+
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.CompositeByteBuf;
 import io.netty.buffer.Unpooled;
@@ -60,7 +61,7 @@ public class TestVeniceResponseAggregator {
 
   @Test
   public void testBuildResponseForSingleGet() {
-    String storeName = TestUtils.getUniqueString("test_store");
+    String storeName = Utils.getUniqueString("test_store");
     byte[] fakeContent = "abc".getBytes();
     FullHttpResponse response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, OK,
         Unpooled.wrappedBuffer(fakeContent));
@@ -115,7 +116,7 @@ public class TestVeniceResponseAggregator {
 
   @Test
   public void testBuildResponseForMultiGet() {
-    String storeName = TestUtils.getUniqueString("test_store");
+    String storeName = Utils.getUniqueString("test_store");
     String value1 = "value1";
     String value2 = "value2";
     String value3 = "value3";

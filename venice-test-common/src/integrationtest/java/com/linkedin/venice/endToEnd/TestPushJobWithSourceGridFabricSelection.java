@@ -107,7 +107,7 @@ public class TestPushJobWithSourceGridFabricSelection {
     File inputDir = getTempDataDirectory();
     Schema recordSchema = TestPushUtils.writeSimpleAvroFileWithUserSchema(inputDir, true, recordCount);
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
-    String storeName = TestUtils.getUniqueString("store");
+    String storeName = Utils.getUniqueString("store");
     VeniceControllerWrapper parentController =
         parentControllers.stream().filter(c -> c.isMasterController(clusterName)).findAny().get();
 

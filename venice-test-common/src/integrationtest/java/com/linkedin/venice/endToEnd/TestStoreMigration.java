@@ -134,7 +134,7 @@ public class TestStoreMigration {
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testStoreMigrationOnParentController() throws Exception {
-    String storeName = TestUtils.getUniqueString("store");
+    String storeName = Utils.getUniqueString("store");
     createAndPushStore(parentControllerUrl, srcClusterName, storeName);
 
     String srcD2ServiceName = "venice-" + srcClusterName.substring(srcClusterName.length() - 1);
@@ -171,7 +171,7 @@ public class TestStoreMigration {
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testStoreMigrationWithNewPushesAndUpdatesOnParentController() throws Exception {
-    String storeName = TestUtils.getUniqueString("store");
+    String storeName = Utils.getUniqueString("store");
     Properties props = createAndPushStore(parentControllerUrl, srcClusterName, storeName);
 
     try (ControllerClient srcParentControllerClient = new ControllerClient(srcClusterName, parentControllerUrl);
@@ -223,7 +223,7 @@ public class TestStoreMigration {
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testStoreMigrationWithMetaSystemStoreOnParentController() throws Exception {
-    String storeName = TestUtils.getUniqueString("store");
+    String storeName = Utils.getUniqueString("store");
     createAndPushStore(parentControllerUrl, srcClusterName, storeName);
 
     try (ControllerClient srcParentControllerClient = new ControllerClient(srcClusterName, parentControllerUrl)) {
@@ -277,7 +277,7 @@ public class TestStoreMigration {
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testStoreMigrationWithDaVinciPushStatusSystemStoreOnParentController() throws Exception {
-    String storeName = TestUtils.getUniqueString("store");
+    String storeName = Utils.getUniqueString("store");
     createAndPushStore(parentControllerUrl, srcClusterName, storeName);
 
     try (ControllerClient srcParentControllerClient = new ControllerClient(srcClusterName, parentControllerUrl)) {
@@ -293,7 +293,7 @@ public class TestStoreMigration {
     }
 
     VeniceProperties backendConfig = new PropertyBuilder()
-        .put(ConfigKeys.DATA_BASE_PATH, TestUtils.getTempDataDirectory().getAbsolutePath())
+        .put(ConfigKeys.DATA_BASE_PATH, Utils.getTempDataDirectory().getAbsolutePath())
         .put(ConfigKeys.PERSISTENCE_TYPE, PersistenceType.ROCKS_DB)
         .put(CLIENT_USE_META_SYSTEM_STORE_REPOSITORY, true)
         .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 10)
@@ -333,7 +333,7 @@ public class TestStoreMigration {
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testStoreMigrationOnChildController() throws Exception {
-    String storeName = TestUtils.getUniqueString("store");
+    String storeName = Utils.getUniqueString("store");
     createAndPushStore(parentControllerUrl, srcClusterName, storeName);
 
     startMigration(childControllerUrl0, storeName);

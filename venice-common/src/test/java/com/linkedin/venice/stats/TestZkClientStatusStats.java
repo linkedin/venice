@@ -56,7 +56,7 @@ public class TestZkClientStatusStats {
 
       zkClient.process(new WatchedEvent(null, KeeperState.Disconnected, null));
       zkClient.process(new WatchedEvent(null, KeeperState.SyncConnected, null));
-      TestUtils.waitForNonDeterministicAssertion(10000, TimeUnit.MILLISECONDS, () -> {
+      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
         testState(1, 1, 0, 0, KeeperState.SyncConnected);
       });
     } finally {

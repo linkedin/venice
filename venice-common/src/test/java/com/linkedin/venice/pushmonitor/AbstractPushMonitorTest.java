@@ -20,6 +20,7 @@ import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.replication.TopicReplicator;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import com.linkedin.venice.utils.locks.ClusterLockManager;
 import io.tehuti.metrics.MetricsRepository;
@@ -51,7 +52,7 @@ public abstract class AbstractPushMonitorTest {
   private MetadataStoreWriter metadataStoreWriter;
   private ClusterLockManager clusterLockManager;
 
-  private String clusterName = TestUtils.getUniqueString("test_cluster");
+  private String clusterName = Utils.getUniqueString("test_cluster");
   private String aggregateRealTimeSourceKafkaUrl = "aggregate-real-time-source-kafka-url";
   private String storeName;
   private String topic;
@@ -69,7 +70,7 @@ public abstract class AbstractPushMonitorTest {
 
   @BeforeMethod
   public void setup() {
-    storeName = TestUtils.getUniqueString("test_store");
+    storeName = Utils.getUniqueString("test_store");
     topic = storeName + "_v1";
 
     mockAccessor = mock(OfflinePushAccessor.class);

@@ -1,8 +1,8 @@
 package com.linkedin.venice.integration.utils;
 
-import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Utils;
+
 import java.io.File;
-import java.util.Optional;
 
 
 /**
@@ -13,7 +13,7 @@ import java.util.Optional;
  */
 interface StatefulServiceProvider<Service extends ProcessWrapper> extends ServiceProvider<Service> {
   default Service get(String serviceName) throws Exception {
-    File dir = TestUtils.getTempDataDirectory(Optional.of(serviceName));
+    File dir = Utils.getTempDataDirectory(serviceName);
     return get(serviceName, dir);
   }
 

@@ -41,12 +41,12 @@ public class IsolatedIngestionServerTest {
     VeniceConfigLoader configLoader = getConfigLoader(servicePort);
     try (MainIngestionRequestClient client = new MainIngestionRequestClient(IsolatedIngestionUtils.getSSLEngineComponentFactory(configLoader), servicePort)) {
       Process isolatedIngestionService = client.startForkedIngestionProcess(configLoader);
-      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, false, () -> {
-        Assert.assertTrue(client.sendHeartbeatRequest());
-      });
-      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, false, () -> {
-        Assert.assertFalse(isolatedIngestionService.isAlive());
-      });
+      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true,
+          () -> Assert.assertTrue(client.sendHeartbeatRequest())
+      );
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true,
+          () -> Assert.assertFalse(isolatedIngestionService.isAlive())
+      );
     }
   }
 
@@ -91,10 +91,10 @@ public class IsolatedIngestionServerTest {
   }
 
   private VeniceConfigLoader getConfigLoader(int servicePort) {
-    VeniceProperties properties = new PropertyBuilder().put(CLUSTER_NAME, TestUtils.getUniqueString())
+    VeniceProperties properties = new PropertyBuilder().put(CLUSTER_NAME, Utils.getUniqueString())
         .put(ZOOKEEPER_ADDRESS, zkServerWrapper.getAddress())
-        .put(KAFKA_BOOTSTRAP_SERVERS, TestUtils.getUniqueString())
-        .put(KAFKA_ZK_ADDRESS, TestUtils.getUniqueString())
+        .put(KAFKA_BOOTSTRAP_SERVERS, Utils.getUniqueString())
+        .put(KAFKA_ZK_ADDRESS, Utils.getUniqueString())
         .put(D2_CLIENT_ZK_HOSTS_ADDRESS, zkServerWrapper.getAddress())
         .put(SERVER_PARTITION_GRACEFUL_DROP_DELAY_IN_SECONDS, 100)
         .put(SERVER_INGESTION_ISOLATION_HEARTBEAT_TIMEOUT_MS, 10 * Time.MS_PER_SECOND)

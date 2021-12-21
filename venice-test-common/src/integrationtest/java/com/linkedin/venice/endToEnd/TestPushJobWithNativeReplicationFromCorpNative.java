@@ -174,7 +174,7 @@ public class TestPushJobWithNativeReplicationFromCorpNative {
     File inputDir = getTempDataDirectory();
     Schema recordSchema = TestPushUtils.writeSimpleAvroFileWithUserSchema(inputDir, true, recordCount);
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
-    String storeName = TestUtils.getUniqueString("store");
+    String storeName = Utils.getUniqueString("store");
     VeniceControllerWrapper parentController =
         parentControllers.stream().filter(c -> c.isMasterController(clusterName)).findAny().get();
     Properties props = defaultH2VProps(parentController.getControllerUrl(), inputDirPath, storeName);
@@ -262,7 +262,7 @@ public class TestPushJobWithNativeReplicationFromCorpNative {
     File inputDir = getTempDataDirectory();
     Schema recordSchema = TestPushUtils.writeSimpleAvroFileWithUserSchema(inputDir, true, recordCount);
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
-    String storeName = TestUtils.getUniqueString("store");
+    String storeName = Utils.getUniqueString("store");
     VeniceControllerWrapper parentController =
         parentControllers.stream().filter(c -> c.isMasterController(clusterName)).findAny().get();
     Properties props = defaultH2VProps(parentController.getControllerUrl(), inputDirPath, storeName);
@@ -371,7 +371,7 @@ public class TestPushJobWithNativeReplicationFromCorpNative {
     ControllerClient dc0ControllerClient = new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
     ControllerClient dc1ControllerClient = new ControllerClient(clusterName, childDatacenters.get(1).getControllerConnectString());
     ControllerClient dc2ControllerClient = new ControllerClient(clusterName, childDatacenters.get(2).getControllerConnectString());
-    String storeName = TestUtils.getUniqueString("store");
+    String storeName = Utils.getUniqueString("store");
 
     try {
       Properties propsBatch = defaultH2VProps(parentController.getControllerUrl(), inputDirPathBatch, storeName);
@@ -532,7 +532,7 @@ public class TestPushJobWithNativeReplicationFromCorpNative {
   @Test(timeOut = TEST_TIMEOUT)
   public void testClusterLevelAdminCommandForNativeReplication() throws Exception {
     String clusterName = CLUSTER_NAMES[0];
-    String batchOnlyStoreName = TestUtils.getUniqueString("batch-store");
+    String batchOnlyStoreName = Utils.getUniqueString("batch-store");
     String keySchemaStr = STRING_SCHEMA;
     String valueSchemaStr = STRING_SCHEMA;
 
@@ -557,7 +557,7 @@ public class TestPushJobWithNativeReplicationFromCorpNative {
       /**
        * Create a hybrid store
        */
-      String hybridStoreName = TestUtils.getUniqueString("hybrid-store");
+      String hybridStoreName = Utils.getUniqueString("hybrid-store");
       newStoreResponse = parentControllerClient.createNewStore(hybridStoreName, "", keySchemaStr, valueSchemaStr);
       Assert.assertFalse(newStoreResponse.isError());
       updateStoreParams = new UpdateStoreQueryParams()
@@ -575,7 +575,7 @@ public class TestPushJobWithNativeReplicationFromCorpNative {
       /**
        * Create an incremental push enabled store
        */
-      String incrementPushStoreName = TestUtils.getUniqueString("incremental-push-store");
+      String incrementPushStoreName = Utils.getUniqueString("incremental-push-store");
       newStoreResponse = parentControllerClient.createNewStore(incrementPushStoreName, "", keySchemaStr, valueSchemaStr);
       Assert.assertFalse(newStoreResponse.isError());
       updateStoreParams = new UpdateStoreQueryParams().setIncrementalPushEnabled(true);
@@ -692,7 +692,7 @@ public class TestPushJobWithNativeReplicationFromCorpNative {
     VeniceControllerWrapper parentController =
         parentControllers.stream().filter(c -> c.isMasterController(clusterName)).findAny().get();
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
-    String storeName = TestUtils.getUniqueString("store");
+    String storeName = Utils.getUniqueString("store");
     Properties props = defaultH2VProps(parentController.getControllerUrl(), inputDirPath, storeName);
     props.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
 
@@ -723,7 +723,7 @@ public class TestPushJobWithNativeReplicationFromCorpNative {
       samzaConfig.put(configPrefix + VENICE_AGGREGATE, "true");
       samzaConfig.put(D2_ZK_HOSTS_PROPERTY, "invalid_child_zk_address");
       samzaConfig.put(VENICE_PARENT_D2_ZK_HOSTS, parentController.getKafkaZkAddress());
-      samzaConfig.put(DEPLOYMENT_ID, TestUtils.getUniqueString("venice-push-id"));
+      samzaConfig.put(DEPLOYMENT_ID, Utils.getUniqueString("venice-push-id"));
       samzaConfig.put(SSL_ENABLED, "false");
       VeniceSystemFactory factory = new VeniceSystemFactory();
       veniceProducer = factory.getProducer("venice", new MapConfig(samzaConfig), null);

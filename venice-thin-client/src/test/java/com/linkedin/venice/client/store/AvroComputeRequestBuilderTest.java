@@ -11,7 +11,8 @@ import com.linkedin.venice.compute.protocol.request.HadamardProduct;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
-import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Utils;
+
 import io.tehuti.utils.Time;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -24,7 +25,6 @@ import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 import org.mockito.ArgumentCaptor;
-import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -470,7 +470,7 @@ public class AvroComputeRequestBuilderTest {
 
   private AbstractAvroStoreClient getMockClient() {
     AbstractAvroStoreClient mockClient = mock(AbstractAvroStoreClient.class);
-    String storeName = TestUtils.getUniqueString("store_for_mock_client");
+    String storeName = Utils.getUniqueString("store_for_mock_client");
     doReturn(storeName).when(mockClient).getStoreName();
     return mockClient;
   }
