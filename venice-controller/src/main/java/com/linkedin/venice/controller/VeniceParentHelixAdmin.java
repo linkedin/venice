@@ -2453,16 +2453,6 @@ public class VeniceParentHelixAdmin implements Admin {
     throw new VeniceUnsupportedOperationException("isStorageNodeNewerOrEqualTo");
   }
 
-  @Override
-  public void setDelayedRebalanceTime(String clusterName, long delayedTime) {
-    throw new VeniceUnsupportedOperationException("setDelayedRebalanceTime");
-  }
-
-  @Override
-  public long getDelayedRebalanceTime(String clusterName) {
-    throw new VeniceUnsupportedOperationException("getDelayedRebalanceTime");
-  }
-
   public void setAdminConsumerService(String clusterName, AdminConsumerService service){
     getVeniceHelixAdmin().setAdminConsumerService(clusterName, service);
   }

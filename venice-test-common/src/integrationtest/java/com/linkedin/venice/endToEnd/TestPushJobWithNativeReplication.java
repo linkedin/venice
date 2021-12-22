@@ -442,9 +442,8 @@ public class  TestPushJobWithNativeReplication {
             .setLeaderFollowerModel(true)
             .setNativeReplicationEnabled(true));
 
-    ControllerClient parentControllerClient = null;
     try {
-      parentControllerClient = createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, updateStoreParams);
+      createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, updateStoreParams).close();
 
       try (ControllerClient dc0Client = new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
           ControllerClient dc1Client = new ControllerClient(clusterName, childDatacenters.get(1).getControllerConnectString())) {
@@ -457,9 +456,6 @@ public class  TestPushJobWithNativeReplication {
       test.run(parentController, clusterName, storeName, props, inputDir);
     } finally {
       FileUtils.deleteDirectory(inputDir);
-      if (null != parentControllerClient) {
-        IOUtils.closeQuietly(parentControllerClient);
-      }
     }
   }
 }

@@ -1,4 +1,4 @@
-package com.linkedin.venice.zerodowntimeupgrade;
+package com.linkedin.venice.controller;
 
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.helix.HelixState;
@@ -128,12 +128,12 @@ public class TestDelayedRebalance {
     String topicName = createVersionAndPushData();
     // shorter delayed time
     cluster.getMasterVeniceController()
-        .getVeniceAdmin()
+        .getVeniceHelixAdmin()
         .setDelayedRebalanceTime(cluster.getClusterName(), testTimeOutMS / 2);
     Assert.assertEquals(
-        cluster.getMasterVeniceController().getVeniceAdmin().getDelayedRebalanceTime(cluster.getClusterName()),
+        cluster.getMasterVeniceController().getVeniceHelixAdmin().getDelayedRebalanceTime(cluster.getClusterName()),
         testTimeOutMS / 2);
-    int failServerPort = stopAServer(topicName);
+    stopAServer(topicName);
 
     // Helix do not do the relanace immediately
     TestUtils.waitForNonDeterministicCompletion(3, TimeUnit.SECONDS, () -> {
@@ -156,9 +156,9 @@ public class TestDelayedRebalance {
     // Then enable the delayed rebalance again to test whether helix will do rebalance immediately.
     String topicName = createVersionAndPushData();
     // disable delayed rebalance
-    cluster.getMasterVeniceController().getVeniceAdmin().setDelayedRebalanceTime(cluster.getClusterName(), 0);
+    cluster.getMasterVeniceController().getVeniceHelixAdmin().setDelayedRebalanceTime(cluster.getClusterName(), 0);
     Assert.assertEquals(
-        cluster.getMasterVeniceController().getVeniceAdmin().getDelayedRebalanceTime(cluster.getClusterName()), 0);
+        cluster.getMasterVeniceController().getVeniceHelixAdmin().getDelayedRebalanceTime(cluster.getClusterName()), 0);
     // wait the config change come into effect
     Thread.sleep(testTimeOutMS);
     int failServerPort = stopAServer(topicName);
@@ -176,12 +176,12 @@ public class TestDelayedRebalance {
       throws InterruptedException {
     String topicName = createVersionAndPushData();
     // disable delayed rebalance
-    cluster.getMasterVeniceController().getVeniceAdmin().setDelayedRebalanceTime(cluster.getClusterName(), 0);
+    cluster.getMasterVeniceController().getVeniceHelixAdmin().setDelayedRebalanceTime(cluster.getClusterName(), 0);
     Assert.assertEquals(
-        cluster.getMasterVeniceController().getVeniceAdmin().getDelayedRebalanceTime(cluster.getClusterName()), 0);
+        cluster.getMasterVeniceController().getVeniceHelixAdmin().getDelayedRebalanceTime(cluster.getClusterName()), 0);
 
     //Enable delayed rebalance
-    cluster.getMasterVeniceController().getVeniceAdmin().setDelayedRebalanceTime(cluster.getClusterName(), delayRebalanceMS);
+    cluster.getMasterVeniceController().getVeniceHelixAdmin().setDelayedRebalanceTime(cluster.getClusterName(), delayRebalanceMS);
     // wait the config change come into effect
     Thread.sleep(testTimeOutMS);
     // Fail on server

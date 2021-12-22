@@ -4,6 +4,7 @@ import com.linkedin.venice.authorization.AuthorizerService;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.VeniceController;
+import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.kafka.admin.KafkaAdminClient;
@@ -351,6 +352,10 @@ public class VeniceControllerWrapper extends ProcessWrapper {
 
   public Admin getVeniceAdmin() {
     return service.getVeniceControllerService().getVeniceHelixAdmin();
+  }
+
+  public VeniceHelixAdmin getVeniceHelixAdmin() {
+    return (VeniceHelixAdmin) getVeniceAdmin();
   }
 
   // for test purpose

@@ -4691,11 +4691,24 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         return currentStatus.isNewerOrEqual(oldStatus);
     }
 
-    @Override
-    public void setDelayedRebalanceTime(String clusterName, long delayedTime) {
+    /**
+     * Package private on purpose, only used by tests.
+     *
+     * Enable or disable the delayed rebalance for the given cluster. By default, the delayed reblance is enabled/disabled
+     * depends on the cluster's configuration. Through this method, SRE/DEV could enable or disable the delayed reblance
+     * temporarily or set a different delayed rebalance time temporarily.
+     *
+     * @param  delayedTime how long the helix will not rebalance after a server is disconnected. If the given value
+     *                     equal or smaller than 0, we disable the delayed rebalance.
+     */
+    void setDelayedRebalanceTime(String clusterName, long delayedTime) {
         boolean enable = delayedTime > 0;
         PropertyKey.Builder keyBuilder = new PropertyKey.Builder(clusterName);
-        ClusterConfig clusterConfig = manager.getHelixDataAccessor().getProperty(keyBuilder.clusterConfig());
+        PropertyKey clusterConfigPath = keyBuilder.clusterConfig();
+        ClusterConfig clusterConfig = manager.getHelixDataAccessor().getProperty(clusterConfigPath);
+        if (clusterConfig == null) {
+            throw new VeniceException("Got a null clusterConfig from: " + clusterConfigPath);
+        }
         clusterConfig.getRecord()
             .setLongField(ClusterConfig.ClusterConfigProperty.DELAY_REBALANCE_TIME.name(), delayedTime);
         manager.getHelixDataAccessor().setProperty(keyBuilder.clusterConfig(), clusterConfig);
@@ -4710,12 +4723,20 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 + delayedTime : ""));
     }
 
-    @Override
-    public long getDelayedRebalanceTime(String clusterName) {
+    /**
+     * Package private on purpose, only used by tests.
+     *
+     * @return current delayed rebalance time value for the given cluster
+     */
+    long getDelayedRebalanceTime(String clusterName) {
         PropertyKey.Builder keyBuilder = new PropertyKey.Builder(clusterName);
-        ClusterConfig clusterConfig = manager.getHelixDataAccessor().getProperty(keyBuilder.clusterConfig());
+        PropertyKey clusterConfigPath = keyBuilder.clusterConfig();
+        ClusterConfig clusterConfig = manager.getHelixDataAccessor().getProperty(clusterConfigPath);
+        if (clusterConfig == null) {
+            throw new VeniceException("Got a null clusterConfig from: " + clusterConfigPath);
+        }
         return clusterConfig.getRecord()
-            .getLongField(ClusterConfig.ClusterConfigProperty.DELAY_REBALANCE_TIME.name(), 0l);
+            .getLongField(ClusterConfig.ClusterConfigProperty.DELAY_REBALANCE_TIME.name(), 0L);
     }
 
     public void setAdminConsumerService(String clusterName, AdminConsumerService service){
@@ -4978,43 +4999,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         }
         LiveInstance leader = manager.getHelixDataAccessor().getProperty(level1KeyBuilder.controllerLeader());
         if (null == leader || null == leader.getId()) {
-            logger.warn("Cannot determine the result of isMasterControllerOfControllerCluster(). "
+            logger.warn("Cannot determine the leader from getProperty(level1KeyBuilder.controllerLeader(), "
                 + "leader: " + leader
                 + (null == leader ? "" : ", leader.getId(): " + leader.getId()));
-            // Will result in a NPE... TODO: Investigate proper fix.
+            return false;
         }
         return leader.getId().equals(this.controllerName);
-    }
-
-    private Version setZkSharedStoreVersion(String clusterName, String zkSharedStoreName, String pushJobId, int versionNum,
-        int numberOfPartitions, Version.PushType pushType, String remoteKafkaBootstrapServers) {
-        Version newVersion = new VersionImpl(zkSharedStoreName, versionNum, pushJobId, numberOfPartitions);
-        newVersion.setPushType(pushType);
-        checkControllerLeadershipFor(clusterName);
-        HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
-        try {
-            try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(zkSharedStoreName)) {
-                ReadWriteStoreRepository repository = resources.getStoreMetadataRepository();
-                Store zkSharedStore = repository.getStore(zkSharedStoreName);
-                zkSharedStore.addVersion(newVersion);
-                zkSharedStore.setCurrentVersion(newVersion.getNumber());
-                zkSharedStore.updateVersionStatus(versionNum, ONLINE);
-                if (newVersion.isNativeReplicationEnabled()) {
-                    if (remoteKafkaBootstrapServers != null) {
-                        newVersion.setPushStreamSourceAddress(remoteKafkaBootstrapServers);
-                    } else {
-                        newVersion.setPushStreamSourceAddress(getKafkaBootstrapServers(isSslToKafka()));
-                    }
-                }
-                repository.updateStore(zkSharedStore);
-                logger.info("New version: " + newVersion.getNumber() + " created for Zk shared store: "
-                    + zkSharedStoreName);
-            }
-        } catch (Exception e) {
-            throw new VeniceException("Failed to set new version: " + newVersion.getNumber() + " for Zk shared store: "
-                + zkSharedStoreName, e);
-        }
-        return newVersion;
     }
 
     @Override

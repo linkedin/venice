@@ -77,6 +77,7 @@ public class TestStartMultiControllers {
     String partitionName = HelixUtils.getPartitionName(clusterName, 0);
     PropertyKey.Builder keyBuilder = new PropertyKey.Builder("venice-controllers");
     ExternalView view = helixManager.getHelixDataAccessor().getProperty(keyBuilder.externalView(clusterName));
+    Assert.assertNotNull(view, "The external view should not be null!");
     return view.getStateMap(partitionName).size();
   }
 }

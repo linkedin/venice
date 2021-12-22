@@ -119,17 +119,17 @@ public class TestPushJobWithNativeReplicationAndKMM {
         .setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
         .setPartitionCount(partitionCount);
 
-    ControllerClient parentControllerClient = createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, updateStoreParams);
-    /**
-     * Only enable L/F and NR in parent controllers and the child controllers of dc-2 fabric
-     */
-    UpdateStoreQueryParams enableLFAndNR = new UpdateStoreQueryParams()
-        .setLeaderFollowerModel(true)
-        .setNativeReplicationEnabled(true)
-        .setRegionsFilter("dc-2,parent.parent");
-    ControllerResponse updateStoreResponse = parentControllerClient.updateStore(storeName, enableLFAndNR);
-    Assert.assertFalse(updateStoreResponse.isError());
-    parentControllerClient.close();
+    try (ControllerClient parentControllerClient = createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, updateStoreParams)) {
+      /**
+       * Only enable L/F and NR in parent controllers and the child controllers of dc-2 fabric
+       */
+      UpdateStoreQueryParams enableLFAndNR = new UpdateStoreQueryParams()
+          .setLeaderFollowerModel(true)
+          .setNativeReplicationEnabled(true)
+          .setRegionsFilter("dc-2,parent.parent");
+      ControllerResponse updateStoreResponse = parentControllerClient.updateStore(storeName, enableLFAndNR);
+      Assert.assertFalse(updateStoreResponse.isError());
+    }
 
     try (ControllerClient dc0Client = new ControllerClient(clusterName,
         childDatacenters.get(0).getControllerConnectString());

@@ -706,7 +706,7 @@ public class TestPushJobWithNativeReplicationFromCorpNative {
         .setHybridRewindSeconds(TEST_TIMEOUT)
         .setHybridOffsetLagThreshold(2L)
         .setHybridDataReplicationPolicy(DataReplicationPolicy.AGGREGATE);
-    createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, updateStoreParams);
+    createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, updateStoreParams).close();
 
     try (VenicePushJob job = new VenicePushJob("Test push job 1", props)) {
       job.run();
