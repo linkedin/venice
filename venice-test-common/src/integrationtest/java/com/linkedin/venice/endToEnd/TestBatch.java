@@ -482,49 +482,66 @@ public abstract class TestBatch {
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testIncrementalPushWritesToRealTimeTopicWithPolicy() throws Exception {
-    String storeName = testBatchStore(inputDir -> {
+    /**
+     * N.B. This test has some flaky issues where it occasionally times out... It seems to be specific to
+     *      the {@link TestBatchForIngestionIsolation} subclass, and manifests in the form of one of the
+     *      three push jobs below timing out. Adding some logs just to try to weed out the relevant
+     *      start/end boundaries in build logs since the CI seems to jumble them up sometimes, especially
+     *      when flaky retries are involved...
+     */
+    double randomNumber = Math.random();
+    String classAndFunctionName = getClass().getSimpleName() + ".testIncrementalPushWritesToRealTimeTopicWithPolicy()";
+    String uniqueTestId = "attempt [" + randomNumber + "] of " + classAndFunctionName;
+    LOGGER.info("Start of " + uniqueTestId);
+    try {
+      String storeName = testBatchStore(inputDir -> {
+          Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir);
+          return new Pair<>(recordSchema.getField("id").schema(), recordSchema.getField("name").schema());
+        }, properties -> {
+        }, (avroClient, vsonClient, metricsRepository) -> {
+          for (int i = 1; i <= 100; i++) {
+            Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + i);
+          }
+        }, new UpdateStoreQueryParams()
+            .setAmplificationFactor(2)
+            .setIncrementalPushEnabled(true)
+            .setLeaderFollowerModel(true)
+            .setChunkingEnabled(true)
+            .setHybridOffsetLagThreshold(1)
+            .setHybridRewindSeconds(0)
+            .setIncrementalPushPolicy(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME)
+      );
+
+      testBatchStore(inputDir -> {
+        Schema recordSchema = writeSimpleAvroFileWithUserSchema2(inputDir);
+        return new Pair<>(recordSchema.getField("id").schema(), recordSchema.getField("name").schema());
+      }, properties -> {
+        properties.setProperty(INCREMENTAL_PUSH, "true");
+      }, (avroClient, vsonClient, metricsRepository) -> {
+        for (int i = 51; i <= 150; i++) {
+          Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + (i * 2));
+        }
+      }, storeName, null, false);
+
+      testBatchStore(inputDir -> {
         Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir);
         return new Pair<>(recordSchema.getField("id").schema(), recordSchema.getField("name").schema());
       }, properties -> {
       }, (avroClient, vsonClient, metricsRepository) -> {
-        for (int i = 1; i <= 100; i++) {
-          Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + i);
-        }
-      }, new UpdateStoreQueryParams()
-          .setAmplificationFactor(2)
-          .setIncrementalPushEnabled(true)
-          .setLeaderFollowerModel(true)
-          .setChunkingEnabled(true)
-          .setHybridOffsetLagThreshold(1)
-          .setHybridRewindSeconds(0)
-          .setIncrementalPushPolicy(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME)
-    );
-
-    testBatchStore(inputDir -> {
-      Schema recordSchema = writeSimpleAvroFileWithUserSchema2(inputDir);
-      return new Pair<>(recordSchema.getField("id").schema(), recordSchema.getField("name").schema());
-    }, properties -> {
-      properties.setProperty(INCREMENTAL_PUSH, "true");
-    }, (avroClient, vsonClient, metricsRepository) -> {
-      for (int i = 51; i <= 150; i++) {
-        Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + (i * 2));
-      }
-    }, storeName, null, false);
-
-    testBatchStore(inputDir -> {
-      Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir);
-      return new Pair<>(recordSchema.getField("id").schema(), recordSchema.getField("name").schema());
-    }, properties -> {
-    }, (avroClient, vsonClient, metricsRepository) -> {
-      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
-        for (int i = 1; i <= 100; i++) {
-          Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + i);
-        }
-        for (int i = 101; i <= 150; i++) {
-          Assert.assertNull(avroClient.get(Integer.toString(i)).get());
-        }
-      });
-    }, storeName, null, false);
+        TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
+          for (int i = 1; i <= 100; i++) {
+            Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + i);
+          }
+          for (int i = 101; i <= 150; i++) {
+            Assert.assertNull(avroClient.get(Integer.toString(i)).get());
+          }
+        });
+      }, storeName, null, false);
+      LOGGER.info("Successful end of " + uniqueTestId);
+    } catch (Throwable e) {
+      LOGGER.error("Caught throwable in " + uniqueTestId, e);
+      throw e;
+    }
   }
 
   @Test(timeOut = TEST_TIMEOUT)

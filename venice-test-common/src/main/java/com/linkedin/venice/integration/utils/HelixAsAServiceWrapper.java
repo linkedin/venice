@@ -100,11 +100,17 @@ public class HelixAsAServiceWrapper extends ProcessWrapper {
     return managers;
   }
 
+  /**
+   * @return {@link LiveInstance} representing the cluster leader, or null if there isn't any.
+   */
   public LiveInstance getClusterLeader(String clusterName) {
     PropertyKey.Builder clusterKeyBuilder = new PropertyKey.Builder(clusterName);
     return managers.iterator().next().getHelixDataAccessor().getProperty(clusterKeyBuilder.controllerLeader());
   }
 
+  /**
+   * @return {@link LiveInstance} representing the super cluster leader, or null if there isn't any.
+   */
   public LiveInstance getSuperClusterLeader() {
     return managers.iterator().next().getHelixDataAccessor().getProperty(keyBuilder.controllerLeader());
   }

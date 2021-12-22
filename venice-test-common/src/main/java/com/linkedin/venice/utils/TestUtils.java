@@ -412,7 +412,11 @@ public class TestUtils {
   }
 
   public static <T extends ControllerResponse> T assertCommand(T response) {
-    Assert.assertFalse(response.isError(), "Controller error: " + response.getError());
+    return assertCommand(response, "Controller error");
+  }
+
+  public static <T extends ControllerResponse> T assertCommand(T response, String assertionErrorMessage) {
+    Assert.assertFalse(response.isError(), assertionErrorMessage + ": " + response.getError());
     return response;
   }
 

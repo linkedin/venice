@@ -15,6 +15,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
+import org.apache.helix.model.LiveInstance;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
@@ -136,14 +137,26 @@ public class TestHAASController {
 
       List<VeniceControllerWrapper> oldControllers = venice.getVeniceControllers();
       List<VeniceControllerWrapper> newControllers = new ArrayList<>();
-      assertFalse(helixAsAServiceWrapper.getClusterLeader(venice.getClusterName()).getId().startsWith(HelixAsAServiceWrapper.HELIX_INSTANCE_NAME_PREFIX));
+      LiveInstance clusterLeader = helixAsAServiceWrapper.getClusterLeader(venice.getClusterName());
+      assertNotNull(clusterLeader,
+          "Could not find the cluster leader from HAAS!");
+      assertFalse(clusterLeader.getId().startsWith(HelixAsAServiceWrapper.HELIX_INSTANCE_NAME_PREFIX),
+          "The cluster leader should not start with: " + HelixAsAServiceWrapper.HELIX_INSTANCE_NAME_PREFIX);
+
       // Start the rolling bounce process
       for (VeniceControllerWrapper oldController : oldControllers) {
         venice.stopVeniceController(oldController.getPort());
         oldController.close();
         newControllers.add(venice.addVeniceController(enableControllerAndStorageClusterHAASProperties));
       }
-      assertTrue(helixAsAServiceWrapper.getClusterLeader(venice.getClusterName()).getId().startsWith(HelixAsAServiceWrapper.HELIX_INSTANCE_NAME_PREFIX));
+
+      TestUtils.waitForNonDeterministicAssertion(15, TimeUnit.SECONDS, () -> {
+        LiveInstance newClusterLeader = helixAsAServiceWrapper.getClusterLeader(venice.getClusterName());
+        assertNotNull(newClusterLeader,
+            "Could not find the cluster leader from HAAS after the rolling bounce of all controllers!");
+        assertTrue(newClusterLeader.getId().startsWith(HelixAsAServiceWrapper.HELIX_INSTANCE_NAME_PREFIX),
+            "The cluster leader should start with: " + HelixAsAServiceWrapper.HELIX_INSTANCE_NAME_PREFIX);
+      });
 
       venice.useControllerClient(controllerClient -> {
         // Make sure the previous ongoing push can be completed.

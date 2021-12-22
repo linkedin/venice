@@ -203,15 +203,18 @@ public class TestPushJobWithNativeReplicationSharedProducer {
         });
       }
     } finally {
-      FileUtils.deleteDirectory(inputDir);
+      ControllerResponse[] deleteStoreResponses = new ControllerResponse[parentControllerClients.length];
       for (int i = 0; i < storeCount; i++) {
         if (null != parentControllerClients[i]) {
-          ControllerResponse deleteStoreResponse = parentControllerClients[i].disableAndDeleteStore(storeNames[i]);
-          IOUtils.closeQuietly(parentControllerClients[i]);
-          Assert.assertFalse(deleteStoreResponse.isError(),
-              "Failed to delete the test store: " + deleteStoreResponse.getError());
+          deleteStoreResponses[i] = parentControllerClients[i].disableAndDeleteStore(storeNames[i]);
+          Utils.closeQuietlyWithErrorLogged(parentControllerClients[i]);
         }
       }
+      for (int i = 0; i < storeCount; i++) {
+        Assert.assertFalse(deleteStoreResponses[i].isError(),
+            "Failed to delete the test store: " + deleteStoreResponses[i].getError());
+      }
+      FileUtils.deleteDirectory(inputDir);
     }
   }
 }

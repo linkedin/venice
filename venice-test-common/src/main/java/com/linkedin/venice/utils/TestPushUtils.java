@@ -957,11 +957,6 @@ public class TestPushUtils {
   }
 
   public static ControllerClient createStoreForJob(VeniceClusterWrapper veniceCluster,
-                                                   String keySchemaStr, String valueSchemaStr, Properties props, CompressionStrategy compressionStrategy) {
-    return createStoreForJob(veniceCluster, keySchemaStr, valueSchemaStr, props, compressionStrategy, false);
-  }
-
-  public static ControllerClient createStoreForJob(VeniceClusterWrapper veniceCluster,
                                                    String keySchemaStr, String valueSchemaStr, Properties props,
                                                    CompressionStrategy compressionStrategy, boolean chunkingEnabled) {
     return createStoreForJob(veniceCluster.getClusterName(), keySchemaStr, valueSchemaStr, props, compressionStrategy, chunkingEnabled, false);
@@ -1016,17 +1011,15 @@ public class TestPushUtils {
 
   public static void deleteStore(String veniceClusterName, Properties props) {
     try(ControllerClient controllerClient = getControllerClient(veniceClusterName, props)) {
-      TrackableControllerResponse deleteStoreResponse = controllerClient.retryableRequest(5, c -> c.deleteStore(props.getProperty(VenicePushJob.VENICE_STORE_NAME_PROP)));
-
-      Assert.assertFalse(deleteStoreResponse.isError(), "The delete store request returned an error: " + deleteStoreResponse.getError());
+      TestUtils.assertCommand(controllerClient.retryableRequest(5, c -> c.deleteStore(props.getProperty(VenicePushJob.VENICE_STORE_NAME_PROP))),
+          "The delete store request returned an error");
     }
   }
 
   public static void disableStore(String veniceClusterName, Properties props) {
     try(ControllerClient controllerClient = getControllerClient(veniceClusterName, props)) {
-      ControllerResponse disableStoreResponse = controllerClient.retryableRequest(5, c -> c.enableStoreReadWrites(props.getProperty(VenicePushJob.VENICE_STORE_NAME_PROP), false));
-
-      Assert.assertFalse(disableStoreResponse.isError(), "The disable store request returned an error: " + disableStoreResponse.getError());
+      TestUtils.assertCommand(controllerClient.retryableRequest(5, c -> c.enableStoreReadWrites(props.getProperty(VenicePushJob.VENICE_STORE_NAME_PROP), false)),
+          "The disable store request returned an error");
     }
   }
 
