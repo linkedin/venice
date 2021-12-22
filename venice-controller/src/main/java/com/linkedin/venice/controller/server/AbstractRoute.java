@@ -18,6 +18,7 @@ public class AbstractRoute {
   private static final Logger logger = Logger.getLogger(AbstractRoute.class);
 
   private static final String USER_UNKNOWN = "USER_UNKNOWN";
+  private static final String STORE_UNKNOWN = "STORE_UNKNOWN";
 
   // A singleton of acl check function against store resource
   private static final ResourceAclCheck getAccessToStore = (cert, resourceName, aclClient) -> {
@@ -133,7 +134,7 @@ public class AbstractRoute {
     }
     X509Certificate certificate = getCertificate(request);
 
-    String storeName = request.queryParams(NAME);
+    String storeName = request.queryParamOrDefault(NAME, STORE_UNKNOWN);
     return accessController.get().isWhitelistUsers(certificate, storeName, HTTP_GET);
   }
 
