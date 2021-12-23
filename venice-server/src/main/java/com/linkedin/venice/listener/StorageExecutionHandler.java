@@ -59,7 +59,6 @@ import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
-import com.linkedin.venice.utils.queues.LabeledRunnable;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
@@ -223,7 +222,7 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
       }
 
       final ThreadPoolExecutor executor = getExecutor(request.getRequestType());
-      executor.submit(new LabeledRunnable(request.getStoreName(), () -> {
+      executor.submit(() -> {
         try {
           if (request.shouldRequestBeTerminatedEarly()) {
             throw new VeniceRequestEarlyTerminationException(request.getStoreName());
@@ -257,7 +256,7 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
           logger.error("Exception thrown for " + request.getResourceName(), e);
           context.writeAndFlush(new HttpShortcutResponse(e.getMessage(), HttpResponseStatus.INTERNAL_SERVER_ERROR));
         }
-      }));
+      });
 
     } else if (message instanceof HealthCheckRequest) {
       if (diskHealthCheckService.isDiskHealthy()) {

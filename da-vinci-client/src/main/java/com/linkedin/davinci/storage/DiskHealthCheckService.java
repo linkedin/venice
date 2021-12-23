@@ -178,35 +178,35 @@ public class DiskHealthCheckService extends AbstractVeniceService {
           // delete the temporary file at the end
           tmpFile.deleteOnExit();
 
-          PrintWriter printWriter = new PrintWriter(tmpFile, "UTF-8");
-          String message = String.valueOf(System.currentTimeMillis());
-          // write 64KB data to the temporary file first
-          int repeats = tmpFileSizeInBytes / message.length();
-          for (int i = 0; i < repeats; i++) {
-            printWriter.println(message);
-          }
-          printWriter.flush();
-          printWriter.close();
-
-          // Check data in it.
-          errorMessage = null;
-          boolean fileReadableAndCorrect = true;
-          BufferedReader br = new BufferedReader(new InputStreamReader(new FileInputStream(tmpFile), StandardCharsets.UTF_8));
-          for (int i = 0; i < repeats; i++) {
-            String newLine = br.readLine();
-            if (!newLine.equals(message)) {
-              errorMessage = "Content in health check file is different from what was written to it; expect message: "
-                  + message + "; actual content: " + newLine;
-              fileReadableAndCorrect = false;
-              break;
+          try (PrintWriter printWriter = new PrintWriter(tmpFile, "UTF-8")) {
+            String message = String.valueOf(System.currentTimeMillis());
+            // write 64KB data to the temporary file first
+            int repeats = tmpFileSizeInBytes / message.length();
+            for (int i = 0; i < repeats; i++) {
+              printWriter.println(message);
             }
-          }
-          br.close();
+            printWriter.flush();
 
-          try (AutoCloseableLock ignore = new AutoCloseableLock(lock)) {
-            // update the disk health status
-            diskHealthy = fileReadableAndCorrect;
-            lastStatusUpdateTimeInNS = System.nanoTime();
+            // Check data in it.
+            errorMessage = null;
+            boolean fileReadableAndCorrect = true;
+            try (BufferedReader br = new BufferedReader(new InputStreamReader(new FileInputStream(tmpFile), StandardCharsets.UTF_8))) {
+              for (int i = 0; i < repeats; i++) {
+                String newLine = br.readLine();
+                if (!newLine.equals(message)) {
+                  errorMessage = "Content in health check file is different from what was written to it; expect message: "
+                      + message + "; actual content: " + newLine;
+                  fileReadableAndCorrect = false;
+                  break;
+                }
+              }
+            }
+
+            try (AutoCloseableLock ignore = new AutoCloseableLock(lock)) {
+              // update the disk health status
+              diskHealthy = fileReadableAndCorrect;
+              lastStatusUpdateTimeInNS = System.nanoTime();
+            }
           }
         } catch (InterruptedException e) {
           logger.info("Disk check service thread shutting down", e);

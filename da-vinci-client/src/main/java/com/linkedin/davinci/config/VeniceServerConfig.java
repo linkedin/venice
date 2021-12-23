@@ -8,7 +8,6 @@ import com.linkedin.venice.kafka.admin.KafkaAdminClient;
 import com.linkedin.venice.meta.IngestionMode;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.VeniceProperties;
-import com.linkedin.venice.utils.queues.FairBlockingQueue;
 import java.nio.file.Paths;
 import java.util.Arrays;
 import java.util.Collections;
@@ -311,7 +310,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     diskHealthCheckServiceEnabled = serverProperties.getBoolean(SERVER_DISK_HEALTH_CHECK_SERVICE_ENABLED, true);
     holisticHealthCheckServiceEnabled =
         serverProperties.getBoolean(SERVER_HOLISTIC_HEALTH_CHECK_SERVICE_ENABLED, false);
-    computeFastAvroEnabled = serverProperties.getBoolean(SERVER_COMPUTE_FAST_AVRO_ENABLED, false);
+    computeFastAvroEnabled = serverProperties.getBoolean(SERVER_COMPUTE_FAST_AVRO_ENABLED, true);
     participantMessageConsumptionDelayMs = serverProperties.getLong(PARTICIPANT_MESSAGE_CONSUMPTION_DELAY_MS, 60000);
     serverPromotionToLeaderReplicaDelayMs = TimeUnit.SECONDS.toMillis(serverProperties.getLong(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 300));  // 5 minutes by default
     serverSystemStorePromotionToLeaderReplicaDelayMs = TimeUnit.SECONDS.toMillis(serverProperties.getLong(SERVER_SYSTEM_STORE_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 1)); // 1 second by default
@@ -336,15 +335,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     ssdHealthCheckShutdownTimeMs = serverProperties.getLong(SERVER_SHUTDOWN_DISK_UNHEALTHY_TIME_MS, 200000);
 
     /**
-     * {@link com.linkedin.venice.utils.queues.FairBlockingQueue} could cause non-deterministic behavior during test.
-     * Disable it by default for now.
-     *
      * In the test of feature store user case, when we did a rolling bounce of storage nodes, the high latency happened
      * to one or two storage nodes randomly. And when we restarted the node with high latency, the high latency could
      * disappear, but other nodes could start high latency.
      * After switching to {@link java.util.concurrent.LinkedBlockingQueue}, this issue never happened.
-     *
-     * TODO: figure out the issue with {@link com.linkedin.venice.utils.queues.FairBlockingQueue}.
      */
     String blockingQueueTypeStr = serverProperties.getString(SERVER_BLOCKING_QUEUE_TYPE, BlockingQueueType.LINKED_BLOCKING_QUEUE.name());
     try {
@@ -550,12 +544,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public BlockingQueue<Runnable> getExecutionQueue(int capacity) {
     switch (blockingQueueType) {
-      case FAIR_BLOCKING_QUEUE:
-        /**
-         * Currently, {@link FairBlockingQueue} doesn't support capacity control.
-         * TODO: add capacity support to {@link FairBlockingQueue}.
-         */
-        return new FairBlockingQueue<>();
       case LINKED_BLOCKING_QUEUE:
         return new LinkedBlockingQueue<>(capacity);
       case ARRAY_BLOCKING_QUEUE:

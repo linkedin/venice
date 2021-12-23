@@ -121,14 +121,16 @@ public class HelixCustomizedViewOfflinePushRepository extends HelixBaseRoutingRe
           Map<String, String> instanceStateMap = customizedView.getStateMap(partitionName);
           Map<String, List<Instance>> stateToInstanceMap = new HashMap<>();
           //Populate customized state to instance set map
-          for (String instanceName : instanceStateMap.keySet()) {
+          for (Map.Entry<String, String> entry: instanceStateMap.entrySet()) {
+            String instanceName = entry.getKey();
+            String instanceState = entry.getValue();
             Instance instance = liveInstanceSnapshot.get(instanceName);
             if (null != instance) {
               ExecutionStatus status;
               try {
-                status = ExecutionStatus.valueOf(instanceStateMap.get(instanceName));
+                status = ExecutionStatus.valueOf(instanceState);
               } catch (Exception e) {
-                logger.warn("Instance:" + instanceName + " unrecognized status:" + instanceStateMap.get(instanceName));
+                logger.warn("Instance:" + instanceName + " unrecognized status:" + instanceState);
                 continue;
               }
               stateToInstanceMap.computeIfAbsent(status.toString(), s-> new ArrayList<>()).add(instance);

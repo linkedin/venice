@@ -197,9 +197,8 @@ public class ReadComputeValidationTest {
             .execute(keySet)
             .get();
 
-        for (Map.Entry<Integer, GenericRecord> entry : computeResult.entrySet()) {
-          Assert.assertEquals(((HashMap<String, String>) entry.getValue().get(VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME)).size(), 1);
-        }
+        computeResult.forEach((key, value) -> Assert.assertEquals(
+            ((HashMap<String, String>) value.get(VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME)).size(), 1));
       });
     }
   }
@@ -259,9 +258,8 @@ public class ReadComputeValidationTest {
           .project("member_feature")
           .execute(keySet).get();
 
-      for (Map.Entry<Integer, GenericRecord> entry : computeResult.entrySet()) {
-        Assert.assertEquals(((HashMap<String, String>)entry.getValue().get(VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME)).size(), 0);
-      }
+      computeResult.forEach((key, value) -> Assert.assertEquals(
+          ((HashMap<String, String>) value.get(VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME)).size(), 0));
     }
   }
 
@@ -350,9 +348,8 @@ public class ReadComputeValidationTest {
             .get();
 
         // Expect no error
-        for (Map.Entry<Integer, GenericRecord> entry : computeResult.entrySet()) {
-          Assert.assertEquals(((HashMap<String, String>) entry.getValue().get(VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME)).size(), 0);
-        }
+        computeResult.forEach((key, value) -> Assert.assertEquals(
+            ((HashMap<String, String>) value.get(VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME)).size(), 0));
         // Results for key 2 should be all null since the nullable field in the value of key 2 is null
         Assert.assertNull(computeResult.get(key2).get("dot_product_result"));
         Assert.assertNull(computeResult.get(key2).get("hadamard_product_result"));

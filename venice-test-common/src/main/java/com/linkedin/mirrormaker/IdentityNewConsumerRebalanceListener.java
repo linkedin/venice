@@ -276,9 +276,7 @@ public class IdentityNewConsumerRebalanceListener implements org.apache.kafka.cl
     Map<String, List<PartitionInfo>> topicPartitionInfoMap = client.listTopics();
     Map<String, Integer> partitionMap = new HashMap<>();
 
-    for (Map.Entry<String, List<PartitionInfo>> topicPartitionEntry : topicPartitionInfoMap.entrySet()) {
-      partitionMap.put(topicPartitionEntry.getKey(), topicPartitionEntry.getValue().size());
-    }
+    topicPartitionInfoMap.forEach((topic, partitionInfos) -> partitionMap.put(topic, partitionInfos.size()));
 
     return partitionMap;
   }

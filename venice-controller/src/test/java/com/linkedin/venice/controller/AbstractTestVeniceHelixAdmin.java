@@ -100,8 +100,8 @@ class AbstractTestVeniceHelixAdmin {
   }
 
   void delayParticipantJobCompletion(boolean isDelay) {
-    for (String nodeId : stateModelFactoryByNodeID.keySet()) {
-      stateModelFactoryByNodeID.get(nodeId).setBlockTransition(isDelay);
+    for (MockTestStateModelFactory stateModelFactory: stateModelFactoryByNodeID.values()) {
+      stateModelFactory.setBlockTransition(isDelay);
     }
   }
 
@@ -122,8 +122,8 @@ class AbstractTestVeniceHelixAdmin {
   }
 
   void stopAllParticipants() {
-    for (String nodeId : helixManagerByNodeID.keySet()) {
-      helixManagerByNodeID.get(nodeId).disconnect();
+    for (SafeHelixManager helixManager: helixManagerByNodeID.values()) {
+      helixManager.disconnect();
     }
     helixManagerByNodeID.clear();
     stateModelFactoryByNodeID.clear();

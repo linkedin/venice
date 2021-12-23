@@ -1431,23 +1431,24 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
       if (pushJobDetails.coloStatus == null) {
         pushJobDetails.coloStatus = new HashMap<>();
       }
-      for (Map.Entry<String, String> coloEntry : coloSpecificInfo.entrySet()) {
-        if (completedColos.contains(coloEntry.getKey()))
+      coloSpecificInfo.entrySet()
+          .stream()
           // Don't bother updating the completed colo's status
-          continue;
-        int status = PushJobDetailsStatus.valueOf(coloEntry.getValue()).getValue();
-        if (!pushJobDetails.coloStatus.containsKey(coloEntry.getKey())) {
-          List<PushJobDetailsStatusTuple> newList = new ArrayList<>();
-          newList.add(getPushJobDetailsStatusTuple(status));
-          pushJobDetails.coloStatus.put(coloEntry.getKey(), newList);
-        } else {
-          List<PushJobDetailsStatusTuple> statuses = pushJobDetails.coloStatus.get(coloEntry.getKey());
-          if (statuses.get(statuses.size() - 1).status != status) {
-            // Only add the status if there is a change
-            statuses.add(getPushJobDetailsStatusTuple(status));
-          }
-        }
-      }
+          .filter(coloEntry -> !completedColos.contains(coloEntry.getKey()))
+          .forEach(coloEntry -> {
+            int status = PushJobDetailsStatus.valueOf(coloEntry.getValue()).getValue();
+            if (!pushJobDetails.coloStatus.containsKey(coloEntry.getKey())) {
+              List<PushJobDetailsStatusTuple> newList = new ArrayList<>();
+              newList.add(getPushJobDetailsStatusTuple(status));
+              pushJobDetails.coloStatus.put(coloEntry.getKey(), newList);
+            } else {
+              List<PushJobDetailsStatusTuple> statuses = pushJobDetails.coloStatus.get(coloEntry.getKey());
+              if (statuses.get(statuses.size() - 1).status != status) {
+                // Only add the status if there is a change
+                statuses.add(getPushJobDetailsStatusTuple(status));
+              }
+            }
+          });
 
     } catch (Exception e) {
       logger.warn("Exception caught while updating push job details with colo status. " + NON_CRITICAL_EXCEPTION, e);
@@ -1998,18 +1999,18 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
 
       previousOverallDetails = printJobStatus(response, previousOverallDetails, previousExtraDetails);
       ExecutionStatus overallStatus = ExecutionStatus.valueOf(response.getStatus());
-      Map<String, String> datacenterSpecificInfo = response.getExtraInfo();
+      Map<String, String> regionSpecificInfo = response.getExtraInfo();
       // Note that it's intended to update the push job details before updating the completed datacenter set.
-      updatePushJobDetailsWithColoStatus(datacenterSpecificInfo, completedDatacenters);
-      for (String datacenter : datacenterSpecificInfo.keySet()) {
-        ExecutionStatus datacenterStatus = ExecutionStatus.valueOf(datacenterSpecificInfo.get(datacenter));
+      updatePushJobDetailsWithColoStatus(regionSpecificInfo, completedDatacenters);
+      regionSpecificInfo.forEach((region, regionStatus) -> {
+        ExecutionStatus datacenterStatus = ExecutionStatus.valueOf(regionStatus);
         if (datacenterStatus.isTerminal() && !datacenterStatus.equals(ExecutionStatus.ERROR)) {
-          completedDatacenters.add(datacenter);
+          completedDatacenters.add(region);
         }
-      }
+      });
 
       if (overallStatus.isTerminal()) {
-        if (completedDatacenters.size() != datacenterSpecificInfo.size() || !successfulStatuses.contains(overallStatus)) {
+        if (completedDatacenters.size() != regionSpecificInfo.size() || !successfulStatuses.contains(overallStatus)) {
           // One or more DC could have an UNKNOWN status and never successfully reported a completed status before,
           // but if the majority of datacenters have completed, we give up on the unreachable datacenter
           // and start truncating the data topic.
@@ -2058,16 +2059,14 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
     Optional<Map<String, String>> extraDetails = response.getOptionalExtraDetails();
     if (extraDetails.isPresent()) {
       // Non-upgraded controllers will not provide these details, in which case, this will be null.
-      for (Map.Entry<String, String> entry: extraDetails.get().entrySet()) {
-        String cluster = entry.getKey();
-        String previous = previousExtraDetails.get(cluster);
-        String current = entry.getValue();
+      extraDetails.get().forEach((region, currentDetails) -> {
+        String previous = previousExtraDetails.get(region);
 
-        if (detailsAreDifferent(previous, current)) {
-          logger.info("\t\tNew specific details for " + cluster + ": " + current);
-          previousExtraDetails.put(cluster, current);
+        if (detailsAreDifferent(previous, currentDetails)) {
+          logger.info("\t\tNew specific details for " + region + ": " + currentDetails);
+          previousExtraDetails.put(region, currentDetails);
         }
-      }
+      });
     }
     return newOverallDetails;
   }
@@ -2114,9 +2113,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
     conf.set(REDUCER_MINIMUM_LOGGING_INTERVAL_MS, Long.toString(pushJobSetting.minimumReducerLoggingIntervalInMs));
     conf.set(PARTITIONER_CLASS, versionTopicInfo.partitionerClass);
     // flatten partitionerParams since JobConf class does not support set an object
-    for (Map.Entry<String, String> entry : versionTopicInfo.partitionerParams.entrySet()) {
-      conf.set(entry.getKey(), entry.getValue());
-    }
+    versionTopicInfo.partitionerParams.forEach((key, value) -> conf.set(key, value));
     conf.setInt(AMPLIFICATION_FACTOR, versionTopicInfo.amplificationFactor);
     if( versionTopicInfo.sslToKafka ){
       conf.set(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, KAFKA_SECURITY_PROTOCOL);

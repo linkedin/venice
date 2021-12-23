@@ -76,10 +76,11 @@ public class ControlMessageDumper {
    */
   public void display() {
     int i = 1;
-    for (GUID producerGUID : producerToRecords.keySet()) {
+    for (Map.Entry<GUID, List<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>>> entry: producerToRecords.entrySet()) {
+      GUID producerGUID = entry.getKey();
       System.out.println(String.format("\nproducer %d: %s", i++, producerGUID));
 
-      List<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>> records = producerToRecords.get(producerGUID);
+      List<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>> records = entry.getValue();
       for (ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record : records) {
         KafkaMessageEnvelope envelope = record.value();
         ProducerMetadata metadata = envelope.producerMetadata;

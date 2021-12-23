@@ -1170,8 +1170,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       Store store = storeRepository.getStoreOrThrow(storeName);
       long diskQuota = store.getStorageQuotaInByte();
       double storeDiskUsage = 0.0D;
-      for (Integer partition : partitionConsumptionSizeMap.keySet()) {
-        long partitionDiskUsage = partitionConsumptionSizeMap.get(partition).getUsage();
+      for (StoragePartitionDiskUsage storagePartitionDiskUsage: partitionConsumptionSizeMap.values()) {
+        long partitionDiskUsage = storagePartitionDiskUsage.getUsage();
         storeDiskUsage += partitionDiskUsage;
       }
       storeIngestionStats.recordStorageQuotaUsed(storeName, diskQuota > 0 ? (storeDiskUsage / diskQuota) : 0);
@@ -1344,7 +1344,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     recordCount = 0;
     long estimatedSize = 0;
     for (ConsumerRecords<KafkaKey, KafkaMessageEnvelope> consumerRecords : recordsByKafkaURLs.values()) {
-      recordCount += ((consumerRecords == null) ? 0 : consumerRecords.count());
+      recordCount += consumerRecords.count();
       for (ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record : consumerRecords) {
         estimatedSize += Math.max(0, record.serializedKeySize()) + Math.max(0, record.serializedValueSize());
       }

@@ -959,9 +959,10 @@ public class VeniceParentHelixAdmin implements Admin {
       logger.info("isActiveActiveReplicationEnabledInAllRegion: " + storeName + " store is not enabled for Active/Active in parent region");
       return false;
     }
-    Set<String> regions = controllerClients.keySet();
-    for (String region : regions) {
-      StoreResponse response = controllerClients.get(region).getStore(storeName);
+    for (Map.Entry<String, ControllerClient> entry: controllerClients.entrySet()) {
+      String region = entry.getKey();
+      ControllerClient controllerClient = entry.getValue();
+      StoreResponse response = controllerClient.getStore(storeName);
       if (response.isError()) {
         logger.error("isActiveActiveReplicationEnabledInAllRegion: Could not query store from region: " + region + " for cluster: " + clusterName + ". " + response.getError());
         return false;
@@ -1216,16 +1217,17 @@ public class VeniceParentHelixAdmin implements Admin {
   @Override
   public Map<String, String> getFutureVersionsForMultiColos(String clusterName, String storeName) {
     Map<String, ControllerClient> controllerClients = getVeniceHelixAdmin().getControllerClientMap(clusterName);
-    Set<String> prodColos = controllerClients.keySet();
     Map<String, String> result = new HashMap<>();
-    for (String colo : prodColos) {
-      MultiStoreStatusResponse response = controllerClients.get(colo).getFutureVersions(clusterName, storeName);
+    for (Map.Entry<String, ControllerClient> entry: controllerClients.entrySet()) {
+      String region = entry.getKey();
+      ControllerClient controllerClient = entry.getValue();
+      MultiStoreStatusResponse response = controllerClient.getFutureVersions(clusterName, storeName);
       if (response.isError()) {
         logger.error(
-            "Could not query store from colo: " + colo + " for cluster: " + clusterName + ". " + response.getError());
-        result.put(colo, String.valueOf(AdminConsumptionTask.IGNORED_CURRENT_VERSION));
+            "Could not query store from region: " + region + " for cluster: " + clusterName + ". " + response.getError());
+        result.put(region, String.valueOf(AdminConsumptionTask.IGNORED_CURRENT_VERSION));
       } else {
-        result.put(colo,response.getStoreStatusMap().get(storeName));
+        result.put(region,response.getStoreStatusMap().get(storeName));
       }
     }
     return result;
@@ -1238,16 +1240,17 @@ public class VeniceParentHelixAdmin implements Admin {
 
   protected Map<String, Integer> getCurrentVersionForMultiColos(String clusterName, String storeName,
       Map<String, ControllerClient> controllerClients) {
-    Set<String> prodColos = controllerClients.keySet();
     Map<String, Integer> result = new HashMap<>();
-    for (String colo : prodColos) {
-      StoreResponse response = controllerClients.get(colo).getStore(storeName);
+    for (Map.Entry<String, ControllerClient> entry: controllerClients.entrySet()) {
+      String region = entry.getKey();
+      ControllerClient controllerClient = entry.getValue();
+      StoreResponse response = controllerClient.getStore(storeName);
       if (response.isError()) {
         logger.error(
-            "Could not query store from colo: " + colo + " for cluster: " + clusterName + ". " + response.getError());
-        result.put(colo, AdminConsumptionTask.IGNORED_CURRENT_VERSION);
+            "Could not query store from region: " + region + " for cluster: " + clusterName + ". " + response.getError());
+        result.put(region, AdminConsumptionTask.IGNORED_CURRENT_VERSION);
       } else {
-        result.put(colo,response.getStore().getCurrentVersion());
+        result.put(region,response.getStore().getCurrentVersion());
       }
     }
     return result;
@@ -2175,32 +2178,33 @@ public class VeniceParentHelixAdmin implements Admin {
     Map<String, String> extraInfo = new HashMap<>();
     Map<String, String> extraDetails = new HashMap<>();
     int failCount = 0;
-    for (String cluster : childClusters) {
-      ControllerClient controllerClient = controllerClients.get(cluster);
+    for (Map.Entry<String, ControllerClient> entry: controllerClients.entrySet()) {
+      String region = entry.getKey();
+      ControllerClient controllerClient = entry.getValue();
       String masterControllerUrl = "Unspecified master controller url";
       try {
         masterControllerUrl = controllerClient.getMasterControllerUrl();
       } catch (VeniceException getMasterException) {
-        logger.warn("Couldn't query " + cluster + " for job status of " + kafkaTopic, getMasterException);
+        logger.warn("Couldn't query " + region + " for job status of " + kafkaTopic, getMasterException);
         statuses.add(ExecutionStatus.UNKNOWN);
-        extraInfo.put(cluster, ExecutionStatus.UNKNOWN.toString());
-        extraDetails.put(cluster, "Failed to get master controller url " + getMasterException.getMessage());
+        extraInfo.put(region, ExecutionStatus.UNKNOWN.toString());
+        extraDetails.put(region, "Failed to get master controller url " + getMasterException.getMessage());
         continue;
       }
       JobStatusQueryResponse response = controllerClient.queryJobStatus(kafkaTopic, incrementalPushVersion);
       if (response.isError()) {
         failCount += 1;
-        logger.warn("Couldn't query " + cluster + " for job " + kafkaTopic + " status: " + response.getError());
+        logger.warn("Couldn't query " + region + " for job " + kafkaTopic + " status: " + response.getError());
         statuses.add(ExecutionStatus.UNKNOWN);
-        extraInfo.put(cluster, ExecutionStatus.UNKNOWN.toString());
-        extraDetails.put(cluster, masterControllerUrl + " " + response.getError());
+        extraInfo.put(region, ExecutionStatus.UNKNOWN.toString());
+        extraDetails.put(region, masterControllerUrl + " " + response.getError());
       } else {
         ExecutionStatus status = ExecutionStatus.valueOf(response.getStatus());
         statuses.add(status);
-        extraInfo.put(cluster, response.getStatus());
+        extraInfo.put(region, response.getStatus());
         Optional<String> statusDetails = response.getOptionalStatusDetails();
         if (statusDetails.isPresent()) {
-          extraDetails.put(cluster, masterControllerUrl + " " + statusDetails.get());
+          extraDetails.put(region, masterControllerUrl + " " + statusDetails.get());
         }
       }
     }
@@ -2298,8 +2302,8 @@ public class VeniceParentHelixAdmin implements Admin {
         logger.warn("Failed to query " + childCluster + " for job progress on topic " + kafkaTopic + ".  " + statusResponse.getError());
       } else {
         Map<String, Long> clusterProgress = statusResponse.getPerTaskProgress();
-        for (String task : clusterProgress.keySet()){
-          aggregateProgress.put(childCluster + "_" + task, clusterProgress.get(task));
+        for (Map.Entry<String, Long> entry: clusterProgress.entrySet()){
+          aggregateProgress.put(childCluster + "_" + entry.getKey(), entry.getValue());
         }
       }
     }

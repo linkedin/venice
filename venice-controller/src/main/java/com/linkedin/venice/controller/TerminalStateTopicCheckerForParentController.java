@@ -56,14 +56,15 @@ public class TerminalStateTopicCheckerForParentController implements Runnable, C
         Thread.sleep(checkDelayInMs);
         storeConfigRepository.refresh();
         Map<String, Map<String, Long>> relevantVersionTopics = getRelevantVeniceVersionTopics();
-        for (String storeName : relevantVersionTopics.keySet()) {
+        for (Map.Entry<String, Map<String, Long>> relevantVersionTopicsEntry: relevantVersionTopics.entrySet()) {
+          String storeName = relevantVersionTopicsEntry.getKey();
           // The relevantVersionTopics only contains topics for stores that exist in the local store config repo.
           String clusterName = storeConfigRepository.getStoreConfig(storeName).get().getCluster();
           // Check for leadership again because things could have changed since the relevantVersionTopics was acquired.
           if (!parentController.isLeaderControllerFor(clusterName)) {
             continue;
           }
-          for (Map.Entry<String, Long> entry : relevantVersionTopics.get(storeName).entrySet()) {
+          for (Map.Entry<String, Long> entry: relevantVersionTopicsEntry.getValue().entrySet()) {
             String topic = entry.getKey();
             long retention = entry.getValue();
             try {

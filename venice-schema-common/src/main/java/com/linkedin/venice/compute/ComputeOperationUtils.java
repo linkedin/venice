@@ -2,7 +2,6 @@ package com.linkedin.venice.compute;
 
 import com.linkedin.avro.api.PrimitiveFloatList;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.serializer.ComputablePrimitiveFloatList;
 import com.linkedin.venice.utils.CollectionUtils;
 import java.util.Collections;
 import java.util.List;
@@ -14,8 +13,8 @@ import org.apache.avro.generic.GenericRecord;
 
 
 /**
- * This class provides utilities for float-vector operations, and it also handles {@link ComputablePrimitiveFloatList}
- * and {@link PrimitiveFloatList} transparently to the user of this class.
+ * This class provides utilities for float-vector operations, and it also handles {@link PrimitiveFloatList}
+ * transparently to the user of this class.
  */
 public class ComputeOperationUtils {
   public static final String CACHED_SQUARED_L2_NORM_KEY = "CACHED_SQUARED_L2_NORM_KEY";
@@ -24,13 +23,7 @@ public class ComputeOperationUtils {
     if (list1.size() != list2.size()) {
       throw new VeniceException("Two lists are with different dimensions: " + list1.size() + ", and " + list2.size());
     }
-    // TODO: Clean up and retire ComputablePrimitiveFloatList after Fast-Avro is adopted by default
-    if (list1 instanceof ComputablePrimitiveFloatList && list2 instanceof ComputablePrimitiveFloatList) {
-      ComputablePrimitiveFloatList computablePrimitiveFloatList1 = (ComputablePrimitiveFloatList)list1;
-      ComputablePrimitiveFloatList computablePrimitiveFloatList2 = (ComputablePrimitiveFloatList)list2;
-      return dotProduct(list1.size(), computablePrimitiveFloatList1::getPrimitive,
-          computablePrimitiveFloatList2::getPrimitive);
-    } else if (list1 instanceof PrimitiveFloatList && list2 instanceof PrimitiveFloatList) {
+    if (list1 instanceof PrimitiveFloatList && list2 instanceof PrimitiveFloatList) {
       PrimitiveFloatList primitiveFloatList1 = (PrimitiveFloatList)list1;
       PrimitiveFloatList primitiveFloatList2 = (PrimitiveFloatList)list2;
       return dotProduct(list1.size(), primitiveFloatList1::getPrimitive, primitiveFloatList2::getPrimitive);
@@ -43,13 +36,7 @@ public class ComputeOperationUtils {
     if (list1.size() != list2.size()) {
       throw new VeniceException("Two lists are with different dimensions: " + list1.size() + ", and " + list2.size());
     }
-    // TODO: Clean up and retire ComputablePrimitiveFloatList after Fast-Avro is adopted by default
-    if (list1 instanceof ComputablePrimitiveFloatList && list2 instanceof ComputablePrimitiveFloatList) {
-      ComputablePrimitiveFloatList computablePrimitiveFloatList1 = (ComputablePrimitiveFloatList)list1;
-      ComputablePrimitiveFloatList computablePrimitiveFloatList2 = (ComputablePrimitiveFloatList)list2;
-      return hadamardProduct(list1.size(), computablePrimitiveFloatList1::getPrimitive,
-          computablePrimitiveFloatList2::getPrimitive);
-    } else if (list1 instanceof PrimitiveFloatList && list2 instanceof PrimitiveFloatList) {
+    if (list1 instanceof PrimitiveFloatList && list2 instanceof PrimitiveFloatList) {
       PrimitiveFloatList primitiveFloatList1 = (PrimitiveFloatList)list1;
       PrimitiveFloatList primitiveFloatList2 = (PrimitiveFloatList)list2;
       return hadamardProduct(list1.size(), primitiveFloatList1::getPrimitive, primitiveFloatList2::getPrimitive);
@@ -111,9 +98,7 @@ public class ComputeOperationUtils {
   }
 
   public static float squaredL2Norm(List<Float> list) {
-    if (list instanceof ComputablePrimitiveFloatList) {
-      return ((ComputablePrimitiveFloatList) list).squaredL2Norm();
-    } else if (list instanceof PrimitiveFloatList) {
+    if (list instanceof PrimitiveFloatList) {
       PrimitiveFloatList primitiveFloatList = (PrimitiveFloatList)list;
       int size = primitiveFloatList.size();
       FloatSupplierByIndex floatSupplierByIndex = primitiveFloatList::getPrimitive;

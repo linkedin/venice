@@ -4,6 +4,18 @@
     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
     xsi:schemaLocation="https://github.com/spotbugs/filter/3.0.0 https://raw.githubusercontent.com/spotbugs/spotbugs/master/spotbugs/etc/findbugsfilter.xsd">
   <Match>
-    <Bug category="AVRO" />
+    <Or>
+      <Bug category="AVRO" />
+      <Bug pattern="LI_LAZY_INIT_UPDATE_STATIC" />
+      <Bug pattern="NP_NULL_ON_SOME_PATH" />
+      <Bug pattern="NP_UNWRITTEN_FIELD" />
+      <Bug pattern="OS_OPEN_STREAM" />
+      <Bug pattern="OS_OPEN_STREAM_EXCEPTION_PATH" />
+      <Bug pattern="SA_FIELD_SELF_COMPARISON" />
+      <Bug pattern="SIO_SUPERFLUOUS_INSTANCEOF" />
+      <Bug pattern="UWF_NULL_FIELD" />
+      <Bug pattern="UWF_UNWRITTEN_FIELD" />
+      <Bug pattern="WMI_WRONG_MAP_ITERATOR" />
+    </Or>  
   </Match>
 </FindBugsFilter>

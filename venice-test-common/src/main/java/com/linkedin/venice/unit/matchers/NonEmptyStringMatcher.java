@@ -5,6 +5,6 @@ import org.mockito.ArgumentMatcher;
 public class NonEmptyStringMatcher implements ArgumentMatcher<String> {
   @Override
   public boolean matches(String argument) {
-    return argument instanceof String && !((String) argument).isEmpty();
+    return !argument.isEmpty();
   }
 }

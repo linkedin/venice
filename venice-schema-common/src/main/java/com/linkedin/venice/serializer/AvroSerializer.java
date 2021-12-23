@@ -126,6 +126,7 @@ public class AvroSerializer<K> implements RecordSerializer<K> {
         }
       });
       encoder.flush();
+      return output.toByteArray();
     } catch (IOException e) {
       throw new VeniceException("Could not flush BinaryEncoder", e);
     } finally {
@@ -137,7 +138,6 @@ public class AvroSerializer<K> implements RecordSerializer<K> {
         }
       }
     }
-    return output.toByteArray();
   }
 
   /**

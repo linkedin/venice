@@ -30,11 +30,14 @@ public class ZkServerWrapper extends ProcessWrapper {
   // Class-level state and APIs
   private static final Logger LOGGER = Logger.getLogger(ZkServerWrapper.class);
 
-  static final boolean SINGLETON = true;
   public static final String SERVICE_NAME = "Zookeeper";
   private static final int MAX_WAIT_TIME_DURING_STARTUP = 5 * Time.MS_PER_SECOND;
-  private static ZkServerWrapper INSTANCE = null;
   private static final ConcurrentLinkedQueue<String> CHROOTS = new ConcurrentLinkedQueue<>();
+
+  /**
+   * The singleton ZK that all wrappers end up using
+   */
+  private static ZkServerWrapper INSTANCE = null;
   private static ZooKeeper zooKeeper = null;
 
   // TODO: Make sure the hardcoded defaults below make sense
@@ -58,20 +61,18 @@ public class ZkServerWrapper extends ProcessWrapper {
    *
    * @return a function which yields a {@link ZkServerWrapper} instance
    */
-  static synchronized StatefulServiceProvider<ZkServerWrapper> generateService() {
+  static StatefulServiceProvider<ZkServerWrapper> generateService() {
     return (String serviceName, File dataDirectory) -> {
-      if (!SINGLETON) {
-        return createRealZkServerWrapper(serviceName, Utils.getFreePort(), dataDirectory);
-      }
-
-      if (INSTANCE == null) {
-        try {
-          INSTANCE = createRealZkServerWrapper(serviceName, Utils.getFreePort(), dataDirectory);
-          Runtime.getRuntime().addShutdownHook(new Thread(INSTANCE::close));
-          INSTANCE.start();
-        } catch (Exception e) {
-          INSTANCE = null;
-          throw e;
+      synchronized (ZkServerWrapper.class) {
+        if (INSTANCE == null) {
+          try {
+            INSTANCE = createRealZkServerWrapper(serviceName, Utils.getFreePort(), dataDirectory);
+            Runtime.getRuntime().addShutdownHook(new Thread(INSTANCE::close));
+            INSTANCE.start();
+          } catch (Exception e) {
+            INSTANCE = null;
+            throw e;
+          }
         }
       }
 
@@ -116,6 +117,8 @@ public class ZkServerWrapper extends ProcessWrapper {
   private ZooKeeperServer zkServer;
 
   /**
+   * Constructor for the singleton {@link #INSTANCE}.
+   *
    * The constructor is private because {@link #generateService()} should be the only
    * way to construct a {@link ZkServerWrapper} instance.
    *
@@ -128,14 +131,13 @@ public class ZkServerWrapper extends ProcessWrapper {
     this.zkThread = new ZkThread();
     this.zkServer = new ZooKeeperServer();
     this.configuration = configuration;
-
   }
 
+  /**
+   * Constructor for the wrappers handed out to the rest of the code.
+   */
   private ZkServerWrapper(File dataDirectory, String chroot) {
     super(SERVICE_NAME, dataDirectory);
-    if (!SINGLETON) {
-      throw new RuntimeException("Do not use the singleton-based ZkServerWrapper constructor without enabling the useSingleton flag");
-    }
     this.chroot = chroot;
     this.zkThread = null;
     this.zkServer = null;
@@ -187,7 +189,7 @@ public class ZkServerWrapper extends ProcessWrapper {
    * @see {@link ProcessWrapper#getPort()}
    */
   public int getPort() {
-    if (SINGLETON && this != INSTANCE) {
+    if (this != INSTANCE) {
       return INSTANCE.getPort();
     }
     return configuration.getClientPortAddress().getPort();
@@ -195,7 +197,7 @@ public class ZkServerWrapper extends ProcessWrapper {
 
   @Override
   public String getAddress() {
-    if (SINGLETON && this != INSTANCE) {
+    if (this != INSTANCE) {
       return INSTANCE.getAddress() + "/" + chroot;
     }
     return getHost() + ":" + getPort();
@@ -203,45 +205,45 @@ public class ZkServerWrapper extends ProcessWrapper {
 
   @Override
   protected void internalStart() throws Exception {
-    if (SINGLETON && this != INSTANCE) {
+    if (this != INSTANCE) {
       return;
     }
 
-    long expirationTime = System.currentTimeMillis() + MAX_WAIT_TIME_DURING_STARTUP;
-    zkThread.start();
-    while (!zkServer.isRunning() && zkThread.exception == null) {
-      if (expirationTime < System.currentTimeMillis()) {
-        close();
-        throw new VeniceException("Unable to start ZK within the maximum allotted time (" + MAX_WAIT_TIME_DURING_STARTUP + " ms).");
+    synchronized (ZkServerWrapper.class) {
+      long expirationTime = System.currentTimeMillis() + MAX_WAIT_TIME_DURING_STARTUP;
+      zkThread.start();
+      while (!zkServer.isRunning() && zkThread.exception == null) {
+        if (expirationTime < System.currentTimeMillis()) {
+          close();
+          throw new VeniceException("Unable to start ZK within the maximum allotted time (" + MAX_WAIT_TIME_DURING_STARTUP + " ms).");
+        }
+        Thread.sleep(100);
       }
-      Thread.sleep(100);
-    }
 
-    if (zkThread.exception != null) {
-      INSTANCE = null;
-      throw new VeniceException("ZooKeeper failed to start.", zkThread.exception);
-    }
+      if (zkThread.exception != null) {
+        INSTANCE = null;
+        throw new VeniceException("ZooKeeper failed to start.", zkThread.exception);
+      }
 
-    LOGGER.info("ZK is running: " + zkServer.isRunning());
+      LOGGER.info("ZK is running: " + zkServer.isRunning());
+    }
   }
 
   @Override
   protected synchronized void internalStop() throws Exception {
-    if (SINGLETON && this != INSTANCE) {
+    if (this != INSTANCE) {
       return;
     }
-    zkThread.interrupt();
-    zkThread.join();
-    INSTANCE = null;
+    synchronized (ZkServerWrapper.class) {
+      zkThread.interrupt();
+      zkThread.join();
+      INSTANCE = null;
+    }
   }
 
   @Override
   protected void newProcess() throws Exception {
-    if (SINGLETON) {
-      throw new RuntimeException("newProcess is not implemented for singleton ZkServerWrappers");
-    }
-    this.zkThread = new ZkThread();
-    this.zkServer = new ZooKeeperServer();
+    throw new RuntimeException("newProcess is not implemented for singleton ZkServerWrappers");
   }
 
   /**
