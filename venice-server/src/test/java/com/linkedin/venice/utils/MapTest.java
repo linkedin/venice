@@ -35,17 +35,6 @@ public class MapTest {
   @DataProvider
   Object[][] notEmptyMapImplementations() {
     class NotEmptyHashMap<K, V> extends HashMap<K, V> {
-      private K alwaysExistingKey;
-      private V alwaysExistingValue;
-
-      @Override
-      public V get(Object key) {
-        if (key == alwaysExistingKey) {
-          return alwaysExistingValue;
-        }
-        return super.get(key);
-      }
-
       @Override
       public int size() {
         return super.size() + 1;
@@ -58,17 +47,6 @@ public class MapTest {
     }
 
     class NotEmptyLinkedHashMap<K, V> extends LinkedHashMap<K, V> {
-      private K alwaysExistingKey;
-      private V alwaysExistingValue;
-
-      @Override
-      public V get(Object key) {
-        if (key == alwaysExistingKey) {
-          return alwaysExistingValue;
-        }
-        return super.get(key);
-      }
-
       @Override
       public int size() {
         return super.size() + 1;
@@ -81,17 +59,6 @@ public class MapTest {
     }
 
     class NotEmptyIndexedHashMap<K, V> extends IndexedHashMap<K, V> {
-      private K alwaysExistingKey;
-      private V alwaysExistingValue;
-
-      @Override
-      public V get(Object key) {
-        if (key == alwaysExistingKey) {
-          return alwaysExistingValue;
-        }
-        return super.get(key);
-      }
-
       @Override
       public int size() {
         return super.size() + 1;

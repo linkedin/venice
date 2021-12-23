@@ -165,19 +165,18 @@ public class VeniceConfigLoader {
       return Optional.empty();
     }
 
-    BufferedReader reader = new BufferedReader(new FileReader(mapFile));
-    String flatMapString = reader.readLine();
-    reader.close();
+    try (BufferedReader reader = new BufferedReader(new FileReader(mapFile))) {
+      String flatMapString = reader.readLine();
+      ObjectMapper mapper = new ObjectMapper();
 
-    ObjectMapper mapper = new ObjectMapper();
+      Map<String, String> flatMap = mapper.readValue(flatMapString, Map.class);
+      Map<String, Map<String, String>> kafkaClusterMap = new HashMap<>();
 
-    Map<String, String> flatMap = mapper.readValue(flatMapString, Map.class);
-    Map<String, Map<String, String>> kafkaClusterMap = new HashMap<>();
-
-    for (Map.Entry<String, String> entry : flatMap.entrySet()) {
-      kafkaClusterMap.put(entry.getKey(), mapper.readValue(entry.getValue(), Map.class));
+      for (Map.Entry<String, String> entry : flatMap.entrySet()) {
+        kafkaClusterMap.put(entry.getKey(), mapper.readValue(entry.getValue(), Map.class));
+      }
+      return Optional.of(kafkaClusterMap);
     }
-    return Optional.of(kafkaClusterMap);
   }
 
   public static void storeKafkaClusterMap(File configDirectory, Optional<Map<String, Map<String, String>>> kafkaClusterMap) throws Exception {
@@ -198,8 +197,8 @@ public class VeniceConfigLoader {
     String flatMapString = mapper.writeValueAsString(flatMap);
 
     File mapFile = new File(configDirectory, fileName);
-    BufferedWriter writer = new BufferedWriter(new FileWriter(mapFile));
-    writer.write(flatMapString);
-    writer.close();
+    try (BufferedWriter writer = new BufferedWriter(new FileWriter(mapFile))) {
+      writer.write(flatMapString);
+    }
   }
 }

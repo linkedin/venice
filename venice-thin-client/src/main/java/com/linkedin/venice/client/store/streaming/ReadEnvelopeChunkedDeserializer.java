@@ -133,15 +133,12 @@ public abstract class ReadEnvelopeChunkedDeserializer<V> {
     if (offset >= totalBytes) {
       throw NOT_ENOUGH_BYTES_EXCEPTION;
     }
-    BytesContainer lastBytesContainer = null;
     for (BytesContainer bytesContainer : buffers) {
       if (offset >= bytesContainer.globalStartOffset && offset <= bytesContainer.globalEndOffset) {
-        lastBytesContainer = bytesContainer;
-        break;
+        return bytesContainer.bytes.get(offset - bytesContainer.globalStartOffset + bytesContainer.bytes.position());
       }
     }
-
-    return lastBytesContainer.bytes.get(offset - lastBytesContainer.globalStartOffset + lastBytesContainer.bytes.position());
+    throw NOT_ENOUGH_BYTES_EXCEPTION;
   }
 
 

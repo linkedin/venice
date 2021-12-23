@@ -56,7 +56,7 @@ public class ComputeRouterRequestWrapper extends MultiKeyRouterRequestWrapper<Co
     ComputeRequestWrapper computeRequestWrapper = new ComputeRequestWrapper(apiVersion);
     BinaryDecoder decoder =
         OptimizedBinaryDecoderFactory.defaultFactory().createOptimizedBinaryDecoder(requestContent, 0, requestContent.length);
-    computeRequestWrapper.deserialize(decoder, useFastAvro, !useFastAvro);
+    computeRequestWrapper.deserialize(decoder, useFastAvro);
 
     Iterable<ComputeRouterRequestKeyV1> keys = parseKeys(decoder);
     String schemaId = httpRequest.headers().get(HttpConstants.VENICE_COMPUTE_VALUE_SCHEMA_ID);

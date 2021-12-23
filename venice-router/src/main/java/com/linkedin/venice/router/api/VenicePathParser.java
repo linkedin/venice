@@ -147,6 +147,11 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
           path = new VeniceComputePath(resourceName, fullHttpRequest, partitionFinder, getBatchGetLimit(storeName),
               routerConfig.isSmartLongTailRetryEnabled(), routerConfig.getSmartLongTailRetryAbortThresholdMs(),
               routerConfig.isComputeFastAvroEnabled(), routerConfig.getLongTailRetryMaxRouteForMultiKeyReq());
+        } else {
+          throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.of(storeName), Optional.empty(),
+              BAD_REQUEST, "The passed in request must be either a GET or "
+              + "be a POST with a resource type of " + TYPE_STORAGE + " or " + TYPE_COMPUTE
+              + ", but instead it was: " + request.toString());
         }
       } else {
         throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.empty(), Optional.empty(),

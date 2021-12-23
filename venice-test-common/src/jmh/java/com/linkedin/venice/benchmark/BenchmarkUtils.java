@@ -12,6 +12,7 @@ import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.google.flatbuffers.FlatBufferBuilder;
 
 import com.linkedin.venice.utils.Utils;
+import java.util.Collections;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
@@ -102,13 +103,11 @@ public class BenchmarkUtils {
   public static void printStatistics(String testCaseName, Map<String, Float> metricsDelta, long queryVolume) {
     System.out.println();
     System.out.format(testCaseName + " ===================\n");
-    for (Map.Entry<String, Float> entry : metricsDelta.entrySet()) {
-      String key = entry.getKey();
-      if (key.equals("gc_new_time") || key.equals("gc_old_time")) {
-        continue;
+    metricsDelta.forEach((key, value) -> {
+      if (!key.equals("gc_new_time") && !key.equals("gc_old_time")) {
+        System.out.format(testCaseName + ".%s=%f\n", key, value);
       }
-      System.out.format(testCaseName + ".%s=%f\n", key, entry.getValue());
-    }
+    });
     DecimalFormat decimalFormat = new DecimalFormat("###,###.###");
     System.out.format(testCaseName + ".query_Volume: %s, time lapse: %f ms\n", decimalFormat.format(queryVolume),
         metricsDelta.get("uptime"));

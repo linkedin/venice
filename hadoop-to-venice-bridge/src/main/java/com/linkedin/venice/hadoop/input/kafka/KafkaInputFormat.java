@@ -62,11 +62,8 @@ public class KafkaInputFormat implements InputFormat<BytesWritable, KafkaInputMa
 
     Map<TopicPartition, Long> latestOffsets = getLatestOffsets(job);
     List<InputSplit> splits = new LinkedList<>();
-    for (Map.Entry<TopicPartition, Long> entry : latestOffsets.entrySet()) {
-      TopicPartition topicPartition = entry.getKey();
-
+    latestOffsets.forEach((topicPartition, end) -> {
       long start = 0;
-      long end = entry.getValue();
 
       /**
        * Chop up any excessively large partitions into multiple splits for more balanced map task durations. This will
@@ -78,7 +75,7 @@ public class KafkaInputFormat implements InputFormat<BytesWritable, KafkaInputMa
         splits.add(new KafkaInputSplit(topicPartition.topic(), topicPartition.partition(), splitStart, splitEnd));
         splitStart = splitEnd;
       }
-    }
+    });
 
     return splits.toArray(new KafkaInputSplit[splits.size()]);
   }

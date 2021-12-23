@@ -204,28 +204,29 @@ public class StorageNodeComputeTest {
           .get(2, TimeUnit.SECONDS);
       Assert.assertEquals(computeResult.size(), 10);
 
-      for (Map.Entry<String, GenericRecord> entry : computeResult.entrySet()) {
-        int keyIdx = getKeyIndex(entry.getKey(), keyPrefix);
+      computeResult.forEach((key, value) -> {
+        int keyIdx = getKeyIndex(key, keyPrefix);
         // check projection result
-        Assert.assertEquals(entry.getValue().get("id"), new Utf8(valuePrefix + keyIdx));
+        Assert.assertEquals(value.get("id"), new Utf8(valuePrefix + keyIdx));
         // check dotProduct result; should be double for V1 request
-        Assert.assertEquals(entry.getValue().get("member_score"), (float)(p.get(0) * (keyIdx + 1) + p.get(1) * ((keyIdx + 1) * 10)));
+        Assert.assertEquals(value.get("member_score"), (p.get(0) * (keyIdx + 1) + p.get(1) * ((keyIdx + 1) * 10)));
 
         // check cosine similarity result; should be double for V1 request
-        float dotProductResult = (float) cosP.get(0) * (float)(keyIdx + 1) + cosP.get(1) * (float)((keyIdx + 1) * 10);
-        float valueVectorMagnitude = (float) Math.sqrt(((float)(keyIdx + 1) * (float)(keyIdx + 1) + ((float)(keyIdx + 1) * 10.0f) * ((float)(keyIdx + 1) * 10.0f)));
-        float parameterVectorMagnitude = (float) Math.sqrt((float)(cosP.get(0) * cosP.get(0) + cosP.get(1) * cosP.get(1)));
+        float dotProductResult = cosP.get(0) * (float) (keyIdx + 1) + cosP.get(1) * (float) ((keyIdx + 1) * 10);
+        float valueVectorMagnitude = (float) Math.sqrt(
+            ((float) (keyIdx + 1) * (float) (keyIdx + 1) + ((float) (keyIdx + 1) * 10.0f) * ((float) (keyIdx + 1) * 10.0f)));
+        float parameterVectorMagnitude = (float) Math.sqrt((cosP.get(0) * cosP.get(0) + cosP.get(1) * cosP.get(1)));
         float expectedCosineSimilarity = dotProductResult / (parameterVectorMagnitude * valueVectorMagnitude);
-        Assert.assertEquals((float) entry.getValue().get("cosine_similarity_result"), expectedCosineSimilarity, 0.000001f);
-        Assert.assertEquals((int) entry.getValue().get("member_feature_count"),  2);
-        Assert.assertEquals((int) entry.getValue().get("namemap_count"),  0);
+        Assert.assertEquals((float) value.get("cosine_similarity_result"), expectedCosineSimilarity, 0.000001f);
+        Assert.assertEquals((int) value.get("member_feature_count"), 2);
+        Assert.assertEquals((int) value.get("namemap_count"), 0);
 
         // check hadamard product
         List<Float> hadamardProductResult = new ArrayList<>(2);
-        hadamardProductResult.add(hadamardP.get(0) * (float)(keyIdx + 1));
-        hadamardProductResult.add(hadamardP.get(1) * (float)((keyIdx + 1) * 10));
-        Assert.assertEquals(entry.getValue().get("hadamard_product_result"), hadamardProductResult);
-      }
+        hadamardProductResult.add(hadamardP.get(0) * (float) (keyIdx + 1));
+        hadamardProductResult.add(hadamardP.get(1) * (float) ((keyIdx + 1) * 10));
+        Assert.assertEquals(value.get("hadamard_product_result"), hadamardProductResult);
+      });
     }
 
     /**

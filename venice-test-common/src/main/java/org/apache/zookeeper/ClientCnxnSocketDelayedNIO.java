@@ -65,9 +65,9 @@ public class ClientCnxnSocketDelayedNIO extends ClientCnxnSocketNIO {
    * @param defaultSocketIoDelayUpperBoundMS
    */
   public static void setDefaultSocketIoDelayUpperBoundMS(long defaultSocketIoDelayUpperBoundMS) {
-    if (defaultSocketIoDelayLowerBoundMS < defaultSocketIoDelayLowerBoundMS) {
+    if (defaultSocketIoDelayUpperBoundMS < defaultSocketIoDelayLowerBoundMS) {
       throw new IllegalArgumentException(
-          "defaultSocketIoDelayLowerBoundMS must be larger than defaultSocketIoDelayLowerBoundMS.");
+          "defaultSocketIoDelayUpperBoundMS must be larger than defaultSocketIoDelayLowerBoundMS.");
     }
     ClientCnxnSocketDelayedNIO.defaultSocketIoDelayUpperBoundMS = defaultSocketIoDelayUpperBoundMS;
   }

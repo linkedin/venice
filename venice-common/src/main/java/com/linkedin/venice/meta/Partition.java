@@ -107,10 +107,11 @@ public class Partition {
    * Find the status of given instance in this partition.
    */
   public String getInstanceStatusById(String instanceId){
-    for (String status:stateToInstancesMap.keySet()) {
-      List<Instance> instances = stateToInstancesMap.get(status);
-      for(Instance instance : instances){
-        if(instance.getNodeId().equals(instanceId)){
+    for (Map.Entry<String, List<Instance>> entry: stateToInstancesMap.entrySet()) {
+      String status = entry.getKey();
+      List<Instance> instances = entry.getValue();
+      for (Instance instance : instances){
+        if (instance.getNodeId().equals(instanceId)){
           return status;
         }
       }

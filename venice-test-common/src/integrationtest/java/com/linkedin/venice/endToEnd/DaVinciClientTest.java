@@ -1114,9 +1114,8 @@ public class DaVinciClientTest {
 
       final Consumer<Map<Integer, GenericRecord>> assertComputeResults = (readComputeResult) -> {
         // Expect no error
-        for (Map.Entry<Integer, GenericRecord> entry : readComputeResult.entrySet()) {
-          Assert.assertEquals(((HashMap<String, String>)entry.getValue().get(VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME)).size(), 0);
-        }
+        readComputeResult.forEach((key, value) -> Assert.assertEquals(
+            ((HashMap<String, String>) value.get(VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME)).size(), 0));
         // Results for key 2 should be all null since the nullable field in the value of key 2 is null
         Assert.assertNull(readComputeResult.get(key2).get("dot_product_result"));
         Assert.assertNull(readComputeResult.get(key2).get("hadamard_product_result"));
@@ -1206,18 +1205,16 @@ public class DaVinciClientTest {
           .cosineSimilarity("member_feature", pymkCosineSimilarityEmbedding, "member_feature_score")
           .execute(keySetForCompute).get();
 
-      for (Map.Entry<Integer, GenericRecord> entry : computeResult.entrySet()) {
-        Assert.assertEquals(((HashMap<String, String>)entry.getValue().get(VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME)).size(), 0);
-      }
+      computeResult.forEach((key, value) -> Assert.assertEquals(
+          ((HashMap<String, String>) value.get(VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME)).size(), 0));
 
       computeResult = client.compute()
           .cosineSimilarity("companiesEmbedding", pymkCosineSimilarityEmbedding, "companiesEmbedding_score")
           .cosineSimilarity("member_feature", pymkCosineSimilarityEmbedding, "member_feature_score")
           .streamingExecute(keySetForCompute).get();
 
-      for (Map.Entry<Integer, GenericRecord> entry : computeResult.entrySet()) {
-        Assert.assertEquals(((HashMap<String, String>) entry.getValue().get(VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME)).size(), 0);
-      }
+      computeResult.forEach((key, value) -> Assert.assertEquals(
+          ((HashMap<String, String>) value.get(VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME)).size(), 0));
 
       client.unsubscribeAll();
     }
@@ -1244,18 +1241,16 @@ public class DaVinciClientTest {
           .cosineSimilarity("member_feature", pymkCosineSimilarityEmbedding, "member_feature_score")
           .execute(keySetForCompute).get();
 
-      for (Map.Entry<Integer, GenericRecord> entry : computeResult.entrySet()) {
-        Assert.assertEquals(((HashMap<String, String>)entry.getValue().get(VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME)).size(), 1);
-      }
+      computeResult.forEach((key, value) -> Assert.assertEquals(
+          ((HashMap<String, String>) value.get(VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME)).size(), 1));
 
       computeResult = clientForMissingField.compute()
           .cosineSimilarity("companiesEmbedding", pymkCosineSimilarityEmbedding, "companiesEmbedding_score")
           .cosineSimilarity("member_feature", pymkCosineSimilarityEmbedding, "member_feature_score")
           .streamingExecute(keySetForCompute).get();
 
-      for (Map.Entry<Integer, GenericRecord> entry : computeResult.entrySet()) {
-        Assert.assertEquals(((HashMap<String, String>)entry.getValue().get(VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME)).size(), 1);
-      }
+      computeResult.forEach((key, value) -> Assert.assertEquals(
+          ((HashMap<String, String>) value.get(VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME)).size(), 1));
 
       clientForMissingField.unsubscribeAll();
     }
@@ -1318,9 +1313,8 @@ public class DaVinciClientTest {
           .cosineSimilarity("member_feature", pymkCosineSimilarityEmbedding, "member_feature_score")
           .execute(keySetForCompute).get();
 
-      for (Map.Entry<Integer, GenericRecord> entry : computeResult.entrySet()) {
-        Assert.assertEquals(((HashMap<String, String>) entry.getValue().get(VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME)).size(), 0);
-      }
+      computeResult.forEach((key, value) -> Assert.assertEquals(
+          ((HashMap<String, String>) value.get(VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME)).size(), 0));
       client.unsubscribeAll();
     }
 
@@ -1345,9 +1339,8 @@ public class DaVinciClientTest {
           .cosineSimilarity("member_feature", pymkCosineSimilarityEmbedding, "member_feature_score")
           .execute(keySetForCompute).get();
 
-      for (Map.Entry<Integer, GenericRecord> entry : computeResult.entrySet()) {
-        Assert.assertEquals(((HashMap<String, String>)entry.getValue().get(VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME)).size(), 0);
-      }
+      computeResult.forEach((key, value) -> Assert.assertEquals(
+          ((HashMap<String, String>) value.get(VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME)).size(), 0));
 
       client2.unsubscribeAll();
     }
@@ -1535,13 +1528,13 @@ public class DaVinciClientTest {
 
       computeLatch.await();
       Assert.assertEquals(finalComputeResultMap.size(), 16);
-      for (Map.Entry<GenericRecord, GenericRecord> kvp : finalComputeResultMap.entrySet()){
-        Assert.assertEquals(kvp.getKey().getSchema(), keySchema);
-        Assert.assertEquals(kvp.getKey().get("id").toString(), "key_abcdefgh_1");
-        Assert.assertEquals(kvp.getKey().get("companyId"), 0);
-        Assert.assertEquals(kvp.getValue().getSchema().getFields().size(), 7);
-        Assert.assertEquals(((HashMap<String, String>)kvp.getValue().get(VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME)).size(), 0);
-      }
+      finalComputeResultMap.forEach((key1, value) -> {
+        Assert.assertEquals(key1.getSchema(), keySchema);
+        Assert.assertEquals(key1.get("id").toString(), "key_abcdefgh_1");
+        Assert.assertEquals(key1.get("companyId"), 0);
+        Assert.assertEquals(value.getSchema().getFields().size(), 7);
+        Assert.assertEquals(((HashMap<String, String>) value.get(VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME)).size(), 0);
+      });
     }
   }
 

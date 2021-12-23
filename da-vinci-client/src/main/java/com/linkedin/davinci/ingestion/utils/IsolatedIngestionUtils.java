@@ -551,8 +551,7 @@ public class IsolatedIngestionUtils {
     }
 
     // Extract principal name from the KeyStore file
-    try {
-      FileInputStream is = new FileInputStream(configLoader.getCombinedProperties().getString(SSL_KEYSTORE_LOCATION));
+    try (FileInputStream is = new FileInputStream(configLoader.getCombinedProperties().getString(SSL_KEYSTORE_LOCATION))) {
       KeyStore keystore = KeyStore.getInstance(configLoader.getCombinedProperties().getString(SSL_KEYSTORE_TYPE));
       keystore.load(is, configLoader.getCombinedProperties().getString(SSL_KEY_PASSWORD).toCharArray());
       String keyStoreAlias = keystore.aliases().nextElement();

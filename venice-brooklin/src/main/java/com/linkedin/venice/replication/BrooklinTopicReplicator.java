@@ -186,9 +186,8 @@ public class BrooklinTopicReplicator extends TopicReplicator {
     metadata.put(BROOKLIN_AUTO_OFFSET_RESET, "none");
 
     Map<String, Long> startingOffsetsStringMap = new HashMap<>();
-    for (Map.Entry<Integer, Long> entry : startingOffsetsMap.entrySet()){
-      startingOffsetsStringMap.put(Integer.toString(entry.getKey()), (entry.getValue() == LOWEST_OFFSET) ? 0L : entry.getValue());
-    }
+    startingOffsetsMap.forEach(
+        (key, value) -> startingOffsetsStringMap.put(Integer.toString(key), (value == LOWEST_OFFSET) ? 0L : value));
     try {
       String startingOffsetsJson = mapper.writeValueAsString(startingOffsetsStringMap);
       metadata.put(DatastreamMetadataConstants.START_POSITION, startingOffsetsJson);

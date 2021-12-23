@@ -280,10 +280,7 @@ public abstract class TestRestartServerDuringIngestion {
       veniceWriter.broadcastStartOfPush(false, Collections.emptyMap());
 
       Map<byte[], byte[]> sortedInputRecords = generateInput(1000, false, 0, serializer);
-      int cur = 0;
-      for (Map.Entry<byte[], byte[]> entry : sortedInputRecords.entrySet()) {
-        veniceWriter.put(entry.getKey(), entry.getValue(), 1, null);
-      }
+      sortedInputRecords.forEach((key, value) -> veniceWriter.put(key, value, 1, null));
 
       veniceWriter.broadcastEndOfPush(Collections.emptyMap());
 

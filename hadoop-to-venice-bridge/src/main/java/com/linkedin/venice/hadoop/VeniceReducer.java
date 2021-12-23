@@ -596,9 +596,10 @@ public class VeniceReducer
     Map<String, Double> producerMetrics = veniceWriter.getMeasurableProducerMetrics();
 
     // We already checked that we're dealing with only one partition, so this is safe
-    int partition = partitionLeaderMap.keySet().iterator().next();
+    Map.Entry<Integer, String> entry = partitionLeaderMap.entrySet().iterator().next();
+    int partition = entry.getKey();
+    String oldLeader = entry.getValue();
 
-    String oldLeader = partitionLeaderMap.get(partition);
     String newLeader;
     try {
       newLeader = veniceWriter.getBrokerLeaderHostname(props.getString(TOPIC_PROP), partition);

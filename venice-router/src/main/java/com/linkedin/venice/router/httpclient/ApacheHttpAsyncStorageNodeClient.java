@@ -493,6 +493,7 @@ public class ApacheHttpAsyncStorageNodeClient implements StorageNodeClient  {
     // during warmup up it might return null
     if (client == null) {
       responseFuture.complete(null);
+      return;
     }
     HttpGet httpGet = new HttpGet(request.getUrl() + request.getQuery());
 

@@ -6,7 +6,6 @@ import com.linkedin.venice.compute.protocol.request.ComputeRequestV2;
 import com.linkedin.venice.compute.protocol.request.ComputeRequestV3;
 import com.linkedin.venice.compute.protocol.request.ComputeRequestV4;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.serializer.ComputableSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
@@ -57,11 +56,9 @@ public class ComputeRequestWrapper {
     }
   };
 
-  private RecordDeserializer getDeserializer(boolean useFastAvro, boolean useComputableAvro) {
+  private RecordDeserializer getDeserializer(boolean useFastAvro) {
     if (useFastAvro) {
       return FastSerializerDeserializerFactory.getFastAvroSpecificDeserializer(SCHEMA_MAP.get(version), CLASS_MAP.get(version));
-    } else if (useComputableAvro) {
-      return ComputableSerializerDeserializerFactory.getComputableAvroSpecificDeserializer(SCHEMA_MAP.get(version), CLASS_MAP.get(version));
     } else {
       return SerializerDeserializerFactory.getAvroSpecificDeserializer(SCHEMA_MAP.get(version), CLASS_MAP.get(version));
     }
@@ -100,11 +97,7 @@ public class ComputeRequestWrapper {
   }
 
   public void deserialize(BinaryDecoder decoder, boolean useFastAvro) {
-    deserialize(decoder, useFastAvro, false);
-  }
-
-  public void deserialize(BinaryDecoder decoder, boolean useFastAvro, boolean useComputableAvro) {
-    RecordDeserializer deserializer = getDeserializer(useFastAvro, useComputableAvro);
+    RecordDeserializer deserializer = getDeserializer(useFastAvro);
     this.computeRequest = deserializer.deserialize(computeRequest, decoder);
   }
 

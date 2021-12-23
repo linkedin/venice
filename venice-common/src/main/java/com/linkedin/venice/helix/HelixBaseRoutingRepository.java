@@ -96,11 +96,12 @@ public abstract class HelixBaseRoutingRepository
       routingTableProvider = new RoutingTableProvider(manager.getOriginalManager(), dataSource);
       routingTableProvider.addRoutingTableChangeListener(this, null);
       // Get the current external view and customized views, process at first. As the new helix API will not init a event after you add the listener.
-      for (PropertyType propertyType : dataSource.keySet()) {
-        if (dataSource.get(propertyType).isEmpty()) {
+      for (Map.Entry<PropertyType, List<String>> entry: dataSource.entrySet()) {
+        PropertyType propertyType = entry.getKey();
+        if (entry.getValue().isEmpty()) {
           onRoutingTableChange(routingTableProvider.getRoutingTableSnapshot(propertyType), null);
         } else {
-          for (String customizedStateType : dataSource.get(propertyType)) {
+          for (String customizedStateType : entry.getValue()) {
             onRoutingTableChange(routingTableProvider.getRoutingTableSnapshot(propertyType, customizedStateType), null);
           }
         }

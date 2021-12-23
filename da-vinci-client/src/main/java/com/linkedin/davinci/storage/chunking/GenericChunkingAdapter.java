@@ -1,9 +1,9 @@
 package com.linkedin.davinci.storage.chunking;
 
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
-import com.linkedin.venice.serializer.ComputableSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
+import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 
@@ -26,7 +26,7 @@ public class GenericChunkingAdapter<V extends GenericRecord> extends AbstractAvr
     if (fastAvroEnabled) {
       return FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(writerSchema, readerSchema);
     } else {
-      return ComputableSerializerDeserializerFactory.getComputableAvroGenericDeserializer(writerSchema, readerSchema);
+      return SerializerDeserializerFactory.getAvroGenericDeserializer(writerSchema, readerSchema);
     }
   }
 }

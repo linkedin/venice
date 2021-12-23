@@ -105,16 +105,18 @@ public class HelixHybridStoreQuotaRepository implements RoutingTableChangeListen
         for (String partitionName : customizedView.getPartitionSet()) {
           Map<String, String> instanceStateMap = customizedView.getStateMap(partitionName);
           // Iterate through all instances' execution status
-          for (String instanceName : instanceStateMap.keySet()) {
-              try {
-                status = HybridStoreQuotaStatus.valueOf(instanceStateMap.get(instanceName));
-              } catch (Exception e) {
-                logger.warn("Instance:" + instanceName + " unrecognized status:" + instanceStateMap.get(instanceName));
-                continue;
-              }
-              if (status.equals(HybridStoreQuotaStatus.QUOTA_VIOLATED)) {
-                break;
-              }
+          for (Map.Entry<String, String> entry: instanceStateMap.entrySet()) {
+            String instanceState = entry.getValue();
+            try {
+              status = HybridStoreQuotaStatus.valueOf(instanceState);
+            } catch (Exception e) {
+              String instanceName = entry.getKey();
+              logger.warn("Instance:" + instanceName + " unrecognized status:" + instanceState);
+              continue;
+            }
+            if (status.equals(HybridStoreQuotaStatus.QUOTA_VIOLATED)) {
+              break;
+            }
           }
           if (status.equals(HybridStoreQuotaStatus.QUOTA_VIOLATED)) {
             break;

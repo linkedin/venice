@@ -13,7 +13,7 @@ public class LongEqualOrGreaterThanMatcher implements ArgumentMatcher<Long> {
 
   @Override
   public boolean matches(Long argument) {
-    return argument instanceof Long && ((Long) argument) >= lowerBound;
+    return argument >= lowerBound;
   }
 
   public String toString() {

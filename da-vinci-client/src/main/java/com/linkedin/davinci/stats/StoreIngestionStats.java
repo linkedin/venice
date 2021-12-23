@@ -23,8 +23,6 @@ import java.util.function.Supplier;
 import static com.linkedin.venice.stats.StatsErrorCode.*;
 
 public class StoreIngestionStats extends AbstractVeniceStats {
-  private StoreIngestionTask storeIngestionTask;
-
   /**
    * DO NOT REMOVE the aggregated consumption rate metrics
    * It's needed for Venice-health dashboard.
@@ -162,8 +160,6 @@ public class StoreIngestionStats extends AbstractVeniceStats {
   public StoreIngestionStats(MetricsRepository metricsRepository, VeniceServerConfig serverConfig,
                              String storeName) {
     super(metricsRepository, storeName);
-    this.storeIngestionTask = null;
-
     totalBytesConsumedSensor = registerSensor("bytes_consumed", new Rate());
     totalRecordsConsumedSensor = registerSensor("records_consumed", new Rate());
 
@@ -250,10 +246,6 @@ public class StoreIngestionStats extends AbstractVeniceStats {
     offsetRegressionDCRErrorRate = registerSensor("offset_regression_dcr_error", new Rate());
 
     leaderDelegateRealTimeRecordLatencySensor = registerSensor("leader_delegate_real_time_record_latency", new Avg(), new Max());
-  }
-
-  public StoreIngestionTask getStoreIngestionTask() {
-    return storeIngestionTask;
   }
 
   public void recordTotalBytesConsumed(long bytes) {
@@ -432,18 +424,5 @@ public class StoreIngestionStats extends AbstractVeniceStats {
 
   public void recordLeaderDelegateRealTimeRecordLatency(double latency) {
     leaderDelegateRealTimeRecordLatencySensor.record(latency);
-  }
-
-  private static class StoreIngestionStatsCounter extends LambdaStat {
-    StoreIngestionStatsCounter(StoreIngestionStats stats, Supplier<Long> supplier) {
-      super(() -> {
-        StoreIngestionTask task = stats.getStoreIngestionTask();
-        if (task != null && task.isRunning()) {
-          return (double) supplier.get();
-        } else {
-          return INACTIVE_STORE_INGESTION_TASK.code;
-        }
-      });
-    }
   }
 }

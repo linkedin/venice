@@ -22,6 +22,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
@@ -239,24 +240,26 @@ public class TestAdminSparkServerWithMultiServers {
     String pushTwo = pushOne;
     String pushThree = Utils.getUniqueString("pushId");
 
-    for (String storeName : storeToType.keySet()) {
+    for (Map.Entry<String, Version.PushType> entry: storeToType.entrySet()) {
+      String storeName = entry.getKey();
+      Version.PushType pushType = entry.getValue();
       cluster.getNewStore(storeName);
 
       // Stream
-      if (storeToType.get(storeName).equals(Version.PushType.STREAM)) {
+      if (pushType.equals(Version.PushType.STREAM)) {
         controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setHybridRewindSeconds(1000).setHybridOffsetLagThreshold(1000));
         controllerClient.emptyPush(storeName, Utils.getUniqueString("emptyPushId"), 10000);
       }
 
       // Both
       VersionCreationResponse responseOne =
-          controllerClient.requestTopicForWrites(storeName, 1, storeToType.get(storeName), pushOne,
+          controllerClient.requestTopicForWrites(storeName, 1, pushType, pushOne,
               false, true, false, Optional.empty(), Optional.empty(), Optional.empty(), false, -1);
       if (responseOne.isError()) {
         Assert.fail(responseOne.getError());
       }
       VersionCreationResponse responseTwo =
-          controllerClient.requestTopicForWrites(storeName, 1, storeToType.get(storeName), pushTwo,
+          controllerClient.requestTopicForWrites(storeName, 1, pushType, pushTwo,
               false, false, false, Optional.empty(), Optional.empty(), Optional.empty(), false, -1);
       if (responseTwo.isError()) {
         Assert.fail(responseOne.getError());
@@ -266,7 +269,7 @@ public class TestAdminSparkServerWithMultiServers {
           "Multiple requests for topics with the same pushId must return the same kafka topic");
 
       VersionCreationResponse responseThree =
-          controllerClient.requestTopicForWrites(storeName, 1, storeToType.get(storeName), pushThree,
+          controllerClient.requestTopicForWrites(storeName, 1, pushType, pushThree,
               false, false, false, Optional.empty(), Optional.empty(), Optional.empty(), false, -1);
       Assert.assertFalse(responseThree.isError(), "Controller should not allow concurrent push");
     }

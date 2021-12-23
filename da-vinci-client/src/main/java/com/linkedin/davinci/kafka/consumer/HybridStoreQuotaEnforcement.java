@@ -218,11 +218,10 @@ public class HybridStoreQuotaEnforcement implements StoreDataChangedListener {
   }
 
   private void resumeAllPartitions() {
-    for (int partition : partitionConsumptionStateMap.keySet()) {
-      PartitionConsumptionState pcs = partitionConsumptionStateMap.get(partition);
-      String consumingTopic = getConsumingTopic(pcs);
-      resumePartition(partition, consumingTopic);
-    }
+    partitionConsumptionStateMap.forEach((key, value) -> {
+      String consumingTopic = getConsumingTopic(value);
+      resumePartition(key, consumingTopic);
+    });
   }
 
   private void checkVersionIsOnline(Optional<Version> version) {

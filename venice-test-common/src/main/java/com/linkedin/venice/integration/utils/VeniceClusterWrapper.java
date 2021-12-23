@@ -334,7 +334,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     }
   }
 
-  static void generateServiceInAnotherProcess(String clusterInfoFilePath, int waitTimeInSeconds) throws IOException, InterruptedException {
+  static synchronized void generateServiceInAnotherProcess(String clusterInfoFilePath, int waitTimeInSeconds) throws IOException, InterruptedException {
     if (veniceClusterProcess != null) {
       logger.warn("Received a request to spawn a venice cluster in another process for testing" +
               "but one has already been running. Will not spawn a new one.");
@@ -357,7 +357,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     logger.info("Venice cluster is started in a remote process!");
   }
 
-  static void stopServiceInAnotherProcess() {
+  static synchronized void stopServiceInAnotherProcess() {
     veniceClusterProcess.destroy();
     veniceClusterProcess = null;
   }

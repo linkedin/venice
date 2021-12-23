@@ -59,16 +59,13 @@ public class HelixExternalViewRepository extends HelixBaseRoutingRepository {
         PartitionAssignment assignment = new PartitionAssignment(externalView.getResourceName(), externalView.getPartitionSet().size());
         // From the external view we have a partition to instance:state mapping.  We need to invert this mapping
         // to be partition to state:instance.
-        for(String partition : externalView.getPartitionSet()) {
+        for (String partition : externalView.getPartitionSet()) {
             Map<String, List<Instance>> stateToInstanceMap = new HashMap<>();
             Map<String, String> instanceToStateMap = externalView.getStateMap(partition);
-            for(String instance : instanceToStateMap.keySet()) {
-                String state = instanceToStateMap.get(instance);
-                // TODO replace with lambda
-                if (!stateToInstanceMap.containsKey(state)) {
-                    stateToInstanceMap.put(state, new ArrayList<>());
-                }
-                stateToInstanceMap.get(state).add(Instance.fromNodeId(instance));
+            for (Map.Entry<String, String> entry: instanceToStateMap.entrySet()) {
+                String instance = entry.getKey();
+                String state = entry.getValue();
+                stateToInstanceMap.computeIfAbsent(state, s -> new ArrayList<>()).add(Instance.fromNodeId(instance));
             }
             assignment.addPartition(new Partition(HelixUtils.getPartitionId(partition), stateToInstanceMap));
         }
@@ -146,14 +143,16 @@ public class HelixExternalViewRepository extends HelixBaseRoutingRepository {
                 //Get instance to state map for this partition from local memory.
                 Map<String, String> instanceStateMap = externalView.getStateMap(partitionName);
                 Map<String, List<Instance>> stateToInstanceMap = new HashMap<>();
-                for (String instanceName : instanceStateMap.keySet()) {
+                for (Map.Entry<String, String> entry: instanceStateMap.entrySet()) {
+                    String instanceName = entry.getKey();
+                    String instanceState = entry.getValue();
                     Instance instance = liveInstanceSnapshot.get(instanceName);
                     if (null != instance) {
                         HelixState state;
                         try {
-                            state = HelixState.valueOf(instanceStateMap.get(instanceName));
+                            state = HelixState.valueOf(instanceState);
                         } catch (Exception e) {
-                            logger.warn("Instance:" + instanceName + " unrecognized state:" + instanceStateMap.get(instanceName));
+                            logger.warn("Instance:" + instanceName + " unrecognized state:" + instanceState);
                             continue;
                         }
                         if (!stateToInstanceMap.containsKey(state.toString())) {
