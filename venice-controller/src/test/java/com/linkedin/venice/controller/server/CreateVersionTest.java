@@ -202,7 +202,7 @@ public class CreateVersionTest {
     for (Map.Entry<String, String[]> queryParam : queryMap.entrySet()) {
       doReturn(queryParam.getValue()[0]).when(request).queryParams(queryParam.getKey());
     }
-
+    doCallRealMethod().when(request).queryParamOrDefault(any(), any());
     // Setting up a store with hybrid and incremental enabled and incremental policy = INCREMENTAL_PUSH_SAME_AS_REAL_TIME
     Store store = new ZKStore(storeName, "abc@linkedin.com", 10, PersistenceType.ROCKS_DB,
         RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_ALL_REPLICAS, 1);
