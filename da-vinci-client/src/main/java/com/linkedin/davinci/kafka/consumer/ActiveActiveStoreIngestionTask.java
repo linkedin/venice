@@ -158,7 +158,13 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     this.mergeConflictResolver = new MergeConflictResolver(schemaRepo, storeName, replicationMetadataVersionId);
     this.aggVersionedStorageIngestionStats = versionedStorageIngestionStats;
     int knownKafkaClusterNumber = serverConfig.getKafkaClusterIdToUrlMap().size();
-    this.keyLevelLocksManager = Lazy.of(() -> new KeyLevelLocksManager(getVersionTopic(), knownKafkaClusterNumber + 1));
+    int consumerPoolSizePerKafkaCluster = serverConfig.getConsumerPoolSizePerKafkaCluster();
+    int initialPoolSize = knownKafkaClusterNumber + 1;
+    /**
+     * In theory, the maximum # of keys each ingestion task can process is the # of consumers allocated for it.
+     */
+    int maxKeyLevelLocksPoolSize = Math.min(storeVersionPartitionCount, consumerPoolSizePerKafkaCluster) * knownKafkaClusterNumber + 1;
+    this.keyLevelLocksManager = Lazy.of(() -> new KeyLevelLocksManager(getVersionTopic(), initialPoolSize, maxKeyLevelLocksPoolSize));
   }
 
   @Override
