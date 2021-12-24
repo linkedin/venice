@@ -23,8 +23,8 @@ import java.util.concurrent.locks.ReentrantLock;
  *
  * Therefore, put the above critical session in key level locking will have the minimum lock contention; to avoid creating
  * too much locks, we can build a pool of locks. Theoretically, the pool size doesn't need to exceed the number of potential
- * real-time topics source regions --- let's assume the number of RT source regions is x, the Active/Active write-path could
- * at most handle x different keys at the same time.
+ * real-time topic partitions from different source regions --- let's assume the number of RT source regions is x, the number
+ * of topic partitions are y, the Active/Active write-path could at most handle x * y different keys at the same time.
  *
  * If there are more use cases that could leverage this key level lock manager in future, feel free to do so, and extend/update
  * the class if necessary.
@@ -32,16 +32,20 @@ import java.util.concurrent.locks.ReentrantLock;
 public class KeyLevelLocksManager {
   private final String storeVersion;
   private final int initialPoolSize;
+  private final int maxPoolSize;
   private final Map<ByteBuffer, LockWithReferenceCount> keyToLockMap;
   // Free locks pool
   private final Queue<LockWithReferenceCount> locksPool;
+  private int currentPoolSize;
 
-  protected KeyLevelLocksManager(String storeVersion, int locksPoolSize) {
+  protected KeyLevelLocksManager(String storeVersion, int initialPoolSize, int maxPoolSize) {
     this.storeVersion = storeVersion;
-    this.initialPoolSize = locksPoolSize;
+    this.initialPoolSize = initialPoolSize;
+    this.currentPoolSize = initialPoolSize;
+    this.maxPoolSize = maxPoolSize;
     this.keyToLockMap = new VeniceConcurrentHashMap<>();
-    this.locksPool = new ArrayDeque<>(locksPoolSize);
-    for (int i = 0; i < locksPoolSize; i++) {
+    this.locksPool = new ArrayDeque<>(initialPoolSize);
+    for (int i = 0; i < initialPoolSize; i++) {
       this.locksPool.offer(LockWithReferenceCount.wrap(new ReentrantLock()));
     }
   }
@@ -50,8 +54,14 @@ public class KeyLevelLocksManager {
     LockWithReferenceCount lockWrapper = keyToLockMap.computeIfAbsent(key, k -> {
       LockWithReferenceCount nextAvailableLock = locksPool.poll();
       if (nextAvailableLock == null) {
-        throw new VeniceException("Store version: " + storeVersion + ". Key level locks pool is empty, which shouldn't happen. "
-            + "Initial pool size = " + initialPoolSize);
+        if (currentPoolSize < maxPoolSize) {
+          currentPoolSize++;
+          return LockWithReferenceCount.wrap(new ReentrantLock());
+        } else {
+          throw new VeniceException("Store version: " + storeVersion + ". Key level locks pool is empty and current pool "
+              + "size is approaching the maximum pool size: " + maxPoolSize + ", which shouldn't happen. "
+              + "Initial pool size = " + initialPoolSize);
+        }
       }
       return nextAvailableLock;
     });

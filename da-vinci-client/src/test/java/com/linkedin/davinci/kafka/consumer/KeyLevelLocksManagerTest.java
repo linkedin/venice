@@ -11,7 +11,7 @@ import org.testng.annotations.Test;
 public class KeyLevelLocksManagerTest {
   @Test
   public void testSameLockReturnedForSameKeyBytes() {
-    KeyLevelLocksManager keyLevelLocksManager = new KeyLevelLocksManager("testStoreVersion", 4);
+    KeyLevelLocksManager keyLevelLocksManager = new KeyLevelLocksManager("testStoreVersion", 4, 4);
     byte[] rawKeyBytes = {'a', 'b', 'c'};
     ReentrantLock lock1 = keyLevelLocksManager.acquireLockByKey(ByteBuffer.wrap(rawKeyBytes));
     byte[] sameRawKeyBytes = "abc".getBytes(StandardCharsets.UTF_8);
@@ -20,19 +20,53 @@ public class KeyLevelLocksManagerTest {
   }
 
   @Test
+  public void testKeyLevelLocksLimit() {
+    int initialPoolSize = 2;
+    int maxPoolSize = 10;
+    KeyLevelLocksManager keyLevelLocksManager = new KeyLevelLocksManager("testStoreVersion", initialPoolSize, maxPoolSize);
+    byte[] newRawKeyBytes;
+    // Key Manager can offer maxPoolSize locks.
+    for (int i = 0; i < maxPoolSize; i++) {
+      newRawKeyBytes = new byte[]{(byte) ('a' + i), (byte) ('b' + i), (byte) ('c' + i)};
+      keyLevelLocksManager.acquireLockByKey(ByteBuffer.wrap(newRawKeyBytes));
+    }
+    // Release initialPoolSize locks.
+    for (int i = 0; i < initialPoolSize; i++) {
+      newRawKeyBytes = new byte[]{(byte) ('a' + i), (byte) ('b' + i), (byte) ('c' + i)};
+      keyLevelLocksManager.releaseLock(ByteBuffer.wrap(newRawKeyBytes));
+    }
+    // Request initialPoolSize locks.
+    for (int i = maxPoolSize; i < maxPoolSize + initialPoolSize; i++) {
+      newRawKeyBytes = new byte[]{(byte) ('a' + i), (byte) ('b' + i), (byte) ('c' + i)};
+      keyLevelLocksManager.acquireLockByKey(ByteBuffer.wrap(newRawKeyBytes));
+    }
+    try {
+      int keyIndexExceedLimit = maxPoolSize + initialPoolSize;
+      newRawKeyBytes = new byte[]{(byte) ('a' + keyIndexExceedLimit), (byte) ('b' + keyIndexExceedLimit), (byte) ('c' + keyIndexExceedLimit)};
+      keyLevelLocksManager.acquireLockByKey(ByteBuffer.wrap(newRawKeyBytes));
+      Assert.fail("The lock pool size limit does work correctly.");
+    } catch (VeniceException e) {
+      // expected; if a lock poll size limit is exceeded, there should be exceptions thrown.
+    }
+  }
+
+  @Test
   public void testDifferentLockReturnedForDifferentKeyBytes() {
-    KeyLevelLocksManager keyLevelLocksManager = new KeyLevelLocksManager("testStoreVersion", 4);
+    int initialPoolSize = 2;
+    int maxPoolSize = 10;
+    KeyLevelLocksManager keyLevelLocksManager = new KeyLevelLocksManager("testStoreVersion", initialPoolSize, maxPoolSize);
     byte[] rawKeyBytes = {'a', 'b', 'c'};
     ReentrantLock lock1 = keyLevelLocksManager.acquireLockByKey(ByteBuffer.wrap(rawKeyBytes));
-    byte[] sameRawKeyBytes = {'x', 'y', 'z'};
-    ReentrantLock lock2 = keyLevelLocksManager.acquireLockByKey(ByteBuffer.wrap(sameRawKeyBytes));
+    byte[] differentRawKeyBytes = {'x', 'y', 'z'};
+    ReentrantLock lock2 = keyLevelLocksManager.acquireLockByKey(ByteBuffer.wrap(differentRawKeyBytes));
     Assert.assertNotEquals(lock1, lock2);
   }
 
   @Test
   public void testFreeLocksPoolAndKeyToLockMapAreMaintainedCorrectly() {
     int poolSize = 4;
-    KeyLevelLocksManager keyLevelLocksManager = new KeyLevelLocksManager("testStoreVersion", poolSize);
+    int maxPoolSize = 4;
+    KeyLevelLocksManager keyLevelLocksManager = new KeyLevelLocksManager("testStoreVersion", poolSize, maxPoolSize);
 
     /**
      * If different users acquire locks for the same key at the same time, same lock should be returned
