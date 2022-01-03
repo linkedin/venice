@@ -657,6 +657,8 @@ public interface Admin extends AutoCloseable, Closeable {
 
     void wipeCluster(String clusterName, String fabric, Optional<String> storeName, Optional<Integer> versionNum);
 
+    void copyOverStoresSchemasAndConfigs(String clusterName, String srcFabric, String destFabric);
+
     /**
      * Compare store metadata and version states between two fabrics.
      */

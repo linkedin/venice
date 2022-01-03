@@ -455,11 +455,15 @@ public class ControllerClient implements Closeable {
   }
 
   public StoreComparisonResponse compareStore(String storeName, String fabricA, String fabricB) {
-    QueryParams params = newParams()
-        .add(NAME, storeName)
-        .add(FABRIC_A, fabricA)
-        .add(FABRIC_B, fabricB);
+    QueryParams params = newParams().add(NAME, storeName).add(FABRIC_A, fabricA).add(FABRIC_B, fabricB);
     return request(ControllerRoute.COMPARE_STORE, params, StoreComparisonResponse.class);
+  }
+
+  public ControllerResponse copyOverStoresMetadata(String sourceFabric, String destFabric) {
+    QueryParams params = newParams()
+        .add(SOURCE_FABRIC, sourceFabric)
+        .add(DEST_FABRIC, destFabric);
+    return request(ControllerRoute.REPLICATE_META_DATA, params, ControllerResponse.class);
   }
 
   public ControllerResponse disableAndDeleteStore(String storeName) {

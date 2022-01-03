@@ -162,4 +162,11 @@ public class ControllerApiConstants {
    * The value for this config is read from cluster configs in Zk.
    */
   public static final String ALLOW_STORE_MIGRATION = "allow.store.migration";
+
+  /**
+   * For Blueshift data copy over across fabrics.
+   */
+  public static final String SOURCE_FABRIC = "source_fabric";
+
+  public static final String DEST_FABRIC = "dest_fabric";
 }

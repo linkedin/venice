@@ -1015,11 +1015,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         }
 
         // Copy remaining properties that will make the cloned store almost identical to the original
-        UpdateStoreQueryParams params = new UpdateStoreQueryParams(srcStore);
+        UpdateStoreQueryParams params = new UpdateStoreQueryParams(srcStore, true);
         Set<String> remainingRegions = new HashSet<>();
         remainingRegions.add(multiClusterConfigs.getRegionName());
         for (Map.Entry<String, StoreInfo> entry : srcStoresInChildColos.get(storeName).entrySet()) {
-              UpdateStoreQueryParams paramsInChildColo = new UpdateStoreQueryParams(entry.getValue());
+              UpdateStoreQueryParams paramsInChildColo = new UpdateStoreQueryParams(entry.getValue(),true);
               if (params.isDifferent(paramsInChildColo)) {
                   // Src parent controller calls dest parent controller to update store with store configs in child colo.
                   paramsInChildColo.setRegionsFilter(entry.getKey());
@@ -5461,6 +5461,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     @Override
     public StoreComparisonInfo compareStore(String clusterName, String storeName, String fabricA, String fabricB) {
         throw new VeniceUnsupportedOperationException("compareStore is not supported in child controller!");
+    }
+
+    @Override
+    public void copyOverStoresSchemasAndConfigs(String clusterName, String srcFabric, String destFabric) {
+        throw new VeniceUnsupportedOperationException("copyOverStoresSchemasAndConfig is not supported in child controller!");
     }
 
     protected ZkStoreConfigAccessor getStoreConfigAccessor(String clusterName) {

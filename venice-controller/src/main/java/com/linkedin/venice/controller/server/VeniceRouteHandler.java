@@ -28,7 +28,7 @@ public abstract class VeniceRouteHandler<T extends ControllerResponse> implement
     try {
       internalHandle(request, veniceResponse);
     } catch (Throwable e) {
-      if (e.getMessage() != null) {
+       if (e.getMessage() != null) {
         veniceResponse.setError(e.getMessage());
       } else {
         veniceResponse.setError(ExceptionUtils.stackTraceToString(e));

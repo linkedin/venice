@@ -424,6 +424,9 @@ public class AdminTool {
         case COMPARE_STORE:
           compareStore(cmd);
           break;
+        case REPLICATE_META_DATA:
+          copyOverStoresMetadata(cmd);
+          break;
         default:
           StringJoiner availableCommands = new StringJoiner(", ");
           for (Command c : Command.values()){
@@ -1976,6 +1979,13 @@ public class AdminTool {
       return false;
     }
     return response.getVersionStateDiff().isEmpty();
+  }
+
+  private static void copyOverStoresMetadata(CommandLine cmd) {
+    String sourceFabric = getRequiredArgument(cmd, Arg.SOURCE_FABRIC);
+    String destFabric = getRequiredArgument(cmd, Arg.DEST_FABRIC);
+    ControllerResponse response = controllerClient.copyOverStoresMetadata(sourceFabric, destFabric);
+    printObject(response);
   }
 
   private static void printErrAndExit(String err) {
