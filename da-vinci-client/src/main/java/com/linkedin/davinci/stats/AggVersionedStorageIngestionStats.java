@@ -51,6 +51,7 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
   private static final String SUBSCRIBE_ACTION_GET_CONSUMER_LATENCY = "subscribe_action_get_consumer_latency";
   private static final String SUBSCRIBE_SUBSCRIBE_ACTION_CONSUMER_SUBSCRIBE_LATENCY = "subscribe_action_consumer_subscribe_latency";
   private static final String UPDATE_IGNORED_DCR = "update_ignored_dcr";
+  private static final String TOTAL_DCR = "total_dcr";
   private static final String TIMESTAMP_REGRESSION_DCR_ERROR = "timestamp_regression_dcr_error";
   private static final String OFFSET_REGRESSION_DCR_ERROR = "offset_regression_dcr_error";
   private static final String TOMBSTONE_CREATION_DCR = "tombstone_creation_dcr";
@@ -155,9 +156,19 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
     Utils.computeIfNotNull(getStats(storeName, version), stat -> stat.recordRegionHybridRecordsConsumed(regionId, count));
   }
 
+  public void recordRegionHybridAvgConsumedOffset(String storeName, int version, long offset, int regionId) {
+    Utils.computeIfNotNull(getTotalStats(storeName), stat -> stat.recordRegionHybridAvgConsumedOffset(regionId, offset));
+    Utils.computeIfNotNull(getStats(storeName, version), stat -> stat.recordRegionHybridAvgConsumedOffset(regionId, offset));
+  }
+
   public void recordUpdateIgnoredDCR(String storeName, int version) {
     Utils.computeIfNotNull(getTotalStats(storeName), StorageIngestionStats::recordUpdateIgnoredDCR);
     Utils.computeIfNotNull(getStats(storeName, version), StorageIngestionStats::recordUpdateIgnoredDCR);
+  }
+
+  public void recordTotalDCR(String storeName, int version) {
+    Utils.computeIfNotNull(getTotalStats(storeName), StorageIngestionStats::recordTotalDCR);
+    Utils.computeIfNotNull(getStats(storeName, version), StorageIngestionStats::recordTotalDCR);
   }
 
   public void recordTimestampRegressionDCRError(String storeName, int version) {
@@ -222,12 +233,14 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
     private final Rate leaderRecordsProducedRate;
     private final Rate leaderBytesProducedRate;
     private final Rate updatedIgnoredDCRRate;
+    private final Rate totalDCRRate;
     private final Rate timestampRegressionDCRRate;
     private final Rate offsetRegressionDCRRate;
     private final Rate tombstoneCreationDCRRate;
 
     private final Map<Integer, Rate> regionIdToHybridBytesConsumedRateMap;
     private final Map<Integer, Rate> regionIdToHybridRecordsConsumedRateMap;
+    private final Map<Integer, Avg> regionIdToHybridAvgConsumedOffsetMap;
     private final Count stalePartitionsWithoutIngestionTaskCount;
     private final Avg subscribePrepLatencyAvg;
     private final Avg subscribeGetConsumerLatencyAvg;
@@ -246,6 +259,7 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
     private final Sensor leaderBytesProducedSensor;
     private final Map<Integer, Sensor> regionIdToHybridBytesConsumedSensorMap;
     private final Map<Integer, Sensor> regionIdToHybridRecordsConsumedSensorMap;
+    private final Map<Integer, Sensor> regionIdToHybridAvgConsumedOffsetSensorMap;
     private final Sensor stalePartitionsWithoutIngestionTaskSensor;
     private final Sensor subscribePrepLatencySensor;
     private final Sensor subscribeGetConsumerLatencySensor;
@@ -254,6 +268,8 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
      * Measure the count of ignored updates due to conflict resolution
      */
     private final Sensor conflictResolutionUpdateIgnoredSensor;
+    // Measure the total number of incoming conflict resolutions
+    private final Sensor totalConflictResolutionCountSensor;
     private final Sensor timestampRegressionDCRErrorSensor;
     private final Sensor offsetRegressionDCRErrorSensor;
     private final Sensor tombstoneCreationDCRSensor;
@@ -265,6 +281,8 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
       regionIdToHybridBytesConsumedSensorMap = new HashMap<>();
       regionIdToHybridRecordsConsumedRateMap = new HashMap<>();
       regionIdToHybridRecordsConsumedSensorMap = new HashMap<>();
+      regionIdToHybridAvgConsumedOffsetMap = new HashMap<>();
+      regionIdToHybridAvgConsumedOffsetSensorMap = new HashMap<>();
 
       for (Map.Entry<Integer, String> entry : kafkaClusterIdToAliasMap.entrySet()) {
         String regionNamePrefix = RegionUtils.getRegionSpecificMetricPrefix(serverConfig.getRegionName(), entry.getValue());
@@ -281,6 +299,13 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
         regionHybridRecordsConsumedSensor.add(regionHybridRecordsConsumedMetricName + regionHybridRecordsConsumedRate.getClass().getSimpleName(), regionHybridRecordsConsumedRate);
         regionIdToHybridRecordsConsumedRateMap.put(entry.getKey(), regionHybridRecordsConsumedRate);
         regionIdToHybridRecordsConsumedSensorMap.put(entry.getKey(), regionHybridRecordsConsumedSensor);
+
+        Avg regionHybridAvgConsumedOffset = new Avg();
+        String regionHybridAvgConsumedOffsetMetricName = regionNamePrefix + "_rt_consumed_offset";
+        Sensor regionHybridAvgConsumedOffsetSensor = localMetricRepository.sensor(regionHybridAvgConsumedOffsetMetricName);
+        regionHybridAvgConsumedOffsetSensor.add(regionHybridAvgConsumedOffsetMetricName + regionHybridAvgConsumedOffset.getClass().getSimpleName(), regionHybridAvgConsumedOffset);
+        regionIdToHybridAvgConsumedOffsetMap.put(entry.getKey(), regionHybridAvgConsumedOffset);
+        regionIdToHybridAvgConsumedOffsetSensorMap.put(entry.getKey(), regionHybridAvgConsumedOffsetSensor);
       }
 
       recordsConsumedRate = new Rate();
@@ -349,6 +374,10 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
       conflictResolutionUpdateIgnoredSensor = localMetricRepository.sensor(UPDATE_IGNORED_DCR);
       conflictResolutionUpdateIgnoredSensor.add(UPDATE_IGNORED_DCR + updatedIgnoredDCRRate.getClass().getSimpleName(),
           updatedIgnoredDCRRate);
+
+      totalDCRRate = new Rate();
+      totalConflictResolutionCountSensor = localMetricRepository.sensor(TOTAL_DCR);
+      totalConflictResolutionCountSensor.add(TOTAL_DCR + totalDCRRate.getClass().getSimpleName(), totalDCRRate);
 
       timestampRegressionDCRRate = new Rate();
       timestampRegressionDCRErrorSensor = localMetricRepository.sensor(TIMESTAMP_REGRESSION_DCR_ERROR);
@@ -440,7 +469,7 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
      * @return This stats is usually aggregated across the nodes so that
      * we can see the overall lags between leaders and followers.
      *
-     * we return 0 instead of {@link StatsErrorCode#INACTIVE_STORE_INGESTION_TASK}
+     * we return 0 instead of {@link com.linkedin.venice.stats.StatsErrorCode#INACTIVE_STORE_INGESTION_TASK}
      * so the negative error code will not mess up the aggregation.
      */
     public long getFollowerOffsetLag() {
@@ -583,16 +612,12 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
       followerBytesConsumedSensor.record(value);
     }
 
-    public double getRegionHybridBytesConsumed(int regionId) {
-      if (regionIdToHybridBytesConsumedRateMap.containsKey(regionId)) {
-        return regionIdToHybridBytesConsumedRateMap.get(regionId).measure(METRIC_CONFIG, System.currentTimeMillis());
-      } else {
-        return 0.0;
-      }
+    private void recordUpdateIgnoredDCR() {
+      conflictResolutionUpdateIgnoredSensor.record();
     }
 
-    public void recordUpdateIgnoredDCR() {
-      conflictResolutionUpdateIgnoredSensor.record();
+    private void recordTotalDCR() {
+      totalConflictResolutionCountSensor.record();
     }
 
     public void recordTimestampRegressionDCRError() {
@@ -607,23 +632,39 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
       tombstoneCreationDCRSensor.record();
     }
 
+    public double getRegionHybridBytesConsumed(int regionId) {
+      Rate rate = regionIdToHybridBytesConsumedRateMap.get(regionId);
+      return rate != null ? rate.measure(METRIC_CONFIG, System.currentTimeMillis()) : 0.0;
+    }
+
     public void recordRegionHybridBytesConsumed(int regionId, double value) {
-      if (regionIdToHybridBytesConsumedRateMap.containsKey(regionId)) {
-        regionIdToHybridBytesConsumedSensorMap.get(regionId).record(value);
+      Sensor sensor = regionIdToHybridBytesConsumedSensorMap.get(regionId);
+      if (sensor != null) {
+        sensor.record(value);
       }
     }
 
     public double getRegionHybridRecordsConsumed(int regionId) {
-      if (regionIdToHybridRecordsConsumedRateMap.containsKey(regionId)) {
-        return regionIdToHybridRecordsConsumedRateMap.get(regionId).measure(METRIC_CONFIG, System.currentTimeMillis());
-      } else {
-        return 0.0;
-      }
+      Rate rate = regionIdToHybridRecordsConsumedRateMap.get(regionId);
+      return rate != null ? rate.measure(METRIC_CONFIG, System.currentTimeMillis()) : 0.0;
     }
 
     public void recordRegionHybridRecordsConsumed(int regionId, double value) {
-      if (regionIdToHybridRecordsConsumedRateMap.containsKey(regionId)) {
-        regionIdToHybridRecordsConsumedSensorMap.get(regionId).record(value);
+      Sensor sensor = regionIdToHybridRecordsConsumedSensorMap.get(regionId);
+      if (sensor != null) {
+        sensor.record(value);
+      }
+    }
+
+    public double getRegionHybridAvgConsumedOffset(int regionId) {
+      Avg avg = regionIdToHybridAvgConsumedOffsetMap.get(regionId);
+      return avg != null ? avg.measure(METRIC_CONFIG, System.currentTimeMillis()) : 0.0;
+    }
+
+    public void recordRegionHybridAvgConsumedOffset(int regionId, double value) {
+      Sensor sensor = regionIdToHybridAvgConsumedOffsetSensorMap.get(regionId);
+      if (sensor != null) {
+        sensor.record(value);
       }
     }
 
@@ -633,6 +674,10 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
 
     public double getUpdateIgnoredRate() {
       return updatedIgnoredDCRRate.measure(METRIC_CONFIG, System.currentTimeMillis());
+    }
+
+    public double getTotalDCRRate() {
+      return totalDCRRate.measure(METRIC_CONFIG, System.currentTimeMillis());
     }
 
     public double getTombstoneCreationDCRRate() {
@@ -749,6 +794,7 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
 
       if (getStats().ingestionTask.isActiveActiveReplicationEnabled()) {
         registerSensor(UPDATE_IGNORED_DCR, new IngestionStatsGauge(this, () -> getStats().getUpdateIgnoredRate(), 0));
+        registerSensor(TOTAL_DCR, new IngestionStatsGauge(this, () -> getStats().getTotalDCRRate(), 0));
         registerSensor(TOMBSTONE_CREATION_DCR, new IngestionStatsGauge(this, () -> getStats().getTombstoneCreationDCRRate(), 0));
         registerSensor(TIMESTAMP_REGRESSION_DCR_ERROR, new IngestionStatsGauge(this, () -> getStats().getTimestampRegressionDCRRate(), 0));
         registerSensor(OFFSET_REGRESSION_DCR_ERROR, new IngestionStatsGauge(this, () -> getStats().getOffsetRegressionDCRRate(), 0));
@@ -761,6 +807,8 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
               new IngestionStatsGauge(this, () -> getStats().getRegionHybridBytesConsumed(entry.getKey()), 0));
           registerSensor(regionNamePrefix + "_rt_records_consumed",
               new IngestionStatsGauge(this, () -> getStats().getRegionHybridRecordsConsumed(entry.getKey()), 0));
+          registerSensor(regionNamePrefix + "_rt_consumed_offset",
+              new IngestionStatsGauge(this, () -> getStats().getRegionHybridAvgConsumedOffset(entry.getKey()), 0));
         }
       }
     }

@@ -264,6 +264,7 @@ public class OffsetRecord {
   public void cloneUpstreamOffsetMap(Map<String, Long> checkpointUpstreamOffsetMapReceiver) {
     if (partitionState.upstreamOffsetMap != null && !partitionState.upstreamOffsetMap.isEmpty()) {
       Utils.notNull(checkpointUpstreamOffsetMapReceiver);
+      checkpointUpstreamOffsetMapReceiver.clear();
       for (Map.Entry<CharSequence, Long> entry : partitionState.upstreamOffsetMap.entrySet()) {
         checkpointUpstreamOffsetMapReceiver.put(entry.getKey().toString(), entry.getValue());
       }

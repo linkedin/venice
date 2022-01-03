@@ -306,6 +306,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     long sourceOffset = consumerRecordWrapper.consumerRecord().offset();
     final MergeConflictResult mergeConflictResult;
 
+    aggVersionedStorageIngestionStats.recordTotalDCR(storeName, versionNumber);
+
     switch (msgType) {
       case PUT:
         mergeConflictResult = mergeConflictResolver.put(lazyOldValue, oldReplicationMetadataRecord,
