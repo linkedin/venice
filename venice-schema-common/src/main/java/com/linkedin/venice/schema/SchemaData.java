@@ -17,6 +17,8 @@ import org.apache.avro.Schema;
  * This class is used to store all the schemas related to a given store:
  * 1. key schema
  * 2. value schemas
+ * 3. write compute derived schemas
+ * 4. replication metadata schemas
  */
 public final class SchemaData {
   private String storeName;

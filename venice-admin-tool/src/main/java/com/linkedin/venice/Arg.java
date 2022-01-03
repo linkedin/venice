@@ -97,6 +97,8 @@ public enum Arg {
   FABRIC("fabric", "fc", true, "Which fabric to execute the admin command."),
   FABRIC_A("fabric-a", "fa", true, "The name of the first fabric in store comparison."),
   FABRIC_B("fabric-b", "fb", true, "The name of the second fabric in store comparison."),
+  SOURCE_FABRIC("source_fabric", "sf", true, "The fabric where metadata/data copy over starts from"),
+  DEST_FABRIC("dest_fabric", "df", true, "The fabric where metadata/data gets copy over into"),
   DEFAULT_CONFIGS("default-configs", "dc", false, "Use default store configs (intended for system stores)"),
   ACL_PERMS("acl-perms", "ap", true, "Acl permissions for the store"),
   LOG_METADATA("log-metedata", "lm", false, "Only log the metadata for each kafka message on console"),

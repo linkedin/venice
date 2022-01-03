@@ -205,7 +205,10 @@ public enum Command {
       "Get the readiness of all current replicas on a storage node from a child controller",
       new Arg[]{URL, CLUSTER, STORAGE_NODE}),
   COMPARE_STORE("compare-store", "Compare a store between two fabrics",
-      new Arg[] {URL, CLUSTER, STORE, FABRIC_A, FABRIC_B});
+      new Arg[] {URL, CLUSTER, STORE, FABRIC_A, FABRIC_B}),
+  REPLICATE_META_DATA("replicate-meta-data", "Copy a cluster's all stores schemas and store level configs from source fabric to destination fabric",
+      new Arg[] {URL, CLUSTER, SOURCE_FABRIC, DEST_FABRIC});
+
   private final String commandName;
   private final String description;
   private final Arg[] requiredArgs;

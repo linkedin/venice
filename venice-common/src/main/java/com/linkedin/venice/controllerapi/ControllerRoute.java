@@ -112,9 +112,8 @@ public enum ControllerRoute {
       Collections.singletonList(TOPIC)),
   GET_REPUSH_INFO("/get_repush_info", HttpMethod.GET, Arrays.asList(NAME), FABRIC),
   WIPE_CLUSTER("/wipe_cluster", HttpMethod.POST,  Arrays.asList(CLUSTER, FABRIC), NAME, VERSION),
-  COMPARE_STORE("/compare_store", HttpMethod.GET, Arrays.asList(CLUSTER, NAME, FABRIC_A, FABRIC_B));
-
-
+  COMPARE_STORE("/compare_store", HttpMethod.GET, Arrays.asList(CLUSTER, NAME, FABRIC_A, FABRIC_B)),
+  REPLICATE_META_DATA("/replicate_meta_data", HttpMethod.POST,  Arrays.asList(SOURCE_FABRIC, DEST_FABRIC, CLUSTER));
 
   private final String path;
   private final HttpMethod httpMethod;

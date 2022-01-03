@@ -7,7 +7,6 @@ import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.ZKStore;
-import java.util.Optional;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -21,8 +20,8 @@ public class TestUpdateStoreQueryParams {
     store2.setLeaderFollowerModelEnabled(true);
     StoreInfo storeInfo1 = StoreInfo.fromStore(store1);
     StoreInfo storeInfo2 = StoreInfo.fromStore(store2);
-    UpdateStoreQueryParams params1 = new UpdateStoreQueryParams(storeInfo1);
-    UpdateStoreQueryParams params2 = new UpdateStoreQueryParams(storeInfo2);
+    UpdateStoreQueryParams params1 = new UpdateStoreQueryParams(storeInfo1, false);
+    UpdateStoreQueryParams params2 = new UpdateStoreQueryParams(storeInfo2, false);
     Assert.assertTrue(params1.isDifferent(params2));
   }
 }

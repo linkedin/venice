@@ -36,11 +36,10 @@ public class UpdateStoreQueryParams extends QueryParams {
   private ObjectMapper mapper = new ObjectMapper();
 
   /**
-   * Useful for store migration
    * This method must be updated everytime a new store property is introduced
    * @param srcStore The original store
    */
-  public UpdateStoreQueryParams(StoreInfo srcStore) {
+  public UpdateStoreQueryParams(StoreInfo srcStore, boolean storeMigrating) {
     // Copy everything except for currentVersion, daVinciPushStatusStoreEnabled, latestSuperSetValueSchemaId,
     // storeMetaSystemStoreEnabled, storeMetadataSystemStoreEnabled
     UpdateStoreQueryParams updateStoreQueryParams =
@@ -60,10 +59,8 @@ public class UpdateStoreQueryParams extends QueryParams {
             .setHybridStoreDiskQuotaEnabled(srcStore.isHybridStoreDiskQuotaEnabled())
             .setIncrementalPushEnabled(srcStore.isIncrementalPushEnabled())
             .setIncrementalPushPolicy(srcStore.getIncrementalPushPolicy())
-            .setLargestUsedVersionNumber(0) // Decrease the largestUsedVersionNumber to trigger bootstrap in dest cluster
+            .setLargestUsedVersionNumber(srcStore.getLargestUsedVersionNumber())
             .setLeaderFollowerModel(srcStore.isLeaderFollowerModelEnabled())
-            .setStoreMigration(true)
-            .setMigrationDuplicateStore(true) // Mark as duplicate store, to which L/F SN refers to avoid multi leaders
             .setNativeReplicationEnabled(srcStore.isNativeReplicationEnabled())
             .setNativeReplicationSourceFabric(srcStore.getNativeReplicationSourceFabric())
             .setNumVersionsToPreserve(srcStore.getNumVersionsToPreserve())
@@ -76,6 +73,13 @@ public class UpdateStoreQueryParams extends QueryParams {
             .setAutoSchemaPushJobEnabled(srcStore.isSchemaAutoRegisterFromPushJobEnabled())
             .setStorageQuotaInByte(srcStore.getStorageQuotaInByte())
             .setWriteComputationEnabled(srcStore.isWriteComputationEnabled());
+
+    if (storeMigrating) {
+      updateStoreQueryParams
+          .setLargestUsedVersionNumber(0) // Decrease the largestUsedVersionNumber to trigger bootstrap in dest cluster
+          .setStoreMigration(true)
+          .setMigrationDuplicateStore(true); // Mark as duplicate store, to which L/F SN refers to avoid multi leaders
+    }
 
     ETLStoreConfig etlStoreConfig = srcStore.getEtlStoreConfig();
     if (etlStoreConfig != null) {
