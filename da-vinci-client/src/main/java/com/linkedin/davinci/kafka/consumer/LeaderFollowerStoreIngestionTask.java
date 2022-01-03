@@ -1407,13 +1407,14 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     storeIngestionStats.recordTotalLeaderRecordsProduced(producedRecordNum);
   }
 
-  private void recordFabricHybridConsumptionStats(String kafkaUrl, int producedRecordSize, int producedRecordNum) {
+  private void recordFabricHybridConsumptionStats(String kafkaUrl, int producedRecordSize, int partitionId, long upstreamOffset) {
     if (kafkaClusterUrlToIdMap.containsKey(kafkaUrl)) {
       int regionId = kafkaClusterUrlToIdMap.get(kafkaUrl);
       versionedStorageIngestionStats.recordRegionHybridBytesConsumed(storeName, versionNumber, producedRecordSize, regionId);
-      versionedStorageIngestionStats.recordRegionHybridRecordsConsumed(storeName, versionNumber, producedRecordNum, regionId);
+      versionedStorageIngestionStats.recordRegionHybridRecordsConsumed(storeName, versionNumber, 1, regionId);
+      versionedStorageIngestionStats.recordRegionHybridAvgConsumedOffset(storeName, versionNumber, upstreamOffset, regionId);
       storeIngestionStats.recordTotalRegionHybridBytesConsumed(regionId, producedRecordSize);
-      storeIngestionStats.recordTotalRegionHybridRecordsConsumed(regionId, producedRecordNum);
+      storeIngestionStats.recordTotalRegionHybridRecordsConsumed(regionId, 1);
     }
   }
 
@@ -1483,7 +1484,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       validateRecordBeforeProducingToLocalKafka(consumerRecordWrapper, partitionConsumptionState);
 
       if (Version.isRealTimeTopic(consumerRecord.topic())) {
-        recordFabricHybridConsumptionStats(consumerRecordWrapper.kafkaUrl(), consumerRecord.serializedKeySize() + consumerRecord.serializedValueSize(), 1);
+        recordFabricHybridConsumptionStats(consumerRecordWrapper.kafkaUrl(),
+                          consumerRecord.serializedKeySize() + consumerRecord.serializedValueSize(),
+                                           consumerRecord.partition(),
+                                           consumerRecord.offset());
         partitionConsumptionState.updateLeaderConsumedUpstreamRTOffset(consumerRecordWrapper.kafkaUrl(), consumerRecord.offset());
       }
       /**
