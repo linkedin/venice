@@ -121,7 +121,7 @@ public class ObjectCacheBackend {
         if (!upToDateVersionsSet.contains(key)) {
           // This is no longer in the version list, so clean it out
           logger.info(String.format("Closing VeniceStoreCacheBackend for store:%s version:%s",storeName,key));
-          VeniceStoreCacheStorageEngine cache = versionTopicToCacheEngineMap.remove(store);
+          VeniceStoreCacheStorageEngine cache = versionTopicToCacheEngineMap.remove(store.getName());
           cache.drop();
           cache.close();
         }

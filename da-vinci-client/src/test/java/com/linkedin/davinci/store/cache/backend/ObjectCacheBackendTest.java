@@ -4,13 +4,18 @@ import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.cache.VeniceStoreCacheStorageEngine;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
+import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.schema.SchemaEntry;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
+import org.apache.bcel.generic.NEW;
 import org.mockito.Mockito;
 import org.testng.annotations.Test;
 
@@ -22,6 +27,7 @@ public class ObjectCacheBackendTest {
     public static final String STORE_NAME = "fooStore";
     public static final String TOPIC_NAME = "fooStore_v1";
     public static final int STORE_VERSION = 1;
+    public static final List<Integer> NEW_STORE_VERSIONS = Arrays.asList(2, 3);
     public static final Schema STORE_SCHEMA = Schema.parse("{\"type\":\"record\", \"name\":\"ValueRecord\", \"fields\": [{\"name\":\"number\", "
             + "\"type\":\"int\"}]}");
 
@@ -57,5 +63,28 @@ public class ObjectCacheBackendTest {
         //....and make sure it's legit
         Assert.assertEquals(((VeniceStoreCacheStorageEngine) cachedStorageEngine).getCache().getIfPresent(keyRecord), cachedValued);
         Assert.assertEquals(cachedStorageEngine.getStoreName(), TOPIC_NAME);
+
+        // Make a version push happen that invalidates entries (by triggering the store change event)
+        Store mockStore = Mockito.mock(Store.class);
+        Mockito.when(mockStore.getName()).thenReturn(cachedStorageEngine.getStoreName());
+        List<Version> newStoreVersions = new ArrayList<>();
+        for(Integer version: NEW_STORE_VERSIONS) {
+            Version newMockVersion = Mockito.mock(Version.class);
+            Mockito.when(newMockVersion.getStoreName()).thenReturn(STORE_NAME);
+            Mockito.when(newMockVersion.getNumber()).thenReturn(version);
+            Mockito.when(newMockVersion.kafkaTopicName()).thenReturn(TOPIC_NAME.replace("1", String.valueOf(version)));
+            newStoreVersions.add(newMockVersion);
+        }
+        Mockito.when(mockStore.getVersions()).thenReturn(newStoreVersions);
+
+        // Trigger the store change
+        cacheBackend.getCacheInvalidatingStoreChangeListener().handleStoreChanged(mockStore);
+
+        // Make sure the previous version was cleared out
+        cachedStorageEngine = cacheBackend.getStorageEngine(TOPIC_NAME);
+        Assert.assertNull(cachedStorageEngine);
+
+        // Drop it (and don't throw an exception)
+        cacheBackend.getCacheInvalidatingStoreChangeListener().handleStoreDeleted(mockStore);
     }
 }
