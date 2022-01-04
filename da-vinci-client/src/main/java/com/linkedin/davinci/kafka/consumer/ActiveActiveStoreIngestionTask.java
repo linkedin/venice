@@ -744,6 +744,20 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     return pcs.getOffsetRecord().getUpstreamOffset(upstreamKafkaUrl);
   }
 
+  /**
+   * Different from the persisted upstream offset map in OffsetRecord, latest consumed upstream offset map is maintained
+   * for each individual Kafka url.
+   */
+  @Override
+  protected long getLatestConsumedUpstreamOffsetForHybridOffsetLagMeasurement(PartitionConsumptionState pcs, String upstreamKafkaUrl) {
+    return pcs.getLeaderConsumedUpstreamRTOffset(upstreamKafkaUrl);
+  }
+
+  @Override
+  protected void updateLatestInMemoryLeaderConsumedRTOffset(PartitionConsumptionState pcs, String kafkaUrl, long offset) {
+    pcs.updateLeaderConsumedUpstreamRTOffset(kafkaUrl, offset);
+  }
+
   private String getUpstreamKafkaUrlFromKafkaValue(KafkaMessageEnvelope kafkaValue) {
     if (kafkaValue.leaderMetadataFooter == null) {
       throw new VeniceException("leaderMetadataFooter field in KME should have been set.");
