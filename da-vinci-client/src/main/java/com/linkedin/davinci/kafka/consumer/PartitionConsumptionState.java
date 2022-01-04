@@ -9,8 +9,6 @@ import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
-import com.linkedin.venice.pushmonitor.SubPartitionStatus;
-import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.nio.ByteBuffer;
@@ -129,7 +127,7 @@ public class PartitionConsumptionState {
    * This is an in-memory only map which will track the consumed offset from each kafka cluster. Currently used in
    * measuring hybrid offset lag for each prod region during RT consumption.
    */
-  private final ConcurrentMap<String, Long> consumedUpstreamRTOffsetMap = new VeniceConcurrentHashMap<>();
+  private final ConcurrentMap<String, Long> consumedUpstreamRTOffsetMap;
 
   //stores the SOP control message's producer timestamp.
   private long startOfPushTimestamp = 0;
@@ -166,6 +164,10 @@ public class PartitionConsumptionState {
     for (CharSequence status : offsetRecord.getSubPartitionStatus().keySet()) {
       previousStatusSet.add(status.toString());
     }
+
+    // Restore in-memory consumption RT upstream offset map from the checkpoint upstream offset map
+    consumedUpstreamRTOffsetMap = new VeniceConcurrentHashMap<>();
+    offsetRecord.cloneUpstreamOffsetMap(consumedUpstreamRTOffsetMap);
   }
 
   public int getPartition() {
