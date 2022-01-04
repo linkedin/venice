@@ -8,8 +8,8 @@ import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.ProducerPartitionState;
 import com.linkedin.venice.kafka.validation.OffsetRecordTransformer;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.pushmonitor.SubPartitionStatus;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -256,6 +256,18 @@ public class OffsetRecord {
 
   public Long getUpstreamOffsetWithNoDefault(String kafkaURL) {
     return getUpstreamOffsetFromPartitionState(this.partitionState, kafkaURL);
+  }
+
+  /**
+   * Clone the checkpoint upstream offset map to another map provided as the input.
+   */
+  public void cloneUpstreamOffsetMap(Map<String, Long> checkpointUpstreamOffsetMapReceiver) {
+    if (partitionState.upstreamOffsetMap != null && !partitionState.upstreamOffsetMap.isEmpty()) {
+      Utils.notNull(checkpointUpstreamOffsetMapReceiver);
+      for (Map.Entry<CharSequence, Long> entry : partitionState.upstreamOffsetMap.entrySet()) {
+        checkpointUpstreamOffsetMapReceiver.put(entry.getKey().toString(), entry.getValue());
+      }
+    }
   }
 
   public GUID getLeaderGUID() {
