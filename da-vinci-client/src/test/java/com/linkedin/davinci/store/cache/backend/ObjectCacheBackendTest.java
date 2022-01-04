@@ -15,7 +15,6 @@ import java.util.concurrent.ExecutionException;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
-import org.apache.bcel.generic.NEW;
 import org.mockito.Mockito;
 import org.testng.annotations.Test;
 
