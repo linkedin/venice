@@ -1489,7 +1489,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                           consumerRecord.serializedKeySize() + consumerRecord.serializedValueSize(),
                                            consumerRecord.partition(),
                                            consumerRecord.offset());
-        partitionConsumptionState.updateLeaderConsumedUpstreamRTOffset(consumerRecordWrapper.kafkaUrl(), consumerRecord.offset());
+        updateLatestInMemoryLeaderConsumedRTOffset(partitionConsumptionState, consumerRecordWrapper.kafkaUrl(), consumerRecord.offset());
       }
       /**
        * DIV pass-through mode is enabled for all messages received before EOP (from VT,SR topics) but
@@ -1960,12 +1960,16 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   }
 
   /**
-   * Different from the persisted upstream offset map in OffsetRecord, latest consumed upstream offset map is maintained
-   * for each individual Kafka url.
+   * For regular L/F stores without A/A enabled, there is always only one real-time source.
    */
   @Override
-  protected long getLatestConsumedUpstreamOffsetForHybridOffsetLagMeasurement(PartitionConsumptionState pcs, String upstreamKafkaUrl) {
-    return pcs.getLeaderConsumedUpstreamRTOffset(upstreamKafkaUrl);
+  protected long getLatestConsumedUpstreamOffsetForHybridOffsetLagMeasurement(PartitionConsumptionState pcs, String ignoredKafkaUrl) {
+    return pcs.getLeaderConsumedUpstreamRTOffset(OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY);
+  }
+
+  @Override
+  protected void updateLatestInMemoryLeaderConsumedRTOffset(PartitionConsumptionState pcs, String ignoredKafkaUrl, long offset) {
+    pcs.updateLeaderConsumedUpstreamRTOffset(OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY, offset);
   }
 
   @Override

@@ -3656,6 +3656,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     throw new VeniceException("This API is for L/F model only!");
   }
 
+  protected void updateLatestInMemoryLeaderConsumedRTOffset(PartitionConsumptionState pcs, String upstreamKafkaUrl, long offset) {
+    throw new VeniceException("This API is for L/F model only!");
+  }
+
   /**
    * ReportStatusAdapter forwards status report requests to notificationDispatcher at USER-partition level. It will record
    * all sub-partitions status reporting and report only once for user-partition when all the preconditions are met.

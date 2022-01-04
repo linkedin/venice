@@ -167,7 +167,9 @@ public class PartitionConsumptionState {
 
     // Restore in-memory consumption RT upstream offset map from the checkpoint upstream offset map
     consumedUpstreamRTOffsetMap = new VeniceConcurrentHashMap<>();
-    offsetRecord.cloneUpstreamOffsetMap(consumedUpstreamRTOffsetMap);
+    if (offsetRecord.getLeaderTopic() != null && Version.isRealTimeTopic(offsetRecord.getLeaderTopic())) {
+      offsetRecord.cloneUpstreamOffsetMap(consumedUpstreamRTOffsetMap);
+    }
   }
 
   public int getPartition() {
