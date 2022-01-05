@@ -63,24 +63,21 @@ public class VeniceParentHelixAdminTest {
     Properties properties = new Properties();
     properties.setProperty(TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS, String.valueOf(Long.MAX_VALUE));
     properties.setProperty(TERMINAL_STATE_TOPIC_CHECK_DELAY_MS, String.valueOf(1000L));
-    VeniceControllerWrapper parentController = ServiceFactory.getVeniceParentController(venice.getClusterName(),
+    try (VeniceControllerWrapper parentController = ServiceFactory.getVeniceParentController(venice.getClusterName(),
         zkServerWrapper.getAddress(), venice.getKafka(), new VeniceControllerWrapper[]{venice.getMasterVeniceController()},
         new VeniceProperties(properties), false);
-    ControllerClient parentControllerClient = new ControllerClient(venice.getClusterName(), parentController.getControllerUrl());
-
-    String storeName = Utils.getUniqueString("testStore");
-    assertFalse(parentControllerClient.createNewStore(storeName, "test", "\"string\"", "\"string\"").isError(),
-        "Failed to create test store");
-    // Empty push without checking its push status
-    VersionCreationResponse response = parentControllerClient.emptyPush(storeName, "test-push", 1000);
-    assertFalse(response.isError(), "Failed to perform empty push on test store");
-    // The empty push should eventually complete and have its version topic truncated by job status polling invoked by
-    // the TerminalStateTopicCheckerForParentController.
-    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true,
-       () -> assertTrue(parentController.getVeniceAdmin().isTopicTruncated(response.getKafkaTopic())));
-
-    parentControllerClient.close();
-    parentController.close();
+    ControllerClient parentControllerClient = new ControllerClient(venice.getClusterName(), parentController.getControllerUrl())) {
+      String storeName = Utils.getUniqueString("testStore");
+      assertFalse(parentControllerClient.createNewStore(storeName, "test", "\"string\"", "\"string\"").isError(),
+          "Failed to create test store");
+      // Empty push without checking its push status
+      VersionCreationResponse response = parentControllerClient.emptyPush(storeName, "test-push", 1000);
+      assertFalse(response.isError(), "Failed to perform empty push on test store");
+      // The empty push should eventually complete and have its version topic truncated by job status polling invoked by
+      // the TerminalStateTopicCheckerForParentController.
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true,
+          () -> assertTrue(parentController.getVeniceAdmin().isTopicTruncated(response.getKafkaTopic())));
+    }
   }
 
   @Test(timeOut = DEFAULT_TEST_TIMEOUT)
@@ -167,46 +164,44 @@ public class VeniceParentHelixAdminTest {
     Properties properties = new Properties();
     properties.setProperty(TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS, String.valueOf(Long.MAX_VALUE));
     properties.setProperty(TERMINAL_STATE_TOPIC_CHECK_DELAY_MS, String.valueOf(1000L));
-    VeniceControllerWrapper parentController = ServiceFactory.getVeniceParentController(venice.getClusterName(),
+    try (VeniceControllerWrapper parentController = ServiceFactory.getVeniceParentController(venice.getClusterName(),
         zkServerWrapper.getAddress(), venice.getKafka(), new VeniceControllerWrapper[]{venice.getMasterVeniceController()},
         new VeniceProperties(properties), false);
-    ControllerClient parentControllerClient = new ControllerClient(venice.getClusterName(), parentController.getControllerUrl());
+        ControllerClient parentControllerClient = new ControllerClient(venice.getClusterName(), parentController.getControllerUrl())) {
+      String storeName = Utils.getUniqueString("testStore");
+      assertFalse(parentControllerClient.createNewStore(storeName, "test", "\"string\"", "\"string\"").isError(),
+          "Failed to create test store");
+      // Trying to create the same store will fail
+      assertTrue(parentControllerClient.createNewStore(storeName,"test", "\"string\"", "\"string\"").isError(),
+          "Trying to create an existing store should fail");
+      // Empty push without checking its push status
+      VersionCreationResponse response = parentControllerClient.emptyPush(storeName, "test-push", 1000);
+      assertFalse(response.isError(), "Failed to perform empty push on test store");
+      // The empty push should eventually complete and have its version topic truncated by job status polling invoked by
+      // the TerminalStateTopicCheckerForParentController.
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true,
+          () -> assertTrue(parentController.getVeniceAdmin().isTopicTruncated(response.getKafkaTopic())));
+      assertFalse(parentControllerClient.disableAndDeleteStore(storeName).isError(), "Delete store shouldn't fail");
+      ControllerResponse controllerResponse = parentControllerClient.createNewStore(storeName,"test", "\"string\"", "\"string\"");
+      assertFalse(controllerResponse.isError(), "Trying to re-create the store with lingering version topics should succeed");
 
-    String storeName = Utils.getUniqueString("testStore");
-    assertFalse(parentControllerClient.createNewStore(storeName, "test", "\"string\"", "\"string\"").isError(),
-        "Failed to create test store");
-    // Trying to create the same store will fail
-    assertTrue(parentControllerClient.createNewStore(storeName,"test", "\"string\"", "\"string\"").isError(),
-        "Trying to create an existing store should fail");
-    // Empty push without checking its push status
-    VersionCreationResponse response = parentControllerClient.emptyPush(storeName, "test-push", 1000);
-    assertFalse(response.isError(), "Failed to perform empty push on test store");
-    // The empty push should eventually complete and have its version topic truncated by job status polling invoked by
-    // the TerminalStateTopicCheckerForParentController.
-    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true,
-        () -> assertTrue(parentController.getVeniceAdmin().isTopicTruncated(response.getKafkaTopic())));
-    assertFalse(parentControllerClient.disableAndDeleteStore(storeName).isError(), "Delete store shouldn't fail");
-    ControllerResponse controllerResponse = parentControllerClient.createNewStore(storeName,"test", "\"string\"", "\"string\"");
-    assertFalse(controllerResponse.isError(), "Trying to re-create the store with lingering version topics should succeed");
-
-    // Enabling meta system store by triggering an empty push to the corresponding meta system store
-    String metaSystemStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName);
-    VersionCreationResponse versionCreationResponseForMetaSystemStore =
-        parentControllerClient.emptyPush(metaSystemStoreName, "test_meta_system_store_push_1", 10000);
-    assertFalse(versionCreationResponseForMetaSystemStore.isError(),
-        "New version creation for meta system store: " + metaSystemStoreName + " should success, but got error: "
-            + versionCreationResponseForMetaSystemStore.getError());
-    TestUtils.waitForNonDeterministicPushCompletion(versionCreationResponseForMetaSystemStore.getKafkaTopic(),
-        parentControllerClient, 30, TimeUnit.SECONDS, Optional.of(LOGGER));
-    /**
-     * Delete the store and try re-creation.
-     */
-    assertFalse(parentControllerClient.disableAndDeleteStore(storeName).isError(), "Delete store shouldn't fail");
-    // re-create the same store right away will fail because of lingering system store resources
-    controllerResponse = parentControllerClient.createNewStore(storeName,"test", "\"string\"", "\"string\"");
-    assertTrue(controllerResponse.isError(), "Trying to re-create the store with lingering system store resource should fail");
-    parentControllerClient.close();
-    parentController.close();
+      // Enabling meta system store by triggering an empty push to the corresponding meta system store
+      String metaSystemStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName);
+      VersionCreationResponse versionCreationResponseForMetaSystemStore =
+          parentControllerClient.emptyPush(metaSystemStoreName, "test_meta_system_store_push_1", 10000);
+      assertFalse(versionCreationResponseForMetaSystemStore.isError(),
+          "New version creation for meta system store: " + metaSystemStoreName + " should success, but got error: "
+              + versionCreationResponseForMetaSystemStore.getError());
+      TestUtils.waitForNonDeterministicPushCompletion(versionCreationResponseForMetaSystemStore.getKafkaTopic(),
+          parentControllerClient, 30, TimeUnit.SECONDS, Optional.of(LOGGER));
+      /**
+       * Delete the store and try re-creation.
+       */
+      assertFalse(parentControllerClient.disableAndDeleteStore(storeName).isError(), "Delete store shouldn't fail");
+      // re-create the same store right away will fail because of lingering system store resources
+      controllerResponse = parentControllerClient.createNewStore(storeName,"test", "\"string\"", "\"string\"");
+      assertTrue(controllerResponse.isError(), "Trying to re-create the store with lingering system store resource should fail");
+    }
   }
 
   @Test(timeOut = DEFAULT_TEST_TIMEOUT)
@@ -316,9 +311,9 @@ public class VeniceParentHelixAdminTest {
           ControllerClient childControllerClient = new ControllerClient(clusterName, childControllerUrl, sslFactory)) {
 
         testBackupVersionRetentionUpdate(parentControllerClient, childControllerClient);
-        testSuperSetSchemaGen(parentControllerClient, childControllerClient);
-        testSuperSetSchemaGenWithSameUpcomingSchema(parentControllerClient, childControllerClient);
-        testAddValueSchemaDocUpdate(parentControllerClient, childControllerClient);
+        testSuperSetSchemaGen(parentControllerClient);
+        testSuperSetSchemaGenWithSameUpcomingSchema(parentControllerClient);
+        testAddValueSchemaDocUpdate(parentControllerClient);
         testAddBadValueSchema(parentControllerClient);
       }
     }
@@ -351,7 +346,7 @@ public class VeniceParentHelixAdminTest {
     });
   }
 
-  private void testSuperSetSchemaGen(ControllerClient parentControllerClient, ControllerClient childControllerClient) {
+  private void testSuperSetSchemaGen(ControllerClient parentControllerClient) {
     // Adding store
     String storeName = Utils.getUniqueString("test_store");
     String owner = "test_owner";
@@ -398,7 +393,7 @@ public class VeniceParentHelixAdminTest {
     Assert.assertEquals(schemaResponse.getSchemas().length,4);
   }
 
-  private void testSuperSetSchemaGenWithSameUpcomingSchema(ControllerClient parentControllerClient, ControllerClient childControllerClient) {
+  private void testSuperSetSchemaGenWithSameUpcomingSchema(ControllerClient parentControllerClient) {
     // Adding store
     String storeName = Utils.getUniqueString("test_store");;
     String owner = "test_owner";
@@ -422,7 +417,7 @@ public class VeniceParentHelixAdminTest {
     Assert.assertTrue(storeResponse.getStore().getLatestSuperSetValueSchemaId() == -1);
   }
 
-  private void testAddValueSchemaDocUpdate(ControllerClient parentControllerClient, ControllerClient childControllerClient) {
+  private void testAddValueSchemaDocUpdate(ControllerClient parentControllerClient) {
     // Adding store
     String storeName = Utils.getUniqueString("test_store");;
     String owner = "test_owner";

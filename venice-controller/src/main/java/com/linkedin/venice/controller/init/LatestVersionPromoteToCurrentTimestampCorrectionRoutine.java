@@ -39,8 +39,12 @@ public class LatestVersionPromoteToCurrentTimestampCorrectionRoutine implements 
               + " for store: " + storeName);
         }
       }
-
     }
+  }
+
+  @Override
+  public String toString() {
+    return "LatestVersionPromoteToCurrentTimestampCorrectionRoutine{}";
   }
 }
 

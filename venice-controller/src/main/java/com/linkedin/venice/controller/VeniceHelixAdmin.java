@@ -477,7 +477,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
       // TODO: Remove this latest version promote to current timestamp update logic in the future.
       initRoutines.add(new LatestVersionPromoteToCurrentTimestampCorrectionRoutine(this));
-      ClusterLeaderInitializationRoutine controllerInitialization = new ClusterLeaderInitializationManager(initRoutines);
+
+      ClusterLeaderInitializationRoutine controllerInitialization =
+          new ClusterLeaderInitializationManager(initRoutines, commonConfig.isConcurrentInitRoutinesEnabled());
 
       // Create the controller cluster if required.
       if (isControllerClusterHAAS) {
