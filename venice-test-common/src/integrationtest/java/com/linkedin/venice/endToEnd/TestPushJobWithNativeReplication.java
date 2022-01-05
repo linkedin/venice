@@ -44,6 +44,7 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import java.util.stream.IntStream;
 import org.apache.avro.Schema;
@@ -425,8 +426,15 @@ public class  TestPushJobWithNativeReplication {
       NativeReplTest test) throws Exception {
     String clusterName = CLUSTER_NAMES[0];
     File inputDir = getTempDataDirectory();
-    VeniceControllerWrapper parentController =
-        parentControllers.stream().filter(c -> c.isMasterController(clusterName)).findAny().get();
+    final AtomicReference<Optional<VeniceControllerWrapper>> atomicOptionalParentController = new AtomicReference<>();
+    TestUtils.waitForNonDeterministicCompletion(10, TimeUnit.SECONDS, () -> {
+      Optional<VeniceControllerWrapper> optionalParentController = parentControllers.stream()
+          .filter(c -> c.isMasterController(clusterName))
+          .findAny();
+      atomicOptionalParentController.set(optionalParentController);
+      return optionalParentController.isPresent();
+    });
+    VeniceControllerWrapper parentController = atomicOptionalParentController.get().get();
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
     String storeName = Utils.getUniqueString("store");
     Properties props = defaultH2VProps(parentController.getControllerUrl(), inputDirPath, storeName);

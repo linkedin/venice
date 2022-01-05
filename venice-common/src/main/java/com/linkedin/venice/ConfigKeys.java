@@ -1724,5 +1724,11 @@ public class ConfigKeys {
    * {@link org.apache.kafka.clients.consumer.KafkaConsumer}.
    */
   public static final String AUTO_CLOSE_IDLE_CONSUMERS_ENABLED = "auto.close.idle.consumers";
+
+  /**
+   * Enable the concurrent execution of the controllers' init routines, which are executed when a controller
+   * becomes a cluster leader.
+   */
+  public static final String CONCURRENT_INIT_ROUTINES_ENABLED = "concurrent.init.routines.enabled";
 }
 

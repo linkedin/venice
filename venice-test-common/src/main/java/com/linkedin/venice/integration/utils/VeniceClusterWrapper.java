@@ -239,8 +239,8 @@ public class VeniceClusterWrapper extends ProcessWrapper {
           // VeniceClusterWrapper to tests.
           if (!veniceClusterWrapper.getVeniceControllers().isEmpty()) {
             final VeniceClusterWrapper finalClusterWrapper = veniceClusterWrapper;
-            for (AvroProtocolDefinition avroProtocolDefinition : CLUSTER_LEADER_INITIALIZATION_ROUTINES) {
-              TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
+            TestUtils.waitForNonDeterministicAssertion(2, TimeUnit.MINUTES, true, () -> {
+              for (AvroProtocolDefinition avroProtocolDefinition : CLUSTER_LEADER_INITIALIZATION_ROUTINES) {
                 Store store = finalClusterWrapper.getMasterVeniceController().getVeniceAdmin().getStore(clusterName,
                     avroProtocolDefinition.getSystemStoreName());
                 Assert.assertNotNull(store, "Store: " + avroProtocolDefinition.getSystemStoreName()
@@ -257,21 +257,20 @@ public class VeniceClusterWrapper extends ProcessWrapper {
                       + " should be configured to hybrid by " + ClusterLeaderInitializationRoutine.class.getSimpleName()
                       +  ". Store is hybrid in write repo: " + store.isHybrid());
                 }
-              });
-            }
+              }
+            });
           }
         } catch (Throwable e) {
           logger.error("Caught Throwable while creating the " + VeniceClusterWrapper.class.getSimpleName(), e);
-          IOUtils.closeQuietly(veniceClusterWrapper);
+          Utils.closeQuietlyWithErrorLogged(veniceClusterWrapper);
           throw e;
         }
         return veniceClusterWrapper;
       };
-
-    } catch (Exception e) {
-      veniceRouterWrappers.values().forEach(IOUtils::closeQuietly);
-      veniceServerWrappers.values().forEach(IOUtils::closeQuietly);
-      veniceControllerWrappers.values().forEach(IOUtils::closeQuietly);
+    } catch (Throwable e) {
+      veniceRouterWrappers.values().forEach(Utils::closeQuietlyWithErrorLogged);
+      veniceServerWrappers.values().forEach(Utils::closeQuietlyWithErrorLogged);
+      veniceControllerWrappers.values().forEach(Utils::closeQuietlyWithErrorLogged);
       throw e;
     }
   }

@@ -72,7 +72,7 @@ public class TestParentControllerWithMultiDataCenter {
 
   @AfterClass(alwaysRun = true)
   public void cleanUp() {
-    multiColoMultiClusterWrapper.close();
+    Utils.closeQuietlyWithErrorLogged(multiColoMultiClusterWrapper);
   }
 
   @Test(timeOut = TEST_TIMEOUT)

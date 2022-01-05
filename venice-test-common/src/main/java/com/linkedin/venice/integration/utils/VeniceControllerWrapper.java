@@ -146,6 +146,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
             .put(CONTROLLER_ZK_SHARED_DAVINCI_PUSH_STATUS_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED, true)
             .put(PUSH_STATUS_STORE_ENABLED, true)
             .put(AUTO_CLOSE_IDLE_CONSUMERS_ENABLED, true)
+            .put(CONCURRENT_INIT_ROUTINES_ENABLED, true)
             .put(extraProps.toProperties());
 
         if (sslToKafka) {

@@ -175,4 +175,9 @@ public class SystemSchemaInitializationRoutine implements ClusterLeaderInitializ
       }
     }
   }
+
+  @Override
+  public String toString() {
+    return "SystemSchemaInitializationRoutine{" + "protocolDefinition=" + protocolDefinition + '}';
+  }
 }
