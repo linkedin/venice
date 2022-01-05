@@ -22,7 +22,7 @@ import com.linkedin.venice.controller.init.LatestVersionPromoteToCurrentTimestam
 import com.linkedin.venice.controller.init.SystemSchemaInitializationRoutine;
 import com.linkedin.venice.controller.kafka.StoreStatusDecider;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
-import com.linkedin.venice.controller.kafka.consumer.VeniceControllerConsumerFactory;
+import com.linkedin.venice.controller.kafka.consumer.ControllerKafkaClientFactory;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
@@ -267,7 +267,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     private final long deprecatedJobTopicMaxRetentionMs;
     private final HelixReadOnlyStoreConfigRepository storeConfigRepo;
     private final VeniceWriterFactory veniceWriterFactory;
-    private final VeniceControllerConsumerFactory veniceConsumerFactory;
+    private final ControllerKafkaClientFactory veniceConsumerFactory;
     private final int minNumberOfStoreVersionsToPreserve;
     private final StoreGraveyard storeGraveyard;
     private final Map<String, String> participantMessageStoreRTTMap;
@@ -381,11 +381,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         this.zkClient = ZkClientFactory.newZkClient(multiClusterConfigs.getZkAddress());
         this.zkClient.subscribeStateChanges(new ZkClientStatusStats(metricsRepository, "controller-zk-client"));
         this.adapterSerializer = new HelixAdapterSerializer();
-        this.veniceConsumerFactory = new VeniceControllerConsumerFactory(
+        this.veniceConsumerFactory = new ControllerKafkaClientFactory(
             commonConfig,
             Optional.of(
                 new MetricsParameters(
-                    VeniceControllerConsumerFactory.class,
+                    ControllerKafkaClientFactory.class,
                     this.getClass(),
                     kafkaBootstrapServers,
                     metricsRepository
@@ -4877,7 +4877,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
     @Override
-    public VeniceControllerConsumerFactory getVeniceConsumerFactory() {
+    public ControllerKafkaClientFactory getVeniceConsumerFactory() {
         return veniceConsumerFactory;
     }
 

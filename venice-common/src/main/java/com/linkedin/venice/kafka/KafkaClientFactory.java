@@ -29,6 +29,9 @@ import static com.linkedin.venice.ConfigConstants.*;
 import static com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer.*;
 
 
+/**
+ * A factory that creates Kafka clients, specifically Kafka consumer and Kafka admin client.
+ */
 public abstract class KafkaClientFactory {
   private static final Logger logger = LogManager.getLogger(KafkaClientFactory.class);
   public static final boolean DEFAULT_AUTO_CLOSE_IDLE_CONSUMERS_ENABLED = false;

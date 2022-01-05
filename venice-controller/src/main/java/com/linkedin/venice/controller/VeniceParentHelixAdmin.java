@@ -17,7 +17,7 @@ import com.linkedin.venice.controller.authorization.SystemStoreAclSynchronizatio
 import com.linkedin.venice.controller.kafka.AdminTopicUtils;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumptionTask;
-import com.linkedin.venice.controller.kafka.consumer.VeniceControllerConsumerFactory;
+import com.linkedin.venice.controller.kafka.consumer.ControllerKafkaClientFactory;
 import com.linkedin.venice.controller.kafka.protocol.admin.AbortMigration;
 import com.linkedin.venice.controller.kafka.protocol.admin.AddVersion;
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
@@ -2523,7 +2523,7 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
-  public VeniceControllerConsumerFactory getVeniceConsumerFactory() {
+  public ControllerKafkaClientFactory getVeniceConsumerFactory() {
     return getVeniceHelixAdmin().getVeniceConsumerFactory();
   }
 

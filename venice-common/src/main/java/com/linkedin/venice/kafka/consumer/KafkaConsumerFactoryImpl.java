@@ -13,11 +13,11 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 
-public class VeniceKafkaConsumerFactory extends KafkaClientFactory {
-  private static final Logger logger = LogManager.getLogger(VeniceKafkaConsumerFactory.class);
+public class KafkaConsumerFactoryImpl extends KafkaClientFactory {
+  private static final Logger logger = LogManager.getLogger(KafkaConsumerFactoryImpl.class);
   private final VeniceProperties veniceProperties;
 
-  public VeniceKafkaConsumerFactory(VeniceProperties veniceProperties) {
+  public KafkaConsumerFactoryImpl(VeniceProperties veniceProperties) {
     this.veniceProperties = veniceProperties;
   }
 
@@ -57,6 +57,6 @@ public class VeniceKafkaConsumerFactory extends KafkaClientFactory {
     Properties clonedProperties = this.veniceProperties.toProperties();
     clonedProperties.setProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, kafkaBootstrapServers);
     clonedProperties.setProperty(ConfigKeys.KAFKA_ZK_ADDRESS, kafkaZkAddress);
-    return new VeniceKafkaConsumerFactory(new VeniceProperties(clonedProperties));
+    return new KafkaConsumerFactoryImpl(new VeniceProperties(clonedProperties));
   }
 }

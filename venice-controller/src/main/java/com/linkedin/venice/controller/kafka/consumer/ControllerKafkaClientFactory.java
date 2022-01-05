@@ -6,17 +6,18 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.utils.KafkaSSLUtils;
 import com.linkedin.venice.utils.VeniceProperties;
-import io.tehuti.metrics.MetricsRepository;
 import java.util.Optional;
 import java.util.Properties;
 import org.apache.kafka.clients.CommonClientConfigs;
 
 import static com.linkedin.venice.ConfigKeys.*;
 
-
-public class VeniceControllerConsumerFactory extends KafkaClientFactory {
+/**
+ * A factory used by the Venice controller to create Kafka clients, specifically Kafka consumer and Kafka admin client.
+ */
+public class ControllerKafkaClientFactory extends KafkaClientFactory {
   private final VeniceControllerConfig controllerConfig;
-  public VeniceControllerConsumerFactory(VeniceControllerConfig controllerConfig, Optional<MetricsParameters> metricsParameters) {
+  public ControllerKafkaClientFactory(VeniceControllerConfig controllerConfig, Optional<MetricsParameters> metricsParameters) {
     super(Optional.empty(), metricsParameters, controllerConfig.isAutoCloseIdleConsumersEnabled());
     this.controllerConfig = controllerConfig;
   }
@@ -61,7 +62,7 @@ public class VeniceControllerConsumerFactory extends KafkaClientFactory {
       clonedProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, kafkaBootstrapServers);
     }
     clonedProperties.setProperty(KAFKA_ZK_ADDRESS, kafkaZkAddress);
-    return new VeniceControllerConsumerFactory(
+    return new ControllerKafkaClientFactory(
         new VeniceControllerConfig(new VeniceProperties(clonedProperties)),
         metricsParameters
     );
