@@ -16,10 +16,14 @@ import static com.linkedin.venice.ConfigKeys.*;
 import static org.apache.kafka.common.config.SslConfigs.*;
 
 
-public class VeniceServerConsumerFactory extends KafkaClientFactory {
+/**
+ * A factory used by the Venice server (storage node) to create Kafka clients, specifically Kafka consumer and Kafka
+ * admin client.
+ */
+public class ServerKafkaClientFactory extends KafkaClientFactory {
   protected final VeniceServerConfig serverConfig;
 
-  public VeniceServerConsumerFactory(
+  public ServerKafkaClientFactory(
       VeniceServerConfig serverConfig,
       Optional<SchemaReader> kafkaMessageEnvelopeSchemaReader,
       Optional<MetricsParameters> metricsParameters
@@ -77,7 +81,7 @@ public class VeniceServerConsumerFactory extends KafkaClientFactory {
     Properties clonedProperties = this.serverConfig.getClusterProperties().toProperties();
     clonedProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, kafkaBootstrapServers);
     clonedProperties.setProperty(KAFKA_ZK_ADDRESS, kafkaZkAddress);
-    return new VeniceServerConsumerFactory(
+    return new ServerKafkaClientFactory(
         new VeniceServerConfig(new VeniceProperties(clonedProperties)),
         kafkaMessageEnvelopeSchemaReader,
         metricsParameters

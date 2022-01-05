@@ -39,7 +39,7 @@ import com.linkedin.venice.integration.utils.MirrorMakerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.VeniceOperationAgainstKafkaTimedOut;
-import com.linkedin.venice.kafka.consumer.VeniceKafkaConsumerFactory;
+import com.linkedin.venice.kafka.consumer.KafkaConsumerFactoryImpl;
 import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.BufferReplayPolicy;
@@ -938,7 +938,7 @@ public class AdminTool {
     properties.put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, kafkaBootstrapServer);
     properties.put(ConfigKeys.KAFKA_ZK_ADDRESS, zkConnectionString);
     VeniceProperties veniceProperties = new VeniceProperties(properties);
-    KafkaClientFactory kafkaClientFactory = new VeniceKafkaConsumerFactory(veniceProperties);
+    KafkaClientFactory kafkaClientFactory = new KafkaConsumerFactoryImpl(veniceProperties);
     int zkSessionTimeoutMs = 30 * Time.MS_PER_SECOND;
     int zkConnectionTimeoutMs = 60 * Time.MS_PER_SECOND;
     int kafkaTimeOut = 30 * Time.MS_PER_SECOND;

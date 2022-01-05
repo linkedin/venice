@@ -5,15 +5,19 @@ import com.linkedin.venice.client.schema.SchemaReader;
 import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.admin.KafkaAdminClient;
 import com.linkedin.venice.utils.VeniceProperties;
-import io.tehuti.metrics.MetricsRepository;
 import java.util.Optional;
 import java.util.Properties;
 
 import static com.linkedin.venice.ConfigKeys.*;
 
 
-public class VeniceServerConsumerJavaBasedFactory extends VeniceServerConsumerFactory {
-  public VeniceServerConsumerJavaBasedFactory(
+/**
+ * A factory used by the Venice server (storage node) to create Kafka clients, specifically Kafka consumer and Kafka
+ * admin client. Note that the Kafka admin client it creates is the Java admin client instead of the Scala admin client.
+ */
+public class ServerJavaKafkaClientFactory extends ServerKafkaClientFactory {
+
+  public ServerJavaKafkaClientFactory(
       VeniceServerConfig serverConfig,
       Optional<SchemaReader> kafkaMessageEnvelopeSchemaReader,
       Optional<MetricsParameters> metricsParameters
@@ -31,7 +35,7 @@ public class VeniceServerConsumerJavaBasedFactory extends VeniceServerConsumerFa
     Properties clonedProperties = this.serverConfig.getClusterProperties().toProperties();
     clonedProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, kafkaBootstrapServers);
     clonedProperties.setProperty(KAFKA_ZK_ADDRESS, kafkaZkAddress);
-    return new VeniceServerConsumerJavaBasedFactory(
+    return new ServerJavaKafkaClientFactory(
         new VeniceServerConfig(new VeniceProperties(clonedProperties)),
         kafkaMessageEnvelopeSchemaReader,
         metricsParameters

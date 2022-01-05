@@ -1,7 +1,7 @@
 package com.linkedin.venice.utils;
 
 import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
-import com.linkedin.venice.kafka.consumer.VeniceKafkaConsumerFactory;
+import com.linkedin.venice.kafka.consumer.KafkaConsumerFactoryImpl;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.StartOfPush;
@@ -34,7 +34,7 @@ public class DictionaryUtils {
   }
 
   public static ByteBuffer readDictionaryFromKafka(String topicName, VeniceProperties props) {
-    VeniceKafkaConsumerFactory kafkaConsumerFactory = new VeniceKafkaConsumerFactory(props);
+    KafkaConsumerFactoryImpl kafkaConsumerFactory = new KafkaConsumerFactoryImpl(props);
 
     try (KafkaConsumerWrapper kafkaConsumer = kafkaConsumerFactory.getConsumer(getKafkaConsumerProps())) {
       return DictionaryUtils.readDictionaryFromKafka(topicName, kafkaConsumer);

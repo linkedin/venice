@@ -2,7 +2,7 @@ package com.linkedin.venice.controller;
 
 import com.linkedin.venice.acl.AclException;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
-import com.linkedin.venice.controller.kafka.consumer.VeniceControllerConsumerFactory;
+import com.linkedin.venice.controller.kafka.consumer.ControllerKafkaClientFactory;
 import com.linkedin.venice.controller.lingeringjob.IdentityParser;
 import com.linkedin.venice.controllerapi.NodeReplicasReadinessState;
 import com.linkedin.venice.controllerapi.RepushInfo;
@@ -479,7 +479,7 @@ public interface Admin extends AutoCloseable, Closeable {
 
     VeniceWriterFactory getVeniceWriterFactory();
 
-    VeniceControllerConsumerFactory getVeniceConsumerFactory();
+    ControllerKafkaClientFactory getVeniceConsumerFactory();
 
     void close();
 
