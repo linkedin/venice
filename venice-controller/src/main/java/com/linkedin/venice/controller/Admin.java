@@ -693,4 +693,11 @@ public interface Admin extends AutoCloseable, Closeable {
      */
     Pair<Boolean, String> isStoreVersionReadyForDataRecovery(String clusterName, String storeName, int version,
         String sourceFabric, String destinationFabric, Optional<Integer> sourceAmplificationFactor);
+
+    /*
+     * Return whether the admin consumption task is enabled for the passed cluster.
+     */
+    default boolean isAdminTopicConsumptionEnabled(String clusterName) {
+        return true;
+    }
 }
