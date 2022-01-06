@@ -49,12 +49,12 @@ if __name__ == "__main__":
         }}
       """.format(config=CI_CONFIG)))
 
+  params = get_config(CI_CONFIG)
+  parser.add_argument("-j", "--job", help="jenkins job to run", default=params.get("job", "Venice-WcTest"))
   parser.add_argument("-b", "--baseline", help="baseline branch/tag to use for testing", default="origin/master")
   parser.add_argument("patch", nargs='?', help="diff-formatted patch to submit for testing")
   args = parser.parse_args()
 
-  params = dict(job="Venice-WcTest")
-  params.update(get_config(CI_CONFIG))
   if isinstance(params["url"], list):
     params["url"] = random.choice(params["url"])
   params.update(vars(args))
@@ -64,17 +64,18 @@ if __name__ == "__main__":
       "curl -kfv '{url}/job/{job}/buildWithParameters?baseline={baseline}' -u $(whoami):{apiToken} -F 'patch.diff=@{patch}'"
         .format(**params))
   else:
-    changes = run_command("git diff --patch --find-renames --compact-summary {baseline}".format(**params))
+    changes = run_command("git diff --find-renames --compact-summary {baseline}".format(**params))
     if not changes:
       raise SystemExit("No changes")
 
     revision = '#' + run_command("git rev-parse --short HEAD")
     response = run_command(
-        "curl -kfv '{url}/job/{job}/buildWithParameters?baseline={baseline}' -u $(whoami):{apiToken} -F 'patch.diff=@-;filename={name}' <<'\003'\n{changes}\n\003"
-          .format(**params, changes=changes, name=revision))
+        "git diff --patch --find-renames --compact-summary {baseline} |"
+        "curl -kfv '{url}/job/{job}/buildWithParameters?baseline={baseline}' -u $(whoami):{apiToken} -F 'patch.diff=@-;filename={name}'"
+          .format(**params, name=revision))
 
     print("Submitted working copy {name} for testing:".format(name=revision))
-    print(run_command("git diff --find-renames --compact-summary {baseline}".format(**params)))
+    print(changes)
     print()
 
   build_url = re.findall("< Location: (https?://.+)", response)[0]
