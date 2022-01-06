@@ -805,12 +805,18 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
 
   @Override
   public synchronized void close() {
+    if (isClosed) {
+      return;
+    }
     /**
      * The following operations are used to free up memory.
      */
     deRegisterDBStats();
     readCloseRWLock.writeLock().lock();
     try {
+      long startTimeInMs = System.currentTimeMillis();
+      rocksDB.cancelAllBackgroundWork(true);
+      LOGGER.info("RocksDB background task cancellation for store: " + storeName + ", partition " + partitionId + " took " + LatencyUtils.getElapsedTimeInMs(startTimeInMs) + " ms.");
       rocksDB.close();
     } finally {
       isClosed = true;
