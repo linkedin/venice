@@ -884,7 +884,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
       envelopeDeserializer = envelopeDeserializerFunc.apply(responseSchemaId);
       String compressionHeader = headers.get(HttpConstants.VENICE_COMPRESSION_STRATEGY);
       if (null != compressionHeader) {
-        compressionStrategy = CompressionStrategy.valueOf(Integer.valueOf(compressionHeader));
+        compressionStrategy = CompressionStrategy.valueOf(Integer.parseInt(compressionHeader));
       }
     }
 

@@ -41,9 +41,9 @@ public class StatusSnapshot {
       throw new VeniceException(incPushVersionId + " is not a valid incremental push version id");
     }
     if (incPushVersionId.indexOf("_") > 0) {
-      return Long.valueOf(incPushVersionId.substring(0, incPushVersionId.indexOf("_")).trim());
+      return Long.parseLong(incPushVersionId.substring(0, incPushVersionId.indexOf("_")).trim());
     } else {
-      return Long.valueOf(incPushVersionId);
+      return Long.parseLong(incPushVersionId);
     }
   }
 

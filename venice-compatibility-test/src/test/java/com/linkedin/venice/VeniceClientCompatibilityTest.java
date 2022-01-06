@@ -154,7 +154,7 @@ public class VeniceClientCompatibilityTest {
     if (!key.startsWith(keyPrefix)) {
       return -1;
     }
-    return Integer.valueOf(key.substring(keyPrefix.length()));
+    return Integer.parseInt(key.substring(keyPrefix.length()));
   }
 
   @Test(dataProvider = "clientProvider")

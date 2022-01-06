@@ -94,7 +94,7 @@ public class ZkExecutionIdAccessor implements ExecutionIdAccessor {
             //the id hasn't been initialized yet
             nextId = 0;
           } else {
-            nextId = Long.valueOf(currentData) + 1;
+            nextId = Long.parseLong(currentData) + 1;
           }
           executionId.set(nextId);
           return String.valueOf(nextId);

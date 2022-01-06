@@ -373,7 +373,7 @@ public class D2TransportClient extends TransportClient {
       CompressionStrategy compressionStrategy = CompressionStrategy.NO_OP;
       String compressionHeader = result.getHeader(HttpConstants.VENICE_COMPRESSION_STRATEGY);
       if (compressionHeader != null) {
-        compressionStrategy = CompressionStrategy.valueOf(Integer.valueOf(compressionHeader));
+        compressionStrategy = CompressionStrategy.valueOf(Integer.parseInt(compressionHeader));
       }
 
       /**

@@ -50,7 +50,7 @@ public class ChunkedKeySuffixTest {
     GUID guid = GuidUtils.getGUID(new VeniceProperties(new Properties()));
     for (int key = 0; key < 10; key++) {
       byte[] keyArray = new byte[1];
-      keyArray[0] = new Integer(key).byteValue();
+      keyArray[0] = (byte) key;
       keys.add(keyArray);
       for (int chunk = 0; chunk < 10; chunk++) {
         ChunkedKeySuffix chunkedKeySuffix = new ChunkedKeySuffix();
@@ -87,7 +87,5 @@ public class ChunkedKeySuffixTest {
 
     Assert.assertEquals(keys, sortedKeysAccordingToHadoopBytesWritable, "The keys should be ordered according to Hadoop's BytesWritabe!");
     Assert.assertEquals(keysWithSuffix, sortedKeysWithSuffixAccordingToHadoopBytesWritable, "The keys with suffix should be ordered according to Hadoop's BytesWritabe!");
-
   }
-
 }

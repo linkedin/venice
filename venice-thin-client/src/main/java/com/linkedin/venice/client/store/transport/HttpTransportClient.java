@@ -140,7 +140,7 @@ public class HttpTransportClient extends TransportClient {
       CompressionStrategy compressionStrategy = CompressionStrategy.NO_OP;
       Header compressionHeader = result.getFirstHeader(HttpConstants.VENICE_COMPRESSION_STRATEGY);
       if (compressionHeader != null) {
-        compressionStrategy = CompressionStrategy.valueOf(Integer.valueOf(compressionHeader.getValue()));
+        compressionStrategy = CompressionStrategy.valueOf(Integer.parseInt(compressionHeader.getValue()));
       }
 
       byte[] body = null;

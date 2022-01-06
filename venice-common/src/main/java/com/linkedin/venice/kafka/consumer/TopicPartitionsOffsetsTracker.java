@@ -81,7 +81,7 @@ class TopicPartitionsOffsetsTracker {
             final Metric metric = entry.getValue();
 
             if (isMetricEntryRecordsLag(metricName, metric)) {
-                TopicPartition tp = new TopicPartition(metricName.tags().get("topic"), Integer.valueOf(metricName.tags().get("partition")));
+                TopicPartition tp = new TopicPartition(metricName.tags().get("topic"), Integer.parseInt(metricName.tags().get("partition")));
                 Double currOffset = topicPartitionCurrentOffset.get(tp);
                 if (currOffset != null) {
                     topicPartitionEndOffset.put(tp, currOffset + ((Double) metric.metricValue()));
