@@ -56,6 +56,7 @@ public class ReplicaFailoverTest {
     cluster = ServiceFactory.getVeniceCluster(1, REPLICATION_FACTOR, 0, REPLICATION_FACTOR);
     Properties props = new Properties();
     props.setProperty(ConfigKeys.ROUTER_STATEFUL_HEALTHCHECK_ENABLED, "true");
+    props.setProperty(ConfigKeys.ROUTER_ASYNC_START_ENABLED, "true");
     props.setProperty(ConfigKeys.ROUTER_UNHEALTHY_PENDING_CONNECTION_THRESHOLD_PER_ROUTE, String.valueOf(MAX_CONCURRENT_REQUESTS));
     props.setProperty(ConfigKeys.ROUTER_LONG_TAIL_RETRY_FOR_SINGLE_GET_THRESHOLD_MS, String.valueOf(MAX_REQUEST_LATENCY_QD1 / 2));
     cluster.addVeniceRouter(props);
