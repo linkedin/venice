@@ -297,6 +297,11 @@ public class ConfigKeys {
   public static final String ADMIN_TOPIC_SOURCE_REGION = "admin.topic.source.region";
 
   /**
+   * This following config defines whether admin consumption should be enabled or not, and this config will only control the behavior in Child Controller.
+   */
+  public static final String CHILD_CONTROLLER_ADMIN_TOPIC_CONSUMPTION_ENABLED = "child.controller.admin.topic.consumption.enabled";
+
+  /**
    * This config defines the source region of aggregate hybrid store real-time data when native replication is enabled
    */
   public static final String AGGREGATE_REAL_TIME_SOURCE_REGION = "aggregate.real.time.source.region";

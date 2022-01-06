@@ -160,6 +160,8 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   private final boolean autoCloseIdleConsumersEnabled;
 
+  private final boolean childControllerAdminTopicConsumptionEnabled;
+
   public VeniceControllerConfig(VeniceProperties props) {
     super(props);
     this.adminPort = props.getInt(ADMIN_PORT);
@@ -304,6 +306,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     this.allowClusterWipe = props.getBoolean(ALLOW_CLUSTER_WIPE, false);
     this.useKafkaMirrorMaker = props.getBoolean(USE_KAFKA_MIRROR_MAKER, true);
     this.autoCloseIdleConsumersEnabled = props.getBoolean(AUTO_CLOSE_IDLE_CONSUMERS_ENABLED, KafkaClientFactory.DEFAULT_AUTO_CLOSE_IDLE_CONSUMERS_ENABLED);
+    this.childControllerAdminTopicConsumptionEnabled = props.getBoolean(CHILD_CONTROLLER_ADMIN_TOPIC_CONSUMPTION_ENABLED, true);
   }
 
   private void validateActiveActiveConfigs() {
@@ -606,6 +609,10 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   public boolean isAutoCloseIdleConsumersEnabled() {
     return autoCloseIdleConsumersEnabled;
+  }
+
+  public boolean isChildControllerAdminTopicConsumptionEnabled() {
+    return childControllerAdminTopicConsumptionEnabled;
   }
 
   /**

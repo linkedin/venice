@@ -5825,18 +5825,26 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     @Override
     public Pair<Boolean, String> isStoreVersionReadyForDataRecovery(String clusterName, String storeName, int version,
         String sourceFabric, String destinationFabric, Optional<Integer> sourceAmplificationFactor) {
-        checkControllerLeadershipFor(clusterName);
-        boolean isReady = true;
-        String reason = "";
-        try {
-            checkSourceAmplificationFactorIsAvailable(sourceAmplificationFactor);
-            checkCurrentFabricMatchesExpectedFabric(destinationFabric);
-            dataRecoveryManager.verifyStoreVersionIsReadyForDataRecovery(clusterName, storeName, version,
-                sourceAmplificationFactor.get());
-        } catch (Exception e) {
-            isReady = false;
-            reason = e.getMessage();
+      checkControllerLeadershipFor(clusterName);
+      boolean isReady = true;
+      String reason = "";
+      try {
+        checkSourceAmplificationFactorIsAvailable(sourceAmplificationFactor);
+        checkCurrentFabricMatchesExpectedFabric(destinationFabric);
+        dataRecoveryManager.verifyStoreVersionIsReadyForDataRecovery(clusterName, storeName, version,
+            sourceAmplificationFactor.get());
+      } catch (Exception e) {
+        isReady = false;
+        reason = e.getMessage();
+      }
+      return new Pair<>(isReady, reason);
+    }
+
+    @Override
+    public boolean isAdminTopicConsumptionEnabled(String clusterName) {
+        if (isParent()) {
+            return true;
         }
-        return new Pair<>(isReady, reason);
+        return multiClusterConfigs.getControllerConfig(clusterName).isChildControllerAdminTopicConsumptionEnabled();
     }
 }

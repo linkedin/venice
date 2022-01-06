@@ -135,6 +135,7 @@ public class TestAdminConsumptionTask {
     admin = mock(VeniceHelixAdmin.class);
     // By default, current controller is the master controller
     doReturn(true).when(admin).isLeaderControllerFor(clusterName);
+    doReturn(true).when(admin).isAdminTopicConsumptionEnabled(clusterName);
 
     offsetManager = new InMemoryOffsetManager();
     adminTopicMetadataAccessor = new InMemoryAdminTopicMetadataAccessor();
