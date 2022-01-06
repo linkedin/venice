@@ -661,7 +661,7 @@ public class VenicePushJob implements AutoCloseable {
               rewindTimestamp, REWIND_EPOCH_TIME_IN_SECONDS_OVERRIDE, REWIND_EPOCH_TIME_IN_SECONDS_OVERRIDE));
         }
         // Set the rewindTimeInSecondsOverride to be the time that is now - the provided timestamp so that we rewind
-        // from start of push to the provided timestamp with some extra buffer time since things aren't perfecty instantaneous
+        // from start of push to the provided timestamp with some extra buffer time since things aren't perfectly instantaneous
         long bufferTime = props.getLong(REWIND_EPOCH_TIME_BUFFER_IN_SECONDS_OVERRIDE, 60);
         pushJobSetting.rewindTimeInSecondsOverride = (nowInSeconds - rewindTimestamp) + bufferTime;
         // In order for this config to make sense to the user, the remote rewind policy needs to be validated to be
@@ -1256,7 +1256,7 @@ public class VenicePushJob implements AutoCloseable {
     ByteBuffer compressionDictionary = null;
     if (storeSetting.compressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
       if (pushJobSetting.isSourceKafka) {
-        logger.info("Reading Ztsd dictionary from input topic");
+        logger.info("Reading Zstd dictionary from input topic");
         // set up ssl properties and kafka consumer properties
         Properties kafkaConsumerProperties = new Properties();
         kafkaConsumerProperties.putAll(this.sslProperties.get());
@@ -1695,7 +1695,7 @@ public class VenicePushJob implements AutoCloseable {
 
       /**
        * If the source topic is using compression algorithm, we will keep the compression in the new topic. There are two cases:
-       * 1. The source topic uses ZTSD with dictionary, we will copy the dictionary from source topic to new topic and pass-through.
+       * 1. The source topic uses ZSTD with dictionary, we will copy the dictionary from source topic to new topic and pass-through.
        * 2. Other compression algos like Gzip, we will pass-through the compressed msgs to new topic.
        * For both cases, VPJ won't compress it again.
        */
@@ -2404,22 +2404,19 @@ public class VenicePushJob implements AutoCloseable {
   /**
    * Define as "protected" function instead of "private" because it's needed in some test cases.
    */
-  protected static Path getLatestPathOfInputDirectory(String inputDirectory, FileSystem fs) throws IOException{
-    Path sourcePath;
-    boolean computeLatestPath = false;
-    if (inputDirectory.endsWith("#LATEST") || inputDirectory.endsWith("#LATEST/")) {
-      int poundSign = inputDirectory.lastIndexOf('#');
-      sourcePath = new Path(inputDirectory.substring(0, poundSign));
-      computeLatestPath = true;
-    } else {
-      sourcePath = new Path(inputDirectory);
+  protected static Path getLatestPathOfInputDirectory(String inputDirectory, FileSystem fs) throws IOException {
+    String[] split = inputDirectory.split("#LATEST");
+
+    String resolvedPath = split[0];
+    for (int i = 1; i < split.length; i++) {
+      resolvedPath = getLatestPath(new Path(resolvedPath), fs).toString() + split[i];
     }
 
-    if(computeLatestPath) {
-      sourcePath = getLatestPath(sourcePath, fs);
+    if (inputDirectory.endsWith("#LATEST")) {
+      return getLatestPath(new Path(resolvedPath), fs);
     }
 
-    return sourcePath;
+    return new Path(resolvedPath);
   }
 
   private String discoverCluster(String storeName, String veniceControllerUrl, Optional<SSLFactory> sslFactory) {
@@ -2487,7 +2484,12 @@ public class VenicePushJob implements AutoCloseable {
       return path;
     } else {
       Arrays.sort(statuses);
-      return statuses[statuses.length - 1].getPath();
+      for (int i = statuses.length - 1; i >= 0; i--) {
+        if (statuses[i].isDirectory()) {
+          return statuses[i].getPath();
+        }
+      }
+      return path;
     }
   }
 
