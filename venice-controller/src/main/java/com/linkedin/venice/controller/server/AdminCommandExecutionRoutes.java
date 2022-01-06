@@ -35,7 +35,7 @@ public class AdminCommandExecutionRoutes extends AbstractRoute {
       // response would be return.
       AdminSparkServer.validateParams(request, EXECUTION.getParams(), admin);
       String cluster = request.queryParams(CLUSTER);
-      long executionId = Long.valueOf(request.queryParams(EXECUTION_ID));
+      long executionId = Long.parseLong(request.queryParams(EXECUTION_ID));
       responseObject.setCluster(cluster);
       Optional<AdminCommandExecutionTracker> adminCommandExecutionTracker = admin.getAdminCommandExecutionTracker(cluster);
       if (adminCommandExecutionTracker.isPresent()) {

@@ -634,7 +634,7 @@ public class TestHybrid {
           /**
            * Leader would wait for 5 seconds before switching to real-time topic.
            */
-          long extraWaitTime = isLeaderFollowerModelEnabled ? TimeUnit.SECONDS.toMillis(Long.valueOf(extraProperties.getProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS)))
+          long extraWaitTime = isLeaderFollowerModelEnabled ? TimeUnit.SECONDS.toMillis(Long.parseLong(extraProperties.getProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS)))
               : 0L;
           long normalTimeForConsuming = TimeUnit.SECONDS.toMillis(3);
           logger.info("normalTimeForConsuming:" + normalTimeForConsuming + "; extraWaitTime:" + extraWaitTime);

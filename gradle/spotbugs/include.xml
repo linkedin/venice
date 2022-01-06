@@ -6,6 +6,8 @@
   <Match>
     <Or>
       <Bug category="AVRO" />
+      <Bug pattern="BX_BOXING_IMMEDIATELY_UNBOXED_TO_PERFORM_COERCION" />
+      <Bug pattern="DM_BOXED_PRIMITIVE_FOR_PARSING" />
       <Bug pattern="LI_LAZY_INIT_UPDATE_STATIC" />
       <Bug pattern="NP_NULL_ON_SOME_PATH" />
       <Bug pattern="NP_UNWRITTEN_FIELD" />
@@ -16,6 +18,6 @@
       <Bug pattern="UWF_NULL_FIELD" />
       <Bug pattern="UWF_UNWRITTEN_FIELD" />
       <Bug pattern="WMI_WRONG_MAP_ITERATOR" />
-    </Or>  
+    </Or>
   </Match>
 </FindBugsFilter>

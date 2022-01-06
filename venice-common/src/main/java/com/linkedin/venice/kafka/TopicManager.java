@@ -349,7 +349,7 @@ public class TopicManager implements Closeable {
         (String)topicProperties.get(TopicConfig.CLEANUP_POLICY_CONFIG) : TopicConfig.CLEANUP_POLICY_DELETE;
     String expectedCompactionPolicy = logCompaction ? TopicConfig.CLEANUP_POLICY_COMPACT : TopicConfig.CLEANUP_POLICY_DELETE;
     long currentMinLogCompactionLagMs = topicProperties.containsKey(TopicConfig.MIN_COMPACTION_LAG_MS_CONFIG) ?
-        Long.valueOf((String)topicProperties.get(TopicConfig.MIN_COMPACTION_LAG_MS_CONFIG)) : 0L;
+        Long.parseLong((String)topicProperties.get(TopicConfig.MIN_COMPACTION_LAG_MS_CONFIG)) : 0L;
     long expectedMinLogCompactionLagMs = logCompaction ? topicMinLogCompactionLagMs : 0L;
     boolean needToUpdateTopicConfig = false;
     if (! expectedCompactionPolicy.equals(currentCompactionPolicy)) {
@@ -378,7 +378,7 @@ public class TopicManager implements Closeable {
   public long getTopicMinLogCompactionLagMs(String topicName) {
     Properties topicProperties = getCachedTopicConfig(topicName);
     return topicProperties.containsKey(TopicConfig.MIN_COMPACTION_LAG_MS_CONFIG)
-        ? Long.valueOf((String) topicProperties.get(TopicConfig.MIN_COMPACTION_LAG_MS_CONFIG)) : 0L;
+        ? Long.parseLong((String) topicProperties.get(TopicConfig.MIN_COMPACTION_LAG_MS_CONFIG)) : 0L;
   }
 
   public Map<String, Long> getAllTopicRetentions() {

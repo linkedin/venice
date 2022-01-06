@@ -46,7 +46,6 @@ public class StoreStatusMessage extends StatusMessage {
   private String description;
 
   public StoreStatusMessage(String kafkaTopic, int partitionId, String instanceId, ExecutionStatus status) {
-    super();
     this.partitionId = partitionId;
     this.kafkaTopic = kafkaTopic;
     this.instanceId = instanceId;
@@ -58,14 +57,13 @@ public class StoreStatusMessage extends StatusMessage {
    */
   public StoreStatusMessage(Map<String, String> fields) {
     super(fields);
-    this.partitionId = Integer.valueOf(getRequiredField(fields, PARTITION_ID));
+    this.partitionId = Integer.parseInt(getRequiredField(fields, PARTITION_ID));
     this.instanceId = getRequiredField(fields, INSTANCE_ID);
     this.kafkaTopic = getRequiredField(fields, KAFKA_TOPIC);
     this.status = ExecutionStatus.valueOf(getRequiredField(fields, STATUS));
     this.description = getOptionalField(fields, DESCRIPTION);
-    this.offset = Integer.valueOf(getRequiredField(fields, OFFSET));
+    this.offset = Integer.parseInt(getRequiredField(fields, OFFSET));
   }
-
 
   public int getPartitionId() {
     return partitionId;

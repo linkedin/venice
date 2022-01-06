@@ -589,7 +589,7 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
            + " path: " + derivedSchemaIdPairStr);
         }
 
-        if (null == schemaData.getDerivedSchema(Integer.valueOf(ids[0]), Integer.valueOf(ids[1]))) {
+        if (null == schemaData.getDerivedSchema(Integer.parseInt(ids[0]), Integer.parseInt(ids[1]))) {
           schemaData.addDerivedSchema(accessor.getDerivedSchema(storeName, derivedSchemaIdPairStr));
         }
       }
@@ -607,7 +607,7 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
               + " path: " + replicationMetadataVersionIdPairStr);
         }
 
-        if (null == schemaData.getReplicationMetadataSchema(Integer.valueOf(ids[0]), Integer.valueOf(ids[1]))) {
+        if (null == schemaData.getReplicationMetadataSchema(Integer.parseInt(ids[0]), Integer.parseInt(ids[1]))) {
           schemaData.addReplicationMetadataSchema(accessor.getReplicationMetadataSchema(storeName, replicationMetadataVersionIdPairStr));
         }
       }

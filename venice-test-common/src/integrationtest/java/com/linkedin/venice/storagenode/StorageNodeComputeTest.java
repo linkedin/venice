@@ -313,7 +313,7 @@ public class StorageNodeComputeTest {
     if (!key.startsWith(keyPrefix)) {
       return -1;
     }
-    return Integer.valueOf(key.substring(keyPrefix.length()));
+    return Integer.parseInt(key.substring(keyPrefix.length()));
   }
 
   private void pushSyntheticDataForCompute(String topic, String keyPrefix, String valuePrefix, int numOfRecords,

@@ -876,7 +876,7 @@ public class AdminTool {
   private static void enableQuotaRebalance(CommandLine cmd, boolean enable) {
     int expectedRouterCount = 0;
     if (!enable) {
-      expectedRouterCount = Integer.valueOf(getRequiredArgument(cmd, Arg.EXPECTED_ROUTER_COUNT));
+      expectedRouterCount = Integer.parseInt(getRequiredArgument(cmd, Arg.EXPECTED_ROUTER_COUNT));
     }
     ControllerResponse response = controllerClient.enableQuotaRebalanced(enable, expectedRouterCount);
     printSuccess(response);
@@ -1033,7 +1033,7 @@ public class AdminTool {
     }
     int maxConsumeAttempts = 3;
     if (getOptionalArgument(cmd, Arg.MAX_POLL_ATTEMPTS) != null) {
-      maxConsumeAttempts = Integer.valueOf(getOptionalArgument(cmd, Arg.MAX_POLL_ATTEMPTS));
+      maxConsumeAttempts = Integer.parseInt(getOptionalArgument(cmd, Arg.MAX_POLL_ATTEMPTS));
     }
 
     boolean logMetadataOnly = cmd.hasOption(Arg.LOG_METADATA.toString());
@@ -1656,13 +1656,13 @@ public class AdminTool {
 
   private static void deleteOldVersion(CommandLine cmd) {
     String store = getRequiredArgument(cmd, Arg.STORE, Command.DELETE_OLD_VERSION);
-    int version = Integer.valueOf(getRequiredArgument(cmd, Arg.VERSION, Command.DELETE_OLD_VERSION));
+    int version = Integer.parseInt(getRequiredArgument(cmd, Arg.VERSION, Command.DELETE_OLD_VERSION));
     VersionResponse response = controllerClient.deleteOldVersion(store, version);
     printObject(response);
   }
 
   private static void getExecution(CommandLine cmd) {
-    long executionId = Long.valueOf(getRequiredArgument(cmd, Arg.EXECUTION, Command.GET_EXECUTION));
+    long executionId = Long.parseLong(getRequiredArgument(cmd, Arg.EXECUTION, Command.GET_EXECUTION));
     AdminCommandExecutionResponse response = controllerClient.getAdminCommandExecution(executionId);
     printObject(response);
   }

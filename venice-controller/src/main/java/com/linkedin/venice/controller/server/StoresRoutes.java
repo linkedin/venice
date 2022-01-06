@@ -561,7 +561,7 @@ public class StoresRoutes extends AbstractRoute {
         AdminSparkServer.validateParams(request, DELETE_ALL_VERSIONS.getParams(), admin);
         String clusterName = request.queryParams(CLUSTER);
         String storeName = request.queryParams(NAME);
-        int versionNum = Integer.valueOf(request.queryParams(VERSION));
+        int versionNum = Integer.parseInt(request.queryParams(VERSION));
         veniceResponse.setCluster(clusterName);
         veniceResponse.setName(storeName);
         veniceResponse.setVersion(versionNum);
