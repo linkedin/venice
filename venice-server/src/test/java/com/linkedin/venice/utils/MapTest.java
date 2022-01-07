@@ -101,20 +101,16 @@ public class MapTest {
 
     @Override
     public int compareTo(KeyWithSameHashCode x) {
-      if(this.i == x.i){
-        return 0;
-      }
-      else {
-        return Integer.compare(this.i, x.i);
-      }
+      return Integer.compare(this.i, x.i);
     }
+
     @Override
     public String toString() {
       return "Key_" + i;
     }
   }
 
-  private static class CollidingHash implements Comparable<CollidingHash> {
+  private static final class CollidingHash implements Comparable<CollidingHash> {
 
     private final int value;
 

@@ -101,9 +101,6 @@ public class StatsHandler extends ChannelDuplexHandler {
 
   public void setRequestType(RequestType requestType) {
     switch (requestType) {
-      case SINGLE_GET:
-        currentStats = singleGetStats;
-        break;
       case MULTI_GET:
         currentStats = multiGetStats;
         break;

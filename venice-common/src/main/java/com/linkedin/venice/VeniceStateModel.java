@@ -41,7 +41,7 @@ public class VeniceStateModel {
      * Any -> DROPPED
      */
     builder.addState(HelixState.ONLINE.toString(), 1);
-    builder.addState(HelixState.BOOTSTRAP_STATE.toString() ,2);
+    builder.addState(HelixState.BOOTSTRAP.toString() ,2);
     builder.addState(HelixState.OFFLINE.toString(), 2);
     builder.addState(HelixDefinedState.ERROR.toString(), 3);
     builder.addState(HelixDefinedState.DROPPED.toString(), 4);

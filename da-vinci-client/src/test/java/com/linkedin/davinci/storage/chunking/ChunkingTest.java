@@ -151,7 +151,7 @@ public class ChunkingTest {
         GenericRecord subRecord = new GenericData.Record(schema3subRecord);
         subRecord.put("someInt", (int) Math.random());
         subRecord.put("someDouble", Math.random());
-        subRecord.put("someBoolean", i % 1 == 0);
+        subRecord.put("someBoolean", (i & 1) == 0);
         list.add(subRecord);
       }
       record.put("test", list);

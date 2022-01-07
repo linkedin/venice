@@ -178,7 +178,7 @@ public class StoreAclHandlerTest {
     int len = conditions.length;
     for (int i = 0; i < Math.pow(2, len); i++) {
       for (int j = 0; j < len; j++) {
-        conditions[j][0] = (i>>j) % 2 == 1;
+        conditions[j][0] = ((i >> j) & 1) == 1;
       }
       // New metadataRepo mock and aclHandler every update since thenThrow cannot be re-mocked.
       metadataRepo = mock(HelixReadOnlyStoreRepository.class);

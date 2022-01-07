@@ -333,9 +333,7 @@ public class VersionImpl implements Version {
     if(o == null) {
       throw new IllegalArgumentException("Input argument is null");
     }
-
-    Integer num = this.storeVersion.number;
-    return num.compareTo(o.getNumber());
+    return Integer.compare(storeVersion.number, o.getNumber());
   }
 
   @Override

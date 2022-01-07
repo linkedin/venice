@@ -9,7 +9,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-public class VsonSchema implements Serializable {
+public final class VsonSchema implements Serializable {
 
   private static final long serialVersionUID = 1;
 

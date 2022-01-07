@@ -126,8 +126,6 @@ public class SharedKafkaProducerServiceTest {
           });
         } catch (Exception e) {
           LOGGER.error("Exception: ", e);
-          if (e instanceof InterruptedException) {
-          }
         }
       }
     });

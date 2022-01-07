@@ -127,7 +127,7 @@ public class D2ControllerClient extends ControllerClient{
 
   public static D2ControllerClient discoverAndConstructControllerClient(String storeName, String d2ServiceName, String d2ZkHost, Optional<SSLFactory> sslFactory) {
     D2ServiceDiscoveryResponse discoResponse = discoverCluster(d2ZkHost, d2ServiceName, storeName);
-    if (!clusterToClientMapContains(discoResponse.getCluster(), d2ServiceName));
+    if (!clusterToClientMapContains(discoResponse.getCluster(), d2ServiceName))
       addClusterToClientMapEntry(discoResponse.getCluster(), d2ServiceName, new D2ControllerClient(d2ServiceName, discoResponse.getCluster(), d2ZkHost, sslFactory));
     return constructClusterControllerClient(discoResponse.getCluster(), d2ServiceName, d2ZkHost, sslFactory);
   }
