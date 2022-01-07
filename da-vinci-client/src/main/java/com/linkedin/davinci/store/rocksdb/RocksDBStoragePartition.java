@@ -255,7 +255,9 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
   private void removeSSTFilesAfterCheckpointing() {
     File tempSSTFileDir = new File(fullPathForTempSSTFileDir);
     String[] sstFiles = tempSSTFileDir.list((File dir, String name) -> RocksDBUtils.isTempSSTFile(name));
-
+    if (sstFiles == null) {
+      throw new VeniceException("Failed to list sst files in " + tempSSTFileDir.getAbsolutePath());
+    }
     for (String sstFile : sstFiles) {
       int sstFileNo = RocksDBUtils.extractTempSSTFileNo(sstFile);
       if (sstFileNo > lastFinishedSSTFileNo) {

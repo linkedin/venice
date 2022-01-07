@@ -5,31 +5,33 @@
     xsi:schemaLocation="https://github.com/spotbugs/filter/3.0.0 https://raw.githubusercontent.com/spotbugs/spotbugs/master/spotbugs/etc/findbugsfilter.xsd">
   <Match>
     <Or>
-      <Bug category="AVRO" />
-      <Bug pattern="BX_BOXING_IMMEDIATELY_UNBOXED_TO_PERFORM_COERCION" />
+      <Bug category="AVRO"/>
+      <Bug pattern="BX_BOXING_IMMEDIATELY_UNBOXED_TO_PERFORM_COERCION"/>
       <Bug pattern="CN_IDIOM"/>
       <Bug pattern="DB_DUPLICATE_SWITCH_CLAUSES"/>
       <Bug pattern="DMI_HARDCODED_ABSOLUTE_FILENAME"/>
       <Bug pattern="DM_BOXED_PRIMITIVE_FOR_COMPARE"/>
-      <Bug pattern="DM_BOXED_PRIMITIVE_FOR_PARSING" />
+      <Bug pattern="DM_BOXED_PRIMITIVE_FOR_PARSING"/>
       <Bug pattern="DM_STRING_CTOR"/>
       <Bug pattern="DM_STRING_TOSTRING"/>
       <Bug pattern="EQ_GETCLASS_AND_CLASS_CONSTANT"/>
       <Bug pattern="IM_BAD_CHECK_FOR_ODD"/>
       <Bug pattern="INT_BAD_REM_BY_1"/>
-      <Bug pattern="LI_LAZY_INIT_UPDATE_STATIC" />
+      <Bug pattern="LI_LAZY_INIT_UPDATE_STATIC"/>
       <Bug pattern="NP_DEREFERENCE_OF_READLINE_VALUE"/>
-      <Bug pattern="NP_NULL_ON_SOME_PATH" />
-      <Bug pattern="NP_UNWRITTEN_FIELD" />
-      <Bug pattern="OS_OPEN_STREAM" />
-      <Bug pattern="OS_OPEN_STREAM_EXCEPTION_PATH" />
-      <Bug pattern="SA_FIELD_SELF_COMPARISON" />
-      <Bug pattern="SIO_SUPERFLUOUS_INSTANCEOF" />
+      <Bug pattern="NP_LOAD_OF_KNOWN_NULL_VALUE"/>
+      <Bug pattern="NP_NULL_ON_SOME_PATH"/>
+      <Bug pattern="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE"/>
+      <Bug pattern="NP_UNWRITTEN_FIELD"/>
+      <Bug pattern="OS_OPEN_STREAM"/>
+      <Bug pattern="OS_OPEN_STREAM_EXCEPTION_PATH"/>
+      <Bug pattern="SA_FIELD_SELF_COMPARISON"/>
+      <Bug pattern="SIO_SUPERFLUOUS_INSTANCEOF"/>
       <Bug pattern="UCF_USELESS_CONTROL_FLOW"/>
       <Bug pattern="UCF_USELESS_CONTROL_FLOW_NEXT_LINE"/>
-      <Bug pattern="UWF_NULL_FIELD" />
-      <Bug pattern="UWF_UNWRITTEN_FIELD" />
-      <Bug pattern="WMI_WRONG_MAP_ITERATOR" />
+      <Bug pattern="UWF_NULL_FIELD"/>
+      <Bug pattern="UWF_UNWRITTEN_FIELD"/>
+      <Bug pattern="WMI_WRONG_MAP_ITERATOR"/>
     </Or>
   </Match>
 </FindBugsFilter>

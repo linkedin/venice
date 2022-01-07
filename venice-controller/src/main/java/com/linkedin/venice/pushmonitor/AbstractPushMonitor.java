@@ -469,7 +469,7 @@ public abstract class AbstractPushMonitor
           }
         }
       } else {
-        logger.info("Can not find a running offline push for topic:" + partitionAssignment.getTopic() + ", ignore the routing data changed notification. OfflinePushStatus: " + pushStatus);
+        logger.info("Can not find a running offline push for topic:" + partitionAssignment.getTopic() + ", ignore the routing data changed notification.");
       }
     }
   }

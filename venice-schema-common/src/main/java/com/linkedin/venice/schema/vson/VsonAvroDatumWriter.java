@@ -96,7 +96,7 @@ public class VsonAvroDatumWriter<K> extends GenericDatumWriter<K> {
       write(cachedStrippedSchema.computeIfAbsent(schema, s -> stripFromUnion(s)), datum, out);
     } else {
       out.writeIndex(1);
-      write(Schema.create(Schema.Type.NULL), datum, out);
+      write(Schema.create(Schema.Type.NULL), null, out);
     }
   }
 }

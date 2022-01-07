@@ -35,8 +35,7 @@ public class TestSchemaEntry {
 
   @Test (expectedExceptions = IllegalArgumentException.class)
   public void testNullSchema() {
-    String schema = null;
-    new SchemaEntry(10, schema);
+    new SchemaEntry(10, (String) null);
   }
 
   @Test

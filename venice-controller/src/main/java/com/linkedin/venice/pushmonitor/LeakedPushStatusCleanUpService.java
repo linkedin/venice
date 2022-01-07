@@ -143,9 +143,7 @@ public class LeakedPushStatusCleanUpService extends AbstractVeniceService {
               /**
                * Delete all leaked push statuses
                */
-              if (leakedPushStatuses != null && leakedPushStatuses.size() > 0) {
-                leakedPushStatuses.stream().forEach(offlinePushAccessor::deleteOfflinePushStatusAndItsPartitionStatuses);
-              }
+              leakedPushStatuses.stream().forEach(offlinePushAccessor::deleteOfflinePushStatusAndItsPartitionStatuses);
               aggPushStatusCleanUpStats.recordSuccessfulLeakedPushStatusCleanUpCount(storeName, leakedPushStatuses.size());
             } catch (Throwable e) {
               /**

@@ -65,11 +65,11 @@ public class HelixUtils {
 
   public static String getResourceName(String helixPartitionName){
     int lastUnderscoreIdx = helixPartitionName.lastIndexOf(SEPARATOR);
-    if(lastUnderscoreIdx == -1) {
+    if (lastUnderscoreIdx == -1) {
       throw new IllegalArgumentException("Incorrect Helix Partition Name " + helixPartitionName);
     }
     String resourceName = helixPartitionName.substring(0, lastUnderscoreIdx);
-    if(resourceName == null || resourceName.length() == 0) {
+    if (resourceName.isEmpty()) {
       throw new IllegalArgumentException("Could not determine resource name from Helix Partition Id " + helixPartitionName);
     }
     return resourceName;

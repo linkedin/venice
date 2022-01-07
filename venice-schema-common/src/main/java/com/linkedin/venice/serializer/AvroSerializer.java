@@ -84,12 +84,10 @@ public class AvroSerializer<K> implements RecordSerializer<K> {
     try {
       return serialize(object, reusedEncoder, output);
     } finally {
-      if (output != null) {
-        try {
-          output.close();
-        } catch (IOException e) {
-          logger.error("Failed to close stream", e);
-        }
+      try {
+        output.close();
+      } catch (IOException e) {
+        logger.error("Failed to close stream", e);
       }
     }
   }

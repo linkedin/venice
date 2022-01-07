@@ -7,6 +7,9 @@ import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.schema.SchemaEntry;
+import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Utils;
+
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -37,8 +40,8 @@ public class ObjectCacheBackendTest {
         SchemaEntry entry = new SchemaEntry(0, STORE_SCHEMA);
         Mockito.when(mockSchemaRepo.getKeySchema(STORE_NAME)).thenReturn(entry);
         ObjectCacheConfig cacheConfig = new ObjectCacheConfig();
-        ClientConfig mockClientConfig = Mockito.mock(ClientConfig.class);
-        ObjectCacheBackend cacheBackend = new ObjectCacheBackend(mockClientConfig, cacheConfig, mockSchemaRepo);
+        ClientConfig clientConfig = ClientConfig.defaultGenericClientConfig(Utils.getUniqueString());
+        ObjectCacheBackend cacheBackend = new ObjectCacheBackend(clientConfig, cacheConfig, mockSchemaRepo);
 
         // Set up a mock version
         Version mockVersion = Mockito.mock(Version.class);

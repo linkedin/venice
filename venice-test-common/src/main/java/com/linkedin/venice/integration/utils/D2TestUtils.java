@@ -110,7 +110,6 @@ public class D2TestUtils {
     long healthCheckInterval = 1000;
     int healthCheckRetries = 3;
     String healthCheckUrl = "";
-    ScheduledExecutorService scheduledExecutorService = null;
     int d2HealthCheckerTimeoutMs = 500;
 
     D2ServerManager d2Manager = new D2ServerManager(
@@ -126,7 +125,7 @@ public class D2TestUtils {
         healthCheckInterval,
         healthCheckRetries,
         healthCheckUrl,
-        scheduledExecutorService,
+        null,
         d2HealthCheckerTimeoutMs);
 
     D2Server d2 = new D2Server(d2Manager);
