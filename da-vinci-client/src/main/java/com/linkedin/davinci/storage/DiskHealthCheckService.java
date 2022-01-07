@@ -11,6 +11,7 @@ import java.io.FileInputStream;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.nio.charset.StandardCharsets;
+import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
@@ -194,7 +195,7 @@ public class DiskHealthCheckService extends AbstractVeniceService {
             try (BufferedReader br = new BufferedReader(new InputStreamReader(new FileInputStream(tmpFile), StandardCharsets.UTF_8))) {
               for (int i = 0; i < repeats; i++) {
                 String newLine = br.readLine();
-                if (!newLine.equals(message)) {
+                if (!Objects.equals(newLine, message)) {
                   errorMessage = "Content in health check file is different from what was written to it; expect message: "
                       + message + "; actual content: " + newLine;
                   fileReadableAndCorrect = false;

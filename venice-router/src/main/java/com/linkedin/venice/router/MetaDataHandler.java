@@ -167,7 +167,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
     checkResourceName(storeName, "/" + TYPE_KEY_SCHEMA + "/${storeName}");
     SchemaEntry keySchema = schemaRepo.getKeySchema(storeName);
     if (null == keySchema) {
-      byte[] errBody = new String("Key schema for store: " + storeName + " doesn't exist").getBytes();
+      byte[] errBody = ("Key schema for store: " + storeName + " doesn't exist").getBytes();
       setupResponseAndFlush(NOT_FOUND, errBody, false, ctx);
       return;
     }
@@ -214,8 +214,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
       responseObject.setName(storeName);
       SchemaEntry valueSchema = schemaRepo.getValueSchema(storeName, Integer.parseInt(id));
       if (null == valueSchema) {
-        byte[] errBody =
-            new String("Value schema doesn't exist for schema id: " + id + " of store: " + storeName).getBytes();
+        byte[] errBody = ("Value schema doesn't exist for schema id: " + id + " of store: " + storeName).getBytes();
         setupResponseAndFlush(NOT_FOUND, errBody, false, ctx);
         return;
       }

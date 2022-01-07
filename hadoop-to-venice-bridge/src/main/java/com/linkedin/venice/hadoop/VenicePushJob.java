@@ -111,7 +111,7 @@ import static org.apache.hadoop.security.UserGroupInformation.*;
  * The job reads the input data off HDFS. It supports 2 kinds of
  * input -- Avro / Binary Json (Vson).
  */
-public class VenicePushJob implements AutoCloseable, Cloneable {
+public class VenicePushJob implements AutoCloseable {
   //Avro input configs
   public static final String LEGACY_AVRO_KEY_FIELD_PROP = "avro.key.field";
   public static final String LEGACY_AVRO_VALUE_FIELD_PROP = "avro.value.field";
