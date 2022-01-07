@@ -47,7 +47,7 @@ public class VeniceSystemFactoryTest {
   }
 
   @AfterClass
-  private void tearDown() {
+  private void cleanUp() {
     Utils.closeQuietlyWithErrorLogged(cluster);
   }
 

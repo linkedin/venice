@@ -18,7 +18,7 @@ public class WaitNMinusOnePushStatusDeciderTest extends TestPushStatusDecider{
   private OfflinePushStatus pushStatus;
 
   @BeforeMethod
-  public void setup() {
+  public void setUp() {
     numberOfPartition = 2;
     replicationFactor = 3;
     topic = "WaitNMinusOnePushStatusDeciderTest";

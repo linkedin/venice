@@ -59,11 +59,11 @@ public class SerdeBenchmark {
   }
 
   @Setup
-  public void setup() {
+  public void setUp() {
   }
 
   @TearDown
-  public void teardown() {
+  public void cleanUp() {
   }
 
   public static void main(String[] args) throws RunnerException {

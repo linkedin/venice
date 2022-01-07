@@ -16,7 +16,7 @@ public class TestHelixReadOnlyStoreConfigRepository {
   private HelixReadOnlyStoreConfigRepository storeConfigRepository;
 
   @BeforeMethod
-  public void setup() {
+  public void setUp() {
     mockAccessor = Mockito.mock(ZkStoreConfigAccessor.class);
     storeConfigRepository = new HelixReadOnlyStoreConfigRepository(Mockito.mock(ZkClient.class), mockAccessor, 1, 1000);
   }

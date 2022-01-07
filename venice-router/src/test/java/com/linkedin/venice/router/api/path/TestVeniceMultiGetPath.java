@@ -33,12 +33,12 @@ import static org.mockito.Mockito.*;
 public class TestVeniceMultiGetPath {
 
   @BeforeClass
-  public void setup() {
+  public void setUp() {
     RouterExceptionAndTrackingUtils.setRouterStats(new RouterStats<>( requestType -> new AggRouterHttpRequestStats(new MetricsRepository(), requestType)));
   }
 
   @AfterClass
-  public void tearDown() {
+  public void cleanUp() {
     RouterExceptionAndTrackingUtils.setRouterStats(null);
   }
 

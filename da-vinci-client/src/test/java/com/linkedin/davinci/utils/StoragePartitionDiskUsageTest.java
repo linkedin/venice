@@ -28,7 +28,7 @@ public class StoragePartitionDiskUsageTest {
   private StoragePartitionDiskUsage partitionDiskUsage;
 
   @BeforeMethod
-  public void setup() {
+  public void setUp() {
     storageEngine = mock(AbstractStorageEngine.class);
     partitionDiskUsage = new StoragePartitionDiskUsage(partitionNum, storageEngine);
   }

@@ -30,7 +30,7 @@ public class ReadRequestThrottlerTest {
   private long maxCapacity = 400;
 
   @BeforeMethod
-  public void setup() {
+  public void setUp() {
     storeRepository = Mockito.mock(ReadOnlyStoreRepository.class);
     zkRoutersClusterManager = Mockito.mock(ZkRoutersClusterManager.class);
     routingDataRepository = Mockito.mock(RoutingDataRepository.class);

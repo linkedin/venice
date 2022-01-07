@@ -22,12 +22,12 @@ import static org.mockito.Mockito.*;
 
 public class TestClusterLevelConfigForNativeReplication extends AbstractTestVeniceHelixAdmin {
   @BeforeClass(alwaysRun = true)
-  public void setup() throws Exception {
+  public void setUp() throws Exception {
     setupCluster();
   }
 
   @AfterClass(alwaysRun = true)
-  public void cleanup() {
+  public void cleanUp() {
     cleanupCluster();
   }
 

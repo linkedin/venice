@@ -51,12 +51,12 @@ public class ProduceWithSSL {
   private VeniceClusterWrapper cluster;
 
   @BeforeClass
-  public void setup() {
+  public void setUp() {
     cluster = ServiceFactory.getVeniceClusterWithKafkaSSL(false);
   }
 
   @AfterClass
-  public void cleanup() {
+  public void cleanUp() {
     cluster.close();
   }
 

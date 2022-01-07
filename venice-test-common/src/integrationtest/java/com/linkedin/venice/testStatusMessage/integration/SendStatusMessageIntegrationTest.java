@@ -42,7 +42,7 @@ public class SendStatusMessageIntegrationTest {
   private HelixMessageChannelStats helixMessageChannelStats;
 
   @BeforeClass(alwaysRun = true)
-  public void setup()
+  public void setUp()
       throws Exception {
     zkServerWrapper = ServiceFactory.getZkServer();
     zkAddress = zkServerWrapper.getAddress();
@@ -64,7 +64,7 @@ public class SendStatusMessageIntegrationTest {
   }
 
   @AfterClass(alwaysRun = true)
-  public void cleanup(){
+  public void cleanUp(){
     controller.disconnect();
     zkServerWrapper.close();
   }

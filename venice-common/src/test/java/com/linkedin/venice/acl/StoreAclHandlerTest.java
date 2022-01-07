@@ -40,7 +40,7 @@ public class StoreAclHandlerTest {
   private boolean[] isFailOpen = {false};
 
   @BeforeMethod
-  public void setup() throws Exception {
+  public void setUp() throws Exception {
     accessController = mock(DynamicAccessController.class);
     ctx = mock(ChannelHandlerContext.class);
     req = mock(HttpRequest.class);

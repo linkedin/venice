@@ -43,7 +43,7 @@ public class TestRouterReadQuotaThrottler {
   private int currentVersion;
 
   @BeforeClass(alwaysRun = true)
-  public void setup() throws Exception {
+  public void setUp() throws Exception {
     cluster = ServiceFactory.getVeniceCluster(1, 1, numberOfRouter);
 
     VersionCreationResponse response = cluster.getNewStoreVersion();
@@ -79,7 +79,7 @@ public class TestRouterReadQuotaThrottler {
   }
 
   @AfterClass(alwaysRun = true)
-  public void cleanup() {
+  public void cleanUp() {
     cluster.close();
   }
 

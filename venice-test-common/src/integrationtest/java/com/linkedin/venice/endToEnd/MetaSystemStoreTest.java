@@ -85,7 +85,7 @@ public class MetaSystemStoreTest {
   private ZkServerWrapper parentZkServer;
 
   @BeforeClass
-  public void setup() {
+  public void setUp() {
     Properties testProperties = new Properties();
     testProperties.setProperty(CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE, String.valueOf(true));
     testProperties.put(TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS, Long.toString(TimeUnit.DAYS.toMillis(7)));
@@ -98,7 +98,7 @@ public class MetaSystemStoreTest {
   }
 
   @AfterClass
-  public void cleanup() {
+  public void cleanUp() {
     controllerClient.close();
     parentController.close();
     venice.close();

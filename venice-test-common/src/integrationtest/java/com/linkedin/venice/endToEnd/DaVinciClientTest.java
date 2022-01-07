@@ -199,7 +199,7 @@ public class DaVinciClientTest {
       "}";
 
   @BeforeClass
-  public void setup() {
+  public void setUp() {
     Utils.thisIsLocalhost();
     Properties clusterConfig = new Properties();
     clusterConfig.put(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 1L);
@@ -214,7 +214,7 @@ public class DaVinciClientTest {
   }
 
   @AfterClass
-  public void cleanup() {
+  public void cleanUp() {
     if (d2Client != null) {
       D2ClientUtils.shutdownClient(d2Client);
     }

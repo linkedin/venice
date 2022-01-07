@@ -70,7 +70,7 @@ public class DaVinciClusterAgnosticTest {
    * Set up a multi-cluster Venice environment with meta system store enabled Venice stores.
    */
   @BeforeClass
-  public void setup() {
+  public void setUp() {
     zkServer = ServiceFactory.getZkServer();
     Properties testProperties = new Properties();
     testProperties.setProperty(PARTICIPANT_MESSAGE_STORE_ENABLED, "true");
@@ -104,7 +104,7 @@ public class DaVinciClusterAgnosticTest {
   }
 
   @AfterClass
-  public void cleanup() {
+  public void cleanUp() {
     if (d2Client != null) {
       D2ClientUtils.shutdownClient(d2Client);
     }

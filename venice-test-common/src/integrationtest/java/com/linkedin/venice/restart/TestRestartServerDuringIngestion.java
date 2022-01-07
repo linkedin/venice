@@ -87,7 +87,7 @@ public abstract class TestRestartServerDuringIngestion {
   }
 
   @BeforeClass(alwaysRun = true)
-  public void setup() {
+  public void setUp() {
     int numberOfController = 1;
     int numberOfRouter = 1;
 
@@ -97,7 +97,7 @@ public abstract class TestRestartServerDuringIngestion {
   }
 
   @AfterClass(alwaysRun = true)
-  public void cleanup() {
+  public void cleanUp() {
     cluster.close();
   }
 

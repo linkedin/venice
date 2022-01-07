@@ -18,7 +18,7 @@ public class TestZkExecutionIdAccessor {
   private String clusterName = "TestZkExecutionIdAccessor";
 
   @BeforeMethod
-  public void setup() {
+  public void setUp() {
     ZkServerWrapper zkServerWrapper = ServiceFactory.getZkServer();
     zkClient = ZkClientFactory.newZkClient(zkServerWrapper.getAddress());
     zkClient.createPersistent(HelixUtils.getHelixClusterZkPath(clusterName));
@@ -26,7 +26,7 @@ public class TestZkExecutionIdAccessor {
   }
 
   @AfterMethod
-  public void cleanup() {
+  public void cleanUp() {
     zkClient.close();
   }
 

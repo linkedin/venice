@@ -113,7 +113,7 @@ public class TestVeniceReducer extends AbstractTestVeniceMR {
     verify(mockWriter).put(keyCaptor.capture(), valueCaptor.capture(), schemaIdCaptor.capture(), callbackCaptor.capture(), metadataArgumentCaptor.capture());
     Assert.assertEquals(keyCaptor.getValue(), keyFieldValue.getBytes());
     Assert.assertEquals(valueCaptor.getValue(), valueFieldValue.getBytes());
-    Assert.assertEquals(schemaIdCaptor.getValue(), new Integer(VALUE_SCHEMA_ID));
+    Assert.assertEquals((int) schemaIdCaptor.getValue(), VALUE_SCHEMA_ID);
     Assert.assertEquals(callbackCaptor.getValue().getProgressable(), mockReporter);
 
     verify(mockReporter).incrCounter(

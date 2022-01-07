@@ -30,7 +30,7 @@ public class ServerAclHandlerTest {
   protected Attribute<Boolean> serverAclApprovedAttr;
 
   @BeforeMethod
-  public void setup() throws Exception {
+  public void setUp() throws Exception {
     ctx = mock(ChannelHandlerContext.class);
     req = mock(HttpRequest.class);
 

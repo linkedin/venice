@@ -37,12 +37,12 @@ public class LeaderFollowerParticipantModelFactoryTest {
   private ExecutorService executorService;
 
   @BeforeClass
-  void setup() {
+  void setUp() {
     executorService = Executors.newCachedThreadPool(new DaemonThreadFactory("venice-unittest"));
   }
 
   @AfterClass
-  void cleanup() {
+  void cleanUp() {
     executorService.shutdownNow();
   }
 

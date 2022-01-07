@@ -25,7 +25,7 @@ public class TestRestartRouter {
   private VeniceClusterWrapper cluster;
 
   @BeforeClass
-  public void setup() {
+  public void setUp() {
     int numberOfController = 1;
     int numberOfServer = 1;
     int numberOfRouter = 2;
@@ -34,7 +34,7 @@ public class TestRestartRouter {
   }
 
   @AfterClass
-  public void cleanup() {
+  public void cleanUp() {
     cluster.close();
   }
 

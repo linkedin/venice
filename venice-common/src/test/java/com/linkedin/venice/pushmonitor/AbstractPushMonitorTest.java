@@ -69,7 +69,7 @@ public abstract class AbstractPushMonitorTest {
   protected abstract AbstractPushMonitor getPushMonitor(TopicReplicator mockReplicator);
 
   @BeforeMethod
-  public void setup() {
+  public void setUp() {
     storeName = Utils.getUniqueString("test_store");
     topic = storeName + "_v1";
 

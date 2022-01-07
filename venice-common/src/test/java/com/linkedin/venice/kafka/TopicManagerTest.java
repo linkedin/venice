@@ -89,7 +89,7 @@ public class TopicManagerTest {
   }
 
   @BeforeClass
-  public void setup() {
+  public void setUp() {
     mockTime = new MockTime();
     kafka = ServiceFactory.getKafkaBroker(mockTime);
     topicManager = new TopicManager(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, MIN_COMPACTION_LAG, TestUtils.getVeniceConsumerFactory(kafka));
@@ -99,7 +99,7 @@ public class TopicManagerTest {
   }
 
   @AfterClass
-  public void teardown() throws IOException {
+  public void cleanUp() throws IOException {
     kafka.close();
     topicManager.close();
   }
@@ -363,7 +363,7 @@ public class TopicManagerTest {
   private void assertOffsetsByTime(String topicName, long time, long expectedOffset) {
     logger.info("Asking for time: " + time + ", expecting offset: " + expectedOffset);
     Map<Integer, Long> offsets = topicManager.getTopicOffsetsByTime(topicName, time);
-    offsets.forEach((partition, offset) -> Assert.assertEquals(offset, new Long(expectedOffset),
+    offsets.forEach((partition, offset) -> Assert.assertEquals((long) offset, expectedOffset,
         "When asking for timestamp " + time + ", partition " + partition + " has an unexpected offset."));
   }
 

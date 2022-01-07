@@ -33,13 +33,13 @@ public class TestKafkaInputFormat {
   private TopicManager manager;
 
   @BeforeClass
-  public void setup() {
+  public void setUp() {
     kafka = ServiceFactory.getKafkaBroker();
     manager = new TopicManager(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, 24 * Time.MS_PER_HOUR, TestUtils.getVeniceConsumerFactory(kafka));
   }
 
   @AfterClass
-  public void teardown() throws IOException {
+  public void cleanUp() throws IOException {
     manager.close();
     kafka.close();
   }

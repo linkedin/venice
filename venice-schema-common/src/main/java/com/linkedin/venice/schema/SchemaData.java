@@ -59,7 +59,7 @@ public final class SchemaData {
   }
 
   public SchemaEntry getValueSchema(int id) {
-    return valueSchemaMap.get(new Integer(id));
+    return valueSchemaMap.get(Integer.valueOf(id));
   }
 
   public void addValueSchema(SchemaEntry valueSchema) {

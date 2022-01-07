@@ -51,7 +51,7 @@ public class ReplicaFailoverTest {
   private Map<Integer, AtomicInteger> errorHitCountMap = new HashMap<>();
 
   @BeforeClass
-  public void setup() throws Exception {
+  public void setUp() throws Exception {
     Utils.thisIsLocalhost();
     cluster = ServiceFactory.getVeniceCluster(1, REPLICATION_FACTOR, 0, REPLICATION_FACTOR);
     Properties props = new Properties();
@@ -64,7 +64,7 @@ public class ReplicaFailoverTest {
   }
 
   @AfterClass
-  public void cleanup() {
+  public void cleanUp() {
     Utils.closeQuietlyWithErrorLogged(cluster);
   }
 

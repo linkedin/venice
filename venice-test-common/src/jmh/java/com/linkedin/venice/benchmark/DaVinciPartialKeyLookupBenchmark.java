@@ -79,7 +79,7 @@ public class DaVinciPartialKeyLookupBenchmark {
   }
 
   @Setup
-  public void setup() throws Exception {
+  public void setUp() throws Exception {
     Utils.thisIsLocalhost();
     cluster = getVeniceCluster(1, 1, 1);
 
@@ -99,7 +99,7 @@ public class DaVinciPartialKeyLookupBenchmark {
   }
 
   @TearDown
-  public void cleanup() {
+  public void cleanUp() {
     client.close();
     cluster.close();
   }

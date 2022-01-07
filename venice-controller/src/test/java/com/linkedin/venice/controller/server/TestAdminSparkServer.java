@@ -85,8 +85,8 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
   }
 
   @AfterClass
-  public void tearDown() {
-    super.tearDown();
+  public void cleanUp() {
+    super.cleanUp();
   }
 
   @Test(timeOut = TEST_TIMEOUT)

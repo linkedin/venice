@@ -9,7 +9,7 @@ public class TestClusterLockManager {
   private ClusterLockManager clusterLockManager;
 
   @BeforeClass
-  public void setup() {
+  public void setUp() {
     clusterLockManager = new ClusterLockManager("cluster");
   }
 

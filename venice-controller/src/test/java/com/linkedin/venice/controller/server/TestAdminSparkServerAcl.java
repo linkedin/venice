@@ -24,8 +24,8 @@ public class TestAdminSparkServerAcl extends AbstractTestAdminSparkServer {
   }
 
   @AfterClass
-  public void tearDown() {
-    super.tearDown();
+  public void cleanUp() {
+    super.cleanUp();
   }
 
   /**

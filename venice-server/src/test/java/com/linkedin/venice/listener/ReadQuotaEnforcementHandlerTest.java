@@ -41,7 +41,7 @@ public class ReadQuotaEnforcementHandlerTest {
   AggServerQuotaUsageStats stats;
 
   @BeforeMethod
-  public void setup(){
+  public void setUp(){
     nodeCapacity = 10; // rcu per second that a single node can support
     thisNodeId = "node1";
     clock = mock(Clock.class);

@@ -27,7 +27,7 @@ public class TestStoreStatusDecider {
   private int replicationFactor = 3;
 
   @BeforeMethod
-  public void setup() {
+  public void setUp() {
     storeList = new ArrayList<>();
     resourceAssignment = new ResourceAssignment();
 

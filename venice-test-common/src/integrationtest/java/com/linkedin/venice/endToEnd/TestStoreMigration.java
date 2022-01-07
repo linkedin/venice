@@ -46,6 +46,7 @@ import java.util.HashMap;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Random;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
@@ -84,7 +85,7 @@ public class TestStoreMigration {
   private String childControllerUrl0;
 
   @BeforeClass(timeOut = TEST_TIMEOUT)
-  public void setup() {
+  public void setUp() {
     Properties parentControllerProperties = new Properties();
     // Disable topic cleanup since parent and child are sharing the same kafka cluster.
     parentControllerProperties.setProperty(TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS, String.valueOf(Long.MAX_VALUE));
@@ -128,7 +129,7 @@ public class TestStoreMigration {
   }
 
   @AfterClass
-  public void cleanup() {
+  public void cleanUp() {
     twoLayerMultiColoMultiClusterWrapper.close();
   }
 
@@ -444,8 +445,7 @@ public class TestStoreMigration {
   }
 
   private void readFromStore(AvroGenericStoreClient<String, Object> client) {
-    Random rand = new Random();
-    int key = rand.nextInt(RECORD_COUNT) + 1;
+    int key = ThreadLocalRandom.current().nextInt(RECORD_COUNT) + 1;
     client.get(Integer.toString(key));
   }
 

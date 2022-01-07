@@ -23,12 +23,12 @@ public class RocksDBPlainTableTest {
   private VeniceClusterWrapper veniceCluster;
 
   @BeforeClass
-  public void setup() {
+  public void setUp() {
     veniceCluster = ServiceFactory.getVeniceCluster(1, 0, 1);
   }
 
   @AfterClass
-  public void cleanup() {
+  public void cleanUp() {
     IOUtils.closeQuietly(veniceCluster);
   }
 

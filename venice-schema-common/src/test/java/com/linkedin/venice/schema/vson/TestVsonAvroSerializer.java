@@ -7,6 +7,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.Supplier;
 
 import org.apache.avro.generic.GenericData;
@@ -57,7 +58,7 @@ public class TestVsonAvroSerializer {
 
     //test bytes. 'bytes' is stored as ByteBuffer in Avro
     byte[] randomBytes = new byte[10];
-    new Random().nextBytes(randomBytes);
+    ThreadLocalRandom.current().nextBytes(randomBytes);
     testSerializer("\"bytes\"", () -> randomBytes,
         (serializer, bytes) -> {
           Assert.assertEquals(serializer.toObject(bytes), randomBytes);

@@ -32,7 +32,7 @@ public class AggVersionedStorageIngestionStatsTest {
   private VeniceServerConfig mockServerConfig;
 
   @BeforeTest
-  public void setup() {
+  public void setUp() {
     metricsRepository = new MetricsRepository();
     reporter = new MockTehutiReporter();
     metricsRepository.addReporter(reporter);

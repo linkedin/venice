@@ -26,7 +26,7 @@ public class TestInstanceRemovable {
   int numberOfServer = 3;
 
   @BeforeMethod
-  public void setup() {
+  public void setUp() {
     int numberOfController = 1;
 
     int numberOfRouter = 1;
@@ -36,7 +36,7 @@ public class TestInstanceRemovable {
   }
 
   @AfterMethod
-  public void cleanup() {
+  public void cleanUp() {
     cluster.close();
   }
 

@@ -42,7 +42,7 @@ public class TestRebalanceByDefaultStrategy {
   private String topicName;
 
   @BeforeClass
-  public void setup() {
+  public void setUp() {
     cluster = ServiceFactory.getVeniceCluster(numberOfController, numberOfServer, numberOfRouter, replicationFactor,
         partitionSize, false, false);
     String storeName = Utils.getUniqueString("testRollingUpgrade");
@@ -65,7 +65,7 @@ public class TestRebalanceByDefaultStrategy {
   }
 
   @AfterClass
-  public void cleanup() {
+  public void cleanUp() {
     cluster.close();
   }
 

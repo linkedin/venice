@@ -18,7 +18,7 @@ public class TestTopicCleanupServiceForParentController {
   private TopicCleanupService topicCleanupService;
 
   @BeforeTest
-  public void setup() {
+  public void setUp() {
     admin = mock(Admin.class);
     topicManager = mock(TopicManager.class);
     doReturn(topicManager).when(admin).getTopicManager();

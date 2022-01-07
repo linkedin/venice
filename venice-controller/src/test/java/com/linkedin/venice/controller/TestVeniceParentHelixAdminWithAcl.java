@@ -37,7 +37,7 @@ public class TestVeniceParentHelixAdminWithAcl extends AbstractTestVeniceParentH
   MockVeniceAuthorizer authorizerService;
 
   @BeforeMethod
-  public void setup() throws Exception {
+  public void setUp() throws Exception {
     authorizerService = new MockVeniceAuthorizer();
     setupInternalMocks();
   }

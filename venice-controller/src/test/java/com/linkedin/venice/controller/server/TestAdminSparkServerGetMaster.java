@@ -42,13 +42,13 @@ public class TestAdminSparkServerGetMaster {
   private KafkaBrokerWrapper kafkaBrokerWrapper;
 
   @BeforeMethod
-  public void setup() {
+  public void setUp() {
     kafkaBrokerWrapper = ServiceFactory.getKafkaBroker();
     veniceControllerWrapper = ServiceFactory.getVeniceController(cluster, kafkaBrokerWrapper);
   }
 
   @AfterMethod
-  public void cleanup() {
+  public void cleanUp() {
     veniceControllerWrapper.close();
     kafkaBrokerWrapper.close();
   }

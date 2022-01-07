@@ -23,13 +23,13 @@ public class CachedResourceZKStateListenerTest {
   private static final int WAIT_TIME = 10000;
 
   @BeforeMethod
-  public void setup() {
+  public void setUp() {
     zkServer = ServiceFactory.getZkServer();
     zkClient = ZkClientFactory.newZkClient(zkServer.getAddress());
   }
 
   @AfterMethod
-  public void cleanup() {
+  public void cleanUp() {
     zkClient.close();
     zkServer.close();
   }

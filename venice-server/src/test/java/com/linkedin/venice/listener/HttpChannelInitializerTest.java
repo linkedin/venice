@@ -27,7 +27,7 @@ public class HttpChannelInitializerTest {
   private StorageExecutionHandler requestHandler;
 
   @BeforeMethod
-  public void setup(){
+  public void setUp(){
     storeMetadataRepository = mock(ReadOnlyStoreRepository.class);
     metricsRepository = new MetricsRepository();
     sslFactory = Optional.of(mock(SSLEngineComponentFactory.class));

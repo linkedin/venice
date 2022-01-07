@@ -229,14 +229,14 @@ public class AvroStoreClientEndToEndTest {
         keys.add(key2);
         Map<String, GenericRecord> resultMap = genericFastClient.batchGet(keys).get();
         assertEquals(resultMap.size(), 2);
-        assertEquals(resultMap.get(key1).get(VALUE_FIELD_NAME), new Integer(i));
-        assertEquals(resultMap.get(key2).get(VALUE_FIELD_NAME), new Integer(i + 1));
+        assertEquals((int) resultMap.get(key1).get(VALUE_FIELD_NAME), i);
+        assertEquals((int) resultMap.get(key2).get(VALUE_FIELD_NAME), i + 1);
       }
     } else {
       for (int i = 0; i < recordCnt; ++i) {
         String key = keyPrefix + i;
         GenericRecord value = genericFastClient.get(key).get();
-        assertEquals(value.get(VALUE_FIELD_NAME), new Integer(i));
+        assertEquals((int) value.get(VALUE_FIELD_NAME), i);
       }
     }
     genericFastClient.close();

@@ -27,7 +27,7 @@ public class TestHAASController {
   private Properties enableControllerAndStorageClusterHAASProperties;
 
   @BeforeClass
-  public void setup() {
+  public void setUp() {
     enableControllerClusterHAASProperties = new Properties();
     enableControllerClusterHAASProperties.put(ConfigKeys.CONTROLLER_CLUSTER_LEADER_HAAS, String.valueOf(true));
     enableControllerClusterHAASProperties.put(ConfigKeys.CONTROLLER_HAAS_SUPER_CLUSTER_NAME,

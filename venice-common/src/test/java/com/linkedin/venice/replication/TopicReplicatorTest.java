@@ -31,7 +31,7 @@ public class TopicReplicatorTest {
   private MockTime mockTime;
 
   @BeforeTest
-  public void setup() {
+  public void setUp() {
     final Map<Integer, Long> startingOffsets = new HashMap<>();
     startingOffsets.put(0, 10L);
     startingOffsets.put(1, 20L);

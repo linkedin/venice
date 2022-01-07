@@ -51,7 +51,7 @@ public class TestHelixStatusMessageChannel {
   private final long WAIT_ZK_TIME = 1000l;
 
   @BeforeMethod(alwaysRun = true)
-  public void setup()
+  public void setUp()
       throws Exception {
     zkServerWrapper = ServiceFactory.getZkServer();
     zkAddress = zkServerWrapper.getAddress();
@@ -83,7 +83,7 @@ public class TestHelixStatusMessageChannel {
    }
 
   @AfterMethod(alwaysRun = true)
-  public void cleanup() {
+  public void cleanUp() {
     manager.disconnect();
     controller.disconnect();
     admin.dropCluster(cluster);

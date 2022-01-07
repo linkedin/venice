@@ -81,13 +81,13 @@ import static org.mockito.Mockito.*;
 public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVeniceHelixAdmin {
 
   @BeforeClass(alwaysRun = true)
-  public void setup() throws Exception {
+  public void setUp() throws Exception {
     setupCluster();
     participantMessageStoreSetup();
   }
 
   @AfterClass(alwaysRun = true)
-  public void cleanup() {
+  public void cleanUp() {
     cleanupCluster();
   }
 

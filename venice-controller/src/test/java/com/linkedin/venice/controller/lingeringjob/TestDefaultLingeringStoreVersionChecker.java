@@ -24,7 +24,7 @@ public class TestDefaultLingeringStoreVersionChecker {
   private Admin admin;
 
   @BeforeMethod
-  public void setup() {
+  public void setUp() {
     checker = new DefaultLingeringStoreVersionChecker();
     store = mock(Store.class);
     version = mock(Version.class);

@@ -63,7 +63,7 @@ public class IngestionBenchmarkInSingleProcess {
   protected String valueType;
 
   @Setup
-  public void setup() throws Exception {
+  public void setUp() throws Exception {
     Utils.thisIsLocalhost();
     cluster = ServiceFactory.getVeniceCluster(1, 1, 1);
 
@@ -78,7 +78,7 @@ public class IngestionBenchmarkInSingleProcess {
   }
 
   @TearDown
-  public void teardown() throws InterruptedException {
+  public void cleanUp() throws InterruptedException {
     cluster.close();
   }
 

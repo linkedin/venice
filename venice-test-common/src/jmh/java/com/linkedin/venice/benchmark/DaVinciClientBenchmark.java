@@ -63,7 +63,7 @@ public class DaVinciClientBenchmark {
   }
 
   @Setup
-  public void setup() throws Exception {
+  public void setUp() throws Exception {
     Utils.thisIsLocalhost();
     cluster = getVeniceCluster(1, 1, 1);
 
@@ -89,7 +89,7 @@ public class DaVinciClientBenchmark {
   }
 
   @TearDown
-  public void cleanup() {
+  public void cleanUp() {
     client.close();
     cluster.close();
   }
@@ -100,7 +100,7 @@ public class DaVinciClientBenchmark {
     public GenericRecord record;
 
     @Setup(Level.Invocation)
-    public void setup() {
+    public void setUp() {
       key = ThreadLocalRandom.current().nextInt(KEY_COUNT);
     }
   }
