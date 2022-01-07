@@ -332,7 +332,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         D2Client d2Client
     ) {
         this(multiClusterConfigs, metricsRepository, false, d2Client, Optional.empty(), Optional.empty(),
-            Optional.empty());
+            Optional.empty(), ZkClient.DEFAULT_OPERATION_TIMEOUT);
     }
 
     //TODO Use different configs for different clusters when creating helix admin.
@@ -343,7 +343,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         @Nonnull D2Client d2Client,
         Optional<SSLConfig> sslConfig,
         Optional<DynamicAccessController> accessController,
-        Optional<ICProvider> icProvider) {
+        Optional<ICProvider> icProvider,
+        long zkClientOpRetryTimeoutInMs) {
       Validate.notNull(d2Client);
       this.multiClusterConfigs = multiClusterConfigs;
       VeniceControllerConfig commonConfig = multiClusterConfigs.getCommonConfig();
@@ -388,7 +389,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           throw new VeniceException("Failed to connect to ZK within " + ZkClient.DEFAULT_CONNECTION_TIMEOUT + " ms!");
       }
       this.admin = new ZKHelixAdmin(zkClientForHelixAdmin);
-      this.helixAdminClient = new ZkHelixAdminClient(multiClusterConfigs, metricsRepository);
+      this.helixAdminClient = new ZkHelixAdminClient(multiClusterConfigs, metricsRepository, zkClientOpRetryTimeoutInMs);
       //There is no way to get the internal zkClient from HelixManager or HelixAdmin. So create a new one here.
       this.zkClient = ZkClientFactory.newZkClient(multiClusterConfigs.getZkAddress());
       this.zkClient.subscribeStateChanges(new ZkClientStatusStats(metricsRepository, "controller-zk-client"));

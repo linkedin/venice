@@ -37,11 +37,11 @@ public class VeniceControllerService extends AbstractVeniceService {
   public VeniceControllerService(VeniceControllerMultiClusterConfig multiClusterConfigs,
       MetricsRepository metricsRepository, boolean sslEnabled, Optional<SSLConfig> sslConfig,
       Optional<DynamicAccessController> accessController, Optional<AuthorizerService> authorizerService, D2Client d2Client,
-      Optional<ClientConfig> routerClientConfig, Optional<ICProvider> icProvider) {
+      Optional<ClientConfig> routerClientConfig, Optional<ICProvider> icProvider, long zkClientOpRetryTimeoutInMs) {
 
     this.multiClusterConfigs = multiClusterConfigs;
     VeniceHelixAdmin internalAdmin = new VeniceHelixAdmin(multiClusterConfigs, metricsRepository, sslEnabled, d2Client,
-        sslConfig, accessController, icProvider);
+        sslConfig, accessController, icProvider, zkClientOpRetryTimeoutInMs);
 
     if (multiClusterConfigs.isParent()) {
       this.admin = new VeniceParentHelixAdmin(internalAdmin, multiClusterConfigs, sslEnabled, sslConfig, accessController,

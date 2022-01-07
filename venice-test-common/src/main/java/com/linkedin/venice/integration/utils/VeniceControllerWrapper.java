@@ -232,7 +232,9 @@ public class VeniceControllerWrapper extends ProcessWrapper {
         consumerClientConfig = Optional.of((ClientConfig) clientConfig);
       }
 
-      VeniceController veniceController = new VeniceController(propertiesList, metricsRepository, d2ServerList, Optional.empty(), authorizerService, d2Client, consumerClientConfig);
+      VeniceController veniceController =
+          new VeniceController(propertiesList, metricsRepository, d2ServerList, Optional.empty(), authorizerService,
+              d2Client, consumerClientConfig, ZK_CLIENT_OPERATION_TIMEOUT_IN_MS);
       return new VeniceControllerWrapper(serviceName, dataDirectory, veniceController, adminPort, adminSecurePort, propertiesList, d2ServerList, zkAddress, metricsRepository);
     };
   }

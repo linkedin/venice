@@ -19,6 +19,7 @@ public abstract class ProcessWrapper implements Closeable {
   private static final Logger LOGGER = LogManager.getLogger(ProcessWrapper.class);
 
   protected static final String DEFAULT_HOST_NAME = "localhost"; // Utils.getHostName();
+  public static final long ZK_CLIENT_OPERATION_TIMEOUT_IN_MS = 60000L;
 
   private final String serviceName;
   private final File dataDirectory;
