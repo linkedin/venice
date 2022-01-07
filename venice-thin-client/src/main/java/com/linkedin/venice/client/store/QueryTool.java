@@ -91,11 +91,11 @@ public class QueryTool {
             key = new GenericDatumReader<>(keySchema, keySchema).read(null,
                 AvroCompatibilityHelper.newJsonDecoder(keySchema, new ByteArrayInputStream(keyString.getBytes())));
           } catch (IOException e) {
-            throw new VeniceException("Invalid input key:" + key, e);
+            throw new VeniceException("Invalid input key:" + keyString, e);
           }
           break;
         default:
-          throw new VeniceException("Cannot handle key type, found key schema: " + keySchema.toString());
+          throw new VeniceException("Cannot handle key type, found key schema: " + keySchema);
       }
       System.out.println("Key string parsed successfully. About to make the query.");
 

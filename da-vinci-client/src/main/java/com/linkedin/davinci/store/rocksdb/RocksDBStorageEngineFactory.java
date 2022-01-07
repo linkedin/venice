@@ -191,18 +191,17 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
 
   @Override
   public synchronized Set<String> getPersistedStoreNames() {
-    Set<String> storeNames = new HashSet<>();
     File databaseDir = new File(rocksDBPath);
     if (databaseDir.exists() && databaseDir.isDirectory()) {
       String[] storeDirs = databaseDir.list();
       LOGGER.info("Found the following RocksDB databases: " + Arrays.toString(storeDirs));
-      for (String storeName : storeDirs) {
-        storeNames.add(storeName);
+      if (storeDirs != null) {
+        return new HashSet<>(Arrays.asList(storeDirs));
       }
     } else {
       LOGGER.info("RocksDB master dir: " + databaseDir + " doesn't exist, so nothing to restore");
     }
-    return storeNames;
+    return new HashSet<>();
   }
 
   @Override

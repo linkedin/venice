@@ -360,7 +360,6 @@ public class RouterServer extends AbstractVeniceService {
      * Refer to more context on {@link VeniceRouterConfig#checkProperties(VeniceProperties)}
      */
     timeoutProcessor = new TimeoutProcessor(registry, true, 1);
-    Map<String, Object> serverSocketOptions = null;
 
     Optional<SSLEngineComponentFactory> sslFactoryForRequests = config.isSslToStorageNodes()? sslFactory : Optional.empty();
     VenicePartitionFinder partitionFinder = new VenicePartitionFinder(routingDataRepository, metadataRepository);
@@ -544,7 +543,6 @@ public class RouterServer extends AbstractVeniceService {
           .ioWorkerPoolBuilder(EventLoopGroup.class, ignored -> workerEventLoopGroup)
           .connectionLimit(config.getConnectionLimit())
           .timeoutProcessor(timeoutProcessor)
-          .serverSocketOptions(serverSocketOptions)
           .beforeHttpRequestHandler(ChannelPipeline.class, (pipeline) -> {
             pipeline.addLast("RouterThrottleHandler", new RouterThrottleHandler(routerThrottleStats, routerEarlyThrottler, config));
             pipeline.addLast("HealthCheckHandler", new HealthCheckHandler(healthCheckStats));
@@ -614,7 +612,6 @@ public class RouterServer extends AbstractVeniceService {
         .ioWorkerPoolBuilder(EventLoopGroup.class, ignored -> workerEventLoopGroup)
         .connectionLimit(config.getConnectionLimit())
         .timeoutProcessor(timeoutProcessor)
-        .serverSocketOptions(serverSocketOptions)
         .beforeHttpServerCodec(ChannelPipeline.class, sslFactory.isPresent() ? addSslInitializer : noop)  // Compare once per router. Previously compared once per request.
         .beforeHttpRequestHandler(ChannelPipeline.class, accessController.isPresent() ? withAcl : withoutAcl) // Compare once per router. Previously compared once per request.
         .idleTimeout(3, TimeUnit.HOURS)

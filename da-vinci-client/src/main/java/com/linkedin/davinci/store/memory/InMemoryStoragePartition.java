@@ -91,9 +91,7 @@ public class InMemoryStoragePartition extends AbstractStoragePartition {
   public void delete(byte[] key) {
     ByteArray k = new ByteArray(key);
     ByteArray v = partitionDb.remove(k);
-    if (k != null) {
-      partitionSize -= k.length();
-    }
+    partitionSize -= k.length();
     if (v != null) {
       partitionSize -= v.length();
     }

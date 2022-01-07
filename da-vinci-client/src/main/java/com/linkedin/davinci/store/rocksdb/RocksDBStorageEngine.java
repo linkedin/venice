@@ -104,10 +104,11 @@ class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePartition
     }
     String[] partitionDbNames = storeDbDir.list();
     HashSet<Integer> partitionIdSet = new HashSet<>();
-    for (String partitionDbName : partitionDbNames) {
-      partitionIdSet.add(RocksDBUtils.parsePartitionIdFromPartitionDbName(partitionDbName));
+    if (partitionDbNames != null) {
+      for (String partitionDbName : partitionDbNames) {
+        partitionIdSet.add(RocksDBUtils.parsePartitionIdFromPartitionDbName(partitionDbName));
+      }
     }
-
     return partitionIdSet;
   }
 

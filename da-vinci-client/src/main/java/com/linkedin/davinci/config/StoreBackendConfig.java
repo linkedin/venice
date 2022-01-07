@@ -38,7 +38,11 @@ public class StoreBackendConfig {
   public static List<String> listConfigs(String baseDataPath) {
     File configDirectory = Paths.get(baseDataPath, CONFIG_DIRECTORY).toFile();
     if (configDirectory.exists() && configDirectory.isDirectory()) {
-      return Arrays.asList(configDirectory.list());
+      String[] files = configDirectory.list();
+      if (files == null) {
+        throw new VeniceException("Failed to list config files in " + configDirectory.getAbsolutePath());
+      }
+      return Arrays.asList(files);
     }
     return Collections.emptyList();
   }

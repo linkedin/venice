@@ -92,7 +92,7 @@ public class VeniceSparkEmbeddedJettyServer implements EmbeddedServer {
         server = new Server();
       }
     } else {
-      this.server = threadPool != null ? new Server(threadPool) : new Server();
+      this.server = new Server(threadPool);
     }
 
     if (this.jettyConfigOverrides != null) {
@@ -132,9 +132,7 @@ public class VeniceSparkEmbeddedJettyServer implements EmbeddedServer {
       handlersInList.add(handler);
 
       // WebSocket handler must be the last one
-      if (webSocketServletContextHandler != null) {
-        handlersInList.add(webSocketServletContextHandler);
-      }
+      handlersInList.add(webSocketServletContextHandler);
 
       HandlerList handlers = new HandlerList();
       handlers.setHandlers(handlersInList.toArray(new Handler[handlersInList.size()]));
