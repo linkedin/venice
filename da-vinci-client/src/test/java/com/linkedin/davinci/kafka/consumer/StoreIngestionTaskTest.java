@@ -278,7 +278,7 @@ public class StoreIngestionTaskTest {
   }
 
   @AfterClass(alwaysRun = true)
-  public void tearDown() throws Exception {
+  public void cleanUp() throws Exception {
     taskPollingService.shutdownNow();
     storeBufferService.stop();
   }

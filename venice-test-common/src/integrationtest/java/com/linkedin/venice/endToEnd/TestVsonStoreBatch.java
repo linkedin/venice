@@ -47,14 +47,14 @@ public class TestVsonStoreBatch {
   private ControllerClient controllerClient;
 
   @BeforeClass
-  public void setup() {
+  public void setUp() {
     veniceCluster = ServiceFactory.getVeniceCluster();
     controllerClient = new ControllerClient(veniceCluster.getClusterName(),
         veniceCluster.getMasterVeniceController().getControllerUrl());
   }
 
   @AfterClass
-  public void cleanup() {
+  public void cleanUp() {
     IOUtils.closeQuietly(controllerClient);
     IOUtils.closeQuietly(veniceCluster);
   }

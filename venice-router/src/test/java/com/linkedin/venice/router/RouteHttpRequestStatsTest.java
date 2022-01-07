@@ -17,7 +17,7 @@ public class RouteHttpRequestStatsTest {
   private RouteHttpRequestStats stats;
 
   @BeforeSuite
-  public void setup() {
+  public void setUp() {
     MetricsRepository metrics = new MetricsRepository();
     reporter = new MockTehutiReporter();
     metrics.addReporter(reporter);

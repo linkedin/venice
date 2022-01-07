@@ -21,13 +21,13 @@ public class TestMigrationPushStrategyZKAccessor {
   private ZkClient zkClient;
 
   @BeforeMethod
-  public void setup() {
+  public void setUp() {
     zkServer = ServiceFactory.getZkServer();
     zkClient = ZkClientFactory.newZkClient(zkServer.getAddress());
   }
 
   @AfterMethod
-  public void cleanup() {
+  public void cleanUp() {
     zkClient.close();
     zkServer.close();
   }

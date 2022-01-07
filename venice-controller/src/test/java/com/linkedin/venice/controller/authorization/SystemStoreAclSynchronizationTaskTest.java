@@ -36,7 +36,7 @@ public class SystemStoreAclSynchronizationTaskTest {
   private VeniceParentHelixAdmin veniceParentHelixAdmin;
 
   @BeforeMethod
-  public void setup() {
+  public void setUp() {
     authorizerService = mock(AuthorizerService.class);
     veniceParentHelixAdmin = mock(VeniceParentHelixAdmin.class);
     allStores.clear();
@@ -56,7 +56,7 @@ public class SystemStoreAclSynchronizationTaskTest {
   }
 
   @AfterClass
-  public void cleanup() {
+  public void cleanUp() {
     executorService.shutdownNow();
   }
 

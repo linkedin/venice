@@ -27,7 +27,7 @@ public class ApacheKafkaConsumerTest {
   KafkaBrokerWrapper kafkaBroker;
 
   @BeforeMethod
-  public void setup() {
+  public void setUp() {
     kafkaBroker = ServiceFactory.getKafkaBroker();
     Properties properties = new Properties();
     properties.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, KafkaKeySerializer.class);
@@ -37,7 +37,7 @@ public class ApacheKafkaConsumerTest {
   }
 
   @AfterMethod
-  public void cleanup() {
+  public void cleanUp() {
     IOUtils.closeQuietly(kafkaBroker);
   }
 

@@ -35,7 +35,7 @@ public class TestVeniceVsonMapper extends AbstractTestVeniceMapper<VeniceVsonMap
   }
 
   @BeforeTest
-  public void setup() {
+  public void setUp() {
     keyDeserializer = VsonAvroSerializer.fromSchemaStr(fileKeySchemaStr);
     valueDeserializer = VsonAvroSerializer.fromSchemaStr(fileValueSchemaStr);
     keySerializer =

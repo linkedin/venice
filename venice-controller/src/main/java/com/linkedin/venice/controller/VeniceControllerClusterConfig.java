@@ -424,7 +424,7 @@ public class VeniceControllerClusterConfig {
     return sslToKafka;
   }
 
-  public String getSslKafkaBootStrapServers() {
+  public String getSslKafkaBootstrapServers() {
     return sslKafkaBootStrapServers;
   }
 

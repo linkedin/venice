@@ -51,7 +51,7 @@ public class SharedKafkaProducerServiceTest {
     topicManager = new TopicManager(kafkaClientFactory);
   }
 
-  private void tearDown() throws IOException {
+  private void cleanUp() throws IOException {
     kafka.close();
     topicManager.close();
   }
@@ -151,7 +151,7 @@ public class SharedKafkaProducerServiceTest {
     //interrupt thread2 to be able to finish the test.
     thread2.interrupt();
     thread2.join();
-    tearDown();
+    cleanUp();
   }
 
   public class ProducerSupplier implements SharedKafkaProducerService.KafkaProducerSupplier {

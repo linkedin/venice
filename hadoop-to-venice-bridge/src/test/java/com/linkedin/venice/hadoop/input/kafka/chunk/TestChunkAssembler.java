@@ -16,6 +16,8 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.Random;
+import java.util.concurrent.ThreadLocalRandom;
+
 import org.testng.Assert;
 import org.testng.annotations.Test;
 import static com.linkedin.venice.hadoop.input.kafka.chunk.TestChunkingUtils.*;
@@ -114,7 +116,7 @@ public class TestChunkAssembler {
         VALUE_SCHEMA_ID,
         0
     );
-    int indexOfMissingChunk = new Random(System.currentTimeMillis()).nextInt(values.size() - 1);
+    int indexOfMissingChunk = ThreadLocalRandom.current().nextInt(values.size() - 1);
     values.remove(indexOfMissingChunk); // Remove a chunk
     Collections.shuffle(values);
     chunkAssembler.assembleAndGetValue(serializedKey, values);
@@ -218,7 +220,7 @@ public class TestChunkAssembler {
         totalChunkCount1
     );
 
-    int indexOfMissingChunk = new Random(System.currentTimeMillis()).nextInt(values2.size() - 1);
+    int indexOfMissingChunk = ThreadLocalRandom.current().nextInt(values2.size() - 1);
     values2.remove(indexOfMissingChunk); // Remove a chunk from the second sequence
     List<KafkaInputMapperValue> allValues = new ArrayList<>();
     allValues.addAll(values1);
@@ -311,8 +313,7 @@ public class TestChunkAssembler {
     );
 
     // Simulate a duplicated chunk
-    Random random = new Random(System.currentTimeMillis());
-    KafkaInputMapperValue randomChunk = values1.get(random.nextInt(values1.size() - 1));
+    KafkaInputMapperValue randomChunk = values1.get(ThreadLocalRandom.current().nextInt(values1.size() - 1));
     KafkaInputMapperValue duplicatedChunk = new KafkaInputMapperValue();
     duplicatedChunk.schemaId = randomChunk.schemaId;
     duplicatedChunk.offset = values1.get(values1.size() - 1).offset + 1;
@@ -464,8 +465,7 @@ public class TestChunkAssembler {
         0
     );
     // Randomly remove a value to simulate the incomplete large value
-    Random random = new Random(System.currentTimeMillis());
-    values.remove(random.nextInt(values.size()));
+    values.remove(ThreadLocalRandom.current().nextInt(values.size()));
 
     byte[] regularValueBytes = createChunkBytes(100, 23);
     values.add(createRegularValue(regularValueBytes, VALUE_SCHEMA_ID_2, totalChunkCount + 1, MapperValueType.PUT));
@@ -583,8 +583,7 @@ public class TestChunkAssembler {
         0
     );
     // Randomly remove a value to simulate the incomplete large value
-    Random random = new Random(System.currentTimeMillis());
-    values.remove(random.nextInt(values.size()));
+    values.remove(ThreadLocalRandom.current().nextInt(values.size()));
 
     // "Delete value" at the end
     values.add(createRegularValue(new byte[0], -1, totalChunkCount + 1, MapperValueType.DELETE));
@@ -644,8 +643,7 @@ public class TestChunkAssembler {
         )
     );
     // Randomly remove a value chunk to simulate the incomplete large value
-    Random random = new Random(System.currentTimeMillis());
-    values.remove(random.nextInt(values.size() - 2) + 1);
+    values.remove(ThreadLocalRandom.current().nextInt(values.size() - 2) + 1);
 
     Collections.shuffle(values);
     Optional<ChunkAssembler.ValueBytesAndSchemaId> optionalAssembledValue =
@@ -755,8 +753,7 @@ public class TestChunkAssembler {
         )
     );
     // Randomly remove a chunk value to simulate the incomplete large value
-    Random random = new Random(System.currentTimeMillis());
-    values.remove(random.nextInt(values.size() - 2) + 1);
+    values.remove(ThreadLocalRandom.current().nextInt(values.size() - 2) + 1);
 
     Collections.shuffle(values);
     Optional<ChunkAssembler.ValueBytesAndSchemaId> optionalAssembledValue =

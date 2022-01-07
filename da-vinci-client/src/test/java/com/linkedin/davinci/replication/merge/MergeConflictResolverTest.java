@@ -57,7 +57,7 @@ public class MergeConflictResolverTest {
   private RecordDeserializer<GenericRecord> rmdDeserializer;
 
   @BeforeClass
-  public void setup() {
+  public void setUp() {
     this.storeName = "store";
     this.schemaRepository = mock(ReadOnlySchemaRepository.class);
     this.recordSchema = Schema.parse(recordSchemaStr);
@@ -191,12 +191,12 @@ public class MergeConflictResolverTest {
     // Validate null RMD for invalid schema id
     mergeConflictResult  = mergeConflictResolver.delete(null, -1, 30,1, 0);
     Assert.assertFalse(mergeConflictResult.isUpdateIgnored());
-    Assert.assertEquals(mergeConflictResult.getValueSchemaID(), 1);
+    Assert.assertEquals(mergeConflictResult.getValueSchemaId(), 1);
 
     // Validate delete wins on same timestamp
     mergeConflictResult  = mergeConflictResolver.delete(timestampRecord, 1, 30L,1, 0);
     Assert.assertFalse(mergeConflictResult.isUpdateIgnored());
-    Assert.assertEquals(mergeConflictResult.getValueSchemaID(), 1);
+    Assert.assertEquals(mergeConflictResult.getValueSchemaId(), 1);
 
     // verify invalid schema id for existing old value
     Assert.assertThrows(VeniceException.class, () -> mergeConflictResolver.delete(timestampRecord, -1, 30,1, 0));

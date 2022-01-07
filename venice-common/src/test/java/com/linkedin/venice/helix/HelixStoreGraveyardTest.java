@@ -21,7 +21,7 @@ public class HelixStoreGraveyardTest {
   private String storeName = "HelixStoreGraveyardTestStore";
 
   @BeforeMethod
-  public void setup() {
+  public void setUp() {
     zkServerWrapper = ServiceFactory.getZkServer();
     zkClient = ZkClientFactory.newZkClient(zkServerWrapper.getAddress());
     graveyard =
@@ -29,7 +29,7 @@ public class HelixStoreGraveyardTest {
   }
 
   @AfterMethod
-  public void cleanup() {
+  public void cleanUp() {
     zkClient.close();
     zkServerWrapper.close();
   }

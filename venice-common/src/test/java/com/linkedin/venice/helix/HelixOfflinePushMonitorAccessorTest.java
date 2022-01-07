@@ -36,7 +36,7 @@ public class HelixOfflinePushMonitorAccessorTest {
   private ZkClient zkClient;
 
   @BeforeMethod
-  public void setup() {
+  public void setUp() {
     zk = ServiceFactory.getZkServer();
     String zkAddress = zk.getAddress();
     zkClient = ZkClientFactory.newZkClient(zkAddress);
@@ -44,7 +44,7 @@ public class HelixOfflinePushMonitorAccessorTest {
   }
 
   @AfterMethod
-  public void cleanup() {
+  public void cleanUp() {
     zkClient.close();
     zk.close();
   }

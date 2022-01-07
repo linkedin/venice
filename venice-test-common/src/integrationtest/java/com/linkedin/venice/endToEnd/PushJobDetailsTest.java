@@ -63,7 +63,7 @@ public class PushJobDetailsTest {
   private String inputDirPath;
 
   @BeforeClass
-  public void setup() throws IOException {
+  public void setUp() throws IOException {
     Properties extraProperties = new Properties();
     extraProperties.setProperty(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, "false");
     extraProperties.setProperty(SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED, "true");
@@ -93,7 +93,7 @@ public class PushJobDetailsTest {
   }
 
   @AfterClass
-  public void cleanup() {
+  public void cleanUp() {
     Utils.closeQuietlyWithErrorLogged(controllerClient);
     Utils.closeQuietlyWithErrorLogged(parentControllerClient);
     Utils.closeQuietlyWithErrorLogged(parentController);
@@ -140,7 +140,7 @@ public class PushJobDetailsTest {
           PushJobDetailsStatus.COMPLETED.getValue());
       assertEquals(value.overallStatus.size(), expectedStatuses.size(),"Unexpected number of overall statuses in push job details");
       for (int i = 0; i < expectedStatuses.size(); i++) {
-        assertEquals(new Integer(value.overallStatus.get(i).status), expectedStatuses.get(i));
+        assertEquals(value.overallStatus.get(i).status, (int) expectedStatuses.get(i));
         assertTrue(value.overallStatus.get(i).timestamp > 0, "Timestamp for status tuple is missing");
       }
       assertFalse(value.coloStatus.isEmpty(), "Colo status shouldn't be empty");

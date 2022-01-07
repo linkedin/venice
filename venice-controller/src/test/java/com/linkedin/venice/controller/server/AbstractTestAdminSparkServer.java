@@ -49,7 +49,7 @@ public class AbstractTestAdminSparkServer {
         () -> parentController.isMasterController(cluster.getClusterName()));
   }
 
-  public void tearDown() {
+  public void cleanUp() {
     Utils.closeQuietlyWithErrorLogged(parentController);
     Utils.closeQuietlyWithErrorLogged(controllerClient);
     Utils.closeQuietlyWithErrorLogged(cluster);

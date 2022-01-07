@@ -932,7 +932,7 @@ public class TestAdminConsumptionTask {
     // Mimic a transfer of mastership
     doReturn(false).when(admin).isLeaderControllerFor(clusterName);
     TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS,
-        () -> Assert.assertEquals(task.getLastSucceededExecutionId(), new Long(-1)));
+        () -> Assert.assertEquals((long) task.getLastSucceededExecutionId(), -1));
     // Mimic the behavior where another controller has processed some admin messages
     veniceWriter.put(emptyKeyBytes, getKillOfflinePushJobMessage(clusterName, storeTopicName, 3L),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);

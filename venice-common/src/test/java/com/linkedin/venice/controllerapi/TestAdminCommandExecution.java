@@ -18,7 +18,7 @@ public class TestAdminCommandExecution {
   private ControllerClient mockControllerClient;
   private LastSucceedExecutionIdResponse mockResponse;
   @BeforeMethod
-  public void setup(){
+  public void setUp(){
     fabrics.add(fabric1);
     fabrics.add(fabric2);
     mockControllerClient= Mockito.mock(ControllerClient.class);

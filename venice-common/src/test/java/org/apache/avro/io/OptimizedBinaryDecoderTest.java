@@ -6,6 +6,8 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.Random;
+import java.util.concurrent.ThreadLocalRandom;
+
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -24,7 +26,7 @@ public class OptimizedBinaryDecoderTest {
     byte[] bytes = new byte[byteBufferSize];
     ByteBuffer byteBuffer = ByteBuffer.wrap(bytes);
 
-    Random random = new Random();
+    Random random = ThreadLocalRandom.current();
     random.nextBytes(bytes);
     float randomFloat1 = random.nextFloat();
     float randomFloat2 = random.nextFloat();

@@ -19,7 +19,7 @@ public class ZkWhitelistAccessorTest {
   private String cluster = "whitelistcluster";
 
   @BeforeMethod
-  public void setup() {
+  public void setUp() {
     zkServerWrapper = ServiceFactory.getZkServer();
     zkClient = ZkClientFactory.newZkClient(zkServerWrapper.getAddress());
     accessor = new ZkWhitelistAccessor(zkClient, new HelixAdapterSerializer());
@@ -27,7 +27,7 @@ public class ZkWhitelistAccessorTest {
   }
 
   @AfterMethod
-  public void cleanup() {
+  public void cleanUp() {
     zkClient.deleteRecursively(HelixUtils.getHelixClusterZkPath(cluster));
     zkClient.close();
     zkServerWrapper.close();

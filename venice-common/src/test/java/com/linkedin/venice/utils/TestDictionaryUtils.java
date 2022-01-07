@@ -59,14 +59,14 @@ public class TestDictionaryUtils {
   }
 
   @BeforeClass
-  public void setup() {
+  public void setUp() {
     mockTime = new MockTime();
     kafka = ServiceFactory.getKafkaBroker(mockTime);
     manager = new TopicManager(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, MIN_COMPACTION_LAG, TestUtils.getVeniceConsumerFactory(kafka));
   }
 
   @AfterClass
-  public void teardown() throws IOException {
+  public void cleanUp() throws IOException {
     kafka.close();
     manager.close();
   }

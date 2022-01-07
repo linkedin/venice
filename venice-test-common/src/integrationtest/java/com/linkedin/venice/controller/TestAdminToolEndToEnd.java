@@ -48,7 +48,7 @@ public class TestAdminToolEndToEnd {
   VeniceTwoLayerMultiColoMultiClusterWrapper multiColoWrapper;
 
   @BeforeClass
-  public void setup() {
+  public void setUp() {
     Properties properties = new Properties();
     properties.setProperty(CONTROLLER_ENABLE_BATCH_PUSH_FROM_ADMIN_IN_CHILD, "true");
     properties.setProperty(ALLOW_CLUSTER_WIPE, "true");
@@ -73,7 +73,7 @@ public class TestAdminToolEndToEnd {
   }
 
   @AfterClass
-  public void cleanup() {
+  public void cleanUp() {
     multiColoWrapper.close();
   }
 

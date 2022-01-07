@@ -52,7 +52,7 @@ public class KafkaStoreIngestionServiceTest {
   private KafkaStoreIngestionService kafkaStoreIngestionService;
 
   @BeforeClass
-  public void setup() {
+  public void setUp() {
     mockStorageEngineRepository = mock(StorageEngineRepository.class);
     storageMetadataService = mock(StorageMetadataService.class);
     mockClusterInfoProvider = mock(ClusterInfoProvider.class);

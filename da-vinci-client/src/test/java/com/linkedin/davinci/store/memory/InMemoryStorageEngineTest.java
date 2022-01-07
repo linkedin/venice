@@ -27,12 +27,12 @@ public class InMemoryStorageEngineTest extends AbstractStorageEngineTest {
   }
 
   @BeforeClass
-  public void setup() {
+  public void setUp() {
     createStorageEngineForTest();
   }
 
   @AfterClass
-  public void tearDown() {
+  public void cleanUp() {
     if(service != null && storeConfig != null) {
       service.dropStorePartition(storeConfig , PARTITION_ID);
     }

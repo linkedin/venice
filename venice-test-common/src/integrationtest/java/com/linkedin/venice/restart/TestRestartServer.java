@@ -24,7 +24,7 @@ public class TestRestartServer {
   int partitionSize = 1000;
 
   @BeforeClass
-  public void setup() {
+  public void setUp() {
     int numberOfController = 1;
     int numberOfServer = 2;
     int numberOfRouter = 1;
@@ -34,7 +34,7 @@ public class TestRestartServer {
   }
 
   @AfterClass
-  public void cleanup() {
+  public void cleanUp() {
     cluster.close();
   }
 

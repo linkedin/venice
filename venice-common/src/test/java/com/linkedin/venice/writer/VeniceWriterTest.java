@@ -59,7 +59,7 @@ public class VeniceWriterTest {
   }
 
   @AfterClass
-  public void tearDown() throws IOException {
+  public void cleanUp() throws IOException {
     kafka.close();
     topicManager.close();
   }

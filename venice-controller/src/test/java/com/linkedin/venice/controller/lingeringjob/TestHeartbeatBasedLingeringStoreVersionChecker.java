@@ -36,7 +36,7 @@ public class TestHeartbeatBasedLingeringStoreVersionChecker {
   private Time time;
 
   @BeforeTest
-  public void setup() {
+  public void setUp() {
     store = mock(Store.class);
     version = mock(Version.class);
     time = mock(Time.class);

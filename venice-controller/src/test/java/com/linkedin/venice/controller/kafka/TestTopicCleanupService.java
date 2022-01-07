@@ -36,7 +36,7 @@ public class TestTopicCleanupService {
   private TopicCleanupService topicCleanupService;
 
   @BeforeMethod
-  public void setup() {
+  public void setUp() {
     admin = mock(Admin.class);
     storeConfigRepository = mock(HelixReadOnlyStoreConfigRepository.class);
     doReturn(storeConfigRepository).when(admin).getStoreConfigRepo();
@@ -50,7 +50,7 @@ public class TestTopicCleanupService {
   }
 
   @AfterMethod
-  public void tearDown() throws Exception {
+  public void cleanUp() throws Exception {
     topicCleanupService.stop();
   }
 

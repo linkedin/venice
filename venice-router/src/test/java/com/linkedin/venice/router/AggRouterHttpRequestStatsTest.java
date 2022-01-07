@@ -14,7 +14,7 @@ public class AggRouterHttpRequestStatsTest {
   private AggRouterHttpRequestStats stats;
 
   @BeforeSuite
-  public void setup() {
+  public void setUp() {
     this.metricsRepository = new MetricsRepository();
     reporter = new MockTehutiReporter();
     metricsRepository.addReporter(reporter);

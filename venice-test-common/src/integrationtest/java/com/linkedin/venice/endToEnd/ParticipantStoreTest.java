@@ -60,7 +60,7 @@ public class ParticipantStoreTest {
   private D2Client d2Client;
 
   @BeforeClass
-  public void setup() {
+  public void setUp() {
     Properties controllerConfig = new Properties();
     Properties serverFeatureProperties = new Properties();
     Properties serverProperties = new Properties();
@@ -90,7 +90,7 @@ public class ParticipantStoreTest {
   }
 
   @AfterClass
-  public void cleanup() {
+  public void cleanUp() {
     Utils.closeQuietlyWithErrorLogged(controllerClient);
     Utils.closeQuietlyWithErrorLogged(parentControllerClient);
     Utils.closeQuietlyWithErrorLogged(parentController);

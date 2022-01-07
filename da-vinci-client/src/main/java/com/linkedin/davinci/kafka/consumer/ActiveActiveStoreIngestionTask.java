@@ -361,7 +361,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     for(int i = 0; i < timestampsPreOperation.size(); i++) {
       if (timestampsPreOperation.get(i) > timestampsPostOperation.get(i)) {
         // timestamps went backwards, raise an alert!
-        storeIngestionStats.recordTimeStampRegressionDCRError();
+        storeIngestionStats.recordTimestampRegressionDCRError();
         aggVersionedStorageIngestionStats.recordTimestampRegressionDCRError(storeName, versionNumber);
         logger.error(String.format("Timestamp found to have gone backwards!! Invalid replication metadata result:%s", mergeConflictResult.getReplicationMetadataRecord()));
       }
@@ -420,11 +420,11 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     final ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord = consumerRecordWrapper.consumerRecord();
 
     final ByteBuffer updatedValueBytes = mergeConflictResult.getNewValue();
-    final int valueSchemaId = mergeConflictResult.getValueSchemaID();
+    final int valueSchemaId = mergeConflictResult.getValueSchemaId();
 
     GenericRecord replicationMetadataRecord = mergeConflictResult.getReplicationMetadataRecord();
     final ByteBuffer updatedReplicationMetadataBytes = mergeConflictResolver.getByteBufferFromReplicationMetadata(
-        mergeConflictResult.getValueSchemaID(), mergeConflictResult.getReplicationMetadataRecord());
+        mergeConflictResult.getValueSchemaId(), mergeConflictResult.getReplicationMetadataRecord());
 
     // finally produce and update the transient record map.
     if (updatedValueBytes == null) {

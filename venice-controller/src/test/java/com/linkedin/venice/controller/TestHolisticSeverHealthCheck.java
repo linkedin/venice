@@ -35,7 +35,7 @@ public class TestHolisticSeverHealthCheck {
   int partitionSize = 1000;
 
   @BeforeClass
-  public void setup() {
+  public void setUp() {
     int numOfController = 1;
     cluster = ServiceFactory.getVeniceCluster(numOfController, 2, 1, replicaFactor,
         partitionSize, false, false);
@@ -49,7 +49,7 @@ public class TestHolisticSeverHealthCheck {
   }
 
   @AfterClass
-  public void cleanup() {
+  public void cleanUp() {
     cluster.close();
   }
 

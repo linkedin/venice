@@ -21,7 +21,7 @@ public class AggServerHttpRequestStatsTest {
   private static final String STORE_WITH_LARGE_VALUES = "store_with_large_values";
 
   @BeforeTest
-  public void setup() {
+  public void setUp() {
     this.metricsRepository = new MetricsRepository();
     Assert.assertEquals(metricsRepository.metrics().size(), 0);
     this.reporter = new MockTehutiReporter();
@@ -31,7 +31,7 @@ public class AggServerHttpRequestStatsTest {
   }
 
   @AfterTest
-  public void cleanup() {
+  public void cleanUp() {
     metricsRepository.close();
     reporter.close();
   }

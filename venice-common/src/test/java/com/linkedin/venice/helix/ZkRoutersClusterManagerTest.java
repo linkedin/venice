@@ -23,7 +23,7 @@ public class ZkRoutersClusterManagerTest {
   private HelixAdapterSerializer adapter;
 
   @BeforeMethod
-  public void setup() {
+  public void setUp() {
     clusterName = "ZkRoutersClusterManagerTest";
     zkServerWrapper = ServiceFactory.getZkServer();
     adapter = new HelixAdapterSerializer();
@@ -31,7 +31,7 @@ public class ZkRoutersClusterManagerTest {
   }
 
   @AfterMethod
-  public void cleanup() {
+  public void cleanUp() {
     zkClient.close();
     zkServerWrapper.close();
   }

@@ -23,7 +23,7 @@ public class AggStoreIngestionStatsTest {
   private static final String STORE_BAR = Utils.getUniqueString("store_bar");
 
   @BeforeTest
-  public void setup() {
+  public void setUp() {
     metricsRepository = new MetricsRepository();
     this.reporter = new MockTehutiReporter();
     metricsRepository.addReporter(reporter);
@@ -45,7 +45,7 @@ public class AggStoreIngestionStatsTest {
   }
 
   @AfterTest
-  public void cleanup() {
+  public void cleanUp() {
     metricsRepository.close();
   }
 

@@ -58,7 +58,7 @@ public class IngestionBenchmarkWithTwoProcesses {
   private String zkAddress;
 
   @Setup
-  public void setup() throws Exception {
+  public void setUp() throws Exception {
     clusterInfoFilePath = File.createTempFile("temp-cluster-info", null).getAbsolutePath();
     ServiceFactory.startVeniceClusterInAnotherProcess(clusterInfoFilePath);
     // We need ot make sure Venice cluster in forked process is up and store has been created before we run our benchmark.
@@ -67,7 +67,7 @@ public class IngestionBenchmarkWithTwoProcesses {
   }
 
   @TearDown
-  public void teardown() throws InterruptedException {
+  public void cleanUp() throws InterruptedException {
     ServiceFactory.stopVeniceClusterInAnotherProcess();
     try {
       Files.delete(Paths.get(clusterInfoFilePath));

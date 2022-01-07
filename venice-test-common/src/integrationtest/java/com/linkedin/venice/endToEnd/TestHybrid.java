@@ -132,7 +132,7 @@ public class TestHybrid {
   }
 
   @AfterClass(alwaysRun=true)
-  public void tearDown() {
+  public void cleanUp() {
     Utils.closeQuietlyWithErrorLogged(sharedVenice);
     Utils.closeQuietlyWithErrorLogged(ingestionIsolationEnabledSharedVenice);
   }

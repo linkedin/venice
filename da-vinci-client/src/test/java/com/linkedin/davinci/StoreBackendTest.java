@@ -56,7 +56,7 @@ public class StoreBackendTest {
   StorageEngineBackedCompressorFactory compressorFactory;
 
   @BeforeMethod
-  void setup() {
+  void setUp() {
     baseDataPath = Utils.getTempDataDirectory();
     VeniceProperties backendConfig = new PropertyBuilder()
         .put(ConfigKeys.CLUSTER_NAME, "test-cluster")

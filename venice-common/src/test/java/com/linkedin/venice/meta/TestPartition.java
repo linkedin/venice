@@ -16,7 +16,7 @@ public class TestPartition {
   private int id = 0;
 
   @BeforeMethod
-  public void setup() {
+  public void setUp() {
     //ONLINE instance
     ArrayList<Instance> onlineInstances = new ArrayList<>();
     onlineInstances.add(new Instance("localhost:1001", "localhost", 1001));

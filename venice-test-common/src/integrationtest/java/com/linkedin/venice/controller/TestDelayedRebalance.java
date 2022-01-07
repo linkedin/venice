@@ -32,7 +32,7 @@ public class TestDelayedRebalance {
   int minActiveReplica = replicaFactor - 1;
 
   @BeforeMethod
-  public void setup() {
+  public void setUp() {
     int numberOfController = 1;
     int numberOfRouter = 1;
     // Start a cluster with enabling delayed rebalance.
@@ -41,7 +41,7 @@ public class TestDelayedRebalance {
   }
 
   @AfterMethod
-  public void cleanup() {
+  public void cleanUp() {
     cluster.close();
   }
 

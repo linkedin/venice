@@ -12,22 +12,22 @@ public class TestVeniceRouterConfig {
   public void testParseRetryThresholdForBatchGet() {
     String retryThresholdConfig = "1-10:20,11-50:50,51-200:80,201-:1000";
     TreeMap<Integer, Integer> retryThresholdMap = VeniceRouterConfig.parseRetryThresholdForBatchGet(retryThresholdConfig);
-    Assert.assertEquals(retryThresholdMap.get(1), new Integer(20));
-    Assert.assertEquals(retryThresholdMap.get(11), new Integer(50));
-    Assert.assertEquals(retryThresholdMap.get(51), new Integer(80));
-    Assert.assertEquals(retryThresholdMap.get(201), new Integer(1000));
+    Assert.assertEquals((int) retryThresholdMap.get(1), 20);
+    Assert.assertEquals((int) retryThresholdMap.get(11), 50);
+    Assert.assertEquals((int) retryThresholdMap.get(51), 80);
+    Assert.assertEquals((int) retryThresholdMap.get(201), 1000);
 
-    Assert.assertEquals(retryThresholdMap.floorEntry(1).getValue(), new Integer(20));
-    Assert.assertEquals(retryThresholdMap.floorEntry(30).getValue(), new Integer(50));
-    Assert.assertEquals(retryThresholdMap.floorEntry(500).getValue(), new Integer(1000));
+    Assert.assertEquals((int) retryThresholdMap.floorEntry(1).getValue(), 20);
+    Assert.assertEquals((int) retryThresholdMap.floorEntry(30).getValue(), 50);
+    Assert.assertEquals((int) retryThresholdMap.floorEntry(500).getValue(), 1000);
 
     // Config with un-ordered range
     String unorderedRetryThresholdConfig = "51-200:80,11-50:50,201-:1000,1-10:20";
     retryThresholdMap = VeniceRouterConfig.parseRetryThresholdForBatchGet(unorderedRetryThresholdConfig);
-    Assert.assertEquals(retryThresholdMap.get(1), new Integer(20));
-    Assert.assertEquals(retryThresholdMap.get(11), new Integer(50));
-    Assert.assertEquals(retryThresholdMap.get(51), new Integer(80));
-    Assert.assertEquals(retryThresholdMap.get(201), new Integer(1000));
+    Assert.assertEquals((int) retryThresholdMap.get(1), 20);
+    Assert.assertEquals((int) retryThresholdMap.get(11), 50);
+    Assert.assertEquals((int) retryThresholdMap.get(51), 80);
+    Assert.assertEquals((int) retryThresholdMap.get(201), 1000);
   }
 
   @Test (expectedExceptions = VeniceException.class)

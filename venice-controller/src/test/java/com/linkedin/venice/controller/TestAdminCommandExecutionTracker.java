@@ -30,7 +30,7 @@ public class TestAdminCommandExecutionTracker {
   private InMemoryExecutionIdAccessor accessor;
 
   @BeforeMethod
-  public void setup() {
+  public void setUp() {
     fabricToControllerMap = new HashMap<>();
     mockControllerClient = Mockito.mock(ControllerClient.class);
     mockResponse = new LastSucceedExecutionIdResponse();

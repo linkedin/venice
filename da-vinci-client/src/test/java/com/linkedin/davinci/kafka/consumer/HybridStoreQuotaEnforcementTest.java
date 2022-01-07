@@ -42,7 +42,7 @@ public class HybridStoreQuotaEnforcementTest {
   private HybridStoreQuotaEnforcement quotaEnforcer;
 
   @BeforeClass
-  public void setup() {
+  public void setUp() {
     storageEngine = mock(AbstractStorageEngine.class);
     store = mock(Store.class);
     version = mock(Version.class);

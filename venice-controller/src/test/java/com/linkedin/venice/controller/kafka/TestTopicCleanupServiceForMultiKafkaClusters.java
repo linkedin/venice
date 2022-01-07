@@ -22,7 +22,7 @@ public class TestTopicCleanupServiceForMultiKafkaClusters {
 
 
   @BeforeTest
-  public void setup() {
+  public void setUp() {
     VeniceControllerMultiClusterConfig config = mock(VeniceControllerMultiClusterConfig.class);
     doReturn(1000l).when(config).getTopicCleanupSleepIntervalBetweenTopicListFetchMs();
     doReturn(2).when(config).getTopicCleanupDelayFactor();

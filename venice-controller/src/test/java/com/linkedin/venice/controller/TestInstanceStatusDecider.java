@@ -41,7 +41,7 @@ public class TestInstanceStatusDecider {
   private PushMonitorDelegator mockMonitor;
 
   @BeforeMethod
-  public void setup() {
+  public void setUp() {
     clusterName = Utils.getUniqueString("TestInstanceStatusDecider");
     resources = mock(HelixVeniceClusterResources.class);
     routingDataRepository = mock(HelixExternalViewRepository.class);

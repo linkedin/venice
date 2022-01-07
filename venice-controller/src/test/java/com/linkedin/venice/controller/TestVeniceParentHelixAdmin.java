@@ -1375,7 +1375,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     // Clients work as expected
     JobStatusQueryResponse status = tenStatusClient.queryJobStatus("topic");
     Map<String,Long> perTask = status.getPerTaskProgress();
-    Assert.assertEquals(perTask.get("task1"), new Long(10L));
+    Assert.assertEquals((long) perTask.get("task1"), 10L);
     Assert.assertTrue(failClient.queryJobStatus("topic").isError());
 
     // Test logic
@@ -1385,8 +1385,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     tenMap.put("cluster3", failClient);
     Map<String, Long> tenProgress = VeniceParentHelixAdmin.getOfflineJobProgress("cluster", "topic", tenMap);
     Assert.assertEquals(tenProgress.values().size(), 4); // nothing from fail client
-    Assert.assertEquals(tenProgress.get("cluster1_task1"), new Long(10L));
-    Assert.assertEquals(tenProgress.get("cluster2_task2"), new Long(10L));
+    Assert.assertEquals((long) tenProgress.get("cluster1_task1"), 10L);
+    Assert.assertEquals((long) tenProgress.get("cluster2_task2"), 10L);
   }
 
   @Test

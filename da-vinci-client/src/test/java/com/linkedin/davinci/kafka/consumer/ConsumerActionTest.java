@@ -7,6 +7,8 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Random;
 import java.util.concurrent.PriorityBlockingQueue;
+import java.util.concurrent.ThreadLocalRandom;
+
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -68,9 +70,8 @@ public class ConsumerActionTest {
 
   private ConsumerAction getRandomAction(String topic, int partition, int sequenceNumber, int priority) {
     ConsumerActionType[] actionTypes = ConsumerActionType.values();
-    Random random = new Random(System.currentTimeMillis());
     while (true) {
-      int index = random.nextInt(actionTypes.length);
+      int index = ThreadLocalRandom.current().nextInt(actionTypes.length);
       if (actionTypes[index].getActionPriority() == priority) {
         return new ConsumerAction(actionTypes[index], topic, partition, sequenceNumber);
       }

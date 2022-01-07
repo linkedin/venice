@@ -82,7 +82,7 @@ public class TestAdminTool {
       Optional<Map<String, Integer>> serverKafkaFetchQuotaRecordsPerSecond = params.getServerKafkaFetchQuotaRecordsPerSecond();
       Assert.assertTrue(serverKafkaFetchQuotaRecordsPerSecond.isPresent(), "Kafka fetch quota not parsed from args");
       Assert.assertTrue(serverKafkaFetchQuotaRecordsPerSecond.get().containsKey(regionName), "Kafka fetch quota does not have info for region");
-      Assert.assertEquals(serverKafkaFetchQuotaRecordsPerSecond.get().get(regionName), new Integer(kafkaFetchQuota), "Kafka fetch quota has incorrect info for region");
+      Assert.assertEquals((int) serverKafkaFetchQuotaRecordsPerSecond.get().get(regionName), kafkaFetchQuota, "Kafka fetch quota has incorrect info for region");
     } catch (Exception e) {
       Assert.fail("All options are not added to update-store arg doc");
     }

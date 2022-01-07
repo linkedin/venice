@@ -23,7 +23,7 @@ public class TestZkClientStatusStats {
   private String clientName = "test-client";
 
   @BeforeMethod
-  public void setup() {
+  public void setUp() {
     MetricsRepository metricsRepository = new MetricsRepository();
     reporter = new MockTehutiReporter();
     metricsRepository.addReporter(reporter);

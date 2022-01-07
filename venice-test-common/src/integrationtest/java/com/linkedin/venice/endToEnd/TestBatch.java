@@ -70,12 +70,12 @@ public abstract class TestBatch {
   public abstract VeniceClusterWrapper initializeVeniceCluster();
 
   @BeforeClass(alwaysRun = true)
-  public void setup() {
+  public void setUp() {
     veniceCluster = initializeVeniceCluster();
   }
 
   @AfterClass(alwaysRun = true)
-  public void cleanup() {
+  public void cleanUp() {
     if (veniceCluster != null) {
       veniceCluster.close();
     }
@@ -1017,7 +1017,7 @@ public abstract class TestBatch {
             Set<String> keys = new HashSet(keysPerCall);
             for (int key = 0; key < keysPerCall; key++) {
               int keyToQuery = (call * keysPerCall + key) % numberOfRecords;
-              keys.add(new Integer(keyToQuery).toString());
+              keys.add(String.valueOf(keyToQuery));
             }
             final long startTime = System.nanoTime();
             futures[call % numberOfConcurrentCallsPerBatch] = avroClient.batchGet(keys).thenAccept(o -> {

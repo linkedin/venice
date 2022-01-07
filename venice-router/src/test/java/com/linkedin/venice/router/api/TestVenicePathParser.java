@@ -59,13 +59,13 @@ public class TestVenicePathParser {
   }
 
   @BeforeClass
-  public void setup() {
+  public void setUp() {
     RouterExceptionAndTrackingUtils.setRouterStats(new RouterStats<>( requestType -> new AggRouterHttpRequestStats(new MetricsRepository(), requestType)));
     doReturn(10).when(mockRouterConfig).getRouterMultiGetDecompressionThreads();
   }
 
   @AfterClass
-  public void tearDown() {
+  public void cleanUp() {
     RouterExceptionAndTrackingUtils.setRouterStats(null);
   }
 

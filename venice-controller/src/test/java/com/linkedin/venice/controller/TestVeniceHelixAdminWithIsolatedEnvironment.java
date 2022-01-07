@@ -40,12 +40,12 @@ import org.testng.annotations.Test;
  */
 public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVeniceHelixAdmin {
   @BeforeMethod(alwaysRun = true)
-  public void setup() throws Exception {
+  public void setUp() throws Exception {
     setupCluster();
   }
 
   @AfterMethod(alwaysRun =  true)
-  public void cleanup() {
+  public void cleanUp() {
     cleanupCluster();
   }
 

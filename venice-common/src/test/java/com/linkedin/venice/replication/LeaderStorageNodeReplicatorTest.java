@@ -31,7 +31,7 @@ public class LeaderStorageNodeReplicatorTest {
   private String aggregateRealTimeSourceKafkaUrl = "aggregate-real-time-source-kafka-url";
 
   @BeforeMethod
-  public void setup() {
+  public void setUp() {
     mockTopicManager = mock(TopicManager.class);
     mockVeniceWriterFactory = mock(VeniceWriterFactory.class);
     Properties properties = new Properties();

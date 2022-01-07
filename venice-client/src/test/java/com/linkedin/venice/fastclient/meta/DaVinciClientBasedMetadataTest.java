@@ -65,7 +65,7 @@ public class DaVinciClientBasedMetadataTest {
   private DaVinciClient<StoreMetaKey, StoreMetaValue> daVinciClientForMetaStore;
 
   @BeforeClass
-  public void setup() throws Exception {
+  public void setUp() throws Exception {
     veniceCluster = ServiceFactory.getVeniceCluster(1, 2, 1, 2, 100, true, false);
     r2Client = ClientTestUtils.getR2Client();
     d2Client = D2TestUtils.getAndStartD2Client(veniceCluster.getZk().getAddress());

@@ -71,12 +71,12 @@ public class TestCachedDnsResolver {
   private CachedDnsResolver cachedDnsResolver;
 
   @BeforeMethod
-  public void setup() throws UnknownHostException {
+  public void setUp() throws UnknownHostException {
     cachedDnsResolver = new MockCachedDnsResolver(".*abc.com", 50);
   }
 
   @AfterMethod
-  public void tearDown() throws IOException {
+  public void cleanUp() throws IOException {
     cachedDnsResolver.close();
   }
 

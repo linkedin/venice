@@ -53,7 +53,7 @@ public class TestAdminSparkServerWithMultiServers {
   }
 
   @AfterClass
-  public void tearDown() {
+  public void cleanUp() {
     Utils.closeQuietlyWithErrorLogged(controllerClient);
     Utils.closeQuietlyWithErrorLogged(cluster);
   }

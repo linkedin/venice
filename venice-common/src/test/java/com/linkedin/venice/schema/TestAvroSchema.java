@@ -27,9 +27,9 @@ public class TestAvroSchema {
     Schema v3Schema = Utils.getSchemaFromResource("avro/PartitionState/v3/PartitionState.avsc");
 
     GenericData.Record v1Record = new GenericData.Record(v1Schema);
-    v1Record.put("offset", new Long(123));
-    v1Record.put("endOfPush", new Boolean(true));
-    v1Record.put("lastUpdate", new Long(-1));
+    v1Record.put("offset", Long.valueOf(123));
+    v1Record.put("endOfPush", Boolean.TRUE);
+    v1Record.put("lastUpdate", Long.valueOf(-1));
     v1Record.put("producerStates", new HashMap<>());
 
     RecordSerializer<Object> serializer = getAvroGenericSerializer(v1Schema);

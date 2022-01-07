@@ -38,7 +38,7 @@ public class AggVersionedDIVStatsTest {
   List<Store> storeList;
 
   @BeforeTest
-  public void setup() {
+  public void setUp() {
     metricsRepository = new MetricsRepository();
     this.reporter = new MockTehutiReporter();
     metricsRepository.addReporter(reporter);

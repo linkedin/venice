@@ -6,6 +6,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.*;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 import org.apache.avro.Schema;
@@ -28,7 +29,7 @@ public class TestVsonAvroDatumWriter {
     testWriter("\"string\"", () -> new Utf8("123"));
 
     byte[] randomBytes = new byte[10];
-    new Random().nextBytes(randomBytes);
+    ThreadLocalRandom.current().nextBytes(randomBytes);
     testWriter("\"bytes\"", () -> ByteBuffer.wrap(randomBytes));
 
     testWriter("\"int8\"", () -> randomBytes[0], avroObject -> {

@@ -2,10 +2,9 @@ package com.linkedin.davinci.stats;
 
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.kafka.consumer.PartitionConsumptionState;
-import com.linkedin.davinci.kafka.consumer.StoreIngestionTask;
+
 import com.linkedin.venice.stats.AbstractVeniceStats;
 import com.linkedin.venice.stats.Gauge;
-import com.linkedin.venice.stats.LambdaStat;
 import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.utils.RegionUtils;
 import io.tehuti.metrics.MetricsRepository;
@@ -18,9 +17,6 @@ import io.tehuti.metrics.stats.Rate;
 import io.tehuti.metrics.stats.Total;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.function.Supplier;
-
-import static com.linkedin.venice.stats.StatsErrorCode.*;
 
 public class StoreIngestionStats extends AbstractVeniceStats {
   /**
@@ -414,7 +410,7 @@ public class StoreIngestionStats extends AbstractVeniceStats {
     checksumVerificationFailureSensor.record();
   }
 
-  public void recordTimeStampRegressionDCRError() {
+  public void recordTimestampRegressionDCRError() {
     timestampRegresssionDCRErrorRate.record();
   }
 

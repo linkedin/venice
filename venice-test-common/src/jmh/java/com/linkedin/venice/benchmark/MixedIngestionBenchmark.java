@@ -55,7 +55,7 @@ public class MixedIngestionBenchmark {
   private final String valuePrefix = "value_";
 
   @Setup
-  public void setup() throws Exception {
+  public void setUp() throws Exception {
     Utils.thisIsLocalhost();
     int numberOfController = 1;
 
@@ -77,7 +77,7 @@ public class MixedIngestionBenchmark {
   }
 
   @TearDown
-  public void teardown() throws InterruptedException {
+  public void cleanUp() throws InterruptedException {
     cluster.close();
   }
 

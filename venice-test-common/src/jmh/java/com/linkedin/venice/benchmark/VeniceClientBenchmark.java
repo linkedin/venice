@@ -11,6 +11,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
@@ -53,7 +54,7 @@ public class VeniceClientBenchmark {
   protected AvroGenericStoreClient client;
 
   @Setup
-  public void setup() throws Exception {
+  public void setUp() throws Exception {
     Utils.thisIsLocalhost();
     cluster = getVeniceCluster(1, 1, 1);
     String storeName = buildStore(cluster);
@@ -64,7 +65,7 @@ public class VeniceClientBenchmark {
         ClientConfig.defaultGenericClientConfig(storeName)
             .setVeniceURL(cluster.getRandomRouterURL()));
 
-    Random random = new Random(13);
+    Random random = ThreadLocalRandom.current();
     for (int i = 0; i < KEY_COUNT; ++i) {
       keys[i] = random.nextInt(RECORD_COUNT);
     }
@@ -74,7 +75,7 @@ public class VeniceClientBenchmark {
   }
 
   @TearDown
-  public void cleanup() {
+  public void cleanUp() {
     client.close();
     cluster.close();
   }

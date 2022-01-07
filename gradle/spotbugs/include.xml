@@ -10,14 +10,17 @@
       <Bug pattern="CN_IDIOM"/>
       <Bug pattern="DB_DUPLICATE_SWITCH_CLAUSES"/>
       <Bug pattern="DMI_HARDCODED_ABSOLUTE_FILENAME"/>
+      <Bug pattern="DMI_RANDOM_USED_ONLY_ONCE"/>
       <Bug pattern="DM_BOXED_PRIMITIVE_FOR_COMPARE"/>
       <Bug pattern="DM_BOXED_PRIMITIVE_FOR_PARSING"/>
+      <Bug pattern="DM_NUMBER_CTOR"/>
       <Bug pattern="DM_STRING_CTOR"/>
       <Bug pattern="DM_STRING_TOSTRING"/>
       <Bug pattern="EQ_GETCLASS_AND_CLASS_CONSTANT"/>
       <Bug pattern="IM_BAD_CHECK_FOR_ODD"/>
       <Bug pattern="INT_BAD_REM_BY_1"/>
       <Bug pattern="LI_LAZY_INIT_UPDATE_STATIC"/>
+      <Bug pattern="NM_CONFUSING"/>
       <Bug pattern="NP_DEREFERENCE_OF_READLINE_VALUE"/>
       <Bug pattern="NP_LOAD_OF_KNOWN_NULL_VALUE"/>
       <Bug pattern="NP_NULL_ON_SOME_PATH"/>

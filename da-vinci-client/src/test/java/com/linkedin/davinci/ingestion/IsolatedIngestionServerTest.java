@@ -26,12 +26,12 @@ public class IsolatedIngestionServerTest {
   private ZkServerWrapper zkServerWrapper;
 
   @BeforeClass
-  public void setup() {
+  public void setUp() {
     zkServerWrapper = ServiceFactory.getZkServer();
   }
 
   @AfterClass(alwaysRun = true)
-  public void tearDown() {
+  public void cleanUp() {
     Utils.closeQuietlyWithErrorLogged(zkServerWrapper);
   }
 

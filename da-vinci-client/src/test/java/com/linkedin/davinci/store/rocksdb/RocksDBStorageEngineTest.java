@@ -56,12 +56,12 @@ public class RocksDBStorageEngineTest extends AbstractStorageEngineTest {
   }
 
   @BeforeClass
-  public void setup() {
+  public void setUp() {
     createStorageEngineForTest();
   }
 
   @AfterClass
-  public void tearDown() throws Exception {
+  public void cleanUp() throws Exception {
     storageService.dropStorePartition(storeConfig , PARTITION_ID);
     storageService.stop();
   }

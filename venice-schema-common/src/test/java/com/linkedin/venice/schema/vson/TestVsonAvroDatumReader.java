@@ -12,6 +12,7 @@ import org.testng.annotations.Test;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.*;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
@@ -30,7 +31,7 @@ public class TestVsonAvroDatumReader {
     String byteSchema = "\"bytes\"";
     Schema avroSchema = VsonAvroSchemaAdapter.parse(byteSchema);
     byte[] randomBytes = new byte[10];
-    new Random().nextBytes(randomBytes);
+    ThreadLocalRandom.current().nextBytes(randomBytes);
     testReader(byteSchema, () -> ByteBuffer.wrap(randomBytes),
         (vsonObject) -> Assert.assertEquals(vsonObject, randomBytes));
     testReadNullValue(byteSchema);

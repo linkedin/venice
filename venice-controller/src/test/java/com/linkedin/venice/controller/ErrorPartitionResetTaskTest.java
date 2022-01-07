@@ -52,7 +52,7 @@ public class ErrorPartitionResetTaskTest {
   private MetricsRepository metricsRepository;
 
   @BeforeMethod
-  public void setup() {
+  public void setUp() {
     helixAdminClient = mock(HelixAdminClient.class);
     readOnlyStoreRepository = mock(CachedReadOnlyStoreRepository.class);
     routingDataRepository = mock(HelixExternalViewRepository.class);
@@ -61,7 +61,7 @@ public class ErrorPartitionResetTaskTest {
   }
 
   @AfterClass
-  public void cleanup() {
+  public void cleanUp() {
     errorPartitionResetExecutorService.shutdownNow();
   }
 

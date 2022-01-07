@@ -48,7 +48,7 @@ public class RouterRequestThrottlingTest {
   private ReadOnlyStoreRepository storeRepository;
 
   @BeforeMethod(alwaysRun = true)
-  public void setup() {
+  public void setUp() {
     // mock a ReadRequestThrottler
     storeName = Utils.getUniqueString("store");
     store = TestUtils.createTestStore(storeName, "test", System.currentTimeMillis());

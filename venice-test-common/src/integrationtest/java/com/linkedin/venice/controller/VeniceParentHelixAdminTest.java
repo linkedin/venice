@@ -44,7 +44,7 @@ public class VeniceParentHelixAdminTest {
   ZkServerWrapper zkServerWrapper;
 
   @BeforeClass
-  public void setup() {
+  public void setUp() {
     Properties properties = new Properties();
     // Disable topic deletion
     properties.setProperty(TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS, String.valueOf(Long.MAX_VALUE));
@@ -53,7 +53,7 @@ public class VeniceParentHelixAdminTest {
   }
 
   @AfterClass
-  public void cleanup() {
+  public void cleanUp() {
     venice.close();
     zkServerWrapper.close();
   }

@@ -57,7 +57,7 @@ public class PushStatusStoreTest {
   private ZkServerWrapper parentZkServer;
 
   @BeforeClass
-  public void setup() {
+  public void setUp() {
     Properties extraProperties = new Properties();
     extraProperties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1L));
     Utils.thisIsLocalhost();
@@ -81,7 +81,7 @@ public class PushStatusStoreTest {
   }
 
   @AfterClass
-  public void cleanup() {
+  public void cleanUp() {
     IOUtils.closeQuietly(reader);
     D2ClientUtils.shutdownClient(d2Client);
     IOUtils.closeQuietly(controllerClient);

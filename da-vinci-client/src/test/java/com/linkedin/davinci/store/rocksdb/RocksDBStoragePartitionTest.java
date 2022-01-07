@@ -136,7 +136,7 @@ public class RocksDBStoragePartitionTest {
         checkpointingInfo = storagePartition.sync();
         if (sorted) {
           Assert.assertEquals(checkpointingInfo.get(RocksDBStoragePartition.ROCKSDB_LAST_FINISHED_SST_FILE_NO),
-              new Integer(currentFileNo++).toString());
+              String.valueOf(currentFileNo++));
         } else {
           Assert.assertTrue(checkpointingInfo.isEmpty(), "For non-deferred-write database, sync() should return empty map");
         }
@@ -257,7 +257,7 @@ public class RocksDBStoragePartitionTest {
         checkpointingInfo = storagePartition.sync();
         if (sorted) {
           Assert.assertEquals(checkpointingInfo.get(RocksDBStoragePartition.ROCKSDB_LAST_FINISHED_SST_FILE_NO),
-                  new Integer(currentFileNo++).toString());
+                  String.valueOf(currentFileNo++));
         } else {
           Assert.assertTrue(checkpointingInfo.isEmpty(), "For non-deferred-write database, sync() should return empty map");
         }
