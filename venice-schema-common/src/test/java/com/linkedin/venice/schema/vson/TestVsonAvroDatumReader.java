@@ -72,7 +72,7 @@ public class TestVsonAvroDatumReader {
 
     record.put("score", null);
     testReader(vsonSchemaStr, () -> record, (vsonObject) -> {
-      Assert.assertEquals(((Map) vsonObject).get("score"), null);
+      Assert.assertNull(((Map) vsonObject).get("score"));
     });
 
     testReadNullValue(vsonSchemaStr);
@@ -88,7 +88,7 @@ public class TestVsonAvroDatumReader {
 
       Assert.assertEquals(((List) vsonObject).get(0), 1);
       Assert.assertEquals(((List) vsonObject).get(1), 2);
-      Assert.assertEquals(((List) vsonObject).get(2), null);
+      Assert.assertNull(((List) vsonObject).get(2));
 
       try {
         ((List) vsonObject).get(3);
@@ -105,7 +105,7 @@ public class TestVsonAvroDatumReader {
   }
 
   private void testReadNullValue(String vsonSchemaStr) throws IOException {
-    testReader(vsonSchemaStr, () -> null, (vsonObject) -> Assert.assertEquals(vsonObject, null));
+    testReader(vsonSchemaStr, () -> null, Assert::assertNull);
   }
 
   private void testReader(String vsonSchemaStr, Supplier valueSupplier, Consumer valueValidator) throws IOException {

@@ -197,13 +197,12 @@ public class IsolatedIngestionUtils {
       }
     });
     try {
-      latch.await(D2_STARTUP_TIMEOUT, TimeUnit.MILLISECONDS);
+      if (!latch.await(D2_STARTUP_TIMEOUT, TimeUnit.MILLISECONDS)) {
+        throw new VeniceException("Time out after " + D2_STARTUP_TIMEOUT + "ms waiting for D2 client to startup");
+      }
     } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
       throw new VeniceException("latch wait was interrupted, d2 client may not have had enough time to startup", e);
-    }
-
-    if (latch.getCount() > 0) {
-      throw new VeniceException("Time out after " + D2_STARTUP_TIMEOUT + "ms waiting for D2 client to startup");
     }
   }
 

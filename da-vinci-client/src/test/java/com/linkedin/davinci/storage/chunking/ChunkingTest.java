@@ -18,6 +18,7 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.Function;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
@@ -149,11 +150,12 @@ public class ChunkingTest {
       List<GenericRecord> list = new ArrayList<>(size);
       for (int i = 0; i < size; i++) {
         GenericRecord subRecord = new GenericData.Record(schema3subRecord);
-        subRecord.put("someInt", (int) Math.random());
-        subRecord.put("someDouble", Math.random());
+        subRecord.put("someInt", ThreadLocalRandom.current().nextInt());
+        subRecord.put("someDouble", ThreadLocalRandom.current().nextDouble());
         subRecord.put("someBoolean", (i & 1) == 0);
         list.add(subRecord);
       }
+
       record.put("test", list);
       params.add(record);
     }

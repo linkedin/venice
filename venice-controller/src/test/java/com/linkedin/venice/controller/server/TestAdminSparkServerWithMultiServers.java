@@ -299,7 +299,7 @@ public class TestAdminSparkServerWithMultiServers {
         for (Thread t : threads) {
           t.start();
         }
-        latch.await(10, TimeUnit.SECONDS);
+        Assert.assertTrue(latch.await(10, TimeUnit.SECONDS));
         for (int j = 0; j < threadCount; j++) {
           if (responses.get(j).isError()) {
             Assert.fail(responses.get(j).getError());

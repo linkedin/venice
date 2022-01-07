@@ -2560,9 +2560,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             controlMessageType != ControlMessageType.END_OF_SEGMENT) {
           syncOffset = true;
         }
-      } else if (null == kafkaValue) {
-        throw new VeniceMessageException(consumerTaskId + " : Given null Venice Message. Partition " +
-              consumerRecord.partition() + " Offset " + consumerRecord.offset());
       } else {
         Pair<Integer, Integer> kvSize = processKafkaDataMessage(consumerRecordWrapper, partitionConsumptionState, leaderProducedRecordContext);
         int keySize = kvSize.getFirst();

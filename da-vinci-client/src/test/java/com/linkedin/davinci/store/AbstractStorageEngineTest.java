@@ -11,6 +11,8 @@ import com.linkedin.venice.exceptions.StorageInitializationException;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.File;
+
+import org.apache.commons.codec.binary.Hex;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -174,18 +176,18 @@ public abstract class AbstractStorageEngineTest extends AbstractStoreTest {
     }
 
     Assert.assertEquals((found == null), true,
-        "PUT and GET on key: " + key.toString() + " in invalid partition: " + partitionId + " succeeded");
+        "PUT and GET on key: " + Hex.encodeHexString(key) + " in invalid partition: " + partitionId + " succeeded");
 
     Assert.assertThrows(PersistenceFailureException.class, () ->
       testStoreEngine.getByKeyPrefix(partitionId, key, new BytesStreamingCallback() {
         @Override
         public void onRecordReceived(byte[] key, byte[] value) {
-          Assert.fail("GetByKeyPrefix on key: " + key.toString() + " in invalid partition: " + partitionId + " succeeded when it should have failed.");
+          Assert.fail("GetByKeyPrefix on key: " + Hex.encodeHexString(key) + " in invalid partition: " + partitionId + " succeeded when it should have failed.");
         }
 
         @Override
         public void onCompletion() {
-          Assert.fail("GetByKeyPrefix on key: " + key.toString() + " in invalid partition: " + partitionId + " succeeded when it should have failed.");
+          Assert.fail("GetByKeyPrefix on key: " + Hex.encodeHexString(key) + " in invalid partition: " + partitionId + " succeeded when it should have failed.");
         }
       }));
 
@@ -197,7 +199,7 @@ public abstract class AbstractStorageEngineTest extends AbstractStoreTest {
       return;
     }
     // If we reach here it means delete succeeded unfortunately.
-    Assert.fail("DELETE on key: " + key.toString() + " in an invalid partition: " + partitionId + " succeeded");
+    Assert.fail("DELETE on key: " + Hex.encodeHexString(key) + " in an invalid partition: " + partitionId + " succeeded");
   }
 
   @Test (expectedExceptions = VeniceException.class)

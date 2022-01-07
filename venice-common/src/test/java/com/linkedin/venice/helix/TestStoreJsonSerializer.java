@@ -59,10 +59,10 @@ public class TestStoreJsonSerializer {
         StoreJSONSerializer serializer = new StoreJSONSerializer();
         Store store = serializer.deserialize(jsonStr.getBytes(), "");
         Assert.assertEquals(store.getName(), "s1");
-        Assert.assertEquals(store.getOwner(), null);
+        Assert.assertNull(store.getOwner());
         Assert.assertEquals(store.getCreatedTime(), 0);
-        Assert.assertEquals(store.isHybrid(), false);
-        Assert.assertEquals(store.getHybridStoreConfig(), null);
+        Assert.assertFalse(store.isHybrid());
+        Assert.assertNull(store.getHybridStoreConfig());
         Assert.assertNotNull(store.getPartitionerConfig());
         Assert.assertEquals(store.getPartitionerConfig().getAmplificationFactor(), 1);
         Assert.assertEquals(store.getPartitionerConfig().getPartitionerClass(), DefaultVenicePartitioner.class.getName());

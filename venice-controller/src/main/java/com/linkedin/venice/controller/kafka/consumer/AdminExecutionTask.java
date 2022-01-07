@@ -120,7 +120,7 @@ public class AdminExecutionTask implements Callable<Void> {
         }
         stats.recordAdminMessageTotalLatency(Math.max(0,
             completionTimestamp - adminOperationWrapper.getProducerTimestamp()));
-        internalTopic.poll();
+        internalTopic.remove();
       } catch (Exception e) {
         // Retry of the admin operation is handled automatically by keeping the failed admin operation inside the queue.
         // The queue with the problematic operation will be delegated and retried by the worker thread in the next cycle.

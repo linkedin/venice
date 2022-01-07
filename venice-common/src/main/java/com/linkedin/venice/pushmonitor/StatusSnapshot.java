@@ -40,11 +40,7 @@ public class StatusSnapshot {
     if (Utils.isNullOrEmpty(incPushVersionId)) {
       throw new VeniceException(incPushVersionId + " is not a valid incremental push version id");
     }
-    if (incPushVersionId.indexOf("_") > 0) {
-      return Long.parseLong(incPushVersionId.substring(0, incPushVersionId.indexOf("_")).trim());
-    } else {
-      return Long.parseLong(incPushVersionId);
-    }
+    return Long.parseLong(incPushVersionId.split("_")[0]);
   }
 
   @Override

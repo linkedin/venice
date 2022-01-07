@@ -12,6 +12,8 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+
+import org.apache.commons.codec.binary.Hex;
 import org.testng.Assert;
 
 
@@ -64,7 +66,7 @@ public abstract class AbstractStoreTest {
       doPut(partitionId, key, value);
       foundValue = doGet(partitionId, key);
       Assert.assertEquals(value, foundValue,
-          "The actual value: " + value.toString() + " and expected value: " + foundValue.toString() + " do not match!");
+          "The actual value: " + Hex.encodeHexString(value) + " and expected value: " + Hex.encodeHexString(foundValue) + " do not match!");
     } catch (VeniceException e) {
       Assert.fail("Exception was thrown: " + e.getMessage(), e);
     }
@@ -282,13 +284,12 @@ public abstract class AbstractStoreTest {
       doPut(partitionId, key, value);
       foundValue = doGet(partitionId, key);
       Assert.assertEquals(value, foundValue,
-          "The actual value: " + value.toString() + " and expected value: " + foundValue.toString() + " do not match!");
+          "The actual value: " + Hex.encodeHexString(value) + " and expected value: " + Hex.encodeHexString(foundValue) + " do not match!");
       doDelete(partitionId, key);
-      foundValue = null;
       try {
         foundValue = doGet(partitionId, key);
         if (foundValue != null) {
-          Assert.fail("Delete failed. found a value: " + foundValue.toString() + "  for the key: " + key.toString()
+          Assert.fail("Delete failed. found a value: " + Hex.encodeHexString(foundValue) + "  for the key: " + Hex.encodeHexString(key)
               + " after deletion. ");
         }
       } catch (PersistenceFailureException e) {
@@ -309,11 +310,11 @@ public abstract class AbstractStoreTest {
       doPut(partitionId, key, value);
       foundValue = doGet(partitionId, key);
       Assert.assertEquals(value, foundValue,
-          "The actual value: " + value.toString() + " and expected value: " + foundValue.toString() + " do not match!");
+          "The actual value: " + Hex.encodeHexString(value) + " and expected value: " + Hex.encodeHexString(foundValue) + " do not match!");
       doPut(partitionId, key, updatedValue);
       foundValue = doGet(partitionId, key);
       Assert.assertEquals(updatedValue, foundValue,
-          "The updated value: " + updatedValue.toString() + " and expected value: " + foundValue.toString()
+          "The updated value: " + Hex.encodeHexString(updatedValue) + " and expected value: " + Hex.encodeHexString(foundValue)
               + " do not match!");
     } catch (VeniceException e) {
       Assert.fail("Exception was thrown: " + e.getMessage(), e);
@@ -328,8 +329,8 @@ public abstract class AbstractStoreTest {
       foundValue = doGet(partitionId, key);
       if (foundValue != null) {
         Assert.fail(
-            "Get succeeded for a non Existing key. Found a value: " + foundValue.toString() + "  for the key: " + key
-                .toString());
+            "Get succeeded for a non Existing key. Found a value: " + Hex.encodeHexString(foundValue) + "  for the key: " +
+                Hex.encodeHexString(key));
       }
     } catch (Exception e) {
       //This is expected.

@@ -63,13 +63,13 @@ public class TestVsonAvroDatumWriter {
       Assert.assertEquals(((GenericData.Record) avroObject).get("score"), 2f);
 
       //test querying an invalid field. By default, Avro is gonna return null.
-      Assert.assertEquals(((GenericData.Record) avroObject).get("unknown field"), null);
+      Assert.assertNull(((GenericData.Record) avroObject).get("unknown field"));
     });
 
     //record with null field
     record.put("score", null);
     testWriter(vsonSchemaStr, () -> record, (avroObject) -> {
-      Assert.assertEquals(((GenericData.Record) avroObject).get("score"), null);
+      Assert.assertNull(((GenericData.Record) avroObject).get("score"));
     });
 
     testWriteNullValue(vsonSchemaStr);
@@ -83,7 +83,7 @@ public class TestVsonAvroDatumWriter {
     testWriter(vsonSchemaStr, () -> record, (avroObject) -> {
       Assert.assertEquals(((GenericData.Array) avroObject).get(0), 1);
       Assert.assertEquals(((GenericData.Array) avroObject).get(1), 2);
-      Assert.assertEquals(((GenericData.Array) avroObject).get(2), null);
+      Assert.assertNull(((GenericData.Array) avroObject).get(2));
 
       //test querying an invalid element
       try {
@@ -105,7 +105,7 @@ public class TestVsonAvroDatumWriter {
   }
 
   private void testWriteNullValue(String vsonSchemaStr) throws IOException {
-    testWriter(vsonSchemaStr, () -> null, (avroObject) -> Assert.assertEquals(avroObject, null));
+    testWriter(vsonSchemaStr, () -> null, Assert::assertNull);
   }
 
   private void testWriter(String vsonSchemaStr, Supplier valueSupplier, Consumer valueValidator) throws IOException {

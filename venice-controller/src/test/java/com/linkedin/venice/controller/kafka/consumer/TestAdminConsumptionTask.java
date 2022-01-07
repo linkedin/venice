@@ -737,14 +737,14 @@ public class TestAdminConsumptionTask {
     for (long i = 1; i <= 3; i++) {
       veniceWriter.put(emptyKeyBytes, getKillOfflinePushJobMessage(clusterName, storeTopicName, i),
           AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
-      final Long executionId = i;
+      final long executionId = i;
       TestUtils.waitForNonDeterministicCompletion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
         Map<String, Long> metaData = adminTopicMetadataAccessor.getMetadata(clusterName);
         return AdminTopicMetadataAccessor.getOffsets(metaData).getFirst() == executionId
             && AdminTopicMetadataAccessor.getExecutionId(metaData) == executionId;
       });
 
-      Assert.assertEquals(task.getLastSucceededExecutionId(), executionId,
+      Assert.assertEquals((long) task.getLastSucceededExecutionId(), executionId,
           "After consumption succeed, the last succeed execution id should be updated.");
     }
 

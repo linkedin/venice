@@ -29,8 +29,8 @@ public class TestVsonAvroSerializer {
   private void testSerializerWithNullValue(String vsonSchemaStr) {
     testSerializer(vsonSchemaStr, () -> null,
         (serializer, bytes) -> {
-          Assert.assertEquals(serializer.toObject(bytes), null);
-          Assert.assertEquals(serializer.bytesToAvro(bytes), null);
+          Assert.assertNull(serializer.toObject(bytes));
+          Assert.assertNull(serializer.bytesToAvro(bytes));
         });
   }
 
@@ -127,21 +127,21 @@ public class TestVsonAvroSerializer {
     testSerializer(complexSchemaStr, () -> record, (serializer, bytes) -> {
       Object vsonRecord = ((List) serializer.toObject(bytes)).get(0);
       Assert.assertEquals(((Map) vsonRecord).get("email"), "abc");
-      Assert.assertEquals(((Map) vsonRecord).get("score"), null);
+      Assert.assertNull(((Map) vsonRecord).get("score"));
 
       Object avroRecord = ((GenericData.Array) serializer.bytesToAvro(bytes)).get(0);
       Assert.assertEquals(((GenericData.Record) avroRecord).get("email"), new Utf8("abc"));
-      Assert.assertEquals(((GenericData.Record) avroRecord).get("score"), null);
+      Assert.assertNull(((GenericData.Record) avroRecord).get("score"));
     });
 
     //test list with null element
     record.add(null);
     testSerializer(complexSchemaStr, () -> record, (serializer, bytes) -> {
       Object vsonRecord = ((List) serializer.toObject(bytes)).get(1);
-      Assert.assertEquals(vsonRecord, null);
+      Assert.assertNull(vsonRecord);
 
       Object avroRecord = ((List) serializer.bytesToAvro(bytes)).get(1);
-      Assert.assertEquals(avroRecord, null);
+      Assert.assertNull(avroRecord);
     });
 
     testSerializerWithNullValue(complexSchemaStr);
