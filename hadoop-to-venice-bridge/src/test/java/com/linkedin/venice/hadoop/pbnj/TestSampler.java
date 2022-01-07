@@ -3,6 +3,8 @@ package com.linkedin.venice.hadoop.pbnj;
 import com.linkedin.venice.utils.Utils;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ThreadLocalRandom;
+
 import org.apache.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.DataProvider;
@@ -34,8 +36,8 @@ public class TestSampler {
     // A few random record counts and ratios as well, just for the heck of it.
     while (returnList.size() < 20) {
       double randomRatio = Utils.round(Math.random(), 4);
-      if (randomRatio > 0 && randomRatio < 1 && !returnList.contains(randomRatio)) {
-        long nonDeterministicTotalRecords = (long) (1000000 * (1 + Math.random())); // 1M to 2M
+      if (randomRatio > 0 && randomRatio < 1 && returnList.stream().noneMatch(e -> e[1].equals(randomRatio))) {
+        long nonDeterministicTotalRecords = ThreadLocalRandom.current().nextInt(1_000_000, 2_000_000);
         returnList.add(new Object[]{nonDeterministicTotalRecords, randomRatio});
       }
     }

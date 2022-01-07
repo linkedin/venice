@@ -226,7 +226,7 @@ public class TestHybridQuota {
 
     } catch (VeniceException e) {
       if (recoverFromViolation) {
-        logger.error("Exception got during test of recovering exception: " + e.getStackTrace());
+        logger.error("Exception got during test of recovering exception: ", e);
         throw e;
       }
       // Expected

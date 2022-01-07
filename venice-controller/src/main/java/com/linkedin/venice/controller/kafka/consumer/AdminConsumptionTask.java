@@ -328,9 +328,12 @@ public class AdminConsumptionTask implements Runnable, Closeable {
         }
 
         while (!undelegatedRecords.isEmpty()) {
-          long executionId;
           try {
-            executionId = delegateMessage(undelegatedRecords.peek());
+            long executionId = delegateMessage(undelegatedRecords.peek());
+            if (executionId == lastDelegatedExecutionId) {
+              updateLastOffset(undelegatedRecords.peek().offset());
+            }
+            undelegatedRecords.remove();
           } catch (DataValidationException dve) {
             // Very unlikely but DataValidationException could be thrown here.
             logger.error("Admin consumption task is blocked due to DataValidationException with offset "
@@ -346,12 +349,8 @@ public class AdminConsumptionTask implements Runnable, Closeable {
             stats.recordFailedAdminConsumption();
             break;
           }
-          if (executionId == lastDelegatedExecutionId) {
-            updateLastOffset(undelegatedRecords.poll().offset());
-          } else {
-            undelegatedRecords.poll();
-          }
         }
+
         if (remoteConsumptionEnabled && LatencyUtils.getElapsedTimeInMs(lastUpdateTimeForConsumptionOffsetLag) > CONSUMPTION_LAG_UPDATE_INTERVAL_IN_MS) {
           recordConsumptionLag();
           lastUpdateTimeForConsumptionOffsetLag = System.currentTimeMillis();
@@ -431,7 +430,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     for (Map.Entry<String, Queue<AdminOperationWrapper>> entry : storeAdminOperationsMapWithOffset.entrySet()) {
       if (!entry.getValue().isEmpty()) {
         if (checkOffsetToSkip(entry.getValue().peek().getOffset(), false)) {
-          entry.getValue().poll();
+          entry.getValue().remove();
           skipOffsetCommandHasBeenProcessed = true;
         }
         tasks.add(new AdminExecutionTask(logger, clusterName, entry.getKey(), lastSucceededExecutionIdMap,

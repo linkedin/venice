@@ -5,6 +5,7 @@ import com.linkedin.venice.utils.Pair;
 import java.util.Map;
 import java.util.Queue;
 import org.apache.kafka.common.TopicPartition;
+import org.jetbrains.annotations.Nullable;
 
 /**
  * A {@link PollStrategy} implementation which takes a queue of many poll strategies.
@@ -20,17 +21,17 @@ public class CompositePollStrategy extends AbstractPollStrategy {
     this.pollStrategies = pollStrategies;
   }
 
+  @Nullable
   @Override
   protected Pair<TopicPartition, Long> getNextPoll(Map<TopicPartition, Long> offsets) {
     // We need to make sure some topic + partition has been subscribed before polling
     while (!pollStrategies.isEmpty() && !offsets.isEmpty()) {
       AbstractPollStrategy pollStrategy = pollStrategies.peek();
       Pair<TopicPartition, Long> nextPoll = pollStrategy.getNextPoll(offsets);
-      if (null == nextPoll) {
-        pollStrategies.poll();
-      } else {
+      if (nextPoll != null) {
         return nextPoll;
       }
+      pollStrategies.remove();
     }
     return null;
   }

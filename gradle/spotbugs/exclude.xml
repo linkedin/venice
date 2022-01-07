@@ -18,9 +18,15 @@
     </Or>
   </Match>
   <Match>
-    <Bug category="I18N"/>
+    <Bug pattern="NP_BOOLEAN_RETURN_NULL" />
+    <Class name="com.linkedin.venice.schema.vson.VsonAvroSerializer"/>
+    <Method name="readBoolean"/>
   </Match>
   <Match>
-    <Bug pattern="RCN_REDUNDANT_NULLCHECK_OF_NONNULL_VALUE"/>
+    <Or>
+      <Bug category="I18N"/>
+      <Bug pattern="RCN_REDUNDANT_NULLCHECK_OF_NONNULL_VALUE"/>
+      <Bug pattern="RCN_REDUNDANT_NULLCHECK_WOULD_HAVE_BEEN_A_NPE"/>
+    </Or>
   </Match>
 </FindBugsFilter>

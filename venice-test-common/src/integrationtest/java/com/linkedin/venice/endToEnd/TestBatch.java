@@ -470,7 +470,7 @@ public abstract class TestBatch {
             "{\"firstName\": \"first_name_" + i + "\", \"lastName\": \"last_name_" + i + "\"}");
       }
       for (int i = 51; i <= 150; i++) {
-        Assert.assertEquals(avroClient.get(Integer.toString(i)).get(), null);
+        Assert.assertNull(avroClient.get(Integer.toString(i)).get());
       }
     }, storeName, new UpdateStoreQueryParams().setWriteComputationEnabled(true)
         .setLeaderFollowerModel(true)
@@ -630,7 +630,7 @@ public abstract class TestBatch {
 
         key.put("id", Integer.toString(i));
 
-        Assert.assertEquals(avroClient.get(key).get(), null);
+        Assert.assertNull(avroClient.get(key).get());
       }
     });
   }
@@ -667,7 +667,7 @@ public abstract class TestBatch {
 
         key.put("id", Integer.toString(i));
 
-        Assert.assertEquals(avroClient.get(key).get(), null);
+        Assert.assertNull(avroClient.get(key).get());
       }
     });
   }
@@ -704,7 +704,7 @@ public abstract class TestBatch {
 
         key.put("id", Integer.toString(i));
 
-        Assert.assertEquals(avroClient.get(key).get(), null);
+        Assert.assertNull(avroClient.get(key).get());
       }
     });
   }

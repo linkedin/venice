@@ -551,7 +551,7 @@ public class TopicManagerTest {
     delayedTopicCreationThread.setDaemon(true);
     delayedTopicCreationThread.start();
     // Just because start() is called does not mean thread is actually started running. Wait for a significant amount of time
-    delayedTopicCreationStartedSignal.await(5, TimeUnit.SECONDS);
+    Assert.assertTrue(delayedTopicCreationStartedSignal.await(5, TimeUnit.SECONDS));
 
     Duration initialBackoff = Duration.ofSeconds(delayedTopicCreationInSeconds + 2);
     Duration maxBackoff = Duration.ofSeconds(initialBackoff.getSeconds() + 1);

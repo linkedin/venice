@@ -10,23 +10,24 @@ public class VeniceException extends RuntimeException {
   private static final long serialVersionUID = 1L;
   protected ExceptionType exceptionType = ExceptionType.GENERAL_ERROR;
 
-  public VeniceException(){
+  public VeniceException() {
     super();
   }
 
-  public VeniceException(String s){
+  public VeniceException(String s) {
     super(s);
   }
 
-  public VeniceException(Throwable t){
+  public VeniceException(Throwable t) {
     super(t);
   }
-  public VeniceException(String s, Throwable t){
-    super(s,t);
+
+  public VeniceException(String s, Throwable t) {
+    super(s, t);
   }
 
-  public VeniceException(String s, Throwable t, ExceptionType exceptionType){
-    super(s,t);
+  public VeniceException(String s, Throwable t, ExceptionType exceptionType) {
+    super(s, t);
     this.exceptionType = exceptionType;
   }
 
@@ -46,5 +47,4 @@ public class VeniceException extends RuntimeException {
   public final ExceptionType getExceptionType() {
     return exceptionType;
   }
-
 }

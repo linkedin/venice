@@ -66,7 +66,7 @@ public class TestVenicePath {
     @Nonnull
     @Override
     public String getLocation() {
-      return null;
+      return "fake_location";
     }
   }
 

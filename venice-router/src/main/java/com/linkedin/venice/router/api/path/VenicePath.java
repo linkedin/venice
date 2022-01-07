@@ -204,9 +204,8 @@ public abstract class VenicePath implements ResourcePath<RouterKey> {
     if (!smartLongTailRetryEnabled) {
       return true;
     }
-    boolean isRetryRequest = isRetryRequest();
-    return !isRetryRequest || // original request
-        isRetryRequest && !slowStorageNodeSet.contains(storageNode); // retry request
+    return !isRetryRequest() || // original request
+              !slowStorageNodeSet.contains(storageNode); // retry request
   }
 
   public void recordOriginalRequestStartTimestamp() {

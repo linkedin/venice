@@ -276,7 +276,7 @@ public class TestWriteComputeProcessor {
     GenericData.Record deleteRecord = new GenericData.Record(deleteSchema);
 
     Object result = writeComputeProcessor.updateRecord(recordSchema, recordWriteComputeSchema, originalRecord, deleteRecord);
-    Assert.assertEquals(result, null);
+    Assert.assertNull(result);
   }
 
   @Test
