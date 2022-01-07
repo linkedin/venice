@@ -9,11 +9,15 @@ import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.utils.locks.AutoCloseableLock;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -53,6 +57,9 @@ public class HybridStoreQuotaEnforcement implements StoreDataChangedListener {
    */
   private long storeQuotaInBytes;
   private long diskQuotaPerPartition;
+  private boolean isHybridStoreDiskQuotaEnabled;
+  // protects isHybridStoreDiskQuotaEnabled.
+  private final Lock lock = new ReentrantLock();
 
   public HybridStoreQuotaEnforcement(StoreIngestionTask storeIngestionTask, AbstractStorageEngine storageEngine,
       Store store, String versionTopic, int storePartitionCount,
@@ -69,6 +76,7 @@ public class HybridStoreQuotaEnforcement implements StoreDataChangedListener {
     this.storeQuotaInBytes = store.getStorageQuotaInByte();
     this.diskQuotaPerPartition = this.storeQuotaInBytes / this.storePartitionCount;
     int storeVersion = Version.parseVersionFromKafkaTopicName(versionTopic);
+    this.isHybridStoreDiskQuotaEnabled = store.isHybridStoreDiskQuotaEnabled();
     Optional<Version> version = store.getVersion(storeVersion);
     checkVersionIsOnline(version);
   }
@@ -81,6 +89,35 @@ public class HybridStoreQuotaEnforcement implements StoreDataChangedListener {
   @Override
   public void handleStoreDeleted(String storeName) {
     // np-op
+  }
+
+  private boolean isHybridStoreDiskQuotaUpdated(Store newStore) {
+    return isHybridStoreDiskQuotaEnabled != newStore.isHybridStoreDiskQuotaEnabled()
+        || storeQuotaInBytes != newStore.getStorageQuotaInByte();
+  }
+
+  /**
+   * This function updates the per-partition HybridStoreQuotaStatus based on the most recent settings.
+   * It uses a zeroed partition-to-size map to report the current hybrid store quota status for each partition without
+   * introducing any side effect.
+   */
+  private void computeAndUpdatePartitionQuotaStatus() {
+    Map<Integer, Integer> partitionSize = new HashMap<>();
+    for (int partition : partitionConsumptionStateMap.keySet()) {
+      partitionSize.put(partition, 0);
+    }
+
+    // checkPartitionQuota needs to be thread safe, as it is called in multiple threads.
+    checkPartitionQuota(partitionSize);
+  }
+
+  /**
+   * This function reports QUOTA_NOT_VIOLATED for all partitions of the topic.
+   */
+  private void reportStoreQuotaNotViolated() {
+    for (int partition : partitionConsumptionStateMap.keySet()) {
+      storeIngestionTask.reportQuotaNotViolated(partition);
+    }
   }
 
   @Override
@@ -97,8 +134,23 @@ public class HybridStoreQuotaEnforcement implements StoreDataChangedListener {
           + "enabled, so we reset the store quota and resume all partitions.");
       resumeAllPartitions();
     }
-    this.storeQuotaInBytes = store.getStorageQuotaInByte();
-    this.diskQuotaPerPartition = this.storeQuotaInBytes / this.storePartitionCount;
+
+    try (AutoCloseableLock ignored = new AutoCloseableLock(lock)) {
+      boolean isHybridQuotaUpdated = isHybridStoreDiskQuotaUpdated(store);
+      boolean isHybridQuotaChangedToDisabled = isHybridStoreDiskQuotaEnabled && !store.isHybridStoreDiskQuotaEnabled();
+
+      this.storeQuotaInBytes = store.getStorageQuotaInByte();
+      this.diskQuotaPerPartition = this.storeQuotaInBytes / this.storePartitionCount;
+      this.isHybridStoreDiskQuotaEnabled = store.isHybridStoreDiskQuotaEnabled();
+
+      if (isHybridQuotaChangedToDisabled) {
+        // A store is changed from disk quota enabled to disabled, mark all its partitions as not violated.
+        reportStoreQuotaNotViolated();
+      } else if (isHybridQuotaUpdated) {
+        // For other cases that disk quota gets updated, recompute all partition quota status and report if there is a change.
+        computeAndUpdatePartitionQuotaStatus();
+      }
+    }
   }
 
   /**
@@ -109,9 +161,16 @@ public class HybridStoreQuotaEnforcement implements StoreDataChangedListener {
    *
    * @param subscribedPartitionToSize with partition id as key and batch records size as value
    */
-  protected synchronized void checkPartitionQuota(Map<Integer, Integer> subscribedPartitionToSize) {
-    for (Map.Entry<Integer, Integer> curr : subscribedPartitionToSize.entrySet()) {
-      enforcePartitionQuota(curr.getKey(), curr.getValue());
+  protected void checkPartitionQuota(Map<Integer, Integer> subscribedPartitionToSize) {
+    try (AutoCloseableLock ignored = new AutoCloseableLock(lock)) {
+      if (!isHybridStoreDiskQuotaEnabled) {
+        logger.warn("Skip checking and reporting storage quota status");
+        return;
+      }
+
+      for (Map.Entry<Integer, Integer> curr : subscribedPartitionToSize.entrySet()) {
+        enforcePartitionQuota(curr.getKey(), curr.getValue());
+      }
     }
   }
 
@@ -166,7 +225,7 @@ public class HybridStoreQuotaEnforcement implements StoreDataChangedListener {
       pausePartition(partition, consumingTopic);
       if (shouldLogQuotaExceeded) {
         logger.info("Quota exceeded for store " + storeName + " partition " + partition + ", paused this partition." + versionTopic);
-     }
+      }
     } else { /** we have free space for this partition */
       /**
        *  Paused partitions could be resumed

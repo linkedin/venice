@@ -19,6 +19,7 @@ import io.tehuti.metrics.MetricsRepository;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
+import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -36,6 +37,7 @@ public class VeniceController {
   private AdminSparkServer secureAdminServer;
   private TopicCleanupService topicCleanupService;
   private Optional<StoreBackupVersionCleanupService> storeBackupVersionCleanupService;
+  private final long zkClientOpRetryTimeoutInMs;
 
   private final boolean sslEnabled;
   private final VeniceControllerMultiClusterConfig multiClusterConfigs;
@@ -64,12 +66,19 @@ public class VeniceController {
       Optional<DynamicAccessController> accessController, Optional<AuthorizerService> authorizerService, D2Client d2Client,
       Optional<ClientConfig> routerClientConfig) {
     this(propertiesList, metricsRepository, d2ServerList, accessController, authorizerService, d2Client,
-        routerClientConfig, Optional.empty());
+        routerClientConfig, Optional.empty(), ZkClient.DEFAULT_OPERATION_TIMEOUT);
   }
 
   public VeniceController(List<VeniceProperties> propertiesList, MetricsRepository metricsRepository, List<D2Server> d2ServerList,
       Optional<DynamicAccessController> accessController, Optional<AuthorizerService> authorizerService, D2Client d2Client,
-      Optional<ClientConfig> routerClientConfig, Optional<ICProvider> icProvider) {
+      Optional<ClientConfig> routerClientConfig, long zkClientOpRetryTimeoutInMs) {
+    this(propertiesList, metricsRepository, d2ServerList, accessController, authorizerService, d2Client,
+        routerClientConfig, Optional.empty(), zkClientOpRetryTimeoutInMs);
+  }
+
+  public VeniceController(List<VeniceProperties> propertiesList, MetricsRepository metricsRepository, List<D2Server> d2ServerList,
+      Optional<DynamicAccessController> accessController, Optional<AuthorizerService> authorizerService, D2Client d2Client,
+      Optional<ClientConfig> routerClientConfig, Optional<ICProvider> icProvider, long zkClientOpRetryTimeoutInMs) {
     this.multiClusterConfigs = new VeniceControllerMultiClusterConfig(propertiesList);
     this.metricsRepository = metricsRepository;
     this.d2ServerList = d2ServerList;
@@ -80,6 +89,7 @@ public class VeniceController {
     this.d2Client = d2Client;
     this.routerClientConfig = routerClientConfig;
     this.icProvider = icProvider;
+    this.zkClientOpRetryTimeoutInMs = zkClientOpRetryTimeoutInMs;
 
     createServices();
     KafkaClientStats.registerKafkaClientStats(metricsRepository, "KafkaClientStats", Optional.empty());
@@ -87,7 +97,8 @@ public class VeniceController {
 
   private void createServices() {
     controllerService = new VeniceControllerService(multiClusterConfigs, metricsRepository, sslEnabled,
-        multiClusterConfigs.getSslConfig(), accessController, authorizerService, d2Client, routerClientConfig, icProvider);
+        multiClusterConfigs.getSslConfig(), accessController, authorizerService, d2Client, routerClientConfig,
+        icProvider, zkClientOpRetryTimeoutInMs);
     adminServer = new AdminSparkServer(
         multiClusterConfigs.getAdminPort(),
         controllerService.getVeniceHelixAdmin(),
