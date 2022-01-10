@@ -1,7 +1,10 @@
 package com.linkedin.venice.hadoop.input.kafka.chunk;
 
 import com.linkedin.venice.storage.protocol.ChunkedKeySuffix;
-import com.linkedin.venice.utils.Utils;
+
+import org.apache.commons.lang.Validate;
+
+import javax.annotation.Nonnull;
 import java.nio.ByteBuffer;
 
 
@@ -12,9 +15,11 @@ public class RawKeyBytesAndChunkedKeySuffix {
   private final ByteBuffer rawKeyBytes;
   private final ByteBuffer chunkedKeySuffixBytes;
 
-  public RawKeyBytesAndChunkedKeySuffix(ByteBuffer rawKeyBytes, ByteBuffer chunkedKeySuffixBytes) {
-    this.rawKeyBytes =  Utils.notNull(rawKeyBytes);
-    this.chunkedKeySuffixBytes = Utils.notNull(chunkedKeySuffixBytes);
+  public RawKeyBytesAndChunkedKeySuffix(@Nonnull ByteBuffer rawKeyBytes, @Nonnull ByteBuffer chunkedKeySuffixBytes) {
+    Validate.notNull(rawKeyBytes);
+    Validate.notNull(chunkedKeySuffixBytes);
+    this.rawKeyBytes = rawKeyBytes;
+    this.chunkedKeySuffixBytes = chunkedKeySuffixBytes;
   }
 
   public ByteBuffer getRawKeyBytes() {

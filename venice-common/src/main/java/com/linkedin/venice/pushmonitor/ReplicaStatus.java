@@ -1,6 +1,7 @@
 package com.linkedin.venice.pushmonitor;
 
-import com.linkedin.venice.utils.Utils;
+import org.apache.commons.lang.StringUtils;
+
 import java.time.LocalDateTime;
 import java.util.Iterator;
 import java.util.LinkedList;
@@ -102,7 +103,7 @@ public class ReplicaStatus {
     removeOldHistoryStatuses(false);
 
     StatusSnapshot snapshot = new StatusSnapshot(status, LocalDateTime.now().toString());
-    if (!Utils.isNullOrEmpty(incrementalPushVersion)) {
+    if (!StringUtils.isEmpty(incrementalPushVersion)) {
       snapshot.setIncrementalPushVersion(incrementalPushVersion);
     }
     statusHistory.add(snapshot);

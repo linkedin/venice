@@ -33,6 +33,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+
+import org.apache.commons.lang.StringUtils;
 import org.apache.http.client.utils.URLEncodedUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -87,7 +89,7 @@ public class ControllerClient implements Closeable {
    * @param discoveryUrls comma-delimited urls to find master controller.
    */
   public ControllerClient(String clusterName, String discoveryUrls, Optional<SSLFactory> sslFactory) {
-    if (Utils.isNullOrEmpty(discoveryUrls)) {
+    if (StringUtils.isEmpty(discoveryUrls)) {
       throw new VeniceException("Controller discovery url list is empty: " + discoveryUrls);
     }
 

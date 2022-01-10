@@ -3,7 +3,8 @@ package com.linkedin.venice.message;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.storage.protocol.ChunkId;
 import com.linkedin.venice.utils.ByteUtils;
-import com.linkedin.venice.utils.Utils;
+
+import javax.annotation.Nonnull;
 
 /**
  * Class which stores the components of a Kafka Key, and is the format specified in the
@@ -19,8 +20,8 @@ public class KafkaKey {
     this(MessageType.PUT.getKeyHeaderByte(), key, chunkId);
   }
 
-  public KafkaKey(MessageType messageType, byte[] key) {
-    this(Utils.notNull(messageType).getKeyHeaderByte(), key);
+  public KafkaKey(@Nonnull MessageType messageType, byte[] key) {
+    this(messageType.getKeyHeaderByte(), key);
   }
 
   public KafkaKey(byte keyHeaderByte, byte[] key) {

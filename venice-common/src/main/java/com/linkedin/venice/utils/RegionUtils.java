@@ -1,6 +1,8 @@
 package com.linkedin.venice.utils;
 
 import java.util.Objects;
+
+import org.apache.commons.lang.StringUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -14,7 +16,7 @@ public class RegionUtils {
   public static String getLocalRegionName(VeniceProperties props, boolean isParentRegion) {
     String regionName;
     String regionNameFromConfig = props.getString(LOCAL_REGION_NAME, "");
-    if (!Utils.isNullOrEmpty(regionNameFromConfig)) {
+    if (!StringUtils.isEmpty(regionNameFromConfig)) {
       regionName = regionNameFromConfig + (isParentRegion ? ".parent" : "");
     } else {
       String regionNameFromEnv = null;
@@ -28,7 +30,7 @@ public class RegionUtils {
       } catch (Exception e) {
         logger.warn("Error when trying to retrieve environment variable for region name; will use default value instead.", e);
       }
-      regionName = Utils.isNullOrEmpty(regionNameFromEnv)
+      regionName = StringUtils.isEmpty(regionNameFromEnv)
           ? "" : regionNameFromEnv + (isParentRegion ? ".parent" : "");
     }
     return regionName;

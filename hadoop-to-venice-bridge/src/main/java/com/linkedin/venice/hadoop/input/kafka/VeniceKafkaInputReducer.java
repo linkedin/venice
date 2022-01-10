@@ -8,14 +8,17 @@ import com.linkedin.venice.hadoop.input.kafka.chunk.ChunkAssembler;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.utils.ByteUtils;
-import com.linkedin.venice.utils.CollectionUtils;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Optional;
+
+import org.apache.commons.lang.Validate;
 import org.apache.hadoop.io.BytesWritable;
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapred.Reporter;
+
+import javax.annotation.Nonnull;
 
 
 /**
@@ -51,8 +54,8 @@ public class VeniceKafkaInputReducer extends VeniceReducer {
         extractChunkedMessage(keyBytes, mapperValues) : extractNonChunkedMessage(keyBytes, mapperValues);
   }
 
-  private Optional<VeniceWriterMessage> extractChunkedMessage(final byte[] keyBytes, List<KafkaInputMapperValue> mapperValues) {
-    CollectionUtils.assertCollectionsNotEmpty(mapperValues);
+  private Optional<VeniceWriterMessage> extractChunkedMessage(final byte[] keyBytes, @Nonnull List<KafkaInputMapperValue> mapperValues) {
+    Validate.notEmpty(mapperValues);
     return getChunkAssembler().assembleAndGetValue(keyBytes, mapperValues).map(
         valueBytesAndSchemaId -> new VeniceWriterMessage(
             keyBytes,
@@ -68,8 +71,8 @@ public class VeniceKafkaInputReducer extends VeniceReducer {
     return chunkAssembler;
   }
 
-  private Optional<VeniceWriterMessage> extractNonChunkedMessage(final byte[] keyBytes, List<KafkaInputMapperValue> mapperValues) {
-    CollectionUtils.assertCollectionsNotEmpty(mapperValues);
+  private Optional<VeniceWriterMessage> extractNonChunkedMessage(final byte[] keyBytes, @Nonnull List<KafkaInputMapperValue> mapperValues) {
+    Validate.notEmpty(mapperValues);
     // Only get the value with the largest offset for the purpose of compaction
     KafkaInputMapperValue lastValue = null;
     long largestOffset = Long.MIN_VALUE;

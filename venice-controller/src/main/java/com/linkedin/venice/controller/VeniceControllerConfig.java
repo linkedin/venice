@@ -21,6 +21,8 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
+
+import org.apache.commons.lang.StringUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -679,7 +681,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
       String datacenterWhitelist, PutToMap mappingFunction) {
     Properties childDataCenterKafkaUriProps = clusterPros.clipAndFilterNamespace(configPrefix).toProperties();
 
-    if (Utils.isNullOrEmpty(datacenterWhitelist)) {
+    if (StringUtils.isEmpty(datacenterWhitelist)) {
       throw new VeniceException("child controller list must have a whitelist");
     }
 

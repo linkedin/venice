@@ -1,7 +1,9 @@
 package com.linkedin.davinci.replication.merge;
 
-import com.linkedin.venice.utils.Utils;
 import org.apache.avro.generic.GenericRecord;
+import org.apache.commons.lang.Validate;
+
+import javax.annotation.Nonnull;
 
 
 /**
@@ -19,9 +21,11 @@ public class ValueAndReplicationMetadata<T> {
     this.replicationMetadata = null;
   }
 
-  public ValueAndReplicationMetadata(T value, GenericRecord replicationMetadata) {
-    this.value = Utils.notNull(value);
-    this.replicationMetadata = Utils.notNull(replicationMetadata);
+  public ValueAndReplicationMetadata(@Nonnull T value, @Nonnull GenericRecord replicationMetadata) {
+    Validate.notNull(value);
+    Validate.notNull(replicationMetadata);
+    this.value = value;
+    this.replicationMetadata = replicationMetadata;
   }
 
   public T getValue() {

@@ -3,7 +3,6 @@ package com.linkedin.venice.kafka.consumer;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.utils.LatencyUtils;
-import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.time.Duration;
 import java.time.Instant;
@@ -13,6 +12,8 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.StringJoiner;
+
+import org.apache.commons.lang.Validate;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.common.Metric;
@@ -20,6 +21,8 @@ import org.apache.kafka.common.MetricName;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+
+import javax.annotation.Nonnull;
 
 
 /**
@@ -50,8 +53,9 @@ class TopicPartitionsOffsetsTracker {
         this(offsetsUpdateInterval, DEFAULT_MIN_LOG_INTERVAL);
     }
 
-    TopicPartitionsOffsetsTracker(Duration offsetsUpdateInterval, Duration minLogInterval) {
-        this.offsetsUpdateInterval = Utils.notNull(offsetsUpdateInterval);
+    TopicPartitionsOffsetsTracker(@Nonnull Duration offsetsUpdateInterval, Duration minLogInterval) {
+        Validate.notNull(offsetsUpdateInterval);
+        this.offsetsUpdateInterval = offsetsUpdateInterval;
         this.lastMetricsCollectedTime = null;
         this.topicPartitionCurrentOffset = new VeniceConcurrentHashMap<>();
         this.topicPartitionEndOffset = new VeniceConcurrentHashMap<>();

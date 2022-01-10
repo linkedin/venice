@@ -2,7 +2,6 @@ package com.linkedin.venice.router.api;
 
 import com.linkedin.ddsstorage.netty4.misc.BasicFullHttpRequest;
 import com.linkedin.venice.router.utils.VeniceRouterUtils;
-import com.linkedin.venice.utils.Utils;
 import io.netty.handler.codec.http.HttpRequest;
 import java.io.UnsupportedEncodingException;
 import java.net.URI;
@@ -11,6 +10,8 @@ import java.net.URLDecoder;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
+
+import org.apache.commons.lang.StringUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -107,8 +108,8 @@ public class VenicePathParserHelper {
   }
 
   public boolean isInvalidStorageRequest(){
-    return Utils.isNullOrEmpty(resourceType)
+    return StringUtils.isEmpty(resourceType)
         || (!resourceType.equals(TYPE_STORAGE))
-        || Utils.isNullOrEmpty(resourceName);
+        || StringUtils.isEmpty(resourceName);
   }
 }

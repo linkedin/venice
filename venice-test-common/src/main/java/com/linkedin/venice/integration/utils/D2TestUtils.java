@@ -17,7 +17,9 @@ import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
 import com.linkedin.venice.exceptions.VeniceException;
 
 import com.linkedin.venice.utils.SslUtils;
-import com.linkedin.venice.utils.Utils;
+
+import org.apache.commons.lang.StringUtils;
+
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -25,7 +27,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
 import static com.linkedin.venice.client.store.ClientConfig.*;
@@ -69,7 +70,7 @@ public class D2TestUtils {
 
   public static String getD2ServiceName(String clusterToD2, String clusterName) {
     String d2 = null;
-    if (!Utils.isNullOrEmpty(clusterToD2)) {
+    if (!StringUtils.isEmpty(clusterToD2)) {
       d2 = clusterToD2.substring(clusterToD2.indexOf(clusterName) + clusterName.length() + 1);
       int end = d2.indexOf(",");
       if (end > 0) {

@@ -3,7 +3,6 @@ package com.linkedin.venice.router;
 import com.linkedin.venice.router.api.VenicePathParserHelper;
 import com.linkedin.venice.router.stats.HealthCheckStats;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
-import com.linkedin.venice.utils.Utils;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
@@ -11,6 +10,8 @@ import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpRequest;
 import io.netty.util.ReferenceCountUtil;
 import java.net.InetSocketAddress;
+
+import org.apache.commons.lang.StringUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -41,7 +42,7 @@ public class HealthCheckHandler extends SimpleChannelInboundHandler<HttpRequest>
     } else if (msg.method().equals(HttpMethod.GET)) {
       VenicePathParserHelper helper = parseRequest(msg);
 
-      if (TYPE_HEALTH_CHECK.equals(helper.getResourceType()) && Utils.isNullOrEmpty(helper.getResourceName())) {
+      if (TYPE_HEALTH_CHECK.equals(helper.getResourceType()) && StringUtils.isEmpty(helper.getResourceName())) {
         isHealthCheck = true;
       }
     }

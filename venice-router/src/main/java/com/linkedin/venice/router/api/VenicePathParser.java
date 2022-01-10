@@ -24,8 +24,10 @@ import com.linkedin.venice.router.streaming.VeniceChunkedWriteHandler;
 import com.linkedin.venice.router.utils.VeniceRouterUtils;
 import com.linkedin.venice.streaming.StreamingUtils;
 import com.linkedin.venice.utils.NamedThreadFactory;
-import com.linkedin.venice.utils.Utils;
 import io.netty.channel.ChannelHandlerContext;
+
+import org.apache.commons.lang.StringUtils;
+
 import java.util.Collection;
 import java.util.Objects;
 import java.util.Optional;
@@ -117,7 +119,7 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
           BAD_REQUEST, "Requested resource type: " + resourceType + " is not a valid type");
     }
     String storeName = pathHelper.getResourceName();
-    if (Utils.isNullOrEmpty(storeName)) {
+    if (StringUtils.isEmpty(storeName)) {
       throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.empty(), Optional.empty(),
           BAD_REQUEST, "Request URI must have storeName.  Uri is: " + uri);
     }

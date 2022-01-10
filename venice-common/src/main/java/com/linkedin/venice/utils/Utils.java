@@ -52,6 +52,7 @@ import org.apache.avro.Schema;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang.StringUtils;
+import org.apache.commons.lang.Validate;
 import org.apache.http.HttpStatus;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -93,55 +94,12 @@ public class Utils {
   }
 
   /**
-   * Throw an IllegalArgumentException if the argument is null, otherwise just
-   * return the argument.
-   *
-   * @param t The thing to check for nullness.
-   * @param message The message to put in the exception if it is null
-   * @param <T> The type of the thing
-   * @return t
-   */
-  public static <T> T notNull(T t, String message) {
-    if (t == null) {
-      throw new IllegalArgumentException(message);
-    }
-    return t;
-  }
-
-  /**
-   * Throw an IllegalArgumentException if the argument is null, otherwise just
-   * return the argument.
-   *
-   * Useful for assignment as in this.thing = Utils.notNull(thing);
-   *
-   * @param t  The thing to check for nullness.
-   * @param <T>  The type of the thing
-   * @return t
-   */
-  public static <T> T notNull(T t) {
-    if (t == null) {
-      throw new IllegalArgumentException("This object MUST be non-null.");
-    }
-    return t;
-  }
-
-  /**
    * Run "function" on "t" if "t" is not null
    */
   public static <T> void computeIfNotNull(T t, Consumer<T> function) {
     if (null != t) {
       function.accept(t);
     }
-  }
-
-  public static String stringNotNullNorEmpty(String stringObject) {
-    if (stringObject == null) {
-      throw new IllegalArgumentException("This String object MUST be non-null.");
-    }
-    if (stringObject.isEmpty()) {
-      throw new IllegalArgumentException("This String object MUST be non-empty.");
-    }
-    return stringObject;
   }
 
   /**
@@ -313,10 +271,6 @@ public class Utils {
       Thread.currentThread().interrupt();
       return false;
     }
-  }
-
-  public static boolean isNullOrEmpty(String value) {
-    return value == null || value.length() == 0;
   }
 
   public static int parseIntFromString(String value, String fieldName) {
@@ -727,7 +681,8 @@ public class Utils {
     }
 
     public ConfigEntity(@Nonnull String configName, @Nullable T defaultValue, @Nullable String doc) {
-      this.configName = stringNotNullNorEmpty(configName);
+      Validate.notEmpty(configName);
+      this.configName = configName;
       this.defaultValue = defaultValue;
       this.doc = doc;
     }

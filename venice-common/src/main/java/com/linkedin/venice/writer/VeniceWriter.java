@@ -56,12 +56,15 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
 import org.apache.avro.specific.FixedSize;
 import org.apache.avro.util.Utf8;
+import org.apache.commons.lang.Validate;
 import org.apache.kafka.clients.producer.Callback;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.errors.TopicAuthorizationException;
 import org.apache.kafka.common.protocol.Errors;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+
+import javax.annotation.Nonnull;
 
 import static com.linkedin.venice.ConfigKeys.*;
 
@@ -779,25 +782,38 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   /**
    * @param debugInfo arbitrary key/value pairs of information that will be propagated alongside the control message.
    */
-  public void broadcastStartOfBufferReplay(List<Long> sourceOffsets, String sourceKafkaCluster, String sourceTopicName, Map<String, String> debugInfo) {
+  public void broadcastStartOfBufferReplay(
+      @Nonnull List<Long> sourceOffsets,
+      @Nonnull String sourceKafkaCluster,
+      @Nonnull String sourceTopicName,
+      Map<String, String> debugInfo) {
+    Validate.notNull(sourceOffsets);
+    Validate.notEmpty(sourceKafkaCluster);
+    Validate.notEmpty(sourceTopicName);
     ControlMessage controlMessage = getEmptyControlMessage(ControlMessageType.START_OF_BUFFER_REPLAY);
     StartOfBufferReplay startOfBufferReplay = new StartOfBufferReplay();
-    startOfBufferReplay.sourceOffsets = Utils.notNull(sourceOffsets);
-    startOfBufferReplay.sourceKafkaCluster = Utils.notNull(sourceKafkaCluster);
-    startOfBufferReplay.sourceTopicName = Utils.notNull(sourceTopicName);
+    startOfBufferReplay.sourceOffsets = sourceOffsets;
+    startOfBufferReplay.sourceKafkaCluster = sourceKafkaCluster;
+    startOfBufferReplay.sourceTopicName = sourceTopicName;
     controlMessage.controlMessageUnion = startOfBufferReplay;
     broadcastControlMessage(controlMessage, debugInfo);
     // Flush start of push message to avoid data message arrives before it.
     producer.flush();
   }
 
-  public void broadcastTopicSwitch(List<CharSequence> sourceKafkaCluster, String sourceTopicName, Long rewindStartTimestamp,
+  public void broadcastTopicSwitch(
+      @Nonnull List<CharSequence> sourceKafkaCluster,
+      @Nonnull String sourceTopicName,
+      @Nonnull Long rewindStartTimestamp,
       Map<String, String> debugInfo) {
+    Validate.notNull(sourceKafkaCluster);
+    Validate.notEmpty(sourceTopicName);
+    Validate.notNull(rewindStartTimestamp);
     ControlMessage controlMessage = getEmptyControlMessage(ControlMessageType.TOPIC_SWITCH);
     TopicSwitch topicSwitch = new TopicSwitch();
-    topicSwitch.sourceKafkaServers = Utils.notNull(sourceKafkaCluster);
-    topicSwitch.sourceTopicName = Utils.notNull(sourceTopicName);
-    topicSwitch.rewindStartTimestamp = Utils.notNull(rewindStartTimestamp);
+    topicSwitch.sourceKafkaServers = sourceKafkaCluster;
+    topicSwitch.sourceTopicName = sourceTopicName;
+    topicSwitch.rewindStartTimestamp = rewindStartTimestamp;
     controlMessage.controlMessageUnion = topicSwitch;
     broadcastControlMessage(controlMessage, debugInfo);
     producer.flush();

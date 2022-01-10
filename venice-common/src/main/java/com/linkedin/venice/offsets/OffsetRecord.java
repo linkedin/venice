@@ -9,7 +9,6 @@ import com.linkedin.venice.kafka.protocol.state.ProducerPartitionState;
 import com.linkedin.venice.kafka.validation.OffsetRecordTransformer;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
-import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -21,6 +20,9 @@ import org.apache.avro.generic.GenericDatumWriter;
 import org.apache.avro.io.ByteBufferToHexFormatJsonEncoder;
 import org.apache.avro.io.Encoder;
 import org.apache.avro.util.Utf8;
+import org.apache.commons.lang.Validate;
+
+import javax.annotation.Nonnull;
 
 import static com.linkedin.venice.writer.VeniceWriter.*;
 
@@ -261,9 +263,9 @@ public class OffsetRecord {
   /**
    * Clone the checkpoint upstream offset map to another map provided as the input.
    */
-  public void cloneUpstreamOffsetMap(Map<String, Long> checkpointUpstreamOffsetMapReceiver) {
+  public void cloneUpstreamOffsetMap(@Nonnull Map<String, Long> checkpointUpstreamOffsetMapReceiver) {
     if (partitionState.upstreamOffsetMap != null && !partitionState.upstreamOffsetMap.isEmpty()) {
-      Utils.notNull(checkpointUpstreamOffsetMapReceiver);
+      Validate.notNull(checkpointUpstreamOffsetMapReceiver);
       checkpointUpstreamOffsetMapReceiver.clear();
       for (Map.Entry<CharSequence, Long> entry : partitionState.upstreamOffsetMap.entrySet()) {
         checkpointUpstreamOffsetMapReceiver.put(entry.getKey().toString(), entry.getValue());

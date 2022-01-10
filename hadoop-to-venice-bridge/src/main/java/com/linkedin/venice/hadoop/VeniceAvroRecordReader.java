@@ -15,7 +15,6 @@ import java.util.Collections;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
-import javax.validation.constraints.NotNull;
 import org.apache.avro.Schema;
 import org.apache.avro.file.DataFileStream;
 import org.apache.avro.generic.GenericDatumReader;
@@ -164,7 +163,6 @@ public class VeniceAvroRecordReader extends AbstractVeniceRecordReader<AvroWrapp
     return storeSchema;
   }
 
-  @NotNull
   @Override
   public Iterator<Pair<byte[], byte[]>> iterator() {
     if (avroDataFileStream == null) {

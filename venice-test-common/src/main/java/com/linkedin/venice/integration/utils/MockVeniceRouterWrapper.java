@@ -31,6 +31,7 @@ import java.util.concurrent.TimeUnit;
 
 import com.linkedin.venice.schema.SchemaEntry;
 
+import org.apache.commons.lang.StringUtils;
 import org.mockito.Matchers;
 import org.mockito.Mockito;
 
@@ -97,7 +98,7 @@ public class MockVeniceRouterWrapper extends ProcessWrapper {
     return (serviceName, dataDirectory) -> {
       int port = Utils.getFreePort();
       List<D2Server> d2ServerList;
-      if (Utils.isNullOrEmpty(zkAddress)) {
+      if (StringUtils.isEmpty(zkAddress)) {
         d2ServerList = new ArrayList<>();
       } else {
         d2ServerList = D2TestUtils.getD2Servers(zkAddress, "http://localhost:" + port, "https://localhost:" + sslPortFromPort(port));

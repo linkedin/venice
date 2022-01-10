@@ -63,6 +63,7 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import org.apache.avro.specific.SpecificRecordBase;
 import org.apache.commons.io.IOUtils;
+import org.apache.commons.lang.StringUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -516,7 +517,7 @@ public class IsolatedIngestionUtils {
   public static Optional<IsolatedIngestionServerAclHandler> getAclHandler(VeniceConfigLoader configLoader) {
     if (isolatedIngestionServerSslEnabled(configLoader) && isolatedIngestionServerAclEnabled(configLoader)) {
       String allowedPrincipalName = configLoader.getCombinedProperties().getString(SERVER_INGESTION_ISOLATION_PRINCIPAL_NAME);
-      if (Utils.isNullOrEmpty(allowedPrincipalName)) {
+      if (StringUtils.isEmpty(allowedPrincipalName)) {
         throw new VeniceException("Ingestion isolation server SSL and ACL validation are enabled, but allowed principal name is missing in config.");
       }
       logger.info("Isolated ingestion server request ACL validation is enabled. Creating ACL handler with allowed principal name: " + allowedPrincipalName);

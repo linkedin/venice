@@ -20,6 +20,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
+
+import org.apache.commons.lang.StringUtils;
 import org.apache.http.HttpStatus;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -326,7 +328,7 @@ public class AdminSparkServer extends AbstractVeniceService {
 
   protected static void validateParams(Request request, List<String> requiredParams, Admin admin) {
     String clusterName = request.queryParams(CLUSTER);
-    if (Utils.isNullOrEmpty(clusterName) && !CLUSTER_DISCOVERY.pathEquals(request.pathInfo())) {
+    if (StringUtils.isEmpty(clusterName) && !CLUSTER_DISCOVERY.pathEquals(request.pathInfo())) {
       throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, CLUSTER + " is a required parameter", ExceptionType.BAD_REQUEST);
     }
     if (!MASTER_CONTROLLER.pathEquals(request.pathInfo())
@@ -335,7 +337,7 @@ public class AdminSparkServer extends AbstractVeniceService {
       throw new VeniceHttpException(HttpConstants.SC_MISDIRECTED_REQUEST, "This controller " + Utils.getHostName() + " is not the active controller", ExceptionType.INCORRECT_CONTROLLER);
     }
     for (String param : requiredParams) {
-      if (Utils.isNullOrEmpty(request.queryParams(param))) {
+      if (StringUtils.isEmpty(request.queryParams(param))) {
         throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, param + " is a required parameter", ExceptionType.BAD_REQUEST);
       }
     }

@@ -7,7 +7,6 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
-import javax.validation.constraints.NotNull;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 
@@ -119,7 +118,6 @@ public class ComputeOperationUtils {
    * @return An unmodifiable empty list if the extracted value is null. Otherwise return a list that may or may not be
    *         modifiable depending on specified type of the list as a field in the record.
    */
-  @NotNull
   public static<T> List<T> getNullableFieldValueAsList(final GenericRecord record, final String fieldName) {
     Object value = record.get(fieldName);
     if (value == null) {

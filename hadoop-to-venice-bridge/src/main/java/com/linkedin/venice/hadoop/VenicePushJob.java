@@ -78,6 +78,7 @@ import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.mapred.AvroInputFormat;
 import org.apache.avro.mapred.AvroJob;
+import org.apache.commons.lang.StringUtils;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
@@ -2345,7 +2346,7 @@ public class VenicePushJob implements AutoCloseable {
    */
   public void cancel() {
     killJobAndCleanup(pushJobSetting, controllerClient, kafkaTopicInfo);
-    if (kafkaTopicInfo != null && Utils.isNullOrEmpty(kafkaTopicInfo.topic)) {
+    if (kafkaTopicInfo != null && StringUtils.isEmpty(kafkaTopicInfo.topic)) {
       pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(PushJobDetailsStatus.ERROR.getValue()));
     } else {
       pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(PushJobDetailsStatus.KILLED.getValue()));
@@ -2362,13 +2363,13 @@ public class VenicePushJob implements AutoCloseable {
       final int maxRetryAttempt = 10;
       int currentRetryAttempt = 0;
       while (currentRetryAttempt < maxRetryAttempt) {
-        if (!Utils.isNullOrEmpty(versionTopicInfo.topic)) {
+        if (!StringUtils.isEmpty(versionTopicInfo.topic)) {
           break;
         }
         Utils.sleep(Duration.ofMillis(10).toMillis());
         currentRetryAttempt++;
       }
-      if (Utils.isNullOrEmpty(versionTopicInfo.topic)) {
+      if (StringUtils.isEmpty(versionTopicInfo.topic)) {
         logger.error("Could not find a store version to delete for store: " + pushJobSetting.storeName);
       } else {
         ControllerClient.retryableRequest(

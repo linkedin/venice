@@ -156,6 +156,8 @@ import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
+import org.apache.commons.lang.StringUtils;
+import org.apache.commons.lang.Validate;
 import org.apache.http.HttpStatus;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.logging.log4j.LogManager;
@@ -165,6 +167,8 @@ import org.codehaus.jackson.map.ObjectMapper;
 import org.codehaus.jackson.node.ArrayNode;
 import org.codehaus.jackson.node.JsonNodeFactory;
 import org.codehaus.jackson.node.ObjectNode;
+
+import javax.annotation.Nonnull;
 
 import static com.linkedin.venice.VeniceConstants.*;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
@@ -256,7 +260,8 @@ public class VeniceParentHelixAdmin implements Admin {
 
   public VeniceParentHelixAdmin(VeniceHelixAdmin veniceHelixAdmin, VeniceControllerMultiClusterConfig multiClusterConfigs,
       boolean sslEnabled, Optional<SSLConfig> sslConfig, Optional<DynamicAccessController> accessController,
-      Optional<AuthorizerService> authorizerService, LingeringStoreVersionChecker lingeringStoreVersionChecker) {
+      Optional<AuthorizerService> authorizerService, @Nonnull LingeringStoreVersionChecker lingeringStoreVersionChecker) {
+    Validate.notNull(lingeringStoreVersionChecker);
     this.veniceHelixAdmin = veniceHelixAdmin;
     this.multiClusterConfigs = multiClusterConfigs;
     this.waitingTimeForConsumptionMs = getMultiClusterConfigs().getParentControllerWaitingTimeForConsumptionMs();
@@ -301,7 +306,7 @@ public class VeniceParentHelixAdmin implements Admin {
     if (systemStoreAclSynchronizationTask != null) {
       systemStoreAclSynchronizationExecutor.submit(systemStoreAclSynchronizationTask);
     }
-    this.lingeringStoreVersionChecker = Utils.notNull(lingeringStoreVersionChecker);
+    this.lingeringStoreVersionChecker = lingeringStoreVersionChecker;
     systemStoreLifeCycleHelper = new UserSystemStoreLifeCycleHelper(this, authorizerService, multiClusterConfigs);
   }
 
@@ -3128,7 +3133,7 @@ public class VeniceParentHelixAdmin implements Admin {
   @Override
   public void wipeCluster(String clusterName, String fabric, Optional<String> storeName, Optional<Integer> versionNum) {
     String childControllerUrl = multiClusterConfigs.getControllerConfig(clusterName).getChildControllerUrl(fabric);
-    if (Utils.isNullOrEmpty(childControllerUrl)) {
+    if (StringUtils.isEmpty(childControllerUrl)) {
       throw new VeniceException("child.cluster.url." + fabric + " is missing in parent controller.");
     }
     ControllerClient childControllerClient = ControllerClient.constructClusterControllerClient(clusterName,
@@ -3143,11 +3148,11 @@ public class VeniceParentHelixAdmin implements Admin {
   public StoreComparisonInfo compareStore(String clusterName, String storeName, String fabricA, String fabricB)
       throws IOException {
     String childControllerUrlA = multiClusterConfigs.getControllerConfig(clusterName).getChildControllerUrl(fabricA);
-    if (Utils.isNullOrEmpty(childControllerUrlA)) {
+    if (StringUtils.isEmpty(childControllerUrlA)) {
       throw new VeniceException("child.cluster.url." + fabricA + " is missing in parent controller.");
     }
     String childControllerUrlB = multiClusterConfigs.getControllerConfig(clusterName).getChildControllerUrl(fabricB);
-    if (Utils.isNullOrEmpty(childControllerUrlB)) {
+    if (StringUtils.isEmpty(childControllerUrlB)) {
       throw new VeniceException("child.cluster.url." + fabricB + " is missing in parent controller.");
     }
     ControllerClient controllerClientA = ControllerClient.constructClusterControllerClient(clusterName,
@@ -3261,11 +3266,11 @@ public class VeniceParentHelixAdmin implements Admin {
   @Override
   public void copyOverStoresSchemasAndConfigs(String clusterName, String srcFabric, String destFabric) {
     String srcFabricChildControllerUrl = multiClusterConfigs.getControllerConfig(clusterName).getChildControllerUrl(srcFabric);
-    if (Utils.isNullOrEmpty(srcFabricChildControllerUrl)) {
+    if (StringUtils.isEmpty(srcFabricChildControllerUrl)) {
       throw new VeniceException("child.cluster.url." + srcFabric + " is missing in parent controller.");
     }
     String destFabricChildControllerUrl = multiClusterConfigs.getControllerConfig(clusterName).getChildControllerUrl(destFabric);
-    if (Utils.isNullOrEmpty(destFabricChildControllerUrl)) {
+    if (StringUtils.isEmpty(destFabricChildControllerUrl)) {
       throw new VeniceException("child.cluster.url." + destFabric + " is missing in parent controller.");
     }
 

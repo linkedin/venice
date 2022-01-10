@@ -19,6 +19,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
+
+import org.apache.commons.lang.StringUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.codehaus.jackson.annotate.JsonIgnore;
@@ -206,7 +208,7 @@ public class OfflinePushStatus {
     for (List<StatusSnapshot> replicaHistory : getReplicaHistoryList(partitionAssignment)) {
       for (StatusSnapshot statusSnapshot : replicaHistory) {
         String incPushVersion = statusSnapshot.getIncrementalPushVersion();
-        if (!Utils.isNullOrEmpty(incPushVersion)) {
+        if (!StringUtils.isEmpty(incPushVersion)) {
           if (latestIncrementalPushVersion == null) {
             latestIncrementalPushVersion = incPushVersion;
           } else {
@@ -228,7 +230,7 @@ public class OfflinePushStatus {
    */
   public Set<String> getOngoingIncrementalPushVersions(PartitionAssignment partitionAssignment) {
     String latestIncrementalPushVersion = getLatestIncrementalPushVersion(partitionAssignment);
-    if (Utils.isNullOrEmpty(latestIncrementalPushVersion)) {
+    if (StringUtils.isEmpty(latestIncrementalPushVersion)) {
       return Collections.emptySet();
     }
     ExecutionStatus status = checkIncrementalPushStatus(latestIncrementalPushVersion, partitionAssignment);
@@ -413,7 +415,7 @@ public class OfflinePushStatus {
 
   private void addHistoricStatus(ExecutionStatus status, String incrementalPushVersion) {
     StatusSnapshot snapshot = new StatusSnapshot(status, LocalDateTime.now().toString());
-    if (!Utils.isNullOrEmpty(incrementalPushVersion)) {
+    if (!StringUtils.isEmpty(incrementalPushVersion)) {
       snapshot.setIncrementalPushVersion(incrementalPushVersion);
     }
     statusHistory.add(snapshot);

@@ -14,7 +14,6 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import javax.validation.constraints.NotNull;
 import org.apache.helix.NotificationContext;
 import org.apache.helix.PropertyKey;
 import org.apache.helix.PropertyType;
@@ -28,6 +27,8 @@ import org.apache.helix.spectator.RoutingTableProvider;
 import org.apache.helix.spectator.RoutingTableSnapshot;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+
+import javax.annotation.Nonnull;
 
 
 /**
@@ -176,7 +177,7 @@ public abstract class HelixBaseRoutingRepository
    * @return
    */
 
-  public PartitionAssignment getPartitionAssignments(@NotNull String resourceName) {
+  public PartitionAssignment getPartitionAssignments(@Nonnull String resourceName) {
     return resourceAssignment.getPartitionAssignment(resourceName);
   }
 
@@ -187,7 +188,7 @@ public abstract class HelixBaseRoutingRepository
    *
    * @return
    */
-  public int getNumberOfPartitions(@NotNull String resourceName) {
+  public int getNumberOfPartitions(@Nonnull String resourceName) {
     return resourceAssignment.getPartitionAssignment(resourceName).getExpectedNumberOfPartitions();
   }
 

@@ -7,12 +7,14 @@ import com.linkedin.venice.schema.writecompute.WriteComputeSchemaValidator;
 import com.linkedin.venice.serializer.AvroGenericDeserializer;
 import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.utils.Pair;
-import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.nio.ByteBuffer;
 import java.util.Map;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
+import org.apache.commons.lang.Validate;
+
+import javax.annotation.Nonnull;
 
 
 /**
@@ -27,9 +29,11 @@ public class StoreIngestionWriteComputeProcessor {
   private Map<SchemaIds, AvroGenericDeserializer<GenericRecord>> idToWriteComputeSchemaDeserializerMap;
   private Map<Schema, AvroSerializer> valueSchemaSerializerMap;
 
-  public StoreIngestionWriteComputeProcessor(String storeName, ReadOnlySchemaRepository schemaRepo) {
-    this.storeName = Utils.notNull(storeName);
-    this.schemaRepo = Utils.notNull(schemaRepo);
+  public StoreIngestionWriteComputeProcessor(@Nonnull String storeName, @Nonnull ReadOnlySchemaRepository schemaRepo) {
+    Validate.notEmpty(storeName);
+    Validate.notNull(schemaRepo);
+    this.storeName = storeName;
+    this.schemaRepo = schemaRepo;
     this.writeComputeProcessor = new WriteComputeProcessor();
     this.schemaIdsToSchemasMap = new VeniceConcurrentHashMap<>();
     this.idToWriteComputeSchemaDeserializerMap = new VeniceConcurrentHashMap<>();
@@ -41,7 +45,7 @@ public class StoreIngestionWriteComputeProcessor {
    * and should be handled carefully.
    *
    * @param originalValue value schema associated within UPDATE message. Notice that this can be different
-   *                      from which original schema was serialized. 
+   *                      from which original schema was serialized.
    * @param writeComputeBytes serialized write-compute operation.
    * @param valueSchemaId value schema id that this write-compute operation is associated with.
    *                      It's read from Kafka record.
@@ -149,9 +153,11 @@ public class StoreIngestionWriteComputeProcessor {
     private final Schema valueSchema;
     private final Schema writeComputeSchema;
 
-    ValueAndWriteComputeSchemas(Schema valueSchema, Schema writeComputeSchema) {
-      this.valueSchema = Utils.notNull(valueSchema);
-      this.writeComputeSchema = Utils.notNull(writeComputeSchema);
+    ValueAndWriteComputeSchemas(@Nonnull Schema valueSchema, @Nonnull Schema writeComputeSchema) {
+      Validate.notNull(valueSchema);
+      Validate.notNull(writeComputeSchema);
+      this.valueSchema = valueSchema;
+      this.writeComputeSchema = writeComputeSchema;
     }
 
     Schema getValueSchema() {

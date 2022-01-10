@@ -13,17 +13,20 @@ import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
 import com.linkedin.venice.utils.ReflectUtils;
-import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Optional;
 import java.util.Properties;
+
+import org.apache.commons.lang.Validate;
 import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.common.serialization.ByteArrayDeserializer;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+
+import javax.annotation.Nonnull;
 
 import static com.linkedin.venice.ConfigConstants.*;
 import static com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer.*;
@@ -46,10 +49,11 @@ public abstract class KafkaClientFactory {
   }
 
   protected KafkaClientFactory(
-      Optional<SchemaReader> kafkaMessageEnvelopeSchemaReader,
+      @Nonnull Optional<SchemaReader> kafkaMessageEnvelopeSchemaReader,
       Optional<MetricsParameters> metricsParameters,
       boolean autoCloseIdleConsumersEnabled) {
-    this.kafkaMessageEnvelopeSchemaReader = Utils.notNull(kafkaMessageEnvelopeSchemaReader);
+    Validate.notNull(kafkaMessageEnvelopeSchemaReader);
+    this.kafkaMessageEnvelopeSchemaReader = kafkaMessageEnvelopeSchemaReader;
     this.metricsParameters = metricsParameters;
     this.stats = metricsParameters.map(m -> new AutoClosingKafkaConsumerStats(m.metricsRepository, m.uniqueName));
     this.autoCloseIdleConsumersEnabled = autoCloseIdleConsumersEnabled;
