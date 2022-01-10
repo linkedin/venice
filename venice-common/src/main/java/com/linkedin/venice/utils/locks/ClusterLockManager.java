@@ -27,28 +27,28 @@ public class ClusterLockManager {
   }
 
   public AutoCloseableLock createClusterWriteLock() {
-    return new AutoCloseableLock(Collections.singletonList(perClusterLock.writeLock()));
+    return new AutoCloseableLock(perClusterLock.writeLock());
   }
 
   public AutoCloseableLock createClusterReadLock() {
-    return new AutoCloseableLock(Collections.singletonList(perClusterLock.readLock()));
+    return new AutoCloseableLock(perClusterLock.readLock());
   }
 
   public AutoCloseableLock createStoreReadLock(String storeName) {
     // Take cluster-level read lock first, then store-level read lock
     ReentrantReadWriteLock storeReadWriteLock = prepareStoreLock(storeName);
-    return new AutoCloseableLock(Arrays.asList(perClusterLock.readLock(), storeReadWriteLock.readLock()));
+    return new AutoCloseableLock(perClusterLock.readLock(), storeReadWriteLock.readLock());
   }
 
   public AutoCloseableLock createStoreWriteLock(String storeName) {
     // Take cluster-level read lock first, then store-level write lock
     ReentrantReadWriteLock storeReadWriteLock = prepareStoreLock(storeName);
-    return new AutoCloseableLock(Arrays.asList(perClusterLock.readLock(), storeReadWriteLock.writeLock()));
+    return new AutoCloseableLock(perClusterLock.readLock(), storeReadWriteLock.writeLock());
   }
 
   public AutoCloseableLock createStoreWriteLockOnly(String storeName) {
     ReentrantReadWriteLock storeReadWriteLock = prepareStoreLock(storeName);
-    return new AutoCloseableLock(Collections.singletonList(storeReadWriteLock.writeLock()));
+    return new AutoCloseableLock(storeReadWriteLock.writeLock());
   }
 
   public void clear() {
