@@ -1,40 +1,31 @@
 package com.linkedin.venice.utils.locks;
 
 import com.linkedin.venice.utils.CollectionUtils;
-import com.linkedin.venice.utils.Utils;
-import java.util.Collections;
+
+import org.apache.commons.lang.Validate;
+
+import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.Lock;
 
 
-public class AutoCloseableLock implements AutoCloseable {
+public final class AutoCloseableLock implements AutoCloseable {
   private final List<Lock> locks;
+  private final AtomicBoolean closing = new AtomicBoolean();
 
-  public AutoCloseableLock(List<Lock> locks) {
-    CollectionUtils.assertCollectionsNotEmpty(locks);
-    for (Lock lock : locks) {
-      lock.lock();
-    }
-
-    this.locks = locks;
-  }
-
-  public AutoCloseableLock(Lock lock) {
-    this(Collections.singletonList(Utils.notNull(lock)));
+  public AutoCloseableLock(Lock... locks) {
+    Validate.notEmpty(locks);
+    Validate.noNullElements(locks);
+    this.locks = Arrays.asList(locks);
+    this.locks.forEach(Lock::lock);
   }
 
   @Override
   public void close() {
-    try {
-      unlock();
-    } catch (Exception e) {
-      throw new IllegalStateException("while invoking close action", e);
+    if (closing.getAndSet(true)) {
+      throw new IllegalStateException("Duplicate unlock attempt");
     }
-  }
-
-  private void unlock() {
-    for (Lock lock : locks) {
-      lock.unlock();
-    }
+    CollectionUtils.reversed(locks).forEach(Lock::unlock);
   }
 }
