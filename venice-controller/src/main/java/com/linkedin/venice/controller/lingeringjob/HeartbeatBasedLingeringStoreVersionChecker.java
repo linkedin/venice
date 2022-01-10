@@ -14,8 +14,12 @@ import java.security.cert.X509Certificate;
 import java.time.Duration;
 import java.util.Map;
 import java.util.Optional;
+
+import org.apache.commons.lang.Validate;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+
+import javax.annotation.Nonnull;
 
 import static com.linkedin.venice.status.BatchJobHeartbeatConfigs.*;
 
@@ -27,12 +31,19 @@ public class HeartbeatBasedLingeringStoreVersionChecker implements LingeringStor
   private final DefaultLingeringStoreVersionChecker defaultLingeringStoreVersionChecker;
   private final HeartbeatBasedCheckerStats heartbeatBasedCheckerStats;
 
-  public HeartbeatBasedLingeringStoreVersionChecker(Duration heartbeatTimeout, Duration initialHeartbeatBufferTime,
-      DefaultLingeringStoreVersionChecker defaultLingeringStoreVersionChecker, HeartbeatBasedCheckerStats heartbeatBasedCheckerStats) {
-    this.heartbeatTimeout = Utils.notNull(heartbeatTimeout);
-    this.initialHeartbeatBufferTime = Utils.notNull(initialHeartbeatBufferTime);
-    this.defaultLingeringStoreVersionChecker = Utils.notNull(defaultLingeringStoreVersionChecker);
-    this.heartbeatBasedCheckerStats = Utils.notNull(heartbeatBasedCheckerStats);
+  public HeartbeatBasedLingeringStoreVersionChecker(
+      @Nonnull Duration heartbeatTimeout,
+      @Nonnull Duration initialHeartbeatBufferTime,
+      @Nonnull DefaultLingeringStoreVersionChecker defaultLingeringStoreVersionChecker,
+      @Nonnull HeartbeatBasedCheckerStats heartbeatBasedCheckerStats) {
+    Validate.notNull(heartbeatTimeout);
+    Validate.notNull(initialHeartbeatBufferTime);
+    Validate.notNull(defaultLingeringStoreVersionChecker);
+    Validate.notNull(heartbeatBasedCheckerStats);
+    this.heartbeatTimeout = heartbeatTimeout;
+    this.initialHeartbeatBufferTime = initialHeartbeatBufferTime;
+    this.defaultLingeringStoreVersionChecker = defaultLingeringStoreVersionChecker;
+    this.heartbeatBasedCheckerStats = heartbeatBasedCheckerStats;
     logger.info(String.format("HeartbeatBasedLingeringStoreVersionChecker instance is created with "
         + "[initialHeartbeatBufferTime=%s] and [heartbeatTimeout=%s]", initialHeartbeatBufferTime, heartbeatTimeout));
   }

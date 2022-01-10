@@ -10,7 +10,6 @@ import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.throttle.EventThrottler;
-import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Collection;
 import java.util.HashSet;
@@ -18,10 +17,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
+
+import org.apache.commons.lang.Validate;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+
+import javax.annotation.Nonnull;
 
 
 /**
@@ -168,9 +171,10 @@ public class PartitionWiseKafkaConsumerService extends KafkaConsumerService {
     private final Map<TopicPartition, PartitionWiseSharedKafkaConsumer> sharedKafkaConsumerMap;
     private final StoreIngestionTask storeIngestionTask;
 
-    public VirtualSharedKafkaConsumer(StoreIngestionTask storeIngestionTask) {
+    public VirtualSharedKafkaConsumer(@Nonnull StoreIngestionTask storeIngestionTask) {
+      Validate.notNull(storeIngestionTask);
       this.sharedKafkaConsumerMap = new VeniceConcurrentHashMap<>();
-      this.storeIngestionTask = Utils.notNull(storeIngestionTask);
+      this.storeIngestionTask = storeIngestionTask;
     }
 
     public Map<TopicPartition, PartitionWiseSharedKafkaConsumer> getSharedKafkaConsumerMap() {
@@ -220,7 +224,8 @@ public class PartitionWiseKafkaConsumerService extends KafkaConsumerService {
     @Override
     public void resetOffset(String topic, int partition) throws UnsubscribedTopicPartitionException {
       TopicPartition topicPartition = new TopicPartition(topic, partition);
-      SharedKafkaConsumer sharedKafkaConsumer = Utils.notNull(sharedKafkaConsumerMap.get(topicPartition));
+      SharedKafkaConsumer sharedKafkaConsumer = sharedKafkaConsumerMap.get(topicPartition);
+      Validate.notNull(sharedKafkaConsumer);
       sharedKafkaConsumer.resetOffset(topic, partition);
     }
 
@@ -262,21 +267,24 @@ public class PartitionWiseKafkaConsumerService extends KafkaConsumerService {
 
     @Override
     public void seek(TopicPartition topicPartition, long nextOffset) {
-      SharedKafkaConsumer sharedKafkaConsumer = Utils.notNull(sharedKafkaConsumerMap.get(topicPartition));
+      SharedKafkaConsumer sharedKafkaConsumer = sharedKafkaConsumerMap.get(topicPartition);
+      Validate.notNull(sharedKafkaConsumer);
       sharedKafkaConsumer.seek(topicPartition, nextOffset);
     }
 
     @Override
     public void pause(String topic, int partition) {
       TopicPartition topicPartition = new TopicPartition(topic, partition);
-      SharedKafkaConsumer sharedKafkaConsumer = Utils.notNull(sharedKafkaConsumerMap.get(topicPartition));
+      SharedKafkaConsumer sharedKafkaConsumer = sharedKafkaConsumerMap.get(topicPartition);
+      Validate.notNull(sharedKafkaConsumer);
       sharedKafkaConsumer.pause(topic, partition);
     }
 
     @Override
     public void resume(String topic, int partition) {
       TopicPartition topicPartition = new TopicPartition(topic, partition);
-      SharedKafkaConsumer sharedKafkaConsumer = Utils.notNull(sharedKafkaConsumerMap.get(topicPartition));
+      SharedKafkaConsumer sharedKafkaConsumer = sharedKafkaConsumerMap.get(topicPartition);
+      Validate.notNull(sharedKafkaConsumer);
       sharedKafkaConsumer.resume(topic, partition);
     }
 

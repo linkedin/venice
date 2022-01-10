@@ -9,12 +9,13 @@ import com.linkedin.venice.pushmonitor.PartitionStatus;
 import com.linkedin.venice.pushmonitor.ReadOnlyPartitionStatus;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.PathResourceRegistry;
-import com.linkedin.venice.utils.Utils;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+
+import org.apache.commons.lang.StringUtils;
 import org.apache.helix.AccessOption;
 import org.apache.helix.manager.zk.ZkBaseDataAccessor;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
@@ -215,7 +216,7 @@ public class VeniceOfflinePushMonitorAccessor implements OfflinePushAccessor {
       if (progress != Integer.MIN_VALUE) {
         currentData.updateProgress(instanceId, progress);
       }
-      if (!Utils.isNullOrEmpty(incrementalPushVersion)) {
+      if (!StringUtils.isEmpty(incrementalPushVersion)) {
         currentData.updateIncrementalPushVersion(instanceId, incrementalPushVersion);
       }
 

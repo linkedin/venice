@@ -10,10 +10,11 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.Utils;
 import java.io.IOException;
-import java.util.Map;
 import java.util.Optional;
 import spark.Request;
 import spark.Route;
+
+import org.apache.commons.lang.StringUtils;
 
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
 import static com.linkedin.venice.controllerapi.ControllerRoute.*;
@@ -73,7 +74,7 @@ public class DataRecoveryRoutes extends AbstractRoute {
         String sourceFabric = request.queryParams(SOURCE_FABRIC);
         String destinationFabric = request.queryParams(FABRIC);
         Optional<Integer> sourceAmplificationFactor;
-        if (Utils.isNullOrEmpty(request.queryParams(AMPLIFICATION_FACTOR))) {
+        if (StringUtils.isEmpty(request.queryParams(AMPLIFICATION_FACTOR))) {
           sourceAmplificationFactor = Optional.empty();
         } else {
           sourceAmplificationFactor =
@@ -97,7 +98,7 @@ public class DataRecoveryRoutes extends AbstractRoute {
         String sourceFabric = request.queryParams(SOURCE_FABRIC);
         String destinationFabric = request.queryParams(FABRIC);
         Optional<Integer> sourceAmplificationFactor;
-        if (Utils.isNullOrEmpty(request.queryParams(AMPLIFICATION_FACTOR))) {
+        if (StringUtils.isEmpty(request.queryParams(AMPLIFICATION_FACTOR))) {
           sourceAmplificationFactor = Optional.empty();
         } else {
           sourceAmplificationFactor =

@@ -172,6 +172,8 @@ import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 import org.apache.avro.specific.SpecificRecord;
+import org.apache.commons.lang.StringUtils;
+import org.apache.commons.lang.Validate;
 import org.apache.helix.HelixAdmin;
 import org.apache.helix.HelixManagerFactory;
 import org.apache.helix.InstanceType;
@@ -194,6 +196,8 @@ import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.http.HttpStatus;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+
+import javax.annotation.Nonnull;
 
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.*;
 import static com.linkedin.venice.meta.Version.*;
@@ -334,164 +338,164 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         VeniceControllerMultiClusterConfig multiClusterConfigs,
         MetricsRepository metricsRepository,
         boolean sslEnabled,
-        D2Client d2Client,
+        @Nonnull D2Client d2Client,
         Optional<SSLConfig> sslConfig,
         Optional<DynamicAccessController> accessController,
-        Optional<ICProvider> icProvider
-    ) {
-        this.multiClusterConfigs = multiClusterConfigs;
-        VeniceControllerConfig commonConfig = multiClusterConfigs.getCommonConfig();
-        this.controllerName = Utils.getHelixNodeIdentifier(multiClusterConfigs.getAdminPort());
-        this.controllerClusterName = multiClusterConfigs.getControllerClusterName();
-        this.controllerClusterReplica = multiClusterConfigs.getControllerClusterReplica();
-        this.kafkaBootstrapServers = multiClusterConfigs.getKafkaBootstrapServers();
-        this.kafkaSSLBootstrapServers = multiClusterConfigs.getSslKafkaBootstrapServers();
-        this.deprecatedJobTopicRetentionMs = multiClusterConfigs.getDeprecatedJobTopicRetentionMs();
-        this.deprecatedJobTopicMaxRetentionMs = multiClusterConfigs.getDeprecatedJobTopicMaxRetentionMs();
-        this.backupVersionDefaultRetentionMs = multiClusterConfigs.getBackupVersionDefaultRetentionMs();
+        Optional<ICProvider> icProvider) {
+      Validate.notNull(d2Client);
+      this.multiClusterConfigs = multiClusterConfigs;
+      VeniceControllerConfig commonConfig = multiClusterConfigs.getCommonConfig();
+      this.controllerName = Utils.getHelixNodeIdentifier(multiClusterConfigs.getAdminPort());
+      this.controllerClusterName = multiClusterConfigs.getControllerClusterName();
+      this.controllerClusterReplica = multiClusterConfigs.getControllerClusterReplica();
+      this.kafkaBootstrapServers = multiClusterConfigs.getKafkaBootstrapServers();
+      this.kafkaSSLBootstrapServers = multiClusterConfigs.getSslKafkaBootstrapServers();
+      this.deprecatedJobTopicRetentionMs = multiClusterConfigs.getDeprecatedJobTopicRetentionMs();
+      this.deprecatedJobTopicMaxRetentionMs = multiClusterConfigs.getDeprecatedJobTopicMaxRetentionMs();
+      this.backupVersionDefaultRetentionMs = multiClusterConfigs.getBackupVersionDefaultRetentionMs();
 
-        this.minNumberOfStoreVersionsToPreserve = multiClusterConfigs.getMinNumberOfStoreVersionsToPreserve();
-        this.d2Client = Utils.notNull(d2Client, "D2 client cannot be null.");
+      this.minNumberOfStoreVersionsToPreserve = multiClusterConfigs.getMinNumberOfStoreVersionsToPreserve();
+      this.d2Client = d2Client;
 
-        if (sslEnabled) {
-            try {
-                String sslFactoryClassName = multiClusterConfigs.getSslFactoryClassName();
-                Properties sslProperties = sslConfig.get().getSslProperties();
-                sslFactory = Optional.of(SslUtils.getSSLFactory(sslProperties, sslFactoryClassName));
-            } catch (Exception e) {
-                logger.error("Failed to create SSL engine", e);
-                throw new VeniceException(e);
-            }
-        } else {
-            sslFactory = Optional.empty();
-        }
+      if (sslEnabled) {
+          try {
+              String sslFactoryClassName = multiClusterConfigs.getSslFactoryClassName();
+              Properties sslProperties = sslConfig.get().getSslProperties();
+              sslFactory = Optional.of(SslUtils.getSSLFactory(sslProperties, sslFactoryClassName));
+          } catch (Exception e) {
+              logger.error("Failed to create SSL engine", e);
+              throw new VeniceException(e);
+          }
+      } else {
+          sslFactory = Optional.empty();
+      }
 
-        // TODO: Consider re-using the same zkClient for the ZKHelixAdmin and TopicManager.
-        ZkClient zkClientForHelixAdmin = ZkClientFactory.newZkClient(multiClusterConfigs.getZkAddress());
-        zkClientForHelixAdmin.subscribeStateChanges(new ZkClientStatusStats(metricsRepository, "controller-zk-client-for-helix-admin"));
-        /**
-         * N.B.: The following setup steps are necessary when using the {@link ZKHelixAdmin} constructor which takes
-         * in an external {@link ZkClient}.
-         *
-         * {@link ZkClient#setZkSerializer(ZkSerializer)} is necessary, otherwise Helix will throw:
-         *
-         * org.apache.helix.zookeeper.zkclient.exception.ZkMarshallingError: java.io.NotSerializableException: org.apache.helix.ZNRecord
-         */
-        zkClientForHelixAdmin.setZkSerializer(new ZNRecordSerializer());
-        if (!zkClientForHelixAdmin.waitUntilConnected(ZkClient.DEFAULT_CONNECTION_TIMEOUT, TimeUnit.MILLISECONDS)) {
-            throw new VeniceException("Failed to connect to ZK within " + ZkClient.DEFAULT_CONNECTION_TIMEOUT + " ms!");
-        }
-        this.admin = new ZKHelixAdmin(zkClientForHelixAdmin);
-        this.helixAdminClient = new ZkHelixAdminClient(multiClusterConfigs, metricsRepository);
-        //There is no way to get the internal zkClient from HelixManager or HelixAdmin. So create a new one here.
-        this.zkClient = ZkClientFactory.newZkClient(multiClusterConfigs.getZkAddress());
-        this.zkClient.subscribeStateChanges(new ZkClientStatusStats(metricsRepository, "controller-zk-client"));
-        this.adapterSerializer = new HelixAdapterSerializer();
-        this.veniceConsumerFactory = new ControllerKafkaClientFactory(
-            commonConfig,
-            Optional.of(
-                new MetricsParameters(
-                    ControllerKafkaClientFactory.class,
-                    this.getClass(),
-                    kafkaBootstrapServers,
-                    metricsRepository
-                )
-            )
-        );
+      // TODO: Consider re-using the same zkClient for the ZKHelixAdmin and TopicManager.
+      ZkClient zkClientForHelixAdmin = ZkClientFactory.newZkClient(multiClusterConfigs.getZkAddress());
+      zkClientForHelixAdmin.subscribeStateChanges(new ZkClientStatusStats(metricsRepository, "controller-zk-client-for-helix-admin"));
+      /**
+       * N.B.: The following setup steps are necessary when using the {@link ZKHelixAdmin} constructor which takes
+       * in an external {@link ZkClient}.
+       *
+       * {@link ZkClient#setZkSerializer(ZkSerializer)} is necessary, otherwise Helix will throw:
+       *
+       * org.apache.helix.zookeeper.zkclient.exception.ZkMarshallingError: java.io.NotSerializableException: org.apache.helix.ZNRecord
+       */
+      zkClientForHelixAdmin.setZkSerializer(new ZNRecordSerializer());
+      if (!zkClientForHelixAdmin.waitUntilConnected(ZkClient.DEFAULT_CONNECTION_TIMEOUT, TimeUnit.MILLISECONDS)) {
+          throw new VeniceException("Failed to connect to ZK within " + ZkClient.DEFAULT_CONNECTION_TIMEOUT + " ms!");
+      }
+      this.admin = new ZKHelixAdmin(zkClientForHelixAdmin);
+      this.helixAdminClient = new ZkHelixAdminClient(multiClusterConfigs, metricsRepository);
+      //There is no way to get the internal zkClient from HelixManager or HelixAdmin. So create a new one here.
+      this.zkClient = ZkClientFactory.newZkClient(multiClusterConfigs.getZkAddress());
+      this.zkClient.subscribeStateChanges(new ZkClientStatusStats(metricsRepository, "controller-zk-client"));
+      this.adapterSerializer = new HelixAdapterSerializer();
+      this.veniceConsumerFactory = new ControllerKafkaClientFactory(
+          commonConfig,
+          Optional.of(
+              new MetricsParameters(
+                  ControllerKafkaClientFactory.class,
+                  this.getClass(),
+                  kafkaBootstrapServers,
+                  metricsRepository
+              )
+          )
+      );
 
-        this.topicManagerRepository = new TopicManagerRepository(getKafkaBootstrapServers(isSslToKafka()),
-                                                                 multiClusterConfigs.getKafkaZkAddress(),
-                                                                 multiClusterConfigs.getTopicManagerKafkaOperationTimeOutMs(),
-                                                                 multiClusterConfigs.getTopicDeletionStatusPollIntervalMs(),
-                                                                 multiClusterConfigs.getKafkaMinLogCompactionLagInMs(),
-                                                                 veniceConsumerFactory,
-                                                                 metricsRepository);
-        this.whitelistAccessor = new ZkWhitelistAccessor(zkClient, adapterSerializer);
-        this.executionIdAccessor = new ZkExecutionIdAccessor(zkClient, adapterSerializer);
-        this.storeConfigRepo = new HelixReadOnlyStoreConfigRepository(zkClient, adapterSerializer,
-            commonConfig.getRefreshAttemptsForZkReconnect(), commonConfig.getRefreshIntervalForZkReconnectInMs());
-        storeConfigRepo.refresh();
-        this.storeGraveyard = new HelixStoreGraveyard(zkClient, adapterSerializer, multiClusterConfigs.getClusters());
-        veniceWriterFactory = new VeniceWriterFactory(commonConfig.getProps().toProperties());
-        this.onlineOfflineTopicReplicator =
-            TopicReplicator.getTopicReplicator(topicManagerRepository.getTopicManager(), commonConfig.getProps(), veniceWriterFactory);
-        this.leaderFollowerTopicReplicator = TopicReplicator.getTopicReplicator(
-            LeaderStorageNodeReplicator.class.getName(), topicManagerRepository.getTopicManager(), commonConfig.getProps(), veniceWriterFactory);
-        this.participantMessageStoreRTTMap = new VeniceConcurrentHashMap<>();
-        this.participantMessageWriterMap = new VeniceConcurrentHashMap<>();
-        isControllerClusterHAAS = commonConfig.isControllerClusterLeaderHAAS();
-        coloMasterClusterName = commonConfig.getClusterName();
-        pushJobStatusStoreClusterName = commonConfig.getPushJobStatusStoreClusterName();
-        if (commonConfig.isDaVinciPushStatusStoreEnabled()) {
-            pushStatusStoreReader = Optional.of(
-                new PushStatusStoreReader(d2Client, commonConfig.getPushStatusStoreHeartbeatExpirationTimeInSeconds())
-            );
-            pushStatusStoreDeleter = Optional.of(new PushStatusStoreRecordDeleter(getVeniceWriterFactory()));
-        } else {
-            pushStatusStoreReader = Optional.empty();
-            pushStatusStoreDeleter = Optional.empty();
-        }
+      this.topicManagerRepository = new TopicManagerRepository(getKafkaBootstrapServers(isSslToKafka()),
+                                                               multiClusterConfigs.getKafkaZkAddress(),
+                                                               multiClusterConfigs.getTopicManagerKafkaOperationTimeOutMs(),
+                                                               multiClusterConfigs.getTopicDeletionStatusPollIntervalMs(),
+                                                               multiClusterConfigs.getKafkaMinLogCompactionLagInMs(),
+                                                               veniceConsumerFactory,
+                                                               metricsRepository);
+      this.whitelistAccessor = new ZkWhitelistAccessor(zkClient, adapterSerializer);
+      this.executionIdAccessor = new ZkExecutionIdAccessor(zkClient, adapterSerializer);
+      this.storeConfigRepo = new HelixReadOnlyStoreConfigRepository(zkClient, adapterSerializer,
+          commonConfig.getRefreshAttemptsForZkReconnect(), commonConfig.getRefreshIntervalForZkReconnectInMs());
+      storeConfigRepo.refresh();
+      this.storeGraveyard = new HelixStoreGraveyard(zkClient, adapterSerializer, multiClusterConfigs.getClusters());
+      veniceWriterFactory = new VeniceWriterFactory(commonConfig.getProps().toProperties());
+      this.onlineOfflineTopicReplicator =
+          TopicReplicator.getTopicReplicator(topicManagerRepository.getTopicManager(), commonConfig.getProps(), veniceWriterFactory);
+      this.leaderFollowerTopicReplicator = TopicReplicator.getTopicReplicator(
+          LeaderStorageNodeReplicator.class.getName(), topicManagerRepository.getTopicManager(), commonConfig.getProps(), veniceWriterFactory);
+      this.participantMessageStoreRTTMap = new VeniceConcurrentHashMap<>();
+      this.participantMessageWriterMap = new VeniceConcurrentHashMap<>();
+      isControllerClusterHAAS = commonConfig.isControllerClusterLeaderHAAS();
+      coloMasterClusterName = commonConfig.getClusterName();
+      pushJobStatusStoreClusterName = commonConfig.getPushJobStatusStoreClusterName();
+      if (commonConfig.isDaVinciPushStatusStoreEnabled()) {
+          pushStatusStoreReader = Optional.of(
+              new PushStatusStoreReader(d2Client, commonConfig.getPushStatusStoreHeartbeatExpirationTimeInSeconds())
+          );
+          pushStatusStoreDeleter = Optional.of(new PushStatusStoreRecordDeleter(getVeniceWriterFactory()));
+      } else {
+          pushStatusStoreReader = Optional.empty();
+          pushStatusStoreDeleter = Optional.empty();
+      }
 
-        zkSharedSystemStoreRepository = new SharedHelixReadOnlyZKSharedSystemStoreRepository(
-            zkClient, adapterSerializer, commonConfig.getSystemSchemaClusterName());
-        zkSharedSchemaRepository = new SharedHelixReadOnlyZKSharedSchemaRepository(
-            zkSharedSystemStoreRepository, zkClient, adapterSerializer, commonConfig.getSystemSchemaClusterName(),
-            commonConfig.getRefreshAttemptsForZkReconnect(), commonConfig.getRefreshIntervalForZkReconnectInMs());
-        metaStoreWriter = new MetaStoreWriter(topicManagerRepository.getTopicManager(), veniceWriterFactory, zkSharedSchemaRepository);
+      zkSharedSystemStoreRepository = new SharedHelixReadOnlyZKSharedSystemStoreRepository(
+          zkClient, adapterSerializer, commonConfig.getSystemSchemaClusterName());
+      zkSharedSchemaRepository = new SharedHelixReadOnlyZKSharedSchemaRepository(
+          zkSharedSystemStoreRepository, zkClient, adapterSerializer, commonConfig.getSystemSchemaClusterName(),
+          commonConfig.getRefreshAttemptsForZkReconnect(), commonConfig.getRefreshIntervalForZkReconnectInMs());
+      metaStoreWriter = new MetaStoreWriter(topicManagerRepository.getTopicManager(), veniceWriterFactory, zkSharedSchemaRepository);
 
-        clusterToLiveClusterConfigRepo = new VeniceConcurrentHashMap();
-        dataRecoveryManager = new DataRecoveryManager(this, d2Client, icProvider);
+      clusterToLiveClusterConfigRepo = new VeniceConcurrentHashMap();
+      dataRecoveryManager = new DataRecoveryManager(this, d2Client, icProvider);
 
-        List<ClusterLeaderInitializationRoutine> initRoutines = new ArrayList<>();
-        initRoutines.add(new SystemSchemaInitializationRoutine(
-            AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE, multiClusterConfigs, this));
-        initRoutines.add(new SystemSchemaInitializationRoutine(
-            AvroProtocolDefinition.PARTITION_STATE, multiClusterConfigs, this));
-        initRoutines.add(new SystemSchemaInitializationRoutine(
-            AvroProtocolDefinition.STORE_VERSION_STATE, multiClusterConfigs, this));
+      List<ClusterLeaderInitializationRoutine> initRoutines = new ArrayList<>();
+      initRoutines.add(new SystemSchemaInitializationRoutine(
+          AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE, multiClusterConfigs, this));
+      initRoutines.add(new SystemSchemaInitializationRoutine(
+          AvroProtocolDefinition.PARTITION_STATE, multiClusterConfigs, this));
+      initRoutines.add(new SystemSchemaInitializationRoutine(
+          AvroProtocolDefinition.STORE_VERSION_STATE, multiClusterConfigs, this));
 
-        if (multiClusterConfigs.isZkSharedMetaSystemSchemaStoreAutoCreationEnabled()) {
-            // Add routine to create zk shared metadata system store
-            UpdateStoreQueryParams metadataSystemStoreUpdate = new UpdateStoreQueryParams().setHybridRewindSeconds(TimeUnit.DAYS.toSeconds(1)) // 1 day rewind
-                .setHybridOffsetLagThreshold(1).setHybridTimeLagThreshold(TimeUnit.MINUTES.toSeconds(1)) // 1 mins
-                .setLeaderFollowerModel(true).setWriteComputationEnabled(true)
-                .setPartitionCount(1);
-            initRoutines.add(new SystemSchemaInitializationRoutine(AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE,
-                multiClusterConfigs, this, Optional.of(AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE_KEY.getCurrentProtocolVersionSchema()),
-                Optional.of(metadataSystemStoreUpdate), true));
-        }
-        if (multiClusterConfigs.isZkSharedDaVinciPushStatusSystemSchemaStoreAutoCreationEnabled()) {
-            // Add routine to create zk shared da vinci push status system store
-            UpdateStoreQueryParams daVinciPushStatusSystemStoreUpdate = new UpdateStoreQueryParams().setHybridRewindSeconds(TimeUnit.DAYS.toSeconds(1)) // 1 day rewind
-                .setHybridOffsetLagThreshold(1).setHybridTimeLagThreshold(TimeUnit.MINUTES.toSeconds(1)) // 1 mins
-                .setLeaderFollowerModel(true).setWriteComputationEnabled(true)
-                .setPartitionCount(1);
-            initRoutines.add(new SystemSchemaInitializationRoutine(AvroProtocolDefinition.PUSH_STATUS_SYSTEM_SCHEMA_STORE,
-                multiClusterConfigs, this, Optional.of(AvroProtocolDefinition.PUSH_STATUS_SYSTEM_SCHEMA_STORE_KEY.getCurrentProtocolVersionSchema()),
-                Optional.of(daVinciPushStatusSystemStoreUpdate), true));
-        }
+      if (multiClusterConfigs.isZkSharedMetaSystemSchemaStoreAutoCreationEnabled()) {
+          // Add routine to create zk shared metadata system store
+          UpdateStoreQueryParams metadataSystemStoreUpdate = new UpdateStoreQueryParams().setHybridRewindSeconds(TimeUnit.DAYS.toSeconds(1)) // 1 day rewind
+              .setHybridOffsetLagThreshold(1).setHybridTimeLagThreshold(TimeUnit.MINUTES.toSeconds(1)) // 1 mins
+              .setLeaderFollowerModel(true).setWriteComputationEnabled(true)
+              .setPartitionCount(1);
+          initRoutines.add(new SystemSchemaInitializationRoutine(AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE,
+              multiClusterConfigs, this, Optional.of(AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE_KEY.getCurrentProtocolVersionSchema()),
+              Optional.of(metadataSystemStoreUpdate), true));
+      }
+      if (multiClusterConfigs.isZkSharedDaVinciPushStatusSystemSchemaStoreAutoCreationEnabled()) {
+          // Add routine to create zk shared da vinci push status system store
+          UpdateStoreQueryParams daVinciPushStatusSystemStoreUpdate = new UpdateStoreQueryParams().setHybridRewindSeconds(TimeUnit.DAYS.toSeconds(1)) // 1 day rewind
+              .setHybridOffsetLagThreshold(1).setHybridTimeLagThreshold(TimeUnit.MINUTES.toSeconds(1)) // 1 mins
+              .setLeaderFollowerModel(true).setWriteComputationEnabled(true)
+              .setPartitionCount(1);
+          initRoutines.add(new SystemSchemaInitializationRoutine(AvroProtocolDefinition.PUSH_STATUS_SYSTEM_SCHEMA_STORE,
+              multiClusterConfigs, this, Optional.of(AvroProtocolDefinition.PUSH_STATUS_SYSTEM_SCHEMA_STORE_KEY.getCurrentProtocolVersionSchema()),
+              Optional.of(daVinciPushStatusSystemStoreUpdate), true));
+      }
 
-        // TODO: Remove this latest version promote to current timestamp update logic in the future.
-        initRoutines.add(new LatestVersionPromoteToCurrentTimestampCorrectionRoutine(this));
-        ClusterLeaderInitializationRoutine controllerInitialization = new ClusterLeaderInitializationManager(initRoutines);
+      // TODO: Remove this latest version promote to current timestamp update logic in the future.
+      initRoutines.add(new LatestVersionPromoteToCurrentTimestampCorrectionRoutine(this));
+      ClusterLeaderInitializationRoutine controllerInitialization = new ClusterLeaderInitializationManager(initRoutines);
 
-        // Create the controller cluster if required.
-        if (isControllerClusterHAAS) {
-            if (!helixAdminClient.isVeniceControllerClusterCreated(controllerClusterName)) {
-                helixAdminClient.createVeniceControllerCluster(controllerClusterName);
-            } else if (!helixAdminClient.isClusterInGrandCluster(controllerClusterName)) {
-                // This is possible when transitioning to HaaS for the first time or if the grand cluster is reset.
-                helixAdminClient.addClusterToGrandCluster(controllerClusterName);
-            }
-        } else {
-            createControllerClusterIfRequired();
-        }
-        controllerStateModelFactory = new VeniceDistClusterControllerStateModelFactory(
-            zkClient, adapterSerializer, this, multiClusterConfigs, metricsRepository, controllerInitialization,
-            onlineOfflineTopicReplicator, leaderFollowerTopicReplicator, accessController, helixAdminClient);
-        // Initialized the helix manger for the level1 controller. If the controller cluster leader is going to be in
-        // HaaS then level1 controllers should be only in participant mode.
-        initLevel1Controller(isControllerClusterHAAS);
+      // Create the controller cluster if required.
+      if (isControllerClusterHAAS) {
+          if (!helixAdminClient.isVeniceControllerClusterCreated(controllerClusterName)) {
+              helixAdminClient.createVeniceControllerCluster(controllerClusterName);
+          } else if (!helixAdminClient.isClusterInGrandCluster(controllerClusterName)) {
+              // This is possible when transitioning to HaaS for the first time or if the grand cluster is reset.
+              helixAdminClient.addClusterToGrandCluster(controllerClusterName);
+          }
+      } else {
+          createControllerClusterIfRequired();
+      }
+      controllerStateModelFactory = new VeniceDistClusterControllerStateModelFactory(
+          zkClient, adapterSerializer, this, multiClusterConfigs, metricsRepository, controllerInitialization,
+          onlineOfflineTopicReplicator, leaderFollowerTopicReplicator, accessController, helixAdminClient);
+      // Initialized the helix manger for the level1 controller. If the controller cluster leader is going to be in
+      // HaaS then level1 controllers should be only in participant mode.
+      initLevel1Controller(isControllerClusterHAAS);
     }
 
     private void initLevel1Controller(boolean isParticipantOnly) {
@@ -869,16 +873,16 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
     @Override
-    public PushJobDetails getPushJobDetails(PushJobStatusRecordKey key) {
-        Utils.notNull(key);
+    public PushJobDetails getPushJobDetails(@Nonnull PushJobStatusRecordKey key) {
+        Validate.notNull(key);
         String storeName = VeniceSystemStoreUtils.getPushJobDetailsStoreName();
         String d2Service = discoverCluster(storeName).getSecond();
         return readValue(key, storeName, d2Service, PushJobDetails.class);
     }
 
     @Override
-    public BatchJobHeartbeatValue getBatchJobHeartbeatValue(BatchJobHeartbeatKey batchJobHeartbeatKey) {
-        Utils.notNull(batchJobHeartbeatKey);
+    public BatchJobHeartbeatValue getBatchJobHeartbeatValue(@Nonnull BatchJobHeartbeatKey batchJobHeartbeatKey) {
+        Validate.notNull(batchJobHeartbeatKey);
         String storeName = VeniceSystemStoreType.BATCH_JOB_HEARTBEAT_STORE.getPrefix();
         String d2Service = discoverCluster(storeName).getSecond();
         return readValue(batchJobHeartbeatKey, storeName, d2Service, BatchJobHeartbeatValue.class);
@@ -4870,7 +4874,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     @Override
     public Pair<String, String> discoverCluster(String storeName) {
         StoreConfig config = storeConfigRepo.getStoreConfigOrThrow(storeName);
-        if (config == null || Utils.isNullOrEmpty(config.getCluster())) {
+        if (config == null || StringUtils.isEmpty(config.getCluster())) {
             throw new VeniceNoStoreException("Could not find the given store: " + storeName
             + ". Make sure the store is created and the provided store name is correct");
         }

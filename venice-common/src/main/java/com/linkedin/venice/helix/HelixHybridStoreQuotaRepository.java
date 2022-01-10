@@ -9,7 +9,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
-import javax.validation.constraints.NotNull;
 import org.apache.helix.PropertyType;
 import org.apache.helix.api.listeners.RoutingTableChangeListener;
 import org.apache.helix.model.CustomizedView;
@@ -17,6 +16,8 @@ import org.apache.helix.spectator.RoutingTableProvider;
 import org.apache.helix.spectator.RoutingTableSnapshot;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+
+import javax.annotation.Nonnull;
 
 
 /**
@@ -56,7 +57,7 @@ public class HelixHybridStoreQuotaRepository implements RoutingTableChangeListen
    *
    * @return
    */
-  public HybridStoreQuotaStatus getHybridStoreQuotaStatus(@NotNull String resourceName) {
+  public HybridStoreQuotaStatus getHybridStoreQuotaStatus(@Nonnull String resourceName) {
     if (resourceToStatusMap.containsKey(resourceName)) {
       return resourceToStatusMap.get(resourceName);
     }

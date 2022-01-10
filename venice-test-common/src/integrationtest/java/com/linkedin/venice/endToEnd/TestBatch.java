@@ -46,6 +46,7 @@ import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.generic.IndexedRecord;
 import org.apache.avro.util.Utf8;
+import org.apache.commons.lang.StringUtils;
 import org.apache.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
@@ -751,13 +752,13 @@ public abstract class TestBatch {
       String existingStore, UpdateStoreQueryParams storeParms, boolean multiPushJobs, boolean addDerivedSchema) throws Exception {
     File inputDir = getTempDataDirectory();
     Pair<Schema, Schema> schemas = inputFileWriter.write(inputDir);
-    String storeName = Utils.isNullOrEmpty(existingStore) ? Utils.getUniqueString("store") : existingStore;
+    String storeName = StringUtils.isEmpty(existingStore) ? Utils.getUniqueString("store") : existingStore;
 
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
     Properties props = defaultH2VProps(veniceCluster, inputDirPath, storeName);
     extraProps.accept(props);
 
-    if (Utils.isNullOrEmpty(existingStore)) {
+    if (StringUtils.isEmpty(existingStore)) {
       createStoreForJob(veniceCluster.getClusterName(), schemas.getFirst().toString(), schemas.getSecond().toString(), props,
           storeParms, addDerivedSchema).close();
     }

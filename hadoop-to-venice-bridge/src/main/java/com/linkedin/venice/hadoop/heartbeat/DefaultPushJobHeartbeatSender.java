@@ -4,7 +4,6 @@ import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.status.protocol.BatchJobHeartbeatKey;
 import com.linkedin.venice.status.protocol.BatchJobHeartbeatValue;
 import com.linkedin.venice.utils.DaemonThreadFactory;
-import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.time.Duration;
 import java.time.Instant;
@@ -18,6 +17,7 @@ import java.util.concurrent.TimeUnit;
 import javax.annotation.Nonnull;
 import javax.annotation.concurrent.NotThreadSafe;
 import org.apache.avro.Schema;
+import org.apache.commons.lang.Validate;
 import org.apache.kafka.clients.producer.Callback;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.logging.log4j.LogManager;
@@ -47,27 +47,29 @@ class DefaultPushJobHeartbeatSender implements PushJobHeartbeatSender {
   private Exception firstSendHeartbeatException;
 
   DefaultPushJobHeartbeatSender(
-          @Nonnull Duration initialDelay,
-          @Nonnull Duration interval,
-          @Nonnull VeniceWriter<byte[], byte[], byte[]> veniceWriter,
-          @Nonnull Schema heartbeatKeySchema,
-          @Nonnull Map<Integer, Schema> valueSchemasById,
-          @Nonnull String heartbeatKafkaTopicName
-  ) {
-    this.initialDelay = Utils.notNull(initialDelay);
-    this.interval = Utils.notNull(interval);
-    this.veniceWriter = Utils.notNull(veniceWriter);
+      @Nonnull Duration initialDelay,
+      @Nonnull Duration interval,
+      @Nonnull VeniceWriter<byte[], byte[], byte[]> veniceWriter,
+      @Nonnull Schema heartbeatKeySchema,
+      @Nonnull Map<Integer, Schema> valueSchemasById,
+      @Nonnull String heartbeatKafkaTopicName) {
+    Validate.notNull(initialDelay);
+    Validate.notNull(interval);
+    Validate.notNull(veniceWriter);
+    Validate.notEmpty(heartbeatKafkaTopicName);
+    this.initialDelay = initialDelay;
+    this.interval = interval;
+    this.veniceWriter = veniceWriter;
     validateSchemasMatch(BatchJobHeartbeatKey.SCHEMA$, heartbeatKeySchema);
     // Expect one of the given value schemas to match with the current value schema
     this.valueSchemaId = getSchemaIdForSchemaOrFail(BatchJobHeartbeatValue.SCHEMA$, valueSchemasById);
-    this.heartbeatKafkaTopicName = Utils.stringNotNullNorEmpty(heartbeatKafkaTopicName);
+    this.heartbeatKafkaTopicName = heartbeatKafkaTopicName;
     this.keySerializer = new VeniceAvroKafkaSerializer(heartbeatKeySchema);
     this.valueSerializer = new VeniceAvroKafkaSerializer(BatchJobHeartbeatValue.SCHEMA$);
     this.running = false;
     this.executorService = Executors.newSingleThreadScheduledExecutor(new DaemonThreadFactory("push-job-heartbeat-thread"));
     this.successfulHeartbeatCount = 0;
     this.failedHeartbeatCount = 0;
-    this.firstSendHeartbeatException = null;
   }
 
   private int getSchemaIdForSchemaOrFail(Schema expectedSchema, Map<Integer, Schema> valueSchemasById) {
@@ -87,16 +89,14 @@ class DefaultPushJobHeartbeatSender implements PushJobHeartbeatSender {
   }
 
   @Override
-  public void start(
-      @Nonnull String storeName,
-      int storeVersion
-  ) {
+  public void start(@Nonnull String storeName, int storeVersion) {
+    Validate.notEmpty(storeName);
     if (running) {
       LOGGER.warn("Already started");
       return;
     }
     running = true;
-    this.storeName = Utils.notNull(storeName);
+    this.storeName = storeName;
     this.storeVersion = storeVersion;
     this.heartbeatStartTime = Instant.now();
     LOGGER.info(String.format("Start sending liveness heartbeats for [store=%s, version=%s] with initial delay %d ms and " +

@@ -9,7 +9,6 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.SystemTime;
-import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
@@ -20,8 +19,11 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
+import org.apache.commons.lang.Validate;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+
+import javax.annotation.Nonnull;
 
 import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.status.BatchJobHeartbeatConfigs.*;
@@ -33,10 +35,9 @@ public class DefaultPushJobHeartbeatSenderFactory implements PushJobHeartbeatSen
   @Override
   public PushJobHeartbeatSender createHeartbeatSender(
       VeniceProperties properties,
-      ControllerClient controllerClient,
-      Optional<Properties> sslProperties
-  ) {
-    Utils.notNull(controllerClient);
+      @Nonnull ControllerClient controllerClient,
+      Optional<Properties> sslProperties) {
+    Validate.notNull(controllerClient);
     final String heartbeatStoreName = getHeartbeatStoreName(properties);
     VersionCreationResponse versionCreationResponse = ControllerClient.retryableRequest(
         controllerClient,

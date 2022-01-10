@@ -1,5 +1,7 @@
 package com.linkedin.venice.utils;
 
+import org.apache.commons.lang.Validate;
+
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -13,7 +15,8 @@ public class ByteArray implements Serializable {
     private final byte[] underlying;
 
     public ByteArray(byte... underlying) {
-        this.underlying = Utils.notNull(underlying, "underlying");
+        Validate.notNull(underlying);
+        this.underlying = underlying;
     }
 
     public byte[] get() {

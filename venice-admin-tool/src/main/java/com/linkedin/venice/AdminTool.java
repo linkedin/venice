@@ -90,6 +90,7 @@ import org.apache.commons.cli.OptionBuilder;
 import org.apache.commons.cli.OptionGroup;
 import org.apache.commons.cli.Options;
 import org.apache.commons.cli.ParseException;
+import org.apache.commons.lang.StringUtils;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.codehaus.jackson.JsonNode;
 import org.codehaus.jackson.map.ObjectMapper;
@@ -510,7 +511,7 @@ public class AdminTool {
     String sslConfigFileStr = getOptionalArgument(cmd, Arg.VENICE_CLIENT_SSL_CONFIG_FILE);
     boolean isVsonStore = Boolean.parseBoolean(getOptionalArgument(cmd, Arg.VSON_STORE, "false"));
     Optional<String> sslConfigFile =
-        Utils.isNullOrEmpty(sslConfigFileStr) ? Optional.empty() : Optional.of(sslConfigFileStr);
+        StringUtils.isEmpty(sslConfigFileStr) ? Optional.empty() : Optional.of(sslConfigFileStr);
     printObject(QueryTool.queryStoreForKey(store, keyString, veniceUrl, isVsonStore, sslConfigFile));
   }
 
@@ -1858,10 +1859,10 @@ public class AdminTool {
     String storeType = getRequiredArgument(cmd, Arg.STORE_TYPE);
     String sourceRegionParam = getOptionalArgument(cmd, Arg.NATIVE_REPLICATION_SOURCE_FABRIC);
     Optional<String> sourceRegion =
-        Utils.isNullOrEmpty(sourceRegionParam) ? Optional.empty() : Optional.of(sourceRegionParam);
+        StringUtils.isEmpty(sourceRegionParam) ? Optional.empty() : Optional.of(sourceRegionParam);
     String regionsFilterParam = getOptionalArgument(cmd, Arg.REGIONS_FILTER);
     Optional<String> regionsFilter =
-        Utils.isNullOrEmpty(regionsFilterParam) ? Optional.empty() : Optional.of(regionsFilterParam);
+        StringUtils.isEmpty(regionsFilterParam) ? Optional.empty() : Optional.of(regionsFilterParam);
 
     ControllerResponse response = controllerClient.configureNativeReplicationForCluster(true, storeType, sourceRegion, regionsFilter);
     printObject(response);
@@ -1871,10 +1872,10 @@ public class AdminTool {
     String storeType = getRequiredArgument(cmd, Arg.STORE_TYPE);
     String sourceFabricParam = getOptionalArgument(cmd, Arg.NATIVE_REPLICATION_SOURCE_FABRIC);
     Optional<String> sourceFabric =
-        Utils.isNullOrEmpty(sourceFabricParam) ? Optional.empty() : Optional.of(sourceFabricParam);
+        StringUtils.isEmpty(sourceFabricParam) ? Optional.empty() : Optional.of(sourceFabricParam);
     String regionsFilterParam = getOptionalArgument(cmd, Arg.REGIONS_FILTER);
     Optional<String> regionsFilter =
-        Utils.isNullOrEmpty(regionsFilterParam) ? Optional.empty() : Optional.of(regionsFilterParam);
+        StringUtils.isEmpty(regionsFilterParam) ? Optional.empty() : Optional.of(regionsFilterParam);
 
     ControllerResponse response = controllerClient.configureNativeReplicationForCluster(false, storeType, sourceFabric, regionsFilter);
     printObject(response);
@@ -1885,7 +1886,7 @@ public class AdminTool {
     String storeType = getRequiredArgument(cmd, Arg.STORE_TYPE);
     String regionsFilterParam = getOptionalArgument(cmd, Arg.REGIONS_FILTER);
     Optional<String> regionsFilter =
-        Utils.isNullOrEmpty(regionsFilterParam) ? Optional.empty() : Optional.of(regionsFilterParam);
+        StringUtils.isEmpty(regionsFilterParam) ? Optional.empty() : Optional.of(regionsFilterParam);
 
     ControllerResponse response = controllerClient.configureActiveActiveReplicationForCluster(true, storeType, regionsFilter);
     printObject(response);
@@ -1895,7 +1896,7 @@ public class AdminTool {
     String storeType = getRequiredArgument(cmd, Arg.STORE_TYPE);
     String regionsFilterParam = getOptionalArgument(cmd, Arg.REGIONS_FILTER);
     Optional<String> regionsFilter =
-        Utils.isNullOrEmpty(regionsFilterParam) ? Optional.empty() : Optional.of(regionsFilterParam);
+        StringUtils.isEmpty(regionsFilterParam) ? Optional.empty() : Optional.of(regionsFilterParam);
 
     ControllerResponse response = controllerClient.configureActiveActiveReplicationForCluster(false, storeType, regionsFilter);
     printObject(response);
@@ -1912,11 +1913,11 @@ public class AdminTool {
 
     String incrementalPushPolicyToFilterParam = getOptionalArgument(cmd, Arg.INCREMENTAL_PUSH_POLICY_TO_FILTER);
     Optional<IncrementalPushPolicy> incrementalPushPolicyToFilter =
-        Utils.isNullOrEmpty(incrementalPushPolicyToFilterParam) ? Optional.empty() : Optional.of(IncrementalPushPolicy.valueOf(incrementalPushPolicyToFilterParam));
+        StringUtils.isEmpty(incrementalPushPolicyToFilterParam) ? Optional.empty() : Optional.of(IncrementalPushPolicy.valueOf(incrementalPushPolicyToFilterParam));
 
     String regionsFilterParam = getOptionalArgument(cmd, Arg.REGIONS_FILTER);
     Optional<String> regionsFilter =
-        Utils.isNullOrEmpty(regionsFilterParam) ? Optional.empty() : Optional.of(regionsFilterParam);
+        StringUtils.isEmpty(regionsFilterParam) ? Optional.empty() : Optional.of(regionsFilterParam);
 
     ControllerResponse response = controllerClient.configureIncrementalPushForCluster(incrementalPushPolicyToApply, incrementalPushPolicyToFilter, regionsFilter);
     printObject(response);

@@ -30,7 +30,6 @@ import com.linkedin.venice.routerapi.ResourceStateResponse;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
-import com.linkedin.venice.utils.Utils;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
@@ -47,6 +46,8 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+
+import org.apache.commons.lang.StringUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.codehaus.jackson.map.ObjectMapper;
@@ -229,14 +230,14 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
     String storeName = helper.getResourceName();
     checkResourceName(storeName, "/" + TYPE_CLUSTER_DISCOVERY + "/${storeName}");
     Optional<StoreConfig> config = storeConfigRepo.getStoreConfig(storeName);
-    if (!config.isPresent() || Utils.isNullOrEmpty(config.get().getCluster())) {
+    if (!config.isPresent() || StringUtils.isEmpty(config.get().getCluster())) {
       String errorMsg = "Cluster for store: " + storeName + " doesn't exist";
       setupErrorD2DiscoveryResponseAndFlush(NOT_FOUND, errorMsg, headers, ctx);
       return;
     }
     String clusterName = config.get().getCluster();
     String d2Service = getD2ServiceByClusterName(clusterName);
-    if (Utils.isNullOrEmpty(d2Service)) {
+    if (StringUtils.isEmpty(d2Service)) {
       String errorMsg = "D2 service for store: " + storeName + " doesn't exist";
       setupErrorD2DiscoveryResponseAndFlush(NOT_FOUND, errorMsg, headers, ctx);
       return;
@@ -428,7 +429,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
   }
 
   private void checkResourceName(String resourceName, String path) {
-    if (Utils.isNullOrEmpty(resourceName)) {
+    if (StringUtils.isEmpty(resourceName)) {
       throw new VeniceException("Resource name required, valid path should be : " + path);
     }
   }

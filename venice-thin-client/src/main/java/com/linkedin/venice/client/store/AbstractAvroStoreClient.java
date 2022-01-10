@@ -55,7 +55,6 @@ import java.util.concurrent.atomic.LongAdder;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Supplier;
-import javax.validation.constraints.NotNull;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.BinaryEncoder;
@@ -220,7 +219,6 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
     return transportClient;
   }
 
-  @NotNull
   protected SchemaReader getSchemaReader() {
     return schemaReader;
   }

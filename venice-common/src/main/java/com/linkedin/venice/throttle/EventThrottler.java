@@ -1,7 +1,6 @@
 package com.linkedin.venice.throttle;
 
 import com.linkedin.venice.exceptions.QuotaExceededException;
-import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricConfig;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Quota;
@@ -11,8 +10,12 @@ import io.tehuti.metrics.stats.Rate;
 import io.tehuti.utils.Time;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
+
+import org.apache.commons.lang.Validate;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+
+import javax.annotation.Nonnull;
 
 
 /**
@@ -126,27 +129,30 @@ public class EventThrottler {
    * @param checkQuotaBeforeRecording if true throttler will check the quota before recording usage, otherwise throttler will record usage then check the quota.
    * @param throttlingStrategy the strategy how throttler handle the quota exceeding case.
    */
-  public EventThrottler(io.tehuti.utils.Time time,
+  public EventThrottler(
+      @Nonnull io.tehuti.utils.Time time,
       Supplier<Long> maxRatePerSecondProvider,
       long intervalMs,
       String throttlerName,
       boolean checkQuotaBeforeRecording,
-      EventThrottlingStrategy throttlingStrategy) {
+      @Nonnull EventThrottlingStrategy throttlingStrategy) {
+    Validate.notNull(time);
+    Validate.notNull(throttlingStrategy);
+    this.time = time;
     this.maxRatePerSecondProvider = maxRatePerSecondProvider;
-    this.throttlingStrategy = Utils.notNull(throttlingStrategy);
+    this.throttlingStrategy = throttlingStrategy;
     this.enforcementIntervalMs = intervalMs;
     this.throttlerName = throttlerName != null ? throttlerName : THROTTLER_NAME;
     this.checkQuotaBeforeRecording = checkQuotaBeforeRecording;
-    this.time = Utils.notNull(time);
 
     long maxRatePerSecond = maxRatePerSecondProvider.get();
     if (maxRatePerSecond >= 0) {
       initialize(maxRatePerSecond);
     }
 
-    if(logger.isDebugEnabled())
+    if (logger.isDebugEnabled()) {
       logger.debug("EventThrottler constructed with maxRatePerSecond = " + getMaxRatePerSecond());
-
+    }
   }
 
   /**

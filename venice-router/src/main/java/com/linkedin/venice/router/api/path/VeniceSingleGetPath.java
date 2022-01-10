@@ -13,7 +13,6 @@ import com.linkedin.venice.router.api.VenicePathParser;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
 import com.linkedin.venice.router.stats.RouterStats;
 import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
-import com.linkedin.venice.utils.Utils;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.handler.codec.http.HttpMethod;
@@ -22,6 +21,8 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.Optional;
 import javax.annotation.Nonnull;
+
+import org.apache.commons.lang.StringUtils;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.methods.HttpUriRequest;
 
@@ -39,7 +40,7 @@ public class VeniceSingleGetPath extends VenicePath {
   public VeniceSingleGetPath(String resourceName, String key, String uri, VenicePartitionFinder partitionFinder,
       Optional<RouterStats<AggRouterHttpRequestStats>> stats) throws RouterException {
     super(resourceName, false, -1);
-    if (Utils.isNullOrEmpty(key)) {
+    if (StringUtils.isEmpty(key)) {
       throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.empty(), Optional.empty(), BAD_REQUEST,
           "Request URI must have non-empty key.  Uri is: " + uri);
     }

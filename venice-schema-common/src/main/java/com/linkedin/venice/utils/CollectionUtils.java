@@ -37,15 +37,7 @@ public class CollectionUtils {
     return true;
   }
 
-  public static <T> Collection<T> assertCollectionsNotEmpty(Collection<T> collection) {
-    if (collection.isEmpty()) {
-      throw new IllegalArgumentException("This collection object cannot be empty.");
-    }
-    return collection;
-  }
-
-  public static List<Float> asUnmodifiableList(float[] array)
-  {
+  public static List<Float> asUnmodifiableList(float[] array) {
     Objects.requireNonNull(array);
     class ResultList extends AbstractList<Float> implements RandomAccess
     {
@@ -65,14 +57,14 @@ public class CollectionUtils {
   }
 
   /**
-   * A reversed copy of the given list
+   * A reversed copy of the given collection
    *
    * @param <T> The type of the items in the list
-   * @param l The list to reverse
+   * @param collection The collection to reverse
    * @return The list, reversed
    */
-  public static <T> List<T> reversed(List<T> l) {
-    List<T> copy = new ArrayList<T>(l);
+  public static <T> List<T> reversed(Collection<T> collection) {
+    List<T> copy = new ArrayList<>(collection);
     Collections.reverse(copy);
     return copy;
   }

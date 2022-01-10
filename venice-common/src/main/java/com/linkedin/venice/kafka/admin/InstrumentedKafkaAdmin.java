@@ -11,8 +11,12 @@ import java.util.Collection;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
+
+import org.apache.commons.lang.Validate;
 import org.apache.kafka.clients.admin.TopicDescription;
 import org.apache.kafka.common.KafkaFuture;
+
+import javax.annotation.Nonnull;
 
 
 /**
@@ -30,17 +34,17 @@ public class InstrumentedKafkaAdmin implements KafkaAdminWrapper {
   }
 
   public InstrumentedKafkaAdmin(
-      KafkaAdminWrapper kafkaAdmin,
-      MetricsRepository metricsRepository,
-      String statsName,
-      Time time
-  ) {
-    this.kafkaAdmin = Utils.notNull(kafkaAdmin);
-    this.time = Utils.notNull(time);
-    this.kafkaAdminWrapperStats = KafkaAdminWrapperStats.getInstance(
-        Utils.notNull(metricsRepository),
-        Utils.stringNotNullNorEmpty(statsName)
-    );
+      @Nonnull KafkaAdminWrapper kafkaAdmin,
+      @Nonnull MetricsRepository metricsRepository,
+      @Nonnull String statsName,
+      @Nonnull Time time) {
+    Validate.notNull(kafkaAdmin);
+    Validate.notNull(metricsRepository);
+    Validate.notEmpty(statsName);
+    Validate.notNull(time);
+    this.kafkaAdmin = kafkaAdmin;
+    this.time = time;
+    this.kafkaAdminWrapperStats = KafkaAdminWrapperStats.getInstance(metricsRepository, statsName);
   }
 
   @Override

@@ -14,6 +14,9 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
+
+import org.apache.commons.lang.StringUtils;
+
 import java.io.File;
 import java.util.List;
 import java.util.Optional;
@@ -58,7 +61,7 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
           .put(KAFKA_ZK_ADDRESS, kafkaBrokerWrapper.getZkAddress())
           .put(KAFKA_BOOTSTRAP_SERVERS, kafkaBrokerWrapper.getAddress())
           .put(SSL_TO_STORAGE_NODES, sslToStorageNodes)
-          .put(CLUSTER_TO_D2, Utils.isNullOrEmpty(clusterToD2) ? TestUtils.getClusterToDefaultD2String(clusterName) : clusterToD2)
+          .put(CLUSTER_TO_D2, StringUtils.isEmpty(clusterToD2) ? TestUtils.getClusterToDefaultD2String(clusterName) : clusterToD2)
           .put(ROUTER_THROTTLE_CLIENT_SSL_HANDSHAKES, true)
           // Below configs are to attempt to minimize resource utilization in tests
           .put(ROUTER_CONNECTION_LIMIT, 20)

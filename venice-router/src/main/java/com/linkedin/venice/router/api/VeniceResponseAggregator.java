@@ -17,7 +17,6 @@ import com.linkedin.venice.router.stats.RouterStats;
 import com.linkedin.venice.router.streaming.SuccessfulStreamingResponse;
 import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
 import com.linkedin.venice.utils.LatencyUtils;
-import com.linkedin.venice.utils.Utils;
 import io.netty.buffer.CompositeByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.handler.codec.http.DefaultFullHttpResponse;
@@ -35,6 +34,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import javax.annotation.Nonnull;
+
+import org.apache.commons.lang.StringUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -126,7 +127,7 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
         if (response.status().equals(MOVED_PERMANENTLY)) {
           String errorMsg = response.headers().get(HeaderNames.X_ERROR_MESSAGE);
           String d2Service = VeniceStoreIsMigratedException.getD2ServiceName(errorMsg);
-          if (!Utils.isNullOrEmpty(d2Service)) {
+          if (!StringUtils.isEmpty(d2Service)) {
             URI uri = new URI(request.uri());
             uri = new URI("d2", d2Service, uri.getPath(), uri.getQuery(), uri.getFragment());
             String redirectUri = uri.toString();

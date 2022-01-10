@@ -8,7 +8,6 @@ import com.linkedin.venice.acl.AclException;
 import com.linkedin.venice.router.api.VenicePathParserHelper;
 import com.linkedin.venice.router.stats.AdminOperationsStats;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
-import com.linkedin.venice.utils.Utils;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
@@ -26,6 +25,8 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
+
+import org.apache.commons.lang.StringUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -91,7 +92,7 @@ public class AdminOperationsHandler extends SimpleChannelInboundHandler<HttpRequ
     adminOperationsStats.recordAdminRequest();
 
     // Since AdminOperationsHandler comes after health check, it should not receive requests without a task
-    if(Utils.isNullOrEmpty(adminTask)) {
+    if (StringUtils.isEmpty(adminTask)) {
       adminOperationsStats.recordErrorAdminRequest();
       sendUserErrorResponse("Admin operations must specify a task", ctx);
       return;
@@ -145,7 +146,7 @@ public class AdminOperationsHandler extends SimpleChannelInboundHandler<HttpRequ
     final String action = pathHelper.getKey();
 
     if (TASK_READ_QUOTA_THROTTLE.equals(task)) {
-      if (Utils.isNullOrEmpty(action)) {
+      if (StringUtils.isEmpty(action)) {
         sendReadQuotaThrottleStatus(ctx);
       } else {
         sendUserErrorResponse("GET admin task " + TASK_READ_QUOTA_THROTTLE + " can not specify an action", ctx);
@@ -159,7 +160,7 @@ public class AdminOperationsHandler extends SimpleChannelInboundHandler<HttpRequ
     final String task = pathHelper.getResourceName();
     final String action = pathHelper.getKey();
 
-    if (Utils.isNullOrEmpty(action)) {
+    if (StringUtils.isEmpty(action)) {
       sendUserErrorResponse("Admin operations must have an action", ctx);
       return;
     }

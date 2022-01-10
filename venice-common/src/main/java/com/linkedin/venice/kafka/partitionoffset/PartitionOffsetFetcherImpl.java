@@ -24,6 +24,7 @@ import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
 import org.apache.commons.io.IOUtils;
+import org.apache.commons.lang.Validate;
 import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
@@ -32,6 +33,8 @@ import org.apache.kafka.common.PartitionInfo;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+
+import javax.annotation.Nonnull;
 
 import static com.linkedin.venice.offsets.OffsetRecord.*;
 
@@ -52,14 +55,16 @@ public class PartitionOffsetFetcherImpl implements PartitionOffsetFetcher {
   private final Duration kafkaOperationTimeout;
 
   public PartitionOffsetFetcherImpl(
-      Lazy<Consumer<byte[], byte[]>> kafkaRawBytesConsumer,
-      Lazy<Consumer<KafkaKey, KafkaMessageEnvelope>> kafkaRecordConsumer,
-      Lazy<KafkaAdminWrapper> kafkaAdminWrapper,
-      long kafkaOperationTimeoutMs
-  ) {
-    this.kafkaRawBytesConsumer = Utils.notNull(kafkaRawBytesConsumer);
-    this.kafkaRecordConsumer = Utils.notNull(kafkaRecordConsumer);
-    this.kafkaAdminWrapper = Utils.notNull(kafkaAdminWrapper);
+      @Nonnull Lazy<Consumer<byte[], byte[]>> kafkaRawBytesConsumer,
+      @Nonnull Lazy<Consumer<KafkaKey, KafkaMessageEnvelope>> kafkaRecordConsumer,
+      @Nonnull Lazy<KafkaAdminWrapper> kafkaAdminWrapper,
+      long kafkaOperationTimeoutMs) {
+    Validate.notNull(kafkaRawBytesConsumer);
+    Validate.notNull(kafkaRecordConsumer);
+    Validate.notNull(kafkaAdminWrapper);
+    this.kafkaRawBytesConsumer = kafkaRawBytesConsumer;
+    this.kafkaRecordConsumer = kafkaRecordConsumer;
+    this.kafkaAdminWrapper = kafkaAdminWrapper;
     this.rawConsumerLock = new ReentrantLock();
     this.kafkaRecordConsumerLock = new ReentrantLock();
     this.kafkaOperationTimeout = Duration.ofMillis(kafkaOperationTimeoutMs);
@@ -214,8 +219,10 @@ public class PartitionOffsetFetcherImpl implements PartitionOffsetFetcher {
               .entrySet()
               .stream()
               .collect(Collectors.toMap(
-                  partitionToOffset ->
-                      Utils.notNull(partitionToOffset.getKey(), "Got a null TopicPartition key out of the offsetsForTime API"),
+                  partitionToOffset -> {
+                    Validate.notNull(partitionToOffset.getKey(), "Got a null TopicPartition key out of the offsetsForTime API");
+                    return partitionToOffset.getKey();
+                  },
                   partitionToOffset -> {
                     Optional<Long> offsetOptional = Optional.ofNullable(partitionToOffset.getValue()).map(OffsetAndTimestamp::offset);
                     return offsetOptional.orElseGet(() -> getOffsetByTimeIfOutOfRange(
@@ -230,7 +237,10 @@ public class PartitionOffsetFetcherImpl implements PartitionOffsetFetcher {
                 .entrySet()
                 .stream()
                 .collect(Collectors.toMap(
-                    partitionToOffset -> Utils.notNull(partitionToOffset).getKey(),
+                    partitionToOffset -> {
+                      Validate.notNull(partitionToOffset);
+                      return partitionToOffset.getKey();
+                    },
                     partitionToOffset -> partitionToOffset.getValue() + 1
                 ));
 

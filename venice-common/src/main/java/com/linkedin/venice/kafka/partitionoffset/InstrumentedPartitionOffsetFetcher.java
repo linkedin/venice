@@ -5,8 +5,12 @@ import com.linkedin.venice.utils.Utils;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+
+import org.apache.commons.lang.Validate;
 import org.apache.kafka.common.PartitionInfo;
 import org.apache.kafka.common.TopicPartition;
+
+import javax.annotation.Nonnull;
 
 
 public class InstrumentedPartitionOffsetFetcher implements PartitionOffsetFetcher {
@@ -16,13 +20,15 @@ public class InstrumentedPartitionOffsetFetcher implements PartitionOffsetFetche
   private final Time time;
 
   public InstrumentedPartitionOffsetFetcher(
-      PartitionOffsetFetcher partitionOffsetFetcher,
-      PartitionOffsetFetcherStats stats,
-      Time time
-  ) {
-    this.partitionOffsetFetcher = Utils.notNull(partitionOffsetFetcher);
-    this.stats = Utils.notNull(stats);
-    this.time = Utils.notNull(time);
+      @Nonnull PartitionOffsetFetcher partitionOffsetFetcher,
+      @Nonnull PartitionOffsetFetcherStats stats,
+      @Nonnull Time time) {
+    Validate.notNull(partitionOffsetFetcher);
+    Validate.notNull(stats);
+    Validate.notNull(time);
+    this.partitionOffsetFetcher = partitionOffsetFetcher;
+    this.stats = stats;
+    this.time = time;
   }
 
   @Override

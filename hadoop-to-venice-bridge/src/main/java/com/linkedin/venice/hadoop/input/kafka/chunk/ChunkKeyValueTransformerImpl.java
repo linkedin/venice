@@ -3,18 +3,16 @@ package com.linkedin.venice.hadoop.input.kafka.chunk;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.serialization.KeyWithChunkingSuffixSerializer;
 import com.linkedin.venice.serialization.avro.ChunkedKeySuffixSerializer;
-import com.linkedin.venice.serializer.AvroGenericDeserializer;
-import com.linkedin.venice.serializer.AvroSpecificDeserializer;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
-import com.linkedin.venice.storage.protocol.ChunkedKeySuffix;
-import com.linkedin.venice.utils.Utils;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import org.apache.avro.Schema;
 import org.apache.avro.io.BinaryDecoder;
 import org.apache.avro.io.OptimizedBinaryDecoderFactory;
-import org.apache.avro.specific.SpecificDatumReader;
+import org.apache.commons.lang.Validate;
+
+import javax.annotation.Nonnull;
 
 
 public class ChunkKeyValueTransformerImpl implements ChunkKeyValueTransformer {
@@ -28,9 +26,9 @@ public class ChunkKeyValueTransformerImpl implements ChunkKeyValueTransformer {
   }
   private final RecordDeserializer<?> keyDeserializer;
 
-  public ChunkKeyValueTransformerImpl(Schema keySchema) {
-    SpecificDatumReader<ChunkedKeySuffix> specificDatumReader = new SpecificDatumReader<>(ChunkedKeySuffix.class);
-    this.keyDeserializer = SerializerDeserializerFactory.getAvroGenericDeserializer(Utils.notNull(keySchema));
+  public ChunkKeyValueTransformerImpl(@Nonnull Schema keySchema) {
+    Validate.notNull(keySchema);
+    this.keyDeserializer = SerializerDeserializerFactory.getAvroGenericDeserializer(keySchema);
   }
 
   @Override

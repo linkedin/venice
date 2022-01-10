@@ -9,7 +9,6 @@ import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
 import com.linkedin.venice.schema.vson.VsonSchema;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.Pair;
-import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.util.Iterator;
@@ -21,6 +20,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 import org.apache.avro.Schema;
+import org.apache.commons.lang.StringUtils;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
@@ -138,9 +138,9 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
 
       Pair<VsonSchema, VsonSchema> vsonSchemaPair = checkVsonSchemaConsistency(fs, fileStatuses, inputFileDataSize);
 
-      VsonSchema vsonKeySchema = Utils.isNullOrEmpty(schemaInfo.keyField) ? vsonSchemaPair.getFirst()
+      VsonSchema vsonKeySchema = StringUtils.isEmpty(schemaInfo.keyField) ? vsonSchemaPair.getFirst()
           : vsonSchemaPair.getFirst().recordSubtype(schemaInfo.keyField);
-      VsonSchema vsonValueSchema = Utils.isNullOrEmpty(schemaInfo.valueField) ? vsonSchemaPair.getSecond()
+      VsonSchema vsonValueSchema = StringUtils.isEmpty(schemaInfo.valueField) ? vsonSchemaPair.getSecond()
           : vsonSchemaPair.getSecond().recordSubtype(schemaInfo.valueField);
 
       schemaInfo.keySchemaString = VsonAvroSchemaAdapter.parse(vsonKeySchema.toString()).toString();
