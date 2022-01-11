@@ -1,7 +1,5 @@
 package com.linkedin.venice.pushmonitor;
 
-import com.linkedin.venice.common.VeniceSystemStoreType;
-import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.Instance;
@@ -45,7 +43,7 @@ import org.apache.logging.log4j.Logger;
  */
 
 public abstract class AbstractPushMonitor
-    implements PushMonitor, OfflinePushAccessor.PartitionStatusListener, RoutingDataRepository.RoutingDataChangedListener {
+    implements PushMonitor, PartitionStatusListener, RoutingDataRepository.RoutingDataChangedListener {
   public static final int MAX_PUSH_TO_KEEP = 5;
 
   protected final Logger logger = LogManager.getLogger(getClass().getSimpleName());
@@ -174,7 +172,7 @@ public abstract class AbstractPushMonitor
       topicToPushMap.put(kafkaTopic, pushStatus);
       offlinePushAccessor.subscribePartitionStatusChange(pushStatus, this);
       routingDataRepository.subscribeRoutingDataChange(kafkaTopic, this);
-      logger.info("Start monitoring push on topic:" + kafkaTopic);
+      logger.info("Started monitoring push on topic:" + kafkaTopic);
     }
   }
 

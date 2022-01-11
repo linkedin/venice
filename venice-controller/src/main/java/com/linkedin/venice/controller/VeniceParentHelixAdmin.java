@@ -389,6 +389,7 @@ public class VeniceParentHelixAdmin implements Admin {
    */
   private void asyncSetupForInternalRTStore(String clusterName, String storeName, String storeDescriptor,
       String keySchema, String valueSchema, int partitionCount) {
+
     asyncSetupExecutor.submit(() -> {
       int retryCount = 0;
       boolean isStoreReady = false;
@@ -449,6 +450,7 @@ public class VeniceParentHelixAdmin implements Admin {
         updateStoreQueryParams = new UpdateStoreQueryParams();
         updateStoreQueryParams.setHybridOffsetLagThreshold(100L);
         updateStoreQueryParams.setHybridRewindSeconds(TimeUnit.DAYS.toSeconds(7));
+        updateStoreQueryParams.setHybridDataReplicationPolicy(DataReplicationPolicy.AGGREGATE);
         updateStore(clusterName, storeName, updateStoreQueryParams);
         store = getStore(clusterName, storeName);
         if (!store.isHybrid()) {
@@ -2209,6 +2211,7 @@ public class VeniceParentHelixAdmin implements Admin {
         extraDetails.put(region, masterControllerUrl + " " + response.getError());
       } else {
         ExecutionStatus status = ExecutionStatus.valueOf(response.getStatus());
+
         statuses.add(status);
         extraInfo.put(region, response.getStatus());
         Optional<String> statusDetails = response.getOptionalStatusDetails();
