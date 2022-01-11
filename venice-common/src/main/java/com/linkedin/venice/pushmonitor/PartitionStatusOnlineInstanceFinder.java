@@ -36,7 +36,7 @@ import org.apache.logging.log4j.Logger;
  * We can use {@link HelixCustomizedViewOfflinePushRepository} instead to improve.
  */
 public class PartitionStatusOnlineInstanceFinder
-    implements OfflinePushAccessor.PartitionStatusListener, OnlineInstanceFinder, VeniceResource, IZkChildListener {
+    implements PartitionStatusListener, OnlineInstanceFinder, VeniceResource, IZkChildListener {
 
   private static final Logger logger = LogManager.getLogger(PartitionStatusOnlineInstanceFinder.class);
   private final OfflinePushAccessor offlinePushAccessor;

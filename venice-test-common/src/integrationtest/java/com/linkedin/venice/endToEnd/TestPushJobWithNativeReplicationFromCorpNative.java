@@ -21,6 +21,9 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.samza.VeniceSystemFactory;
 import com.linkedin.venice.samza.VeniceSystemProducer;
+import com.linkedin.venice.status.BatchJobHeartbeatConfigs;
+import com.linkedin.venice.status.protocol.BatchJobHeartbeatKey;
+import com.linkedin.venice.status.protocol.BatchJobHeartbeatValue;
 import com.linkedin.venice.utils.TestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
@@ -34,6 +37,7 @@ import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.IntStream;
 import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericRecord;
 import org.apache.commons.io.IOUtils;
 import org.apache.log4j.Logger;
 import org.apache.samza.config.MapConfig;
@@ -86,12 +90,13 @@ public class TestPushJobWithNativeReplicationFromCorpNative {
   private static final int TEST_TIMEOUT = 90_000; // ms
   private static final int TEST_TIMEOUT_LARGE = 120_000; // ms
 
-
   private static final int NUMBER_OF_CHILD_DATACENTERS = 3;
   private static final int NUMBER_OF_CLUSTERS = 1;
   private static final String[] CLUSTER_NAMES =
       IntStream.range(0, NUMBER_OF_CLUSTERS).mapToObj(i -> "venice-cluster" + i).toArray(String[]::new);
       // ["venice-cluster0", "venice-cluster1", ...];
+  private static final String VPJ_HEARTBEAT_STORE_CLUSTER = CLUSTER_NAMES[0]; // "venice-cluster0"
+  private static final String VPJ_HEARTBEAT_STORE_NAME = "venice_system_store_BATCH_JOB_HEARTBEAT";
 
   private List<VeniceMultiClusterWrapper> childDatacenters;
   private List<VeniceControllerWrapper> parentControllers;
@@ -134,6 +139,9 @@ public class TestPushJobWithNativeReplicationFromCorpNative {
     controllerProps.put(LF_MODEL_DEPENDENCY_CHECK_DISABLED, "true");
     controllerProps.put(AGGREGATE_REAL_TIME_SOURCE_REGION, DEFAULT_PARENT_DATA_CENTER_REGION_NAME);
     controllerProps.put(NATIVE_REPLICATION_FABRIC_WHITELIST, DEFAULT_PARENT_DATA_CENTER_REGION_NAME);
+    controllerProps.put(BatchJobHeartbeatConfigs.HEARTBEAT_STORE_CLUSTER_CONFIG.getConfigName(), VPJ_HEARTBEAT_STORE_CLUSTER);
+    controllerProps.put(BatchJobHeartbeatConfigs.HEARTBEAT_ENABLED_CONFIG.getConfigName(), true);
+
     int parentKafkaPort = Utils.getFreePort();
     controllerProps.put(CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + DEFAULT_PARENT_DATA_CENTER_REGION_NAME, "localhost:" + parentKafkaPort);
 
@@ -156,7 +164,8 @@ public class TestPushJobWithNativeReplicationFromCorpNative {
     childDatacenters = multiColoMultiClusterWrapper.getClusters();
     parentControllers = multiColoMultiClusterWrapper.getParentControllers();
 
-    //setup an additional MirrorMaker between corp-native-kafka and dc-1 and dc-2.
+    // Setup an additional MirrorMaker between corp-native-kafka and dc-1 and dc-2. Note that there is no KMM between
+    // the corp-native-kafka and dc-0.
     multiColoMultiClusterWrapper.addMirrorMakerBetween(corpVeniceNativeKafka, childDatacenters.get(1).getKafkaBrokerWrapper(), MirrorMakerWrapper.DEFAULT_TOPIC_WHITELIST);
     multiColoMultiClusterWrapper.addMirrorMakerBetween(corpVeniceNativeKafka, childDatacenters.get(2).getKafkaBrokerWrapper(), MirrorMakerWrapper.DEFAULT_TOPIC_WHITELIST);
     corpDefaultParentKafka = multiColoMultiClusterWrapper.getParentKafkaBrokerWrapper();
@@ -242,15 +251,116 @@ public class TestPushJobWithNativeReplicationFromCorpNative {
         Assert.assertEquals(version, 1);
       }
 
-      // Verify the data in the first child fabric which consumes remotely
-      VeniceMultiClusterWrapper childDataCenter = childDatacenters.get(0);
-      String routerUrl = childDataCenter.getClusters().get(clusterName).getRandomRouterURL();
-      try (AvroGenericStoreClient<String, Object> client = ClientFactory.getAndStartGenericAvroClient(
-          ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerUrl))) {
-        for (int i = 1; i <= recordCount; ++i) {
-          String expected = "test_name_" + i;
-          String actual = client.get(Integer.toString(i)).get().toString();
-          Assert.assertEquals(actual, expected);
+      // Verify that the data are in all child fabrics including the first child fabric which consumes remotely.
+      for (VeniceMultiClusterWrapper childDataCenter : childDatacenters) {
+        String routerUrl = childDataCenter.getClusters().get(clusterName).getRandomRouterURL();
+        try (AvroGenericStoreClient<String, Object> client = ClientFactory.getAndStartGenericAvroClient(
+            ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerUrl))) {
+          for (int i = 1; i <= recordCount; ++i) {
+            String expected = "test_name_" + i;
+            String actual = client.get(Integer.toString(i)).get().toString();
+            Assert.assertEquals(actual, expected);
+          }
+        }
+      }
+    });
+  }
+
+  @Test(timeOut = TEST_TIMEOUT, dataProvider = "storeSize")
+  public void testNativeReplicationForVpjHeartbeatSystemStores(int recordCount, int partitionCount) throws Exception {
+    String userStoreClusterName = CLUSTER_NAMES[0];
+    File inputDir = getTempDataDirectory();
+    Schema recordSchema = TestPushUtils.writeSimpleAvroFileWithUserSchema(inputDir, true, recordCount);
+    String inputDirPath = "file:" + inputDir.getAbsolutePath();
+    String userStoreName = Utils.getUniqueString("user_store");
+    VeniceControllerWrapper parentController =
+        parentControllers.stream().filter(c -> c.isMasterController(userStoreClusterName)).findAny().get();
+    Properties vpjProps = defaultH2VProps(parentController.getControllerUrl(), inputDirPath, userStoreName);
+    vpjProps.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
+
+    // Enable VPJ to send liveness heartbeat.
+    vpjProps.put(BatchJobHeartbeatConfigs.HEARTBEAT_ENABLED_CONFIG.getConfigName(), true);
+    vpjProps.put(BatchJobHeartbeatConfigs.HEARTBEAT_STORE_NAME_CONFIG.getConfigName(), VPJ_HEARTBEAT_STORE_NAME);
+    // Prevent heartbeat from being deleted when the VPJ run finishes.
+    vpjProps.put(BatchJobHeartbeatConfigs.HEARTBEAT_LAST_HEARTBEAT_IS_DELETE_CONFIG.getConfigName(), false);
+
+    String keySchemaStr = recordSchema.getField(vpjProps.getProperty(VenicePushJob.KEY_FIELD_PROP)).schema().toString();
+    String valueSchemaStr = recordSchema.getField(vpjProps.getProperty(VenicePushJob.VALUE_FIELD_PROP)).schema().toString();
+
+    /**
+     * Create the user store with L/F and native replication enabled.
+     */
+    UpdateStoreQueryParams updateStoreParams =
+        new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
+            .setPartitionCount(partitionCount)
+            .setLeaderFollowerModel(true)
+            .setNativeReplicationEnabled(true);
+    createStoreForJob(userStoreClusterName, keySchemaStr, valueSchemaStr, vpjProps, updateStoreParams).close();
+
+    try (ControllerClient dc0Client = new ControllerClient(userStoreClusterName,
+        childDatacenters.get(0).getControllerConnectString());
+        ControllerClient dc1Client = new ControllerClient(userStoreClusterName,
+            childDatacenters.get(1).getControllerConnectString());
+        ControllerClient dc2Client = new ControllerClient(userStoreClusterName,
+            childDatacenters.get(2).getControllerConnectString())) {
+
+      /**
+       * Check the update store command in parent controller has been propagated into child controllers, before
+       * sending any commands directly into child controllers, which can help avoid race conditions.
+       */
+      TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(dc0Client, userStoreName, true);
+      TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(dc1Client, userStoreName, true);
+      TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(dc2Client, userStoreName, true);
+
+      // Enable L/F + native replication on the VPJ heartbeat store in dc-0.
+      TestPushUtils.updateStore(
+          userStoreClusterName,
+          VPJ_HEARTBEAT_STORE_NAME,
+          dc0Client,
+          new UpdateStoreQueryParams().setLeaderFollowerModel(true).setNativeReplicationEnabled(true)
+      );
+      TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(dc0Client, VPJ_HEARTBEAT_STORE_NAME, true);
+    }
+
+    try (VenicePushJob job = new VenicePushJob("Test push job", vpjProps)) {
+      job.run();
+
+      //Verify the kafka URL being returned to the push job is the same as corp-venice-native kafka url.
+      Assert.assertEquals(job.getKafkaUrl(), corpVeniceNativeKafka.getAddress());
+    }
+
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+      // Current version should become 1
+      for (int version : parentController.getVeniceAdmin()
+          .getCurrentVersionsForMultiColos(userStoreClusterName, userStoreName)
+          .values()) {
+        Assert.assertEquals(version, 1);
+      }
+
+      // Verify that the data are in all child fabrics including the first child fabric which consumes remotely.
+      for (VeniceMultiClusterWrapper childDataCenter : childDatacenters) {
+        String routerUrl = childDataCenter.getClusters().get(userStoreClusterName).getRandomRouterURL();
+
+        // Verify that user store data can be read in all fabrics.
+        try (AvroGenericStoreClient<String, Object> client = ClientFactory.getAndStartGenericAvroClient(
+            ClientConfig.defaultGenericClientConfig(userStoreName).setVeniceURL(routerUrl))) {
+          for (int i = 1; i <= recordCount; ++i) {
+            String expected = "test_name_" + i;
+            String actual = client.get(Integer.toString(i)).get().toString();
+            Assert.assertEquals(actual, expected);
+          }
+        }
+
+        // Try to read the latest heartbeat value generated from the user store VPJ push in this fabric/datacenter.
+        try (AvroGenericStoreClient<BatchJobHeartbeatKey, BatchJobHeartbeatValue> client = ClientFactory.getAndStartGenericAvroClient(
+            ClientConfig.defaultGenericClientConfig(VPJ_HEARTBEAT_STORE_NAME).setVeniceURL(routerUrl))) {
+
+          final BatchJobHeartbeatKey key = new BatchJobHeartbeatKey();
+          key.storeName = userStoreName;
+          key.storeVersion = 1; // User store should be on version one.
+          GenericRecord heartbeatValue = client.get(key).get();
+          Assert.assertNotNull(heartbeatValue);
+          Assert.assertEquals(heartbeatValue.getSchema(), BatchJobHeartbeatValue.getClassSchema());
         }
       }
     });
@@ -357,7 +467,7 @@ public class TestPushJobWithNativeReplicationFromCorpNative {
    * This test is a bit time consuming a it runs many push jobs. So timeout is increased.
    * @throws Exception
    */
-  @Test(enabled=true, timeOut = TEST_TIMEOUT_LARGE)
+  @Test(timeOut = TEST_TIMEOUT_LARGE)
   public void testNativeReplicationForIncrementalPushRTRollout() throws Exception {
     String clusterName = CLUSTER_NAMES[0];
     File inputDirBatch = getTempDataDirectory();
@@ -728,6 +838,8 @@ public class TestPushJobWithNativeReplicationFromCorpNative {
       VeniceSystemFactory factory = new VeniceSystemFactory();
       veniceProducer = factory.getProducer("venice", new MapConfig(samzaConfig), null);
       veniceProducer.start();
+
+      // Streaming writes sent to the corp aggregate cluster.
       Assert.assertEquals(((VeniceSystemProducer)veniceProducer).getKafkaBootstrapServers(),
           parentController.getKafkaBootstrapServers(false));
       for (int i = 1; i <= 10; i++) {

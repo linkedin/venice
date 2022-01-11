@@ -1136,9 +1136,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             VeniceControllerConfig veniceControllerConfig = multiClusterConfigs.getControllerConfig(clusterName);
             veniceControllerConfig.getChildDataCenterControllerUrlMap().entrySet().
                 forEach(entry -> controllerClients.put(entry.getKey(), ControllerClient.constructClusterControllerClient(clusterName, entry.getValue(), sslFactory)));
+
             veniceControllerConfig.getChildDataCenterControllerD2Map().entrySet().
                 forEach(entry -> controllerClients.put(entry.getKey(),
                     new D2ControllerClient(veniceControllerConfig.getD2ServiceName(), clusterName, entry.getValue(), sslFactory)));
+
             return controllerClients;
         });
     }

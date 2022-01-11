@@ -42,6 +42,15 @@ public class BatchJobHeartbeatConfigs {
             null,
             "Heartbeat store name"
     );
+    public static final Utils.ConfigEntity<Boolean> HEARTBEAT_LAST_HEARTBEAT_IS_DELETE_CONFIG = new Utils.ConfigEntity<>(
+        "heartbeat.is.last.heartbeat.delete",
+        true,
+        "Whether the last heartbeat message is a DELETE record which deletes the existing k-v pair of a BatchJobHeartbeatKey. "
+            + "In production, it should be true because once a VPJ run finishes, its liveness heartbeat should be deleted "
+            + "to indicate that it has finished (no longer alive). However, sometimes we may want to preserve heartbeat "
+            + "for verification purpose, for example, in an integration test."
+    );
+
     private BatchJobHeartbeatConfigs() {
         // Util class
     }

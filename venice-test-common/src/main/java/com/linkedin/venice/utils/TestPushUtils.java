@@ -679,8 +679,8 @@ public class TestPushUtils {
   }
 
   private static Schema writeAvroFile(File parentDir, String fileName,
-      String RecordSchemaStr, AvroFileWriter fileWriter) throws IOException {
-    Schema recordSchema = Schema.parse(RecordSchemaStr);
+      String recordSchemaStr, AvroFileWriter fileWriter) throws IOException {
+    Schema recordSchema = AvroCompatibilityHelper.parse(recordSchemaStr);
     File file = new File(parentDir, fileName);
 
     DatumWriter<GenericRecord> datumWriter = new GenericDatumWriter<>(recordSchema);

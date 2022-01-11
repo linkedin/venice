@@ -44,6 +44,7 @@ class DefaultPushJobHeartbeatSender implements PushJobHeartbeatSender {
   private Instant heartbeatStartTime;
   private long successfulHeartbeatCount;
   private long failedHeartbeatCount;
+  private boolean sendDeleteAsLasHeartbeat;
   private Exception firstSendHeartbeatException;
 
   DefaultPushJobHeartbeatSender(
@@ -52,7 +53,9 @@ class DefaultPushJobHeartbeatSender implements PushJobHeartbeatSender {
       @Nonnull VeniceWriter<byte[], byte[], byte[]> veniceWriter,
       @Nonnull Schema heartbeatKeySchema,
       @Nonnull Map<Integer, Schema> valueSchemasById,
-      @Nonnull String heartbeatKafkaTopicName) {
+      @Nonnull String heartbeatKafkaTopicName,
+      boolean sendDeleteAsLasHeartbeat
+  ) {
     Validate.notNull(initialDelay);
     Validate.notNull(interval);
     Validate.notNull(veniceWriter);
@@ -70,6 +73,7 @@ class DefaultPushJobHeartbeatSender implements PushJobHeartbeatSender {
     this.executorService = Executors.newSingleThreadScheduledExecutor(new DaemonThreadFactory("push-job-heartbeat-thread"));
     this.successfulHeartbeatCount = 0;
     this.failedHeartbeatCount = 0;
+    this.sendDeleteAsLasHeartbeat = sendDeleteAsLasHeartbeat;
   }
 
   private int getSchemaIdForSchemaOrFail(Schema expectedSchema, Map<Integer, Schema> valueSchemasById) {
@@ -185,7 +189,7 @@ class DefaultPushJobHeartbeatSender implements PushJobHeartbeatSender {
       sendComplete.countDown();
     };
 
-    if (isLastHeartbeat) {
+    if (isLastHeartbeat && sendDeleteAsLasHeartbeat) {
       veniceWriter.delete(keyBytes, callback);
     } else {
       veniceWriter.put(keyBytes, valueBytes, valueSchemaId, callback);

@@ -80,7 +80,11 @@ public class DefaultPushJobHeartbeatSenderFactory implements PushJobHeartbeatSen
         veniceWriter,
         heartbeatKeySchema,
         valueSchemasById,
-        heartbeatKafkaTopicName
+        heartbeatKafkaTopicName,
+        properties.getBoolean(
+            HEARTBEAT_LAST_HEARTBEAT_IS_DELETE_CONFIG.getConfigName(),
+            HEARTBEAT_LAST_HEARTBEAT_IS_DELETE_CONFIG.getDefaultValue()
+        )
     );
     logger.info("Successfully created a default push job heartbeat sender with heartbeat store name " + heartbeatStoreName);
     return defaultPushJobHeartbeatSender;

@@ -12,4 +12,5 @@
 .settings
 .shelf/
 build/
+out/
 venice-test-common/tmp/
