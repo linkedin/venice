@@ -6,8 +6,8 @@ import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.client.exceptions.ServiceDiscoveryException;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.exceptions.VeniceClientHttpException;
-import com.linkedin.venice.client.schema.SchemaReader;
-import com.linkedin.venice.client.schema.SchemaRetriever;
+import com.linkedin.venice.client.schema.RouterBackedSchemaReader;
+import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.client.stats.ClientStats;
 import com.linkedin.venice.client.stats.Reporter;
 import com.linkedin.venice.client.store.deserialization.BatchDeserializer;
@@ -522,7 +522,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
   }
 
   public static <T, K> T tryToDeserializeWithVerboseLogging(RecordDeserializer<T> dataDeserializer, ByteBuffer data, int writerSchemaId,
-      K key, RecordSerializer<K> keySerializer, SchemaRetriever schemaRetriever, Logger logger) {
+      K key, RecordSerializer<K> keySerializer, SchemaReader schemaReader, Logger logger) {
     try {
       return dataDeserializer.deserialize(data);
     } catch (VeniceSerializationException e) {
@@ -549,7 +549,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
       }
 
       try {
-        latestSchemaId = schemaRetriever.getLatestValueSchemaId().toString();
+        latestSchemaId = schemaReader.getLatestValueSchemaId().toString();
       } catch (Exception e4) {
         latestSchemaId = "failed to retrieve latest value schema ID";
         logger.error(latestSchemaId + " for logging purposes...", e4);
@@ -736,9 +736,9 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
     if (needSchemaReader) {
       //TODO: remove the 'instanceof' statement once HttpClient got refactored.
       if (transportClient instanceof D2TransportClient) {
-        this.schemaReader = new SchemaReader(this, this.getReaderSchema());
+        this.schemaReader = new RouterBackedSchemaReader(this, this.getReaderSchema());
       } else {
-        this.schemaReader = new SchemaReader(this.getStoreClientForSchemaReader(), this.getReaderSchema());
+        this.schemaReader = new RouterBackedSchemaReader(this.getStoreClientForSchemaReader(), this.getReaderSchema());
       }
     } else {
       this.schemaReader = null;

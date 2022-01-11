@@ -19,7 +19,7 @@ import com.linkedin.davinci.stats.StoreBufferServiceStats;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
-import com.linkedin.venice.client.schema.SchemaReader;
+import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.compression.CompressionStrategy;
@@ -566,7 +566,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     leaderFollowerNotifiers.forEach(VeniceNotifier::close);
     Utils.closeQuietlyWithErrorLogged(metaStoreWriter);
 
-    kafkaMessageEnvelopeSchemaReader.ifPresent(SchemaReader::close);
+    kafkaMessageEnvelopeSchemaReader.ifPresent(Utils::closeQuietlyWithErrorLogged);
 
     //close it the very end to make sure all ingestion task have released the shared producers.
     Utils.closeQuietlyWithErrorLogged(sharedKafkaProducerService);

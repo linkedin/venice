@@ -2,19 +2,21 @@ package com.linkedin.venice.client.store;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
-import com.linkedin.venice.client.schema.SchemaReader;
-import com.linkedin.venice.client.store.transport.TransportClientResponse;
-import com.linkedin.venice.client.store.transport.TransportClient;
-import com.linkedin.venice.client.utils.StoreClientTestUtils;
+import com.linkedin.venice.client.schema.RouterBackedSchemaReader;
 import com.linkedin.venice.client.store.schemas.TestKeyRecord;
 import com.linkedin.venice.client.store.schemas.TestValueRecord;
 import com.linkedin.venice.client.store.schemas.TestValueRecordWithMoreFields;
-
-import static org.mockito.Mockito.*;
-
+import com.linkedin.venice.client.store.transport.TransportClient;
+import com.linkedin.venice.client.store.transport.TransportClientResponse;
+import com.linkedin.venice.client.utils.StoreClientTestUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.utils.Utils;
+import java.io.IOException;
+import java.util.Base64;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.specific.SpecificData;
@@ -24,11 +26,7 @@ import org.testng.annotations.BeforeClass;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
-import java.io.IOException;
-import java.util.Base64;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.concurrent.CompletableFuture;
+import static org.mockito.Mockito.*;
 
 @Test
 public class TestAvroStoreClient {
@@ -46,7 +44,7 @@ public class TestAvroStoreClient {
 
     byte[] schemaResponseInBytes =
         StoreClientTestUtils.constructSchemaResponseInBytes(STORE_NAME, 1, KEY_SCHEMA_STR);
-    setupSchemaResponse(schemaResponseInBytes, SchemaReader.TYPE_KEY_SCHEMA + "/" + STORE_NAME);
+    setupSchemaResponse(schemaResponseInBytes, RouterBackedSchemaReader.TYPE_KEY_SCHEMA + "/" + STORE_NAME);
     genericStoreClient = new AvroGenericStoreClientImpl(mockTransportClient, ClientConfig.defaultGenericClientConfig(STORE_NAME));
   }
 
@@ -94,7 +92,7 @@ public class TestAvroStoreClient {
     schemas.put(1, TestValueRecord.SCHEMA$.toString());
     schemas.put(2, TestValueRecordWithMoreFields.SCHEMA$.toString());
     byte[] multiSchemasInBytes = StoreClientTestUtils.constructMultiSchemaResponseInBytes(STORE_NAME, schemas);
-    setupSchemaResponse(multiSchemasInBytes, SchemaReader.TYPE_VALUE_SCHEMA + "/" + STORE_NAME);
+    setupSchemaResponse(multiSchemasInBytes, RouterBackedSchemaReader.TYPE_VALUE_SCHEMA + "/" + STORE_NAME);
 
     // Setup individual schema responses
     setupSchemaResponse(1, TestValueRecord.SCHEMA$);
@@ -132,7 +130,7 @@ public class TestAvroStoreClient {
       throws IOException {
     byte[] schemaResponseInBytes =
         StoreClientTestUtils.constructSchemaResponseInBytes(STORE_NAME, schemaId, schema.toString());
-    setupSchemaResponse(schemaResponseInBytes, SchemaReader.TYPE_VALUE_SCHEMA + "/" + STORE_NAME + "/" + schemaId);
+    setupSchemaResponse(schemaResponseInBytes, RouterBackedSchemaReader.TYPE_VALUE_SCHEMA + "/" + STORE_NAME + "/" + schemaId);
   }
 
   private void setupSchemaResponse(byte[] response, String path) {
@@ -148,7 +146,7 @@ public class TestAvroStoreClient {
     Map schemas = new HashMap<>();
     schemas.put(1, schemaWithoutNamespace.toString());
     byte[] multiSchemasInBytes = StoreClientTestUtils.constructMultiSchemaResponseInBytes(STORE_NAME, schemas);
-    setupSchemaResponse(multiSchemasInBytes, SchemaReader.TYPE_VALUE_SCHEMA + "/" + STORE_NAME);
+    setupSchemaResponse(multiSchemasInBytes, RouterBackedSchemaReader.TYPE_VALUE_SCHEMA + "/" + STORE_NAME);
     AvroSpecificStoreClientImpl specificStoreClient = new AvroSpecificStoreClientImpl(mockTransportClient,
         ClientConfig.defaultSpecificClientConfig(STORE_NAME, NamespaceTest.class));
     specificStoreClient.start();

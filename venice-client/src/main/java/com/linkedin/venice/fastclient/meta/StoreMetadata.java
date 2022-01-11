@@ -1,7 +1,7 @@
 package com.linkedin.venice.fastclient.meta;
 
 import com.linkedin.restli.common.HttpStatus;
-import com.linkedin.venice.client.schema.SchemaRetriever;
+import com.linkedin.venice.schema.SchemaReader;
 import java.nio.ByteBuffer;
 import java.util.Collections;
 import java.util.List;
@@ -14,7 +14,7 @@ import java.util.concurrent.CompletableFuture;
  * and it also includes the feedback APIs: {@link #sendRequestToInstance}
  * to decide the healthiness of each replica.
  */
-public interface StoreMetadata extends SchemaRetriever {
+public interface StoreMetadata extends SchemaReader {
 
   String getStoreName();
 

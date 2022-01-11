@@ -4,7 +4,7 @@ import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.davinci.client.DaVinciConfig;
 import com.linkedin.davinci.client.StoreStateReader;
 import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
-import com.linkedin.venice.client.schema.SchemaReader;
+import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.common.VeniceSystemStoreType;
@@ -25,6 +25,7 @@ import com.linkedin.venice.system.store.MetaStoreDataType;
 import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
 import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
 import com.linkedin.venice.systemstore.schemas.StoreProperties;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Collection;
@@ -219,7 +220,7 @@ public class DaVinciClientMetaStoreBasedRepository extends NativeMetadataReposit
     subscribedStoreMap.clear();
     daVinciClientFactory.close();
     daVinciClientMap.clear();
-    metaStoreSchemaReader.close();
+    Utils.closeQuietlyWithErrorLogged(metaStoreSchemaReader);
     subscribedStoreMap.clear();
   }
 

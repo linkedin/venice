@@ -2,19 +2,26 @@ package com.linkedin.venice.client.schema;
 
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.AbstractAvroStoreClient;
-import com.linkedin.venice.client.store.MetadataReader;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
+import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.utils.AvroSchemaUtils;
+import com.linkedin.venice.utils.RetryUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import java.io.IOException;
+import java.time.Duration;
+import java.util.Arrays;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import org.apache.avro.Schema;
+import org.apache.commons.io.IOUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.codehaus.jackson.map.DeserializationConfig;
@@ -23,10 +30,7 @@ import org.codehaus.jackson.map.ObjectMapper;
 import static com.linkedin.venice.schema.AvroSchemaParseUtils.*;
 
 
-/**
- * This class is used to fetch key/value schema for a given store.
- */
-public class SchemaReader extends MetadataReader implements SchemaRetriever {
+public class RouterBackedSchemaReader implements SchemaReader {
   public static final String TYPE_KEY_SCHEMA = "key_schema";
   public static final String TYPE_VALUE_SCHEMA = "value_schema";
   private static final ObjectMapper mapper = new ObjectMapper();
@@ -36,25 +40,26 @@ public class SchemaReader extends MetadataReader implements SchemaRetriever {
     mapper.configure(DeserializationConfig.Feature.FAIL_ON_UNKNOWN_PROPERTIES, false);
   }
 
-  private final static Logger logger = LogManager.getLogger(SchemaReader.class);
+  private final static Logger logger = LogManager.getLogger(RouterBackedSchemaReader.class);
   private final Optional<Schema> readerSchema;
   private Schema keySchema;
   private Map<Integer, Schema> valueSchemaMap = new VeniceConcurrentHashMap<>();
   private Map<Schema, Integer> valueSchemaMapR = new VeniceConcurrentHashMap<>();
   private AtomicReference<SchemaEntry> latestValueSchemaEntry = new AtomicReference<>();
   private final String storeName;
+  private AbstractAvroStoreClient storeClient;
 
-  public SchemaReader(AbstractAvroStoreClient client) throws VeniceClientException {
+  public RouterBackedSchemaReader(AbstractAvroStoreClient client) throws VeniceClientException {
     this(client, Optional.empty());
   }
 
-  public SchemaReader(AbstractAvroStoreClient client, Optional<Schema> readerSchema) {
-    super(client);
+  public RouterBackedSchemaReader(AbstractAvroStoreClient client, Optional<Schema> readerSchema) {
     this.storeName = client.getStoreName();
     this.readerSchema = readerSchema;
     if (readerSchema.isPresent()) {
       AvroSchemaUtils.validateAvroSchemaStr(readerSchema.get());
     }
+    this.storeClient = client;
   }
 
   @Override
@@ -132,6 +137,11 @@ public class SchemaReader extends MetadataReader implements SchemaRetriever {
     return valueSchemaMapR.get(schema);
   }
 
+  @Override
+  public void close() throws IOException {
+    IOUtils.closeQuietly(storeClient, logger::error);
+  }
+
   private <T> T ensureLatestValueSchemaIsFetched(Function<SchemaEntry, T> schemaEntryConsumer) {
     if (null == latestValueSchemaEntry.get()) {
       synchronized (this) {
@@ -148,7 +158,8 @@ public class SchemaReader extends MetadataReader implements SchemaRetriever {
   private SchemaEntry fetchSingleSchema(String requestPath, boolean isValueSchema) throws VeniceClientException {
     SchemaEntry schemaEntry = null;
     try {
-      byte[] response = storeClientGetRawWithRetry(requestPath);
+      byte[] response = RetryUtils.executeWithMaxAttempt(() -> ((CompletableFuture<byte[]>) storeClient.getRaw(requestPath)).get(),
+          3, Duration.ofNanos(1), Arrays.asList(ExecutionException.class));
       if (null == response) {
         logger.info("Requested schema doesn't exist for request path: " + requestPath);
         return null;
@@ -184,7 +195,8 @@ public class SchemaReader extends MetadataReader implements SchemaRetriever {
   private void refreshAllValueSchema() throws VeniceClientException {
     String requestPath = TYPE_VALUE_SCHEMA + "/" + storeName;
     try {
-      byte[] response = storeClientGetRawWithRetry(requestPath);
+      byte[] response = RetryUtils.executeWithMaxAttempt(() -> ((CompletableFuture<byte[]>) storeClient.getRaw(requestPath)).get(),
+          3, Duration.ofNanos(1), Arrays.asList(ExecutionException.class));
       if (null == response) {
         logger.info("Got null for request path: " + requestPath);
         return;
@@ -200,11 +212,11 @@ public class SchemaReader extends MetadataReader implements SchemaRetriever {
           }
           final String schemaStr = schema.getSchemaStr();
           Schema writerSchema = preemptiveSchemaVerification(
-                  // Use the "LOOSE" mode here since we might have registered schemas that do not pass the STRICT validation
-                  // and that is allowed for now
-                  parseSchemaFromJSONLooseValidation(schemaStr),
-                  schemaStr,
-                  schema.getId()
+              // Use the "LOOSE" mode here since we might have registered schemas that do not pass the STRICT validation
+              // and that is allowed for now
+              parseSchemaFromJSONLooseValidation(schemaStr),
+              schemaStr,
+              schema.getId()
           );
           valueSchemaMap.put(schema.getId(), writerSchema);
           valueSchemaMapR.put(writerSchema, schema.getId());
