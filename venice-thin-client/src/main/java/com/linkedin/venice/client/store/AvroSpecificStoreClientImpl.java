@@ -1,7 +1,7 @@
 package com.linkedin.venice.client.store;
 
 import com.linkedin.venice.client.exceptions.VeniceClientException;
-import com.linkedin.venice.client.schema.SchemaReader;
+import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.client.store.transport.TransportClient;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;

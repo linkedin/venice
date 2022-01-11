@@ -2,7 +2,7 @@ package com.linkedin.davinci.kafka.consumer;
 
 import com.linkedin.venice.SSLConfig;
 import com.linkedin.davinci.config.VeniceServerConfig;
-import com.linkedin.venice.client.schema.SchemaReader;
+import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.utils.KafkaSSLUtils;

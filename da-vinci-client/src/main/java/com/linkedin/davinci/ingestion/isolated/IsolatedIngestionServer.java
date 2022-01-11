@@ -20,7 +20,7 @@ import com.linkedin.davinci.stats.RocksDBMemoryStats;
 import com.linkedin.davinci.storage.StorageEngineMetadataService;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
-import com.linkedin.venice.client.schema.SchemaReader;
+import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -70,7 +70,6 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import static com.linkedin.venice.ConfigKeys.*;
-import static com.linkedin.venice.client.store.ClientFactory.*;
 import static java.lang.Thread.*;
 
 
@@ -564,7 +563,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
     storageService.start();
 
     // Create SchemaReader
-    SchemaReader kafkaMessageEnvelopeSchemaReader = getSchemaReader(
+    SchemaReader kafkaMessageEnvelopeSchemaReader = ClientFactory.getSchemaReader(
         ClientConfig.cloneConfig(clientConfig).setStoreName(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getSystemStoreName())
     );
 
@@ -605,8 +604,6 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
     // Mark the IsolatedIngestionServer as initiated.
     isInitiated = true;
   }
-
-
 
   public static void main(String[] args) throws Exception {
     logger.info("Capture arguments: " + Arrays.toString(args));

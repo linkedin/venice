@@ -1,11 +1,9 @@
-package com.linkedin.venice.client.schema;
+package com.linkedin.venice.schema;
 
 import java.io.Closeable;
 import org.apache.avro.Schema;
 
-
-public interface SchemaRetriever extends Closeable {
-
+public interface SchemaReader extends Closeable {
   Schema getKeySchema();
 
   Schema getValueSchema(int id);

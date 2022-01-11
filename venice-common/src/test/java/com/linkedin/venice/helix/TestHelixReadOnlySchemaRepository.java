@@ -111,7 +111,7 @@ public class TestHelixReadOnlySchemaRepository {
     Assert.assertFalse(schemaRORepo.hasValueSchema(storeName, 2));
   }
 
-  //@Test(expectedExceptions = VeniceNoStoreException.class)
+  @Test(expectedExceptions = VeniceNoStoreException.class)
   public void testGetValueSchemaIdByInvalidStore() throws InterruptedException {
     String storeName = "test_store1";
     String valueSchemaStr = "\"string\"";

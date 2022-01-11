@@ -1,7 +1,8 @@
 package com.linkedin.venice.client.store;
 
 import com.linkedin.venice.client.exceptions.VeniceClientException;
-import com.linkedin.venice.client.schema.SchemaReader;
+import com.linkedin.venice.client.schema.RouterBackedSchemaReader;
+import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.client.store.transport.D2TransportClient;
 import com.linkedin.venice.client.store.transport.HttpTransportClient;
 import com.linkedin.venice.client.store.transport.HttpsTransportClient;
@@ -87,7 +88,7 @@ public class ClientFactory {
      *
      * Closing this {@link SchemaReader} instance will also close the underlying client.
      */
-    return new SchemaReader(client, Optional.empty());
+    return new RouterBackedSchemaReader(client, Optional.empty());
   }
 
   private static D2TransportClient generateTransportClient(ClientConfig clientConfig){
