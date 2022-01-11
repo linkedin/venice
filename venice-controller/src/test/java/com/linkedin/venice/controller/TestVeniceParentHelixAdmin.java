@@ -1349,6 +1349,16 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     extraInfo = offlineJobStatus.getExtraInfo();
     Assert.assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.NEW); // Do we want this to be Progress?  limitation of ordering used in aggregation code
     Assert.assertEquals(extraInfo.get("cluster-new"), ExecutionStatus.NEW.toString());
+
+    doReturn(true).when(store).isIncrementalPushEnabled();
+    doReturn(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME).when(store).getIncrementalPushPolicy();
+    doReturn(store).when(internalAdmin).getStore(anyString(), anyString());
+    completeMap.remove("cluster-slow");
+    offlineJobStatus = parentAdmin.getOffLineJobStatus("IGNORED", "topic2_v1", completeMap);
+    extraInfo = offlineJobStatus.getExtraInfo();
+    Assert.assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.COMPLETED);
+    verify(internalAdmin, timeout(TIMEOUT_IN_MS)).truncateKafkaTopic("topic2_v1");
+
   }
 
   @Test
