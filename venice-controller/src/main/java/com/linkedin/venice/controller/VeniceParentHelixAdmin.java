@@ -2255,12 +2255,17 @@ public class VeniceParentHelixAdmin implements Admin {
         /**
          * truncate the topic if either
          * 1. the store is not incremental push enabled and the push completed (no ERROR)
-         * 2. or this is a failed batch push
+         * 2. this is a failed batch push
+         * 3. the store is incremental push enabled and same incPushToRT and batch push finished
          */
         Store store = getVeniceHelixAdmin().getStore(clusterName, Version.parseStoreFromKafkaTopicName(kafkaTopic));
-        if ((!incrementalPushVersion.isPresent() && currentReturnStatus == ExecutionStatus.ERROR) ||
-            (!store.isIncrementalPushEnabled() &&
-                !getMultiClusterConfigs().getCommonConfig().disableParentTopicTruncationUponCompletion())) {
+        boolean failedBatchPush = !incrementalPushVersion.isPresent() && currentReturnStatus == ExecutionStatus.ERROR;
+        boolean incPushEnabledBatchpushSuccess = !incrementalPushVersion.isPresent() && store.isIncrementalPushEnabled() &&
+            store.getIncrementalPushPolicy() == INCREMENTAL_PUSH_SAME_AS_REAL_TIME;
+        boolean nonIncPushBatchSucess =  !store.isIncrementalPushEnabled() && currentReturnStatus != ExecutionStatus.ERROR;
+
+        if ((failedBatchPush || nonIncPushBatchSucess || incPushEnabledBatchpushSuccess) &&
+            !getMultiClusterConfigs().getCommonConfig().disableParentTopicTruncationUponCompletion()) {
             logger.info("Truncating kafka topic: " + kafkaTopic + " with job status: " + currentReturnStatus);
             truncateKafkaTopic(kafkaTopic);
             Optional<Version> version = store.getVersion(Version.parseVersionFromKafkaTopicName(kafkaTopic));
