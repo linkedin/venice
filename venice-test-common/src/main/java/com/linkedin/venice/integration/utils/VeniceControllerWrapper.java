@@ -112,10 +112,9 @@ public class VeniceControllerWrapper extends ProcessWrapper {
             /**
              * Running with just one partition may not fully exercise the distributed nature of the system,
              * but we do want to minimize the number as each partition results in files, connections, threads, etc.
-             * in the whole system. 3 seems like a reasonable tradeoff between these concerns. Here we set 4 for testing
-             * partition wise shared consumer only, normally the max partitions should not be greater than 3.
+             * in the whole system. 3 seems like a reasonable tradeoff between these concerns.
              */
-            .put(DEFAULT_MAX_NUMBER_OF_PARTITIONS, 4)
+            .put(DEFAULT_MAX_NUMBER_OF_PARTITIONS, 3)
             .put(DEFAULT_PARTITION_SIZE, partitionSize)
             .put(CONTROLLER_PARENT_MODE, isParent)
             .put(DELAY_TO_REBALANCE_MS, rebalanceDelayMs)
