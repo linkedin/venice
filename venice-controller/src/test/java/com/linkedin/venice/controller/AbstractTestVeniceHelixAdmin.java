@@ -10,6 +10,7 @@ import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
+import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.participant.protocol.ParticipantMessageKey;
 import com.linkedin.venice.participant.protocol.ParticipantMessageValue;
@@ -68,12 +69,21 @@ class AbstractTestVeniceHelixAdmin {
   VeniceControllerMultiClusterConfig multiClusterConfig;
 
   public void setupCluster() throws Exception {
+    setupCluster(true);
+  }
+
+  public void setupCluster(boolean createParticipantStore) throws Exception {
     zkServerWrapper = ServiceFactory.getZkServer();
     zkAddress = zkServerWrapper.getAddress();
     kafkaBrokerWrapper = ServiceFactory.getKafkaBroker();
     kafkaZkAddress = kafkaBrokerWrapper.getZkAddress();
     clusterName = Utils.getUniqueString("test-cluster");
-    controllerProps = new VeniceProperties(getControllerProperties(clusterName));
+    Properties properties = getControllerProperties(clusterName);
+    if (!createParticipantStore) {
+      properties.put(PARTICIPANT_MESSAGE_STORE_ENABLED, false);
+      properties.put(ADMIN_HELIX_MESSAGING_CHANNEL_ENABLED, true);
+    }
+    controllerProps = new VeniceProperties(properties);
     helixMessageChannelStats = new HelixMessageChannelStats(new MetricsRepository(), clusterName);
     controllerConfig = new VeniceControllerConfig(controllerProps);
     multiClusterConfig = TestUtils.getMultiClusterConfigFromOneCluster(controllerConfig);
@@ -208,23 +218,15 @@ class AbstractTestVeniceHelixAdmin {
   }
 
   /**
-   * Set up the participant store manually for testing purpose. This is done through the parent controller in production
-   * code.
+   * Participant store should be set up by child controller.
    */
-  void participantMessageStoreSetup() {
-    int participantStorePartitionCount = 3;
+  void verifyParticipantMessageStoreSetup() {
     String participantStoreName = VeniceSystemStoreUtils.getParticipantStoreNameForCluster(clusterName);
-    veniceAdmin.createStore(clusterName, participantStoreName, "venice-internal", ParticipantMessageKey.SCHEMA$.toString(),
-        ParticipantMessageValue.SCHEMA$.toString(), true);
-    UpdateStoreQueryParams queryParams = new UpdateStoreQueryParams();
-    queryParams.setPartitionCount(participantStorePartitionCount);
-    queryParams.setHybridOffsetLagThreshold(100L);
-    queryParams.setHybridRewindSeconds(TimeUnit.DAYS.toMillis(7));
-    veniceAdmin.updateStore(clusterName, participantStoreName, queryParams);
-    veniceAdmin.incrementVersionIdempotent(clusterName, participantStoreName, Version.guidBasedDummyPushId(),
-        participantStorePartitionCount, DEFAULT_REPLICA_COUNT);
-    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS,
-        () -> Assert.assertEquals(veniceAdmin.getStore(clusterName, participantStoreName).getVersions().size(), 1));
+    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+      Store store = veniceAdmin.getStore(clusterName, participantStoreName);
+      Assert.assertNotNull(store);
+      Assert.assertEquals(store.getVersions().size(), 1);
+    });
     TestUtils.waitForNonDeterministicAssertion(3, TimeUnit.SECONDS,
         () -> Assert.assertEquals(veniceAdmin.getRealTimeTopic(clusterName, participantStoreName),
             Version.composeRealTimeTopic(participantStoreName)));

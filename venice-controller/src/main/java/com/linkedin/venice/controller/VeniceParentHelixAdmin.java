@@ -361,13 +361,6 @@ public class VeniceParentHelixAdmin implements Admin {
           getMultiClusterConfigs().getControllerConfig(clusterName).getNumberOfPartition());
     }
 
-    if (getMultiClusterConfigs().getControllerConfig(clusterName).isParticipantMessageStoreEnabled()) {
-      String storeName = VeniceSystemStoreUtils.getParticipantStoreNameForCluster(clusterName);
-      asyncSetupForInternalRTStore(clusterName, storeName, PARTICIPANT_MESSAGE_STORE_DESCRIPTOR + storeName,
-          ParticipantMessageKey.SCHEMA$.toString(), ParticipantMessageValue.SCHEMA$.toString(),
-          getMultiClusterConfigs().getControllerConfig(clusterName).getNumberOfPartition());
-    }
-
     maybeSetupBatchJobLivenessHeartbeatStore(clusterName);
   }
 

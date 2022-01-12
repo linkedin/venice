@@ -19,6 +19,7 @@ import com.linkedin.venice.controller.helix.SharedHelixReadOnlyZKSharedSchemaRep
 import com.linkedin.venice.controller.helix.SharedHelixReadOnlyZKSharedSystemStoreRepository;
 import com.linkedin.venice.controller.init.ClusterLeaderInitializationManager;
 import com.linkedin.venice.controller.init.ClusterLeaderInitializationRoutine;
+import com.linkedin.venice.controller.init.InternalRTStoreInitializationRoutine;
 import com.linkedin.venice.controller.init.LatestVersionPromoteToCurrentTimestampCorrectionRoutine;
 import com.linkedin.venice.controller.init.SystemSchemaInitializationRoutine;
 import com.linkedin.venice.controller.kafka.StoreStatusDecider;
@@ -169,6 +170,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 import org.apache.avro.specific.SpecificRecord;
@@ -478,6 +480,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       // TODO: Remove this latest version promote to current timestamp update logic in the future.
       initRoutines.add(new LatestVersionPromoteToCurrentTimestampCorrectionRoutine(this));
 
+      // Participant stores are not read or written in parent colo. Parent controller skips participant store initialization.
+      if (!multiClusterConfigs.isParent() && multiClusterConfigs.isParticipantMessageStoreEnabled()) {
+        Function<String, String> storeNameSupplier = VeniceSystemStoreUtils::getParticipantStoreNameForCluster;
+        initRoutines.add(new InternalRTStoreInitializationRoutine(storeNameSupplier, multiClusterConfigs,this,
+            ParticipantMessageKey.SCHEMA$.toString(), ParticipantMessageValue.SCHEMA$.toString()));
+      }
       ClusterLeaderInitializationRoutine controllerInitialization =
           new ClusterLeaderInitializationManager(initRoutines, commonConfig.isConcurrentInitRoutinesEnabled());
 

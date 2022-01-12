@@ -83,7 +83,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
   @BeforeClass(alwaysRun = true)
   public void setUp() throws Exception {
     setupCluster();
-    participantMessageStoreSetup();
+    verifyParticipantMessageStoreSetup();
   }
 
   @AfterClass(alwaysRun = true)
