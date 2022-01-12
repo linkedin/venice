@@ -191,12 +191,9 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   @Test (timeOut = TIMEOUT_IN_MS)
   public void testAsyncSetupForSystemStores() {
     String arbitraryCluster = Utils.getUniqueString("test-cluster");
-    String participantStoreName = VeniceSystemStoreUtils.getParticipantStoreNameForCluster(arbitraryCluster);
     doReturn(true).when(internalAdmin).isLeaderControllerFor(arbitraryCluster);
     doReturn(Version.composeRealTimeTopic(PUSH_JOB_DETAILS_STORE_NAME)).when(internalAdmin)
         .getRealTimeTopic(arbitraryCluster, PUSH_JOB_DETAILS_STORE_NAME);
-    doReturn(Version.composeRealTimeTopic(participantStoreName)).when(internalAdmin)
-        .getRealTimeTopic(arbitraryCluster, participantStoreName);
     VeniceControllerConfig asyncEnabledConfig = mockConfig(arbitraryCluster);
     doReturn(arbitraryCluster).when(asyncEnabledConfig).getPushJobStatusStoreClusterName();
     doReturn(true).when(asyncEnabledConfig).isParticipantMessageStoreEnabled();
@@ -206,17 +203,14 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     mockVeniceParentHelixAdmin.setTimer(new MockTime());
     try {
       mockVeniceParentHelixAdmin.initVeniceControllerClusterResource(arbitraryCluster);
-      String[] systemStoreNames = {PUSH_JOB_DETAILS_STORE_NAME, participantStoreName};
-      for (String systemStore : systemStoreNames) {
-        TestUtils.waitForNonDeterministicCompletion(1, TimeUnit.SECONDS, () -> {
-          Store s = mockVeniceParentHelixAdmin.getStore(arbitraryCluster, systemStore);
-          return s != null && !s.getVersions().isEmpty();
-        });
-        Store verifyStore = mockVeniceParentHelixAdmin.getStore(arbitraryCluster, systemStore);
-        Assert.assertEquals(verifyStore.getName(), systemStore, "Unexpected store name");
-        Assert.assertTrue(verifyStore.isHybrid(), "Store should be configured to be hybrid");
-        Assert.assertEquals(verifyStore.getVersions().size(), 1 , "Store should have one version");
-      }
+      TestUtils.waitForNonDeterministicCompletion(5, TimeUnit.SECONDS, () -> {
+        Store s = mockVeniceParentHelixAdmin.getStore(arbitraryCluster, PUSH_JOB_DETAILS_STORE_NAME);
+        return s != null && !s.getVersions().isEmpty();
+      });
+      Store verifyStore = mockVeniceParentHelixAdmin.getStore(arbitraryCluster, PUSH_JOB_DETAILS_STORE_NAME);
+      Assert.assertEquals(verifyStore.getName(), PUSH_JOB_DETAILS_STORE_NAME, "Unexpected store name");
+      Assert.assertTrue(verifyStore.isHybrid(), "Store should be configured to be hybrid");
+      Assert.assertEquals(verifyStore.getVersions().size(), 1 , "Store should have one version");
     } finally {
       mockVeniceParentHelixAdmin.stop(arbitraryCluster);
     }

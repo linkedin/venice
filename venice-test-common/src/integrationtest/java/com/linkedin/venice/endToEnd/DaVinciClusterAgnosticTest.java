@@ -88,17 +88,16 @@ public class DaVinciClusterAgnosticTest {
             Optional.of(new VeniceProperties(testProperties)), false);
     clusterNames = multiClusterVenice.getClusterNames();
     Collection<VeniceControllerWrapper> childControllers = multiClusterVenice.getControllers().values();
-    // The parent controller is required for participant store setup
     parentController = ServiceFactory.getVeniceParentController(clusterNames, zkServer.getAddress(),
         multiClusterVenice.getKafkaBrokerWrapper(), childControllers.toArray(new VeniceControllerWrapper[0]),
         multiClusterVenice.getClusterToD2(), false, 3, new VeniceProperties(testProperties), Optional.empty());
     for (String cluster : clusterNames) {
-      try (ControllerClient parentControllerClient = new ControllerClient(cluster,
-          parentController.getControllerUrl())) {
-        // Verify the participant store is up and running.
+      try (ControllerClient controllerClient = new ControllerClient(cluster,
+          multiClusterVenice.getMasterController(cluster).getControllerUrl())) {
+        // Verify the participant store is up and running in child colo
         String participantStoreName = VeniceSystemStoreUtils.getParticipantStoreNameForCluster(cluster);
         TestUtils.waitForNonDeterministicPushCompletion(Version.composeKafkaTopic(participantStoreName, 1),
-            parentControllerClient, 1, TimeUnit.MINUTES, Optional.empty());
+            controllerClient, 1, TimeUnit.MINUTES, Optional.empty());
       }
     }
   }

@@ -237,6 +237,10 @@ public class VeniceControllerMultiClusterConfig {
     return getCommonConfig().isZkSharedDaVinciPushStatusSystemSchemaStoreAutoCreationEnabled();
   }
 
+  public boolean isParticipantMessageStoreEnabled() {
+    return getCommonConfig().isParticipantMessageStoreEnabled();
+  }
+
   public long getSystemStoreAclSynchronizationDelayMs() {
     return getCommonConfig().getSystemStoreAclSynchronizationDelayMs();
   }
