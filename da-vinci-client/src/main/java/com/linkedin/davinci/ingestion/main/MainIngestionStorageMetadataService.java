@@ -24,12 +24,9 @@ import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-
-import static java.lang.Thread.*;
 
 
 /**
@@ -48,29 +45,25 @@ public class MainIngestionStorageMetadataService extends AbstractVeniceService i
   private final ExecutorService metadataUpdateService = Executors.newSingleThreadExecutor();
   private final Queue<IngestionStorageMetadata> metadataUpdateQueue = new ConcurrentLinkedDeque<>();
   private final MetadataUpdateStats metadataUpdateStats;
+  private final MetadataUpdateWorker metadataUpdateWorker;
 
   public MainIngestionStorageMetadataService(int targetPort, InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer, MetadataUpdateStats metadataUpdateStats, VeniceConfigLoader configLoader) {
     this.client = new MainIngestionRequestClient(IsolatedIngestionUtils.getSSLEngineComponentFactory(configLoader), targetPort);
     this.partitionStateSerializer = partitionStateSerializer;
     this.metadataUpdateStats = metadataUpdateStats;
+    this.metadataUpdateWorker = new MetadataUpdateWorker();
   }
 
   @Override
   public boolean startInner() throws Exception {
-    metadataUpdateService.execute(new MetadataUpdateWorker());
+    metadataUpdateService.execute(metadataUpdateWorker);
     return true;
   }
 
   @Override
   public void stopInner() throws Exception {
-    metadataUpdateService.shutdown();
-    try {
-      if (!metadataUpdateService.awaitTermination(5, TimeUnit.SECONDS)) {
-        metadataUpdateService.shutdownNow();
-      }
-    } catch (InterruptedException e) {
-      currentThread().interrupt();
-    }
+    metadataUpdateWorker.close();
+    metadataUpdateService.shutdownNow();
     client.close();
   }
 
