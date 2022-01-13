@@ -239,24 +239,30 @@ public class BrooklinTopicReplicator extends TopicReplicator {
   @Override
   void terminateReplicationInternal(String sourceTopic, String destinationTopic) {
     String name = datastreamName(sourceTopic, destinationTopic);
-    if (client.datastreamExists(name)){
-      client.deleteDatastream(name);
-      try {
-        client.waitTillDatastreamIsDeleted(name, Duration.ofSeconds(30).toMillis());
-      } catch (InterruptedException e) {
-        logger.warn("Interrupted while waiting for datastream " + name + " to be deleted.", e);
-      } catch (Exception e) {
-        if (e instanceof RestLiResponseException) {
-          RestLiResponseException restLiResponseException = (RestLiResponseException) e;
-          if (restLiResponseException.getStatus() == HttpResponseStatus.NOT_FOUND.code()) {
-            logger.info("Brooklin returned a 404, meaning the datastream we intend to have deleted cannot be found. Good enough...");
-            return;
+    try {
+      if (client.datastreamExists(name)) {
+        client.deleteDatastream(name);
+        try {
+          client.waitTillDatastreamIsDeleted(name, Duration.ofSeconds(30).toMillis());
+        } catch (InterruptedException e) {
+          logger.warn("Interrupted while waiting for datastream " + name + " to be deleted.", e);
+          throw e;
+        } catch (Exception e) {
+          if (e instanceof RestLiResponseException) {
+            RestLiResponseException restLiResponseException = (RestLiResponseException) e;
+            if (restLiResponseException.getStatus() == HttpResponseStatus.NOT_FOUND.code()) {
+              logger.info(
+                  "Brooklin returned a 404, meaning the datastream we intend to have deleted cannot be found. Good enough...");
+              return;
+            }
           }
+          throw new VeniceException("Caught an exception from Brooklin client's waitTillDatastreamIsDeleted()", e);
         }
-        throw new VeniceException("Caught an exception from Brooklin client's waitTillDatastreamIsDeleted()", e);
+      } else {
+        logger.error("Cannot delete brooklin replication stream named " + name + " because it does not exist");
       }
-    } else {
-      logger.error("Cannot delete brooklin replication stream named " + name + " because it does not exist");
+    } catch (Exception e) {
+      logger.warn("This is a best effort to delete Brooklin datastream " + name + ", but it failed. Continue the rest of the workflow", e);
     }
   }
 
