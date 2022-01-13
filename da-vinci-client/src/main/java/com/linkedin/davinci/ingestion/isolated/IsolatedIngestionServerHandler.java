@@ -150,6 +150,7 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
           break;
         case KILL_CONSUMPTION:
           isolatedIngestionServer.getIngestionBackend().killConsumptionTask(topicName);
+          isolatedIngestionServer.cleanupTopicState(topicName);
           break;
         case RESET_CONSUMPTION:
           storeIngestionService.resetConsumptionOffset(storeConfig, partitionId);

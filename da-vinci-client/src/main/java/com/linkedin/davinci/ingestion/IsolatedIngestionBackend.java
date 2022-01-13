@@ -99,6 +99,7 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend implements
   public void killConsumptionTask(String topicName) {
     mainIngestionRequestClient.killConsumptionTask(topicName);
     super.killConsumptionTask(topicName);
+    mainIngestionMonitorService.cleanupTopicState(topicName);
   }
 
   @Override
