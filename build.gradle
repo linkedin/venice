@@ -106,6 +106,7 @@ ext.libraries = [
     joptSimple: 'net.sf.jopt-simple:jopt-simple:3.2',
     log4j2api: 'org.apache.logging.log4j:log4j-api:' + log4j2Version,
     log4j2core: 'org.apache.logging.log4j:log4j-core:' + log4j2Version,
+    slf4j: 'org.apache.logging.log4j:log4j-to-slf4j:' + log4j2Version,
     snappy: 'org.xerial.snappy:snappy-java:1.0.4.1',
     // TODO: move back to open source sparkjava once they fix Jetty SSL.
     // spark: 'com.sparkjava:spark-core:2.9.1',
@@ -203,7 +204,6 @@ subprojects {
 
   dependencies {
     implementation 'javax.validation:validation-api:2.0.1.Final'
-    implementation 'org.apache.logging.log4j:log4j-slf4j-impl:' + log4j2Version
 
     testImplementation libraries.testng
     testImplementation libraries.mockito
