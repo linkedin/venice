@@ -1,6 +1,7 @@
 package com.linkedin.venice.fastclient.meta;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 
@@ -23,6 +24,9 @@ public class LeastLoadedClientRoutingStrategy implements ClientRoutingStrategy {
 
   @Override
   public List<String> getReplicas(long requestId, List<String> replicas, int requiredReplicaCount) {
+    if (replicas.isEmpty()) {
+      return Collections.emptyList();
+    }
     int replicaCnt = replicas.size();
     int startPos = (int)requestId % replicaCnt;
     List<String> availReplicas = new ArrayList<>();
