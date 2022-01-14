@@ -41,7 +41,7 @@ public class SchemaEntry {
     try {
       this.schema = Schema.parse(schemaStr);
     } catch (Exception e) {
-      logger.error("Failed to parse schema: " + schemaStr);
+      logger.error("Failed to parse schema: " + schemaStr + " with exception: ", e);
       if ((e instanceof AvroTypeException) && (AvroCompatibilityHelper.getRuntimeAvroVersion().laterThan(AvroVersion.AVRO_1_8))) {
         this.schema = Schema.create(Schema.Type.NULL);
         this.failedParsing = true;
