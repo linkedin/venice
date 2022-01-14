@@ -5,6 +5,7 @@ import io.github.classgraph.ClassGraph;
 import io.github.classgraph.ScanResult;
 import java.io.BufferedReader;
 import java.io.File;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -24,8 +25,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.function.Supplier;
 import nonapi.io.github.classgraph.utils.JarUtils;
+import org.apache.logging.log4j.Level;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -35,37 +36,21 @@ import org.apache.logging.log4j.Logger;
  */
 public final class ForkedJavaProcess extends Process {
   private static final Logger LOGGER = LogManager.getLogger(ForkedJavaProcess.class);
+  private static final String FORKED_PROCESS_LOG4J2_PROPERTIES = "status = error\n"
+      + "name = PropertiesConfig\n"
+      + "filters = threshold\n"
+      + "filter.threshold.type = ThresholdFilter\n"
+      + "filter.threshold.level = debug\n"
+      + "appenders = console\n"
+      + "appender.console.type = Console\n"
+      + "appender.console.name = STDOUT\n"
+      + "appender.console.layout.type = PatternLayout\n"
+      + "appender.console.layout.pattern =%d{HH:mm:ss} %p [%c{1}] %replace{%m%n}{[\\r\\n]}{|}%throwable{separator(|)}%n\n"
+      + "rootLogger.level = info\n"
+      + "rootLogger.appenderRefs = stdout\n"
+      + "rootLogger.appenderRef.stdout.ref = STDOUT";
 
   private static final String JAVA_PATH = Paths.get(System.getProperty("java.home"), "bin", "java").toString();
-  private static final List<String> DEFAULT_JAVA_ARGS = new ArrayList() {{
-    // Inherit Java tmp folder setting from parent process.
-    add("-Djava.io.tmpdir=" + System.getProperty("java.io.tmpdir"));
-    /*
-      Add log4j2 configuration file and JVM arguments.
-      This config will inherit the log4j2 config file from parent process and set up correct logging level and it will
-      inherit all JVM arguments from parent process. Users can provide JVM arguments to override these settings.
-     */
-    for (String arg : ManagementFactory.getRuntimeMXBean().getInputArguments()) {
-      /**
-       * Explicitly block JVM debugging setup in forked process as (1) it is not used anywhere (2) debug port binding
-       * will conflict with main process
-       */
-      if (arg.startsWith("-Xdebug") || arg.startsWith("-agentlib:jdwp") || arg.startsWith("-Xrunjdwp")) {
-        LOGGER.info("Skipping debug related arguments in forked process:" + arg);
-        continue;
-      }
-
-      if (arg.startsWith("-Dlog4j2")) {
-        add(arg);
-      }
-      if (arg.startsWith("-Dlog4j2.configuration=")) {
-        add("-Dlog4j2.configurationFile=" + arg.split("=")[1]);
-      }
-      if (arg.startsWith("-X")) {
-        add(arg);
-      }
-    }
-  }};
 
   private final Logger logger;
   private final Process process;
@@ -82,17 +67,7 @@ public final class ForkedJavaProcess extends Process {
       boolean killOnExit,
       Optional<String> loggerPrefix) throws IOException {
     LOGGER.info("Forking " + appClass.getSimpleName() + " with arguments " + args + " and jvm arguments " + jvmArgs);
-
-    List<String> command = new ArrayList<>();
-    command.add(JAVA_PATH);
-    command.add("-cp");
-    command.add(classPath);
-
-    command.addAll(DEFAULT_JAVA_ARGS);
-    command.addAll(jvmArgs);
-
-    command.add(appClass.getCanonicalName());
-    command.addAll(args);
+    List<String> command = prepareCommandArgList(appClass, classPath, args, jvmArgs);
 
     Process process = new ProcessBuilder(command).redirectErrorStream(true).start();
     Logger logger = LogManager.getLogger(loggerPrefix.map(s -> s + ", ").orElse("") + appClass.getSimpleName() + ", PID=" + getPidOfProcess(process));
@@ -165,11 +140,13 @@ public final class ForkedJavaProcess extends Process {
     this.executorService = Executors.newSingleThreadExecutor();
     executorService.submit(() -> {
       logger.info("Started logging standard output of the forked process.");
+      LogInfo logInfo = new LogInfo();
       try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
         for (;;) {
           String line = reader.readLine();
           if (line != null) {
-            logger.info(line);
+            processAndExtractLevelFromForkedProcessLog(logInfo, line);
+            logger.log(logInfo.getLevel(), logInfo.getLog());
           } else {
             Thread.sleep(100);
           }
@@ -236,6 +213,61 @@ public final class ForkedJavaProcess extends Process {
     }
   }
 
+  // Clean up and extract log and log level from forked process logging.
+  public static void processAndExtractLevelFromForkedProcessLog(LogInfo logInfo, String log) {
+    char[] logCharArray = log.toCharArray();
+    int startIndex = 0;
+    int endIndex = log.length() - 1;
+
+    // Restore multi-line logs from forked process.
+    for (int idx = startIndex; idx <= endIndex; idx++) {
+      if (logCharArray[idx] == '|') {
+        logCharArray[idx] = '\n';
+      }
+    }
+
+    // Trim extra whitespace and newline.
+    while (logCharArray[startIndex] == ' ') {
+      startIndex++;
+    }
+    while (logCharArray[endIndex] == ' ' || logCharArray[endIndex] == '\n') {
+      endIndex--;
+    }
+
+    int levelStartIndex = -1;
+    for (int idx = startIndex; idx < endIndex; idx++) {
+      if (logCharArray[idx] == ' ') {
+        levelStartIndex = idx + 1;
+        break;
+      }
+    }
+    int levelEndIndex = -1;
+    for (int idx = levelStartIndex + 1; idx < endIndex; idx++) {
+      if (logCharArray[idx] == ' ') {
+        levelEndIndex = idx;
+        break;
+      }
+    }
+    if (levelStartIndex == -1 || levelEndIndex == -1) {
+      logInfo.setLevel(Level.INFO);
+      logInfo.setLog(new String(logCharArray, startIndex, endIndex - startIndex + 1));
+      return;
+    }
+    // Try to retrieve the original log level from forked process logging message.
+    Level level = Level.getLevel(log.substring(levelStartIndex, levelEndIndex));
+    if (level == null) {
+      logInfo.setLevel(Level.INFO);
+      logInfo.setLog(new String(logCharArray, startIndex, endIndex - startIndex + 1));
+      return;
+    }
+
+    // Build the final string.
+    System.arraycopy(logCharArray, levelEndIndex + 1, logCharArray, levelStartIndex, endIndex - levelEndIndex);
+    int totalLength = (levelStartIndex - startIndex) + (endIndex - levelEndIndex);
+    logInfo.setLevel(level);
+    logInfo.setLog( new String(logCharArray, startIndex, totalLength));
+  }
+
   private static synchronized long getPidOfProcess(Process process) {
     try {
       if (process.getClass().getName().equals("java.lang.UNIXProcess")) {
@@ -252,6 +284,52 @@ public final class ForkedJavaProcess extends Process {
       LOGGER.error("Unable to access pid of " + process.getClass().getName(), e);
       return -1;
     }
+  }
+
+  private static String generateLog4j2ConfigForForkedProcess() {
+    String configFilePath = Paths.get(Utils.getTempDataDirectory().getAbsolutePath(), "log4j2.properties").toAbsolutePath().toString();
+    File configFile = new File(configFilePath);
+    try (FileWriter fw = new FileWriter(configFile)) {
+      fw.write(FORKED_PROCESS_LOG4J2_PROPERTIES);
+      LOGGER.info("log4j2 property file for forked process is stored into: " + configFilePath);
+    } catch (IOException e) {
+      throw new VeniceException(e);
+    }
+    return configFilePath;
+  }
+
+  private static List<String> prepareCommandArgList(Class appClass, String classPath, List<String> args, List<String> jvmArgs) {
+    List<String> command = new ArrayList<>();
+    command.add(JAVA_PATH);
+    command.add("-cp");
+    command.add(classPath);
+
+    // Inherit Java tmp folder setting from parent process.
+    command.add("-Djava.io.tmpdir=" + System.getProperty("java.io.tmpdir"));
+    /**
+     Add log4j2 configuration file and JVM arguments.
+     This config will inherit the log4j2 config file from parent process and set up correct logging level and it will
+     inherit all JVM arguments from parent process. Users can provide JVM arguments to override these settings.
+     */
+    for (String arg : ManagementFactory.getRuntimeMXBean().getInputArguments()) {
+      /**
+       * Explicitly block JVM debugging setup in forked process as (1) it is not used anywhere (2) debug port binding
+       * will conflict with main process
+       */
+      if (arg.startsWith("-Xdebug") || arg.startsWith("-agentlib:jdwp") || arg.startsWith("-Xrunjdwp")) {
+        LOGGER.info("Skipping debug related arguments in forked process:" + arg);
+        continue;
+      }
+      if (arg.startsWith("-X")) {
+        command.add(arg);
+      }
+    }
+    command.addAll(jvmArgs);
+    // Add customized log4j2 config file path.
+    command.add("-Dlog4j2.configurationFile=" + generateLog4j2ConfigForForkedProcess());
+    command.add(appClass.getCanonicalName());
+    command.addAll(args);
+    return command;
   }
 
   public long pid() {
@@ -281,5 +359,26 @@ public final class ForkedJavaProcess extends Process {
   @Override
   public int exitValue() {
     return process.exitValue();
+  }
+
+  public static class LogInfo {
+    private Level level;
+    private String log;
+
+    public Level getLevel() {
+      return level;
+    }
+
+    public void setLevel(Level level) {
+      this.level = level;
+    }
+
+    public String getLog() {
+      return log;
+    }
+
+    public void setLog(String log) {
+      this.log = log;
+    }
   }
 }
