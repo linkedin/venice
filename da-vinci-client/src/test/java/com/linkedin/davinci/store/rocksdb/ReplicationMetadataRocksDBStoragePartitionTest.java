@@ -8,14 +8,16 @@ import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.store.AbstractStorageEngineTest;
 import com.linkedin.davinci.store.StoragePartitionConfig;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.kafka.validation.checksum.CheckSum;
+import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.schema.SchemaEntry;
-import com.linkedin.venice.schema.rmd.ReplicationMetadataSchemaGenerator;
 import com.linkedin.venice.schema.rmd.ReplicationMetadataSchemaEntry;
+import com.linkedin.venice.schema.rmd.ReplicationMetadataSchemaGenerator;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.Pair;
@@ -27,10 +29,16 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.TreeMap;
+import java.util.function.Supplier;
 import org.apache.avro.Schema;
+import org.rocksdb.ComparatorOptions;
+import org.rocksdb.Options;
+import org.rocksdb.util.BytewiseComparator;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 import static org.mockito.Mockito.*;
@@ -49,18 +57,27 @@ public class ReplicationMetadataRocksDBStoragePartitionTest extends AbstractStor
   private static final String valuePrefix = "value_";
   private static final String metadataPrefix = "metadata_";
   private static final RocksDBThrottler rocksDbThrottler = new RocksDBThrottler(3);
-  private  MergeConflictResolver mergeConflictResolver;
   private StorageService storageService;
   private VeniceStoreVersionConfig storeConfig;
 
   private Map<String, Pair<String, String>> generateInputWithMetadata(int recordCnt) {
-    return generateInputWithMetadata(0, recordCnt);
+    return generateInputWithMetadata(0, recordCnt, false, false);
   }
 
-  private Map<String, Pair<String, String>> generateInputWithMetadata(int startIndex, int endIndex) {
-    Map<String, Pair<String, String>> records = new HashMap<>();
+  private Map<String, Pair<String, String>> generateInputWithMetadata(int startIndex, int endIndex, boolean sorted, boolean createTombStone) {
+    Map<String, Pair<String, String>> records;
+    if (sorted) {
+      BytewiseComparator comparator = new BytewiseComparator(new ComparatorOptions());
+      records = new TreeMap<>((o1, o2) -> {
+        ByteBuffer b1 = ByteBuffer.wrap(o1.getBytes());
+        ByteBuffer b2 = ByteBuffer.wrap(o2.getBytes());
+        return comparator.compare(b1, b2);
+      });
+    } else {
+      records = new HashMap<>();
+    }
     for (int i = startIndex; i < endIndex; ++i) {
-      String value = valuePrefix + i;
+      String value = createTombStone && i%100 == 0 ? null : valuePrefix + i;
       String metadata = metadataPrefix + i;
       records.put(keyPrefix + i, Pair.create(value, metadata));
     }
@@ -116,7 +133,7 @@ public class ReplicationMetadataRocksDBStoragePartitionTest extends AbstractStor
     doReturn(valueSchemaEntry).when(schemaRepository).getLatestValueSchema(anyString());
     doReturn(rmdSchemaEnry).when(schemaRepository).getReplicationMetadataSchema(anyString(), anyInt(), anyInt());
 
-    mergeConflictResolver = new MergeConflictResolver(schemaRepository, storeName, 1);
+    MergeConflictResolver mergeConflictResolver = new MergeConflictResolver(schemaRepository, storeName, 1);
   }
 
   @BeforeClass
@@ -199,7 +216,7 @@ public class ReplicationMetadataRocksDBStoragePartitionTest extends AbstractStor
 
 
     // Records from Batch push may have no replication metadata
-    Map<String, Pair<String, String>> inputRecordsBatch = generateInputWithMetadata(100, 200);
+    Map<String, Pair<String, String>> inputRecordsBatch = generateInputWithMetadata(100, 200, false, false);
     for (Map.Entry<String, Pair<String, String>> entry : inputRecordsBatch.entrySet()) {
       // Use ByteBuffer value/metadata API here since it performs conversion from ByteBuffer to byte array
       ByteBuffer valueByteBuffer = ByteBuffer.wrap(entry.getValue().getFirst().getBytes());
@@ -248,5 +265,158 @@ public class ReplicationMetadataRocksDBStoragePartitionTest extends AbstractStor
     ByteBuffer replicationMetadataWitValueSchemaId = ByteUtils.prependIntHeaderToByteBuffer(metadataByteBuffer, valueSchemaId, false);
     replicationMetadataWitValueSchemaId.position(replicationMetadataWitValueSchemaId.position() - ByteUtils.SIZE_OF_INT);
     return ByteUtils.extractByteArray(replicationMetadataWitValueSchemaId);
+  }
+
+  @Test (dataProvider = "testIngestionDataProvider")
+  public void testReplicationMetadataIngestion(boolean sorted, boolean interrupted, boolean reopenDatabaseDuringInterruption, boolean verifyChecksum) {
+    Optional<CheckSum> runningChecksum = CheckSum.getInstance(CheckSumType.MD5);
+    String storeName = Utils.getUniqueString("test_store");
+    String storeDir = getTempDatabaseDir(storeName);
+    int partitionId = 0;
+    StoragePartitionConfig partitionConfig = new StoragePartitionConfig(storeName, partitionId);
+    partitionConfig.setDeferredWrite(sorted);
+    Options options = new Options();
+    options.setCreateIfMissing(true);
+    Map<String, Pair<String, String>>  inputRecords = generateInputWithMetadata(0, 1000, sorted, true);
+    VeniceProperties veniceServerProperties = AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB);
+    RocksDBServerConfig rocksDBServerConfig  = new RocksDBServerConfig(veniceServerProperties);
+
+    VeniceServerConfig serverConfig = new VeniceServerConfig(veniceServerProperties);
+    RocksDBStorageEngineFactory factory = new RocksDBStorageEngineFactory(serverConfig);
+    ReplicationMetadataRocksDBStoragePartition
+        storagePartition = new ReplicationMetadataRocksDBStoragePartition(partitionConfig, factory, DATA_BASE_DIR, null, rocksDbThrottler, rocksDBServerConfig);
+
+    final int syncPerRecords = 100;
+    final int interruptedRecord = 345;
+
+    Optional<Supplier<byte[]>> checksumSupplier = Optional.empty();
+    if (verifyChecksum) {
+      checksumSupplier = Optional.of(() -> {
+        byte[] checksum = runningChecksum.get().getCheckSum();
+        runningChecksum.get().reset();
+        return checksum;
+      });
+    }
+    if (sorted) {
+      storagePartition.beginBatchWrite(new HashMap<>(), checksumSupplier);
+    }
+    int currentRecordNum = 0;
+    int currentFileNo = 0;
+    Map<String, String> checkpointingInfo = new HashMap<>();
+
+    for (Map.Entry<String, Pair<String, String>> entry : inputRecords.entrySet()) {
+      if (entry.getValue().getFirst() == null) {
+        storagePartition.deleteWithReplicationMetadata(entry.getKey().getBytes(), entry.getValue().getSecond().getBytes());
+      } else {
+        storagePartition.putWithReplicationMetadata(entry.getKey().getBytes(), entry.getValue().getFirst().getBytes(),
+            entry.getValue().getSecond().getBytes());
+      }
+      if (verifyChecksum) {
+        if (entry.getValue().getFirst() != null) {
+          runningChecksum.get().update(entry.getKey().getBytes());
+          runningChecksum.get().update(entry.getValue().getFirst().getBytes());
+        }
+      }
+      if (++currentRecordNum % syncPerRecords == 0) {
+        checkpointingInfo = storagePartition.sync();
+        if (sorted) {
+          Assert.assertEquals(checkpointingInfo.get(RocksDBSstFileWriter.ROCKSDB_LAST_FINISHED_SST_FILE_NO),
+              new Integer(currentFileNo++).toString());
+        } else {
+          Assert.assertTrue(checkpointingInfo.isEmpty(), "For non-deferred-write database, sync() should return empty map");
+        }
+      }
+      if (interrupted) {
+        if (currentRecordNum == interruptedRecord) {
+          if (reopenDatabaseDuringInterruption) {
+            storagePartition.close();
+            storagePartition = new ReplicationMetadataRocksDBStoragePartition(partitionConfig, factory, DATA_BASE_DIR, null, rocksDbThrottler, rocksDBServerConfig);
+            Options storeOptions = storagePartition.getOptions();
+            Assert.assertEquals(storeOptions.level0FileNumCompactionTrigger(), 100);
+          }
+          if (sorted) {
+            storagePartition.beginBatchWrite(checkpointingInfo, checksumSupplier);
+          }
+
+          // Pass last checkpointed info.
+          // Need to re-consume from the offset when last checkpoint happens
+          // inclusive [replayStart, replayEnd]
+          int replayStart = (interruptedRecord / syncPerRecords) * syncPerRecords + 1;
+          int replayCnt = 0;
+          runningChecksum.get().reset();
+          for (Map.Entry<String, Pair<String, String>> innerEntry : inputRecords.entrySet()) {
+            ++replayCnt;
+            if (replayCnt >= replayStart && replayCnt <= interruptedRecord) {
+              if (innerEntry.getValue().getFirst() == null) {
+                storagePartition.deleteWithReplicationMetadata(innerEntry.getKey().getBytes(), innerEntry.getValue().getSecond().getBytes());
+              } else {
+                storagePartition.putWithReplicationMetadata(innerEntry.getKey().getBytes(), innerEntry.getValue().getFirst().getBytes(),
+                    innerEntry.getValue().getSecond().getBytes());
+              }
+              if (verifyChecksum) {
+                if (innerEntry.getValue().getFirst() != null) {
+                  runningChecksum.get().update(innerEntry.getKey().getBytes());
+                  runningChecksum.get().update(innerEntry.getValue().getFirst().getBytes());
+                }
+              }
+            }
+            if (replayCnt > interruptedRecord) {
+              break;
+            }
+          }
+        }
+      }
+    }
+
+    if (sorted) {
+      Assert.assertFalse(storagePartition.validateBatchIngestion());
+      storagePartition.endBatchWrite();
+      Assert.assertTrue(storagePartition.validateBatchIngestion());
+    }
+
+    // Verify all the key/value pairs
+    for (Map.Entry<String, Pair<String, String>> entry : inputRecords.entrySet()) {
+      byte[] bytes = entry.getValue().getFirst() == null ? null : entry.getValue().getFirst().getBytes();
+      Assert.assertEquals(storagePartition.get(entry.getKey().getBytes(), false), bytes);
+      if (sorted) {
+        Assert.assertEquals(storagePartition.getReplicationMetadata(entry.getKey().getBytes()),
+            entry.getValue().getSecond().getBytes());
+      }
+    }
+
+    // Verify current ingestion mode is in deferred-write mode
+    Assert.assertTrue(storagePartition.verifyConfig(partitionConfig));
+
+    // Re-open it in read/write mode
+    storagePartition.close();
+    partitionConfig.setDeferredWrite(false);
+    partitionConfig.setWriteOnlyConfig(false);
+    storagePartition = new ReplicationMetadataRocksDBStoragePartition(partitionConfig, factory, DATA_BASE_DIR, null, rocksDbThrottler, rocksDBServerConfig);
+    // Test deletion
+    String toBeDeletedKey = keyPrefix + 10;
+    Assert.assertNotNull(storagePartition.get(toBeDeletedKey.getBytes(), false));
+    storagePartition.delete(toBeDeletedKey.getBytes());
+    Assert.assertNull(storagePartition.get(toBeDeletedKey.getBytes(), false));
+
+    Options storeOptions = storagePartition.getOptions();
+    Assert.assertEquals(storeOptions.level0FileNumCompactionTrigger(), 40);
+    storagePartition.drop();
+    options.close();
+    removeDir(storeDir);
+  }
+
+  @DataProvider(name="testIngestionDataProvider")
+  private Object[][] testIngestionDataProvider() {
+    return new Object[][] {
+        {true, false, false, true}, // Sorted input without interruption, with verifyChecksum
+        {true, false, false, false}, // Sorted input without interruption, without verifyChecksum
+        {true, true, true, false},   // Sorted input with interruption, without verifyChecksum
+        {true, true, false, false},  // Sorted input with storage node re-boot, without verifyChecksum
+        {true, true, true, true},   // Sorted input with interruption, with verifyChecksum
+        {true, true, false, true},  // Sorted input with storage node re-boot, with verifyChecksum
+        {false, false, false, false},// Unsorted input without interruption, without verifyChecksum
+        {false, true, false, false}, // Unsorted input with interruption, without verifyChecksum
+        {false, true, true, false}   // Unsorted input with storage node re-boot, without verifyChecksum
+    };
   }
 }
