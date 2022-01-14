@@ -15,7 +15,9 @@ public class RocksDBUtils {
   private static final String PARTITION_DB_NAME = "%s" + PARTITION_DB_NAME_SEP + "%d"; // store-name_partition_id
 
   private static final String TEMP_SST_FILE_DIR = ".sst_files";
+  private static final String TEMP_RMD_SST_FILE_DIR = ".sst_rmd_files";
   private static final String TEMP_SST_FILE_PREFIX = "sst_file_";
+  private static final String TEMP_RMD_SST_FILE_PREFIX = "sst_rmd_file_";
 
   public static String getPartitionDbName(String storeName, int partitionId) {
     return String.format(PARTITION_DB_NAME, storeName, partitionId);
@@ -48,13 +50,24 @@ public class RocksDBUtils {
   public static String composeTempSSTFileDir(String dbDir, String storeName, int partitionId) {
     return composePartitionDbDir(dbDir, storeName, partitionId) + File.separator + TEMP_SST_FILE_DIR;
   }
+  public static String composeTempRMDSSTFileDir(String dbDir, String storeName, int partitionId) {
+    return composePartitionDbDir(dbDir, storeName, partitionId) + File.separator + TEMP_RMD_SST_FILE_DIR;
+  }
 
   public static String composeTempSSTFileName(int fileNo) {
     return TEMP_SST_FILE_PREFIX + fileNo;
   }
 
+  public static String composeTempRMDSSTFileName(int fileNo) {
+    return TEMP_RMD_SST_FILE_PREFIX + fileNo;
+  }
+
   public static boolean isTempSSTFile(String fileName) {
     return fileName.startsWith(TEMP_SST_FILE_PREFIX);
+  }
+
+  public static boolean isTempRMDSSTFile(String fileName) {
+    return fileName.startsWith(TEMP_RMD_SST_FILE_PREFIX);
   }
 
   public static int extractTempSSTFileNo(String fileName) {
@@ -62,5 +75,12 @@ public class RocksDBUtils {
       throw new VeniceException("Temp SST filename should start with prefix: " + TEMP_SST_FILE_PREFIX);
     }
     return Integer.parseInt(fileName.substring(TEMP_SST_FILE_PREFIX.length()));
+  }
+
+  public static int extractTempRMDSSTFileNo(String fileName) {
+    if (!isTempRMDSSTFile(fileName)) {
+      throw new VeniceException("Temp SST filename should start with prefix: " + TEMP_RMD_SST_FILE_PREFIX);
+    }
+    return Integer.parseInt(fileName.substring(TEMP_RMD_SST_FILE_PREFIX.length()));
   }
 }
