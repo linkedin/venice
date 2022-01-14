@@ -62,6 +62,13 @@ public class AggVersionedStorageEngineStats extends AbstractVeniceAggVersionedSt
       return 0;
     }
 
+    public long getRMDDiskUsageInBytes() {
+      if (null != storageEngine) {
+        return storageEngine.getRMDSizeInBytes();
+      }
+      return 0;
+    }
+
     public void recordRocksDBOpenFailure() {
       rocksDBOpenFailureCount.incrementAndGet();
     }
@@ -80,6 +87,14 @@ public class AggVersionedStorageEngineStats extends AbstractVeniceAggVersionedSt
           return StatsErrorCode.NULL_STORAGE_ENGINE_STATS.code;
         } else {
           return stats.getDiskUsageInBytes();
+        }
+      }));
+      registerSensor("rmd_disk_usage_in_bytes", new Gauge(() -> {
+        StorageEngineStats stats = getStats();
+        if (null == stats) {
+          return StatsErrorCode.NULL_STORAGE_ENGINE_STATS.code;
+        } else {
+          return stats.getRMDDiskUsageInBytes();
         }
       }));
       registerSensor("rocksdb_open_failure_count", new Gauge(() -> {

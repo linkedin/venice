@@ -56,7 +56,6 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
   protected static final ReadOptions readOptionsDefault = new ReadOptions();
 
   private static final FlushOptions WAIT_FOR_FLUSH_OPTIONS = new FlushOptions().setWaitForFlush(true);
-  protected static final int DEFAULT_COLUMN_FAMILY_INDEX = 0;
 
   /**
    * Here RocksDB disables WAL, but relies on the 'flush', which will be invoked through {@link #sync()}
@@ -298,6 +297,10 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
 
   protected List<ColumnFamilyHandle> getColumnFamilyHandleList() {
     return columnFamilyHandleList;
+  }
+
+  public long getRmdByteUsage() {
+    return 0;
   }
 
   @Override
