@@ -5,6 +5,7 @@ import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.utils.PartitionUtils;
@@ -39,9 +40,10 @@ public class DefaultPushJobHeartbeatSenderFactory implements PushJobHeartbeatSen
       Optional<Properties> sslProperties) {
     Validate.notNull(controllerClient);
     final String heartbeatStoreName = getHeartbeatStoreName(properties);
+    int retryAttempts = properties.getInt(VenicePushJob.CONTROLLER_REQUEST_RETRY_ATTEMPTS, 3);
     VersionCreationResponse versionCreationResponse = ControllerClient.retryableRequest(
         controllerClient,
-        3,
+        retryAttempts,
         c -> c.requestTopicForWrites(
             heartbeatStoreName,
             1,
@@ -67,8 +69,8 @@ public class DefaultPushJobHeartbeatSenderFactory implements PushJobHeartbeatSen
         versionCreationResponse,
         getVeniceWriterProperties(sslProperties, versionCreationResponse.getKafkaBootstrapServers())
     );
-    Schema heartbeatKeySchema = getHeartbeatKeySchema(controllerClient, heartbeatStoreName);
-    Map<Integer, Schema> valueSchemasById = getHeartbeatValueSchemas(controllerClient, heartbeatStoreName);
+    Schema heartbeatKeySchema = getHeartbeatKeySchema(controllerClient, retryAttempts, heartbeatStoreName);
+    Map<Integer, Schema> valueSchemasById = getHeartbeatValueSchemas(controllerClient, retryAttempts, heartbeatStoreName);
 
     final DefaultPushJobHeartbeatSender defaultPushJobHeartbeatSender = new DefaultPushJobHeartbeatSender(
         Duration.ofMillis(properties.getLong(HEARTBEAT_INITIAL_DELAY_CONFIG.getConfigName(),
@@ -94,20 +96,20 @@ public class DefaultPushJobHeartbeatSenderFactory implements PushJobHeartbeatSen
     return veniceWriterProperties;
   }
 
-  private Map<Integer, Schema> getHeartbeatValueSchemas(ControllerClient controllerClient, String heartbeatStoreName) {
+  private Map<Integer, Schema> getHeartbeatValueSchemas(ControllerClient controllerClient, int retryAttempts, String heartbeatStoreName) {
     MultiSchemaResponse valueSchemaResponse = ControllerClient.retryableRequest(
             controllerClient,
-            3,
+            retryAttempts,
             c -> c.getAllValueSchema(heartbeatStoreName)
     );
     return Arrays.stream(valueSchemaResponse.getSchemas()).collect(
             Collectors.toMap(MultiSchemaResponse.Schema::getId, schema -> Schema.parse(schema.getSchemaStr())));
   }
 
-  private Schema getHeartbeatKeySchema(ControllerClient controllerClient, String heartbeatStoreName) {
+  private Schema getHeartbeatKeySchema(ControllerClient controllerClient, int retryAttempts, String heartbeatStoreName) {
     SchemaResponse keySchemaResponse = ControllerClient.retryableRequest(
             controllerClient,
-            3,
+            retryAttempts,
             c -> c.getKeySchema(heartbeatStoreName)
     );
     logger.info("Got [heartbeat store: " + heartbeatStoreName + "] SchemaResponse for key schema: " + keySchemaResponse);

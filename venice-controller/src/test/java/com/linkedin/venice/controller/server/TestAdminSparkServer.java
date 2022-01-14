@@ -797,7 +797,12 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
     controllerClient.createNewStore(storeName, "test", "\"string\"", "\"string\"");
     try {
       Assert.assertEquals(
-          ControllerClient.discoverCluster(cluster.getMasterVeniceController().getControllerUrl(), storeName).getCluster(),
+          ControllerClient.discoverCluster(
+              cluster.getMasterVeniceController().getControllerUrl(),
+              storeName,
+              Optional.empty(),
+              1
+          ).getCluster(),
           cluster.getClusterName(), "Should be able to find the cluster which the given store belongs to.");
     } finally {
       deleteStore(storeName);

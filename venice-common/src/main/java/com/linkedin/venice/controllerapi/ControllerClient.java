@@ -103,12 +103,12 @@ public class ControllerClient implements Closeable {
     logger.debug("Parsed hostname as: " + this.localHostName);
   }
 
-  public static ControllerClient discoverAndConstructControllerClient(String storeName, String discoveryUrls) {
-    return discoverAndConstructControllerClient(storeName, discoveryUrls, Optional.empty());
-  }
-
-  public static ControllerClient discoverAndConstructControllerClient(String storeName, String discoveryUrls, Optional<SSLFactory> sslFactory) {
-    String clusterName = discoverCluster(discoveryUrls, storeName, sslFactory).getCluster();
+  public static ControllerClient discoverAndConstructControllerClient(
+      String storeName,
+      String discoveryUrls,
+      Optional<SSLFactory> sslFactory,
+      int retryAttempts) {
+    String clusterName = discoverCluster(discoveryUrls, storeName, sslFactory, retryAttempts).getCluster();
     if (!clusterToClientMapContains(clusterName, discoveryUrls))
       addClusterToClientMapEntry(clusterName, discoveryUrls, new ControllerClient(clusterName, discoveryUrls, sslFactory));
     return getClusterToClientMapEntry(clusterName, discoveryUrls);
@@ -880,13 +880,13 @@ public class ControllerClient implements Closeable {
     return request(ControllerRoute.CONFIGURE_INCREMENTAL_PUSH_FOR_CLUSTER, params, ControllerResponse.class);
   }
 
-  public static D2ServiceDiscoveryResponse discoverCluster(String discoveryUrls, String storeName) {
-    return discoverCluster(discoveryUrls, storeName, Optional.empty());
-  }
-
-  public static D2ServiceDiscoveryResponse discoverCluster(String discoveryUrls, String storeName, Optional<SSLFactory> sslFactory) {
+  public static D2ServiceDiscoveryResponse discoverCluster(
+      String discoveryUrls,
+      String storeName,
+      Optional<SSLFactory> sslFactory,
+      int retryAttempts) {
     try (ControllerClient client = new ControllerClient("*", discoveryUrls, sslFactory)) {
-      return client.discoverCluster(storeName);
+      return retryableRequest(client, retryAttempts, c -> c.discoverCluster(storeName));
     }
   }
 
