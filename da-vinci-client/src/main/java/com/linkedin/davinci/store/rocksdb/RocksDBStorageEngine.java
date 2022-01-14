@@ -3,6 +3,7 @@ package com.linkedin.davinci.store.rocksdb;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.stats.RocksDBMemoryStats;
 import com.linkedin.davinci.store.AbstractStorageEngine;
+import com.linkedin.davinci.store.AbstractStoragePartition;
 import com.linkedin.davinci.store.StoragePartitionConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
@@ -140,6 +141,17 @@ class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePartition
         }
       }
     }
+  }
+
+  @Override
+  public long getRMDSizeInBytes() {
+    int partitionCount = (int) super.getNumberOfPartitions();
+    long diskUsage = 0;
+    for (int i = 0; i < partitionCount; i++) {
+      AbstractStoragePartition partition = super.getPartitionOrThrow(i);
+      diskUsage += partition.getRmdByteUsage();
+    }
+    return diskUsage;
   }
 
   @Override

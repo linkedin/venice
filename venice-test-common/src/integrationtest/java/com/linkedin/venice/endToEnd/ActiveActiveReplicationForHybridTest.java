@@ -31,6 +31,7 @@ import com.linkedin.venice.samza.VeniceObjectWithTimestamp;
 import com.linkedin.venice.samza.VeniceSystemFactory;
 import com.linkedin.venice.samza.VeniceSystemProducer;
 import com.linkedin.venice.server.VeniceServer;
+import com.linkedin.venice.stats.StatsErrorCode;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.MockCircularTime;
 import com.linkedin.venice.utils.PropertyBuilder;
@@ -38,6 +39,7 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
 import java.lang.reflect.Field;
 import java.util.AbstractMap;
@@ -699,6 +701,17 @@ public class ActiveActiveReplicationForHybridTest {
           }
         });
       }
+      VeniceServerWrapper serverWrapper = childDatacenters.get(dataCenterIndex).getClusters().get(clusterName).getVeniceServers().get(0);
+      Map<String, ? extends Metric> metrics = serverWrapper.getMetricsRepository().metrics();
+      metrics.forEach( (mName, metric) -> {
+        if (mName.startsWith(String.format(".%s_current--rmd_disk_usage_in_bytes.", storeName))) {
+          double value = metric.value();
+          Assert.assertNotEquals(value, (double) StatsErrorCode.NULL_BDB_ENVIRONMENT.code, "Got a NULL_BDB_ENVIRONMENT!");
+          Assert.assertNotEquals(value, (double) StatsErrorCode.NULL_STORAGE_ENGINE_STATS.code,
+              "Got NULL_STORAGE_ENGINE_STATS!");
+          logger.info("DISK RMD usage " + value);
+        }
+      });
     }
   }
 

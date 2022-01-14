@@ -16,8 +16,6 @@ import org.rocksdb.RocksDB;
 import org.rocksdb.RocksDBException;
 import org.rocksdb.WriteBatch;
 
-import static com.linkedin.davinci.store.rocksdb.RocksDBSstFileWriter.*;
-
 
 /**
  * This {@link ReplicationMetadataRocksDBStoragePartition} is built to store key value pair along with the timestamp
@@ -33,6 +31,8 @@ public class ReplicationMetadataRocksDBStoragePartition extends RocksDBStoragePa
   private RocksDBSstFileWriter rocksDBSstFileWriter = null;
   private final String fullPathForTempSSTFileDir;
 
+  private static final int DEFAULT_COLUMN_FAMILY_INDEX = 0;
+  private static final int REPLICATION_METADATA_COLUMN_FAMILY_INDEX = 1;
 
   public ReplicationMetadataRocksDBStoragePartition(StoragePartitionConfig storagePartitionConfig,
       RocksDBStorageEngineFactory factory, String dbDir, RocksDBMemoryStats rocksDBMemoryStats,
@@ -70,6 +70,10 @@ public class ReplicationMetadataRocksDBStoragePartition extends RocksDBStoragePa
     } catch (RocksDBException e) {
         throw new VeniceException("Failed to put key/value pair to store: " + storeName + ", partition id: " + partitionId, e);
     }
+  }
+
+  public long getRmdByteUsage() {
+    return rocksDB.getColumnFamilyMetaData(columnFamilyHandleList.get(REPLICATION_METADATA_COLUMN_FAMILY_INDEX)).size();
   }
 
   /**

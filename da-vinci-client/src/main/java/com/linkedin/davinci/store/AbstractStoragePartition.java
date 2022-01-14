@@ -166,4 +166,8 @@ public abstract class AbstractStoragePartition {
   public void deleteWithReplicationMetadata(byte[] key, byte[] metadata) {
     throw new VeniceUnsupportedOperationException("deleteWithReplicationMetadata");
   }
+
+  public long getRmdByteUsage() {
+    throw new VeniceUnsupportedOperationException("getRmdByteUsage");
+  }
 }

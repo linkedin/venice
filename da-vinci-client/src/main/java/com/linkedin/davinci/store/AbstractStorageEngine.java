@@ -96,6 +96,11 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
 
   public abstract PersistenceType getType();
   public abstract long getStoreSizeInBytes();
+
+  public long getRMDSizeInBytes() {
+    return 0;
+  }
+
   protected abstract Set<Integer> getPersistedPartitionIds();
   public abstract Partition createStoragePartition(StoragePartitionConfig partitionConfig);
 
