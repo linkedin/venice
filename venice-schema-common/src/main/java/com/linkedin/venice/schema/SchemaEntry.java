@@ -41,12 +41,12 @@ public class SchemaEntry {
     try {
       this.schema = Schema.parse(schemaStr);
     } catch (Exception e) {
-      logger.error("Failed to parse schema: " + schemaStr + " with exception: ", e);
       if ((e instanceof AvroTypeException) && (AvroCompatibilityHelper.getRuntimeAvroVersion().laterThan(AvroVersion.AVRO_1_8))) {
         this.schema = Schema.create(Schema.Type.NULL);
         this.failedParsing = true;
-        logger.warn("Avro 1.9 and newer version enforces stricter schema validation during parsing, will treat failed value schema as deprecated old value schema and ignore it.");
+        logger.warn("Avro 1.9 and newer version enforces stricter schema validation during parsing, will treat failed value schema as deprecated old value schema and ignore it. Error trace: ", e);
       } else {
+        logger.error("Failed to parse schema: " + schemaStr + " with exception: ", e);
         throw new SchemaParseException(e);
       }
     }
