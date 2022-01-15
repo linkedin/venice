@@ -46,6 +46,10 @@ public class D2ServiceDiscovery {
           TimeUnit.SECONDS.sleep(3);
         }
         TransportClientResponse response = client.get(requestPath, requestHeaders).get();
+        if (response == null) {
+          LOGGER.warn("Failed to find d2 service for {}, attempt {}/{}", storeName, attempt + 1, maxAttempts);
+          continue;
+        }
         D2ServiceDiscoveryResponseV2 result = OBJECT_MAPPER.readValue(response.getBody(), D2ServiceDiscoveryResponseV2.class);
         if (result.isError()) {
           throw new VeniceException(result.getError());
