@@ -157,7 +157,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
   private final boolean useBlackHoleDeserializer;
   private final boolean reuseObjectsForSerialization;
 
-  private volatile boolean hasServiceDiscoveryDone = false;
+  private volatile boolean isServiceDiscovered = false;
 
   /**
    * Here is the details about the deadlock issue if deserialization logic is executed in the same R2 callback thread:
@@ -262,23 +262,19 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
     }
   }
 
-  private void discoverD2Service(boolean retryOnServiceDiscoveryFailure) {
-    if (hasServiceDiscoveryDone) {
+  private void discoverD2Service(boolean retryOnFailure) {
+    if (isServiceDiscovered) {
       return;
     }
     synchronized (this) {
-      if (hasServiceDiscoveryDone) {
+      if (isServiceDiscovered) {
         return;
       }
-      // Discover the proper d2 service name for this store.
       if (transportClient instanceof D2TransportClient) {
-        // Use the new d2 transport client which will talk to the cluster own the given store.
-        // Do not need to close the original one, because if we use global d2 client, close will do nothing. If we use
-        // private d2, we could not close it as we share this d2 client in the new transport client.
-        transportClient = d2ServiceDiscovery.getD2TransportClientForStore((D2TransportClient) transportClient,
-            storeName, retryOnServiceDiscoveryFailure);
+        D2TransportClient client = (D2TransportClient) transportClient;
+        client.setServiceName(d2ServiceDiscovery.find(client, storeName, retryOnFailure).getD2Service());
       }
-      hasServiceDiscoveryDone = true;
+      isServiceDiscovered = true;
     }
   }
 

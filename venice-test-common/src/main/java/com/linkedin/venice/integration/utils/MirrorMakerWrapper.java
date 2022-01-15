@@ -121,8 +121,7 @@ public class MirrorMakerWrapper extends ProcessWrapper {
             "--consumer.rebalance.listener", IdentityNewConsumerRebalanceListener.class.getName(),
             "--rebalance.listener.args", IdentityNewConsumerRebalanceListener.getConfigString(consumerConfigPath, producerConfigPath)
         ),
-        Arrays.asList("-Xms64m", "-Xmx128m"),
-        Optional.empty()
+        Arrays.asList("-Xms64m", "-Xmx128m")
     );
 
     // It's tricky to find a good timeout here... if it's too small it'll never detect any start up failure,

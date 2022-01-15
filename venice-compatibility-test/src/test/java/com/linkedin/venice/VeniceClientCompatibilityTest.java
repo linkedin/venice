@@ -71,9 +71,9 @@ public class VeniceClientCompatibilityTest {
         VeniceClusterInitializer.class,
         Arrays.asList(storeName, routerPort),
         Collections.emptyList(),
-        Optional.empty(),
+        new ClassPathSupplierForVeniceCluster().get(),
         true,
-        Optional.of(new ClassPathSupplierForVeniceCluster()));
+        Optional.empty());
 
     veniceClient = ClientFactory.getGenericAvroClient(
         ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerAddress));
