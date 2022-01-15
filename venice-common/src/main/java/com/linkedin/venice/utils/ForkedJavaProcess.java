@@ -74,42 +74,45 @@ public final class ForkedJavaProcess extends Process {
 
   private Thread processReaper;
 
-  public static ForkedJavaProcess exec(Class appClass, List<String> args, List<String> jvmArgs,
-      Optional<String> extraLoggerName, boolean registerShutdownHook, Optional<Supplier<String>> classPathSupplier) throws IOException {
-    LOGGER.info("Forking " + appClass.getSimpleName() + " with arguments " + args + " and jvm arguments " + jvmArgs +
-        " extraLoggerName: " + (extraLoggerName.isPresent() ? extraLoggerName.get() : ""));
+  public static ForkedJavaProcess exec(
+      Class appClass,
+      List<String> args,
+      List<String> jvmArgs,
+      String classPath,
+      boolean killOnExit,
+      Optional<String> loggerPrefix) throws IOException {
+    LOGGER.info("Forking " + appClass.getSimpleName() + " with arguments " + args + " and jvm arguments " + jvmArgs);
 
     List<String> command = new ArrayList<>();
     command.add(JAVA_PATH);
     command.add("-cp");
-    if (classPathSupplier.isPresent()) {
-      command.add(classPathSupplier.get().get());
-    } else {
-      command.add(getClasspath());
-    }
+    command.add(classPath);
 
     command.addAll(DEFAULT_JAVA_ARGS);
-    // Add user provided customized JVM arguments for child process.
     command.addAll(jvmArgs);
 
     command.add(appClass.getCanonicalName());
     command.addAll(args);
 
     Process process = new ProcessBuilder(command).redirectErrorStream(true).start();
-    Logger logger = LogManager.getLogger((extraLoggerName.map(s -> s + ", ").orElse("")) + appClass.getSimpleName() + ", PID=" + getPidOfProcess(process));
-    return new ForkedJavaProcess(process, logger, registerShutdownHook);
+    Logger logger = LogManager.getLogger(loggerPrefix.map(s -> s + ", ").orElse("") + appClass.getSimpleName() + ", PID=" + getPidOfProcess(process));
+    return new ForkedJavaProcess(process, logger, killOnExit);
   }
 
-  public static ForkedJavaProcess exec(Class appClass, List<String> args, List<String> jvmArgs, Optional<String> extraLoggerName, boolean registerShutdownHook) throws IOException {
-    return exec(appClass, args, jvmArgs, extraLoggerName, registerShutdownHook, Optional.empty());
+  public static ForkedJavaProcess exec(Class appClass, List<String> args, List<String> jvmArgs, boolean killOnExit, Optional<String> loggerPrefix) throws IOException {
+    return exec(appClass, args, jvmArgs, getClasspath(), killOnExit, loggerPrefix);
   }
 
-  public static ForkedJavaProcess exec(Class appClass, List<String> args, List<String> jvmArgs, Optional<String> extraLoggerName) throws IOException {
-    return exec(appClass, args, jvmArgs, extraLoggerName, true);
+  public static ForkedJavaProcess exec(Class appClass, List<String> args, List<String> jvmArgs, boolean killOnExit) throws IOException {
+    return exec(appClass, args, jvmArgs, killOnExit, Optional.empty());
+  }
+
+  public static ForkedJavaProcess exec(Class appClass, List<String> args, List<String> jvmArgs) throws IOException {
+    return exec(appClass, args, jvmArgs, true, Optional.empty());
   }
 
   public static ForkedJavaProcess exec(Class appClass, String... args) throws IOException {
-    return exec(appClass, Arrays.asList(args), Collections.emptyList(), Optional.empty());
+    return exec(appClass, Arrays.asList(args), Collections.emptyList());
   }
 
   public static String getClasspath() {
@@ -125,7 +128,7 @@ public final class ForkedJavaProcess extends Process {
 
       /*
         Prepend WEB-INF/lib classpath to the forked Java process's classpath so the forked
-        process will have correct(newest) jar version for every dependencies when deployed in regular-war fashion.
+        process will have correct(newest) jar version for every dependency when deployed in regular-war fashion.
        */
       for (File file : new ArrayList<>(classpathDirs)) {
         if (!file.getPath().contains("WEB-INF/lib")) {
@@ -136,7 +139,7 @@ public final class ForkedJavaProcess extends Process {
 
       /*
         Prepend extra_webapp_resources/lib classpath to the forked Java process's classpath so the forked
-        process will have correct(newest) jar version for every dependencies when deployed in thin-war fashion.
+        process will have correct(newest) jar version for every dependency when deployed in thin-war fashion.
        */
       for (File file : new ArrayList<>(classpathDirs)) {
         if (!file.getPath().contains("extra_webapp_resources")) {
@@ -151,10 +154,10 @@ public final class ForkedJavaProcess extends Process {
   /**
    * Construction should happen via {@link #exec(Class, String...)}
    */
-  private ForkedJavaProcess(Process process, Logger logger, boolean registerShutdownHook) {
+  private ForkedJavaProcess(Process process, Logger logger, boolean killOnExit) {
     this.logger = logger;
     this.process = process;
-    if (registerShutdownHook) {
+    if (killOnExit) {
       this.processReaper = new Thread(this::destroy);
       Runtime.getRuntime().addShutdownHook(processReaper);
     }

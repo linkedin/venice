@@ -79,7 +79,6 @@ public class MainIngestionRequestClient implements Closeable {
             IsolatedIngestionServer.class,
             Collections.singletonList(configFilePath),
             jvmArgs,
-            Optional.empty(),
             false
         );
         logger.info("Forked new isolated ingestion process at PID: " + forkedIngestionProcess.pid());

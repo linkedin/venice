@@ -176,10 +176,10 @@ public class StoreBufferService extends AbstractStoreBufferService {
           topicToTimeSpent.compute(topicPartition, (K,V) ->  (V == null ? 0 : V) + System.currentTimeMillis() - startTime );
         } catch (Throwable e) {
           if (e instanceof InterruptedException) {
-            LOGGER.error("Drainer " + drainerIndex + "received InterruptedException, will exit");
+            LOGGER.error("Drainer " + drainerIndex + " received InterruptedException, will exit");
             break;
           }
-          LOGGER.error("Drainer " + drainerIndex + "received throwable in drainer thread:  ", e);
+          LOGGER.error("Drainer " + drainerIndex + " received throwable in drainer thread:  ", e);
           if (consumerRecord != null) {
             String consumerRecordString = consumerRecord.toString();
             if (consumerRecordString.length() > 1024) {

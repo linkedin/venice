@@ -52,7 +52,6 @@ import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.ComplementSet;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.DiskUsage;
-import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.Time;
@@ -522,28 +521,29 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         cacheBackend);
   }
 
-  private static void shutdownExecutorService(ExecutorService executorService, boolean force, String name) {
-    if (null == executorService) {
+  private static void shutdownExecutorService(ExecutorService executor, String name, boolean force) {
+    if (executor == null) {
       return;
     }
-    if (force) {
-      executorService.shutdownNow();
-    } else {
-      executorService.shutdown();
-    }
+
+    long startTime = System.currentTimeMillis();
     try {
-      long startTimeMs = System.currentTimeMillis();
-      if (!executorService.awaitTermination(60, TimeUnit.SECONDS) && !force) {
-        logger.error("Couldn't stop the thread pool: " + name + " after " + LatencyUtils.getElapsedTimeInMs(startTimeMs) + "(ms)");
-        executorService.shutdownNow();
-        if (!executorService.awaitTermination(30, TimeUnit.SECONDS)) {
-          logger.error("Still couldn't stop the thread pool: " + name + " after " + LatencyUtils.getElapsedTimeInMs(startTimeMs) + "(ms)");
+      executor.shutdown();
+      if (force || !executor.awaitTermination(60, TimeUnit.SECONDS)) {
+        if (!force) {
+          logger.warn("Failed to gracefully shutdown executor {}", name);
+        }
+        executor.shutdownNow();
+        if (!executor.awaitTermination(30, TimeUnit.SECONDS)) {
+          logger.error("Failed to shutdown executor {}", name);
         }
       }
     } catch (InterruptedException e) {
-      logger.warn("Received interruptedException in stopping thread pool: " + name);
-      executorService.shutdownNow();
-      Thread.currentThread().interrupt();
+      logger.warn("Executor shutdown is interrupted");
+      executor.shutdownNow();
+      currentThread().interrupt();
+    } finally {
+      logger.info("{} shutdown took {} ms.", name, System.currentTimeMillis() - startTime);
     }
   }
 
@@ -554,15 +554,15 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   @Override
   public void stopInner() {
     Utils.closeQuietlyWithErrorLogged(participantStoreConsumptionTask);
-    shutdownExecutorService(participantStoreConsumerExecutorService, true, "participantStoreConsumerExecutorService");
+    shutdownExecutorService(participantStoreConsumerExecutorService, "participantStoreConsumerExecutorService", true);
 
     /*
      * We would like to gracefully shutdown {@link #ingestionExecutorService},
      * so that it will have an opportunity to checkpoint the processed offset.
      */
     topicNameToIngestionTaskMap.values().forEach(StoreIngestionTask::close);
-    shutdownExecutorService(ingestionExecutorService, false, "ingestionExecutorService");
-    shutdownExecutorService(cacheWarmingExecutorService, true, "cacheWarmingExecutorService");
+    shutdownExecutorService(ingestionExecutorService, "ingestionExecutorService", false);
+    shutdownExecutorService(cacheWarmingExecutorService, "cacheWarmingExecutorService", true);
 
     Utils.closeQuietlyWithErrorLogged(aggKafkaConsumerService);
 

@@ -58,20 +58,18 @@ public class ParticipantStoreConsumptionTask implements Runnable, Closeable {
   @Override
   public void run() {
     logger.info("Started running " + getClass().getSimpleName());
-    String exceptionMessage = "Exception thrown while running " + getClass().getSimpleName() + " thread";
 
     while (!isClosing.get()) {
       try {
         Thread.sleep(participantMessageConsumptionDelayMs);
 
-        ParticipantMessageKey key = new ParticipantMessageKey();
-        key.messageType = ParticipantMessageType.KILL_PUSH_JOB.getValue();
-
         for (String topic : storeIngestionService.getIngestingTopicsWithVersionStatusNotOnline()) {
           try {
+            ParticipantMessageKey key = new ParticipantMessageKey();
+            key.messageType = ParticipantMessageType.KILL_PUSH_JOB.getValue();
             key.resourceName = topic;
-            String clusterName = clusterInfoProvider.getVeniceCluster(Version.parseStoreFromKafkaTopicName(topic));
 
+            String clusterName = clusterInfoProvider.getVeniceCluster(Version.parseStoreFromKafkaTopicName(topic));
             if (clusterName != null) {
               ParticipantMessageValue value;
               if (icProvider != null) {
@@ -89,6 +87,9 @@ public class ParticipantStoreConsumptionTask implements Runnable, Closeable {
                 }
               }
             }
+          } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            break;
           } catch (Exception e) {
             if (!filter.isRedundantException(e.getMessage())) {
               logger.error("Unexpected exception while trying to check or kill ingestion topic: " + topic, e);
@@ -98,11 +99,11 @@ public class ParticipantStoreConsumptionTask implements Runnable, Closeable {
         }
       } catch (InterruptedException e) {
         break;
-      } catch (Throwable e) {
+      } catch (Exception e) {
         // Some expected exception can be thrown during initializing phase of the participant store or if participant
         // store is disabled.
         if (!filter.isRedundantException(e.getMessage())) {
-          logger.error(exceptionMessage, e);
+          logger.error("Exception thrown while running " + getClass().getSimpleName() + " thread", e);
         }
         stats.recordKillPushJobFailedConsumption();
       }

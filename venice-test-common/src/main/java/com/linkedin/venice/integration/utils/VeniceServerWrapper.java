@@ -287,9 +287,10 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
       serverProcess = ForkedJavaProcess.exec(
           VeniceServerWrapper.class,
           cmdList,
-          Arrays.asList("-Xms64m", "-Xmx128m"), Optional.of(serverName));
+          Arrays.asList("-Xms64m", "-Xmx128m"),
+          true,
+          Optional.of(serverName));
       logger.info("VeniceServer " + serverName + " is started!");
-
     }
   }
 

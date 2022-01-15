@@ -1024,9 +1024,7 @@ public class DaVinciClientTest {
     String zkHosts = cluster.getZk().getAddress();
     ForkedJavaProcess forkedDaVinciUserApp = ForkedJavaProcess.exec(
         DaVinciUserApp.class,
-        Arrays.asList(zkHosts, baseDataPath, storeName, "100", "10"),
-        new ArrayList<>(),
-        Optional.empty()
+        zkHosts, baseDataPath, storeName, "100", "10"
     );
     // Sleep long enough so the forked Da Vinci app process can finish ingestion.
     Thread.sleep(60000);
