@@ -79,21 +79,20 @@ public class TestHybridQuota {
   @DataProvider(name = "testHybridQuotaPermutations", parallel = false)
   public static Object[][] testHybridQuotaPermutations() {
     return new Object[][]{
-        {false, false, false, true},
-        {true, false, true, true},
-        {true, false, false, true},
-        {true, true, true, true},
-        {true, true, false, true},
-        {false, false, false, false},
-        {true, false, true, false},
-        {true, false, false, false},
-        {true, true, true, false},
-        {true, true, false, false}
+        {false, false, true},
+        {false, true, true},
+        {true, true, true},
+        {true, false, true},
+        {false, false, false},
+        {false, true, false},
+        {false, false, false},
+        {true, true, false},
+        {true, false, false}
     };
   }
 
   @Test(dataProvider = "testHybridQuotaPermutations", timeOut = 180 * Time.MS_PER_SECOND)
-  public void testHybridStoreQuota(boolean isLeaderFollowerModelEnabled, boolean chunkingEnabled, boolean isStreamReprocessing,
+  public void testHybridStoreQuota(boolean chunkingEnabled, boolean isStreamReprocessing,
     boolean recoverFromViolation) throws Exception {
     SystemProducer veniceProducer = null;
 
@@ -118,7 +117,6 @@ public class TestHybridQuota {
       ControllerResponse response = controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setPartitionCount(2)
           .setHybridRewindSeconds(streamingRewindSeconds)
           .setHybridOffsetLagThreshold(streamingMessageLag)
-          .setLeaderFollowerModel(isLeaderFollowerModelEnabled)
           .setChunkingEnabled(chunkingEnabled)
           .setHybridStoreDiskQuotaEnabled(true));
 
@@ -169,7 +167,6 @@ public class TestHybridQuota {
       controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setPartitionCount(2)
           .setHybridRewindSeconds(streamingRewindSeconds)
           .setHybridOffsetLagThreshold(streamingMessageLag)
-          .setLeaderFollowerModel(isLeaderFollowerModelEnabled)
           .setChunkingEnabled(chunkingEnabled)
           .setHybridStoreDiskQuotaEnabled(true)
           .setStorageQuotaInByte(storageQuotaInByte));

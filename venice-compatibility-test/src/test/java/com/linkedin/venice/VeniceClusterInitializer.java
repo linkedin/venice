@@ -115,7 +115,7 @@ public class VeniceClusterInitializer implements AutoCloseable {
     }
     VersionCreationResponse newVersion =
         controllerClient.requestTopicForWrites(storeName, 10240000, Version.PushType.BATCH,
-            Version.guidBasedDummyPushId(), false, false, false, Optional.empty(),
+            Version.guidBasedDummyPushId(), true, false, false, Optional.empty(),
             Optional.empty(), Optional.empty(), false, -1);
     if (newVersion.isError()) {
       throw new VeniceException("Failed to create a new version for store: " + storeName + ", and error is: " + newVersion.getError());

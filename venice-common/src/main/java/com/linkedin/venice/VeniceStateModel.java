@@ -17,6 +17,8 @@ public class VeniceStateModel {
 
   public static final String PARTITION_ONLINE_OFFLINE_STATE_MODEL = "PartitionOnlineOfflineModel";
 
+  public static final String PARTITION_LEADER_FOLLOWER_STATE_MODEL= "LeaderStandby";
+
   private static final String UPPER_BOUND_REPLICATION_FACTOR = "R";
 
   public static StateModelDefinition getDefinition() {

@@ -529,7 +529,7 @@ public class TestMultiDataCenterPush {
   private VeniceWriter<String, String, byte[]> startIncrementalPush(ControllerClient controllerClient, String storeName,
       VeniceWriterFactory veniceWriterFactory, String incrementalPushVersion) {
     VersionCreationResponse response = controllerClient.requestTopicForWrites(storeName, 1024,
-        Version.PushType.INCREMENTAL, "test-incremental-push", false, true, false, Optional.empty(),
+        Version.PushType.INCREMENTAL, "test-incremental-push", true, true, false, Optional.empty(),
         Optional.empty(), Optional.empty(), false, -1);
     Assert.assertFalse(response.isError());
     Assert.assertNotNull(response.getKafkaTopic());

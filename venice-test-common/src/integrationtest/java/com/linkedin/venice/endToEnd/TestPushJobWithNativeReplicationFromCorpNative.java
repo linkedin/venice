@@ -144,6 +144,7 @@ public class TestPushJobWithNativeReplicationFromCorpNative {
     controllerProps.put(NATIVE_REPLICATION_FABRIC_ALLOWLIST, DEFAULT_PARENT_DATA_CENTER_REGION_NAME);
     controllerProps.put(BatchJobHeartbeatConfigs.HEARTBEAT_STORE_CLUSTER_CONFIG.getConfigName(), VPJ_HEARTBEAT_STORE_CLUSTER);
     controllerProps.put(BatchJobHeartbeatConfigs.HEARTBEAT_ENABLED_CONFIG.getConfigName(), true);
+    controllerProps.put(ENABLE_LEADER_FOLLOWER_AS_DEFAULT_FOR_ALL_STORES, true);
 
     int parentKafkaPort = Utils.getFreePort();
     controllerProps.put(CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + DEFAULT_PARENT_DATA_CENTER_REGION_NAME, "localhost:" + parentKafkaPort);
@@ -220,9 +221,8 @@ public class TestPushJobWithNativeReplicationFromCorpNative {
       TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(dc1Client, storeName, true);
       TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(dc2Client, storeName, true);
 
-      //disable L/F+ native replication for dc-1 and dc-2.
       UpdateStoreQueryParams updateStoreParams1 =
-          new UpdateStoreQueryParams().setLeaderFollowerModel(false).setNativeReplicationEnabled(false);
+          new UpdateStoreQueryParams().setNativeReplicationEnabled(false);
       TestPushUtils.updateStore(clusterName, storeName, dc1Client, updateStoreParams1);
       TestPushUtils.updateStore(clusterName, storeName, dc2Client, updateStoreParams1);
 
@@ -409,9 +409,8 @@ public class TestPushJobWithNativeReplicationFromCorpNative {
       TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(dc1Client, storeName, true);
       TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(dc2Client, storeName, true);
 
-      //disable L/F+ native replication for dc-2.
       UpdateStoreQueryParams updateStoreParams1 =
-          new UpdateStoreQueryParams().setLeaderFollowerModel(false).setNativeReplicationEnabled(false);
+          new UpdateStoreQueryParams().setNativeReplicationEnabled(false);
       TestPushUtils.updateStore(clusterName, storeName, dc2Client, updateStoreParams1);
 
       //verify all the datacenter is configured correctly.
@@ -879,7 +878,6 @@ public class TestPushJobWithNativeReplicationFromCorpNative {
           .setLeaderFollowerModel(true)
           .setNativeReplicationEnabled(true);
       UpdateStoreQueryParams disableNativeRepl = new UpdateStoreQueryParams()
-          .setLeaderFollowerModel(false)
           .setNativeReplicationEnabled(false);
 
       try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentController.getControllerUrl());

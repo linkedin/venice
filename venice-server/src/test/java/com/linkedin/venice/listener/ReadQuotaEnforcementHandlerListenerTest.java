@@ -159,6 +159,7 @@ public class ReadQuotaEnforcementHandlerListenerTest {
     doReturn(topic).when(partitionAssignment).getTopic();
     Instance thisInstance = new Instance(thisNodeId, "dummyHost", 1234);
     Partition partition = mock(Partition.class);
+    doReturn(Collections.singletonList(thisInstance)).when(partition).getWorkingInstances();
     doReturn(Collections.singletonList(thisInstance)).when(partition).getReadyToServeInstances();
     doReturn(Collections.singletonList(partition)).when(partitionAssignment).getAllPartitions();
     return partitionAssignment;

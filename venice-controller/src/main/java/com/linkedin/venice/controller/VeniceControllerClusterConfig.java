@@ -290,7 +290,7 @@ public class VeniceControllerClusterConfig {
     leaderFollowerEnabledForIncrementalPushStores =
         props.getBoolean(ENABLE_LEADER_FOLLOWER_AS_DEFAULT_FOR_INCREMENTAL_PUSH_STORES, false);
     leaderFollowerEnabledForBatchOnlyStores = props.getBoolean(ENABLE_LEADER_FOLLOWER_AS_DEFAULT_FOR_BATCH_ONLY_STORES, false);
-    leaderFollowerEnabledForAllStores = props.getBoolean(ENABLE_LEADER_FOLLOWER_AS_DEFAULT_FOR_ALL_STORES, false);
+    leaderFollowerEnabledForAllStores = props.getBoolean(ENABLE_LEADER_FOLLOWER_AS_DEFAULT_FOR_ALL_STORES, true);
     controllerSchemaValidationEnabled = props.getBoolean(CONTROLLER_SCHEMA_VALIDATION_ENABLED, true);
     lfModelDependencyCheckDisabled = props.getBoolean(LF_MODEL_DEPENDENCY_CHECK_DISABLED, false);
 

@@ -88,7 +88,10 @@ public class TestRestartServer {
         return false;
       }
       for (int i = 0; i < partitionCount; i++) {
-        if (partitionAssignment.getPartition(i).getReadyToServeInstances().size() != replicaFactor) {
+        if (partitionAssignment.getPartition(i).getLeaderInstance() == null) {
+          return false;
+        }
+        if (partitionAssignment.getPartition(i).getWorkingInstances().size() != replicaFactor) {
           return false;
         }
       }

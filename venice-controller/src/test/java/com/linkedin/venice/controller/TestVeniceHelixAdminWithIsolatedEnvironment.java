@@ -6,6 +6,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoClusterException;
 import com.linkedin.venice.helix.HelixExternalViewRepository;
 import com.linkedin.venice.helix.ResourceAssignment;
+import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.helix.ZkStoreConfigAccessor;
 import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.meta.PartitionAssignment;
@@ -30,6 +31,7 @@ import java.util.Properties;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import org.apache.helix.model.ExternalView;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
@@ -56,7 +58,6 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
     veniceAdmin.createStore(clusterName, storeName, "dev", KEY_SCHEMA, VALUE_SCHEMA);
     Version version =
         veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1);
-
     int newAdminPort = controllerConfig.getAdminPort() + 1; /* Note: this is a dummy port */
     PropertyBuilder builder = new PropertyBuilder().put(controllerProps.toProperties()).put("admin.port", newAdminPort);
     VeniceProperties newControllerProps = builder.build();
@@ -82,9 +83,7 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
     //Stop current leader.
     final VeniceHelixAdmin curLeader = getLeader(allAdmins, clusterName);
     TestUtils.waitForNonDeterministicCompletion(TOTAL_TIMEOUT_FOR_SHORT_TEST_MS, TimeUnit.MILLISECONDS,
-        () -> curLeader.getOffLinePushStatus(clusterName, version.kafkaTopicName())
-            .getExecutionStatus()
-            .equals(ExecutionStatus.COMPLETED));
+        () -> !resourceMissingTopState(curLeader.getHelixVeniceClusterResources(clusterName).getHelixManager(), clusterName, version.kafkaTopicName()));
     curLeader.stop(clusterName);
     Thread.sleep(1000);
     VeniceHelixAdmin oldLeader = curLeader;
@@ -92,8 +91,7 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
     waitForALeader(allAdmins, clusterName, LEADER_CHANGE_TIMEOUT_MS);
     //Now get status from new leader controller.
     VeniceHelixAdmin newLeader = getLeader(allAdmins, clusterName);
-    Assert.assertEquals(newLeader.getOffLinePushStatus(clusterName, version.kafkaTopicName()).getExecutionStatus(), ExecutionStatus.COMPLETED,
-        "Offline push should be completed");
+    Assert.assertFalse(resourceMissingTopState(newLeader.getHelixVeniceClusterResources(clusterName).getHelixManager(), clusterName, version.kafkaTopicName()));
     // Stop and start participant to use new leader to trigger state transition.
     stopAllParticipants();
     HelixExternalViewRepository routing = newLeader.getHelixVeniceClusterResources(clusterName).getRoutingDataRepository();
@@ -118,7 +116,7 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
     getLeader(allAdmins, clusterName).createStore(clusterName, "failedStore", "dev", KEY_SCHEMA, VALUE_SCHEMA);
   }
 
-  @Test
+  @Test(timeOut = LEADER_CHANGE_TIMEOUT_MS)
   public void testIsInstanceRemovable() throws Exception {
     // Create another participant so we will get two running instances.
     String newNodeId = "localhost_9900";
@@ -150,7 +148,7 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
     //Without waiting for offline push status to be COMPLETED, isCurrentVersion check will fail, then node removable
     //check will not work as expected.
     TestUtils.waitForNonDeterministicCompletion(10, TimeUnit.SECONDS, () ->
-        veniceAdmin.getOffLinePushStatus(clusterName, version.kafkaTopicName()).getExecutionStatus() == ExecutionStatus.COMPLETED);
+        !resourceMissingTopState(veniceAdmin.getHelixVeniceClusterResources(clusterName).getHelixManager(), clusterName, version.kafkaTopicName()));
     //Make version ONLINE
     ReadWriteStoreRepository storeRepository = veniceAdmin.getHelixVeniceClusterResources(clusterName).getStoreMetadataRepository();
     Store store = storeRepository.getStore(storeName);
@@ -191,8 +189,7 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
     Version version = veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(),
         partitionCount, replicaCount);
     TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
-      Assert.assertEquals(veniceAdmin.getOffLinePushStatus(clusterName, version.kafkaTopicName()).getExecutionStatus(),
-          ExecutionStatus.COMPLETED);
+      Assert.assertFalse(resourceMissingTopState(veniceAdmin.getHelixVeniceClusterResources(clusterName).getHelixManager(), clusterName, version.kafkaTopicName()));
     });
 
     Assert.assertFalse(
@@ -205,8 +202,7 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
     Version newVersion = veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(),
         partitionCount, newVersionReplicaCount);
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
-      Assert.assertEquals(veniceAdmin.getOffLinePushStatus(clusterName, newVersion.kafkaTopicName()).getExecutionStatus(),
-          ExecutionStatus.COMPLETED);
+      Assert.assertFalse(resourceMissingTopState(veniceAdmin.getHelixVeniceClusterResources(clusterName).getHelixManager(), clusterName, version.kafkaTopicName()));
     });
     // The old instance should now be removable because its replica is no longer the current version.
     Assert.assertTrue(
@@ -429,7 +425,7 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
     veniceAdmin.createStore(clusterName, storeName, storeOwner, KEY_SCHEMA, VALUE_SCHEMA);
     asyncExecutor.submit(() -> {
       // Add version. Hold store write lock and release it before polling EV status.
-      veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1);
+      Version version = veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1);
     });
     Thread.sleep(500);
 
@@ -445,7 +441,7 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
       }
     }
     // If there is a deadlock and then version cannot become online
-    TestUtils.waitForNonDeterministicCompletion(10, TimeUnit.SECONDS, () -> veniceAdmin.getCurrentVersion(clusterName, storeName) == 1);
+    TestUtils.waitForNonDeterministicCompletion(10, TimeUnit.SECONDS, () -> veniceAdmin.getFutureVersion(clusterName, storeName) == 1);
   }
 
   @Test
@@ -474,5 +470,17 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
     Assert.assertNotNull(storeConfigAccessor.getStoreConfig(newStoreName));
     veniceAdmin.deleteStore(clusterName, newStoreName, Store.IGNORE_VERSION, true);
     Assert.assertNull(storeConfigAccessor.getStoreConfig(newStoreName));
+  }
+
+  public static boolean resourceMissingTopState(SafeHelixManager helixManager, String clusterName, String resourceID) {
+    ExternalView externalView = helixManager.getClusterManagmentTool().getResourceExternalView(clusterName, resourceID);
+    for(String partition : externalView.getPartitionSet()) {
+      for(String state : externalView.getStateMap(partition).values()) {
+        if (state.equals("ERROR") || state.equals("OFFLINE")) {
+          return true;
+        }
+      }
+    }
+    return false;
   }
 }

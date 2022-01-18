@@ -26,17 +26,15 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
   private final Map<Integer, VeniceControllerWrapper> controllers;
   private final ZkServerWrapper zkServerWrapper;
   private final KafkaBrokerWrapper kafkaBrokerWrapper;
-  private final BrooklinWrapper brooklinWrapper;
   private final String clusterToD2;
   private final D2Client clientConfigD2Client;
 
   VeniceMultiClusterWrapper(File dataDirectory, ZkServerWrapper zkServerWrapper, KafkaBrokerWrapper kafkaBrokerWrapper,
-      BrooklinWrapper brooklinWrapper, Map<String, VeniceClusterWrapper> clusters,
-      Map<Integer, VeniceControllerWrapper> controllers, String clusterToD2, D2Client clientConfigD2Client) {
+      Map<String, VeniceClusterWrapper> clusters, Map<Integer, VeniceControllerWrapper> controllers, String clusterToD2,
+      D2Client clientConfigD2Client) {
     super(SERVICE_NAME, dataDirectory);
     this.zkServerWrapper = zkServerWrapper;
     this.kafkaBrokerWrapper = kafkaBrokerWrapper;
-    this.brooklinWrapper = brooklinWrapper;
     this.controllers = controllers;
     this.clusters = clusters;
     this.clusterToD2 = clusterToD2;
@@ -53,14 +51,12 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
       boolean forkServer, Optional<Map<String, Map<String, String>>> kafkaClusterMap) {
     ZkServerWrapper zkServerWrapper = null;
     KafkaBrokerWrapper kafkaBrokerWrapper = null;
-    BrooklinWrapper brooklinWrapper = null;
     Map<String, VeniceClusterWrapper> clusterWrapperMap = new HashMap<>();
     Map<Integer, VeniceControllerWrapper> controllerMap = new HashMap<>();
 
     try {
       zkServerWrapper = optionalZkServerWrapper.isPresent() ? optionalZkServerWrapper.get() : ServiceFactory.getZkServer();
       kafkaBrokerWrapper = optionalKafkaBrokerWrapper.isPresent() ? optionalKafkaBrokerWrapper.get() : ServiceFactory.getKafkaBroker(zkServerWrapper);
-      brooklinWrapper = ServiceFactory.getBrooklinWrapper(kafkaBrokerWrapper);
       String clusterToD2 = "";
       String[] clusterNames = new String[numberOfClusters];
       for (int i = 0; i < numberOfClusters; i++) {
@@ -98,7 +94,7 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
           .setD2Client(clientConfigD2Client));
       for (int i = 0; i < numberOfControllers; i++) {
         VeniceControllerWrapper controllerWrapper = ServiceFactory.getVeniceController(clusterNames, kafkaBrokerWrapper, replicationFactor, partitionSize,
-            rebalanceDelayMs, minActiveReplica, brooklinWrapper, clusterToD2, false, true, controllerProperties);
+            rebalanceDelayMs, minActiveReplica, clusterToD2, false, true, controllerProperties);
         controllerMap.put(controllerWrapper.getPort(), controllerWrapper);
       }
       // Specify the system store cluster name
@@ -109,7 +105,7 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
       for (int i = 0; i < numberOfClusters; i++) {
         // Create a wrapper for cluster without controller.
         VeniceClusterWrapper clusterWrapper =
-            ServiceFactory.getVeniceClusterWrapperForMultiCluster(coloName, zkServerWrapper, kafkaBrokerWrapper, brooklinWrapper,
+            ServiceFactory.getVeniceClusterWrapperForMultiCluster(coloName, zkServerWrapper, kafkaBrokerWrapper,
                 clusterNames[i], clusterToD2, 0, numberOfServers, numberOfRouters, replicationFactor, partitionSize, enableAllowlist,
                 enableAutoJoinAllowlist, rebalanceDelayMs, minActiveReplica, sslToStorageNodes, false, veniceProperties, forkServer, kafkaClusterMap);
         controllerMap.values().stream().forEach(clusterWrapper::addVeniceControllerWrapper);
@@ -119,14 +115,11 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
       }
       final ZkServerWrapper finalZkServerWrapper = zkServerWrapper;
       final KafkaBrokerWrapper finalKafkaBrokerWrapper = kafkaBrokerWrapper;
-      final BrooklinWrapper finalBrooklinWrapper = brooklinWrapper;
       final String finalClusterToD2 = clusterToD2;
-      return (serviceName) -> new VeniceMultiClusterWrapper(null, finalZkServerWrapper, finalKafkaBrokerWrapper,
-          finalBrooklinWrapper, clusterWrapperMap, controllerMap, finalClusterToD2, clientConfigD2Client);
+      return (serviceName) -> new VeniceMultiClusterWrapper(null, finalZkServerWrapper, finalKafkaBrokerWrapper, clusterWrapperMap, controllerMap, finalClusterToD2, clientConfigD2Client);
     } catch (Exception e) {
       controllerMap.values().forEach(Utils::closeQuietlyWithErrorLogged);
       clusterWrapperMap.values().forEach(Utils::closeQuietlyWithErrorLogged);
-      Utils.closeQuietlyWithErrorLogged(brooklinWrapper);
       Utils.closeQuietlyWithErrorLogged(kafkaBrokerWrapper);
       Utils.closeQuietlyWithErrorLogged(zkServerWrapper);
       throw e;
@@ -155,7 +148,6 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
     if (clientConfigD2Client != null) {
       D2ClientUtils.shutdownClient(clientConfigD2Client);
     }
-    IOUtils.closeQuietly(brooklinWrapper);
     IOUtils.closeQuietly(kafkaBrokerWrapper);
     IOUtils.closeQuietly(zkServerWrapper);
   }
@@ -179,10 +171,6 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
 
   public KafkaBrokerWrapper getKafkaBrokerWrapper() {
     return kafkaBrokerWrapper;
-  }
-
-  public BrooklinWrapper getBrooklinWrapper() {
-    return brooklinWrapper;
   }
 
   public VeniceControllerWrapper getRandomController() {

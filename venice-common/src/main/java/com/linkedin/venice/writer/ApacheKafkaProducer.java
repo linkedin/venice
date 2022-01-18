@@ -13,8 +13,13 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import org.apache.kafka.clients.producer.Callback;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerConfig;
@@ -156,7 +161,8 @@ public class ApacheKafkaProducer implements KafkaProducerWrapper {
    */
   public int getNumberOfPartitions(String topic) {
     ensureProducerIsNotClosed();
-    // TODO: This blocks forever. We need to be able to interrupt it and throw if it "times out".
+    // TODO: This blocks forever. Using getNumberOfPartitions with timeout parameter adds a timeout to this call but
+    // other usages need to be refactored to handle the timeout exception correctly
     return producer.partitionsFor(topic).size();
   }
 

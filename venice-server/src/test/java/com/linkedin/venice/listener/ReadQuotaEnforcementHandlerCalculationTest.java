@@ -69,6 +69,7 @@ public class ReadQuotaEnforcementHandlerCalculationTest {
         }
 
       }
+      doReturn(instances).when(partition).getWorkingInstances();
       doReturn(instances).when(partition).getReadyToServeInstances();
       partitions.add(partition);
     }

@@ -39,7 +39,7 @@ public class TestControllerEnforeSSL {
         KafkaBrokerWrapper kafkaBrokerWrapper = ServiceFactory.getKafkaBroker(zkServer);
          VeniceControllerWrapper controllerWrapper = ServiceFactory.getVeniceController(
              new String[]{CLUSTER_NAME}, kafkaBrokerWrapper, 1, 10, 0, 1,
-             null, null, false, false, extraProperties);
+             null, false, false, extraProperties);
          ControllerClient controllerClient = ControllerClient.constructClusterControllerClient(CLUSTER_NAME, controllerWrapper.getControllerUrl())) {
       TestUtils.waitForNonDeterministicCompletion(5, TimeUnit.SECONDS, () -> controllerWrapper.isLeaderController(CLUSTER_NAME));
 

@@ -56,7 +56,7 @@ public class TestDelayedRebalance {
     TestUtils.waitForNonDeterministicCompletion(3, TimeUnit.SECONDS, () -> {
       PartitionAssignment assignment =
           cluster.getRandomVeniceRouter().getRoutingDataRepository().getPartitionAssignments(topicName);
-      return assignment.getPartition(0).getReadyToServeInstances().size() == 1
+      return assignment.getPartition(0).getWorkingInstances().size() == 1
           && assignment.getPartition(0).getBootstrapInstances().size() == 0;
     });
     // restart failed server
@@ -65,15 +65,15 @@ public class TestDelayedRebalance {
     TestUtils.waitForNonDeterministicCompletion(3, TimeUnit.SECONDS, () -> {
       PartitionAssignment assignment =
           cluster.getRandomVeniceRouter().getRoutingDataRepository().getPartitionAssignments(topicName);
-      return assignment.getPartition(0).getReadyToServeInstances().size() == 2;
+      return assignment.getPartition(0).getWorkingInstances().size() == 2;
     });
 
     PartitionAssignment partitionAssignment =
         cluster.getRandomVeniceRouter().getRoutingDataRepository().getPartitionAssignments(topicName);
     // The restart server get the original replica and become ONLINE again.
-    Assert.assertEquals(
-        partitionAssignment.getPartition(0).getInstanceStatusById(Utils.getHelixNodeIdentifier(failServerPort)),
-        HelixState.ONLINE_STATE);
+    Assert.assertTrue(
+        partitionAssignment.getPartition(0).getInstanceStatusById(Utils.getHelixNodeIdentifier(failServerPort)).equals(HelixState.STANDBY_STATE)
+            ||         partitionAssignment.getPartition(0).getInstanceStatusById(Utils.getHelixNodeIdentifier(failServerPort)).equals(HelixState.LEADER_STATE));
   }
 
   @Test(timeOut = 60 * Time.MS_PER_SECOND)
@@ -87,13 +87,13 @@ public class TestDelayedRebalance {
       cluster.refreshAllRouterMetaData();
       PartitionAssignment partitionAssignment =
           cluster.getRandomVeniceRouter().getRoutingDataRepository().getPartitionAssignments(topicName);
-      int readyToServeInstances = partitionAssignment.getPartition(0).getReadyToServeInstances().size();
+      int readyToServeInstances = partitionAssignment.getPartition(0).getWorkingInstances().size();
       Assert.assertTrue(readyToServeInstances > 0,
           "Right after taking down a server, the number of live instances should not have dropped to 0");
       if (readyToServeInstances == 1) {
         return true;
       } else {
-        boolean serverStillAlive = partitionAssignment.getPartition(0).getReadyToServeInstances().stream()
+        boolean serverStillAlive = partitionAssignment.getPartition(0).getWorkingInstances().stream()
             .anyMatch(i -> i.getPort() == failServerPort);
         Assert.assertFalse(serverStillAlive,
             "Right after taking down a server, the number of live instances should have dropped to 1.");
@@ -104,7 +104,7 @@ public class TestDelayedRebalance {
     Thread.sleep(delayRebalanceMS / 2);
 
     PartitionAssignment partitionAssignment = cluster.getRandomVeniceRouter().getRoutingDataRepository().getPartitionAssignments(topicName);
-    Assert.assertEquals(partitionAssignment.getPartition(0).getReadyToServeInstances().size(), 1,
+    Assert.assertEquals(partitionAssignment.getPartition(0).getWorkingInstances().size(), 1,
         "With delayed reblance, helix should not move the partition to other machine during the delayed reblance time.");
 
     Thread.sleep(delayRebalanceMS / 2);
@@ -112,7 +112,7 @@ public class TestDelayedRebalance {
     TestUtils.waitForNonDeterministicCompletion(3, TimeUnit.SECONDS, () -> {
       PartitionAssignment assignment =
           cluster.getRandomVeniceRouter().getRoutingDataRepository().getPartitionAssignments(topicName);
-      return assignment.getPartition(0).getReadyToServeInstances().size() == 2;
+      return assignment.getPartition(0).getWorkingInstances().size() == 2;
     });
     partitionAssignment =
         cluster.getRandomVeniceRouter().getRoutingDataRepository().getPartitionAssignments(topicName);
@@ -139,13 +139,13 @@ public class TestDelayedRebalance {
     TestUtils.waitForNonDeterministicCompletion(3, TimeUnit.SECONDS, () -> {
       PartitionAssignment assignment =
           cluster.getRandomVeniceRouter().getRoutingDataRepository().getPartitionAssignments(topicName);
-      return assignment.getPartition(0).getReadyToServeInstances().size() == 1;
+      return assignment.getPartition(0).getWorkingInstances().size() == 1;
     });
     // Before test time out, helix do the rebalance.
     TestUtils.waitForNonDeterministicCompletion(3, TimeUnit.SECONDS, () -> {
       PartitionAssignment assignment =
           cluster.getRandomVeniceRouter().getRoutingDataRepository().getPartitionAssignments(topicName);
-      return assignment.getPartition(0).getReadyToServeInstances().size() == 2;
+      return assignment.getPartition(0).getWorkingInstances().size() == 2;
     });
   }
 
@@ -166,7 +166,7 @@ public class TestDelayedRebalance {
     TestUtils.waitForNonDeterministicCompletion(3, TimeUnit.SECONDS, () -> {
       PartitionAssignment assignment =
           cluster.getRandomVeniceRouter().getRoutingDataRepository().getPartitionAssignments(topicName);
-      return assignment.getPartition(0).getReadyToServeInstances().size() == 2
+      return assignment.getPartition(0).getWorkingInstances().size() == 2
           && assignment.getPartition(0).getInstanceStatusById(Utils.getHelixNodeIdentifier(failServerPort)) == null;
     });
   }
@@ -191,7 +191,7 @@ public class TestDelayedRebalance {
     TestUtils.waitForNonDeterministicAssertion(testTimeOutMS, TimeUnit.MILLISECONDS, () -> {
       PartitionAssignment assignment =
           cluster.getRandomVeniceRouter().getRoutingDataRepository().getPartitionAssignments(topicName);
-      Assert.assertTrue(assignment.getPartition(0).getReadyToServeInstances().size() == 1
+      Assert.assertTrue(assignment.getPartition(0).getWorkingInstances().size() == 1
           && assignment.getPartition(0).getBootstrapInstances().size() == 0);
     });
     // restart failed server
@@ -200,20 +200,20 @@ public class TestDelayedRebalance {
     TestUtils.waitForNonDeterministicCompletion(3, TimeUnit.SECONDS, () -> {
       PartitionAssignment assignment =
           cluster.getRandomVeniceRouter().getRoutingDataRepository().getPartitionAssignments(topicName);
-      return assignment.getPartition(0).getReadyToServeInstances().size() == 2;
+      return assignment.getPartition(0).getWorkingInstances().size() == 2;
     });
 
     PartitionAssignment partitionAssignment = cluster.getRandomVeniceRouter().getRoutingDataRepository().getPartitionAssignments(topicName);
     // The restart server get the original replica and become ONLINE again.
-    Assert.assertEquals(
-        partitionAssignment.getPartition(0).getInstanceStatusById(Utils.getHelixNodeIdentifier(failServerPort)),
-        HelixState.ONLINE_STATE);
+    Assert.assertTrue(
+        partitionAssignment.getPartition(0).getInstanceStatusById(Utils.getHelixNodeIdentifier(failServerPort)).equals(HelixState.STANDBY_STATE)
+        ||         partitionAssignment.getPartition(0).getInstanceStatusById(Utils.getHelixNodeIdentifier(failServerPort)).equals(HelixState.LEADER_STATE));
   }
 
   private int stopAServer(String topicName) {
     PartitionAssignment partitionAssignment =
         cluster.getRandomVeniceRouter().getRoutingDataRepository().getPartitionAssignments(topicName);
-    int failServerPort = partitionAssignment.getPartition(0).getReadyToServeInstances().get(0).getPort();
+    int failServerPort = partitionAssignment.getPartition(0).getWorkingInstances().get(0).getPort();
     cluster.stopVeniceServer(failServerPort);
     return failServerPort;
   }
@@ -238,7 +238,7 @@ public class TestDelayedRebalance {
     TestUtils.waitForNonDeterministicCompletion(3, TimeUnit.SECONDS, () -> {
       PartitionAssignment assignment =
           cluster.getRandomVeniceRouter().getRoutingDataRepository().getPartitionAssignments(topicName);
-      return assignment.getPartition(0).getReadyToServeInstances().size() == 2;
+      return assignment.getPartition(0).getWorkingInstances().size() == 2;
     });
 
     return topicName;

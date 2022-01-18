@@ -100,11 +100,10 @@ public class TestAdminSparkServerWithMultiServers {
     Assert.assertEquals(multiStoreResponse.getStores().length, 1);
     Assert.assertEquals(multiStoreResponse.getStores()[0], incrementalPushEnabledStore);
 
-    // List stores that have leader/follower mode enabled
+    // List stores that have leader/follower mode enabled (all of them!)
     multiStoreResponse = controllerClient.queryStoreList(false, Optional.of("leaderFollowerModelEnabled"), Optional.of("true"));
     Assert.assertFalse(multiStoreResponse.isError());
-    Assert.assertEquals(multiStoreResponse.getStores().length, 1);
-    Assert.assertEquals(multiStoreResponse.getStores()[0], nativeReplicationEnabledStore);
+    Assert.assertEquals(multiStoreResponse.getStores().length, controllerClient.listLFStores().getStores().length);
 
     // Add a store with hybrid config enabled and the DataReplicationPolicy is non-aggregate
     String hybridNonAggregateStore = Utils.getUniqueString("hybrid-non-aggregate");
@@ -262,13 +261,13 @@ public class TestAdminSparkServerWithMultiServers {
       // Both
       VersionCreationResponse responseOne =
           controllerClient.requestTopicForWrites(storeName, 1, pushType, pushOne,
-              false, true, false, Optional.empty(), Optional.empty(), Optional.empty(), false, -1);
+              true, true, false, Optional.empty(), Optional.empty(), Optional.empty(), false, -1);
       if (responseOne.isError()) {
         Assert.fail(responseOne.getError());
       }
       VersionCreationResponse responseTwo =
           controllerClient.requestTopicForWrites(storeName, 1, pushType, pushTwo,
-              false, false, false, Optional.empty(), Optional.empty(), Optional.empty(), false, -1);
+              true, false, false, Optional.empty(), Optional.empty(), Optional.empty(), false, -1);
       if (responseTwo.isError()) {
         Assert.fail(responseOne.getError());
       }
@@ -278,7 +277,7 @@ public class TestAdminSparkServerWithMultiServers {
 
       VersionCreationResponse responseThree =
           controllerClient.requestTopicForWrites(storeName, 1, pushType, pushThree,
-              false, false, false, Optional.empty(), Optional.empty(), Optional.empty(), false, -1);
+              true, false, false, Optional.empty(), Optional.empty(), Optional.empty(), false, -1);
       Assert.assertFalse(responseThree.isError(), "Controller should not allow concurrent push");
     }
   }
@@ -335,7 +334,7 @@ public class TestAdminSparkServerWithMultiServers {
       final VersionCreationResponse vcr = new VersionCreationResponse();
       try {
         VersionCreationResponse thisVcr = controllerClient.requestTopicForWrites(storeName, 1, Version.PushType.BATCH, pushId,
-            false, false, false, Optional.empty(), Optional.empty(), Optional.empty(), false, -1);
+            true, false, false, Optional.empty(), Optional.empty(), Optional.empty(), false, -1);
         vcr.setKafkaTopic(thisVcr.getKafkaTopic());
         vcr.setVersion(thisVcr.getVersion());
       } catch (Throwable t) {
@@ -356,7 +355,7 @@ public class TestAdminSparkServerWithMultiServers {
     StoreResponse freshStore = controllerClient.getStore(storeName);
     int oldVersion = freshStore.getStore().getCurrentVersion();
     VersionCreationResponse versionResponse = controllerClient.requestTopicForWrites(storeName, 1, Version.PushType.BATCH, pushId,
-        false, true, false, Optional.empty(), Optional.empty(), Optional.empty(), false, -1);
+        true, true, false, Optional.empty(), Optional.empty(), Optional.empty(), false, -1);
     int newVersion = versionResponse.getVersion();
     Assert.assertNotEquals(newVersion, oldVersion, "Requesting a new version must not return the current version number");
     controllerClient.writeEndOfPush(storeName, newVersion);

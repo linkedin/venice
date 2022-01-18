@@ -281,7 +281,7 @@ public class ControllerClient implements Closeable {
    * @param storeName the store name for which the empty push is for
    * @param pushJobId the push job id for the push
    * @param storeSize the size of the store (currently unused)
-   * @param timeOut max amount of time this function should take before returning.  Retries sent to the controller
+   * @param timeOut max amount of time this function should take before returning in MILLISECONDS.  Retries sent to the controller
    *                have 2 second sleeps between them.  So a timeout should be chosen that is larger, and a multiple of
    *                2 seconds preferablly.
    * @return the response from the controller.  Either a successful one, or a failed one with more information.

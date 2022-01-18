@@ -115,9 +115,13 @@ public class TestStreaming {
     veniceCluster.addVeniceServer(serverFeatureProperties, serverProperties);
 
     // Create test store
-    VersionCreationResponse creationResponse = veniceCluster.getNewStoreVersion(KEY_SCHEMA, VALUE_SCHEMA);
+    CompressionStrategy compressionStrategy = CompressionStrategy.GZIP;
+
+    storeName = Utils.getUniqueString("venice-store");
+    veniceCluster.getNewStore(storeName, KEY_SCHEMA, VALUE_SCHEMA);
+    VersionCreationResponse creationResponse = veniceCluster.getNewVersion(storeName, 1024, false);
+
     storeVersionName = creationResponse.getKafkaTopic();
-    storeName = Version.parseStoreFromKafkaTopicName(storeVersionName);
     // enable compute
     veniceCluster.useControllerClient(c -> c.updateStore(storeName, new UpdateStoreQueryParams()
         .setReadComputationEnabled(true)
@@ -129,7 +133,6 @@ public class TestStreaming {
     keySerializer = new VeniceAvroKafkaSerializer(KEY_SCHEMA);
     valueSerializer = new VeniceAvroKafkaSerializer(VALUE_SCHEMA);
 
-    CompressionStrategy compressionStrategy = CompressionStrategy.GZIP;
     compressorFactory = new CompressorFactory();
     VeniceCompressor compressor = compressorFactory.getCompressor(compressionStrategy);
 

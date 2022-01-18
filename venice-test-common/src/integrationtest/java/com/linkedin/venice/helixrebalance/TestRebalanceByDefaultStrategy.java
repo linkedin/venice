@@ -102,7 +102,7 @@ public class TestRebalanceByDefaultStrategy {
       String log = "";
       boolean isAllOnline = true;
       for (Replica replica : replicas) {
-        if (!replica.getStatus().equals(HelixState.ONLINE_STATE)) {
+        if (replica.getStatus().equals(HelixState.ERROR_STATE) || replica.getStatus().equals(HelixState.OFFLINE_STATE)) {
           log += replica.getInstance().getNodeId() + ":" + replica.getPartitionId() + ":" + replica.getStatus() + "###";
           isAllOnline = false;
         }
