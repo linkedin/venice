@@ -169,8 +169,8 @@ public class MetaStoreWriter implements Closeable {
   /**
    * This function is used to produce a snapshot for replica statuses.
    */
-  public void writeStoreReplicaStatuses(String clusterName, String storeName, int version, int partitionId,
-      Collection<ReplicaStatus> replicaStatuses) {
+  public void writeReadyToServerStoreReplicas(String clusterName, String storeName, int version, int partitionId,
+      Collection<Instance> readyToServeInstances) {
     write(storeName, MetaStoreDataType.STORE_REPLICA_STATUSES, () -> new HashMap<String, String>() {{
       put(KEY_STRING_STORE_NAME, storeName);
       put(KEY_STRING_CLUSTER_NAME, clusterName);
@@ -179,10 +179,10 @@ public class MetaStoreWriter implements Closeable {
     }}, () -> {
       StoreMetaValue value = new StoreMetaValue();
       Map<CharSequence, StoreReplicaStatus> replicaMap = new HashMap<>();
-      for (ReplicaStatus replicaStatus : replicaStatuses) {
+      for (Instance instance : readyToServeInstances) {
         StoreReplicaStatus storeReplicaStatus = new StoreReplicaStatus();
-        storeReplicaStatus.status = replicaStatus.getCurrentStatus().getValue();
-        replicaMap.put(Instance.fromNodeId(replicaStatus.getInstanceId()).getUrl(true), storeReplicaStatus);
+        storeReplicaStatus.status = ExecutionStatus.COMPLETED.getValue();
+        replicaMap.put(instance.getUrl(true), storeReplicaStatus);
       }
       value.storeReplicaStatuses = replicaMap;
       return value;
