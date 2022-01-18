@@ -78,7 +78,9 @@ public class ReadQuotaEnforcementHandlerTest {
     doReturn(thisNodeId).when(thisInstance).getNodeId();
 
     Partition partition = mock(Partition.class);
-    doReturn(Collections.singletonList(thisInstance)).when(partition).getReadyToServeInstances();
+    doReturn(Collections.singletonList(thisInstance)).when(partition).getWorkingInstances();
+
+
 
     PartitionAssignment pa = mock(PartitionAssignment.class);
     doReturn(topic).when(pa).getTopic();
@@ -109,7 +111,9 @@ public class ReadQuotaEnforcementHandlerTest {
     doReturn("otherNodeId").when(otherInstance).getNodeId();
 
     Partition partition = mock(Partition.class);
+    doReturn(Arrays.asList(thisInstance, otherInstance)).when(partition).getWorkingInstances();
     doReturn(Arrays.asList(thisInstance, otherInstance)).when(partition).getReadyToServeInstances();
+
 
     PartitionAssignment pa = mock(PartitionAssignment.class);
     doReturn(topic).when(pa).getTopic();

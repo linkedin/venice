@@ -53,7 +53,15 @@ public class Partition {
   public List<Instance> getReadyToServeInstances() {
     return getInstancesInState(ExecutionStatus.COMPLETED.name()).size() > getInstancesInState(
         HelixState.ONLINE_STATE).size() ? getInstancesInState(ExecutionStatus.COMPLETED.name())
-        : getInstancesInState(HelixState.ONLINE_STATE);
+        : getReadyInstances();
+  }
+
+  private List<Instance> getReadyInstances() {
+    List<Instance> instances = new ArrayList<>();
+    instances.addAll(getInstancesInState(HelixState.ONLINE_STATE));
+    instances.addAll(getInstancesInState(HelixState.STANDBY_STATE));
+    instances.addAll(getInstancesInState(HelixState.LEADER_STATE));
+    return Collections.unmodifiableList(instances);
   }
 
   public List<Instance> getWorkingInstances() {

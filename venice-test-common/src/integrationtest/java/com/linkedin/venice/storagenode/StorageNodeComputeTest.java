@@ -58,7 +58,6 @@ import static com.linkedin.venice.utils.ByteUtils.*;
 @Test(singleThreaded = true)
 public class StorageNodeComputeTest {
   private static final Logger LOGGER = Logger.getLogger(StorageNodeComputeTest.class);
-  private static final boolean[] yesAndNo = new boolean[]{true, false};
 
   enum AvroImpl {
     VANILLA_AVRO(false),
@@ -198,7 +197,7 @@ public class StorageNodeComputeTest {
     ControllerResponse controllerResponse = veniceCluster.updateStore(storeName, params);
     Assert.assertFalse(controllerResponse.isError(), "Error updating store settings: " + controllerResponse.getError());
 
-    VersionCreationResponse newVersion = veniceCluster.getNewVersion(storeName, 1024);
+    VersionCreationResponse newVersion = veniceCluster.getNewVersion(storeName, 1024, false);
     Assert.assertFalse(newVersion.isError(), "Error creation new version: " + newVersion.getError());
     final int pushVersion = newVersion.getVersion();
     String topic = newVersion.getKafkaTopic();
@@ -229,42 +228,45 @@ public class StorageNodeComputeTest {
       List<Float> cosP = Arrays.asList(123.4f, 5.6f);
       List<Float> hadamardP = Arrays.asList(135.7f, 246.8f);
 
-      Map<String, GenericRecord> computeResult = storeClient.compute()
-          .project("id")
-          .dotProduct("member_feature", p, "member_score")
-          .cosineSimilarity("member_feature", cosP, "cosine_similarity_result")
-          .hadamardProduct("member_feature", hadamardP, "hadamard_product_result")
-          .count("namemap", "namemap_count")
-          .count("member_feature", "member_feature_count")
-          .execute(keySet)
-          /**
-           * Added 2s timeout as a safety net as ideally each request should take sub-second.
-           */
-          .get(2, TimeUnit.SECONDS);
-      Assert.assertEquals(computeResult.size(), 10);
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, true, () -> {
+        Map<String, GenericRecord> computeResult = storeClient.compute()
+            .project("id")
+            .dotProduct("member_feature", p, "member_score")
+            .cosineSimilarity("member_feature", cosP, "cosine_similarity_result")
+            .hadamardProduct("member_feature", hadamardP, "hadamard_product_result")
+            .count("namemap", "namemap_count")
+            .count("member_feature", "member_feature_count")
+            .execute(keySet)
+            /**
+             * Added 2s timeout as a safety net as ideally each request should take sub-second.
+             */
+            .get(2, TimeUnit.SECONDS);
 
-      computeResult.forEach((key, value) -> {
-        int keyIdx = getKeyIndex(key, keyPrefix);
-        // check projection result
-        Assert.assertEquals(value.get("id"), new Utf8(valuePrefix + keyIdx));
-        // check dotProduct result; should be double for V1 request
-        Assert.assertEquals(value.get("member_score"), (p.get(0) * (keyIdx + 1) + p.get(1) * ((keyIdx + 1) * 10)));
+        Assert.assertEquals(computeResult.size(), 10);
 
-        // check cosine similarity result; should be double for V1 request
-        float dotProductResult = cosP.get(0) * (float) (keyIdx + 1) + cosP.get(1) * (float) ((keyIdx + 1) * 10);
-        float valueVectorMagnitude = (float) Math.sqrt(
-            ((float) (keyIdx + 1) * (float) (keyIdx + 1) + ((float) (keyIdx + 1) * 10.0f) * ((float) (keyIdx + 1) * 10.0f)));
-        float parameterVectorMagnitude = (float) Math.sqrt((cosP.get(0) * cosP.get(0) + cosP.get(1) * cosP.get(1)));
-        float expectedCosineSimilarity = dotProductResult / (parameterVectorMagnitude * valueVectorMagnitude);
-        Assert.assertEquals((float) value.get("cosine_similarity_result"), expectedCosineSimilarity, 0.000001f);
-        Assert.assertEquals((int) value.get("member_feature_count"), 2);
-        Assert.assertEquals((int) value.get("namemap_count"), 0);
+        computeResult.forEach((key, value) -> {
+          int keyIdx = getKeyIndex(key, keyPrefix);
+          // check projection result
+          Assert.assertEquals(value.get("id"), new Utf8(valuePrefix + keyIdx));
+          // check dotProduct result; should be double for V1 request
+          Assert.assertEquals(value.get("member_score"), (p.get(0) * (keyIdx + 1) + p.get(1) * ((keyIdx + 1) * 10)));
 
-        // check hadamard product
-        List<Float> hadamardProductResult = new ArrayList<>(2);
-        hadamardProductResult.add(hadamardP.get(0) * (float) (keyIdx + 1));
-        hadamardProductResult.add(hadamardP.get(1) * (float) ((keyIdx + 1) * 10));
-        Assert.assertEquals(value.get("hadamard_product_result"), hadamardProductResult);
+          // check cosine similarity result; should be double for V1 request
+          float dotProductResult = cosP.get(0) * (float) (keyIdx + 1) + cosP.get(1) * (float) ((keyIdx + 1) * 10);
+          float valueVectorMagnitude = (float) Math.sqrt(
+              ((float) (keyIdx + 1) * (float) (keyIdx + 1) + ((float) (keyIdx + 1) * 10.0f) * ((float) (keyIdx + 1) * 10.0f)));
+          float parameterVectorMagnitude = (float) Math.sqrt((cosP.get(0) * cosP.get(0) + cosP.get(1) * cosP.get(1)));
+          float expectedCosineSimilarity = dotProductResult / (parameterVectorMagnitude * valueVectorMagnitude);
+          Assert.assertEquals((float) value.get("cosine_similarity_result"), expectedCosineSimilarity, 0.000001f);
+          Assert.assertEquals((int) value.get("member_feature_count"), 2);
+          Assert.assertEquals((int) value.get("namemap_count"), 0);
+
+          // check hadamard product
+          List<Float> hadamardProductResult = new ArrayList<>(2);
+          hadamardProductResult.add(hadamardP.get(0) * (float) (keyIdx + 1));
+          hadamardProductResult.add(hadamardP.get(1) * (float) ((keyIdx + 1) * 10));
+          Assert.assertEquals(value.get("hadamard_product_result"), hadamardProductResult);
+        });
       });
     }
 

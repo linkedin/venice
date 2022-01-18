@@ -4,8 +4,11 @@ import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.VeniceStateModel;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.SafeHelixManager;
+import com.linkedin.venice.helix.VeniceOfflinePushMonitorAccessor;
 import com.linkedin.venice.integration.utils.D2TestUtils;
+import com.linkedin.venice.integration.utils.HelixAsAServiceWrapper;
 import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
@@ -26,7 +29,9 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
+import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.log4j.Logger;
 import org.testng.Assert;
 
@@ -59,10 +64,11 @@ class AbstractTestVeniceHelixAdmin {
   private ZkServerWrapper kafkaZkServer;
   KafkaBrokerWrapper kafkaBrokerWrapper;
   SafeHelixManager helixManager;
-  Map<String, SafeHelixManager> helixManagerByNodeID = new HashMap<>();
+  HelixAsAServiceWrapper helixWrapper;
+  Map<String, SafeHelixManager> helixManagerByNodeID = new ConcurrentHashMap<>();
 
   VeniceProperties controllerProps;
-  Map<String,MockTestStateModelFactory> stateModelFactoryByNodeID = new HashMap<>();
+  Map<String,MockTestStateModelFactory> stateModelFactoryByNodeID = new ConcurrentHashMap<>();
   HelixMessageChannelStats helixMessageChannelStats;
   VeniceControllerMultiClusterConfig multiClusterConfig;
 
@@ -116,34 +122,45 @@ class AbstractTestVeniceHelixAdmin {
   }
 
   void startParticipant(boolean isDelay, String nodeId) throws Exception {
-    MockTestStateModelFactory stateModelFactory;
+    startParticipant(isDelay, nodeId, VeniceStateModel.PARTITION_LEADER_FOLLOWER_STATE_MODEL);
+  }
+
+  void startParticipant(boolean isDelay, String nodeId, String stateModel) throws Exception {
+
+    VeniceOfflinePushMonitorAccessor offlinePushStatusAccessor = new VeniceOfflinePushMonitorAccessor(clusterName, new ZkClient(zkAddress),
+        new HelixAdapterSerializer(), 3, 1000);
+
+
+      MockTestStateModelFactory stateModelFactory;
+
     if (stateModelFactoryByNodeID.containsKey(nodeId)) {
       stateModelFactory = stateModelFactoryByNodeID.get(nodeId);
     } else {
-      stateModelFactory = new MockTestStateModelFactory();
+      stateModelFactory = new MockTestStateModelFactory(offlinePushStatusAccessor);
       stateModelFactoryByNodeID.put(nodeId, stateModelFactory);
     }
     stateModelFactory.setBlockTransition(isDelay);
     helixManager = TestUtils.getParticipant(clusterName, nodeId, zkAddress, SERVER_LISTENING_PORT, stateModelFactory,
-        VeniceStateModel.PARTITION_ONLINE_OFFLINE_STATE_MODEL);
+        stateModel);
     helixManager.connect();
     helixManagerByNodeID.put(nodeId, helixManager);
     HelixUtils.setupInstanceConfig(clusterName, nodeId, zkAddress);
   }
 
   void stopAllParticipants() {
-    for (SafeHelixManager helixManager: helixManagerByNodeID.values()) {
-      helixManager.disconnect();
+    for (String nodeID : stateModelFactoryByNodeID.keySet()) {
+      stopParticipant(nodeID);
     }
-    helixManagerByNodeID.clear();
     stateModelFactoryByNodeID.clear();
+    helixManagerByNodeID.clear();
   }
 
   void stopParticipant(String nodeId) {
     if (helixManagerByNodeID.containsKey(nodeId)) {
       helixManagerByNodeID.get(nodeId).disconnect();
       helixManagerByNodeID.remove(nodeId);
-      stateModelFactoryByNodeID.remove(nodeId);
+      MockTestStateModelFactory stateModelFactory = stateModelFactoryByNodeID.remove(nodeId);
+      stateModelFactory.stopAllStateModelThreads();
     }
   }
 

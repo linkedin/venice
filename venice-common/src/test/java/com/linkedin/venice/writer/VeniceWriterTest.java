@@ -31,6 +31,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.TimeoutException;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
@@ -132,10 +133,11 @@ public class VeniceWriterTest {
   }
 
   @Test
-  public void testCloseSegmentBasedOnElapsedTime() {
+  public void testCloseSegmentBasedOnElapsedTime() throws InterruptedException, ExecutionException, TimeoutException {
     KafkaProducerWrapper mockedProducer = mock(KafkaProducerWrapper.class);
     Future mockedFuture = mock(Future.class);
     when(mockedProducer.getNumberOfPartitions(any())).thenReturn(1);
+    when(mockedProducer.getNumberOfPartitions(any(), anyInt(), any())).thenReturn(1);
     when(mockedProducer.sendMessage(anyString(), any(), any(), anyInt(), any())).thenReturn(mockedFuture);
     Properties writerProperties = new Properties();
     writerProperties.put(VeniceWriter.MAX_ELAPSED_TIME_FOR_SEGMENT_IN_MS, 0);
@@ -164,10 +166,12 @@ public class VeniceWriterTest {
   }
 
   @Test
-  public void testReplicationMetadataWrittenCorrectly() {
+  public void testReplicationMetadataWrittenCorrectly()
+      throws InterruptedException, ExecutionException, TimeoutException {
     KafkaProducerWrapper mockedProducer = mock(KafkaProducerWrapper.class);
     Future mockedFuture = mock(Future.class);
     when(mockedProducer.getNumberOfPartitions(any())).thenReturn(1);
+    when(mockedProducer.getNumberOfPartitions(any(), anyInt(), any())).thenReturn(1);
     when(mockedProducer.sendMessage(anyString(), any(), any(), anyInt(), any())).thenReturn(mockedFuture);
     Properties writerProperties = new Properties();
     String stringSchema = "\"string\"";

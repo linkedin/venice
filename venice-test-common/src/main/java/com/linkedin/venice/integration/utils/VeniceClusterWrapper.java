@@ -81,7 +81,6 @@ public class VeniceClusterWrapper extends ProcessWrapper {
   private final boolean standalone;
   private final ZkServerWrapper zkServerWrapper;
   private final KafkaBrokerWrapper kafkaBrokerWrapper;
-  private final BrooklinWrapper brooklinWrapper;
 
   private final int defaultReplicaFactor;
   private final int defaultPartitionSize;
@@ -116,7 +115,6 @@ public class VeniceClusterWrapper extends ProcessWrapper {
       boolean standalone,
       ZkServerWrapper zkServerWrapper,
       KafkaBrokerWrapper kafkaBrokerWrapper,
-      BrooklinWrapper brooklinWrapper,
       Map<Integer, VeniceControllerWrapper> veniceControllerWrappers,
       Map<Integer, VeniceServerWrapper> veniceServerWrappers,
       Map<Integer, VeniceRouterWrapper> veniceRouterWrappers,
@@ -132,7 +130,6 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     this.clusterName = clusterName;
     this.zkServerWrapper = zkServerWrapper;
     this.kafkaBrokerWrapper = kafkaBrokerWrapper;
-    this.brooklinWrapper = brooklinWrapper;
     this.veniceControllerWrappers = veniceControllerWrappers;
     this.veniceServerWrappers = veniceServerWrappers;
     this.veniceRouterWrappers = veniceRouterWrappers;
@@ -149,7 +146,6 @@ public class VeniceClusterWrapper extends ProcessWrapper {
       boolean standalone,
       ZkServerWrapper zkServerWrapper,
       KafkaBrokerWrapper kafkaBrokerWrapper,
-      BrooklinWrapper brooklinWrapper,
       String clusterName,
       String clusterToD2,
       int numberOfControllers,
@@ -186,7 +182,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
         }
         VeniceControllerWrapper veniceControllerWrapper =
             ServiceFactory.getVeniceController(new String[]{clusterName}, kafkaBrokerWrapper, replicationFactor, partitionSize,
-                rebalanceDelayMs, minActiveReplica, brooklinWrapper, clusterToD2, sslToKafka, true, extraProperties);
+                rebalanceDelayMs, minActiveReplica, clusterToD2, sslToKafka, true, extraProperties);
         veniceControllerWrappers.put(veniceControllerWrapper.getPort(), veniceControllerWrapper);
       }
 
@@ -228,7 +224,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
       return (serviceName) -> {
         VeniceClusterWrapper veniceClusterWrapper = null;
         try {
-          veniceClusterWrapper = new VeniceClusterWrapper(clusterName, standalone, zkServerWrapper, kafkaBrokerWrapper, brooklinWrapper,
+          veniceClusterWrapper = new VeniceClusterWrapper(clusterName, standalone, zkServerWrapper, kafkaBrokerWrapper,
               veniceControllerWrappers, veniceServerWrappers, veniceRouterWrappers, replicationFactor, partitionSize,
               rebalanceDelayMs, minActiveReplica, sslToStorageNodes, sslToKafka);
           // Wait for all the asynchronous ClusterLeaderInitializationRoutine to complete before returning the
@@ -289,12 +285,9 @@ public class VeniceClusterWrapper extends ProcessWrapper {
 
     ZkServerWrapper zkServerWrapper = null;
     KafkaBrokerWrapper kafkaBrokerWrapper = null;
-    BrooklinWrapper brooklinWrapper = null;
     try {
       zkServerWrapper = ServiceFactory.getZkServer();
       kafkaBrokerWrapper = ServiceFactory.getKafkaBroker(zkServerWrapper);
-      brooklinWrapper = ServiceFactory.getBrooklinWrapper(kafkaBrokerWrapper);
-
       /**
        * We get the various dependencies outside of the lambda, to avoid having a time
        * complexity of O(N^2) on the amount of retries. The calls have their own retries,
@@ -305,7 +298,6 @@ public class VeniceClusterWrapper extends ProcessWrapper {
           true,
           zkServerWrapper,
           kafkaBrokerWrapper,
-          brooklinWrapper,
           clusterName,
           null,
           numberOfControllers,
@@ -323,7 +315,6 @@ public class VeniceClusterWrapper extends ProcessWrapper {
           extraProperties, false, Optional.empty());
 
     } catch (Exception e) {
-      IOUtils.closeQuietly(brooklinWrapper);
       IOUtils.closeQuietly(kafkaBrokerWrapper);
       IOUtils.closeQuietly(zkServerWrapper);
       throw e;
@@ -369,7 +360,6 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     veniceServerWrappers.values().forEach(IOUtils::closeQuietly);
     veniceControllerWrappers.values().forEach(IOUtils::closeQuietly);
     if (standalone) {
-      IOUtils.closeQuietly(brooklinWrapper);
       IOUtils.closeQuietly(kafkaBrokerWrapper);
       IOUtils.closeQuietly(zkServerWrapper);
     }
@@ -473,7 +463,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
   public VeniceControllerWrapper addVeniceController(Properties properties) {
     VeniceControllerWrapper veniceControllerWrapper =
         ServiceFactory.getVeniceController(new String[]{clusterName}, kafkaBrokerWrapper, defaultReplicaFactor, defaultPartitionSize,
-            defaultDelayToRebalanceMS, defaultMinActiveReplica, null, null, sslToKafka, false, properties);
+            defaultDelayToRebalanceMS, defaultMinActiveReplica, null, sslToKafka, false, properties);
     synchronized (this) {
       veniceControllerWrappers.put(veniceControllerWrapper.getPort(), veniceControllerWrapper);
       setExternalControllerDiscoveryURL(veniceControllerWrappers.values().stream()
@@ -721,10 +711,13 @@ public class VeniceClusterWrapper extends ProcessWrapper {
    * @return
    */
   public VersionCreationResponse getNewStoreVersion() {
-    return getNewStoreVersion("\"string\"", "\"string\"");
+    return getNewStoreVersion("\"string\"", "\"string\"", true);
   }
 
   public VersionCreationResponse getNewStoreVersion(String keySchema, String valueSchema) {
+    return getNewStoreVersion(keySchema, valueSchema, true);
+  }
+  public VersionCreationResponse getNewStoreVersion(String keySchema, String valueSchema, boolean sendStartOfPush) {
     String storeName = Utils.getUniqueString("venice-store");
     String storeOwner = Utils.getUniqueString("store-owner");
     long storeSize =  1024;
@@ -738,7 +731,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
       // Create new version
       VersionCreationResponse newVersion =
           controllerClient.requestTopicForWrites(storeName, storeSize, Version.PushType.BATCH,
-              Version.guidBasedDummyPushId(), false, false, false, Optional.empty(),
+              Version.guidBasedDummyPushId(), sendStartOfPush, false, false, Optional.empty(),
               Optional.empty(), Optional.empty(), false, -1);
       if (newVersion.isError()) {
         throw new VeniceException(newVersion.getError());
@@ -748,8 +741,9 @@ public class VeniceClusterWrapper extends ProcessWrapper {
   }
 
   public NewStoreResponse getNewStore(String storeName) {
-    String keySchema = "\"string\"";
-    String valueSchema = "\"string\"";
+    return getNewStore(storeName, "\"string\"", "\"string\"");
+  }
+  public NewStoreResponse getNewStore(String storeName, String keySchema, String valueSchema) {
     try (ControllerClient controllerClient = getControllerClient()) {
       NewStoreResponse response = controllerClient.createNewStore(storeName, getClass().getName(), keySchema, valueSchema);
       if (response.isError()) {
@@ -760,6 +754,9 @@ public class VeniceClusterWrapper extends ProcessWrapper {
   }
 
   public VersionCreationResponse getNewVersion(String storeName, int dataSize) {
+    return getNewVersion(storeName, dataSize, true);
+  }
+    public VersionCreationResponse getNewVersion(String storeName, int dataSize, boolean sendStartOfPush) {
     try (ControllerClient controllerClient = getControllerClient()) {
       VersionCreationResponse newVersion =
           controllerClient.requestTopicForWrites(
@@ -767,7 +764,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
               dataSize,
               Version.PushType.BATCH,
               Version.guidBasedDummyPushId(),
-              false,
+              sendStartOfPush,
               // This function is expected to be called by tests that bypass the push job and write data directly,
               // therefore, it's safe to assume that it'll be written in arbitrary order, rather than sorted...
               false,

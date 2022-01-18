@@ -41,15 +41,6 @@ public class TestFileDescriptorLeak {
     }
   }
 
-  @Test(invocationCount = 20, groups = {"flaky"})
-  public void testBrooklinLeak() {
-    try (ZkServerWrapper zkServer = ServiceFactory.getZkServer();
-        KafkaBrokerWrapper kafkaBrokerWrapper = ServiceFactory.getKafkaBroker(zkServer);
-        BrooklinWrapper brooklinWrapper = ServiceFactory.getBrooklinWrapper(kafkaBrokerWrapper)) {
-      LOGGER.info("Created BrooklinWrapper: " + brooklinWrapper.getAddress());
-    }
-  }
-
   private VeniceClusterWrapper veniceClusterWrapper;
 
   @BeforeClass

@@ -12,6 +12,7 @@ import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.kafka.admin.KafkaAdminClient;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.replication.LeaderStorageNodeReplicator;
 import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.utils.KafkaSSLUtils;
 import com.linkedin.venice.utils.PropertyBuilder;
@@ -32,6 +33,7 @@ import org.apache.logging.log4j.Logger;
 
 import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.integration.utils.D2TestUtils.*;
+import static com.linkedin.venice.replication.TopicReplicator.*;
 
 
 /**
@@ -146,6 +148,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
             .put(CONTROLLER_ZK_SHARED_DAVINCI_PUSH_STATUS_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED, true)
             .put(PUSH_STATUS_STORE_ENABLED, true)
             .put(CONCURRENT_INIT_ROUTINES_ENABLED, true)
+            .put(ENABLE_LEADER_FOLLOWER_AS_DEFAULT_FOR_ALL_STORES, true)
             .put(extraProps.toProperties());
 
         if (sslToKafka) {
@@ -154,7 +157,8 @@ public class VeniceControllerWrapper extends ProcessWrapper {
         }
 
         if (!extraProps.containsKey(ENABLE_TOPIC_REPLICATOR)) {
-          builder.put(ENABLE_TOPIC_REPLICATOR, false);
+          builder.put(TOPIC_REPLICATOR_CLASS_NAME, LeaderStorageNodeReplicator.class.getName());
+          builder.put(ENABLE_TOPIC_REPLICATOR, true);
         }
 
         if (isParent) {

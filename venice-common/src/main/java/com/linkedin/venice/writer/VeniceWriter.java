@@ -289,7 +289,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       if (topicPartitionCount.isPresent()) {
        this.numberOfPartitions = topicPartitionCount.get();
       } else {
-        this.numberOfPartitions = producer.getNumberOfPartitions(topicName);
+        this.numberOfPartitions = producer.getNumberOfPartitions(topicName, 30, TimeUnit.SECONDS);
       }
       // Prepare locks for all partitions instead of using map to avoid the searching and creation cost during ingestion.
       this.partitionLocks = new Object[numberOfPartitions];

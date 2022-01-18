@@ -288,8 +288,8 @@ public class HelixUtils {
       if (currentDomainValue == null || !currentDomainValue.containsKey(instanceDomainKey)) {
         Map<String, String> instanceProperties = new HashMap<>();
         instanceProperties.put(instanceDomainKey, TOPOLOGY_CONSTRAINT + "=" + instanceId);
-
         admin.setConfig(instanceScope, instanceProperties);
+
       }
     } finally {
       if (admin != null) {

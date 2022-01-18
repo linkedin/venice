@@ -29,7 +29,7 @@ public class TestD2ControllerClient {
     try (ZkServerWrapper zkServer = ServiceFactory.getZkServer();
         KafkaBrokerWrapper kafkaBrokerWrapper = ServiceFactory.getKafkaBroker(zkServer);
         VeniceControllerWrapper controllerWrapper =
-        ServiceFactory.getVeniceController(new String[]{CLUSTER_NAME}, kafkaBrokerWrapper, 1, 10, 0, 1, null, null, true, true, new Properties())) {
+            ServiceFactory.getVeniceController(new String[]{CLUSTER_NAME}, kafkaBrokerWrapper, 1, 10, 0, 1, null, true, true, new Properties())) {
       String zkAddress = kafkaBrokerWrapper.getZkAddress();
       D2TestUtils.setupD2Config(zkAddress, false, D2TestUtils.CONTROLLER_CLUSTER_NAME, D2TestUtils.CONTROLLER_SERVICE_NAME, false);
 

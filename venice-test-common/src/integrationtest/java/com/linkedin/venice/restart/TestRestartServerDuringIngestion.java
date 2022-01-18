@@ -102,8 +102,8 @@ public abstract class TestRestartServerDuringIngestion {
     cluster.close();
   }
 
-  @Test(timeOut = 90 * Time.MS_PER_SECOND, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void ingestionRecovery(boolean leaderFollowerEnabled) throws ExecutionException, InterruptedException {
+  @Test(timeOut = 90 * Time.MS_PER_SECOND)
+  public void ingestionRecovery() throws ExecutionException, InterruptedException {
     // Create a store
     String stringSchemaStr = "\"string\"";
     AvroSerializer serializer = new AvroSerializer(AvroCompatibilityHelper.parse(stringSchemaStr));
@@ -115,9 +115,7 @@ public abstract class TestRestartServerDuringIngestion {
     properties.put(VenicePushJob.VENICE_URL_PROP, veniceUrl);
     properties.put(VenicePushJob.VENICE_STORE_NAME_PROP, storeName);
     TestPushUtils.createStoreForJob(cluster, stringSchemaStr, stringSchemaStr, properties).close();
-    if (leaderFollowerEnabled) {
-      TestPushUtils.makeStoreLF(cluster, storeName);
-    }
+    TestPushUtils.makeStoreLF(cluster, storeName);
     TestPushUtils.makeStoreHybrid(cluster, storeName, 3600, 10);
 
     // Create a new version
@@ -126,7 +124,7 @@ public abstract class TestRestartServerDuringIngestion {
         new ControllerClient(cluster.getClusterName(), veniceUrl)) {
       versionCreationResponse = TestUtils.assertCommand(
           controllerClient.requestTopicForWrites(storeName, 1024 * 1024, Version.PushType.BATCH,
-              Version.guidBasedDummyPushId(), false, true, false, Optional.empty(),
+              Version.guidBasedDummyPushId(), true, true, false, Optional.empty(),
               Optional.empty(), Optional.empty(), false, -1));
     }
     String topic = versionCreationResponse.getKafkaTopic();
@@ -191,9 +189,9 @@ public abstract class TestRestartServerDuringIngestion {
         }
 
         //With L/F model the rest of the test does not succeed.  TODO: need to debug to find the reason.
-        if (leaderFollowerEnabled) {
-          return;
-        }
+//        if (true) {
+//          return;
+//        }
         /**
          * Restart storage node during streaming ingestion.
          */
@@ -229,7 +227,7 @@ public abstract class TestRestartServerDuringIngestion {
               cluster.getRandomVeniceRouter().getRoutingDataRepository().getPartitionAssignments(topic);
           boolean allPartitionsReady = true;
           for (Partition partition : partitionAssignment.getAllPartitions()) {
-            if (partition.getReadyToServeInstances().size() == 0) {
+            if (partition.getWorkingInstances().size() == 0) {
               allPartitionsReady = false;
               break;
             }

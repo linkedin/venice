@@ -214,7 +214,7 @@ public abstract class TopicReplicator {
    */
   public static Optional<TopicReplicator> getTopicReplicator(TopicManager topicManager,
       VeniceProperties veniceProperties, VeniceWriterFactory veniceWriterFactory) {
-    boolean enableTopicReplicator = veniceProperties.getBoolean(ConfigKeys.ENABLE_TOPIC_REPLICATOR, false);
+    boolean enableTopicReplicator = veniceProperties.getBoolean(ConfigKeys.ENABLE_TOPIC_REPLICATOR, true);
     if (!enableTopicReplicator) {
       return Optional.empty();
     }
@@ -226,7 +226,7 @@ public abstract class TopicReplicator {
                                                              TopicManager topicManager,
                                                              VeniceProperties veniceProperties,
                                                              VeniceWriterFactory veniceWriterFactory) {
-    boolean enableTopicReplicator = veniceProperties.getBoolean(ConfigKeys.ENABLE_TOPIC_REPLICATOR, false);
+    boolean enableTopicReplicator = veniceProperties.getBoolean(ConfigKeys.ENABLE_TOPIC_REPLICATOR, true);
     if (!enableTopicReplicator) {
       return Optional.empty();
     }

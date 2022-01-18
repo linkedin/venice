@@ -1,11 +1,10 @@
 package com.linkedin.venice.unit.kafka.consumer.poll;
 
-import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.utils.Pair;
 import java.util.Map;
 import java.util.Queue;
+import javax.annotation.Nullable;
 import org.apache.kafka.common.TopicPartition;
-import org.jetbrains.annotations.Nullable;
 
 /**
  * A {@link PollStrategy} implementation which takes a queue of many poll strategies.

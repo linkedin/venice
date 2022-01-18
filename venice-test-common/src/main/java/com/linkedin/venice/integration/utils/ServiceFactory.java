@@ -12,6 +12,7 @@ import com.linkedin.venice.controller.server.AdminSparkServer;
 import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.PersistenceType;
+import com.linkedin.venice.replication.LeaderStorageNodeReplicator;
 import com.linkedin.venice.replication.TopicReplicator;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.MockTime;
@@ -170,10 +171,6 @@ public class ServiceFactory {
             producerProperties));
   }
 
-  public static BrooklinWrapper getBrooklinWrapper(KafkaBrokerWrapper kafka){
-    return getService(BrooklinWrapper.SERVICE_NAME, BrooklinWrapper.generateService(kafka));
-  }
-
   /**
    * @return an instance of {@link com.linkedin.venice.controller.VeniceControllerService} with all default settings
    */
@@ -186,31 +183,27 @@ public class ServiceFactory {
    */
   public static VeniceControllerWrapper getVeniceController(String clusterName, KafkaBrokerWrapper kafkaBrokerWrapper, boolean sslToKafka) {
     return getVeniceController(clusterName, kafkaBrokerWrapper, DEFAULT_REPLICATION_FACTOR, DEFAULT_PARTITION_SIZE_BYTES,
-        DEFAULT_DELAYED_TO_REBALANCE_MS, DEFAULT_REPLICATION_FACTOR, null, sslToKafka);
+        DEFAULT_DELAYED_TO_REBALANCE_MS, DEFAULT_REPLICATION_FACTOR, sslToKafka);
   }
 
   /**
    * @return an instance of {@link com.linkedin.venice.controller.VeniceControllerService}
    */
   public static VeniceControllerWrapper getVeniceController(String clusterName, KafkaBrokerWrapper kafkaBrokerWrapper,
-      int replicaFactor, int partitionSize, long delayToRebalanceMS, int minActiveReplica,
-      BrooklinWrapper brooklinWrapper, boolean sslToKafka) {
+      int replicaFactor, int partitionSize, long delayToRebalanceMS, int minActiveReplica, boolean sslToKafka) {
     return getVeniceController(new String[]{clusterName}, kafkaBrokerWrapper, replicaFactor, partitionSize,
-        delayToRebalanceMS, minActiveReplica, brooklinWrapper, null, sslToKafka, false, new Properties());
+        delayToRebalanceMS, minActiveReplica, null, sslToKafka, false, new Properties());
   }
 
   public static VeniceControllerWrapper getVeniceController(String[] clusterNames,
       KafkaBrokerWrapper kafkaBrokerWrapper, int replicationFactor, int partitionSize, long delayToRebalanceMS,
-      int minActiveReplica, BrooklinWrapper brooklinWrapper, String clusterToD2, boolean sslToKafka, boolean d2Enabled,
+      int minActiveReplica, String clusterToD2, boolean sslToKafka, boolean d2Enabled,
       Properties properties) {
-    if (null != brooklinWrapper) {
-      properties.put(ConfigKeys.ENABLE_TOPIC_REPLICATOR, "true");
-      properties.put(TopicReplicator.TOPIC_REPLICATOR_CLASS_NAME, "com.linkedin.venice.replication.BrooklinTopicReplicator");
-      properties.put(TopicReplicator.TOPIC_REPLICATOR_SOURCE_KAFKA_CLUSTER, kafkaBrokerWrapper.getAddress());
-      properties.put(TopicReplicator.TOPIC_REPLICATOR_CONFIG_PREFIX + "brooklin.connection.string", brooklinWrapper.getBrooklinDmsUri());
-      properties.put(TopicReplicator.TOPIC_REPLICATOR_CONFIG_PREFIX + "brooklin.application.id", Utils.getUniqueString("venice"));
 
-    }
+    properties.put(ConfigKeys.ENABLE_TOPIC_REPLICATOR, "true");
+    properties.put(TopicReplicator.TOPIC_REPLICATOR_CLASS_NAME, LeaderStorageNodeReplicator.class.getName());
+    properties.put(TopicReplicator.TOPIC_REPLICATOR_SOURCE_KAFKA_CLUSTER, kafkaBrokerWrapper.getAddress());
+
     return getStatefulService(VeniceControllerWrapper.SERVICE_NAME,
         VeniceControllerWrapper.generateService(clusterNames, kafkaBrokerWrapper.getZkAddress(), kafkaBrokerWrapper, false, replicationFactor, partitionSize,
             delayToRebalanceMS, minActiveReplica, null, properties, clusterToD2, sslToKafka, d2Enabled));
@@ -476,7 +469,6 @@ public class ServiceFactory {
       String coloName,
       ZkServerWrapper zkServerWrapper,
       KafkaBrokerWrapper kafkaBrokerWrapper,
-      BrooklinWrapper brooklinWrapper,
       String clusterName,
       String clusterToD2,
       int numberOfControllers,
@@ -495,7 +487,7 @@ public class ServiceFactory {
       Optional<Map<String, Map<String, String>>> kafkaClusterMap
   ) {
     return getService(VeniceClusterWrapper.SERVICE_NAME,
-        VeniceClusterWrapper.generateService(coloName, false, zkServerWrapper, kafkaBrokerWrapper, brooklinWrapper, clusterName, clusterToD2,
+        VeniceClusterWrapper.generateService(coloName, false, zkServerWrapper, kafkaBrokerWrapper, clusterName, clusterToD2,
             numberOfControllers, numberOfServers, numberOfRouters, replicaFactor, partitionSize, enableAllowlist,
             enableAutoJoinAllowlist, delayToRebalanceMS, minActiveReplica, sslToStorageNodes, sslToKafka, false,
             veniceProperties.orElse(EMPTY_VENICE_PROPS).toProperties(), forkServer, kafkaClusterMap));

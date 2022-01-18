@@ -709,17 +709,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
     private void configureNewStore(Store newStore, VeniceControllerClusterConfig config, int largestUsedVersionNumber) {
-        if (config.isLeaderFollowerEnabledForBatchOnlyStores()) {
-            // Enable L/F for the new store (no matter which type it is) if the config is set to true.
-            newStore.setLeaderFollowerModelEnabled(true);
-        }
-        if (newStore.isLeaderFollowerModelEnabled()) {
-            newStore.setNativeReplicationEnabled(config.isNativeReplicationEnabledAsDefaultForBatchOnly());
-            newStore.setActiveActiveReplicationEnabled(config.isActiveActiveReplicationEnabledAsDefaultForBatchOnly());
-        } else {
-            newStore.setNativeReplicationEnabled(false);
-            newStore.setActiveActiveReplicationEnabled(false);
-        }
+        // Enable L/F for the new store (no matter which type it is)
+        newStore.setLeaderFollowerModelEnabled(true);
+        newStore.setNativeReplicationEnabled(config.isNativeReplicationEnabledAsDefaultForBatchOnly());
+        newStore.setActiveActiveReplicationEnabled(config.isActiveActiveReplicationEnabledAsDefaultForBatchOnly());
 
         /**
          * Initialize default NR source fabric base on default config for different store types.
@@ -5160,6 +5153,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         return new Pair<>(clusterName, d2Service);
     }
 
+    //TODO: With L/F we need to deprecate this function OR augment it to read the customized view as opposed to helix states
     @Override
     public Map<String, String> findAllBootstrappingVersions(String clusterName) {
         checkControllerLeadershipFor(clusterName);
