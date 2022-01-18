@@ -5844,13 +5844,16 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         for (Version version: versions) {
             int versionNumber = version.getNumber();
             String topic = Version.composeKafkaTopic(regularStoreName, versionNumber);
-            OfflinePushStatus offlinePushStatus = getHelixVeniceClusterResources(clusterName).getPushMonitor().getOfflinePushOrThrow(topic);
-            Collection<PartitionStatus> partitionStatuses = offlinePushStatus.getPartitionStatuses();
-            for (PartitionStatus ps : partitionStatuses) {
-                metaStoreWriter.get().writeStoreReplicaStatuses(clusterName, regularStoreName, versionNumber, ps.getPartitionId(), ps.getReplicaStatuses());
+            int partitionCount = version.getPartitionCount();
+            HelixCustomizedViewOfflinePushRepository customizedViewOfflinePushRepository = getHelixVeniceClusterResources(clusterName).getCustomizedViewRepository();
+            for (int curPartitionId = 0; curPartitionId < partitionCount; ++curPartitionId) {
+              List<Instance> readyToServeInstances = customizedViewOfflinePushRepository.getReadyToServeInstances(topic, curPartitionId);
+              metaStoreWriter.get().writeReadyToServerStoreReplicas(clusterName, regularStoreName, versionNumber, curPartitionId, readyToServeInstances);
+              logger.info(String.format("Wrote the following ready-to-serve instance: %s for store: %s, version: %d, partition id: %d in cluster: %s",
+                  readyToServeInstances.toString(), regularStoreName, versionNumber, curPartitionId, clusterName));
             }
-            logger.info("Wrote replica status snapshot for version: " + versionNumber + " to meta system store for venice store: "
-                + regularStoreName + " in cluster: " + clusterName);
+            logger.info(String.format("Wrote replica status snapshot for version: %d  to meta system store for venice store: %s in cluster: %s",
+                versionNumber, regularStoreName, clusterName));
         }
     }
 
