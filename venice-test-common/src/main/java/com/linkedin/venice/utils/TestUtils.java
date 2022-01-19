@@ -74,11 +74,23 @@ public class TestUtils {
   private static final Logger LOGGER = LogManager.getLogger(TestUtils.class);
 
   /** In milliseconds */
-  private static final long ND_ASSERTION_MIN_WAIT_TIME_MS = 200;
-  private static final long ND_ASSERTION_MAX_WAIT_TIME_MS = 5000;
+  private static final long ND_ASSERTION_MIN_WAIT_TIME_MS = 100;
+  private static final long ND_ASSERTION_MAX_WAIT_TIME_MS = 3000;
 
   private static final InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer = AvroProtocolDefinition.PARTITION_STATE.getSerializer();
 
+  public static String dequalifyClassName(String className) {
+    return className.substring(className.lastIndexOf('.') + 1);
+  }
+
+  private static String getCallingMethod() {
+    return Arrays.stream(Thread.currentThread().getStackTrace())
+        .filter(frame -> frame.getClassName().startsWith("com.linkedin.") &&
+                             !frame.getClassName().equals(TestUtils.class.getName()))
+        .findFirst()
+        .map(frame -> String.format("%s.%s.%d", dequalifyClassName(frame.getClassName()), frame.getMethodName(), frame.getLineNumber()))
+        .orElse("UNKNOWN_METHOD");
+  }
   /**
    * To be used for tests when we need to wait for an async operation to complete.  Pass a timeout, and a lambda
    * for checking if the operation is complete.
@@ -89,12 +101,17 @@ public class TestUtils {
    *                           return true if it is successful, false otherwise.
    */
   public static void waitForNonDeterministicCompletion(long timeout, TimeUnit timeoutUnit, BooleanSupplier condition) throws AssertionError {
+    long startTimeMs = System.currentTimeMillis();
     long nextDelayMs = ND_ASSERTION_MIN_WAIT_TIME_MS;
-    long deadlineMs = System.currentTimeMillis() + timeoutUnit.toMillis(timeout);
-    while (!condition.getAsBoolean()) {
-      long remainingMs = deadlineMs - System.currentTimeMillis();
-      assertTrue(remainingMs > nextDelayMs, "Non-deterministic condition not met.");
-      assertTrue(Utils.sleep(nextDelayMs), "Waiting for non-deterministic condition was interrupted.");
+    long deadlineMs = startTimeMs + timeoutUnit.toMillis(timeout);
+    try {
+      while (!condition.getAsBoolean()) {
+        long remainingMs = deadlineMs - System.currentTimeMillis();
+        assertTrue(remainingMs > nextDelayMs, "Non-deterministic condition not met.");
+        assertTrue(Utils.sleep(nextDelayMs), "Waiting for non-deterministic condition was interrupted.");
+      }
+    } finally {
+      LOGGER.info("{} waiting took {} ms.", getCallingMethod(), System.currentTimeMillis() - startTimeMs);
     }
   }
 
@@ -139,24 +156,29 @@ public class TestUtils {
       boolean exponentialBackOff,
       boolean retryOnThrowable,
       NonDeterministicAssertion assertion) throws AssertionError {
+    long startTimeMs = System.currentTimeMillis();
     long nextDelayMs = ND_ASSERTION_MIN_WAIT_TIME_MS;
-    long deadlineMs = System.currentTimeMillis() + timeoutUnit.toMillis(timeout);
-    for (;;) {
-      try {
-        assertion.execute();
-        return;
-      } catch (Throwable e) {
-        long remainingMs = deadlineMs - System.currentTimeMillis();
-        if (remainingMs < nextDelayMs || !(retryOnThrowable || e instanceof AssertionError)) {
-          throw (e instanceof AssertionError ? (AssertionError) e : new AssertionError(e));
-        }
-        LOGGER.info("Non-deterministic assertion not met: {}. Will retry again in {} ms.", e, nextDelayMs);
-        assertTrue(Utils.sleep(ND_ASSERTION_MIN_WAIT_TIME_MS), "Waiting for non-deterministic assertion was interrupted.");
-        if (exponentialBackOff) {
-          nextDelayMs = Math.min(nextDelayMs * 2, remainingMs - nextDelayMs);
-          nextDelayMs = Math.min(nextDelayMs, ND_ASSERTION_MAX_WAIT_TIME_MS);
+    long deadlineMs = startTimeMs + timeoutUnit.toMillis(timeout);
+    try {
+      for (;;) {
+        try {
+          assertion.execute();
+          return;
+        } catch (Throwable e) {
+          long remainingMs = deadlineMs - System.currentTimeMillis();
+          if (remainingMs < nextDelayMs || !(retryOnThrowable || e instanceof AssertionError)) {
+            throw (e instanceof AssertionError ? (AssertionError) e : new AssertionError(e));
+          }
+          LOGGER.info("Non-deterministic assertion not met: {}. Will retry again in {} ms.", e, nextDelayMs);
+          assertTrue(Utils.sleep(ND_ASSERTION_MIN_WAIT_TIME_MS), "Waiting for non-deterministic assertion was interrupted.");
+          if (exponentialBackOff) {
+            nextDelayMs = Math.min(nextDelayMs * 2, remainingMs - nextDelayMs);
+            nextDelayMs = Math.min(nextDelayMs, ND_ASSERTION_MAX_WAIT_TIME_MS);
+          }
         }
       }
+    } finally {
+      LOGGER.info("{} waiting took {} ms.", getCallingMethod(), System.currentTimeMillis() - startTimeMs);
     }
   }
 
