@@ -6,22 +6,23 @@ import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.davinci.client.DaVinciConfig;
 import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
 import com.linkedin.venice.D2.D2ClientUtils;
-import com.linkedin.venice.utils.PropertyBuilder;
-import com.linkedin.venice.utils.Utils;
-import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.integration.utils.DaVinciTestContext;
+import com.linkedin.venice.integration.utils.ServiceFactory;
 import io.tehuti.metrics.MetricsRepository;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 
 import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.*;
 import static com.linkedin.venice.meta.IngestionMode.*;
-import static com.linkedin.venice.meta.PersistenceType.*;
 
 
 /**
  * DaVinciUserApp is a dummy class that spins up a Da Vinci Client and ingest data from all partitions.
- * It then sleep for preset seconds before exiting itself, which leaves enough time window for tests to peform actions and checks.
+ * It then sleep for preset seconds before exiting itself, which leaves enough time window for tests to perform actions and checks.
  */
 public class DaVinciUserApp {
   public static void main(String[] args) throws InterruptedException, ExecutionException {
@@ -37,22 +38,16 @@ public class DaVinciUserApp {
         .build();
     D2ClientUtils.startClient(d2Client);
 
-    MetricsRepository metricsRepository = new MetricsRepository();
+    Map<String, Object> extraBackendConfig = new HashMap<>();
+    extraBackendConfig.put(SERVER_INGESTION_MODE, ISOLATED);
+    extraBackendConfig.put(SERVER_INGESTION_ISOLATION_HEARTBEAT_TIMEOUT_MS, TimeUnit.SECONDS.toMillis(heartbeatTimeoutSeconds));
+    extraBackendConfig.put(DATA_BASE_PATH, baseDataPath);
 
-    int applicationListenerPort = Utils.getFreePort();
-    int servicePort = Utils.getFreePort();
-    VeniceProperties backendConfig = new PropertyBuilder()
-        .put(DATA_BASE_PATH, baseDataPath)
-        .put(PERSISTENCE_TYPE, ROCKS_DB)
-        .put(SERVER_INGESTION_MODE, ISOLATED)
-        .put(SERVER_INGESTION_ISOLATION_APPLICATION_PORT, applicationListenerPort)
-        .put(SERVER_INGESTION_ISOLATION_SERVICE_PORT, servicePort)
-        .put(SERVER_INGESTION_ISOLATION_HEARTBEAT_TIMEOUT_MS, TimeUnit.SECONDS.toMillis(heartbeatTimeoutSeconds))
-        .put(D2_CLIENT_ZK_HOSTS_ADDRESS, zkHosts)
-        .build();
-
-    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(d2Client, metricsRepository, backendConfig)) {
-      DaVinciClient<Integer, Integer> client = factory.getAndStartGenericAvroClient(storeName, new DaVinciConfig());
+    DaVinciTestContext<Integer, Integer> daVinciTestContext =
+        ServiceFactory.getGenericAvroDaVinciFactoryAndClientWithRetries(d2Client, new MetricsRepository(), Optional.empty(),
+            zkHosts, storeName, new DaVinciConfig(), extraBackendConfig);
+    try (CachingDaVinciClientFactory ignored = daVinciTestContext.getDaVinciClientFactory();
+        DaVinciClient<Integer, Integer> client = daVinciTestContext.getDaVinciClient()) {
       client.subscribeAll().get();
       logger.info("Da Vinci client finished subscription.");
       // This guarantees this dummy app process can finish in time and will not lingering forever.

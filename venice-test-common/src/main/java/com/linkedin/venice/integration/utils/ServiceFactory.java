@@ -1,5 +1,6 @@
 package com.linkedin.venice.integration.utils;
 
+import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.davinci.client.AvroGenericDaVinciClient;
 import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.davinci.client.DaVinciConfig;
@@ -676,5 +677,17 @@ public class ServiceFactory {
     DaVinciClient<K, V> client = new AvroGenericDaVinciClient<>(new DaVinciConfig(), clientConfig, backendConfig, Optional.empty());
     client.start();
     return client;
+  }
+
+  public static <K, V> DaVinciClient<K, V> getGenericAvroDaVinciClientWithRetries(String storeName, String zkAddress,
+      DaVinciConfig daVinciConfig, Map<String, Object> extraBackendProperties) {
+    return DaVinciTestContext.getGenericAvroDaVinciClientWithRetries(storeName, zkAddress, daVinciConfig, extraBackendProperties);
+  }
+
+  public static <K, V> DaVinciTestContext<K, V> getGenericAvroDaVinciFactoryAndClientWithRetries(
+      D2Client d2Client, MetricsRepository metricsRepository, Optional<Set<String>> managedClients, String zkAddress,
+      String storeName, DaVinciConfig daVinciConfig, Map<String, Object> extraBackendProperties) {
+    return DaVinciTestContext.getGenericAvroDaVinciFactoryAndClientWithRetries(d2Client, metricsRepository, managedClients,
+        zkAddress, storeName, daVinciConfig, extraBackendProperties);
   }
 }

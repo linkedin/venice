@@ -37,6 +37,7 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -259,31 +260,20 @@ public class  TestPushJobWithNativeReplication {
 
           //Test Da-vinci client is able to consume from NR colo which is consuming remotely
           VeniceMultiClusterWrapper childDataCenter = childDatacenters.get(1);
-          String baseDataPath = Utils.getTempDataDirectory().getAbsolutePath();
-          int applicationListenerPort = Utils.getFreePort();
-          int servicePort = Utils.getFreePort();
-          VeniceProperties backendConfig = new PropertyBuilder().put(DATA_BASE_PATH, baseDataPath)
-              .put(PERSISTENCE_TYPE, ROCKS_DB)
-              .put(SERVER_INGESTION_MODE, ISOLATED)
-              .put(SERVER_INGESTION_ISOLATION_APPLICATION_PORT, applicationListenerPort)
-              .put(SERVER_INGESTION_ISOLATION_SERVICE_PORT, servicePort)
-              .put(D2_CLIENT_ZK_HOSTS_ADDRESS, childDataCenter.getClusters().get(clusterName).getZk().getAddress())
-              .build();
 
           D2Client d2Client = new D2ClientBuilder().setZkHosts(childDataCenter.getClusters().get(clusterName).getZk().getAddress())
               .setZkSessionTimeout(3, TimeUnit.SECONDS)
               .setZkStartupTimeout(3, TimeUnit.SECONDS)
               .build();
           D2ClientUtils.startClient(d2Client);
-          MetricsRepository metricsRepository = new MetricsRepository();
 
-          try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(d2Client, metricsRepository,
-              backendConfig)) {
-            DaVinciClient<String, Object> client = factory.getAndStartGenericAvroClient(storeName, new DaVinciConfig());
-            client.subscribeAll().get();
+          try (DaVinciClient<String, Object> daVinciClient = ServiceFactory.getGenericAvroDaVinciClientWithRetries(
+              storeName, childDataCenter.getClusters().get(clusterName).getZk().getAddress(), new DaVinciConfig(),
+              Collections.singletonMap(SERVER_INGESTION_MODE, ISOLATED))) {
+            daVinciClient.subscribeAll().get();
             for (int i = 1; i <= recordCount; ++i) {
               String expected = "test_name_" + i;
-              String actual = client.get(Integer.toString(i)).get().toString();
+              String actual = daVinciClient.get(Integer.toString(i)).get().toString();
               Assert.assertEquals(actual, expected);
             }
           } finally {

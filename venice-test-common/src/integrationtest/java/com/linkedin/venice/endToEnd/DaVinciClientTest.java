@@ -1,5 +1,17 @@
 package com.linkedin.venice.endToEnd;
 
+import com.linkedin.d2.balancer.D2Client;
+import com.linkedin.d2.balancer.D2ClientBuilder;
+import com.linkedin.davinci.DaVinciUserApp;
+import com.linkedin.davinci.client.AvroGenericDaVinciClient;
+import com.linkedin.davinci.client.DaVinciClient;
+import com.linkedin.davinci.client.DaVinciConfig;
+import com.linkedin.davinci.client.NonLocalAccessException;
+import com.linkedin.davinci.client.NonLocalAccessPolicy;
+import com.linkedin.davinci.client.StorageClass;
+import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
+import com.linkedin.davinci.ingestion.main.MainIngestionRequestClient;
+import com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils;
 import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.ComputeRequestBuilder;
@@ -17,6 +29,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.ingestion.protocol.IngestionStorageMetadata;
+import com.linkedin.venice.integration.utils.DaVinciTestContext;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.meta.IngestionMetadataUpdateType;
@@ -39,35 +52,8 @@ import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
-
-import com.linkedin.d2.balancer.D2Client;
-import com.linkedin.d2.balancer.D2ClientBuilder;
-import com.linkedin.davinci.DaVinciUserApp;
-import com.linkedin.davinci.client.AvroGenericDaVinciClient;
-import com.linkedin.davinci.client.DaVinciClient;
-import com.linkedin.davinci.client.DaVinciConfig;
-import com.linkedin.davinci.client.NonLocalAccessException;
-import com.linkedin.davinci.client.NonLocalAccessPolicy;
-import com.linkedin.davinci.client.StorageClass;
-import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
-import com.linkedin.davinci.ingestion.main.MainIngestionRequestClient;
-import com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils;
-
 import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
-
-import org.apache.avro.Schema;
-import org.apache.avro.generic.GenericData;
-import org.apache.avro.generic.GenericRecord;
-import org.apache.commons.io.FileUtils;
-import org.apache.samza.system.SystemProducer;
-import org.testng.Assert;
-import org.testng.annotations.AfterClass;
-import org.testng.annotations.AfterMethod;
-import org.testng.annotations.BeforeClass;
-import org.testng.annotations.DataProvider;
-import org.testng.annotations.Test;
-
 import java.io.File;
 import java.lang.reflect.Method;
 import java.nio.ByteBuffer;
@@ -92,6 +78,17 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.stream.Stream;
+import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericData;
+import org.apache.avro.generic.GenericRecord;
+import org.apache.commons.io.FileUtils;
+import org.apache.samza.system.SystemProducer;
+import org.testng.Assert;
+import org.testng.annotations.AfterClass;
+import org.testng.annotations.AfterMethod;
+import org.testng.annotations.BeforeClass;
+import org.testng.annotations.DataProvider;
+import org.testng.annotations.Test;
 
 import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.VeniceConstants.*;
@@ -413,24 +410,17 @@ public class DaVinciClientTest {
     VeniceKafkaSerializer keySerializer = new VeniceAvroKafkaSerializer(DEFAULT_KEY_SCHEMA);
     VeniceKafkaSerializer valueSerializer = new VeniceAvroKafkaSerializer(DEFAULT_VALUE_SCHEMA);
 
-    MetricsRepository metricsRepository = new MetricsRepository();
-    String baseDataPath = Utils.getTempDataDirectory().getAbsolutePath();
+    Map<String, Object> extraBackendConfigMap = new HashMap<>();
+    extraBackendConfigMap.put(SERVER_INGESTION_ISOLATION_HEARTBEAT_TIMEOUT_MS, 5 * Time.MS_PER_SECOND);
+    extraBackendConfigMap.put(SERVER_INGESTION_MODE, ISOLATED);
 
-    int applicationListenerPort = Utils.getFreePort();
-    int servicePort = Utils.getFreePort();
-    VeniceProperties backendConfig = new PropertyBuilder()
-        .put(DATA_BASE_PATH, baseDataPath)
-        .put(PERSISTENCE_TYPE, ROCKS_DB)
-        .put(SERVER_INGESTION_MODE, ISOLATED)
-        .put(SERVER_INGESTION_ISOLATION_APPLICATION_PORT, applicationListenerPort)
-        .put(SERVER_INGESTION_ISOLATION_SERVICE_PORT, servicePort)
-        .put(D2_CLIENT_ZK_HOSTS_ADDRESS, cluster.getZk().getAddress())
-        .put(SERVER_INGESTION_ISOLATION_HEARTBEAT_TIMEOUT_MS, 5 * Time.MS_PER_SECOND)
-        .build();
+    DaVinciTestContext<Integer, Integer> daVinciTestContext =
+        ServiceFactory.getGenericAvroDaVinciFactoryAndClientWithRetries(d2Client, new MetricsRepository(), Optional.empty(),
+            cluster.getZk().getAddress(), storeName, new DaVinciConfig(), extraBackendConfigMap);
 
     try (
         VeniceWriter<Object, Object, byte[]> writer = vwFactory.createVeniceWriter(topic, keySerializer, valueSerializer, false);
-        CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(d2Client, metricsRepository, backendConfig)) {
+        CachingDaVinciClientFactory factory = daVinciTestContext.getDaVinciClientFactory()) {
       int valueSchemaId = HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID;
       writer.broadcastStartOfPush(Collections.emptyMap());
       Future[] writerFutures = new Future[KEY_COUNT];
@@ -440,11 +430,11 @@ public class DaVinciClientTest {
       for (int i = 0; i < KEY_COUNT; i++) {
         writerFutures[i].get();
       }
-      DaVinciConfig daVinciConfig = new DaVinciConfig();
-      DaVinciClient<Integer, Integer> client = factory.getAndStartGenericAvroClient(storeName, daVinciConfig);
+      DaVinciClient<Integer, Integer> client = daVinciTestContext.getDaVinciClient();
       CompletableFuture<Void> future = client.subscribeAll();
       // Kill the ingestion process.
-      IsolatedIngestionUtils.releaseTargetPortBinding(servicePort);
+      int isolatedIngestionServicePort = factory.getBackendConfig().getInt(SERVER_INGESTION_ISOLATION_SERVICE_PORT);
+      IsolatedIngestionUtils.releaseTargetPortBinding(isolatedIngestionServicePort);
       // Make sure ingestion will end and future can complete
       writer.broadcastEndOfPush(Collections.emptyMap());
       future.get();
@@ -454,13 +444,13 @@ public class DaVinciClientTest {
       }
 
       // Kill the ingestion process again.
-      IsolatedIngestionUtils.releaseTargetPortBinding(servicePort);
+      IsolatedIngestionUtils.releaseTargetPortBinding(isolatedIngestionServicePort);
       IngestionStorageMetadata dummyOffsetMetadata = new IngestionStorageMetadata();
       dummyOffsetMetadata.metadataUpdateType = IngestionMetadataUpdateType.PUT_OFFSET_RECORD.getValue();
       dummyOffsetMetadata.topicName = Version.composeKafkaTopic(storeName, 1);
       dummyOffsetMetadata.partitionId = 0;
       dummyOffsetMetadata.payload = ByteBuffer.wrap(new OffsetRecord(AvroProtocolDefinition.PARTITION_STATE.getSerializer()).toBytes());
-      MainIngestionRequestClient requestClient = new MainIngestionRequestClient(Optional.empty(), servicePort);
+      MainIngestionRequestClient requestClient = new MainIngestionRequestClient(Optional.empty(), isolatedIngestionServicePort);
       TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
         assertTrue(requestClient.updateMetadata(dummyOffsetMetadata));
       });
@@ -487,20 +477,16 @@ public class DaVinciClientTest {
 
     MetricsRepository metricsRepository = new MetricsRepository();
     String baseDataPath = Utils.getTempDataDirectory().getAbsolutePath();
+    Map<String, Object> extraBackendConfigMap = new HashMap<>();
+    extraBackendConfigMap.put(SERVER_INGESTION_MODE, ISOLATED);
+    extraBackendConfigMap.put(DATA_BASE_PATH, baseDataPath);
 
-    int applicationListenerPort = Utils.getFreePort();
-    int servicePort = Utils.getFreePort();
-    VeniceProperties backendConfig = new PropertyBuilder()
-            .put(DATA_BASE_PATH, baseDataPath)
-            .put(PERSISTENCE_TYPE, ROCKS_DB)
-            .put(SERVER_INGESTION_MODE, ISOLATED)
-            .put(SERVER_INGESTION_ISOLATION_APPLICATION_PORT, applicationListenerPort)
-            .put(SERVER_INGESTION_ISOLATION_SERVICE_PORT, servicePort)
-            .put(D2_CLIENT_ZK_HOSTS_ADDRESS, cluster.getZk().getAddress())
-            .build();
+    DaVinciTestContext<Integer, Integer> daVinciTestContext =
+        ServiceFactory.getGenericAvroDaVinciFactoryAndClientWithRetries(d2Client, metricsRepository, Optional.empty(),
+            cluster.getZk().getAddress(), storeName, new DaVinciConfig(), extraBackendConfigMap);
 
-    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(d2Client, metricsRepository, backendConfig)) {
-      DaVinciClient<Integer, Integer> client = factory.getAndStartGenericAvroClient(storeName, new DaVinciConfig());
+    try (CachingDaVinciClientFactory ignored = daVinciTestContext.getDaVinciClientFactory()) {
+      DaVinciClient<Integer, Integer> client = daVinciTestContext.getDaVinciClient();
       // subscribe to a partition without data
       int emptyPartition = (partition + 1) % partitionCount;
       client.subscribe(Collections.singleton(emptyPartition)).get();
@@ -533,8 +519,10 @@ public class DaVinciClientTest {
     }
     // Restart Da Vinci client to test bootstrap logic.
     metricsRepository = new MetricsRepository();
-    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(d2Client, metricsRepository, backendConfig)) {
-      DaVinciClient<Integer, Integer> client = factory.getAndStartGenericAvroClient(storeName, new DaVinciConfig());
+    daVinciTestContext = ServiceFactory.getGenericAvroDaVinciFactoryAndClientWithRetries(d2Client, metricsRepository,
+        Optional.empty(), cluster.getZk().getAddress(), storeName, new DaVinciConfig(), extraBackendConfigMap);
+    try (CachingDaVinciClientFactory factory = daVinciTestContext.getDaVinciClientFactory()) {
+      DaVinciClient<Integer, Integer> client = daVinciTestContext.getDaVinciClient();
       TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, false, true, () -> {
         for (Integer i = 0; i < KEY_COUNT; i++) {
           assertEquals(client.get(i).get(), i);
@@ -610,7 +598,7 @@ public class DaVinciClientTest {
       // Write some fresh records to override the old value.  Make sure we can read the new value.
       List<Pair<Object,Object>> dataToPublish = new ArrayList<>();
       dataToPublish.add(new Pair<>(0, 1));
-      dataToPublish.add(new Pair<>(1,2));
+      dataToPublish.add(new Pair<>(1, 2));
       dataToPublish.add(new Pair<>(3, 4));
 
       generateHybridData(storeName, dataToPublish);
@@ -830,7 +818,6 @@ public class DaVinciClientTest {
             .put(PERSISTENCE_TYPE, ROCKS_DB)
             .build();
     MetricsRepository metricsRepository = new MetricsRepository();
-
     try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(d2Client, metricsRepository, backendConfig)) {
       String storeName = cluster.createStore(KEY_COUNT);
       DaVinciConfig daVinciConfig = new DaVinciConfig().setMemoryLimit(KEY_COUNT / 2);
@@ -849,20 +836,16 @@ public class DaVinciClientTest {
     // Enable ingestion isolation since it's more likely for the race condition to occur and make sure the future is
     // only completed when the main process's ingestion task is subscribed to avoid deadlock.
     String storeName = cluster.createStore(KEY_COUNT);
-    int applicationListenerPort = Utils.getFreePort();
-    int servicePort = Utils.getFreePort();
     DaVinciConfig daVinciConfig = new DaVinciConfig();
-    VeniceProperties backendConfig = new PropertyBuilder()
-        .put(DATA_BASE_PATH, Utils.getTempDataDirectory().getAbsolutePath())
-        .put(PERSISTENCE_TYPE, ROCKS_DB)
-        .put(SERVER_INGESTION_MODE, ISOLATED)
-        .put(SERVER_INGESTION_ISOLATION_APPLICATION_PORT, applicationListenerPort)
-        .put(SERVER_INGESTION_ISOLATION_SERVICE_PORT, servicePort)
-        .put(D2_CLIENT_ZK_HOSTS_ADDRESS, cluster.getZk().getAddress())
-        .build();
     daVinciConfig.setMemoryLimit(1024 * 1024 * 1024); // 1GB
-    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(d2Client, new MetricsRepository(), backendConfig)) {
-      DaVinciClient<String, GenericRecord> client = factory.getAndStartGenericAvroClient(storeName, daVinciConfig);
+
+
+    DaVinciTestContext<String, GenericRecord> daVinciTestContext =
+        ServiceFactory.getGenericAvroDaVinciFactoryAndClientWithRetries(d2Client, new MetricsRepository(), Optional.empty(),
+            cluster.getZk().getAddress(), storeName, daVinciConfig, Collections.singletonMap(SERVER_INGESTION_MODE, ISOLATED));
+
+    try (CachingDaVinciClientFactory ignored = daVinciTestContext.getDaVinciClientFactory()) {
+      DaVinciClient<String, GenericRecord> client = daVinciTestContext.getDaVinciClient();
       client.subscribeAll().get();
       client.unsubscribeAll();
     }
@@ -873,20 +856,14 @@ public class DaVinciClientTest {
     // Verify DaVinci client doesn't hang in a deadlock when calling unsubscribe right after subscribing and before the
     // the future is complete. The future should also return exceptionally.
     String storeName = cluster.createStore(10000); // A large amount of keys to give window for potential race conditions
-    int applicationListenerPort = Utils.getFreePort();
-    int servicePort = Utils.getFreePort();
-    VeniceProperties backendConfig = new PropertyBuilder()
-        .put(DATA_BASE_PATH, Utils.getTempDataDirectory().getAbsolutePath())
-        .put(PERSISTENCE_TYPE, ROCKS_DB)
-        .put(SERVER_INGESTION_MODE, ISOLATED)
-        .put(SERVER_INGESTION_ISOLATION_APPLICATION_PORT, applicationListenerPort)
-        .put(SERVER_INGESTION_ISOLATION_SERVICE_PORT, servicePort)
-        .put(D2_CLIENT_ZK_HOSTS_ADDRESS, cluster.getZk().getAddress())
-        .build();
     DaVinciConfig daVinciConfig = new DaVinciConfig();
     daVinciConfig.setMemoryLimit(1024 * 1024 * 1024); // 1GB
-    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(d2Client, new MetricsRepository(), backendConfig)) {
-      DaVinciClient<String, GenericRecord> client = factory.getAndStartGenericAvroClient(storeName, daVinciConfig);
+    DaVinciTestContext<String, GenericRecord> daVinciTestContext =
+        ServiceFactory.getGenericAvroDaVinciFactoryAndClientWithRetries(d2Client, new MetricsRepository(), Optional.empty(),
+            cluster.getZk().getAddress(), storeName, daVinciConfig, Collections.singletonMap(SERVER_INGESTION_MODE, ISOLATED));
+
+    try (CachingDaVinciClientFactory ignored = daVinciTestContext.getDaVinciClientFactory()) {
+      DaVinciClient<String, GenericRecord> client = daVinciTestContext.getDaVinciClient();
       CompletableFuture future = client.subscribeAll();
       client.unsubscribeAll();
       future.get(); // Expecting exception here if we unsubscribed before subscribe was completed.
@@ -913,68 +890,64 @@ public class DaVinciClientTest {
     VeniceKafkaSerializer keySerializer = new VeniceAvroKafkaSerializer(DEFAULT_KEY_SCHEMA);
     VeniceKafkaSerializer valueSerializer = new VeniceAvroKafkaSerializer(DEFAULT_VALUE_SCHEMA);
 
-    String baseDataPath = Utils.getTempDataDirectory().getAbsolutePath();
-    int applicationListenerPort = Utils.getFreePort();
-    int servicePort = Utils.getFreePort();
     // Enable live update suppression
-    VeniceProperties backendConfig = new PropertyBuilder()
-        .put(DATA_BASE_PATH, baseDataPath)
-        .put(PERSISTENCE_TYPE, ROCKS_DB)
-        .put(FREEZE_INGESTION_IF_READY_TO_SERVE_OR_LOCAL_DATA_EXISTS, "true")
-        .put(SERVER_INGESTION_MODE, enableIngestionIsolation ? ISOLATED : BUILT_IN)
-        .put(SERVER_INGESTION_ISOLATION_APPLICATION_PORT, applicationListenerPort)
-        .put(SERVER_INGESTION_ISOLATION_SERVICE_PORT, servicePort)
-        .put(D2_CLIENT_ZK_HOSTS_ADDRESS, cluster.getZk().getAddress())
-        .build();
+    Map<String, Object> extraBackendConfigMap = new HashMap<>();
+    extraBackendConfigMap.put(SERVER_INGESTION_MODE, enableIngestionIsolation ? ISOLATED : BUILT_IN);
+    extraBackendConfigMap.put(FREEZE_INGESTION_IF_READY_TO_SERVE_OR_LOCAL_DATA_EXISTS, true);
 
-    VeniceWriter<Object, Object, byte[]> batchProducer = vwFactory.createVeniceWriter(topic, keySerializer, valueSerializer, false);
-    int valueSchemaId = HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID;
-    batchProducer.broadcastStartOfPush(Collections.emptyMap());
     Future[] writerFutures = new Future[KEY_COUNT];
-    for (int i = 0; i < KEY_COUNT; i++) {
-      writerFutures[i] = batchProducer.put(i, i, valueSchemaId);
-    }
-    for (int i = 0; i < KEY_COUNT; i++) {
-      writerFutures[i].get();
-    }
-    batchProducer.broadcastEndOfPush(Collections.emptyMap());
+    int valueSchemaId = HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID;
 
-    CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(d2Client, new MetricsRepository(), backendConfig);
-    DaVinciClient<Integer, Integer> client = factory.getAndStartGenericAvroClient(storeName, new DaVinciConfig());
-    client.subscribe(Collections.singleton(0)).get();
-
-    VeniceWriter<Object, Object, byte[]> realTimeProducer = vwFactory.createVeniceWriter(Version.composeRealTimeTopic(storeName),
-        keySerializer, valueSerializer, false);
-    writerFutures = new Future[KEY_COUNT];
-    for (int i = 0; i < KEY_COUNT; i++) {
-      writerFutures[i] = realTimeProducer.put(i, i * 1000, valueSchemaId);
-    }
-    for (int i = 0; i < KEY_COUNT; i++) {
-      writerFutures[i].get();
+    try (VeniceWriter<Object, Object, byte[]> batchProducer = vwFactory.createVeniceWriter(topic, keySerializer, valueSerializer, false)) {
+      batchProducer.broadcastStartOfPush(Collections.emptyMap());
+      for (int i = 0; i < KEY_COUNT; i++) {
+        writerFutures[i] = batchProducer.put(i, i, valueSchemaId);
+      }
+      for (int i = 0; i < KEY_COUNT; i++) {
+        writerFutures[i].get();
+      }
+      batchProducer.broadcastEndOfPush(Collections.emptyMap());
     }
 
-    /**
-     * Since live update suppression is enabled, once the partition is ready to serve, da vinci client will stop ingesting
-     * new messages and also ignore any new message
-     */
-    try {
-      TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, false, true,
-          () -> {
-            /**
-             * Try to read the new value from real-time producer; assertion should fail
-             */
-            for (int i = 0; i < KEY_COUNT; i++) {
-              int result = client.get(i).get();
-              assertEquals(result, i * 1000);
-            }
-          });
-      // It's wrong if new value can be read from da-vinci client
-      throw new VeniceException("Should not be able to read live updates.");
-    } catch (AssertionError e) {
-      // expected
+
+    DaVinciTestContext<Integer, Integer> daVinciTestContext =
+        ServiceFactory.getGenericAvroDaVinciFactoryAndClientWithRetries(d2Client, new MetricsRepository(), Optional.empty(),
+            cluster.getZk().getAddress(), storeName, new DaVinciConfig(), extraBackendConfigMap);
+
+    try (CachingDaVinciClientFactory ignored = daVinciTestContext.getDaVinciClientFactory();
+        DaVinciClient<Integer, Integer> client = daVinciTestContext.getDaVinciClient();
+        VeniceWriter<Object, Object, byte[]> realTimeProducer = vwFactory.createVeniceWriter(
+            Version.composeRealTimeTopic(storeName), keySerializer, valueSerializer, false)) {
+      client.subscribe(Collections.singleton(0)).get();
+      writerFutures = new Future[KEY_COUNT];
+      for (int i = 0; i < KEY_COUNT; i++) {
+        writerFutures[i] = realTimeProducer.put(i, i * 1000, valueSchemaId);
+      }
+      for (int i = 0; i < KEY_COUNT; i++) {
+        writerFutures[i].get();
+      }
+
+      /**
+       * Since live update suppression is enabled, once the partition is ready to serve, da vinci client will stop ingesting
+       * new messages and also ignore any new message
+       */
+      try {
+        TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, false, true,
+            () -> {
+              /**
+               * Try to read the new value from real-time producer; assertion should fail
+               */
+              for (int i = 0; i < KEY_COUNT; i++) {
+                int result = client.get(i).get();
+                assertEquals(result, i * 1000);
+              }
+            });
+        // It's wrong if new value can be read from da-vinci client
+        throw new VeniceException("Should not be able to read live updates.");
+      } catch (AssertionError e) {
+        // expected
+      }
     }
-    client.close();
-    factory.close();
 
     /**
      * After restarting da-vinci client, since live update suppression is enabled and there is local data, ingestion
@@ -982,39 +955,32 @@ public class DaVinciClientTest {
      *
      * da-vinci client restart is done by building a new factory and a new client
      */
-    CachingDaVinciClientFactory factory2 = new CachingDaVinciClientFactory(d2Client, new MetricsRepository(), backendConfig);
-    DaVinciClient<Integer, Integer> client2 = factory2.getAndStartGenericAvroClient(storeName, new DaVinciConfig());
-    client2.subscribeAll().get();
-    for (int i = 0; i < KEY_COUNT; i++) {
-      int result = client2.get(i).get();
-      assertEquals(result, i);
+    DaVinciTestContext<Integer, Integer> daVinciTestContext2 =
+        ServiceFactory.getGenericAvroDaVinciFactoryAndClientWithRetries(d2Client, new MetricsRepository(), Optional.empty(),
+            cluster.getZk().getAddress(), storeName, new DaVinciConfig(), extraBackendConfigMap);
+    try (CachingDaVinciClientFactory ignored = daVinciTestContext2.getDaVinciClientFactory();
+        DaVinciClient<Integer, Integer> client2 = daVinciTestContext2.getDaVinciClient()) {
+      client2.subscribeAll().get();
+      for (int i = 0; i < KEY_COUNT; i++) {
+        int result = client2.get(i).get();
+        assertEquals(result, i);
+      }
+      try {
+        TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, false, true, () -> {
+          /**
+           * Try to read the new value from real-time producer; assertion should fail
+           */
+          for (int i = 0; i < KEY_COUNT; i++) {
+            int result = client2.get(i).get();
+            assertEquals(result, i * 1000);
+          }
+        });
+        // It's wrong if new value can be read from da-vinci client
+        throw new VeniceException("Should not be able to read live updates.");
+      } catch (AssertionError e) {
+        // expected
+      }
     }
-    try {
-      TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, false, true,
-          () -> {
-            /**
-             * Try to read the new value from real-time producer; assertion should fail
-             */
-            for (int i = 0; i < KEY_COUNT; i++) {
-              int result = client2.get(i).get();
-              assertEquals(result, i * 1000);
-            }
-          });
-      // It's wrong if new value can be read from da-vinci client
-      throw new VeniceException("Should not be able to read live updates.");
-    } catch (AssertionError e) {
-      // expected
-    }
-    /**
-     * The Da Vinci client must be closed in order to release the {@link com.linkedin.davinci.client.AvroGenericDaVinciClient#daVinciBackend}
-     * reference because it's a singleton; if we don't do this, other test cases will reuse the same singleton and have
-     * live updates suppressed.
-     */
-    client2.close();
-    factory2.close();
-
-    batchProducer.close();
-    realTimeProducer.close();
   }
 
   @Test(timeOut = TEST_TIMEOUT * 2)
@@ -1064,21 +1030,6 @@ public class DaVinciClientTest {
     VeniceKafkaSerializer keySerializer = new VeniceAvroKafkaSerializer(DEFAULT_KEY_SCHEMA);
     VeniceKafkaSerializer valueSerializer = new VeniceAvroKafkaSerializer(VALUE_SCHEMA_FOR_COMPUTE_NULLABLE_LIST_FIELD);
 
-    MetricsRepository metricsRepository = new MetricsRepository();
-    String baseDataPath = Utils.getTempDataDirectory().getAbsolutePath();
-
-    int applicationListenerPort = Utils.getFreePort();
-    int servicePort = Utils.getFreePort();
-
-    VeniceProperties backendConfig = new PropertyBuilder()
-        .put(DATA_BASE_PATH, baseDataPath)
-        .put(PERSISTENCE_TYPE, ROCKS_DB)
-        .put(SERVER_INGESTION_MODE, ISOLATED)
-        .put(SERVER_INGESTION_ISOLATION_APPLICATION_PORT, applicationListenerPort)
-        .put(SERVER_INGESTION_ISOLATION_SERVICE_PORT, servicePort)
-        .put(D2_CLIENT_ZK_HOSTS_ADDRESS, cluster.getZk().getAddress())
-        .build();
-
     Map<Integer, GenericRecord> computeResult;
     final int key1 = 1;
     final int key2 = 2;
@@ -1087,10 +1038,13 @@ public class DaVinciClientTest {
       add(key2);
     }};
 
+    DaVinciTestContext<Integer, Integer> daVinciTestContext =
+        ServiceFactory.getGenericAvroDaVinciFactoryAndClientWithRetries(d2Client, new MetricsRepository(), Optional.empty(),
+            cluster.getZk().getAddress(), storeName, new DaVinciConfig(), Collections.singletonMap(SERVER_INGESTION_MODE, ISOLATED));
     try (
         VeniceWriter<Object, Object, byte[]> veniceWriter = vwFactory.createVeniceWriter(topic, keySerializer, valueSerializer, false);
-        CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(d2Client, metricsRepository, backendConfig);
-        DaVinciClient<Integer, Integer> client = factory.getAndStartGenericAvroClient(storeName, new DaVinciConfig())) {
+        CachingDaVinciClientFactory ignored = daVinciTestContext.getDaVinciClientFactory();
+        DaVinciClient<Integer, Integer> client = daVinciTestContext.getDaVinciClient()) {
 
       //Write data to DaVinci Store and subscribe client
       Schema valueSchema = Schema.parse(VALUE_SCHEMA_FOR_COMPUTE_NULLABLE_LIST_FIELD);
@@ -1144,7 +1098,6 @@ public class DaVinciClientTest {
     }
   }
 
-
   @Test(timeOut = TEST_TIMEOUT * 2)
   public void testReadComputeMissingField() throws Exception {
     //Create DaVinci store
@@ -1161,21 +1114,6 @@ public class DaVinciClientTest {
     VeniceKafkaSerializer valueSerializerMissingField = new VeniceAvroKafkaSerializer(
         VALUE_SCHEMA_FOR_COMPUTE_MISSING_FIELD);
 
-    MetricsRepository metricsRepository = new MetricsRepository();
-    String baseDataPath = Utils.getTempDataDirectory().getAbsolutePath();
-
-    int applicationListenerPort = Utils.getFreePort();
-    int servicePort = Utils.getFreePort();
-
-    VeniceProperties backendConfig = new PropertyBuilder()
-        .put(DATA_BASE_PATH, baseDataPath)
-        .put(PERSISTENCE_TYPE, ROCKS_DB)
-        .put(SERVER_INGESTION_MODE, ISOLATED)
-        .put(SERVER_INGESTION_ISOLATION_APPLICATION_PORT, applicationListenerPort)
-        .put(SERVER_INGESTION_ISOLATION_SERVICE_PORT, servicePort)
-        .put(D2_CLIENT_ZK_HOSTS_ADDRESS, cluster.getZk().getAddress())
-        .build();
-
     int numRecords = 100;
     Map<Integer, GenericRecord> computeResult;
     Set<Integer> keySetForCompute = new HashSet<Integer>(){{
@@ -1183,10 +1121,13 @@ public class DaVinciClientTest {
       add(2);
     }};
 
+    DaVinciTestContext<Integer, Integer> daVinciTestContext =
+        ServiceFactory.getGenericAvroDaVinciFactoryAndClientWithRetries(d2Client, new MetricsRepository(), Optional.empty(),
+            cluster.getZk().getAddress(), storeName, new DaVinciConfig(), Collections.singletonMap(SERVER_INGESTION_MODE, ISOLATED));
     try (
         VeniceWriter<Object, Object, byte[]> writer = vwFactory.createVeniceWriter(topic, keySerializer, valueSerializer, false);
-        CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(d2Client, metricsRepository, backendConfig);
-        DaVinciClient<Integer, Integer> client = factory.getAndStartGenericAvroClient(storeName, new DaVinciConfig())) {
+        CachingDaVinciClientFactory ignored = daVinciTestContext.getDaVinciClientFactory();
+        DaVinciClient<Integer, Integer> client = daVinciTestContext.getDaVinciClient()) {
 
       //Write data to DaVinci Store and subscribe client
       pushSyntheticDataToStore(writer, VALUE_SCHEMA_FOR_COMPUTE, false, 1, numRecords);
@@ -1224,10 +1165,14 @@ public class DaVinciClientTest {
     VersionCreationResponse newVersionMissingField = cluster.getNewVersion(storeName, 1024);
     String topicForMissingField = newVersionMissingField.getKafkaTopic();
 
-    try(
-      VeniceWriter<Object, Object, byte[]> writerForMissingField = vwFactory.createVeniceWriter(topicForMissingField, keySerializer, valueSerializerMissingField, false);
-        CachingDaVinciClientFactory factoryForMissingFieldClient = new CachingDaVinciClientFactory(d2Client, new MetricsRepository(), backendConfig);
-        DaVinciClient<Integer, Integer> clientForMissingField = factoryForMissingFieldClient.getAndStartGenericAvroClient(storeName, new DaVinciConfig())){
+    DaVinciTestContext<Integer, Integer> daVinciTestContext2 =
+        ServiceFactory.getGenericAvroDaVinciFactoryAndClientWithRetries(d2Client, new MetricsRepository(),
+            Optional.empty(), cluster.getZk().getAddress(), storeName, new DaVinciConfig(), Collections.singletonMap(SERVER_INGESTION_MODE, ISOLATED));
+
+    try (VeniceWriter<Object, Object, byte[]> writerForMissingField =
+        vwFactory.createVeniceWriter(topicForMissingField, keySerializer, valueSerializerMissingField, false);
+        CachingDaVinciClientFactory factoryForMissingFieldClient = daVinciTestContext2.getDaVinciClientFactory();
+        DaVinciClient<Integer, Integer> clientForMissingField = daVinciTestContext2.getDaVinciClient()){
 
       // Write data to DaVinci store with a missing field and subscribe client
       pushSyntheticDataToStore(writerForMissingField, VALUE_SCHEMA_FOR_COMPUTE_MISSING_FIELD, true, 2, numRecords);
@@ -1256,7 +1201,7 @@ public class DaVinciClientTest {
 
   @Test(timeOut = TEST_TIMEOUT * 2)
   public void testReadComputeSwappedFields() throws Exception {
-    //Create DaVinci store
+    // Create DaVinci store
     final String storeName = Utils.getUniqueString( "store");
     cluster.useControllerClient(client -> TestUtils.assertCommand(
         client.createNewStore(storeName, getClass().getName(), DEFAULT_KEY_SCHEMA, VALUE_SCHEMA_FOR_COMPUTE_SWAPPED)));
@@ -1269,21 +1214,6 @@ public class DaVinciClientTest {
     VeniceKafkaSerializer valueSerializer = new VeniceAvroKafkaSerializer(VALUE_SCHEMA_FOR_COMPUTE);
     VeniceKafkaSerializer valueSerializerSwapped = new VeniceAvroKafkaSerializer(VALUE_SCHEMA_FOR_COMPUTE_SWAPPED);
 
-    MetricsRepository metricsRepository = new MetricsRepository();
-    String baseDataPath = Utils.getTempDataDirectory().getAbsolutePath();
-
-    int applicationListenerPort = Utils.getFreePort();
-    int servicePort = Utils.getFreePort();
-
-    VeniceProperties backendConfig = new PropertyBuilder()
-        .put(DATA_BASE_PATH, baseDataPath)
-        .put(PERSISTENCE_TYPE, ROCKS_DB)
-        .put(SERVER_INGESTION_MODE, ISOLATED)
-        .put(SERVER_INGESTION_ISOLATION_APPLICATION_PORT, applicationListenerPort)
-        .put(SERVER_INGESTION_ISOLATION_SERVICE_PORT, servicePort)
-        .put(D2_CLIENT_ZK_HOSTS_ADDRESS, cluster.getZk().getAddress())
-        .build();
-
     int numRecords = 100;
     Map<Integer, GenericRecord> computeResult;
     Set<Integer> keySetForCompute = new HashSet<Integer>(){{
@@ -1291,12 +1221,15 @@ public class DaVinciClientTest {
       add(2);
     }};
 
+    DaVinciTestContext<Integer, Integer> daVinciTestContext =
+        ServiceFactory.getGenericAvroDaVinciFactoryAndClientWithRetries(d2Client, new MetricsRepository(), Optional.empty(),
+            cluster.getZk().getAddress(), storeName, new DaVinciConfig(), Collections.singletonMap(SERVER_INGESTION_MODE, ISOLATED));
     try (
         VeniceWriter<Object, Object, byte[]> writer = vwFactory.createVeniceWriter(topic, keySerializer, valueSerializer, false);
-        CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(d2Client, metricsRepository, backendConfig);
-        DaVinciClient<Integer, Integer> client = factory.getAndStartGenericAvroClient(storeName, new DaVinciConfig())) {
+        CachingDaVinciClientFactory factory = daVinciTestContext.getDaVinciClientFactory();
+        DaVinciClient<Integer, Integer> client = daVinciTestContext.getDaVinciClient()) {
 
-      //Write data to DaVinci Store and subscribe client
+      // Write data to DaVinci Store and subscribe client
       pushSyntheticDataToStore(writer, VALUE_SCHEMA_FOR_COMPUTE_SWAPPED, false, 1, numRecords);
       client.subscribeAll().get();
 
@@ -1323,10 +1256,13 @@ public class DaVinciClientTest {
     VersionCreationResponse newVersionMissingField = cluster.getNewVersion(storeName, 1024);
     String topicForMissingField = newVersionMissingField.getKafkaTopic();
 
+    DaVinciTestContext<Integer, Integer> daVinciTestContext2 =
+        ServiceFactory.getGenericAvroDaVinciFactoryAndClientWithRetries(d2Client, new MetricsRepository(), Optional.empty(),
+            cluster.getZk().getAddress(), storeName, new DaVinciConfig(), Collections.singletonMap(SERVER_INGESTION_MODE, ISOLATED));
     try(
       VeniceWriter<Object, Object, byte[]> writer2 = vwFactory.createVeniceWriter(topicForMissingField, keySerializer, valueSerializerSwapped, false);
-      CachingDaVinciClientFactory factory2 = new CachingDaVinciClientFactory(d2Client, new MetricsRepository(), backendConfig);
-      DaVinciClient<Integer, Integer> client2 = factory2.getAndStartGenericAvroClient(storeName, new DaVinciConfig())){
+      CachingDaVinciClientFactory factory2 = daVinciTestContext2.getDaVinciClientFactory();
+      DaVinciClient<Integer, Integer> client2 = daVinciTestContext2.getDaVinciClient()){
 
       // Write data to DaVinci store
       pushSyntheticDataToStore(writer2, VALUE_SCHEMA_FOR_COMPUTE_SWAPPED, false, 2, numRecords);
@@ -1359,24 +1295,8 @@ public class DaVinciClientTest {
     VeniceKafkaSerializer keySerializer = new VeniceAvroKafkaSerializer(KEY_SCHEMA_STEAMING_COMPUTE);
     VeniceKafkaSerializer valueSerializer = new VeniceAvroKafkaSerializer(VALUE_SCHEMA_STREAMING_COMPUTE);
 
-    MetricsRepository metricsRepository = new MetricsRepository();
-    String baseDataPath = Utils.getTempDataDirectory().getAbsolutePath();
-
-    int applicationListenerPort = Utils.getFreePort();
-    int servicePort = Utils.getFreePort();
-
-    VeniceProperties backendConfig = new PropertyBuilder()
-        .put(DATA_BASE_PATH, baseDataPath)
-        .put(PERSISTENCE_TYPE, ROCKS_DB)
-        .put(SERVER_INGESTION_MODE, ISOLATED)
-        .put(SERVER_INGESTION_ISOLATION_APPLICATION_PORT, applicationListenerPort)
-        .put(SERVER_INGESTION_ISOLATION_SERVICE_PORT, servicePort)
-        .put(D2_CLIENT_ZK_HOSTS_ADDRESS, cluster.getZk().getAddress())
-        .build();
-
     int numRecords = 10000;
-
-    //setup keyset to test
+    // setup keyset to test
     Set<String> keySet = new TreeSet<>();
     /**
      * {@link NON_EXISTING_KEY1}: "a_unknown_key" will be with key index: 0 internally, and we want to verify
@@ -1391,12 +1311,15 @@ public class DaVinciClientTest {
     DaVinciConfig config = new DaVinciConfig();
     config.setNonLocalAccessPolicy(NonLocalAccessPolicy.QUERY_VENICE);
 
+    DaVinciTestContext<String, Integer> daVinciTestContext =
+        ServiceFactory.getGenericAvroDaVinciFactoryAndClientWithRetries(d2Client, new MetricsRepository(), Optional.empty(),
+            cluster.getZk().getAddress(), storeName, config, Collections.singletonMap(SERVER_INGESTION_MODE, ISOLATED));
     try (
         VeniceWriter<Object, Object, byte[]> writer = vwFactory.createVeniceWriter(topic, keySerializer, valueSerializer, false);
-        CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(d2Client, metricsRepository, backendConfig);
-        DaVinciClient<String, Integer> client = factory.getAndStartGenericAvroClient(storeName, config)) {
+        CachingDaVinciClientFactory factory = daVinciTestContext.getDaVinciClientFactory();
+        DaVinciClient<String, Integer> client = daVinciTestContext.getDaVinciClient()) {
 
-      //push data to store and subscribe client
+      // push data to store and subscribe client
       pushDataToStoreForStreamingCompute(writer, VALUE_SCHEMA_STREAMING_COMPUTE, HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID, numRecords);
       client.subscribeAll().get();
 
@@ -1418,9 +1341,7 @@ public class DaVinciClientTest {
         @Override
         public void onCompletion(Optional<Exception> exception) {
           computeLatch.countDown();
-          if (exception.isPresent()) {
-            Assert.fail("Exception: " + exception.get() + " is not expected");
-          }
+          exception.ifPresent(e -> Assert.fail("Exception: " + e + " is not expected"));
         }
       });
       computeLatch.await();
