@@ -355,11 +355,10 @@ public class MapTest {
     final boolean isJdkMap =
         Objects.equals(mapSupplierName, "HashMapSupplier") || Objects.equals(mapSupplierName, "LinkedHashMapSupplier");
 
-    if (version.startsWith("1.8") && isJdkMap) {
+    if (version.equals("1.8.0_172") && isJdkMap) {
       String failureMessage = "Expect to see JDK Bug-8186171 with JKD version " + version + " and " + mapSupplierName;
       assertTrue(m.containsValue(null), failureMessage);
       assertFalse(m.containsValue(2), failureMessage);
-
     } else {
       String failureMessage = "Not expect to see JDK Bug-8186171 with JKD version " + version + " and " + mapSupplierName;
       assertFalse(m.containsValue(null), failureMessage);
