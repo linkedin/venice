@@ -84,7 +84,8 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
       }
     };
   }
-  private static final ThreadLocal<ReusableObjects> threadLocalReusableObjects = ThreadLocal.withInitial(() -> new ReusableObjects());
+  private static final ThreadLocal<ReusableObjects> threadLocalReusableObjects = ThreadLocal.withInitial(
+      ReusableObjects::new);
 
   private final DaVinciConfig daVinciConfig;
   private final ClientConfig clientConfig;

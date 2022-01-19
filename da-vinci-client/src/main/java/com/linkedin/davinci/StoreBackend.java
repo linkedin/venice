@@ -123,11 +123,11 @@ public class StoreBackend {
     stats.recordFutureVersion(version);
   }
 
-  public CompletableFuture subscribe(ComplementSet<Integer> partitions) {
+  public CompletableFuture<Void> subscribe(ComplementSet<Integer> partitions) {
     return subscribe(partitions, Optional.empty());
   }
 
-  synchronized CompletableFuture subscribe(ComplementSet<Integer> partitions, Optional<Version> bootstrapVersion) {
+  synchronized CompletableFuture<Void> subscribe(ComplementSet<Integer> partitions, Optional<Version> bootstrapVersion) {
     if (daVinciCurrentVersion == null) {
       setDaVinciCurrentVersion(new VersionBackend(
           backend,

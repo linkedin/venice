@@ -80,7 +80,7 @@ public class RetryUtils {
                 .withMaxAttempts(maxAttempt);
 
         retryPolicy.onFailedAttempt(intermediateFailureHandler::handle);
-        Failsafe.with(retryPolicy).run(() -> runnable.run());
+        Failsafe.with(retryPolicy).run(runnable::run);
     }
 
     /**
@@ -137,7 +137,7 @@ public class RetryUtils {
                 .withMaxAttempts(maxAttempt);
 
         retryPolicy.onFailedAttempt(intermediateFailureHandler::handle);
-        Failsafe.with(retryPolicy).run(() -> runnable.run());
+        Failsafe.with(retryPolicy).run(runnable::run);
     }
 
     /**
@@ -183,7 +183,7 @@ public class RetryUtils {
                 .withMaxAttempts(maxAttempt);
 
         retryPolicy.onFailedAttempt(intermediateFailureHandler::handle);
-        return Failsafe.with(retryPolicy).get(() -> supplier.get());
+        return Failsafe.with(retryPolicy).get(supplier::get);
     }
 
     /**
@@ -240,7 +240,7 @@ public class RetryUtils {
                 .withMaxAttempts(maxAttempt);
 
         retryPolicy.onFailedAttempt(intermediateFailureHandler::handle);
-        return Failsafe.with(retryPolicy).get(() -> supplier.get());
+        return Failsafe.with(retryPolicy).get(supplier::get);
     }
 
     private static<T> void logAttemptWithFailure(ExecutionAttemptedEvent<T> executionAttemptedEvent) {

@@ -28,6 +28,8 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.File;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
@@ -117,15 +119,15 @@ public class PushStatusStoreTest {
     Properties h2vProperties = getH2VProperties();
     // setup initial version
     runH2V(h2vProperties, 1, cluster);
-    int applicationListenerPort = Utils.getFreePort();
-    int servicePort = Utils.getFreePort();
-    VeniceProperties backendConfig = getBackendConfigBuilder()
-        .put(SERVER_INGESTION_MODE, isIsolated ? ISOLATED : BUILT_IN)
-        .put(SERVER_INGESTION_ISOLATION_APPLICATION_PORT, applicationListenerPort)
-        .put(SERVER_INGESTION_ISOLATION_SERVICE_PORT, servicePort)
-        .put(D2_CLIENT_ZK_HOSTS_ADDRESS, cluster.getZk().getAddress())
-        .build();
-    try (DaVinciClient daVinciClient = ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster, new DaVinciConfig(), backendConfig)) {
+
+    Map<String, Object> extraBackendConfigMap = new HashMap<>();
+    extraBackendConfigMap.put(SERVER_INGESTION_MODE, isIsolated ? ISOLATED : BUILT_IN);
+    extraBackendConfigMap.put(CLIENT_USE_META_SYSTEM_STORE_REPOSITORY, true);
+    extraBackendConfigMap.put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 10);
+    extraBackendConfigMap.put(PUSH_STATUS_STORE_ENABLED, true);
+
+    try (DaVinciClient<Integer, Integer> daVinciClient = ServiceFactory.getGenericAvroDaVinciClientWithRetries(
+        storeName, cluster.getZk().getAddress(), new DaVinciConfig(), extraBackendConfigMap)) {
       daVinciClient.subscribeAll().get();
       runH2V(h2vProperties, 2, cluster);
       TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
@@ -206,14 +208,13 @@ public class PushStatusStoreTest {
   }
 
   private PropertyBuilder getBackendConfigBuilder() {
-    PropertyBuilder backendConfigBuilder = new PropertyBuilder()
+    return new PropertyBuilder()
         .put(ConfigKeys.DATA_BASE_PATH, Utils.getTempDataDirectory().getAbsolutePath())
         .put(ConfigKeys.PERSISTENCE_TYPE, PersistenceType.ROCKS_DB)
         .put(CLIENT_USE_META_SYSTEM_STORE_REPOSITORY, true)
         .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 10)
         .put(ConfigKeys.SERVER_ROCKSDB_STORAGE_CONFIG_CHECK_ENABLED, true)
         .put(PUSH_STATUS_STORE_ENABLED, true);
-    return backendConfigBuilder;
   }
 
   private Properties getH2VProperties() throws Exception {
@@ -222,8 +223,7 @@ public class PushStatusStoreTest {
     File inputDir = getTempDataDirectory();
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
     writeSimpleAvroFileWithIntToStringSchema(inputDir, true);
-    Properties h2vProperties = defaultH2VProps(cluster, inputDirPath, storeName);
-    return h2vProperties;
+    return defaultH2VProps(cluster, inputDirPath, storeName);
   }
 
   private void runH2V(Properties h2vProperties, int expectedVersionNumber, VeniceClusterWrapper cluster) {
@@ -236,5 +236,4 @@ public class PushStatusStoreTest {
       logger.info("**TIME** H2V" + expectedVersionNumber + " takes " + (System.currentTimeMillis() - h2vStart));
     }
   }
-
 }

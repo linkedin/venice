@@ -98,6 +98,10 @@ public class CachingDaVinciClientFactory implements DaVinciClientFactory, Closea
     return getClient(storeName, config, valueClass, AvroSpecificDaVinciClient::new, AvroSpecificDaVinciClient.class, true);
   }
 
+  public VeniceProperties getBackendConfig() {
+    return backendConfig;
+  }
+
   protected interface DaVinciClientConstructor {
     AvroGenericDaVinciClient apply(DaVinciConfig config, ClientConfig clientConfig, VeniceProperties backendConfig,
         Optional<Set<String>> managedClients, ICProvider icProvider);
