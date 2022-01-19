@@ -164,6 +164,8 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   private final boolean concurrentInitRoutinesEnabled;
 
+  private final boolean controllerInAzureFabric;
+
   public VeniceControllerConfig(VeniceProperties props) {
     super(props);
     this.adminPort = props.getInt(ADMIN_PORT);
@@ -310,6 +312,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     this.autoCloseIdleConsumersEnabled = props.getBoolean(AUTO_CLOSE_IDLE_CONSUMERS_ENABLED, KafkaClientFactory.DEFAULT_AUTO_CLOSE_IDLE_CONSUMERS_ENABLED);
     this.childControllerAdminTopicConsumptionEnabled = props.getBoolean(CHILD_CONTROLLER_ADMIN_TOPIC_CONSUMPTION_ENABLED, true);
     this.concurrentInitRoutinesEnabled = props.getBoolean(CONCURRENT_INIT_ROUTINES_ENABLED, false);
+    this.controllerInAzureFabric = props.getBoolean(CONTROLLER_IN_AZURE_FABRIC, false);
   }
 
   private void validateActiveActiveConfigs() {
@@ -620,6 +623,10 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   public boolean isConcurrentInitRoutinesEnabled() {
     return concurrentInitRoutinesEnabled;
+  }
+
+  public boolean isControllerInAzureFabric() {
+    return controllerInAzureFabric;
   }
 
   /**

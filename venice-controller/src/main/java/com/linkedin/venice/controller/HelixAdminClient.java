@@ -2,7 +2,6 @@ package com.linkedin.venice.controller;
 
 import java.util.List;
 import java.util.Map;
-import org.apache.helix.model.IdealState;
 
 
 /**
@@ -27,17 +26,19 @@ public interface HelixAdminClient {
   /**
    * Create and configure the Venice controller cluster.
    * @param controllerClusterName to be created.
+   * @param isControllerInAzureFabric whether the controller is in Azure fabric.
    */
-  void createVeniceControllerCluster(String controllerClusterName);
+  void createVeniceControllerCluster(String controllerClusterName, boolean isControllerInAzureFabric);
 
   /**
    * Create and configure the Venice storage cluster.
    * @param clusterName of the Venice storage cluster.
    * @param controllerClusterName of the corresponding controller cluster.
    * @param helixClusterProperties to be applied to the new cluster.
+   * @param isControllerInAzureFabric whether the controller is in Azure fabric.
    */
   void createVeniceStorageCluster(String clusterName, String controllerClusterName,
-      Map<String, String> helixClusterProperties);
+      Map<String, String> helixClusterProperties, boolean isControllerInAzureFabric);
 
   /**
    * Check if the grand cluster managed by HaaS controllers is aware of the given cluster.

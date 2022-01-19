@@ -322,6 +322,11 @@ public class ConfigKeys {
    */
   public static final String USE_KAFKA_MIRROR_MAKER = "use.kafka.mirror.maker";
 
+  /**
+   * Whether the controller is in Azure fabric. Default is false.
+   */
+  public static final String CONTROLLER_IN_AZURE_FABRIC = "controller.in.azure.fabric";
+
   // Server specific configs
   public static final String LISTENER_PORT = "listener.port";
   public static final String DATA_BASE_PATH = "data.base.path";
