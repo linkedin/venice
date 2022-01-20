@@ -212,8 +212,7 @@ public class RouterServer extends AbstractVeniceService {
     logger.info("Thread count: " + ROUTER_THREAD_POOL_SIZE);
 
     Optional<SSLEngineComponentFactory> sslFactory = Optional.of(SslUtils.getLocalSslFactory());
-    RouterServer server = new RouterServer(props, new ArrayList<>(), Optional.empty(), sslFactory, null,
-        ZkClient.DEFAULT_OPERATION_TIMEOUT);
+    RouterServer server = new RouterServer(props, new ArrayList<>(), Optional.empty(), sslFactory, null);
     server.start();
 
     Runtime.getRuntime().addShutdownHook(new Thread() {
@@ -236,14 +235,7 @@ public class RouterServer extends AbstractVeniceService {
 
   public RouterServer(VeniceProperties properties, List<D2Server> d2Servers, Optional<DynamicAccessController> accessController,
       Optional<SSLEngineComponentFactory> sslEngineComponentFactory) {
-    this(properties, d2Servers, accessController, sslEngineComponentFactory,
-        TehutiUtils.getMetricsRepository(ROUTER_SERVICE_NAME), ZkClient.DEFAULT_OPERATION_TIMEOUT);
-  }
-
-  public RouterServer(VeniceProperties properties, List<D2Server> d2Servers, Optional<DynamicAccessController> accessController,
-      Optional<SSLEngineComponentFactory> sslEngineComponentFactory, long zkClientOpRetryTimeout) {
-    this(properties, d2Servers, accessController, sslEngineComponentFactory,
-        TehutiUtils.getMetricsRepository(ROUTER_SERVICE_NAME), zkClientOpRetryTimeout);
+    this(properties, d2Servers, accessController, sslEngineComponentFactory, TehutiUtils.getMetricsRepository(ROUTER_SERVICE_NAME));
   }
 
   // for test purpose
@@ -256,8 +248,8 @@ public class RouterServer extends AbstractVeniceService {
       List<D2Server> d2ServerList,
       Optional<DynamicAccessController> accessController,
       Optional<SSLEngineComponentFactory> sslFactory,
-      MetricsRepository metricsRepository, long zkClientOpRetryTimeout) {
-    this(properties, d2ServerList, accessController, sslFactory, metricsRepository, true, zkClientOpRetryTimeout);
+      MetricsRepository metricsRepository) {
+    this(properties, d2ServerList, accessController, sslFactory, metricsRepository, true);
 
     HelixReadOnlyZKSharedSystemStoreRepository readOnlyZKSharedSystemStoreRepository =
         new HelixReadOnlyZKSharedSystemStoreRepository(zkClient, adapter, config.getSystemSchemaClusterName());
@@ -293,13 +285,10 @@ public class RouterServer extends AbstractVeniceService {
       List<D2Server> d2ServerList,
       Optional<DynamicAccessController> accessController,
       Optional<SSLEngineComponentFactory> sslFactory,
-      MetricsRepository metricsRepository, boolean isCreateHelixManager, long zkClientOpRetryTimeout) {
+      MetricsRepository metricsRepository, boolean isCreateHelixManager) {
     config = new VeniceRouterConfig(properties);
-    zkClient = new ZkClient.Builder().setZkServer(config.getZkConnection())
-        .setSessionTimeout(ZkClient.DEFAULT_SESSION_TIMEOUT)
-        .setConnectionTimeout(ZkClient.DEFAULT_CONNECTION_TIMEOUT)
-        .setOperationRetryTimeout(zkClientOpRetryTimeout)
-        .build();
+    zkClient = new ZkClient(config.getZkConnection(), ZkClient.DEFAULT_SESSION_TIMEOUT,
+        ZkClient.DEFAULT_CONNECTION_TIMEOUT);
     zkClient.subscribeStateChanges(new ZkClientStatusStats(metricsRepository, "router-zk-client"));
 
     this.adapter = new HelixAdapterSerializer();
@@ -336,8 +325,7 @@ public class RouterServer extends AbstractVeniceService {
       List<D2Server> d2ServerList,
       Optional<SSLEngineComponentFactory> sslFactory,
       HelixLiveInstanceMonitor liveInstanceMonitor){
-    this(properties, d2ServerList, Optional.empty(), sslFactory, new MetricsRepository(), false,
-        Long.valueOf(ZkClient.DEFAULT_OPERATION_TIMEOUT));
+    this(properties, d2ServerList, Optional.empty(), sslFactory, new MetricsRepository(), false);
     this.routingDataRepository = routingDataRepository;
     this.hybridStoreQuotaRepository = hybridStoreQuotaRepository;
     this.metadataRepository = metadataRepository;

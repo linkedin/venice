@@ -182,25 +182,23 @@ public class TestHybridQuota {
       long normalTimeForConsuming = TimeUnit.SECONDS.toMillis(15);
       logger.info("normalTimeForConsuming:" + normalTimeForConsuming);
       Utils.sleep(normalTimeForConsuming);
-
-      String topicVersion = isStreamReprocessing ? Version.composeKafkaTopic(storeName, 4) : topicForStoreVersion3;
-      assertEquals(hybridStoreQuotaOnlyRepository.getHybridStoreQuotaStatus(topicVersion),
-          HybridStoreQuotaStatus.QUOTA_VIOLATED);
-      assertTrue(offlinePushRepository.containsKafkaTopic(topicVersion));
+      if (isStreamReprocessing) {
+        String topicForStoreVersion4 = Version.composeKafkaTopic(storeName, 4);
+        assertEquals(hybridStoreQuotaOnlyRepository.getHybridStoreQuotaStatus(topicForStoreVersion4),
+            HybridStoreQuotaStatus.QUOTA_VIOLATED);
+        assertTrue(offlinePushRepository.containsKafkaTopic(topicForStoreVersion4));
+      } else {
+        assertEquals(hybridStoreQuotaOnlyRepository.getHybridStoreQuotaStatus(topicForStoreVersion3),
+            HybridStoreQuotaStatus.QUOTA_VIOLATED);
+        assertTrue(offlinePushRepository.containsKafkaTopic(topicForStoreVersion3));
+      }
 
       if (!recoverFromViolation) {
         sendStreamingRecord(veniceProducer, storeName, 21);
         Assert.fail("Exception should be thrown because quota violation happens.");
       } else {
-        // Disable HybridStoreDiskQuota and verify quota status is changed to QUOTA_NOT_VIOLATED.
-        controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setHybridStoreDiskQuotaEnabled(false));
-        Utils.sleep(normalTimeForConsuming);
-        assertEquals(hybridStoreQuotaOnlyRepository.getHybridStoreQuotaStatus(topicVersion),
-            HybridStoreQuotaStatus.QUOTA_NOT_VIOLATED);
-
-        //  Re-enable HybridStoreDiskQuota and increase the quota to 100x so that disk quota is not violated.
-        controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setHybridStoreDiskQuotaEnabled(true)
-            .setStorageQuotaInByte(storageQuotaInByte * 100));
+        //  Increase the quota to 100x so that disk quota is not violated.
+        controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setStorageQuotaInByte(storageQuotaInByte * 100));
         Utils.sleep(normalTimeForConsuming);
         // Previous venice producer get exception thrown by quota violation. Need to create a new venice producer.
         if (null != veniceProducer) {
