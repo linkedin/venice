@@ -29,8 +29,6 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.writer.VeniceWriter;
-
-import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.d2.balancer.D2Client;
 
 import io.tehuti.Metric;
@@ -39,7 +37,6 @@ import io.tehuti.metrics.MetricsRepository;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
-import org.apache.avro.generic.IndexedRecord;
 import org.apache.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
@@ -334,8 +331,8 @@ public class TestStreaming {
     for (int i = 0; i < MAX_KEY_LIMIT - NON_EXISTING_KEY_NUM; ++i) {
       String key = keyPrefix + i;
       Object value = resultMap.get(key);
-      Assert.assertTrue(value instanceof IndexedRecord && AvroCompatibilityHelper.isGenericRecord((IndexedRecord) value));
-      GenericRecord record = (GenericRecord)value;
+      Assert.assertTrue(value instanceof GenericRecord);
+      GenericRecord record = (GenericRecord) value;
       Assert.assertEquals(record.get("int_field"), i);
       Assert.assertEquals(record.get("float_field"), i + 100.0f);
     }

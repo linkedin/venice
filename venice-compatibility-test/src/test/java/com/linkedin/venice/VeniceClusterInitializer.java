@@ -28,7 +28,6 @@ import com.linkedin.avroutil1.compatibility.AvroVersion;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
-import org.apache.avro.generic.IndexedRecord;
 import org.apache.log4j.Logger;
 import org.testng.Assert;
 
@@ -154,9 +153,10 @@ public class VeniceClusterInitializer implements AutoCloseable {
     if (value == null) {
       throw new VeniceException("Failed to retrieve value for key: " + key0);
     }
-    if (!(value instanceof IndexedRecord && AvroCompatibilityHelper.isGenericRecord((IndexedRecord) value))) {
+    if (!(value instanceof GenericRecord)) {
       throw new VeniceException("The returned value should be a GenericRecord");
     }
+
     GenericRecord genericRecord = (GenericRecord) value;
     String id = genericRecord.get("id").toString();
     String expectedId = ID_FIELD_PREFIX + "0";
