@@ -517,6 +517,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       );
     });
 
+    syncConsumedUpstreamRTOffsetMapIfNeeded(partitionConsumptionState, leaderOffsetByKafkaURL);
+
     logger.info(String.format("%s, as a leader, started consuming from topic %s partition %d with offset by Kafka URL mapping %s",
         consumerTaskId, offsetRecord.getLeaderTopic(), partition, leaderOffsetByKafkaURL));
   }
@@ -606,6 +608,9 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
               kafkaURL
       );
     });
+
+    syncConsumedUpstreamRTOffsetMapIfNeeded(partitionConsumptionState, upstreamOffsetsByKafkaURLs);
+
     logger.info(String.format("%s leader successfully switch feed topic from %s to %s on partition %d with offset by " +
             "Kafka URL mapping %s", consumerTaskId, currentLeaderTopic, newSourceTopicName, partition, upstreamOffsetsByKafkaURLs));
 

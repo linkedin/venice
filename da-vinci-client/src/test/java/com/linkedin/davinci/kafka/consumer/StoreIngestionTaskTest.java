@@ -12,6 +12,7 @@ import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.stats.AggStoreIngestionStats;
 import com.linkedin.davinci.stats.AggVersionedDIVStats;
 import com.linkedin.davinci.stats.AggVersionedStorageIngestionStats;
+import com.linkedin.davinci.stats.RocksDBMemoryStats;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.store.AbstractStorageEngine;
@@ -104,6 +105,7 @@ import java.net.URL;
 import java.net.URLClassLoader;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -145,6 +147,7 @@ import org.testng.annotations.BeforeClass;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
+import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.*;
 import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.VeniceConstants.*;
 import static com.linkedin.venice.utils.TestUtils.*;
@@ -2392,6 +2395,72 @@ public class StoreIngestionTaskTest {
 
     verify(mockTopicManagerRemoteKafka, isDaVinciClient ? never() : times(1))
         .getPartitionOffsetByTime(anyString(), anyInt(), anyLong());
+  }
+
+  @Test
+  public void testUpdateConsumedUpstreamRTOffsetMapDuringRTSubscription() {
+    String storeName = Utils.getUniqueString("store");
+    String versionTopic = Version.composeKafkaTopic(storeName, 1);
+
+    VeniceStoreVersionConfig mockVeniceStoreVersionConfig = mock(VeniceStoreVersionConfig.class);
+    doReturn(versionTopic).when(mockVeniceStoreVersionConfig).getStoreVersionName();
+
+    ReadOnlyStoreRepository mockReadOnlyStoreRepository = mock(ReadOnlyStoreRepository.class);
+    Store mockStore = mock(Store.class);
+    doReturn(mockStore).when(mockReadOnlyStoreRepository).getStoreOrThrow(eq(storeName));
+    doReturn(false).when(mockStore).isHybridStoreDiskQuotaEnabled();
+
+    Properties mockKafkaConsumerProperties = mock(Properties.class);
+    doReturn("localhost").when(mockKafkaConsumerProperties).getProperty(eq(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG));
+
+    VeniceServerConfig mockVeniceServerConfig = mock(VeniceServerConfig.class);
+    VeniceProperties mockVeniceProperties = mock(VeniceProperties.class);
+    doReturn(true).when(mockVeniceProperties).isEmpty();
+    doReturn(mockVeniceProperties).when(mockVeniceServerConfig).getKafkaConsumerConfigsForLocalConsumption();
+
+    KafkaClientFactory mockKafkaClientFactory = mock(KafkaClientFactory.class);
+    KafkaConsumerWrapper mockKafkaConsumerWrapper = mock(KafkaConsumerWrapper.class);
+    doReturn(mockKafkaConsumerWrapper).when(mockKafkaClientFactory).getConsumer(any());
+
+    LeaderFollowerStoreIngestionTask ingestionTask = new LeaderFollowerStoreIngestionTask(mock(Store.class),
+        mock(Version.class), mock(VeniceWriterFactory.class), mockKafkaClientFactory, mockKafkaConsumerProperties,
+        mock(StorageEngineRepository.class), mockStorageMetadataService, new ArrayDeque<>(), mock(EventThrottler.class),
+        mock(EventThrottler.class), mock(EventThrottler.class), mock(EventThrottler.class),
+        mock(KafkaClusterBasedRecordThrottler.class), mock(ReadOnlySchemaRepository.class), mockReadOnlyStoreRepository,
+        mockTopicManagerRepository, mock(TopicManagerRepository.class), mock(AggStoreIngestionStats.class),
+        mock(AggVersionedDIVStats.class), mock(AggVersionedStorageIngestionStats.class), mock(StoreBufferService.class),
+        () -> true, mockVeniceStoreVersionConfig, mock(DiskUsage.class), mock(RocksDBMemoryStats.class),
+        mock(AggKafkaConsumerService.class), mockVeniceServerConfig, 0, mock(ExecutorService.class),
+        0, mock(InternalAvroSpecificSerializer.class), false,
+        mock(StorageEngineBackedCompressorFactory.class), Optional.empty(), false);
+
+    TopicSwitch topicSwitch = new TopicSwitch();
+    topicSwitch.sourceKafkaServers = Collections.singletonList("localhost");
+    topicSwitch.sourceTopicName = "test_rt";
+    topicSwitch.rewindStartTimestamp = System.currentTimeMillis();
+    PartitionConsumptionState mockPcs = mock(PartitionConsumptionState.class);
+    doReturn(IN_TRANSITION_FROM_STANDBY_TO_LEADER).when(mockPcs).getLeaderFollowerState();
+    doReturn(topicSwitch).when(mockPcs).getTopicSwitch();
+    OffsetRecord mockOffsetRecord = mock(OffsetRecord.class);
+    doReturn("test_rt").when(mockOffsetRecord).getLeaderTopic();
+    doReturn(1000L).when(mockOffsetRecord).getLeaderOffset(anyString());
+    doReturn(mockOffsetRecord).when(mockPcs).getOffsetRecord();
+    // Test whether consumedUpstreamRTOffsetMap is updated when leader subscribes to RT after state transition
+    ingestionTask.startConsumingAsLeaderInTransitionFromStandby(mockPcs);
+    verify(mockPcs, times(1)).updateLeaderConsumedUpstreamRTOffset(
+        eq(OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY), eq(1000L));
+
+    mockPcs = mock(PartitionConsumptionState.class);
+    doReturn(LEADER).when(mockPcs).getLeaderFollowerState();
+    doReturn(topicSwitch).when(mockPcs).getTopicSwitch();
+    mockOffsetRecord = mock(OffsetRecord.class);
+    doReturn("test_rt").when(mockOffsetRecord).getLeaderTopic();
+    doReturn(1000L).when(mockOffsetRecord).getUpstreamOffset(anyString());
+    doReturn(mockOffsetRecord).when(mockPcs).getOffsetRecord();
+    // Test whether consumedUpstreamRTOffsetMap is updated when leader subscribes to RT after executing TS
+    ingestionTask.leaderExecuteTopicSwitch(mockPcs, topicSwitch);
+    verify(mockPcs, times(1)).updateLeaderConsumedUpstreamRTOffset(
+        eq(OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY), eq(1000L));
   }
 
   private static class MockStoreVersionConfigs {
