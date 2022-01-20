@@ -8,8 +8,6 @@ import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.client.store.D2ServiceDiscovery;
-import com.linkedin.venice.client.store.deserialization.BatchDeserializerType;
-import com.linkedin.venice.client.store.streaming.StreamingCallback;
 import com.linkedin.venice.client.utils.StoreClientTestUtils;
 import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.MockD2ServerWrapper;
@@ -27,15 +25,12 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
-import org.apache.log4j.Logger;
 import org.testng.annotations.AfterTest;
 import org.testng.annotations.BeforeTest;
 import org.testng.annotations.DataProvider;
@@ -43,8 +38,6 @@ import org.testng.annotations.Test;
 
 
 public class StoreClientBenchmark {
-  private static final Logger LOGGER = Logger.getLogger(StoreClientBenchmark.class);
-  private static final BatchDeserializerType BATCH_GET_DESERIALIZER_TYPE = BatchDeserializerType.BLOCKING;
   private MockD2ServerWrapper routerServer;
 
   private static String storeName = "test_store";
@@ -148,8 +141,7 @@ public class StoreClientBenchmark {
             .setD2ServiceName(D2TestUtils.DEFAULT_TEST_SERVICE_NAME)
             .setD2Client(d2Client)
             .setMetricsRepository(d2ClientMetricsRepository)
-            .setUseFastAvro(true)
-            .setBatchDeserializerType(BATCH_GET_DESERIALIZER_TYPE));
+            .setUseFastAvro(true));
   }
 
   public void closeStoreClient() {
@@ -165,8 +157,7 @@ public class StoreClientBenchmark {
             .setD2ServiceName(D2TestUtils.DEFAULT_TEST_SERVICE_NAME)
             .setD2Client(d2Client)
             .setMetricsRepository(d2ClientMetricsRepository)
-            .setUseFastAvro(useFastAvro)
-            .setBatchDeserializerType(BATCH_GET_DESERIALIZER_TYPE));
+            .setUseFastAvro(useFastAvro));
   }
 
   @DataProvider(name = "useFastAvroOptionsProvider")

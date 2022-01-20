@@ -105,14 +105,9 @@ public class FastSerializerDeserializerFactory extends SerializerDeserializerFac
   }
 
   public static <V extends SpecificRecord> RecordDeserializer<V> getFastAvroSpecificDeserializer(Schema writer, Class<V> c) {
-    return getFastAvroSpecificDeserializer(writer, c, null);
-  }
-
-  public static <V extends SpecificRecord> RecordDeserializer<V> getFastAvroSpecificDeserializer(Schema writer, Class<V> c,
-      AvroGenericDeserializer.IterableImpl multiGetEnvelopeIterableImpl) {
     return getAvroSpecificDeserializerInternal(writer, c,
         container -> avroFastSpecificDeserializerMap.computeIfAbsent(container,
-            k -> new FastAvroSpecificDeserializer<V>(container.writer, container.c, cache, multiGetEnvelopeIterableImpl)));
+            k -> new FastAvroSpecificDeserializer<V>(container.writer, container.c, cache)));
   }
 
   public static <K> RecordSerializer<K> getFastAvroGenericSerializer(Schema schema) {

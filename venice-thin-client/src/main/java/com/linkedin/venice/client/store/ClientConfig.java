@@ -10,9 +10,12 @@ import io.tehuti.utils.SystemTime;
 import io.tehuti.utils.Time;
 import java.util.concurrent.Executor;
 import org.apache.avro.specific.SpecificRecord;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 public class ClientConfig<T extends SpecificRecord> {
+  private static final Logger LOGGER = LogManager.getLogger(ClientConfig.class);
   private static final String HTTPS = "https";
   public static final int DEFAULT_ZK_TIMEOUT_MS = 5000;
   public static final String DEFAULT_D2_SERVICE_NAME = "venice-discovery";
@@ -37,10 +40,6 @@ public class ClientConfig<T extends SpecificRecord> {
   private MetricsRepository metricsRepository = null;
   private Executor deserializationExecutor = null;
   private BatchDeserializerType batchDeserializerType = BatchDeserializerType.BLOCKING;
-  private AvroGenericDeserializer.IterableImpl multiGetEnvelopeIterableImpl = AvroGenericDeserializer.IterableImpl.BLOCKING;
-  private int onDemandDeserializerNumberOfRecordsPerThread = 250;
-  private int alwaysOnDeserializerNumberOfThreads = Math.max(Runtime.getRuntime().availableProcessors() / 4, 1);
-  private int alwaysOnDeserializerQueueCapacity = 10000;
   private boolean useFastAvro = true;
   private boolean retryOnRouterError = false;
   private boolean retryOnAllErrors = false;
@@ -89,11 +88,6 @@ public class ClientConfig<T extends SpecificRecord> {
         // Performance-related settings
         .setMetricsRepository(config.getMetricsRepository())
         .setDeserializationExecutor(config.getDeserializationExecutor())
-        .setBatchDeserializerType(config.getBatchDeserializerType())
-        .setMultiGetEnvelopeIterableImpl(config.getMultiGetEnvelopeIterableImpl())
-        .setOnDemandDeserializerNumberOfRecordsPerThread(config.getOnDemandDeserializerNumberOfRecordsPerThread())
-        .setAlwaysOnDeserializerNumberOfThreads(config.getAlwaysOnDeserializerNumberOfThreads())
-        .setAlwaysOnDeserializerQueueCapacity(config.getAlwaysOnDeserializerQueueCapacity())
         .setUseFastAvro(config.isUseFastAvro())
         .setRetryOnRouterError(config.isRetryOnRouterErrorEnabled())
         .setRetryOnAllErrors(config.isRetryOnAllErrorsEnabled())
@@ -271,52 +265,41 @@ public class ClientConfig<T extends SpecificRecord> {
     return this;
   }
 
-  public BatchDeserializerType getBatchDeserializerType() {
-    return batchDeserializerType;
-  }
-
   public BatchDeserializer getBatchGetDeserializer(Executor executor) {
     return batchDeserializerType.get(executor, this);
   }
 
   public ClientConfig<T> setBatchDeserializerType(BatchDeserializerType batchDeserializerType) {
+    if (batchDeserializerType.equals(BatchDeserializerType.ONE_FUTURE_PER_RECORD) ||
+        batchDeserializerType.equals(BatchDeserializerType.ALWAYS_ON_MULTI_THREADED_PIPELINE)) {
+      LOGGER.info("The " + batchDeserializerType + " BatchDeserializerType is deprecated. Will instead use: "
+          + BatchDeserializerType.BLOCKING + ".");
+    }
     this.batchDeserializerType = batchDeserializerType;
     return this;
   }
 
-  public AvroGenericDeserializer.IterableImpl getMultiGetEnvelopeIterableImpl() {
-    return multiGetEnvelopeIterableImpl;
-  }
-
+  @Deprecated
   public ClientConfig<T> setMultiGetEnvelopeIterableImpl(AvroGenericDeserializer.IterableImpl multiGetEnvelopeIterableImpl) {
-    this.multiGetEnvelopeIterableImpl = multiGetEnvelopeIterableImpl;
+    LOGGER.info(ClientConfig.class.getSimpleName() + "'s multiGetEnvelopeIterableImpl is deprecated and will be ignored.");
     return this;
   }
 
-  public int getOnDemandDeserializerNumberOfRecordsPerThread() {
-    return onDemandDeserializerNumberOfRecordsPerThread;
-  }
-
+  @Deprecated
   public ClientConfig<T> setOnDemandDeserializerNumberOfRecordsPerThread(int onDemandDeserializerNumberOfRecordsPerThread) {
-    this.onDemandDeserializerNumberOfRecordsPerThread = onDemandDeserializerNumberOfRecordsPerThread;
+    LOGGER.info(ClientConfig.class.getSimpleName() + "'s onDemandDeserializerNumberOfRecordsPerThread is deprecated and will be ignored.");
     return this;
   }
 
-  public int getAlwaysOnDeserializerNumberOfThreads() {
-    return alwaysOnDeserializerNumberOfThreads;
-  }
-
+  @Deprecated
   public ClientConfig<T> setAlwaysOnDeserializerNumberOfThreads(int alwaysOnDeserializerNumberOfThreads) {
-    this.alwaysOnDeserializerNumberOfThreads = alwaysOnDeserializerNumberOfThreads;
+    LOGGER.info(ClientConfig.class.getSimpleName() + "'s alwaysOnDeserializerNumberOfThreads is deprecated and will be ignored.");
     return this;
   }
 
-  public int getAlwaysOnDeserializerQueueCapacity() {
-    return alwaysOnDeserializerQueueCapacity;
-  }
-
+  @Deprecated
   public ClientConfig<T> setAlwaysOnDeserializerQueueCapacity(int alwaysOnDeserializerQueueCapacity) {
-    this.alwaysOnDeserializerQueueCapacity = alwaysOnDeserializerQueueCapacity;
+    LOGGER.info(ClientConfig.class.getSimpleName() + "'s alwaysOnDeserializerQueueCapacity is deprecated and will be ignored.");
     return this;
   }
 

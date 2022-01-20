@@ -10,6 +10,7 @@ import com.linkedin.venice.client.schema.SchemaRetriever;
 import com.linkedin.venice.client.stats.ClientStats;
 import com.linkedin.venice.client.stats.Reporter;
 import com.linkedin.venice.client.store.deserialization.BatchDeserializer;
+import com.linkedin.venice.client.store.deserialization.BlockingDeserializer;
 import com.linkedin.venice.client.store.streaming.ComputeResponseRecordV1ChunkedDeserializer;
 import com.linkedin.venice.client.store.streaming.MultiGetResponseRecordV1ChunkedDeserializer;
 import com.linkedin.venice.client.store.streaming.ReadEnvelopeChunkedDeserializer;
@@ -148,7 +149,6 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
   private final Executor deserializationExecutor;
   private final BatchDeserializer<MultiGetResponseRecordV1, K, V> batchGetDeserializer;
   private final BatchDeserializer<ComputeResponseRecordV1, K, GenericRecord> computeDeserializer;
-  private final AvroGenericDeserializer.IterableImpl multiGetEnvelopeIterableImpl;
 
   private CompressorFactory compressorFactory;
 
@@ -199,7 +199,6 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
         .orElse(getDefaultDeserializationExecutor());
     this.batchGetDeserializer = clientConfig.getBatchGetDeserializer(this.deserializationExecutor);
     this.computeDeserializer = clientConfig.getBatchGetDeserializer(this.deserializationExecutor);
-    this.multiGetEnvelopeIterableImpl = clientConfig.getMultiGetEnvelopeIterableImpl();
     this.useFastAvro = clientConfig.isUseFastAvro();
     this.useBlackHoleDeserializer = clientConfig.isUseBlackHoleDeserializer();
     this.reuseObjectsForSerialization = clientConfig.isReuseObjectsForSerialization();
@@ -747,11 +746,12 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
     // TODO: get multi-get response write schema from Router
     validateMultiGetResponseSchemaId(schemaId);
     if (useFastAvro) {
-      return FastSerializerDeserializerFactory.getFastAvroSpecificDeserializer(MultiGetResponseRecordV1.SCHEMA$,
-          MultiGetResponseRecordV1.class, multiGetEnvelopeIterableImpl);
+      return FastSerializerDeserializerFactory.getFastAvroSpecificDeserializer(
+          MultiGetResponseRecordV1.SCHEMA$,
+          MultiGetResponseRecordV1.class);
     } else {
-      return SerializerDeserializerFactory.getAvroSpecificDeserializer(MultiGetResponseRecordV1.class,
-          multiGetEnvelopeIterableImpl);
+      return SerializerDeserializerFactory.getAvroSpecificDeserializer(
+          MultiGetResponseRecordV1.class);
     }
   }
 

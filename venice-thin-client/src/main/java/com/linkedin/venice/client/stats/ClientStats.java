@@ -1,8 +1,6 @@
 package com.linkedin.venice.client.stats;
 
 import com.linkedin.venice.client.store.ClientConfig;
-import com.linkedin.venice.client.store.deserialization.BatchDeserializer;
-import com.linkedin.venice.client.store.deserialization.BatchDeserializerType;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.stats.AbstractVeniceHttpStats;
 import com.linkedin.venice.stats.TehutiUtils;
@@ -34,9 +32,6 @@ public class ClientStats extends AbstractVeniceHttpStats {
   private final Sensor requestSerializationTime;
   private final Sensor requestSubmissionToResponseHandlingTime;
   private final Sensor responseDeserializationTime;
-  private final Sensor responseEnvelopeDeserializationTime;
-  private final Sensor responseRecordsDeserializationTime;
-  private final Sensor responseRecordsDeserializationSubmissionToStartTime;
   private final Sensor responseDecompressionTimeSensor;
   private final Sensor streamingResponseTimeToReceiveFirstRecord;
   private final Sensor streamingResponseTimeToReceive50PctRecord;
@@ -97,29 +92,8 @@ public class ClientStats extends AbstractVeniceHttpStats {
 
     /**
      * The total time it took to process the response.
-     *
-     * For {@link BatchDeserializer} implementations
-     * other than {@link BatchDeserializerType.BLOCKING},
-     * this metric is also further broken down into sub-steps (see below).
      */
     responseDeserializationTime = registerSensorWithDetailedPercentiles("response_deserialization_time", new Avg(), new Max());
-
-    /**
-     * The time it took to iterate over the {@link com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1}
-     * envelopes of the raw response.
-     */
-    responseEnvelopeDeserializationTime = registerSensorWithDetailedPercentiles("response_envelope_deserialization_time", new Avg(), new Max());
-
-    /**
-     * The time it took to deserialize the user's records contained inside the raw envelopes. This is measured
-     * starting from just before deserializing the first record, until finishing to deserialize the last one.
-     */
-    responseRecordsDeserializationTime = registerSensorWithDetailedPercentiles("response_records_deserialization_time", new Avg(), new Max());
-
-    /**
-     * The time it took between beginning to fork off asynchronous tasks and starting to deserialize a record.
-     */
-    responseRecordsDeserializationSubmissionToStartTime = registerSensorWithDetailedPercentiles("response_records_deserialization_submission_to_start_time", new Avg(), new Max());
 
     responseDecompressionTimeSensor = registerSensorWithDetailedPercentiles("response_decompression_time", new Avg(), new Max());
 
@@ -204,18 +178,6 @@ public class ClientStats extends AbstractVeniceHttpStats {
 
   public void recordResponseDeserializationTime(double latency) {
     responseDeserializationTime.record(latency);
-  }
-
-  public void recordResponseEnvelopeDeserializationTime(double latency) {
-    responseEnvelopeDeserializationTime.record(latency);
-  }
-
-  public void recordResponseRecordsDeserializationTime(double latency) {
-    responseRecordsDeserializationTime.record(latency);
-  }
-
-  public void recordResponseRecordsDeserializationSubmissionToStartTime(double latency) {
-    responseRecordsDeserializationSubmissionToStartTime.record(latency);
   }
 
   public void recordResponseDecompressionTime(double latency) {

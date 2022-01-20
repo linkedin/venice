@@ -5,7 +5,6 @@ import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
-import com.linkedin.venice.client.store.deserialization.BatchDeserializerType;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.CompressorFactory;
 import com.linkedin.venice.compute.ComputeOperationUtils;
@@ -23,7 +22,6 @@ import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
-import com.linkedin.venice.serializer.AvroGenericDeserializer;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;
@@ -142,8 +140,6 @@ public class ReadComputeValidationTest {
   @Test
   public void testComputeMissingField() throws Exception {
     CompressionStrategy compressionStrategy = CompressionStrategy.NO_OP;
-    BatchDeserializerType batchDeserializerType = BatchDeserializerType.BLOCKING;
-    AvroGenericDeserializer.IterableImpl iterableImpl = AvroGenericDeserializer.IterableImpl.BLOCKING;
     boolean fastAvro = true;
     boolean valueLargerThan1MB = false;
     UpdateStoreQueryParams params = new UpdateStoreQueryParams();
@@ -163,8 +159,6 @@ public class ReadComputeValidationTest {
         AvroGenericStoreClient<Integer, Object> storeClient = ClientFactory.getAndStartGenericAvroClient(
             ClientConfig.defaultGenericClientConfig(storeName)
                 .setVeniceURL(routerAddr)
-                .setBatchDeserializerType(batchDeserializerType)
-                .setMultiGetEnvelopeIterableImpl(iterableImpl)
                 .setUseFastAvro(fastAvro))) {
 
       pushSyntheticDataToStore(topic, 100, veniceWriter, pushVersion, valueSchemaForCompute, valueSerializer, false, 1);
@@ -206,8 +200,6 @@ public class ReadComputeValidationTest {
   @Test
   public void testComputeSwappedFields() throws Exception {
     CompressionStrategy compressionStrategy = CompressionStrategy.NO_OP;
-    BatchDeserializerType batchDeserializerType = BatchDeserializerType.BLOCKING;
-    AvroGenericDeserializer.IterableImpl iterableImpl = AvroGenericDeserializer.IterableImpl.BLOCKING;
     boolean fastAvro = true;
     UpdateStoreQueryParams params = new UpdateStoreQueryParams();
     params.setCompressionStrategy(compressionStrategy);
@@ -226,8 +218,6 @@ public class ReadComputeValidationTest {
         AvroGenericStoreClient<Integer, Object> storeClient = ClientFactory.getAndStartGenericAvroClient(
             ClientConfig.defaultGenericClientConfig(storeName)
                 .setVeniceURL(routerAddr)
-                .setBatchDeserializerType(batchDeserializerType)
-                .setMultiGetEnvelopeIterableImpl(iterableImpl)
                 .setUseFastAvro(fastAvro))) {
 
       pushSyntheticDataToStore(topic, 100,
@@ -292,10 +282,7 @@ public class ReadComputeValidationTest {
 
     // Update the store and enable read-compute
     final String storeName = Version.parseStoreFromKafkaTopicName(creationResponse.getKafkaTopic());
-    final int pushVersion = creationResponse.getVersion();
     CompressionStrategy compressionStrategy = CompressionStrategy.NO_OP;
-    BatchDeserializerType batchDeserializerType = BatchDeserializerType.BLOCKING;
-    AvroGenericDeserializer.IterableImpl iterableImpl = AvroGenericDeserializer.IterableImpl.BLOCKING;
 
     UpdateStoreQueryParams params = new UpdateStoreQueryParams();
     params.setCompressionStrategy(compressionStrategy);
@@ -330,8 +317,6 @@ public class ReadComputeValidationTest {
         AvroGenericStoreClient<Integer, Object> storeClient = ClientFactory.getAndStartGenericAvroClient(
             ClientConfig.defaultGenericClientConfig(storeName)
                 .setVeniceURL(routerAddr)
-                .setBatchDeserializerType(batchDeserializerType)
-                .setMultiGetEnvelopeIterableImpl(iterableImpl)
                 .setUseFastAvro(false))) {
 
       // Write synthetic value records to the store

@@ -12,7 +12,7 @@ import org.apache.avro.specific.SpecificRecord;
  * @param <T>
  */
 public class FastAvroSpecificDeserializer<T extends SpecificRecord> extends AvroSpecificDeserializer<T> {
-  public FastAvroSpecificDeserializer(Schema writer, Class<T> c, FastSerdeCache cache, IterableImpl iterableImpl) {
-    super(new FastSpecificDatumReader<>(writer, SpecificData.get().getSchema(c), cache), iterableImpl);
+  public FastAvroSpecificDeserializer(Schema writer, Class<T> c, FastSerdeCache cache) {
+    super(new FastSpecificDatumReader<>(writer, SpecificData.get().getSchema(c), cache));
   }
 }

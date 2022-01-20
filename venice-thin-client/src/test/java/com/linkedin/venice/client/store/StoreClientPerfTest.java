@@ -4,7 +4,6 @@ import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.VeniceConstants;
 import com.linkedin.venice.client.schema.SchemaReader;
 import com.linkedin.venice.client.stats.ClientStats;
-import com.linkedin.venice.client.store.deserialization.BatchDeserializerType;
 import com.linkedin.venice.client.utils.StoreClientTestUtils;
 import com.linkedin.venice.compute.protocol.response.ComputeResponseRecordV1;
 import com.linkedin.venice.integration.utils.D2TestUtils;
@@ -12,7 +11,6 @@ import com.linkedin.venice.integration.utils.MockD2ServerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
-import com.linkedin.venice.serializer.AvroGenericDeserializer;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
@@ -26,7 +24,6 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.text.DecimalFormat;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -103,16 +100,9 @@ public class StoreClientPerfTest {
 
     // Test variables
     int[] concurrentCallsPerBatchArray = new int[]{1, 2, 10};
-    List<BatchDeserializerType> batchDeserializerTypes = Arrays.stream(BatchDeserializerType.values())
-        .filter(batchGetDeserializerType -> batchGetDeserializerType != BatchDeserializerType.BLACK_HOLE)
-        .collect(Collectors.toList());
-    List<AvroGenericDeserializer.IterableImpl> iterableImplementations = Arrays.stream(AvroGenericDeserializer.IterableImpl.values())
-        // LAZY_WITH_REPLAY_SUPPORT is only intended for the back end, so not super relevant here. Skipped to speed up the test.
-        .filter(iterable -> iterable != AvroGenericDeserializer.IterableImpl.LAZY_WITH_REPLAY_SUPPORT)
-        .collect(Collectors.toList());
     boolean[] yesAndNo = new boolean[]{true, false};
 
-    int totalTests = yesAndNo.length * 2 * concurrentCallsPerBatchArray.length * batchDeserializerTypes.size() * iterableImplementations.size();
+    int totalTests = yesAndNo.length * 2 * concurrentCallsPerBatchArray.length;
     List<ResultsContainer> resultsContainers = new ArrayList<>();
     int testNumber = 1;
     boolean warmedUp = false;
@@ -120,31 +110,25 @@ public class StoreClientPerfTest {
     for (boolean compute: yesAndNo) {
       for (boolean fastAvro : yesAndNo) {
         for (int concurrentCallsPerBatch : concurrentCallsPerBatchArray) {
-          for (BatchDeserializerType batchDeserializerType : batchDeserializerTypes) {
-            for (AvroGenericDeserializer.IterableImpl iterableImpl : iterableImplementations) {
-              MetricsRepository metricsRepository = new MetricsRepository();
-              ClientConfig newClientConfig = ClientConfig.cloneConfig(baseClientConfig)
-                  .setBatchDeserializerType(batchDeserializerType)
-                  .setMultiGetEnvelopeIterableImpl(iterableImpl)
-                  .setUseFastAvro(fastAvro)
-                  .setMetricsRepository(metricsRepository);
-              if (!warmedUp) {
-                ClientConfig warmUpConfig = ClientConfig.cloneConfig(newClientConfig)
-                    // Throw-away metrics repo, just to avoid double-registering metrics
-                    .setMetricsRepository(new MetricsRepository());
-                LOGGER.info("\n\n");
-                LOGGER.info("Warm up test.\n\n");
-                clientStressTest(warmUpConfig, concurrentCallsPerBatch, compute);
-                warmedUp = true;
-                LOGGER.info("\n\n");
-                LOGGER.info("Warm up finished. Beginning real tests now.\n\n");
-              }
-              LOGGER.info("\n\n");
-              LOGGER.info("Test " + testNumber + "/" + totalTests + "\n\n");
-              resultsContainers.add(clientStressTest(newClientConfig, concurrentCallsPerBatch, compute));
-              testNumber++;
-            }
+          MetricsRepository metricsRepository = new MetricsRepository();
+          ClientConfig newClientConfig = ClientConfig.cloneConfig(baseClientConfig)
+              .setUseFastAvro(fastAvro)
+              .setMetricsRepository(metricsRepository);
+          if (!warmedUp) {
+            ClientConfig warmUpConfig = ClientConfig.cloneConfig(newClientConfig)
+                // Throw-away metrics repo, just to avoid double-registering metrics
+                .setMetricsRepository(new MetricsRepository());
+            LOGGER.info("\n\n");
+            LOGGER.info("Warm up test.\n\n");
+            clientStressTest(warmUpConfig, concurrentCallsPerBatch, compute);
+            warmedUp = true;
+            LOGGER.info("\n\n");
+            LOGGER.info("Warm up finished. Beginning real tests now.\n\n");
           }
+          LOGGER.info("\n\n");
+          LOGGER.info("Test " + testNumber + "/" + totalTests + "\n\n");
+          resultsContainers.add(clientStressTest(newClientConfig, concurrentCallsPerBatch, compute));
+          testNumber++;
           LOGGER.info("\n\n");
           LOGGER.info("Finished "
               + (compute ? "compute" : "batch get") + " requests"
@@ -307,8 +291,6 @@ public class StoreClientPerfTest {
       LOGGER.info("Request Type:           " + r.put(compute ? "compute" : "batch-get"));
       LOGGER.info("Fast Avro:              " + r.put(clientConfig.isUseFastAvro()));
       LOGGER.info("Max concurrent queries: " + r.put(numberOfConcurrentCallsPerBatch));
-      LOGGER.info("Batch get deserializer: " + r.put(clientConfig.getBatchDeserializerType()));
-      LOGGER.info("Envelope iterable impl: " + r.put(clientConfig.getMultiGetEnvelopeIterableImpl()));
       LOGGER.info("Total queries:          " + r.put(numberOfCalls));
       LOGGER.info("keys/query:             " + keysPerCall);
       LOGGER.info("bytes/value:            " + valueSizeInBytes);

@@ -34,7 +34,7 @@ public class ChunkAssembler {
   public ChunkAssembler() {
     this.chunksByCompositeKey = new HashMap<>();
     SpecificDatumReader<ChunkedKeySuffix> specificDatumReader = new SpecificDatumReader<>(ChunkedKeySuffix.class);
-    this.chunkedKeySuffixDeserializer = new AvroSpecificDeserializer<>(specificDatumReader, AvroGenericDeserializer.IterableImpl.BLOCKING);
+    this.chunkedKeySuffixDeserializer = new AvroSpecificDeserializer<>(specificDatumReader);
     this.keyWithChunkingSuffixSerializer = new KeyWithChunkingSuffixSerializer();
     this.manifestSerializer = new ChunkedValueManifestSerializer(true);
   }
