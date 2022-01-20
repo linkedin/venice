@@ -96,21 +96,6 @@ public class SerializerDeserializerFactory {
     return getAvroGenericDeserializer(schema, schema);
   }
 
-  public static <V extends SpecificRecord> RecordDeserializer<V> getAvroSpecificDeserializer(Schema writer, Class<V> c) {
-    return getAvroSpecificDeserializer(writer, c, null);
-  }
-
-  /**
-   * This function is assuming that both writer and reader are using the same schema defined in {@param c}.
-   * @param c
-   * @param <V>
-   * @return
-   */
-  public static <V extends SpecificRecord> RecordDeserializer<V> getAvroSpecificDeserializer(Class<V> c, AvroGenericDeserializer.IterableImpl multiGetEnvelopeIterableImpl) {
-    Schema writer = SpecificData.get().getSchema(c);
-    return getAvroSpecificDeserializer(writer, c, multiGetEnvelopeIterableImpl);
-  }
-
   /**
    * This function is assuming that both writer and reader are using the same schema defined in {@param c}.
    * @param c
@@ -118,13 +103,14 @@ public class SerializerDeserializerFactory {
    * @return
    */
   public static <V extends SpecificRecord> RecordDeserializer<V> getAvroSpecificDeserializer(Class<V> c) {
-    return getAvroSpecificDeserializer(c, null);
+    Schema writer = SpecificData.get().getSchema(c);
+    return getAvroSpecificDeserializer(writer, c);
   }
 
-  public static <V extends SpecificRecord> RecordDeserializer<V> getAvroSpecificDeserializer(Schema writer, Class<V> c, AvroGenericDeserializer.IterableImpl multiGetEnvelopeIterableImpl) {
+  public static <V extends SpecificRecord> RecordDeserializer<V> getAvroSpecificDeserializer(Schema writer, Class<V> c) {
     return getAvroSpecificDeserializerInternal(writer, c,
         container -> avroSpecificDeserializerMap.computeIfAbsent(container,
-            k -> new AvroSpecificDeserializer<V>(container.writer, container.c, multiGetEnvelopeIterableImpl)));
+            k -> new AvroSpecificDeserializer<V>(container.writer, container.c)));
   }
 
   protected static <V extends SpecificRecord> RecordDeserializer<V> getAvroSpecificDeserializerInternal(

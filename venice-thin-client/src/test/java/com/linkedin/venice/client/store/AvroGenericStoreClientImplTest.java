@@ -5,7 +5,6 @@ import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.schema.SchemaReader;
-import com.linkedin.venice.client.store.deserialization.BatchDeserializerType;
 import com.linkedin.venice.client.store.transport.D2TransportClient;
 import com.linkedin.venice.client.store.transport.HttpTransportClient;
 import com.linkedin.venice.client.utils.StoreClientTestUtils;
@@ -50,7 +49,6 @@ import java.util.concurrent.ExecutionException;
 @Test(singleThreaded = true)
 public class AvroGenericStoreClientImplTest {
   private static final Logger LOGGER = Logger.getLogger(AvroGenericStoreClientImplTest.class);
-  private static final BatchDeserializerType BATCH_GET_DESERIALIZER_TYPE = BatchDeserializerType.ONE_FUTURE_PER_RECORD;
 
   private final ObjectMapper mapper = new ObjectMapper();
   private final String storeName = "test_store";
@@ -104,8 +102,7 @@ public class AvroGenericStoreClientImplTest {
             .defaultGenericClientConfig(storeName)
             .setD2ServiceName(D2TestUtils.DEFAULT_TEST_SERVICE_NAME)
             .setD2Client(d2Client)
-            .setMetricsRepository(d2ClientMetricsRepository)
-            .setBatchDeserializerType(BATCH_GET_DESERIALIZER_TYPE));
+            .setMetricsRepository(d2ClientMetricsRepository));
     storeClients.put(D2TransportClient.class.getSimpleName(), d2StoreClient);
     storeClientMetricsRepositories.put(d2StoreClient, d2ClientMetricsRepository);
     // test store client with fast avro
@@ -116,7 +113,6 @@ public class AvroGenericStoreClientImplTest {
             .setD2ServiceName(D2TestUtils.DEFAULT_TEST_SERVICE_NAME)
             .setD2Client(d2Client)
             .setMetricsRepository(d2ClientWithFastAvroMetricsRepository)
-            .setBatchDeserializerType(BATCH_GET_DESERIALIZER_TYPE)
             .setUseFastAvro(true));
     storeClients.put(D2TransportClient.class.getSimpleName() + "-fast_avro", d2StoreClientWithFastAvro);
     storeClientMetricsRepositories.put(d2StoreClientWithFastAvro, d2ClientWithFastAvroMetricsRepository);

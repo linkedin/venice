@@ -236,7 +236,10 @@ public abstract class TestBatch {
           } catch (ExecutionException e) {
             String exceptionRegex = ".* Compressor not available for resource " + avroClient.getStoreName()
                 + "\\. Dictionary not downloaded\\.\\n";
-            Assert.assertTrue(e.getMessage().matches(exceptionRegex));
+            boolean matchesExpectedMessage = e.getMessage().matches(exceptionRegex);
+            if (!matchesExpectedMessage) {
+              Assert.fail("Unexpected exception message", e);
+            }
           }
         }, new UpdateStoreQueryParams().setCompressionStrategy(CompressionStrategy.ZSTD_WITH_DICT));
   }
