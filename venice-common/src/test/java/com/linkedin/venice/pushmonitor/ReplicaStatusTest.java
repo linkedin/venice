@@ -89,22 +89,53 @@ public class ReplicaStatusTest {
   }
 
   @Test
-  public void testIncrementalPushStatesGotRemovedFirst() {
+  public void testStatusHistorySaveLastValidStatus() {
     ReplicaStatus replicaStatus = new ReplicaStatus(instanceId);
-    for (int i = 0; i < ReplicaStatus.MAX_HISTORY_LENGTH; i++) {
+    replicaStatus.updateStatus(COMPLETED);
+    replicaStatus.updateStatus(START_OF_INCREMENTAL_PUSH_RECEIVED);
+    for (int i = 0; i <= ReplicaStatus.MAX_HISTORY_LENGTH + 1; i++) {
       replicaStatus.updateStatus(STARTED);
     }
-    replicaStatus.updateStatus(START_OF_INCREMENTAL_PUSH_RECEIVED, "testInc1");
+    replicaStatus.updateStatus(COMPLETED);
+    replicaStatus.updateStatus(END_OF_INCREMENTAL_PUSH_RECEIVED);
+
+
+    Assert.assertEquals(replicaStatus.getStatusHistory().size(), replicaStatus.MAX_HISTORY_LENGTH);
+    Assert.assertEquals(replicaStatus.getStatusHistory().get(0).getStatus(), START_OF_INCREMENTAL_PUSH_RECEIVED);
+    Assert.assertEquals(replicaStatus.getStatusHistory().get(replicaStatus.MAX_HISTORY_LENGTH-1).getStatus(), END_OF_INCREMENTAL_PUSH_RECEIVED);
+    Assert.assertEquals(replicaStatus.getStatusHistory().get(replicaStatus.MAX_HISTORY_LENGTH-2).getStatus(), COMPLETED);
+  }
+
+  @Test
+  public void testIncrementalPushStatesGotRemovedFirst() {
+    ReplicaStatus replicaStatus = new ReplicaStatus(instanceId);
+    replicaStatus.updateStatus(STARTED);
+    replicaStatus.updateStatus(END_OF_PUSH_RECEIVED);
+    replicaStatus.updateStatus(COMPLETED);
+
+    for (int i = 0; i < ReplicaStatus.MAX_HISTORY_LENGTH; i++) {
+      replicaStatus.updateStatus(START_OF_INCREMENTAL_PUSH_RECEIVED, "testInc1");
+    }
     replicaStatus.updateStatus(END_OF_INCREMENTAL_PUSH_RECEIVED, "testInc1");
+    replicaStatus.updateStatus(TOPIC_SWITCH_RECEIVED);
+
     // since we are adding another inc push and the max length is reached, the previous inc push status should be removed.
     replicaStatus.updateStatus(START_OF_INCREMENTAL_PUSH_RECEIVED, "testInc2");
     replicaStatus.updateStatus(END_OF_INCREMENTAL_PUSH_RECEIVED, "testInc2");
 
     List<StatusSnapshot> statusHistory = replicaStatus.getStatusHistory();
-    Assert.assertEquals(statusHistory.size(), replicaStatus.MAX_HISTORY_LENGTH);
-    // verify it's the first pair of inc push status got removed
-    statusHistory.forEach((i) -> Assert.assertTrue(!isIncrementalPushStatus(i.getStatus()) ||
-        i.getIncrementalPushVersion().equals(replicaStatus.getIncrementalPushVersion())));
+    Assert.assertEquals(statusHistory.size(), ReplicaStatus.MAX_HISTORY_LENGTH);
+    boolean containsCompleted = false, containsEOP = false, containsTS = false;
+    for (StatusSnapshot statusSnapshot : statusHistory) {
+      if (statusSnapshot.getStatus() == COMPLETED) {
+        containsCompleted = true;
+      } else if (statusSnapshot.getStatus() == END_OF_PUSH_RECEIVED) {
+        containsEOP = true;
+      } else if (statusSnapshot.getStatus() == TOPIC_SWITCH_RECEIVED) {
+        containsTS = true;
+      }
+    }
+    Assert.assertTrue(containsCompleted && containsEOP && containsTS);
   }
 
   @Test
