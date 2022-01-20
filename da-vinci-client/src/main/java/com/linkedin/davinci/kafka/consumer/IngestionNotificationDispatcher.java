@@ -4,10 +4,7 @@ import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.venice.exceptions.VeniceIngestionTaskKilledException;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.HybridStoreQuotaStatus;
-import com.linkedin.venice.utils.LatencyUtils;
 import java.util.Collection;
-import java.util.HashMap;
-import java.util.Map;
 import java.util.Queue;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
@@ -28,8 +25,8 @@ class IngestionNotificationDispatcher {
   private final BooleanSupplier isCurrentVersion;
 
   private long lastProgressReportTime = 0;
-  // Contains the last reported Notification record for each partition.
-  private final Map<Integer, NotificationRecord> lastQuotaStatusReported = new HashMap<>();
+  private long lastQuotaReportTime = 0;
+  private HybridStoreQuotaStatus lastQuotaStatusReported = HybridStoreQuotaStatus.UNKNOWN;
 
   public IngestionNotificationDispatcher(Queue<VeniceNotifier> notifiers, String topic, BooleanSupplier isCurrentVersion) {
     this.logger = LogManager.getLogger(IngestionNotificationDispatcher.class.getSimpleName() + " for [ Topic: " + topic + " ] ");
@@ -130,15 +127,15 @@ class IngestionNotificationDispatcher {
                 ", Last Offset: " + pcs.getOffsetRecord().getLocalVersionTopicOffset());
             return false;
           }
-          if (!forceCompletion && !pcs.isComplete()) {
-            logger.error("Unexpected! Received a request to report completion "
-                + "but the PartitionConsumptionState says it is incomplete: " + pcs);
-            return false;
-          }
-          if (pcs.isCompletionReported()) {
-            logger.info("Received a request to report completion, but it has already been reported. Skipping.");
-            return false;
-          }
+            if (!forceCompletion && !pcs.isComplete()) {
+              logger.error("Unexpected! Received a request to report completion "
+                  + "but the PartitionConsumptionState says it is incomplete: " + pcs);
+              return false;
+            }
+            if (pcs.isCompletionReported()) {
+              logger.info("Received a request to report completion, but it has already been reported. Skipping.");
+              return false;
+            }
           return true;
         }
     );
@@ -147,30 +144,26 @@ class IngestionNotificationDispatcher {
   void reportQuotaNotViolated(PartitionConsumptionState pcs) {
     report(pcs, HybridStoreQuotaStatus.QUOTA_NOT_VIOLATED,
         notifier -> notifier.quotaNotViolated(topic, pcs.getUserPartition(), pcs.getOffsetRecord().getLocalVersionTopicOffset()),
-        () -> checkQuotaStatusReported(pcs.getUserPartition(), HybridStoreQuotaStatus.QUOTA_NOT_VIOLATED)
+        () -> checkQuotaStatusReported(HybridStoreQuotaStatus.QUOTA_NOT_VIOLATED)
     );
   }
 
   void reportQuotaViolated(PartitionConsumptionState pcs) {
     report(pcs, HybridStoreQuotaStatus.QUOTA_VIOLATED,
         notifier -> notifier.quotaViolated(topic, pcs.getUserPartition(), pcs.getOffsetRecord().getLocalVersionTopicOffset()),
-        () -> checkQuotaStatusReported(pcs.getUserPartition(), HybridStoreQuotaStatus.QUOTA_VIOLATED)
+        () -> checkQuotaStatusReported(HybridStoreQuotaStatus.QUOTA_VIOLATED)
     );
   }
 
-  private boolean checkQuotaStatusReported(int partitionId, HybridStoreQuotaStatus status) {
-    if (!lastQuotaStatusReported.containsKey(partitionId)) {
-      lastQuotaStatusReported.put(partitionId, new NotificationRecord(System.currentTimeMillis(), status));
+  private boolean checkQuotaStatusReported(HybridStoreQuotaStatus status) {
+    long timeElapsed = System.currentTimeMillis() - lastQuotaReportTime;
+    if (!lastQuotaStatusReported.equals(status) || timeElapsed >= QUOTA_REPORT_INTERVAL) {
+      lastQuotaReportTime = System.currentTimeMillis();
+      lastQuotaStatusReported = status;
       return true;
+    } else {
+      return false;
     }
-
-    NotificationRecord lastRecord = lastQuotaStatusReported.get(partitionId);
-    if (lastRecord.getStatus() != status ||
-        LatencyUtils.getLatencyInMS(lastRecord.getTimeStampInMs()) >= QUOTA_REPORT_INTERVAL) {
-      lastQuotaStatusReported.put(partitionId, new NotificationRecord(System.currentTimeMillis(), status));
-      return true;
-    }
-    return false;
   }
 
   void reportProgress(PartitionConsumptionState pcs) {
@@ -304,23 +297,5 @@ class IngestionNotificationDispatcher {
           notifier.stopped(topic, pcs.getUserPartition(), pcs.getOffsetRecord().getLocalVersionTopicOffset());
         },
         () -> true);
-  }
-
-  private static class NotificationRecord {
-    private final long timeStampInMs;
-    private final HybridStoreQuotaStatus status;
-
-    public NotificationRecord(long timeStampInMs, HybridStoreQuotaStatus status) {
-      this.timeStampInMs = timeStampInMs;
-      this.status = status;
-    }
-
-    public HybridStoreQuotaStatus getStatus() {
-      return status;
-    }
-
-    public long getTimeStampInMs() {
-      return timeStampInMs;
-    }
   }
 }

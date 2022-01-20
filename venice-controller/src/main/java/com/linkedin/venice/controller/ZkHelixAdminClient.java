@@ -42,15 +42,12 @@ public class ZkHelixAdminClient implements HelixAdminClient {
   private final String haasSuperClusterName;
   private final int controllerClusterReplicaCount;
 
-  public ZkHelixAdminClient(VeniceControllerMultiClusterConfig multiClusterConfigs, MetricsRepository metricsRepository,
-      long zkClientOpRetryTimeoutInMs) {
+  public ZkHelixAdminClient(VeniceControllerMultiClusterConfig multiClusterConfigs, MetricsRepository metricsRepository) {
     this.multiClusterConfigs = multiClusterConfigs;
     haasSuperClusterName = multiClusterConfigs.getControllerHAASSuperClusterName();
     controllerClusterReplicaCount = multiClusterConfigs.getControllerClusterReplica();
-    ZkClient helixAdminZkClient =
-        ZkClientFactory.newZkClient(multiClusterConfigs.getZkAddress(), zkClientOpRetryTimeoutInMs);
-    helixAdminZkClient.subscribeStateChanges(
-        new ZkClientStatusStats(metricsRepository, CONTROLLER_HAAS_ZK_CLIENT_NAME));
+    ZkClient helixAdminZkClient = ZkClientFactory.newZkClient(multiClusterConfigs.getZkAddress());
+    helixAdminZkClient.subscribeStateChanges(new ZkClientStatusStats(metricsRepository, CONTROLLER_HAAS_ZK_CLIENT_NAME));
     helixAdminZkClient.setZkSerializer(new ZNRecordSerializer());
     if (!helixAdminZkClient.waitUntilConnected(ZkClient.DEFAULT_CONNECTION_TIMEOUT, TimeUnit.MILLISECONDS)) {
       throw new VeniceException("Failed to connect to ZK within " + ZkClient.DEFAULT_CONNECTION_TIMEOUT + " ms!");

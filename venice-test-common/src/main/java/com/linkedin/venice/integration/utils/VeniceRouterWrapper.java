@@ -95,9 +95,7 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
       }
 
       VeniceProperties routerProperties = builder.build();
-      RouterServer router =
-          new RouterServer(routerProperties, d2Servers, Optional.empty(), Optional.of(SslUtils.getLocalSslFactory()),
-              ZK_CLIENT_OPERATION_TIMEOUT_IN_MS);
+      RouterServer router = new RouterServer(routerProperties, d2Servers, Optional.empty(), Optional.of(SslUtils.getLocalSslFactory()));
       return new VeniceRouterWrapper(serviceName, dataDirectory, router, routerProperties, zkAddress);
     };
   }
