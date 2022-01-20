@@ -209,6 +209,7 @@ public class PartitionWiseKafkaConsumerService extends KafkaConsumerService {
         return;
       }
       consumer.unSubscribe(topic, partition);
+      sharedKafkaConsumerMap.remove(topicPartition);
       if (Version.isRealTimeTopic(topic)) {
         removeRealTimeTopicToSharedConsumerMapping(consumer, topic, partition);
       }

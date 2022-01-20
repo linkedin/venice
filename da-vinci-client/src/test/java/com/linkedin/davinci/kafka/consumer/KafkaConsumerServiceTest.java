@@ -141,10 +141,10 @@ public class KafkaConsumerServiceTest {
 
   @Test
   public void testPartitionWiseGetConsumer() throws Exception {
-    SharedKafkaConsumer consumer1 = mock(SharedKafkaConsumer.class);
+    PartitionWiseSharedKafkaConsumer consumer1 = mock(PartitionWiseSharedKafkaConsumer.class);
     when(consumer1.hasSubscription()).thenReturn(true);
 
-    SharedKafkaConsumer consumer2 = mock(SharedKafkaConsumer.class);
+    PartitionWiseSharedKafkaConsumer consumer2 = mock(PartitionWiseSharedKafkaConsumer.class);
     when(consumer2.hasSubscription()).thenReturn(true);
 
     String storeName1 = Utils.getUniqueString("test_consumer_service1");
@@ -199,8 +199,15 @@ public class KafkaConsumerServiceTest {
     Assert.assertEquals(consumer1.getAssignmentSize(), consumer2.getAssignmentSize());
     Assert.assertNotEquals(assignedConsumerForTask1, assignedConsumerForTask2,
         "We should avoid to share consumer when there is consumer not assigned topic.");
-  }
 
+    // Unsubscribe check.
+    for (int partitionId = 0; partitionId < partitionNumForTask1; partitionId++) {
+      assignedConsumerForTask1.unSubscribe(topicForStoreName1, partitionId);
+      TopicPartition topicPartition = new TopicPartition(topicForStoreName1, partitionId);
+      Assert.assertNull(assignedConsumerForTask1.getSharedKafkaConsumerMap().get(topicPartition));
+    }
+    Assert.assertFalse(assignedConsumerForTask1.hasSubscription());
+  }
 
   @Test
   public void testPartitionWiseGetConsumerForRTTopic() throws Exception {
