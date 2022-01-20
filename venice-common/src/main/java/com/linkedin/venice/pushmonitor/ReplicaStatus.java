@@ -90,17 +90,14 @@ public class ReplicaStatus {
     }
 
     /**
-     * Only remove inc push status related states for first run. After this run, {@link MAX_HISTORY_LENGTH}
-     * may not be fulfilled as the history could contains a very long batch push status history.
+     * Removed old statuses when status list is over MAX_HISTORY_LENGTH.
+     * Preserve:
+     * 1. TOPIC_SWITCH_RECEIVED and END_OF_PUSH_RECEIVED
+     * 2. COMPLETED, inc pushes if there is only single copy
+     *
      * TODO: If parallel inc push doesn't need inc status history, we can choose to keep only the current inc push status.
      */
-    removeOldHistoryStatuses(true);
-    /**
-     * Remove batch status on second run so that {@link MAX_HISTORY_LENGTH} is fulfilled. The reason that we do it
-     * in two runs is that we don't want to lose batch push statuses because of too many incremental pushes.
-     * Especially EOP/COMPLETED, which are used to tell whether a version is good for buffer replay/ready to serve.
-     */
-    removeOldHistoryStatuses(false);
+    removeOldStatuses();
 
     StatusSnapshot snapshot = new StatusSnapshot(status, LocalDateTime.now().toString());
     if (!StringUtils.isEmpty(incrementalPushVersion)) {
@@ -109,21 +106,38 @@ public class ReplicaStatus {
     statusHistory.add(snapshot);
   }
 
-  private void removeOldHistoryStatuses(boolean onlyRemoveIncPushStatuses) {
+  private void removeOldStatuses() {
+    if (statusHistory.size() < MAX_HISTORY_LENGTH) {
+      return;
+    }
+
+    long completeCount = statusHistory.stream().filter(status -> status.getStatus() == COMPLETED).count();
+    long incPushCount = statusHistory.stream().filter(status -> isIncrementalPushStatus(status.getStatus())).count();
     Iterator<StatusSnapshot> itr = statusHistory.iterator();
+
     while (itr.hasNext()) {
-      StatusSnapshot oldSnapshot = itr.next();
-      ExecutionStatus oldStatus = oldSnapshot.getStatus();
-      if (statusHistory.size() >= MAX_HISTORY_LENGTH) {
-        if (!onlyRemoveIncPushStatuses) {
-          itr.remove();
-        } else if (onlyRemoveIncPushStatuses && isIncrementalPushStatus(oldStatus) &&
-            (!oldSnapshot.getIncrementalPushVersion().equals(incrementalPushVersion))) {
-          itr.remove();
-        }
-      } else {
+      if (statusHistory.size() < MAX_HISTORY_LENGTH) {
         break;
       }
+      StatusSnapshot oldSnapshot = itr.next();
+      ExecutionStatus oldStatus = oldSnapshot.getStatus();
+      if (oldStatus == TOPIC_SWITCH_RECEIVED || oldStatus == END_OF_PUSH_RECEIVED
+          || isIncrementalPushStatus(oldStatus) && oldSnapshot.getIncrementalPushVersion().equals(incrementalPushVersion)) {
+        continue;
+      }
+        if (oldStatus == COMPLETED) {
+          if (completeCount > 1) {
+            itr.remove();
+            completeCount--;
+          }
+        }  else if (isIncrementalPushStatus(oldStatus)) {
+          if (incPushCount > 1) {
+            itr.remove();
+            incPushCount--;
+          }
+        } else {
+          itr.remove();
+        }
     }
   }
 
