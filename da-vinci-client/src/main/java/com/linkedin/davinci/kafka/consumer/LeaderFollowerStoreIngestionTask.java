@@ -621,6 +621,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         leaderStartOffset,
         leaderSourceKafkaURL
     );
+
+    syncConsumedUpstreamRTOffsetMapIfNeeded(partitionConsumptionState, Collections.singletonMap(leaderSourceKafkaURL, leaderStartOffset));
+
     logger.info(String.format("%s, as a leader, started consuming from topic %s partition %d at offset %d",
         consumerTaskId, offsetRecord.getLeaderTopic(), partition, leaderStartOffset));
   }
@@ -692,11 +695,26 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             sourceKafkaURL
     );
 
+    syncConsumedUpstreamRTOffsetMapIfNeeded(partitionConsumptionState,Collections.singletonMap(sourceKafkaURL, upstreamStartOffset));
+
     logger.info(consumerTaskId + " leader successfully switch feed topic from " + currentLeaderTopic + " to "
         + newSourceTopicName + " offset " + upstreamStartOffset + " partition " + partition);
 
     // In case new topic is empty and leader can never become online
     defaultReadyToServeChecker.apply(partitionConsumptionState);
+  }
+
+  protected void syncConsumedUpstreamRTOffsetMapIfNeeded(PartitionConsumptionState pcs, Map<String, Long> upstreamStartOffsetByKafkaURL) {
+    // Update in-memory consumedUpstreamRTOffsetMap in case no RT record is consumed after the subscription
+    final String leaderTopic = pcs.getOffsetRecord().getLeaderTopic();
+    if (leaderTopic != null && Version.isRealTimeTopic(leaderTopic)) {
+      upstreamStartOffsetByKafkaURL.forEach((kafkaURL, upstreamStartOffset) -> {
+        if (upstreamStartOffset >
+            getLatestConsumedUpstreamOffsetForHybridOffsetLagMeasurement(pcs, kafkaURL)) {
+          updateLatestInMemoryLeaderConsumedRTOffset(pcs, kafkaURL, upstreamStartOffset);
+        }
+      });
+    }
   }
 
   protected void waitForLastLeaderPersistFuture(PartitionConsumptionState partitionConsumptionState, String errorMsg) {
