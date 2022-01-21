@@ -50,7 +50,6 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.atomic.AtomicReference;
 import org.apache.avro.Schema;
 import org.apache.avro.util.Utf8;
 import org.apache.log4j.Logger;
@@ -131,8 +130,7 @@ public class TestMultiDataCenterPush {
     Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir);
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
     String storeName = Utils.getUniqueString("store");
-    VeniceControllerWrapper parentController =
-        parentControllers.stream().filter(c -> c.isMasterController(clusterName)).findAny().get();
+    VeniceControllerWrapper parentController = multiColoMultiClusterWrapper.getMasterParentControllerWithRetries(clusterName);
     Properties props = defaultH2VProps(parentController.getControllerUrl(), inputDirPath, storeName);
     createStoreForJob(clusterName, recordSchema, props).close();
 
@@ -361,18 +359,12 @@ public class TestMultiDataCenterPush {
   @Test(timeOut = TEST_TIMEOUT)
   public void testFailedAdminMessages() {
     String clusterName = CLUSTER_NAMES[1];
-    AtomicReference<VeniceControllerWrapper> parentController = new AtomicReference<>();
-    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, false, true, () -> {
-      Optional<VeniceControllerWrapper> parentControllerWrapper = parentControllers.stream().filter(c -> c.isMasterController(clusterName)).findAny();
-      Assert.assertTrue(parentControllerWrapper.isPresent(), "Cannot find master parent controller for cluster: " + clusterName);
-      parentController.set(parentControllerWrapper.get());
-    });
-
-    Admin admin = parentController.get().getVeniceAdmin();
+    VeniceControllerWrapper parentController = multiColoMultiClusterWrapper.getMasterParentControllerWithRetries(clusterName);
+    Admin admin = parentController.getVeniceAdmin();
     VeniceWriterFactory veniceWriterFactory = admin.getVeniceWriterFactory();
     VeniceWriter<byte[], byte[], byte[]> veniceWriter = veniceWriterFactory.createBasicVeniceWriter(AdminTopicUtils.getTopicNameFromClusterName(CLUSTER_NAMES[1]));
     AdminOperationSerializer adminOperationSerializer = new AdminOperationSerializer();
-    long executionId = parentController.get().getVeniceAdmin().getLastSucceedExecutionId(clusterName) + 1;
+    long executionId = parentController.getVeniceAdmin().getLastSucceedExecutionId(clusterName) + 1;
     // send a bad admin message
     veniceWriter.put(
         emptyKeyBytes,
@@ -407,7 +399,7 @@ public class TestMultiDataCenterPush {
     // Currently store level isolation is not fully implemented for parent controllers yet.
     // Skipping the problematic admin message is required to proceed with the other tests while child controllers can
     // still function with the blocking admin message.
-    AdminConsumerService adminConsumerService = parentController.get().getAdminConsumerServiceByCluster(clusterName);
+    AdminConsumerService adminConsumerService = parentController.getAdminConsumerServiceByCluster(clusterName);
     adminConsumerService.setOffsetToSkip(clusterName, adminConsumerService.getFailingOffset(), false);
     TestUtils.waitForNonDeterministicCompletion(5, TimeUnit.SECONDS, () -> {
       boolean allFailedMessagesSkipped = adminConsumerService.getFailingOffset() == -1;
@@ -428,8 +420,7 @@ public class TestMultiDataCenterPush {
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
     String storeName = Utils.getUniqueString("test-re-push-store");
     long userSetHybridRewindInSeconds = Time.SECONDS_PER_DAY;
-    VeniceControllerWrapper parentController =
-        parentControllers.stream().filter(c -> c.isMasterController(clusterName)).findAny().get();
+    VeniceControllerWrapper parentController = multiColoMultiClusterWrapper.getMasterParentControllerWithRetries(clusterName);
     Properties props = defaultH2VProps(parentController.getControllerUrl(), inputDirPath, storeName);
     createStoreForJob(clusterName, recordSchema, props).close();
     VeniceWriter<String, String, byte[]> incPushToVTWriter = null;
