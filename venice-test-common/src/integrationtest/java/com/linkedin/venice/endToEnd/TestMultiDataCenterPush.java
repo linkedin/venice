@@ -34,7 +34,6 @@ import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.StatusSnapshot;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.utils.DataProviderUtils;
-import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.TestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
@@ -47,18 +46,17 @@ import io.tehuti.Metric;
 
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.atomic.AtomicReference;
 import org.apache.avro.Schema;
 import org.apache.avro.util.Utf8;
 import org.apache.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
-import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 import java.io.File;
@@ -363,13 +361,18 @@ public class TestMultiDataCenterPush {
   @Test(timeOut = TEST_TIMEOUT)
   public void testFailedAdminMessages() {
     String clusterName = CLUSTER_NAMES[1];
-    VeniceControllerWrapper parentController =
-        parentControllers.stream().filter(c -> c.isMasterController(clusterName)).findAny().get();
-    Admin admin = parentController.getVeniceAdmin();
+    AtomicReference<VeniceControllerWrapper> parentController = new AtomicReference<>();
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, false, true, () -> {
+      Optional<VeniceControllerWrapper> parentControllerWrapper = parentControllers.stream().filter(c -> c.isMasterController(clusterName)).findAny();
+      Assert.assertTrue(parentControllerWrapper.isPresent(), "Cannot find master parent controller for cluster: " + clusterName);
+      parentController.set(parentControllerWrapper.get());
+    });
+
+    Admin admin = parentController.get().getVeniceAdmin();
     VeniceWriterFactory veniceWriterFactory = admin.getVeniceWriterFactory();
     VeniceWriter<byte[], byte[], byte[]> veniceWriter = veniceWriterFactory.createBasicVeniceWriter(AdminTopicUtils.getTopicNameFromClusterName(CLUSTER_NAMES[1]));
     AdminOperationSerializer adminOperationSerializer = new AdminOperationSerializer();
-    long executionId = parentController.getVeniceAdmin().getLastSucceedExecutionId(clusterName) + 1;
+    long executionId = parentController.get().getVeniceAdmin().getLastSucceedExecutionId(clusterName) + 1;
     // send a bad admin message
     veniceWriter.put(
         emptyKeyBytes,
@@ -404,7 +407,7 @@ public class TestMultiDataCenterPush {
     // Currently store level isolation is not fully implemented for parent controllers yet.
     // Skipping the problematic admin message is required to proceed with the other tests while child controllers can
     // still function with the blocking admin message.
-    AdminConsumerService adminConsumerService = parentController.getAdminConsumerServiceByCluster(clusterName);
+    AdminConsumerService adminConsumerService = parentController.get().getAdminConsumerServiceByCluster(clusterName);
     adminConsumerService.setOffsetToSkip(clusterName, adminConsumerService.getFailingOffset(), false);
     TestUtils.waitForNonDeterministicCompletion(5, TimeUnit.SECONDS, () -> {
       boolean allFailedMessagesSkipped = adminConsumerService.getFailingOffset() == -1;
