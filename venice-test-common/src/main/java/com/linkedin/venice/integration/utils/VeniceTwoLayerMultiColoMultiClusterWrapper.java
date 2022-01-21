@@ -254,11 +254,11 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
     return parentKafkaBrokerWrapper;
   }
 
-  public VeniceControllerWrapper getMasterController(String clusterName) {
-    return getMasterController(clusterName, 60 * Time.MS_PER_SECOND);
+  public VeniceControllerWrapper getMasterParentControllerWithRetries(String clusterName) {
+    return getMasterParentControllerWithRetries(clusterName, 60 * Time.MS_PER_SECOND);
   }
 
-  public VeniceControllerWrapper getMasterController(String clusterName, long timeoutMs) {
+  public VeniceControllerWrapper getMasterParentControllerWithRetries(String clusterName, long timeoutMs) {
     long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMs);
     while (System.nanoTime() < deadline) {
       for (VeniceControllerWrapper controller : parentControllers) {

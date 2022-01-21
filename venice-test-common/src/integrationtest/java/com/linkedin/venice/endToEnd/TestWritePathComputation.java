@@ -57,7 +57,7 @@ public class TestWritePathComputation {
       String storeName = "test-store0";
 
       // Create store
-      Admin parentAdmin = twoLayerMultiColoMultiClusterWrapper.getMasterController(clusterName).getVeniceAdmin();
+      Admin parentAdmin = twoLayerMultiColoMultiClusterWrapper.getMasterParentControllerWithRetries(clusterName).getVeniceAdmin();
       Admin childAdmin = multiCluster.getMasterController(clusterName, GET_MASTER_CONTROLLER_TIMEOUT).getVeniceAdmin();
       parentAdmin.createStore(clusterName, storeName, "tester", "\"string\"", "\"string\"");
       TestUtils.waitForNonDeterministicAssertion(15, TimeUnit.SECONDS, () -> {
