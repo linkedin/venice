@@ -1,5 +1,6 @@
 package com.linkedin.venice.restart;
 
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
@@ -93,7 +94,7 @@ public abstract class TestRestartServerDuringIngestion {
 
     cluster = ServiceFactory.getVeniceCluster(numberOfController, 0, numberOfRouter, replicaFactor,
         partitionSize, false, false);
-    serverWrapper = cluster.addVeniceServer(getVeniceServerProperties());
+    serverWrapper = cluster.addVeniceServer(new Properties(), getVeniceServerProperties());
   }
 
   @AfterClass(alwaysRun = true)
@@ -105,7 +106,7 @@ public abstract class TestRestartServerDuringIngestion {
   public void ingestionRecovery(boolean leaderFollowerEnabled) throws ExecutionException, InterruptedException {
     // Create a store
     String stringSchemaStr = "\"string\"";
-    AvroSerializer serializer = new AvroSerializer(Schema.parse(stringSchemaStr));
+    AvroSerializer serializer = new AvroSerializer(AvroCompatibilityHelper.parse(stringSchemaStr));
     AvroGenericDeserializer deserializer = new AvroGenericDeserializer(Schema.parse(stringSchemaStr), Schema.parse(stringSchemaStr));
 
     String storeName = Utils.getUniqueString("test_store");
@@ -123,10 +124,10 @@ public abstract class TestRestartServerDuringIngestion {
     VersionCreationResponse versionCreationResponse = null;
     try (ControllerClient controllerClient =
         new ControllerClient(cluster.getClusterName(), veniceUrl)) {
-      versionCreationResponse =
+      versionCreationResponse = TestUtils.assertCommand(
           controllerClient.requestTopicForWrites(storeName, 1024 * 1024, Version.PushType.BATCH,
               Version.guidBasedDummyPushId(), false, true, false, Optional.empty(),
-              Optional.empty(), Optional.empty(), false, -1);
+              Optional.empty(), Optional.empty(), false, -1));
     }
     String topic = versionCreationResponse.getKafkaTopic();
     String kafkaUrl = versionCreationResponse.getKafkaBootstrapServers();
@@ -252,7 +253,7 @@ public abstract class TestRestartServerDuringIngestion {
   public void testIngestionDrainer() throws Exception {
     // Create a store
     String stringSchemaStr = "\"string\"";
-    AvroSerializer serializer = new AvroSerializer(Schema.parse(stringSchemaStr));
+    AvroSerializer serializer = new AvroSerializer(AvroCompatibilityHelper.parse(stringSchemaStr));
 
     String storeName = Utils.getUniqueString("test_store");
     String veniceUrl = cluster.getMasterVeniceController().getControllerUrl();
@@ -267,10 +268,10 @@ public abstract class TestRestartServerDuringIngestion {
     VersionCreationResponse versionCreationResponse = null;
     try (ControllerClient controllerClient =
         new ControllerClient(cluster.getClusterName(), veniceUrl)) {
-      versionCreationResponse =
+      versionCreationResponse = TestUtils.assertCommand(
           controllerClient.requestTopicForWrites(storeName, 1024 * 1024, Version.PushType.BATCH,
               Version.guidBasedDummyPushId(), false, true, false, Optional.empty(),
-              Optional.empty(), Optional.empty(), false, -1);
+              Optional.empty(), Optional.empty(), false, -1));
     }
     String topic = versionCreationResponse.getKafkaTopic();
     String kafkaUrl = versionCreationResponse.getKafkaBootstrapServers();
