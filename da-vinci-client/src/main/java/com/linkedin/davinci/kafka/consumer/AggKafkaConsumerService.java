@@ -121,7 +121,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
   private KafkaConsumerServiceStats createKafkaConsumerServiceStats(String kafkaUrl) {
     // Allow integration test with kafka url like "localhost:1234" to pass with default.
     String kafkaClusterAlias = kafkaClusterUrlToAliasMap.getOrDefault(kafkaUrl, kafkaUrl);
-    String nameWithKafkaClusterAlias = kafkaClusterAlias + ".kafka_consumer_service";
+    String nameWithKafkaClusterAlias = "kafka_consumer_service_for_" + kafkaClusterAlias;
     return new KafkaConsumerServiceStats(metricsRepository, nameWithKafkaClusterAlias);
   }
 }
