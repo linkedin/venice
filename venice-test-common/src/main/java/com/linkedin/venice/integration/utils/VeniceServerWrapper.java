@@ -163,7 +163,6 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
           .put(SYSTEM_SCHEMA_CLUSTER_NAME, clusterName)
           .put(SERVER_INGESTION_ISOLATION_APPLICATION_PORT, ingestionIsolationApplicationPort)
           .put(SERVER_INGESTION_ISOLATION_SERVICE_PORT, ingestionIsolationServicePort)
-          .put(AUTO_CLOSE_IDLE_CONSUMERS_ENABLED, true)
           .put(configProperties);
       if (sslToKafka) {
         serverPropsBuilder.put(KAFKA_SECURITY_PROTOCOL, SecurityProtocol.SSL.name);
