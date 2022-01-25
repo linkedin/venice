@@ -130,6 +130,7 @@ public class StoreIngestionTaskFactory {
     private long startReportingReadyToServeTimestamp;
     private InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer;
     private boolean isDaVinciClient;
+    private RemoteIngestionRepairService remoteIngestionRepairService;
 
     private interface Setter {
       void apply();
@@ -154,6 +155,14 @@ public class StoreIngestionTaskFactory {
 
     public Builder setVeniceWriterFactory(VeniceWriterFactory writerFactory) {
       return set(() -> this.veniceWriterFactory = writerFactory);
+    }
+
+    public Builder setRemoteIngestionRepairService(RemoteIngestionRepairService repairService) {
+      return set(() -> this.remoteIngestionRepairService = repairService);
+    }
+
+    public RemoteIngestionRepairService getRemoteIngestionRepairService() {
+      return remoteIngestionRepairService;
     }
 
     public KafkaClientFactory getKafkaClientFactory() {

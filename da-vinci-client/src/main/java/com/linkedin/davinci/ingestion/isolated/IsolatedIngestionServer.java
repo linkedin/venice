@@ -13,6 +13,7 @@ import com.linkedin.davinci.ingestion.main.MainIngestionRequestClient;
 import com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType;
+import com.linkedin.davinci.kafka.consumer.RemoteIngestionRepairService;
 import com.linkedin.davinci.repository.VeniceMetadataRepositoryBuilder;
 import com.linkedin.davinci.stats.AggVersionedStorageEngineStats;
 import com.linkedin.davinci.stats.RocksDBMemoryStats;
@@ -133,6 +134,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
   private volatile long heartbeatTimeInMs = System.currentTimeMillis();
   private int stopConsumptionWaitRetriesNum;
   private DefaultIngestionBackend ingestionBackend;
+  private final RemoteIngestionRepairService repairService;
 
   public IsolatedIngestionServer(String configPath) throws FileNotFoundException {
     VeniceProperties loadedVeniceProperties = IsolatedIngestionUtils.loadVenicePropertiesFromFile(configPath);
@@ -146,6 +148,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
     bossGroup = new NioEventLoopGroup();
     workerGroup = new NioEventLoopGroup();
     bootstrap = new ServerBootstrap();
+    repairService = new RemoteIngestionRepairService(configLoader.getCombinedProperties().getInt(SERVER_REMOTE_INGESTION_REPAIR_SLEEP_INTERVAL_SECONDS, RemoteIngestionRepairService.DEFAULT_REPAIR_THREAD_SLEEP_INTERVAL_SECONDS));
     bootstrap.group(bossGroup, workerGroup).channel(serverSocketChannelClass)
         .childHandler(new IsolatedIngestionServerChannelInitializer(this))
         .option(ChannelOption.SO_BACKLOG, 1000)
@@ -178,6 +181,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
 
     heartbeatCheckScheduler.scheduleAtFixedRate(this::checkHeartbeatTimeout, 0, 5, TimeUnit.SECONDS);
     // There is no async process in this function, so we are completely finished with the start up process.
+    repairService.start();
     return true;
   }
 
@@ -223,6 +227,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
     } catch (InterruptedException e) {
       currentThread().interrupt();
     }
+    repairService.stop();
   }
 
   public void setConfigLoader(VeniceConfigLoader configLoader) {
@@ -568,7 +573,6 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
     StorageEngineBackedCompressorFactory compressorFactory = new StorageEngineBackedCompressorFactory(storageMetadataService);
 
     boolean isDaVinciClient = veniceMetadataRepositoryBuilder.isDaVinciClient();
-
     // Create KafkaStoreIngestionService
     storeIngestionService = new KafkaStoreIngestionService(
         storageService.getStorageEngineRepository(),
@@ -588,7 +592,8 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
         true,
         compressorFactory,
         Optional.empty(),
-        isDaVinciClient);
+        isDaVinciClient,
+        repairService);
     storeIngestionService.start();
     storeIngestionService.addCommonNotifier(new IsolatedIngestionNotifier(this));
     ingestionBackend = new DefaultIngestionBackend(storageMetadataService, storeIngestionService, storageService);

@@ -175,7 +175,9 @@ public class DaVinciBackend implements Closeable {
         false,
         compressorFactory,
         cacheBackend,
-        true);
+        true,
+        // TODO: consider how/if a repair task would be valid for Davinci users?
+        null);
 
     ingestionService.start();
     ingestionService.addCommonNotifier(ingestionListener);

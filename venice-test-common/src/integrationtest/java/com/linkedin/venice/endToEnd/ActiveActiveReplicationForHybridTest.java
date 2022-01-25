@@ -77,15 +77,15 @@ import static com.linkedin.venice.utils.TestPushUtils.*;
 public class ActiveActiveReplicationForHybridTest {
   private static final int TEST_TIMEOUT = 120_000; // ms
 
-  private static final int NUMBER_OF_CHILD_DATACENTERS = 3;
-  private static final int NUMBER_OF_CLUSTERS = 1;
-  private static final String[] CLUSTER_NAMES =
+  protected static final int NUMBER_OF_CHILD_DATACENTERS = 3;
+  protected static final int NUMBER_OF_CLUSTERS = 1;
+  protected static final String[] CLUSTER_NAMES =
       IntStream.range(0, NUMBER_OF_CLUSTERS).mapToObj(i -> "venice-cluster" + i).toArray(String[]::new);
   // ["venice-cluster0", "venice-cluster1", ...];
 
-  private List<VeniceMultiClusterWrapper> childDatacenters;
-  private List<VeniceControllerWrapper> parentControllers;
-  private VeniceTwoLayerMultiColoMultiClusterWrapper multiColoMultiClusterWrapper;
+  protected List<VeniceMultiClusterWrapper> childDatacenters;
+  protected List<VeniceControllerWrapper> parentControllers;
+  protected VeniceTwoLayerMultiColoMultiClusterWrapper multiColoMultiClusterWrapper;
 
   private D2Client d2ClientForDC0Region;
 
@@ -702,7 +702,8 @@ public class ActiveActiveReplicationForHybridTest {
     }
   }
 
-  private ControllerResponse updateStore(
+
+  static ControllerResponse updateStore(
       String storeName,
       ControllerClient parentControllerClient,
       Optional<Boolean> enableNativeReplication,

@@ -223,6 +223,8 @@ public class TestPushUtils {
 
   public static final String STRING_SCHEMA = "\"string\"";
 
+  public static final String INT_SCHEMA = "\"int\"";
+
   public static final int DEFAULT_USER_DATA_RECORD_COUNT = 100;
 
   public static final String DEFAULT_USER_DATA_VALUE_PREFIX = "test_name_";

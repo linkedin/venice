@@ -363,6 +363,10 @@ public class VeniceControllerWrapper extends ProcessWrapper {
     return service.getVeniceControllerService().getAdminConsumerServiceByCluster(cluster);
   }
 
+  public String getZkAddress() {
+    return this.zkAddress;
+  }
+
   public MetricsRepository getMetricRepository() {
     return metricsRepository;
   }

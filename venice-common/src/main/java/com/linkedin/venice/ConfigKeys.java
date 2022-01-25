@@ -354,6 +354,7 @@ public class ConfigKeys {
   public static final String ROUTER_MAX_READ_CAPACITY = "router.max.read.capacity";
   public static final String ROUTER_QUOTA_CHECK_WINDOW = "router.quota.check.window";
 
+  public static final String SERVER_REMOTE_INGESTION_REPAIR_SLEEP_INTERVAL_SECONDS = "server.remote.ingestion.repair.sleep.interval.seconds";
   /**
    * Whether to enable epoll in rest service layer.
    * This will be a best-effort since epoll support is only available in Linux, not Mac.

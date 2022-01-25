@@ -148,7 +148,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private static final int MAX_CONSUMER_ACTION_ATTEMPTS = 5;
   private static final int MAX_IDLE_COUNTER  = 100;
   private static final int CONSUMER_ACTION_QUEUE_INIT_CAPACITY = 11;
-  private static final long KILL_WAIT_TIME_MS = 5000L;
+  protected static final long KILL_WAIT_TIME_MS = 5000L;
   private static final int MAX_KILL_CHECKING_ATTEMPTS = 10;
   private static final int SLOPPY_OFFSET_CATCHUP_THRESHOLD = 100;
   private static final int EXCEPTION_BLOCKING_QUEUE_SIZE_IN_BYTE = 10000;
@@ -503,6 +503,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     if (serverConfig.isHybridQuotaEnabled() || storeRepository.getStoreOrThrow(storeName).isHybridStoreDiskQuotaEnabled()) {
       buildHybridQuotaEnforcer();
     }
+
   }
 
   public boolean isFutureVersion() {
@@ -589,6 +590,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    */
   public Store getIngestionStore() {
     return storeRepository.getStoreOrThrow(storeName);
+  }
+
+  public String getStoreName() {
+    return storeName;
   }
 
   public abstract void promoteToLeader(String topic, int partitionId, LeaderFollowerPartitionStateModel.LeaderSessionIdChecker checker);
@@ -3184,6 +3189,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * Stops the consumer task.
    */
   public synchronized void close() {
+    // Evict any pending repair tasks
     isRunning.set(false);
     // KafkaConsumer is closed at the end of the run method.
     // The operation is executed on a single thread in run method.

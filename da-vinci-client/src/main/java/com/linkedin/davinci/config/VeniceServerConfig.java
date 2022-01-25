@@ -1,6 +1,7 @@
 package com.linkedin.davinci.config;
 
 import com.linkedin.davinci.kafka.consumer.KafkaConsumerService;
+import com.linkedin.davinci.kafka.consumer.RemoteIngestionRepairService;
 import com.linkedin.davinci.store.rocksdb.RocksDBServerConfig;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -272,6 +273,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   private final boolean serverIngestionCheckpointDuringGracefulShutdownEnabled;
 
+  private final int remoteIngestionRepairSleepInterval;
+
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     this(serverProperties, Optional.empty());
   }
@@ -300,6 +303,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     topicOffsetCheckIntervalMs = serverProperties.getInt(SERVER_SOURCE_TOPIC_OFFSET_CHECK_INTERVAL_MS, (int) TimeUnit.SECONDS.toMillis(60));
     nettyGracefulShutdownPeriodSeconds = serverProperties.getInt(SERVER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS, 30); //30 seconds
     nettyWorkerThreadCount = serverProperties.getInt(SERVER_NETTY_WORKER_THREADS, 0);
+
+    remoteIngestionRepairSleepInterval = serverProperties.getInt(SERVER_REMOTE_INGESTION_REPAIR_SLEEP_INTERVAL_SECONDS,
+        RemoteIngestionRepairService.DEFAULT_REPAIR_THREAD_SLEEP_INTERVAL_SECONDS);
 
     databaseSyncBytesIntervalForTransactionalMode = serverProperties.getSizeInBytes(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_TRANSACTIONAL_MODE, 32 * 1024 * 1024); // 32MB
     databaseSyncBytesIntervalForDeferredWriteMode = serverProperties.getSizeInBytes(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE, 60 * 1024 * 1024); // 60MB
@@ -830,5 +836,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public boolean isServerIngestionCheckpointDuringGracefulShutdownEnabled() {
     return serverIngestionCheckpointDuringGracefulShutdownEnabled;
+  }
+
+  public int getRemoteIngestionRepairSleepInterval() {
+    return remoteIngestionRepairSleepInterval;
   }
 }

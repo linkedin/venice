@@ -8,6 +8,7 @@ import com.linkedin.davinci.helix.HelixParticipationService;
 import com.linkedin.davinci.ingestion.main.MainIngestionStorageMetadataService;
 import com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
+import com.linkedin.davinci.kafka.consumer.RemoteIngestionRepairService;
 import com.linkedin.davinci.repository.VeniceMetadataRepositoryBuilder;
 import com.linkedin.davinci.stats.AggVersionedStorageEngineStats;
 import com.linkedin.davinci.stats.MetadataUpdateStats;
@@ -242,6 +243,12 @@ public class VeniceServer {
 
     compressorFactory = new StorageEngineBackedCompressorFactory(storageMetadataService);
 
+    /**
+     * Build Ingestion Repair service
+     */
+    RemoteIngestionRepairService remoteIngestionRepairService = new RemoteIngestionRepairService(serverConfig.getRemoteIngestionRepairSleepInterval());
+    services.add(remoteIngestionRepairService);
+
     // create and add KafkaSimpleConsumerService
     this.kafkaStoreIngestionService = new KafkaStoreIngestionService(
         storageService.getStorageEngineRepository(),
@@ -261,7 +268,8 @@ public class VeniceServer {
         false,
         compressorFactory,
         Optional.empty(),
-        false);
+        false,
+        remoteIngestionRepairService);
     this.kafkaStoreIngestionService.addMetaSystemStoreReplicaStatusNotifier();
 
     this.diskHealthCheckService = new DiskHealthCheckService(

@@ -7,7 +7,8 @@ import java.util.Map;
 import static com.linkedin.venice.ConfigKeys.*;
 
 
-public class ActiveActiveReplicationForHybridWithIngestionIsolationTest extends ActiveActiveReplicationForHybridTest {
+public class ActiveActiveReplicationForHybridWithIngestionIsolationTest extends
+                                                                        com.linkedin.venice.endToEnd.ActiveActiveReplicationForHybridTest {
 
   @Override
   public Map<String, String> getExtraServerProperties() {
