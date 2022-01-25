@@ -186,7 +186,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
                                     boolean isIsolatedIngestion,
                                     StorageEngineBackedCompressorFactory compressorFactory,
                                     Optional<ObjectCacheBackend> cacheBackend,
-                                    boolean isDaVinciClient) {
+                                    boolean isDaVinciClient,
+                                    RemoteIngestionRepairService remoteIngestionRepairService) {
     this.cacheBackend = cacheBackend;
     this.storageMetadataService = storageMetadataService;
     this.metadataRepo = metadataRepo;
@@ -434,6 +435,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         .setStartReportingReadyToServeTimestamp(System.currentTimeMillis() + serverConfig.getDelayReadyToServeMS())
         .setPartitionStateSerializer(partitionStateSerializer)
         .setIsDaVinciClient(isDaVinciClient)
+        .setRemoteIngestionRepairService(remoteIngestionRepairService)
         .build();
   }
 

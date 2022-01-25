@@ -1274,6 +1274,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     return Version.isRealTimeTopic(topicSwitch.sourceTopicName.toString());
   }
 
+  // TODO: Consider overriding this in A/A?
   /**
    * For Leader/Follower state model, we already keep track of the consumption progress in leader, so directly calculate
    * the lag with the real-time topic and the leader consumption offset.
@@ -1299,7 +1300,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
        *    when we initialize the leader topic is either when a replica is promoted to leader successfully or encounter
        *    TopicSwitch control message.), so leader topic can be null during the 5 minutes inactivity.
        * 2. It's also possible that the replica is promoted to leader already but haven't received the TopicSwitch
-       *    command from controllers to start consuming from real-time topic (for example, grandfathering Samza job has
+       *    command from controllers to start consuming from real-time topic (for example, reprocessing Samza job has
        *    finished producing the batch input to the transient grandfathering topic, but user haven't sent END_OF_PUSH
        *    so controllers haven't sent TopicSwitch).
        */

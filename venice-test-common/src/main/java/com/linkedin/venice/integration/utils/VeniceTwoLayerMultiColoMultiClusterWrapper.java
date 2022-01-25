@@ -175,6 +175,7 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
 
       final ZkServerWrapper finalZkServer = zkServer;
       final KafkaBrokerWrapper finalParentKafka = parentKafka;
+
       return (serviceName) -> new VeniceTwoLayerMultiColoMultiClusterWrapper(
           null, finalZkServer, finalParentKafka, multiClusters, parentControllers, mirrorMakers);
     } catch (Exception e) {
