@@ -43,6 +43,16 @@ public class ControllerKafkaClientFactory extends KafkaClientFactory {
   }
 
   @Override
+  public String getWriteOnlyAdminClass() {
+    return controllerConfig.getKafkaWriteOnlyClass();
+  }
+
+  @Override
+  public String getReadOnlyAdminClass() {
+    return controllerConfig.getKafkaReadOnlyClass();
+  }
+
+  @Override
   protected String getKafkaZkAddress() {
     return controllerConfig.getKafkaZkAddress();
   }

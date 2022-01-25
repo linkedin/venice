@@ -1495,6 +1495,16 @@ public class ConfigKeys {
   public static final String KAFKA_ADMIN_CLASS = "kafka.admin.class";
 
   /**
+   * Fully-qualified class name to use for Kafka write-only admin operations.
+   */
+  public static final String KAFKA_WRITE_ONLY_ADMIN_CLASS = "kafka.write.only.admin.class";
+
+  /**
+   * Fully-qualified class name to use for Kafka read-only admin operations.
+   */
+  public static final String KAFKA_READ_ONLY_ADMIN_CLASS = "kafka.read.only.admin.class";
+
+  /**
    * A config that determines whether to use Helix customized view for offline push partition status
    */
   public static final String HELIX_OFFLINE_PUSH_ENABLED = "helix.offline.push.enabled";

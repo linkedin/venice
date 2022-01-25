@@ -205,6 +205,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final BlockingQueueType blockingQueueType;
   private final boolean restServiceEpollEnabled;
   private final String kafkaAdminClass;
+  private final String kafkaWriteOnlyClass;
+  private final String kafkaReadOnlyClass;
   private final boolean kafkaOpenSSLEnabled;
   private final long routerConnectionWarmingDelayMs;
   private final boolean helixHybridStoreQuotaEnabled;
@@ -351,6 +353,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
     restServiceEpollEnabled = serverProperties.getBoolean(SERVER_REST_SERVICE_EPOLL_ENABLED, false);
     kafkaAdminClass = serverProperties.getString(KAFKA_ADMIN_CLASS, KafkaAdminClient.class.getName());
+    kafkaWriteOnlyClass = serverProperties.getString(KAFKA_WRITE_ONLY_ADMIN_CLASS, kafkaAdminClass);
+    kafkaReadOnlyClass = serverProperties.getString(KAFKA_READ_ONLY_ADMIN_CLASS, kafkaAdminClass);
     // Disable it by default, and when router connection warming is enabled, we need to adjust this config.
     routerConnectionWarmingDelayMs = serverProperties.getLong(SERVER_ROUTER_CONNECTION_WARMING_DELAY_MS, 0);
     sharedConsumerPoolEnabled = serverProperties.getBoolean(SERVER_SHARED_CONSUMER_POOL_ENABLED, false);
@@ -617,6 +621,15 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   public String getKafkaAdminClass() {
     return kafkaAdminClass;
   }
+
+  public String getKafkaWriteOnlyClass() {
+    return kafkaWriteOnlyClass;
+  }
+
+  public String getKafkaReadOnlyClass() {
+    return kafkaReadOnlyClass;
+  }
+
 
   public boolean isKafkaOpenSSLEnabled() {
     return kafkaOpenSSLEnabled;

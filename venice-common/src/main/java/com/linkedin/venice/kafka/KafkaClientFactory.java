@@ -105,8 +105,23 @@ public abstract class KafkaClientFactory {
     return new KafkaConsumer<>(propertiesWithSSL);
   }
 
+  public KafkaAdminWrapper getWriteOnlyKafkaAdmin(Optional<MetricsRepository> optionalMetricsRepository) {
+    return createAdminClient(getWriteOnlyAdminClass(), optionalMetricsRepository, "WriteOnlyKafkaAdminStats");
+  }
+
+  public KafkaAdminWrapper getReadOnlyKafkaAdmin(Optional<MetricsRepository> optionalMetricsRepository) {
+    return createAdminClient(getReadOnlyAdminClass(), optionalMetricsRepository, "ReadOnlyKafkaAdminStats");
+  }
+
   public KafkaAdminWrapper getKafkaAdminClient(Optional<MetricsRepository> optionalMetricsRepository) {
-    final String kafkaAdminClientClass = getKafkaAdminClass();
+    return createAdminClient(getKafkaAdminClass(), optionalMetricsRepository, "KafkaAdminStats");
+  }
+
+  private KafkaAdminWrapper createAdminClient(
+      String kafkaAdminClientClass,
+      Optional<MetricsRepository> optionalMetricsRepository,
+      String statsNamePrefix
+  ) {
     KafkaAdminWrapper adminWrapper = ReflectUtils.callConstructor(
         ReflectUtils.loadClass(kafkaAdminClientClass),
         new Class[0],
@@ -122,13 +137,14 @@ public abstract class KafkaClientFactory {
 
     if (optionalMetricsRepository.isPresent()) {
       // Use Kafka bootstrap server to identify which Kafka admin client stats it is
-      String kafkaAdminStatsName = String.format("KafkaAdminStats_%s_%s", kafkaAdminClientClass, kafkaBootstrapServers);
+      final String kafkaAdminStatsName = String.format("%s_%s_%s", statsNamePrefix, kafkaAdminClientClass, kafkaBootstrapServers);
       adminWrapper = new InstrumentedKafkaAdmin(adminWrapper, optionalMetricsRepository.get(), kafkaAdminStatsName);
-      logger.info(String.format("Created instrumented Kafka admin client of class %s for Kafka cluster with bootstrap server %s",
-              kafkaAdminClientClass, kafkaBootstrapServers));
+      logger.info(String.format("Created instrumented Kafka admin client of class %s for Kafka cluster with bootstrap "
+              + "server %s and has stats name prefix %s",
+          kafkaAdminClientClass, kafkaBootstrapServers, statsNamePrefix));
     } else {
       logger.info(String.format("Created non-instrumented Kafka admin client of class %s for Kafka cluster with bootstrap server %s",
-              kafkaAdminClientClass, kafkaBootstrapServers));
+          kafkaAdminClientClass, kafkaBootstrapServers));
     }
     return adminWrapper;
   }
@@ -156,6 +172,22 @@ public abstract class KafkaClientFactory {
   public abstract Properties setupSSL(Properties properties);
 
   abstract protected String getKafkaAdminClass();
+
+  /**
+   * Get the class name of an admin client that is used for "write-only" tasks such as create topics, update topic configs,
+   * etc. "Write-only" means that it only modifies the Kafka cluster state and does not read it.
+   *
+   * @return Fully-qualified name name. For example: "com.linkedin.venice.kafka.admin.KafkaAdminClient"
+   */
+  abstract protected String getWriteOnlyAdminClass();
+
+  /**
+   * Get the class name of an admin client that is used for "read-only" tasks such as check topic existence, get topic configs,
+   * etc. "Read-only" means that it only reads/get the topic metadata from a Kafka cluster and does not modify any of it.
+   *
+   * @return Fully-qualified name name. For example: "com.linkedin.venice.kafka.admin.KafkaAdminClient"
+   */
+  abstract protected String getReadOnlyAdminClass();
 
   abstract protected String getKafkaZkAddress();
 

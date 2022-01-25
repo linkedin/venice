@@ -31,6 +31,16 @@ public class ServerJavaKafkaClientFactory extends ServerKafkaClientFactory {
   }
 
   @Override
+  protected String getWriteOnlyAdminClass() {
+    return getKafkaAdminClass();
+  }
+
+  @Override
+  protected String getReadOnlyAdminClass() {
+    return getKafkaAdminClass();
+  }
+
+  @Override
   protected KafkaClientFactory clone(String kafkaBootstrapServers, String kafkaZkAddress, Optional<MetricsParameters> metricsParameters) {
     Properties clonedProperties = this.serverConfig.getClusterProperties().toProperties();
     clonedProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, kafkaBootstrapServers);

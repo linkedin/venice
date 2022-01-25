@@ -39,6 +39,16 @@ public class KafkaConsumerFactoryImpl extends KafkaClientFactory {
     return KafkaAdminClient.class.getName();
   }
 
+  @Override
+  protected String getWriteOnlyAdminClass() {
+    return getKafkaAdminClass();
+  }
+
+  @Override
+  protected String getReadOnlyAdminClass() {
+    return getKafkaAdminClass();
+  }
+
   /**
    * @return the ZK address, or empty string if it was not specified
    */

@@ -388,6 +388,16 @@ public class TestUtils {
     }
 
     @Override
+    protected String getWriteOnlyAdminClass() {
+      return getKafkaAdminClass();
+    }
+
+    @Override
+    protected String getReadOnlyAdminClass() {
+      return getKafkaAdminClass();
+    }
+
+    @Override
     protected String getKafkaZkAddress() {
       return kafkaZkAddress;
     }
