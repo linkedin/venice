@@ -20,6 +20,7 @@ import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.DataProviderUtils;
@@ -159,6 +160,37 @@ public class PushStatusStoreTest {
       h2vProperties.setProperty(INCREMENTAL_PUSH, "true");
       runH2V(h2vProperties, 1, cluster);
       assertEquals(daVinciClient.get(1).get().toString(), "name 1");
+    }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testIncrementalPushStatusStoredInPushStatusStore() throws Exception {
+    VeniceProperties backendConfig = getBackendConfigBuilder().build();
+    Properties h2vProperties = getH2VProperties();
+    runH2V(h2vProperties, 1, cluster);
+    try (DaVinciClient daVinciClient = ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster, new DaVinciConfig(), backendConfig)) {
+      daVinciClient.subscribeAll().get();
+      h2vProperties = getH2VProperties();
+      h2vProperties.setProperty(INCREMENTAL_PUSH, "true");
+
+      int expectedVersionNumber = 1;
+      long h2vStart = System.currentTimeMillis();
+      String jobName = Utils.getUniqueString("batch-job-" + expectedVersionNumber);
+
+      try (VenicePushJob job = new VenicePushJob(jobName, h2vProperties)) {
+        job.run();
+        String storeName = (String) h2vProperties.get(VenicePushJob.VENICE_STORE_NAME_PROP);
+        cluster.waitVersion(storeName, expectedVersionNumber);
+        logger.info("**TIME** H2V" + expectedVersionNumber + " takes " + (System.currentTimeMillis() - h2vStart));
+        assertEquals(daVinciClient.get(1).get().toString(), "name 1");
+        Optional<String> incPushVersion = job.getIncrementalPushVersion();
+        Map<CharSequence, Integer> result = reader.getPartitionStatus(storeName, 1, 0, incPushVersion, Optional.of("SERVER_SIDE_INCREMENTAL_PUSH_STATUS"));
+        assertNotEquals(result.size(), 0);
+        for (CharSequence key : result.keySet()) {
+          int status = result.get(key);
+          assertTrue(status == ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED.getValue() || status == ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED.getValue());
+        }
+      }
     }
   }
 

@@ -25,6 +25,7 @@ import com.linkedin.venice.meta.IngestionMode;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.pushmonitor.KillOfflinePushMessage;
+import com.linkedin.venice.pushmonitor.PushStatusStoreAccessor;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.stats.HelixMessageChannelStats;
 import com.linkedin.venice.status.StatusMessageHandler;
@@ -235,6 +236,8 @@ public class HelixParticipationService extends AbstractVeniceService implements 
         new VeniceOfflinePushMonitorAccessor(clusterName, zkClient, new HelixAdapterSerializer(),
             veniceConfigLoader.getVeniceClusterConfig().getRefreshAttemptsForZkReconnect(),
             veniceConfigLoader.getVeniceClusterConfig().getRefreshIntervalForZkReconnectInMs()),
+        new PushStatusStoreAccessor(veniceConfigLoader.getVeniceServerConfig().getClusterProperties(),
+            helixReadOnlyStoreRepository, instance.getNodeId()),
         instance.getNodeId());
 
     ingestionBackend.addPushStatusNotifier(pushMonitorNotifier);

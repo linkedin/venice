@@ -9,11 +9,13 @@ import com.linkedin.venice.pushmonitor.OfflinePushAccessor;
  */
 public class PushMonitorNotifier implements VeniceNotifier {
 
-  private OfflinePushAccessor accessor;
-  private String instanceId;
+  private final OfflinePushAccessor accessor;
+  private final OfflinePushAccessor pushStatusStoreAccessor;
+  private final String instanceId;
 
-  public PushMonitorNotifier(OfflinePushAccessor accessor, String instanceId) {
+  public PushMonitorNotifier(OfflinePushAccessor accessor, OfflinePushAccessor pushStatusStoreAccessor, String instanceId) {
     this.accessor = accessor;
+    this.pushStatusStoreAccessor = pushStatusStoreAccessor;
     this.instanceId = instanceId;
   }
 
@@ -55,11 +57,13 @@ public class PushMonitorNotifier implements VeniceNotifier {
   @Override
   public void startOfIncrementalPushReceived(String topic, int partitionId, long offset, String message) {
     accessor.updateReplicaStatus(topic, partitionId, instanceId, ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED, offset, message);
+    pushStatusStoreAccessor.updateReplicaStatus(topic, partitionId, instanceId, ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED, offset, message);
   }
 
   @Override
   public void endOfIncrementalPushReceived(String topic, int partitionId, long offset, String message) {
     accessor.updateReplicaStatus(topic, partitionId, instanceId, ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED, offset, message);
+    pushStatusStoreAccessor.updateReplicaStatus(topic, partitionId, instanceId, ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED, offset, message);
   }
 
   @Override
