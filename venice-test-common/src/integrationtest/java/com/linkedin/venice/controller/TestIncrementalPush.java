@@ -53,7 +53,6 @@ public class TestIncrementalPush {
     VersionCreationResponse response = cluster.getNewVersion(storeName, dataSize);
     Assert.assertFalse(response.isError());
     String topicName = response.getKafkaTopic();
-
     // push version 1 to completion
     VeniceWriter<String, String, byte[]> veniceWriter = cluster.getVeniceWriter(topicName);
     veniceWriter.broadcastStartOfPush(new HashMap<>());
