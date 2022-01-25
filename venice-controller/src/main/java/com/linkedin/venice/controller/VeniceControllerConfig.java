@@ -81,6 +81,8 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   private final boolean enableBatchPushFromAdminInChildController;
   private final boolean adminCheckReadMethodForKafka;
   private final String kafkaAdminClass;
+  private final String kafkaWriteOnlyClass;
+  private final String kafkaReadOnlyClass;
   private final Map<String, String> childDataCenterKafkaUrlMap;
   private final Map<String, String> childDataCenterKafkaZkMap;
   private final boolean activeActiveEnabledOnController;
@@ -277,6 +279,8 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     this.sendConcurrentTopicDeleteRequestsEnabled = props.getBoolean(TOPIC_CLEANUP_SEND_CONCURRENT_DELETES_REQUESTS, false);
     this.enableBatchPushFromAdminInChildController = props.getBoolean(CONTROLLER_ENABLE_BATCH_PUSH_FROM_ADMIN_IN_CHILD, true);
     this.kafkaAdminClass = props.getString(KAFKA_ADMIN_CLASS, ScalaAdminUtils.class.getName());
+    this.kafkaWriteOnlyClass = props.getString(KAFKA_WRITE_ONLY_ADMIN_CLASS, kafkaAdminClass);
+    this.kafkaReadOnlyClass = props.getString(KAFKA_READ_ONLY_ADMIN_CLASS, kafkaAdminClass);
     this.errorPartitionAutoResetLimit = props.getInt(ERROR_PARTITION_AUTO_RESET_LIMIT, 0);
     this.errorPartitionProcessingCycleDelay = props.getLong(ERROR_PARTITION_PROCESSING_CYCLE_DELAY, 5 * Time.MS_PER_MINUTE);
     this.backupVersionDefaultRetentionMs = props.getLong(CONTROLLER_BACKUP_VERSION_DEFAULT_RETENTION_MS, TimeUnit.DAYS.toMillis(7)); // 1 week
@@ -509,6 +513,14 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   public String getKafkaAdminClass() {
     return kafkaAdminClass;
+  }
+
+  public String getKafkaWriteOnlyClass() {
+    return kafkaWriteOnlyClass;
+  }
+
+  public String getKafkaReadOnlyClass() {
+    return kafkaReadOnlyClass;
   }
 
   public int getErrorPartitionAutoResetLimit() {

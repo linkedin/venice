@@ -83,7 +83,9 @@ public class TopicManager implements Closeable {
   private final KafkaClientFactory kafkaClientFactory;
 
   private Consumer<byte[], byte[]> kafkaRawBytesConsumer;
-  private final Lazy<KafkaAdminWrapper> kafkaAdmin;
+//  private final Lazy<KafkaAdminWrapper> kafkaAdmin;
+  private final Lazy<KafkaAdminWrapper> kafkaWriteOnlyAdmin;
+  private final Lazy<KafkaAdminWrapper> kafkaReadOnlyAdmin;
   private final PartitionOffsetFetcher partitionOffsetFetcher;
 
   // It's expensive to grab the topic config over and over again, and it changes infrequently.  So we temporarily cache
@@ -105,11 +107,21 @@ public class TopicManager implements Closeable {
     this.topicMinLogCompactionLagMs = topicMinLogCompactionLagMs;
     this.kafkaClientFactory = kafkaClientFactory;
     this.kafkaBootstrapServers = kafkaClientFactory.getKafkaBootstrapServers();
-    this.kafkaAdmin = Lazy.of(() -> {
-      KafkaAdminWrapper kafkaAdmin = kafkaClientFactory.getKafkaAdminClient(optionalMetricsRepository);
-      logger.info(this.getClass().getSimpleName() + " is using kafka admin client: " + kafkaAdmin.getClassName());
-      return kafkaAdmin;
+
+    this.kafkaReadOnlyAdmin = Lazy.of(() -> {
+      KafkaAdminWrapper kafkaReadOnlyAdmin = kafkaClientFactory.getWriteOnlyKafkaAdmin(optionalMetricsRepository);
+      logger.info(this.getClass().getSimpleName() + " is using kafka read-only admin client of class: " +
+          kafkaReadOnlyAdmin.getClassName());
+      return kafkaReadOnlyAdmin;
     });
+
+    this.kafkaWriteOnlyAdmin = Lazy.of(() -> {
+      KafkaAdminWrapper kafkaWriteOnlyAdmin = kafkaClientFactory.getReadOnlyKafkaAdmin(optionalMetricsRepository);
+      logger.info(this.getClass().getSimpleName() + " is using kafka write-only admin client of class: " +
+          kafkaWriteOnlyAdmin.getClassName());
+      return kafkaWriteOnlyAdmin;
+    });
+
     Optional<MetricsParameters> metricsForPartitionOffsetFetcher = kafkaClientFactory.getMetricsParameters().map(mp ->
         new MetricsParameters(
             this.kafkaClientFactory.getClass(),
@@ -124,7 +136,7 @@ public class TopicManager implements Closeable {
             kafkaClientFactory.getKafkaZkAddress(),
             metricsForPartitionOffsetFetcher
         ),
-        kafkaAdmin,
+        kafkaReadOnlyAdmin,
         kafkaOperationTimeoutMs,
         optionalMetricsRepository
     );
@@ -256,7 +268,7 @@ public class TopicManager implements Closeable {
       boolean asyncCreateOperationSucceeded = false;
       while (!asyncCreateOperationSucceeded) {
         try {
-          kafkaAdmin.get().createTopic(topicName, numPartitions, replication, topicProperties);
+          kafkaWriteOnlyAdmin.get().createTopic(topicName, numPartitions, replication, topicProperties);
           asyncCreateOperationSucceeded = true;
         } catch (InvalidReplicationFactorException e) {
           if (System.currentTimeMillis() > deadlineMs) {
@@ -299,7 +311,7 @@ public class TopicManager implements Closeable {
   private Future<Void> ensureTopicIsDeletedAsync(String topicName) {
     // TODO: Stop using Kafka APIs which depend on ZK.
     logger.info("Deleting topic: " + topicName);
-    return kafkaAdmin.get().deleteTopic(topicName);
+    return kafkaWriteOnlyAdmin.get().deleteTopic(topicName);
   }
 
   public int getReplicationFactor(String topicName) {
@@ -330,7 +342,7 @@ public class TopicManager implements Closeable {
     if (!topicProperties.containsKey(TopicConfig.RETENTION_MS_CONFIG) || // config doesn't exist
         !topicProperties.getProperty(TopicConfig.RETENTION_MS_CONFIG).equals(retentionInMSStr)) { // config is different
       topicProperties.put(TopicConfig.RETENTION_MS_CONFIG, Long.toString(retentionInMS));
-      kafkaAdmin.get().setTopicConfig(topicName, topicProperties);
+      kafkaWriteOnlyAdmin.get().setTopicConfig(topicName, topicProperties);
       logger.info("Updated topic: " + topicName + " with retention.ms: " + retentionInMS + " in cluster [" + this.kafkaBootstrapServers + "]");
       return true;
     }
@@ -362,7 +374,7 @@ public class TopicManager implements Closeable {
       topicProperties.put(TopicConfig.MIN_COMPACTION_LAG_MS_CONFIG, Long.toString(expectedMinLogCompactionLagMs));
     }
     if (needToUpdateTopicConfig) {
-      kafkaAdmin.get().setTopicConfig(topicName, topicProperties);
+      kafkaWriteOnlyAdmin.get().setTopicConfig(topicName, topicProperties);
       logger.info("Kafka compaction policy for topic: " + topicName + " has been updated from " +
           currentCompactionPolicy + " to " + expectedCompactionPolicy + ", min compaction lag updated from "
           + currentMinLogCompactionLagMs + " to " + expectedCompactionPolicy);
@@ -382,7 +394,7 @@ public class TopicManager implements Closeable {
   }
 
   public Map<String, Long> getAllTopicRetentions() {
-    return kafkaAdmin.get().getAllTopicRetentions();
+    return kafkaReadOnlyAdmin.get().getAllTopicRetentions();
   }
 
   /**
@@ -415,13 +427,13 @@ public class TopicManager implements Closeable {
    * This operation is a little heavy, since it will pull the configs for all the topics.
    */
   public Properties getTopicConfig(String topicName) throws TopicDoesNotExistException {
-    final Properties properties = kafkaAdmin.get().getTopicConfig(topicName);
+    final Properties properties = kafkaReadOnlyAdmin.get().getTopicConfig(topicName);
     topicConfigCache.put(topicName, properties);
     return properties;
   }
 
   public Properties getTopicConfigWithRetry(String topicName) {
-    final Properties properties = kafkaAdmin.get().getTopicConfigWithRetry(topicName);
+    final Properties properties = kafkaReadOnlyAdmin.get().getTopicConfigWithRetry(topicName);
     topicConfigCache.put(topicName, properties);
     return properties;
   }
@@ -439,7 +451,7 @@ public class TopicManager implements Closeable {
   }
 
   public Map<String, Properties> getAllTopicConfig() {
-    final Map<String, Properties> topicConfigs = kafkaAdmin.get().getAllTopicConfig();
+    final Map<String, Properties> topicConfigs = kafkaReadOnlyAdmin.get().getAllTopicConfig();
     for (Map.Entry<String, Properties> topicConfig : topicConfigs.entrySet()) {
       topicConfigCache.put(topicConfig.getKey(), topicConfig.getValue());
     }
@@ -480,7 +492,7 @@ public class TopicManager implements Closeable {
          * TODO: Add support for this call in the {@link com.linkedin.venice.kafka.admin.KafkaAdminClient}
          * This is the last remaining call that depends on {@link kafka.utils.ZkUtils}.
          */
-        kafkaAdmin.get().isTopicDeletionUnderway()) {
+        kafkaReadOnlyAdmin.get().isTopicDeletionUnderway()) {
       throw new VeniceException("Delete operation already in progress! Try again later.");
     }
 
@@ -567,7 +579,7 @@ public class TopicManager implements Closeable {
   }
 
   public synchronized Set<String> listTopics() {
-    return kafkaAdmin.get().listAllTopics();
+    return kafkaReadOnlyAdmin.get().listAllTopics();
   }
 
   /**
@@ -576,7 +588,7 @@ public class TopicManager implements Closeable {
    * N.B.: The behavior of the Scala and Java admin clients are different...
    */
   public boolean containsTopic(String topic) {
-    return kafkaAdmin.get().containsTopic(topic);
+    return kafkaReadOnlyAdmin.get().containsTopic(topic);
   }
 
   /**
@@ -584,7 +596,7 @@ public class TopicManager implements Closeable {
    * semantics.
    */
   public boolean containsTopicWithExpectationAndRetry(String topic, int maxAttempts, final boolean expectedResult) {
-    return kafkaAdmin.get().containsTopicWithExpectationAndRetry(topic, maxAttempts, expectedResult);
+    return kafkaReadOnlyAdmin.get().containsTopicWithExpectationAndRetry(topic, maxAttempts, expectedResult);
   }
 
   public boolean containsTopicWithExpectationAndRetry(
@@ -595,7 +607,7 @@ public class TopicManager implements Closeable {
       Duration maxBackoff,
       Duration maxDuration
   ) {
-    return kafkaAdmin.get().containsTopicWithExpectationAndRetry(
+    return kafkaReadOnlyAdmin.get().containsTopicWithExpectationAndRetry(
         topic,
         maxAttempts,
         expectedResult,
@@ -772,7 +784,8 @@ public class TopicManager implements Closeable {
   @Override
   public synchronized void close() throws IOException {
     Utils.closeQuietlyWithErrorLogged(partitionOffsetFetcher);
-    kafkaAdmin.ifPresent(Utils::closeQuietlyWithErrorLogged);
+    kafkaReadOnlyAdmin.ifPresent(Utils::closeQuietlyWithErrorLogged);
+    kafkaWriteOnlyAdmin.ifPresent(Utils::closeQuietlyWithErrorLogged);
   }
 
   // For testing only
