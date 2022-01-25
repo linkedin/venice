@@ -86,8 +86,15 @@ public abstract class TestRead {
 
   protected boolean isHttp2Enabled() { return false;}
 
+  protected boolean isTestEnabled() {
+    return true;
+  }
+
   @BeforeClass(alwaysRun = true)
   public void setUp() throws VeniceClientException {
+    if (!isTestEnabled()) {
+      return;
+    }
     /**
      * The following config is used to detect Netty resource leaking.
      * If memory leak happens, you will see the following log message:
@@ -101,23 +108,26 @@ public abstract class TestRead {
 
     Utils.thisIsLocalhost();
     boolean isR2Client = getStorageNodeClientType() == StorageNodeClientType.R2_CLIENT;
-    veniceCluster = ServiceFactory.getVeniceCluster(1, isR2Client ? 0: 1, 0, 2, 100, true, false);
-
+    boolean isHttp2Enabled = isHttp2Enabled();
+    Properties extraProperties = new Properties();
+    extraProperties.setProperty(ConfigKeys.SERVER_HTTP2_INBOUND_ENABLED, Boolean.toString(isHttp2Enabled));
+    // Add the following specific configs for Router
     // To trigger long-tail retry
-    Properties routerProperties = new Properties();
-    routerProperties.put(ConfigKeys.ROUTER_LONG_TAIL_RETRY_FOR_SINGLE_GET_THRESHOLD_MS, 1);
-    routerProperties.put(ConfigKeys.ROUTER_MAX_KEY_COUNT_IN_MULTIGET_REQ, MAX_KEY_LIMIT); // 10 keys at most in a batch-get request
-    routerProperties.put(ConfigKeys.ROUTER_LONG_TAIL_RETRY_FOR_BATCH_GET_THRESHOLD_MS, "1-:1");
-    routerProperties.put(ConfigKeys.ROUTER_SMART_LONG_TAIL_RETRY_ENABLED, false);
+    extraProperties.put(ConfigKeys.ROUTER_LONG_TAIL_RETRY_FOR_SINGLE_GET_THRESHOLD_MS, 1);
+    extraProperties.put(ConfigKeys.ROUTER_MAX_KEY_COUNT_IN_MULTIGET_REQ, MAX_KEY_LIMIT); // 10 keys at most in a batch-get request
+    extraProperties.put(ConfigKeys.ROUTER_LONG_TAIL_RETRY_FOR_BATCH_GET_THRESHOLD_MS, "1-:1");
+    extraProperties.put(ConfigKeys.ROUTER_SMART_LONG_TAIL_RETRY_ENABLED, false);
     // set config for whether use Netty client in Router or not
-    routerProperties.put(ConfigKeys.ROUTER_STORAGE_NODE_CLIENT_TYPE, getStorageNodeClientType());
-    routerProperties.put(ConfigKeys.ROUTER_HTTP2_R2_CLIENT_ENABLED, isHttp2Enabled());
-    routerProperties.put(ConfigKeys.ROUTER_PER_NODE_CLIENT_ENABLED, true);
-    routerProperties.put(ConfigKeys.ROUTER_HTTPASYNCCLIENT_CONNECTION_WARMING_ENABLED, !isR2Client);
-    routerProperties.put(ConfigKeys.ROUTER_HTTPASYNCCLIENT_CONNECTION_WARMING_SLEEP_INTERVAL_MS, 1);
-    routerProperties.put(ConfigKeys.ROUTER_MULTI_KEY_ROUTING_STRATEGY, HELIX_ASSISTED_ROUTING.name());
-    routerProperties.put(ConfigKeys.ROUTER_HELIX_VIRTUAL_GROUP_FIELD_IN_DOMAIN, "zone");
-    veniceCluster.addVeniceRouter(routerProperties);
+    extraProperties.put(ConfigKeys.ROUTER_STORAGE_NODE_CLIENT_TYPE, getStorageNodeClientType());
+    extraProperties.put(ConfigKeys.ROUTER_HTTP2_R2_CLIENT_ENABLED, isHttp2Enabled());
+    extraProperties.put(ConfigKeys.ROUTER_PER_NODE_CLIENT_ENABLED, true);
+    extraProperties.put(ConfigKeys.ROUTER_HTTPASYNCCLIENT_CONNECTION_WARMING_ENABLED, !isR2Client);
+    extraProperties.put(ConfigKeys.ROUTER_HTTPASYNCCLIENT_CONNECTION_WARMING_SLEEP_INTERVAL_MS, 1);
+    extraProperties.put(ConfigKeys.ROUTER_MULTI_KEY_ROUTING_STRATEGY, HELIX_ASSISTED_ROUTING.name());
+    extraProperties.put(ConfigKeys.ROUTER_HELIX_VIRTUAL_GROUP_FIELD_IN_DOMAIN, "zone");
+    extraProperties.put(ConfigKeys.ROUTER_HTTP_CLIENT5_SKIP_CIPHER_CHECK_ENABLED, "true");
+
+    veniceCluster = ServiceFactory.getVeniceCluster(1, 1, 1, 2, 100, true, false, extraProperties);
     routerAddr = veniceCluster.getRandomRouterSslURL();
 
     Properties serverProperties = new Properties();
@@ -133,9 +143,7 @@ public abstract class TestRead {
     Properties serverFeatureProperties = new Properties();
     serverFeatureProperties.put(VeniceServerWrapper.SERVER_ENABLE_SSL, "true");
     veniceCluster.addVeniceServer(serverFeatureProperties, serverProperties);
-    if (isR2Client) {
-      veniceCluster.addVeniceServer(serverFeatureProperties, serverProperties);
-    }
+
     // Create test store
     VersionCreationResponse creationResponse = veniceCluster.getNewStoreVersion(KEY_SCHEMA_STR, VALUE_SCHEMA_STR);
     storeVersionName = creationResponse.getKafkaTopic();
@@ -163,12 +171,18 @@ public abstract class TestRead {
 
   @AfterClass(alwaysRun = true)
   public void cleanUp() {
+    if (!isTestEnabled()) {
+      return;
+    }
     Utils.closeQuietlyWithErrorLogged(veniceCluster);
     Utils.closeQuietlyWithErrorLogged(veniceWriter);
   }
 
   @Test(timeOut = 50000, groups = {"flaky"})
   public void testRead() throws Exception {
+    if (!isTestEnabled()) {
+      return;
+    }
     final int pushVersion = Version.parseVersionFromKafkaTopicName(storeVersionName);
 
     String keyPrefix = "key_";
@@ -411,6 +425,9 @@ public abstract class TestRead {
 
   @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testD2ServiceDiscovery() {
+    if (!isTestEnabled()) {
+      return;
+    }
     String routerUrl = veniceCluster.getRandomRouterURL();
     try (CloseableHttpAsyncClient client = HttpAsyncClients.custom()
         .setDefaultRequestConfig(RequestConfig.custom().setSocketTimeout(2000).build())
@@ -443,6 +460,9 @@ public abstract class TestRead {
 
   @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testRouterHealthCheck() {
+    if (!isTestEnabled()) {
+      return;
+    }
     String routerUrl = veniceCluster.getRandomRouterURL();
     try (CloseableHttpAsyncClient client = HttpAsyncClients.createDefault()) {
       client.start();
@@ -462,6 +482,9 @@ public abstract class TestRead {
 
   @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testResourceStateLookup() {
+    if (!isTestEnabled()) {
+      return;
+    }
     String routerURL = veniceCluster.getRandomRouterURL();
     try (CloseableHttpAsyncClient client = HttpAsyncClients.custom()
         .setDefaultRequestConfig(RequestConfig.custom().setSocketTimeout(2000).build())

@@ -647,6 +647,19 @@ public class Utils {
     }
   }
 
+  public static int getJavaMajorVersion() {
+    String[] versionElements = System.getProperty("java.version").split("\\.");
+    int discard = Integer.parseInt(versionElements[0]);
+    int version;
+    if (discard == 1) {
+      version = Integer.parseInt(versionElements[1]);
+    } else {
+      version = discard;
+    }
+
+    return version;
+  }
+
   public static Map<CharSequence, CharSequence> getDebugInfo() {
     Map<CharSequence, CharSequence> debugInfo = new HashMap<>();
     try {
@@ -659,6 +672,7 @@ public class Utils {
     debugInfo.put("pid", getPid());
     debugInfo.put("version", getVeniceVersionFromClassPath());
     debugInfo.put("user", getCurrentUser());
+    debugInfo.put("JDK major version", Integer.toString(getJavaMajorVersion()));
 
     return debugInfo;
   }

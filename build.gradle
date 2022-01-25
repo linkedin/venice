@@ -149,7 +149,9 @@ ext.libraries = [
     spotbugsAvroPlugin: 'com.linkedin.avroutil1:spotbugs-plugin:0.2.69',
 
     // TODO: switch to avro-util once it's able to generate version agnostic code.
-    avroSchemasBuilder: 'com.linkedin.avro-schemas:avro-schemas-builder:63.1.428'
+    avroSchemasBuilder: 'com.linkedin.avro-schemas:avro-schemas-builder:63.1.428',
+
+    "httpClient5": "org.apache.httpcomponents.client5:httpclient5:5.1.2"
 ]
 
 subprojects {

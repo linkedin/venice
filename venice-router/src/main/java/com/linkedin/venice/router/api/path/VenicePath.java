@@ -320,6 +320,8 @@ public abstract class VenicePath implements ResourcePath<RouterKey> {
 
   public abstract ByteBuf getRequestBody();
 
+  public abstract Optional<byte[]> getBody();
+
   public abstract String getVeniceApiVersionHeader();
 
   public void setRestRequestEntity(RestRequestBuilder builder) {

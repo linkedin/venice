@@ -250,6 +250,9 @@ public class ApacheHttpAsyncStorageNodeClient implements StorageNodeClient  {
     public boolean startInner() throws Exception {
       int instanceNum = nodeIdToClientMap.size();
       logger.info("Start connection warming for " + instanceNum + " instances");
+      if (instanceNum == 0) {
+        return true;
+      }
       /**
        * This is for one-time use during start, and we would like to warm up the connections to all the instances
        * as fast as possible.

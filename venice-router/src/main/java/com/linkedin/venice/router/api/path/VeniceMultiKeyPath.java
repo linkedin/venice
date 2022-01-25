@@ -210,6 +210,11 @@ public abstract class VeniceMultiKeyPath<K> extends VenicePath {
     return Unpooled.wrappedBuffer(serializeRouterRequest());
   }
 
+  @Override
+  public Optional<byte[]> getBody() {
+    return Optional.of(serializeRouterRequest());
+  }
+
   public int getLongTailRetryMaxRouteForMultiKeyReq() {
     return this.longTailRetryMaxRouteForMultiKeyReq;
   }

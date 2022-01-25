@@ -9,6 +9,7 @@ import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.handler.codec.http.HttpMethod;
 import java.util.Collection;
+import java.util.Optional;
 import javax.annotation.Nonnull;
 import org.apache.http.client.methods.HttpUriRequest;
 import org.testng.annotations.Test;
@@ -57,6 +58,11 @@ public class TestVenicePath {
     @Override
     public ByteBuf getRequestBody() {
       return Unpooled.EMPTY_BUFFER;
+    }
+
+    @Override
+    public Optional<byte[]> getBody() {
+      return Optional.empty();
     }
 
     public String getVeniceApiVersionHeader() {
