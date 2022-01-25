@@ -54,7 +54,7 @@ public class UtilsTest {
     Map<CharSequence, CharSequence> debugInfo = Utils.getDebugInfo();
     debugInfo.forEach((k, v) -> System.out.println(k + ": " + v));
     Assert.assertFalse(debugInfo.isEmpty(), "debugInfo should not be empty.");
-    String[] expectedKeys = {"path", "host", "pid", "version", "user"};
+    String[] expectedKeys = {"path", "host", "pid", "version", "user", "JDK major version"};
     Assert.assertEquals(debugInfo.size(), expectedKeys.length, "debugInfo does not contain the expected number of elements.");
     Arrays.stream(expectedKeys).forEach(key ->
         Assert.assertTrue(debugInfo.containsKey(key), "debugInfo should contain: " + key));

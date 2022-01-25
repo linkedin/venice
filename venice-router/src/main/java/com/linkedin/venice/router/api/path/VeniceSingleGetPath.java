@@ -140,6 +140,11 @@ public class VeniceSingleGetPath extends VenicePath {
   }
 
   @Override
+  public Optional<byte[]> getBody() {
+    return Optional.empty();
+  }
+
+  @Override
   public String getVeniceApiVersionHeader() {
     return ROUTER_REQUEST_VERSION;
   }

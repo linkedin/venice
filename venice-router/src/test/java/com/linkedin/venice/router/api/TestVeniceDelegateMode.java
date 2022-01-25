@@ -94,6 +94,11 @@ public class TestVeniceDelegateMode {
         return Unpooled.EMPTY_BUFFER;
       }
 
+      @Override
+      public Optional<byte[]> getBody() {
+        return Optional.empty();
+      }
+
       public String getVeniceApiVersionHeader() {
         return ROUTER_REQUEST_VERSION;
       }

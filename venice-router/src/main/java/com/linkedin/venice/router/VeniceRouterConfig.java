@@ -116,6 +116,10 @@ public class VeniceRouterConfig {
   private boolean routerHeartBeatEnabled;
   private int routerHTTPMaxResponseSize;
   private boolean routerHTTP2R2ClientEnabled;
+  private boolean routerHTTP2ClientEnabled;
+  private int httpClient5PoolSize;
+  private int httpClient5TotalIOThreadCount;
+  private boolean httpClient5SkipCipherCheck;
   private int routerMultiGetDecompressionThreads;
   private int routerMultiGetDecompressionBatchSize;
 
@@ -271,6 +275,15 @@ public class VeniceRouterConfig {
     routerHeartBeatEnabled = props.getBoolean(ROUTER_HEART_BEAT_ENABLED, true);
     routerHTTPMaxResponseSize = props.getInt(ROUTER_HTTP_MAX_RESPONSE_SIZE, 32000000);
     routerHTTP2R2ClientEnabled = props.getBoolean(ROUTER_HTTP2_R2_CLIENT_ENABLED, false);
+    routerHTTP2ClientEnabled = props.getBoolean(ROUTER_HTTP2_CLIENT_ENABLED, false);
+    httpClient5PoolSize = props.getInt(ROUTER_HTTP_CLIENT5_POOL_SIZE, 1);
+    httpClient5TotalIOThreadCount = props.getInt(ROUTER_HTTP_CLIENT5_TOTAL_IO_THREAD_COUNT, Runtime.getRuntime().availableProcessors());
+    httpClient5SkipCipherCheck = props.getBoolean(ROUTER_HTTP_CLIENT5_SKIP_CIPHER_CHECK_ENABLED, false);
+    /**
+     * If the legacy config enables http2, Router will use it.
+     */
+    routerHTTP2ClientEnabled |= routerHTTP2R2ClientEnabled;
+
 
     routerMultiGetDecompressionThreads = props.getInt(ROUTER_MULTI_KEY_DECOMPRESSION_THREADS, 10);
     routerMultiGetDecompressionBatchSize = props.getInt(ROUTER_MULTI_KEY_DECOMPRESSION_BATCH_SIZE, 5);
@@ -705,8 +718,20 @@ public class VeniceRouterConfig {
     return routerHTTPMaxResponseSize;
   }
 
-  public boolean isRouterHTTP2R2ClientEnabled() {
-    return routerHTTP2R2ClientEnabled;
+  public boolean isRouterHTTP2ClientEnabled() {
+    return routerHTTP2ClientEnabled;
+  }
+
+  public int getHttpClient5PoolSize() {
+    return httpClient5PoolSize;
+  }
+
+  public int getHttpClient5TotalIOThreadCount() {
+    return httpClient5TotalIOThreadCount;
+  }
+
+  public boolean isHttpClient5SkipCipherCheck() {
+    return httpClient5SkipCipherCheck;
   }
 
   public int getRouterMultiGetDecompressionThreads() {

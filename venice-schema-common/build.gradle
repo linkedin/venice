@@ -49,6 +49,7 @@ dependencies {
     api libraries.httpCore  //d2Client brings in an old version of httpCore
     api libraries.tehuti
     api libraries.xerces // d2Client brings in an old version of xerces
+    api libraries.httpClient5
 
     implementation libraries.avroUtilFastserde
 

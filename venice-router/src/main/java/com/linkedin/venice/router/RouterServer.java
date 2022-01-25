@@ -58,6 +58,7 @@ import com.linkedin.venice.router.api.VeniceVersionFinder;
 import com.linkedin.venice.router.api.path.VenicePath;
 import com.linkedin.venice.router.api.routing.helix.HelixGroupSelector;
 import com.linkedin.venice.router.httpclient.ApacheHttpAsyncStorageNodeClient;
+import com.linkedin.venice.router.httpclient.HttpClient5StorageNodeClient;
 import com.linkedin.venice.router.httpclient.NettyStorageNodeClient;
 import com.linkedin.venice.router.httpclient.R2StorageNodeClient;
 import com.linkedin.venice.router.httpclient.StorageNodeClient;
@@ -393,6 +394,10 @@ public class RouterServer extends AbstractVeniceService {
       case R2_CLIENT:
         logger.info("Router will use R2 client in per node client mode");
         storageNodeClient = new R2StorageNodeClient(sslFactoryForRequests, config);
+        break;
+      case HTTP_CLIENT_5_CLIENT:
+        logger.info("Router will use HTTP CLIENT5");
+        storageNodeClient = new HttpClient5StorageNodeClient(sslFactoryForRequests, config);
         break;
       default:
         throw new VeniceException("Router client type " + config.getStorageNodeClientType().toString() + " is not supported!");

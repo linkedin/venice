@@ -1533,7 +1533,27 @@ public class ConfigKeys {
    */
   public static final String ROUTER_HTTP_MAX_RESPONSE_SIZE = "router.http.max.response.size";
 
+  /**
+   * @deprecated, and it will be replaced by {@link #ROUTER_HTTP2_CLIENT_ENABLED}.
+   */
   public static final String ROUTER_HTTP2_R2_CLIENT_ENABLED = "router.http2.r2.client.enabled";
+
+  public static final String ROUTER_HTTP2_CLIENT_ENABLED = "router.http2.client.enabled";
+
+  /**
+   * HttpClient5 pool size.
+   */
+  public static final String ROUTER_HTTP_CLIENT5_POOL_SIZE = "router.http.client5.pool.size";
+
+  /**
+   * Total IO thread count for HttpClient5 pool.
+   */
+  public static final String ROUTER_HTTP_CLIENT5_TOTAL_IO_THREAD_COUNT = "router.http.client5.total.io.thread.count";
+
+  /**
+   * Whether to skip the cipher check when using Httpclient5.
+   */
+  public static final String ROUTER_HTTP_CLIENT5_SKIP_CIPHER_CHECK_ENABLED = "router.http.client5.skip.check.enabled";
 
   /**
    * Number of IO threads used for AHAC client.

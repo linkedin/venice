@@ -45,9 +45,9 @@ public class R2StorageNodeClient implements StorageNodeClient {
   public R2StorageNodeClient(Optional<SSLEngineComponentFactory> sslFactory, VeniceRouterConfig config) {
     this.sslFactory = sslFactory;
     this.httpMaxResponseSize = config.getRouterHTTPMaxResponseSize();
-    this.http2Enabled = config.isRouterHTTP2R2ClientEnabled();
+    this.http2Enabled = config.isRouterHTTP2ClientEnabled();
     this.requestTimeout = config.getSocketTimeout();
-    this.clientPoolSize = config.getR2ClientPoolSize();;
+    this.clientPoolSize = config.getR2ClientPoolSize();
   }
 
   @Override
