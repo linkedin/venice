@@ -227,6 +227,12 @@ class IngestionNotificationDispatcher {
         notifier -> notifier.topicSwitchReceived(topic, pcs.getUserPartition(), pcs.getLatestProcessedVersionTopicOffset()));
   }
 
+  void reportDataRecoveryCompleted(PartitionConsumptionState pcs) {
+    report(pcs, ExecutionStatus.DATA_RECOVERY_COMPLETED,
+        notifier -> notifier.dataRecoveryCompleted(topic, pcs.getUserPartition(),
+            pcs.getOffsetRecord().getLocalVersionTopicOffset(), ""));
+  }
+
   void reportError(int partition, String message, Exception consumerEx) {
     for (VeniceNotifier notifier : notifiers) {
       try {

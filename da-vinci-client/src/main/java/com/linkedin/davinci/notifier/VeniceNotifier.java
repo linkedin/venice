@@ -73,6 +73,8 @@ public interface VeniceNotifier extends Closeable {
 
   default void topicSwitchReceived(String kafkaTopic, int partitionId, long offset, String message) {}
 
+  default void dataRecoveryCompleted(String kafkaTopic, int partitionId, long offset, String message) {}
+
   /**
    * Consumption is started for an incremental push
    */

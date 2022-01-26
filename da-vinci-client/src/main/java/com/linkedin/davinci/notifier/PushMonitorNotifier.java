@@ -55,6 +55,11 @@ public class PushMonitorNotifier implements VeniceNotifier {
   }
 
   @Override
+  public void dataRecoveryCompleted(String kafkaTopic, int partitionId, long offset, String message) {
+    accessor.updateReplicaStatus(kafkaTopic, partitionId, instanceId, ExecutionStatus.DATA_RECOVERY_COMPLETED, offset, message);
+  }
+
+  @Override
   public void startOfIncrementalPushReceived(String topic, int partitionId, long offset, String message) {
     accessor.updateReplicaStatus(topic, partitionId, instanceId, ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED, offset, message);
     pushStatusStoreAccessor.updateReplicaStatus(topic, partitionId, instanceId, ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED, offset, message);

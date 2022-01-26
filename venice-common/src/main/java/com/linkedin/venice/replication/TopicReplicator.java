@@ -174,13 +174,18 @@ public abstract class TopicReplicator {
     if (version.isActiveActiveReplicationEnabled()) {
       return REWIND_TIME_DECIDED_BY_SERVER;
     }
+    long rewindTimeInMs = hybridStoreConfig.get().getRewindTimeInSeconds() * Time.MS_PER_SECOND;
+    if (version.getDataRecoveryVersionConfig() != null) {
+      // Override the user rewind if the version is under data recovery to avoid data loss when user have short rewind.
+      rewindTimeInMs = Math.min(TopicManager.BUFFER_REPLAY_MINIMAL_SAFETY_MARGIN, rewindTimeInMs);
+    }
     switch (hybridStoreConfig.get().getBufferReplayPolicy()) {
       // TODO to get a more deterministic timestamp across colo we could use the timestamp from the SOP/EOP control message.
       case REWIND_FROM_SOP:
-        return versionCreationTimeInMs - hybridStoreConfig.get().getRewindTimeInSeconds() * Time.MS_PER_SECOND;
+        return versionCreationTimeInMs - rewindTimeInMs;
       case REWIND_FROM_EOP:
       default:
-        return getTimer().getMilliseconds() - hybridStoreConfig.get().getRewindTimeInSeconds() * Time.MS_PER_SECOND;
+        return getTimer().getMilliseconds() - rewindTimeInMs;
     }
   }
 

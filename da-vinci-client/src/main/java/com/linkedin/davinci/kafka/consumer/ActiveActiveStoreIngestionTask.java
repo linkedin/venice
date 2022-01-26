@@ -13,6 +13,7 @@ import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceMessageException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
+import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.Delete;
@@ -196,10 +197,11 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       PartitionConsumptionState partitionConsumptionState, int subPartition) {
     /**
      * With {@link com.linkedin.davinci.replication.BatchConflictResolutionPolicy.BATCH_WRITE_LOSES} there is no need
-     * to perform DCR before EOP and L/F DIV passthrough mode should be used.
+     * to perform DCR before EOP and L/F DIV passthrough mode should be used. If the version is going through data
+     * recovery then there is no need to perform DCR until we completed data recovery and switched to consume from RT.
      * TODO. We need to refactor this logic when we support other batch conflict resolution policy.
      */
-    if (!partitionConsumptionState.isEndOfPushReceived()) {
+    if (!partitionConsumptionState.isEndOfPushReceived() || isDataRecovery && partitionConsumptionState.getTopicSwitch() != null) {
       super.processMessageAndMaybeProduceToKafka(consumerRecordWrapper, partitionConsumptionState, subPartition);
       return;
     }
@@ -457,13 +459,18 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
 
   private long calculateRewindStartTime(PartitionConsumptionState partitionConsumptionState) {
     long rewindStartTime = 0;
+    long rewindTimeInMs = hybridStoreConfig.get().getRewindTimeInSeconds() * Time.MS_PER_SECOND;
+    if (isDataRecovery) {
+      // Override the user rewind if the version is under data recovery to avoid data loss when user have short rewind.
+      rewindTimeInMs = Math.max(TopicManager.BUFFER_REPLAY_MINIMAL_SAFETY_MARGIN, rewindTimeInMs);
+    }
     switch (hybridStoreConfig.get().getBufferReplayPolicy()) {
       case REWIND_FROM_SOP:
-        rewindStartTime =  partitionConsumptionState.getStartOfPushTimestamp() - hybridStoreConfig.get().getRewindTimeInSeconds() * Time.MS_PER_SECOND;
+        rewindStartTime =  partitionConsumptionState.getStartOfPushTimestamp() - rewindTimeInMs;
         break;
       case REWIND_FROM_EOP:
       default:
-        rewindStartTime = partitionConsumptionState.getEndOfPushTimestamp() - hybridStoreConfig.get().getRewindTimeInSeconds() * Time.MS_PER_SECOND;
+        rewindStartTime = partitionConsumptionState.getEndOfPushTimestamp() - rewindTimeInMs;
     }
     return rewindStartTime;
   }

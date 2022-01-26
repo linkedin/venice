@@ -365,6 +365,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private final boolean offsetLagDeltaRelaxEnabled;
   private final boolean ingestionCheckpointDuringGracefulShutdownEnabled;
 
+  protected boolean isDataRecovery;
+
   public StoreIngestionTask(
       StoreIngestionTaskFactory.Builder builder,
       Store store,
@@ -762,12 +764,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         long producerTimeLagThresholdInMS = TimeUnit.SECONDS.toMillis(producerTimeLagThresholdInSeconds);
         long latestConsumedProducerTimestamp = partitionConsumptionState.getOffsetRecord().getLatestProducerProcessingTimeInMs();
         if (amplificationFactor != 1) {
-          for (int subPartition : PartitionUtils.getSubPartitions(partitionConsumptionState.getUserPartition(), amplificationFactor)) {
-            if (partitionConsumptionStateMap.containsKey(subPartition) && partitionConsumptionStateMap.get(subPartition).isEndOfPushReceived()) {
-              latestConsumedProducerTimestamp = Math.max(latestConsumedProducerTimestamp,
-                  partitionConsumptionStateMap.get(subPartition).getOffsetRecord().getLatestProducerProcessingTimeInMs());
-            }
-          }
+          latestConsumedProducerTimestamp =
+              getLatestConsumedProducerTimestampWithSubPartition(latestConsumedProducerTimestamp, partitionConsumptionState);
         }
         long producerTimestampLag = LatencyUtils.getElapsedTimeInMs(latestConsumedProducerTimestamp);
         boolean timestampLagIsAcceptable = (producerTimestampLag < producerTimeLagThresholdInMS);
@@ -878,6 +876,18 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
 
     return isLagAcceptable;
+  }
+
+  protected long getLatestConsumedProducerTimestampWithSubPartition(long consumedProducerTimestamp,
+      PartitionConsumptionState partitionConsumptionState) {
+    long latestConsumedProducerTimestamp = consumedProducerTimestamp;
+    for (int subPartition : PartitionUtils.getSubPartitions(partitionConsumptionState.getUserPartition(), amplificationFactor)) {
+      if (partitionConsumptionStateMap.containsKey(subPartition) && partitionConsumptionStateMap.get(subPartition).isEndOfPushReceived()) {
+        latestConsumedProducerTimestamp = Math.max(latestConsumedProducerTimestamp,
+            partitionConsumptionStateMap.get(subPartition).getOffsetRecord().getLatestProducerProcessingTimeInMs());
+      }
+    }
+    return latestConsumedProducerTimestamp;
   }
 
   protected abstract boolean isRealTimeBufferReplayStarted(PartitionConsumptionState partitionConsumptionState);
@@ -1090,6 +1100,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           elapsedTimeForProducingToKafka += LatencyUtils.getLatencyInMS(kafkaProduceStartTimeInNS);
           ++recordProducedToKafka;
           break;
+        case SKIPPED_MESSAGE:
         case DUPLICATE_MESSAGE:
           /**
            * DuplicatedDataException can be thrown when leader is consuming from RT and is running DIV check on the message
@@ -2397,6 +2408,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      * TODO: sync up offset before invoking dispatcher
      */
     reportStatusAdapter.reportEndOfPushReceived(partitionConsumptionState);
+
+    if (isDataRecovery && partitionConsumptionState.isBatchOnly()) {
+      partitionConsumptionState.setDataRecoveryCompleted(true);
+      reportStatusAdapter.reportDataRecoveryCompleted(partitionConsumptionState);
+    }
   }
 
 
@@ -2648,9 +2664,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     TopicManager topicManager = topicManagerRepository.getTopicManager();
     String topic = consumerRecord.topic();
+    int subPartition = PartitionUtils.getSubPartition(consumerRecord.topic(), consumerRecord.partition(), amplificationFactor);
+    PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(subPartition);
+    // Tolerate missing message if store version is data recovery + hybrid and TS not received yet (due to source topic
+    // data may have been log compacted) or log compaction is enabled and record is old enough for log compaction.
     boolean tolerateMissingMsgs =
-        topicManager.isTopicCompactionEnabled(topic) &&
-        LatencyUtils.getElapsedTimeInMs(consumerRecord.timestamp()) >= topicManager.getTopicMinLogCompactionLagMs(topic);
+        (isDataRecovery && isHybridMode() && partitionConsumptionState.getTopicSwitch() == null) ||
+        (topicManager.isTopicCompactionEnabled(topic) &&
+        LatencyUtils.getElapsedTimeInMs(consumerRecord.timestamp()) >= topicManager.getTopicMinLogCompactionLagMs(topic));
 
     long startTimeForMessageValidationInNS = System.nanoTime();
     try {
@@ -3496,7 +3517,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     /**
      * The consumer record is a duplicated message.
      */
-    DUPLICATE_MESSAGE
+    DUPLICATE_MESSAGE,
+    /**
+     * The consumer record is skipped. e.g. remote VT's TS message during data recovery.
+     */
+    SKIPPED_MESSAGE
   }
 
   protected void recordProcessedRecordStats(PartitionConsumptionState partitionConsumptionState, int processedRecordSize, int processedRecordNum) {

@@ -18,7 +18,8 @@ public enum IngestionReportType {
   START_OF_BUFFER_REPLAY_RECEIVED(6),
   START_OF_INCREMENTAL_PUSH_RECEIVED(7),
   END_OF_INCREMENTAL_PUSH_RECEIVED(8),
-  TOPIC_SWITCH_RECEIVED(9);
+  TOPIC_SWITCH_RECEIVED(9),
+  DATA_RECOVERY_COMPLETED(10);
 
   private final int value;
   private static final Map<Integer, IngestionReportType> INGESTION_REPORT_TYPE_MAP = getIngestionReportTypeMap();

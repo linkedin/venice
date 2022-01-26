@@ -39,6 +39,7 @@ public class PartitionConsumptionState {
   private boolean lagCaughtUp;
   private boolean completionReported;
   private boolean isSubscribed;
+  private boolean isDataRecoveryCompleted;
   private LeaderFollowerStateType leaderFollowerState;
 
   /**
@@ -600,5 +601,13 @@ public class PartitionConsumptionState {
 
   public void setEndOfIncrementalPushTimestamp(String incrementalPushVersion, long timestamp) {
     incrementalPushHighWatermarkMap.put(incrementalPushVersion, timestamp);
+  }
+
+  public void setDataRecoveryCompleted(boolean dataRecoveryCompleted) {
+    isDataRecoveryCompleted = dataRecoveryCompleted;
+  }
+
+  public boolean isDataRecoveryCompleted() {
+    return isDataRecoveryCompleted;
   }
 }

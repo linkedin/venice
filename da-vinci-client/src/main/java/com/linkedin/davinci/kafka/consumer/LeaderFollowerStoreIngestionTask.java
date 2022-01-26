@@ -18,6 +18,7 @@ import com.linkedin.venice.exceptions.VeniceTimeoutException;
 import com.linkedin.venice.exceptions.validation.DuplicateDataException;
 import com.linkedin.venice.exceptions.validation.FatalDataValidationException;
 import com.linkedin.venice.guid.GuidUtils;
+import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
@@ -43,6 +44,7 @@ import com.linkedin.venice.utils.Lazy;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.writer.ChunkAwareCallback;
 import com.linkedin.venice.writer.LeaderMetadataWrapper;
 import com.linkedin.venice.writer.VeniceWriter;
@@ -148,6 +150,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
   protected final Map<String, Integer> kafkaClusterUrlToIdMap;
 
+  private long dataRecoveryCompletionTimeLagThresholdInMs = 0;
+
   public LeaderFollowerStoreIngestionTask(
       StoreIngestionTaskFactory.Builder builder,
       Store store,
@@ -184,7 +188,32 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     this.ingestionTaskWriteComputeHandler = new StoreIngestionWriteComputeProcessor(storeName, schemaRepository, mergeRecordHelper);
 
     this.isNativeReplicationEnabled = version.isNativeReplicationEnabled();
-    this.nativeReplicationSourceVersionTopicKafkaURL = version.getPushStreamSourceAddress();
+
+    /**
+     * Native replication could also be used to perform data recovery by pointing the source version topic kafka url to
+     * a topic with good data in another child fabric.
+     */
+    if (version.getDataRecoveryVersionConfig() == null) {
+      this.nativeReplicationSourceVersionTopicKafkaURL = version.getPushStreamSourceAddress();
+      isDataRecovery = false;
+    } else {
+      this.nativeReplicationSourceVersionTopicKafkaURL = serverConfig.getKafkaClusterIdToUrlMap()
+          .get(serverConfig.getKafkaClusterAliasToIdMap()
+              .get(version.getDataRecoveryVersionConfig().getDataRecoverySourceFabric()));
+      if (nativeReplicationSourceVersionTopicKafkaURL == null) {
+        throw new VeniceException("Unable to get data recovery source kafka url from the provided source fabric:"
+            + version.getDataRecoveryVersionConfig().getDataRecoverySourceFabric());
+      }
+      isDataRecovery = true;
+      if (isHybridMode()) {
+        dataRecoveryCompletionTimeLagThresholdInMs = TopicManager.BUFFER_REPLAY_MINIMAL_SAFETY_MARGIN / 2;
+        logger.info("Data recovery info for topic: " + getVersionTopic() + ", source kafka url: "
+            + nativeReplicationSourceVersionTopicKafkaURL + ", time lag threshold for completion: "
+            + dataRecoveryCompletionTimeLagThresholdInMs);
+      }
+    }
+    logger.info("Native replication source version topic kafka url set to: "
+        + nativeReplicationSourceVersionTopicKafkaURL + " for topic: " + getVersionTopic());
 
     this.compressorFactory = compressorFactory;
 
@@ -774,14 +803,77 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   /**
    * If leader is consuming remote VT or SR, once EOP is received, switch back to local VT to consume TOPIC_SWITCH,
    * unless there are more data to be consumed in remote topic in the following case:
-   * Incremental push is enabled, the policy is PUSH_TO_VERSION_TOPIC, write compute is disabled.
+   * Incremental push is enabled, the policy is PUSH_TO_VERSION_TOPIC, write compute is disabled. OR the version is
+   * hybrid or incremental push enabled and data recovery is in progress.
    */
-  private boolean shouldLeaderSwitchToLocalConsumption(PartitionConsumptionState partitionConsumptionState) {
+  private boolean shouldLeaderSwitchToLocalConsumption(PartitionConsumptionState partitionConsumptionState)
+      throws InterruptedException {
+    /**
+     * If the store is not batch only and data recovery is still in progress then we cannot switch to local consumption
+     * yet even when EOP is received. There might be RT data in the source fabric that we need to replicate
+     */
+    if (isDataRecovery && !partitionConsumptionState.isBatchOnly()) {
+      if (partitionConsumptionState.isEndOfPushReceived()) {
+        // Data recovery can only complete after EOP received.
+        checkAndUpdateDataRecoveryStatusOfHybridStore(partitionConsumptionState);
+      }
+    }
     return partitionConsumptionState.consumeRemotely()
         && partitionConsumptionState.isEndOfPushReceived()
         && Version.isVersionTopicOrStreamReprocessingTopic(partitionConsumptionState.getOffsetRecord().getLeaderTopic())
+        && (!isDataRecovery || partitionConsumptionState.isDataRecoveryCompleted())
         && !(partitionConsumptionState.isIncrementalPushEnabled() && partitionConsumptionState.getIncrementalPushPolicy()
             .equals(IncrementalPushPolicy.PUSH_TO_VERSION_TOPIC) && !isWriteComputationEnabled);
+  }
+
+  private void checkAndUpdateDataRecoveryStatusOfHybridStore(PartitionConsumptionState partitionConsumptionState)
+      throws InterruptedException {
+    boolean isDataRecoveryCompleted = partitionConsumptionState.isDataRecoveryCompleted();
+    if (isDataRecoveryCompleted) {
+      return;
+    }
+    if (partitionConsumptionState.getTopicSwitch() != null) {
+      // If the partition contains topic switch that mean data recovery completed at some point already.
+      isDataRecoveryCompleted = true;
+    }
+    if (!isDataRecoveryCompleted) {
+      long latestConsumedProducerTimestamp =
+          partitionConsumptionState.getOffsetRecord().getLatestProducerProcessingTimeInMs();
+      if (amplificationAdapter != null) {
+        latestConsumedProducerTimestamp = getLatestConsumedProducerTimestampWithSubPartition(latestConsumedProducerTimestamp,
+            partitionConsumptionState);
+      }
+      if (LatencyUtils.getElapsedTimeInMs(latestConsumedProducerTimestamp) < dataRecoveryCompletionTimeLagThresholdInMs) {
+        logger.info("Data recovery completed for topic: " + kafkaVersionTopic + " partition: "
+            + partitionConsumptionState.getPartition() + " upon consuming records with producer timestamp of "
+            + latestConsumedProducerTimestamp + " which is within the data recovery completion lag threshold of "
+            + dataRecoveryCompletionTimeLagThresholdInMs + " ms");
+        isDataRecoveryCompleted = true;
+      }
+    }
+    if (!isDataRecoveryCompleted) {
+      long dataRecoverySourceVTEndOffset = cachedKafkaMetadataGetter
+          .getOffset(topicManagerRepository.getTopicManager(nativeReplicationSourceVersionTopicKafkaURL), kafkaVersionTopic,
+              partitionConsumptionState.getPartition());
+
+      // If the last few records in source VT is old then we can also complete data recovery if the leader idles and we
+      // have reached/passed the end offset of the VT (around the time when ingestion is started for that partition).
+      long localVTOffsetProgress = partitionConsumptionState.getLatestProcessedVersionTopicOffset();
+      // -2 because getOffset returns the next available offset (-1) and we are skipping the remote TS message (-1).
+      boolean isAtEndOfSourceVT = dataRecoverySourceVTEndOffset - 2 <= localVTOffsetProgress;
+      long lastTimestamp = getLastConsumedMessageTimestamp(kafkaVersionTopic, partitionConsumptionState.getPartition());
+      if (isAtEndOfSourceVT && LatencyUtils.getElapsedTimeInMs(lastTimestamp) > newLeaderInactiveTime) {
+        logger.info("Data recovery completed for topic: " + kafkaVersionTopic + " partition: "
+            + partitionConsumptionState.getPartition() + " upon exceeding leader inactive time of "
+            + newLeaderInactiveTime + " ms");
+        isDataRecoveryCompleted = true;
+      }
+    }
+
+    if (isDataRecoveryCompleted) {
+      partitionConsumptionState.setDataRecoveryCompleted(true);
+      reportStatusAdapter.reportDataRecoveryCompleted(partitionConsumptionState);
+    }
   }
 
   /**
@@ -1308,9 +1400,13 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
               /**
                * The flag is turned on to avoid consuming unwanted messages after EOP in remote VT, such as SOBR. In
                * {@link LeaderFollowerStoreIngestionTask#checkLongRunningTaskState()}, once leader notices that EOP is
-               * received, it will unsubscribe from the remote VT and turn off this flag.
+               * received, it will unsubscribe from the remote VT and turn off this flag. However, if data recovery is
+               * in progress and the store is hybrid then we actually want to consume messages after EOP. In that case
+               * remote TS will be skipped but with a different method.
                */
-              partitionConsumptionState.setSkipKafkaMessage(true);
+              if (!(isDataRecovery && isHybridMode())) {
+                partitionConsumptionState.setSkipKafkaMessage(true);
+              }
             }
           }
         }
@@ -1645,6 +1741,11 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
              * setLeaderUpstreamOffset in {@link updateOffset()}.
              * The leaderUpstreamOffset is set from the TS message config itself. We should not override it.
              */
+            if (isDataRecovery && !partitionConsumptionState.isBatchOnly()) {
+              // Ignore remote VT's TS message since we might need to consume more RT or incremental push data from VT
+              // that's no longer in the local/remote RT due to retention.
+              return DelegateConsumerRecordResult.SKIPPED_MESSAGE;
+            }
             leaderProducedRecordContext = LeaderProducedRecordContext.newControlMessageRecord(null, -1, kafkaKey.getKey(), controlMessage);
             produceToLocalKafka(consumerRecordWrapper, partitionConsumptionState, leaderProducedRecordContext,
                 (callback, leaderMetadataWrapper) -> veniceWriter.get().asyncSendControlMessage(controlMessage, consumerRecord.partition(),
