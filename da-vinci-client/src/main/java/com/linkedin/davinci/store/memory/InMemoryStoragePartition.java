@@ -54,7 +54,7 @@ public class InMemoryStoragePartition extends AbstractStoragePartition {
     throw new UnsupportedOperationException("Method not implemented!!");
   }
 
-  public byte[] get(byte[] key)
+  public byte[] get(byte[] key, boolean skipCache)
       throws PersistenceFailureException {
     ByteArray k = new ByteArray(key);
     if (partitionDb.containsKey(k)) {
@@ -64,18 +64,13 @@ public class InMemoryStoragePartition extends AbstractStoragePartition {
   }
 
   @Override
-  public <K, V> V get(K key) {
+  public <K, V> V get(K key, boolean skipCache) {
     throw new UnsupportedOperationException("Method not implemented!!");
   }
 
   @Override
-  public byte[] get(ByteBuffer keyBuffer) {
-    // Don't care about the performance here
-    keyBuffer.mark();
-    byte[] key = new byte[keyBuffer.remaining()];
-    keyBuffer.get(key);
-    keyBuffer.reset();
-    return get(key);
+  public byte[] get(ByteBuffer key, boolean skipCache) {
+    throw new UnsupportedOperationException("Method not implemented!!");
   }
 
   @Override

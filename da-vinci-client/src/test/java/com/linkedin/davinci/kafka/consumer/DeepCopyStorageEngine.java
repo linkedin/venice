@@ -149,16 +149,6 @@ public class DeepCopyStorageEngine extends AbstractStorageEngine<AbstractStorage
     this.delegate.delete(logicalPartitionId, key);
   }
 
-  @Override
-  public byte[] get(int logicalPartitionId, byte[] key) {
-    return this.delegate.get(logicalPartitionId, key);
-  }
-
-  @Override
-  public byte[] get(int logicalPartitionId, ByteBuffer keyBuffer) {
-    return this.delegate.get(logicalPartitionId, keyBuffer);
-  }
-
   public void preparePartitionForReading(int partition) {
      delegate.preparePartitionForReading(partition);
   }

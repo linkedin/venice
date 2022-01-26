@@ -29,20 +29,19 @@ public class BlackHoleStorageEnginePartition extends AbstractStoragePartition {
   }
 
   @Override
-  public byte[] get(byte[] key) {
+  public byte[] get(byte[] key, boolean skipCache) {
     // I think this is what you're looking for...
     return null;
   }
 
   @Override
-  public <K, V> V get(K key) {
+  public <K, V> V get(K key, boolean skipCache) {
     // this is fun
     return null;
   }
 
   @Override
-  public byte[] get(ByteBuffer key) {
-    // I think this is what you're looking for...
+  public byte[] get(ByteBuffer key, boolean skipCache) {
     return null;
   }
 

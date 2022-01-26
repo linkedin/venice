@@ -166,7 +166,7 @@ public class ReplicationMetadataRocksDBStoragePartitionTest extends AbstractStor
 
     for (Map.Entry<String, Pair<String, String>> entry : inputRecords.entrySet()) {
       byte[] key = entry.getKey().getBytes();
-      byte[] value = storagePartition.get(key);
+      byte[] value = storagePartition.get(key, false);
       Assert.assertEquals(value, entry.getValue().getFirst().getBytes());
       byte[] metadata = storagePartition.getReplicationMetadata(key);
       ByteBuffer replicationMetadataWithValueSchema = ByteBuffer.wrap(metadata);
@@ -184,7 +184,7 @@ public class ReplicationMetadataRocksDBStoragePartitionTest extends AbstractStor
 
       storagePartition.deleteWithReplicationMetadata(key, updatedReplicationMetadataWitValueSchemaIdBytes);
 
-      byte[] value = storagePartition.get(key);
+      byte[] value = storagePartition.get(key, false);
       Assert.assertNull(value);
 
       byte[] metadata = storagePartition.getReplicationMetadata(key);
@@ -213,7 +213,7 @@ public class ReplicationMetadataRocksDBStoragePartitionTest extends AbstractStor
 
     for (Map.Entry<String, Pair<String, String>> entry : inputRecordsBatch.entrySet()) {
       byte[] key = entry.getKey().getBytes();
-      byte[] value = storagePartition.get(key);
+      byte[] value = storagePartition.get(key, false);
       Assert.assertEquals(value, entry.getValue().getFirst().getBytes());
       Assert.assertNull(storagePartition.getReplicationMetadata(key));
     }
@@ -227,7 +227,7 @@ public class ReplicationMetadataRocksDBStoragePartitionTest extends AbstractStor
       storagePartition.deleteWithReplicationMetadata(key, updatedReplicationMetadataWitValueSchemaIdBytes);
 
 
-      byte[] value = storagePartition.get(key);
+      byte[] value = storagePartition.get(key, false);
       Assert.assertNull(value);
 
       byte[] metadata = storagePartition.getReplicationMetadata(key);

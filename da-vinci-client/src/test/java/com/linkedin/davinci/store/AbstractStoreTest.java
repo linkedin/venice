@@ -39,7 +39,7 @@ public abstract class AbstractStoreTest {
   protected byte[] doGet(int partitionId, byte[] key)
       throws VeniceException {
     byte[] result;
-    result = testStore.get(partitionId, key);
+    result = testStore.get(partitionId, key, false);
     return result;
   }
 

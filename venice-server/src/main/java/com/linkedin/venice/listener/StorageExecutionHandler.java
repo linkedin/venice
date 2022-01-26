@@ -629,7 +629,8 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
       case SINGLE_GET:
         reuseValueRecord =
             GenericRecordChunkingAdapter.INSTANCE.get(store, partition, key, isChunked, reuseValueRecord,
-                binaryDecoder, response, compressionStrategy, fastAvroEnabled, this.schemaRepo, storeName, compressorFactory);
+                binaryDecoder, response, compressionStrategy, fastAvroEnabled, this.schemaRepo, storeName, compressorFactory,
+                false);
         break;
       case SINGLE_GET_WITH_REUSE:
         reuseValueRecord = GenericRecordChunkingAdapter.INSTANCE.get(storeName, store, partition, ByteUtils.extractByteArray(key),

@@ -134,7 +134,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
   }
 
   private boolean isMetadataMigrationCompleted(Partition someMetadataPartition) {
-    return null != someMetadataPartition.get(METADATA_MIGRATION_KEY);
+    return null != someMetadataPartition.get(METADATA_MIGRATION_KEY, false);
   }
 
   // For testing purpose only.
@@ -365,24 +365,19 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     partition.put(key, value);
   }
 
-  public byte[] get(int partitionId, byte[] key) throws VeniceException {
+  public byte[] get(int partitionId, byte[] key, boolean skipCache) throws VeniceException {
     AbstractStoragePartition partition = getPartitionOrThrow(partitionId);
-    return partition.get(key);
+    return partition.get(key, skipCache);
   }
 
-  public ByteBuffer get(int partitionId, byte[] key, ByteBuffer valueToBePopulated) throws VeniceException {
+  public ByteBuffer get(int partitionId, byte[] key, ByteBuffer valueToBePopulated, boolean skipCache) throws VeniceException {
     AbstractStoragePartition partition = getPartitionOrThrow(partitionId);
-    return partition.get(key, valueToBePopulated);
+    return partition.get(key, valueToBePopulated, skipCache);
   }
 
-  public byte[] get(int partitionId, ByteBuffer keyBuffer) throws VeniceException {
+  public byte[] get(int partitionId, ByteBuffer keyBuffer, boolean skipCache) throws VeniceException {
     AbstractStoragePartition partition = getPartitionOrThrow(partitionId);
-    return partition.get(keyBuffer);
-  }
-
-  public <K, V> V get(int partitionId, K key) throws VeniceException {
-    AbstractStoragePartition partition = getPartitionOrThrow(partitionId);
-    return partition.get(key);
+    return partition.get(keyBuffer, skipCache);
   }
 
   public void getByKeyPrefix(int partitionId, byte[] partialKey, BytesStreamingCallback bytesStreamingCallback){
@@ -434,7 +429,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     if (partitionId < 0) {
       throw new IllegalArgumentException("Invalid partition id argument in getPartitionOffset");
     }
-    byte[] value = metadataPartition.get(getPartitionMetadataKey(partitionId));
+    byte[] value = metadataPartition.get(getPartitionMetadataKey(partitionId), false);
     if (null == value) {
       return Optional.empty();
     }
@@ -477,7 +472,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
       if (versionState != null) {
         return Optional.of(versionState);
       }
-      byte[] value = metadataPartition.get(VERSION_METADATA_KEY);
+      byte[] value = metadataPartition.get(VERSION_METADATA_KEY, false);
       if (null == value) {
         return Optional.empty();
       }
