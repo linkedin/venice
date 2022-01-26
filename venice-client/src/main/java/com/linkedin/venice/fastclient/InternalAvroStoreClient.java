@@ -24,17 +24,45 @@ public abstract class InternalAvroStoreClient<K, V> implements AvroGenericStoreC
    */
   protected abstract CompletableFuture<V> get(GetRequestContext requestContext, K key) throws VeniceClientException;
 
+  /**
+   * Use StatsAvroGenericStoreClient to get a client instance.
+   * Once batchGet with streaming has stabilized the function of this class is to kickstart the internal
+   * scaffolding. When ready, uncomment the line indicated and then the new implementation will
+   * get wired in
+   * @param keys
+   * @return
+   * @throws VeniceClientException
+   */
   public CompletableFuture<Map<K, V>> batchGet(Set<K> keys) throws VeniceClientException {
+
+    // Uncomment below line when batchGet with streaming has stabillized
+    // return batchGet(new BatchGetRequestContext<K,V>(keys), keys);
     throw new VeniceClientException("'batchGet' is not supported.");
   }
 
-  public CompletableFuture<VeniceResponseMap<K, V>> streamingBatchGet(Set<K> keys) throws VeniceClientException {
-    throw new VeniceClientException("'streamingBatchGet' is not supported.");
-  }
+  /**
+   * This implementation is for future use. It will get wired in via
+   * InternalAvroStoreClient.batchGet(Set<K> keys)
+   * @param requestContext
+   * @param keys
+   * @return
+   * @throws VeniceClientException
+   */
+  protected abstract CompletableFuture<Map<K,V>> batchGet(BatchGetRequestContext<K,V> requestContext, Set<K> keys) throws VeniceClientException;
+
 
   public void streamingBatchGet(final Set<K> keys, StreamingCallback<K, V> callback) throws VeniceClientException {
-    throw new VeniceClientException("'streamingBatchGet' is not supported.");
+     streamingBatchGet(new BatchGetRequestContext<K,V>(), keys, callback);
   }
+
+  public CompletableFuture<VeniceResponseMap<K, V>> streamingBatchGet(final Set<K> keys) throws VeniceClientException {
+    return  streamingBatchGet(new BatchGetRequestContext<K,V>(), keys);
+  }
+
+
+  protected abstract void streamingBatchGet(BatchGetRequestContext<K, V> requestContext, Set<K> keys, StreamingCallback<K, V> callback);
+  protected abstract CompletableFuture<VeniceResponseMap<K, V>> streamingBatchGet(BatchGetRequestContext<K, V> requestContext, Set<K> keys);
+
 
   public ComputeRequestBuilder<K> compute() {
     throw new VeniceClientException("'compute' is not supported.");
