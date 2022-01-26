@@ -27,7 +27,6 @@ public class DefaultIngestionBackend implements DaVinciIngestionBackend, VeniceI
   private final KafkaStoreIngestionService storeIngestionService;
   private final Map<String, AtomicReference<AbstractStorageEngine>> topicStorageEngineReferenceMap = new VeniceConcurrentHashMap<>();
 
-
   public DefaultIngestionBackend(StorageMetadataService storageMetadataService, KafkaStoreIngestionService storeIngestionService, StorageService storageService) {
     this.storageMetadataService = storageMetadataService;
     this.storeIngestionService = storeIngestionService;
@@ -63,7 +62,8 @@ public class DefaultIngestionBackend implements DaVinciIngestionBackend, VeniceI
   }
 
   @Override
-  public void dropStoragePartitionGracefully(VeniceStoreVersionConfig storeConfig, int partition, int timeoutInSeconds) {
+  public void dropStoragePartitionGracefully(VeniceStoreVersionConfig storeConfig, int partition, int timeoutInSeconds,
+      boolean removeEmptyStorageEngine) {
     if (storeIngestionService.isPartitionConsuming(storeConfig, partition)) {
       long startTimeInMs = System.currentTimeMillis();
       getStoreIngestionService().stopConsumptionAndWait(storeConfig, partition, 1, timeoutInSeconds);
@@ -71,7 +71,7 @@ public class DefaultIngestionBackend implements DaVinciIngestionBackend, VeniceI
           LatencyUtils.getElapsedTimeInMs(startTimeInMs)));
     }
     getStoreIngestionService().resetConsumptionOffset(storeConfig, partition);
-    getStorageService().dropStorePartition(storeConfig, partition);
+    getStorageService().dropStorePartition(storeConfig, partition, removeEmptyStorageEngine);
     logger.info("Partition: " + partition + " of topic: " + storeConfig.getStoreVersionName() + " has been dropped.");
   }
 

@@ -55,7 +55,7 @@ public class VersionBackend {
   private final boolean reportPushStatus;
   private final boolean suppressLiveUpdates;
   private final AtomicReference<AbstractStorageEngine> storageEngine = new AtomicReference<>();
-  private final Map<Integer, CompletableFuture> partitionFutures = new VeniceConcurrentHashMap<>();
+  private final Map<Integer, CompletableFuture<Void>> partitionFutures = new VeniceConcurrentHashMap<>();
   private final int stopConsumptionWaitRetriesNum;
   private final StoreBackendStats storeBackendStats;
 
@@ -101,7 +101,7 @@ public class VersionBackend {
     if (heartbeat != null) {
       heartbeat.cancel(true);
     }
-    for (Map.Entry<Integer, CompletableFuture> entry : partitionFutures.entrySet()) {
+    for (Map.Entry<Integer, CompletableFuture<Void>> entry : partitionFutures.entrySet()) {
       entry.getValue().cancel(true);
     }
     try {
@@ -322,7 +322,7 @@ public class VersionBackend {
   }
 
   public boolean isPartitionReadyToServe(int partition) {
-    CompletableFuture future = partitionFutures.get(partition);
+    CompletableFuture<Void> future = partitionFutures.get(partition);
     return future != null && future.isDone() && !future.isCompletedExceptionally();
   }
 
@@ -334,7 +334,7 @@ public class VersionBackend {
     Instant startTime = Instant.now();
     List<Integer> partitionList = getPartitions(partitions);
     logger.info("Subscribing to partitions " + partitionList + " of " + this);
-    List<CompletableFuture> futures = new ArrayList<>(partitionList.size());
+    List<CompletableFuture<Void>> futures = new ArrayList<>(partitionList.size());
     for (int partition : partitionList) {
       AbstractStorageEngine engine = storageEngine.get();
       if (partitionFutures.containsKey(partition)) {
@@ -375,12 +375,12 @@ public class VersionBackend {
 
   void completePartition(int partition) {
     logger.info("Partition " + partition + " of " + this + " is ready to serve.");
-    partitionFutures.computeIfAbsent(partition, k -> new CompletableFuture()).complete(null);
+    partitionFutures.computeIfAbsent(partition, k -> new CompletableFuture<>()).complete(null);
   }
 
   void completePartitionExceptionally(int partition, Throwable failure) {
     logger.warn("Failed to subscribe to partition " + partition + " of " + this, failure);
-    partitionFutures.computeIfAbsent(partition, k -> new CompletableFuture()).completeExceptionally(failure);
+    partitionFutures.computeIfAbsent(partition, k -> new CompletableFuture<>()).completeExceptionally(failure);
   }
 
   private List<Integer> getPartitions(ComplementSet<Integer> partitions) {
