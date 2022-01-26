@@ -248,7 +248,7 @@ public class VeniceServer {
         schemaRepo,
         liveClusterConfigRepo,
         metricsRepository,
-        null,
+        rocksDBMemoryStats,
         kafkaMessageEnvelopeSchemaReader,
         clientConfigForConsumer,
         partitionStateSerializer,

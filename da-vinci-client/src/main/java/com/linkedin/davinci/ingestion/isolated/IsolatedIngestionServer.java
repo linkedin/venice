@@ -519,10 +519,10 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
     storeVersionStateSerializer = AvroProtocolDefinition.STORE_VERSION_STATE.getSerializer();
     storeVersionStateSerializer.setSchemaReader(storeVersionStateSchemaReader);
 
-    // Create RocksDBMemoryStats. For now RocksDBMemoryStats cannot work with SharedConsumerPool.
-    RocksDBMemoryStats rocksDBMemoryStats = ((configLoader.getVeniceServerConfig().isDatabaseMemoryStatsEnabled())
-        && (!configLoader.getVeniceServerConfig().isSharedConsumerPoolEnabled()))?
-        new RocksDBMemoryStats(metricsRepository, "RocksDBMemoryStats", configLoader.getVeniceServerConfig().getRocksDBServerConfig().isRocksDBPlainTableFormatEnabled()) : null;
+    // Create RocksDBMemoryStats.
+    boolean plainTableEnabled = configLoader.getVeniceServerConfig().getRocksDBServerConfig().isRocksDBPlainTableFormatEnabled();
+    RocksDBMemoryStats rocksDBMemoryStats = configLoader.getVeniceServerConfig().isDatabaseMemoryStatsEnabled() ?
+        new RocksDBMemoryStats(metricsRepository, "RocksDBMemoryStats", plainTableEnabled) : null;
 
     /**
      * Using reflection to create all the stats classes related to ingestion isolation. All these classes extends
