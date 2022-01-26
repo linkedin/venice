@@ -574,16 +574,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
   }
 
+  // TODO: Support memory enforcer with shared consumer as it has been fully rolled out.
   private void buildRocksDBMemoryEnforcer() {
     AbstractStorageEngine storageEngine = storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic);
-    if (rocksDBMemoryStats.isPresent() && storageEngine.getType().equals(PersistenceType.ROCKS_DB)) {
-      if (serverConfig.isSharedConsumerPoolEnabled()) {
-        // TODO: support memory limiter with shared consumer
-        throw new VeniceException("RocksDBMemoryEnforcement can not work with shared consumer.");
-      }
-      this.rocksDBMemoryEnforcer = Optional.of(new RocksDBMemoryEnforcement(
-         this
-      ));
+    if (rocksDBMemoryStats.isPresent() && storageEngine.getType().equals(PersistenceType.ROCKS_DB)
+        && !serverConfig.isSharedConsumerPoolEnabled()) {
+      this.rocksDBMemoryEnforcer = Optional.of(new RocksDBMemoryEnforcement(this));
     } else {
       this.rocksDBMemoryEnforcer = Optional.empty();
     }
