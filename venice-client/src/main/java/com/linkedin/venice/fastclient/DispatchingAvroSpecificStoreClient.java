@@ -2,7 +2,6 @@ package com.linkedin.venice.fastclient;
 
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.AvroSpecificStoreClient;
-import com.linkedin.venice.client.store.transport.TransportClient;
 import com.linkedin.venice.fastclient.meta.StoreMetadata;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
@@ -17,7 +16,8 @@ public class DispatchingAvroSpecificStoreClient<K, V extends SpecificRecord>
   public DispatchingAvroSpecificStoreClient(StoreMetadata metadata, ClientConfig config) {
     super(metadata, config);
     if (config.getSpecificValueClass() == null) {
-      throw new VeniceClientException("SpecificValueClass in ClientConfig shouldn't be null when constructing a specific store client.");
+      throw new VeniceClientException(
+          "SpecificValueClass in ClientConfig shouldn't be null when constructing a specific store client.");
     }
     this.valueClass = config.getSpecificValueClass();
 
@@ -28,9 +28,9 @@ public class DispatchingAvroSpecificStoreClient<K, V extends SpecificRecord>
   protected RecordDeserializer<V> getDataRecordDeserializer(int schemaId) throws VeniceClientException {
     Schema writerSchema = getStoreMetadata().getValueSchema(schemaId);
     if (null == writerSchema) {
-      throw new VeniceClientException("Failed to get value schema for store: " + getStoreName() + " and id: " + schemaId);
+      throw new VeniceClientException(
+          "Failed to get value schema for store: " + getStoreName() + " and id: " + schemaId);
     }
     return FastSerializerDeserializerFactory.getFastAvroSpecificDeserializer(writerSchema, valueClass);
   }
-
 }

@@ -5,6 +5,7 @@ import com.linkedin.venice.stats.AbstractVeniceStats;
 import com.linkedin.venice.stats.StatsUtils;
 import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.Avg;
@@ -13,9 +14,13 @@ import io.tehuti.metrics.stats.OccurrenceRate;
 import io.tehuti.metrics.stats.Rate;
 import java.net.MalformedURLException;
 import java.net.URL;
+import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 
 public class ClientStats extends com.linkedin.venice.client.stats.ClientStats {
@@ -118,6 +123,37 @@ public class ClientStats extends com.linkedin.venice.client.stats.ClientStats {
     getRouteStats(instance).recordOtherErrorRequest();
   }
 
+  /**
+   * This method is a utility method to build concise summaries useful in tests
+   * and for logging. It generates a single string for all metrics for a sensor
+   * @return
+   * @param sensorName
+   */
+  public String buildSensorStatSummary(String sensorName, String... stats) {
+    List<Double> metricValues = getMetricValues(sensorName, stats);
+    StringBuilder builder = new StringBuilder();
+    String sensorFullName = getSensorFullName(sensorName);
+    builder.append(sensorFullName).append(":");
+    builder.append(IntStream.range(0,stats.length)
+                  .mapToObj((statIdx) -> stats[statIdx] + "=" + metricValues.get(statIdx))
+                  .collect(Collectors.joining(",")));
+    return builder.toString();
+  }
+
+  /**
+   * This method is a utility method to get metric values useful in tests
+   * and for logging.
+   * @return
+   * @param sensorName
+   */
+  public List<Double> getMetricValues(String sensorName, String... stats) {
+    String sensorFullName = getSensorFullName(sensorName);
+    List<Double> collect = Arrays.stream(stats).map((stat) -> {
+      Metric metric = getMetricsRepository().getMetric(sensorFullName + "." + stat);
+      return (metric != null ? metric.value() : Double.NaN);
+    }).collect(Collectors.toList());
+    return collect;
+  }
   /**
    * Per-route request metrics.
    */

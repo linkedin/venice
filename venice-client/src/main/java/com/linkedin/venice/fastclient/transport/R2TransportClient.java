@@ -42,6 +42,14 @@ public class R2TransportClient extends InternalTransportClient {
     return valueFuture;
   }
 
+  public CompletableFuture<TransportClientResponse> post(String requestUrl, Map<String, String> headers,
+      byte[] requestBody) {
+    RestRequest request = D2ClientUtils.createD2PostRequest(requestUrl, headers, requestBody);
+    CompletableFuture<TransportClientResponse> valueFuture = new CompletableFuture<>();
+    r2Client.restRequest(request, new R2TransportClientCallback(valueFuture));
+    return valueFuture;
+  }
+
   @Override
   public void close() throws IOException {
 

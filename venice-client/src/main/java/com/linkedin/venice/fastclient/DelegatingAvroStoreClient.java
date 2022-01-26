@@ -1,6 +1,8 @@
 package com.linkedin.venice.fastclient;
 
 import com.linkedin.venice.client.exceptions.VeniceClientException;
+import com.linkedin.venice.client.store.streaming.StreamingCallback;
+import com.linkedin.venice.client.store.streaming.VeniceResponseMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -27,6 +29,29 @@ public class DelegatingAvroStoreClient<K, V> extends InternalAvroStoreClient<K, 
   @Override
   public CompletableFuture<Map<K, V>> batchGet(Set<K> keys) throws VeniceClientException {
     return delegate.batchGet(keys);
+  }
+
+  @Override
+  // Future implementation after stabilization of streaming batch get
+  /**
+   * This implementation is for future use. It will get wired in via
+   * InternalAvroStoreClient.batchGet(Set<K> keys)
+   */
+  protected CompletableFuture<Map<K, V>> batchGet(BatchGetRequestContext<K, V> requestContext, Set<K> keys)
+      throws VeniceClientException {
+    return delegate.batchGet(requestContext, keys);
+  }
+
+  @Override
+  protected void streamingBatchGet(BatchGetRequestContext<K, V> requestContext, Set<K> keys,
+      StreamingCallback<K, V> callback) {
+    delegate.streamingBatchGet(requestContext, keys, callback);
+  }
+
+  @Override
+  protected CompletableFuture<VeniceResponseMap<K, V>> streamingBatchGet(BatchGetRequestContext<K, V> requestContext,
+      Set<K> keys) {
+    return delegate.streamingBatchGet(requestContext, keys);
   }
 
   @Override

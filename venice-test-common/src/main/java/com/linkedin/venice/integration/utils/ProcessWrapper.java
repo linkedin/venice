@@ -10,7 +10,6 @@ import org.apache.commons.io.FileUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-
 /**
  * A class used for wrapping external systems and Venice components and
  * taking care of cleaning up after them when finished.
