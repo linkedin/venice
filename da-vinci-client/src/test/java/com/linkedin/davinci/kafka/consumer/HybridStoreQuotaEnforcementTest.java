@@ -64,6 +64,7 @@ public class HybridStoreQuotaEnforcementTest {
     when(store.getStorageQuotaInByte()).thenReturn(storeQuotaInBytes);
     when(store.getPartitionCount()).thenReturn(storePartitionCount);
     when(store.getVersion(storeVersion)).thenReturn(Optional.of(version));
+    when(store.isHybridStoreDiskQuotaEnabled()).thenReturn(true);
     when(version.getStatus()).thenReturn(VersionStatus.STARTED);
     when(storeIngestionTask.isMetricsEmissionEnabled()).thenReturn(false);
     when(storeIngestionTask.getReportStatusAdapter()).thenReturn(reportStatusAdapter);
@@ -89,6 +90,11 @@ public class HybridStoreQuotaEnforcementTest {
     Assert.assertEquals(quotaEnforcer.getStoreQuotaInBytes(), newStoreQuotaInBytes);
     Assert.assertEquals(quotaEnforcer.getPartitionQuotaInBytes(), newStoreQuotaInBytes/storePartitionCount);
 
+    // Quota is reported as not violated at the current stage.
+    for (int i = 1; i <= storePartitionCount; i++) {
+      verify(storeIngestionTask, times(1)).reportQuotaNotViolated(i);
+    }
+
     // Trigger quota violation to pause these partitions.
     buildDummyPartitionToSizeMap(20);
     runTest(() -> {
@@ -98,10 +104,13 @@ public class HybridStoreQuotaEnforcementTest {
       }
     });
 
-    // handleStoreChanged should get these paused partitions back.
+    // handleStoreChanged should get these paused partitions back, when feature is disabled.
+    when(store.isHybridStoreDiskQuotaEnabled()).thenReturn(false);
     quotaEnforcer.handleStoreChanged(store);
     for (int i = 1; i <= storePartitionCount; i++) {
       Assert.assertFalse(quotaEnforcer.isPartitionPausedIngestion(i));
+      // Expect a new round of QuotaNotViolate are reported.
+      verify(storeIngestionTask, times(2)).reportQuotaNotViolated(i);
     }
   }
 
