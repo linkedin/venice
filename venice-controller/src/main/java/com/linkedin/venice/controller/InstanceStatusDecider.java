@@ -15,6 +15,7 @@ import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.Utils;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -37,8 +38,18 @@ public class InstanceStatusDecider {
   protected static NodeRemovableResult isRemovable(HelixVeniceClusterResources resources, String clusterName,
       String instanceId) {
 
-    return isRemovable(resources, clusterName, instanceId, false);
+    return isRemovable(resources, clusterName, instanceId, Collections.emptyList(), false);
   }
+
+  private static PartitionAssignment removeLockedResources(PartitionAssignment partitionAssignment, List<String> lockedNodes,
+      String resourceName, boolean isInstanceView) {
+    PartitionAssignment assignment = partitionAssignment;
+    for (String lockedNodeId : lockedNodes) {
+      assignment = getPartitionAssignmentAfterRemoving(lockedNodeId, assignment, resourceName, isInstanceView);
+    }
+    return assignment;
+  }
+
 
   /**
    * Decide whether the given instance could be moved out from the cluster. An instance is removable if:
@@ -49,8 +60,8 @@ public class InstanceStatusDecider {
    * 3. For each ongoing version(during the push) exists in this instance:
    *  3.1 Push will not fail after removing this node from the cluster.
    */
-  protected static NodeRemovableResult isRemovable(HelixVeniceClusterResources resources, String clusterName, String instanceId,
-      boolean isInstanceView) {
+  protected static NodeRemovableResult isRemovable(HelixVeniceClusterResources resources, String clusterName,
+      String instanceId, List<String> lockedNodes, boolean isInstanceView) {
     try {
       // If instance is not alive, it's removable.
       if (!HelixUtils.isLiveInstance(clusterName, instanceId, resources.getHelixManager())) {
@@ -74,6 +85,9 @@ public class InstanceStatusDecider {
             // Get partition assignments that if we removed the given instance from cluster.
             PartitionAssignment partitionAssignmentAfterRemoving =
                 getPartitionAssignmentAfterRemoving(instanceId, resourceAssignment, resourceName, isInstanceView);
+
+            partitionAssignmentAfterRemoving =
+                removeLockedResources(partitionAssignmentAfterRemoving, lockedNodes, resourceName, isInstanceView);
 
               // Push has been completed normally. The version of this push is ready to serve read requests. It is the
               // current version of a store (at least when it was checked recently).
@@ -146,15 +160,16 @@ public class InstanceStatusDecider {
   }
 
   private static PartitionAssignment getPartitionAssignmentAfterRemoving(String instanceId,
-      ResourceAssignment resourceAssignment, String resourceName, boolean isInstanceView) {
-    PartitionAssignment partitionAssignment = resourceAssignment.getPartitionAssignment(resourceName);
+      PartitionAssignment partitionAssignment, String resourceName, boolean isInstanceView) {
     PartitionAssignment partitionAssignmentAfterRemoving =
         new PartitionAssignment(resourceName, partitionAssignment.getExpectedNumberOfPartitions());
     for (Partition partition : partitionAssignment.getAllPartitions()) {
-      if(isInstanceView) {
-        // If the instance does not hold any replica of this partition, skip it. As in the instance' view, we only care
-        // about the partitions that has been assigned to this instance.
-        if(partition.getInstanceStatusById(instanceId) == null){
+      if (isInstanceView) {
+        /*
+         * If the instance does not hold any replica of this partition, skip it. As in the instance' view, we only care
+         * about the partitions that has been assigned to this instance.
+         */
+        if (partition.getInstanceStatusById(instanceId) == null) {
           continue;
         }
       }
@@ -162,6 +177,12 @@ public class InstanceStatusDecider {
       partitionAssignmentAfterRemoving.addPartition(partitionAfterRemoving);
     }
     return partitionAssignmentAfterRemoving;
+  }
+
+  private static PartitionAssignment getPartitionAssignmentAfterRemoving(String instanceId,
+      ResourceAssignment resourceAssignment, String resourceName, boolean isInstanceView) {
+    PartitionAssignment partitionAssignment = resourceAssignment.getPartitionAssignment(resourceName);
+    return getPartitionAssignmentAfterRemoving(instanceId, partitionAssignment, resourceName, isInstanceView);
   }
 
   private static VersionStatus getVersionStatus(ReadWriteStoreRepository storeRepository, String resourceName) {
