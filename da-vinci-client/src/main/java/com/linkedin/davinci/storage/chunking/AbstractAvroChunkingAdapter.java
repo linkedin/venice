@@ -161,13 +161,13 @@ public abstract class AbstractAvroChunkingAdapter<T> implements ChunkingAdapter<
       boolean fastAvroEnabled,
       ReadOnlySchemaRepository schemaRepo,
       String storeName,
-      StorageEngineBackedCompressorFactory compressorFactory) {
+      StorageEngineBackedCompressorFactory compressorFactory,
+      boolean skipCache) {
     return get(store, schemaRepo.getLatestValueSchema(storeName).getId(), partition, key, isChunked, reusedValue,
-        reusedDecoder, response, compressionStrategy, fastAvroEnabled, schemaRepo, storeName, compressorFactory);
+        reusedDecoder, response, compressionStrategy, fastAvroEnabled, schemaRepo, storeName, compressorFactory, skipCache);
   }
 
-  public T get(
-      AbstractStorageEngine store,
+  public T get(AbstractStorageEngine store,
       int readerSchema,
       int partition,
       ByteBuffer key,
@@ -179,12 +179,13 @@ public abstract class AbstractAvroChunkingAdapter<T> implements ChunkingAdapter<
       boolean fastAvroEnabled,
       ReadOnlySchemaRepository schemaRepo,
       String storeName,
-      StorageEngineBackedCompressorFactory compressorFactory) {
+      StorageEngineBackedCompressorFactory compressorFactory,
+      boolean skipCache) {
     if (isChunked) {
       key = ByteBuffer.wrap(ChunkingUtils.KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(key));
     }
     return ChunkingUtils.getFromStorage(this, store, readerSchema, partition, key, response, reusedValue,
-        reusedDecoder, compressionStrategy, fastAvroEnabled, schemaRepo, storeName, compressorFactory);
+        reusedDecoder, compressionStrategy, fastAvroEnabled, schemaRepo, storeName, compressorFactory, skipCache);
   }
 
   public T get(

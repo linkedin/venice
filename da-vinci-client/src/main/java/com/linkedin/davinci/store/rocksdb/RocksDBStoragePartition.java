@@ -60,6 +60,8 @@ import static com.linkedin.davinci.store.AbstractStorageEngine.*;
  */
 class RocksDBStoragePartition extends AbstractStoragePartition {
   private static final Logger LOGGER = LogManager.getLogger(RocksDBStoragePartition.class);
+  protected static final ReadOptions readOptionsToSkipCache = new ReadOptions().setFillCache(false);
+  protected static final ReadOptions readOptionsDefault = new ReadOptions();
 
   /**
    * This field is being stored during offset checkpointing in {@link com.linkedin.davinci.kafka.consumer.StoreIngestionTask}.
@@ -514,14 +516,16 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
     throw new UnsupportedOperationException("Method not implemented!!");
   }
 
-
+  private static ReadOptions getReadOptions(boolean skipCache) {
+    return skipCache ? readOptionsToSkipCache : readOptionsDefault;
+  }
 
   @Override
-  public byte[] get(byte[] key) {
+  public byte[] get(byte[] key, boolean skipCache) {
     readCloseRWLock.readLock().lock();
     try {
       makeSureRocksDBIsStillOpen();
-      return rocksDB.get(key);
+      return rocksDB.get(getReadOptions(skipCache), key);
     } catch (RocksDBException e) {
       throw new VeniceException("Failed to get value from store: " + storeName + ", partition id: " + partitionId, e);
     } finally {
@@ -530,18 +534,18 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
   }
 
   @Override
-  public ByteBuffer get(byte[] key, ByteBuffer valueToBePopulated) {
+  public ByteBuffer get(byte[] key, ByteBuffer valueToBePopulated, boolean skipCache) {
     readCloseRWLock.readLock().lock();
     try {
       makeSureRocksDBIsStillOpen();
-      int size = rocksDB.get(key, valueToBePopulated.array());
+      int size = rocksDB.get(getReadOptions(skipCache), key, valueToBePopulated.array());
       if (size == RocksDB.NOT_FOUND) {
         return null;
       } else if (size > valueToBePopulated.capacity()) {
         LOGGER.warn("Will allocate a new ByteBuffer because a value of " + size
             + " bytes was retrieved, which is larger than valueToBePopulated.capacity(): " + valueToBePopulated.capacity());
         valueToBePopulated = ByteBuffer.allocate(size);
-        size = rocksDB.get(key, valueToBePopulated.array());
+        size = rocksDB.get(getReadOptions(skipCache), key, valueToBePopulated.array());
       }
       valueToBePopulated.position(0);
       valueToBePopulated.limit(size);
@@ -554,16 +558,16 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
   }
 
   @Override
-  public <K, V> V get(K key) {
+  public <K, V> V get(K key, boolean skipCache) {
     throw new UnsupportedOperationException("Method not implemented!!");
   }
 
   @Override
-  public byte[] get(ByteBuffer keyBuffer) {
+  public byte[] get(ByteBuffer keyBuffer, boolean skipCache) {
     readCloseRWLock.readLock().lock();
     try {
       makeSureRocksDBIsStillOpen();
-      return rocksDB.get(keyBuffer.array(), keyBuffer.position(), keyBuffer.remaining());
+      return rocksDB.get(getReadOptions(skipCache), keyBuffer.array(), keyBuffer.position(), keyBuffer.remaining());
     } catch (RocksDBException e) {
       throw new VeniceException("Failed to get value from store: " + storeName + ", partition id: " + partitionId, e);
     } finally {

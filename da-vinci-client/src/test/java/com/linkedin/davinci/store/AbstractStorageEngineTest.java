@@ -170,7 +170,7 @@ public abstract class AbstractStorageEngineTest extends AbstractStoreTest {
 
     byte[] found = null;
     try {
-      found = testStoreEngine.get(partitionId, key);
+      found = testStoreEngine.get(partitionId, key, false);
     } catch (PersistenceFailureException e) {
       //This is expected
     }

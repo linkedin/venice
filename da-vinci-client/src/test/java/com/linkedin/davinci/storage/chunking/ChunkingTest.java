@@ -26,6 +26,7 @@ import org.testng.Assert;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.Mockito.*;
 
 
@@ -234,16 +235,16 @@ public class ChunkingTest {
     ByteUtils.writeInt(serializedCVMwithHeader, AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.currentProtocolVersion.get(), 0);
     System.arraycopy(serializedCVM, 0, serializedCVMwithHeader, ValueRecord.SCHEMA_HEADER_LENGTH, serializedCVM.length);
 
-    doReturn(serializedCVMwithHeader).when(storageEngine).get(eq(partition), eq(ByteBuffer.wrap(serializeNonChunkedKey)));
-    doReturn(chunk1Bytes).when(storageEngine).get(eq(partition), eq(firstKey));
-    doReturn(chunk2Bytes).when(storageEngine).get(eq(partition), eq(secondKey));
+    doReturn(serializedCVMwithHeader).when(storageEngine).get(eq(partition), eq(ByteBuffer.wrap(serializeNonChunkedKey)), anyBoolean());
+    doReturn(chunk1Bytes).when(storageEngine).get(eq(partition), eq(firstKey), anyBoolean());
+    doReturn(chunk2Bytes).when(storageEngine).get(eq(partition), eq(secondKey), anyBoolean());
 
     RecordDeserializer deserializer = chunkingAdapter.getDeserializer(storeName, 1, schemaRepository, true);
 
     try (StorageEngineBackedCompressorFactory compressorFactory = new StorageEngineBackedCompressorFactory(mock(
         StorageMetadataService.class))) {
       assertions.apply(chunkingAdapter.get(storageEngine, partition, ByteBuffer.wrap(keyBytes), true, null,
-              null, null, CompressionStrategy.NO_OP, true, schemaRepository, storeName, compressorFactory));
+              null, null, CompressionStrategy.NO_OP, true, schemaRepository, storeName, compressorFactory, false));
     }
   }
 

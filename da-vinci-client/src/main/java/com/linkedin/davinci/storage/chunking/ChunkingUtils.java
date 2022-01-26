@@ -85,7 +85,7 @@ public class ChunkingUtils {
         false,
         null,
         null,
-        null);
+        null, false);
   }
 
   static <VALUE, CHUNKS_CONTAINER> VALUE getFromStorage(
@@ -103,14 +103,14 @@ public class ChunkingUtils {
       String storeName,
       StorageEngineBackedCompressorFactory compressorFactory) {
     long databaseLookupStartTimeInNS = (null != response) ? System.nanoTime() : 0;
-    reusedRawValue = store.get(partition, keyBuffer, reusedRawValue);
+    reusedRawValue = store.get(partition, keyBuffer, reusedRawValue, false);
     if (null == reusedRawValue) {
       return null;
     }
     return getFromStorage(
         reusedRawValue.array(), reusedRawValue.limit(), databaseLookupStartTimeInNS, adapter, store,
         schemaRepo.getLatestValueSchema(storeName).getId(), partition, response, reusedValue, reusedDecoder,
-        compressionStrategy, fastAvroEnabled, schemaRepo, storeName, compressorFactory);
+        compressionStrategy, fastAvroEnabled, schemaRepo, storeName, compressorFactory, false);
   }
 
   static <CHUNKS_CONTAINER, VALUE> void getFromStorageByPartialKey(
@@ -197,13 +197,15 @@ public class ChunkingUtils {
       boolean fastAvroEnabled,
       ReadOnlySchemaRepository schemaRepo,
       String storeName,
-      StorageEngineBackedCompressorFactory compressorFactory) {
+      StorageEngineBackedCompressorFactory compressorFactory,
+      boolean skipCache) {
     long databaseLookupStartTimeInNS = (null != response) ? System.nanoTime() : 0;
-    byte[] value = store.get(partition, keyBuffer);
+    byte[] value = store.get(partition, keyBuffer, skipCache);
 
     return getFromStorage(
         value, (null == value ? 0 : value.length), databaseLookupStartTimeInNS, adapter, store, readerSchemaId, partition,
-        response, reusedValue, reusedDecoder, compressionStrategy, fastAvroEnabled, schemaRepo, storeName, compressorFactory);
+        response, reusedValue, reusedDecoder, compressionStrategy, fastAvroEnabled, schemaRepo, storeName, compressorFactory,
+        skipCache);
   }
 
   /**
@@ -234,7 +236,8 @@ public class ChunkingUtils {
       boolean fastAvroEnabled,
       ReadOnlySchemaRepository schemaRepo,
       String storeName,
-      StorageEngineBackedCompressorFactory compressorFactory) {
+      StorageEngineBackedCompressorFactory compressorFactory,
+      boolean skipCache) {
 
     if (null == value) {
       return null;
@@ -266,7 +269,7 @@ public class ChunkingUtils {
       // optimize large value retrieval in the future, it's unclear whether the concurrent retrieval approach
       // is optimal (as opposed to streaming the response out incrementally, for example). Since this is a
       // premature optimization, we are not addressing it right now.
-      byte[] valueChunk = store.get(partition, chunkedValueManifest.keysWithChunkIdSuffix.get(chunkIndex).array());
+      byte[] valueChunk = store.get(partition, chunkedValueManifest.keysWithChunkIdSuffix.get(chunkIndex).array(), skipCache);
 
       if (null == valueChunk) {
         throw new VeniceException(

@@ -60,17 +60,17 @@ public class VeniceStoreCacheStoragePartition extends AbstractStoragePartition {
   }
 
   @Override
-  public byte[] get(byte[] key) {
-    return this.get(ByteBuffer.wrap(key));
+  public byte[] get(byte[] key, boolean skipCache) {
+    return this.get(ByteBuffer.wrap(key), skipCache);
   }
 
   @Override
-  public <K, V> V get(K key) {
+  public <K, V> V get(K key, boolean skipCache) {
     throw new UnsupportedOperationException("Reading via a key synchronously is unsupported by this implementation!!");
   }
 
   @Override
-  public byte[] get(ByteBuffer key) {
+  public byte[] get(ByteBuffer key, boolean skipCache) {
     throw new UnsupportedOperationException("Reading via a serialized key for a serialized record unsupported by this implementation!!");
   }
 
