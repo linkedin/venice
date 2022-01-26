@@ -130,9 +130,10 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
       if (!isolatedIngestionServer.isInitiated()) {
         throw new VeniceException("IsolatedIngestionServer has not been initiated.");
       }
-      VeniceStoreVersionConfig storeConfig = isolatedIngestionServer.getConfigLoader().getStoreConfig(topicName);
       KafkaStoreIngestionService storeIngestionService = isolatedIngestionServer.getStoreIngestionService();
-
+      VeniceStoreVersionConfig storeConfig = isolatedIngestionServer.getConfigLoader().getStoreConfig(topicName);
+      // Explicitly disable the behavior to restore local data partitions as it might already been opened by main process.
+      storeConfig.setRestoreDataPartitions(false);
       switch (ingestionCommandType) {
         case START_CONSUMPTION:
           ReadOnlyStoreRepository storeRepository = isolatedIngestionServer.getStoreRepository();
@@ -163,7 +164,16 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
           isolatedIngestionServer.cleanupTopicState(topicName);
           break;
         case REMOVE_PARTITION:
-          isolatedIngestionServer.getIngestionBackend().dropStoragePartitionGracefully(storeConfig, partitionId, isolatedIngestionServer.getStopConsumptionWaitRetriesNum());
+          /**
+           * Here we do not allow storage service to clean up "empty" storage engine. When ingestion isolation is turned on,
+           * storage partition will be re-opened in main process after COMPLETED is announced by StoreIngestionTask. Although
+           * it might indicate there is no remaining data partitions in the forked process storage engine, it still holds the
+           * metadata partition. Cleaning up the "empty storage engine" will (1) delete metadata partition (2) remove storage
+           * engine from the map. When a new ingestion request comes in, it will create another metadata partition, but all
+           * the metadata stored previously is gone forever...
+           */
+          isolatedIngestionServer.getIngestionBackend().dropStoragePartitionGracefully(storeConfig, partitionId,
+              isolatedIngestionServer.getStopConsumptionWaitRetriesNum(), false);
           isolatedIngestionServer.cleanupTopicPartitionState(topicName, partitionId);
           break;
         case OPEN_STORAGE_ENGINE:

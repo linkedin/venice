@@ -460,8 +460,10 @@ public class DaVinciClientTest {
 
   @Test(dataProvider = "L/F-and-AmplificationFactor", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT * 2)
   public void testIngestionIsolation(boolean isLeaderFollowerModelEnabled, boolean isAmplificationFactorEnabled) throws Exception {
-    final int partition = 1;
-    final int partitionCount = 2;
+    final int partitionCount = 3;
+    final int dataPartition = 1;
+    int emptyPartition1 = (dataPartition + 1) % partitionCount;
+    int emptyPartition2 = (dataPartition + 2) % partitionCount;
     final int amplificationFactor = isAmplificationFactorEnabled ? 3 : 1;
     String storeName = Utils.getUniqueString("store");
     String storeName2 = cluster.createStore(KEY_COUNT);
@@ -471,7 +473,7 @@ public class DaVinciClientTest {
                 .setPartitionCount(partitionCount)
                 .setPartitionerClass(ConstantVenicePartitioner.class.getName())
                 .setPartitionerParams(
-                    Collections.singletonMap(ConstantVenicePartitioner.CONSTANT_PARTITION, String.valueOf(partition))
+                    Collections.singletonMap(ConstantVenicePartitioner.CONSTANT_PARTITION, String.valueOf(dataPartition))
                 );
     setupHybridStore(storeName, paramsConsumer, 1000);
 
@@ -488,35 +490,41 @@ public class DaVinciClientTest {
     try (CachingDaVinciClientFactory ignored = daVinciTestContext.getDaVinciClientFactory()) {
       DaVinciClient<Integer, Integer> client = daVinciTestContext.getDaVinciClient();
       // subscribe to a partition without data
-      int emptyPartition = (partition + 1) % partitionCount;
-      client.subscribe(Collections.singleton(emptyPartition)).get();
+      client.subscribe(Collections.singleton(emptyPartition1)).get();
       for (int i = 0; i < KEY_COUNT; i++) {
         final int key = i;
         assertThrows(VeniceException.class, () -> client.get(key).get());
       }
-      client.unsubscribe(Collections.singleton(emptyPartition));
+      client.unsubscribe(Collections.singleton(emptyPartition1));
 
       /**
        * Subscribe to the data partition.
        * We perform a subscribe->unsubscribe->subscribe here because we want to test that previous subscription state is
        * cleaned up.
        */
-      client.subscribe(Collections.singleton(partition)).get();
+      client.subscribe(Collections.singleton(dataPartition)).get();
       TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
         for (Integer i = 0; i < KEY_COUNT; i++) {
           assertEquals(client.get(i).get(), i);
         }
       });
-      client.unsubscribe(Collections.singleton(partition));
+      client.unsubscribe(Collections.singleton(dataPartition));
       assertThrows(() -> client.get(0).get());
 
-      client.subscribe(Collections.singleton(partition)).get();
+      // Subscribe to data partition.
+      client.subscribe(Collections.singleton(dataPartition)).get();
       TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
         for (Integer i = 0; i < KEY_COUNT; i++) {
           assertEquals(client.get(i).get(), i);
         }
       });
+      // We subscribe and unsubscribe to different partitions to make sure forked process can work successfully.
+      client.subscribe(Collections.singleton(emptyPartition1)).get();
+      client.unsubscribe(Collections.singleton(emptyPartition1));
+      client.subscribe(Collections.singleton(emptyPartition2)).get();
+      client.unsubscribe(Collections.singleton(emptyPartition2));
     }
+
     // Restart Da Vinci client to test bootstrap logic.
     metricsRepository = new MetricsRepository();
     daVinciTestContext = ServiceFactory.getGenericAvroDaVinciFactoryAndClientWithRetries(d2Client, metricsRepository,

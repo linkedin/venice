@@ -110,9 +110,10 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend implements
   }
 
   @Override
-  public void dropStoragePartitionGracefully(VeniceStoreVersionConfig storeConfig, int partition, int timeoutInSeconds) {
+  public void dropStoragePartitionGracefully(VeniceStoreVersionConfig storeConfig, int partition, int timeoutInSeconds,
+      boolean removeEmptyStorageEngine) {
     mainIngestionRequestClient.unsubscribeTopicPartition(storeConfig.getStoreVersionName(), partition);
-    super.dropStoragePartitionGracefully(storeConfig, partition, timeoutInSeconds);
+    super.dropStoragePartitionGracefully(storeConfig, partition, timeoutInSeconds, removeEmptyStorageEngine);
     mainIngestionMonitorService.cleanupTopicPartitionState(storeConfig.getStoreVersionName(), partition);
   }
 
