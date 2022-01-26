@@ -15,9 +15,12 @@ import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.Utils;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 import org.apache.http.HttpStatus;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -159,13 +162,15 @@ public class NodesAndReplicas extends AbstractRoute {
         AdminSparkServer.validateParams(request, NODE_REMOVABLE.getParams(), admin);
         responseObject.setCluster(request.queryParams(CLUSTER));
         String nodeId = request.queryParams(STORAGE_NODE_ID);
+
+        String lockedNodeIds = AdminSparkServer.getOptionalParameterValue(request, LOCKED_STORAGE_NODE_IDS);
+        List<String> lockedNodes = lockedNodeIds == null ? Collections.emptyList()
+            : Arrays.asList(lockedNodeIds.split(LOCKED_NODE_ID_LIST_SEPARATOR)).stream().map(String::trim).collect(
+                Collectors.toList());
         String[] instanceView = request.queryMap().toMap().get(INSTANCE_VIEW);
         NodeRemovableResult result;
-        if (instanceView != null && Boolean.valueOf(instanceView[0])) {
-          result = admin.isInstanceRemovable(responseObject.getCluster(), nodeId, true);
-        } else {
-          result = admin.isInstanceRemovable(responseObject.getCluster(), nodeId, false);
-        }
+        boolean isFromInstanceView = instanceView != null && Boolean.valueOf(instanceView[0]);
+        result = admin.isInstanceRemovable(responseObject.getCluster(), nodeId, lockedNodes, isFromInstanceView);
         responseObject.setRemovable(result.isRemovable());
         // Add detail reason why this instance could not be removed.
         if (!result.isRemovable()) {

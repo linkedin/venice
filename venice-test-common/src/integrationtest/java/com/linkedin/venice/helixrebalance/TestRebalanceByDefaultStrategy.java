@@ -11,6 +11,7 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -79,7 +80,8 @@ public class TestRebalanceByDefaultStrategy {
       String instanceId = Utils.getHelixNodeIdentifier(port);
       TestUtils.waitForNonDeterministicCompletion(RETRY_REMOVE_TIMEOUT_MS, TimeUnit.MILLISECONDS, () -> {
         try {
-          if (cluster.getMasterVeniceController().getVeniceAdmin().isInstanceRemovable(clusterName, instanceId, false).isRemovable()) {
+          if (cluster.getMasterVeniceController().getVeniceAdmin().isInstanceRemovable(clusterName, instanceId,
+              Collections.emptyList(), false).isRemovable()) {
             cluster.stopVeniceServer(port);
             Thread.sleep(UPGRADE_TIME_MS);
             cluster.restartVeniceServer(port);

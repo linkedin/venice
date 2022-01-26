@@ -4532,10 +4532,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
     @Override
-    public NodeRemovableResult isInstanceRemovable(String clusterName, String helixNodeId, boolean isFromInstanceView) {
-        checkControllerLeadershipFor(clusterName);
-        return InstanceStatusDecider
-            .isRemovable(getHelixVeniceClusterResources(clusterName), clusterName, helixNodeId, isFromInstanceView);
+    public NodeRemovableResult isInstanceRemovable(String clusterName, String helixNodeId, List<String> lockedNodes,
+        boolean isFromInstanceView) {
+      checkControllerLeadershipFor(clusterName);
+      return InstanceStatusDecider.isRemovable(getHelixVeniceClusterResources(clusterName), clusterName, helixNodeId,
+          lockedNodes, isFromInstanceView);
     }
 
     @Override

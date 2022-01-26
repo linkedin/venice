@@ -634,6 +634,12 @@ public class ControllerClient implements Closeable {
     return request(ControllerRoute.NODE_REMOVABLE, params, NodeStatusResponse.class);
   }
 
+  public NodeStatusResponse isNodeRemovable(String instanceId, List<String> lockedNodeIds) {
+    QueryParams params = newParams().add(STORAGE_NODE_ID, instanceId)
+        .add(LOCKED_STORAGE_NODE_IDS, String.join(LOCKED_NODE_ID_LIST_SEPARATOR, lockedNodeIds));
+    return request(ControllerRoute.NODE_REMOVABLE, params, NodeStatusResponse.class);
+  }
+
   public ControllerResponse addNodeIntoWhiteList(String instanceId) {
     QueryParams params = newParams().add(STORAGE_NODE_ID, instanceId);
     return request(ControllerRoute.WHITE_LIST_ADD_NODE, params, ControllerResponse.class);

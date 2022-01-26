@@ -18,6 +18,7 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -122,9 +123,9 @@ public class TestInstanceStatusDecider {
 
     // Test the completed push.
     prepareStoreAndVersion(storeName, version, VersionStatus.ONLINE, true, 2);
-    Assert.assertTrue(InstanceStatusDecider.isRemovable(resources, clusterName, instance1, true).isRemovable(),
+    Assert.assertTrue(InstanceStatusDecider.isRemovable(resources, clusterName, instance1, Collections.emptyList(), true).isRemovable(),
         instance1 + "could be removed because it's not the last online copy in the instance's point of view.");
-    Assert.assertFalse(InstanceStatusDecider.isRemovable(resources, clusterName, instance2, true).isRemovable(),
+    Assert.assertFalse(InstanceStatusDecider.isRemovable(resources, clusterName, instance2, Collections.emptyList(), true).isRemovable(),
         instance2 + "could NOT be removed because it the last online copy in the instance's point of view.");
     Assert.assertFalse(InstanceStatusDecider.isRemovable(resources, clusterName, instance1).isRemovable(),
         instance1 + "could NOT be removed because in the cluster's point of view, partition 1 does not have any online replica alive.");
@@ -210,7 +211,7 @@ public class TestInstanceStatusDecider {
 
 
     prepareStoreAndVersion(storeName, version, VersionStatus.ONLINE, true, 3);
-    Assert.assertTrue(InstanceStatusDecider.isRemovable(resources, clusterName, "localhost_3", true).isRemovable(),
+    Assert.assertTrue(InstanceStatusDecider.isRemovable(resources, clusterName, "localhost_3", Collections.emptyList(), true).isRemovable(),
         "Instance should be removable because after removing one instance, there are 2 active replicas in partition 0 in instance's point of view, it will not trigger re-balance.");
     Assert.assertFalse(InstanceStatusDecider.isRemovable(resources, clusterName, "localhost_3").isRemovable(),
         "Instance should NOT be removable because after removing one instance, there are only 1 active replicas in partition 1 in cluster's point of view, it will trigger re-balance.");

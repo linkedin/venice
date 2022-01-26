@@ -383,17 +383,21 @@ public interface Admin extends AutoCloseable, Closeable {
     List<Replica> getReplicasOfStorageNode(String clusterName, String instanceId);
 
     /**
-     * Is the given instance able to remove out from given cluster. For example, if there is only one online replica
-     * alive in this cluster which is hosted on the given instance. This instance should not be removed out of cluster,
-     * otherwise Venice will lose data. For detail criteria please refer to {@link InstanceStatusDecider}
+     * Assuming all hosts identified by lockedNodes and their corresponding resources are unusable, is the given instance
+     * able to be removed out from the given cluster.
+     * For example, if there is only one online replica alive in this cluster which is hosted on the given instance.
+     * This instance should not be removed out of cluster, otherwise Venice will lose data.
+     * For detail criteria please refer to {@link InstanceStatusDecider}
      *
      * @param helixNodeId nodeId of helix participant. HOST_PORT.
+     * @param lockedNodes A list of helix nodeIds whose resources are assumed to be unusable (stopped).
      * @param isFromInstanceView If the value is true, it means we will only check the partitions this instance hold.
      *                           E.g. if all replicas of a partition are error, but this instance does not hold any
      *                           replica in this partition, we will skip this partition in the checking.
      *                           If the value is false, we will check all partitions of resources this instance hold.
      */
-    NodeRemovableResult isInstanceRemovable(String clusterName, String helixNodeId, boolean isFromInstanceView);
+    NodeRemovableResult isInstanceRemovable(String clusterName, String helixNodeId, List<String> lockedNodes,
+        boolean isFromInstanceView);
 
     /**
      * Get instance of master controller. If there is no master controller for the given cluster, throw a

@@ -25,6 +25,7 @@ public class ControllerApiConstants {
   public static final String FROZEN = "frozen";
   public static final String ERROR = "error";
   public static final String STORAGE_NODE_ID = "storage_node_id"; /* host_port */
+  public static final String LOCKED_STORAGE_NODE_IDS = "locked_storage_node_ids";
   public static final String INSTANCE_VIEW = "instance_view";
   public static final String KEY_SCHEMA = "key_schema";
   public static final String VALUE_SCHEMA = "value_schema";
@@ -182,4 +183,6 @@ public class ControllerApiConstants {
    * source fabric is included in the request body as byte array or not.
    */
   public static final String SOURCE_FABRIC_VERSION_INCLUDED = "source.fabric.version.included";
+
+  public static final String LOCKED_NODE_ID_LIST_SEPARATOR = ",";
 }
