@@ -71,6 +71,12 @@ public class IsolatedIngestionNotifier implements VeniceNotifier {
   }
 
   @Override
+  public void dataRecoveryCompleted(String kafkaTopic, int partitionId, long offset, String message) {
+    IngestionTaskReport report = createIngestionTaskReport(IngestionReportType.DATA_RECOVERY_COMPLETED, kafkaTopic, partitionId, offset, message);
+    isolatedIngestionServer.reportIngestionStatus(report);
+  }
+
+  @Override
   public void progress(String kafkaTopic, int partitionId, long offset, String message) {
     IngestionTaskReport report = createIngestionTaskReport(IngestionReportType.PROGRESS, kafkaTopic, partitionId, offset, message);
     isolatedIngestionServer.reportIngestionStatus(report);

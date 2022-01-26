@@ -46,6 +46,11 @@ public class LogNotifier implements VeniceNotifier {
   }
 
   @Override
+  public void dataRecoveryCompleted(String kafkaTopic, int partitionId, long offset, String message) {
+    logger.info(logMessage("Data recovery completed", kafkaTopic, partitionId, offset, message));
+  }
+
+  @Override
   public void startOfIncrementalPushReceived(String kafkaTopic, int partitionId, long offset, String message) {
     logger.info(logMessage("Received START_OF_INCREMENTAL_PUSH", kafkaTopic, partitionId, offset, message));
   }

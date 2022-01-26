@@ -187,6 +187,10 @@ class ReportStatusAdapter {
     notificationDispatcher.reportKilled(getLeaderPcsList(pcsList), ke);
   }
 
+  public void reportDataRecoveryCompleted(PartitionConsumptionState partitionConsumptionState) {
+    notificationDispatcher.reportDataRecoveryCompleted(partitionConsumptionState);
+  }
+
   private void report(PartitionConsumptionState partitionConsumptionState, SubPartitionStatus subPartitionStatus, Runnable report) {
     report(partitionConsumptionState, subPartitionStatus, Optional.empty(), report);
   }

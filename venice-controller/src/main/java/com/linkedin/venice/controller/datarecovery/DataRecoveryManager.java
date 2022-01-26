@@ -7,6 +7,7 @@ import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.DataRecoveryVersionConfigImpl;
@@ -74,6 +75,9 @@ public class DataRecoveryManager implements Closeable {
     Version dataRecoveryVersion = sourceFabricVersion.cloneVersion();
     dataRecoveryVersion.setStatus(VersionStatus.STARTED);
     Store store = veniceAdmin.getStore(clusterName, storeName);
+    if (store == null) {
+      throw new VeniceNoStoreException(storeName, clusterName);
+    }
     // L/F and NR are required for data recovery.
     dataRecoveryVersion.setLeaderFollowerModelEnabled(store.isLeaderFollowerModelEnabled());
     dataRecoveryVersion.setNativeReplicationEnabled(store.isNativeReplicationEnabled());
@@ -99,6 +103,15 @@ public class DataRecoveryManager implements Closeable {
   public void prepareStoreVersionForDataRecovery(String clusterName, String storeName, String destinationFabric,
       int versionNumber, int sourceAmplificationFactor) {
     verifyStoreIsCapableOfDataRecovery(clusterName, storeName, sourceAmplificationFactor);
+    Store store = veniceAdmin.getStore(clusterName, storeName);
+    if (store.getCurrentVersion() == versionNumber) {
+      // We need to set the store's current version to the backup version or Store.NON_EXISTING_VERSION in order to
+      // perform data recovery on the current version.
+      Optional<Version> backupVersion =
+          store.getVersions().stream().filter(v -> v.getNumber() != versionNumber).findFirst();
+      veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setCurrentVersion(
+          backupVersion.map(Version::getNumber).orElse(Store.NON_EXISTING_VERSION)));
+    }
     veniceAdmin.wipeCluster(clusterName, destinationFabric, Optional.of(storeName), Optional.of(versionNumber));
     veniceAdmin.deleteParticipantStoreKillMessage(clusterName, Version.composeKafkaTopic(storeName, versionNumber));
   }
@@ -175,8 +188,7 @@ public class DataRecoveryManager implements Closeable {
       String clusterName) {
     return clientMap.computeIfAbsent(clusterName, k -> {
       ClientConfig<ParticipantMessageValue> newClientConfig = ClientConfig.defaultSpecificClientConfig(
-          VeniceSystemStoreUtils.getParticipantStoreNameForCluster(clusterName),
-          ParticipantMessageValue.class)
+          VeniceSystemStoreUtils.getParticipantStoreNameForCluster(clusterName), ParticipantMessageValue.class)
           .setD2Client(d2Client)
           .setD2ServiceName(ClientConfig.DEFAULT_D2_SERVICE_NAME);
       return ClientFactory.getAndStartSpecificAvroClient(newClientConfig);

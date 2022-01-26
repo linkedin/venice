@@ -430,7 +430,7 @@ public class OfflinePushStatus {
    *
    * @return true if at least one replica of each partition has consumed an EOP control message, false otherwise
    */
-  public boolean isReadyToStartBufferReplay() {
+  public boolean isReadyToStartBufferReplay(boolean isDataRecovery) {
     // Only allow the push in STARTED status to start buffer replay. It could avoid:
     //   1. Send duplicated start buffer replay message.
     //   2. Send start buffer replay message when a push had already been terminated.
@@ -438,18 +438,19 @@ public class OfflinePushStatus {
       return false;
     }
     boolean isReady = true;
+    ExecutionStatus requiredStatus = isDataRecovery ? DATA_RECOVERY_COMPLETED : END_OF_PUSH_RECEIVED;
     for (PartitionStatus partitionStatus : getPartitionStatuses()) {
       boolean proceedToNextPartition = false;
       for (ReplicaStatus replicaStatus : partitionStatus.getReplicaStatuses()) {
-        if (replicaStatus.getCurrentStatus() == END_OF_PUSH_RECEIVED) {
+        if (replicaStatus.getCurrentStatus() == requiredStatus) {
           proceedToNextPartition = true;
           break;
         } else {
-          // If the previous status contains END_OF_PUSH_RECEIVED then the partition is also ready to start buffer replay.
+          // If the previous status contains required status then the partition is also ready to start buffer replay.
           // We don't have to worry about duplicate start buffer replay message scenario here because it's already
           // handled by the check on the overall status equals to STARTED.
           for (StatusSnapshot snapshot : replicaStatus.getStatusHistory()) {
-            if (snapshot.getStatus() == END_OF_PUSH_RECEIVED) {
+            if (snapshot.getStatus() == requiredStatus) {
               proceedToNextPartition = true;
               break;
             }

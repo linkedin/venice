@@ -223,7 +223,7 @@ public class PushJobDetailsTest {
   public void testPushJobDetailsStatusEnums() {
     // A list of known ExecutionStatus that we don't report/expose to job status polling.
     ExecutionStatus[] unreportedStatusesArray = {NEW, NOT_STARTED, PROGRESS, START_OF_BUFFER_REPLAY_RECEIVED, TOPIC_SWITCH_RECEIVED,
-        DROPPED, WARNING, ARCHIVED, CATCH_UP_BASE_TOPIC_OFFSET_LAG};
+        DROPPED, WARNING, ARCHIVED, CATCH_UP_BASE_TOPIC_OFFSET_LAG, DATA_RECOVERY_COMPLETED};
     HashSet<ExecutionStatus> unreportedStatuses = new HashSet<>(Arrays.asList(unreportedStatusesArray));
     HashSet<Integer> processedSignals = new HashSet<>();
     for (ExecutionStatus status : ExecutionStatus.values()) {

@@ -1578,10 +1578,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         if (store == null) {
             throwStoreDoesNotExist(clusterName, storeName);
         } else {
-            startMonitorOfflinePush(clusterName, version.kafkaTopicName(), version.getPartitionCount(),
-                store.getReplicationFactor(), store.getOffLinePushStrategy());
             helixAdminClient.createVeniceStorageClusterResources(clusterName, version.kafkaTopicName(),
                 version.getPartitionCount(), store.getReplicationFactor(), version.isLeaderFollowerModelEnabled());
+            startMonitorOfflinePush(clusterName, version.kafkaTopicName(), version.getPartitionCount(),
+                store.getReplicationFactor(), store.getOffLinePushStrategy());
         }
     }
 
@@ -2630,7 +2630,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     public void setStoreCurrentVersion(String clusterName, String storeName, int versionNumber){
         storeMetadataUpdate(clusterName, storeName, store -> {
             if (store.getCurrentVersion() != Store.NON_EXISTING_VERSION) {
-                if (!store.containsVersion(versionNumber)) {
+                if (versionNumber != Store.NON_EXISTING_VERSION && !store.containsVersion(versionNumber)) {
                     throw new VeniceException("Version:" + versionNumber + " does not exist for store:" + storeName);
                 }
 

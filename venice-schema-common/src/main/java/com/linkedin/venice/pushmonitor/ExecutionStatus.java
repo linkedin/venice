@@ -82,7 +82,9 @@ public enum ExecutionStatus {
   UNKNOWN(true, false, false, false, 15),
 
   /** Job/Task is created but ingestion haven't started yet */
-  NOT_STARTED(false, true, false, false, 16);
+  NOT_STARTED(false, true, false, false, 16),
+
+  DATA_RECOVERY_COMPLETED(false, true, false, false, 17);
 
   final boolean isJobStatus;
   final boolean isTaskStatus;

@@ -66,6 +66,11 @@ public class RelayNotifier implements VeniceNotifier {
   }
 
   @Override
+  public void dataRecoveryCompleted(String kafkaTopic, int partitionId, long offset, String message) {
+    targetNotifier.dataRecoveryCompleted(kafkaTopic, partitionId, offset, message);
+  }
+
+  @Override
   public void stopped(String kafkaTopic, int partitionId, long offset) {
     targetNotifier.stopped(kafkaTopic, partitionId, offset);
   }

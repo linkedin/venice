@@ -506,7 +506,10 @@ public abstract class AbstractPushMonitor
     }
 
     if (store.isHybrid()) {
-      if (offlinePushStatus.isReadyToStartBufferReplay()) {
+      boolean isDataRecovery =
+          store.getVersion(Version.parseVersionFromKafkaTopicName(offlinePushStatus.getKafkaTopic())).get()
+              .getDataRecoveryVersionConfig() != null;
+      if (offlinePushStatus.isReadyToStartBufferReplay(isDataRecovery)) {
         logger.info(offlinePushStatus.getKafkaTopic()+" is ready to start buffer replay.");
         Optional<TopicReplicator> topicReplicatorOptional = getTopicReplicator();
         if (topicReplicatorOptional.isPresent()) {
