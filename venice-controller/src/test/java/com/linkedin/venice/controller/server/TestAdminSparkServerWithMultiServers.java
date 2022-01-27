@@ -85,7 +85,7 @@ public class TestAdminSparkServerWithMultiServers {
     String incrementalPushEnabledStore = Utils.getUniqueString("incremental-push-store");
     newStoreResponse = controllerClient.createNewStore(incrementalPushEnabledStore, "test", "\"string\"", "\"string\"");
     Assert.assertFalse(newStoreResponse.isError());
-    updateStoreResponse = controllerClient.updateStore(incrementalPushEnabledStore, new UpdateStoreQueryParams().setIncrementalPushEnabled(true));
+    updateStoreResponse = controllerClient.updateStore(incrementalPushEnabledStore, new UpdateStoreQueryParams().setIncrementalPushEnabled(true).setHybridOffsetLagThreshold(10L).setHybridRewindSeconds(1L));
     Assert.assertFalse(updateStoreResponse.isError());
 
     // List stores that have native replication enabled
@@ -134,7 +134,11 @@ public class TestAdminSparkServerWithMultiServers {
     Assert.assertTrue(hybridStoresSet.contains(hybridAggregateStore));
     Assert.assertTrue(hybridStoresSet.contains(hybridNonAggregateStore));
     Assert.assertFalse(hybridStoresSet.contains(nativeReplicationEnabledStore));
-    Assert.assertFalse(hybridStoresSet.contains(incrementalPushEnabledStore));
+    /**
+     * Default incremental push policy is {@link com.linkedin.venice.meta.IncrementalPushPolicy#INCREMENTAL_PUSH_SAME_AS_REAL_TIME}
+     * now, which are hybrid stores.
+     */
+    Assert.assertTrue(hybridStoresSet.contains(incrementalPushEnabledStore));
 
     // List hybrid stores that are on non-aggregate mode
     multiStoreResponse = controllerClient.queryStoreList(false, Optional.of("dataReplicationPolicy"), Optional.of("NON_AGGREGATE"));
@@ -144,7 +148,11 @@ public class TestAdminSparkServerWithMultiServers {
     Assert.assertFalse(nonAggHybridStoresSet.contains(hybridAggregateStore));
     Assert.assertTrue(nonAggHybridStoresSet.contains(hybridNonAggregateStore));
     Assert.assertFalse(nonAggHybridStoresSet.contains(nativeReplicationEnabledStore));
-    Assert.assertFalse(nonAggHybridStoresSet.contains(incrementalPushEnabledStore));
+    /**
+     * Default incremental push policy is {@link com.linkedin.venice.meta.IncrementalPushPolicy#INCREMENTAL_PUSH_SAME_AS_REAL_TIME}
+     * now, which are hybrid stores.
+     */
+    Assert.assertTrue(nonAggHybridStoresSet.contains(incrementalPushEnabledStore));
 
     // List hybrid stores that are on aggregate mode
     multiStoreResponse = controllerClient.queryStoreList(false, Optional.of("dataReplicationPolicy"), Optional.of("AGGREGATE"));

@@ -327,7 +327,7 @@ public class TestMultiDataCenterPush {
 
       Admin.OfflinePushStatusInfo offlinePushStatusInfo = parentControllers.get(0)
           .getVeniceAdmin()
-          .getOffLinePushStatus(clusterName, incrementalPushJob.getKafkaTopic(), incrementalPushJob.getIncrementalPushVersion());
+          .getOffLinePushStatus(clusterName, incrementalPushJob.getTopicToMonitor(), incrementalPushJob.getIncrementalPushVersion());
       Assert.assertEquals(offlinePushStatusInfo.getExecutionStatus(), ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED);
       Assert.assertTrue(incrementalPushJob.getIncrementalPushVersion().isPresent());
       long incrementalPushJobTimeInMs = StatusSnapshot.getIncrementalPushJobTimeInMs(incrementalPushJob.getIncrementalPushVersion().get());

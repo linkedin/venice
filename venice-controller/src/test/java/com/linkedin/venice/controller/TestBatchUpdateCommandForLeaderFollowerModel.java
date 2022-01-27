@@ -47,7 +47,7 @@ public class TestBatchUpdateCommandForLeaderFollowerModel extends AbstractTestAd
      */
     String incrementalPushStoreName = Utils.getUniqueString("incremental-push-store");
     controllerClient.createNewStore(incrementalPushStoreName, "test", "\"string\"", "\"string\"");
-    controllerClient.updateStore(incrementalPushStoreName, new UpdateStoreQueryParams().setIncrementalPushEnabled(true));
+    controllerClient.updateStore(incrementalPushStoreName, new UpdateStoreQueryParams().setIncrementalPushEnabled(true).setHybridRewindSeconds(1L).setHybridOffsetLagThreshold(10));
 
     try {
       /**

@@ -78,7 +78,8 @@ public class TestClusterLevelConfigForNativeReplication extends AbstractTestVeni
     Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getNativeReplicationSourceFabric(), "prod-lva1");
     veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setHybridRewindSeconds(-1L).setHybridOffsetLagThreshold(-1L));
     Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getNativeReplicationSourceFabric(), "prod-lor1");
-    veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setIncrementalPushEnabled(true));
+    veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setIncrementalPushEnabled(true)
+        .setHybridRewindSeconds(1L).setHybridOffsetLagThreshold(10));
     Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getNativeReplicationSourceFabric(), "prod-ltx1");
 
     // Set topic original topic manager back

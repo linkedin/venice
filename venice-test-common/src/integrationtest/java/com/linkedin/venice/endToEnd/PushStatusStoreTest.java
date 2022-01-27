@@ -246,11 +246,11 @@ public class PushStatusStoreTest {
         }
 
         // expect NOT_CREATED when all non-existing incremental push version is used to query the status
-        JobStatusQueryResponse response = controllerClient.queryJobStatus(job.getKafkaTopic(), Optional.of("randomIPVersion"));
+        JobStatusQueryResponse response = controllerClient.queryJobStatus(job.getTopicToMonitor(), Optional.of("randomIPVersion"));
         assertEquals(response.getStatus(), ExecutionStatus.NOT_CREATED.name());
 
         // verify that controller responds with EOIP when all partitions have sufficient replicas with EOIP
-        response = controllerClient.queryJobStatus(job.getKafkaTopic(), job.getIncrementalPushVersion());
+        response = controllerClient.queryJobStatus(job.getTopicToMonitor(), job.getIncrementalPushVersion());
         assertEquals(response.getStatus(), ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED.name());
 
         PushStatusStoreRecordDeleter statusStoreDeleter = new PushStatusStoreRecordDeleter(
@@ -259,12 +259,12 @@ public class PushStatusStoreTest {
         // after deleting the the inc push status belonging to just one partition we should expect
         // SOIP from the controller since other partition has replicas with EOIP status
         statusStoreDeleter.deletePartitionIncrementalPushStatus(storeName, 1, incPushVersion.get(), 1);
-        response = controllerClient.queryJobStatus(job.getKafkaTopic(), job.getIncrementalPushVersion());
+        response = controllerClient.queryJobStatus(job.getTopicToMonitor(), job.getIncrementalPushVersion());
         assertEquals(response.getStatus(), ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED.name());
 
         // expect NOT_CREATED when statuses of all partitions are not available in the push status store
         statusStoreDeleter.deletePartitionIncrementalPushStatus(storeName, 1, incPushVersion.get(), 0);
-        response = controllerClient.queryJobStatus(job.getKafkaTopic(), job.getIncrementalPushVersion());
+        response = controllerClient.queryJobStatus(job.getTopicToMonitor(), job.getIncrementalPushVersion());
         assertEquals(response.getStatus(), ExecutionStatus.NOT_CREATED.name());
       }
     }
@@ -294,8 +294,8 @@ public class PushStatusStoreTest {
       cluster.waitVersion(storeName, storeVersion, controllerClient);
       assertTrue(incPushJob.getIncrementalPushVersion().isPresent(), "Incremental push version is missing");
       incPushVersion = incPushJob.getIncrementalPushVersion();
-      kafkaTopic = incPushJob.getKafkaTopic();
-      JobStatusQueryResponse response = controllerClient.queryJobStatus(incPushJob.getKafkaTopic(), incPushVersion);
+      kafkaTopic = incPushJob.getTopicToMonitor();
+      JobStatusQueryResponse response = controllerClient.queryJobStatus(incPushJob.getTopicToMonitor(), incPushVersion);
       assertEquals(response.getStatus(), ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED.name());
       incPushVersionResponse = controllerClient.getOngoingIncrementalPushVersions(kafkaTopic);
       assertFalse(incPushVersionResponse.isError());

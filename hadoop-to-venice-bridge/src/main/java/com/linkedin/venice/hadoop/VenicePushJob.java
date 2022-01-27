@@ -2007,9 +2007,7 @@ public class VenicePushJob implements AutoCloseable {
      */
     long unknownStateStartTimeMs = 0;
 
-    String topicToMonitor = Version.isRealTimeTopic(versionTopicInfo.topic) ?
-            Version.composeKafkaTopic(pushJobSetting.storeName, versionTopicInfo.version) :
-            versionTopicInfo.topic;
+    String topicToMonitor = getTopicToMonitor(versionTopicInfo, pushJobSetting);
 
     List<ExecutionStatus> successfulStatuses = Arrays.asList(ExecutionStatus.COMPLETED, ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED);
 
@@ -2509,6 +2507,19 @@ public class VenicePushJob implements AutoCloseable {
 
   public Optional<String> getIncrementalPushVersion() {
     return pushJobSetting.incrementalPushVersion;
+  }
+
+  public String getTopicToMonitor() {
+    if (kafkaTopicInfo == null || pushJobSetting == null) {
+      throw new VeniceException("The push job is not initialized yet");
+    }
+    return getTopicToMonitor(this.kafkaTopicInfo, this.pushJobSetting);
+  }
+
+  private String getTopicToMonitor(VersionTopicInfo versionTopicInfo, PushJobSetting jobSetting) {
+    return Version.isRealTimeTopic(versionTopicInfo.topic)
+           ? Version.composeKafkaTopic(jobSetting.storeName, versionTopicInfo.version)
+           : versionTopicInfo.topic;
   }
 
   private static Path getLatestPath(Path path, FileSystem fs) throws IOException {
