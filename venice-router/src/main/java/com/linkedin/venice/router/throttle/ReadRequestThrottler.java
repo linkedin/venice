@@ -141,7 +141,7 @@ public class ReadRequestThrottler implements RouterThrottler, RoutersClusterMana
     }
 
     long idealStoreQuotaPerRouter = routerCount > 0
-        ? storeQuota / routerCount
+        ? Math.max(storeQuota / routerCount, 5) // Do not make quota to be 0 when storeQuota < routerCount
         : 0;
 
     if (!zkRoutersManager.isMaxCapacityProtectionEnabled()

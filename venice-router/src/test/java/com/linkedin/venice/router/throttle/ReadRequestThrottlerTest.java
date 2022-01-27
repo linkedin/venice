@@ -103,6 +103,12 @@ public class ReadRequestThrottlerTest {
     } catch (QuotaExceededException e) {
       Assert.fail("Usage has not exceeded the quota.");
     }
+    throttler.handleRouterCountChanged((int)store.getReadQuotaInCU() + 1);
+    try {
+      throttler.mayThrottleRead(store.getName(), (int) (totalQuota / ((int)store.getReadQuotaInCU() + 1)), Optional.of("test"));
+    } catch (QuotaExceededException e) {
+      Assert.fail("Usage should not exceed the quota as we have non-zero quota amount.");
+    }
   }
 
   @Test
