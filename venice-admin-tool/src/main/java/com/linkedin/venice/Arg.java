@@ -113,7 +113,9 @@ public enum Arg {
   INCREMENTAL_PUSH_POLICY_TO_APPLY("incremental-push-policy-to-apply", "ippa", true, "This field will determine what incremental push policy will be applied to the selected stores."),
   STORE_CONFIG_NAME_FILTER("store-config-name-filter", "scnf", true, "An optional argument in list-store command; pass in a store config to select stores. If the config name argument is used in the command, users must specify the config value filter too."),
   STORE_CONFIG_VALUE_FILTER("store-config-value-filter", "scvf", true, "n optional argument in list-store command; if the config name argument is used in the command, users must specify the config value filter too."),
-  ALLOW_STORE_MIGRATION(ConfigKeys.ALLOW_STORE_MIGRATION, "asm", true, "whether stores are allowed to be migrated from/to a cluster");
+  ALLOW_STORE_MIGRATION(ConfigKeys.ALLOW_STORE_MIGRATION, "asm", true, "whether stores are allowed to be migrated from/to a cluster"),
+  KAFKA_TOPIC_LOG_COMPACTION_ENABLED("kafka-topic-log-compaction-enabled", "ktlce", true, "Enable/disable Kafka log compaction for a topic"),
+  KAFKA_TOPIC_RETENTION_IN_MS("kafka-topic-retention-in-ms", "ktrim", true, "Kafka topic retention time in milliseconds");
 
   private final String argName;
   private final String first;

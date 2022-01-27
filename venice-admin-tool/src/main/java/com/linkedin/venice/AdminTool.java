@@ -432,6 +432,12 @@ public class AdminTool {
         case LIST_STORE_PUSH_INFO:
           listStorePushInfo(cmd);
           break;
+        case UPDATE_KAFKA_TOPIC_LOG_COMPACTION:
+          updateKafkaTopicLogCompaction(cmd);
+          break;
+        case UPDATE_KAFKA_TOPIC_RETENTION:
+          updateKafkaTopicRetention(cmd);
+          break;
         default:
           StringJoiner availableCommands = new StringJoiner(", ");
           for (Command c : Command.values()){
@@ -1991,6 +1997,51 @@ public class AdminTool {
     String storeName = getRequiredArgument(cmd, Arg.STORE);
     StoreResponse response = controllerClient.copyOverStoreMetadata(sourceFabric, destFabric, storeName);
     printObject(response);
+  }
+
+  private static void updateKafkaTopicLogCompaction(CommandLine cmd) {
+    updateKafkaTopicConfig(cmd, client -> {
+      String kafkaTopicName = getRequiredArgument(cmd, Arg.KAFKA_TOPIC_NAME);
+      boolean enableKafkaLogCompaction = Boolean.parseBoolean(getRequiredArgument(cmd, Arg.KAFKA_TOPIC_LOG_COMPACTION_ENABLED));
+      return client.updateKafkaTopicLogCompaction(kafkaTopicName, enableKafkaLogCompaction);
+    });
+  }
+
+  private static void updateKafkaTopicRetention(CommandLine cmd) {
+    updateKafkaTopicConfig(cmd, client -> {
+      String kafkaTopicName = getRequiredArgument(cmd, Arg.KAFKA_TOPIC_NAME);
+      long kafkaTopicRetentionTimeInMs = Long.parseLong(getRequiredArgument(cmd, Arg.KAFKA_TOPIC_RETENTION_IN_MS));
+      return client.updateKafkaTopicRetention(kafkaTopicName, kafkaTopicRetentionTimeInMs);
+    });
+  }
+
+  private static void updateKafkaTopicConfig(CommandLine cmd, UpdateTopicConfigFunction updateTopicConfigFunction) {
+    String veniceControllerUrls = getRequiredArgument(cmd, Arg.URL);
+    String kafkaTopicName = getRequiredArgument(cmd, Arg.KAFKA_TOPIC_NAME);
+    /**
+     * cluster name is optional; if cluster name is specified, no need to do cluster discovery; this option is helpful
+     * to create a ControllerClient with a default cluster, in order to modify a Kafka topic that doesn't belong to
+     * any existing Venice store resource
+     */
+    String clusterName = getOptionalArgument(cmd, Arg.CLUSTER);
+    if (clusterName == null) {
+      String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopicName);
+      if (storeName.isEmpty()) {
+        throw new VeniceException("Please either provide a valid topic name or a cluster name.");
+      }
+      D2ServiceDiscoveryResponse clusterDiscovery = ControllerClient.discoverCluster(veniceControllerUrls, storeName, sslFactory, 3);
+      clusterName = clusterDiscovery.getCluster();
+    }
+
+    try (ControllerClient tmpControllerClient = new ControllerClient(clusterName, veniceControllerUrls, sslFactory)) {
+      ControllerResponse response = updateTopicConfigFunction.apply(tmpControllerClient);
+      printObject(response);
+    }
+  }
+
+  @FunctionalInterface
+  interface UpdateTopicConfigFunction {
+    ControllerResponse apply(ControllerClient controllerClient);
   }
 
   private static void printErrAndExit(String err) {

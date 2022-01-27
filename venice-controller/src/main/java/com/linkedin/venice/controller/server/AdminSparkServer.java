@@ -290,6 +290,8 @@ public class AdminSparkServer extends AbstractVeniceService {
     httpService.post(PREPARE_DATA_RECOVERY.getPath(), dataRecoveryRoutes.prepareDataRecovery(admin));
     httpService.get(IS_STORE_VERSION_READY_FOR_DATA_RECOVERY.getPath(), dataRecoveryRoutes.isStoreVersionReadyForDataRecovery(admin));
     httpService.post(DATA_RECOVERY.getPath(), dataRecoveryRoutes.dataRecovery(admin));
+    httpService.get(UPDATE_KAFKA_TOPIC_LOG_COMPACTION.getPath(), controllerRoutes.updateKafkaTopicLogCompaction(admin));
+    httpService.get(UPDATE_KAFKA_TOPIC_RETENTION.getPath(), controllerRoutes.updateKafkaTopicRetention(admin));
 
     httpService.awaitInitialization(); // Wait for server to be initialized
     Exception e = initFailure.get();

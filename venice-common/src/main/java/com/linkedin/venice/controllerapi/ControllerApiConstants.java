@@ -185,4 +185,7 @@ public class ControllerApiConstants {
   public static final String SOURCE_FABRIC_VERSION_INCLUDED = "source.fabric.version.included";
 
   public static final String LOCKED_NODE_ID_LIST_SEPARATOR = ",";
+
+  public static final String KAFKA_TOPIC_LOG_COMPACTION_ENABLED = "kafka.topic.log.compaction.enabled";
+  public static final String KAFKA_TOPIC_RETENTION_IN_MS = "kafka.topic.retention.in.ms";
 }

@@ -484,6 +484,20 @@ public class ControllerClient implements Closeable {
     return request(ControllerRoute.SKIP_ADMIN, params, ControllerResponse.class);
   }
 
+  public ControllerResponse updateKafkaTopicLogCompaction(String kafkaTopicName, boolean logCompactionEnabled) {
+    QueryParams params = newParams()
+        .add(TOPIC, kafkaTopicName)
+        .add(KAFKA_TOPIC_LOG_COMPACTION_ENABLED, logCompactionEnabled);
+    return request(ControllerRoute.UPDATE_KAFKA_TOPIC_LOG_COMPACTION, params, ControllerResponse.class);
+  }
+
+  public ControllerResponse updateKafkaTopicRetention(String kafkaTopicName, long retentionInMs) {
+    QueryParams params = newParams()
+        .add(TOPIC, kafkaTopicName)
+        .add(KAFKA_TOPIC_RETENTION_IN_MS, retentionInMs);
+    return request(ControllerRoute.UPDATE_KAFKA_TOPIC_RETENTION, params, ControllerResponse.class);
+  }
+
   public <R extends ControllerResponse> R retryableRequest(int totalAttempts, Function<ControllerClient, R> request) {
     return retryableRequest(this, totalAttempts, request);
   }

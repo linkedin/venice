@@ -209,7 +209,12 @@ public enum Command {
   LIST_CLUSTER_STALE_STORES("list-cluster-stale-stores", "List all stores in a cluster which have stale replicas.",
       new Arg[] {REGIONS_FILTER, URL, CLUSTER}, new Arg[] {MESSAGE_COUNT}),
   LIST_STORE_PUSH_INFO("list-store-push-info", "List information about current pushes and push history for a specific store.",
-      new Arg[] {URL, CLUSTER, STORE});
+      new Arg[] {URL, CLUSTER, STORE}),
+  UPDATE_KAFKA_TOPIC_LOG_COMPACTION("update-kafka-topic-log-compaction", "Update log compaction config of a topic through controllers",
+      new Arg[]{URL, KAFKA_TOPIC_NAME, KAFKA_TOPIC_LOG_COMPACTION_ENABLED}, new Arg[]{CLUSTER}),
+  UPDATE_KAFKA_TOPIC_RETENTION("update-kafka-topic-retention", "Update retention config of a topic through controllers",
+      new Arg[]{URL, KAFKA_TOPIC_NAME, KAFKA_TOPIC_RETENTION_IN_MS}, new Arg[]{CLUSTER});
+
   private final String commandName;
   private final String description;
   private final Arg[] requiredArgs;
