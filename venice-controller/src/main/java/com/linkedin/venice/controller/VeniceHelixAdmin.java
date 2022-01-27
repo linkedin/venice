@@ -3037,7 +3037,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         String storeName = store.getName();
 
         boolean finalIncrementalPushEnabled = newIncrementalPushEnabled.orElse(store.isIncrementalPushEnabled());
-        IncrementalPushPolicy finalIncrementalPushPolicy = newIncrementalPushPolicy.orElse(store.getIncrementalPushPolicy());
+        IncrementalPushPolicy finalIncrementalPushPolicy = newIncrementalPushPolicy
+            .orElse(store.isIncrementalPushEnabled()
+                ? store.getIncrementalPushPolicy()
+                : IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME);
         HybridStoreConfig finalHybridStoreConfig = newHybridStoreConfig.orElse(store.getHybridStoreConfig());
         boolean finalHybridEnabled = isHybrid(finalHybridStoreConfig);
 
@@ -3045,8 +3048,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             throw new VeniceException("Hybrid and incremental push cannot be enabled simultaneously for store: " + storeName
                 + " since it has incremental push policy: " + finalIncrementalPushPolicy.name());
         } else if (finalIncrementalPushEnabled && !finalHybridEnabled && !finalIncrementalPushPolicy.isCompatibleWithNonHybridStores()) {
-            throw new VeniceException("Incremental push with incremental push policy " + finalIncrementalPushPolicy.name()
-                + " cannot be enabled for store: " + storeName + " unless it also enables hybrid store.");
+          logger.info("Enabling incremental push with incremental push policy " + finalIncrementalPushPolicy.name()
+              + " for a batch-only store " + storeName + "; a default hybrid config will be set");
         }
     }
 
@@ -3362,32 +3365,22 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 setIncrementalPushPolicy(clusterName, storeName, incrementalPushPolicy.get());
 
                 if (incrementalPushPolicy.get() == IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME) {
-                    // Set ataReplicationPolicy.NONE on batch-only store (without hybrid store config)
-                    storeMetadataUpdate(clusterName, storeName, store -> {
-                        HybridStoreConfig hybridStoreConfig = store.getHybridStoreConfig();
-                        if (hybridStoreConfig == null) {
-                            store.setHybridStoreConfig(new HybridStoreConfigImpl(
-                                    DEFAULT_REWIND_TIME_IN_SECONDS,
-                                    DEFAULT_HYBRID_OFFSET_LAG_THRESHOLD,
-                                    DEFAULT_HYBRID_TIME_LAG_THRESHOLD,
-                                    DataReplicationPolicy.NONE,
-                                    null
-                            ));
-                        } else if (hybridStoreConfig.getDataReplicationPolicy() == null) {
-                            store.setHybridStoreConfig(new HybridStoreConfigImpl(
-                                    hybridStoreConfig.getRewindTimeInSeconds(),
-                                    hybridStoreConfig.getOffsetLagThresholdToGoOnline(),
-                                    hybridStoreConfig.getProducerTimestampLagThresholdToGoOnlineInSeconds(),
-                                    DataReplicationPolicy.NONE,
-                                    hybridStoreConfig.getBufferReplayPolicy()
-                            ));
-                        }
-                        return store;
-                    });
+                  setUpIncrementalPushAsRealTimePolicyForTheFirstTime(clusterName, storeName);
                 }
             }
 
             if (incrementalPushEnabled.isPresent()) {
+                if (incrementalPushEnabled.get()
+                    && (!incrementalPushPolicy.isPresent()
+                        || incrementalPushPolicy.get().equals(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME))) {
+                  /**
+                   * For new incremental push stores, default incremental push policy will be {@link IncrementalPushPolicy#INCREMENTAL_PUSH_SAME_AS_REAL_TIME}
+                   * TODO: when upgrading {@link com.linkedin.venice.systemstore.schemas.StoreMetaValue} schema next time, change
+                   *       default value of incrementalPushPolicy to 1.
+                   */
+                  setIncrementalPushPolicy(clusterName, storeName, IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME);
+                  setUpIncrementalPushAsRealTimePolicyForTheFirstTime(clusterName, storeName);
+                }
                 setIncrementalPushEnabled(clusterName, storeName, incrementalPushEnabled.get());
             }
 
@@ -3500,6 +3493,30 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 + "'. Will now throw the original exception (" + e.getClass().getSimpleName() + ").");
             throw e;
         }
+    }
+
+    private void setUpIncrementalPushAsRealTimePolicyForTheFirstTime(String clusterName, String storeName) {
+      storeMetadataUpdate(clusterName, storeName, store -> {
+        HybridStoreConfig hybridStoreConfig = store.getHybridStoreConfig();
+        if (hybridStoreConfig == null) {
+          store.setHybridStoreConfig(new HybridStoreConfigImpl(
+              DEFAULT_REWIND_TIME_IN_SECONDS,
+              DEFAULT_HYBRID_OFFSET_LAG_THRESHOLD,
+              DEFAULT_HYBRID_TIME_LAG_THRESHOLD,
+              DataReplicationPolicy.NONE,
+              null
+          ));
+        } else if (hybridStoreConfig.getDataReplicationPolicy() == null) {
+          store.setHybridStoreConfig(new HybridStoreConfigImpl(
+              hybridStoreConfig.getRewindTimeInSeconds(),
+              hybridStoreConfig.getOffsetLagThresholdToGoOnline(),
+              hybridStoreConfig.getProducerTimestampLagThresholdToGoOnlineInSeconds(),
+              DataReplicationPolicy.NONE,
+              hybridStoreConfig.getBufferReplayPolicy()
+          ));
+        }
+        return store;
+      });
     }
 
     /**

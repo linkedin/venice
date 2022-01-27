@@ -1939,7 +1939,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   }
 
   @Test
-  public void testIncompatibleHybridAndIncrementalUpdateStoreDontWriteToAdminTopic() {
+  public void testHybridAndIncrementalUpdateStoreCommands() {
     String storeName = Utils.getUniqueString("testUpdateStore");
     Store store = TestUtils.createTestStore(storeName, "test", System.currentTimeMillis());
     doReturn(store).when(internalAdmin).getStore(clusterName,storeName);
@@ -1976,10 +1976,11 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
     store.setHybridStoreConfig(new HybridStoreConfigImpl(60, 20000, 0, DataReplicationPolicy.NON_AGGREGATE,
         BufferReplayPolicy.REWIND_FROM_EOP));
-    Assert.assertThrows(VeniceException.class, () -> parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setIncrementalPushEnabled(true)));
+    // Incremental push can be enabled on a hybrid store, default inc push policy is inc push to RT now
+    parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setIncrementalPushEnabled(true));
 
-    // veniceWriter.put should not be called if validation fails
-    verify(veniceWriter, times(1)).put(keyCaptor.capture(), valueCaptor.capture(), schemaCaptor.capture());
+    // veniceWriter.put will be called again for the second update store command
+    verify(veniceWriter, times(2)).put(keyCaptor.capture(), valueCaptor.capture(), schemaCaptor.capture());
   }
 
   @Test

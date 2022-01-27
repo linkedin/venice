@@ -371,7 +371,7 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
             .setHybridOffsetLagThreshold(1000L));
     // Store2 is an incremental push store.
     veniceAdmin.updateStore(clusterName, storeName2, new UpdateStoreQueryParams()
-            .setIncrementalPushEnabled(true));
+            .setIncrementalPushEnabled(true).setHybridRewindSeconds(1L).setHybridOffsetLagThreshold(10));
 
     Assert.assertTrue(veniceAdmin.getStore(clusterName, storeName1).isLeaderFollowerModelEnabled(),
             "Store1 is a hybrid store and L/F for hybrid stores config is true. L/F should be enabled.");
