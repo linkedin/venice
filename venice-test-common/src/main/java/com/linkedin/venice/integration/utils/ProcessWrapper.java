@@ -22,8 +22,11 @@ public abstract class ProcessWrapper implements Closeable {
   private final String serviceName;
   private final File dataDirectory;
 
-  // Add a flag to avoid stopping a service that it's not running.
+  // Add a flag to avoid stopping a service that it's not started.
+  private boolean isStarted;
+
   private boolean isRunning;
+
 
   private final Exception constructionCallstack;
   private final Thread shutdownHook;
@@ -99,6 +102,7 @@ public abstract class ProcessWrapper implements Closeable {
    */
   protected synchronized void start() throws Exception {
     if (!isRunning) {
+      isStarted = true;
       long startTime = System.currentTimeMillis();
       internalStart();
       LOGGER.info(String.format("%s startup took %d ms.", serviceName, System.currentTimeMillis() - startTime));
@@ -119,11 +123,12 @@ public abstract class ProcessWrapper implements Closeable {
    *                   exceptions will be ignored).
    */
   protected synchronized void stop() throws Exception {
-    if (isRunning) {
+    if (isStarted) {
       long startTime = System.currentTimeMillis();
       internalStop();
       LOGGER.info(String.format("%s shutdown took %d ms.", serviceName, System.currentTimeMillis() - startTime));
       isRunning = false;
+      isStarted = false;
     } else {
       LOGGER.info(serviceName + " service has already been stopped.");
     }
