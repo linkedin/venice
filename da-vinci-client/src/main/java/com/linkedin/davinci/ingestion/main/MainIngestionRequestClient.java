@@ -54,7 +54,7 @@ public class MainIngestionRequestClient implements Closeable {
     List<String> jvmArgs = new ArrayList<>();
     for (String jvmArg : configLoader.getCombinedProperties()
         .getString(ConfigKeys.SERVER_FORKED_PROCESS_JVM_ARGUMENT_LIST, "")
-        .split(",")) {
+        .split(";")) {
       if (jvmArg.length() != 0) {
         jvmArgs.add(jvmArg);
       }
