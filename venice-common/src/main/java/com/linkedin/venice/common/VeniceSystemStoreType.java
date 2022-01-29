@@ -14,6 +14,7 @@ import com.linkedin.venice.status.protocol.BatchJobHeartbeatValue;
 import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
 import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 
@@ -59,6 +60,8 @@ public enum VeniceSystemStoreType {
    * The access {@link Method} type required by client (DaVinci or fast-client) for the system store.
    */
   private final Method clientAccessMethod;
+
+  public static final List<VeniceSystemStoreType> VALUES = Collections.unmodifiableList(Arrays.asList(values()));
 
 
   VeniceSystemStoreType(String prefix, boolean isStoreZkShared, String keySchema, String valueSchema, String zkSharedStoreName,
@@ -192,7 +195,7 @@ public enum VeniceSystemStoreType {
     if (storeName == null) {
       return null;
     }
-    for (VeniceSystemStoreType systemStoreType : values()) {
+    for (VeniceSystemStoreType systemStoreType : VALUES) {
       if (storeName.startsWith(systemStoreType.getPrefix() + VeniceSystemStoreUtils.SEPARATOR)) {
         return systemStoreType;
       }
