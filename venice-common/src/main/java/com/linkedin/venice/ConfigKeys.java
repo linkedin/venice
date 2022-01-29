@@ -610,8 +610,9 @@ public class ConfigKeys {
   public static final String SERVER_INGESTION_ISOLATION_ACL_ENABLED = "server.ingestion.isolation.acl.enabled";
 
   public static final String SERVER_INGESTION_ISOLATION_PRINCIPAL_NAME = "server.ingestion.isolation.principal.name";
+
   /**
-   * A list of JVM arguments for forked child process, separated by comma.
+   * A list of JVM arguments for forked child process, separated by semicolon.
    */
   public static final String SERVER_FORKED_PROCESS_JVM_ARGUMENT_LIST = "server.forked.process.jvm.arg.list";
 
