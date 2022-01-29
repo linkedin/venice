@@ -9,13 +9,4 @@ public enum RocksDBComputeAccessMode {
   RocksDBComputeAccessMode(int value) {
     this.value = value;
   }
-
-  public static RocksDBComputeAccessMode fromInt(int i) {
-    for (RocksDBComputeAccessMode rocksDBComputeAccessMode : values()) {
-      if (rocksDBComputeAccessMode.ordinal() == i) {
-        return rocksDBComputeAccessMode;
-      }
-    }
-    return SINGLE_GET;
-  }
 }
