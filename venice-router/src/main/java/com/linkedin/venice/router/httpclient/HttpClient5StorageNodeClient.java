@@ -32,7 +32,6 @@ import org.apache.hc.core5.io.CloseMode;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-
 public class HttpClient5StorageNodeClient implements StorageNodeClient {
   private static final Logger LOGGER = LogManager.getLogger(HttpClient5StorageNodeClient.class);
 
@@ -125,7 +124,11 @@ public class HttpClient5StorageNodeClient implements StorageNodeClient {
 
     @Override
     public ByteBuf getContentInByteBuf() throws IOException {
-      return Unpooled.wrappedBuffer(response.getBodyBytes());
+      /**
+       * {@link SimpleHttpResponse#getBodyBytes()} will return null if the content length is 0.
+       */
+      byte[] body = response.getBodyBytes();
+      return body == null ? Unpooled.EMPTY_BUFFER : Unpooled.wrappedBuffer(body);
     }
 
     @Override

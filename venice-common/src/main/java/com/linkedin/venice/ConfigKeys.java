@@ -1554,7 +1554,7 @@ public class ConfigKeys {
   /**
    * Whether to skip the cipher check when using Httpclient5.
    */
-  public static final String ROUTER_HTTP_CLIENT5_SKIP_CIPHER_CHECK_ENABLED = "router.http.client5.skip.check.enabled";
+  public static final String ROUTER_HTTP_CLIENT5_SKIP_CIPHER_CHECK_ENABLED = "router.http.client5.skip.cipher.check.enabled";
 
   /**
    * Number of IO threads used for AHAC client.
