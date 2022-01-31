@@ -244,6 +244,10 @@ public abstract class TestRead {
       expectedValue.put(VALUE_FIELD_NAME, 2);
       GenericRecord value = storeClient.get(key).get();
       Assert.assertEquals(value, expectedValue);
+
+      // Test non-existing key
+      value = storeClient.get("unknown_key").get();
+      Assert.assertNull(value);
     }
 
     double maxInflightRequestCountAfterQueries = getAggregateRouterMetricValue(".total--in_flight_request_count.Max");
@@ -287,8 +291,8 @@ public abstract class TestRead {
 
     // Each round:
     // 1. We do MAX_KEY_LIMIT * 2 because we do a batch get and a batch compute
-    // 2. And then + 1 because we also do a single get
-    double expectedLookupCount = rounds * (MAX_KEY_LIMIT * 2 + 1.0);
+    // 2. And then + 2 because we also do two single get requests
+    double expectedLookupCount = rounds * (MAX_KEY_LIMIT * 2 + 2.0);
     Assert.assertEquals(getAggregateRouterMetricValue(".total--request_usage.Total"), expectedLookupCount, 0.0001);
     Assert.assertEquals(getAggregateRouterMetricValue(".total--read_quota_usage_kps.Total"), expectedLookupCount, 0.0001);
 
