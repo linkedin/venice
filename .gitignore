@@ -14,3 +14,4 @@
 build/
 out/
 venice-test-common/tmp/
+venice-test-common/dump.complete.hprof

@@ -9,6 +9,7 @@ import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.utils.Lazy;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -16,6 +17,8 @@ import java.util.List;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
+import org.apache.avro.io.OptimizedBinaryDecoder;
+import org.apache.avro.io.OptimizedBinaryDecoderFactory;
 
 import static com.linkedin.venice.VeniceConstants.*;
 
@@ -33,6 +36,7 @@ public class MergeConflictResolver {
   private final String storeName;
   private final ReadOnlySchemaRepository schemaRepository;
   private final int replicationMetadataVersionId;
+  private final VeniceConcurrentHashMap<Integer, Schema> idToReplicationSchemaMap = new VeniceConcurrentHashMap<>();
 
   public MergeConflictResolver(ReadOnlySchemaRepository schemaRepository, String storeName, int replicationMetadataVersionId) {
     this.schemaRepository = schemaRepository;
@@ -125,7 +129,10 @@ public class MergeConflictResolver {
     if (replicationMetadata == null) {
       return null;
     }
-    return getReplicationMetadataDeserializer(schemaIdOfValue).deserialize(replicationMetadata);
+    OptimizedBinaryDecoder binaryDecoder =
+        OptimizedBinaryDecoderFactory.defaultFactory().createOptimizedBinaryDecoder(replicationMetadata.array(), replicationMetadata.position(), replicationMetadata.remaining());
+
+    return getReplicationMetadataDeserializer(schemaIdOfValue).deserialize(binaryDecoder);
   }
 
   public List<Long> extractTimestampFromReplicationMetadata(GenericRecord replicationMetadataRecord) {
@@ -238,12 +245,14 @@ public class MergeConflictResolver {
   }
 
   private Schema getReplicationMetadataSchema(int valueSchemaId) {
-    ReplicationMetadataSchemaEntry
-        replicationMetadataSchemaEntry = schemaRepository.getReplicationMetadataSchema(storeName, valueSchemaId,
-        replicationMetadataVersionId);
-    if (replicationMetadataSchemaEntry == null) {
-      throw new VeniceException("Unable to fetch replication metadata schema from schema repository");
-    }
-    return replicationMetadataSchemaEntry.getSchema();
+    return idToReplicationSchemaMap.computeIfAbsent(valueSchemaId,  id -> {
+      ReplicationMetadataSchemaEntry
+          replicationMetadataSchemaEntry = schemaRepository.getReplicationMetadataSchema(storeName, valueSchemaId,
+          replicationMetadataVersionId);
+      if (replicationMetadataSchemaEntry == null) {
+        throw new VeniceException("Unable to fetch replication metadata schema from schema repository");
+      }
+      return replicationMetadataSchemaEntry.getSchema();
+    });
   }
 }
