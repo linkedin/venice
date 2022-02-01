@@ -10,6 +10,8 @@ import java.util.Optional;
 import org.codehaus.jackson.annotate.JsonIgnore;
 import org.codehaus.jackson.map.annotate.JsonDeserialize;
 
+import static java.lang.Character.*;
+
 
 /**
  * This interface defines all the public APIs, and if you need to add accessors to
@@ -299,17 +301,31 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
   }
 
   static boolean isStreamReprocessingTopic(String kafkaTopic) {
-    return kafkaTopic.endsWith(STREAM_REPROCESSING_TOPIC_SUFFIX);
+    return checkVersionSRTopic(kafkaTopic, true);
   }
 
   /**
    * Return true if the input topic name is a version topic or stream-reprocessing topic.
    */
   static boolean isVersionTopicOrStreamReprocessingTopic(String kafkaTopic){
-    try{
-      parseVersionFromKafkaTopicName(kafkaTopic);
-    } catch (IllegalArgumentException e){
+    return checkVersionSRTopic(kafkaTopic, false) || checkVersionSRTopic(kafkaTopic, true);
+  }
+
+  static boolean checkVersionSRTopic(String kafkaTopic, boolean checkSR) {
+    int lastIndexOfVersionSeparator = kafkaTopic.lastIndexOf(VERSION_SEPARATOR);
+    if (checkSR && !kafkaTopic.endsWith(STREAM_REPROCESSING_TOPIC_SUFFIX)) {
       return false;
+    }
+
+    int start = lastIndexOfVersionSeparator + VERSION_SEPARATOR.length();
+    int end = kafkaTopic.length() - (checkSR ? STREAM_REPROCESSING_TOPIC_SUFFIX.length() : 0);
+    if (end == start) { // no version info
+      return false;
+    }
+    for (int i = start; i < end; i++) {
+      if (!isDigit(kafkaTopic.charAt(i))) {
+        return false;
+      }
     }
     return true;
   }
@@ -318,12 +334,7 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
    * Only return true if the input topic name is a version topic.
    */
   static boolean isVersionTopic(String kafkaTopic) {
-    try {
-      parseVersionFromVersionTopicName(kafkaTopic);
-    } catch (IllegalArgumentException e) {
-      return false;
-    }
-    return true;
+    return checkVersionSRTopic(kafkaTopic, false);
   }
 
   static String guidBasedDummyPushId(){

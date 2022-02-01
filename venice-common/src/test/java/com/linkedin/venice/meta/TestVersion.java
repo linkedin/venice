@@ -85,4 +85,30 @@ public class TestVersion {
     }
   }
 
+  @Test
+  public void testIsTopic() {
+    String topic = "abc_rt";
+    Assert.assertFalse(Version.isVersionTopic(topic));
+    Assert.assertTrue(Version.isRealTimeTopic(topic));
+    topic = "abc";
+    Assert.assertFalse(Version.isVersionTopic(topic));
+    topic = "abc_v12df";
+    Assert.assertFalse(Version.isVersionTopic(topic));
+    topic = "abc_v123";
+    Assert.assertTrue(Version.isVersionTopic(topic));
+    Assert.assertFalse(Version.isRealTimeTopic(topic));
+    Assert.assertTrue(Version.isVersionTopicOrStreamReprocessingTopic(topic));
+    topic = "abc_v123_sr";
+    Assert.assertFalse(Version.isVersionTopic(topic));
+    Assert.assertTrue(Version.isStreamReprocessingTopic(topic));
+    Assert.assertTrue(Version.isVersionTopicOrStreamReprocessingTopic(topic));
+    topic = "abc_v12ab3_sr";
+    Assert.assertFalse(Version.isVersionTopic(topic));
+    Assert.assertFalse(Version.isStreamReprocessingTopic(topic));
+    Assert.assertFalse(Version.isVersionTopicOrStreamReprocessingTopic(topic));
+    topic = "abc_v_sr";
+    Assert.assertFalse(Version.isVersionTopic(topic));
+    Assert.assertFalse(Version.isStreamReprocessingTopic(topic));
+    Assert.assertFalse(Version.isVersionTopicOrStreamReprocessingTopic(topic));
+  }
 }
