@@ -130,7 +130,7 @@ public class TestProducerTracker {
         topic, partitionId, offset++, System.currentTimeMillis() + 1000, TimestampType.NO_TIMESTAMP_TYPE,
         ConsumerRecord.NULL_CHECKSUM, ConsumerRecord.NULL_SIZE, ConsumerRecord.NULL_SIZE,
         getControlMessageKey(startOfSegmentMessage), startOfSegmentMessage);
-    producerTracker.validateMessageAndGetOffsetRecordTransformer(controlMessageConsumerRecord, false, false);
+    producerTracker.validateMessage(controlMessageConsumerRecord, false, false);
 
     Put firstPut = getPutMessage("first_message".getBytes());
     KafkaMessageEnvelope firstMessage = getKafkaMessageEnvelope(MessageType.PUT,
@@ -139,7 +139,7 @@ public class TestProducerTracker {
     ConsumerRecord<KafkaKey, KafkaMessageEnvelope> firstConsumerRecord = new ConsumerRecord<>(
         topic, partitionId, offset++, System.currentTimeMillis() + 1000, TimestampType.NO_TIMESTAMP_TYPE,
         ConsumerRecord.NULL_CHECKSUM, ConsumerRecord.NULL_SIZE, ConsumerRecord.NULL_SIZE, firstMessageKey, firstMessage);
-    producerTracker.validateMessageAndGetOffsetRecordTransformer(firstConsumerRecord, false, false);
+    producerTracker.validateMessage(firstConsumerRecord, false, false);
 
     // Message with gap
     Put secondPut = getPutMessage("second_message".getBytes());
@@ -149,7 +149,7 @@ public class TestProducerTracker {
     ConsumerRecord<KafkaKey, KafkaMessageEnvelope> secondConsumerRecord = new ConsumerRecord<>(
         topic, partitionId, offset++, System.currentTimeMillis() + 1000, TimestampType.NO_TIMESTAMP_TYPE,
         ConsumerRecord.NULL_CHECKSUM, ConsumerRecord.NULL_SIZE, ConsumerRecord.NULL_SIZE, secondMessageKey, secondMessage);
-    Assert.assertThrows(MissingDataException.class, () -> producerTracker.validateMessageAndGetOffsetRecordTransformer(secondConsumerRecord, false, false));
+    Assert.assertThrows(MissingDataException.class, () -> producerTracker.validateMessage(secondConsumerRecord, false, false));
 
     // Message without gap
     Put thirdPut = getPutMessage("third_message".getBytes());
@@ -160,7 +160,7 @@ public class TestProducerTracker {
         topic, partitionId, offset++, System.currentTimeMillis() + 1000, TimestampType.NO_TIMESTAMP_TYPE,
         ConsumerRecord.NULL_CHECKSUM, ConsumerRecord.NULL_SIZE, ConsumerRecord.NULL_SIZE, thirdMessageKey, thirdMessage);
     // It doesn't matter whether EOP is true/false. The result is same.
-    producerTracker.validateMessageAndGetOffsetRecordTransformer(thirdConsumerRecord, false, false);
+    producerTracker.validateMessage(thirdConsumerRecord, false, false);
 
     // Message with gap but tolerate messages is allowed
     Put fourthPut = getPutMessage("fourth_message".getBytes());
@@ -170,7 +170,7 @@ public class TestProducerTracker {
     ConsumerRecord<KafkaKey, KafkaMessageEnvelope> fourthConsumerRecord = new ConsumerRecord<>(
         topic, partitionId, offset++, System.currentTimeMillis() + 1000, TimestampType.NO_TIMESTAMP_TYPE,
         ConsumerRecord.NULL_CHECKSUM, ConsumerRecord.NULL_SIZE, ConsumerRecord.NULL_SIZE, fourthMessageKey, fourthMessage);
-    producerTracker.validateMessageAndGetOffsetRecordTransformer(fourthConsumerRecord, false, true);
+    producerTracker.validateMessage(fourthConsumerRecord, false, true);
   }
 
   @Test
@@ -190,7 +190,7 @@ public class TestProducerTracker {
         topic, partitionId, offset++, System.currentTimeMillis() + 1000, TimestampType.NO_TIMESTAMP_TYPE,
         ConsumerRecord.NULL_CHECKSUM, ConsumerRecord.NULL_SIZE, ConsumerRecord.NULL_SIZE,
         getControlMessageKey(startOfSegmentMessage), startOfSegmentMessage);
-    producerTracker.validateMessageAndGetOffsetRecordTransformer(controlMessageConsumerRecord, true, false);
+    producerTracker.validateMessage(controlMessageConsumerRecord, true, false);
 
     // Send the second segment. Notice this segment number has a gap than previous one
     Put firstPut = getPutMessage("message".getBytes());
@@ -201,8 +201,18 @@ public class TestProducerTracker {
     ConsumerRecord<KafkaKey, KafkaMessageEnvelope> firstConsumerRecord = new ConsumerRecord<>(
         topic, partitionId, offset++, System.currentTimeMillis() + 1000, TimestampType.NO_TIMESTAMP_TYPE,
         ConsumerRecord.NULL_CHECKSUM, ConsumerRecord.NULL_SIZE, ConsumerRecord.NULL_SIZE, firstMessageKey, firstMessage);
-    Assert.assertThrows(MissingDataException.class, () -> producerTracker.validateMessageAndGetOffsetRecordTransformer(firstConsumerRecord, true, false));
-    Assert.assertThrows(DuplicateDataException.class, () -> producerTracker.validateMessageAndGetOffsetRecordTransformer(firstConsumerRecord, true, true));
+    /**
+     * The new message with segment number gap will not be accepted by ProducerTracker if tolerate message flag is false
+     */
+    Assert.assertThrows(MissingDataException.class, () -> producerTracker.validateMessage(firstConsumerRecord, true, false));
+    /**
+     * The new message with segment number gap will be accepted and tracked if tolerate message flag is true
+     */
+    producerTracker.validateMessage(firstConsumerRecord, true, true);
+    /**
+     * Adding the same message again will be treated as duplicated
+     */
+    Assert.assertThrows(DuplicateDataException.class, () -> producerTracker.validateMessage(firstConsumerRecord, true, true));
     Assert.assertEquals(producerTracker.segments.get(partitionId).getSegmentNumber(), skipSegmentNumber);
     Assert.assertEquals(producerTracker.segments.get(partitionId).getSequenceNumber(), skipSequenceNumber);
   }
@@ -221,7 +231,7 @@ public class TestProducerTracker {
         topic, partitionId, offset++, System.currentTimeMillis() + 1000, TimestampType.NO_TIMESTAMP_TYPE,
         ConsumerRecord.NULL_CHECKSUM, ConsumerRecord.NULL_SIZE, ConsumerRecord.NULL_SIZE,
         getControlMessageKey(startOfSegmentMessage), startOfSegmentMessage);
-    producerTracker.validateMessageAndGetOffsetRecordTransformer(controlMessageConsumerRecord, true, false);
+    producerTracker.validateMessage(controlMessageConsumerRecord, true, false);
     Assert.assertEquals(producerTracker.segments.get(partitionId).getSequenceNumber(), 0);
 
     // send EOS
@@ -232,7 +242,7 @@ public class TestProducerTracker {
         topic, partitionId, offset++, System.currentTimeMillis() + 1000, TimestampType.NO_TIMESTAMP_TYPE,
         ConsumerRecord.NULL_CHECKSUM, ConsumerRecord.NULL_SIZE, ConsumerRecord.NULL_SIZE,
         getControlMessageKey(endOfSegmentMessage), endOfSegmentMessage);
-    producerTracker.validateMessageAndGetOffsetRecordTransformer(controlMessageConsumerRecord, true, true);
+    producerTracker.validateMessage(controlMessageConsumerRecord, true, true);
     Assert.assertEquals(producerTracker.segments.get(partitionId).getSequenceNumber(), 5);
 
     // Send a put msg following EOS
@@ -243,7 +253,7 @@ public class TestProducerTracker {
     ConsumerRecord<KafkaKey, KafkaMessageEnvelope> firstConsumerRecord = new ConsumerRecord<>(
         topic, partitionId, offset++, System.currentTimeMillis() + 1000, TimestampType.NO_TIMESTAMP_TYPE,
         ConsumerRecord.NULL_CHECKSUM, ConsumerRecord.NULL_SIZE, ConsumerRecord.NULL_SIZE, firstMessageKey, firstMessage);
-    Assert.assertThrows(DuplicateDataException.class, () -> producerTracker.validateMessageAndGetOffsetRecordTransformer(firstConsumerRecord, true, true));
+    Assert.assertThrows(DuplicateDataException.class, () -> producerTracker.validateMessage(firstConsumerRecord, true, true));
     // The sequence number should not change
     Assert.assertEquals(producerTracker.segments.get(partitionId).getSequenceNumber(), 5);
   }
@@ -268,9 +278,8 @@ public class TestProducerTracker {
         topic, partitionId, offset++, System.currentTimeMillis() + 1000, TimestampType.NO_TIMESTAMP_TYPE,
         ConsumerRecord.NULL_CHECKSUM, ConsumerRecord.NULL_SIZE, ConsumerRecord.NULL_SIZE,
         getControlMessageKey(startOfSegmentMessage), startOfSegmentMessage);
-    OffsetRecordTransformer transformer1 = producerTracker.validateMessageAndGetOffsetRecordTransformer(controlMessageConsumerRecord, true, false);
-    record.addOffsetRecordTransformer(guid, transformer1);
-    record.transform();
+    producerTracker.validateMessage(controlMessageConsumerRecord, true, false);
+    producerTracker.updateOffsetRecord(partitionId, record);
     Assert.assertEquals(record.getProducerPartitionState(guid).checksumType, CheckSumType.MD5.getValue());
 
     // The msg is a put msg without check sum type
@@ -281,9 +290,8 @@ public class TestProducerTracker {
     ConsumerRecord<KafkaKey, KafkaMessageEnvelope> firstConsumerRecord = new ConsumerRecord<>(
         topic, partitionId, offset++, System.currentTimeMillis() + 1000, TimestampType.NO_TIMESTAMP_TYPE,
         ConsumerRecord.NULL_CHECKSUM, ConsumerRecord.NULL_SIZE, ConsumerRecord.NULL_SIZE, firstMessageKey, firstMessage);
-    OffsetRecordTransformer transformer2 = producerTracker.validateMessageAndGetOffsetRecordTransformer(firstConsumerRecord, true, true);
-    record.addOffsetRecordTransformer(guid, transformer2);
-    record.transform();
+    producerTracker.validateMessage(firstConsumerRecord, true, true);
+    producerTracker.updateOffsetRecord(partitionId, record);
     Assert.assertEquals(record.getProducerPartitionState(guid).checksumType, CheckSumType.NONE.getValue());
     Assert.assertEquals(record.getProducerPartitionState(guid).checksumState, ByteBuffer.wrap(new byte[0]));
   }

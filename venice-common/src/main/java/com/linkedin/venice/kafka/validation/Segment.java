@@ -39,6 +39,7 @@ public class Segment {
   // Immutable state
   private final int partition;
   private final int segmentNumber;
+  private final CheckSumType checkSumType;
   private final Optional<CheckSum> checkSum;
   private final AtomicInteger sequenceNumber;
   private final Map<CharSequence, CharSequence> debugInfo;
@@ -49,6 +50,11 @@ public class Segment {
   private boolean started;
   private boolean ended;
   private boolean finalSegment;
+  /**
+   * Set this field to true when building a new segment for an incoming message, and update this flag to false immediately
+   * after checking incoming message's sequence number.
+   */
+  private boolean newSegment;
   private long lastSuccessfulOffset;
   private long lastRecordTimestamp = -1;
   private long lastRecordProducerTimestamp = -1;
@@ -62,11 +68,13 @@ public class Segment {
       Map<CharSequence, Long> aggregates) {
     this.partition = partition;
     this.segmentNumber = segmentNumber;
+    this.checkSumType = checkSumType;
     this.checkSum = CheckSum.getInstance(checkSumType);
     this.sequenceNumber = new AtomicInteger(sequenceNumber);
     this.started = (sequenceNumber > 0);
     this.ended = false;
     this.finalSegment = false;
+    this.newSegment = true;
     this.debugInfo = debugInfo;
     this.aggregates = aggregates;
   }
@@ -75,9 +83,13 @@ public class Segment {
     this(partition, segmentNumber, 0, checkSumType, new HashMap<>(), new HashMap<>());
   }
 
+  /**
+   * Build a segment with checkpoint producer state on disk.
+   */
   public Segment(int partition, ProducerPartitionState state) {
     this.partition = partition;
     this.segmentNumber = state.segmentNumber;
+    this.checkSumType = CheckSumType.valueOf(state.checksumType);
     this.checkSum = CheckSum.getInstance(CheckSumType.valueOf(state.checksumType), state.checksumState.array());
     this.sequenceNumber = new AtomicInteger(state.messageSequenceNumber);
 
@@ -86,10 +98,28 @@ public class Segment {
     this.started = segmentStatus != NOT_STARTED;
     this.ended = segmentStatus.isTerminal();
     this.finalSegment = segmentStatus == END_OF_FINAL_SEGMENT;
+    this.newSegment = false;
     this.debugInfo = state.debugInfo;
     this.aggregates = state.aggregates;
     this.registered = state.isRegistered;
     this.lastRecordProducerTimestamp = state.messageTimestamp;
+  }
+
+  public Segment(Segment segment) {
+    this.partition = segment.partition;
+    this.segmentNumber = segment.segmentNumber;
+    this.checkSumType = segment.checkSumType;
+    this.checkSum = CheckSum.getInstance(segment.checkSumType, segment.getCheckSumState());
+    this.sequenceNumber = new AtomicInteger(segment.sequenceNumber.get());
+
+    this.started = segment.started;
+    this.ended = segment.ended;
+    this.finalSegment = segment.finalSegment;
+    this.newSegment = false;
+    this.debugInfo = segment.debugInfo;
+    this.aggregates = segment.aggregates;
+    this.registered = segment.registered;
+    this.lastRecordProducerTimestamp = segment.lastRecordProducerTimestamp;
   }
 
   public int getSegmentNumber() {
@@ -188,6 +218,14 @@ public class Segment {
 
   public void registeredSegment() {
     this.registered = true;
+  }
+
+  public boolean isNewSegment() {
+    return this.newSegment;
+  }
+
+  public void setNewSegment(boolean newSegment) {
+    this.newSegment = newSegment;
   }
 
   /**

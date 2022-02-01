@@ -6,7 +6,6 @@ import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.state.IncrementalPush;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.ProducerPartitionState;
-import com.linkedin.venice.kafka.validation.OffsetRecordTransformer;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -40,8 +39,6 @@ public class OffsetRecord {
   private static final String PARTITION_STATE_STRING = "PartitionState";
   private final PartitionState partitionState;
   private final InternalAvroSpecificSerializer<PartitionState> serializer;
-
-  private final Map<GUID, OffsetRecordTransformer> offsetRecordTransformers = new VeniceConcurrentHashMap<>();
 
   public OffsetRecord(PartitionState partitionState, InternalAvroSpecificSerializer<PartitionState> serializer) {
     this.partitionState = partitionState;
@@ -79,30 +76,11 @@ public class OffsetRecord {
     return serializer.deserialize(PARTITION_STATE_STRING, bytes);
   }
 
-  /**
-   * This function will keep a map of reference to all the {@link OffsetRecordTransformer}
-   * from different producers.
-   */
-  public void addOffsetRecordTransformer(GUID producerGUID, OffsetRecordTransformer transformer) {
-    offsetRecordTransformers.put(producerGUID, transformer);
-  }
-
-  /**
-   * {@link OffsetRecordTransformer#transform(OffsetRecord)} is quite expensive,
-   * so this function should be only invoked when necessary.
-   */
-  public void transform() {
-    for (OffsetRecordTransformer transformer : offsetRecordTransformers.values()) {
-      transformer.transform(this);
-    }
-    offsetRecordTransformers.clear();
-  }
-
   public long getLocalVersionTopicOffset() {
     return this.partitionState.offset;
   }
 
-  public void setLocalVersionTopicOffset(long offset) {
+  public void setCheckpointLocalVersionTopicOffset(long offset) {
     this.partitionState.offset = offset;
   }
 
@@ -153,15 +131,15 @@ public class OffsetRecord {
     return this.partitionState.endOfPush;
   }
 
-  public void setProducerPartitionState(GUID producerGuid, ProducerPartitionState state) {
+  public synchronized void setProducerPartitionState(GUID producerGuid, ProducerPartitionState state) {
     this.partitionState.producerStates.put(guidToUtf8(producerGuid), state);
   }
 
-  public Map<CharSequence, ProducerPartitionState> getProducerPartitionStateMap() {
+  public synchronized Map<CharSequence, ProducerPartitionState> getProducerPartitionStateMap() {
     return this.partitionState.producerStates;
   }
 
-  public ProducerPartitionState getProducerPartitionState(GUID producerGuid) {
+  public synchronized ProducerPartitionState getProducerPartitionState(GUID producerGuid) {
     return getProducerPartitionStateMap().get(guidToUtf8(producerGuid));
   }
 
@@ -221,21 +199,6 @@ public class OffsetRecord {
   }
 
   /**
-   * The caller of this API should be interested in which offset currently leader is actually on.
-   * If leader is consuming from a remote Kafka cluster, or RT/SR topic locally, upstream offset will be updated;
-   * therefore, if the upstream offset is positive, or leader topic is pointing to any topic other than version topic,
-   * upstream offset should be returned to reflect the current consumption state of leader; otherwise,
-   * return local version topic checkpoint offset, since leader has been consuming from the local version topic.
-   */
-  public long getLeaderOffset(String kafkaURL) {
-    if (getLeaderTopic() != null && (!Version.isVersionTopic(getLeaderTopic()) || getUpstreamOffset(kafkaURL) > 0)) {
-      return getUpstreamOffset(kafkaURL);
-    } else {
-      return getLocalVersionTopicOffset();
-    }
-  }
-
-  /**
    * The caller of this API should be interested in the largest known upstream offset.
    *
    * For example, during re-balance, a new leader is elected to consume a partition from
@@ -245,7 +208,7 @@ public class OffsetRecord {
    * Leader shouldn't act on the TS message the moment it consumes TS, but instead, it should consume
    * all the messages in the VT including all the existing real-time messages in VT, in order to resume
    * consumption from RT at the largest known upstream offset to avoid duplicate work. In this case,
-   * leader is still consuming VT, so {@link #getLeaderOffset(String kafkaURL)} would return VT offset; users should
+   * leader is still consuming VT, so it would return VT offset; users should
    * call this API to get the latest upstream offset.
    */
   public long getUpstreamOffset(String kafkaURL) {

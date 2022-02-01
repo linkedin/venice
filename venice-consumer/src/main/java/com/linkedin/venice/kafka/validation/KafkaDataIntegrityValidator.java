@@ -4,6 +4,7 @@ import com.linkedin.venice.exceptions.validation.DataValidationException;
 import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -21,7 +22,6 @@ import org.apache.kafka.clients.consumer.ConsumerRecord;
  * 4. Whether producers have produced duplicate messages, which is fine and expected due to producer retries (DUPLICATE).
  */
 public class KafkaDataIntegrityValidator {
-  private final String kafkaVersionTopic;
   private final long kafkaLogCompactionDelayInMs;
 
   /** Keeps track of every upstream producer this consumer task has seen so far. */
@@ -33,7 +33,6 @@ public class KafkaDataIntegrityValidator {
   }
 
   public KafkaDataIntegrityValidator(String kafkaVersionTopic, long kafkaLogCompactionDelayInMs) {
-    this.kafkaVersionTopic = kafkaVersionTopic;
     this.kafkaLogCompactionDelayInMs = kafkaLogCompactionDelayInMs;
     this.producerTrackerMap = new VeniceConcurrentHashMap<>();
     this.producerTrackerCreator = guid -> new ProducerTracker(guid, kafkaVersionTopic);
@@ -50,31 +49,27 @@ public class KafkaDataIntegrityValidator {
   }
 
   /**
-   * Run a thorough DIV check on the message, including UNREGISTERED_PRODUCER, MISSING, CORRUPT and DUPLICATE;
-   * also return a closure to transform {@link com.linkedin.venice.offsets.OffsetRecord} in ingestion services lazily.
-   *
-   * This API is mainly used in Venice-Server/Da-Vinci.
-   */
-  public OffsetRecordTransformer validateMessageAndGetOffsetRecordTransformer(
-      ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
-      boolean endOfPushReceived,
-      boolean tolerateMissingMsgs) throws DataValidationException {
-    final GUID producerGUID = consumerRecord.value().producerMetadata.producerGUID;
-    ProducerTracker producerTracker = registerProducer(producerGUID);
-    return producerTracker.validateMessageAndGetOffsetRecordTransformer(consumerRecord, endOfPushReceived, tolerateMissingMsgs);
-  }
-
-  /**
    * Run a thorough DIV check on the message, including UNREGISTERED_PRODUCER, MISSING, CORRUPT and DUPLICATE.
-   *
-   * This API can be used for ETL.
    */
-  public Segment validateMessage(
+  public void validateMessage(
       ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
       boolean endOfPushReceived, boolean tolerateMissingMsgs) throws DataValidationException {
     final GUID producerGUID = consumerRecord.value().producerMetadata.producerGUID;
     ProducerTracker producerTracker = registerProducer(producerGUID);
-    return producerTracker.validateMessage(consumerRecord, endOfPushReceived, tolerateMissingMsgs);
+    producerTracker.validateMessage(consumerRecord, endOfPushReceived, tolerateMissingMsgs);
+  }
+
+  public void updateOffsetRecord(int partition, OffsetRecord offsetRecord) {
+    producerTrackerMap.values().forEach(producerTracker -> producerTracker.updateOffsetRecord(partition, offsetRecord));
+  }
+
+  public void cloneProducerStates(int partition, KafkaDataIntegrityValidator newValidator) {
+    for (Map.Entry<GUID, ProducerTracker> entry : producerTrackerMap.entrySet()) {
+      GUID producerGUID = entry.getKey();
+      ProducerTracker sourceProducerTracker = entry.getValue();
+      ProducerTracker destProducerTracker = newValidator.registerProducer(producerGUID);
+      sourceProducerTracker.cloneProducerStates(partition, destProducerTracker);
+    }
   }
 
   /**

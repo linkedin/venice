@@ -55,7 +55,6 @@ import com.linkedin.venice.kafka.protocol.state.IncrementalPush;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.kafka.validation.KafkaDataIntegrityValidator;
-import com.linkedin.venice.kafka.validation.OffsetRecordTransformer;
 import com.linkedin.venice.kafka.validation.ProducerTracker;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.HybridStoreConfig;
@@ -230,8 +229,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private Exception lastConsumerException = null;
   /** Persists the last exception thrown by any asynchronous component that should terminate the entire ingestion task */
   private AtomicReference<Exception> lastStoreIngestionException = new AtomicReference<>();
-  /** Keeps track of every upstream producer this consumer task has seen so far. */
-  protected final KafkaDataIntegrityValidator kafkaDataIntegrityValidator;
+  /**
+   * Keeps track of producer states inside version topic that drainer threads have processed so far. Producers states in this validator will be
+   * flushed to the metadata partition of the storage engine regularly in {@link #syncOffset(String, PartitionConsumptionState)}
+   */
+  private final KafkaDataIntegrityValidator kafkaDataIntegrityValidator;
   protected final AggStoreIngestionStats storeIngestionStats;
   protected final AggVersionedDIVStats versionedDIVStats;
   protected final AggVersionedStorageIngestionStats versionedStorageIngestionStats;
@@ -392,6 +394,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   protected final boolean isDaVinciClient;
 
+  private final boolean offsetLagDeltaRelaxEnabled;
+  private final boolean ingestionCheckpointDuringGracefulShutdownEnabled;
+
   public StoreIngestionTask(
       Store store,
       Version version,
@@ -539,6 +544,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.localKafkaServer = this.kafkaProps.getProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG);
     this.isDaVinciClient = isDaVinciClient;
     this.isActiveActiveReplicationEnabled = version.isActiveActiveReplicationEnabled();
+    this.offsetLagDeltaRelaxEnabled = serverConfig.getOffsetLagDeltaRelaxFactorForFastOnlineTransitionInRestart() > 0;
+    this.ingestionCheckpointDuringGracefulShutdownEnabled = serverConfig.isServerIngestionCheckpointDuringGracefulShutdownEnabled();
 
     // Build quota enforcer needs sub partition count prepared.
     if (serverConfig.isHybridQuotaEnabled() || storeRepository.getStoreOrThrow(storeName).isHybridStoreDiskQuotaEnabled()) {
@@ -758,7 +765,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      * TODO: find a better solution
      */
       lagIsAcceptable = cachedKafkaMetadataGetter.getOffset(localKafkaServer, kafkaVersionTopic, partitionId) <=
-        partitionConsumptionState.getOffsetRecord().getLocalVersionTopicOffset() + SLOPPY_OFFSET_CATCHUP_THRESHOLD;
+        partitionConsumptionState.getLatestProcessedVersionTopicOffset() + SLOPPY_OFFSET_CATCHUP_THRESHOLD;
     } else {
       // Looks like none of the short-circuitry fired, so we need to measure lag!
       long offsetThreshold = hybridStoreConfig.get().getOffsetLagThresholdToGoOnline();
@@ -1422,15 +1429,15 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
          * Here is the detail::
          * If the checkpointing happens in different threads concurrently, there is no guarantee the atomicity of
          * offset and checksum, since the checksum could change in another thread, but the corresponding offset change
-         * hasn't been applied yet, when checkpointing happens in current thread; and you can check the returned
-         * {@link OffsetRecordTransformer} of {@link ProducerTracker#validateMessageAndGetOffsetRecordTransformer(ConsumerRecord, boolean, Optional)},
-         * where `segment` could be changed by another message independent from current `offsetRecord`;
+         * hasn't been applied yet, when checkpointing happens in current thread.
          */
         consumerUnSubscribeAllTopics(partitionConsumptionState);
-        waitForAllMessageToBeProcessedFromTopicPartition(kafkaVersionTopic, partitionConsumptionState.getPartition(), partitionConsumptionState);
-        // Before shutdown, try to persist offset lag to make partition online faster when restart.
-        updateOffsetLagInMetadata(partitionConsumptionState);
-        syncOffset(kafkaVersionTopic, partitionConsumptionState);
+
+        if (ingestionCheckpointDuringGracefulShutdownEnabled) {
+          waitForAllMessageToBeProcessedFromTopicPartition(kafkaVersionTopic, partitionConsumptionState.getPartition(),
+              partitionConsumptionState);
+          syncOffset(kafkaVersionTopic, partitionConsumptionState);
+        }
       }
 
     } catch (VeniceIngestionTaskKilledException e) {
@@ -1711,7 +1718,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       if (hybridStoreConfig.isPresent() && newPartitionConsumptionState.isEndOfPushReceived()) {
         long offsetLagThreshold = hybridStoreConfig.get().getOffsetLagThresholdToGoOnline();
         // Only enable this feature with positive offset lag delta relax factor and offset lag threshold.
-        if (offsetLagDeltaRelaxFactor > 0 && offsetLagThreshold > 0) {
+        if (offsetLagDeltaRelaxEnabled && offsetLagThreshold > 0) {
           long offsetLag = measureHybridOffsetLag(newPartitionConsumptionState, true);
           if (previousOffsetLag != OffsetRecord.DEFAULT_OFFSET_LAG) {
             logger.info("Checking offset Lag behavior: current offset lag: " + offsetLag + ", previous offset lag: "
@@ -2087,21 +2094,36 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       partitionConsumptionState.resetProcessedRecordSize();
     }
 
+    reportIfCatchUpBaseTopicOffset(partitionConsumptionState);
+
     partitionConsumptionState.incrementProcessedRecordSizeSinceLastSync(recordSize);
     long syncBytesInterval = partitionConsumptionState.isDeferredWrite() ? databaseSyncBytesIntervalForDeferredWriteMode
         : databaseSyncBytesIntervalForTransactionalMode;
-
-    reportIfCatchUpBaseTopicOffset(partitionConsumptionState);
-
-    /**
-     * If the following condition is true, then we want to sync to disk. And syncing offset checking in syncOffset() should
-     * be the very last step for processing a record. We also check whether it's ready to serve before syncing for every
-     * message.
-     */
     boolean recordsProcessedAboveSyncIntervalThreshold =
         (syncBytesInterval > 0 && (partitionConsumptionState.getProcessedRecordSizeSinceLastSync() >= syncBytesInterval));
     defaultReadyToServeChecker.apply(partitionConsumptionState, recordsProcessedAboveSyncIntervalThreshold);
-    if (recordsProcessedAboveSyncIntervalThreshold) {
+
+    /**
+     * Syncing offset checking in syncOffset() should be the very last step for processing a record.
+     *
+     * Check whether offset metadata checkpoint will happen; if so, update the producer states recorded in OffsetRecord
+     * with the updated producer states maintained in {@link #kafkaDataIntegrityValidator}
+     */
+    boolean syncOffset = shouldSyncOffset(partitionConsumptionState, syncBytesInterval, record, leaderProducedRecordContext);
+
+    if (syncOffset) {
+      /**
+       * Offset metadata and producer states must be updated at the same time in OffsetRecord; otherwise, one checkpoint
+       * could be ahead of the other.
+       */
+      OffsetRecord offsetRecord = partitionConsumptionState.getOffsetRecord();
+      /**
+       * The reason to transform the internal state only during checkpointing is that
+       * the intermediate checksum generation is an expensive operation.
+       */
+      this.kafkaDataIntegrityValidator.updateOffsetRecord(subPartition, offsetRecord);
+      // Potentially update the offset metadata in the OffsetRecord
+      updateOffsetMetadataInOffsetRecord(partitionConsumptionState, offsetRecord, recordWrapper, leaderProducedRecordContext);
       syncOffset(kafkaVersionTopic, partitionConsumptionState);
     }
   }
@@ -2114,26 +2136,61 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return amplificationAdapter.getLeaderState(partition);
   }
 
-  private void syncOffset(String topic, PartitionConsumptionState ps) {
-    int partition = ps.getPartition();
+  /**
+   * Refer to the JavaDoc of {@link #updateOffsetMetadataInOffsetRecord(PartitionConsumptionState, OffsetRecord, VeniceConsumerRecordWrapper, LeaderProducedRecordContext)}
+   * for the criteria of when to sync offset.
+   */
+  private boolean shouldSyncOffset(PartitionConsumptionState pcs, long syncBytesInterval,
+      ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record, LeaderProducedRecordContext leaderProducedRecordContext) {
+    boolean syncOffset = false;
+    if (record.key().isControlMessage()) {
+      ControlMessage controlMessage = (leaderProducedRecordContext == null
+          ? (ControlMessage) record.value().payloadUnion
+          : (ControlMessage) leaderProducedRecordContext.getValueUnion());
+      final ControlMessageType controlMessageType = ControlMessageType.valueOf(controlMessage);
+      /**
+       * We don't want to sync offset/database for every control message since it could trigger RocksDB to generate
+       * a lot of small level-0 SST files, which will make the compaction very inefficient.
+       * In hybrid mode, we know START_OF_SEGMENT and END_OF_SEGMENT could happen multiple times per partition since
+       * each Samza job could produce to every partition, and the situation could become even worse if the Samza jobs have been
+       * restarted many times.
+       * But we still want to checkpoint for those known infrequent control messages:
+       * 1. Easy testing;
+       * 2. Avoid unnecessary offset rewind when ungraceful shutdown happens.
+       *
+       * TODO: if we know some other types of Control Messages are frequent as START_OF_SEGMENT and END_OF_SEGMENT in the future,
+       * we need to consider to exclude them to avoid the issue described above.
+       */
+      if (controlMessageType != ControlMessageType.START_OF_SEGMENT &&
+          controlMessageType != ControlMessageType.END_OF_SEGMENT) {
+        syncOffset = true;
+      }
+    } else {
+      syncOffset = (syncBytesInterval > 0 && (pcs.getProcessedRecordSizeSinceLastSync() >= syncBytesInterval));
+    }
+    return syncOffset;
+  }
+
+  private void syncOffset(String topic, PartitionConsumptionState pcs) {
+    int partition = pcs.getPartition();
     AbstractStorageEngine storageEngine = storageEngineRepository.getLocalStorageEngine(topic);
     if (storageEngine == null) {
       logger.warn("Storage engine has been removed. Could not execute sync offset for topic: " + topic + " and partition: " + partition);
       return;
     }
+    // Flush data partition
     Map<String, String> dbCheckpointingInfo = storageEngine.sync(partition);
-    OffsetRecord offsetRecord = ps.getOffsetRecord();
-    /**
-     * The reason to transform the internal state only during checkpointing is that
-     * the intermediate checksum generation is an expensive operation.
-     * See {@link ProducerTracker#validateMessageAndGetOffsetRecordTransformer(ConsumerRecord, boolean, Optional)}
-     * to find more details.
-     */
-    offsetRecord.transform();
+
+    // Update the partition key in metadata partition
+    if (offsetLagDeltaRelaxEnabled) {
+      // Try to persist offset lag to make partition online faster when restart.
+      updateOffsetLagInMetadata(pcs);
+    }
+    OffsetRecord offsetRecord = pcs.getOffsetRecord();
     // Check-pointing info required by the underlying storage engine
     offsetRecord.setDatabaseInfo(dbCheckpointingInfo);
     storageMetadataService.put(this.kafkaVersionTopic, partition, offsetRecord);
-    ps.resetProcessedRecordSizeSinceLastSync();
+    pcs.resetProcessedRecordSizeSinceLastSync();
     String msg = "Offset synced for partition " + partition + " of topic " + topic + ": ";
     if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
       logger.info(msg + offsetRecord.getLocalVersionTopicOffset());
@@ -2474,11 +2531,24 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   /**
-   * Update the metadata in OffsetRecord accordingly.
+   * Update the offset metadata in OffsetRecord in two cases:
+   * 1. A ControlMessage other than Start_of_Segment and End_of_Segment is processed
+   * 2. The size of total processed message has exceeded a threshold: {@link #databaseSyncBytesIntervalForDeferredWriteMode}
+   *    for batch data and {@link #databaseSyncBytesIntervalForTransactionalMode} for real-time updates
    */
-  protected abstract void updateOffsetRecord(
+  protected abstract void updateOffsetMetadataInOffsetRecord(
       PartitionConsumptionState partitionConsumptionState,
       OffsetRecord offsetRecord,
+      VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope> consumerRecordWrapper,
+      LeaderProducedRecordContext leaderProducedRecordContext
+  );
+
+  /**
+   * Maintain the latest processed offsets by drainers in memory; in most of the time, these offsets are ahead of the
+   * checkpoint offsets inside {@link OffsetRecord}
+   */
+  protected abstract void updateLatestInMemoryProcessedOffset(
+      PartitionConsumptionState partitionConsumptionState,
       VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope> consumerRecordWrapper,
       LeaderProducedRecordContext leaderProducedRecordContext
   );
@@ -2499,9 +2569,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     KafkaKey kafkaKey = consumerRecord.key();
     KafkaMessageEnvelope kafkaValue = consumerRecord.value();
     int sizeOfPersistedData = 0;
-    boolean syncOffset = false;
-
-    Optional<OffsetRecordTransformer> offsetRecordTransformer = Optional.empty();
     try {
       // Assumes the timestamp on the ConsumerRecord is the broker's timestamp when it received the message.
       recordWriterStats(kafkaValue.producerMetadata.messageTimestamp, consumerRecord.timestamp(),
@@ -2509,63 +2576,29 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       boolean endOfPushReceived = partitionConsumptionState.isEndOfPushReceived();
 
       /**
-       * DIV happens in drainer thread in following case.
-       *  1. O/O model: All messages received from any topic.  ProducedRecord will be null.
-       *  2. L/F model: Follower: All messages received from any topic. ProducedRecord will be null.
-       *  3. L/F model: Leader: All messages received from VT before it switches to consume from RT.
-       *
-       * DIV happens in consumer thread in following case {@link LeaderFollowerStoreIngestionTask#delegateConsumerRecord(VeniceConsumerRecordWrapper)}
-       *  4. L/F model: Leader: All messages received from RT.
-       *
-       *  Specific notes for Leader:
-       *  1.  For DIV pass through mode we are doing DIV in drainer thread with ConsumerRecord only ( ProducedRecord will NOT be null,
-       *      and there is 1-1 mapping between consumerRecord and leaderProducedRecordContext). This will implicitly verify all kafka
-       *      callbacks were executed properly and in order because we queue this pair <consumerRecord, producerRecord> from kafka
-       *      callback thread only. If there were any problems with callback thread then that will be caught by this DIV here.
-       *
-       *  2. For DIV non pass-through mode (RT messages) we are doing DIV in {@link LeaderFollowerStoreIngestionTask#delegateConsumerRecord(VeniceConsumerRecordWrapper)}
-       *      in consumer thread and no further DIV happens for the leaderProducedRecordContext. The main challenge to do DIV for leaderProducedRecordContext
-       *      here is that VeniceWriter internally produces SOS/EOS for non-passthrough mode which is not fed into our DIV pipeline currently.
-       *      TODO: Explore DIV check for produced record in non pass-through mode which also validates the kafka producer callback like pass through mode.
+       * DIV check will happen for every single message in drainer queues.
+       * Leader replicas will run DIV check twice for every single message (one in leader consumption thread before
+       * producing to local version topic; the other one is here); the extra overhead is mandatory for a few reasons:
+       * 1. We need DIV check in consumption phase in order to filter out unneeded data from Kafka topic
+       * 2. Consumption states are always ahead of drainer states, because there are buffering in between: kafka producing,
+       *    drainer buffers; so we cannot persist the DIV check results from consumption phases
+       * 3. The DIV info checkpoint on disk must match the actual data persistence which is done inside drainer threads.
        */
-      if (leaderProducedRecordContext == null || !Version.isRealTimeTopic(consumerRecord.topic())) {
-        try {
-          offsetRecordTransformer = validateMessage(consumerRecord, endOfPushReceived);
-          versionedDIVStats.recordSuccessMsg(storeName, versionNumber);
-        } catch (FatalDataValidationException fatalException) {
-          if (!endOfPushReceived) {
-            throw fatalException;
-          } else {
-            String errorMessage = String.format("Encountered errors during updating metadata for 2nd round DIV validation "
-                    + "after EOP. topic %s partition %s offset %s, ", consumerRecord.topic(), consumerRecord.partition(), consumerRecord.offset());
-            logger.warn(errorMessage + fatalException.getMessage());
-          }
+      try {
+        validateMessage(this.kafkaDataIntegrityValidator, consumerRecord, endOfPushReceived);
+        versionedDIVStats.recordSuccessMsg(storeName, versionNumber);
+      } catch (FatalDataValidationException fatalException) {
+        if (!endOfPushReceived) {
+          throw fatalException;
+        } else {
+          String errorMessage = String.format("Encountered errors during updating metadata for 2nd round DIV validation "
+                  + "after EOP. topic %s partition %s offset %s, ", consumerRecord.topic(), consumerRecord.partition(), consumerRecord.offset());
+          logger.warn(errorMessage + fatalException.getMessage());
         }
       }
       if (kafkaKey.isControlMessage()) {
         ControlMessage controlMessage = (leaderProducedRecordContext == null ? (ControlMessage) kafkaValue.payloadUnion : (ControlMessage) leaderProducedRecordContext.getValueUnion());
         processControlMessage(kafkaValue, controlMessage, consumerRecord.partition(), consumerRecord.offset(), partitionConsumptionState);
-        final ControlMessageType controlMessageType = ControlMessageType.valueOf(controlMessage);
-        /**
-         * We don't want to sync offset/database for every control message since it could trigger RocksDB to generate
-         * a lot of small level-0 SST files, which will make the compaction very inefficient.
-         * In hybrid mode, we know START_OF_SEGMENT and END_OF_SEGMENT could happen multiple times per partition since
-         * each Samza job could produce to every partition, and the situation could become even worse if the Samza jobs have been
-         * restarted many times.
-         * But we still want to checkpoint for those known infrequent control messages:
-         * 1. Easy testing;
-         * 2. Avoid unnecessary offset rewind when ungraceful shutdown happens.
-         *
-         * TODO: if we know some other types of Control Messages are frequent as START_OF_SEGMENT and END_OF_SEGMENT in the future,
-         * we need to consider to exclude them to avoid the issue described above.
-         *
-         * We shouldn't encounter {@link ProducerTracker.DataFaultType.UNREGISTERED_PRODUCER} since the logic below is
-         * tracking {@link OffsetRecordTransformer} per producer GUID.
-         */
-        if (controlMessageType != ControlMessageType.START_OF_SEGMENT &&
-            controlMessageType != ControlMessageType.END_OF_SEGMENT) {
-          syncOffset = true;
-        }
       } else {
         Pair<Integer, Integer> kvSize = processKafkaDataMessage(consumerRecordWrapper, partitionConsumptionState, leaderProducedRecordContext);
         int keySize = kvSize.getFirst();
@@ -2611,25 +2644,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       if (partitionConsumptionState.isEndOfPushReceived() && !kafkaKey.isControlMessage()) {
         offsetRecord.setLatestProducerProcessingTimeInMs(kafkaValue.producerMetadata.messageTimestamp);
       }
-
-      if (offsetRecordTransformer.isPresent()) {
-        /**
-         * The reason to transform the internal state only during checkpointing is that
-         * the intermediate checksum generation is an expensive operation.
-         * See {@link ProducerTracker#validateMessageAndGetOffsetRecordTransformer(ConsumerRecord, boolean, Optional)}
-         * to find more details.
-         */
-        offsetRecord.addOffsetRecordTransformer(kafkaValue.producerMetadata.producerGUID, offsetRecordTransformer.get());
-      } /** else, {@link #validateMessage(int, KafkaKey, KafkaMessageEnvelope)} threw a {@link com.linkedin.venice.exceptions.validation.DataValidationException} */
-
-      // Potentially update the offset metadata in the OffsetRecord
-      updateOffsetRecord(partitionConsumptionState, offsetRecord, consumerRecordWrapper, leaderProducedRecordContext);
-
-      partitionConsumptionState.setOffsetRecord(offsetRecord);
-      if (syncOffset) {
-        syncOffset(kafkaVersionTopic, partitionConsumptionState);
-      }
-
+      // Update latest in-memory processed offset for every processed message
+      updateLatestInMemoryProcessedOffset(partitionConsumptionState, consumerRecordWrapper, leaderProducedRecordContext);
     }
     return sizeOfPersistedData;
   }
@@ -2646,13 +2662,16 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   /**
-   * Message validation using DIV.
+   * Message validation using DIV. Leaders should pass in the validator instance from {@link LeaderFollowerStoreIngestionTask};
+   * and drainers should pass in the validator instance from {@link StoreIngestionTask}
+   *
    * 1. If valid DIV errors happen after EOP is received, no fatal exceptions will be thrown.
    *    But the errors will be recorded into the DIV metrics.
    * 2. For any DIV errors happened to unregistered producers && after EOP, the errors will be ignored.
    * 3. For any DIV errors happened to records which is after logCompactionDelayInMs, the errors will be ignored.
    **/
-  protected Optional<OffsetRecordTransformer> validateMessage(
+  protected void validateMessage(
+      KafkaDataIntegrityValidator validator,
       ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
       boolean endOfPushReceived) {
 
@@ -2664,8 +2683,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     long startTimeForMessageValidationInNS = System.nanoTime();
     try {
-        return Optional.of(
-            kafkaDataIntegrityValidator.validateMessageAndGetOffsetRecordTransformer(consumerRecord, endOfPushReceived, tolerateMissingMsgs));
+      validator.validateMessage(consumerRecord, endOfPushReceived, tolerateMissingMsgs);
+      return;
     } catch (FatalDataValidationException fatalException) {
       divErrorMetricCallback.get().execute(fatalException);
       /**
@@ -2680,18 +2699,25 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           consumerRecord.topic(), consumerRecord.partition(), consumerRecord.offset());
       logger.warn(errorMessage + fatalException.getMessage());
 
-      if (fatalException instanceof ImproperlyStartedSegmentException) {
-        return Optional.empty();
-      } else {
+      if (!(fatalException instanceof ImproperlyStartedSegmentException)) {
         /**
          * Run a dummy validation to update DIV metadata.
          */
-        return Optional.of(
-            kafkaDataIntegrityValidator.validateMessageAndGetOffsetRecordTransformer(consumerRecord, true, true));
+        validator.validateMessage(consumerRecord, endOfPushReceived, true);
+        return;
       }
     } finally {
       versionedDIVStats.recordDataValidationLatencyMs(storeName, versionNumber, LatencyUtils.getLatencyInMS(startTimeForMessageValidationInNS));
     }
+  }
+
+  /**
+   * We should only allow {@link StoreIngestionTask} to access {@link #kafkaDataIntegrityValidator}; other components
+   * like leaders in LeaderFollowerStoreIngestionTask should never access the DIV validator in drainer, because messages
+   * consumption in leader is ahead of drainer, leaders and drainers are processing messages at different paces.
+   */
+  protected void cloneProducerStates(int partition, KafkaDataIntegrityValidator validator) {
+    this.kafkaDataIntegrityValidator.cloneProducerStates(partition, validator);
   }
 
   /**
@@ -3193,7 +3219,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     if (null == consumptionState) {
       return Optional.empty();
     }
-    return Optional.of(consumptionState.getOffsetRecord().getLocalVersionTopicOffset());
+    return Optional.of(consumptionState.getLatestProcessedVersionTopicOffset());
   }
 
   /**
@@ -3282,7 +3308,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           if (partitionConsumptionState.isCompletionReported()) {
             // Completion has been reported so extraDisjunctionCondition must be true to enter here.
             logger.info(consumerTaskId + " Partition " + partition + " synced offset: "
-                + partitionConsumptionState.getOffsetRecord().getLocalVersionTopicOffset());
+                + partitionConsumptionState.getLatestProcessedVersionTopicOffset());
           } else {
             /**
              * Check whether we need to warm-up cache here.

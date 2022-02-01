@@ -154,9 +154,15 @@ public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
   }
 
   @Override
-  protected void updateOffsetRecord(PartitionConsumptionState partitionConsumptionState, OffsetRecord offsetRecord,
+  protected void updateOffsetMetadataInOffsetRecord(PartitionConsumptionState partitionConsumptionState, OffsetRecord offsetRecord,
       VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope> consumerRecordWrapper, LeaderProducedRecordContext leaderProducedRecordContext) {
-    offsetRecord.setLocalVersionTopicOffset(consumerRecordWrapper.consumerRecord().offset());
+    offsetRecord.setCheckpointLocalVersionTopicOffset(consumerRecordWrapper.consumerRecord().offset());
+  }
+
+  @Override
+  protected void updateLatestInMemoryProcessedOffset(PartitionConsumptionState partitionConsumptionState,
+      VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope> consumerRecordWrapper, LeaderProducedRecordContext leaderProducedRecordContext) {
+    partitionConsumptionState.updateLatestProcessedVersionTopicOffset(consumerRecordWrapper.consumerRecord().offset());
   }
 
   @Override
@@ -192,7 +198,7 @@ public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
     }
 
     int partition = partitionConsumptionState.getPartition();
-    long currentOffset = partitionConsumptionState.getOffsetRecord().getLocalVersionTopicOffset();
+    long currentOffset = partitionConsumptionState.getLatestProcessedVersionTopicOffset();
     /**
      * After END_OF_PUSH received, `isReadyToServe()` is invoked for each message until the lag is caught up (otherwise,
      * if we only check ready to serve periodically, the lag may never catch up); in order not to slow down the hybrid
@@ -243,8 +249,7 @@ public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
       return false;
     }
 
-    long lastOffset = partitionConsumptionState.getOffsetRecord()
-        .getLocalVersionTopicOffset();
+    long lastOffset = partitionConsumptionState.getLatestProcessedVersionTopicOffset();
     if(lastOffset >= record.offset()) {
       logger.info(consumerTaskId + "The record was already processed Partition" + partitionId + " LastKnown " + lastOffset + " Current " + record.offset());
       return false;

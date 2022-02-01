@@ -1766,5 +1766,13 @@ public class ConfigKeys {
    * becomes a cluster leader.
    */
   public static final String CONCURRENT_INIT_ROUTINES_ENABLED = "concurrent.init.routines.enabled";
+
+  /**
+   * A config to control graceful shutdown.
+   * True: servers will flush all remain data in producers buffers and drainer queues, and persist all data including offset
+   *       metadata and producer states into disk
+   * False: servers will not flush any data during shutdown. After restart, servers will resume ingestion from the last checkpoint.
+   */
+  public static final String SERVER_INGESTION_CHECKPOINT_DURING_GRACEFUL_SHUTDOWN_ENABLED = "server.ingestion.checkpoint.during.graceful.shutdown.enabled";
 }
 

@@ -99,10 +99,13 @@ public class ProducerTracker {
   }
 
   public void setPartitionState(int partition, ProducerPartitionState state) {
+    setPartitionState(partition, new Segment(partition, state));
+  }
+
+  private void setPartitionState(int partition, Segment segment) {
     ReentrantLock partitionLock = getPartitionLock(partition);
     partitionLock.lock();
     try {
-      Segment segment = new Segment(partition, state);
       if (segments.containsKey(partition)) {
         logger.info(
             this.toString() + " will overwrite previous state for partition: " + partition + "\nPrevious state: "
@@ -111,6 +114,68 @@ public class ProducerTracker {
         logger.info(this.toString() + " will set state for partition: " + partition + "\nNew state: " + segment);
       }
       segments.put(partition, segment);
+    } finally {
+      partitionLock.unlock();
+    }
+  }
+
+  public void cloneProducerStates(int partition, ProducerTracker destProducerTracker) {
+    if (!segments.containsKey(partition)) {
+      // This producer didn't write anything to requested partition
+      return;
+    }
+    ReentrantLock partitionLock = getPartitionLock(partition);
+    partitionLock.lock();
+    try {
+      Segment sourceSegment = segments.get(partition);
+      destProducerTracker.setPartitionState(partition, new Segment(sourceSegment));
+    } finally {
+      partitionLock.unlock();
+    }
+  }
+
+  public void updateOffsetRecord(int partition, OffsetRecord offsetRecord) {
+    if (!segments.containsKey(partition)) {
+      // This producer didn't write anything to requested partition
+      return;
+    }
+    ReentrantLock partitionLock = getPartitionLock(partition);
+    partitionLock.lock();
+    try {
+      Segment segment = segments.get(partition);
+      ProducerPartitionState state = offsetRecord.getProducerPartitionState(this.producerGUID);
+      if (null == state) {
+        state = new ProducerPartitionState();
+
+        /**
+         * The aggregates and debugInfo being stored in the {@link ProducerPartitionState} will add a bit
+         * of overhead when we checkpoint this metadata to disk, so we should be careful not to add a very
+         * large number of elements to these arbitrary collections.
+         *
+         * In the case of the debugInfo, it is expected (at the time of writing this comment) that all
+         * partitions produced by the same producer GUID would have the same debug values (though nothing
+         * precludes us from having per-partition debug values in the future if there is a use case for
+         * that). It is redundant that we store the same debug values once per partition. In the future,
+         * if we want to eliminate this redundancy, we could move the per-producer debug info to another
+         * data structure, though that would increase bookkeeping complexity. This is expected to be a
+         * minor overhead, and therefore it appears to be a premature to optimize this now.
+         */
+        state.aggregates = segment.getAggregates();
+        state.debugInfo = segment.getDebugInfo();
+      }
+      state.checksumType = segment.getCheckSumType().getValue();
+      /**
+       * {@link MD5Digest#getEncodedState()} is allocating a byte array to contain the intermediate state,
+       * which is expensive. We should only invoke this closure when necessary.
+       */
+      state.checksumState = ByteBuffer.wrap(segment.getCheckSumState());
+      state.segmentNumber = segment.getSegmentNumber();
+      state.messageSequenceNumber = segment.getSequenceNumber();
+      state.messageTimestamp = segment.getLastRecordProducerTimestamp();
+      state.segmentStatus = segment.getStatus().getValue();
+      state.isRegistered = segment.isRegistered();
+
+      offsetRecord.setProducerPartitionState(this.producerGUID, state);
     } finally {
       partitionLock.unlock();
     }
@@ -126,68 +191,9 @@ public class ProducerTracker {
    *
    *
    * @param consumerRecord
-   * @return A closure which will apply the appropriate state change to a {@link OffsetRecord}. This allows
-   *         the caller to decide whether to apply the state change or not. Furthermore, it minimizes the
-   *         chances that a state change may be partially applied, which could cause weird bugs if it happened.
    * @throws DataValidationException
    */
-  public OffsetRecordTransformer validateMessageAndGetOffsetRecordTransformer(
-      ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
-      boolean endOfPushReceived,
-      boolean tolerateMissingMsgs)
-      throws DataValidationException {
-
-    Segment segment = validateMessage(consumerRecord, endOfPushReceived, tolerateMissingMsgs);
-
-    // We return a closure, so that it is the caller's responsibility to decide whether to execute the state change or not.
-    return offsetRecord -> {
-      ProducerPartitionState state = offsetRecord.getProducerPartitionState(producerGUID);
-
-      ReentrantLock partitionLock = partitionLocks.get(consumerRecord.partition());
-      partitionLock.lock();
-      try {
-        if (null == state) {
-          state = new ProducerPartitionState();
-
-          /**
-           * The aggregates and debugInfo being stored in the {@link ProducerPartitionState} will add a bit
-           * of overhead when we checkpoint this metadata to disk, so we should be careful not to add a very
-           * large number of elements to these arbitrary collections.
-           *
-           * In the case of the debugInfo, it is expected (at the time of writing this comment) that all
-           * partitions produced by the same producer GUID would have the same debug values (though nothing
-           * precludes us from having per-partition debug values in the future if there is a use case for
-           * that). It is redundant that we store the same debug values once per partition. In the future,
-           * if we want to eliminate this redundancy, we could move the per-producer debug info to another
-           * data structure, though that would increase bookkeeping complexity. This is expected to be a
-           * minor overhead, and therefore it appears to be a premature to optimize this now.
-           */
-          state.aggregates = segment.getAggregates();
-          state.debugInfo = segment.getDebugInfo();
-        }
-        state.checksumType = segment.getCheckSumType().getValue();
-        /**
-         * {@link MD5Digest#getEncodedState()} is allocating a byte array to contain the intermediate state,
-         * which is expensive. We should only invoke this closure when necessary.
-         */
-        state.checksumState = ByteBuffer.wrap(segment.getCheckSumState());
-        state.segmentNumber = segment.getSegmentNumber();
-        state.messageSequenceNumber = segment.getSequenceNumber();
-        state.messageTimestamp = segment.getLastRecordProducerTimestamp();
-        state.segmentStatus = segment.getStatus().getValue();
-        state.isRegistered = segment.isRegistered();
-      } finally {
-        partitionLock.unlock();
-      }
-      offsetRecord.setProducerPartitionState(producerGUID, state);
-
-      logger.trace("ProducerPartitionState updated.");
-
-      return offsetRecord;
-    };
-  }
-
-  protected Segment validateMessage(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
+  public void validateMessage(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
                                     boolean endOfPushReceived, boolean tolerateMissingMsgs) throws DataValidationException {
     ReentrantLock partitionLock = getPartitionLock(consumerRecord.partition());
     partitionLock.lock();
@@ -198,7 +204,7 @@ public class ProducerTracker {
       // This is the last step, because we want failures in the previous steps to short-circuit execution.
       trackCheckSum(segment, consumerRecord, endOfPushReceived, tolerateMissingMsgs);
       segment.setLastSuccessfulOffset(consumerRecord.offset());
-      return segment;
+      segment.setNewSegment(false);
     } finally {
       partitionLock.unlock();
     }
@@ -353,7 +359,21 @@ public class ProducerTracker {
     if (!segment.isStarted()) {
       segment.start();
       segment.setLastRecordProducerTimestamp(consumerRecord.value().producerMetadata.messageTimestamp);
-    } else if (incomingSequenceNumber == previousSequenceNumber + 1) {
+      return;
+    } else if (segment.isNewSegment() && incomingSequenceNumber == previousSequenceNumber) {
+      if (segment.getSequenceNumber() > 0 && !tolerateMissingMsgs) {
+        throw DataFaultType.MISSING.getNewException(segment, consumerRecord);
+      }
+      segment.setLastRecordProducerTimestamp(consumerRecord.value().producerMetadata.messageTimestamp);
+      /**
+       * In any other cases for newly constructed segment, don't check sequence number anymore,
+       * because "previousSequenceNumber" is going to be equal to "incomingSequenceNumber", and thus this message
+       * will be treated as DUPLICATE message and dropped.
+       */
+      return;
+    }
+
+    if (incomingSequenceNumber == previousSequenceNumber + 1) {
       // Expected case, in steady state
       segment.getAndIncrementSequenceNumber();
       segment.setLastRecordProducerTimestamp(consumerRecord.value().producerMetadata.messageTimestamp);

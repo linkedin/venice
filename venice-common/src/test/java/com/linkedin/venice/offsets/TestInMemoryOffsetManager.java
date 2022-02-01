@@ -15,11 +15,11 @@ public class TestInMemoryOffsetManager {
 
     OffsetManager om = new InMemoryOffsetManager();
     OffsetRecord record = new OffsetRecord(AvroProtocolDefinition.PARTITION_STATE.getSerializer());
-    record.setLocalVersionTopicOffset(1234);
+    record.setCheckpointLocalVersionTopicOffset(1234);
     OffsetRecord oldRecord = new OffsetRecord(AvroProtocolDefinition.PARTITION_STATE.getSerializer());
-    oldRecord.setLocalVersionTopicOffset(234);
+    oldRecord.setCheckpointLocalVersionTopicOffset(234);
     OffsetRecord newRecord = new OffsetRecord(AvroProtocolDefinition.PARTITION_STATE.getSerializer());
-    newRecord.setLocalVersionTopicOffset(11234);
+    newRecord.setCheckpointLocalVersionTopicOffset(11234);
 
     om.put(topic, 0, record);
     Assert.assertEquals(om.getLastOffset(topic, 0), record);

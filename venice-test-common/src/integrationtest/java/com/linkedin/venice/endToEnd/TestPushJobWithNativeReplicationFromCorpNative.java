@@ -87,7 +87,7 @@ import static com.linkedin.venice.utils.TestPushUtils.*;
 public class TestPushJobWithNativeReplicationFromCorpNative {
   public static final Logger LOGGER = Logger.getLogger(TestPushJobWithNativeReplicationFromCorpNative.class);
 
-  private static final int TEST_TIMEOUT = 90_000; // ms
+  private static final int TEST_TIMEOUT = 150_000; // ms
   private static final int TEST_TIMEOUT_LARGE = 120_000; // ms
 
   private static final int NUMBER_OF_CHILD_DATACENTERS = 3;

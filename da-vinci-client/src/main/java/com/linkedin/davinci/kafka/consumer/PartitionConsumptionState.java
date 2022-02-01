@@ -12,6 +12,7 @@ import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.nio.ByteBuffer;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -126,6 +127,9 @@ public class PartitionConsumptionState {
   /**
    * This is an in-memory only map which will track the consumed offset from each kafka cluster. Currently used in
    * measuring hybrid offset lag for each prod region during RT consumption.
+   *
+   * Key: source Kafka url
+   * Value: Latest upstream RT offsets of a specific source consumed by leader
    */
   private final ConcurrentMap<String, Long> consumedUpstreamRTOffsetMap;
 
@@ -134,6 +138,17 @@ public class PartitionConsumptionState {
 
   //stores the EOP control message's producer timestamp.
   private long endOfPushTimestamp = 0;
+
+  /**
+   * Latest version topic processed by drainer.
+   */
+  private long latestProcessedVersionTopicOffset;
+
+  /**
+   * Key: source Kafka url
+   * Value: Latest upstream RT offsets of a specific source processed by drainer
+   */
+  private Map<String, Long> latestProcessedUpstreamRTOffsetMap;
 
   public PartitionConsumptionState(int partition, int amplificationFactor, OffsetRecord offsetRecord, boolean hybrid,
     boolean isIncrementalPushEnabled, IncrementalPushPolicy incrementalPushPolicy) {
@@ -165,11 +180,15 @@ public class PartitionConsumptionState {
       previousStatusSet.add(status.toString());
     }
 
-    // Restore in-memory consumption RT upstream offset map from the checkpoint upstream offset map
+    // Restore in-memory consumption RT upstream offset map and latest processed RT upstream offset map from the checkpoint upstream offset map
     consumedUpstreamRTOffsetMap = new VeniceConcurrentHashMap<>();
+    latestProcessedUpstreamRTOffsetMap = new VeniceConcurrentHashMap<>();
     if (offsetRecord.getLeaderTopic() != null && Version.isRealTimeTopic(offsetRecord.getLeaderTopic())) {
       offsetRecord.cloneUpstreamOffsetMap(consumedUpstreamRTOffsetMap);
+      offsetRecord.cloneUpstreamOffsetMap(latestProcessedUpstreamRTOffsetMap);
     }
+    // Restore in-memory latest consumed version topic offset from the checkpoint version topic offset
+    this.latestProcessedVersionTopicOffset = offsetRecord.getLocalVersionTopicOffset();
   }
 
   public int getPartition() {
@@ -194,7 +213,7 @@ public class PartitionConsumptionState {
     return this.deferredWrite;
   }
   public boolean isStarted() {
-    return this.offsetRecord.getLocalVersionTopicOffset() > 0;
+    return getLatestProcessedVersionTopicOffset() > 0;
   }
   public boolean isEndOfPushReceived() {
     return this.offsetRecord.isEndOfPushReceived();
@@ -506,6 +525,51 @@ public class PartitionConsumptionState {
     return consumedUpstreamRTOffsetMap.getOrDefault(kafkaUrl, 0L);
   }
 
+  public void updateLatestProcessedUpstreamRTOffset(String kafkaUrl, long offset) {
+    latestProcessedUpstreamRTOffsetMap.put(kafkaUrl, offset);
+  }
+
+  public long getLatestProcessedUpstreamRTOffset(String kafkaUrl) {
+    long latestProcessedUpstreamRTOffset = latestProcessedUpstreamRTOffsetMap.getOrDefault(kafkaUrl, -1L);
+    if (latestProcessedUpstreamRTOffset < 0) {
+      /**
+       * When processing {@link TopicSwitch} control message, only the checkpoint upstream offset maps in {@link OffsetRecord}
+       * will be updated, since those offset are not processed yet; so when leader try to get the upstream offsets for the very
+       * first time, there are no records in {@link #latestProcessedUpstreamRTOffsetMap} yet.
+       */
+      return getOffsetRecord().getUpstreamOffset(kafkaUrl);
+    }
+    return latestProcessedUpstreamRTOffset;
+  }
+
+  public Long getLatestProcessedUpstreamRTOffsetWithNoDefault(String kafkaUrl) {
+    long latestProcessedUpstreamRTOffset = latestProcessedUpstreamRTOffsetMap.getOrDefault(kafkaUrl, -1L);
+    if (latestProcessedUpstreamRTOffset < 0) {
+      /**
+       * When processing {@link TopicSwitch} control message, only the checkpoint upstream offset maps in {@link OffsetRecord}
+       * will be updated, since those offset are not processed yet; so when leader try to get the upstream offsets for the very
+       * first time, there are no records in {@link #latestProcessedUpstreamRTOffsetMap} yet.
+       */
+      return getOffsetRecord().getUpstreamOffsetWithNoDefault(kafkaUrl);
+    }
+    return latestProcessedUpstreamRTOffset;
+  }
+
+  /**
+   * The caller of this API should be interested in which offset currently leader is actually on.
+   * If leader is consuming from a remote Kafka cluster, or RT/SR topic locally, upstream offset will be updated;
+   * therefore, if the upstream offset is positive, or leader topic is pointing to any topic other than version topic,
+   * upstream offset should be returned to reflect the current consumption state of leader; otherwise,
+   * return local version topic checkpoint offset, since leader has been consuming from the local version topic.
+   */
+  public long getLeaderOffset(String kafkaURL) {
+    if (offsetRecord.getLeaderTopic() != null && (!Version.isVersionTopic(offsetRecord.getLeaderTopic()) || getLatestProcessedUpstreamRTOffset(kafkaURL) > 0)) {
+      return getLatestProcessedUpstreamRTOffset(kafkaURL);
+    } else {
+      return getLatestProcessedVersionTopicOffset();
+    }
+  }
+
   public void setStartOfPushTimestamp(long startOfPushTimestamp) {
     this.startOfPushTimestamp = startOfPushTimestamp;
   }
@@ -517,4 +581,12 @@ public class PartitionConsumptionState {
   }
 
   public long getEndOfPushTimestamp() {return endOfPushTimestamp;}
+
+  public void updateLatestProcessedVersionTopicOffset(long offset) {
+    this.latestProcessedVersionTopicOffset = offset;
+  }
+
+  public long getLatestProcessedVersionTopicOffset() {
+    return this.latestProcessedVersionTopicOffset;
+  }
 }

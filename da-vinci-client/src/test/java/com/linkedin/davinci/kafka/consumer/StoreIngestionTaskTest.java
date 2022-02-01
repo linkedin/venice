@@ -1266,7 +1266,6 @@ public class StoreIngestionTaskTest {
           }
           return false;
         });
-
         TestUtils.waitForNonDeterministicCompletion(TEST_TIMEOUT_MS, TimeUnit.MILLISECONDS, () -> {
           for (Object[] args : mockNotifierCompleted) {
             if (args[0].equals(topic) && args[1].equals(PARTITION_BAR) && ((long) args[2]) > lastOffsetBeforeEOP) {
@@ -1275,7 +1274,6 @@ public class StoreIngestionTaskTest {
           }
           return false;
         });
-
         for (Object[] args : mockNotifierError) {
           Assert.assertFalse(
               args[0].equals(topic)
@@ -2443,7 +2441,7 @@ public class StoreIngestionTaskTest {
     doReturn(topicSwitch).when(mockPcs).getTopicSwitch();
     OffsetRecord mockOffsetRecord = mock(OffsetRecord.class);
     doReturn("test_rt").when(mockOffsetRecord).getLeaderTopic();
-    doReturn(1000L).when(mockOffsetRecord).getLeaderOffset(anyString());
+    doReturn(1000L).when(mockPcs).getLeaderOffset(anyString());
     doReturn(mockOffsetRecord).when(mockPcs).getOffsetRecord();
     // Test whether consumedUpstreamRTOffsetMap is updated when leader subscribes to RT after state transition
     ingestionTask.startConsumingAsLeaderInTransitionFromStandby(mockPcs);
@@ -2456,6 +2454,7 @@ public class StoreIngestionTaskTest {
     mockOffsetRecord = mock(OffsetRecord.class);
     doReturn("test_rt").when(mockOffsetRecord).getLeaderTopic();
     doReturn(1000L).when(mockOffsetRecord).getUpstreamOffset(anyString());
+    doReturn(1000L).when(mockPcs).getLatestProcessedUpstreamRTOffset(anyString());
     doReturn(mockOffsetRecord).when(mockPcs).getOffsetRecord();
     // Test whether consumedUpstreamRTOffsetMap is updated when leader subscribes to RT after executing TS
     ingestionTask.leaderExecuteTopicSwitch(mockPcs, topicSwitch);
