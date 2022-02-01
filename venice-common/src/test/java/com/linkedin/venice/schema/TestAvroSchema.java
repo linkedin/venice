@@ -1,6 +1,10 @@
 package com.linkedin.venice.schema;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
+import com.linkedin.venice.kafka.protocol.state.PartitionState;
+import com.linkedin.venice.serializer.AvroGenericDeserializer;
+import com.linkedin.venice.serializer.AvroSerializer;
+import com.linkedin.venice.serializer.AvroSpecificDeserializer;
 import com.linkedin.venice.utils.AvroSchemaUtils;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.serializer.RecordDeserializer;
@@ -9,11 +13,15 @@ import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.utils.Utils;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
+import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.specific.SpecificData;
+import org.apache.avro.util.Utf8;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -38,6 +46,51 @@ public class TestAvroSchema {
     // No exception should be thrown here
     RecordDeserializer<Object> deserializer = SerializerDeserializerFactory.getAvroGenericDeserializer(v1Schema, v3Schema);
     deserializer.deserialize(bytes);
+  }
+
+  @Test
+  public void testStringMapInPartitionState() throws IOException {
+    PartitionState ps = new PartitionState();
+    ps.offset = 0;
+    ps.offsetLag = 0;
+    ps.endOfPush = false;
+    ps.lastUpdate = 0;
+    ps.databaseInfo = Collections.emptyMap();
+    ps.leaderOffset = 0;
+    // Populate a fake map
+    Map<CharSequence, Long> upstreamOffsetMap = new HashMap<>();
+    upstreamOffsetMap.put("fake_kafak_url", 100L);
+    ps.upstreamOffsetMap = upstreamOffsetMap;
+    ps.producerStates = Collections.emptyMap();
+    ps.previousStatuses = Collections.emptyMap();
+
+    AvroSerializer serializer = new AvroSerializer(ps.getSchema());
+    byte[] serializedBytes = serializer.serialize(ps);
+    /* Test the specific deserializer */
+    AvroSpecificDeserializer<PartitionState> specificDeserializer = new AvroSpecificDeserializer<>(ps.getSchema(), PartitionState.class);
+    PartitionState specificDeserializedObject = specificDeserializer.deserialize(serializedBytes);
+    Assert.assertTrue(specificDeserializedObject.upstreamOffsetMap instanceof Map);
+    for (Map.Entry<CharSequence, Long> entry : specificDeserializedObject.upstreamOffsetMap.entrySet()) {
+      Assert.assertTrue(entry.getKey() instanceof String, "The key object type should be 'String', but got " + entry.getKey().getClass());
+    }
+    /* Test the generic deserializer */
+    AvroGenericDeserializer<GenericRecord> genericDeserializer = new AvroGenericDeserializer<>(ps.getSchema(), ps.getSchema());
+    GenericRecord genericDeserializedObject = genericDeserializer.deserialize(serializedBytes);
+    Object upstreamOffsetMapObject = genericDeserializedObject.get("upstreamOffsetMap");
+    Assert.assertTrue(upstreamOffsetMapObject instanceof Map);
+    for (Map.Entry<Object, Object> entry : ((Map<Object, Object>)upstreamOffsetMapObject).entrySet()) {
+      Assert.assertTrue(entry.getKey() instanceof String, "The key object type should be 'String', but got " + entry.getKey().getClass());
+    }
+
+    /* Try to de-serialize it with an older schema */
+    Schema v10Schema = Utils.getSchemaFromResource("avro/PartitionState/v10/PartitionState.avsc");
+    AvroGenericDeserializer<GenericRecord> genericDeserializerForV10 = new AvroGenericDeserializer<>(v10Schema, v10Schema);
+    GenericRecord genericDeserializedObjectFromV10 = genericDeserializerForV10.deserialize(serializedBytes);
+    Object upstreamOffsetMapObjectFromV10 = genericDeserializedObjectFromV10.get("upstreamOffsetMap");
+    Assert.assertTrue(upstreamOffsetMapObjectFromV10 instanceof Map);
+    for (Map.Entry<Object, Object> entry : ((Map<Object, Object>)upstreamOffsetMapObjectFromV10).entrySet()) {
+      Assert.assertTrue(entry.getKey() instanceof Utf8, "The key object type should be 'Utf8', but got " + entry.getKey().getClass());
+    }
   }
 
   @Test
