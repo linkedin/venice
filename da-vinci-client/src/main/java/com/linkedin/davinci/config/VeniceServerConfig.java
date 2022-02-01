@@ -268,6 +268,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   private final boolean autoCloseIdleConsumersEnabled;
 
+  private final boolean serverIngestionCheckpointDuringGracefulShutdownEnabled;
+
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     this(serverProperties, Optional.empty());
   }
@@ -420,6 +422,17 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     schemaPresenceCheckEnabled = serverProperties.getBoolean(SERVER_SCHEMA_PRESENCE_CHECK_ENABLED, true);
     enableLiveConfigBasedKafkaThrottling = serverProperties.getBoolean(SERVER_ENABLE_LIVE_CONFIG_BASED_KAFKA_THROTTLING, false);
     autoCloseIdleConsumersEnabled = serverProperties.getBoolean(AUTO_CLOSE_IDLE_CONSUMERS_ENABLED, KafkaClientFactory.DEFAULT_AUTO_CLOSE_IDLE_CONSUMERS_ENABLED);
+    /**
+     * Enable graceful shutdown by default.
+     * Speculative risks when disabling graceful shutdown:
+     * 1. Servers may need to reconsume a decent amount of data, depending on the last ingestion checkpoint. Hybrid stores may take longer
+     *    time to go online, and thus delay or fail server deployments which will check and maintain minimum number of online replicas.
+     * Potential mitigations:
+     * 1. Enable {@link com.linkedin.venice.ConfigKeys#OFFSET_LAG_DELTA_RELAX_FACTOR_FOR_FAST_ONLINE_TRANSITION_IN_RESTART} so that previously
+     *    online hybrid replicas can become online faster after nodes restart.
+     * 2. Reduce checkpoint threshold
+     */
+    serverIngestionCheckpointDuringGracefulShutdownEnabled = serverProperties.getBoolean(SERVER_INGESTION_CHECKPOINT_DURING_GRACEFUL_SHUTDOWN_ENABLED, true);
   }
 
   public int getListenerPort() {
@@ -806,5 +819,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public boolean isAutoCloseIdleConsumersEnabled() {
     return autoCloseIdleConsumersEnabled;
+  }
+
+  public boolean isServerIngestionCheckpointDuringGracefulShutdownEnabled() {
+    return serverIngestionCheckpointDuringGracefulShutdownEnabled;
   }
 }

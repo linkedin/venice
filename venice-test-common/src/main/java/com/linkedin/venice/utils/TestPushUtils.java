@@ -1103,6 +1103,7 @@ public class TestPushUtils {
     OutgoingMessageEnvelope envelope = new OutgoingMessageEnvelope(
         new SystemStream("venice", storeName), key, message);
     producer.send(storeName, envelope);
+    producer.flush(storeName);
   }
 
   /**

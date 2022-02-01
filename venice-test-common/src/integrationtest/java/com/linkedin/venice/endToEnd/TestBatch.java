@@ -511,7 +511,7 @@ public abstract class TestBatch {
             .setIncrementalPushEnabled(true)
             .setLeaderFollowerModel(true)
             .setChunkingEnabled(true)
-            .setHybridOffsetLagThreshold(1)
+            .setHybridOffsetLagThreshold(10)
             .setHybridRewindSeconds(0)
             .setIncrementalPushPolicy(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME)
       );
@@ -532,7 +532,7 @@ public abstract class TestBatch {
         return new Pair<>(recordSchema.getField("id").schema(), recordSchema.getField("name").schema());
       }, properties -> {
       }, (avroClient, vsonClient, metricsRepository) -> {
-        TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
+        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
           for (int i = 1; i <= 100; i++) {
             Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + i);
           }

@@ -69,7 +69,7 @@ public class TestWriteCompute {
     veniceClusterWrapper.close();
   }
 
-  @Test(timeOut = 60 * Time.MS_PER_SECOND, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  @Test(timeOut = 120 * Time.MS_PER_SECOND, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testWriteComputeWithHybridLeaderFollowerLargeRecord(boolean writeComputeFromCache) throws Exception {
     SystemProducer veniceProducer = null;
 
@@ -139,12 +139,12 @@ public class TestWriteCompute {
           }
         }
 
-        // Write a streaming record (large record)
+        // Do not send large record to RT; RT doesn't support chunking
         veniceProducer = getSamzaProducer(veniceClusterWrapper, storeName, Version.PushType.STREAM);
         String key = String.valueOf(101);
         Schema valueSchema = Schema.parse(NESTED_SCHEMA_STRING);
         GenericRecord value = new GenericData.Record(valueSchema);
-        char[] chars = new char[STREAMING_RECORD_SIZE];
+        char[] chars = new char[100];
         Arrays.fill(chars, 'f');
         String firstName = new String(chars);
         Arrays.fill(chars, 'l');
@@ -154,7 +154,7 @@ public class TestWriteCompute {
         sendStreamingRecord(veniceProducer, storeName, key, value);
 
         // Verify the streaming record
-        TestUtils.waitForNonDeterministicAssertion(15, TimeUnit.SECONDS, () -> {
+        TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
           try {
             GenericRecord retrievedValue = (GenericRecord)client.get(key).get();
             assertNotNull(retrievedValue, "Key " + key + " should not be missing!");
@@ -177,7 +177,7 @@ public class TestWriteCompute {
         partialUpdateRecord.put("age", 1);
         sendStreamingRecord(veniceProducer, storeName, key, partialUpdateRecord);
         // Verify the update
-        TestUtils.waitForNonDeterministicAssertion(15, TimeUnit.SECONDS, () -> {
+        TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
           try {
             GenericRecord retrievedValue = (GenericRecord)client.get(key).get();
             assertNotNull(retrievedValue, "Key " + key + " should not be missing!");
@@ -198,7 +198,7 @@ public class TestWriteCompute {
         partialUpdateRecord1.put("age", noOpRecord);
         sendStreamingRecord(veniceProducer, storeName, key, partialUpdateRecord1);
         // Verify the update
-        TestUtils.waitForNonDeterministicAssertion(15, TimeUnit.SECONDS, () -> {
+        TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
           try {
             GenericRecord retrievedValue = (GenericRecord)client.get(key).get();
             assertNotNull(retrievedValue, "Key " + key + " should not be missing!");
@@ -212,7 +212,7 @@ public class TestWriteCompute {
         //Delete the record
         sendStreamingRecord(veniceProducer, storeName, key, null);
         // Verify the delete
-        TestUtils.waitForNonDeterministicAssertion(15, TimeUnit.SECONDS, () -> {
+        TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
           try {
             GenericRecord retrievedValue = (GenericRecord)client.get(key).get();
             assertNull(retrievedValue, "Key " + key + " should be missing!");
@@ -232,7 +232,7 @@ public class TestWriteCompute {
         partialUpdateRecord2.put("age", 2);
         sendStreamingRecord(veniceProducer, storeName, key, partialUpdateRecord2);
         // Verify the update
-        TestUtils.waitForNonDeterministicAssertion(15, TimeUnit.SECONDS, () -> {
+        TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
           try {
             GenericRecord retrievedValue = (GenericRecord)client.get(key).get();
             assertNotNull(retrievedValue, "Key " + key + " should not be missing!");
@@ -253,7 +253,7 @@ public class TestWriteCompute {
         partialUpdateRecord3.put("age", noOpRecord);
         sendStreamingRecord(veniceProducer, storeName, key, partialUpdateRecord3);
         // Verify the update
-        TestUtils.waitForNonDeterministicAssertion(15, TimeUnit.SECONDS, () -> {
+        TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
           try {
             GenericRecord retrievedValue = (GenericRecord)client.get(key).get();
             assertNotNull(retrievedValue, "Key " + key + " should not be missing!");

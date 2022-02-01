@@ -183,12 +183,6 @@ public class PushTimeoutTest {
     doReturn(true).when(mockOffsetRecord).isEndOfPushReceived();
     doReturn(Version.composeRealTimeTopic(storeName)).when(mockOffsetRecord).getLeaderTopic();
     /**
-     * Explicitly return a low leader offset and a high real-time topic max offset, so that RT lag is
-     * still high and thus {@link StoreIngestionTask#checkConsumptionStateWhenStart(OffsetRecord, PartitionConsumptionState)}
-     * will not report COMPLETED, in order to invoke reportIfCatchUpBaseTopicOffset
-     */
-    doReturn(1L).when(mockOffsetRecord).getLeaderOffset(anyString());
-    /**]
      * Return 0 as the max offset for VT and 1 as the overall consume progress, so reportIfCatchUpBaseTopicOffset()
      * will determine that base topic is caught up.
      */
