@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller.stats;
 
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.PartitionAssignment;
@@ -58,14 +59,19 @@ public class AggPartitionHealthStats extends AbstractVeniceAggStats<PartitionHea
     if (store == null) {
       throw new VeniceNoStoreException(storeName);
     }
-    // We focus on versions which already completed bootstrap. On-going push has under replicated partition for sure,
+    // We focus on versions which already completed bootstrap. Ongoing push has under replicated partition for sure,
     // but it would not affect our operations.
     if (!VersionStatus.isBootstrapCompleted(store.getVersionStatus(versionNumber))) {
       return;
     }
+    try {
+      pushMonitor.getOfflinePushOrThrow(partitionAssignment.getTopic());
+    } catch (VeniceException e) {
+      // OfflinePushStatus is required to determine ready-to-serve instances.
+      return;
+    }
     for (Partition partition : partitionAssignment.getAllPartitions()) {
-      if (pushMonitor.getReadyToServeInstances(partitionAssignment, partition.getId()).size() <
-      store.getReplicationFactor()) {
+      if (pushMonitor.getReadyToServeInstances(partitionAssignment, partition.getId()).size() < store.getReplicationFactor()) {
         underReplicatedPartitions++;
       }
     }

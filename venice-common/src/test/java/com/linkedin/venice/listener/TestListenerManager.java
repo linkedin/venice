@@ -26,8 +26,8 @@ public class TestListenerManager {
     TestListener listener2 = new TestListener();
     manager.subscribe(key, listener2);
     manager.unsubscribe(key, listener2);
-    Assert.assertEquals(manager.getListenerMap().get(key).size(), 1, "The listener2 is unsubscribed.");
-    Assert.assertEquals(manager.getListenerMap().get(key).iterator().next(), listener1,
+    Assert.assertEquals(manager.getKeyToListenersMap().get(key).size(), 1, "The listener2 is unsubscribed.");
+    Assert.assertEquals(manager.getKeyToListenersMap().get(key).iterator().next(), listener1,
         "The listener2 is unsubscribed.");
   }
 
