@@ -6,28 +6,20 @@ import com.linkedin.davinci.client.DaVinciConfig;
 import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
 import com.linkedin.r2.transport.common.Client;
 import com.linkedin.venice.D2.D2ClientUtils;
-import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.AvroSpecificStoreClient;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.fastclient.factory.ClientFactory;
-import com.linkedin.venice.fastclient.meta.AbstractStoreMetadata;
 import com.linkedin.venice.fastclient.schema.TestValueSchema;
+import com.linkedin.venice.fastclient.utils.RouterBasedStoreMetadata;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
-import com.linkedin.venice.meta.Instance;
-import com.linkedin.venice.meta.OnlineInstanceFinder;
-import com.linkedin.venice.meta.ReadOnlySchemaRepository;
-import com.linkedin.venice.meta.ReadOnlyStoreRepository;
-import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
-import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.system.store.MetaStoreDataType;
@@ -41,20 +33,18 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
 import io.tehuti.metrics.MetricsRepository;
-import java.io.IOException;
-import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.Collectors;
+import java.util.function.Consumer;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
+import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.DataProvider;
@@ -194,9 +184,14 @@ public class AvroStoreClientEndToEndTest {
     Utils.closeQuietlyWithErrorLogged(veniceWriter);
   }
 
-  // Only RouterBasedStoreMetadata can be reused. Other StoreMetadata implementation cannot be used after close() is called.
   private void runTest(ClientConfig.ClientConfigBuilder clientConfigBuilder, Optional<RouterBasedStoreMetadata> metadata,
       boolean useDaVinciClientBasedMetadata, boolean batchGet) throws Exception {
+    runTest(clientConfigBuilder, metadata, useDaVinciClientBasedMetadata, batchGet, (metricsRepository) ->{});
+  }
+
+  // Only RouterBasedStoreMetadata can be reused. Other StoreMetadata implementation cannot be used after close() is called.
+  private void runTest(ClientConfig.ClientConfigBuilder clientConfigBuilder, Optional<RouterBasedStoreMetadata> metadata,
+      boolean useDaVinciClientBasedMetadata, boolean batchGet, Consumer<MetricsRepository> statsValidation) throws Exception {
     DaVinciClient<StoreMetaKey, StoreMetaValue> daVinciClientForMetaStore = null;
     CachingDaVinciClientFactory daVinciClientFactory = null;
     if (useDaVinciClientBasedMetadata) {
@@ -209,7 +204,8 @@ public class AvroStoreClientEndToEndTest {
     }
 
     // always specify a different MetricsRepository to avoid conflict.
-    clientConfigBuilder.setMetricsRepository(new MetricsRepository());
+    MetricsRepository metricsRepositoryForGenericClient = new MetricsRepository();
+    clientConfigBuilder.setMetricsRepository(metricsRepositoryForGenericClient);
     // Test generic store client first
     AvroGenericStoreClient<String, GenericRecord> genericFastClient = null;
     if (useDaVinciClientBasedMetadata){
@@ -240,10 +236,13 @@ public class AvroStoreClientEndToEndTest {
       }
     }
     genericFastClient.close();
+    statsValidation.accept(metricsRepositoryForGenericClient);
+
     // Test specific store client
+    MetricsRepository metricsRepositoryForSpecificClient = new MetricsRepository();
     ClientConfig.ClientConfigBuilder specificClientConfigBuilder = clientConfigBuilder.clone()
         .setSpecificValueClass(TestValueSchema.class)
-        .setMetricsRepository(new MetricsRepository()); // To avoid metric registration conflict.
+        .setMetricsRepository(metricsRepositoryForSpecificClient); // To avoid metric registration conflict.
     AvroSpecificStoreClient<String, TestValueSchema> specificFastClient = null;
     if (metadata.isPresent()) {
       specificFastClient = ClientFactory.getAndStartSpecificStoreClient(metadata.get(), specificClientConfigBuilder.build());
@@ -279,6 +278,7 @@ public class AvroStoreClientEndToEndTest {
         daVinciClientFactory.close();
       }
     }
+    statsValidation.accept(metricsRepositoryForSpecificClient);
   }
 
   @Test(timeOut = TIME_OUT)
@@ -303,6 +303,38 @@ public class AvroStoreClientEndToEndTest {
     runTest(clientConfigBuilder, Optional.of(storeMetadata), false, false);
   }
 
+  @Test
+  public void testSingleGetLongTailRetry() throws Exception {
+    VeniceRouterWrapper routerWrapper = veniceCluster.getRandomVeniceRouter();
+
+    ClientConfig.ClientConfigBuilder clientConfigBuilder = new ClientConfig.ClientConfigBuilder<>()
+        .setStoreName(storeName)
+        .setR2Client(r2Client)
+        .setMetricsRepository(new MetricsRepository())
+        .setSpeculativeQueryEnabled(false)
+        .setLongTailRetryEnabledForSingleGet(true)
+        .setLongTailRetryThresholdForSingletGetInMicroSeconds(10); // Try to trigger long-tail retry as much as possible.
+
+    ClientConfig clientConfig = clientConfigBuilder.build();
+    RouterBasedStoreMetadata storeMetadata = new RouterBasedStoreMetadata(
+        routerWrapper.getMetaDataRepository(),
+        routerWrapper.getSchemaRepository(),
+        routerWrapper.getOnlineInstanceFinder(),
+        storeName,
+        clientConfig
+    );
+
+    runTest(clientConfigBuilder, Optional.of(storeMetadata), false, false,
+        metricsRepository -> {
+      // Validate long-tail retry related metrics
+          metricsRepository.metrics().forEach((mName, metric) -> {
+            if (mName.contains("--long_tail_retry_request.OccurrenceRate")) {
+              Assert.assertTrue(metric.value() > 0, "Long tail retry for single-get should be triggered");
+            }
+          });
+        });
+  }
+
   @Test(dataProvider = "useDaVinciClientBasedMetadata", timeOut = TIME_OUT)
   public void testSingleGetWithoutDualReadWithMetadataImpl(boolean useDaVinciClientBasedMetadata) throws Exception {
     // Test generic store client
@@ -311,7 +343,6 @@ public class AvroStoreClientEndToEndTest {
     clientConfigBuilder.setR2Client(r2Client);
     clientConfigBuilder.setMetricsRepository(new MetricsRepository());
     clientConfigBuilder.setSpeculativeQueryEnabled(true);
-    clientConfigBuilder.setVeniceZKAddress(veniceCluster.getZk().getAddress());
 
     ClientConfig clientConfig = clientConfigBuilder.build();
     VeniceRouterWrapper routerWrapper = veniceCluster.getRandomVeniceRouter();
@@ -388,84 +419,4 @@ public class AvroStoreClientEndToEndTest {
             .setSslEngineComponentFactory(SslUtils.getLocalSslFactory())
     );
   }
-
-  private static class RouterBasedStoreMetadata extends AbstractStoreMetadata {
-    private final ReadOnlyStoreRepository storeRepository;
-    private final ReadOnlySchemaRepository schemaRepository;
-    private final OnlineInstanceFinder onlineInstanceFinder;
-    private final String storeName;
-
-    public RouterBasedStoreMetadata(ReadOnlyStoreRepository storeRepository,
-        ReadOnlySchemaRepository schemaRepository,
-        OnlineInstanceFinder onlineInstanceFinder,
-        String storeName,
-        ClientConfig clientConfig) {
-      super(clientConfig);
-      this.storeRepository = storeRepository;
-      this.schemaRepository = schemaRepository;
-      this.onlineInstanceFinder = onlineInstanceFinder;
-      this.storeName = storeName;
-    }
-
-    @Override
-    public int getCurrentStoreVersion() {
-      Store store = storeRepository.getStoreOrThrow(storeName);
-      return store.getCurrentVersion();
-    }
-
-    @Override
-    public int getPartitionId(int versionNumber, ByteBuffer key) {
-      Store store = storeRepository.getStoreOrThrow(storeName);
-      Optional<Version> version = store.getVersion(versionNumber);
-      if (!version.isPresent()) {
-        throw new VeniceClientException("Version: " + versionNumber + " doesn't exist");
-      }
-      int partitionCount = version.get().getPartitionCount();
-      VenicePartitioner partitioner = new DefaultVenicePartitioner();
-      return partitioner.getPartitionId(key, partitionCount);
-    }
-
-    @Override
-    public List<String> getReplicas(int version, int partitionId) {
-      String resource = Version.composeKafkaTopic(storeName, version);
-      List<Instance> instances = onlineInstanceFinder.getReadyToServeInstances(resource, partitionId);
-      return instances.stream().map(instance -> instance.getUrl(true)).collect(Collectors.toList());
-    }
-
-    @Override
-    public void start() {
-      // do nothing
-    }
-
-    @Override
-    public Schema getKeySchema() {
-      return schemaRepository.getKeySchema(storeName).getSchema();
-    }
-
-    @Override
-    public Schema getValueSchema(int id) {
-      return schemaRepository.getValueSchema(storeName, id).getSchema();
-    }
-
-    @Override
-    public int getValueSchemaId(Schema schema) {
-      return schemaRepository.getValueSchemaId(storeName, schema.toString());
-    }
-
-    @Override
-    public Schema getLatestValueSchema() {
-      return schemaRepository.getLatestValueSchema(storeName).getSchema();
-    }
-
-    @Override
-    public Integer getLatestValueSchemaId() {
-      return schemaRepository.getLatestValueSchema(storeName).getId();
-    }
-
-    @Override
-    public void close() throws IOException {
-      // do nothing
-    }
-  }
-
 }

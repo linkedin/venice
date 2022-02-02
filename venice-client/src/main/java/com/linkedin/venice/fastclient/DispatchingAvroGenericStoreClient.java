@@ -140,14 +140,21 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
   @Override
   protected CompletableFuture<V> get(GetRequestContext requestContext, K key) throws VeniceClientException {
     requestContext.instanceHealthMonitor = metadata.getInstanceHealthMonitor();
+    if (requestContext.requestUri == null) {
+      /**
+       * Reuse the request uri for the retry request.
+       */
+       requestContext.requestUri = composeURIForSingleGet(requestContext, key);
+    }
+    final String uri = requestContext.requestUri;
 
-    String uri = composeURIForSingleGet(requestContext, key);
     int currentVersion = requestContext.currentVersion;
     int partitionId = requestContext.partitionId;
 
     CompletableFuture<V> valueFuture = new CompletableFuture<>();
     long timestampBeforeSendingRequest = System.nanoTime();
-    List<String> routes = metadata.getReplicas(requestContext.requestId, currentVersion, partitionId, requiredReplicaCount);
+    List<String> routes = metadata.getReplicas(requestContext.requestId, currentVersion, partitionId,
+        requiredReplicaCount, requestContext.routeRequestMap.keySet());
     if (routes.isEmpty()) {
       requestContext.noAvailableReplica = true;
       valueFuture.completeExceptionally(new VeniceClientException("No available route for store: " + getStoreName() + ", version: "
@@ -215,13 +222,19 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
           + getStoreName() + ", version: " + currentVersion + " and partition: " + partitionId));
       //TODO: metrics?
     } else {
-      /**
-       * The following handler will be triggered if none of the queries for the same request succeeds.
-       */
       CompletableFuture.allOf(transportFutures.toArray(new CompletableFuture[transportFutures.size()])).exceptionally(throwable -> {
-        requestContext.requestSubmissionToResponseHandlingTime = LatencyUtils.getLatencyInMS(timestampBeforeSendingRequest);
-
-        valueFuture.completeExceptionally(throwable);
+        boolean allFailed = true;
+        for (CompletableFuture transportFuture : transportFutures) {
+          if (!transportFuture.isCompletedExceptionally()) {
+            allFailed = false;
+            break;
+          }
+        }
+        if (allFailed) {
+          // Only fail the request if all the transport futures are completed exceptionally.
+          requestContext.requestSubmissionToResponseHandlingTime = LatencyUtils.getLatencyInMS(timestampBeforeSendingRequest);
+          valueFuture.completeExceptionally(throwable);
+        }
         return null;
       });
     }

@@ -52,11 +52,11 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
    */
   private final int maxAllowedKeyCntInBatchGetReq;
 
-  // For perf test purpose
-  private final String veniceZKAddress;
-
   private final DaVinciClient<StoreMetaKey, StoreMetaValue> daVinciClientForMetaStore;
   private final long metadataRefreshInvervalInSeconds;
+
+  private final boolean longTailRetryEnabledForSingleGet;
+  private final int longTailRetryThresholdForSingletGetInMicroSeconds;
 
   private ClientConfig(String storeName,
       Client r2Client,
@@ -74,9 +74,10 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       long routingUnavailableRequestCounterResetDelayMS,
       int routingPendingRequestCounterInstanceBlockThreshold,
       int maxAllowedKeyCntInBatchGetReq,
-      String veniceZKAddress,
       DaVinciClient<StoreMetaKey, StoreMetaValue> daVinciClientForMetaStore,
-      long metadataRefreshInvervalInSeconds) {
+      long metadataRefreshInvervalInSeconds,
+      boolean longTailRetryEnabledForSingleGet,
+      int longTailRetryThresholdForSingletGetInMicroSeconds) {
     if (storeName == null || storeName.isEmpty()) {
       throw new VeniceClientException("storeName param shouldn't be empty");
     }
@@ -118,9 +119,20 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
 
     this.maxAllowedKeyCntInBatchGetReq = maxAllowedKeyCntInBatchGetReq;
 
-    this.veniceZKAddress = veniceZKAddress;
     this.daVinciClientForMetaStore = daVinciClientForMetaStore;
     this.metadataRefreshInvervalInSeconds = metadataRefreshInvervalInSeconds;
+
+    this.longTailRetryEnabledForSingleGet = longTailRetryEnabledForSingleGet;
+    this.longTailRetryThresholdForSingletGetInMicroSeconds = longTailRetryThresholdForSingletGetInMicroSeconds;
+
+    if (this.longTailRetryThresholdForSingletGetInMicroSeconds <= 0) {
+      throw new VeniceClientException("longTailRetryThresholdForSingletGetInMicroSeconds must be positive, but got: "
+          + this.longTailRetryThresholdForSingletGetInMicroSeconds);
+    }
+
+    if (this.dualReadEnabled && this.longTailRetryEnabledForSingleGet) {
+      throw new VeniceClientException("Dual-read can't be enabled together with long-tail retry for single-get");
+    }
   }
 
   public String getStoreName() {
@@ -187,16 +199,20 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     return maxAllowedKeyCntInBatchGetReq;
   }
 
-  public String getVeniceZKAddress() {
-    return veniceZKAddress;
-  }
-
   public DaVinciClient<StoreMetaKey, StoreMetaValue> getDaVinciClientForMetaStore() {
     return daVinciClientForMetaStore;
   }
 
   public long getMetadataRefreshInvervalInSeconds() {
     return metadataRefreshInvervalInSeconds;
+  }
+
+  public boolean isLongTailRetryEnabledForSingleGet() {
+    return longTailRetryEnabledForSingleGet;
+  }
+
+  public int getLongTailRetryThresholdForSingletGetInMicroSeconds() {
+    return longTailRetryThresholdForSingletGetInMicroSeconds;
   }
 
   public static class ClientConfigBuilder<K, V, T extends SpecificRecord> {
@@ -219,13 +235,12 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
 
     private int maxAllowedKeyCntInBatchGetReq = 2;
 
-    // For perf test purpose
-    private String veniceZKAddress;
-    private String clusterName;
-
     private DaVinciClient<StoreMetaKey, StoreMetaValue> daVinciClientForMetaStore;
 
     private long metadataRefreshInvervalInSeconds = -1;
+
+    private boolean longTailRetryEnabledForSingleGet = false;
+    private int longTailRetryThresholdForSingletGetInMicroSeconds = 1000; // 1ms.
 
     public ClientConfigBuilder<K, V, T> setStoreName(String storeName) {
       this.storeName = storeName;
@@ -303,11 +318,6 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       return this;
     }
 
-    public ClientConfigBuilder<K, V, T> setVeniceZKAddress(String zkAddress) {
-      this.veniceZKAddress = zkAddress;
-      return this;
-    }
-
     public ClientConfigBuilder<K, V, T> setDaVinciClientForMetaStore(DaVinciClient<StoreMetaKey, StoreMetaValue> daVinciClientForMetaStore) {
       this.daVinciClientForMetaStore = daVinciClientForMetaStore;
       return this;
@@ -320,6 +330,17 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
 
     public ClientConfigBuilder<K, V, T> setMaxAllowedKeyCntInBatchGetReq(int maxAllowedKeyCntInBatchGetReq) {
       this.maxAllowedKeyCntInBatchGetReq = maxAllowedKeyCntInBatchGetReq;
+      return this;
+    }
+
+    public ClientConfigBuilder<K, V, T> setLongTailRetryEnabledForSingleGet(boolean longTailRetryEnabledForSingleGet) {
+      this.longTailRetryEnabledForSingleGet = longTailRetryEnabledForSingleGet;
+      return this;
+    }
+
+    public ClientConfigBuilder<K, V, T> setLongTailRetryThresholdForSingletGetInMicroSeconds(
+        int longTailRetryThresholdForSingletGetInMicroSeconds) {
+      this.longTailRetryThresholdForSingletGetInMicroSeconds = longTailRetryThresholdForSingletGetInMicroSeconds;
       return this;
     }
 
@@ -341,9 +362,10 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           .setRoutingUnavailableRequestCounterResetDelayMS(routingUnavailableRequestCounterResetDelayMS)
           .setRoutingPendingRequestCounterInstanceBlockThreshold(routingPendingRequestCounterInstanceBlockThreshold)
           .setMaxAllowedKeyCntInBatchGetReq(maxAllowedKeyCntInBatchGetReq)
-          .setVeniceZKAddress(veniceZKAddress)
           .setDaVinciClientForMetaStore(daVinciClientForMetaStore)
-          .setMetadataRefreshInvervalInSeconds(metadataRefreshInvervalInSeconds);
+          .setMetadataRefreshInvervalInSeconds(metadataRefreshInvervalInSeconds)
+          .setLongTailRetryEnabledForSingleGet(longTailRetryEnabledForSingleGet)
+          .setLongTailRetryThresholdForSingletGetInMicroSeconds(longTailRetryThresholdForSingletGetInMicroSeconds);
     }
 
     public ClientConfig<K, V, T> build() {
@@ -363,9 +385,10 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           routingUnavailableRequestCounterResetDelayMS,
           routingPendingRequestCounterInstanceBlockThreshold,
           maxAllowedKeyCntInBatchGetReq,
-          veniceZKAddress,
           daVinciClientForMetaStore,
-          metadataRefreshInvervalInSeconds);
+          metadataRefreshInvervalInSeconds,
+          longTailRetryEnabledForSingleGet,
+          longTailRetryThresholdForSingletGetInMicroSeconds);
     }
   }
 }

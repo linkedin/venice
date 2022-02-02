@@ -96,7 +96,7 @@ public class DualReadAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCli
       /**
        * Throw exception only if both fast-client and thin-client return error.
        */
-      if (throwable != null) {
+      if (throwable != null && fastClientFuture.isCompletedExceptionally() && thinClientFuture.isCompletedExceptionally()) {
         valueFuture.completeExceptionally(throwable);
       }
 
