@@ -4,6 +4,8 @@ import com.linkedin.ddsstorage.base.concurrency.TimeoutProcessor;
 import com.linkedin.restli.common.HttpStatus;
 import com.linkedin.venice.fastclient.ClientConfig;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import java.io.Closeable;
+import java.io.IOException;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -28,7 +30,7 @@ import org.apache.logging.log4j.Logger;
  * 3. When the pending request counter exceeds the pre-defined threshold, the instance will be completely blocked.
  *
  */
-public class InstanceHealthMonitor {
+public class InstanceHealthMonitor implements Closeable {
   private static final Logger LOGGER = LogManager.getLogger(InstanceHealthMonitor.class);
   private final ClientConfig clientConfig;
 
@@ -54,6 +56,10 @@ public class InstanceHealthMonitor {
         return v - 1;
       });
     };
+  }
+
+  public TimeoutProcessor getTimeoutProcessor() {
+    return this.timeoutProcessor;
   }
 
 
@@ -149,5 +155,17 @@ public class InstanceHealthMonitor {
   public int getPendingRequestCounter(String instance) {
     Integer pendingRequestCounter = pendingRequestCounterMap.get(instance);
     return pendingRequestCounter == null ? 0 : pendingRequestCounter;
+  }
+
+  @Override
+  public void close() throws IOException {
+    if (timeoutProcessor != null) {
+      timeoutProcessor.shutdownNow();
+      try {
+        timeoutProcessor.awaitTermination(30, TimeUnit.SECONDS);
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+      }
+    }
   }
 }

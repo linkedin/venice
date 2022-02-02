@@ -37,6 +37,10 @@ public class ClientStats extends com.linkedin.venice.client.stats.ClientStats {
 
   private final Sensor leakedRequestCountSensor;
 
+  private final Sensor longTailRetryRequestSensor;
+  private final Sensor errorRetryRequestSensor;
+  private final Sensor retryRequestWinSensor;
+
   // Routing stats
   private final Map<String, RouteStats> perRouteStats = new VeniceConcurrentHashMap<>();
 
@@ -66,6 +70,9 @@ public class ClientStats extends com.linkedin.venice.client.stats.ClientStats {
     this.dualReadThinClientFastClientLatencyDeltaSensor = registerSensorWithDetailedPercentiles(
         "dual_read_thinclient_fastclient_latency_delta", new Max(), new Avg());
     this.leakedRequestCountSensor = registerSensor("leaked_request_count", new OccurrenceRate());
+    this.longTailRetryRequestSensor = registerSensor("long_tail_retry_request", new OccurrenceRate());
+    this.errorRetryRequestSensor = registerSensor("error_retry_request", new OccurrenceRate());
+    this.retryRequestWinSensor = registerSensor("retry_request_win", new OccurrenceRate());
   }
 
   public void recordNoAvailableReplicaRequest() {
@@ -121,6 +128,18 @@ public class ClientStats extends com.linkedin.venice.client.stats.ClientStats {
   }
   public void recordOtherErrorRequest(String instance) {
     getRouteStats(instance).recordOtherErrorRequest();
+  }
+
+  public void recordLongTailRetryRequest() {
+    longTailRetryRequestSensor.record();
+  }
+
+  public void recordErrorRetryRequest() {
+    errorRetryRequestSensor.record();
+  }
+
+  public void recordRetryRequestWin() {
+    retryRequestWinSensor.record();
   }
 
   /**

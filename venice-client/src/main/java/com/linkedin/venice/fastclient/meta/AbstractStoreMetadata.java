@@ -2,8 +2,12 @@ package com.linkedin.venice.fastclient.meta;
 
 import com.linkedin.restli.common.HttpStatus;
 import com.linkedin.venice.fastclient.ClientConfig;
+import com.linkedin.venice.utils.Utils;
+import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 
 
@@ -29,10 +33,22 @@ public abstract class AbstractStoreMetadata implements StoreMetadata {
   }
 
   @Override
-  public List<String> getReplicas(long requestId, int version, int partitionId, int requiredReplicaCount) {
-    List<String> replicas =  getReplicas(version, partitionId);
+  public List<String> getReplicas(long requestId, int version, int partitionId, int requiredReplicaCount, Set<String> excludedInstances) {
+    List<String> replicas = getReplicas(version, partitionId);
+    List<String> filteredReplicas;
 
-    return routingStrategy.getReplicas(requestId, replicas, requiredReplicaCount);
+    if (excludedInstances.isEmpty()) {
+      filteredReplicas = replicas;
+    } else {
+      filteredReplicas = new ArrayList<>(replicas.size());
+      replicas.forEach(replica -> {
+        if (!excludedInstances.contains(replica)) {
+          filteredReplicas.add(replica);
+        }
+      });
+    }
+
+    return routingStrategy.getReplicas(requestId, filteredReplicas, requiredReplicaCount);
   }
 
   @Override
@@ -44,4 +60,10 @@ public abstract class AbstractStoreMetadata implements StoreMetadata {
   public InstanceHealthMonitor getInstanceHealthMonitor() {
     return instanceHealthMonitor;
   }
+
+  @Override
+  public void close() throws IOException {
+    Utils.closeQuietlyWithErrorLogged(instanceHealthMonitor);
+  }
+
 }

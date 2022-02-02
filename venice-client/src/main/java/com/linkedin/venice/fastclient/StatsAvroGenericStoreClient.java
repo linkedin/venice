@@ -137,6 +137,25 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
       }
       clientStats.recordRequestKeyCount(numberOfKeys);
       clientStats.recordSuccessRequestKeyCount(requestContext.successRequestKeyCount.get());
+
+      /**
+       * Record some single-get specific metrics, and these metrics should be applied to other types of requests once
+       * the corresponding features are ready.
+        */
+      if (requestContext instanceof GetRequestContext) {
+        GetRequestContext getRequestContext = (GetRequestContext)requestContext;
+
+        if (getRequestContext.longTailRetryRequestTriggered) {
+          clientStats.recordLongTailRetryRequest();
+        }
+        if (getRequestContext.errorRetryRequestTriggered) {
+          clientStats.recordErrorRetryRequest();
+        }
+        if (getRequestContext.retryWin) {
+          clientStats.recordRetryRequestWin();
+        }
+      }
+
       return value;
     });
   }

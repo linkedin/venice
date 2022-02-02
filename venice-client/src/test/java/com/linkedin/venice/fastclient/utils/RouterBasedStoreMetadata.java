@@ -19,6 +19,9 @@ import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 
 
+/**
+ * TODO: get rid of this impl since {@link com.linkedin.venice.fastclient.meta.DaVinciClientBasedMetadata} is available.
+ */
 public class RouterBasedStoreMetadata extends AbstractStoreMetadata {
   private final ReadOnlyStoreRepository storeRepository;
   private final ReadOnlySchemaRepository schemaRepository;
@@ -93,7 +96,7 @@ public class RouterBasedStoreMetadata extends AbstractStoreMetadata {
   }
 
   @Override
-  public void close() throws IOException {
-    // do nothing
+  public void close() {
+    // Do nothing
   }
 }

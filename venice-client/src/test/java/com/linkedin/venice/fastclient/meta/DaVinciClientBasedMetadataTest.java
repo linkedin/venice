@@ -100,7 +100,6 @@ public class DaVinciClientBasedMetadataTest {
     clientConfigBuilder.setR2Client(r2Client);
     clientConfigBuilder.setMetricsRepository(new MetricsRepository());
     clientConfigBuilder.setSpeculativeQueryEnabled(true);
-    clientConfigBuilder.setVeniceZKAddress(veniceCluster.getZk().getAddress());
     clientConfigBuilder.setDaVinciClientForMetaStore(daVinciClientForMetaStore);
     clientConfigBuilder.setMetadataRefreshInvervalInSeconds(1); // Faster refreshes for faster tests
     daVinciClientBasedMetadata = new DaVinciClientBasedMetadata(clientConfigBuilder.build());

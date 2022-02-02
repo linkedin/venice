@@ -8,6 +8,8 @@ import com.linkedin.venice.fastclient.DispatchingAvroGenericStoreClient;
 import com.linkedin.venice.fastclient.DispatchingAvroSpecificStoreClient;
 import com.linkedin.venice.fastclient.DualReadAvroGenericStoreClient;
 import com.linkedin.venice.fastclient.DualReadAvroSpecificStoreClient;
+import com.linkedin.venice.fastclient.RetriableAvroGenericStoreClient;
+import com.linkedin.venice.fastclient.RetriableAvroSpecificStoreClient;
 import com.linkedin.venice.fastclient.StatsAvroGenericStoreClient;
 import com.linkedin.venice.fastclient.StatsAvroSpecificStoreClient;
 import com.linkedin.venice.fastclient.meta.DaVinciClientBasedMetadata;
@@ -28,6 +30,11 @@ public class ClientFactory {
 
   // Use daVinci based store metadata default
   public static <K, V extends SpecificRecord> AvroSpecificStoreClient<K, V> getAndStartSpecificStoreClient(ClientConfig clientConfig) {
+    /**
+     * TODO:
+     * Need to construct {@link DaVinciClientBasedMetadata} inside store client, so that the store client could control
+     * the lifecycle of the metadata instance.
+     */
     return getAndStartSpecificStoreClient(new DaVinciClientBasedMetadata(clientConfig), clientConfig);
   }
 
@@ -37,8 +44,13 @@ public class ClientFactory {
    * So far, it is for the testing purpose.
    */
   public static <K, V> AvroGenericStoreClient<K, V> getAndStartGenericStoreClient(StoreMetadata storeMetadata, ClientConfig clientConfig) {
-    DispatchingAvroGenericStoreClient<K, V> dispatchingStoreClient = new DispatchingAvroGenericStoreClient<>(storeMetadata, clientConfig);
-    StatsAvroGenericStoreClient<K, V> statsStoreClient = new StatsAvroGenericStoreClient<>(dispatchingStoreClient, clientConfig);
+    final DispatchingAvroGenericStoreClient<K, V> dispatchingStoreClient = new DispatchingAvroGenericStoreClient<>(storeMetadata, clientConfig);
+    StatsAvroGenericStoreClient<K, V> statsStoreClient;
+    if (clientConfig.isLongTailRetryEnabledForSingleGet()) {
+      statsStoreClient = new StatsAvroGenericStoreClient<>(new RetriableAvroGenericStoreClient<>(dispatchingStoreClient, clientConfig), clientConfig);
+    } else {
+      statsStoreClient = new StatsAvroGenericStoreClient<>(dispatchingStoreClient, clientConfig);
+    }
 
     AvroGenericStoreClient<K, V> returningClient = statsStoreClient;
     if (clientConfig.isDualReadEnabled()) {
@@ -49,9 +61,14 @@ public class ClientFactory {
   }
 
   public static <K, V extends SpecificRecord> AvroSpecificStoreClient<K, V> getAndStartSpecificStoreClient(StoreMetadata storeMetadata,  ClientConfig clientConfig) {
-    DispatchingAvroSpecificStoreClient<K, V> dispatchingStoreClient = new DispatchingAvroSpecificStoreClient<>(storeMetadata, clientConfig);
-    StatsAvroSpecificStoreClient<K, V>
-        statsStoreClient = new StatsAvroSpecificStoreClient<>(dispatchingStoreClient, clientConfig);
+    final DispatchingAvroSpecificStoreClient<K, V> dispatchingStoreClient = new DispatchingAvroSpecificStoreClient<>(storeMetadata, clientConfig);
+    StatsAvroSpecificStoreClient<K, V> statsStoreClient;
+
+    if (clientConfig.isLongTailRetryEnabledForSingleGet()) {
+      statsStoreClient = new StatsAvroSpecificStoreClient<>(new RetriableAvroSpecificStoreClient<>(dispatchingStoreClient, clientConfig), clientConfig);
+    } else {
+      statsStoreClient = new StatsAvroSpecificStoreClient<>(dispatchingStoreClient, clientConfig);
+    }
 
     AvroSpecificStoreClient<K, V> returningClient = statsStoreClient;
     if (clientConfig.isDualReadEnabled()) {

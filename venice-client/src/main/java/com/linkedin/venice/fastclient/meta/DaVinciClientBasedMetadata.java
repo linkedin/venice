@@ -290,18 +290,9 @@ public class DaVinciClientBasedMetadata extends AbstractStoreMetadata {
     return PushStatusDecider.getReadyToServeInstances(getStoreMetaValue(replicaStatusesKey).storeReplicaStatuses);
   }
 
-  private CharSequence getLargestValueSchemaId(Map<CharSequence, CharSequence> valueSchemaMap) {
-    List<CharSequence> keyList = new ArrayList<>(valueSchemaMap.keySet());
-    keyList.sort((o1, o2) -> {
-      Integer i1 = Integer.parseInt(o1.toString());
-      Integer i2 = Integer.parseInt(o2.toString());
-      return i1.compareTo(i2);
-    });
-    return keyList.get(keyList.size() - 1);
-  }
-
   @Override
   public void close() throws IOException {
+    super.close();
     scheduler.shutdown();
     try {
       if (!scheduler.awaitTermination(60, TimeUnit.SECONDS)) {
