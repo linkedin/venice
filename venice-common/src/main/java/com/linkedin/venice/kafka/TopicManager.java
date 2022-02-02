@@ -109,14 +109,14 @@ public class TopicManager implements Closeable {
     this.kafkaBootstrapServers = kafkaClientFactory.getKafkaBootstrapServers();
 
     this.kafkaReadOnlyAdmin = Lazy.of(() -> {
-      KafkaAdminWrapper kafkaReadOnlyAdmin = kafkaClientFactory.getWriteOnlyKafkaAdmin(optionalMetricsRepository);
+      KafkaAdminWrapper kafkaReadOnlyAdmin = kafkaClientFactory.getReadOnlyKafkaAdmin(optionalMetricsRepository);
       logger.info(this.getClass().getSimpleName() + " is using kafka read-only admin client of class: " +
           kafkaReadOnlyAdmin.getClassName());
       return kafkaReadOnlyAdmin;
     });
 
     this.kafkaWriteOnlyAdmin = Lazy.of(() -> {
-      KafkaAdminWrapper kafkaWriteOnlyAdmin = kafkaClientFactory.getReadOnlyKafkaAdmin(optionalMetricsRepository);
+      KafkaAdminWrapper kafkaWriteOnlyAdmin = kafkaClientFactory.getWriteOnlyKafkaAdmin(optionalMetricsRepository);
       logger.info(this.getClass().getSimpleName() + " is using kafka write-only admin client of class: " +
           kafkaWriteOnlyAdmin.getClassName());
       return kafkaWriteOnlyAdmin;
