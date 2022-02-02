@@ -18,9 +18,11 @@ import com.linkedin.venice.controller.kafka.protocol.admin.DerivedSchemaCreation
 import com.linkedin.venice.controller.kafka.protocol.admin.DisableStoreRead;
 import com.linkedin.venice.controller.kafka.protocol.admin.EnableStoreRead;
 import com.linkedin.venice.controller.kafka.protocol.admin.KillOfflinePushJob;
+import com.linkedin.venice.controller.kafka.protocol.admin.MetaSystemStoreAutoCreationValidation;
 import com.linkedin.venice.controller.kafka.protocol.admin.MetadataSchemaCreation;
 import com.linkedin.venice.controller.kafka.protocol.admin.MigrateStore;
 import com.linkedin.venice.controller.kafka.protocol.admin.PauseStore;
+import com.linkedin.venice.controller.kafka.protocol.admin.PushStatusSystemStoreAutoCreationValidation;
 import com.linkedin.venice.controller.kafka.protocol.admin.ResumeStore;
 import com.linkedin.venice.controller.kafka.protocol.admin.SetStoreCurrentVersion;
 import com.linkedin.venice.controller.kafka.protocol.admin.SetStoreOwner;
@@ -224,6 +226,12 @@ public class AdminExecutionTask implements Callable<Void> {
           break;
         case CONFIGURE_INCREMENTAL_PUSH_FOR_CLUSTER:
           handleConfigureIncrementalPushForCluster((ConfigureIncrementalPushForCluster) adminOperation.payloadUnion);
+          break;
+        case META_SYSTEM_STORE_AUTO_CREATION_VALIDATION:
+          handleMetaSystemStoreCreationValidation((MetaSystemStoreAutoCreationValidation) adminOperation.payloadUnion);
+          break;
+        case PUSH_STATUS_SYSTEM_STORE_AUTO_CREATION_VALIDATION:
+          handlePushStatusSystemStoreCreationValidation((PushStatusSystemStoreAutoCreationValidation) adminOperation.payloadUnion);
           break;
         default:
           throw new VeniceException("Unknown admin operation type: " + adminOperation.operationType);
@@ -604,8 +612,20 @@ public class AdminExecutionTask implements Callable<Void> {
     int replicationMetadataVersionId = message.timestampMetadataVersionId;
 
     admin.addReplicationMetadataSchema(clusterName, storeName, valueSchemaId, replicationMetadataVersionId, replicationMetadataSchemaStr);
-    logger.info(String.format("Added metedata schema:\n %s\n to store: %s, value schema id: %d, metedata schema id: %d",
+    logger.info(String.format("Added metadata schema:\n %s\n to store: %s, value schema id: %d, metadata schema id: %d",
         replicationMetadataSchemaStr, storeName, valueSchemaId, replicationMetadataVersionId));
   }
 
+  private void handleMetaSystemStoreCreationValidation(MetaSystemStoreAutoCreationValidation message) {
+    String clusterName = message.clusterName.toString();
+    String storeName = message.storeName.toString();
+    admin.validateAndMaybeRetrySystemStoreAutoCreation(clusterName, storeName, VeniceSystemStoreType.META_STORE);
+    logger.info("DEBUGGING2: " + message + " added.");
+  }
+
+  private void handlePushStatusSystemStoreCreationValidation(PushStatusSystemStoreAutoCreationValidation message) {
+    String clusterName = message.clusterName.toString();
+    String storeName = message.storeName.toString();
+    admin.validateAndMaybeRetrySystemStoreAutoCreation(clusterName, storeName, VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE);
+  }
 }

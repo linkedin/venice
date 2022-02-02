@@ -34,10 +34,12 @@ import com.linkedin.venice.controller.kafka.protocol.admin.ETLStoreConfigRecord;
 import com.linkedin.venice.controller.kafka.protocol.admin.EnableStoreRead;
 import com.linkedin.venice.controller.kafka.protocol.admin.HybridStoreConfigRecord;
 import com.linkedin.venice.controller.kafka.protocol.admin.KillOfflinePushJob;
+import com.linkedin.venice.controller.kafka.protocol.admin.MetaSystemStoreAutoCreationValidation;
 import com.linkedin.venice.controller.kafka.protocol.admin.MetadataSchemaCreation;
 import com.linkedin.venice.controller.kafka.protocol.admin.MigrateStore;
 import com.linkedin.venice.controller.kafka.protocol.admin.PartitionerConfigRecord;
 import com.linkedin.venice.controller.kafka.protocol.admin.PauseStore;
+import com.linkedin.venice.controller.kafka.protocol.admin.PushStatusSystemStoreAutoCreationValidation;
 import com.linkedin.venice.controller.kafka.protocol.admin.ResumeStore;
 import com.linkedin.venice.controller.kafka.protocol.admin.SchemaMeta;
 import com.linkedin.venice.controller.kafka.protocol.admin.SetStoreOwner;
@@ -99,8 +101,6 @@ import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
-import com.linkedin.venice.participant.protocol.ParticipantMessageKey;
-import com.linkedin.venice.participant.protocol.ParticipantMessageValue;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreRecordDeleter;
 import com.linkedin.venice.schema.SchemaData;
@@ -157,6 +157,7 @@ import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import javax.annotation.Nonnull;
 import org.apache.avro.Schema;
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.lang.Validate;
@@ -170,11 +171,9 @@ import org.codehaus.jackson.node.ArrayNode;
 import org.codehaus.jackson.node.JsonNodeFactory;
 import org.codehaus.jackson.node.ObjectNode;
 
-import javax.annotation.Nonnull;
-
 import static com.linkedin.venice.VeniceConstants.*;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
 import static com.linkedin.venice.meta.IncrementalPushPolicy.*;
 import static com.linkedin.venice.meta.Store.*;
 
@@ -194,7 +193,6 @@ public class VeniceParentHelixAdmin implements Admin {
   private static final Logger logger = LogManager.getLogger(VeniceParentHelixAdmin.class);
   private static final String VENICE_INTERNAL_STORE_OWNER = "venice-internal";
   private static final String PUSH_JOB_DETAILS_STORE_DESCRIPTOR = "push job details store: ";
-  private static final String PARTICIPANT_MESSAGE_STORE_DESCRIPTOR = "participant message store: ";
   private static final String BATCH_JOB_HEARTBEAT_STORE_DESCRIPTOR = "batch job liveness heartbeat store: ";
   //Store version number to retain in Parent Controller to limit 'Store' ZNode size.
   protected static final int STORE_VERSION_RETENTION_COUNT = 5;
@@ -609,11 +607,13 @@ public class VeniceParentHelixAdmin implements Admin {
       getVeniceHelixAdmin().checkPreConditionForCreateStore(clusterName, storeName, keySchema, valueSchema, isSystemStore, false);
       logger.info("Adding store: " + storeName + " to cluster: " + clusterName);
 
-      //Provisioning ACL needs to be the first step in store creation process.
+      // Provisioning ACL needs to be the first step in store creation process.
       provisionAclsForStore(storeName, accessPermissions, Collections.emptyList());
       sendStoreCreationAdminMessage(clusterName, storeName, owner, keySchema, valueSchema);
-      getSystemStoreLifeCycleHelper().maybeMaterializeSystemStoresForUserStore(storeName, clusterName);
-
+      // For each user store level system store, we will send admin message to validate the creation is successful.
+      for (VeniceSystemStoreType systemStoreType : getSystemStoreLifeCycleHelper().maybeMaterializeSystemStoresForUserStore(storeName, clusterName)) {
+        sendUserSystemStoreCreationValidationAdminMessage(clusterName, storeName, systemStoreType);
+      }
       if (VeniceSystemStoreType.BATCH_JOB_HEARTBEAT_STORE.getPrefix().equals(storeName)) {
         setupResourceForBatchJobHeartbeatStore(storeName);
       }
@@ -639,6 +639,33 @@ public class VeniceParentHelixAdmin implements Admin {
     final AdminOperation message = new AdminOperation();
     message.operationType = AdminMessageType.STORE_CREATION.getValue();
     message.payloadUnion = storeCreation;
+    sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
+  }
+
+  private void sendUserSystemStoreCreationValidationAdminMessage(String clusterName, String storeName, VeniceSystemStoreType systemStoreType) {
+    final AdminOperation message = new AdminOperation();
+    switch (systemStoreType) {
+      case META_STORE:
+        MetaSystemStoreAutoCreationValidation metaSystemStoreAutoCreationValidation =
+            (MetaSystemStoreAutoCreationValidation) AdminMessageType.META_SYSTEM_STORE_AUTO_CREATION_VALIDATION.getNewInstance();
+        metaSystemStoreAutoCreationValidation.clusterName = clusterName;
+        metaSystemStoreAutoCreationValidation.storeName = storeName;
+        message.operationType = AdminMessageType.META_SYSTEM_STORE_AUTO_CREATION_VALIDATION.getValue();
+        message.payloadUnion = metaSystemStoreAutoCreationValidation;
+        break;
+      case DAVINCI_PUSH_STATUS_STORE:
+        PushStatusSystemStoreAutoCreationValidation pushStatusSystemStoreAutoCreationValidation =
+            (PushStatusSystemStoreAutoCreationValidation) AdminMessageType.PUSH_STATUS_SYSTEM_STORE_AUTO_CREATION_VALIDATION.getNewInstance();
+        pushStatusSystemStoreAutoCreationValidation.clusterName = clusterName;
+        pushStatusSystemStoreAutoCreationValidation.storeName = storeName;
+        message.operationType = AdminMessageType.PUSH_STATUS_SYSTEM_STORE_AUTO_CREATION_VALIDATION.getValue();
+        message.payloadUnion = pushStatusSystemStoreAutoCreationValidation;
+        break;
+      default:
+        logger.warn("System store type: " + systemStoreType + " is not a user store level system store, will not send store creation validation message.");
+        return;
+    }
+    logger.info("Sending system store creation validation message for user store:" + storeName + ", system store type: " + systemStoreType);
     sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
   }
 
@@ -2117,6 +2144,11 @@ public class VeniceParentHelixAdmin implements Admin {
     }
   }
 
+  @Override
+  public void validateAndMaybeRetrySystemStoreAutoCreation(String clusterName, String storeName, VeniceSystemStoreType veniceSystemStoreType) {
+    throw new VeniceUnsupportedOperationException("validateAndMaybeRetrySystemStoreAutoCreation");
+  }
+
   private void updateActiveActiveSchemaForAllValueSchema(String clusterName, String storeName) {
     final Collection<SchemaEntry> valueSchemas = getValueSchemas(clusterName, storeName);
     for (SchemaEntry valueSchema : valueSchemas) {
@@ -3078,7 +3110,7 @@ public class VeniceParentHelixAdmin implements Admin {
             false,
             false
         );
-        if (audit.getStaleRegions().size() > 0 && currentPushJobTopic.isPresent() == false)
+        if (audit.getStaleRegions().size() > 0 && !currentPushJobTopic.isPresent())
           retMap.put(store.getKey(), audit);
       }
     } catch (Exception e) {

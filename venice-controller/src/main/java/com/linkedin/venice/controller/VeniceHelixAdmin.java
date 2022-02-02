@@ -94,6 +94,7 @@ import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.StoreDataAudit;
 import com.linkedin.venice.meta.StoreGraveyard;
 import com.linkedin.venice.meta.StoreInfo;
+import com.linkedin.venice.meta.SystemStoreAttributes;
 import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
@@ -174,6 +175,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import javax.annotation.Nonnull;
 import org.apache.avro.Schema;
 import org.apache.avro.specific.SpecificRecord;
 import org.apache.commons.lang.StringUtils;
@@ -201,8 +203,7 @@ import org.apache.http.HttpStatus;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import javax.annotation.Nonnull;
-
+import static com.linkedin.venice.controller.UserSystemStoreLifeCycleHelper.*;
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.*;
 import static com.linkedin.venice.meta.Version.*;
 import static com.linkedin.venice.meta.VersionStatus.*;
@@ -3927,6 +3928,44 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         return getHelixVeniceClusterResources(clusterName).getSchemaRepository()
             .addMetadataSchema(storeName, valueSchemaId, replicationMetadataSchemaStr, replicationMetadataVersionId);
     }
+
+    @Override
+    public void validateAndMaybeRetrySystemStoreAutoCreation(String clusterName, String storeName, VeniceSystemStoreType systemStoreType) {
+      if (isParent()) {
+        logger.info("This is parent controller, we will only verify system store auto creation in child regions.");
+        return;
+      }
+      checkControllerLeadershipFor(clusterName);
+      ReadWriteStoreRepository repository = getHelixVeniceClusterResources(clusterName).getStoreMetadataRepository();
+      Store store = repository.getStoreOrThrow(storeName);
+      String systemStoreName = systemStoreType.getSystemStoreName(storeName);
+      if (!UserSystemStoreLifeCycleHelper.isSystemStoreTypeEnabledInUserStore(store, systemStoreType)) {
+        logger.warn("System store type " + systemStoreType + " is not enabled in user store: " + storeName + ", will skip the validation.");
+        return;
+      }
+      SystemStoreAttributes systemStoreAttributes = store.getSystemStores().get(systemStoreType.getPrefix());
+      if (systemStoreAttributes.getCurrentVersion() == Store.NON_EXISTING_VERSION) {
+        int latestVersionNumber = systemStoreAttributes.getLargestUsedVersionNumber();
+        List<Version> filteredVersionList = systemStoreAttributes.getVersions().stream()
+            .filter(v -> (v.getNumber() == latestVersionNumber))
+            .collect(Collectors.toList());
+        if (filteredVersionList.isEmpty() || filteredVersionList.get(0).getStatus().equals(ERROR)) {
+          // Latest push failed, we should issue a local empty push to create a new version.
+          String pushJobId = AUTO_META_SYSTEM_STORE_PUSH_ID_PREFIX + System.currentTimeMillis();
+          Version version = incrementVersionIdempotent(clusterName, systemStoreName, pushJobId,
+              calculateNumberOfPartitions(clusterName, systemStoreName, DEFAULT_META_SYSTEM_STORE_SIZE),
+              getReplicationFactor(clusterName, systemStoreName));
+          int versionNumber = version.getNumber();
+          writeEndOfPush(clusterName, storeName, versionNumber, true);
+          throw new VeniceException("System store: " + systemStoreName + " pushed failed. Issuing a new empty push to create version: " + versionNumber);
+        } else {
+          throw new VeniceRetriableException("System store:" + systemStoreName + " push is still ongoing, will check it again. This is not an error.");
+        }
+      } else {
+        logger.info("System store: " + systemStoreName + " pushed with version id: " + systemStoreAttributes.getCurrentVersion());
+      }
+    }
+
 
     @Override
     public List<String> getStorageNodes(String clusterName){

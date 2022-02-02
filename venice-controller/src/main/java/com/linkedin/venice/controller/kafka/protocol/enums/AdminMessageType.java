@@ -12,9 +12,11 @@ import com.linkedin.venice.controller.kafka.protocol.admin.DerivedSchemaCreation
 import com.linkedin.venice.controller.kafka.protocol.admin.DisableStoreRead;
 import com.linkedin.venice.controller.kafka.protocol.admin.EnableStoreRead;
 import com.linkedin.venice.controller.kafka.protocol.admin.KillOfflinePushJob;
+import com.linkedin.venice.controller.kafka.protocol.admin.MetaSystemStoreAutoCreationValidation;
 import com.linkedin.venice.controller.kafka.protocol.admin.MetadataSchemaCreation;
 import com.linkedin.venice.controller.kafka.protocol.admin.MigrateStore;
 import com.linkedin.venice.controller.kafka.protocol.admin.PauseStore;
+import com.linkedin.venice.controller.kafka.protocol.admin.PushStatusSystemStoreAutoCreationValidation;
 import com.linkedin.venice.controller.kafka.protocol.admin.ResumeStore;
 import com.linkedin.venice.controller.kafka.protocol.admin.SetStoreCurrentVersion;
 import com.linkedin.venice.controller.kafka.protocol.admin.SetStoreOwner;
@@ -27,6 +29,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceMessageException;
 import java.util.HashMap;
 import java.util.Map;
+
 
 public enum AdminMessageType {
   STORE_CREATION(0, false),
@@ -51,7 +54,9 @@ public enum AdminMessageType {
   CONFIGURE_NATIVE_REPLICATION_FOR_CLUSTER(19, true),
   REPLICATION_METADATA_SCHEMA_CREATION(20, false),
   CONFIGURE_ACTIVE_ACTIVE_REPLICATION_FOR_CLUSTER(21, true),
-  CONFIGURE_INCREMENTAL_PUSH_FOR_CLUSTER(22, true);
+  CONFIGURE_INCREMENTAL_PUSH_FOR_CLUSTER(22, true),
+  META_SYSTEM_STORE_AUTO_CREATION_VALIDATION(23, false),
+  PUSH_STATUS_SYSTEM_STORE_AUTO_CREATION_VALIDATION(24, false);
 
   private final int value;
   private final boolean batchUpdate;
@@ -86,6 +91,8 @@ public enum AdminMessageType {
       case CONFIGURE_NATIVE_REPLICATION_FOR_CLUSTER: return new ConfigureNativeReplicationForCluster();
       case REPLICATION_METADATA_SCHEMA_CREATION: return new MetadataSchemaCreation();
       case CONFIGURE_ACTIVE_ACTIVE_REPLICATION_FOR_CLUSTER: return new ConfigureActiveActiveReplicationForCluster();
+      case META_SYSTEM_STORE_AUTO_CREATION_VALIDATION: return new MetaSystemStoreAutoCreationValidation();
+      case PUSH_STATUS_SYSTEM_STORE_AUTO_CREATION_VALIDATION: return new PushStatusSystemStoreAutoCreationValidation();
       default: throw new VeniceException("Unsupported " + getClass().getSimpleName() + " value: " + value);
     }
   }
