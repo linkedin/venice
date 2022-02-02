@@ -564,8 +564,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       this.hybridQuotaEnforcer = Optional.of(new HybridStoreQuotaEnforcement(
           this,
           storageEngine,
-          storeRepository.getStoreOrThrow(storeName), kafkaVersionTopic,
-          topicManagerRepository.getTopicManager().partitionsFor(kafkaVersionTopic).size(),
+          storeRepository.getStoreOrThrow(storeName),
+          kafkaVersionTopic,
+          subPartitionCount,
           partitionConsumptionSizeMap,
           partitionConsumptionStateMap));
       this.storeRepository.registerStoreDataChangedListener(hybridQuotaEnforcer.get());
@@ -1163,15 +1164,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         storeIngestionStats.recordProduceToKafkaLatency(storeName, elapsedTimeForProducingToKafka);
       }
 
-      // Emit disk quota usage metric
-      Store store = storeRepository.getStoreOrThrow(storeName);
-      long diskQuota = store.getStorageQuotaInByte();
-      double storeDiskUsage = 0.0D;
-      for (StoragePartitionDiskUsage storagePartitionDiskUsage: partitionConsumptionSizeMap.values()) {
-        long partitionDiskUsage = storagePartitionDiskUsage.getUsage();
-        storeDiskUsage += partitionDiskUsage;
-      }
-      storeIngestionStats.recordStorageQuotaUsed(storeName, diskQuota > 0 ? (storeDiskUsage / diskQuota) : 0);
+      emitDiskQuotaUsageMetric();
     }
 
     if (whetherToApplyThrottling) {
@@ -1206,6 +1199,22 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         unorderedRecordsThrottler.maybeThrottle(recordCount);
       }
     }
+  }
+
+  private void emitDiskQuotaUsageMetric() {
+    // Calculate disk quota on this server based on partitions #.
+    Store store = storeRepository.getStoreOrThrow(storeName);
+    long storeQuota = store.getStorageQuotaInByte();
+    double serverDiskQuotaForStore = storeQuota * 1.0D * partitionConsumptionSizeMap.size() / store.getPartitionCount();
+    double storeDiskUsage = 0.0D;
+
+    // Calculate total current disk usage for all partitions.
+    for (StoragePartitionDiskUsage storagePartitionDiskUsage: partitionConsumptionSizeMap.values()) {
+      long partitionDiskUsage = storagePartitionDiskUsage.getUsage();
+      storeDiskUsage += partitionDiskUsage;
+    }
+
+    storeIngestionStats.recordStorageQuotaUsed(storeName, serverDiskQuotaForStore > 0 ? (storeDiskUsage / serverDiskQuotaForStore) : 0);
   }
 
   private void drainExceptionQueue(BlockingQueue<PartitionExceptionInfo> exceptionQueue, String exceptionGroup) {
