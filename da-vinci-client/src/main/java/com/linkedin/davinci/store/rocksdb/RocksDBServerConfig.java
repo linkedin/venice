@@ -178,6 +178,8 @@ public class RocksDBServerConfig {
 
   public static final String ROCKSDB_COMPUTE_ACCESS_MODE = "rocksdb.compute.access.mode";
 
+  public static final String ROCKSDB_PUT_REUSE_BYTE_BUFFER = "rocksdb.put.reuse.byte.buffer";
+
   /**
    * Every time, when RocksDB tries to open a database, it will spin up multiple threads to load the file metadata
    * in parallel, and the application could hit the thread limit issue if there are many RocksDB open operations
@@ -249,6 +251,7 @@ public class RocksDBServerConfig {
   private final int level0FileNumCompactionTriggerWriteOnlyVersion;
   private final int level0SlowdownWritesTriggerWriteOnlyVersion;
   private final int level0StopWritesTriggerWriteOnlyVersion;
+  private final boolean putReuseByteBufferEnabled;
 
   private final RocksDBComputeAccessMode serverStorageOperation;
 
@@ -335,6 +338,8 @@ public class RocksDBServerConfig {
     this.level0FileNumCompactionTriggerWriteOnlyVersion = props.getInt(ROCKSDB_LEVEL0_FILE_NUM_COMPACTION_TRIGGER_WRITE_ONLY_VERSION, 100);
     this.level0SlowdownWritesTriggerWriteOnlyVersion = props.getInt(ROCKSDB_LEVEL0_SLOWDOWN_WRITES_TRIGGER_WRITE_ONLY_VERSION, 120);
     this.level0StopWritesTriggerWriteOnlyVersion = props.getInt(ROCKSDB_LEVEL0_STOPS_WRITES_TRIGGER_WRITE_ONLY_VERSION, 160);
+
+    this.putReuseByteBufferEnabled = props.getBoolean(ROCKSDB_PUT_REUSE_BYTE_BUFFER, false);
 
     String rocksDBOperationType = props.getString(ROCKSDB_COMPUTE_ACCESS_MODE, RocksDBComputeAccessMode.SINGLE_GET.name());
     try {
@@ -502,5 +507,9 @@ public class RocksDBServerConfig {
 
   public boolean isAutoTunedRateLimiterEnabled() {
     return autoTunedRateLimiterEnabled;
+  }
+
+  public boolean isPutReuseByteBufferEnabled() {
+    return putReuseByteBufferEnabled;
   }
 }
