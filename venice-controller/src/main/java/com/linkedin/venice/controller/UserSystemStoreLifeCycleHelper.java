@@ -10,12 +10,16 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.PushMonitorDelegator;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreRecordDeleter;
 import com.linkedin.venice.system.store.MetaStoreWriter;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import static com.linkedin.venice.common.VeniceSystemStoreType.*;
@@ -26,12 +30,13 @@ import static com.linkedin.venice.common.VeniceSystemStoreType.*;
  * corresponding user store is created or deleted.
  */
 public class UserSystemStoreLifeCycleHelper {
-  private static final String AUTO_META_SYSTEM_STORE_PUSH_ID_PREFIX = "Auto_meta_system_store_empty_push_";
-  private static final long DEFAULT_META_SYSTEM_STORE_SIZE = 1024 * 1024 * 1024;
+  public static final String AUTO_META_SYSTEM_STORE_PUSH_ID_PREFIX = "Auto_meta_system_store_empty_push_";
+  public static final long DEFAULT_META_SYSTEM_STORE_SIZE = 1024 * 1024 * 1024;
   private static final VeniceSystemStoreType[] aclRequiredSystemStores =
       new VeniceSystemStoreType[]{VeniceSystemStoreType.META_STORE, VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE};
   private static final Set<VeniceSystemStoreType> aclRequiredSystemStoresSet =
       new HashSet<>(Arrays.asList(aclRequiredSystemStores));
+  private static final Logger logger = LogManager.getLogger();
 
   private final Map<String, Set<VeniceSystemStoreType>> clusterToAutoCreateEnabledSystemStoresMap = new HashMap<>();
   private final VeniceParentHelixAdmin parentAdmin;
@@ -56,11 +61,12 @@ public class UserSystemStoreLifeCycleHelper {
     }
   }
 
-  public void maybeMaterializeSystemStoresForUserStore(String userStoreName, String clusterName) {
+  public List<VeniceSystemStoreType> maybeMaterializeSystemStoresForUserStore(String userStoreName, String clusterName) {
     if (VeniceSystemStoreType.getSystemStoreType(userStoreName) != null) {
       // Don't materialize system stores for system stores.
-      return;
+      return Collections.emptyList();
     }
+    List<VeniceSystemStoreType> createdSystemStoreTypes = new ArrayList<>();
     Set<VeniceSystemStoreType> autoCreateEnabledSystemStores =
         clusterToAutoCreateEnabledSystemStoresMap.get(clusterName);
     for (VeniceSystemStoreType systemStoreType : autoCreateEnabledSystemStores) {
@@ -70,7 +76,9 @@ public class UserSystemStoreLifeCycleHelper {
           parentAdmin.calculateNumberOfPartitions(clusterName, systemStoreName, DEFAULT_META_SYSTEM_STORE_SIZE),
           parentAdmin.getReplicationFactor(clusterName, systemStoreName));
       parentAdmin.writeEndOfPush(clusterName, systemStoreName, version.getNumber(), true);
+      createdSystemStoreTypes.add(systemStoreType);
     }
+    return createdSystemStoreTypes;
   }
 
   public void maybeCreateSystemStoreWildcardAcl(String storeName) {
@@ -128,6 +136,21 @@ public class UserSystemStoreLifeCycleHelper {
       deleteSystemStore(admin, storeRepository, pushMonitor, clusterName,
           DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(userStore.getName()),
           userStore.isMigrating(), metaStoreWriter, pushStatusStoreRecordDeleter, logger);
+    }
+  }
+
+  /**
+   * This method checks if a specific system store type is enabled in a given user store.
+   */
+  public static boolean isSystemStoreTypeEnabledInUserStore(Store userStore, VeniceSystemStoreType systemStoreType) {
+    switch (systemStoreType) {
+      case META_STORE:
+        return userStore.isStoreMetaSystemStoreEnabled();
+      case DAVINCI_PUSH_STATUS_STORE:
+        return userStore.isDaVinciPushStatusStoreEnabled();
+      default:
+        logger.warn("System store type: " + systemStoreType + " is not user level system store, return false by default.");
+        return false;
     }
   }
 }

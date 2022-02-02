@@ -1,6 +1,7 @@
 package com.linkedin.venice.controller;
 
 import com.linkedin.venice.acl.AclException;
+import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.controller.kafka.consumer.ControllerKafkaClientFactory;
 import com.linkedin.venice.controller.lingeringjob.IdentityParser;
@@ -244,7 +245,6 @@ public interface Admin extends AutoCloseable, Closeable {
     SchemaEntry addSupersetSchema(String clusterName, String storeName, String valueSchemaStr, int valueSchemaId,
         String supersetSchemaStr, int supersetSchemaId);
 
-
     DerivedSchemaEntry addDerivedSchema(String clusterName, String storeName, int valueSchemaId, String derivedSchemaStr);
 
     /**
@@ -252,10 +252,13 @@ public interface Admin extends AutoCloseable, Closeable {
      */
     DerivedSchemaEntry addDerivedSchema(String clusterName, String storeName, int valueSchemaId, int derivedSchemaId, String derivedSchemaStr);
 
-
     Collection<ReplicationMetadataSchemaEntry> getReplicationMetadataSchemas(String clusterName, String storeName);
+
     ReplicationMetadataVersionId getReplicationMetadataVersionId(String clusterName, String storeName, String replicationMetadataSchemaStr);
+
     ReplicationMetadataSchemaEntry addReplicationMetadataSchema(String clusterName, String storeName, int valueSchemaId, int replicationMetadataVersionId, String replicationMetadataSchemaStr);
+
+    void validateAndMaybeRetrySystemStoreAutoCreation(String clusterName, String storeName, VeniceSystemStoreType systemStoreType);
 
     /**
      * Remove an existing derived schema
