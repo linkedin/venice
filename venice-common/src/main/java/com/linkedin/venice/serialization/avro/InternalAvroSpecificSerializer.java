@@ -16,6 +16,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 import org.apache.avro.io.BinaryDecoder;
+import org.apache.avro.io.BinaryEncoder;
 import org.apache.avro.io.Decoder;
 import org.apache.avro.io.DecoderFactory;
 import org.apache.avro.io.Encoder;
@@ -38,6 +39,15 @@ import org.apache.logging.log4j.Logger;
  */
 public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends SpecificRecord>
     implements VeniceKafkaSerializer<SPECIFIC_RECORD> {
+
+  private static class ReusableObjects {
+    final BinaryDecoder binaryDecoder = AvroCompatibilityHelper.newBinaryDecoder(new byte[16]);
+    final BinaryEncoder binaryEncoder = AvroCompatibilityHelper.newBinaryEncoder(new ByteArrayOutputStream(), true, null);
+    final ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
+  }
+
+  private static final ThreadLocal<ReusableObjects> threadLocalReusableObjects = ThreadLocal.withInitial(
+      ReusableObjects::new);
 
   /** Used to configure the {@link #schemaReader}. */
   public static final String VENICE_SCHEMA_READER_CONFIG = "venice.schema-reader";
@@ -176,9 +186,12 @@ public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends SpecificReco
    */
   @Override
   public byte[] serialize(String topic, SPECIFIC_RECORD object) {
-    // If single-threaded, both the ByteArrayOutputStream and Encoder can be re-used. TODO: explore GC tuning later.
-    try (ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream()) {
-      Encoder encoder = AvroCompatibilityHelper.newBinaryEncoder(byteArrayOutputStream, true, null);
+    // re-use both the ByteArrayOutputStream and Encoder.
+    try  {
+      ReusableObjects reusableObjects = threadLocalReusableObjects.get();
+      ByteArrayOutputStream byteArrayOutputStream = reusableObjects.byteArrayOutputStream;
+      byteArrayOutputStream.reset();
+      Encoder encoder = AvroCompatibilityHelper.newBinaryEncoder(byteArrayOutputStream, true, reusableObjects.binaryEncoder);
 
       // We write according to the latest protocol version.
       if (MAGIC_BYTE_LENGTH == 1) {
@@ -301,12 +314,13 @@ public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends SpecificReco
        */
 
       VeniceSpecificDatumReader<SPECIFIC_RECORD> specificDatumReader = readerMap.get(protocolVersion);
+      ReusableObjects reusableObjects = threadLocalReusableObjects.get();
 
       Decoder decoder = createBinaryDecoder(
           bytes,                         // The bytes array we wish to decode
           PAYLOAD_OFFSET,                // Where to start reading from in the bytes array
           bytes.length - PAYLOAD_OFFSET, // The length to read in the bytes array
-          null                           // This param is to re-use a Decoder instance. TODO: explore GC tuning later.
+          reusableObjects.binaryDecoder        // This param is to re-use a Decoder instance.
       );
 
       SPECIFIC_RECORD record = specificDatumReader.read(
