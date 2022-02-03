@@ -39,7 +39,7 @@ import javax.annotation.Nonnull;
  * and balanced shared consumer partition assignment load. We can improve this allocation strategy if we need to.
  */
 public class PartitionWiseKafkaConsumerService extends KafkaConsumerService {
-  private static final Logger logger = LogManager.getLogger(PartitionWiseKafkaConsumerService.class);
+
   private static String exceptionMessageForImproperUsage(String methodName) {
     return methodName + " should never be called on " + VirtualSharedKafkaConsumer.class.getSimpleName() +
         " but should rather be called on " + PartitionWiseSharedKafkaConsumer.class.getSimpleName();
@@ -52,6 +52,7 @@ public class PartitionWiseKafkaConsumerService extends KafkaConsumerService {
    * the same consumer from consumer pool.
    */
   private final Map<TopicPartition, Set<KafkaConsumerWrapper>> rtTopicPartitionToConsumerMap;
+  private final Logger logger;
   private Integer shareConsumerIndex;
 
   public PartitionWiseKafkaConsumerService(final KafkaClientFactory consumerFactory, final Properties consumerProperties,
@@ -65,6 +66,7 @@ public class PartitionWiseKafkaConsumerService extends KafkaConsumerService {
     this.versionTopicToVirtualConsumerMap = new VeniceConcurrentHashMap<>();
     this.rtTopicPartitionToConsumerMap = new VeniceConcurrentHashMap<>();
     this.shareConsumerIndex = 0;
+    this.logger = LogManager.getLogger(PartitionWiseKafkaConsumerService.class + " [" + kafkaUrl + "]");
   }
 
   @Override

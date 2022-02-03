@@ -40,13 +40,14 @@ import static com.linkedin.venice.offsets.OffsetRecord.*;
 
 
 public class PartitionOffsetFetcherImpl implements PartitionOffsetFetcher {
-  private static final Logger logger = LogManager.getLogger(PartitionOffsetFetcherImpl.class);
+
   private static final List<Class<? extends Throwable>> KAFKA_RETRIABLE_FAILURES =
       Collections.singletonList(org.apache.kafka.common.errors.RetriableException.class);
   public static final Duration DEFAULT_KAFKA_OFFSET_API_TIMEOUT = Duration.ofMinutes(1);
   public static final long NO_PRODUCER_TIME_IN_EMPTY_TOPIC_PARTITION = -1;
   private static final int KAFKA_POLLING_RETRY_MAX_ATTEMPT = 3;
 
+  private final Logger logger;
   private final Lock rawConsumerLock;
   private final Lock kafkaRecordConsumerLock;
   private final Lazy<Consumer<byte[], byte[]>> kafkaRawBytesConsumer;
@@ -58,7 +59,8 @@ public class PartitionOffsetFetcherImpl implements PartitionOffsetFetcher {
       @Nonnull Lazy<Consumer<byte[], byte[]>> kafkaRawBytesConsumer,
       @Nonnull Lazy<Consumer<KafkaKey, KafkaMessageEnvelope>> kafkaRecordConsumer,
       @Nonnull Lazy<KafkaAdminWrapper> kafkaAdminWrapper,
-      long kafkaOperationTimeoutMs) {
+      long kafkaOperationTimeoutMs,
+      String kafkaBootstrapServers) {
     Validate.notNull(kafkaRawBytesConsumer);
     Validate.notNull(kafkaRecordConsumer);
     Validate.notNull(kafkaAdminWrapper);
@@ -68,6 +70,7 @@ public class PartitionOffsetFetcherImpl implements PartitionOffsetFetcher {
     this.rawConsumerLock = new ReentrantLock();
     this.kafkaRecordConsumerLock = new ReentrantLock();
     this.kafkaOperationTimeout = Duration.ofMillis(kafkaOperationTimeoutMs);
+    this.logger = LogManager.getLogger(PartitionOffsetFetcherImpl.class.getSimpleName() + " [" + kafkaBootstrapServers + "]");
   }
 
   @Override
