@@ -24,6 +24,7 @@ import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.utils.ForkedJavaProcess;
 import com.linkedin.venice.utils.PropertyBuilder;
+import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import io.netty.bootstrap.Bootstrap;
@@ -411,6 +412,8 @@ public class IsolatedIngestionUtils {
     configLoader.getCombinedProperties().clipAndFilterNamespace(INGESTION_ISOLATION_CONFIG_PREFIX).toProperties()
         .forEach((key, value) -> propertyBuilder.put(key.toString(), value.toString()));
     maybePopulateServerIngestionPrincipal(propertyBuilder, configLoader);
+    // Populate region name to isolated ingestion process resolved from env/system property.
+    propertyBuilder.put(LOCAL_REGION_NAME, RegionUtils.getLocalRegionName(configLoader.getCombinedProperties(), false));
     VeniceProperties veniceProperties = propertyBuilder.build();
     String configBasePath = configLoader.getVeniceServerConfig().getDataBasePath();
     return storeVenicePropertiesToFile(configBasePath, ISOLATED_INGESTION_CONFIG_FILENAME, veniceProperties);
