@@ -186,8 +186,7 @@ public class PushStatusStoreTest {
         Optional<String> incPushVersion = job.getIncrementalPushVersion();
         Map<CharSequence, Integer> result = reader.getPartitionStatus(storeName, 1, 0, incPushVersion, Optional.of("SERVER_SIDE_INCREMENTAL_PUSH_STATUS"));
         assertNotEquals(result.size(), 0);
-        for (CharSequence key : result.keySet()) {
-          int status = result.get(key);
+        for (Integer status : result.values()) {
           assertTrue(status == ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED.getValue() || status == ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED.getValue());
         }
       }
