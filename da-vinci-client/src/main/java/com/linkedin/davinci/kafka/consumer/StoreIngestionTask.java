@@ -491,10 +491,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     this.subscribedPartitionToSize = Optional.empty();
 
-    if (serverConfig.isHybridQuotaEnabled() || storeRepository.getStoreOrThrow(storeName).isHybridStoreDiskQuotaEnabled()) {
-      buildHybridQuotaEnforcer();
-    }
-
     this.aggKafkaConsumerService = kafkaConsumerService;
 
     this.errorPartitionId = errorPartitionId;
@@ -543,6 +539,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.localKafkaServer = this.kafkaProps.getProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG);
     this.isDaVinciClient = isDaVinciClient;
     this.isActiveActiveReplicationEnabled = version.isActiveActiveReplicationEnabled();
+
+    // Build quota enforcer needs sub partition count prepared.
+    if (serverConfig.isHybridQuotaEnabled() || storeRepository.getStoreOrThrow(storeName).isHybridStoreDiskQuotaEnabled()) {
+      buildHybridQuotaEnforcer();
+    }
   }
 
   public boolean isFutureVersion() {
