@@ -8,6 +8,7 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.utils.ForkedJavaProcess;
 import com.linkedin.venice.utils.PropertyBuilder;
+import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -20,6 +21,7 @@ import org.testng.annotations.Test;
 
 import static com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils.*;
 import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.VeniceConstants.*;
 
 
 public class IsolatedIngestionServerTest {
@@ -83,11 +85,17 @@ public class IsolatedIngestionServerTest {
 
   @Test
   public void testCustomizedConfigs() throws Exception {
+    String testRegion = "ei-ltx1";
+    // Set app region system property.
+    System.setProperty(SYSTEM_PROPERTY_FOR_APP_RUNNING_REGION, testRegion);
     VeniceConfigLoader configLoader = getConfigLoader(Utils.getFreePort());
+    // Build and save config to file.
     String configFilePath = buildAndSaveConfigsForForkedIngestionProcess(configLoader);
-
+    // Load config from saved config file.
     VeniceProperties loadedConfig = Utils.parseProperties(configFilePath);
     Assert.assertEquals(loadedConfig.getInt(SERVER_PARTITION_GRACEFUL_DROP_DELAY_IN_SECONDS), 10);
+    // Venice Cluster config built on top of this config should contains expected region name passed from main process.
+    Assert.assertEquals(RegionUtils.getLocalRegionName(loadedConfig, false), testRegion);
   }
 
   private VeniceConfigLoader getConfigLoader(int servicePort) {

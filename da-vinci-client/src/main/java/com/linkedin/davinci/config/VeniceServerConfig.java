@@ -279,7 +279,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     listenerPort = serverProperties.getInt(LISTENER_PORT, 0);
     dataBasePath = serverProperties.getString(DATA_BASE_PATH,
         Paths.get(System.getProperty("java.io.tmpdir"), "venice-server-data").toAbsolutePath().toString());
-    autoCreateDataPath = Boolean.valueOf(serverProperties.getString(AUTOCREATE_DATA_PATH, "true"));
+    autoCreateDataPath = Boolean.parseBoolean(serverProperties.getString(AUTOCREATE_DATA_PATH, "true"));
     rocksDBServerConfig = new RocksDBServerConfig(serverProperties);
     enableServerWhiteList = serverProperties.getBoolean(ENABLE_SERVER_WHITE_LIST, false);
     maxOnlineOfflineStateTransitionThreadNumber = serverProperties.getInt(MAX_ONLINE_OFFLINE_STATE_TRANSITION_THREAD_NUMBER, 100);
