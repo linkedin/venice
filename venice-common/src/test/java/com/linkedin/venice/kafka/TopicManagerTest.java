@@ -10,10 +10,10 @@ import com.linkedin.venice.kafka.partitionoffset.PartitionOffsetFetcherImpl;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.EndOfPush;
 import com.linkedin.venice.kafka.protocol.GUID;
-import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.LeaderMetadata;
 import com.linkedin.venice.kafka.protocol.ProducerMetadata;
+import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
@@ -26,8 +26,12 @@ import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.systemstore.schemas.StoreProperties;
+import com.linkedin.venice.utils.MockTime;
+import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.writer.ApacheKafkaProducer;
+import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -44,10 +48,6 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
-import com.linkedin.venice.utils.MockTime;
-import com.linkedin.venice.utils.TestUtils;
-import com.linkedin.venice.writer.ApacheKafkaProducer;
-import com.linkedin.venice.writer.VeniceWriter;
 import kafka.log.LogConfig;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.clients.producer.KafkaProducer;
@@ -270,7 +270,10 @@ public class TopicManagerTest {
 
     // Since we're dealing with a mock in this test case, we'll just use a fake topic name
     String topicName = "mockTopicName";
-    TopicManager partiallyMockedTopicManager = Mockito.mock(TopicManager.class);
+    // Without using mockito spy, the logger inside TopicManager cannot be prepared.
+    TopicManager partiallyMockedTopicManager = Mockito.spy(
+        new TopicManager(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, MIN_COMPACTION_LAG,
+            TestUtils.getVeniceConsumerFactory(kafka)));
     Mockito.doThrow(VeniceOperationAgainstKafkaTimedOut.class).when(partiallyMockedTopicManager).ensureTopicIsDeletedAndBlock(topicName);
     Mockito.doCallRealMethod().when(partiallyMockedTopicManager).ensureTopicIsDeletedAndBlockWithRetry(topicName);
 

@@ -19,7 +19,8 @@ public class PartitionOffsetFetcherFactory {
         Lazy.of(() -> kafkaClientFactory.getRawBytesKafkaConsumer()),
         Lazy.of(() -> kafkaClientFactory.getRecordKafkaConsumer()),
         kafkaAdminWrapper,
-        kafkaOperationTimeoutMs
+        kafkaOperationTimeoutMs,
+        kafkaClientFactory.getKafkaBootstrapServers()
     );
     if (optionalMetricsRepository.isPresent()) {
       return new InstrumentedPartitionOffsetFetcher(

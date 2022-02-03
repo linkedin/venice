@@ -48,7 +48,6 @@ import org.apache.logging.log4j.Logger;
  */
 
 public abstract class KafkaConsumerService extends AbstractVeniceService {
-  private static final Logger LOGGER = LogManager.getLogger(KafkaConsumerService.class);
 
   private final long readCycleDelayMs;
   private final IntList consumerPartitionsNumSubscribed;
@@ -56,8 +55,9 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
   private final EventThrottler bandwidthThrottler;
   private final EventThrottler recordsThrottler;
   private final KafkaClusterBasedRecordThrottler kafkaClusterBasedRecordThrottler;
-  private final String kafkaUrl;
+  protected final String kafkaUrl;
   private final boolean liveConfigBasedKafkaThrottlingEnabled;
+  private final Logger logger;
 
   protected final KafkaConsumerServiceStats stats;
   protected final List<SharedKafkaConsumer> readOnlyConsumersList;
@@ -77,6 +77,8 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
     this.stats = stats;
 
     this.kafkaUrl = consumerProperties.getProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG);
+    this.logger = LogManager.getLogger(KafkaConsumerService.class.getSimpleName() + " [" + kafkaUrl + "]");
+
     // Initialize consumers and consumerExecutor
     consumerExecutor = Executors.newFixedThreadPool(numOfConsumersPerKafkaCluster, new DaemonThreadFactory("venice-shared-consumer-for-" + kafkaUrl));
     consumerPartitionsNumSubscribed = new IntArrayList(numOfConsumersPerKafkaCluster);
@@ -94,7 +96,7 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
     readOnlyConsumersList = Collections.unmodifiableList(consumers);
     consumerExecutor.shutdown();
 
-    LOGGER.info("KafkaConsumerService was initialized with " + numOfConsumersPerKafkaCluster + " consumers.");
+    logger.info("KafkaConsumerService was initialized with " + numOfConsumersPerKafkaCluster + " consumers.");
   }
 
   protected abstract SharedKafkaConsumer createSharedKafkaConsumer(final KafkaConsumerWrapper kafkaConsumerWrapper, final long nonExistingTopicCleanupDelayMS,
@@ -202,7 +204,7 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
               ingestionTask = consumer.getIngestionTaskForTopicPartition(topicPartition);
               if (ingestionTask == null) {
                 // defensive code
-                LOGGER.error("Couldn't find IngestionTask for topic partition : " + topicPartition + " after receiving records from `poll` request");
+                logger.error("Couldn't find IngestionTask for topic partition : " + topicPartition + " after receiving records from `poll` request");
                 continue;
               }
               partitionRecords = records.records(topicPartition);
@@ -267,7 +269,7 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
                    */
                   throw e;
                 }
-                LOGGER.error("Received exception when StoreIngestionTask is processing the polled consumer record for topic: " + topicPartition, e);
+                logger.error("Received exception when StoreIngestionTask is processing the polled consumer record for topic: " + topicPartition, e);
                 ingestionTask.setLastConsumerException(e);
               }
             }
@@ -289,16 +291,15 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
         } catch (Exception e) {
           if (ExceptionUtils.recursiveClassEquals(e, InterruptedException.class)) {
             // We sometimes wrap InterruptedExceptions, so not taking any chances...
-            LOGGER.error("Received InterruptedException, will exit");
+            logger.error("Received InterruptedException, will exit");
             break;
           }
-
-          LOGGER.error("Received exception while polling, will retry", e);
+          logger.error("Received exception while polling, will retry", e);
           addSomeDelay = true;
           stats.recordPollError();
         }
       }
-      LOGGER.info("Shared consumer thread: " + Thread.currentThread().getName() + " exited");
+      logger.info("Shared consumer thread: " + Thread.currentThread().getName() + " exited");
     }
   }
 

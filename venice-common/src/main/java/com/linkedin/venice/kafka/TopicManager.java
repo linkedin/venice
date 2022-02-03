@@ -48,7 +48,6 @@ import static com.linkedin.venice.ConfigConstants.*;
  * use the same consumer: KafkaConsumer is not safe for multi-threaded access.
  */
 public class TopicManager implements Closeable {
-  private static final Logger logger = LogManager.getLogger(TopicManager.class);
 
   private static final int MINIMUM_TOPIC_DELETION_STATUS_POLL_TIMES = 10;
   private static final int FAST_KAFKA_OPERATION_TIMEOUT_MS = Time.MS_PER_SECOND;
@@ -76,6 +75,7 @@ public class TopicManager implements Closeable {
   public static final boolean CONCURRENT_TOPIC_DELETION_REQUEST_POLICY = false;
 
   // Immutable state
+  private final Logger logger;
   private final String kafkaBootstrapServers;
   private final long kafkaOperationTimeoutMs;
   private final long topicDeletionStatusPollIntervalMs;
@@ -107,6 +107,7 @@ public class TopicManager implements Closeable {
     this.topicMinLogCompactionLagMs = topicMinLogCompactionLagMs;
     this.kafkaClientFactory = kafkaClientFactory;
     this.kafkaBootstrapServers = kafkaClientFactory.getKafkaBootstrapServers();
+    this.logger = LogManager.getLogger(this.getClass().getSimpleName() + " [" + kafkaBootstrapServers + "]");
 
     this.kafkaReadOnlyAdmin = Lazy.of(() -> {
       KafkaAdminWrapper kafkaReadOnlyAdmin = kafkaClientFactory.getReadOnlyKafkaAdmin(optionalMetricsRepository);

@@ -23,7 +23,7 @@ import org.apache.logging.log4j.Logger;
  * with least partitions subscribed will be chosen ideally.
  */
 public class TopicWiseKafkaConsumerService extends KafkaConsumerService {
-  private static final Logger logger = LogManager.getLogger(TopicWiseKafkaConsumerService.class);
+
   /**
    * This field is used to maintain the mapping between version topic and the corresponding ingestion task.
    * In theory, One version topic should only be mapped to one ingestion task, and if this assumption is violated
@@ -31,6 +31,7 @@ public class TopicWiseKafkaConsumerService extends KafkaConsumerService {
    */
   private final Map<String, SharedKafkaConsumer> versionTopicToConsumerMap = new VeniceConcurrentHashMap<>();
   private final Map<SharedKafkaConsumer, Set<String>> consumerToStoresMap = new VeniceConcurrentHashMap<>();
+  private final Logger logger;
 
   public TopicWiseKafkaConsumerService(final KafkaClientFactory consumerFactory, final Properties consumerProperties,
       final long readCycleDelayMs, final int numOfConsumersPerKafkaCluster, final EventThrottler bandwidthThrottler,
@@ -40,6 +41,7 @@ public class TopicWiseKafkaConsumerService extends KafkaConsumerService {
     super(consumerFactory, consumerProperties, readCycleDelayMs, numOfConsumersPerKafkaCluster, bandwidthThrottler,
         recordsThrottler, kafkaClusterBasedRecordThrottler, stats, sharedConsumerNonExistingTopicCleanupDelayMS,
         topicExistenceChecker, liveConfigBasedKafkaThrottlingEnabled);
+    logger = LogManager.getLogger(TopicWiseKafkaConsumerService.class + " [" + kafkaUrl + "]");
   }
 
   @Override
