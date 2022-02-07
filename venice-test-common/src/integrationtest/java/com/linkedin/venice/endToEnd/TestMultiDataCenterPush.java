@@ -15,7 +15,6 @@ import com.linkedin.venice.controller.kafka.protocol.admin.UpdateStore;
 import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
 import com.linkedin.venice.controller.kafka.protocol.enums.SchemaType;
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
-import com.linkedin.venice.controllerapi.ClusterStaleDataAuditResponse;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
@@ -91,11 +90,9 @@ public class TestMultiDataCenterPush {
   public void setUp() {
     Properties serverProperties = new Properties();
     serverProperties.setProperty(ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1));
-    Properties childControllerProperties = new Properties();
-    childControllerProperties.setProperty(ConfigKeys.CONTROLLER_ENABLE_BATCH_PUSH_FROM_ADMIN_IN_CHILD, "true");
     multiColoMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiColoMultiClusterWrapper(
         NUMBER_OF_CHILD_DATACENTERS, NUMBER_OF_CLUSTERS, 1, 1, 1, 1,
-        1, Optional.empty(), Optional.of(childControllerProperties), Optional.of(new VeniceProperties(serverProperties)), false,
+        1, Optional.empty(), Optional.empty(), Optional.of(new VeniceProperties(serverProperties)), false,
         MirrorMakerWrapper.DEFAULT_TOPIC_WHITELIST);
 
     childClusters = multiColoMultiClusterWrapper.getClusters();
@@ -524,36 +521,6 @@ public class TestMultiDataCenterPush {
       if (incPushToRTWriter != null) {
         incPushToRTWriter.close();
       }
-    }
-  }
-
-  @Test(timeOut = TEST_TIMEOUT)
-  public void testGetClusterStaleStores() throws Exception {
-    String clusterName = CLUSTER_NAMES[0];
-    File inputDir = getTempDataDirectory();
-    Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir);
-    String inputDirPath = "file:" + inputDir.getAbsolutePath();
-    String storeName = Utils.getUniqueString("store");
-    VeniceControllerWrapper parentController =
-        parentControllers.stream().filter(c -> c.isMasterController(clusterName)).findAny().get();
-
-    // create a store via parent controller url
-    Properties props = defaultH2VProps(parentController.getControllerUrl(), inputDirPath, storeName);
-    createStoreForJob(clusterName, recordSchema, props).close();
-    try (VenicePushJob job = new VenicePushJob("Test push job", props)) {
-      job.run();
-    }
-
-    // get single child controller, empty push to it
-    VeniceControllerWrapper childController = childControllers.get(0).get(0);
-    Properties props2 = defaultH2VProps(childController.getControllerUrl(), inputDirPath, storeName);
-    try (VenicePushJob job = new VenicePushJob("Test push job", props2)) {
-      job.run();
-    }
-
-    try (ControllerClient controllerClient = new ControllerClient(clusterName, parentController.getControllerUrl())) {
-      ClusterStaleDataAuditResponse response = controllerClient.getClusterStaleStores(clusterName, parentController.getControllerUrl(), Optional.empty());
-      Assert.assertTrue(response.getAuditMap().containsKey(storeName));
     }
   }
 

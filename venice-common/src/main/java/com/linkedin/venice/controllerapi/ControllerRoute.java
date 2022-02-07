@@ -117,9 +117,7 @@ public enum ControllerRoute {
       SOURCE_FABRIC_VERSION_INCLUDED, DATA_RECOVERY_COPY_ALL_VERSION_CONFIGS)),
   PREPARE_DATA_RECOVERY("/prepare_data_recovery", HttpMethod.POST, Arrays.asList(CLUSTER, SOURCE_FABRIC, FABRIC, NAME, VERSION), AMPLIFICATION_FACTOR),
   IS_STORE_VERSION_READY_FOR_DATA_RECOVERY("/is_store_version_ready_for_data_recovery", HttpMethod.GET,
-      Arrays.asList(CLUSTER, SOURCE_FABRIC, FABRIC, NAME, VERSION), AMPLIFICATION_FACTOR),
-  GET_STALE_STORES_IN_CLUSTER("/get_stale_stores_in_cluster", HttpMethod.GET, Collections.singletonList(CLUSTER)),
-  GET_STORES_IN_CLUSTER("/get_stores_in_cluster", HttpMethod.GET, Collections.singletonList(CLUSTER));
+      Arrays.asList(CLUSTER, SOURCE_FABRIC, FABRIC, NAME, VERSION), AMPLIFICATION_FACTOR);
 
   private final String path;
   private final HttpMethod httpMethod;
