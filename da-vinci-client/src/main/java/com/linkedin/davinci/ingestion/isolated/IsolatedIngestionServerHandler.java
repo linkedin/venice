@@ -222,7 +222,7 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
           try {
             // Best-effort to reduce metrics delta size sent from child process to main process.
             Double originalValue = isolatedIngestionServer.getMetricsMap().get(name);
-            if (originalValue == null || originalValue.equals(metric.value())) {
+            if (originalValue == null || !originalValue.equals(metric.value())) {
               report.aggregatedMetrics.put(name, metric.value());
             }
             isolatedIngestionServer.getMetricsMap().put(name, metric.value());
