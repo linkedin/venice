@@ -59,7 +59,7 @@ public class TestMapAwareGenericDatumWriter {
     Assert.assertFalse(Arrays.equals(serialize(genericDatumWriter, map1),
         serialize(genericDatumWriter, map2)));
 
-    MapAwareGenericDatumWriter mapAwareGenericDatumWriter = new MapAwareGenericDatumWriter(mapSchema);
+    DeterministicMapOrderGenericDatumWriter mapAwareGenericDatumWriter = new DeterministicMapOrderGenericDatumWriter(mapSchema);
     Assert.assertTrue(Arrays.equals(serialize(mapAwareGenericDatumWriter, map1),
         serialize(mapAwareGenericDatumWriter, map2)));
   }

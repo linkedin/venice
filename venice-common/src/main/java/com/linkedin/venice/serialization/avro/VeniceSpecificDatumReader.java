@@ -16,7 +16,7 @@ public class VeniceSpecificDatumReader<T> extends SpecificDatumReader<T> {
   @SuppressWarnings("unchecked")
   protected Object newMap(Object old, int size) {
     if (old instanceof VeniceConcurrentHashMap) {
-      ((VeniceConcurrentHashMap) old).clear();
+      ((VeniceConcurrentHashMap<?, ?>) old).clear();
       return old;
     } else return new VeniceConcurrentHashMap<Object, Object>(size);
   }

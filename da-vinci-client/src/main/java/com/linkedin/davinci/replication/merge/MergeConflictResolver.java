@@ -1,18 +1,18 @@
 package com.linkedin.davinci.replication.merge;
 
+import com.linkedin.davinci.serialization.avro.MapOrderingPreservingSeDeFactory;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.schema.rmd.ReplicationMetadataSchemaEntry;
-import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.utils.Lazy;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
-import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
@@ -144,17 +144,17 @@ public class MergeConflictResolver {
     // the full write compute resolution into uncommented fleshed out glory.  So we'll effectively ignore operations
     // that aren't root level until then.
     if (replicationMetadataRecord == null) {
-      return Arrays.asList(0L);
+      return Collections.singletonList(0L);
     }
     Object timestampObject = replicationMetadataRecord.get(TIMESTAMP_FIELD_NAME);
     Merge.ReplicationMetadataType replicationMetadataType = Merge.getReplicationMetadataType(timestampObject);
 
     if (replicationMetadataType == Merge.ReplicationMetadataType.ROOT_LEVEL_TIMESTAMP) {
-      return Arrays.asList((long) timestampObject);
+      return Collections.singletonList((long) timestampObject);
     } else {
       // not supported yet so ignore it
       // TODO Must clone the results when PER_FIELD_TIMESTAMP mode is enabled to return the list.
-      return Arrays.asList(0L);
+      return Collections.singletonList(0L);
     }
   }
 
@@ -232,13 +232,12 @@ public class MergeConflictResolver {
 
   private RecordDeserializer<GenericRecord> getReplicationMetadataDeserializer(int valueSchemaId) {
     Schema replicationMetadataSchema = getReplicationMetadataSchema(valueSchemaId);
-    return schemaToDeserializerMap.computeIfAbsent(replicationMetadataSchema, schema ->
-        FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(replicationMetadataSchema, replicationMetadataSchema));
+    return MapOrderingPreservingSeDeFactory.getDeserializer(replicationMetadataSchema, replicationMetadataSchema);
   }
 
   private RecordSerializer<GenericRecord> getReplicationMetadataSerializer(int valueSchemaId) {
     Schema replicationMetadataSchema = getReplicationMetadataSchema(valueSchemaId);
-    return FastSerializerDeserializerFactory.getFastAvroGenericSerializer(replicationMetadataSchema);
+    return MapOrderingPreservingSeDeFactory.getSerializer(replicationMetadataSchema);
   }
 
   public ByteBuffer getByteBufferFromReplicationMetadata(int schemaId, GenericRecord replicationMetadataRecord) {

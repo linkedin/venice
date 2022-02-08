@@ -1,9 +1,11 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import com.linkedin.davinci.serialization.avro.MapOrderingPreservingSeDeFactory;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.schema.writecompute.WriteComputeProcessor;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaValidator;
+import com.linkedin.davinci.serialization.avro.MapOrderPreservingDeserializer;
 import com.linkedin.venice.serializer.AvroGenericDeserializer;
 import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.utils.Pair;
@@ -91,7 +93,10 @@ public class StoreIngestionWriteComputeProcessor {
     return idToWriteComputeSchemaDeserializerMap.computeIfAbsent(new SchemaIds(valueSchemaId, writeComputeSchemaId),
         schemaIds -> {
           Schema writeComputeSchema = getValueAndWriteComputeSchemas(valueSchemaId, writeComputeSchemaId).getWriteComputeSchema();
-          return new AvroGenericDeserializer(writeComputeSchema, writeComputeSchema);
+          // Map in write compute needs to have consistent ordering. On the sender side, users may not care about ordering
+          // in their maps. However, on the receiver side, we still want to make sure that the same serialized map bytes
+          // always get deserialized into maps with the same entry ordering.
+          return MapOrderingPreservingSeDeFactory.getDeserializer(writeComputeSchema, writeComputeSchema);
         });
   }
 
