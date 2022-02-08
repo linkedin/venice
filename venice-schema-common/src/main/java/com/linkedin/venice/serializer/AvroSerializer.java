@@ -5,11 +5,11 @@ import com.linkedin.avroutil1.compatibility.AvroVersion;
 import com.linkedin.venice.exceptions.VeniceException;
 import java.nio.ByteBuffer;
 import org.apache.avro.Schema;
-import org.apache.avro.generic.MapAwareGenericDatumWriter;
+import org.apache.avro.generic.DeterministicMapOrderGenericDatumWriter;
 import org.apache.avro.io.BinaryEncoder;
 import org.apache.avro.io.DatumWriter;
 import org.apache.avro.io.Encoder;
-import org.apache.avro.specific.MapAwareSpecificDatumWriter;
+import org.apache.avro.specific.DeterministicMapOrderSpecificDatumWriter;
 import org.apache.avro.specific.SpecificRecord;
 
 import java.io.ByteArrayOutputStream;
@@ -30,18 +30,18 @@ public class AvroSerializer<K> implements RecordSerializer<K> {
   }
 
   public AvroSerializer(Schema schema) {
-    this(new MapAwareGenericDatumWriter(schema), new MapAwareSpecificDatumWriter(schema));
+    this(new DeterministicMapOrderGenericDatumWriter<>(schema), new DeterministicMapOrderSpecificDatumWriter<>(schema));
   }
 
   public AvroSerializer(Schema schema, boolean buffered) {
-    this(new MapAwareGenericDatumWriter(schema), new MapAwareSpecificDatumWriter(schema), buffered);
+    this(new DeterministicMapOrderGenericDatumWriter<>(schema), new DeterministicMapOrderSpecificDatumWriter<>(schema), buffered);
   }
 
-  protected AvroSerializer(DatumWriter genericDatumWriter, DatumWriter specificDatumWriter) {
+  protected AvroSerializer(DatumWriter<K> genericDatumWriter, DatumWriter<K> specificDatumWriter) {
     this(genericDatumWriter, specificDatumWriter, true);
   }
 
-  protected AvroSerializer(DatumWriter genericDatumWriter, DatumWriter specificDatumWriter, boolean buffered) {
+  protected AvroSerializer(DatumWriter<K> genericDatumWriter, DatumWriter<K> specificDatumWriter, boolean buffered) {
     this.genericDatumWriter = genericDatumWriter;
     this.specificDatumWriter = specificDatumWriter;
     this.buffered = buffered;

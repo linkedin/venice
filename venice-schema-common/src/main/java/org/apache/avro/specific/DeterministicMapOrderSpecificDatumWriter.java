@@ -3,8 +3,8 @@ package org.apache.avro.specific;
 import java.io.IOException;
 import java.util.SortedMap;
 import org.apache.avro.Schema;
-import org.apache.avro.generic.MapAwareDatumWriter;
-import org.apache.avro.generic.MapAwareGenericDatumWriter;
+import org.apache.avro.generic.DeterministicMapOrderDatumWriter;
+import org.apache.avro.generic.DeterministicMapOrderGenericDatumWriter;
 import org.apache.avro.io.Encoder;
 
 
@@ -12,27 +12,27 @@ import org.apache.avro.io.Encoder;
  * An Avro specific datum writer that sorts the map entries by keys before
  * serializing the map.
  *
- * See {@link MapAwareGenericDatumWriter} for more details.
+ * See {@link DeterministicMapOrderGenericDatumWriter} for more details.
  */
-public class MapAwareSpecificDatumWriter<T> extends SpecificDatumWriter<T>
-    implements MapAwareDatumWriter {
-  public MapAwareSpecificDatumWriter() {
+public class DeterministicMapOrderSpecificDatumWriter<T> extends SpecificDatumWriter<T>
+    implements DeterministicMapOrderDatumWriter {
+  public DeterministicMapOrderSpecificDatumWriter() {
     super();
   }
 
-  public MapAwareSpecificDatumWriter(Class<T> c) {
+  public DeterministicMapOrderSpecificDatumWriter(Class<T> c) {
     super(c);
   }
 
-  public MapAwareSpecificDatumWriter(Schema schema) {
+  public DeterministicMapOrderSpecificDatumWriter(Schema schema) {
     super(schema);
   }
 
-  public MapAwareSpecificDatumWriter(Schema root, SpecificData specificData) {
+  public DeterministicMapOrderSpecificDatumWriter(Schema root, SpecificData specificData) {
     super(root, specificData);
   }
 
-  protected MapAwareSpecificDatumWriter(SpecificData specificData) {
+  protected DeterministicMapOrderSpecificDatumWriter(SpecificData specificData) {
     super(specificData);
   }
 
@@ -51,7 +51,7 @@ public class MapAwareSpecificDatumWriter<T> extends SpecificDatumWriter<T>
     if (datum instanceof SortedMap && ((SortedMap) datum).comparator() == null) {
       super.writeMap(schema, datum, out);
     } else {
-      MapAwareGenericDatumWriter.writeMapInOrder(this, schema, datum, out);
+      writeMapWithDeterministicOrder(schema, datum, out);
     }
   }
 }

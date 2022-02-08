@@ -1,5 +1,6 @@
 package com.linkedin.venice.utils;
 
+import com.linkedin.davinci.utils.IndexedHashMap;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
