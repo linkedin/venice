@@ -122,6 +122,7 @@ public class VeniceRouterConfig {
   private boolean httpClient5SkipCipherCheck;
   private int routerMultiGetDecompressionThreads;
   private int routerMultiGetDecompressionBatchSize;
+  private boolean http2InboundEnabled;
 
   public VeniceRouterConfig(VeniceProperties props) {
     try {
@@ -287,6 +288,7 @@ public class VeniceRouterConfig {
 
     routerMultiGetDecompressionThreads = props.getInt(ROUTER_MULTI_KEY_DECOMPRESSION_THREADS, 10);
     routerMultiGetDecompressionBatchSize = props.getInt(ROUTER_MULTI_KEY_DECOMPRESSION_BATCH_SIZE, 5);
+    http2InboundEnabled = props.getBoolean(ROUTER_HTTP2_INBOUND_ENABLED, false);
   }
 
   public String getClusterName() {
@@ -740,5 +742,9 @@ public class VeniceRouterConfig {
 
   public int getRouterMultiGetDecompressionBatchSize() {
     return routerMultiGetDecompressionBatchSize;
+  }
+
+  public boolean isHttp2InboundEnabled() {
+    return http2InboundEnabled;
   }
 }

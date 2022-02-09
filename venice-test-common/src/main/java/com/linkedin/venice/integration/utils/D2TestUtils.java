@@ -13,6 +13,7 @@ import com.linkedin.d2.server.factory.D2Server;
 import com.linkedin.d2.spring.D2ServerManager;
 import com.linkedin.r2.transport.common.TransportClientFactory;
 import com.linkedin.r2.transport.http.client.HttpClientFactory;
+import com.linkedin.r2.transport.http.common.HttpProtocolVersion;
 import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
 import com.linkedin.venice.exceptions.VeniceException;
 
@@ -165,12 +166,19 @@ public class D2TestUtils {
   }
 
   public static D2Client getD2Client(String zkHosts, boolean https) {
+    return getD2Client(zkHosts, https, HttpProtocolVersion.HTTP_1_1);
+  }
 
+  public static D2Client getD2Client(String zkHosts, boolean https, HttpProtocolVersion httpProtocolVersion) {
     int sessionTimeout = 5000;
     String basePath = "/d2";
 
+    if (httpProtocolVersion.equals(HttpProtocolVersion.HTTP_2) && !https) {
+      throw new VeniceException("Param 'https' needs to be 'true' when enabling http/2");
+    }
     Map<String, TransportClientFactory> transportClients = new HashMap<>();
-    TransportClientFactory httpTransport = new HttpClientFactory();
+    TransportClientFactory httpTransport = new HttpClientFactory.Builder()
+        .setUsePipelineV2(true).setDefaultHttpVersion(httpProtocolVersion).build();
     transportClients.put("http", httpTransport);
     transportClients.put("https", httpTransport);
 
@@ -280,7 +288,7 @@ public class D2TestUtils {
     Map<String, Object> serviceMap = new HashMap<>();
     serviceMap.put("path", "/");
     if (https) {
-      serviceMap.put("prioritizedSchemes", Arrays.asList("https"));
+      serviceMap.put("prioritizedSchemes", Arrays.asList("https", "http"));
     } else {
       serviceMap.put("prioritizedSchemes", Arrays.asList("http"));
     }

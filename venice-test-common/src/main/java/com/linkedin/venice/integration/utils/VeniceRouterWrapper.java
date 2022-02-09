@@ -78,24 +78,28 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
       // setup d2 config first
       String d2 = D2TestUtils.getD2ServiceName(clusterToD2, clusterName);
 
+      VeniceProperties routerProperties = builder.build();
+      boolean https = false;
+      if (routerProperties.getBoolean(ROUTER_HTTP2_INBOUND_ENABLED, false)) {
+        https = true;
+      }
       List<D2Server> d2Servers;
       if (!D2TestUtils.DEFAULT_TEST_SERVICE_NAME.equals(d2)) {
-        D2TestUtils.setupD2Config(zkAddress, false, d2, d2, false);
+        D2TestUtils.setupD2Config(zkAddress, https, d2, d2, false);
         d2Servers = D2TestUtils.getD2Servers(
             zkAddress, new String[] {"http://localhost:" + port, "https://localhost:" + sslPort}, d2);
         // Also announce to the default service name (venice-discovery)
-        D2TestUtils.setupD2Config(zkAddress, false);
+        D2TestUtils.setupD2Config(zkAddress, https);
         d2Servers.addAll(D2TestUtils.getD2Servers(zkAddress, "http://localhost:" + port,
             "https://localhost:" + sslPort));
       } else {
-        D2TestUtils.setupD2Config(zkAddress, false);
+        D2TestUtils.setupD2Config(zkAddress, https);
         // Announce to d2 by default
         d2Servers = D2TestUtils.getD2Servers(
             zkAddress, "http://localhost:" + port, "https://localhost:" + sslPort);
       }
 
-      VeniceProperties routerProperties = builder.build();
-      RouterServer router = new RouterServer(routerProperties, d2Servers, Optional.empty(), Optional.of(SslUtils.getLocalSslFactory()));
+      RouterServer router = new RouterServer(routerProperties, d2Servers, Optional.empty(), Optional.of(H2SSLUtils.getLocalHttp2SslFactory()));
       return new VeniceRouterWrapper(serviceName, dataDirectory, router, routerProperties, zkAddress);
     };
   }

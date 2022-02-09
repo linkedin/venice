@@ -190,7 +190,7 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
 
         Optional<SSLEngineComponentFactory> sslFactory = Optional.empty();
         if (ssl) {
-          sslFactory = Optional.of(getLocalHttp2SslFactory());
+          sslFactory = Optional.of(H2SSLUtils.getLocalHttp2SslFactory());
         }
 
         TestVeniceServer server = new TestVeniceServer(veniceConfigLoader, new MetricsRepository(), sslFactory, Optional.empty(),
@@ -204,24 +204,6 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
         return veniceServerWrapper;
       }
     };
-  }
-
-  /**
-   * This function will return a http/2 compatible {@link SSLEngineComponentFactory}.
-   * TODO: let us use this factory everywhere.
-   */
-  private static SSLEngineComponentFactory getLocalHttp2SslFactory() throws Exception {
-    SSLEngineComponentFactoryImpl.Config sslEngineConfig = SslUtils.getLocalSslConfig();
-    SslEngineComponentFactoryImpl.Config http2SslEngineConfig = new SslEngineComponentFactoryImpl.Config();
-    http2SslEngineConfig.setSslEnabled(sslEngineConfig.getSslEnabled());
-    http2SslEngineConfig.setKeyStoreType(sslEngineConfig.getKeyStoreType());
-    http2SslEngineConfig.setKeyStoreData(sslEngineConfig.getKeyStoreData());
-    http2SslEngineConfig.setKeyStorePassword(sslEngineConfig.getKeyStorePassword());
-    http2SslEngineConfig.setKeyStoreFilePath(sslEngineConfig.getKeyStoreFilePath());
-    http2SslEngineConfig.setTrustStoreFilePath(sslEngineConfig.getTrustStoreFilePath());
-    http2SslEngineConfig.setTrustStoreFilePassword(sslEngineConfig.getTrustStoreFilePassword());
-
-    return new SslEngineComponentFactoryImpl(http2SslEngineConfig);
   }
 
   private static void joinClusterWhitelist(String zkAddress, String clusterName, int port)

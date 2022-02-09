@@ -1,5 +1,7 @@
 package com.linkedin.venice.router;
 
+import com.linkedin.d2.balancer.D2Client;
+import com.linkedin.r2.transport.http.common.HttpProtocolVersion;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.exceptions.VeniceClientHttpException;
@@ -12,6 +14,7 @@ import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
+import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.routerapi.ResourceStateResponse;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
@@ -67,6 +70,7 @@ public abstract class TestRead {
   private static final Logger logger = Logger.getLogger(TestRead.class);
   private VeniceClusterWrapper veniceCluster;
   private ControllerClient controllerClient;
+  private D2Client d2Client;
   private String storeVersionName;
   private int valueSchemaId;
   private String storeName;
@@ -88,6 +92,10 @@ public abstract class TestRead {
 
   protected boolean isTestEnabled() {
     return true;
+  }
+
+  protected boolean isRouterHttp2Enabled() {
+    return false;
   }
 
   @BeforeClass(alwaysRun = true)
@@ -126,6 +134,7 @@ public abstract class TestRead {
     extraProperties.put(ConfigKeys.ROUTER_MULTI_KEY_ROUTING_STRATEGY, HELIX_ASSISTED_ROUTING.name());
     extraProperties.put(ConfigKeys.ROUTER_HELIX_VIRTUAL_GROUP_FIELD_IN_DOMAIN, "zone");
     extraProperties.put(ConfigKeys.ROUTER_HTTP_CLIENT5_SKIP_CIPHER_CHECK_ENABLED, "true");
+    extraProperties.put(ConfigKeys.ROUTER_HTTP2_INBOUND_ENABLED, isRouterHttp2Enabled());
 
     veniceCluster = ServiceFactory.getVeniceCluster(1, 1, 1, 2, 100, true, false, extraProperties);
     routerAddr = veniceCluster.getRandomRouterSslURL();
@@ -159,6 +168,9 @@ public abstract class TestRead {
     valueSerializer = new VeniceAvroKafkaSerializer(VALUE_SCHEMA_STR);
 
     veniceWriter = TestUtils.getVeniceWriterFactory(veniceCluster.getKafka().getAddress()).createVeniceWriter(storeVersionName, keySerializer, valueSerializer);
+
+    d2Client = D2TestUtils.getD2Client(veniceCluster.getZk().getAddress(), true, isRouterHttp2Enabled() ? HttpProtocolVersion.HTTP_2 : HttpProtocolVersion.HTTP_1_1);
+    D2TestUtils.startD2Client(d2Client);
   }
 
 
@@ -176,6 +188,9 @@ public abstract class TestRead {
     }
     Utils.closeQuietlyWithErrorLogged(veniceCluster);
     Utils.closeQuietlyWithErrorLogged(veniceWriter);
+    if (d2Client != null) {
+      d2Client.shutdown(null);
+    }
   }
 
   @Test(timeOut = 50000, groups = {"flaky"})
@@ -212,9 +227,11 @@ public abstract class TestRead {
      */
     AvroGenericStoreClient<String, GenericRecord> storeClient = ClientFactory.getAndStartGenericAvroClient(
         ClientConfig.defaultGenericClientConfig(storeName)
-            .setVeniceURL(routerAddr)
-            .setSslEngineComponentFactory(SslUtils.getLocalSslFactory())
+            .setD2Client(d2Client)
+            .setD2ServiceName(D2TestUtils.DEFAULT_TEST_SERVICE_NAME)
     );
+
+
     // Run multiple rounds
     int rounds = 100;
     int cur = 0;

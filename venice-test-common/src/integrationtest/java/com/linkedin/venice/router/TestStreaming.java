@@ -1,5 +1,6 @@
 package com.linkedin.venice.router;
 
+import com.linkedin.r2.transport.http.common.HttpProtocolVersion;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
@@ -161,7 +162,7 @@ public class TestStreaming {
     Utils.closeQuietlyWithErrorLogged(compressorFactory);
   }
 
-  private Properties getRouterProperties(boolean enableStreaming, boolean enableNettyClient, boolean enableClientCompression) {
+  private Properties getRouterProperties(boolean enableStreaming, boolean enableNettyClient, boolean enableClientCompression, boolean routerH2Enabled) {
     // To trigger long-tail retry
     Properties routerProperties = new Properties();
     routerProperties.put(ConfigKeys.ROUTER_LONG_TAIL_RETRY_FOR_SINGLE_GET_THRESHOLD_MS, 1);
@@ -170,27 +171,29 @@ public class TestStreaming {
     routerProperties.put(ConfigKeys.ROUTER_STREAMING_ENABLED, Boolean.toString(enableStreaming));
     routerProperties.put(ConfigKeys.ROUTER_STORAGE_NODE_CLIENT_TYPE, enableNettyClient ? NETTY_4_CLIENT.name() : APACHE_HTTP_ASYNC_CLIENT.name());
     routerProperties.put(ConfigKeys.ROUTER_CLIENT_DECOMPRESSION_ENABLED, Boolean.toString(enableClientCompression));
+    routerProperties.put(ConfigKeys.ROUTER_HTTP2_INBOUND_ENABLED, Boolean.toString(routerH2Enabled));
 
     return routerProperties;
   }
 
   @DataProvider (name = "testReadStreamingDataProvider")
   private Object[][] testReadStreamingDataProvider() {
-    return new Object[][] {{true}, {false}};
+    return new Object[][] {{true, true}, {true, false},{false, true},{false, false}};
   }
 
   @Test(timeOut = 300 * 1000, dataProvider = "testReadStreamingDataProvider")
-  public void testReadStreaming(boolean enableStreaming) throws Exception {
+  public void testReadStreaming(boolean enableStreaming, boolean enableRouterHttp2) throws Exception {
     // Start a new router every time with the right config
     // With Apache HAC on Router with client compression enabled
-    VeniceRouterWrapper veniceRouterWrapperWithHttpAsyncClient = veniceCluster.addVeniceRouter(getRouterProperties(enableStreaming, false, true));
+    VeniceRouterWrapper veniceRouterWrapperWithHttpAsyncClient = veniceCluster.addVeniceRouter(getRouterProperties(enableStreaming, false, true, enableRouterHttp2));
     MetricsRepository routerMetricsRepositoryWithHttpAsyncClient = veniceRouterWrapperWithHttpAsyncClient.getMetricsRepository();
     // With Netty Client on Router with client compression disabled
-    VeniceRouterWrapper veniceRouterWrapperWithNettyClient = veniceCluster.addVeniceRouter(getRouterProperties(enableStreaming, true, false));
+    VeniceRouterWrapper veniceRouterWrapperWithNettyClient = veniceCluster.addVeniceRouter(getRouterProperties(enableStreaming, true, false, enableRouterHttp2));
     MetricsRepository routerMetricsRepositoryWithNettyClient = veniceRouterWrapperWithNettyClient.getMetricsRepository();
     try {
       // test with D2 store client, since streaming support is only available with D2 client so far.
-      D2Client d2Client = D2TestUtils.getAndStartD2Client(veniceCluster.getZk().getAddress());
+      D2Client d2Client = D2TestUtils.getD2Client(veniceCluster.getZk().getAddress(), true, enableRouterHttp2 ? HttpProtocolVersion.HTTP_2 : HttpProtocolVersion.HTTP_1_1);
+      D2TestUtils.startD2Client(d2Client);
       MetricsRepository d2ClientMetricsRepository = new MetricsRepository();
       AvroGenericStoreClient d2StoreClient = ClientFactory.getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName)
           .setD2ServiceName(D2TestUtils.DEFAULT_TEST_SERVICE_NAME)
