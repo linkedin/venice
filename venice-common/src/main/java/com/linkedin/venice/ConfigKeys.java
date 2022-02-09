@@ -1374,6 +1374,12 @@ public class ConfigKeys {
   public static final String ROUTER_PER_NODE_CLIENT_THREAD_COUNT = "router.per.node.client.thread.count";
 
   /**
+   * Whether to support http/2 inbound request.
+   * When this feature is enabled, the Router will support both http/1.1 and http/2.
+   */
+  public static final String ROUTER_HTTP2_INBOUND_ENABLED = "router.http2.inbound.enabled";
+
+  /**
    * In Leader/Follower state transition model, in order to avoid split brain problem (multiple leaders) as much as possible,
    * the newly promoted leader should keep checking whether there is any new messages from the old leader in the version
    * topic, and wait for some time (5 minutes by default) after the last message consumed before switching to leader role

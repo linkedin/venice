@@ -539,6 +539,7 @@ public class RouterServer extends AbstractVeniceService {
     AdminOperationsStats adminOperationsStats = new AdminOperationsStats(this.metricsRepository, "admin_stats", config);
     AdminOperationsHandler adminOperationsHandler = new AdminOperationsHandler(accessController.orElse(null), this, adminOperationsStats);
 
+    // TODO: deprecate non-ssl port
     if (!config.isEnforcingSecureOnly()) {
       router = Optional.of(Router.builder(scatterGather)
           .name("VeniceRouterHttp")
@@ -558,6 +559,7 @@ public class RouterServer extends AbstractVeniceService {
             addOptionalChannelHandlersToPipeline(pipeline);
           })
           .idleTimeout(3, TimeUnit.HOURS)
+          .enableInboundHttp2(config.isHttp2InboundEnabled())
           .build());
     }
 
@@ -591,7 +593,14 @@ public class RouterServer extends AbstractVeniceService {
     RouterThrottleHandler routerThrottleHandler = new RouterThrottleHandler(routerThrottleStats, routerEarlyThrottler, config);
     Consumer<ChannelPipeline> withoutAcl = pipeline -> {
       pipeline.addLast("HealthCheckHandler", secureRouterHealthCheckHander);
-      pipeline.addLast("VerifySslHandler", routerSslVerificationHandler);
+      if (!config.isHttp2InboundEnabled()) {
+        /**
+         * Disable ssl handler verification for http2 request since the invocation: {@link com.linkedin.ddsstorage.netty4.handlers.BasicServerChannelInitializer#afterHttpServerCodec}
+         * invocation in {@link com.linkedin.ddsstorage.netty4.handlers.BasicServerChannelInitializer#createHttp2PipelineInitializer}
+         * won't put ssl handler as part of the new pipeline since ssl handler will be added before HttpServerCodec handler.
+         */
+        pipeline.addLast("VerifySslHandler", routerSslVerificationHandler);
+      }
       pipeline.addLast("MetadataHandler", metaDataHandler);
       pipeline.addLast("AdminOperationsHandler", adminOperationsHandler);
       pipeline.addLast("RouterThrottleHandler", routerThrottleHandler);
@@ -600,7 +609,9 @@ public class RouterServer extends AbstractVeniceService {
     };
     Consumer<ChannelPipeline> withAcl = pipeline -> {
       pipeline.addLast("HealthCheckHandler", secureRouterHealthCheckHander);
-      pipeline.addLast("VerifySslHandler", routerSslVerificationHandler);
+      if (!config.isHttp2InboundEnabled()) {
+        pipeline.addLast("VerifySslHandler", routerSslVerificationHandler);
+      }
       pipeline.addLast("MetadataHandler", metaDataHandler);
       pipeline.addLast("AdminOperationsHandler", adminOperationsHandler);
       pipeline.addLast("StoreAclHandler", aclHandler);
@@ -620,6 +631,7 @@ public class RouterServer extends AbstractVeniceService {
         .beforeHttpServerCodec(ChannelPipeline.class, sslFactory.isPresent() ? addSslInitializer : noop)  // Compare once per router. Previously compared once per request.
         .beforeHttpRequestHandler(ChannelPipeline.class, accessController.isPresent() ? withAcl : withoutAcl) // Compare once per router. Previously compared once per request.
         .idleTimeout(3, TimeUnit.HOURS)
+        .enableInboundHttp2(config.isHttp2InboundEnabled())
         .build();
 
     boolean asyncStart = config.isAsyncStartEnabled();
