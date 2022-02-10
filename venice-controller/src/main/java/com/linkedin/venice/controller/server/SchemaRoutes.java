@@ -65,7 +65,7 @@ public class SchemaRoutes extends AbstractRoute {
       response.type(HttpConstants.JSON);
       try {
         // Only allow whitelist users to run this command
-        if (!isWhitelistUsers(request) && !hasWriteAccessToTopic(request)) {
+        if (!isAllowListUser(request) && !hasWriteAccessToTopic(request)) {
           response.status(HttpStatus.SC_FORBIDDEN);
           responseObject.setError("User is neither Admin nor has write access to topic to run " + request.url());
           return AdminSparkServer.mapper.writeValueAsString(responseObject);
@@ -96,7 +96,7 @@ public class SchemaRoutes extends AbstractRoute {
       response.type(HttpConstants.JSON);
       try {
         // Only allow whitelist users to run this command
-        if (!isWhitelistUsers(request)) {
+        if (!isAllowListUser(request)) {
           response.status(HttpStatus.SC_FORBIDDEN);
           responseObject.setError("Only admin users are allowed to run " + request.url());
           return AdminSparkServer.mapper.writeValueAsString(responseObject);
@@ -312,7 +312,7 @@ public class SchemaRoutes extends AbstractRoute {
       response.type(HttpConstants.JSON);
       try {
         // Only allow whitelist users to run this command
-        if (!isWhitelistUsers(request)) {
+        if (!isAllowListUser(request)) {
           response.status(HttpStatus.SC_FORBIDDEN);
           responseObject.setError("Only admin users are allowed to run " + request.url());
           return AdminSparkServer.mapper.writeValueAsString(responseObject);

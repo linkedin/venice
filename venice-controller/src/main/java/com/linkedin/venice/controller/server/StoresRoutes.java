@@ -1,6 +1,5 @@
 package com.linkedin.venice.controller.server;
 
-import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.AdminCommandExecutionTracker;
@@ -258,7 +257,7 @@ public class StoresRoutes extends AbstractRoute {
       @Override
       public void internalHandle(Request request, StoreMigrationResponse veniceResponse) {
         // Only allow whitelist users to run this command
-        if (!isWhitelistUsers(request)) {
+        if (!isAllowListUser(request)) {
           veniceResponse.setError("Only admin users are allowed to run " + request.url());
           return;
         }
@@ -294,7 +293,7 @@ public class StoresRoutes extends AbstractRoute {
       @Override
       public void internalHandle(Request request, StoreMigrationResponse veniceResponse) {
         // Only allow whitelist users to run this command
-        if (!isWhitelistUsers(request)) {
+        if (!isAllowListUser(request)) {
           veniceResponse.setError("Only admin users are allowed to run " + request.url());
           return;
         }
@@ -331,7 +330,7 @@ public class StoresRoutes extends AbstractRoute {
       public void internalHandle(Request request, StoreMigrationResponse veniceResponse) {
         try {
           // Only allow whitelist users to run this command
-          if (!isWhitelistUsers(request)) {
+          if (!isAllowListUser(request)) {
             veniceResponse.setError("Only admin users are allowed to run " + request.url());
             return;
           }
@@ -361,7 +360,7 @@ public class StoresRoutes extends AbstractRoute {
       @Override
       public void internalHandle(Request request, TrackableControllerResponse veniceResponse) {
         // Only allow whitelist users to run this command
-        if (!isWhitelistUsers(request)) {
+        if (!isAllowListUser(request)) {
           veniceResponse.setError("Only admin users are allowed to run " + request.url());
           return;
         }
@@ -392,7 +391,7 @@ public class StoresRoutes extends AbstractRoute {
       @Override
       public void internalHandle(Request request, ControllerResponse veniceResponse) {
         // Only allow whitelist users to run this command
-        if (!isWhitelistUsers(request)) {
+        if (!isAllowListUser(request)) {
           veniceResponse.setError("Only admin users are allowed to run " + request.url());
           return;
         }
@@ -420,7 +419,7 @@ public class StoresRoutes extends AbstractRoute {
       @Override
       public void internalHandle(Request request, OwnerResponse veniceResponse) {
         // Only admin users are allowed to update owners; regular user can do it through Nuage
-        if (!isWhitelistUsers(request)) {
+        if (!isAllowListUser(request)) {
           veniceResponse.setError("ACL failed for request " + request.url());
           return;
         }
@@ -451,7 +450,7 @@ public class StoresRoutes extends AbstractRoute {
       @Override
       public void internalHandle(Request request, VersionResponse veniceResponse) {
         // Only allow whitelist users to run this command
-        if (!isWhitelistUsers(request)) {
+        if (!isAllowListUser(request)) {
           veniceResponse.setError("Only admin users are allowed to run " + request.url());
           return;
         }
@@ -476,7 +475,7 @@ public class StoresRoutes extends AbstractRoute {
       @Override
       public void internalHandle(Request request, ControllerResponse veniceResponse) {
         // Only allow whitelist users to run this command
-        if (!isWhitelistUsers(request)) {
+        if (!isAllowListUser(request)) {
           veniceResponse.setError("Only admin users are allowed to run " + request.url());
           return;
         }
@@ -507,7 +506,7 @@ public class StoresRoutes extends AbstractRoute {
       @Override
       public void internalHandle(Request request, MultiVersionResponse veniceResponse) {
         // Only allow whitelist users to run this command
-        if (!isWhitelistUsers(request)) {
+        if (!isAllowListUser(request)) {
           veniceResponse.setError("Only admin users are allowed to run " + request.url());
           return;
         }
@@ -543,7 +542,7 @@ public class StoresRoutes extends AbstractRoute {
       @Override
       public void internalHandle(Request request, VersionResponse veniceResponse) {
         // Only allow whitelist users to run this command
-        if (!isWhitelistUsers(request)) {
+        if (!isAllowListUser(request)) {
           veniceResponse.setError("Only admin users are allowed to run " + request.url());
           return;
         }
@@ -601,7 +600,7 @@ public class StoresRoutes extends AbstractRoute {
       @Override
       public void internalHandle(Request request, MultiStoreResponse veniceResponse) {
         // Only allow whitelist users to run this command
-        if (!isWhitelistUsers(request)) {
+        if (!isAllowListUser(request)) {
           veniceResponse.setError("Only admin users are allowed to run " + request.url());
           return;
         }
@@ -661,7 +660,7 @@ public class StoresRoutes extends AbstractRoute {
       @Override
       public void internalHandle(Request request, ControllerResponse veniceResponse) {
         // Only allow whitelist users to run this command
-        if (!isWhitelistUsers(request)) {
+        if (!isAllowListUser(request)) {
           veniceResponse.setError("Only admin users are allowed to run " + request.url());
           return;
         }
@@ -692,7 +691,7 @@ public class StoresRoutes extends AbstractRoute {
       @Override
       public void internalHandle(Request request, ControllerResponse veniceResponse) {
         // Only allow whitelist users to run this command
-        if (!isWhitelistUsers(request)) {
+        if (!isAllowListUser(request)) {
           veniceResponse.setError("Only admin users are allowed to run " + request.url());
           return;
         }
@@ -721,7 +720,7 @@ public class StoresRoutes extends AbstractRoute {
       @Override
       public void internalHandle(Request request, ControllerResponse veniceResponse) {
         // Only allow whitelist users to run this command
-        if (!isWhitelistUsers(request)) {
+        if (!isAllowListUser(request)) {
           veniceResponse.setError("Only admin users are allowed to run " + request.url());
           return;
         }
@@ -750,7 +749,7 @@ public class StoresRoutes extends AbstractRoute {
     return new VeniceRouteHandler<StoreResponse>(StoreResponse.class) {
       @Override
       public void internalHandle(Request request, StoreResponse veniceResponse) {
-        if(!isWhitelistUsers(request)) {
+        if(!isAllowListUser(request)) {
           veniceResponse.setError("Access Denied!! Only admins can change topic compaction policy!");
           return;
         }

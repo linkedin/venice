@@ -288,7 +288,7 @@ public class ServiceFactory {
     return getService("MockAdminSparkServer", (serviceName) -> {
       Set<String> clusters = new HashSet<String>();
       clusters.add(cluster);
-      AdminSparkServer server = new AdminSparkServer(Utils.getFreePort(), admin, new MetricsRepository(), clusters, false, Optional.empty(), false, Optional.empty(), Collections.emptyList(), null);
+      AdminSparkServer server = new AdminSparkServer(Utils.getFreePort(), admin, new MetricsRepository(), clusters, false, Optional.empty(), false, Optional.empty(), Collections.emptyList(), null, false);
       server.start();
       return server;
     });
@@ -298,7 +298,7 @@ public class ServiceFactory {
     return getService("MockAdminSparkServer", (serviceName) -> {
       Set<String> clusters = new HashSet<String>();
       clusters.add(cluster);
-      AdminSparkServer server = new AdminSparkServer(Utils.getFreePort(), admin, new MetricsRepository(), clusters, false, Optional.empty(), false, Optional.empty(), bannedRoutes, null);
+      AdminSparkServer server = new AdminSparkServer(Utils.getFreePort(), admin, new MetricsRepository(), clusters, false, Optional.empty(), false, Optional.empty(), bannedRoutes, null, false);
       server.start();
       return server;
     });

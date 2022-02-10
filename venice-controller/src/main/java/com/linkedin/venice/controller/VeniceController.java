@@ -98,7 +98,9 @@ public class VeniceController {
         false,
         Optional.empty(),
         multiClusterConfigs.getDisabledRoutes(),
-        multiClusterConfigs.getCommonConfig().getJettyConfigOverrides());
+        multiClusterConfigs.getCommonConfig().getJettyConfigOverrides(),
+        // TODO: Builder pattern or just pass the config object here?
+        multiClusterConfigs.getCommonConfig().isDisableParentRequestTopicForStreamPushes());
     if (sslEnabled) {
       /**
        * SSL enabled AdminSparkServer uses a different port number than the regular service.
@@ -113,7 +115,8 @@ public class VeniceController {
           multiClusterConfigs.adminCheckReadMethodForKafka(),
           accessController,
           multiClusterConfigs.getDisabledRoutes(),
-          multiClusterConfigs.getCommonConfig().getJettyConfigOverrides());
+          multiClusterConfigs.getCommonConfig().getJettyConfigOverrides(),
+          multiClusterConfigs.getCommonConfig().isDisableParentRequestTopicForStreamPushes());
     }
     storeBackupVersionCleanupService = Optional.empty();
     if (multiClusterConfigs.isParent()) {

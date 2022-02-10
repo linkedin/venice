@@ -76,7 +76,8 @@ public class CreateVersionTest {
     /**
      * Build a CreateVersion route.
      */
-    CreateVersion createVersion = new CreateVersion(Optional.of(accessClient), checkReadMethod);
+    CreateVersion createVersion = new CreateVersion(Optional.of(accessClient), checkReadMethod,
+        false);
     Route createVersionRoute = createVersion.requestTopicForPushing(admin);
 
     // Not a whitelist user.
@@ -139,7 +140,7 @@ public class CreateVersionTest {
     partitionerConfig.setAmplificationFactor(2);
     when(store.getPartitionerConfig()).thenReturn(partitionerConfig);
     when(admin.getStore(any(), any())).thenReturn(store);
-    CreateVersion createVersion = new CreateVersion(Optional.empty(), false);
+    CreateVersion createVersion = new CreateVersion(Optional.empty(), false, false);
     Route createVersionRoute = createVersion.requestTopicForPushing(admin);
 
     Request request = mock(Request.class);
@@ -228,7 +229,7 @@ public class CreateVersionTest {
     /**
      * Build a CreateVersion route.
      */
-    CreateVersion createVersion = new CreateVersion(Optional.of(accessClient), false);
+    CreateVersion createVersion = new CreateVersion(Optional.of(accessClient), false, false);
     Route createVersionRoute = createVersion.requestTopicForPushing(admin);
 
     doReturn(true).when(accessClient).isWhitelistUsers(certificate, storeName, HTTP_GET);

@@ -63,10 +63,12 @@ public class AdminSparkServer extends AbstractVeniceService {
 
   private final List<ControllerRoute> disabledRoutes;
 
+  private final boolean disableParentRequestTopicForStreamPushes;
+
 
   public AdminSparkServer(int port, Admin admin, MetricsRepository metricsRepository, Set<String> clusters, boolean enforceSSL,
       Optional<SSLConfig> sslConfig, boolean checkReadMethodForKafka, Optional<DynamicAccessController> accessController,
-      List<ControllerRoute> disabledRoutes, VeniceProperties jettyConfigOverrides) {
+      List<ControllerRoute> disabledRoutes, VeniceProperties jettyConfigOverrides, boolean disableParentRequestTopicForStreamPushes) {
     this.port = port;
     this.enforceSSL = enforceSSL;
     this.sslEnabled = sslConfig.isPresent();
@@ -88,6 +90,7 @@ public class AdminSparkServer extends AbstractVeniceService {
 
     httpService = Service.ignite();
     this.disabledRoutes = disabledRoutes;
+    this.disableParentRequestTopicForStreamPushes = disableParentRequestTopicForStreamPushes;
   }
 
   @Override
@@ -163,7 +166,8 @@ public class AdminSparkServer extends AbstractVeniceService {
     StoresRoutes storesRoutes = new StoresRoutes(accessController);
     JobRoutes jobRoutes = new JobRoutes(accessController);
     SkipAdminRoute skipAdminRoute = new SkipAdminRoute(accessController);
-    CreateVersion createVersion = new CreateVersion(accessController, this.checkReadMethodForKafka);
+    CreateVersion createVersion = new CreateVersion(accessController, this.checkReadMethodForKafka,
+        disableParentRequestTopicForStreamPushes);
     CreateStore createStoreRoute = new CreateStore(accessController);
     NodesAndReplicas nodesAndReplicas = new NodesAndReplicas(accessController);
     SchemaRoutes schemaRoutes = new SchemaRoutes(accessController);

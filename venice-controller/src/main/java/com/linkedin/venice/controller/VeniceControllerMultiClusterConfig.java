@@ -101,6 +101,10 @@ public class VeniceControllerMultiClusterConfig {
     return getCommonConfig().getKafkaZkAddress();
   }
 
+  public boolean isDisableParentRequestTopicForStreamPushes() {
+    return getCommonConfig().isDisableParentRequestTopicForStreamPushes();
+  }
+
   public long getDeprecatedJobTopicRetentionMs() {
     return getCommonConfig().getDeprecatedJobTopicRetentionMs();
   }

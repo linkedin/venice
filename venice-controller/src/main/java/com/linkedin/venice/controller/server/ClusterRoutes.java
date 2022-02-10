@@ -5,11 +5,9 @@ import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.StoreMigrationResponse;
 import com.linkedin.venice.controllerapi.UpdateClusterConfigQueryParams;
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.Utils;
 import java.util.Map;
 import java.util.Optional;
-import java.util.stream.Collectors;
 import spark.Request;
 import spark.Route;
 
@@ -27,7 +25,7 @@ public class ClusterRoutes  extends AbstractRoute {
       @Override
       public void internalHandle(Request request, ControllerResponse veniceResponse) {
         // Only allow whitelist users to run this command
-        if (!isWhitelistUsers(request)) {
+        if (!isAllowListUser(request)) {
           veniceResponse.setError("Only admin users are allowed to run " + request.url());
           return;
         }
@@ -52,7 +50,7 @@ public class ClusterRoutes  extends AbstractRoute {
       @Override
       public void internalHandle(Request request, StoreMigrationResponse veniceResponse) {
         // Only allow whitelist users to run this command
-        if (!isWhitelistUsers(request)) {
+        if (!isAllowListUser(request)) {
           veniceResponse.setError("Only admin users are allowed to run " + request.url());
           return;
         }
@@ -69,7 +67,7 @@ public class ClusterRoutes  extends AbstractRoute {
       @Override
       public void internalHandle(Request request, ControllerResponse veniceResponse) {
         // Only allow whitelist users to run this command
-        if (!isWhitelistUsers(request)) {
+        if (!isAllowListUser(request)) {
           veniceResponse.setError("Only admin users are allowed to run " + request.url());
           return;
         }

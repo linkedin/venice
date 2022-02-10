@@ -206,6 +206,13 @@ public class VeniceControllerClusterConfig {
    */
   private VeniceProperties jettyConfigOverrides;
 
+  /**
+   * Config which disables request_topic calls to the parent controller for stream pushes.  This is meant to discourage
+   * the use of the parent colo for aggregating pushed data, users should instead push to their local colo and allow
+   * Venice AA to aggregate the data.
+   */
+  private boolean disableParentRequestTopicForStreamPushes;
+
   public VeniceControllerClusterConfig(VeniceProperties props) {
     try {
       this.props = props;
@@ -217,7 +224,6 @@ public class VeniceControllerClusterConfig {
       throw new VeniceException(errorMessage, e);
     }
   }
-
   private void initFieldsWithProperties(VeniceProperties props) {
     clusterName = props.getString(CLUSTER_NAME);
     zkAddress = props.getString(ZOOKEEPER_ADDRESS);
@@ -340,6 +346,7 @@ public class VeniceControllerClusterConfig {
     }
     this.leakedPushStatusCleanUpServiceSleepIntervalInMs = props.getLong(LEAKED_PUSH_STATUS_CLEAN_UP_SERVICE_SLEEP_INTERVAL_MS, TimeUnit.MINUTES.toMillis(15));
     this.jettyConfigOverrides = props.clipAndFilterNamespace(CONTROLLER_JETTY_CONFIG_OVERRIDE_PREFIX);
+    this.disableParentRequestTopicForStreamPushes = props.getBoolean(CONTROLLER_DISABLE_PARENT_REQUEST_TOPIC_FOR_STREAM_PUSHES, false);
   }
 
   public VeniceProperties getProps() {
@@ -392,6 +399,10 @@ public class VeniceControllerClusterConfig {
 
   public long getPartitionSize() {
     return partitionSize;
+  }
+
+  public boolean isDisableParentRequestTopicForStreamPushes() {
+    return disableParentRequestTopicForStreamPushes;
   }
 
   public int getMaxNumberOfPartition() {
