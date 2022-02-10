@@ -1887,7 +1887,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   public Optional<PartitionConsumptionState> getPartitionConsumptionState(int partitionId) {
-    return Optional.of(partitionConsumptionStateMap.get(partitionId));
+    return Optional.ofNullable(partitionConsumptionStateMap.get(partitionId));
   }
 
   /**
