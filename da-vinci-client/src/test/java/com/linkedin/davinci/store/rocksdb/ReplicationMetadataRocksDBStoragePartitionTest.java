@@ -321,7 +321,7 @@ public class ReplicationMetadataRocksDBStoragePartitionTest extends AbstractStor
         checkpointingInfo = storagePartition.sync();
         if (sorted) {
           Assert.assertEquals(checkpointingInfo.get(RocksDBSstFileWriter.ROCKSDB_LAST_FINISHED_SST_FILE_NO),
-              new Integer(currentFileNo++).toString());
+              Integer.valueOf(currentFileNo++).toString());
         } else {
           Assert.assertTrue(checkpointingInfo.isEmpty(), "For non-deferred-write database, sync() should return empty map");
         }

@@ -128,7 +128,8 @@ public class ParticipantStoreTest {
     assertTrue(metrics.get(metricPrefix + "--kill_push_job_latency.Avg").value() > 0);
     // One from the server stats and the other from the client stats.
     assertTrue(metrics.get("." + requestMetricExample).value() > 0);
-    assertTrue(metrics.get(".venice-client." + requestMetricExample).value() > 0);
+    // "." will be replaced by "_" in AbstractVeniceStats constructor to ensure Tahuti is able to parse metric name by ".".
+    assertTrue(metrics.get(".venice-client_" + requestMetricExample).value() > 0);
   }
 
 

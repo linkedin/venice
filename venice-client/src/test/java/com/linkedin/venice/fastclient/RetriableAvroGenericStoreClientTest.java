@@ -30,7 +30,7 @@ public class RetriableAvroGenericStoreClientTest {
   private TimeoutProcessor timeoutProcessor;
 
   @BeforeClass
-  public void setup() {
+  public void setUp() {
     timeoutProcessor = new TimeoutProcessor(null, true, 1);
   }
 
