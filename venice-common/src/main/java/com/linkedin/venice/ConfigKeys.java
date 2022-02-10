@@ -1690,6 +1690,11 @@ public class ConfigKeys {
   public static final String CLIENT_USE_DA_VINCI_BASED_SYSTEM_STORE_REPOSITORY = "client.use.da.vinci.based.system.store.repository";
 
   /**
+   *
+   */
+  public static final String CONTROLLER_DISABLE_PARENT_REQUEST_TOPIC_FOR_STREAM_PUSHES = "controller.disable.parent.request.topic.for.stream.pushes";
+
+  /**
    * This config specifies the client to use thin client meta system store based repository.
    */
   public static final String CLIENT_USE_META_SYSTEM_STORE_REPOSITORY = "client.use.meta.system.store.repository";

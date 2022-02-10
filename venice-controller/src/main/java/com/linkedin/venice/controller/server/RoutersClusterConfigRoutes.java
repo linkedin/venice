@@ -23,7 +23,7 @@ public class RoutersClusterConfigRoutes extends AbstractRoute {
       @Override
       public void internalHandle(Request request, ControllerResponse veniceResponse) {
         // Only allow whitelist users to run this command
-        if (!isWhitelistUsers(request)) {
+        if (!isAllowListUser(request)) {
           veniceResponse.setError("Only admin users are allowed to run " + request.url());
           return;
         }
@@ -42,7 +42,7 @@ public class RoutersClusterConfigRoutes extends AbstractRoute {
       @Override
       public void internalHandle(Request request, ControllerResponse veniceResponse) {
         // Only allow whitelist users to run this command
-        if (!isWhitelistUsers(request)) {
+        if (!isAllowListUser(request)) {
           veniceResponse.setError("Only admin users are allowed to run " + request.url());
           return;
         }
@@ -61,7 +61,7 @@ public class RoutersClusterConfigRoutes extends AbstractRoute {
       @Override
       public void internalHandle(Request request, ControllerResponse veniceResponse) {
         // Only allow whitelist users to run this command
-        if (!isWhitelistUsers(request)) {
+        if (!isAllowListUser(request)) {
           veniceResponse.setError("Only admin users are allowed to run " + request.url());
           return;
         }
@@ -82,7 +82,7 @@ public class RoutersClusterConfigRoutes extends AbstractRoute {
       @Override
       public void internalHandle(Request request, RoutersClusterConfigResponse veniceResponse) {
         // Only allow whitelist users to run this command
-        if (!isWhitelistUsers(request)) {
+        if (!isAllowListUser(request)) {
           veniceResponse.setError("Only admin users are allowed to run " + request.url());
           return;
         }

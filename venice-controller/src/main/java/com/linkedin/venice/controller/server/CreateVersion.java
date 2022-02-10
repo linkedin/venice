@@ -44,10 +44,13 @@ import static com.linkedin.venice.meta.Version.*;
 public class CreateVersion extends AbstractRoute {
   private static final Logger LOGGER = LogManager.getLogger(CreateVersion.class);
   private final boolean checkReadMethodForKafka;
+  private final boolean disableParentRequestTopicForStreamPushes;
 
-  public CreateVersion(Optional<DynamicAccessController> accessController, boolean checkReadMethodForKafka) {
+  public CreateVersion(Optional<DynamicAccessController> accessController, boolean checkReadMethodForKafka,
+      boolean disableParentRequestTopicForStreamPushes) {
     super(accessController);
     this.checkReadMethodForKafka = checkReadMethodForKafka;
+    this.disableParentRequestTopicForStreamPushes = disableParentRequestTopicForStreamPushes;
   }
 
   /**
@@ -63,8 +66,8 @@ public class CreateVersion extends AbstractRoute {
       VersionCreationResponse responseObject = new VersionCreationResponse();
       response.type(HttpConstants.JSON);
       try {
-        // Also allow whitelist users to run this command
-        if (!isWhitelistUsers(request)
+        // Also allow allowList users to run this command
+        if (!isAllowListUser(request)
             && (!hasWriteAccessToTopic(request) || (this.checkReadMethodForKafka && !hasReadAccessToTopic(request))))
         {
           response.status(HttpStatus.SC_FORBIDDEN);
@@ -350,6 +353,12 @@ public class CreateVersion extends AbstractRoute {
           case STREAM:
 
             if (admin.isParent()) {
+
+              // Conditionally check if the controller allows for fetching this information
+              if (disableParentRequestTopicForStreamPushes) {
+                throw new VeniceException(String.format("Parent request topic is disabled!!  Cannot push data to topic in parent colo for store %s.  Aborting!!", storeName));
+              }
+
               // Conditionally check if this store has aggregate mode enabled.  If not, throw an exception (as aggregate mode is required to produce to parent colo)
               // We check the store config instead of the version config because we want this policy to go into affect without needing to perform empty pushes everywhere
               if (!store.getHybridStoreConfig().getDataReplicationPolicy().equals(DataReplicationPolicy.AGGREGATE)) {
@@ -411,7 +420,7 @@ public class CreateVersion extends AbstractRoute {
       response.type(HttpConstants.JSON);
       try {
         // Also allow whitelist users to run this command
-        if (!isWhitelistUsers(request) && !hasWriteAccessToTopic(request)) {
+        if (!isAllowListUser(request) && !hasWriteAccessToTopic(request)) {
           response.status(HttpStatus.SC_FORBIDDEN);
           responseObject.setError("ACL failed for request " + request.url());
           return AdminSparkServer.mapper.writeValueAsString(responseObject);
@@ -469,7 +478,7 @@ public class CreateVersion extends AbstractRoute {
       response.type(HttpConstants.JSON);
       try {
         // Also allow whitelist users to run this command
-        if (!isWhitelistUsers(request) && !hasWriteAccessToTopic(request)) {
+        if (!isAllowListUser(request) && !hasWriteAccessToTopic(request)) {
           response.status(HttpStatus.SC_FORBIDDEN);
           responseObject.setError("ACL failed for request " + request.url());
           return AdminSparkServer.mapper.writeValueAsString(responseObject);
@@ -497,7 +506,7 @@ public class CreateVersion extends AbstractRoute {
       response.type(HttpConstants.JSON);
       try {
         // Also allow whitelist users to run this command
-        if (!isWhitelistUsers(request) && !hasWriteAccessToTopic(request)) {
+        if (!isAllowListUser(request) && !hasWriteAccessToTopic(request)) {
           response.status(HttpStatus.SC_FORBIDDEN);
           responseObject.setError("You don't have permission to end this push job; please grant write ACL for yourself.");
           return AdminSparkServer.mapper.writeValueAsString(responseObject);
@@ -531,7 +540,7 @@ public class CreateVersion extends AbstractRoute {
       Version version = null;
       try {
         // Only allow whitelist users to run this command
-        if (!isWhitelistUsers(request)) {
+        if (!isAllowListUser(request)) {
           response.status(HttpStatus.SC_FORBIDDEN);
           responseObject.setError("Only admin users are allowed to run " + request.url());
           return AdminSparkServer.mapper.writeValueAsString(responseObject);

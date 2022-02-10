@@ -117,9 +117,9 @@ public class AbstractRoute {
   }
 
   /**
-   * Check whether the user is within the admin users whitelist.
+   * Check whether the user is within the admin users allowlist.
    */
-  protected boolean isWhitelistUsers(Request request) {
+  protected boolean isAllowListUser(Request request) {
     if (!isAclEnabled()) {
       /**
        * Grant access if it's not required to check ACL.

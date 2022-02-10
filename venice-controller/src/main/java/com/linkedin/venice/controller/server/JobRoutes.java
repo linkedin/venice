@@ -99,7 +99,7 @@ public class JobRoutes extends AbstractRoute {
       response.type(HttpConstants.JSON);
       try {
         // Also allow whitelist users to run this command
-        if (!isWhitelistUsers(request) && !hasWriteAccessToTopic(request)) {
+        if (!isAllowListUser(request) && !hasWriteAccessToTopic(request)) {
           response.status(HttpStatus.SC_FORBIDDEN);
           responseObject.setError(
               "You don't have permission to kill this push job; please grant write ACL for yourself.");
