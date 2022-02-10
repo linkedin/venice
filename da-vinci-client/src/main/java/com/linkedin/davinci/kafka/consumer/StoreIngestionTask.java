@@ -2470,12 +2470,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     reportStatusAdapter.reportStartOfIncrementalPushReceived(partitionConsumptionState, startVersion.toString());
   }
 
-  protected void processEndOfIncrementalPush(ControlMessage endOfIncrementalPush, int partition, long upstreamOffset,
-      PartitionConsumptionState partitionConsumptionState) {
+  protected void processEndOfIncrementalPush(KafkaMessageEnvelope kafkaMessageEnvelope, ControlMessage endOfIncrementalPush,
+      int partition, long upstreamOffset, PartitionConsumptionState partitionConsumptionState) {
     // TODO: it is possible that we could turn incremental store to be read-only when incremental push is done
     CharSequence endVersion = ((EndOfIncrementalPush) endOfIncrementalPush.controlMessageUnion).version;
     // Reset incremental push version
     partitionConsumptionState.setIncrementalPush(null);
+    partitionConsumptionState.setEndOfIncrementalPushTimestamp(endVersion.toString(),
+        kafkaMessageEnvelope.producerMetadata.messageTimestamp);
     reportStatusAdapter.reportEndOfIncrementalPushReceived(partitionConsumptionState, endVersion.toString());
   }
 
@@ -2523,7 +2525,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         processStartOfIncrementalPush(controlMessage, partition, offset, partitionConsumptionState);
         break;
       case END_OF_INCREMENTAL_PUSH:
-        processEndOfIncrementalPush(controlMessage, partition, offset, partitionConsumptionState);
+        processEndOfIncrementalPush(kafkaMessageEnvelope, controlMessage, partition, offset, partitionConsumptionState);
         break;
       case TOPIC_SWITCH:
         processTopicSwitch(controlMessage, partition, offset, partitionConsumptionState);
@@ -3733,7 +3735,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     public void reportEndOfIncrementalPushReceived(PartitionConsumptionState partitionConsumptionState, String version) {
       report(partitionConsumptionState, SubPartitionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED, Optional.of(version),
-          () -> notificationDispatcher.reportEndOfIncrementalPushRecived(partitionConsumptionState, version));
+          () -> notificationDispatcher.reportEndOfIncrementalPushReceived(partitionConsumptionState, version));
     }
 
     public void reportProgress(PartitionConsumptionState partitionConsumptionState) {

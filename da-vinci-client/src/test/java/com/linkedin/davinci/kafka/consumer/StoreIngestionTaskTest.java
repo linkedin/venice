@@ -1877,7 +1877,7 @@ public class StoreIngestionTaskTest {
 
         //since notifier reporting happens before offset update, it actually reports previous offsets
         verify(mockLogNotifier, atLeastOnce()).endOfPushReceived(topic, PARTITION_FOO, fooOffset);
-        verify(mockLogNotifier, atLeastOnce()).endOfIncrementalPushReceived(topic, PARTITION_FOO, fooNewOffset, version);
+        verify(mockLogNotifier, atLeastOnce()).endOfIncrementalPushReceived(eq(topic), eq(PARTITION_FOO), eq(fooNewOffset), anyLong(), eq(version));
       });
     }, Optional.empty(), true, Optional.empty(), isLeaderFollowerModelEnabled, isActiveActiveReplicationEnabled, 1, Collections.emptyMap());
   }

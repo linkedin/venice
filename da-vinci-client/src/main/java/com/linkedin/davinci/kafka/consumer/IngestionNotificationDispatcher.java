@@ -210,10 +210,11 @@ class IngestionNotificationDispatcher {
             notifier.startOfIncrementalPushReceived(topic, pcs.getUserPartition(), pcs.getLatestProcessedVersionTopicOffset(), version));
   }
 
-  void reportEndOfIncrementalPushRecived(PartitionConsumptionState pcs, String version) {
+  void reportEndOfIncrementalPushReceived(PartitionConsumptionState pcs, String version) {
     report(pcs, ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED,
         notifier ->
-            notifier.endOfIncrementalPushReceived(topic, pcs.getUserPartition(), pcs.getLatestProcessedVersionTopicOffset(), version));
+            notifier.endOfIncrementalPushReceived(topic, pcs.getUserPartition(), pcs.getLatestProcessedVersionTopicOffset(),
+                pcs.getEndOfIncrementalPushTimestamp(version), version));
   }
 
   void reportStartOfBufferReplayReceived(PartitionConsumptionState pcs) {

@@ -9,6 +9,9 @@ import java.util.Optional;
  * Helper class for PushStatusStore related logic.
  */
 public class PushStatusStoreUtils {
+
+  public static final String SERVER_INCREMENTAL_PUSH_PREFIX = "SERVER_SIDE_INCREMENTAL_PUSH_STATUS";
+
   public enum PushStatusKeyType {
     HEARTBEAT, FULL_PUSH, INCREMENTAL_PUSH, SERVER_INCREMENTAL_PUSH;
   }
