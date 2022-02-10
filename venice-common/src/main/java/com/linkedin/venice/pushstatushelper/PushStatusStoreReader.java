@@ -53,6 +53,24 @@ public class PushStatusStoreReader implements Closeable {
         return pushStatusValue.instances;
       }
     } catch (Exception e) {
+      logger.error("Failed to read push status of partition:{} store:{}", partitionId, storeName,  e);
+      throw new VeniceException(e);
+    }
+  }
+
+  // fetch high watermarks of all replicas for a given partition
+  public Map<CharSequence, Long> getPartitionHighWatermarks(String storeName, int version, int partitionId,
+      Optional<String> incrementalPushVersion, Optional<String> incrementalPushPrefix) {
+    AvroSpecificStoreClient<PushStatusKey, PushStatusValue> client = getVeniceClient(storeName);
+    PushStatusKey pushStatusKey = PushStatusStoreUtils.getPushKey(version, partitionId, incrementalPushVersion, incrementalPushPrefix);
+    try {
+      PushStatusValue pushStatusValue = client.get(pushStatusKey).get();
+      if (pushStatusValue == null) {
+        return Collections.emptyMap();
+      }
+      logger.info("Partition watermarks:{} for partitionId:{} of store:{}", pushStatusValue.highWatermarks, partitionId, storeName);
+      return pushStatusValue.highWatermarks;
+    } catch (Exception e) {
       throw new VeniceException(e);
     }
   }

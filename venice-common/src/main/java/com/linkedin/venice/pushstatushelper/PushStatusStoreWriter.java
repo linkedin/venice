@@ -6,6 +6,7 @@ import com.linkedin.venice.pushstatus.NoOp;
 import com.linkedin.venice.pushstatus.PushStatusKey;
 import com.linkedin.venice.pushstatus.PushStatusValue;
 import com.linkedin.venice.pushstatus.PushStatusValueWriteOpRecord;
+import com.linkedin.venice.pushstatus.HighWatermarksMapOps;
 import com.linkedin.venice.pushstatus.instancesMapOps;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.writer.VeniceWriter;
@@ -65,9 +66,33 @@ public class PushStatusStoreWriter implements AutoCloseable {
     instances.mapUnion = Collections.singletonMap(instanceName, status.getValue());
     instances.mapDiff = Collections.emptyList();
     writeComputeRecord.instances = instances;
+    writeComputeRecord.highWatermarks = new NoOp();
     writeComputeRecord.reportTimestamp = new NoOp();
-    logger.info("Updating pushStatus of " + instanceName + " to " + status.toString() +
-        ". storeName: " + storeName + " , version: " + version + " , partition: " + partitionId);
+    logger.info("Updating pushStatus of {} to {}. storeName: {} , version: {} , partition: {}",
+        instanceName, status.name(), storeName, version, partitionId);
+    writer.update(pushStatusKey, writeComputeRecord, AvroProtocolDefinition.PUSH_STATUS_SYSTEM_SCHEMA_STORE.getCurrentProtocolVersion(), derivedSchemaId, null);
+  }
+
+  /* This method is called only when END_OF_INCREMENTAL_PUSH_RECEIVED */
+  public void writeHighWatermark(String storeName, int version, int partitionId, long highWatermark,
+      Optional<String> incrementalPushVersion, Optional<String> incrementalPushPrefix) {
+    VeniceWriter writer = veniceWriterCache.prepareVeniceWriter(storeName);
+    PushStatusKey pushStatusKey = PushStatusStoreUtils.getPushKey(version, partitionId, incrementalPushVersion, incrementalPushPrefix);
+    PushStatusValueWriteOpRecord writeComputeRecord = new PushStatusValueWriteOpRecord();
+    // execution status
+    instancesMapOps instances = new instancesMapOps();
+    instances.mapUnion = Collections.singletonMap(instanceName, ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED.getValue());
+    instances.mapDiff = Collections.emptyList();
+    writeComputeRecord.instances = instances;
+    // high watermark
+    HighWatermarksMapOps highWatermarks = new HighWatermarksMapOps();
+    highWatermarks.mapUnion = Collections.singletonMap(instanceName, highWatermark);
+    highWatermarks.mapDiff = Collections.emptyList();
+    writeComputeRecord.highWatermarks = highWatermarks;
+    // heartbeat
+    writeComputeRecord.reportTimestamp = new NoOp();
+    logger.info("Updating pushStatus of {} to {}. highWatermark: {} storeName: {} , version: {} , partition: {} ",
+        instanceName,  ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED.name(), highWatermark, storeName, version, partitionId);
     writer.update(pushStatusKey, writeComputeRecord, AvroProtocolDefinition.PUSH_STATUS_SYSTEM_SCHEMA_STORE.getCurrentProtocolVersion(), derivedSchemaId, null);
   }
 

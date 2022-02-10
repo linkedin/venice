@@ -16,6 +16,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Future;
 import org.apache.avro.generic.GenericRecord;
@@ -149,6 +150,9 @@ public class PartitionConsumptionState {
    * Value: Latest upstream RT offsets of a specific source processed by drainer
    */
   private Map<String, Long> latestProcessedUpstreamRTOffsetMap;
+
+  // stores mapping of incremental push versions and corresponding high watermark timestamps
+  private final ConcurrentMap<String, Long> incrementalPushHighWatermarkMap = new ConcurrentHashMap<>();
 
   public PartitionConsumptionState(int partition, int amplificationFactor, OffsetRecord offsetRecord, boolean hybrid,
     boolean isIncrementalPushEnabled, IncrementalPushPolicy incrementalPushPolicy) {
@@ -588,5 +592,13 @@ public class PartitionConsumptionState {
 
   public long getLatestProcessedVersionTopicOffset() {
     return this.latestProcessedVersionTopicOffset;
+  }
+
+  public long getEndOfIncrementalPushTimestamp(String incrementalPushVersion) {
+    return incrementalPushHighWatermarkMap.get(incrementalPushVersion);
+  }
+
+  public void setEndOfIncrementalPushTimestamp(String incrementalPushVersion, long timestamp) {
+    incrementalPushHighWatermarkMap.put(incrementalPushVersion, timestamp);
   }
 }

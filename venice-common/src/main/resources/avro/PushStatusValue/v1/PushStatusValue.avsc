@@ -17,6 +17,15 @@
       "doc": "heartbeat.",
       "type": [ "null", "long" ],
       "default": null
+    },
+    {
+      "name": "highWatermarks",
+      "type": {
+        "type": "map",
+        "doc": "[hostName + appName] -> producerTimestamp",
+        "values": "long"
+      },
+      "default": {}
     }
   ]
 }
