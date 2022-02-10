@@ -145,6 +145,11 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
     // if WAL is disabled then all ingestion progress made would be lost in case of non-graceful shutdown of server.
     this.writeOptions = new WriteOptions().setDisableWAL(this.partitionId != METADATA_PARTITION_ID);
 
+    // For multiple column family enable atomic flush
+    if (columnFamilyNameList.size() > 1 && rocksDBServerConfig.isAtomicFlushEnabled()) {
+      options.setAtomicFlush(true);
+    }
+
     if (options.tableFormatConfig() instanceof PlainTableConfig) {
       this.deferredWrite = false;
     } else {
