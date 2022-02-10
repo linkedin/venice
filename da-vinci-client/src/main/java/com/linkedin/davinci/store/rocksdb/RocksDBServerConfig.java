@@ -195,6 +195,7 @@ public class RocksDBServerConfig {
    */
   public static final String ROCKSDB_WRITE_QUOTA_BYTES_PER_SECOND = "rocksdb.write.quota.bytes.per.second";
   public static final String ROCKSDB_AUTO_TUNED_RATE_LIMITER_ENABLED = "rocksdb.auto.tuned.rate.limited.enabled";
+  public static final String ROCKSDB_ATOMIC_FLUSH_ENABLED = "rocksdb.atomic.flush.enabled";
 
   private final boolean rocksDBUseDirectReads;
 
@@ -252,6 +253,7 @@ public class RocksDBServerConfig {
   private final int level0SlowdownWritesTriggerWriteOnlyVersion;
   private final int level0StopWritesTriggerWriteOnlyVersion;
   private final boolean putReuseByteBufferEnabled;
+  private final boolean atomicFlushEnabled;
 
   private final RocksDBComputeAccessMode serverStorageOperation;
 
@@ -340,6 +342,7 @@ public class RocksDBServerConfig {
     this.level0StopWritesTriggerWriteOnlyVersion = props.getInt(ROCKSDB_LEVEL0_STOPS_WRITES_TRIGGER_WRITE_ONLY_VERSION, 160);
 
     this.putReuseByteBufferEnabled = props.getBoolean(ROCKSDB_PUT_REUSE_BYTE_BUFFER, false);
+    this.atomicFlushEnabled = props.getBoolean(ROCKSDB_ATOMIC_FLUSH_ENABLED, true);
 
     String rocksDBOperationType = props.getString(ROCKSDB_COMPUTE_ACCESS_MODE, RocksDBComputeAccessMode.SINGLE_GET.name());
     try {
@@ -511,5 +514,9 @@ public class RocksDBServerConfig {
 
   public boolean isPutReuseByteBufferEnabled() {
     return putReuseByteBufferEnabled;
+  }
+
+  public boolean isAtomicFlushEnabled() {
+    return atomicFlushEnabled;
   }
 }
