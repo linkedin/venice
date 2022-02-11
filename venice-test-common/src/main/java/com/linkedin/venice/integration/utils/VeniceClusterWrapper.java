@@ -893,7 +893,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
 
   public void waitVersion(String storeName, int versionId) {
     try (ControllerClient client = getControllerClient()) {
-      TestUtils.waitForNonDeterministicCompletion(30, TimeUnit.SECONDS, () -> {
+      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, false, true, () -> {
         String kafkaTopic = Version.composeKafkaTopic(storeName, versionId);
         JobStatusQueryResponse response = client.queryJobStatus(kafkaTopic);
         if (response.isError()) {
@@ -907,7 +907,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
         if (storeResponse.isError()) {
           throw new VeniceException(storeResponse.getError());
         }
-        return storeResponse.getStore().getCurrentVersion() == versionId;
+        Assert.assertEquals(storeResponse.getStore().getCurrentVersion(), versionId);
       });
     }
     refreshAllRouterMetaData();

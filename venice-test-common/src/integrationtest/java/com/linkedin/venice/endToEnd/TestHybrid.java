@@ -1331,14 +1331,20 @@ public class TestHybrid {
         cluster = useIngestionIsolation ? ingestionIsolationEnabledSharedVenice : sharedVenice;
       }
 
+      final int amplificationFactor = 5;
       UpdateStoreQueryParams params = new UpdateStoreQueryParams().setPartitionCount(partitionCount)
           .setReplicationFactor(2)
-          .setAmplificationFactor(5)
+          .setAmplificationFactor(amplificationFactor)
           .setLeaderFollowerModel(true);
       String storeName = Utils.getUniqueString("store");
       try (ControllerClient controllerClient = cluster.getControllerClient()) {
         TestUtils.assertCommand(controllerClient.createNewStore(storeName, "owner", STRING_SCHEMA, STRING_SCHEMA));
         TestUtils.assertCommand(controllerClient.updateStore(storeName, params));
+        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, true, () -> {
+            StoreResponse storeResponse = controllerClient.getStore(storeName);
+            Assert.assertFalse(storeResponse.isError());
+            Assert.assertEquals(storeResponse.getStore().getPartitionerConfig().getAmplificationFactor(), amplificationFactor);
+        });
       }
       cluster.createVersion(storeName, STRING_SCHEMA, STRING_SCHEMA, IntStream.range(0, keyCount).mapToObj(i -> new AbstractMap.SimpleEntry<>(String.valueOf(i), String.valueOf(i))));
       try (AvroGenericStoreClient<String, Object> client = ClientFactory.getAndStartGenericAvroClient(
