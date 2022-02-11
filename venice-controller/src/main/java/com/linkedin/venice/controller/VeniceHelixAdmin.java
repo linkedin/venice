@@ -2493,18 +2493,18 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             .collect(Collectors.toSet());
 
         Set<String> allTopics = getTopicManager().listTopics();
-        List<String> allTopicsRelatedToThisStore = allTopics.stream()
+        Set<String> allTopicsRelatedToThisStore = allTopics.stream()
             /** Exclude RT buffer topics, admin topics and all other special topics */
             .filter(t -> Version.isVersionTopicOrStreamReprocessingTopic(t))
             /** Keep only those topics pertaining to the store in question */
             .filter(t -> Version.parseStoreFromKafkaTopicName(t).equals(store.getName()))
-            .collect(Collectors.toList());
+            .collect(Collectors.toSet());
 
         if (allTopicsRelatedToThisStore.isEmpty()) {
             logger.info("Searched for old topics belonging to store '" + store.getName() + "', and did not find any.");
             return;
         }
-        List<String> oldTopicsToTruncate = allTopicsRelatedToThisStore;
+      Set<String> oldTopicsToTruncate = allTopicsRelatedToThisStore;
         if (!forStoreDeletion) {
             /**
              * For store version deprecation, controller will truncate all the topics without corresponding versions and
@@ -2527,7 +2527,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                     return !currentlyKnownVersionNumbers.contains(versionForCurrentTopic) &&
                         versionForCurrentTopic <= store.getLargestUsedVersionNumber();
                 })
-                .collect(Collectors.toList());
+                .collect(Collectors.toSet());
         }
 
         if (oldTopicsToTruncate.isEmpty()) {
@@ -2535,7 +2535,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         } else {
             logger.info("Detected the following old topics to truncate: " + String.join(", ", oldTopicsToTruncate));
             int numberOfNewTopicsMarkedForDelete = 0;
-            Map<String, Properties> topicConfigs = getTopicManager().getAllTopicConfig();
+            Map<String, Properties> topicConfigs = getTopicManager().getSomeTopicConfigs(oldTopicsToTruncate);
             for (String t : oldTopicsToTruncate) {
                 if (truncateKafkaTopic(t, topicConfigs)) {
                     ++numberOfNewTopicsMarkedForDelete;

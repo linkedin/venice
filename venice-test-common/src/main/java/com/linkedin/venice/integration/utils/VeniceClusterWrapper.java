@@ -886,30 +886,29 @@ public class VeniceClusterWrapper extends ProcessWrapper {
       TestUtils.writeBatchData(response, keySchema, valueSchema, batchData, HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID);
 
       int versionId = response.getVersion();
-      waitVersion(storeName, versionId);
+      waitVersion(storeName, versionId, client);
       return versionId;
     }
   }
 
   public void waitVersion(String storeName, int versionId) {
     try (ControllerClient client = getControllerClient()) {
-      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, false, true, () -> {
-        String kafkaTopic = Version.composeKafkaTopic(storeName, versionId);
-        JobStatusQueryResponse response = client.queryJobStatus(kafkaTopic);
-        if (response.isError()) {
-          throw new VeniceException(response.getError());
-        }
-        if (response.getStatus().equals(ExecutionStatus.ERROR.toString())) {
-          throw new VeniceException("Unexpected push failure, kafkaTopic=" + kafkaTopic);
-        }
-
-        StoreResponse storeResponse = client.getStore(storeName);
-        if (storeResponse.isError()) {
-          throw new VeniceException(storeResponse.getError());
-        }
-        Assert.assertEquals(storeResponse.getStore().getCurrentVersion(), versionId);
-      });
+      waitVersion(storeName, versionId, client);
     }
+  }
+
+  public void waitVersion(String storeName, int versionId, ControllerClient client) {
+    TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
+      String kafkaTopic = Version.composeKafkaTopic(storeName, versionId);
+      JobStatusQueryResponse response = TestUtils.assertCommand(client.queryJobStatus(kafkaTopic));
+      if (response.getStatus().equals(ExecutionStatus.ERROR.toString())) {
+        throw new VeniceException("Unexpected push failure, kafkaTopic=" + kafkaTopic);
+      }
+
+      StoreResponse storeResponse = TestUtils.assertCommand(client.getStore(storeName));
+      Assert.assertEquals(storeResponse.getStore().getCurrentVersion(), versionId,
+          "The current version does not have the expected value of '" + versionId + "'.");
+    });
     refreshAllRouterMetaData();
   }
 

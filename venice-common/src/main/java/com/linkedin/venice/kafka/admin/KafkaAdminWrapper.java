@@ -94,7 +94,7 @@ public interface KafkaAdminWrapper extends Closeable {
     }
   }
 
-  Map<String, Properties> getAllTopicConfig();
+  Map<String, Properties> getSomeTopicConfigs(Set<String> topicNames);
 
   boolean isTopicDeletionUnderway();
 

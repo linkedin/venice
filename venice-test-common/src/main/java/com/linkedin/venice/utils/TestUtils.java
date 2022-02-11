@@ -170,7 +170,7 @@ public class TestUtils {
             throw (e instanceof AssertionError ? (AssertionError) e : new AssertionError(e));
           }
           LOGGER.info("Non-deterministic assertion not met: {}. Will retry again in {} ms.", e, nextDelayMs);
-          assertTrue(Utils.sleep(ND_ASSERTION_MIN_WAIT_TIME_MS), "Waiting for non-deterministic assertion was interrupted.");
+          assertTrue(Utils.sleep(nextDelayMs), "Waiting for non-deterministic assertion was interrupted.");
           if (exponentialBackOff) {
             nextDelayMs = Math.min(nextDelayMs * 2, remainingMs - nextDelayMs);
             nextDelayMs = Math.min(nextDelayMs, ND_ASSERTION_MAX_WAIT_TIME_MS);
