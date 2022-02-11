@@ -208,7 +208,7 @@ public class VeniceSystemFactoryTest {
   public void testSerializationCast(Object writeKey, Object readKey, Object value, Object expectedValue, String schema) throws Exception {
     String storeName = Utils.getUniqueString("schema-test-store");
 
-    try (ControllerClient client = cluster.getControllerClient()) {
+    cluster.useControllerClient(client -> {
       client.createNewStore(storeName, "owner", schema, schema);
 
       SystemProducer producer = TestPushUtils.getSamzaProducer(cluster, storeName, Version.PushType.BATCH);
@@ -219,8 +219,8 @@ public class VeniceSystemFactoryTest {
       }
 
       client.writeEndOfPush(storeName, 1);
-      cluster.waitVersion(storeName, 1);
-    }
+      cluster.waitVersion(storeName, 1, client);
+    });
 
     ClientConfig config = ClientConfig
         .defaultGenericClientConfig(storeName)

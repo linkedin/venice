@@ -450,8 +450,8 @@ public class TopicManager implements Closeable {
     return properties;
   }
 
-  public Map<String, Properties> getAllTopicConfig() {
-    final Map<String, Properties> topicConfigs = kafkaReadOnlyAdmin.get().getAllTopicConfig();
+  public Map<String, Properties> getSomeTopicConfigs(Set<String> topicNames) {
+    final Map<String, Properties> topicConfigs = kafkaReadOnlyAdmin.get().getSomeTopicConfigs(topicNames);
     for (Map.Entry<String, Properties> topicConfig : topicConfigs.entrySet()) {
       topicConfigCache.put(topicConfig.getKey(), topicConfig.getValue());
     }

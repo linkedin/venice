@@ -12,6 +12,7 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
+import java.util.stream.Collectors;
 import kafka.admin.AdminUtils;
 import kafka.admin.RackAwareMode;
 import kafka.common.TopicAlreadyMarkedForDeletionException;
@@ -131,8 +132,14 @@ public class ScalaAdminUtils implements KafkaAdminWrapper {
   }
 
   @Override
-  public Map<String, Properties> getAllTopicConfig() {
-    return JavaConversions.mapAsJavaMap(AdminUtils.fetchAllTopicConfigs(getZkUtils()));
+  public Map<String, Properties> getSomeTopicConfigs(Set<String> topicNames) {
+    // The old Scala lib does not provide a filtered view, so we filter on our end
+    Map<String, Properties> allConfigs = JavaConversions.mapAsJavaMap(AdminUtils.fetchAllTopicConfigs(getZkUtils()));
+    Map<String, Properties> someConfigs = new HashMap<>();
+    for (String topic: topicNames) {
+      someConfigs.put(topic, allConfigs.get(topic));
+    }
+    return someConfigs;
   }
 
   @Override

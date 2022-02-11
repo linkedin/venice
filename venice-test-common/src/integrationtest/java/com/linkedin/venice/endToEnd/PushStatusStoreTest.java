@@ -85,12 +85,12 @@ public class PushStatusStoreTest {
 
   @AfterClass
   public void cleanUp() {
-    IOUtils.closeQuietly(reader);
+    Utils.closeQuietlyWithErrorLogged(reader);
     D2ClientUtils.shutdownClient(d2Client);
-    IOUtils.closeQuietly(controllerClient);
-    parentController.close();
-    IOUtils.closeQuietly(cluster);
-    parentZkServer.close();
+    Utils.closeQuietlyWithErrorLogged(controllerClient);
+    Utils.closeQuietlyWithErrorLogged(parentController);
+    Utils.closeQuietlyWithErrorLogged(cluster);
+    Utils.closeQuietlyWithErrorLogged(parentZkServer);
   }
 
   @BeforeMethod
@@ -180,7 +180,7 @@ public class PushStatusStoreTest {
       try (VenicePushJob job = new VenicePushJob(jobName, h2vProperties)) {
         job.run();
         String storeName = (String) h2vProperties.get(VenicePushJob.VENICE_STORE_NAME_PROP);
-        cluster.waitVersion(storeName, expectedVersionNumber);
+        cluster.waitVersion(storeName, expectedVersionNumber, controllerClient);
         logger.info("**TIME** H2V" + expectedVersionNumber + " takes " + (System.currentTimeMillis() - h2vStart));
         assertEquals(daVinciClient.get(1).get().toString(), "name 1");
         Optional<String> incPushVersion = job.getIncrementalPushVersion();
@@ -263,7 +263,7 @@ public class PushStatusStoreTest {
     try (VenicePushJob job = new VenicePushJob(jobName, h2vProperties)) {
       job.run();
       String storeName = (String) h2vProperties.get(VenicePushJob.VENICE_STORE_NAME_PROP);
-      cluster.waitVersion(storeName, expectedVersionNumber);
+      cluster.waitVersion(storeName, expectedVersionNumber, controllerClient);
       logger.info("**TIME** H2V" + expectedVersionNumber + " takes " + (System.currentTimeMillis() - h2vStart));
     }
   }

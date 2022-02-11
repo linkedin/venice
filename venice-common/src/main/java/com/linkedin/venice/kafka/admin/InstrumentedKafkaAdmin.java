@@ -11,12 +11,13 @@ import java.util.Collection;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
-
+import java.util.function.Supplier;
+import javax.annotation.Nonnull;
 import org.apache.commons.lang.Validate;
 import org.apache.kafka.clients.admin.TopicDescription;
 import org.apache.kafka.common.KafkaFuture;
 
-import javax.annotation.Nonnull;
+import static com.linkedin.venice.stats.KafkaAdminWrapperStats.OCCURRENCE_LATENCY_SENSOR_TYPE.*;
 
 
 /**
@@ -54,128 +55,76 @@ public class InstrumentedKafkaAdmin implements KafkaAdminWrapper {
 
   @Override
   public void createTopic(String topicName, int numPartitions, int replication, Properties topicProperties) {
-    final long startTimeMs = time.getMilliseconds();
-    kafkaAdmin.createTopic(topicName, numPartitions, replication, topicProperties);
-    kafkaAdminWrapperStats.recordLatency(
-        KafkaAdminWrapperStats.OCCURRENCE_LATENCY_SENSOR_TYPE.CREATE_TOPIC,
-        Utils.calculateDurationMs(time, startTimeMs)
-    );
+    instrument(CREATE_TOPIC, () -> {
+      kafkaAdmin.createTopic(topicName, numPartitions, replication, topicProperties);
+      return null;
+    });
   }
 
+  /**
+   * Note: This latency measurement is not accurate since this is an async API. But we measure it anyways since
+   * we record the occurrence rate at least
+   */
   @Override
   public KafkaFuture<Void> deleteTopic(String topicName) {
-    final long startTimeMs = time.getMilliseconds();
-    KafkaFuture<Void> res = kafkaAdmin.deleteTopic(topicName);
-    // This latency measurement is not accurate since this is an async API. But we measure it anyways since we record
-    // the occurrence rate at least
-    kafkaAdminWrapperStats.recordLatency(
-        KafkaAdminWrapperStats.OCCURRENCE_LATENCY_SENSOR_TYPE.DELETE_TOPIC,
-        Utils.calculateDurationMs(time, startTimeMs)
-    );
-    return res;
+    return instrument(DELETE_TOPIC, () -> kafkaAdmin.deleteTopic(topicName));
   }
 
   @Override
   public Set<String> listAllTopics() {
-    final long startTimeMs = time.getMilliseconds();
-    Set<String> res = kafkaAdmin.listAllTopics();
-    kafkaAdminWrapperStats.recordLatency(
-        KafkaAdminWrapperStats.OCCURRENCE_LATENCY_SENSOR_TYPE.LIST_ALL_TOPICS,
-        Utils.calculateDurationMs(time, startTimeMs)
-    );
-    return res;
+    return instrument(LIST_ALL_TOPICS, () -> kafkaAdmin.listAllTopics());
   }
 
   @Override
   public void setTopicConfig(String topicName, Properties topicProperties) {
-    final long startTimeMs = time.getMilliseconds();
-    kafkaAdmin.setTopicConfig(topicName, topicProperties);
-    kafkaAdminWrapperStats.recordLatency(
-        KafkaAdminWrapperStats.OCCURRENCE_LATENCY_SENSOR_TYPE.SET_TOPIC_CONFIG,
-        Utils.calculateDurationMs(time, startTimeMs)
-    );
+    instrument(SET_TOPIC_CONFIG, () -> {
+      kafkaAdmin.setTopicConfig(topicName, topicProperties);
+      return null;
+    });
   }
 
   @Override
   public Map<String, Long> getAllTopicRetentions() {
-    final long startTimeMs = time.getMilliseconds();
-    final Map<String, Long> res = kafkaAdmin.getAllTopicRetentions();
-    kafkaAdminWrapperStats.recordLatency(
-        KafkaAdminWrapperStats.OCCURRENCE_LATENCY_SENSOR_TYPE.GET_ALL_TOPIC_RETENTIONS,
-        Utils.calculateDurationMs(time, startTimeMs)
-    );
-    return res;
+    return instrument(GET_ALL_TOPIC_RETENTIONS, () -> kafkaAdmin.getAllTopicRetentions());
   }
 
   @Override
   public Properties getTopicConfig(String topicName) throws TopicDoesNotExistException {
-    final long startTimeMs = time.getMilliseconds();
-    final Properties res = kafkaAdmin.getTopicConfig(topicName);
-    kafkaAdminWrapperStats.recordLatency(
-        KafkaAdminWrapperStats.OCCURRENCE_LATENCY_SENSOR_TYPE.GET_TOPIC_CONFIG,
-        Utils.calculateDurationMs(time, startTimeMs)
-    );
-    return res;
+    return instrument(GET_TOPIC_CONFIG, () -> kafkaAdmin.getTopicConfig(topicName));
   }
 
   @Override
   public Properties getTopicConfigWithRetry(String topicName) {
-    final long startTimeMs = time.getMilliseconds();
-    final Properties res = kafkaAdmin.getTopicConfigWithRetry(topicName);
-    kafkaAdminWrapperStats.recordLatency(
-        KafkaAdminWrapperStats.OCCURRENCE_LATENCY_SENSOR_TYPE.GET_TOPIC_CONFIG_WITH_RETRY,
-        Utils.calculateDurationMs(time, startTimeMs)
-    );
-    return res;
+    return instrument(GET_TOPIC_CONFIG_WITH_RETRY, () -> kafkaAdmin.getTopicConfigWithRetry(topicName));
   }
 
   @Override
   public boolean containsTopic(String topic) {
-    final long startTimeMs = time.getMilliseconds();
-    final boolean res = kafkaAdmin.containsTopic(topic);
-    kafkaAdminWrapperStats.recordLatency(
-        KafkaAdminWrapperStats.OCCURRENCE_LATENCY_SENSOR_TYPE.CONTAINS_TOPIC,
-        Utils.calculateDurationMs(time, startTimeMs)
-    );
-    return res;
+    return instrument(CONTAINS_TOPIC, () -> kafkaAdmin.containsTopic(topic));
   }
 
   @Override
   public boolean containsTopicWithExpectationAndRetry(String topic, int maxRetries, final boolean expectedResult) {
-    final long startTimeMs = time.getMilliseconds();
-    final boolean res = kafkaAdmin.containsTopicWithExpectationAndRetry(topic, maxRetries, expectedResult);
-    kafkaAdminWrapperStats.recordLatency(
-        KafkaAdminWrapperStats.OCCURRENCE_LATENCY_SENSOR_TYPE.CONTAINS_TOPIC_WITH_RETRY,
-        Utils.calculateDurationMs(time, startTimeMs)
-    );
-    return res;
+    return instrument(CONTAINS_TOPIC_WITH_RETRY,
+        () -> kafkaAdmin.containsTopicWithExpectationAndRetry(topic, maxRetries, expectedResult));
   }
 
   @Override
-  public Map<String, Properties> getAllTopicConfig() {
-    final long startTimeMs = time.getMilliseconds();
-    final Map<String, Properties> res = kafkaAdmin.getAllTopicConfig();
-    kafkaAdminWrapperStats.recordLatency(
-        KafkaAdminWrapperStats.OCCURRENCE_LATENCY_SENSOR_TYPE.GET_ALL_TOPIC_CONFIG,
-        Utils.calculateDurationMs(time, startTimeMs)
-    );
-    return res;
+  public Map<String, Properties> getSomeTopicConfigs(Set<String> topicNames) {
+    return instrument(GET_SOME_TOPIC_CONFIGS, () -> kafkaAdmin.getSomeTopicConfigs(topicNames));
   }
 
   @Override
   public boolean isTopicDeletionUnderway() {
-    final long startTimeMs = time.getMilliseconds();
-    final boolean res = kafkaAdmin.isTopicDeletionUnderway();
-    kafkaAdminWrapperStats.recordLatency(
-        KafkaAdminWrapperStats.OCCURRENCE_LATENCY_SENSOR_TYPE.IS_TOPIC_DELETION_UNDER_WAY,
-        Utils.calculateDurationMs(time, startTimeMs)
-    );
-    return res;
+    return instrument(IS_TOPIC_DELETION_UNDER_WAY, () -> kafkaAdmin.isTopicDeletionUnderway());
   }
 
   @Override
   public void close() throws IOException {
-    kafkaAdmin.close();
+    instrument(CLOSE, () -> {
+      Utils.closeQuietlyWithErrorLogged(kafkaAdmin);
+      return null;
+    });
   }
 
   @Override
@@ -191,6 +140,13 @@ public class InstrumentedKafkaAdmin implements KafkaAdminWrapper {
         KafkaAdminWrapperStats.OCCURRENCE_LATENCY_SENSOR_TYPE.DESCRIBE_TOPICS,
         Utils.calculateDurationMs(time, startTimeMs)
     );
+    return res;
+  }
+
+  private <T> T instrument(KafkaAdminWrapperStats.OCCURRENCE_LATENCY_SENSOR_TYPE type, Supplier<T> functionToInstrument) {
+    final long startTimeMs = time.getMilliseconds();
+    final T res = functionToInstrument.get();
+    kafkaAdminWrapperStats.recordLatency(type, Utils.calculateDurationMs(time, startTimeMs));
     return res;
   }
 }
