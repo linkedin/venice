@@ -250,6 +250,15 @@ public class DaVinciClientTest {
       }
       assertThrows(NullPointerException.class, AvroGenericDaVinciClient::getBackend);
     }
+
+    // Verify that multiple isolated clients with non-local access enabled to the same store can be started successfully.
+    DaVinciConfig daVinciConfig = new DaVinciConfig();
+    daVinciConfig.setNonLocalAccessPolicy(NonLocalAccessPolicy.QUERY_VENICE).setIsolated(true);
+    MetricsRepository metricsRepository = new MetricsRepository();
+    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(d2Client, metricsRepository, backendConfig)) {
+      factory.getAndStartGenericAvroClient(storeName1, daVinciConfig);
+      factory.getAndStartGenericAvroClient(storeName1, daVinciConfig);
+    }
   }
 
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "dv-client-config-provider", dataProviderClass = DataProviderUtils.class)

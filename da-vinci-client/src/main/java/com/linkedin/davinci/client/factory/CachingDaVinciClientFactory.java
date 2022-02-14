@@ -148,6 +148,8 @@ public class CachingDaVinciClientFactory implements DaVinciClientFactory, Closea
 
     AvroGenericDaVinciClient client;
     if (config.isIsolated()) {
+      String statsPrefix = "davinci-client-" + isolatedClients.size();
+      clientConfig.setStatsPrefix(statsPrefix);
       client = clientConstructor.apply(config, clientConfig, backendConfig, managedClients, icProvider);
       isolatedClients.add(client);
     } else {
