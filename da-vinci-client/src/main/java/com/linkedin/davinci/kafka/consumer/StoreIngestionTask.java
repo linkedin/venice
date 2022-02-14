@@ -1319,8 +1319,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       if (versionNumber <= store.getCurrentVersion()) {
         Set<TopicPartition> topicPartitionsToUnsubscribe = new HashSet<>();
         for (PartitionConsumptionState state : partitionConsumptionStateMap.values()) {
-          if (state.isCompletionReported() && !state.isIncrementalPushEnabled()) {
-            logger.info("Unsubscribing completed partitions " + state.getPartition() + " of store : " + store.getName() + " version : "  + versionNumber + " current version: " + store.getCurrentVersion());
+          if (state.isCompletionReported() && !state.isIncrementalPushEnabled()
+              && consumerHasSubscription(kafkaVersionTopic, state)) {
+            logger.info("Unsubscribing completed partitions " + state.getPartition() + " of store : " + store.getName()
+                + " version : "  + versionNumber + " current version: " + store.getCurrentVersion());
             topicPartitionsToUnsubscribe.add(new TopicPartition(kafkaVersionTopic, state.getPartition()));
             forceUnSubscribedCount++;
           }
