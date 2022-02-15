@@ -12,12 +12,12 @@ import com.linkedin.venice.router.api.RouterKey;
 import com.linkedin.venice.router.api.VenicePartitionFinder;
 import com.linkedin.venice.router.api.VenicePathParser;
 import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
+import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.BiConsumer;
@@ -151,7 +151,8 @@ public class VeniceComputePath extends VeniceMultiKeyPath<ComputeRouterRequestKe
 
     return serializer.serializeObjects(
         routerKeyMap.values(),
-        ByteBuffer.wrap(requestContent, 0, computeRequestLengthInBytes)
+        ByteBuffer.wrap(requestContent, 0, computeRequestLengthInBytes),
+        AvroSerializer.REUSE.get()
     );
   }
 

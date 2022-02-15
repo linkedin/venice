@@ -14,12 +14,12 @@ import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.LatencyUtils;
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.BinaryDecoder;
-import org.apache.avro.io.DecoderFactory;
 
 
 /**
@@ -34,24 +34,6 @@ public abstract class AbstractAvroChunkingAdapter<T> implements ChunkingAdapter<
   }
 
   protected abstract RecordDeserializer<T> getDeserializer(String storeName, int writerSchemaId, int readerSchemaId, ReadOnlySchemaRepository schemaRepo, boolean fastAvroEnabled);
-
-  /**
-   * The default {@link DecoderFactory} will allocate 8k buffer by default for every input stream, which seems to be
-   * over-kill for Venice use case.
-   * Here we create a {@link DecoderFactory} with a much smaller buffer size.
-   * I think the reason behind this allocation for each input stream is that today {@link BinaryDecoder} supports
-   * several types of {@literal org.apache.avro.io.BinaryDecoder.ByteSource}, and the buffer of some implementation
-   * can be reused, such as {@literal org.apache.avro.io.BinaryDecoder.InputStreamByteSource}, but it couldn't be
-   * reused if the source is {@literal org.apache.avro.io.BinaryDecoder.ByteArrayByteSource} since the buffer is pointing
-   * to the original passed array.
-   * A potential improvement is to have the type check in {@literal BinaryDecoder#configure(InputStream, int)}, and
-   * if both the current source and new source are {@literal org.apache.avro.io.BinaryDecoder.InputStreamByteSource},
-   * we don't need to create a new buffer, but just reuse the existing buffer.
-   *
-   * TODO: we need to evaluate the impact of 8KB per request to Venice Server and de-serialization performance when
-   * compression or chunking is enabled.
-   * public static final DecoderFactory DECODER_FACTORY = new DecoderFactory().configureDecoderBufferSize(512);
-   */
 
   @Override
   public T constructValue(
@@ -78,19 +60,6 @@ public abstract class AbstractAvroChunkingAdapter<T> implements ChunkingAdapter<
         response,
         compressorFactory,
         versionTopic);
-  }
-
-  @Override
-  public T constructValue(
-      int writerSchemaId,
-      byte[] valueOnlyBytes,
-      int offset,
-      int bytesLength,
-      boolean fastAvroEnabled,
-      ReadOnlySchemaRepository schemaRepo,
-      String storeName) {
-    return constructValue(writerSchemaId, schemaRepo.getLatestValueSchema(storeName).getId(), valueOnlyBytes, offset,
-        bytesLength, fastAvroEnabled, schemaRepo, storeName);
   }
 
   @Override
@@ -269,9 +238,13 @@ public abstract class AbstractAvroChunkingAdapter<T> implements ChunkingAdapter<
    * This api does not expect the value to be compressed.
    */
   private final DecoderWrapperValueOnly<byte[], T> byteArrayDecoderValueOnly =
-      (reusedDecoder, bytes, offset, inputBytesLength, reusedValue, compressionStrategy, deserializer, readResponse) -> deserializer
-          .deserialize(reusedValue,
-              ByteBuffer.wrap(bytes, offset, inputBytesLength),
+      (reusedDecoder, bytes, offset, inputBytesLength, reusedValue, compressionStrategy, deserializer, readResponse) ->
+          deserializer.deserialize(
+              reusedValue,
+              ByteBuffer.wrap(
+                  bytes,
+                  offset,
+                  inputBytesLength),
               reusedDecoder);
 
   private final DecoderWrapper<byte[], T> byteArrayDecoder =
@@ -296,7 +269,7 @@ public abstract class AbstractAvroChunkingAdapter<T> implements ChunkingAdapter<
 
   private final DecoderWrapper<byte[], T> decompressingByteArrayDecoder =
       (reusedDecoder, bytes, inputBytesLength, reusedValue, compressionStrategy, deserializer, readResponse, compressorFactory, versionTopic) -> {
-        try (InputStream inputStream = new VeniceByteArrayInputStream(
+        try (InputStream inputStream = new ByteArrayInputStream(
             bytes,
             ValueRecord.SCHEMA_HEADER_LENGTH,
             inputBytesLength - ValueRecord.SCHEMA_HEADER_LENGTH)) {

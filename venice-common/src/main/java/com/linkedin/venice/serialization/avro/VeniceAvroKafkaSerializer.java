@@ -49,7 +49,7 @@ public class VeniceAvroKafkaSerializer implements VeniceKafkaSerializer<Object> 
     }
 
     public byte[] serialize(String topic, Object object) {
-        return this.serializer.serialize(object);
+        return this.serializer.serialize(object, AvroSerializer.REUSE.get());
     }
 
     public Object deserialize(String topic, byte[] bytes) {

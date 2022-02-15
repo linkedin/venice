@@ -10,7 +10,6 @@ import com.linkedin.venice.client.schema.SchemaRetriever;
 import com.linkedin.venice.client.stats.ClientStats;
 import com.linkedin.venice.client.stats.Reporter;
 import com.linkedin.venice.client.store.deserialization.BatchDeserializer;
-import com.linkedin.venice.client.store.deserialization.BlockingDeserializer;
 import com.linkedin.venice.client.store.streaming.ComputeResponseRecordV1ChunkedDeserializer;
 import com.linkedin.venice.client.store.streaming.MultiGetResponseRecordV1ChunkedDeserializer;
 import com.linkedin.venice.client.store.streaming.ReadEnvelopeChunkedDeserializer;
@@ -29,7 +28,7 @@ import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
 import com.linkedin.venice.read.protocol.response.streaming.StreamingFooterRecordV1;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
-import com.linkedin.venice.serializer.AvroGenericDeserializer;
+import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
@@ -121,13 +120,6 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
     AvroVersion version = AvroCompatibilityHelper.getRuntimeAvroVersion();
     logger.info("Detected: " + version.toString() + " on the classpath.");
   }
-
-  public static class ReusableObjects {
-    public final BinaryEncoder binaryEncoder = AvroCompatibilityHelper.newBinaryEncoder(new ByteArrayOutputStream(), true, null);
-    public final ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
-  }
-  public static final ThreadLocal<ReusableObjects> threadLocalReusableObjects = ThreadLocal.withInitial(() -> new ReusableObjects());
-
 
   private final CompletableFuture<Map<K, V>> COMPLETABLE_FUTURE_FOR_EMPTY_KEY_IN_BATCH_GET = CompletableFuture.completedFuture(new HashMap<>());
   private final CompletableFuture<Map<K, GenericRecord>> COMPLETABLE_FUTURE_FOR_EMPTY_KEY_IN_COMPUTE = CompletableFuture.completedFuture(new HashMap<>());
@@ -319,7 +311,9 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
 
   @Override
   public CompletableFuture<V> get(final K key, final Optional<ClientStats> stats, final long preRequestTimeInNS) throws VeniceClientException {
-    byte[] serializedKey = getKeySerializer().serialize(key);
+    byte[] serializedKey = reuseObjectsForSerialization
+        ? getKeySerializer().serialize(key, AvroSerializer.REUSE.get())
+        : getKeySerializer().serialize(key);
     String requestPath = getStorageRequestPathForSingleKey(serializedKey);
     CompletableFuture<V> valueFuture = new CompletableFuture<>();
 
@@ -391,9 +385,20 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
   }
 
   private byte[] serializeMultiGetRequest(List<K> keyList) {
-    List<ByteBuffer> serializedKeyList = new ArrayList<>();
-    keyList.stream().forEach(key -> serializedKeyList.add(ByteBuffer.wrap(getKeySerializer().serialize(key))));
-    return multiGetRequestSerializer.serializeObjects(serializedKeyList);
+    List<ByteBuffer> serializedKeyList = new ArrayList<>(keyList.size());
+    RecordSerializer serializer = getKeySerializer();
+    if (reuseObjectsForSerialization) {
+      AvroSerializer.ReusableObjects reusableObjects = AvroSerializer.REUSE.get();
+      for (int i = 0; i < keyList.size(); i++) {
+        serializedKeyList.add(ByteBuffer.wrap(serializer.serialize(keyList.get(i), reusableObjects)));
+      }
+      return multiGetRequestSerializer.serializeObjects(serializedKeyList, reusableObjects);
+    } else {
+      for (int i = 0; i < keyList.size(); i++) {
+        serializedKeyList.add(ByteBuffer.wrap(serializer.serialize(keyList.get(i))));
+      }
+      return multiGetRequestSerializer.serializeObjects(serializedKeyList);
+    }
   }
 
   @Override
@@ -441,6 +446,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
                 int keyIndex = record.keyIndex;
                 if (keyIndex >= keyList.size() || keyIndex < 0) {
                   valueFuture.completeExceptionally(new VeniceClientException("Key index: " + keyIndex + " doesn't have a corresponding key"));
+                  return;
                 }
                 RecordDeserializer<V> dataDeserializer = deserializerCache.computeIfAbsent(record.schemaId, id -> getDataRecordDeserializer(id));
                 long decompressionStartTime = System.nanoTime();
@@ -495,7 +501,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
       }
 
       try {
-        keyHex = Hex.encodeHexString(keySerializer.serialize(key));
+        keyHex = Hex.encodeHexString(keySerializer.serialize(key, AvroSerializer.REUSE.get()));
       } catch (Exception e3) {
         keyHex = "failed to serialize key and encode it as hex";
         logger.error(keyHex + " for logging purposes...", e3);
@@ -578,9 +584,9 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
   public ComputeRequestBuilder<K> compute(final Optional<ClientStats> stats, final Optional<ClientStats> streamingStats,
       final InternalAvroStoreClient computeStoreClient, final long preRequestTimeInNS)  {
     if (reuseObjectsForSerialization) {
-      ReusableObjects reusableObjects = threadLocalReusableObjects.get();
+      AvroSerializer.ReusableObjects reusableObjects = AvroSerializer.REUSE.get();
       return new AvroComputeRequestBuilderV3<>(getLatestValueSchema(), computeStoreClient, stats, streamingStats,
-          true, reusableObjects.binaryEncoder, reusableObjects.byteArrayOutputStream);
+          true, reusableObjects.getBinaryEncoder(), reusableObjects.getByteArrayOutputStream());
     } else {
       return new AvroComputeRequestBuilderV3<>(getLatestValueSchema(), computeStoreClient, stats, streamingStats);
     }
@@ -588,16 +594,17 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
 
 
   private byte[] serializeComputeRequest(List<K> keyList, byte[] serializedComputeRequest) {
-    List<ByteBuffer> serializedKeyList = new ArrayList<>();
-    getKeySerializer();
-    keyList.stream().forEach(key -> serializedKeyList.add(ByteBuffer.wrap(getKeySerializer().serialize(key))));
-    return  computeRequestClientKeySerializer.serializeObjects(serializedKeyList, ByteBuffer.wrap(serializedComputeRequest));
+    List<ByteBuffer> serializedKeyList = new ArrayList<>(keyList.size());
+    RecordSerializer keySerializer = getKeySerializer();
+    keyList.stream().forEach(key -> serializedKeyList.add(ByteBuffer.wrap(keySerializer.serialize(key))));
+    return computeRequestClientKeySerializer.serializeObjects(serializedKeyList, ByteBuffer.wrap(serializedComputeRequest));
   }
 
   private byte[] serializeComputeRequest(List<K> keyList, byte[] serializedComputeRequest, BinaryEncoder reusedEncoder, ByteArrayOutputStream reusedOutputStream) {
-    List<ByteBuffer> serializedKeyList = new ArrayList<>();
-    keyList.stream().forEach(key -> serializedKeyList.add(ByteBuffer.wrap(getKeySerializer().serialize(key, reusedEncoder, reusedOutputStream))));
-    return  computeRequestClientKeySerializer.serializeObjects(serializedKeyList, ByteBuffer.wrap(serializedComputeRequest), reusedEncoder, reusedOutputStream);
+    List<ByteBuffer> serializedKeyList = new ArrayList<>(keyList.size());
+    RecordSerializer keySerializer = getKeySerializer();
+    keyList.stream().forEach(key -> serializedKeyList.add(ByteBuffer.wrap(keySerializer.serialize(key, reusedEncoder, reusedOutputStream))));
+    return computeRequestClientKeySerializer.serializeObjects(serializedKeyList, ByteBuffer.wrap(serializedComputeRequest), reusedEncoder, reusedOutputStream);
   }
 
   /**
@@ -617,7 +624,9 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
       return COMPLETABLE_FUTURE_FOR_EMPTY_KEY_IN_COMPUTE;
     }
     List<K> keyList = new ArrayList<>(keys);
-    byte[] serializedComputeRequest = computeRequestWrapper.serialize();
+    RecordSerializer.ReusableObjects reusableObjects = AvroSerializer.REUSE.get();
+    byte[] serializedComputeRequest = computeRequestWrapper.serialize(
+        reusableObjects.getBinaryEncoder(), reusableObjects.getByteArrayOutputStream());
     byte[] serializedFullComputeRequest = serializeComputeRequest(keyList, serializedComputeRequest);
     CompletableFuture<Map<K, GenericRecord>> valueFuture = new CompletableFuture();
 

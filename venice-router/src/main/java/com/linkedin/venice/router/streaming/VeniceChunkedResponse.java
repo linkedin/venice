@@ -11,6 +11,7 @@ import com.linkedin.venice.router.api.VeniceResponseAggregator;
 import com.linkedin.venice.router.api.path.VenicePath;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
 import com.linkedin.venice.router.stats.RouterStats;
+import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
@@ -370,7 +371,8 @@ public class VeniceChunkedResponse {
     footerRecord.status = errorResponse.status().code();
     footerRecord.detail = errorResponse.content().nioBuffer();
     footerRecord.trailerHeaders = EMPTY_MAP;
-    ByteBuffer footerByteBuffer = ByteBuffer.wrap(STREAMING_FOOTER_SERIALIZER.serialize(footerRecord));
+    AvroSerializer.ReusableObjects reusableObjects = AvroSerializer.REUSE.get();
+    ByteBuffer footerByteBuffer = ByteBuffer.wrap(STREAMING_FOOTER_SERIALIZER.serialize(footerRecord, reusableObjects));
 
     RequestType requestType = path.getRequestType();
     ByteBuf footerResponse;
@@ -379,12 +381,12 @@ public class VeniceChunkedResponse {
       record.keyIndex = KEY_ID_FOR_STREAMING_FOOTER;
       record.value = footerByteBuffer;
       record.schemaId = STREAMING_FOOTER_SCHEMA_ID;
-      footerResponse = Unpooled.wrappedBuffer(MULTI_GET_RESPONSE_SERIALIZER.serialize(record));
+      footerResponse = Unpooled.wrappedBuffer(MULTI_GET_RESPONSE_SERIALIZER.serialize(record, reusableObjects));
     } else if (requestType.equals(RequestType.COMPUTE_STREAMING)) {
       ComputeResponseRecordV1 record = new ComputeResponseRecordV1();
       record.keyIndex = KEY_ID_FOR_STREAMING_FOOTER;
       record.value = footerByteBuffer;
-      footerResponse = Unpooled.wrappedBuffer(COMPUTE_RESPONSE_SERIALIZER.serialize(record));
+      footerResponse = Unpooled.wrappedBuffer(COMPUTE_RESPONSE_SERIALIZER.serialize(record, reusableObjects));
     } else {
       // not possible
       LOGGER.error("Received unsupported request type: " + requestType + " for streaming response");

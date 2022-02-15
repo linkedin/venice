@@ -10,6 +10,7 @@ import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
 import com.linkedin.venice.router.stats.RouterStats;
+import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
@@ -214,7 +215,7 @@ public class VeniceResponseDecompressor {
           BAD_GATEWAY, errorMsg);
     }
 
-    return Unpooled.wrappedBuffer(recordSerializer.serializeObjects(records));
+    return Unpooled.wrappedBuffer(recordSerializer.serializeObjects(records, AvroSerializer.REUSE.get()));
   }
 
   private CompletableFuture<Void> decompressRecords(List<MultiGetResponseRecordV1> records, CompressionStrategy compressionStrategy, ExecutorService executor) {
