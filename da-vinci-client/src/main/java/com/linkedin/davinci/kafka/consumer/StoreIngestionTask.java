@@ -1213,7 +1213,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     // Calculate disk quota on this server based on partitions #.
     Store store = storeRepository.getStoreOrThrow(storeName);
     long storeQuota = store.getStorageQuotaInByte();
-    double serverDiskQuotaForStore = storeQuota * 1.0D * partitionConsumptionSizeMap.size() / store.getPartitionCount();
+    // TODO: Calculate the right quota usage with: * partitionConsumptionSizeMap.size() / store.getPartitionCount()
+    double serverDiskQuotaForStore = storeQuota * 1.0D;
     double storeDiskUsage = 0.0D;
 
     // Calculate total current disk usage for all partitions.
