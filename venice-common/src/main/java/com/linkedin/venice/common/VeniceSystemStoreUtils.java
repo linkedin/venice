@@ -12,7 +12,6 @@ public class VeniceSystemStoreUtils {
   private static final String PARTICIPANT_STORE_PREFIX = String.format(Store.SYSTEM_STORE_FORMAT, PARTICIPANT_STORE);
   private static final String PARTICIPANT_STORE_FORMAT = PARTICIPANT_STORE_PREFIX + "_cluster_%s";
   private static final String PUSH_JOB_DETAILS_STORE_NAME = String.format(Store.SYSTEM_STORE_FORMAT, PUSH_JOB_DETAILS_STORE);
-  public static final String SEPARATOR = "_";
 
   public static String getParticipantStoreNameForCluster(String clusterName) {
     return String.format(PARTICIPANT_STORE_FORMAT, clusterName);
@@ -34,11 +33,7 @@ public class VeniceSystemStoreUtils {
     return storeName;
   }
 
-  public static String getSystemStoreName(String storeName, VeniceSystemStoreType storeType) {
-    return storeType.getPrefix() + SEPARATOR + storeName;
-  }
-
   public static String getDaVinciPushStatusStoreName(String storeName) {
-    return getSystemStoreName(storeName, DAVINCI_PUSH_STATUS_STORE);
+    return VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(storeName);
   }
 }

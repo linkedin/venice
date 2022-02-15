@@ -123,6 +123,7 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
   private final RocksDBComputeAccessMode rocksDBComputeAccessMode;
   private final VeniceServerConfig serverConfig;
   private final Map<String, VenicePartitioner> resourceToPartitionerMap = new VeniceConcurrentHashMap<>();
+  private final Map<String, PartitionerConfig> resourceToPartitionConfigMap = new VeniceConcurrentHashMap<>();
   private final StorageEngineBackedCompressorFactory compressorFactory;
 
   private static class StorageExecReusableObjects extends AvroSerializer.AvroSerializerReusableObjects {
@@ -314,20 +315,22 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
   }
 
   private PartitionerConfig getPartitionerConfig(String resourceName) {
-    try {
-      PartitionerConfig partitionerConfig = null;
-      String storeName = Version.parseStoreFromKafkaTopicName(resourceName);
-      int versionNumber = Version.parseVersionFromKafkaTopicName(resourceName);
-      Store store = metadataRepository.getStoreOrThrow(storeName);
-      Optional<Version> version = store.getVersion(versionNumber);
-      if (version.isPresent()) {
-        partitionerConfig = version.get().getPartitionerConfig();
+    return resourceToPartitionConfigMap.computeIfAbsent(resourceName, name -> {
+      try {
+        PartitionerConfig partitionerConfig = null;
+        String storeName = Version.parseStoreFromKafkaTopicName(resourceName);
+        int versionNumber = Version.parseVersionFromKafkaTopicName(resourceName);
+        Store store = metadataRepository.getStoreOrThrow(storeName);
+        Optional<Version> version = store.getVersion(versionNumber);
+        if (version.isPresent()) {
+          partitionerConfig = version.get().getPartitionerConfig();
+        }
+        return partitionerConfig;
+      } catch (Exception e) {
+        logger.error("Can not acquire partitionerConfig. ", e);
+        return null;
       }
-      return partitionerConfig;
-    } catch (Exception e) {
-      logger.error("Can not acquire partitionerConfig. ", e);
-      return new PartitionerConfigImpl();
-    }
+    });
   }
 
   private ReadResponse handleSingleGetRequest(GetRouterRequest request) {
