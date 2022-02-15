@@ -37,6 +37,7 @@ public class MergeConflictResolver {
   private final ReadOnlySchemaRepository schemaRepository;
   private final int replicationMetadataVersionId;
   private final VeniceConcurrentHashMap<Integer, Schema> idToReplicationSchemaMap = new VeniceConcurrentHashMap<>();
+  private final VeniceConcurrentHashMap<Schema, RecordDeserializer<GenericRecord>> schemaToDeserializerMap = new VeniceConcurrentHashMap<>();
 
   public MergeConflictResolver(ReadOnlySchemaRepository schemaRepository, String storeName, int replicationMetadataVersionId) {
     this.schemaRepository = schemaRepository;
@@ -231,7 +232,8 @@ public class MergeConflictResolver {
 
   private RecordDeserializer<GenericRecord> getReplicationMetadataDeserializer(int valueSchemaId) {
     Schema replicationMetadataSchema = getReplicationMetadataSchema(valueSchemaId);
-    return FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(replicationMetadataSchema, replicationMetadataSchema);
+    return schemaToDeserializerMap.computeIfAbsent(replicationMetadataSchema, schema ->
+        FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(replicationMetadataSchema, replicationMetadataSchema));
   }
 
   private RecordSerializer<GenericRecord> getReplicationMetadataSerializer(int valueSchemaId) {
