@@ -9,14 +9,20 @@ import org.apache.avro.io.BinaryEncoder;
 
 
 public interface RecordSerializer<T> {
+  interface ReusableObjects {
+    BinaryEncoder getBinaryEncoder();
+    ByteArrayOutputStream getByteArrayOutputStream();
+  }
 
   byte[] serialize(T object) throws VeniceException;
 
-  byte[] serialize(T object, BinaryEncoder reusedEncoder) throws VeniceException;
+  byte[] serialize(T object, ReusableObjects reuse) throws VeniceException;
 
   byte[] serialize(T object, BinaryEncoder reusedEncoder, ByteArrayOutputStream reusedOutputStream) throws VeniceException;
 
   byte[] serializeObjects(Iterable<T> objects) throws VeniceException;
+
+  byte[] serializeObjects(Iterable<T> objects, ReusableObjects reuse) throws VeniceException;
 
   /**
    * Serialize a list of objects and put the prefix before the serialized objects.
@@ -31,6 +37,8 @@ public interface RecordSerializer<T> {
    * @throws VeniceException
    */
   byte[] serializeObjects(Iterable<T> objects, ByteBuffer prefix) throws VeniceException;
+
+  byte[] serializeObjects(Iterable<T> objects, ByteBuffer prefix, ReusableObjects reuse) throws VeniceException;
 
   byte[] serializeObjects(Iterable<T> objects, ByteBuffer prefix, BinaryEncoder reusedEncoder, ByteArrayOutputStream reusedOutputStream) throws VeniceException;
 }

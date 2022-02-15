@@ -69,7 +69,7 @@ public class StoreIngestionWriteComputeProcessor {
     if (updatedValue == null) {
       return null;
     }
-    return getValueSerializer(getValueSchema(valueSchemaId)).serialize(updatedValue);
+    return getValueSerializer(getValueSchema(valueSchemaId)).serialize(updatedValue, AvroSerializer.REUSE.get());
   }
 
   private ValueAndWriteComputeSchemas getValueAndWriteComputeSchemas(int valueSchemaId, int writeComputeSchemaId) {

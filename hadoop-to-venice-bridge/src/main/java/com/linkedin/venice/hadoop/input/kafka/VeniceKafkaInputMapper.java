@@ -3,6 +3,7 @@ package com.linkedin.venice.hadoop.input.kafka;
 import com.linkedin.venice.hadoop.AbstractVeniceMapper;
 import com.linkedin.venice.hadoop.AbstractVeniceRecordReader;
 import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperValue;
+import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -41,7 +42,7 @@ public class VeniceKafkaInputMapper extends AbstractVeniceMapper<BytesWritable, 
       Reporter reporter
   ) {
     keyBW.set(inputKey);
-    byte[] serializedValue = KAFKA_INPUT_MAPPER_VALUE_SERIALIZER.serialize(inputValue);
+    byte[] serializedValue = KAFKA_INPUT_MAPPER_VALUE_SERIALIZER.serialize(inputValue, AvroSerializer.REUSE.get());
     valueBW.set(serializedValue, 0, serializedValue.length);
     return true;
   }

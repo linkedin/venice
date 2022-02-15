@@ -1,5 +1,6 @@
 package com.linkedin.venice.listener;
 
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.listener.response.AdminResponse;
@@ -47,6 +48,7 @@ import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.read.protocol.request.router.MultiGetRouterRequestKeyV1;
 import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
+import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
@@ -82,6 +84,7 @@ import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.BinaryDecoder;
+import org.apache.avro.io.BinaryEncoder;
 import org.apache.avro.io.DecoderFactory;
 import org.apache.avro.util.Utf8;
 import org.apache.logging.log4j.LogManager;
@@ -124,7 +127,7 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
   private final Map<String, VenicePartitioner> venicePartitioners = new VeniceConcurrentHashMap<>();
   private final StorageEngineBackedCompressorFactory compressorFactory;
 
-  private static class ReusableObjects {
+  private static class StorageExecReusableObjects extends AvroSerializer.AvroSerializerReusableObjects {
     // reuse buffer for rocksDB value object
     final ByteBuffer reusedByteBuffer = ByteBuffer.allocate(1024 * 1024);
 
@@ -140,8 +143,12 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
         return size() > 100;
       }
     };
+
+    final BinaryDecoder binaryDecoder =
+        AvroCompatibilityHelper.newBinaryDecoder(BINARY_DECODER_PARAM, 0, BINARY_DECODER_PARAM.length, null);
   }
-  private final ThreadLocal<ReusableObjects> threadLocalReusableObjects = ThreadLocal.withInitial(ReusableObjects::new);
+  private final ThreadLocal<StorageExecReusableObjects> threadLocalReusableObjects = ThreadLocal.withInitial(
+      StorageExecReusableObjects::new);
 
   public StorageExecutionHandler(ThreadPoolExecutor executor, ThreadPoolExecutor computeExecutor,
                                   StorageEngineRepository storageEngineRepository,
@@ -526,7 +533,7 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
 
     responseWrapper.setCompressionStrategy(CompressionStrategy.NO_OP);
 
-    ReusableObjects reusableObjects = threadLocalReusableObjects.get();
+    StorageExecReusableObjects reusableObjects = threadLocalReusableObjects.get();
 
     GenericRecord reuseValueRecord = reusableObjects.reuseValueRecordMap.computeIfAbsent(valueSchema, k -> new GenericData.Record(valueSchema));
     Schema finalComputeResultSchema1 = computeResultSchema;
@@ -545,7 +552,6 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
       resultSerializer = SerializerDeserializerFactory.getAvroGenericSerializer(computeResultSchema);
     }
 
-    BinaryDecoder binaryDecoder = DecoderFactory.defaultFactory().createBinaryDecoder(BINARY_DECODER_PARAM, null);
     Map<String, Object> globalContext = new HashMap<>();
     for (ComputeRouterRequestKeyV1 key : keys) {
       clearFieldsInReusedRecord(reuseResultRecord, computeResultSchema);
@@ -564,7 +570,7 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
                                                      resultSerializer,
                                                      reuseValueRecord,
                                                      reuseResultRecord,
-                                                     binaryDecoder,
+                                                     reusableObjects,
                                                      isChunked,
                                                      request.isStreamingRequest(),
                                                      responseWrapper,
@@ -618,7 +624,7 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
       RecordSerializer<GenericRecord> resultSerializer,
       GenericRecord reuseValueRecord,
       GenericRecord reuseResultRecord,
-      BinaryDecoder binaryDecoder,
+      StorageExecReusableObjects reusableObjects,
       boolean isChunked,
       boolean isStreaming,
       ComputeResponseWrapper response,
@@ -629,12 +635,12 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
       case SINGLE_GET:
         reuseValueRecord =
             GenericRecordChunkingAdapter.INSTANCE.get(store, partition, key, isChunked, reuseValueRecord,
-                binaryDecoder, response, compressionStrategy, fastAvroEnabled, this.schemaRepo, storeName, compressorFactory,
+                reusableObjects.binaryDecoder, response, compressionStrategy, fastAvroEnabled, this.schemaRepo, storeName, compressorFactory,
                 false);
         break;
       case SINGLE_GET_WITH_REUSE:
         reuseValueRecord = GenericRecordChunkingAdapter.INSTANCE.get(storeName, store, partition, ByteUtils.extractByteArray(key),
-          reuseRawValue, reuseValueRecord, binaryDecoder, isChunked, compressionStrategy, fastAvroEnabled, this.schemaRepo, response, compressorFactory);
+          reuseRawValue, reuseValueRecord, reusableObjects.binaryDecoder, isChunked, compressionStrategy, fastAvroEnabled, this.schemaRepo, response, compressorFactory);
         break;
       default:
         throw new VeniceException("Unknown rocksDB compute storage operation");
@@ -692,7 +698,7 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
 
     // serialize the compute result
     long serializeStartTimeInNS = System.nanoTime();
-    responseRecord.value = ByteBuffer.wrap(resultSerializer.serialize(reuseResultRecord));
+    responseRecord.value = ByteBuffer.wrap(resultSerializer.serialize(reuseResultRecord, reusableObjects));
     response.addReadComputeSerializationLatency(LatencyUtils.getLatencyInMS(serializeStartTimeInNS));
 
     return responseRecord;

@@ -19,6 +19,7 @@ import com.linkedin.venice.fastclient.transport.TransportClientResponseForRoute;
 import com.linkedin.venice.read.protocol.request.router.MultiGetRouterRequestKeyV1;
 import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
 import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
+import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
@@ -47,7 +48,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import org.apache.avro.io.ByteBufferOptimizedBinaryDecoder;
-import static com.linkedin.venice.client.store.AbstractAvroStoreClient.*;
+
 
 /**
  * This class is in charge of routing and serialization/de-serialization.
@@ -93,7 +94,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
     int currentVersion = getCurrentVersion();
     String resourceName = getResourceName(currentVersion);
     long beforeSerializationTimeStamp = System.nanoTime();
-    byte[] keyBytes = keySerializer.serialize(key, threadLocalReusableObjects.get().binaryEncoder, threadLocalReusableObjects.get().byteArrayOutputStream);
+    byte[] keyBytes = keySerializer.serialize(key, AvroSerializer.REUSE.get());
     requestContext.requestSerializationTime = getLatencyInNS(beforeSerializationTimeStamp);
     int partitionId = metadata.getPartitionId(currentVersion, keyBytes);
     String b64EncodedKeyBytes = EncodingUtils.base64EncodeToString(keyBytes);
@@ -357,9 +358,9 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
     String uriForBatchGetRequest = composeURIForBatchGetRequest(requestContext);
     int currentVersion = requestContext.currentVersion;
     Map<Integer, List<String>> partitionRouteMap = new HashMap<>();
+    RecordSerializer.ReusableObjects reusableObjects = AvroSerializer.REUSE.get();
     for (K key : keys) {
-      byte[] keyBytes = keySerializer.serialize(key, threadLocalReusableObjects.get().binaryEncoder,
-          threadLocalReusableObjects.get().byteArrayOutputStream);
+      byte[] keyBytes = keySerializer.serialize(key, reusableObjects);
       // For each key determine partition
       int partitionId = metadata.getPartitionId(currentVersion, keyBytes);
       // Find routes for each partition
@@ -490,14 +491,17 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
 
   private byte[] serializeMultiGetRequest(List<BatchGetRequestContext.KeyInfo<K>> keyList) {
 
-    List<MultiGetRouterRequestKeyV1> routerRequestKeys = new ArrayList<>();
+    List<MultiGetRouterRequestKeyV1> routerRequestKeys = new ArrayList<>(keyList.size());
+    AvroSerializer.ReusableObjects reusableObjects = AvroSerializer.REUSE.get();
+    BatchGetRequestContext.KeyInfo<K> keyInfo;
     for (int i = 0; i < keyList.size(); i++) {
+      keyInfo = keyList.get(i);
       MultiGetRouterRequestKeyV1 routerRequestKey = new MultiGetRouterRequestKeyV1();
-      byte[] keyBytes = keySerializer.serialize(keyList.get(i).getKey());
+      byte[] keyBytes = keySerializer.serialize(keyInfo.getKey(), reusableObjects);
       ByteBuffer keyByteBuffer = ByteBuffer.wrap(keyBytes);
       routerRequestKey.keyBytes = keyByteBuffer;
       routerRequestKey.keyIndex = i;
-      routerRequestKey.partitionId = keyList.get(i).getPartitionId();
+      routerRequestKey.partitionId = keyInfo.getPartitionId();
       routerRequestKeys.add(routerRequestKey);
     }
     return multiGetSerializer.serializeObjects(routerRequestKeys);

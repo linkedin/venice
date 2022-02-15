@@ -240,6 +240,19 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
   }
 
   /**
+   * Convenience method to hide the ugliness of casting in just one place.
+   *
+   * Ideally, we would change the return type of {@link #getProducer(String, Config, MetricsRegistry)} to
+   * {@link VeniceSystemProducer} but since there are existing users of this API, we are being extra careful
+   * not to disturb it.
+   *
+   * TODO: clean this up when we have the bandwidth to coordinate the refactoring with the existing users.
+   */
+  public VeniceSystemProducer getClosableProducer(String systemName, Config config, MetricsRegistry registry) {
+    return (VeniceSystemProducer) getProducer(systemName, config, registry);
+  }
+
+  /**
    * Get the total number of active SystemProducer.
    *
    * The SystemProducer for push type: STREAM and BATCH will always be at active state; so if there is any

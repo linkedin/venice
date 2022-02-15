@@ -36,15 +36,13 @@ import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.io.ByteArrayOutputStream;
+import java.io.Closeable;
 import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.nio.file.Paths;
-import java.time.Instant;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
-import java.util.Random;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.Supplier;
@@ -66,7 +64,7 @@ import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.schema.AvroSchemaParseUtils.*;
 
 
-public class VeniceSystemProducer implements SystemProducer {
+public class VeniceSystemProducer implements SystemProducer, Closeable {
   private static final Logger LOGGER = LogManager.getLogger(VeniceSystemProducer.class);
 
   private static final Schema STRING_SCHEMA = Schema.create(Schema.Type.STRING);
@@ -328,6 +326,11 @@ public class VeniceSystemProducer implements SystemProducer {
           new D2TransportClient(discoveryResponse.getD2Service(), d2Client), versionTopic));
       hybridStoreQuotaMonitor.get().start();
     }
+  }
+
+  @Override
+  public void close() {
+    stop();
   }
 
   @Override

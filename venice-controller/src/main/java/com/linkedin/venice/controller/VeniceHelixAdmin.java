@@ -125,6 +125,7 @@ import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.serializer.RecordDeserializer;
+import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.stats.AbstractVeniceAggStats;
@@ -3713,11 +3714,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
         Schema newSchema = Schema.parse(schemaStr);
         RandomAvroObjectGenerator generator = new RandomAvroObjectGenerator(newSchema, new Random());
+        RecordSerializer.ReusableObjects reusableObjects = AvroSerializer.REUSE.get();
         for (int i = 0; i < RECORD_COUNT; i++) {
             // check if new records written with new schema can be read using existing older schema
             Object record = generator.generate();
             serializer = new AvroSerializer(newSchema);
-            byte[] bytes = serializer.serialize(record);
+            byte[] bytes = serializer.serialize(record, reusableObjects);
             for (SchemaEntry schemaEntry : schemaEntries) {
                 try {
                     existingSchema = schemaEntry.getSchema();
@@ -3744,7 +3746,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                     generator = new RandomAvroObjectGenerator(schemaEntry.getSchema(), new Random());
                     Object record = generator.generate();
                     serializer = new AvroSerializer(schemaEntry.getSchema());
-                    byte[] bytes = serializer.serialize(record);
+                    byte[] bytes = serializer.serialize(record, reusableObjects);
                     existingSchema = schemaEntry.getSchema();
                     if (!isValidAvroSchema(existingSchema)) {
                         logger.warn("Skip validating ill-formed schema " + existingSchema + " for store " + storeName);

@@ -19,10 +19,35 @@ import org.apache.logging.log4j.Logger;
 
 
 public class AvroSerializer<K> implements RecordSerializer<K> {
+  public static final ThreadLocal<ReusableObjects> REUSE = ThreadLocal.withInitial(AvroSerializerReusableObjects::new);
+
   private static final Logger logger = LogManager.getLogger(AvroSerializer.class);
   private final DatumWriter<K> genericDatumWriter;
   private final DatumWriter<K> specificDatumWriter;
   private final boolean buffered;
+
+  public static class AvroSerializerReusableObjects implements RecordSerializer.ReusableObjects {
+    public final BinaryEncoder binaryEncoder;
+    public final ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
+
+    protected AvroSerializerReusableObjects() {
+      this(true);
+    }
+
+    public AvroSerializerReusableObjects(boolean buffered) {
+      this.binaryEncoder = AvroCompatibilityHelper.newBinaryEncoder(byteArrayOutputStream, buffered, null);
+    }
+
+    @Override
+    public BinaryEncoder getBinaryEncoder() {
+      return binaryEncoder;
+    }
+
+    @Override
+    public ByteArrayOutputStream getByteArrayOutputStream() {
+      return byteArrayOutputStream;
+    }
+  }
 
   static {
     AvroVersion version = AvroCompatibilityHelper.getRuntimeAvroVersion();
@@ -75,14 +100,9 @@ public class AvroSerializer<K> implements RecordSerializer<K> {
 
   @Override
   public byte[] serialize(K object) throws VeniceException {
-    return serialize(object, null);
-  }
-
-  @Override
-  public byte[] serialize(K object, BinaryEncoder reusedEncoder) throws VeniceException {
     ByteArrayOutputStream output = new ByteArrayOutputStream();
     try {
-      return serialize(object, reusedEncoder, output);
+      return serialize(object, null, output);
     } finally {
       try {
         output.close();
@@ -90,6 +110,11 @@ public class AvroSerializer<K> implements RecordSerializer<K> {
         logger.error("Failed to close stream", e);
       }
     }
+  }
+
+  @Override
+  public byte[] serialize(K object, ReusableObjects reuse) throws VeniceException {
+    return serialize(object, reuse.getBinaryEncoder(), reuse.getByteArrayOutputStream());
   }
 
   @Override
@@ -107,14 +132,16 @@ public class AvroSerializer<K> implements RecordSerializer<K> {
 
   @Override
   public byte[] serializeObjects(Iterable<K> objects) throws VeniceException {
-    return serializeObjects(objects, new ByteArrayOutputStream());
+    return serializeObjects(objects, null, new ByteArrayOutputStream());
   }
 
-  private byte[] serializeObjects(Iterable<K> objects, ByteArrayOutputStream output) throws VeniceException {
-    return serializeObjects(objects, output, null);
+  @Override
+  public byte[] serializeObjects(Iterable<K> objects, ReusableObjects reuse) throws VeniceException {
+    reuse.getByteArrayOutputStream().reset();
+    return serializeObjects(objects, reuse.getBinaryEncoder(), reuse.getByteArrayOutputStream());
   }
 
-  private byte[] serializeObjects(Iterable<K> objects, ByteArrayOutputStream output, BinaryEncoder reusedEncoder) throws VeniceException {
+  private byte[] serializeObjects(Iterable<K> objects, BinaryEncoder reusedEncoder, ByteArrayOutputStream output) throws VeniceException {
     Encoder encoder = AvroCompatibilityHelper.newBinaryEncoder(output, buffered, reusedEncoder);
     try {
       objects.forEach(object -> {
@@ -128,14 +155,6 @@ public class AvroSerializer<K> implements RecordSerializer<K> {
       return output.toByteArray();
     } catch (IOException e) {
       throw new VeniceException("Could not flush BinaryEncoder", e);
-    } finally {
-      if (output != null) {
-        try {
-          output.close();
-        } catch (IOException e) {
-          logger.error("Failed to close stream", e);
-        }
-      }
     }
   }
 
@@ -153,15 +172,18 @@ public class AvroSerializer<K> implements RecordSerializer<K> {
    */
   @Override
   public byte[] serializeObjects(Iterable<K> objects, ByteBuffer prefix) throws VeniceException {
-    ByteArrayOutputStream output = new ByteArrayOutputStream();
-    output.write(prefix.array(), prefix.position(), prefix.remaining());
-    return serializeObjects(objects, output);
+    return serializeObjects(objects, prefix, null, new ByteArrayOutputStream());
+  }
+
+  @Override
+  public byte[] serializeObjects(Iterable<K> objects, ByteBuffer prefix, ReusableObjects reuse) throws VeniceException {
+    return serializeObjects(objects, prefix, reuse.getBinaryEncoder(), reuse.getByteArrayOutputStream());
   }
 
   @Override
   public byte[] serializeObjects(Iterable<K> objects, ByteBuffer prefix, BinaryEncoder reusedEncoder, ByteArrayOutputStream reusedOutputStream) throws VeniceException {
     reusedOutputStream.reset();
     reusedOutputStream.write(prefix.array(), prefix.position(), prefix.remaining());
-    return serializeObjects(objects, reusedOutputStream, reusedEncoder);
+    return serializeObjects(objects, reusedEncoder, reusedOutputStream);
   }
 }

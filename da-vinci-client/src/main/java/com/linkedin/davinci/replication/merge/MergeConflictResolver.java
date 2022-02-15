@@ -6,6 +6,7 @@ import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.schema.rmd.ReplicationMetadataSchemaEntry;
+import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.utils.Lazy;
@@ -48,7 +49,7 @@ public class MergeConflictResolver {
   /**
    * Perform conflict resolution when the incoming operation is a PUT operation.
    * @param oldValue A Lazy supplier of currently persisted value.
-   * @param oldReplicationMetadata The replication metadata of the currently persisted value.
+   * @param oldReplicationMetadataRecord The replication metadata of the currently persisted value.
    * @param newValue The value in the incoming record.
    * @param writeOperationTimestamp The logical timestamp of the incoming record.
    * @param oldValueSchemaId The schema id of the currently persisted value.
@@ -160,7 +161,7 @@ public class MergeConflictResolver {
 
   /**
    * Perform conflict resolution when the incoming operation is a DELETE operation.
-   * @param oldReplicationMetadata The replication metadata of the currently persisted value.
+   * @param oldReplicationMetadataRecord The replication metadata of the currently persisted value.
    * @param schemaIdOfOldValue The schema id of the currently persisted value.
    * @param writeOperationTimestamp The logical timestamp of the incoming record.
    * @param newValueSourceOffset The offset from which the new value originates in the realtime stream.  Used to build
@@ -242,7 +243,8 @@ public class MergeConflictResolver {
   }
 
   public ByteBuffer getByteBufferFromReplicationMetadata(int schemaId, GenericRecord replicationMetadataRecord) {
-    byte[] replicationMetadataBytes = getReplicationMetadataSerializer(schemaId).serialize(replicationMetadataRecord);
+    byte[] replicationMetadataBytes = getReplicationMetadataSerializer(schemaId)
+        .serialize(replicationMetadataRecord, AvroSerializer.REUSE.get());
     return ByteBuffer.wrap(replicationMetadataBytes);
   }
 
