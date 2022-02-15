@@ -156,6 +156,7 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
     setEnableReads(store.isEnableReads());
     setEnableWrites(store.isEnableWrites());
     setPartitionCount(store.getPartitionCount());
+    setLowWatermark(store.getLowWatermark());
     setAccessControlled(store.isAccessControlled());
     setCompressionStrategy(store.getCompressionStrategy());
     setClientDecompressionEnabled(store.getClientDecompressionEnabled());
@@ -254,6 +255,16 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
   @Override
   public void setCurrentVersionWithoutCheck(int currentVersion){
     this.storeProperties.currentVersion = currentVersion;
+  }
+
+  @Override
+  public long getLowWatermark() {
+    return storeProperties.lowWatermark;
+  }
+
+  @Override
+  public void setLowWatermark(long lowWatermark) {
+    this.storeProperties.lowWatermark = lowWatermark;
   }
 
   @SuppressWarnings("unused") // Used by Serializer/De-serializer for storing to Zoo Keeper

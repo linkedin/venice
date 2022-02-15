@@ -592,6 +592,16 @@ public class ReadOnlyStore implements Store {
   }
 
   @Override
+  public long getLowWatermark() {
+    return this.delegate.getLowWatermark();
+  }
+
+  @Override
+  public void setLowWatermark(long lowWatermark) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
   public PersistenceType getPersistenceType() {
     return this.delegate.getPersistenceType();
   }

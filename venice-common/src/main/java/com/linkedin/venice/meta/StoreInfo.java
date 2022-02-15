@@ -41,6 +41,7 @@ public class StoreInfo {
     storeInfo.setLargestUsedVersionNumber(store.getLargestUsedVersionNumber());
     storeInfo.setLatestSuperSetValueSchemaId(store.getLatestSuperSetValueSchemaId());
     storeInfo.setLeaderFollowerModelEnabled(store.isLeaderFollowerModelEnabled());
+    storeInfo.setLowWatermark(store.getLowWatermark());
     storeInfo.setMigrating(store.isMigrating());
     storeInfo.setMigrationDuplicateStore(store.isMigrationDuplicateStore());
     storeInfo.setName(store.getName());
@@ -89,6 +90,12 @@ public class StoreInfo {
    * assigned.
    */
   private int partitionCount = 0;
+
+  /**
+   * Low watermark which indicates the last successful incremental push seen by this store.
+   */
+  private long lowWatermark = 0;
+
   /**
    * If a store is enableStoreWrites, new version can not be created for it.
    */
@@ -367,6 +374,14 @@ public class StoreInfo {
 
   public void setPartitionCount(int partitionCount) {
     this.partitionCount = partitionCount;
+  }
+
+  public long getLowWatermark() {
+    return lowWatermark;
+  }
+
+  public void setLowWatermark(long lowWatermark) {
+    this.lowWatermark = lowWatermark;
   }
 
   /**
