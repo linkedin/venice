@@ -4,7 +4,6 @@ import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
-import com.linkedin.venice.utils.AvroCompatibilityUtils;
 import org.apache.avro.Schema;
 import org.apache.avro.specific.SpecificRecord;
 
@@ -147,6 +146,10 @@ public interface Store {
   void setCurrentVersion(int currentVersion);
 
   void setCurrentVersionWithoutCheck(int currentVersion);
+
+  long getLowWatermark();
+
+  void setLowWatermark(long lowWatermark);
 
   PersistenceType getPersistenceType();
 

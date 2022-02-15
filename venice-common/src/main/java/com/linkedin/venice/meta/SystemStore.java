@@ -133,6 +133,16 @@ public class SystemStore extends AbstractStore {
   }
 
   @Override
+  public long getLowWatermark() {
+    return zkSharedStore.getLowWatermark();
+  }
+
+  @Override
+  public void setLowWatermark(long lowWatermark) {
+    throwUnsupportedOperationException("setLowWatermark");
+  }
+
+  @Override
   public PersistenceType getPersistenceType() {
     return zkSharedStore.getPersistenceType();
   }
