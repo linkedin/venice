@@ -125,6 +125,7 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
     }
 
     VenicePath path = null;
+    int keyNum = 1;
     try {
       // this method may throw store not exist exception; track the exception under unhealthy request metric
       int version = versionFinder.getVersion(storeName, fullHttpRequest);
@@ -134,7 +135,6 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
           Optional.of(routerStats) : Optional.empty();
 
       String method = fullHttpRequest.method().name();
-      int keyNum = 1;
       if (VeniceRouterUtils.isHttpGet(method)) {
         // single-get request
         path = new VeniceSingleGetPath(resourceName, pathHelper.getKey(), uri, partitionFinder, statsOptional);
@@ -208,10 +208,6 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
         stats.recordKeyNum(storeName, keyNum);
       }
 
-      // Always record request usage in the single get stats, so we could compare it with the quota easily.
-      // Right now we use key num as request usage, in the future we might consider the Capacity unit.
-      routerStats.getStatsByType(SINGLE_GET).recordRequestUsage(storeName, keyNum);
-
       stats.recordRequest(storeName);
       stats.recordRequestSize(storeName, path.getRequestSize());
     } catch (VeniceException e) {
@@ -222,6 +218,10 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
       // log the store/version not exist error and add track it in the unhealthy request metric
       throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.of(storeName), Optional.empty(),
           BAD_REQUEST, e.getMessage());
+    } finally {
+      // Always record request usage in the single get stats, so we could compare it with the quota easily.
+      // Right now we use key num as request usage, in the future we might consider the Capacity unit.
+      routerStats.getStatsByType(SINGLE_GET).recordRequestUsage(storeName, keyNum);
     }
 
     return path;

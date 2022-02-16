@@ -9,12 +9,15 @@ import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
+import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.integration.utils.D2TestUtils;
+import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.routerapi.ResourceStateResponse;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
@@ -33,6 +36,7 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.tehuti.Metric;
+import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.HashMap;
@@ -63,6 +67,8 @@ import org.testng.annotations.Test;
 import static com.linkedin.davinci.config.BlockingQueueType.*;
 import static com.linkedin.venice.router.api.VeniceMultiKeyRoutingStrategy.*;
 import static com.linkedin.venice.router.api.VenicePathParser.*;
+import static org.testng.Assert.*;
+
 
 @Test(singleThreaded = true)
 public abstract class TestRead {
@@ -74,6 +80,7 @@ public abstract class TestRead {
   private String storeVersionName;
   private int valueSchemaId;
   private String storeName;
+  private String readDisabledStoreName = Utils.getUniqueString("read_disabled_store");
 
   private String routerAddr;
   private VeniceKafkaSerializer keySerializer;
@@ -171,6 +178,22 @@ public abstract class TestRead {
 
     d2Client = D2TestUtils.getD2Client(veniceCluster.getZk().getAddress(), true, isRouterHttp2Enabled() ? HttpProtocolVersion.HTTP_2 : HttpProtocolVersion.HTTP_1_1);
     D2TestUtils.startD2Client(d2Client);
+
+    // Create a read-disabled store
+    veniceCluster.useControllerClient(cc -> {
+      NewStoreResponse newStoreResponse = cc.createNewStore(readDisabledStoreName, "test", KEY_SCHEMA_STR, VALUE_SCHEMA_STR);
+      if (newStoreResponse.isError()) {
+        throw new VeniceException("Failed to create a store: " + readDisabledStoreName + " with error: " + newStoreResponse.getError());
+      }
+      VersionCreationResponse versionCreationResponse =  cc.emptyPush(readDisabledStoreName, "test_push", 10000);
+      if (versionCreationResponse.isError()) {
+        throw new VeniceException("Failed to execute an empty push to store: " + readDisabledStoreName + " with error: " + versionCreationResponse.getError());
+      }
+      ControllerResponse updateStoreResponse = cc.updateStore(readDisabledStoreName, new UpdateStoreQueryParams().setEnableReads(false));
+      if (updateStoreResponse.isError()) {
+        throw new VeniceException("Failed to update store: " + readDisabledStoreName + " with error: " + updateStoreResponse.getError());
+      }
+    });
   }
 
 
@@ -342,7 +365,7 @@ public abstract class TestRead {
     }
     try {
       storeClient.batchGet(keySet).get();
-      Assert.fail("Should receive exception since the batch request key count exceeds cluster-level threshold");
+      fail("Should receive exception since the batch request key count exceeds cluster-level threshold");
     } catch (Exception e) {
     }
     // Bump up store-level max key count in batch-get request
@@ -353,7 +376,7 @@ public abstract class TestRead {
       try {
         storeClient.batchGet(keySet).get();
       } catch (Exception e) {
-        Assert.fail("StoreClient should not throw exception since we have bumped up store-level batch-get key count limit");
+        fail("StoreClient should not throw exception since we have bumped up store-level batch-get key count limit");
       }
     });
 
@@ -475,7 +498,7 @@ public abstract class TestRead {
       Assert.assertEquals(d2ServiceDiscoveryResponse.getCluster(), veniceCluster.getClusterName());
       Assert.assertEquals(d2ServiceDiscoveryResponse.getName(), storeName);
     } catch (Exception e) {
-      Assert.fail("Met an exception.", e);
+      fail("Met an exception.", e);
     }
   }
 
@@ -497,7 +520,7 @@ public abstract class TestRead {
       Assert.assertEquals(getResponse.getStatusLine().getStatusCode(), HttpStatus.SC_OK,
           "Router fails to respond to health check.");
     } catch (Exception e) {
-      Assert.fail("Met an exception:", e);
+      fail("Met an exception:", e);
     }
   }
 
@@ -525,7 +548,45 @@ public abstract class TestRead {
       Assert.assertEquals(resourceStateResponse.getName(), storeVersionName);
       logger.info(responseBody);
     } catch (Exception e) {
-      Assert.fail("Unexpected exception", e);
+      fail("Unexpected exception", e);
     }
+  }
+
+  @Test
+  public void testRequestUsageMetric() {
+    if (!isTestEnabled()) {
+      return;
+    }
+    // Send request to a read-disabled store
+    AvroGenericStoreClient<String, GenericRecord> storeClient = ClientFactory.getAndStartGenericAvroClient(
+        ClientConfig.defaultGenericClientConfig(readDisabledStoreName)
+            .setVeniceURL(routerAddr)
+            .setSslEngineComponentFactory(SslUtils.getLocalSslFactory())
+    );
+    try {
+      storeClient.get("test").get();
+      fail("An exception should be thrown when accessing a read-disabled store");
+    } catch (Exception e) {
+      // Expected
+    } finally {
+      storeClient.close();
+    }
+    // Verify router metrics
+    VeniceRouterWrapper routerWrapper = veniceCluster.getRandomVeniceRouter();
+    MetricsRepository metricsRepository = routerWrapper.getMetricsRepository();
+    String requestUsageMetric = new StringBuilder()
+        .append(".")
+        .append(readDisabledStoreName)
+        .append("--")
+        .append("request_usage.Total")
+        .toString();
+    String badRequestMetric = new StringBuilder()
+        .append(".")
+        .append(readDisabledStoreName)
+        .append("--")
+        .append("bad_request.Count")
+        .toString();
+    assertEquals(metricsRepository.metrics().get(requestUsageMetric).value(), 1.0d);
+    assertEquals(metricsRepository.metrics().get(badRequestMetric).value(), 1.0d);
   }
 }
