@@ -49,12 +49,12 @@ if (project.hasProperty('overrideBuildEnvironment')) {
   }
 }
 
+def containerVersion = '38.4.415'
+def ddsStorageCoreVersion = '13.0.16'
 def internalKafkaGroup = 'com.linkedin.kafka'
 def internalKafkaVersion = '2.3.0.32'
-
-def ddsStorageCoreVersion = '13.0.16'
-
 def log4j2Version = '2.17.1'
+def pegasusVersion = '29.29.0'
 
 ext.libraries = [
     avro: 'org.apache.avro:avro:1.7.7',
@@ -76,10 +76,10 @@ ext.libraries = [
     mockito: 'org.mockito:mockito-core:3.3.3',
     netty: 'io.netty:netty-all:4.1.52.Final',
     zkclient: 'com.101tec:zkclient:0.7', // For Kafka AdminUtils
-    d2: 'com.linkedin.container:pegasus-d2-server-factory:30.1.265',
-    d2Client: 'com.linkedin.container:pegasus-d2-client-factory:38.4.175',
-    r2Client: 'com.linkedin.container:pegasus-r2-client-factory:38.4.175',
-    r2: "com.linkedin.pegasus:r2:29.18.2",
+    d2: 'com.linkedin.container:pegasus-d2-server-factory:' + containerVersion,
+    d2Client: 'com.linkedin.container:pegasus-d2-client-factory:' + containerVersion,
+    r2Client: 'com.linkedin.container:pegasus-r2-client-factory:' + containerVersion,
+    r2: "com.linkedin.pegasus:r2:" + pegasusVersion,
     routerApi: 'com.linkedin.dds-storage-core:dds-storage-router-api:' + ddsStorageCoreVersion,
     routerImpl: 'com.linkedin.dds-storage-core:dds-storage-router-impl:' + ddsStorageCoreVersion,
     ddsNettyBase: 'com.linkedin.dds-storage-core:dds-storage-netty4-base:' + ddsStorageCoreVersion,
@@ -129,7 +129,7 @@ ext.libraries = [
     // 2. TestAdminSparkServer.controllerClientCanDeleteOldVersion
     // 3. TestAdminSparkServer.controllerClientCanDeleteAllVersion
     // 4. TestBrooklin.canReplicateKafkaWithBrooklinTopicReplicator
-    restliDocgen: 'com.linkedin.pegasus:restli-docgen:15.1.10',
+    restliDocgen: 'com.linkedin.pegasus:restli-docgen:' + pegasusVersion,
 
     // RocksDB
     rocksdbjni: 'org.rocksdb:rocksdbjni:6.20.3',
