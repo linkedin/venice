@@ -130,8 +130,8 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           + this.longTailRetryThresholdForSingletGetInMicroSeconds);
     }
 
-    if (this.dualReadEnabled && this.longTailRetryEnabledForSingleGet) {
-      throw new VeniceClientException("Dual-read can't be enabled together with long-tail retry for single-get");
+    if (this.speculativeQueryEnabled && this.longTailRetryEnabledForSingleGet) {
+      throw new VeniceClientException("Speculative query feature can't be enabled together with long-tail retry for single-get");
     }
   }
 
