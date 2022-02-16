@@ -232,7 +232,8 @@ public class MergeConflictResolver {
 
   private RecordDeserializer<GenericRecord> getReplicationMetadataDeserializer(int valueSchemaId) {
     Schema replicationMetadataSchema = getReplicationMetadataSchema(valueSchemaId);
-    return MapOrderingPreservingSeDeFactory.getDeserializer(replicationMetadataSchema, replicationMetadataSchema);
+    return schemaToDeserializerMap.computeIfAbsent(replicationMetadataSchema,
+        schema -> MapOrderingPreservingSeDeFactory.getDeserializer(replicationMetadataSchema, replicationMetadataSchema));
   }
 
   private RecordSerializer<GenericRecord> getReplicationMetadataSerializer(int valueSchemaId) {
