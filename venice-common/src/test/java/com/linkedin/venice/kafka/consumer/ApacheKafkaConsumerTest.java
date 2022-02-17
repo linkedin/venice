@@ -2,6 +2,7 @@ package com.linkedin.venice.kafka.consumer;
 
 import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 
@@ -25,10 +26,12 @@ import org.testng.annotations.Test;
 public class ApacheKafkaConsumerTest {
   ApacheKafkaConsumer consumer;
   KafkaBrokerWrapper kafkaBroker;
+  private ZkServerWrapper zkServer;
 
   @BeforeMethod
   public void setUp() {
-    kafkaBroker = ServiceFactory.getKafkaBroker();
+    zkServer = ServiceFactory.getZkServer();
+    kafkaBroker = ServiceFactory.getKafkaBroker(zkServer);
     Properties properties = new Properties();
     properties.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, KafkaKeySerializer.class);
     properties.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, KafkaValueSerializer.class);
@@ -39,6 +42,7 @@ public class ApacheKafkaConsumerTest {
   @AfterMethod
   public void cleanUp() {
     IOUtils.closeQuietly(kafkaBroker);
+    IOUtils.closeQuietly(zkServer);
   }
 
   @Test

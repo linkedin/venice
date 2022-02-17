@@ -6,6 +6,7 @@ import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.client.store.transport.HttpsTransportClient;
 import com.linkedin.venice.integration.utils.MockVeniceRouterWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.utils.SslUtils;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -20,7 +21,8 @@ import org.testng.annotations.Test;
 public class TestSslTransportClient {
   @Test
   public void SslTransportClientCanTalkToRouter() throws ExecutionException, InterruptedException, IOException {
-    try (MockVeniceRouterWrapper router = ServiceFactory.getMockVeniceRouter(ServiceFactory.getZkServer().getAddress(), true, new Properties())) {
+    try (ZkServerWrapper zkServer = ServiceFactory.getZkServer();
+        MockVeniceRouterWrapper router = ServiceFactory.getMockVeniceRouter(zkServer.getAddress(), true, new Properties())) {
       String routerSslUrl = "https://" + router.getHost() + ":" + router.getSslPort();
       try (HttpsTransportClient client = new HttpsTransportClient(routerSslUrl, SslUtils.getLocalSslFactory())) {
 

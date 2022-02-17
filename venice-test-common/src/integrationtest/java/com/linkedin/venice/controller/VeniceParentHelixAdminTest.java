@@ -294,7 +294,8 @@ public class VeniceParentHelixAdminTest {
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = DEFAULT_TEST_TIMEOUT*10)
   public void testStoreMetaDataUpdateFromParentToChildController(boolean isControllerSslEnabled) {
     String clusterName = Utils.getUniqueString("testStoreMetadataUpdate");
-    try (KafkaBrokerWrapper kafkaBrokerWrapper = ServiceFactory.getKafkaBroker();
+    try (ZkServerWrapper zkServer = ServiceFactory.getZkServer();
+        KafkaBrokerWrapper kafkaBrokerWrapper = ServiceFactory.getKafkaBroker(zkServer);
         VeniceControllerWrapper childControllerWrapper =
             ServiceFactory.getVeniceController(clusterName, kafkaBrokerWrapper, isControllerSslEnabled);
         ZkServerWrapper parentZk = ServiceFactory.getZkServer();

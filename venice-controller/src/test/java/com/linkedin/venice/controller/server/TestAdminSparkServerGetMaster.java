@@ -6,6 +6,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
+import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import java.io.IOException;
@@ -40,10 +41,12 @@ public class TestAdminSparkServerGetMaster {
   private String cluster = "test-master-cluster";
   private VeniceControllerWrapper veniceControllerWrapper;
   private KafkaBrokerWrapper kafkaBrokerWrapper;
+  private ZkServerWrapper zkServer;
 
   @BeforeMethod
   public void setUp() {
-    kafkaBrokerWrapper = ServiceFactory.getKafkaBroker();
+    zkServer = ServiceFactory.getZkServer();
+    kafkaBrokerWrapper = ServiceFactory.getKafkaBroker(zkServer);
     veniceControllerWrapper = ServiceFactory.getVeniceController(cluster, kafkaBrokerWrapper);
   }
 
@@ -51,6 +54,7 @@ public class TestAdminSparkServerGetMaster {
   public void cleanUp() {
     veniceControllerWrapper.close();
     kafkaBrokerWrapper.close();
+    zkServer.close();
   }
 
   @Test

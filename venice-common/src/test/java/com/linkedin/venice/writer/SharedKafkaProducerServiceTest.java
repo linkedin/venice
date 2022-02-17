@@ -3,6 +3,7 @@ package com.linkedin.venice.writer;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
@@ -44,9 +45,11 @@ public class SharedKafkaProducerServiceTest {
   private KafkaBrokerWrapper kafka;
   private TopicManager topicManager;
   private KafkaClientFactory kafkaClientFactory;
+  private ZkServerWrapper zkServer;
 
   private void setUp() {
-    kafka = ServiceFactory.getKafkaBroker();
+    zkServer = ServiceFactory.getZkServer();
+    kafka = ServiceFactory.getKafkaBroker(zkServer);
     kafkaClientFactory = TestUtils.getVeniceConsumerFactory(kafka);
     topicManager = new TopicManager(kafkaClientFactory);
   }
@@ -54,6 +57,7 @@ public class SharedKafkaProducerServiceTest {
   private void cleanUp() throws IOException {
     kafka.close();
     topicManager.close();
+    zkServer.close();
   }
 
   /**

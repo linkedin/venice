@@ -8,6 +8,7 @@ import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
+import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -34,7 +35,8 @@ public class TestControllerEnforeSSL {
     Properties extraProperties = new Properties();
     extraProperties.setProperty(CONTROLLER_ENFORCE_SSL, "true");
 
-    try (KafkaBrokerWrapper kafkaBrokerWrapper = ServiceFactory.getKafkaBroker();
+    try (ZkServerWrapper zkServer = ServiceFactory.getZkServer();
+        KafkaBrokerWrapper kafkaBrokerWrapper = ServiceFactory.getKafkaBroker(zkServer);
          VeniceControllerWrapper controllerWrapper = ServiceFactory.getVeniceController(
              new String[]{CLUSTER_NAME}, kafkaBrokerWrapper, 1, 10, 0, 1,
              null, null, false, false, extraProperties);

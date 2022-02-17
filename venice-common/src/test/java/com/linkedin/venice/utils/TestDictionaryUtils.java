@@ -4,6 +4,7 @@ import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
@@ -34,6 +35,7 @@ public class TestDictionaryUtils {
   /** Wait time for {@link #manager} operations, in seconds */
   private static final int WAIT_TIME = 10;
   private KafkaBrokerWrapper kafka;
+  private ZkServerWrapper zkServer;
   private TopicManager manager;
   private MockTime mockTime;
 
@@ -60,8 +62,9 @@ public class TestDictionaryUtils {
 
   @BeforeClass
   public void setUp() {
+    zkServer = ServiceFactory.getZkServer();
     mockTime = new MockTime();
-    kafka = ServiceFactory.getKafkaBroker(mockTime);
+    kafka = ServiceFactory.getKafkaBroker(zkServer, Optional.of(mockTime));
     manager = new TopicManager(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, MIN_COMPACTION_LAG, TestUtils.getVeniceConsumerFactory(kafka));
   }
 
@@ -69,6 +72,7 @@ public class TestDictionaryUtils {
   public void cleanUp() throws IOException {
     kafka.close();
     manager.close();
+    zkServer.close();
   }
 
   @Test
