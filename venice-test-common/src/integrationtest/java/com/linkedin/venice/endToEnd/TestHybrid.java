@@ -1294,7 +1294,10 @@ public class TestHybrid {
     }
   }
 
-  @Test(dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = 120 * Time.MS_PER_SECOND)
+  /**
+   * TODO: enable the test once status reporting race condition in amplification factor is fixed.
+   */
+  @Test(dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = 120 * Time.MS_PER_SECOND, enabled = false)
   public void testHybridWithAmplificationFactor(boolean useCustomizedView, boolean useIngestionIsolation) throws Exception {
     final Properties extraProperties = new Properties();
     extraProperties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1L));
