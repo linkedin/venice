@@ -204,6 +204,13 @@ public class VenicePushJob implements AutoCloseable {
   public static final String REWIND_EPOCH_TIME_IN_SECONDS_OVERRIDE = "rewind.epoch.time.in.seconds.override";
 
   /**
+   * This config is a boolean which suppresses submitting the end of push message after data has been sent and does
+   * not poll for the status of the job to complete.  Using this flag means that a user must manually mark the job success
+   * or failed.
+   */
+  public static final String SUPPRESS_END_OF_PUSH_MESSAGE = "suppress.end.of.push.message";
+
+  /**
    * Relates to the above argument.  An overridable amount of buffer to be applied to the epoch (as the rewind isn't
    * perfectly instantaneous).  Defaults to 1 minute.
    */
@@ -411,6 +418,7 @@ public class VenicePushJob implements AutoCloseable {
     boolean kafkaInputCombinerEnabled;
     boolean skipKifSafetyChecks;
     BufferReplayPolicy validateRemoteReplayPolicy;
+    boolean suppressEndOfPushMessage;
   }
   protected PushJobSetting pushJobSetting;
 
@@ -633,6 +641,7 @@ public class VenicePushJob implements AutoCloseable {
     pushJobSettingToReturn.skipKifSafetyChecks = props.getBoolean(
         SKIP_KIF_SAFETY_CHECKS_AND_TREAT_REPUSH_AS_REGULAR_PUSH, false);
     pushJobSettingToReturn.kafkaInputCombinerEnabled = props.getBoolean(KAFKA_INPUT_COMBINER_ENABLED, false);
+    pushJobSettingToReturn.suppressEndOfPushMessage = props.getBoolean(SUPPRESS_END_OF_PUSH_MESSAGE, false);
 
     if (pushJobSettingToReturn.isSourceKafka) {
       /**
@@ -995,10 +1004,12 @@ public class VenicePushJob implements AutoCloseable {
             }
           }
 
-          if (pushJobSetting.sendControlMessagesDirectly) {
-            getVeniceWriter(kafkaTopicInfo).broadcastEndOfPush(Collections.emptyMap());
-          } else {
-            controllerClient.writeEndOfPush(pushJobSetting.storeName, kafkaTopicInfo.version);
+          if(!pushJobSetting.suppressEndOfPushMessage) {
+            if (pushJobSetting.sendControlMessagesDirectly) {
+              getVeniceWriter(kafkaTopicInfo).broadcastEndOfPush(Collections.emptyMap());
+            } else {
+              controllerClient.writeEndOfPush(pushJobSetting.storeName, kafkaTopicInfo.version);
+            }
           }
 
 
@@ -1012,7 +1023,12 @@ public class VenicePushJob implements AutoCloseable {
         sendPushJobDetailsToController();
         // Waiting for Venice Backend to complete consumption
         updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.START_JOB_STATUS_POLLING);
-        pollStatusUntilComplete(pushJobSetting.incrementalPushVersion, controllerClient, pushJobSetting, kafkaTopicInfo);
+
+        // Poll for job status unless we've suppressed sending EOP, in which case, don't wait up
+        if(!pushJobSetting.suppressEndOfPushMessage) {
+          pollStatusUntilComplete(pushJobSetting.incrementalPushVersion, controllerClient, pushJobSetting, kafkaTopicInfo);
+        }
+
         updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.JOB_STATUS_POLLING_COMPLETED);
         pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(PushJobDetailsStatus.COMPLETED.getValue()));
         pushJobDetails.jobDurationInMs = System.currentTimeMillis() - jobStartTimeMs;
