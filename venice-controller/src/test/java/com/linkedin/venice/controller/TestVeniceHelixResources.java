@@ -16,21 +16,34 @@ import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.helix.manager.zk.ZKHelixManager;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.testng.Assert;
+import org.testng.annotations.AfterClass;
+import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 import static org.mockito.Mockito.*;
 
 
 public class TestVeniceHelixResources {
+  private ZkServerWrapper zkServer;
+
+  @BeforeClass
+  public void setUp() {
+    zkServer = ServiceFactory.getZkServer();
+  }
+
+  @AfterClass
+  public void cleanUp() {
+    zkServer.close();
+  }
+
   private HelixVeniceClusterResources getVeniceHelixResources(String cluster) {
     return getVeniceHelixResources(cluster, new MetricsRepository());
   }
 
   private HelixVeniceClusterResources getVeniceHelixResources(String cluster, MetricsRepository metricsRepository) {
-    ZkServerWrapper zk = ServiceFactory.getZkServer();
-    ZkClient zkClient = ZkClientFactory.newZkClient(zk.getAddress());
-    ZKHelixManager controller = new ZKHelixManager(cluster, "localhost_1234", InstanceType.CONTROLLER, zk.getAddress());
-    ZKHelixAdmin admin = new ZKHelixAdmin(zk.getAddress());
+    ZkClient zkClient = ZkClientFactory.newZkClient(zkServer.getAddress());
+    ZKHelixManager controller = new ZKHelixManager(cluster, "localhost_1234", InstanceType.CONTROLLER, zkServer.getAddress());
+    ZKHelixAdmin admin = new ZKHelixAdmin(zkServer.getAddress());
     admin.addCluster(cluster);
     VeniceHelixAdmin veniceHelixAdmin = mock(VeniceHelixAdmin.class);
     doReturn(mock(MetaStoreWriter.class)).when(veniceHelixAdmin).getMetaStoreWriter();

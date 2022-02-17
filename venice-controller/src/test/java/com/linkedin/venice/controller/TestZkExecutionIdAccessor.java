@@ -16,11 +16,12 @@ public class TestZkExecutionIdAccessor {
   private ZkClient zkClient;
   private ZkExecutionIdAccessor executionIdAccessor;
   private String clusterName = "TestZkExecutionIdAccessor";
+  private ZkServerWrapper zkServer;
 
   @BeforeMethod
   public void setUp() {
-    ZkServerWrapper zkServerWrapper = ServiceFactory.getZkServer();
-    zkClient = ZkClientFactory.newZkClient(zkServerWrapper.getAddress());
+    zkServer = ServiceFactory.getZkServer();
+    zkClient = ZkClientFactory.newZkClient(zkServer.getAddress());
     zkClient.createPersistent(HelixUtils.getHelixClusterZkPath(clusterName));
     executionIdAccessor = new ZkExecutionIdAccessor(zkClient, new HelixAdapterSerializer());
   }
@@ -28,6 +29,7 @@ public class TestZkExecutionIdAccessor {
   @AfterMethod
   public void cleanUp() {
     zkClient.close();
+    zkServer.close();
   }
 
   @Test

@@ -2,6 +2,7 @@ package com.linkedin.venice.hadoop.input.kafka;
 
 import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
@@ -31,10 +32,12 @@ public class TestKafkaInputFormat {
 
   private KafkaBrokerWrapper kafka;
   private TopicManager manager;
+  private ZkServerWrapper zkServer;
 
   @BeforeClass
   public void setUp() {
-    kafka = ServiceFactory.getKafkaBroker();
+    zkServer = ServiceFactory.getZkServer();
+    kafka = ServiceFactory.getKafkaBroker(zkServer);
     manager = new TopicManager(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, 24 * Time.MS_PER_HOUR, TestUtils.getVeniceConsumerFactory(kafka));
   }
 
@@ -42,6 +45,7 @@ public class TestKafkaInputFormat {
   public void cleanUp() throws IOException {
     manager.close();
     kafka.close();
+    zkServer.close();
   }
 
   public String getTopic(int numRecord, int numPartition) {

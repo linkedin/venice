@@ -5,6 +5,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.BrooklinWrapper;
 import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.kafka.TopicException;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.utils.PropertyBuilder;
@@ -48,7 +49,8 @@ public class TestBrooklin {
     String dummyVeniceClusterName = Utils.getUniqueString("venice");
     String topic = "test-topic";
 
-    try (KafkaBrokerWrapper kafka = ServiceFactory.getKafkaBroker();
+    try (ZkServerWrapper zkServer = ServiceFactory.getZkServer();
+        KafkaBrokerWrapper kafka = ServiceFactory.getKafkaBroker(zkServer);
         BrooklinWrapper brooklin = ServiceFactory.getBrooklinWrapper(kafka);
         TopicManager topicManager =
             new TopicManager(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, 0l, TestUtils.getVeniceConsumerFactory(kafka));) {
@@ -115,7 +117,8 @@ public class TestBrooklin {
    */
   @Test
   public void canReplicateKafkaWithBrooklinTopicReplicator() throws InterruptedException, IOException {
-    try (KafkaBrokerWrapper kafka = ServiceFactory.getKafkaBroker();
+    try (ZkServerWrapper zkServer = ServiceFactory.getZkServer();
+        KafkaBrokerWrapper kafka = ServiceFactory.getKafkaBroker(zkServer);
         BrooklinWrapper brooklin = ServiceFactory.getBrooklinWrapper(kafka)) {
 
       Properties properties = new Properties();

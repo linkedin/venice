@@ -9,6 +9,7 @@ import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
+import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 
@@ -25,7 +26,9 @@ public class TestD2ControllerClient {
   @Test(timeOut = 90 * Time.MS_PER_SECOND)
   public void testD2ControllerClientEnd2End() {
     D2Client d2Client = null;
-    try (KafkaBrokerWrapper kafkaBrokerWrapper = ServiceFactory.getKafkaBroker();VeniceControllerWrapper controllerWrapper =
+    try (ZkServerWrapper zkServer = ServiceFactory.getZkServer();
+        KafkaBrokerWrapper kafkaBrokerWrapper = ServiceFactory.getKafkaBroker(zkServer);
+        VeniceControllerWrapper controllerWrapper =
         ServiceFactory.getVeniceController(new String[]{CLUSTER_NAME}, kafkaBrokerWrapper, 1, 10, 0, 1, null, null, true, true, new Properties())) {
       String zkAddress = kafkaBrokerWrapper.getZkAddress();
       D2TestUtils.setupD2Config(zkAddress, false, D2TestUtils.CONTROLLER_CLUSTER_NAME, D2TestUtils.CONTROLLER_SERVICE_NAME, false);

@@ -9,6 +9,7 @@ import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 
+import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import java.util.Optional;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeoutException;
@@ -23,7 +24,8 @@ public class TestBackupControllerResponse {
   @Test
   public void backupControllerThrows421() throws Exception {
     String clusterName = "backupControllerThrows421";
-    try (KafkaBrokerWrapper kafka = ServiceFactory.getKafkaBroker();
+    try (ZkServerWrapper zkServer = ServiceFactory.getZkServer();
+        KafkaBrokerWrapper kafka = ServiceFactory.getKafkaBroker(zkServer);
         ControllerTransport transport = new ControllerTransport(Optional.empty());
         VeniceControllerWrapper controller1 = ServiceFactory.getVeniceController(clusterName, kafka);
         VeniceControllerWrapper controller2 = ServiceFactory.getVeniceController(clusterName, kafka)) {

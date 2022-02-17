@@ -44,17 +44,23 @@ public class MirrorMakerTest {
 
   KafkaBrokerWrapper sourceKafka = null;
   KafkaBrokerWrapper destinationKafka = null;
+  private ZkServerWrapper srcZkServer;
+  private ZkServerWrapper destZkServer;
 
   @BeforeClass(alwaysRun = true)
   void setUp() {
-    sourceKafka = ServiceFactory.getKafkaBroker();
-    destinationKafka = ServiceFactory.getKafkaBroker();
+    srcZkServer = ServiceFactory.getZkServer();
+    destZkServer = ServiceFactory.getZkServer();
+    sourceKafka = ServiceFactory.getKafkaBroker(srcZkServer);
+    destinationKafka = ServiceFactory.getKafkaBroker(destZkServer);
   }
 
   @AfterClass(alwaysRun = true)
   void cleanUp() {
     IOUtils.closeQuietly(sourceKafka);
     IOUtils.closeQuietly(destinationKafka);
+    IOUtils.closeQuietly(srcZkServer);
+    IOUtils.closeQuietly(destZkServer);
   }
 
   /**

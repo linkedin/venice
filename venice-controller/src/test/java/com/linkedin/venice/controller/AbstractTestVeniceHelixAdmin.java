@@ -59,6 +59,7 @@ class AbstractTestVeniceHelixAdmin {
   String kafkaZkAddress;
 
   ZkServerWrapper zkServerWrapper;
+  private ZkServerWrapper kafkaZkServer;
   KafkaBrokerWrapper kafkaBrokerWrapper;
   SafeHelixManager helixManager;
   Map<String, SafeHelixManager> helixManagerByNodeID = new HashMap<>();
@@ -75,7 +76,8 @@ class AbstractTestVeniceHelixAdmin {
   public void setupCluster(boolean createParticipantStore) throws Exception {
     zkServerWrapper = ServiceFactory.getZkServer();
     zkAddress = zkServerWrapper.getAddress();
-    kafkaBrokerWrapper = ServiceFactory.getKafkaBroker();
+    kafkaZkServer = ServiceFactory.getZkServer();
+    kafkaBrokerWrapper = ServiceFactory.getKafkaBroker(kafkaZkServer);
     kafkaZkAddress = kafkaBrokerWrapper.getZkAddress();
     clusterName = Utils.getUniqueString("test-cluster");
     Properties properties = getControllerProperties(clusterName);
@@ -103,6 +105,7 @@ class AbstractTestVeniceHelixAdmin {
     }
     zkServerWrapper.close();
     kafkaBrokerWrapper.close();
+    kafkaZkServer.close();
   }
 
   void startParticipant() throws Exception {

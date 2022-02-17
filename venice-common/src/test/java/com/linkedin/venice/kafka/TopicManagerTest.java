@@ -4,6 +4,7 @@ import com.github.benmanes.caffeine.cache.Cache;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.kafka.admin.KafkaAdminWrapper;
 import com.linkedin.venice.kafka.partitionoffset.PartitionOffsetFetcherImpl;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
@@ -36,6 +37,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
@@ -76,6 +78,7 @@ public class TopicManagerTest {
   private KafkaBrokerWrapper kafka;
   private TopicManager topicManager;
   private MockTime mockTime;
+  private ZkServerWrapper zkServer;
 
   private String getTopic() {
     String callingFunction = Thread.currentThread().getStackTrace()[2].getMethodName();
@@ -90,8 +93,9 @@ public class TopicManagerTest {
 
   @BeforeClass
   public void setUp() {
+    zkServer = ServiceFactory.getZkServer();
     mockTime = new MockTime();
-    kafka = ServiceFactory.getKafkaBroker(mockTime);
+    kafka = ServiceFactory.getKafkaBroker(zkServer, Optional.of(mockTime));
     topicManager = new TopicManager(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, MIN_COMPACTION_LAG, TestUtils.getVeniceConsumerFactory(kafka));
     Cache cacheNothingCache = mock(Cache.class);
     Mockito.when(cacheNothingCache.getIfPresent(Mockito.any())).thenReturn(null);
@@ -100,8 +104,9 @@ public class TopicManagerTest {
 
   @AfterClass
   public void cleanUp() throws IOException {
-    kafka.close();
     topicManager.close();
+    kafka.close();
+    zkServer.close();
   }
 
   @Test
