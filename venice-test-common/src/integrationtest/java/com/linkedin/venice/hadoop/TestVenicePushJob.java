@@ -1,6 +1,8 @@
 package com.linkedin.venice.hadoop;
 
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.MultiStoreStatusResponse;
+import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.exceptions.VeniceSchemaFieldNotFoundException;
@@ -21,6 +23,7 @@ import com.linkedin.venice.utils.Utils;
 import java.io.File;
 import java.io.IOException;
 import java.util.Properties;
+import java.util.concurrent.TimeUnit;
 import org.apache.avro.Schema;
 import org.apache.avro.file.DataFileWriter;
 import org.apache.avro.generic.GenericData;
@@ -341,6 +344,32 @@ public class TestVenicePushJob {
     props.setProperty(VALUE_FIELD_PROP, "age");
     props.setProperty(CONTROLLER_REQUEST_RETRY_ATTEMPTS, "2");
     TestPushUtils.runPushJob("Test push job", props);
+
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testRunJobWithEOPSuppressed() throws Exception {
+    File inputDir = getTempDataDirectory();
+    String storeName = Utils.getUniqueString("store");
+    String routerUrl = veniceCluster.getRandomRouterURL();
+    ControllerClient controllerClient = new ControllerClient(veniceCluster.getClusterName(), routerUrl);
+    Schema recordSchema = writeSimpleAvroFileWithStringToStringSchema(inputDir, false);
+    String inputDirPath = "file://" + inputDir.getAbsolutePath();
+    Properties props = defaultH2VProps(veniceCluster, inputDirPath, storeName);
+    props.setProperty(SUPPRESS_END_OF_PUSH_MESSAGE, "true");
+    createStoreForJob(veniceCluster, recordSchema, props);
+    TestPushUtils.runPushJob("Test push job", props);
+
+    TestUtils.waitForNonDeterministicAssertion(20, TimeUnit.SECONDS, () -> {
+      MultiStoreStatusResponse response = controllerClient.getFutureVersions(veniceCluster.getClusterName(), storeName);
+      Assert.assertEquals(response.getStoreStatusMap().size(), 1);
+      controllerClient.writeEndOfPush(storeName, 1);
+    });
+
+    TestUtils.waitForNonDeterministicAssertion(20, TimeUnit.SECONDS, () -> {
+      StoreResponse storeResponse = controllerClient.getStore(storeName);
+      Assert.assertEquals(storeResponse.getStore().getCurrentVersion(), 1);
+    });
 
   }
 
