@@ -189,11 +189,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private final Set<Integer> errorPartitions = Collections.synchronizedSet(new HashSet<>());
   /** Measurable wrapper for exception, partition id pair */
   private class PartitionExceptionInfo implements Measurable {
-    private Exception e;
-    private Integer partitionId;
+    private final Exception e;
+    private final Integer partitionId;
 
     public PartitionExceptionInfo(Exception e, int partitionId) {
-      this. e = e;
+      this.e = e;
       this.partitionId = partitionId;
     }
 
@@ -228,7 +228,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   /** Persists the exception thrown by {@link KafkaConsumerService}. */
   private Exception lastConsumerException = null;
   /** Persists the last exception thrown by any asynchronous component that should terminate the entire ingestion task */
-  private AtomicReference<Exception> lastStoreIngestionException = new AtomicReference<>();
+  private final AtomicReference<Exception> lastStoreIngestionException = new AtomicReference<>();
   /**
    * Keeps track of producer states inside version topic that drainer threads have processed so far. Producers states in this validator will be
    * flushed to the metadata partition of the storage engine regularly in {@link #syncOffset(String, PartitionConsumptionState)}
@@ -270,7 +270,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   // Kafka bootstrap url to consumer
   protected Map<String, KafkaConsumerWrapper> consumerMap;
 
-  private KafkaClusterBasedRecordThrottler kafkaClusterBasedRecordThrottler;
+  private final KafkaClusterBasedRecordThrottler kafkaClusterBasedRecordThrottler;
 
   protected Set<Integer> availableSchemaIds;
   protected Set<Integer> deserializedSchemaIds;
@@ -510,7 +510,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     this.suppressLiveUpdates = serverConfig.freezeIngestionIfReadyToServeOrLocalDataExists();
 
-    /**
+    /*
      * The reason to use a different field name here is that the naming convention will be consistent with RocksDB.
      */
     this.disableAutoCompactionForSamzaReprocessingJob = !serverConfig.isEnableAutoCompactionForSamzaReprocessingJob();
@@ -564,7 +564,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   protected void buildHybridQuotaEnforcer() {
-    /**
+    /*
      * We will enforce hybrid quota only if this is hybrid mode && persistence type is rocks DB
      */
     AbstractStorageEngine storageEngine = storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic);
@@ -1845,14 +1845,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         }
         break;
       case RESET_OFFSET:
-        /**
+        /*
          * After auditing all the calls that can result in the RESET_OFFSET action, it turns out we always unsubscribe
          * from the topic/partition before resetting offset, which is unnecessary; but we decided to keep this action
          * for now in case that in future, we do want to reset the consumer without unsubscription.
          */
         if (partitionConsumptionStateMap.containsKey(partition) && consumerHasSubscription(topic, partitionConsumptionStateMap.get(partition))) {
           logger.error("This shouldn't happen since unsubscription should happen before reset offset for topic: " + topic + ", partition: " + partition);
-          /**
+          /*
            * Only update the consumer and partitionConsumptionStateMap when consumer actually has
            * subscription to this topic/partition; otherwise, we would blindly update the StateMap
            * and mess up other operations on the StateMap.
@@ -1934,7 +1934,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       }
 
       // Report such kind of message once per minute to reduce logging volume
-      /**
+      /*
        * TODO: right now, if we update a store to enable hybrid, {@link StoreIngestionTask} for the existing versions
        * won't know it since {@link #hybridStoreConfig} parameter is passed during construction.
        *
@@ -1953,7 +1953,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     if (isIncrementalPushEnabled && incrementalPushPolicy.equals(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME)) {
       KafkaMessageEnvelope value = record.value();
-      /**
+      /*
        * For inc push to RT, filter out the messages if the target version embedded in the message doesn't match the version
        * of this ingestion task.
        */
@@ -2001,7 +2001,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       return false;
     }
 
-    /**
+    /*
      * If ingestion isolation is enabled, when completion is reported for a partition, we don't need to persist the remaining
      * records in the drainer queue, as per ingestion isolation design, we will unsubscribe topic partition in child process
      * and re-subscribe it in main process, thus these records can be processed in main process instead without slowing down
@@ -2076,20 +2076,20 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     if (processedRecordNum >= OFFSET_REPORTING_INTERVAL ||
         partitionConsumptionState.isEndOfPushReceived()) {
       int processedRecordSize = partitionConsumptionState.getProcessedRecordSize();
-      /**
+      /*
        * Report ingestion throughput metric based on the store version
        */
       versionedStorageIngestionStats.recordBytesConsumed(storeName, versionNumber, processedRecordSize);
       versionedStorageIngestionStats.recordRecordsConsumed(storeName, versionNumber, processedRecordNum);
 
-      /**
+      /*
        * Meanwhile, contribute to the host-level ingestion throughput rate, which aggregates the consumption rate across
        * all store versions.
        */
       storeIngestionStats.recordTotalBytesConsumed(storeName, processedRecordSize);
       storeIngestionStats.recordTotalRecordsConsumed(storeName, processedRecordNum);
 
-      /**
+      /*
        * Also update this stats separately for Leader and Follower.
        */
       recordProcessedRecordStats(partitionConsumptionState, processedRecordSize, processedRecordNum);
@@ -2352,7 +2352,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private void processStartOfPush(KafkaMessageEnvelope startOfPushKME, ControlMessage controlMessage, int partition, long offset,
       PartitionConsumptionState partitionConsumptionState) {
     StartOfPush startOfPush = (StartOfPush) controlMessage.controlMessageUnion;
-    /**
+    /*
      * Notify the underlying store engine about starting batch push.
      */
     beginBatchWrite(partition, startOfPush.sorted, partitionConsumptionState);
@@ -2392,7 +2392,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     // We need to keep track of when the EOP happened, as that is used within Hybrid Stores' lag measurement
     partitionConsumptionState.getOffsetRecord().endOfPushReceived(offset);
-    /**
+    /*
      * Right now, we assume there are no sorted message after EndOfPush control message.
      * TODO: if this behavior changes in the future, the logic needs to be adjusted as well.
      */
@@ -2732,7 +2732,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    */
   private void prependHeaderAndWriteToStorageEngine(String topic, int partition, byte[] keyBytes, Put put) {
     ByteBuffer putValue = put.putValue;
-    /**
+    /*
      * Since {@link com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer} reuses the original byte
      * array, which is big enough to pre-append schema id, so we just reuse it to avoid unnecessary byte array allocation.
      * This value encoding scheme is used in {@link PartitionConsumptionState#maybeUpdateExpectedChecksum(byte[], Put)} to
@@ -2749,7 +2749,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
       writeToStorageEngine(storageEngineRepository.getLocalStorageEngine(topic), partition, keyBytes, put);
 
-      /** We still want to recover the original position to make this function idempotent. */
+      /* We still want to recover the original position to make this function idempotent. */
       putValue.putInt(backupBytes);
     }
   }
@@ -3002,7 +3002,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             consumerTaskId + " : Invalid/Unrecognized operation type submitted: " + kafkaValue.messageType);
     }
 
-    /**
+    /*
      * Potentially clean the mapping from transient record map. consumedOffset may be -1 when individual chunks are getting
      * produced to drainer queue from kafka callback thread {@link LeaderFollowerStoreIngestionTask#LeaderProducerMessageCallback}
      */
@@ -3056,7 +3056,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         waitReadyToProcessDataRecord(update.schemaId);
         break;
       case DELETE:
-        /** we don't need to check schema availability for DELETE */
+        /* we don't need to check schema availability for DELETE */
         break;
       default:
         throw new VeniceMessageException(
@@ -3229,8 +3229,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   /**
    * To check whether the given partition is still consuming message from Kafka
-   * @param partitionId
-   * @return
    */
   public boolean isPartitionConsuming(int partitionId) {
     return amplificationAdapter.isPartitionConsuming(partitionId);
@@ -3315,14 +3313,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             logger.info(consumerTaskId + " Partition " + partition + " synced offset: "
                 + partitionConsumptionState.getLatestProcessedVersionTopicOffset());
           } else {
-            /**
-             * Check whether we need to warm-up cache here.
-             */
+            // Check whether we need to warm-up cache here.
             if (storageEngine != null
                 && serverConfig.isCacheWarmingBeforeReadyToServeEnabled()
                 && serverConfig.isCacheWarmingEnabledForStore(storeName) // Only warm up configured stores
                 && store.getCurrentVersion() <= versionNumber) { // Only warm up current version or future version
-              /**
+              /*
                * With cache warming, the completion report is asynchronous, so it is possible that multiple queued
                * tasks are trying to warm up the cache and report completion for the same partition.
                * When this scenario happens, this task will end directly.
@@ -3338,9 +3334,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
                     } catch (Exception e) {
                       logger.error("Received exception while warming up cache for store: " + kafkaVersionTopic + ", partition: " + partition);
                     }
-                    /**
-                     * Delay reporting ready-to-serve until the storage node is ready.
-                     */
+                    // Delay reporting ready-to-serve until the storage node is ready.
                     long extraSleepTime = startReportingReadyToServeTimestamp - System.currentTimeMillis();
                     if (extraSleepTime > 0) {
                       try {
@@ -3361,9 +3355,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             warmupSchemaCache(store);
           }
           if (suppressLiveUpdates) {
-            /**
-             * If live updates suppression is enabled, stop consuming any new messages once the partition is ready to serve.
-             */
+            // If live updates suppression is enabled, stop consuming any new messages once the partition is ready to serve.
             String msg = consumerTaskId + " Live update suppression is enabled. Stop consumption for partition " + partition;
             if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
               logger.info(msg);
@@ -3474,9 +3466,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    */
   public void dumpStoreVersionState(AdminResponse response) {
     Optional<StoreVersionState> storeVersionState = storageMetadataService.getStoreVersionState(kafkaVersionTopic);
-    if (storeVersionState.isPresent()) {
-      response.addStoreVersionState(storeVersionState.get());
-    }
+    storeVersionState.ifPresent(response::addStoreVersionState);
   }
 
   public VeniceServerConfig getServerConfig() {
@@ -3698,11 +3688,24 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * ReportStatusAdapter forwards status report requests to notificationDispatcher at USER-partition level. It will record
    * all sub-partitions status reporting and report only once for user-partition when all the preconditions are met.
    */
-  public class ReportStatusAdapter {
+  protected class ReportStatusAdapter {
     private final IngestionNotificationDispatcher notificationDispatcher;
-    private final Map<Integer, AtomicBoolean> shouldCleanupStatus = new VeniceConcurrentHashMap<>();
+    /*
+     * A user partition to status cleanup flag map, indicating whether we need to clean up partition report status when
+     * a sub-partition of the specified user partition is subscribed.
+     */
+    private final Map<Integer, AtomicBoolean> statusCleanupFlagMap = new VeniceConcurrentHashMap<>();
+    /*
+     * A user partition to a map from status to boolean. The internal map inidicates whether a certain ingestion status
+     * has been reported or not for the given user partition. This map is used to make sure each user partition will
+     * only report once for each status.
+     */
     private final Map<Integer, Map<String, AtomicBoolean>> statusReportMap = new VeniceConcurrentHashMap<>();
-    private final Map<Integer, CompletableFuture<Void>> canReportCompleted = new VeniceConcurrentHashMap<>();
+    /*
+     * A user partition to completable future map. COMPLETED reporting will be blocked here if corresponding future
+     * exists and is not done.
+     */
+    private final Map<Integer, CompletableFuture<Void>> completionReportLatchMap = new VeniceConcurrentHashMap<>();
 
     public ReportStatusAdapter(IngestionNotificationDispatcher notificationDispatcher) {
       this.notificationDispatcher = notificationDispatcher;
@@ -3768,7 +3771,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       statusReportMap.get(userPartition).putIfAbsent(SubPartitionStatus.COMPLETED.toString(), new AtomicBoolean(false));
       for (int subPartitionId : PartitionUtils.getSubPartitions(userPartition, amplificationFactor)) {
         if (!partitionConsumptionStateMap.containsKey(subPartitionId)
-            /**
+            /*
              * In processEndOfPush, endOfPushReceived is marked as true first then END_OF_PUSH_RECEIVED get reported.
              * add a check in completion report to prevent a race condition that END_OF_PUSH_RECEIVED comes after completion reported.
              */
@@ -3777,14 +3780,17 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           return;
         }
       }
-      /**
-       * We need to make sure END_OF_PUSH is reported first before COMPLETED can be reported, otherwise replica status could
-       * go back from COMPLETED to END_OF_PUSH_RECEIVED and version push would fail.
+      /*
+       * We need to make sure END_OF_PUSH is reported first before COMPLETED can be reported, otherwise replica status
+       * could go back from COMPLETED to END_OF_PUSH_RECEIVED and version push would fail.
        */
-      try {
-        canReportCompleted.get(userPartition).get();
-      } catch (InterruptedException | ExecutionException e) {
-        logger.info("Caught exception when waiting completion report condition", e);
+      CompletableFuture<Void> latchFuture = completionReportLatchMap.get(userPartition);
+      if (latchFuture != null) {
+        try {
+          latchFuture.get();
+        } catch (InterruptedException | ExecutionException e) {
+          logger.info("Caught exception when waiting completion report condition", e);
+        }
       }
       // Make sure we only report once for each user partition.
       if (statusReportMap.get(userPartition).get(SubPartitionStatus.COMPLETED.toString()).compareAndSet(false, true)) {
@@ -3834,12 +3840,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       notificationDispatcher.reportKilled(getLeaderPcsList(pcsList), ke);
     }
 
-    private void report(
-        PartitionConsumptionState partitionConsumptionState,
-        SubPartitionStatus subPartitionStatus,
-        Runnable report) {
+    private void report(PartitionConsumptionState partitionConsumptionState, SubPartitionStatus subPartitionStatus, Runnable report) {
       report(partitionConsumptionState, subPartitionStatus, Optional.empty(), report);
     }
+
     /**
      * report status to all subPartitions of the given partitionConsumptionState's userPartition.
      */
@@ -3852,25 +3856,25 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         report.run();
         return;
       }
-      /**
+      /*
        * Below we compose the version aware subPartition status name, so amplification factor can work properly with
        * multiple incremental pushes.
        */
       String versionAwareSubPartitionStatus = subPartitionStatus.name() + (version.map(s -> "-" + s).orElse(""));
       int userPartition = partitionConsumptionState.getUserPartition();
       statusReportMap.get(userPartition).putIfAbsent(versionAwareSubPartitionStatus, new AtomicBoolean(false));
-      /**
+      /*
        * If we are reporting EOP, it means it is a fresh ingestion and COMPLETED reporting will have to wait until
        * EOP has been reported.
        */
       if (subPartitionStatus.equals(SubPartitionStatus.END_OF_PUSH_RECEIVED)) {
-        canReportCompleted.putIfAbsent(userPartition, new CompletableFuture<>());
+        completionReportLatchMap.putIfAbsent(userPartition, new CompletableFuture<>());
       }
 
       if ((subPartitionStatus.equals(SubPartitionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED)
           || (subPartitionStatus.equals(SubPartitionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED))) &&
           incrementalPushPolicy.equals(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME)) {
-        /**
+        /*
          * For inc push to RT policy, the control msg is only consumed by leader subPartition. We need to record the
          * detailed subPartition status for every subPartition of the same user partition so that the below report logic
          * can be triggered.
@@ -3894,7 +3898,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       if (statusReportMap.get(userPartition).get(versionAwareSubPartitionStatus).compareAndSet(false, true)) {
         report.run();
         if (subPartitionStatus.equals(SubPartitionStatus.END_OF_PUSH_RECEIVED)) {
-          canReportCompleted.get(userPartition).complete(null);
+          completionReportLatchMap.get(userPartition).complete(null);
         }
       }
     }
@@ -3906,13 +3910,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     public void initializePartitionStatus(int subPartition) {
       int userPartition = PartitionUtils.getUserPartition(subPartition, amplificationFactor);
       // Make sure we only initialize once for each user partition.
-      if (shouldCleanupStatus.get(userPartition).compareAndSet(true, false)) {
+      if (statusCleanupFlagMap.get(userPartition).compareAndSet(true, false)) {
         statusReportMap.put(userPartition, new VeniceConcurrentHashMap<>());
-        /**
+        /*
          * By default, we are allowed to report COMPLETED, but if we found that EOP is being reported, we need to block
          * completion reporting until EOP is fully reported.
          */
-        canReportCompleted.put(userPartition, CompletableFuture.completedFuture(null));
+        completionReportLatchMap.remove(userPartition);
       }
     }
 
@@ -3921,7 +3925,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      * the same topic partition reuses old reporting status.
      */
     public void preparePartitionStatusCleanup(int userPartition) {
-      shouldCleanupStatus.put(userPartition, new AtomicBoolean(true));
+      statusCleanupFlagMap.put(userPartition, new AtomicBoolean(true));
     }
   }
 
@@ -3933,7 +3937,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     public void subscribePartition(String topic, int partition, Optional<LeaderFollowerStateType> leaderState) {
       reportStatusAdapter.preparePartitionStatusCleanup(partition);
-      /**
+      /*
        * RT topic partition count : VT topic partition count is 1 : amp_factor. For every user partition, there should
        * be only one sub-partition to act as leader to process and produce records from real-time topic partition to all
        * sub-partitions of the same user partition of the version topic.
@@ -4023,7 +4027,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       long latestLeaderOffset;
       long lastOffsetInRealTimeTopic;
       if (amplificationFactor != 1) {
-        /**
+        /*
          * When amplificationFactor enabled, the RT topic and VT topics have different number of partition.
          * eg. if amplificationFactor == 10 and partitionCount == 2,
          *     the RT topic will have 2 partitions and VT topics will have 20 partitions.
@@ -4055,7 +4059,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * This is not a per record state. Rather it's used to indicate if the transient record buffer is being used at all
    * for this ingestion task or not.
    * For L/F mode only WC ingestion task needs this buffer.
-   * @return
    */
   protected boolean isTransientRecordBufferUsed() {
     return isWriteComputationEnabled;
