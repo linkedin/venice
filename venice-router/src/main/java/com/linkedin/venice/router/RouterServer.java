@@ -593,14 +593,7 @@ public class RouterServer extends AbstractVeniceService {
     RouterThrottleHandler routerThrottleHandler = new RouterThrottleHandler(routerThrottleStats, routerEarlyThrottler, config);
     Consumer<ChannelPipeline> withoutAcl = pipeline -> {
       pipeline.addLast("HealthCheckHandler", secureRouterHealthCheckHander);
-      if (!config.isHttp2InboundEnabled()) {
-        /**
-         * Disable ssl handler verification for http2 request since the invocation: {@link com.linkedin.ddsstorage.netty4.handlers.BasicServerChannelInitializer#afterHttpServerCodec}
-         * invocation in {@link com.linkedin.ddsstorage.netty4.handlers.BasicServerChannelInitializer#createHttp2PipelineInitializer}
-         * won't put ssl handler as part of the new pipeline since ssl handler will be added before HttpServerCodec handler.
-         */
-        pipeline.addLast("VerifySslHandler", routerSslVerificationHandler);
-      }
+      pipeline.addLast("VerifySslHandler", routerSslVerificationHandler);
       pipeline.addLast("MetadataHandler", metaDataHandler);
       pipeline.addLast("AdminOperationsHandler", adminOperationsHandler);
       pipeline.addLast("RouterThrottleHandler", routerThrottleHandler);
@@ -609,9 +602,7 @@ public class RouterServer extends AbstractVeniceService {
     };
     Consumer<ChannelPipeline> withAcl = pipeline -> {
       pipeline.addLast("HealthCheckHandler", secureRouterHealthCheckHander);
-      if (!config.isHttp2InboundEnabled()) {
-        pipeline.addLast("VerifySslHandler", routerSslVerificationHandler);
-      }
+      pipeline.addLast("VerifySslHandler", routerSslVerificationHandler);
       pipeline.addLast("MetadataHandler", metaDataHandler);
       pipeline.addLast("AdminOperationsHandler", adminOperationsHandler);
       pipeline.addLast("StoreAclHandler", aclHandler);
@@ -632,6 +623,11 @@ public class RouterServer extends AbstractVeniceService {
         .beforeHttpRequestHandler(ChannelPipeline.class, accessController.isPresent() ? withAcl : withoutAcl) // Compare once per router. Previously compared once per request.
         .idleTimeout(3, TimeUnit.HOURS)
         .enableInboundHttp2(config.isHttp2InboundEnabled())
+        .http2MaxConcurrentStreams(config.getHttp2MaxConcurrentStreams())
+        .http2HeaderTableSize(config.getHttp2HeaderTableSize())
+        .http2InitialWindowSize(config.getHttp2InitialWindowSize())
+        .http2MaxFrameSize(config.getHttp2MaxFrameSize())
+        .http2MaxHeaderListSize(config.getHttp2MaxHeaderListSize())
         .build();
 
     boolean asyncStart = config.isAsyncStartEnabled();
