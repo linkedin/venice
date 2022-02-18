@@ -123,6 +123,11 @@ public class VeniceRouterConfig {
   private int routerMultiGetDecompressionThreads;
   private int routerMultiGetDecompressionBatchSize;
   private boolean http2InboundEnabled;
+  private int http2MaxConcurrentStreams;
+  private int http2MaxFrameSize;
+  private int http2InitialWindowSize;
+  private int http2HeaderTableSize;
+  private int http2MaxHeaderListSize;
 
   public VeniceRouterConfig(VeniceProperties props) {
     try {
@@ -284,11 +289,14 @@ public class VeniceRouterConfig {
      * If the legacy config enables http2, Router will use it.
      */
     routerHTTP2ClientEnabled |= routerHTTP2R2ClientEnabled;
-
-
     routerMultiGetDecompressionThreads = props.getInt(ROUTER_MULTI_KEY_DECOMPRESSION_THREADS, 10);
     routerMultiGetDecompressionBatchSize = props.getInt(ROUTER_MULTI_KEY_DECOMPRESSION_BATCH_SIZE, 5);
     http2InboundEnabled = props.getBoolean(ROUTER_HTTP2_INBOUND_ENABLED, false);
+    http2MaxConcurrentStreams = props.getInt(ROUTER_HTTP2_MAX_CONCURRENT_STREAMS, 100);
+    http2MaxFrameSize = props.getInt(ROUTER_HTTP2_MAX_FRAME_SIZE, 8 * 1024 * 1024);
+    http2InitialWindowSize = props.getInt(ROUTER_HTTP2_INITIAL_WINDOW_SIZE, 8 * 1024 * 1024);
+    http2HeaderTableSize = props.getInt(ROUTER_HTTP2_HEADER_TABLE_SIZE, 4096);
+    http2MaxHeaderListSize = props.getInt(ROUTER_HTTP2_MAX_HEADER_LIST_SIZE, 8192);
   }
 
   public String getClusterName() {
@@ -746,5 +754,25 @@ public class VeniceRouterConfig {
 
   public boolean isHttp2InboundEnabled() {
     return http2InboundEnabled;
+  }
+
+  public int getHttp2MaxConcurrentStreams() {
+    return http2MaxConcurrentStreams;
+  }
+
+  public int getHttp2MaxFrameSize() {
+    return http2MaxFrameSize;
+  }
+
+  public int getHttp2InitialWindowSize() {
+    return http2InitialWindowSize;
+  }
+
+  public int getHttp2HeaderTableSize() {
+    return http2HeaderTableSize;
+  }
+
+  public int getHttp2MaxHeaderListSize() {
+    return http2MaxHeaderListSize;
   }
 }

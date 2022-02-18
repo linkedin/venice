@@ -1380,6 +1380,36 @@ public class ConfigKeys {
   public static final String ROUTER_HTTP2_INBOUND_ENABLED = "router.http2.inbound.enabled";
 
   /**
+   * Indicates the maximum number of concurrent streams that the sender will allow.  This limit is
+   * directional: it applies to the number of streams that the sender permits the receiver to create.
+   */
+  public static final String ROUTER_HTTP2_MAX_CONCURRENT_STREAMS = "router.http2.max.concurrent.streams";
+
+  /**
+   * Indicates the size of the largest frame payload that the sender is willing to receive, in octets.
+   */
+  public static final String ROUTER_HTTP2_MAX_FRAME_SIZE = "router.http2.max.frame.size";
+
+  /**
+   * Indicates the sender's initial window size (in octets) for stream-level flow control.
+   */
+  public static final String ROUTER_HTTP2_INITIAL_WINDOW_SIZE = "router.http2.initial.window.size";
+
+  /**
+   * Allows the sender to inform the remote endpoint of the maximum size of the header compression
+   * table used to decode header blocks, in octets.
+   */
+  public static final String ROUTER_HTTP2_HEADER_TABLE_SIZE = "router.http2.header.table.size";
+
+  /**
+   * This advisory setting informs a peer of the maximum size of header list that the sender is
+   * prepared to accept, in octets.  The value is based on the uncompressed size of header fields,
+   * including the length of the name and value in octets plus an overhead of 32 octets for each
+   * header field.
+   */
+  public static final String ROUTER_HTTP2_MAX_HEADER_LIST_SIZE = "router.http2.max.header.list.size";
+
+  /**
    * In Leader/Follower state transition model, in order to avoid split brain problem (multiple leaders) as much as possible,
    * the newly promoted leader should keep checking whether there is any new messages from the old leader in the version
    * topic, and wait for some time (5 minutes by default) after the last message consumed before switching to leader role

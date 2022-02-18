@@ -40,7 +40,14 @@ public class RouterSslVerificationHandler extends SimpleChannelInboundHandler<Ht
    */
   @Override
   public void channelRead0(ChannelHandlerContext ctx, HttpRequest req) throws IOException {
-    if (ctx.pipeline().get(SslHandler.class) == null) {
+    SslHandler sslHandler = ctx.pipeline().get(SslHandler.class);
+    if (null == sslHandler) {
+      /**
+       * In HTTP/2, the SSLHandler is in parent channel pipeline and the child channels won't have the SSL Handler.
+       */
+      sslHandler = ctx.channel().parent().pipeline().get(SslHandler.class);
+    }
+    if (null == sslHandler) {
       // Log that we got an unexpected non-ssl request
       String remote = ctx.channel().remoteAddress().toString(); //ip and port
       String method = req.method().name();
