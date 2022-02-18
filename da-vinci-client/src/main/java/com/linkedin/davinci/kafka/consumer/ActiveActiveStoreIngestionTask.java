@@ -252,7 +252,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       byte[] replicationMetadataWithValueSchemaBytes = storageEngineRepository
           .getLocalStorageEngine(kafkaVersionTopic).getReplicationMetadata(subPartition, key);
       storeIngestionStats.recordIngestionReplicationMetadataLookUpLatency(storeName, LatencyUtils.getLatencyInMS(lookupStartTimeInNS));
-      return ReplicationMetadataWithValueSchemaId.convertStorageEngineBytes(replicationMetadataWithValueSchemaBytes, mergeConflictResolver);
+      return mergeConflictResolver.deserializeValueSchemaIdPrependedRmdBytes(replicationMetadataWithValueSchemaBytes);
+
     } else {
       storeIngestionStats.recordIngestionReplicationMetadataCacheHitCount(storeName);
       return new ReplicationMetadataWithValueSchemaId(transientRecord.getValueSchemaId(), transientRecord.getReplicationMetadataRecord());

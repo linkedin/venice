@@ -1,5 +1,6 @@
 package com.linkedin.davinci.replication.merge;
 
+import com.linkedin.davinci.replication.ReplicationMetadataWithValueSchemaId;
 import com.linkedin.davinci.serialization.avro.MapOrderingPreservingSeDeFactory;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
@@ -127,14 +128,29 @@ public class MergeConflictResolver {
     return MergeUtils.sumOffsetVector(offsetVectorObject);
   }
 
-  public GenericRecord getReplicationMetadataRecordFromByteBuffer(ByteBuffer replicationMetadata, int schemaIdOfValue) {
-    if (replicationMetadata == null) {
+  /**
+   * @param valueSchemaIdPrependedBytes The raw bytes with value schema ID prepended.
+   * @return A {@link ReplicationMetadataWithValueSchemaId} object composed by extracting the value schema ID from the
+   *    * header of the replication metadata.
+   */
+  public ReplicationMetadataWithValueSchemaId deserializeValueSchemaIdPrependedRmdBytes(byte[] valueSchemaIdPrependedBytes) {
+    if (valueSchemaIdPrependedBytes == null) {
       return null;
     }
+    ByteBuffer rmdWithValueSchemaID = ByteBuffer.wrap(valueSchemaIdPrependedBytes);
+    final int valueSchemaId = rmdWithValueSchemaID.getInt();
     OptimizedBinaryDecoder binaryDecoder =
-        OptimizedBinaryDecoderFactory.defaultFactory().createOptimizedBinaryDecoder(replicationMetadata.array(), replicationMetadata.position(), replicationMetadata.remaining());
+        OptimizedBinaryDecoderFactory.defaultFactory().createOptimizedBinaryDecoder(
+            rmdWithValueSchemaID.array(), // bytes of replication metadata with NO value schema ID.
+            rmdWithValueSchemaID.position(),
+            rmdWithValueSchemaID.remaining()
+        );
+    GenericRecord rmdRecord = getReplicationMetadataDeserializer(valueSchemaId).deserialize(binaryDecoder);
 
-    return getReplicationMetadataDeserializer(schemaIdOfValue).deserialize(binaryDecoder);
+    return new ReplicationMetadataWithValueSchemaId(
+        valueSchemaId,
+        rmdRecord
+    );
   }
 
   public List<Long> extractTimestampFromReplicationMetadata(GenericRecord replicationMetadataRecord) {
