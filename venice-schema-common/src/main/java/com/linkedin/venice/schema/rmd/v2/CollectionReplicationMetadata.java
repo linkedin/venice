@@ -377,6 +377,14 @@ public class CollectionReplicationMetadata {
     );
     collectionTSSchema.setFields(
         Arrays.asList(topLevelTSField, topLevelColoIdField, putOnlyPartLengthField, activeElemTSField, deletedElemField, deletedElemTSField));
-    return collectionTSSchema;
+
+    // Collection field timestamp schema is a union of [Long, CollectionTimestamp].
+    // Goals are:
+    //    1. Be backward compatible with RMD schema v1 so that this schema can deserialize RMD bytes serialized by RMD schema V1.
+    //    2. When all elements in a collection have the same timestamp, we can use a single Long value to represent the collection timestamp instead.
+    return Schema.createUnion(Arrays.asList(
+        Schema.create(LONG),
+        collectionTSSchema
+    ));
   }
 }

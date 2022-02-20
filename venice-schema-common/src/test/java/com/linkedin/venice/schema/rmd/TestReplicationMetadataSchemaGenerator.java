@@ -206,27 +206,26 @@ public class TestReplicationMetadataSchemaGenerator {
 
   @Test
   public void testMetadataSchemaForPrimitiveTyped() {
-    Schema origSchema = Schema.parse(primitiveTypedSchemaStr);
+    Schema origSchema = AvroCompatibilityHelper.parse(primitiveTypedSchemaStr);
     Schema aaSchema = ReplicationMetadataSchemaGenerator.generateMetadataSchema(origSchema);
     String aaSchemaStr = aaSchema.toString(true);
     logger.info(aaSchemaStr);
-    Assert.assertEquals(aaSchema, Schema.parse(aaSchema.toString()));
-    Assert.assertEquals(Schema.parse(aaSchemaPrimitive), Schema.parse(aaSchema.toString()));
+    Assert.assertEquals(aaSchema, AvroCompatibilityHelper.parse(aaSchema.toString()));
+    Assert.assertEquals(AvroCompatibilityHelper.parse(aaSchemaPrimitive), AvroCompatibilityHelper.parse(aaSchema.toString()));
     verifyFullUpdateTsRecordPresent(aaSchema, true);
 
   }
 
   @Test
   public void testMetadataSchemaForRecord() {
-    Schema origSchema = Schema.parse(recordSchemaStr);
-    String OrigSchemaStr = origSchema.toString(true);
+    Schema origSchema = AvroCompatibilityHelper.parse(recordSchemaStr);
+    String origSchemaStr = origSchema.toString(true);
     Schema aaSchema = ReplicationMetadataSchemaGenerator.generateMetadataSchema(origSchema);
     String aaSchemaStr = aaSchema.toString(true);
-    logger.info(OrigSchemaStr);
+    logger.info(origSchemaStr);
     logger.info(aaSchemaStr);
-
-    Assert.assertEquals(aaSchema, Schema.parse(aaSchema.toString()));
-    Assert.assertEquals(Schema.parse(aaSchemaRecord), Schema.parse(aaSchema.toString()));
+    Assert.assertEquals(aaSchema, AvroCompatibilityHelper.parse(aaSchemaStr));
+    Assert.assertEquals(AvroCompatibilityHelper.parse(aaSchemaRecord), AvroCompatibilityHelper.parse(aaSchema.toString()));
 
     verifyFullUpdateTsRecordPresent(aaSchema, false);
     Schema recordTsSchema = aaSchema.getField(TIMESTAMP_FIELD_NAME).schema().getTypes().get(1);
@@ -373,15 +372,18 @@ public class TestReplicationMetadataSchemaGenerator {
 
   private void validateCollectionFieldReplicationMetadata(Schema recordTsSchema, String fieldName, Schema.Type expectedElementSchemaType) {
     Schema field1TsSchema = recordTsSchema.getField(fieldName).schema();
-    Assert.assertEquals(field1TsSchema.getType(), RECORD);
-    Assert.assertEquals(field1TsSchema.getFields().size(), 6);
-    Assert.assertEquals(field1TsSchema.getField("topLevelFieldTimestamp").schema().getType(), LONG);
-    Assert.assertEquals(field1TsSchema.getField("activeElementsTimestamps").schema().getType(), ARRAY);
-    Assert.assertEquals(field1TsSchema.getField("activeElementsTimestamps").schema().getElementType().getType(), LONG);
-    Assert.assertEquals(field1TsSchema.getField("deletedElementsIdentities").schema().getType(), ARRAY);
-    Assert.assertEquals(field1TsSchema.getField("deletedElementsIdentities").schema().getElementType().getType(), expectedElementSchemaType);
-    Assert.assertEquals(field1TsSchema.getField("deletedElementsTimestamps").schema().getType(), ARRAY);
-    Assert.assertEquals(field1TsSchema.getField("deletedElementsTimestamps").schema().getElementType().getType(), LONG);
+    Schema collectionMetadataSchema1 = field1TsSchema.getTypes().get(1);
+    Assert.assertEquals(collectionMetadataSchema1.getType(), RECORD);
+    Assert.assertEquals(collectionMetadataSchema1.getFields().size(), 6);
+    Assert.assertEquals(collectionMetadataSchema1.getField("topLevelFieldTimestamp").schema().getType(), LONG);
+    Assert.assertEquals(collectionMetadataSchema1.getField("topLevelColoID").schema().getType(), INT);
+    Assert.assertEquals(collectionMetadataSchema1.getField("putOnlyPartLength").schema().getType(), INT);
+    Assert.assertEquals(collectionMetadataSchema1.getField("activeElementsTimestamps").schema().getType(), ARRAY);
+    Assert.assertEquals(collectionMetadataSchema1.getField("activeElementsTimestamps").schema().getElementType().getType(), LONG);
+    Assert.assertEquals(collectionMetadataSchema1.getField("deletedElementsIdentities").schema().getType(), ARRAY);
+    Assert.assertEquals(collectionMetadataSchema1.getField("deletedElementsIdentities").schema().getElementType().getType(), expectedElementSchemaType);
+    Assert.assertEquals(collectionMetadataSchema1.getField("deletedElementsTimestamps").schema().getType(), ARRAY);
+    Assert.assertEquals(collectionMetadataSchema1.getField("deletedElementsTimestamps").schema().getElementType().getType(), LONG);
   }
 
   @Test
@@ -396,45 +398,53 @@ public class TestReplicationMetadataSchemaGenerator {
     Schema recordTsSchema = rmdSchema.getField(TIMESTAMP_FIELD_NAME).schema().getTypes().get(1);
 
     Schema field1TsSchema = recordTsSchema.getField("field1").schema();
-    Assert.assertEquals(field1TsSchema.getField("deletedElementsIdentities").schema().getType(), ARRAY);
-    Assert.assertEquals(field1TsSchema.getField("deletedElementsIdentities").schema().getElementType().getType(), STRING);
+    Assert.assertEquals(field1TsSchema.getType(), UNION);
+    Assert.assertEquals(field1TsSchema.getTypes().get(0).getType(), LONG);
+    Schema collectionMetadataSchema1 = field1TsSchema.getTypes().get(1);
+    Assert.assertEquals(collectionMetadataSchema1.getType(), RECORD);
+
+    Assert.assertEquals(collectionMetadataSchema1.getField("deletedElementsIdentities").schema().getType(), ARRAY);
+    Assert.assertEquals(collectionMetadataSchema1.getField("deletedElementsIdentities").schema().getElementType().getType(), STRING);
 
     Schema field2TsSchema = recordTsSchema.getField("field2").schema();
-    Assert.assertEquals(field2TsSchema.getField("deletedElementsIdentities").schema().getType(), ARRAY);
-    Assert.assertEquals(field2TsSchema.getField("deletedElementsIdentities").schema().getElementType().getType(), STRING);
+    Assert.assertEquals(field2TsSchema.getType(), UNION);
+    Assert.assertEquals(field2TsSchema.getTypes().get(0).getType(), LONG);
+    Schema collectionMetadataSchema2 = field2TsSchema.getTypes().get(1);
+    Assert.assertEquals(collectionMetadataSchema2.getField("deletedElementsIdentities").schema().getType(), ARRAY);
+    Assert.assertEquals(collectionMetadataSchema2.getField("deletedElementsIdentities").schema().getElementType().getType(), STRING);
 
-    Assert.assertTrue(field1TsSchema == field2TsSchema, "Both fields should share the same field schema");
+    Assert.assertSame(collectionMetadataSchema1, collectionMetadataSchema2, "Both fields should share the same field schema");
   }
 
   @Test
   public void testMetadataSchemaForArray() {
-    Schema origSchema = Schema.parse(arraySchemaStr);
+    Schema origSchema = AvroCompatibilityHelper.parse(arraySchemaStr);
     Schema rmdSchema = ReplicationMetadataSchemaGenerator.generateMetadataSchema(origSchema);
     logger.info(origSchema.toString(true));
     logger.info(rmdSchema.toString(true));
-    Assert.assertEquals(Schema.parse(aaSchemaArray), Schema.parse(rmdSchema.toString()));
+    Assert.assertEquals(AvroCompatibilityHelper.parse(aaSchemaArray), AvroCompatibilityHelper.parse(rmdSchema.toString()));
     verifyFullUpdateTsRecordPresent(rmdSchema, true);
   }
 
   @Test
   public void testMetadataSchemaForMap() {
-    Schema origSchema = Schema.parse(mapSchemaStr);
+    Schema origSchema = AvroCompatibilityHelper.parse(mapSchemaStr);
     String OrigSchemaStr = origSchema.toString(true);
     Schema aaSchema = ReplicationMetadataSchemaGenerator.generateMetadataSchema(origSchema);
     String aaSchemaStr = aaSchema.toString(true);
     logger.info(OrigSchemaStr);
     logger.info(aaSchemaStr);
-    Assert.assertEquals(Schema.parse(aaSchemaMap), Schema.parse(aaSchema.toString()));
+    Assert.assertEquals(AvroCompatibilityHelper.parse(aaSchemaMap), AvroCompatibilityHelper.parse(aaSchema.toString()));
     verifyFullUpdateTsRecordPresent(aaSchema, true);
   }
 
   @Test
   public void testMetadataSchemaForUnion() {
-    Schema origSchema = Schema.parse(unionSchemaStr);
+    Schema origSchema = AvroCompatibilityHelper.parse(unionSchemaStr);
     Schema rmdSchema = ReplicationMetadataSchemaGenerator.generateMetadataSchema(origSchema);
     logger.info(origSchema.toString(true));
     logger.info(rmdSchema.toString(true));
-    Assert.assertEquals(Schema.parse(rmdSchemaUnion), Schema.parse(rmdSchema.toString()));
+    Assert.assertEquals(AvroCompatibilityHelper.parse(rmdSchemaUnion), AvroCompatibilityHelper.parse(rmdSchema.toString()));
     verifyFullUpdateTsRecordPresent(rmdSchema, true);
   }
 
