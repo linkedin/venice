@@ -60,21 +60,11 @@ class RecordMetadataSchemaBuilder {
   private Schema.Field generateMetadataField(Schema.Field existingField, String namespace) {
     Schema fieldSchema = generateMetadataSchemaForField(existingField, namespace);
 
-    Object defaultValue;
-
-    if (fieldSchema == LONG_TYPE_TIMESTAMP_SCHEMA) {
-      defaultValue = 0;
-    } else if (fieldSchema.getType() == RECORD) {
-      defaultValue = SchemaUtils.constructGenericRecord(fieldSchema);
-    } else {
-      defaultValue = null;
-    }
-
     return AvroCompatibilityHelper.newField(null)
         .setName(existingField.name())
         .setSchema(fieldSchema)
         .setDoc("timestamp when " + existingField.name()  + " of the record was last updated")
-        .setDefault(defaultValue)
+        .setDefault(0) // Default value is always a Long zero.
         .setOrder(existingField.order())
         .build();
   }
