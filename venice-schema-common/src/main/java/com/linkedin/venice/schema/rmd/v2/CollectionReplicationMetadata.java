@@ -133,17 +133,6 @@ public class CollectionReplicationMetadata {
     return nextLargerNumberIndex;
   }
 
-  public void removeDeletionInfoForElement(Object deletedElement) {
-    ElementTimestampAndIdx timestampAndIdx = deletedElementInfo.remove(deletedElement);
-    if (timestampAndIdx == null) {
-      // Be defensive. Because if the caller wants to remove deletion info for a non-existent element, it highly indicates
-      // an issue (illegal state) on the caller side.
-      throw new IllegalStateException("No such a deleted element.");
-    }
-    getDeletedElements().remove(timestampAndIdx.getIdx());
-    getDeletedElementTimestamps().remove(timestampAndIdx.getIdx());
-  }
-
   public void removeDeletionInfoWithTimestampsLowerOrEqualTo(final long minTimestamp) {
     final int nextLargerNumberIndex = findIndexOfNextLargerNumber(getDeletedElementTimestamps(), minTimestamp);
     if (nextLargerNumberIndex > 0) {
@@ -151,16 +140,6 @@ public class CollectionReplicationMetadata {
       getDeletedElements().subList(0, nextLargerNumberIndex).clear();
       populateDeletedElementSet();
     }
-  }
-
-  /**
-   * @param deletedElement
-   * @return Optional.empty() if there is no such a deleted element.
-   */
-  public Optional<Long> getDeletedElementTimestamp(Object deletedElement) {
-    Validate.notNull(deletedElement);
-    ElementTimestampAndIdx timestampAndIdx = deletedElementInfo.get(deletedElement);
-    return timestampAndIdx == null ? Optional.empty() : Optional.of(timestampAndIdx.getTimestamp());
   }
 
   // Visible for test.
@@ -178,7 +157,6 @@ public class CollectionReplicationMetadata {
         right = mid - 1;
       }
     }
-
     return left;
   }
 
