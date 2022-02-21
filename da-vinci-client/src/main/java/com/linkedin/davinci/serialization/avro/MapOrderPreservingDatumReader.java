@@ -2,8 +2,11 @@ package com.linkedin.davinci.serialization.avro;
 
 import com.linkedin.venice.utils.IndexedHashMap;
 import com.linkedin.venice.utils.IndexedMap;
+import java.util.Collection;
+import java.util.LinkedList;
 import java.util.Map;
 import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericDatumReader;
 
 
@@ -11,6 +14,14 @@ public class MapOrderPreservingDatumReader<T> extends GenericDatumReader<T> {
 
   public MapOrderPreservingDatumReader(Schema writer, Schema reader) {
     super(writer, reader);
+  }
+
+  @Override
+  protected Object newArray(Object old, int size, Schema schema) {
+    if (old instanceof Collection) {
+      ((Collection) old).clear();
+      return old;
+    } else return new LinkedList<>();
   }
 
   @Override

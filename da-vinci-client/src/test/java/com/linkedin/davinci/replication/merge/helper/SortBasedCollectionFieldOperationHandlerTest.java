@@ -52,7 +52,7 @@ public class SortBasedCollectionFieldOperationHandlerTest {
   private static final int COLO_ID_1 = 1;
   private static final int COLO_ID_2 = 2;
 
-  @Test(enabled = false)
+  @Test
   public void testHandleListOpsCase1() {
     /**
      * A classic example:
@@ -72,7 +72,7 @@ public class SortBasedCollectionFieldOperationHandlerTest {
     applyAllOperationsOnValue(allCollectionOps, expectedItemsResult);
   }
 
-  @Test(enabled = false)
+  @Test
   public void testHandleListOpsCase2() {
     /**
      * A classic example:
@@ -92,7 +92,7 @@ public class SortBasedCollectionFieldOperationHandlerTest {
     applyAllOperationsOnValue(allCollectionOps, expectedItemsResult);
   }
 
-  @Test(enabled = false)
+  @Test
   public void testHandleListOpsCase3() {
     /**
      * Many add-to-list operations after initial put:
@@ -119,7 +119,7 @@ public class SortBasedCollectionFieldOperationHandlerTest {
     applyAllOperationsOnValue(allCollectionOps, expectedItemsResult);
   }
 
-  @Test(enabled = false)
+  @Test
   public void testHandleListOpsCase4() {
     /**
      * Many remove-from-list operations after initial put:
@@ -141,7 +141,7 @@ public class SortBasedCollectionFieldOperationHandlerTest {
     applyAllOperationsOnValue(allCollectionOps, expectedItemsResult);
   }
 
-  @Test(enabled = false)
+  @Test
   public void testHandleListOpsCase5() {
     /**
      * All operations are put or delete:
@@ -163,7 +163,7 @@ public class SortBasedCollectionFieldOperationHandlerTest {
     applyAllOperationsOnValue(allCollectionOps, expectedItemsResult);
   }
 
-  @Test(enabled = false)
+  @Test
   public void testHandleListOpsCase6() {
     /**
      * All operations are collection merge (e.g. add to list / delete from list):
@@ -189,7 +189,7 @@ public class SortBasedCollectionFieldOperationHandlerTest {
     applyAllOperationsOnValue(allCollectionOps, expectedItemsResult);
   }
 
-  @Test(enabled = false)
+  @Test
   public void testHandleListOpsCase7() {
     /**
      * Put overrides collection-merge-only value:
@@ -213,7 +213,7 @@ public class SortBasedCollectionFieldOperationHandlerTest {
     applyAllOperationsOnValue(allCollectionOps, expectedItemsResult);
   }
 
-  @Test(enabled = false)
+  @Test
   public void testHandleListOpsCase8() {
     /**
      * Delete overrides collection-merge-only value:
@@ -237,7 +237,7 @@ public class SortBasedCollectionFieldOperationHandlerTest {
     applyAllOperationsOnValue(allCollectionOps, expectedItemsResult);
   }
 
-  @Test(enabled = false)
+  @Test
   public void testHandleListOpsCase9() {
     /**
      * Delete partially overrides collection-merge-only value:
@@ -261,7 +261,7 @@ public class SortBasedCollectionFieldOperationHandlerTest {
     applyAllOperationsOnValue(allCollectionOps, expectedItemsResult);
   }
 
-  @Test(enabled = false)
+  @Test
   public void testHandleListOpsCase10() {
     /**
      * Put partially overrides collection-merge-only value:

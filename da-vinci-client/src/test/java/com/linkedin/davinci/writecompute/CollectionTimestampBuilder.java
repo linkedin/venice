@@ -98,7 +98,8 @@ public class CollectionTimestampBuilder {
       }
     }
 
-    GenericRecord itemFieldTimestampRecord = SchemaUtils.constructGenericRecord(collectionTimestampSchema);
+    Schema collectionRmdSchema = collectionTimestampSchema.getTypes().get(1);
+    GenericRecord itemFieldTimestampRecord = SchemaUtils.constructGenericRecord(collectionRmdSchema);
     itemFieldTimestampRecord.put(COLLECTION_TOP_LEVEL_TS_FIELD_NAME, topLevelFieldTimestamp);
     itemFieldTimestampRecord.put(COLLECTION_TOP_LEVEL_COLO_ID_FIELD_NAME, topLevelColoID);
     itemFieldTimestampRecord.put(COLLECTION_PUT_ONLY_PART_LENGTH_FIELD_NAME, putOnlyPartLength);
@@ -110,12 +111,20 @@ public class CollectionTimestampBuilder {
 
   private void validateCollectionTsRecord(Schema collectionTimestampSchema) {
     Validate.notNull(collectionTimestampSchema);
-    validateFieldExists(COLLECTION_TOP_LEVEL_TS_FIELD_NAME, collectionTimestampSchema);
-    validateFieldExists(COLLECTION_TOP_LEVEL_COLO_ID_FIELD_NAME, collectionTimestampSchema);
-    validateFieldExists(COLLECTION_PUT_ONLY_PART_LENGTH_FIELD_NAME, collectionTimestampSchema);
-    validateFieldExists(COLLECTION_ACTIVE_ELEM_TS_FIELD_NAME, collectionTimestampSchema);
-    validateFieldExists(COLLECTION_DELETED_ELEM_TS_FIELD_NAME, collectionTimestampSchema);
-    validateFieldExists(COLLECTION_DELETED_ELEM_FIELD_NAME, collectionTimestampSchema);
+    if (collectionTimestampSchema.getType() != Schema.Type.UNION) {
+      throw new IllegalStateException("Expect a union type. Got: " + collectionTimestampSchema);
+    }
+    if (collectionTimestampSchema.getTypes().get(0).getType() != Schema.Type.LONG) {
+      throw new IllegalStateException("Expect first type in the union to be a Long. Union: " + collectionTimestampSchema);
+    }
+    Schema collectionRmdSchema = collectionTimestampSchema.getTypes().get(1);
+
+    validateFieldExists(COLLECTION_TOP_LEVEL_TS_FIELD_NAME, collectionRmdSchema);
+    validateFieldExists(COLLECTION_TOP_LEVEL_COLO_ID_FIELD_NAME, collectionRmdSchema);
+    validateFieldExists(COLLECTION_PUT_ONLY_PART_LENGTH_FIELD_NAME, collectionRmdSchema);
+    validateFieldExists(COLLECTION_ACTIVE_ELEM_TS_FIELD_NAME, collectionRmdSchema);
+    validateFieldExists(COLLECTION_DELETED_ELEM_TS_FIELD_NAME, collectionRmdSchema);
+    validateFieldExists(COLLECTION_DELETED_ELEM_FIELD_NAME, collectionRmdSchema);
   }
 
   private void validateFieldExists(String fieldName, Schema collectionTimestampSchema) {
