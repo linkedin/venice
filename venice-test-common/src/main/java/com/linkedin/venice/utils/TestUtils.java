@@ -1,5 +1,16 @@
 package com.linkedin.venice.utils;
 
+import com.linkedin.davinci.config.VeniceServerConfig;
+import com.linkedin.davinci.kafka.consumer.AggKafkaConsumerService;
+import com.linkedin.davinci.kafka.consumer.KafkaClusterBasedRecordThrottler;
+import com.linkedin.davinci.kafka.consumer.StoreBufferService;
+import com.linkedin.davinci.kafka.consumer.StoreIngestionTaskFactory;
+import com.linkedin.davinci.stats.AggStoreIngestionStats;
+import com.linkedin.davinci.stats.AggVersionedDIVStats;
+import com.linkedin.davinci.stats.AggVersionedStorageIngestionStats;
+import com.linkedin.davinci.stats.RocksDBMemoryStats;
+import com.linkedin.davinci.storage.StorageEngineRepository;
+import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.controller.VeniceControllerConfig;
 import com.linkedin.venice.controller.VeniceControllerMultiClusterConfig;
@@ -14,24 +25,34 @@ import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.kafka.KafkaClientFactory;
+import com.linkedin.venice.kafka.TopicManagerRepository;
 import com.linkedin.venice.kafka.admin.KafkaAdminClient;
+import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
 import com.linkedin.venice.kafka.protocol.state.IncrementalPush;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
+import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.OfflinePushStrategy;
+import com.linkedin.venice.meta.PartitionerConfig;
+import com.linkedin.venice.meta.PartitionerConfigImpl;
 import com.linkedin.venice.meta.PersistenceType;
+import com.linkedin.venice.meta.ReadOnlySchemaRepository;
+import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.ReadStrategy;
 import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
+import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.writer.ApacheKafkaProducer;
 import com.linkedin.venice.writer.KafkaProducerWrapper;
 import com.linkedin.venice.writer.SharedKafkaProducerService;
@@ -41,6 +62,7 @@ import com.linkedin.venice.writer.VeniceWriterFactory;
 import io.tehuti.metrics.MetricsRepository;
 
 import java.security.Permission;
+import java.util.ArrayDeque;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
@@ -49,6 +71,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
 import java.util.stream.Stream;
@@ -64,6 +87,7 @@ import org.testng.Assert;
 
 import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.utils.TestPushUtils.*;
+import static org.mockito.Mockito.*;
 import static org.testng.Assert.*;
 
 
@@ -495,5 +519,97 @@ public class TestUtils {
       Assert.assertEquals(storeResponse.getStore().isNativeReplicationEnabled(), enabledNR, "The native replication config does not match.");
       Assert.assertEquals(storeResponse.getStore().isActiveActiveReplicationEnabled(), enabledAA, "The active active replication config does not match.");
     });
+  }
+
+  public static StoreIngestionTaskFactory.Builder getStoreIngestionTaskBuilder(String storeName, int versionNumber) {
+    VeniceServerConfig mockVeniceServerConfig = mock(VeniceServerConfig.class);
+    doReturn(false).when(mockVeniceServerConfig).isHybridQuotaEnabled();
+    VeniceProperties mockVeniceProperties = mock(VeniceProperties.class);
+    doReturn(true).when(mockVeniceProperties).isEmpty();
+    doReturn(mockVeniceProperties).when(mockVeniceServerConfig).getKafkaConsumerConfigsForLocalConsumption();
+    KafkaClientFactory mockKafkaClientFactory = mock(KafkaClientFactory.class);
+    KafkaConsumerWrapper mockKafkaConsumerWrapper = mock(KafkaConsumerWrapper.class);
+    doReturn(mockKafkaConsumerWrapper).when(mockKafkaClientFactory).getConsumer(any());
+
+    ReadOnlyStoreRepository mockReadOnlyStoreRepository = mock(ReadOnlyStoreRepository.class);
+    Store mockStore = mock(Store.class);
+    doReturn(mockStore).when(mockReadOnlyStoreRepository).getStoreOrThrow(eq(storeName));
+    doReturn(false).when(mockStore).isHybridStoreDiskQuotaEnabled();
+    // Set timeout threshold to 0 so that push timeout error will happen immediately after a partition subscription.
+    doReturn(0).when(mockStore).getBootstrapToOnlineTimeoutInHours();
+
+    StorageMetadataService mockStorageMetadataService = mock(StorageMetadataService.class);
+    OffsetRecord mockOffsetRecord = mock(OffsetRecord.class);
+    doReturn(Collections.emptyMap()).when(mockOffsetRecord).getProducerPartitionStateMap();
+    String versionTopic = Version.composeKafkaTopic(storeName, 1);
+    doReturn(mockOffsetRecord).when(mockStorageMetadataService).getLastOffset(eq(versionTopic), eq(0));
+
+    int partitionCount = 1;
+    VenicePartitioner partitioner = new DefaultVenicePartitioner();
+    PartitionerConfig partitionerConfig = new PartitionerConfigImpl();
+    partitionerConfig.setPartitionerClass(partitioner.getClass().getName());
+    partitionerConfig.setAmplificationFactor(1);
+
+    Version version = new VersionImpl(storeName, 1, "1", partitionCount);
+
+    version.setPartitionerConfig(partitionerConfig);
+    doReturn(partitionerConfig).when(mockStore).getPartitionerConfig();
+
+    version.setLeaderFollowerModelEnabled(true);
+    doReturn(true).when(mockStore).isLeaderFollowerModelEnabled();
+
+    version.setIncrementalPushEnabled(false);
+    doReturn(false).when(mockStore).isIncrementalPushEnabled();
+
+    version.setIncrementalPushPolicy(IncrementalPushPolicy.PUSH_TO_VERSION_TOPIC);
+    doReturn(IncrementalPushPolicy.PUSH_TO_VERSION_TOPIC).when(mockStore).getIncrementalPushPolicy();
+
+    version.setHybridStoreConfig(null);
+    doReturn(null).when(mockStore).getHybridStoreConfig();
+    doReturn(false).when(mockStore).isHybrid();
+
+    version.setBufferReplayEnabledForHybrid(true);
+
+    version.setNativeReplicationEnabled(false);
+    doReturn(false).when(mockStore).isNativeReplicationEnabled();
+
+    version.setPushStreamSourceAddress("");
+    doReturn("").when(mockStore).getPushStreamSourceAddress();
+
+    doReturn(false).when(mockStore).isWriteComputationEnabled();
+
+    doReturn(partitionCount).when(mockStore).getPartitionCount();
+
+    doReturn(-1).when(mockStore).getCurrentVersion();
+
+    doReturn(Optional.of(version)).when(mockStore).getVersion(anyInt());
+
+    return new StoreIngestionTaskFactory.Builder()
+        .setVeniceWriterFactory(mock(VeniceWriterFactory.class))
+        .setKafkaClientFactory(mockKafkaClientFactory)
+        .setStorageEngineRepository(mock(StorageEngineRepository.class))
+        .setStorageMetadataService(mockStorageMetadataService)
+        .setLeaderFollowerNotifiersQueue(new ArrayDeque<>())
+        .setBandwidthThrottler(mock(EventThrottler.class))
+        .setRecordsThrottler(mock(EventThrottler.class))
+        .setUnorderedBandwidthThrottler(mock(EventThrottler.class))
+        .setUnorderedRecordsThrottler(mock(EventThrottler.class))
+        .setKafkaClusterBasedRecordThrottler(mock(KafkaClusterBasedRecordThrottler.class))
+        .setSchemaRepository(mock(ReadOnlySchemaRepository.class))
+        .setMetadataRepository(mockReadOnlyStoreRepository)
+        .setTopicManagerRepository(mock(TopicManagerRepository.class))
+        .setTopicManagerRepositoryJavaBased(mock(TopicManagerRepository.class))
+        .setStoreIngestionStats(mock(AggStoreIngestionStats.class))
+        .setVersionedDIVStats(mock(AggVersionedDIVStats.class))
+        .setVersionedStorageIngestionStats(mock(AggVersionedStorageIngestionStats.class))
+        .setStoreBufferService(mock(StoreBufferService.class))
+        .setDiskUsage(mock(DiskUsage.class))
+        .setRocksDBMemoryStats(mock(RocksDBMemoryStats.class))
+        .setAggKafkaConsumerService(mock(AggKafkaConsumerService.class))
+        .setServerConfig(mock(VeniceServerConfig.class))
+        .setServerConfig(mockVeniceServerConfig)
+        .setCacheWarmingThreadPool(mock(ExecutorService.class))
+        .setPartitionStateSerializer(mock(InternalAvroSpecificSerializer.class))
+        .setIsDaVinciClient(false);
   }
 }

@@ -12,7 +12,6 @@ import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.stats.AggStoreIngestionStats;
 import com.linkedin.davinci.stats.AggVersionedDIVStats;
 import com.linkedin.davinci.stats.AggVersionedStorageIngestionStats;
-import com.linkedin.davinci.stats.RocksDBMemoryStats;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.store.AbstractStorageEngine;
@@ -105,7 +104,6 @@ import java.net.URL;
 import java.net.URLClassLoader;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -2416,21 +2414,24 @@ public class StoreIngestionTaskTest {
     doReturn(true).when(mockVeniceProperties).isEmpty();
     doReturn(mockVeniceProperties).when(mockVeniceServerConfig).getKafkaConsumerConfigsForLocalConsumption();
 
-    KafkaClientFactory mockKafkaClientFactory = mock(KafkaClientFactory.class);
-    KafkaConsumerWrapper mockKafkaConsumerWrapper = mock(KafkaConsumerWrapper.class);
-    doReturn(mockKafkaConsumerWrapper).when(mockKafkaClientFactory).getConsumer(any());
+    StoreIngestionTaskFactory.Builder builder = TestUtils.getStoreIngestionTaskBuilder(storeName, 1)
+        .setTopicManagerRepository(mockTopicManagerRepository)
+        .setStorageMetadataService(mockStorageMetadataService)
+        .setMetadataRepository(mockReadOnlyStoreRepository)
+        .setTopicManagerRepository(mockTopicManagerRepository)
+        .setServerConfig(mockVeniceServerConfig);
 
-    LeaderFollowerStoreIngestionTask ingestionTask = new LeaderFollowerStoreIngestionTask(mock(Store.class),
-        mock(Version.class), mock(VeniceWriterFactory.class), mockKafkaClientFactory, mockKafkaConsumerProperties,
-        mock(StorageEngineRepository.class), mockStorageMetadataService, new ArrayDeque<>(), mock(EventThrottler.class),
-        mock(EventThrottler.class), mock(EventThrottler.class), mock(EventThrottler.class),
-        mock(KafkaClusterBasedRecordThrottler.class), mock(ReadOnlySchemaRepository.class), mockReadOnlyStoreRepository,
-        mockTopicManagerRepository, mock(TopicManagerRepository.class), mock(AggStoreIngestionStats.class),
-        mock(AggVersionedDIVStats.class), mock(AggVersionedStorageIngestionStats.class), mock(StoreBufferService.class),
-        () -> true, mockVeniceStoreVersionConfig, mock(DiskUsage.class), mock(RocksDBMemoryStats.class),
-        mock(AggKafkaConsumerService.class), mockVeniceServerConfig, 0, mock(ExecutorService.class),
-        0, mock(InternalAvroSpecificSerializer.class), false,
-        mock(StorageEngineBackedCompressorFactory.class), Optional.empty(), false);
+    LeaderFollowerStoreIngestionTask ingestionTask = new LeaderFollowerStoreIngestionTask(
+        builder,
+        mockStore,
+        mock(Version.class),
+        mockKafkaConsumerProperties,
+        () -> true,
+        mockVeniceStoreVersionConfig,
+        0,
+        false,
+        Optional.empty(),
+        mock(StorageEngineBackedCompressorFactory.class));
 
     TopicSwitch topicSwitch = new TopicSwitch();
     topicSwitch.sourceKafkaServers = Collections.singletonList("localhost");

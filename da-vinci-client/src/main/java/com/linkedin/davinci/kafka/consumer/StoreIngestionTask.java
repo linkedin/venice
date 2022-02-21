@@ -398,6 +398,139 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private final boolean ingestionCheckpointDuringGracefulShutdownEnabled;
 
   public StoreIngestionTask(
+      StoreIngestionTaskFactory.Builder builder,
+      Store store,
+      Version version,
+      Properties kafkaConsumerProperties,
+      BooleanSupplier isCurrentVersion,
+      VeniceStoreVersionConfig storeConfig,
+      int errorPartitionId,
+      boolean isIsolatedIngestion,
+      Optional<ObjectCacheBackend> cacheBackend,
+      Queue<VeniceNotifier> notifiers) {
+    this.readCycleDelayMs = storeConfig.getKafkaReadCycleDelayMs();
+    this.emptyPollSleepMs = storeConfig.getKafkaEmptyPollSleepMs();
+    this.databaseSyncBytesIntervalForTransactionalMode = storeConfig.getDatabaseSyncBytesIntervalForTransactionalMode();
+    this.databaseSyncBytesIntervalForDeferredWriteMode = storeConfig.getDatabaseSyncBytesIntervalForDeferredWriteMode();
+    this.factory = builder.getKafkaClientFactory();
+    this.kafkaProps = kafkaConsumerProperties;
+    this.storageEngineRepository = builder.getStorageEngineRepository();
+    this.storageMetadataService = builder.getStorageMetadataService();
+    this.bandwidthThrottler = builder.getBandwidthThrottler();
+    this.recordsThrottler = builder.getRecordsThrottler();
+    this.unorderedBandwidthThrottler = builder.getUnorderedBandwidthThrottler();
+    this.unorderedRecordsThrottler = builder.getUnorderedRecordsThrottler();
+    this.storeRepository = builder.getMetadataRepo();
+    this.schemaRepository = builder.getSchemaRepo();
+    this.kafkaVersionTopic = storeConfig.getStoreVersionName();
+    this.storeName = Version.parseStoreFromKafkaTopicName(kafkaVersionTopic);
+    this.versionNumber = Version.parseVersionFromKafkaTopicName(kafkaVersionTopic);
+    this.availableSchemaIds = new HashSet<>();
+    this.deserializedSchemaIds = new HashSet<>();
+    this.consumerActionsQueue = new PriorityBlockingQueue<>(CONSUMER_ACTION_QUEUE_INIT_CAPACITY);
+    this.consumerMap = new VeniceConcurrentHashMap<>();
+    this.kafkaClusterBasedRecordThrottler = builder.getKafkaClusterBasedRecordThrottler();
+
+    // partitionConsumptionStateMap could be accessed by multiple threads: consumption thread and the thread handling kill message
+    this.partitionConsumptionStateMap = new VeniceConcurrentHashMap<>();
+
+    // Could be accessed from multiple threads since there are multiple worker threads.
+    this.kafkaDataIntegrityValidator = new KafkaDataIntegrityValidator(this.kafkaVersionTopic);
+    this.consumerTaskId = String.format(CONSUMER_TASK_ID_FORMAT, kafkaVersionTopic);
+    this.topicManagerRepository = builder.getTopicManagerRepository();
+    this.topicManagerRepositoryJavaBased = builder.getTopicManagerRepositoryJavaBased();
+    this.cachedKafkaMetadataGetter = new CachedKafkaMetadataGetter(storeConfig.getTopicOffsetCheckIntervalMs());
+
+    this.storeIngestionStats = builder.getIngestionStats();
+    this.versionedDIVStats = builder.getVersionedDIVStats();
+    this.versionedStorageIngestionStats = builder.getVersionedStorageIngestionStats();
+    this.isRunning = new AtomicBoolean(true);
+    this.emitMetrics = new AtomicBoolean(true);
+
+    this.storeBufferService = builder.getStoreBufferService();
+    this.isCurrentVersion = isCurrentVersion;
+    this.hybridStoreConfig = Optional.ofNullable(version.isUseVersionLevelHybridConfig() ? version.getHybridStoreConfig() : store.getHybridStoreConfig());
+    this.isIncrementalPushEnabled = version.isUseVersionLevelIncrementalPushEnabled() ? version.isIncrementalPushEnabled() : store.isIncrementalPushEnabled();
+    this.incrementalPushPolicy = version.getIncrementalPushPolicy();
+
+    this.divErrorMetricCallback = Optional.of(e -> versionedDIVStats.recordException(storeName, versionNumber, e));
+
+    this.diskUsage = builder.getDiskUsage();
+
+    this.rocksDBMemoryStats = Optional.ofNullable(
+        storageEngineRepository.hasLocalStorageEngine(kafkaVersionTopic)
+            && storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic).getType().equals(PersistenceType.ROCKS_DB) ?
+            builder.getRocksDBMemoryStats() : null
+    );
+
+    this.readOnlyForBatchOnlyStoreEnabled = storeConfig.isReadOnlyForBatchOnlyStoreEnabled();
+
+    this.serverConfig = builder.getServerConfig();
+
+    this.defaultReadyToServeChecker = getDefaultReadyToServeChecker();
+
+    this.hybridQuotaEnforcer = Optional.empty();
+
+    this.subscribedPartitionToSize = Optional.empty();
+
+    this.aggKafkaConsumerService = builder.getAggKafkaConsumerService();
+
+    this.errorPartitionId = errorPartitionId;
+    this.cacheWarmingThreadPool = builder.getCacheWarmingThreadPool();
+    this.startReportingReadyToServeTimestamp = builder.getStartReportingReadyToServeTimestamp();
+
+    this.isWriteComputationEnabled = store.isWriteComputationEnabled();
+
+    buildRocksDBMemoryEnforcer();
+
+    this.partitionStateSerializer = builder.getPartitionStateSerializer();
+
+    this.suppressLiveUpdates = serverConfig.freezeIngestionIfReadyToServeOrLocalDataExists();
+
+    /*
+     * The reason to use a different field name here is that the naming convention will be consistent with RocksDB.
+     */
+    this.disableAutoCompactionForSamzaReprocessingJob = !serverConfig.isEnableAutoCompactionForSamzaReprocessingJob();
+
+    this.storeVersionPartitionCount = version.getPartitionCount();
+
+    long pushTimeoutInMs;
+    try {
+      pushTimeoutInMs = HOURS.toMillis(storeRepository.getStoreOrThrow(storeName).getBootstrapToOnlineTimeoutInHours());
+    } catch (Exception e) {
+      logger.warn("Error when getting bootstrap to online timeout config for store " + storeName
+          + ". Will use default timeout threshold which is 24 hours", e);
+      pushTimeoutInMs = HOURS.toMillis(Store.BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS);
+    }
+    this.bootstrapTimeoutInMs = pushTimeoutInMs;
+    this.isIsolatedIngestion = isIsolatedIngestion;
+
+    PartitionerConfig partitionerConfig = version.getPartitionerConfig();
+    if (partitionerConfig == null) {
+      this.venicePartitioner = new DefaultVenicePartitioner();
+      this.amplificationFactor = 1;
+    } else {
+      this.venicePartitioner = PartitionUtils.getVenicePartitioner(partitionerConfig);
+      this.amplificationFactor = partitionerConfig.getAmplificationFactor();
+    }
+
+    this.subPartitionCount = storeVersionPartitionCount * amplificationFactor;
+    this.reportStatusAdapter = new ReportStatusAdapter(new IngestionNotificationDispatcher(notifiers, kafkaVersionTopic, isCurrentVersion));
+    this.amplificationAdapter = new AmplificationAdapter(amplificationFactor);
+    this.cacheBackend = cacheBackend;
+    this.localKafkaServer = this.kafkaProps.getProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG);
+    this.isDaVinciClient = builder.isDaVinciClient();
+    this.isActiveActiveReplicationEnabled = version.isActiveActiveReplicationEnabled();
+    this.offsetLagDeltaRelaxEnabled = serverConfig.getOffsetLagDeltaRelaxFactorForFastOnlineTransitionInRestart() > 0;
+    this.ingestionCheckpointDuringGracefulShutdownEnabled = serverConfig.isServerIngestionCheckpointDuringGracefulShutdownEnabled();
+
+    // Build quota enforcer needs sub partition count prepared.
+    if (serverConfig.isHybridQuotaEnabled() || storeRepository.getStoreOrThrow(storeName).isHybridStoreDiskQuotaEnabled()) {
+      buildHybridQuotaEnforcer();
+    }
+  }
+
+  public StoreIngestionTask(
       Store store,
       Version version,
       KafkaClientFactory consumerFactory,

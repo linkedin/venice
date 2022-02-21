@@ -4048,6 +4048,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         PushMonitor monitor = getHelixVeniceClusterResources(clusterName).getPushMonitor();
         String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopic);
         Store store = getStore(clusterName, storeName);
+        if (store == null) {
+          throw new VeniceNoStoreException(storeName);
+        }
         int versionNumber = Version.parseVersionFromVersionTopicName(kafkaTopic);
 
         if (!incrementalPushVersion.isPresent()) {
