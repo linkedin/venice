@@ -1,18 +1,11 @@
 package com.linkedin.davinci.kafka.consumer;
 
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
-import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
-import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.venice.schema.merge.CollectionTimestampMergeRecordHelper;
 import com.linkedin.venice.schema.merge.MergeRecordHelper;
-import com.linkedin.davinci.stats.AggStoreIngestionStats;
 import com.linkedin.davinci.stats.AggVersionedDIVStats;
-import com.linkedin.davinci.stats.AggVersionedStorageIngestionStats;
-import com.linkedin.davinci.stats.RocksDBMemoryStats;
-import com.linkedin.davinci.storage.StorageEngineRepository;
-import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.chunking.ChunkingUtils;
 import com.linkedin.davinci.storage.chunking.GenericRecordChunkingAdapter;
 import com.linkedin.davinci.store.AbstractStorageEngine;
@@ -25,8 +18,6 @@ import com.linkedin.venice.exceptions.VeniceTimeoutException;
 import com.linkedin.venice.exceptions.validation.DuplicateDataException;
 import com.linkedin.venice.exceptions.validation.FatalDataValidationException;
 import com.linkedin.venice.guid.GuidUtils;
-import com.linkedin.venice.kafka.KafkaClientFactory;
-import com.linkedin.venice.kafka.TopicManagerRepository;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
@@ -35,23 +26,18 @@ import com.linkedin.venice.kafka.protocol.TopicSwitch;
 import com.linkedin.venice.kafka.protocol.Update;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
-import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.kafka.validation.KafkaDataIntegrityValidator;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
-import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
-import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.stats.StatsErrorCode;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
-import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.ByteUtils;
-import com.linkedin.venice.utils.DiskUsage;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Lazy;
 import com.linkedin.venice.utils.Pair;
@@ -70,10 +56,8 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
-import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -164,85 +148,27 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
   protected final Map<String, Integer> kafkaClusterUrlToIdMap;
 
-  /**
-   * A set of boolean that check if partitions owned by this task have released the latch.
-   * This is an optional field and is only used while ingesting a topic that currently
-   * served the traffic. The set is initialized as an empty set and will add partition
-   * numbers once the partition has caught up.
-   *
-   * See {@link LeaderFollowerPartitionStateModel} for the details why we need latch for
-   * certain resources.
-   */
   public LeaderFollowerStoreIngestionTask(
+      StoreIngestionTaskFactory.Builder builder,
       Store store,
       Version version,
-      VeniceWriterFactory writerFactory,
-      KafkaClientFactory consumerFactory,
       Properties kafkaConsumerProperties,
-      StorageEngineRepository storageEngineRepository,
-      StorageMetadataService storageMetadataService,
-      Queue<VeniceNotifier> notifiers,
-      EventThrottler bandwidthThrottler,
-      EventThrottler recordsThrottler,
-      EventThrottler unorderedBandwidthThrottler,
-      EventThrottler unorderedRecordsThrottler,
-      KafkaClusterBasedRecordThrottler kafkaClusterBasedRecordThrottler,
-      ReadOnlySchemaRepository schemaRepo,
-      ReadOnlyStoreRepository metadataRepo,
-      TopicManagerRepository topicManagerRepository,
-      TopicManagerRepository topicManagerRepositoryJavaBased,
-      AggStoreIngestionStats storeIngestionStats,
-      AggVersionedDIVStats versionedDIVStats,
-      AggVersionedStorageIngestionStats versionedStorageIngestionStats,
-      AbstractStoreBufferService storeBufferService,
       BooleanSupplier isCurrentVersion,
       VeniceStoreVersionConfig storeConfig,
-      DiskUsage diskUsage,
-      RocksDBMemoryStats rocksDBMemoryStats,
-      AggKafkaConsumerService aggKafkaConsumerService,
-      VeniceServerConfig serverConfig,
-      int partitionId,
-      ExecutorService cacheWarmingThreadPool,
-      long startReportingReadyToServeTimestamp,
-      InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer,
+      int errorPartitionId,
       boolean isIsolatedIngestion,
-      StorageEngineBackedCompressorFactory compressorFactory,
       Optional<ObjectCacheBackend> cacheBackend,
-      boolean isDaVinciClient) {
-    super(
+      StorageEngineBackedCompressorFactory compressorFactory) {
+    super(builder,
         store,
         version,
-        consumerFactory,
         kafkaConsumerProperties,
-        storageEngineRepository,
-        storageMetadataService,
-        notifiers,
-        bandwidthThrottler,
-        recordsThrottler,
-        unorderedBandwidthThrottler,
-        unorderedRecordsThrottler,
-        kafkaClusterBasedRecordThrottler,
-        schemaRepo,
-        metadataRepo,
-        topicManagerRepository,
-        topicManagerRepositoryJavaBased,
-        storeIngestionStats,
-        versionedDIVStats,
-        versionedStorageIngestionStats,
-        storeBufferService,
         isCurrentVersion,
         storeConfig,
-        diskUsage,
-        rocksDBMemoryStats,
-        aggKafkaConsumerService,
-        serverConfig,
-        partitionId,
-        cacheWarmingThreadPool,
-        startReportingReadyToServeTimestamp,
-        partitionStateSerializer,
+        errorPartitionId,
         isIsolatedIngestion,
         cacheBackend,
-        isDaVinciClient);
+        builder.getLeaderFollowerNotifiers());
     /**
      * We are going to apply fast leader failover for {@link com.linkedin.venice.common.VeniceSystemStoreType#META_STORE}
      * since it is time sensitive, and if the split-brain problem happens in prod, we could design a way to periodically
@@ -262,7 +188,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
     this.compressorFactory = compressorFactory;
 
-    this.veniceWriterFactory = writerFactory;
+    this.veniceWriterFactory = builder.getVeniceWriterFactory();
     this.veniceWriter = Lazy.of(() -> {
       Optional<StoreVersionState> storeVersionState = storageMetadataService.getStoreVersionState(kafkaVersionTopic);
       if (storeVersionState.isPresent()) {

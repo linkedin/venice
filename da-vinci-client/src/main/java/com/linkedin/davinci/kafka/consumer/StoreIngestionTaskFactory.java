@@ -53,113 +53,39 @@ public class StoreIngestionTaskFactory {
   ) {
     if (version.isActiveActiveReplicationEnabled()) {
       return new ActiveActiveStoreIngestionTask(
+          builder,
           store,
           version,
-          builder.veniceWriterFactory,
-          builder.kafkaClientFactory,
           kafkaConsumerProperties,
-          builder.storageEngineRepository,
-          builder.storageMetadataService,
-          builder.leaderFollowerNotifiers,
-          builder.bandwidthThrottler,
-          builder.recordsThrottler,
-          builder.unorderedBandwidthThrottler,
-          builder.unorderedRecordsThrottler,
-          builder.kafkaClusterBasedRecordThrottler,
-          builder.schemaRepo,
-          builder.metadataRepo,
-          builder.topicManagerRepository,
-          builder.topicManagerRepositoryJavaBased,
-          builder.ingestionStats,
-          builder.versionedDIVStats,
-          builder.versionedStorageIngestionStats,
-          builder.storeBufferService,
           isCurrentVersion,
           storeConfig,
-          builder.diskUsage,
-          builder.rocksDBMemoryStats,
-          builder.aggKafkaConsumerService,
-          builder.serverConfig,
           partitionId,
-          builder.cacheWarmingThreadPool,
-          builder.startReportingReadyToServeTimestamp,
-          builder.partitionStateSerializer,
           isIsolatedIngestion,
-          compressorFactory,
           cacheBackend,
-          builder.isDaVinciClient);
+          compressorFactory);
     } else if (version.isLeaderFollowerModelEnabled()) {
       return new LeaderFollowerStoreIngestionTask(
+          builder,
           store,
           version,
-          builder.veniceWriterFactory,
-          builder.kafkaClientFactory,
           kafkaConsumerProperties,
-          builder.storageEngineRepository,
-          builder.storageMetadataService,
-          builder.leaderFollowerNotifiers,
-          builder.bandwidthThrottler,
-          builder.recordsThrottler,
-          builder.unorderedBandwidthThrottler,
-          builder.unorderedRecordsThrottler,
-          builder.kafkaClusterBasedRecordThrottler,
-          builder.schemaRepo,
-          builder.metadataRepo,
-          builder.topicManagerRepository,
-          builder.topicManagerRepositoryJavaBased,
-          builder.ingestionStats,
-          builder.versionedDIVStats,
-          builder.versionedStorageIngestionStats,
-          builder.storeBufferService,
           isCurrentVersion,
           storeConfig,
-          builder.diskUsage,
-          builder.rocksDBMemoryStats,
-          builder.aggKafkaConsumerService,
-          builder.serverConfig,
           partitionId,
-          builder.cacheWarmingThreadPool,
-          builder.startReportingReadyToServeTimestamp,
-          builder.partitionStateSerializer,
           isIsolatedIngestion,
-          compressorFactory,
           cacheBackend,
-          builder.isDaVinciClient);
+          compressorFactory);
     } else {
       return new OnlineOfflineStoreIngestionTask(
+          builder,
           store,
           version,
-          builder.kafkaClientFactory,
           kafkaConsumerProperties,
-          builder.storageEngineRepository,
-          builder.storageMetadataService,
-          builder.onlineOfflineNotifiers,
-          builder.bandwidthThrottler,
-          builder.recordsThrottler,
-          builder.unorderedBandwidthThrottler,
-          builder.unorderedRecordsThrottler,
-          builder.kafkaClusterBasedRecordThrottler,
-          builder.schemaRepo,
-          builder.metadataRepo,
-          builder.topicManagerRepository,
-          builder.topicManagerRepositoryJavaBased,
-          builder.ingestionStats,
-          builder.versionedDIVStats,
-          builder.versionedStorageIngestionStats,
-          builder.storeBufferService,
           isCurrentVersion,
           storeConfig,
-          builder.diskUsage,
-          builder.rocksDBMemoryStats,
-          builder.aggKafkaConsumerService,
-          builder.serverConfig,
           partitionId,
-          builder.cacheWarmingThreadPool,
-          builder.startReportingReadyToServeTimestamp,
-          builder.partitionStateSerializer,
           isIsolatedIngestion,
-          cacheBackend,
-          builder.isDaVinciClient);
+          cacheBackend);
     }
   }
 
@@ -205,199 +131,237 @@ public class StoreIngestionTaskFactory {
     private InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer;
     private boolean isDaVinciClient;
 
+    private interface Setter {
+      void apply();
+    }
+
+    private Builder set(Setter setter) {
+      if (!built) {
+        setter.apply();
+      }
+      return this;
+    }
+
     public StoreIngestionTaskFactory build() {
       // flip the build flag to true
       this.built = true;
       return new StoreIngestionTaskFactory(this);
     }
 
+    public VeniceWriterFactory getVeniceWriterFactory() {
+      return veniceWriterFactory;
+    }
+
     public Builder setVeniceWriterFactory(VeniceWriterFactory writerFactory) {
-      if (!built) {
-        this.veniceWriterFactory = writerFactory;
-      }
-      return this;
+      return set(() -> this.veniceWriterFactory = writerFactory);
+    }
+
+    public KafkaClientFactory getKafkaClientFactory() {
+      return kafkaClientFactory;
     }
 
     public Builder setKafkaClientFactory(KafkaClientFactory consumerFactory) {
-      if (!built) {
-        this.kafkaClientFactory = consumerFactory;
-      }
-      return this;
+      return set(() -> this.kafkaClientFactory = consumerFactory);
+    }
+
+    public StorageEngineRepository getStorageEngineRepository() {
+      return storageEngineRepository;
+    }
+
+    public StorageMetadataService getStorageMetadataService() {
+      return storageMetadataService;
     }
 
     public Builder setStorageEngineRepository(StorageEngineRepository storageEngineRepository) {
-      if (!built) {
-        this.storageEngineRepository = storageEngineRepository;
-      }
-      return this;
+      return set(() -> this.storageEngineRepository = storageEngineRepository);
     }
 
     public Builder setStorageMetadataService(StorageMetadataService storageMetadataService) {
-      if (!built) {
-        this.storageMetadataService = storageMetadataService;
-      }
-      return this;
+      return set(() -> this.storageMetadataService = storageMetadataService);
+    }
+
+    public Queue<VeniceNotifier> getOnlineOfflineNotifiers() {
+      return onlineOfflineNotifiers;
     }
 
     public Builder setOnlineOfflineNotifiersQueue(Queue<VeniceNotifier> onlineOfflineNotifiers) {
-      if (!built) {
-        this.onlineOfflineNotifiers = onlineOfflineNotifiers;
-      }
-      return this;
+      return set(() -> this.onlineOfflineNotifiers = onlineOfflineNotifiers);
+    }
+
+    public Queue<VeniceNotifier> getLeaderFollowerNotifiers() {
+      return leaderFollowerNotifiers;
     }
 
     public Builder setLeaderFollowerNotifiersQueue(Queue<VeniceNotifier> leaderFollowerNotifiers) {
-      if (!built) {
-        this.leaderFollowerNotifiers = leaderFollowerNotifiers;
-      }
-      return this;
+      return set(() -> this.leaderFollowerNotifiers = leaderFollowerNotifiers);
+    }
+
+    public EventThrottler getBandwidthThrottler() {
+      return bandwidthThrottler;
     }
 
     public Builder setBandwidthThrottler(EventThrottler bandwidthThrottler) {
-      if (!built) {
-        this.bandwidthThrottler = bandwidthThrottler;
-      }
-      return this;
+      return set(() -> this.bandwidthThrottler = bandwidthThrottler);
+    }
+
+    public EventThrottler getRecordsThrottler() {
+      return recordsThrottler;
     }
 
     public Builder setRecordsThrottler(EventThrottler recordsThrottler) {
-      if (!built) {
-        this.recordsThrottler = recordsThrottler;
-      }
-      return this;
+      return set(() -> this.recordsThrottler = recordsThrottler);
+    }
+
+    public EventThrottler getUnorderedBandwidthThrottler() {
+      return unorderedBandwidthThrottler;
     }
 
     public Builder setUnorderedBandwidthThrottler(EventThrottler throttler) {
-      if (!built) {
-        this.unorderedBandwidthThrottler = throttler;
-      }
-      return this;
+      return set(() -> this.unorderedBandwidthThrottler = throttler);
+    }
+
+    public EventThrottler getUnorderedRecordsThrottler() {
+      return unorderedRecordsThrottler;
     }
 
     public Builder setUnorderedRecordsThrottler(EventThrottler throttler) {
-      if (!built) {
-        this.unorderedRecordsThrottler = throttler;
-      }
-      return this;
+      return set(() -> this.unorderedRecordsThrottler = throttler);
+    }
+
+    public KafkaClusterBasedRecordThrottler getKafkaClusterBasedRecordThrottler() {
+      return kafkaClusterBasedRecordThrottler;
     }
 
     public Builder setKafkaClusterBasedRecordThrottler(KafkaClusterBasedRecordThrottler kafkaClusterBasedRecordThrottler) {
-      if (!built) {
-        this.kafkaClusterBasedRecordThrottler = kafkaClusterBasedRecordThrottler;
-      }
-      return this;
+      return set(() -> this.kafkaClusterBasedRecordThrottler = kafkaClusterBasedRecordThrottler);
+    }
+
+    public ReadOnlySchemaRepository getSchemaRepo() {
+      return schemaRepo;
     }
 
     public Builder setSchemaRepository(ReadOnlySchemaRepository schemaRepo) {
-      if (!built) {
-        this.schemaRepo = schemaRepo;
-      }
-      return this;
+      return set(() -> this.schemaRepo = schemaRepo);
+    }
+
+    public ReadOnlyStoreRepository getMetadataRepo() {
+      return metadataRepo;
     }
 
     public Builder setMetadataRepository(ReadOnlyStoreRepository metadataRepo) {
-      if (!built) {
-        this.metadataRepo = metadataRepo;
-      }
-      return this;
+      return set(() -> this.metadataRepo = metadataRepo);
+    }
+
+    public TopicManagerRepository getTopicManagerRepository() {
+      return topicManagerRepository;
     }
 
     public Builder setTopicManagerRepository(TopicManagerRepository topicManagerRepository) {
-      if (!built) {
-        this.topicManagerRepository = topicManagerRepository;
-      }
-      return this;
+      return set(() -> this.topicManagerRepository = topicManagerRepository);
+    }
+
+    public TopicManagerRepository getTopicManagerRepositoryJavaBased() {
+      return topicManagerRepositoryJavaBased;
     }
 
     public Builder setTopicManagerRepositoryJavaBased(TopicManagerRepository topicManagerRepositoryJavaBased) {
-      if (!built) {
-        this.topicManagerRepositoryJavaBased = topicManagerRepositoryJavaBased;
-      }
-      return this;
+      return set(() -> this.topicManagerRepositoryJavaBased = topicManagerRepositoryJavaBased);
+    }
+
+    public AggStoreIngestionStats getIngestionStats() {
+      return ingestionStats;
     }
 
     public Builder setStoreIngestionStats(AggStoreIngestionStats storeIngestionStats) {
-      if (!built) {
-        this.ingestionStats = storeIngestionStats;
-      }
-      return this;
+      return set(() -> this.ingestionStats = storeIngestionStats);
+    }
+
+    public AggVersionedDIVStats getVersionedDIVStats() {
+      return versionedDIVStats;
     }
 
     public Builder setVersionedDIVStats(AggVersionedDIVStats versionedDIVStats) {
-      if (!built) {
-        this.versionedDIVStats = versionedDIVStats;
-      }
-      return this;
+      return set(() -> this.versionedDIVStats = versionedDIVStats);
+    }
+
+    public AggVersionedStorageIngestionStats getVersionedStorageIngestionStats() {
+      return versionedStorageIngestionStats;
     }
 
     public Builder setVersionedStorageIngestionStats(AggVersionedStorageIngestionStats versionedStorageIngestionStats) {
-      if (!built) {
-        this.versionedStorageIngestionStats = versionedStorageIngestionStats;
-      }
-      return this;
+      return set(() -> this.versionedStorageIngestionStats = versionedStorageIngestionStats);
+    }
+
+    public AbstractStoreBufferService getStoreBufferService() {
+      return storeBufferService;
     }
 
     public Builder setStoreBufferService(AbstractStoreBufferService storeBufferService) {
-      if (!built) {
-        this.storeBufferService = storeBufferService;
-      }
-      return this;
+      return set(() -> this.storeBufferService = storeBufferService);
+    }
+
+    public VeniceServerConfig getServerConfig() {
+      return serverConfig;
     }
 
     public Builder setServerConfig(VeniceServerConfig serverConfig) {
-      if (!built) {
-        this.serverConfig = serverConfig;
-      }
-      return this;
+      return set(() -> this.serverConfig = serverConfig);
+    }
+
+    public DiskUsage getDiskUsage() {
+      return diskUsage;
     }
 
     public Builder setDiskUsage(DiskUsage diskUsage) {
-      if (!built) {
-        this.diskUsage = diskUsage;
-      }
-      return this;
+      return set(() -> this.diskUsage = diskUsage);
+    }
+
+    public AggKafkaConsumerService getAggKafkaConsumerService() {
+      return aggKafkaConsumerService;
     }
 
     public Builder setAggKafkaConsumerService(AggKafkaConsumerService aggKafkaConsumerService) {
-      if (!built) {
-        this.aggKafkaConsumerService = aggKafkaConsumerService;
-      }
-      return this;
+      return set(() -> this.aggKafkaConsumerService = aggKafkaConsumerService);
+    }
+
+    public RocksDBMemoryStats getRocksDBMemoryStats() {
+      return rocksDBMemoryStats;
     }
 
     public Builder setRocksDBMemoryStats(RocksDBMemoryStats rocksDBMemoryStats) {
-      if (!built) {
-        this.rocksDBMemoryStats = rocksDBMemoryStats;
-      }
-      return this;
+      return set(() -> this.rocksDBMemoryStats = rocksDBMemoryStats);
+    }
+
+    public ExecutorService getCacheWarmingThreadPool() {
+      return cacheWarmingThreadPool;
     }
 
     public Builder setCacheWarmingThreadPool(ExecutorService cacheWarmingThreadPool) {
-      if (!built) {
-        this.cacheWarmingThreadPool = cacheWarmingThreadPool;
-      }
-      return this;
+      return set(() -> this.cacheWarmingThreadPool = cacheWarmingThreadPool);
+    }
+
+    public long getStartReportingReadyToServeTimestamp() {
+      return startReportingReadyToServeTimestamp;
     }
 
     public Builder setStartReportingReadyToServeTimestamp(long timestamp) {
-      if (!built) {
-        this.startReportingReadyToServeTimestamp =  timestamp;
-      }
-      return this;
+      return set(() -> this.startReportingReadyToServeTimestamp =  timestamp);
+    }
+
+    public InternalAvroSpecificSerializer<PartitionState> getPartitionStateSerializer() {
+      return partitionStateSerializer;
     }
 
     public Builder setPartitionStateSerializer(InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer) {
-      if (!built) {
-        this.partitionStateSerializer = partitionStateSerializer;
-      }
-      return this;
+      return set(() -> this.partitionStateSerializer = partitionStateSerializer);
+    }
+
+    public boolean isDaVinciClient() {
+      return isDaVinciClient;
     }
 
     public Builder setIsDaVinciClient(boolean isDaVinciClient) {
-      if (!built) {
-        this.isDaVinciClient = isDaVinciClient;
-      }
-      return this;
+      return set(() -> this.isDaVinciClient = isDaVinciClient);
     }
   }
 }
