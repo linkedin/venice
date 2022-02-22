@@ -40,6 +40,9 @@ public class ZkServerWrapper extends ProcessWrapper {
   private static ZkServerWrapper INSTANCE = null;
   private static ZooKeeper zooKeeper = null;
 
+  // isSingleton indicates if a singleton ZkServer thread is created and shared among all test suits.
+  private static boolean isSingleton = false;
+
   // TODO: Make sure the hardcoded defaults below make sense
 
   /**
@@ -63,6 +66,10 @@ public class ZkServerWrapper extends ProcessWrapper {
    */
   static StatefulServiceProvider<ZkServerWrapper> generateService() {
     return (String serviceName, File dataDirectory) -> {
+      if (!isSingleton) {
+        return createRealZkServerWrapper(serviceName, Utils.getFreePort(), dataDirectory);
+      }
+
       synchronized (ZkServerWrapper.class) {
         if (INSTANCE == null) {
           try {
@@ -189,7 +196,7 @@ public class ZkServerWrapper extends ProcessWrapper {
    * @see {@link ProcessWrapper#getPort()}
    */
   public int getPort() {
-    if (this != INSTANCE) {
+    if (isSingleton && this != INSTANCE) {
       return INSTANCE.getPort();
     }
     return configuration.getClientPortAddress().getPort();
@@ -197,15 +204,19 @@ public class ZkServerWrapper extends ProcessWrapper {
 
   @Override
   public String getAddress() {
-    if (this != INSTANCE) {
+    if (isSingleton && this != INSTANCE) {
       return INSTANCE.getAddress() + "/" + chroot;
     }
     return getHost() + ":" + getPort();
   }
 
+  public static boolean IsSingleton() {
+    return isSingleton;
+  }
+
   @Override
   protected void internalStart() throws Exception {
-    if (this != INSTANCE) {
+    if (isSingleton && this != INSTANCE) {
       return;
     }
 
@@ -231,7 +242,7 @@ public class ZkServerWrapper extends ProcessWrapper {
 
   @Override
   protected synchronized void internalStop() throws Exception {
-    if (this != INSTANCE) {
+    if (isSingleton && this != INSTANCE) {
       return;
     }
     synchronized (ZkServerWrapper.class) {
@@ -243,7 +254,11 @@ public class ZkServerWrapper extends ProcessWrapper {
 
   @Override
   protected void newProcess() throws Exception {
-    throw new RuntimeException("newProcess is not implemented for singleton ZkServerWrappers");
+    if (isSingleton) {
+      throw new RuntimeException("newProcess is not implemented for singleton ZkServerWrappers");
+    }
+    this.zkThread = new ZkThread();
+    this.zkServer = new ZooKeeperServer();
   }
 
   /**

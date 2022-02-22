@@ -62,7 +62,7 @@ public abstract class ProcessWrapper implements Closeable {
      * So no need to report the following error for {@link ZkServerWrapper}, and this hook will be in charge of closing it properly.
      */
     this.shutdownHook = new Thread(() -> closeAudit("JVM shutdown time"));
-    if (!getClass().equals(ZkServerWrapper.class)) {
+    if (!(getClass().equals(ZkServerWrapper.class) && ZkServerWrapper.IsSingleton())) {
       Runtime.getRuntime().addShutdownHook(shutdownHook);
     }
   }
