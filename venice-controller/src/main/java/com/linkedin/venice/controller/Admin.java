@@ -632,18 +632,18 @@ public interface Admin extends AutoCloseable, Closeable {
     /**
      * Return the emergency source region configuration.
      */
-    public Optional<String> getEmergencySourceRegion();
+    Optional<String> getEmergencySourceRegion();
 
     /**
      * Returns true if A/A replication is enabled in all child controller and parent controller. This is implemented only in parent controller.
      * Otherwise return false.
      */
-    public boolean isActiveActiveReplicationEnabledInAllRegion(String clusterName, String storeName, boolean checkCurrentVersion);
+    boolean isActiveActiveReplicationEnabledInAllRegion(String clusterName, String storeName, boolean checkCurrentVersion);
 
     /**
      * Returns default backup version retention time.
      */
-    public long getBackupVersionDefaultRetentionMs();
+    long getBackupVersionDefaultRetentionMs();
 
     /**
      * Move all the incremental push stores in a cluster to the specified incremental push policy (incrementalPushPolicyToApply).
@@ -714,7 +714,9 @@ public interface Admin extends AutoCloseable, Closeable {
      * Return all stores in a cluster.
      * @return
      */
-    public List<StoreInfo> getClusterStores(String clusterName);
+    List<StoreInfo> getClusterStores(String clusterName);
 
-    public Map<String, StoreDataAudit> getClusterStaleStores(String clusterName, Optional<String> regionFilter);
+    Map<String, StoreDataAudit> getClusterStaleStores(String clusterName, Optional<String> regionFilter);
+
+    int getStoreLargestUsedVersion(String clusterName, String storeName);
 }

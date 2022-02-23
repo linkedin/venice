@@ -20,6 +20,7 @@ import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.controller.VeniceHelixAdmin.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
@@ -47,7 +48,7 @@ public class TestClusterLevelConfigForActiveActiveReplication extends AbstractTe
     /**
      * Add a version
      */
-    veniceAdmin.addVersionAndTopicOnly(clusterName, storeNameHybrid, pushJobId1, 1, 1,
+    veniceAdmin.addVersionAndTopicOnly(clusterName, storeNameHybrid, pushJobId1, VERSION_ID_UNSET, 1, 1,
         false, true, Version.PushType.STREAM, null, null, Optional.empty(), -1, 1, Optional.empty());
 
     // Version 1 should exist.
@@ -77,7 +78,7 @@ public class TestClusterLevelConfigForActiveActiveReplication extends AbstractTe
     /**
      * Add a version
      */
-    veniceAdmin.addVersionAndTopicOnly(clusterName, storeNameIncremental, pushJobId1, 1, 1,
+    veniceAdmin.addVersionAndTopicOnly(clusterName, storeNameIncremental, pushJobId1, VERSION_ID_UNSET, 1, 1,
         false, true, Version.PushType.STREAM, null, null, Optional.empty(), -1, 1, Optional.empty());
 
     // Version 1 should exist.
@@ -107,7 +108,7 @@ public class TestClusterLevelConfigForActiveActiveReplication extends AbstractTe
     /**
      * Add a version
      */
-    veniceAdmin.addVersionAndTopicOnly(clusterName, storeNameBatchOnly, pushJobId1, 1, 1,
+    veniceAdmin.addVersionAndTopicOnly(clusterName, storeNameBatchOnly, pushJobId1, VERSION_ID_UNSET, 1, 1,
             false, true, Version.PushType.STREAM, null, null, Optional.empty(), -1, 1, Optional.empty());
 
     // Version 1 should exist.

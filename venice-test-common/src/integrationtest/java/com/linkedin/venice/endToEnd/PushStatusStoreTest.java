@@ -9,6 +9,7 @@ import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.init.ClusterLeaderInitializationRoutine;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.hadoop.VenicePushJob;
@@ -40,7 +41,7 @@ import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 import static com.linkedin.venice.ConfigKeys.*;
-import static com.linkedin.venice.common.PushStatusStoreUtils.SERVER_INCREMENTAL_PUSH_PREFIX;
+import static com.linkedin.venice.common.PushStatusStoreUtils.*;
 import static com.linkedin.venice.hadoop.VenicePushJob.*;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.*;
 import static com.linkedin.venice.meta.IngestionMode.*;
@@ -266,13 +267,46 @@ public class PushStatusStoreTest {
         assertTrue(readOnlyStore.isHybrid(),
             "Store: " + zkSharedDaVinciPushStatusSchemaStoreName + " should be configured to hybrid");
       });
-      String storeName = Utils.getUniqueString("new-user-store");
-      assertFalse(
-          parentControllerClient.createNewStore(storeName, "venice-test", DEFAULT_KEY_SCHEMA, "\"string\"").isError(),
-          "Unexpected new store creation failure");
+      String userStoreName = Utils.getUniqueString("new-user-store");
+      NewStoreResponse
+          newStoreResponse = parentControllerClient.createNewStore(userStoreName, "venice-test", DEFAULT_KEY_SCHEMA, "\"string\"");
+      assertFalse(newStoreResponse.isError(), "Unexpected new store creation failure");
       String daVinciPushStatusSystemStoreName =
-          VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(storeName);
+          VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(userStoreName);
       TestUtils.waitForNonDeterministicPushCompletion(Version.composeKafkaTopic(daVinciPushStatusSystemStoreName, 1),
+          parentControllerClient, 30, TimeUnit.SECONDS, Optional.empty());
+      Store daVinciPushStatusSystemStore = parentController.getVeniceAdmin().getStore(cluster.getClusterName(), daVinciPushStatusSystemStoreName);
+      assertEquals(daVinciPushStatusSystemStore.getLargestUsedVersionNumber(), 1);
+
+      // Do empty pushes to increase the system store's version
+      final int emptyPushAttempt = 2;
+      for (int i = 0; i < emptyPushAttempt; i++) {
+        final int newVersion = parentController.getVeniceAdmin()
+            .incrementVersionIdempotent(cluster.getClusterName(), daVinciPushStatusSystemStoreName,
+                "push job ID placeholder " + i, 1, 1)
+            .getNumber();
+        parentController.getVeniceAdmin().writeEndOfPush(cluster.getClusterName(), daVinciPushStatusSystemStoreName, newVersion, true);
+        TestUtils.waitForNonDeterministicPushCompletion(Version.composeKafkaTopic(daVinciPushStatusSystemStoreName, newVersion),
+            parentControllerClient, 30, TimeUnit.SECONDS, Optional.empty());
+      }
+      daVinciPushStatusSystemStore = parentController.getVeniceAdmin().getStore(cluster.getClusterName(), daVinciPushStatusSystemStoreName);
+      final int systemStoreCurrVersionBeforeBeingDeleted = daVinciPushStatusSystemStore.getLargestUsedVersionNumber();
+      assertEquals(systemStoreCurrVersionBeforeBeingDeleted, 1 + emptyPushAttempt);
+
+      parentControllerClient.disableAndDeleteStore(userStoreName);
+      // Both the system store and user store should be gone at this point
+      assertNull(parentController.getVeniceAdmin().getStore(cluster.getClusterName(), userStoreName));
+      assertNull(parentController.getVeniceAdmin().getStore(cluster.getClusterName(), daVinciPushStatusSystemStoreName));
+
+      // Create the same regular store again
+      newStoreResponse = parentControllerClient.createNewStore(userStoreName, "venice-test", DEFAULT_KEY_SCHEMA, "\"string\"");
+      assertFalse(newStoreResponse.isError(), "Unexpected new store creation failure: " + newStoreResponse);
+
+      // The re-created/materialized per-user store system store should contain a continued version from its last life
+      daVinciPushStatusSystemStore = parentController.getVeniceAdmin().getStore(cluster.getClusterName(), daVinciPushStatusSystemStoreName);
+      assertEquals(daVinciPushStatusSystemStore.getLargestUsedVersionNumber(), systemStoreCurrVersionBeforeBeingDeleted + 1);
+
+      TestUtils.waitForNonDeterministicPushCompletion(Version.composeKafkaTopic(daVinciPushStatusSystemStoreName, systemStoreCurrVersionBeforeBeingDeleted + 1),
           parentControllerClient, 30, TimeUnit.SECONDS, Optional.empty());
     }
   }

@@ -69,6 +69,7 @@ import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
+import static com.linkedin.venice.controller.VeniceHelixAdmin.*;
 import static org.mockito.Mockito.*;
 
 
@@ -290,7 +291,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     // Store-level write lock is shared between VeniceHelixAdmin and AbstractPushMonitor. It's not guaranteed that the
     // new version is online and old version will be deleted during VeniceHelixAdmin#addVersion early backup deletion.
     // Explicitly run early backup deletion again to make the test deterministic.
-    veniceAdmin.retireOldStoreVersions(clusterName, storeName, true, VeniceHelixAdmin.VERSION_ID_UNSET);
+    veniceAdmin.retireOldStoreVersions(clusterName, storeName, true, VERSION_ID_UNSET);
     TestUtils.waitForNonDeterministicCompletion(30, TimeUnit.SECONDS, () -> veniceAdmin.versionsForStore(clusterName, storeName).size() == 1);
     Assert.assertEquals(veniceAdmin.getCurrentVersion(clusterName, storeName), version.getNumber());
     Assert.assertEquals(veniceAdmin.versionsForStore(clusterName, storeName).get(0).getNumber(), version.getNumber());
@@ -515,7 +516,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     // try to add same version again
     veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1);
     TestUtils.waitForNonDeterministicCompletion(30, TimeUnit.SECONDS, () -> veniceAdmin.getCurrentVersion(clusterName, storeName) == 2);
-    veniceAdmin.retireOldStoreVersions(clusterName, storeName, true, VeniceHelixAdmin.VERSION_ID_UNSET);
+    veniceAdmin.retireOldStoreVersions(clusterName, storeName, true, VERSION_ID_UNSET);
     Assert.assertEquals(veniceAdmin.versionsForStore(clusterName, storeName).size(), 1);
 
     veniceAdmin.getHelixAdmin().enableMaintenanceMode(clusterName, false);
@@ -639,7 +640,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1);
     veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1);
     TestUtils.waitForNonDeterministicCompletion(30, TimeUnit.SECONDS, () -> veniceAdmin.getCurrentVersion(clusterName, storeName) == 2);
-    veniceAdmin.retireOldStoreVersions(clusterName, storeName, true, VeniceHelixAdmin.VERSION_ID_UNSET);
+    veniceAdmin.retireOldStoreVersions(clusterName, storeName, true, VERSION_ID_UNSET);
 
     store = veniceAdmin.getStore(clusterName, storeName);
     //Version 1 and version 2 are added to this store. Version 1 is deleted by early backup deletion
@@ -900,9 +901,9 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
           System.out.println("sidian's log: current version is : " + veniceAdmin.getStore(clusterName, storeName).getCurrentVersion());
           return veniceAdmin.getStore(clusterName, storeName).getCurrentVersion() == 3;
         });
-    veniceAdmin.retireOldStoreVersions(clusterName, storeName, true, VeniceHelixAdmin.VERSION_ID_UNSET);
+    veniceAdmin.retireOldStoreVersions(clusterName, storeName, true, VERSION_ID_UNSET);
     veniceAdmin.setStoreReadability(clusterName, storeName, false);
-    veniceAdmin.retireOldStoreVersions(clusterName, storeName, false, VeniceHelixAdmin.VERSION_ID_UNSET);
+    veniceAdmin.retireOldStoreVersions(clusterName, storeName, false, VERSION_ID_UNSET);
     Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getVersions().size(), 1,
         " Versions should be deleted.");
   }
@@ -1337,7 +1338,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     /**
      * Add version 1 without remote Kafka bootstrap servers.
      */
-    veniceAdmin.addVersionAndTopicOnly(clusterName, storeName, pushJobId1, 1, 1,
+    veniceAdmin.addVersionAndTopicOnly(clusterName, storeName, pushJobId1, VERSION_ID_UNSET, 1, 1,
         false, true, Version.PushType.BATCH, null, null, Optional.empty(), -1, 1, Optional.empty());
     // Version 1 should exist.
     Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getVersions().size(), 1);
@@ -1347,7 +1348,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
      */
     String remoteKafkaBootstrapServers = "localhost:9092";
     String pushJobId2 = "test-push-job-id-2";
-    veniceAdmin.addVersionAndTopicOnly(clusterName, storeName, pushJobId2, 2, 1,
+    veniceAdmin.addVersionAndTopicOnly(clusterName, storeName, pushJobId2, VERSION_ID_UNSET, 2, 1,
         false, true, Version.PushType.BATCH, null, remoteKafkaBootstrapServers, Optional.empty(), -1, 1, Optional.empty());
     // Version 2 should exist and remote Kafka bootstrap servers info should exist in version 2.
     Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getVersions().size(), 2);
@@ -1632,7 +1633,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     /**
      * Add version 1
      */
-    veniceAdmin.addVersionAndTopicOnly(clusterName, storeName, pushJobId1, 1, 1,
+    veniceAdmin.addVersionAndTopicOnly(clusterName, storeName, pushJobId1, VERSION_ID_UNSET, 1, 1,
         false, true, Version.PushType.BATCH, null, null, Optional.empty(), -1, 1, Optional.empty());
     // Version 1 should exist.
     Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getVersions().size(), 1);

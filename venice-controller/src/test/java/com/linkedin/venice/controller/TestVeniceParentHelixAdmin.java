@@ -76,6 +76,7 @@ import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
+import static com.linkedin.venice.controller.VeniceHelixAdmin.*;
 import static com.linkedin.venice.meta.BufferReplayPolicy.*;
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.*;
 import static org.mockito.Mockito.*;
@@ -705,7 +706,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     String storeName = Utils.getUniqueString("test_store");
     String pushJobId = Utils.getUniqueString("push_job_id");
     doReturn(new Pair<>(true, new VersionImpl(storeName, 1, pushJobId))).when(internalAdmin)
-        .addVersionAndTopicOnly(clusterName, storeName, pushJobId, 1, 1, false,
+        .addVersionAndTopicOnly(clusterName, storeName, pushJobId, VERSION_ID_UNSET, 1, 1, false,
             false, Version.PushType.BATCH, null, null, Optional.empty(), -1, 1, Optional.empty());
     try (PartialMockVeniceParentHelixAdmin partialMockParentAdmin = new PartialMockVeniceParentHelixAdmin(internalAdmin, config)) {
       VeniceWriter veniceWriter = mock(VeniceWriter.class);
@@ -717,7 +718,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
           .thenReturn(null)
           .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, -1, 1));
       partialMockParentAdmin.incrementVersionIdempotent(clusterName, storeName, pushJobId, 1, 1);
-      verify(internalAdmin).addVersionAndTopicOnly(clusterName, storeName, pushJobId, 1, 1, false,
+      verify(internalAdmin).addVersionAndTopicOnly(clusterName, storeName, pushJobId, VERSION_ID_UNSET, 1, 1, false,
           false, Version.PushType.BATCH, null, null, Optional.empty(), -1, 1, Optional.empty());
     }
   }
@@ -818,7 +819,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
       Version newVersion =
           partialMockParentAdmin.incrementVersionIdempotent(clusterName, storeName, pushJobId, 1, 1,
               Version.PushType.BATCH, false, false, null, Optional.empty(), Optional.empty(), -1, Optional.empty());
-      verify(internalAdmin, never()).addVersionAndTopicOnly(clusterName, storeName, pushJobId, 1, 1,
+      verify(internalAdmin, never()).addVersionAndTopicOnly(clusterName, storeName, pushJobId, VERSION_ID_UNSET, 1, 1,
           false, false, Version.PushType.BATCH, null, null, Optional.empty(), -1, 1, Optional.empty());
       Assert.assertEquals(newVersion, version);
     }
@@ -843,7 +844,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     doReturn(true).when(internalAdmin).isTopicTruncated(previousKafkaTopic);
     doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
     doReturn(new Pair<>(true, new VersionImpl(storeName, 1, pushJobId))).when(internalAdmin)
-        .addVersionAndTopicOnly(clusterName, storeName, pushJobId, 1, 1, false,
+        .addVersionAndTopicOnly(clusterName, storeName, pushJobId, VERSION_ID_UNSET, 1, 1, false,
             false, Version.PushType.BATCH, null, null, Optional.empty(), -1, 1, Optional.empty());
     try (PartialMockVeniceParentHelixAdmin partialMockParentAdmin = new PartialMockVeniceParentHelixAdmin(internalAdmin, config)) {
       partialMockParentAdmin.setOfflineJobStatus(ExecutionStatus.NEW);
@@ -856,7 +857,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
           .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, -1, 1));
       partialMockParentAdmin.incrementVersionIdempotent(clusterName, storeName, pushJobId, 1, 1,
           Version.PushType.BATCH, false, false, null, Optional.empty(), Optional.empty(), -1, Optional.empty());
-      verify(internalAdmin).addVersionAndTopicOnly(clusterName, storeName, pushJobId, 1, 1,
+      verify(internalAdmin).addVersionAndTopicOnly(clusterName, storeName, pushJobId, VERSION_ID_UNSET, 1, 1,
           false, false, Version.PushType.BATCH, null, null, Optional.empty(), -1, 1, Optional.empty());
     }
   }
@@ -899,7 +900,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     store.addVersion(version);
     doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
     doReturn(new Pair<>(false, version)).when(internalAdmin)
-        .addVersionAndTopicOnly(clusterName, storeName, pushJobId, 1, 1, false,
+        .addVersionAndTopicOnly(clusterName, storeName, pushJobId, VERSION_ID_UNSET, 1, 1, false,
             false, Version.PushType.BATCH, null, null, Optional.empty(), -1, 1, Optional.empty());
     try (PartialMockVeniceParentHelixAdmin partialMockParentAdmin = spy(new PartialMockVeniceParentHelixAdmin(internalAdmin, config))) {
       Version newVersion =
@@ -940,7 +941,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
     Version version2 = new VersionImpl(storeName, 2, incomingPushId);
     doReturn(new Pair(true, version2)).when(mockInternalAdmin).addVersionAndTopicOnly(clusterName, storeName, incomingPushId,
-        1, 1, false, false, Version.PushType.BATCH, null, null, Optional.empty(), -1, 1, Optional.empty());
+        VERSION_ID_UNSET, 1, 1, false, false, Version.PushType.BATCH, null, null, Optional.empty(), -1, 1, Optional.empty());
 
     HelixVeniceClusterResources mockHelixVeniceClusterResources = mock(HelixVeniceClusterResources.class);
     doReturn(mockHelixVeniceClusterResources).when(mockInternalAdmin).getHelixVeniceClusterResources(clusterName);
@@ -982,7 +983,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
     Version version2 = new VersionImpl(storeName, 2, incomingPushId);
     doReturn(new Pair(true, version2)).when(mockInternalAdmin).addVersionAndTopicOnly(clusterName, storeName, incomingPushId,
-        1, 1, false, false, Version.PushType.BATCH, null, null, Optional.empty(), -1, 1, Optional.empty());
+        VERSION_ID_UNSET, 1, 1, false, false, Version.PushType.BATCH, null, null, Optional.empty(), -1, 1, Optional.empty());
 
     HelixVeniceClusterResources mockHelixVeniceClusterResources = mock(HelixVeniceClusterResources.class);
     doReturn(mockHelixVeniceClusterResources).when(mockInternalAdmin).getHelixVeniceClusterResources(clusterName);
@@ -1846,7 +1847,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
       doReturn(new Pair<>(store, version)).when(internalAdmin).waitVersion(eq(clusterName), eq(storeName), eq(version.getNumber()), any());
       doReturn(new HashSet<>(Arrays.asList(topicName, existingTopicName))).when(topicManager).listTopics();
       doReturn(new Pair<>(true, newVersion)).when(internalAdmin).addVersionAndTopicOnly(clusterName, storeName, newPushJobId,
-          3, 3, false, true, Version.PushType.BATCH,
+          VERSION_ID_UNSET, 3, 3, false, true, Version.PushType.BATCH,
           null, null, Optional.empty(), -1, 1, Optional.empty());
 
       VeniceWriter veniceWriter = mock(VeniceWriter.class);
@@ -1893,11 +1894,11 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
     doReturn(new Pair<>(true, storeAVersion))
         .when(internalAdmin)
-        .addVersionAndTopicOnly(clusterName, storeA, "", 3, 3, false,
+        .addVersionAndTopicOnly(clusterName, storeA, "", VERSION_ID_UNSET, 3, 3, false,
             false, Version.PushType.BATCH, null, null, Optional.empty(), -1, 1, Optional.empty());
     doReturn(new Pair<>(true, storeBVersion))
         .when(internalAdmin)
-        .addVersionAndTopicOnly(clusterName, storeB, "", 3, 3, false,
+        .addVersionAndTopicOnly(clusterName, storeB, "", VERSION_ID_UNSET, 3, 3, false,
             false, Version.PushType.BATCH, null, null, Optional.empty(), -1, 1, Optional.empty());
     doReturn(new Exception("test"))
         .when(internalAdmin)

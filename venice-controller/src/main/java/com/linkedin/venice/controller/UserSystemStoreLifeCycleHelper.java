@@ -61,7 +61,7 @@ public class UserSystemStoreLifeCycleHelper {
     }
   }
 
-  public List<VeniceSystemStoreType> maybeMaterializeSystemStoresForUserStore(String userStoreName, String clusterName) {
+  public List<VeniceSystemStoreType> maybeMaterializeSystemStoresForUserStore(String clusterName, String userStoreName) {
     if (VeniceSystemStoreType.getSystemStoreType(userStoreName) != null) {
       // Don't materialize system stores for system stores.
       return Collections.emptyList();
@@ -72,9 +72,18 @@ public class UserSystemStoreLifeCycleHelper {
     for (VeniceSystemStoreType systemStoreType : autoCreateEnabledSystemStores) {
       String systemStoreName = systemStoreType.getSystemStoreName(userStoreName);
       String pushJobId = AUTO_META_SYSTEM_STORE_PUSH_ID_PREFIX + System.currentTimeMillis();
-      Version version = parentAdmin.incrementVersionIdempotent(clusterName, systemStoreName, pushJobId,
-          parentAdmin.calculateNumberOfPartitions(clusterName, systemStoreName, DEFAULT_META_SYSTEM_STORE_SIZE),
-          parentAdmin.getReplicationFactor(clusterName, systemStoreName));
+      final int systemStoreLargestUsedVersionNumber = parentAdmin.getStoreLargestUsedVersion(clusterName, systemStoreName);
+
+      int partitionCount = parentAdmin.calculateNumberOfPartitions(clusterName, systemStoreName, DEFAULT_META_SYSTEM_STORE_SIZE);
+      int replicationFactor = parentAdmin.getReplicationFactor(clusterName, systemStoreName);
+      Version version;
+      if (systemStoreLargestUsedVersionNumber == Store.NON_EXISTING_VERSION) {
+        version = parentAdmin.incrementVersionIdempotent(clusterName, systemStoreName, pushJobId, partitionCount, replicationFactor);
+      } else {
+        version = parentAdmin.addVersionAndTopicOnly(clusterName, systemStoreName, pushJobId,
+            systemStoreLargestUsedVersionNumber + 1, partitionCount, replicationFactor, Version.PushType.BATCH,
+            false, false, null, Optional.empty(), -1, Optional.empty());
+      }
       parentAdmin.writeEndOfPush(clusterName, systemStoreName, version.getNumber(), true);
       createdSystemStoreTypes.add(systemStoreType);
     }

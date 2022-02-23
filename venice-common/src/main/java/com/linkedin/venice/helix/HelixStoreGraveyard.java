@@ -1,8 +1,11 @@
 package com.linkedin.venice.helix;
 
+import com.linkedin.venice.common.VeniceSystemStoreType;
+import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreGraveyard;
+import com.linkedin.venice.meta.SystemStoreAttributes;
 import com.linkedin.venice.meta.VeniceSerializer;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.PathResourceRegistry;
@@ -10,6 +13,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import org.apache.helix.AccessOption;
 import org.apache.helix.manager.zk.ZkBaseDataAccessor;
@@ -43,6 +47,14 @@ public class HelixStoreGraveyard implements StoreGraveyard {
 
   @Override
   public int getLargestUsedVersionNumber(String storeName) {
+    if (VeniceSystemStoreUtils.isSystemStore(storeName)) {
+      VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(storeName);
+      if (systemStoreType != null && systemStoreType.isStoreZkShared()) {
+        String userStoreName = systemStoreType.extractRegularStoreName(storeName);
+        return getPerUserStoreSystemStoreLargestUsedVersionNumber(userStoreName, systemStoreType);
+      }
+    }
+
     List<Store> stores = getStoreFromAllClusters(storeName);
     if (stores.isEmpty()) {
       logger.info(
@@ -63,6 +75,32 @@ public class HelixStoreGraveyard implements StoreGraveyard {
         + largestUsedVersionNumber);
     return largestUsedVersionNumber;
   }
+
+  @Override
+  public int getPerUserStoreSystemStoreLargestUsedVersionNumber(String userStoreName, VeniceSystemStoreType systemStoreType) {
+    String systemStoreName = systemStoreType.getSystemStoreName(userStoreName);
+    List<Store> deletedStores = getStoreFromAllClusters(userStoreName);
+    if (deletedStores.isEmpty()) {
+      logger.info(
+          "User store: " + userStoreName + " does NOT exist in the store graveyard. Hence, no largest used version for "
+              + "its system store: " + userStoreName);
+      return Store.NON_EXISTING_VERSION;
+    }
+    int largestUsedVersionNumber = Store.NON_EXISTING_VERSION;
+    for (Store deletedStore : deletedStores) {
+      Map<String, SystemStoreAttributes> systemStoreNamesToAttributes = deletedStore.getSystemStores();
+      SystemStoreAttributes systemStoreAttributes = systemStoreNamesToAttributes.get(VeniceSystemStoreType.getSystemStoreType(systemStoreName).getPrefix());
+      if (systemStoreAttributes != null) {
+        largestUsedVersionNumber = Math.max(largestUsedVersionNumber, systemStoreAttributes.getLargestUsedVersionNumber());
+      }
+    }
+
+    if (largestUsedVersionNumber == Store.NON_EXISTING_VERSION) {
+      logger.info("Can not find largest used version number for " + systemStoreName);
+    }
+    return largestUsedVersionNumber;
+  }
+
 
   @Override
   public void putStoreIntoGraveyard(String clusterName, Store store) {
