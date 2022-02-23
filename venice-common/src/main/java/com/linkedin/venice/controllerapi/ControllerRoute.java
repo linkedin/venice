@@ -119,7 +119,8 @@ public enum ControllerRoute {
   IS_STORE_VERSION_READY_FOR_DATA_RECOVERY("/is_store_version_ready_for_data_recovery", HttpMethod.GET,
       Arrays.asList(CLUSTER, SOURCE_FABRIC, FABRIC, NAME, VERSION), AMPLIFICATION_FACTOR),
   GET_STALE_STORES_IN_CLUSTER("/get_stale_stores_in_cluster", HttpMethod.GET, Collections.singletonList(CLUSTER)),
-  GET_STORES_IN_CLUSTER("/get_stores_in_cluster", HttpMethod.GET, Collections.singletonList(CLUSTER));
+  GET_STORES_IN_CLUSTER("/get_stores_in_cluster", HttpMethod.GET, Collections.singletonList(CLUSTER)),
+  GET_STORE_LARGEST_USED_VERSION("/get_store_largest_used_version", HttpMethod.GET, Arrays.asList(CLUSTER, NAME));
 
   private final String path;
   private final HttpMethod httpMethod;

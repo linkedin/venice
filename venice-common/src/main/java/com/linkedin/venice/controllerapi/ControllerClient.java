@@ -893,6 +893,11 @@ public class ControllerClient implements Closeable {
     return request(ControllerRoute.GET_STORES_IN_CLUSTER, params, MultiStoreInfoResponse.class);
   }
 
+  public VersionResponse getStoreLargestUsedVersion(String clusterName, String storeName) {
+    QueryParams params = newParams().add(CLUSTER, clusterName).add(NAME, storeName);
+    return request(ControllerRoute.GET_STORE_LARGEST_USED_VERSION, params, VersionResponse.class);
+  }
+
   public ControllerResponse configureIncrementalPushForCluster(IncrementalPushPolicy incrementalPushPolicyToApply, Optional<IncrementalPushPolicy> incrementalPushPolicyToFilter, Optional<String> regionsFilter) {
     QueryParams params = newParams()
         .add(INCREMENTAL_PUSH_POLICY, incrementalPushPolicyToApply.name());

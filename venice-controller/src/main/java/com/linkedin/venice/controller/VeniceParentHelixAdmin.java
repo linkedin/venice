@@ -71,6 +71,7 @@ import com.linkedin.venice.controllerapi.StoreComparisonInfo;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateClusterConfigQueryParams;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
+import com.linkedin.venice.controllerapi.VersionResponse;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.ExceptionType;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -171,6 +172,7 @@ import org.codehaus.jackson.node.JsonNodeFactory;
 import org.codehaus.jackson.node.ObjectNode;
 
 import static com.linkedin.venice.VeniceConstants.*;
+import static com.linkedin.venice.controller.VeniceHelixAdmin.*;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
 import static com.linkedin.venice.meta.IncrementalPushPolicy.*;
@@ -609,7 +611,7 @@ public class VeniceParentHelixAdmin implements Admin {
       provisionAclsForStore(storeName, accessPermissions, Collections.emptyList());
       sendStoreCreationAdminMessage(clusterName, storeName, owner, keySchema, valueSchema);
       // For each user store level system store, we will send admin message to validate the creation is successful.
-      for (VeniceSystemStoreType systemStoreType : getSystemStoreLifeCycleHelper().maybeMaterializeSystemStoresForUserStore(storeName, clusterName)) {
+      for (VeniceSystemStoreType systemStoreType : getSystemStoreLifeCycleHelper().maybeMaterializeSystemStoresForUserStore(clusterName, storeName)) {
         sendUserSystemStoreCreationValidationAdminMessage(clusterName, storeName, systemStoreType);
       }
       if (VeniceSystemStoreType.BATCH_JOB_HEARTBEAT_STORE.getPrefix().equals(storeName)) {
@@ -1097,24 +1099,8 @@ public class VeniceParentHelixAdmin implements Admin {
     if (pushType.isIncremental()) {
       newVersion = getVeniceHelixAdmin().getIncrementalPushVersion(clusterName, storeName);
     } else {
-      int replicationMetadataVersionId = getMultiClusterConfigs().getCommonConfig().getReplicationMetadataVersionId();
-      Pair<Boolean, Version> result = getVeniceHelixAdmin().addVersionAndTopicOnly(clusterName, storeName, pushJobId,
-          numberOfPartitions, replicationFactor, sendStartOfPush, sorted, pushType, compressionDictionary,
-          null, sourceGridFabric, rewindTimeInSecondsOverride, replicationMetadataVersionId, emergencySourceRegion);
-      newVersion = result.getSecond();
-      if (result.getFirst()) {
-        if (newVersion.isActiveActiveReplicationEnabled()) {
-          updateActiveActiveSchemaForAllValueSchema(clusterName, storeName);
-        }
-        // Send admin message if the version is newly created.
-        acquireAdminMessageLock(clusterName, storeName);
-        try {
-          sendAddVersionAdminMessage(clusterName, storeName, pushJobId, newVersion, numberOfPartitions, pushType);
-        } finally {
-          releaseAdminMessageLock(clusterName);
-        }
-        getSystemStoreLifeCycleHelper().maybeCreateSystemStoreWildcardAcl(storeName);
-      }
+      newVersion = addVersionAndTopicOnly(clusterName, storeName, pushJobId, VERSION_ID_UNSET, numberOfPartitions,
+          replicationFactor, pushType, sendStartOfPush, sorted, compressionDictionary, sourceGridFabric, rewindTimeInSecondsOverride, emergencySourceRegion);
     }
     cleanupHistoricalVersions(clusterName, storeName);
     if (VeniceSystemStoreType.getSystemStoreType(storeName) == null) {
@@ -1131,12 +1117,35 @@ public class VeniceParentHelixAdmin implements Admin {
     return newVersion;
   }
 
+  public Version addVersionAndTopicOnly(String clusterName, String storeName, String pushJobId, int versionNumber,
+      int numberOfPartitions, int replicationFactor, Version.PushType pushType, boolean sendStartOfPush, boolean sorted,
+      String compressionDictionary, Optional<String> sourceGridFabric, long rewindTimeInSecondsOverride, Optional<String> emergencySourceRegion) {
+    int replicationMetadataVersionId = getMultiClusterConfigs().getCommonConfig().getReplicationMetadataVersionId();
+    Pair<Boolean, Version> result = getVeniceHelixAdmin().addVersionAndTopicOnly(clusterName, storeName, pushJobId,
+        versionNumber, numberOfPartitions, replicationFactor, sendStartOfPush, sorted, pushType, compressionDictionary,
+        null, sourceGridFabric, rewindTimeInSecondsOverride, replicationMetadataVersionId, emergencySourceRegion);
+    Version newVersion = result.getSecond();
+    if (result.getFirst()) {
+      if (newVersion.isActiveActiveReplicationEnabled()) {
+        updateActiveActiveSchemaForAllValueSchema(clusterName, storeName);
+      }
+      // Send admin message if the version is newly created.
+      acquireAdminMessageLock(clusterName, storeName);
+      try {
+        sendAddVersionAdminMessage(clusterName, storeName, pushJobId, newVersion, numberOfPartitions, pushType);
+      } finally {
+        releaseAdminMessageLock(clusterName);
+      }
+      getSystemStoreLifeCycleHelper().maybeCreateSystemStoreWildcardAcl(storeName);
+    }
+    return newVersion;
+  }
+
   protected void sendAddVersionAdminMessage(String clusterName, String storeName, String pushJobId, Version version,
       int numberOfPartitions, Version.PushType pushType) {
     AdminOperation message = new AdminOperation();
     message.operationType = AdminMessageType.ADD_VERSION.getValue();
     message.payloadUnion = getAddVersionMessage(clusterName, storeName, pushJobId, version, numberOfPartitions, pushType);
-
     sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
   }
 
@@ -3107,6 +3116,24 @@ public class VeniceParentHelixAdmin implements Admin {
       throw new VeniceException("Something went wrong trying to fetch stale stores.", e);
     }
     return retMap;
+  }
+
+  @Override
+  public int getStoreLargestUsedVersion(String clusterName, String storeName) {
+    Map<String, ControllerClient> childControllers = getVeniceHelixAdmin().getControllerClientMap(clusterName);
+    int aggregatedLargestUsedVersionNumber;
+    if (hasStore(clusterName, storeName)) {
+      aggregatedLargestUsedVersionNumber = getStore(clusterName, storeName).getLargestUsedVersionNumber();
+    } else {
+      aggregatedLargestUsedVersionNumber = getVeniceHelixAdmin().getStoreGraveyard().getLargestUsedVersionNumber(storeName);
+    }
+    for (Map.Entry<String, ControllerClient> controller : childControllers.entrySet()) {
+      VersionResponse response = controller.getValue().getStoreLargestUsedVersion(clusterName, storeName);
+      if (response.getVersion() > aggregatedLargestUsedVersionNumber) {
+        aggregatedLargestUsedVersionNumber = response.getVersion();
+      }
+    }
+    return aggregatedLargestUsedVersionNumber;
   }
 
   public List<StoreInfo> getClusterStores(String clusterName) { throw new UnsupportedOperationException("This function has no implementation."); }

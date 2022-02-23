@@ -16,6 +16,7 @@ import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.controller.VeniceHelixAdmin.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
@@ -64,7 +65,7 @@ public class TestClusterLevelConfigForNativeReplication extends AbstractTestVeni
     /**
      * Add a version
      */
-    veniceAdmin.addVersionAndTopicOnly(clusterName, storeName, pushJobId1, 1, 1,
+    veniceAdmin.addVersionAndTopicOnly(clusterName, storeName, pushJobId1, VERSION_ID_UNSET, 1, 1,
         false, true, Version.PushType.BATCH, null, null, Optional.empty(), -1, 1, Optional.empty());
     // Version 1 should exist.
     Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getVersions().size(), 1);

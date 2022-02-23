@@ -1,5 +1,8 @@
 package com.linkedin.venice.meta;
 
+import com.linkedin.venice.common.VeniceSystemStoreType;
+
+
 /**
  * The graveyard used to keep all deleted stores. While re-creating a store, Venice could retrieve the important info
  * like largest used version number to avoid resource conflict caused by the same name.
@@ -12,6 +15,12 @@ public interface StoreGraveyard {
    * exist in the graveyard, which is the default value we used for the new store.
    */
   int getLargestUsedVersionNumber(String storeName);
+
+  /**
+   * Retrieve the largest used version number for the system store of the user store from graveyard. Return 0 if the
+   * store dose not exist in the graveyard, which is the default value we used for the new store.
+   */
+  int getPerUserStoreSystemStoreLargestUsedVersionNumber(String userStoreName, VeniceSystemStoreType systemStoreType);
 
   /**
    * Put the given store into grave yard. If the store has already existed in the grave yard, update it by this given

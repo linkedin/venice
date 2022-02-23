@@ -1410,11 +1410,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
      * A wrapper to invoke VeniceHelixAdmin#addVersion to only increment the version and create the topic(s) needed
      * without starting ingestion.
      */
-    public Pair<Boolean, Version> addVersionAndTopicOnly(String clusterName, String storeName, String pushJobId, int numberOfPartitions,
-        int replicationFactor, boolean sendStartOfPush, boolean sorted, Version.PushType pushType,
-        String compressionDictionary, String remoteKafkaBootstrapServers, Optional<String> sourceGridFabric,
+    public Pair<Boolean, Version> addVersionAndTopicOnly(String clusterName, String storeName, String pushJobId,
+        int versionNumber, int numberOfPartitions, int replicationFactor, boolean sendStartOfPush, boolean sorted,
+        PushType pushType, String compressionDictionary, String remoteKafkaBootstrapServers, Optional<String> sourceGridFabric,
         long rewindTimeInSecondsOverride, int replicationMetadataVersionId, Optional<String> emergencySourceRegion) {
-        return addVersion(clusterName, storeName, pushJobId, VERSION_ID_UNSET, numberOfPartitions, replicationFactor,
+        return addVersion(clusterName, storeName, pushJobId, versionNumber, numberOfPartitions, replicationFactor,
             false, sendStartOfPush, sorted, false, pushType,
             compressionDictionary, remoteKafkaBootstrapServers, sourceGridFabric, rewindTimeInSecondsOverride,
             replicationMetadataVersionId, emergencySourceRegion);
@@ -5404,10 +5404,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     @Override
     public List<StoreInfo> getClusterStores(String clusterName) {
-        //Return all stores at this step in the process
-        List<StoreInfo> ret = getAllStores(clusterName).stream()
-            .map(store -> StoreInfo.fromStore(store)).collect(Collectors.toList());
-        return ret;
+      //Return all stores at this step in the process
+      return getAllStores(clusterName).stream()
+          .map(store -> StoreInfo.fromStore(store)).collect(Collectors.toList());
     }
 
     @Override
@@ -5929,5 +5928,14 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             return true;
         }
         return multiClusterConfigs.getControllerConfig(clusterName).isChildControllerAdminTopicConsumptionEnabled();
+    }
+
+    @Override
+    public int getStoreLargestUsedVersion(String clusterName, String storeName) {
+      if (hasStore(clusterName, storeName)) {
+        return getStore(clusterName, storeName).getLargestUsedVersionNumber();
+      } else {
+        return getStoreGraveyard().getLargestUsedVersionNumber(storeName);
+      }
     }
 }
