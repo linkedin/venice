@@ -27,7 +27,7 @@ import org.testng.annotations.Test;
 
 import static com.linkedin.venice.ConfigKeys.*;
 
-public class TestFabricBuildup {
+public class TestFabricBuildout {
   private static final int TEST_TIMEOUT = 90_000; // ms
 
   private static final int NUMBER_OF_CHILD_DATACENTERS = 2;
@@ -84,7 +84,7 @@ public class TestFabricBuildup {
     checkStoreConfig(dc0Client, storeName);
 
     // Call metadata copy over to copy dc0's store configs to dc1
-    parentControllerClient.copyOverStoresMetadata("dc-0","dc-1");
+    parentControllerClient.copyOverStoreMetadata("dc-0","dc-1", storeName);
     ControllerClient dc1Client = ControllerClient.constructClusterControllerClient(clusterName, childDatacenters.get(1).getControllerConnectString());
     checkStoreConfig(dc1Client, storeName);
   }

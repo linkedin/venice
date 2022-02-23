@@ -14,7 +14,6 @@ import com.linkedin.venice.controllerapi.MultiNodeResponse;
 import com.linkedin.venice.controllerapi.MultiNodesStatusResponse;
 import com.linkedin.venice.controllerapi.MultiReplicaResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
-import com.linkedin.venice.controllerapi.MultiStoreInfoResponse;
 import com.linkedin.venice.controllerapi.MultiStoreResponse;
 import com.linkedin.venice.controllerapi.MultiStoreStatusResponse;
 import com.linkedin.venice.controllerapi.MultiStoreTopicsResponse;
@@ -1976,7 +1975,8 @@ public class AdminTool {
   private static void copyOverStoresMetadata(CommandLine cmd) {
     String sourceFabric = getRequiredArgument(cmd, Arg.SOURCE_FABRIC);
     String destFabric = getRequiredArgument(cmd, Arg.DEST_FABRIC);
-    ControllerResponse response = controllerClient.copyOverStoresMetadata(sourceFabric, destFabric);
+    String storeName = getRequiredArgument(cmd, Arg.STORE);
+    StoreResponse response = controllerClient.copyOverStoreMetadata(sourceFabric, destFabric, storeName);
     printObject(response);
   }
 

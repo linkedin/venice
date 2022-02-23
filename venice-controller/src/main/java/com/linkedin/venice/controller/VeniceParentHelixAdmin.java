@@ -62,7 +62,6 @@ import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.IncrementalPushVersionsResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
-import com.linkedin.venice.controllerapi.MultiStoreResponse;
 import com.linkedin.venice.controllerapi.MultiStoreInfoResponse;
 import com.linkedin.venice.controllerapi.MultiStoreStatusResponse;
 import com.linkedin.venice.controllerapi.NodeReplicasReadinessState;
@@ -175,7 +174,6 @@ import static com.linkedin.venice.VeniceConstants.*;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
 import static com.linkedin.venice.meta.IncrementalPushPolicy.*;
-import static com.linkedin.venice.meta.Store.*;
 
 
 /**
@@ -3341,7 +3339,7 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
-  public void copyOverStoresSchemasAndConfigs(String clusterName, String srcFabric, String destFabric) {
+  public StoreInfo copyOverStoreSchemasAndConfigs(String clusterName, String srcFabric, String destFabric, String storeName) {
     String srcFabricChildControllerUrl = multiClusterConfigs.getControllerConfig(clusterName).getChildControllerUrl(srcFabric);
     if (StringUtils.isEmpty(srcFabricChildControllerUrl)) {
       throw new VeniceException("child.cluster.url." + srcFabric + " is missing in parent controller.");
@@ -3357,50 +3355,45 @@ public class VeniceParentHelixAdmin implements Admin {
       ControllerClient destFabricChildControllerClient =
           ControllerClient.constructClusterControllerClient(clusterName, destFabricChildControllerUrl, sslFactory);
 
-      MultiStoreResponse storeResponses = srcFabricChildControllerClient.queryStoreList();
-      for (String store : storeResponses.getStores()) {
-        if (isSystemStore(store)) {
-          continue;
-        }
-        // Src fabric local controller dumps out the stores configs and schemas
-        StoreInfo storeInfo = srcFabricChildControllerClient.getStore(store).getStore();
-        String keySchema = srcFabricChildControllerClient.getKeySchema(store).getSchemaStr();
-        MultiSchemaResponse.Schema[] valueAndDerivedSchemas =
-            srcFabricChildControllerClient.getAllValueAndDerivedSchema(store).getSchemas();
+      // Src fabric local controller dumps out the store's configs and schemas
+      StoreInfo storeInfo = srcFabricChildControllerClient.getStore(storeName).getStore();
+      String keySchema = srcFabricChildControllerClient.getKeySchema(storeName).getSchemaStr();
+      MultiSchemaResponse.Schema[] valueAndDerivedSchemas =
+          srcFabricChildControllerClient.getAllValueAndDerivedSchema(storeName).getSchemas();
 
-        // sort schemas with sorted value schemas first, and then sorted derived schemas.
-        Arrays.sort(valueAndDerivedSchemas, new Comparator<MultiSchemaResponse.Schema>() {
-          @Override
-          public int compare(MultiSchemaResponse.Schema o1, MultiSchemaResponse.Schema o2) {
-            int distance = o1.getDerivedSchemaId() - o2.getDerivedSchemaId();
-            if (distance == 0) {
-              return o1.getId() - o2.getId();
-            }
-            return distance;
+      // sort schemas with sorted value schemas first, and then sorted derived schemas.
+      Arrays.sort(valueAndDerivedSchemas, new Comparator<MultiSchemaResponse.Schema>() {
+        @Override
+        public int compare(MultiSchemaResponse.Schema o1, MultiSchemaResponse.Schema o2) {
+          int distance = o1.getDerivedSchemaId() - o2.getDerivedSchemaId();
+          if (distance == 0) {
+            return o1.getId() - o2.getId();
           }
-        });
-
-        // Dest fabric controller creates the stores and copies over value schemas and configs
-        destFabricChildControllerClient.createNewStore(storeInfo.getName(), storeInfo.getOwner(), keySchema,
-            valueAndDerivedSchemas[0].getSchemaStr());
-        for (int i = 1; i < valueAndDerivedSchemas.length; i++) {
-          /**
-           * TODO: We should add both schema ID and schema string to dest fabrics. Otherwise the schemas IDs might be
-           *       different across colos.
-           */
-          if (valueAndDerivedSchemas[i].getDerivedSchemaId() == -1) {
-            destFabricChildControllerClient.addValueSchema(storeInfo.getName(), valueAndDerivedSchemas[i].getSchemaStr());
-          } else {
-            destFabricChildControllerClient.addDerivedSchema(storeInfo.getName(), valueAndDerivedSchemas[i].getId(),
-                valueAndDerivedSchemas[i].getSchemaStr());
-          }
+          return distance;
         }
-        UpdateStoreQueryParams params = new UpdateStoreQueryParams(storeInfo, false);
-        ControllerResponse response = destFabricChildControllerClient.updateStore(storeInfo.getName(), params);
-        if (response.isError()) {
-          throw new VeniceException("Failed to update store " + response.getError());
+      });
+
+      // Dest fabric controller creates the stores and copies over value schemas and configs
+      destFabricChildControllerClient.createNewStore(storeInfo.getName(), storeInfo.getOwner(), keySchema,
+          valueAndDerivedSchemas[0].getSchemaStr());
+      for (int i = 1; i < valueAndDerivedSchemas.length; i++) {
+        /**
+         * TODO: We should add both schema ID and schema string to dest fabrics. Otherwise the schemas IDs might be
+         *       different across colos.
+         */
+        if (valueAndDerivedSchemas[i].getDerivedSchemaId() == -1) {
+          destFabricChildControllerClient.addValueSchema(storeInfo.getName(), valueAndDerivedSchemas[i].getSchemaStr());
+        } else {
+          destFabricChildControllerClient.addDerivedSchema(storeInfo.getName(), valueAndDerivedSchemas[i].getId(),
+              valueAndDerivedSchemas[i].getSchemaStr());
         }
       }
+      UpdateStoreQueryParams params = new UpdateStoreQueryParams(storeInfo, false);
+      ControllerResponse response = destFabricChildControllerClient.updateStore(storeInfo.getName(), params);
+      if (response.isError()) {
+        throw new VeniceException("Failed to update store " + response.getError());
+      }
+      return storeInfo;
     } catch (Exception e) {
       throw new VeniceException("Error copying src fabric's metadata to dest fabric.", e.getCause());
     }
