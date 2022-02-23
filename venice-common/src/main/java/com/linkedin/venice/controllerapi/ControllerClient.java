@@ -2,8 +2,6 @@ package com.linkedin.venice.controllerapi;
 
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.LastSucceedExecutionIdResponse;
-import com.linkedin.venice.common.VeniceSystemStoreType;
-import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controllerapi.routes.AdminCommandExecutionResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
@@ -442,11 +440,12 @@ public class ControllerClient implements Closeable {
     return request(ControllerRoute.COMPARE_STORE, params, StoreComparisonResponse.class);
   }
 
-  public ControllerResponse copyOverStoresMetadata(String sourceFabric, String destFabric) {
+  public StoreResponse copyOverStoreMetadata(String sourceFabric, String destFabric, String storeName) {
     QueryParams params = newParams()
         .add(SOURCE_FABRIC, sourceFabric)
-        .add(DEST_FABRIC, destFabric);
-    return request(ControllerRoute.REPLICATE_META_DATA, params, ControllerResponse.class);
+        .add(DEST_FABRIC, destFabric)
+        .add(NAME, storeName);
+    return request(ControllerRoute.REPLICATE_META_DATA, params, StoreResponse.class);
   }
 
   public ControllerResponse disableAndDeleteStore(String storeName) {

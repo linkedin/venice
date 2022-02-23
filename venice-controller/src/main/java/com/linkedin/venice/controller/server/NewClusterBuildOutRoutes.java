@@ -2,7 +2,8 @@ package com.linkedin.venice.controller.server;
 
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.Admin;
-import com.linkedin.venice.controllerapi.ControllerResponse;
+import com.linkedin.venice.controllerapi.StoreResponse;
+import com.linkedin.venice.meta.StoreInfo;
 import java.util.Optional;
 import spark.Request;
 import spark.Route;
@@ -16,10 +17,10 @@ public class NewClusterBuildOutRoutes extends AbstractRoute {
     super(accessController);
   }
 
-  public Route copyOverStoresSchemasAndConfigs(Admin admin) {
-    return new VeniceRouteHandler<ControllerResponse>(ControllerResponse.class) {
+  public Route copyOverStoreSchemasAndConfigs(Admin admin) {
+    return new VeniceRouteHandler<StoreResponse>(StoreResponse.class) {
       @Override
-      public void internalHandle(Request request, ControllerResponse veniceResponse) {
+      public void internalHandle(Request request, StoreResponse veniceResponse) {
         // Only allow whitelist users to run this command
         if (!isAllowListUser(request)) {
           veniceResponse.setError("Only admin users are allowed to run " + request.url());
@@ -29,9 +30,12 @@ public class NewClusterBuildOutRoutes extends AbstractRoute {
         String clusterName = request.queryParams(CLUSTER);
         String srcFabric = request.queryParams(SOURCE_FABRIC);
         String destFabric = request.queryParams(DEST_FABRIC);
+        String storeName = request.queryParams(NAME);
 
         veniceResponse.setCluster(clusterName);
-        admin.copyOverStoresSchemasAndConfigs(clusterName, srcFabric, destFabric);
+        veniceResponse.setName(storeName);
+        StoreInfo storeInfo = admin.copyOverStoreSchemasAndConfigs(clusterName, srcFabric, destFabric, storeName);
+        veniceResponse.setStore(storeInfo);
       }
     };
   }

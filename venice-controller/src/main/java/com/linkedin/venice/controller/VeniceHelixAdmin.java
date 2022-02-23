@@ -5563,8 +5563,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
     @Override
-    public void copyOverStoresSchemasAndConfigs(String clusterName, String srcFabric, String destFabric) {
-        throw new VeniceUnsupportedOperationException("copyOverStoresSchemasAndConfig is not supported in child controller!");
+    public StoreInfo copyOverStoreSchemasAndConfigs(String clusterName, String srcFabric, String destFabric, String storeName) {
+        throw new VeniceUnsupportedOperationException("copyOverStoreSchemasAndConfigs is not supported in child controller!");
     }
 
     protected ZkStoreConfigAccessor getStoreConfigAccessor(String clusterName) {
