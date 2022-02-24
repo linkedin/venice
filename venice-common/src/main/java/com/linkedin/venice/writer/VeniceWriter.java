@@ -667,6 +667,33 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     return sendMessage(producerMetadata -> kafkaKey, kafkaMessageEnvelopeProvider, upstreamPartition, callback, false);
   }
 
+  /**
+   * DIV pass-through mode for delete
+   */
+  public Future<RecordMetadata> delete(KafkaKey kafkaKey, KafkaMessageEnvelope kafkaMessageEnvelope, Callback callback,
+      int upstreamPartition, LeaderMetadataWrapper leaderMetadataWrapper) {
+    // Self-adjust the chunking setting in pass-through mode
+    verifyChunkingSetting(kafkaMessageEnvelope);
+
+    LeaderMetadata leaderMetadata = new LeaderMetadata();
+    leaderMetadata.upstreamOffset = leaderMetadataWrapper.getUpstreamOffset();
+    leaderMetadata.upstreamKafkaClusterId = leaderMetadataWrapper.getUpstreamKafkaClusterId();
+    leaderMetadata.hostName = writerId;
+
+    KafkaMessageEnvelopeProvider kafkaMessageEnvelopeProvider = () -> {
+      kafkaMessageEnvelope.leaderMetadataFooter = leaderMetadata;
+      kafkaMessageEnvelope.producerMetadata.upstreamOffset = -1; // This field has been deprecated
+      return kafkaMessageEnvelope;
+    };
+
+    if (callback instanceof ChunkAwareCallback) {
+      byte[] serializedKey = kafkaKey.getKey();
+      ((ChunkAwareCallback) callback).setChunkingInfo(serializedKey, null, null);
+    }
+
+    return sendMessage(producerMetadata -> kafkaKey, kafkaMessageEnvelopeProvider, upstreamPartition, callback, false);
+  }
+
   @Override
   public Future<RecordMetadata> update(K key, U update, int valueSchemaId, int derivedSchemaId, Callback callback) {
     return update(key, update, valueSchemaId, derivedSchemaId, callback, APP_DEFAULT_LOGICAL_TS);

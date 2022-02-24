@@ -2196,7 +2196,15 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         }
         leaderProducedRecordContext = LeaderProducedRecordContext.newDeleteRecord(consumerRecordWrapper.kafkaUrl(), consumerRecord.offset(), keyBytes, null);
         produceToLocalKafka(consumerRecordWrapper, partitionConsumptionState, leaderProducedRecordContext,
-            (callback, leaderMetadataWrapper) -> veniceWriter.get().delete(keyBytes, callback, leaderMetadataWrapper));
+            (callback, leaderMetadataWrapper) -> {
+              /**
+               * DIV pass-through for DELETE messages before EOP.
+               */
+              if (!partitionConsumptionState.isEndOfPushReceived()) {
+                return veniceWriter.get().delete(kafkaKey, kafkaValue, callback, consumerRecord.partition(), leaderMetadataWrapper);
+              }
+              return veniceWriter.get().delete(keyBytes, callback, leaderMetadataWrapper);
+            });
         break;
 
       default:
