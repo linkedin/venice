@@ -5,6 +5,7 @@ import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponseV2;
 import com.linkedin.venice.controllerapi.MasterControllerResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
+import com.linkedin.venice.exceptions.ExceptionType;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoHelixResourceException;
 import com.linkedin.venice.helix.HelixHybridStoreQuotaRepository;
@@ -262,15 +263,17 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
 
   private void setupErrorD2DiscoveryResponseAndFlush(HttpResponseStatus status, String errorMsg, HttpHeaders headers,
       ChannelHandlerContext ctx) throws IOException {
+    D2ServiceDiscoveryResponse responseObject;
     if (headers.contains(D2_SERVICE_DISCOVERY_RESPONSE_V2_ENABLED)) {
-      D2ServiceDiscoveryResponseV2 responseObject = new D2ServiceDiscoveryResponseV2();
-      responseObject.setError(errorMsg);
-      setupResponseAndFlush(status, mapper.writeValueAsBytes(responseObject), true, ctx);
+      responseObject = new D2ServiceDiscoveryResponseV2();
     } else {
-      D2ServiceDiscoveryResponse responseObject = new D2ServiceDiscoveryResponse();
-      responseObject.setError(errorMsg);
-      setupResponseAndFlush(status, mapper.writeValueAsBytes(responseObject), true, ctx);
+      responseObject = new D2ServiceDiscoveryResponse();
     }
+    responseObject.setError(errorMsg);
+    if (status.equals(NOT_FOUND)) {
+      responseObject.setExceptionType(ExceptionType.STORE_NOT_FOUND);
+    }
+    setupResponseAndFlush(status, mapper.writeValueAsBytes(responseObject), true, ctx);
   }
 
   private void handleResourceStateLookup(ChannelHandlerContext ctx, VenicePathParserHelper helper) throws IOException {
