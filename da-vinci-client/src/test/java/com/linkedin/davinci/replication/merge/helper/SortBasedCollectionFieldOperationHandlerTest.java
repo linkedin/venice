@@ -12,7 +12,7 @@ import com.linkedin.davinci.writecompute.CollectionTimestampBuilder;
 import com.linkedin.venice.schema.merge.AvroCollectionElementComparator;
 import com.linkedin.venice.schema.merge.SortBasedCollectionFieldOpHandler;
 import com.linkedin.venice.schema.rmd.ReplicationMetadataSchemaGenerator;
-import com.linkedin.venice.schema.rmd.v2.CollectionReplicationMetadata;
+import com.linkedin.venice.schema.rmd.v1.CollectionReplicationMetadata;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.LinkedList;

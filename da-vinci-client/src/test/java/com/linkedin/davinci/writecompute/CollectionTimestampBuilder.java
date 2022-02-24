@@ -7,7 +7,7 @@ import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.commons.lang.Validate;
 
-import static com.linkedin.venice.schema.rmd.v2.CollectionReplicationMetadata.*;
+import static com.linkedin.venice.schema.rmd.v1.CollectionReplicationMetadata.*;
 
 /**
  * This class should only be used in tests for write compute to generate timestamp replication metadata generic record
@@ -16,7 +16,7 @@ import static com.linkedin.venice.schema.rmd.v2.CollectionReplicationMetadata.*;
  */
 public class CollectionTimestampBuilder {
 
-  private final int DEFAULT_CAPACITY = 10;
+  private final static int DEFAULT_CAPACITY = 10;
 
   private Schema collectionTimestampSchema;
   private Long topLevelFieldTimestamp;
@@ -98,8 +98,7 @@ public class CollectionTimestampBuilder {
       }
     }
 
-    Schema collectionRmdSchema = collectionTimestampSchema.getTypes().get(1);
-    GenericRecord itemFieldTimestampRecord = SchemaUtils.constructGenericRecord(collectionRmdSchema);
+    GenericRecord itemFieldTimestampRecord = SchemaUtils.constructGenericRecord(collectionTimestampSchema);
     itemFieldTimestampRecord.put(COLLECTION_TOP_LEVEL_TS_FIELD_NAME, topLevelFieldTimestamp);
     itemFieldTimestampRecord.put(COLLECTION_TOP_LEVEL_COLO_ID_FIELD_NAME, topLevelColoID);
     itemFieldTimestampRecord.put(COLLECTION_PUT_ONLY_PART_LENGTH_FIELD_NAME, putOnlyPartLength);
@@ -111,20 +110,12 @@ public class CollectionTimestampBuilder {
 
   private void validateCollectionTsRecord(Schema collectionTimestampSchema) {
     Validate.notNull(collectionTimestampSchema);
-    if (collectionTimestampSchema.getType() != Schema.Type.UNION) {
-      throw new IllegalStateException("Expect a union type. Got: " + collectionTimestampSchema);
-    }
-    if (collectionTimestampSchema.getTypes().get(0).getType() != Schema.Type.LONG) {
-      throw new IllegalStateException("Expect first type in the union to be a Long. Union: " + collectionTimestampSchema);
-    }
-    Schema collectionRmdSchema = collectionTimestampSchema.getTypes().get(1);
-
-    validateFieldExists(COLLECTION_TOP_LEVEL_TS_FIELD_NAME, collectionRmdSchema);
-    validateFieldExists(COLLECTION_TOP_LEVEL_COLO_ID_FIELD_NAME, collectionRmdSchema);
-    validateFieldExists(COLLECTION_PUT_ONLY_PART_LENGTH_FIELD_NAME, collectionRmdSchema);
-    validateFieldExists(COLLECTION_ACTIVE_ELEM_TS_FIELD_NAME, collectionRmdSchema);
-    validateFieldExists(COLLECTION_DELETED_ELEM_TS_FIELD_NAME, collectionRmdSchema);
-    validateFieldExists(COLLECTION_DELETED_ELEM_FIELD_NAME, collectionRmdSchema);
+    validateFieldExists(COLLECTION_TOP_LEVEL_TS_FIELD_NAME, collectionTimestampSchema);
+    validateFieldExists(COLLECTION_TOP_LEVEL_COLO_ID_FIELD_NAME, collectionTimestampSchema);
+    validateFieldExists(COLLECTION_PUT_ONLY_PART_LENGTH_FIELD_NAME, collectionTimestampSchema);
+    validateFieldExists(COLLECTION_ACTIVE_ELEM_TS_FIELD_NAME, collectionTimestampSchema);
+    validateFieldExists(COLLECTION_DELETED_ELEM_TS_FIELD_NAME, collectionTimestampSchema);
+    validateFieldExists(COLLECTION_DELETED_ELEM_FIELD_NAME, collectionTimestampSchema);
   }
 
   private void validateFieldExists(String fieldName, Schema collectionTimestampSchema) {

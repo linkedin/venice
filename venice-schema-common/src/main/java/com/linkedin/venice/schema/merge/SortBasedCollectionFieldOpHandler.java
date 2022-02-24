@@ -1,12 +1,12 @@
 package com.linkedin.venice.schema.merge;
 
 import com.linkedin.venice.utils.IndexedHashMap;
-import com.linkedin.venice.schema.rmd.v2.CollectionReplicationMetadata;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedList;
+import com.linkedin.venice.schema.rmd.v1.CollectionReplicationMetadata;
 import java.util.List;
 import java.util.ListIterator;
 import java.util.Map;

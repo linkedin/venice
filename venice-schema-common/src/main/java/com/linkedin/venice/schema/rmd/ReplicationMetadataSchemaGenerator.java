@@ -3,7 +3,6 @@ package com.linkedin.venice.schema.rmd;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.schema.rmd.v1.ReplicationMetadataSchemaGeneratorV1;
-import com.linkedin.venice.schema.rmd.v2.ReplicationMetadataSchemaGeneratorV2;
 import io.tehuti.utils.Utils;
 import java.util.Collections;
 import java.util.HashMap;
@@ -17,8 +16,7 @@ import org.apache.avro.Schema;
 
 public class ReplicationMetadataSchemaGenerator {
   private static final int GENERATOR_V1 = 1;
-  private static final int GENERATOR_V2 = 2;
-  private static final int LATEST_VERSION = GENERATOR_V2;
+  private static final int LATEST_VERSION = GENERATOR_V1;
   // It's fine to use V1 object in the map as V2 extends from V1. We'll need to abstract
   // a new generator in the future if we bring some incompatible changes to the generator. (
   // in case a newer adapter cannot extend from the older ones.)
@@ -27,7 +25,6 @@ public class ReplicationMetadataSchemaGenerator {
   static {
     Map<Integer, ReplicationMetadataSchemaGeneratorV1> tmpMap = new HashMap<>(LATEST_VERSION);
     tmpMap.put(GENERATOR_V1, new ReplicationMetadataSchemaGeneratorV1());
-    tmpMap.put(GENERATOR_V2, new ReplicationMetadataSchemaGeneratorV2());
     REPLICATION_METADATA_SCHEMA_GENERATOR = Collections.unmodifiableMap(tmpMap);
   }
 

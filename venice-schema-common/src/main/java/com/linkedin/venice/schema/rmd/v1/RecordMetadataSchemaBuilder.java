@@ -1,4 +1,4 @@
-package com.linkedin.venice.schema.rmd.v2;
+package com.linkedin.venice.schema.rmd.v1;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -58,13 +58,22 @@ class RecordMetadataSchemaBuilder {
   }
 
   private Schema.Field generateMetadataField(Schema.Field existingField, String namespace) {
-    Schema fieldSchema = generateMetadataSchemaForField(existingField, namespace);
+    final Schema fieldMetadataSchema = generateMetadataSchemaForField(existingField, namespace);
+    final Object defaultValue;
+    if (fieldMetadataSchema == LONG_TYPE_TIMESTAMP_SCHEMA) {
+      defaultValue = 0;
+    } else if (fieldMetadataSchema.getType() == RECORD) {
+      defaultValue = SchemaUtils.constructGenericRecord(fieldMetadataSchema);
+    } else {
+      throw new IllegalStateException("Generated field metadata schema is expected to be either of a type Long or of a "
+          + "type Record. But got schema: " + fieldMetadataSchema);
+    }
 
     return AvroCompatibilityHelper.newField(null)
         .setName(existingField.name())
-        .setSchema(fieldSchema)
+        .setSchema(fieldMetadataSchema)
         .setDoc("timestamp when " + existingField.name()  + " of the record was last updated")
-        .setDefault(0) // Default value is always a Long zero.
+        .setDefault(defaultValue)
         .setOrder(existingField.order())
         .build();
   }

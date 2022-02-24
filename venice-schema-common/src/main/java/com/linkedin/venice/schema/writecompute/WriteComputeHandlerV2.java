@@ -8,7 +8,7 @@ import com.linkedin.venice.schema.merge.SortBasedCollectionFieldOpHandler;
 import com.linkedin.venice.schema.merge.UpdateResultStatus;
 import com.linkedin.venice.utils.IndexedHashMap;
 import com.linkedin.venice.schema.SchemaUtils;
-import com.linkedin.venice.schema.rmd.v2.CollectionReplicationMetadata;
+import com.linkedin.venice.schema.rmd.v1.CollectionReplicationMetadata;
 import java.util.List;
 import java.util.Map;
 import javax.annotation.Nonnull;

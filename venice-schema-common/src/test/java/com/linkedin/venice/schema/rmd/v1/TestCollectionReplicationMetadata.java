@@ -1,4 +1,4 @@
-package com.linkedin.venice.schema.rmd.v2;
+package com.linkedin.venice.schema.rmd.v1;
 
 import java.util.Arrays;
 import java.util.Collections;
