@@ -2,6 +2,7 @@ package com.linkedin.davinci.replication.merge;
 
 import com.linkedin.avro.fastserde.coldstart.ColdPrimitiveLongList;
 import com.linkedin.avro.fastserde.primitive.PrimitiveLongArrayList;
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.schema.SchemaEntry;
@@ -60,7 +61,7 @@ public class MergeConflictResolverTest {
   public void setUp() {
     this.storeName = "store";
     this.schemaRepository = mock(ReadOnlySchemaRepository.class);
-    this.recordSchema = Schema.parse(recordSchemaStr);
+    this.recordSchema = AvroCompatibilityHelper.parse(recordSchemaStr);
     this.aaSchema = ReplicationMetadataSchemaGenerator.generateMetadataSchema(recordSchema, replicationMetadataVersionId);
     this.serializer = FastSerializerDeserializerFactory.getFastAvroGenericSerializer(recordSchema);
     this.deserializer = FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(recordSchema, recordSchema);

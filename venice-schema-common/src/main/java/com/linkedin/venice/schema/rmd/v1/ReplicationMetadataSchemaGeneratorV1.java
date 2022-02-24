@@ -47,23 +47,10 @@ public class ReplicationMetadataSchemaGeneratorV1 {
 
   public Schema generateMetadataSchemaFromRecord(Schema recordSchema, String namespace) {
     validateSchemaType(recordSchema, RECORD);
-    Schema newSchema = Schema.createRecord(recordSchema.getName(), recordSchema.getDoc(), recordSchema.getNamespace(),
-        recordSchema.isError());
-    List<Schema.Field> newFields = new ArrayList<>(recordSchema.getFields().size());
-
-    // Create an equivalent timestamp field for each record field.
-    for (Schema.Field existingField : recordSchema.getFields()) {
-      Schema.Field newField = AvroCompatibilityHelper.newField(null)
-          .setName(existingField.name())
-          .setSchema(LONG_TYPE_TIMESTAMP_SCHEMA)
-          .setDoc("timestamp when " + existingField.name()  + " of the record was last updated")
-          .setDefault(0)
-          .setOrder(existingField.order())
-          .build();
-      newFields.add(newField);
-    }
-    newSchema.setFields(newFields);
-    return newSchema;
+    final RecordMetadataSchemaBuilder recordMetadataSchemaBuilder = new RecordMetadataSchemaBuilder();
+    recordMetadataSchemaBuilder.setValueRecordSchema(recordSchema);
+    recordMetadataSchemaBuilder.setNamespace(namespace);
+    return recordMetadataSchemaBuilder.build();
   }
 
   protected void validateSchemaType(Schema schema, Schema.Type expectedType) {

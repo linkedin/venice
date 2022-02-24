@@ -1,4 +1,4 @@
-package com.linkedin.venice.schema.rmd.v2;
+package com.linkedin.venice.schema.rmd.v1;
 
 /**
  * A POJO containing an index and a timestamp for a collection element. Note that this timestamp could be any timestamp.

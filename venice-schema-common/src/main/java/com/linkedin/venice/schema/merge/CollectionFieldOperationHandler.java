@@ -1,7 +1,7 @@
 package com.linkedin.venice.schema.merge;
 
 import com.linkedin.venice.utils.IndexedHashMap;
-import com.linkedin.venice.schema.rmd.v2.CollectionReplicationMetadata;
+import com.linkedin.venice.schema.rmd.v1.CollectionReplicationMetadata;
 import java.util.List;
 import java.util.Map;
 import org.apache.avro.generic.GenericRecord;

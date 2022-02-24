@@ -1,16 +1,13 @@
-package com.linkedin.venice.schema.rmd.v2;
+package com.linkedin.venice.schema.rmd.v1;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
-import com.linkedin.venice.schema.rmd.v1.ReplicationMetadataSchemaGeneratorV1;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.Set;
 import javax.annotation.concurrent.NotThreadSafe;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
@@ -355,14 +352,6 @@ public class CollectionReplicationMetadata {
     );
     collectionTSSchema.setFields(
         Arrays.asList(topLevelTSField, topLevelColoIdField, putOnlyPartLengthField, activeElemTSField, deletedElemField, deletedElemTSField));
-
-    // Collection field timestamp schema is a union of [Long, CollectionTimestamp].
-    // Goals are:
-    //    1. Be backward compatible with RMD schema v1 so that this schema can deserialize RMD bytes serialized by RMD schema V1.
-    //    2. When all elements in a collection have the same timestamp, we can use a single Long value to represent the collection timestamp instead.
-    return Schema.createUnion(Arrays.asList(
-        Schema.create(LONG),
-        collectionTSSchema
-    ));
+    return collectionTSSchema;
   }
 }
