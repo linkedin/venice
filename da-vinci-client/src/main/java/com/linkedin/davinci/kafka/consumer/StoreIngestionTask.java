@@ -1768,6 +1768,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         if (leaderState.equals(LeaderFollowerStateType.LEADER)) {
           startConsumingAsLeader(newPartitionConsumptionState);
         } else {
+          updateLeaderTopicOnFollower(newPartitionConsumptionState);
           // Subscribe to local version topic.
           consumerSubscribe(topic, newPartitionConsumptionState.getSourceTopicPartition(topic), offsetRecord.getLocalVersionTopicOffset(), localKafkaServer);
           logger.info(consumerTaskId + " subscribed to: Topic " + topic + " Partition Id " + partition + " Offset " + offsetRecord.getLocalVersionTopicOffset());
@@ -2267,6 +2268,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   public abstract long getRegionHybridOffsetLag(int regionId);
 
   public abstract int getWriteComputeErrorCode();
+
+  public abstract void updateLeaderTopicOnFollower(PartitionConsumptionState partitionConsumptionState);
 
   public long getOffsetLagThreshold() {
     if (!hybridStoreConfig.isPresent()) {
