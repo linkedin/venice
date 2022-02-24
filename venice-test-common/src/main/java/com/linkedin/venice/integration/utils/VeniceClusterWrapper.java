@@ -20,14 +20,15 @@ import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
+import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.ForkedJavaProcess;
 import com.linkedin.venice.utils.KafkaSSLUtils;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.SslUtils;
+import com.linkedin.venice.utils.TestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
-import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.io.File;
@@ -48,7 +49,6 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 import org.apache.avro.Schema;
-import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.commons.io.IOUtils;
 import org.apache.logging.log4j.LogManager;
@@ -57,6 +57,7 @@ import org.testng.Assert;
 
 import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.integration.utils.VeniceServerWrapper.*;
+import static com.linkedin.venice.utils.TestPushUtils.*;
 
 
 /**
@@ -70,16 +71,11 @@ public class VeniceClusterWrapper extends ProcessWrapper {
   public static final Logger logger = LogManager.getLogger(VeniceClusterWrapper.class);
   public static final String SERVICE_NAME = "VeniceCluster";
 
-  private static final int VALUE_LENGTH = 100;
-  private static final int NUM_RECORDS = 100_000;
-  private static final String FLOAT_VECTOR_VALUE_SCHEMA = "{" +
-          "  \"namespace\" : \"example.avro\",  " +
-          "  \"type\": \"record\",   " +
-          "  \"name\": \"FloatVector\",     " +
-          "  \"fields\": [           " +
-          "       { \"name\": \"value\", \"type\": {\"type\": \"array\", \"items\": \"float\"} }  " +
-          "  ] " +
-          " } ";
+  // Forked process constants
+  public static final String FORKED_PROCESS_EXCEPTION = "exception";
+  public static final String FORKED_PROCESS_STORE_NAME = "storeName";
+  public static final String FORKED_PROCESS_ZK_ADDRESS = "zkAddress";
+  public static final int NUM_RECORDS = 1_000_000;
 
   private final String clusterName;
   private final boolean standalone;
@@ -360,21 +356,6 @@ public class VeniceClusterWrapper extends ProcessWrapper {
   static synchronized void stopServiceInAnotherProcess() {
     veniceClusterProcess.destroy();
     veniceClusterProcess = null;
-  }
-
-  private static String buildFloatVectorStore(VeniceClusterWrapper cluster) {
-    Schema schema = Schema.parse(FLOAT_VECTOR_VALUE_SCHEMA);
-    GenericRecord record = new GenericData.Record(schema);
-    List<Float> floatVector = new ArrayList<>();
-    for (int i = 0; i < VALUE_LENGTH; i++) {
-      floatVector.add((float)(i * 1.0));
-    }
-    record.put("value", floatVector);
-    try {
-      return cluster.createStore(NUM_RECORDS, record);
-    } catch (Exception e) {
-      throw new VeniceException("Error in creating store", e);
-    }
   }
 
   @Override
@@ -712,7 +693,6 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     Properties properties = new Properties();
     properties.put(KAFKA_BOOTSTRAP_SERVERS, kafkaBrokerWrapper.getAddress());
     properties.put(ZOOKEEPER_ADDRESS, zkServerWrapper.getAddress());
-    properties.put(CLUSTER_NAME, clusterName);
     VeniceWriterFactory factory = TestUtils.getVeniceWriterFactory(properties);
     String stringSchema = "\"string\"";
     VeniceKafkaSerializer keySerializer = new VeniceAvroKafkaSerializer(stringSchema);
@@ -725,7 +705,6 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     Properties properties = new Properties();
     properties.put(KAFKA_BOOTSTRAP_SERVERS, kafkaBrokerWrapper.getSSLAddress());
     properties.put(ZOOKEEPER_ADDRESS, zkServerWrapper.getAddress());
-    properties.put(CLUSTER_NAME, clusterName);
     properties.putAll(KafkaSSLUtils.getLocalKafkaClientSSLConfig());
     VeniceWriterFactory factory = TestUtils.getVeniceWriterFactory(properties);
 
@@ -836,14 +815,11 @@ public class VeniceClusterWrapper extends ProcessWrapper {
   public String createStore(String keySchema, String valueSchema, Stream<Map.Entry> batchData) throws Exception {
     try (ControllerClient client = getControllerClient()) {
       String storeName = Utils.getUniqueString("store");
-      NewStoreResponse response = client.createNewStore(
+      TestUtils.assertCommand(client.createNewStore(
           storeName,
           getClass().getName(),
           keySchema,
-          valueSchema);
-      if (response.isError()) {
-        throw new VeniceException(response.getError());
-      }
+          valueSchema));
 
       createVersion(storeName, keySchema, valueSchema, batchData);
       return storeName;
@@ -867,7 +843,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
 
   public int createVersion(String storeName, String keySchema, String valueSchema, Stream<Map.Entry> batchData) throws Exception {
     try (ControllerClient client = getControllerClient()) {
-      VersionCreationResponse response = client.requestTopicForWrites(
+      VersionCreationResponse response = TestUtils.assertCommand(client.requestTopicForWrites(
           storeName,
           1024, // estimate of the version size in bytes
           Version.PushType.BATCH,
@@ -879,10 +855,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
           Optional.empty(),
           Optional.empty(),
           false,
-          -1);
-      if (response.isError()) {
-        throw new VeniceException(response.getError());
-      }
+          -1));
       TestUtils.writeBatchData(response, keySchema, valueSchema, batchData, HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID);
 
       int versionId = response.getVersion();
@@ -918,30 +891,75 @@ public class VeniceClusterWrapper extends ProcessWrapper {
    * @param args - args[0] (cluster info file path) is the only and must have parameter
    *             to work as IPC to pass back needed cluster info
    */
-  public static void main(String[] args) {
+  public static void main(String[] args) throws IOException {
     if (args.length != 1) {
       throw new VeniceException("Need to provide a file path to write cluster info.");
     }
-
-    Utils.thisIsLocalhost();
-    VeniceClusterWrapper veniceClusterWrapper = ServiceFactory.getVeniceCluster();
     /**
      * write some cluster info to a file, which will be used by another process to make connection to this cluster
      * e.g. {@link com.linkedin.venice.benchmark.IngestionBenchmarkWithTwoProcesses#parseClusterInfoFile()}
      */
-    String storeName = buildFloatVectorStore(veniceClusterWrapper);
-    String zkAddress = veniceClusterWrapper.getZk().getAddress();
     String clusterInfoConfigPath = args[0];
     PropertyBuilder propertyBuilder = new PropertyBuilder();
-    propertyBuilder.put("storeName", storeName);
-    propertyBuilder.put("zkAddress", zkAddress);
-    VeniceProperties veniceProperties = propertyBuilder.build();
     File configFile = new File(clusterInfoConfigPath);
-    // Store properties into config file.
+
     try {
-      veniceProperties.storeFlattened(configFile);
+
+      int numberOfPartitions = 16;
+
+      Utils.thisIsLocalhost();
+      Properties extraProperties = new Properties();
+      extraProperties.put(DEFAULT_MAX_NUMBER_OF_PARTITIONS, numberOfPartitions);
+      VeniceClusterWrapper veniceClusterWrapper = ServiceFactory.getVeniceCluster(
+          1,
+          1,
+          1,
+          1,
+          10 * 1024 * 1024,
+          false,
+          false,
+          extraProperties);
+
+      String storeName = Utils.getUniqueString("storeForMainMethodOf" + VeniceClusterWrapper.class.getSimpleName());
+      String controllerUrl = veniceClusterWrapper.getRandmonVeniceController().getControllerUrl();
+      String KEY_SCHEMA = Schema.create(Schema.Type.STRING).toString();
+      String VALUE_SCHEMA = Schema.create(Schema.Type.STRING).toString();
+      File inputDir = TestPushUtils.getTempDataDirectory();
+
+      TestPushUtils.writeSimpleAvroFileWithCustomSize(
+          inputDir,
+          NUM_RECORDS,
+          10,
+          20);
+
+      try (ControllerClient client = new ControllerClient(veniceClusterWrapper.clusterName, controllerUrl)) {
+        TestUtils.assertCommand(client.createNewStore(
+            storeName,
+            "ownerOf" + storeName,
+            KEY_SCHEMA,
+            VALUE_SCHEMA));
+
+        TestUtils.assertCommand(client.updateStore(
+            storeName,
+            new UpdateStoreQueryParams()
+                .setLeaderFollowerModel(true)
+                .setPartitionCount(numberOfPartitions)
+                .setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)));
+      }
+
+      String inputDirPath = "file://" + inputDir.getAbsolutePath();
+      Properties props = defaultH2VProps(controllerUrl, inputDirPath, storeName);
+      TestPushUtils.runPushJob("Test Batch push job", props);
+
+      propertyBuilder.put(FORKED_PROCESS_STORE_NAME, storeName);
+      propertyBuilder.put(FORKED_PROCESS_ZK_ADDRESS, veniceClusterWrapper.getZk().getAddress());
+      // Store properties into config file.
+      propertyBuilder.build().storeFlattened(configFile);
       logger.info("Configs are stored into: " + clusterInfoConfigPath);
-    } catch (IOException e) {
+    } catch (Exception e) {
+      propertyBuilder.put(FORKED_PROCESS_EXCEPTION, ExceptionUtils.stackTraceToString(e));
+      propertyBuilder.build().storeFlattened(configFile);
+      logger.info("Exception stored into: " + clusterInfoConfigPath);
       throw new VeniceException(e);
     }
   }
