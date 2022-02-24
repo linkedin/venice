@@ -1655,19 +1655,10 @@ public class VeniceParentHelixAdmin implements Admin {
           .map(addToUpdatedConfigList(updatedConfigsList, ENABLE_WRITES))
           .orElseGet(store::isEnableWrites);
 
-      if (readQuotaInCU.isPresent()) {
-        HelixVeniceClusterResources resources = getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName);
-        ZkRoutersClusterManager routersClusterManager = resources.getRoutersClusterManager();
-        int routerCount = routersClusterManager.getLiveRoutersCount();
-        if (Math.max(DEFAULT_PER_ROUTER_READ_QUOTA, routerCount * DEFAULT_PER_ROUTER_READ_QUOTA) < readQuotaInCU.get()) {
-          throw new VeniceException("Cannot update read quota for store " + storeName + " in cluster "
-              + clusterName + ". Read quota " + readQuotaInCU.get() + " requested is more than the cluster quota.");
-        }
-        setStore.readQuotaInCU = readQuotaInCU.get();
-        updatedConfigsList.add(READ_QUOTA_IN_CU);
-      } else {
-        setStore.readQuotaInCU = store.getReadQuotaInCU();
-      }
+      setStore.readQuotaInCU = readQuotaInCU
+          .map(addToUpdatedConfigList(updatedConfigsList, READ_QUOTA_IN_CU))
+          .orElseGet(store::getReadQuotaInCU);
+
       //We need to to be careful when handling currentVersion.
       //Since it is not synced between parent and local controller,
       //It is very likely to override local values unintentionally.

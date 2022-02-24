@@ -3207,7 +3207,17 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             }
 
             if (readQuotaInCU.isPresent()) {
-                setStoreReadQuota(clusterName, storeName, readQuotaInCU.get());
+              HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
+              ZkRoutersClusterManager routersClusterManager = resources.getRoutersClusterManager();
+              int routerCount = routersClusterManager.getLiveRoutersCount();
+              VeniceControllerClusterConfig clusterConfig = getHelixVeniceClusterResources(clusterName).getConfig();
+              int defaultReadQuotaPerRouter = clusterConfig.getDefaultReadQuotaPerRouter();
+
+              if (Math.max(defaultReadQuotaPerRouter, routerCount * defaultReadQuotaPerRouter) < readQuotaInCU.get()) {
+                throw new VeniceException("Cannot update read quota for store " + storeName + " in cluster "
+                    + clusterName + ". Read quota " + readQuotaInCU.get() + " requested is more than the cluster quota.");
+              }
+              setStoreReadQuota(clusterName, storeName, readQuotaInCU.get());
             }
 
             if (currentVersion.isPresent()) {
