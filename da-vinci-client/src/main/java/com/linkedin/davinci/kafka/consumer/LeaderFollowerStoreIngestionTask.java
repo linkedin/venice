@@ -342,22 +342,18 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           logger.info(consumerTaskId + " disabled remote consumption from topic " + leaderTopic + " partition " + partition);
           // Followers always consume local VT and should not skip kafka message
           partitionConsumptionState.setSkipKafkaMessage(false);
+          partitionConsumptionState.setLeaderFollowerState(STANDBY);
+          updateLeaderTopicOnFollower(partitionConsumptionState);
           // subscribe back to local VT/partition
           consumerSubscribe(topic, partitionConsumptionState.getSourceTopicPartition(topic),
               partitionConsumptionState.getLatestProcessedVersionTopicOffset(), localKafkaServer);
 
           logger.info(consumerTaskId + " demoted to standby for partition " + partition);
+        } else {
+          partitionConsumptionState.setLeaderFollowerState(STANDBY);
+          updateLeaderTopicOnFollower(partitionConsumptionState);
         }
-        /**
-         * As a leader, the node does not update leader topic when processing TS. When demoted to follower, it should
-         * track the topic that leader will consume. Otherwise, for hybrid stores, if follower does not change leader
-         * topic to RT, it will never become online because hybrid lag measurement will return a large value.
-         */
-        TopicSwitch topicSwitch = partitionConsumptionState.getTopicSwitch();
-        if (topicSwitch != null && !topicSwitch.sourceTopicName.toString().equals(offsetRecord.getLeaderTopic())) {
-          offsetRecord.setLeaderTopic(topicSwitch.sourceTopicName.toString());
-        }
-        partitionConsumptionStateMap.get(partition).setLeaderFollowerState(STANDBY);
+
         /**
          * Close the writer to make sure the current segment is closed after the leader is demoted to standby.
          */
@@ -2114,6 +2110,25 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   @Override
   public int getWriteComputeErrorCode() {
     return writeComputeFailureCode;
+  }
+
+  @Override
+  public void updateLeaderTopicOnFollower(PartitionConsumptionState partitionConsumptionState) {
+    if (isLeader(partitionConsumptionState)) {
+      return;
+    }
+    /**
+     * When the node works as a leader, it does not update leader topic when processing TS. When the node demotes to
+     * follower after leadership handover or becomes follower after restart, it should track the topic that leader will
+     * consume. Otherwise, for hybrid stores: 1. If the node remains as follower, it might never become online because
+     * hybrid lag measurement will return a large value for VT. 2. If the node promotes to leader, it will subscribe to
+     * VT at RT offset.
+     */
+    TopicSwitch topicSwitch = partitionConsumptionState.getTopicSwitch();
+    OffsetRecord offsetRecord = partitionConsumptionState.getOffsetRecord();
+    if (topicSwitch != null && !topicSwitch.sourceTopicName.toString().equals(offsetRecord.getLeaderTopic())) {
+      offsetRecord.setLeaderTopic(topicSwitch.sourceTopicName.toString());
+    }
   }
 
   protected int getSubPartitionId(byte[] key, String topic, int partition) {
