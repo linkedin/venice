@@ -331,7 +331,7 @@ public class VeniceParentHelixAdminTest {
     Assert.assertFalse(newStoreResponse.isError(), "error in newStoreResponse: " + newStoreResponse.getError());
     long backupVersionRetentionMs = TimeUnit.HOURS.toMillis(1);
     ControllerResponse controllerResponse = parentControllerClient.updateStore(storeName,
-        new UpdateStoreQueryParams().setBackupVersionRetentionMs(backupVersionRetentionMs));
+        new UpdateStoreQueryParams().setBackupVersionRetentionMs(backupVersionRetentionMs).setReadQuotaInCU(10000));
     Assert.assertNotNull(controllerResponse);
     Assert.assertFalse(controllerResponse.isError(), "Error in store update response: " + controllerResponse.getError());
 
@@ -339,11 +339,13 @@ public class VeniceParentHelixAdminTest {
     StoreResponse storeResponseFromParentController = parentControllerClient.getStore(storeName);
     Assert.assertFalse(storeResponseFromParentController.isError(), "Error in store response from Parent Controller: " + storeResponseFromParentController.getError());
     Assert.assertEquals(storeResponseFromParentController.getStore().getBackupVersionRetentionMs(), backupVersionRetentionMs);
+    Assert.assertEquals(storeResponseFromParentController.getStore().getReadQuotaInCU(), 10000);
     // Verify the update in Child Controller
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
       StoreResponse storeResponseFromChildController = childControllerClient.getStore(storeName);
       Assert.assertFalse(storeResponseFromChildController.isError(), "Error in store response from Child Controller: " + storeResponseFromChildController.getError());
       Assert.assertEquals(storeResponseFromChildController.getStore().getBackupVersionRetentionMs(), backupVersionRetentionMs);
+      Assert.assertEquals(storeResponseFromChildController.getStore().getReadQuotaInCU(), 10000);
     });
   }
 

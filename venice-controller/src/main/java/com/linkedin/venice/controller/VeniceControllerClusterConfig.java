@@ -213,6 +213,8 @@ public class VeniceControllerClusterConfig {
    */
   private boolean disableParentRequestTopicForStreamPushes;
 
+  private int defaultReadQuotaPerRouter;
+
   public VeniceControllerClusterConfig(VeniceProperties props) {
     try {
       this.props = props;
@@ -347,6 +349,11 @@ public class VeniceControllerClusterConfig {
     this.leakedPushStatusCleanUpServiceSleepIntervalInMs = props.getLong(LEAKED_PUSH_STATUS_CLEAN_UP_SERVICE_SLEEP_INTERVAL_MS, TimeUnit.MINUTES.toMillis(15));
     this.jettyConfigOverrides = props.clipAndFilterNamespace(CONTROLLER_JETTY_CONFIG_OVERRIDE_PREFIX);
     this.disableParentRequestTopicForStreamPushes = props.getBoolean(CONTROLLER_DISABLE_PARENT_REQUEST_TOPIC_FOR_STREAM_PUSHES, false);
+    this.defaultReadQuotaPerRouter = props.getInt(CONTROLLER_DEFAULT_READ_QUOTA_PER_ROUTER, DEFAULT_PER_ROUTER_READ_QUOTA);
+  }
+
+  public int getDefaultReadQuotaPerRouter() {
+    return defaultReadQuotaPerRouter;
   }
 
   public VeniceProperties getProps() {

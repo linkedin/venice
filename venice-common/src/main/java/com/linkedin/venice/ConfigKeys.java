@@ -1724,6 +1724,8 @@ public class ConfigKeys {
    */
   public static final String CONTROLLER_DISABLE_PARENT_REQUEST_TOPIC_FOR_STREAM_PUSHES = "controller.disable.parent.request.topic.for.stream.pushes";
 
+  public static final String CONTROLLER_DEFAULT_READ_QUOTA_PER_ROUTER = "controller.default.read.quota.per.router";
+
   /**
    * This config specifies the client to use thin client meta system store based repository.
    */
