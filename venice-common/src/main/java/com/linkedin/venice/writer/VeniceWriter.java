@@ -196,7 +196,13 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   private final int maxAttemptsWhenTopicMissing;
   private final long sleepTimeMsWhenTopicMissing;
   private final long maxElapsedTimeForSegmentInMs;
-  /** Map of partition to {@link Segment}, which keeps track of all segment-related state. */
+  /**
+   * Map of partition to {@link Segment}, which keeps track of all segment-related state.
+   * IMPORTANT NOTE: Never remove previously maintained segment from the VeniceWriter, it doesn't make sense to reuse
+   *                 the VeniceWriter to send new data with a reset producer metadata, follower replicas would think
+   *                 new data are "duplicated" because they are using stale producer metadata (e.g. segment number 0
+   *                 and sequence number 0)
+   */
   private final Map<Integer, Segment> segmentsMap = new HashMap<>();
   /**
    * Map of partition to its segment creation time in milliseconds.
@@ -910,7 +916,6 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     if (segmentsMap.containsKey(partition)) {
       logger.info("Closing partition: " + partition + " in VeniceWriter.");
       endSegment(partition, true);
-      segmentsMap.remove(partition);
     }
   }
 
