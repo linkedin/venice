@@ -10,6 +10,7 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiColoMultiClusterWrapper;
+import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
@@ -53,6 +54,7 @@ public class TestActiveActiveReplicationForIncPush {
   private List<VeniceControllerWrapper> parentControllers;
   private VeniceTwoLayerMultiColoMultiClusterWrapper multiColoMultiClusterWrapper;
 
+  private ZkServerWrapper zkServer;
   KafkaBrokerWrapper corpVeniceNativeKafka;
   KafkaBrokerWrapper corpDefaultParentKafka;
 
@@ -64,7 +66,8 @@ public class TestActiveActiveReplicationForIncPush {
   @BeforeClass(alwaysRun = true)
   public void setUp() {
     //create a kafka for new corp-venice-native cluster
-    corpVeniceNativeKafka = ServiceFactory.getKafkaBroker(ServiceFactory.getZkServer());
+    zkServer = ServiceFactory.getZkServer();
+    corpVeniceNativeKafka = ServiceFactory.getKafkaBroker(zkServer);
 
     /**
      * Reduce leader promotion delay to 3 seconds;
@@ -119,6 +122,7 @@ public class TestActiveActiveReplicationForIncPush {
   public void cleanUp() {
     multiColoMultiClusterWrapper.close();
     IOUtils.closeQuietly(corpVeniceNativeKafka);
+    IOUtils.closeQuietly(zkServer);
   }
 
   /**
