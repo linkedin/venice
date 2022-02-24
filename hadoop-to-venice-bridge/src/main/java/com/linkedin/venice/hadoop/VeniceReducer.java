@@ -50,6 +50,7 @@ import org.apache.hadoop.mapred.JobID;
 import org.apache.hadoop.mapred.OutputCollector;
 import org.apache.hadoop.mapred.Reducer;
 import org.apache.hadoop.mapred.Reporter;
+import org.apache.hadoop.mapred.RunningJob;
 import org.apache.hadoop.util.Progressable;
 import org.apache.kafka.clients.producer.Callback;
 import org.apache.kafka.clients.producer.RecordMetadata;
@@ -462,13 +463,30 @@ public class VeniceReducer
 
   private long getTotalIncomingDataSizeInBytes(JobConf jobConfig) {
     JobClient hadoopJobClient = null;
+    String jobIdProp = null;
+    JobID jobID = null;
+    RunningJob runningJob = null;
+    Counters quotaCounters = null;
     try {
       hadoopJobClient = hadoopJobClientProvider.getJobClientFromConfig(jobConfig);
-      Counters quotaCounters = hadoopJobClient.getJob(JobID.forName(jobConfig.get(MAP_REDUCE_JOB_ID_PROP))).getCounters();
+      jobIdProp = jobConfig.get(MAP_REDUCE_JOB_ID_PROP);
+      jobID = JobID.forName(jobIdProp);
+      runningJob = hadoopJobClient.getJob(jobID);
+      quotaCounters = runningJob.getCounters();
       return MRJobCounterHelper.getTotalKeySize(quotaCounters) + MRJobCounterHelper.getTotalValueSize(quotaCounters);
 
-    } catch (IOException e) {
-      throw new VeniceException("Can't read input file size from counters", e);
+    } catch (Exception e) {
+      /**
+       * Note that this will catch a NPE during tests unless the storage quota is set to
+       * {@link Store.UNLIMITED_STORAGE_QUOTA}, which seems quite messed up. It manifests as {@link runningJob}
+       * being null, which then prevents us from calling {@link RunningJob#getCounters()}. Obviously, this is
+       * not happening in prod, though it's not completely clear why...
+       *
+       * TODO: Fix this so that tests are more representative of prod
+       */
+      throw new VeniceException(String.format(
+          "Can't read input file size from counters; hadoopJobClient: %s; jobIdProp: %s; jobID: %s; runningJob: %s; quotaCounters: %s",
+          hadoopJobClient, jobIdProp, jobID, runningJob, quotaCounters), e);
     } finally {
       if (hadoopJobClient != null) {
         try {
