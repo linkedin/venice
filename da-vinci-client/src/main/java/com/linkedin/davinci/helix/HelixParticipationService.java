@@ -76,7 +76,7 @@ public class HelixParticipationService extends AbstractVeniceService implements 
   private final CompletableFuture<HelixPartitionStatusAccessor> partitionPushStatusAccessorFuture;
 
   private ZkClient zkClient;
-  private SafeHelixManager manager;
+  private SafeHelixManager helixManager;
   private AbstractStateModelFactory onlineOfflineParticipantModelFactory;
   private AbstractStateModelFactory leaderFollowerParticipantModelFactory;
   private HelixPartitionStatusAccessor partitionPushStatusAccessor;
@@ -126,7 +126,7 @@ public class HelixParticipationService extends AbstractVeniceService implements 
   @Override
   public boolean startInner() {
     logger.info("Attempting to start HelixParticipation service");
-    manager = new SafeHelixManager(
+    helixManager = new SafeHelixManager(
         HelixManagerFactory.getZKHelixManager(clusterName, this.participantName, InstanceType.PARTICIPANT, zkAddress));
 
     //create 2 dedicated thread pools for executing incoming state transitions (1 for online offline (O/O) model and the
@@ -152,8 +152,8 @@ public class HelixParticipationService extends AbstractVeniceService implements 
             "Venice_L/F_ST_thread_pool"),
         helixReadOnlyStoreRepository, partitionPushStatusAccessorFuture, instance.getNodeId());
 
-    manager.getStateMachineEngine().registerStateModelFactory(ONLINE_OFFLINE_MODEL_NAME, onlineOfflineParticipantModelFactory);
-    manager.getStateMachineEngine().registerStateModelFactory(LeaderStandbySMD.name, leaderFollowerParticipantModelFactory);
+    helixManager.getStateMachineEngine().registerStateModelFactory(ONLINE_OFFLINE_MODEL_NAME, onlineOfflineParticipantModelFactory);
+    helixManager.getStateMachineEngine().registerStateModelFactory(LeaderStandbySMD.name, leaderFollowerParticipantModelFactory);
     //TODO Now Helix instance config only support host and port. After talking to Helix team, they will add
     // customize k-v data support soon. Then we don't need LiveInstanceInfoProvider here. Use the instance config
     // is a better way because it reduce the communication times to Helix. Other wise client need to get  thsi
@@ -162,11 +162,11 @@ public class HelixParticipationService extends AbstractVeniceService implements 
       // serialize serviceMetadata to ZNRecord
       return HelixInstanceConverter.convertInstanceToZNRecord(instance);
     };
-    manager.setLiveInstanceInfoProvider(liveInstanceInfoProvider);
+    helixManager.setLiveInstanceInfoProvider(liveInstanceInfoProvider);
 
     // Create a message channel to receive message from controller.
     HelixStatusMessageChannel messageChannel =
-        new HelixStatusMessageChannel(manager, new HelixMessageChannelStats(metricsRepository, clusterName));
+        new HelixStatusMessageChannel(helixManager, new HelixMessageChannelStats(metricsRepository, clusterName));
     messageChannel.registerHandler(KillOfflinePushMessage.class, this);
 
     //TODO Venice Listener should not be started, until the HelixService is started.
@@ -178,14 +178,19 @@ public class HelixParticipationService extends AbstractVeniceService implements 
 
   @Override
   public void stopInner() throws IOException {
-    if (manager != null) {
+    logger.info("Attempting to stop HelixParticipation service.");
+    if (helixManager != null) {
       try {
-        manager.disconnect();
+        helixManager.disconnect();
+        logger.info("Disconnected Helix Manager.");
       } catch (Exception e) {
-        logger.error("Swallowed an exception while trying to disconnect the " + manager.getClass().getSimpleName(), e);
+        logger.error("Swallowed an exception while trying to disconnect the " + helixManager.getClass().getSimpleName(), e);
       }
+    } else {
+      logger.info("Helix Manager is null.");
     }
     ingestionBackend.close();
+    logger.info("Closed VeniceIngestionBackend.");
     onlineOfflineParticipantModelFactory.getExecutorService().shutdownNow();
     leaderFollowerParticipantModelFactory.getExecutorService().shutdownNow();
     try {
@@ -196,8 +201,11 @@ public class HelixParticipationService extends AbstractVeniceService implements 
     }
 
     if (zkClient != null) {
+      logger.info("Start closing ZkClient.");
       zkClient.close();
+      logger.info("Closed ZkClient.");
     }
+    logger.info("Finished stopping HelixParticipation service.");
   }
 
   private void checkBeforeJoinInCluster() {
@@ -249,8 +257,8 @@ public class HelixParticipationService extends AbstractVeniceService implements 
         // TODO In that case, it's guaranteed that the node would not be assigned with any resource before we completed our
         // TODO checking, so we could use HelixManager to get some metadata instead of creating a new zk connection.
         checkBeforeJoinInCluster();
-        manager.connect();
-        managerFuture.complete(manager);
+        helixManager.connect();
+        managerFuture.complete(helixManager);
       } catch (Exception e) {
         logger.error(e.getMessage(), e);
         logger.error("Venice server is about to close");
@@ -261,7 +269,7 @@ public class HelixParticipationService extends AbstractVeniceService implements 
        * The accessor can only get created successfully after helix manager is created.
        */
       partitionPushStatusAccessor =
-          new HelixPartitionStatusAccessor(manager.getOriginalManager(), instance.getNodeId(),
+          new HelixPartitionStatusAccessor(helixManager.getOriginalManager(), instance.getNodeId(),
               veniceConfigLoader.getVeniceServerConfig().isHelixHybridStoreQuotaEnabled());
       PartitionPushStatusNotifier partitionPushStatusNotifier =
           new PartitionPushStatusNotifier(partitionPushStatusAccessor);
