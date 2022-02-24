@@ -4,8 +4,11 @@ import com.linkedin.venice.client.exceptions.ServiceDiscoveryException;
 import com.linkedin.venice.client.store.transport.D2TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponseV2;
+import com.linkedin.venice.exceptions.ExceptionType;
 import com.linkedin.venice.exceptions.VeniceException;
 
+import com.linkedin.venice.exceptions.VeniceNoStoreException;
+import java.util.Optional;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.codehaus.jackson.map.DeserializationConfig;
@@ -39,7 +42,7 @@ public class D2ServiceDiscovery {
     int maxAttempts = retryOnFailure ? 10 : 1;
     String requestPath = TYPE_D2_SERVICE_DISCOVERY + "/" + storeName;
     Map<String, String> requestHeaders = Collections.singletonMap(D2_SERVICE_DISCOVERY_RESPONSE_V2_ENABLED, "true");
-
+    boolean storeNotFound = false;
     for (int attempt = 0; attempt < maxAttempts; ++attempt) {
       try {
         if (attempt > 0) {
@@ -47,8 +50,14 @@ public class D2ServiceDiscovery {
         }
         TransportClientResponse response = client.get(requestPath, requestHeaders).get();
         if (response == null) {
-          LOGGER.warn("Failed to find d2 service for {}, attempt {}/{}", storeName, attempt + 1, maxAttempts);
-          continue;
+          /**
+           * 'null' response indicates that the Router returns 404 based on the logic in
+           * {@link com.linkedin.venice.client.store.transport.TransportClientCallback}.
+           * So we will treat `null` response as the store doesn't exist.
+           * No need to retry the service discovery for non-existing store.
+           */
+          storeNotFound = true;
+          break;
         }
         D2ServiceDiscoveryResponseV2 result = OBJECT_MAPPER.readValue(response.getBody(), D2ServiceDiscoveryResponseV2.class);
         if (result.isError()) {
@@ -67,6 +76,10 @@ public class D2ServiceDiscovery {
       } catch (Exception e) {
         throw new ServiceDiscoveryException("Failed to find d2 service for " + storeName, e);
       }
+    }
+    if (storeNotFound) {
+      // Short circuit the retry if the store is not found.
+      throw new ServiceDiscoveryException(new VeniceNoStoreException(storeName));
     }
     throw new ServiceDiscoveryException("Failed to find d2 service for " + storeName + " after " + maxAttempts + " attempts");
   }

@@ -2,6 +2,8 @@ package com.linkedin.venice.router;
 
 import com.linkedin.r2.transport.http.common.HttpProtocolVersion;
 import com.linkedin.venice.ConfigKeys;
+import com.linkedin.venice.D2.D2ClientUtils;
+import com.linkedin.venice.client.exceptions.ServiceDiscoveryException;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
@@ -16,6 +18,7 @@ import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
+import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.ServiceFactory;
@@ -61,6 +64,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import static com.linkedin.venice.VeniceConstants.*;
 import static com.linkedin.venice.router.httpclient.StorageNodeClientType.*;
+import static org.testng.Assert.*;
 
 
 public class TestStreaming {
@@ -189,13 +193,14 @@ public class TestStreaming {
     MetricsRepository routerMetricsRepositoryWithHttpAsyncClient = veniceRouterWrapperWithHttpAsyncClient.getMetricsRepository();
     // With Netty Client on Router with client compression disabled
     VeniceRouterWrapper veniceRouterWrapperWithNettyClient = veniceCluster.addVeniceRouter(getRouterProperties(enableStreaming, true, false, enableRouterHttp2));
-    MetricsRepository routerMetricsRepositoryWithNettyClient = veniceRouterWrapperWithNettyClient.getMetricsRepository();
+    D2Client d2Client = null;
+    AvroGenericStoreClient d2StoreClient = null;
     try {
       // test with D2 store client, since streaming support is only available with D2 client so far.
-      D2Client d2Client = D2TestUtils.getD2Client(veniceCluster.getZk().getAddress(), true, enableRouterHttp2 ? HttpProtocolVersion.HTTP_2 : HttpProtocolVersion.HTTP_1_1);
+      d2Client = D2TestUtils.getD2Client(veniceCluster.getZk().getAddress(), true, enableRouterHttp2 ? HttpProtocolVersion.HTTP_2 : HttpProtocolVersion.HTTP_1_1);
       D2TestUtils.startD2Client(d2Client);
       MetricsRepository d2ClientMetricsRepository = new MetricsRepository();
-      AvroGenericStoreClient d2StoreClient = ClientFactory.getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName)
+      d2StoreClient = ClientFactory.getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName)
           .setD2ServiceName(D2TestUtils.DEFAULT_TEST_SERVICE_NAME)
           .setD2Client(d2Client)
           .setMetricsRepository(d2ClientMetricsRepository)
@@ -241,7 +246,7 @@ public class TestStreaming {
             latch.countDown();
             if (exception.isPresent()) {
               LOGGER.info("MultiGet onCompletion invoked with Venice Exception",  exception.get());
-              Assert.fail("Exception: " + exception.get() + " is not expected");
+              fail("Exception: " + exception.get() + " is not expected");
             }
           }
         });
@@ -277,7 +282,7 @@ public class TestStreaming {
             computeLatch.countDown();
             if (exception.isPresent()) {
               LOGGER.info("Compute onCompletion invoked with Venice Exception",  exception.get());
-              Assert.fail("Exception: " + exception.get() + " is not expected");
+              fail("Exception: " + exception.get() + " is not expected");
             }
           }
         });
@@ -327,6 +332,10 @@ public class TestStreaming {
     } finally {
       Utils.closeQuietlyWithErrorLogged(veniceRouterWrapperWithHttpAsyncClient);
       Utils.closeQuietlyWithErrorLogged(veniceRouterWrapperWithNettyClient);
+      Utils.closeQuietlyWithErrorLogged(d2StoreClient);
+      if (d2Client != null) {
+        D2ClientUtils.shutdownClient(d2Client);
+      }
     }
   }
 
@@ -347,6 +356,35 @@ public class TestStreaming {
       GenericRecord record = resultMap.get(key);
       Assert.assertEquals(record.get("int_field"), i);
       Assert.assertNull(record.get("float_field"));
+    }
+  }
+
+  @Test (timeOut = 5000)
+  public void testWithNonExistingStore() throws ExecutionException, InterruptedException {
+    String nonExistingStoreName = Utils.getUniqueString("non_existing_store");
+    D2Client d2Client = null;
+    AvroGenericStoreClient d2StoreClient = null;
+    VeniceRouterWrapper veniceRouterWrapperWithHttpAsyncClient = null;
+    try {
+      veniceRouterWrapperWithHttpAsyncClient = veniceCluster.addVeniceRouter(new Properties());
+      d2Client = D2TestUtils.getD2Client(veniceCluster.getZk().getAddress(), false);
+      D2TestUtils.startD2Client(d2Client);
+      d2StoreClient = ClientFactory.getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(nonExistingStoreName)
+          .setD2ServiceName(D2TestUtils.DEFAULT_TEST_SERVICE_NAME)
+          .setD2Client(d2Client));
+      d2StoreClient.get("test").get();
+      fail("An exception is expected here");
+    } catch (ServiceDiscoveryException e) {
+      assertTrue(e.getCause() instanceof VeniceNoStoreException);
+    } catch (Throwable t) {
+      fail("Unexpected exception received: " + t.getClass());
+    }
+    finally {
+      Utils.closeQuietlyWithErrorLogged(d2StoreClient);
+      Utils.closeQuietlyWithErrorLogged(veniceRouterWrapperWithHttpAsyncClient);
+      if (d2Client != null) {
+        D2ClientUtils.shutdownClient(d2Client);
+      }
     }
   }
 }
