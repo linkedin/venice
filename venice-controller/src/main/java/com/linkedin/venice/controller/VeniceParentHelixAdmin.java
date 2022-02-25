@@ -999,15 +999,20 @@ public class VeniceParentHelixAdmin implements Admin {
       logger.info("isActiveActiveReplicationEnabledInAllRegion: " + storeName + " store is not enabled for Active/Active in parent region");
       return false;
     }
+
     for (Map.Entry<String, ControllerClient> entry: controllerClients.entrySet()) {
       String region = entry.getKey();
       ControllerClient controllerClient = entry.getValue();
-      StoreResponse response = controllerClient.getStore(storeName);
+      StoreResponse response = controllerClient.retryableRequest(10, c -> c.getStore(storeName));
       if (response.isError()) {
-        logger.error("isActiveActiveReplicationEnabledInAllRegion: Could not query store from region: " + region + " for cluster: " + clusterName + ". " + response.getError());
-        return false;
+        logger.warn("isActiveActiveReplicationEnabledInAllRegion: Could not query store from region: " + region + " for cluster: " + clusterName + ". " + response.getError()
+            + ". Default child AA config to true, since AA is already enabled in parent.");
       } else {
         if (!response.getStore().isActiveActiveReplicationEnabled()) {
+          if (store.isActiveActiveReplicationEnabled()) {
+            throw new VeniceException(String.format("Store %s doesn't have Active/Active enabled in region %s, but A/A is "
+                + "enabled in parent which indicates A/A is fully ramped", storeName, region));
+          }
           logger.info("isActiveActiveReplicationEnabledInAllRegion:" + storeName + " store is not enabled for Active/Active in region: " + region);
           return false;
         }

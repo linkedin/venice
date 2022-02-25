@@ -181,6 +181,8 @@ public class TestActiveActiveReplicationForIncPush {
 
       UpdateStoreQueryParams enableAARepl =
           new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true);
+      UpdateStoreQueryParams disableAARepl =
+          new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(false);
 
       //Print all the kafka cluster URL's
       LOGGER.info("KafkaURL dc-0:" + childDatacenters.get(0).getKafkaBrokerWrapper().getAddress());
@@ -188,11 +190,15 @@ public class TestActiveActiveReplicationForIncPush {
       LOGGER.info("KafkaURL dc-2:" + childDatacenters.get(2).getKafkaBrokerWrapper().getAddress());
       LOGGER.info("KafkaURL Parent Corp:" + corpDefaultParentKafka.getAddress());
 
+      // Turn on A/A in parent to trigger auto replication schema registration
+      TestPushUtils.updateStore(clusterName, storeName, parentControllerClient, enableAARepl);
+      TestPushUtils.updateStore(clusterName, storeName, parentControllerClient, disableAARepl);
+
       //Phase 1 rollout of A/A
       //verify store configs
-      enableAARepl.setRegionsFilter("dc-0,parent.parent");
+      enableAARepl.setRegionsFilter("dc-0");
       TestPushUtils.updateStore(clusterName, storeName, parentControllerClient, enableAARepl);
-      TestUtils.verifyDCConfigNativeAndActiveRepl(parentControllerClient, storeName, true, true);
+      TestUtils.verifyDCConfigNativeAndActiveRepl(parentControllerClient, storeName, true, false);
       TestUtils.verifyDCConfigNativeAndActiveRepl(dc0ControllerClient, storeName, true, true);
       TestUtils.verifyDCConfigNativeAndActiveRepl(dc1ControllerClient, storeName, true, false);
       TestUtils.verifyDCConfigNativeAndActiveRepl(dc2ControllerClient, storeName, true, false);
@@ -218,8 +224,7 @@ public class TestActiveActiveReplicationForIncPush {
 
 
       //Phase 2 and Phase 3 rollout of A/A combined together.
-      enableAARepl.setRegionsFilter("dc-1,dc-2");
-      TestPushUtils.updateStore(clusterName, storeName, parentControllerClient, enableAARepl);
+      TestPushUtils.updateStore(clusterName, storeName, parentControllerClient, new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true));
       TestUtils.verifyDCConfigNativeAndActiveRepl(parentControllerClient, storeName, true, true);
       TestUtils.verifyDCConfigNativeAndActiveRepl(dc0ControllerClient, storeName, true, true);
       TestUtils.verifyDCConfigNativeAndActiveRepl(dc1ControllerClient, storeName, true, true);
