@@ -160,7 +160,7 @@ public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
      * {@link CachedKafkaMetadataGetter#ttlMs} earlier.
      */
     StartOfBufferReplay sobr = storeVersionStateOptional.get().startOfBufferReplay;
-    long sourceTopicMaxOffset = cachedKafkaMetadataGetter.getOffset(localKafkaServer, sobr.sourceTopicName.toString(), partition);
+    long sourceTopicMaxOffset = cachedKafkaMetadataGetter.getOffset(getTopicManager(localKafkaServer), sobr.sourceTopicName.toString(), partition);
     long sobrSourceOffset = sobr.sourceOffsets.get(partition);
 
     if (!partitionConsumptionState.getOffsetRecord().getStartOfBufferReplayDestinationOffset().isPresent()) {
