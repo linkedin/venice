@@ -18,7 +18,6 @@ import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.davinci.utils.KafkaRecordWrapper;
 import com.linkedin.davinci.utils.StoragePartitionDiskUsage;
-import com.linkedin.venice.common.Measurable;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.PersistenceFailureException;
 import com.linkedin.venice.exceptions.UnsubscribedTopicPartitionException;
@@ -34,7 +33,6 @@ import com.linkedin.venice.exceptions.validation.ImproperlyStartedSegmentExcepti
 import com.linkedin.venice.exceptions.validation.UnsupportedMessageTypeException;
 import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.kafka.KafkaClientFactory;
-import com.linkedin.venice.kafka.TopicDoesNotExistException;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.TopicManagerRepository;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
@@ -68,7 +66,6 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
-import com.linkedin.venice.pushmonitor.SubPartitionStatus;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.ChunkedValueManifestSerializer;
@@ -142,7 +139,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   // TODO: Make this logger prefix everything with the CONSUMER_TASK_ID_FORMAT
   private static final Logger logger = LogManager.getLogger();
 
-  // Constants
   private static final String CONSUMER_TASK_ID_FORMAT = StoreIngestionTask.class.getSimpleName() + " for [ Topic: %s ]";
   public static long SCHEMA_POLLING_DELAY_MS = SECONDS.toMillis(5);
   private static final long SCHEMA_POLLING_TIMEOUT_MS = MINUTES.toMillis(5);
@@ -161,7 +157,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private static final String EXCEPTION_GROUP_PRODUCER = "producer";
   private static final String EXCEPTION_GROUP_CONSUMER = "consumer";
 
-  // Final stuff
+  protected static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER = RedundantExceptionFilter.getRedundantExceptionFilter();
+  protected static final ChunkedValueManifestSerializer CHUNKED_VALUE_MANIFEST_SERIALIZER = new ChunkedValueManifestSerializer(false);
+
   /** storage destination for consumption */
   protected final StorageEngineRepository storageEngineRepository;
   protected final String kafkaVersionTopic;
@@ -171,7 +169,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final ReadOnlyStoreRepository storeRepository;
   protected final String consumerTaskId;
   protected final Properties kafkaProps;
-  protected final KafkaClientFactory factory;
+  protected final KafkaClientFactory kafkaClientFactory;
   protected final AtomicBoolean isRunning;
   protected final AtomicBoolean emitMetrics; // TODO: remove this once we migrate to versioned stats
   protected final AtomicInteger consumerActionSequenceNumber = new AtomicInteger(0);
@@ -189,33 +187,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final AbstractStoreBufferService storeBufferService;
   /** Persists partitions that encountered exceptions in other threads. i.e. consumer, producer and drainer */
   private final Set<Integer> errorPartitions = Collections.synchronizedSet(new HashSet<>());
-  /** Measurable wrapper for exception, partition id pair */
-  private class PartitionExceptionInfo implements Measurable {
-    private final Exception e;
-    private final Integer partitionId;
 
-    public PartitionExceptionInfo(Exception e, int partitionId) {
-      this.e = e;
-      this.partitionId = partitionId;
-    }
-
-    public Exception getException() {
-      return e;
-    }
-
-    public Integer getPartitionId() {
-      return partitionId;
-    }
-
-    @Override
-    public int getSize() {
-      int size = 4;
-      if (e != null && e.getMessage() != null) {
-        size += e.getMessage().length();
-      }
-      return size;
-    }
-  }
   /** Persists the exceptions thrown by {@link StoreBufferService}. */
   private final BlockingQueue<PartitionExceptionInfo> drainerExceptions =
       new MemoryBoundBlockingQueue<>(EXCEPTION_BLOCKING_QUEUE_SIZE_IN_BYTE, EXCEPTION_BLOCKING_QUEUE_NOTIFY_IN_BYTE);
@@ -286,8 +258,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected Optional<HybridStoreQuotaEnforcement> hybridQuotaEnforcer;
   protected volatile Optional<Map<Integer, Integer>> subscribedPartitionToSize;
 
-  protected static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER = RedundantExceptionFilter.getRedundantExceptionFilter();
-
   private final AggKafkaConsumerService aggKafkaConsumerService;
   /**
    * This topic set is used to track all the topics, which have ever been subscribed.
@@ -310,18 +280,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    */
   private final long startReportingReadyToServeTimestamp;
 
-  protected static final ChunkedValueManifestSerializer CHUNKED_VALUE_MANIFEST_SERIALIZER = new ChunkedValueManifestSerializer(false);
-
-  int writeComputeFailureCode = 0;
+  protected int writeComputeFailureCode = 0;
 
   private final InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer;
 
-  protected boolean isWriteComputationEnabled = false;
-
-  //This flag is introduced to help write integration test to exercise code path during UPDATE message processing in
-  //{@link LeaderFollowerStoreIngestionTask#hasProducedToKafka(VeniceConsumerRecordWrapper)}. This must be always set to true except
-  //as needed in integration test.
+  // Do not convert it to a local variable because it is used in test.
   private boolean purgeTransientRecordBuffer = true;
+
+  protected final boolean isWriteComputationEnabled;
 
   /**
    * Freeze ingestion if ready to serve or local data exists
@@ -414,7 +380,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.emptyPollSleepMs = storeConfig.getKafkaEmptyPollSleepMs();
     this.databaseSyncBytesIntervalForTransactionalMode = storeConfig.getDatabaseSyncBytesIntervalForTransactionalMode();
     this.databaseSyncBytesIntervalForDeferredWriteMode = storeConfig.getDatabaseSyncBytesIntervalForDeferredWriteMode();
-    this.factory = builder.getKafkaClientFactory();
+    this.kafkaClientFactory = builder.getKafkaClientFactory();
     this.kafkaProps = kafkaConsumerProperties;
     this.storageEngineRepository = builder.getStorageEngineRepository();
     this.storageMetadataService = builder.getStorageMetadataService();
@@ -517,167 +483,16 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
 
     this.subPartitionCount = storeVersionPartitionCount * amplificationFactor;
-    this.reportStatusAdapter = new ReportStatusAdapter(new IngestionNotificationDispatcher(notifiers, kafkaVersionTopic, isCurrentVersion));
+    this.reportStatusAdapter = new ReportStatusAdapter(
+        new IngestionNotificationDispatcher(notifiers, kafkaVersionTopic, isCurrentVersion),
+        amplificationFactor,
+        incrementalPushPolicy,
+        partitionConsumptionStateMap
+    );
     this.amplificationAdapter = new AmplificationAdapter(amplificationFactor);
     this.cacheBackend = cacheBackend;
     this.localKafkaServer = this.kafkaProps.getProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG);
     this.isDaVinciClient = builder.isDaVinciClient();
-    this.isActiveActiveReplicationEnabled = version.isActiveActiveReplicationEnabled();
-    this.offsetLagDeltaRelaxEnabled = serverConfig.getOffsetLagDeltaRelaxFactorForFastOnlineTransitionInRestart() > 0;
-    this.ingestionCheckpointDuringGracefulShutdownEnabled = serverConfig.isServerIngestionCheckpointDuringGracefulShutdownEnabled();
-
-    // Build quota enforcer needs sub partition count prepared.
-    if (serverConfig.isHybridQuotaEnabled() || storeRepository.getStoreOrThrow(storeName).isHybridStoreDiskQuotaEnabled()) {
-      buildHybridQuotaEnforcer();
-    }
-  }
-
-  public StoreIngestionTask(
-      Store store,
-      Version version,
-      KafkaClientFactory consumerFactory,
-      Properties kafkaConsumerProperties,
-      StorageEngineRepository storageEngineRepository,
-      StorageMetadataService storageMetadataService,
-      Queue<VeniceNotifier> notifiers,
-      EventThrottler bandwidthThrottler,
-      EventThrottler recordsThrottler,
-      EventThrottler unorderedBandwidthThrottler,
-      EventThrottler unorderedRecordsThrottler,
-      KafkaClusterBasedRecordThrottler kafkaClusterBasedRecordThrottler,
-      ReadOnlySchemaRepository schemaRepository,
-      ReadOnlyStoreRepository storeRepository,
-      TopicManagerRepository topicManagerRepository,
-      TopicManagerRepository topicManagerRepositoryJavaBased,
-      AggStoreIngestionStats storeIngestionStats,
-      AggVersionedDIVStats versionedDIVStats,
-      AggVersionedStorageIngestionStats versionedStorageIngestionStats,
-      AbstractStoreBufferService storeBufferService,
-      BooleanSupplier isCurrentVersion,
-      VeniceStoreVersionConfig storeConfig,
-      DiskUsage diskUsage,
-      RocksDBMemoryStats rocksDBMemoryStats,
-      AggKafkaConsumerService kafkaConsumerService,
-      VeniceServerConfig serverConfig,
-      int errorPartitionId,
-      ExecutorService cacheWarmingThreadPool,
-      long startReportingReadyToServeTimestamp,
-      InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer,
-      boolean isIsolatedIngestion,
-      Optional<ObjectCacheBackend> cacheBackend,
-      boolean isDaVinciClient) {
-    this.readCycleDelayMs = storeConfig.getKafkaReadCycleDelayMs();
-    this.emptyPollSleepMs = storeConfig.getKafkaEmptyPollSleepMs();
-    this.databaseSyncBytesIntervalForTransactionalMode = storeConfig.getDatabaseSyncBytesIntervalForTransactionalMode();
-    this.databaseSyncBytesIntervalForDeferredWriteMode = storeConfig.getDatabaseSyncBytesIntervalForDeferredWriteMode();
-    this.factory = consumerFactory;
-    this.kafkaProps = kafkaConsumerProperties;
-    this.storageEngineRepository = storageEngineRepository;
-    this.storageMetadataService = storageMetadataService;
-    this.bandwidthThrottler = bandwidthThrottler;
-    this.recordsThrottler = recordsThrottler;
-    this.unorderedBandwidthThrottler = unorderedBandwidthThrottler;
-    this.unorderedRecordsThrottler = unorderedRecordsThrottler;
-    this.storeRepository = storeRepository;
-    this.schemaRepository = schemaRepository;
-    this.kafkaVersionTopic = storeConfig.getStoreVersionName();
-    this.storeName = Version.parseStoreFromKafkaTopicName(kafkaVersionTopic);
-    this.versionNumber = Version.parseVersionFromKafkaTopicName(kafkaVersionTopic);
-    this.availableSchemaIds = new HashSet<>();
-    this.deserializedSchemaIds = new HashSet<>();
-    this.consumerActionsQueue = new PriorityBlockingQueue<>(CONSUMER_ACTION_QUEUE_INIT_CAPACITY);
-    this.consumerMap = new VeniceConcurrentHashMap<>();
-    this.kafkaClusterBasedRecordThrottler = kafkaClusterBasedRecordThrottler;
-
-    // partitionConsumptionStateMap could be accessed by multiple threads: consumption thread and the thread handling kill message
-    this.partitionConsumptionStateMap = new VeniceConcurrentHashMap<>();
-
-    // Could be accessed from multiple threads since there are multiple worker threads.
-    this.kafkaDataIntegrityValidator = new KafkaDataIntegrityValidator(this.kafkaVersionTopic);
-    this.consumerTaskId = String.format(CONSUMER_TASK_ID_FORMAT, kafkaVersionTopic);
-    this.topicManagerRepository = topicManagerRepository;
-    this.topicManagerRepositoryJavaBased = topicManagerRepositoryJavaBased;
-    this.cachedKafkaMetadataGetter = new CachedKafkaMetadataGetter(storeConfig.getTopicOffsetCheckIntervalMs());
-
-    this.storeIngestionStats = storeIngestionStats;
-    this.versionedDIVStats = versionedDIVStats;
-    this.versionedStorageIngestionStats = versionedStorageIngestionStats;
-    this.isRunning = new AtomicBoolean(true);
-    this.emitMetrics = new AtomicBoolean(true);
-
-    this.storeBufferService = storeBufferService;
-    this.isCurrentVersion = isCurrentVersion;
-    this.hybridStoreConfig = Optional.ofNullable(version.isUseVersionLevelHybridConfig() ? version.getHybridStoreConfig() : store.getHybridStoreConfig());
-    this.isIncrementalPushEnabled = version.isUseVersionLevelIncrementalPushEnabled() ? version.isIncrementalPushEnabled() : store.isIncrementalPushEnabled();
-    this.incrementalPushPolicy = version.getIncrementalPushPolicy();
-
-    this.divErrorMetricCallback = Optional.of(e -> versionedDIVStats.recordException(storeName, versionNumber, e));
-
-    this.diskUsage = diskUsage;
-
-    this.rocksDBMemoryStats = Optional.ofNullable(
-        storageEngineRepository.hasLocalStorageEngine(kafkaVersionTopic)
-            && storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic).getType().equals(PersistenceType.ROCKS_DB) ?
-            rocksDBMemoryStats : null
-    );
-
-    this.readOnlyForBatchOnlyStoreEnabled = storeConfig.isReadOnlyForBatchOnlyStoreEnabled();
-
-    this.serverConfig = serverConfig;
-
-    this.defaultReadyToServeChecker = getDefaultReadyToServeChecker();
-
-    this.hybridQuotaEnforcer = Optional.empty();
-
-    this.subscribedPartitionToSize = Optional.empty();
-
-    this.aggKafkaConsumerService = kafkaConsumerService;
-
-    this.errorPartitionId = errorPartitionId;
-    this.cacheWarmingThreadPool = cacheWarmingThreadPool;
-    this.startReportingReadyToServeTimestamp = startReportingReadyToServeTimestamp;
-
-    this.isWriteComputationEnabled = store.isWriteComputationEnabled();
-
-    buildRocksDBMemoryEnforcer();
-
-    this.partitionStateSerializer = partitionStateSerializer;
-
-    this.suppressLiveUpdates = serverConfig.freezeIngestionIfReadyToServeOrLocalDataExists();
-
-    /*
-     * The reason to use a different field name here is that the naming convention will be consistent with RocksDB.
-     */
-    this.disableAutoCompactionForSamzaReprocessingJob = !serverConfig.isEnableAutoCompactionForSamzaReprocessingJob();
-
-    this.storeVersionPartitionCount = version.getPartitionCount();
-
-    long pushTimeoutInMs;
-    try {
-      pushTimeoutInMs = HOURS.toMillis(storeRepository.getStoreOrThrow(storeName).getBootstrapToOnlineTimeoutInHours());
-    } catch (Exception e) {
-      logger.warn("Error when getting bootstrap to online timeout config for store " + storeName
-          + ". Will use default timeout threshold which is 24 hours", e);
-      pushTimeoutInMs = HOURS.toMillis(Store.BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS);
-    }
-    this.bootstrapTimeoutInMs = pushTimeoutInMs;
-    this.isIsolatedIngestion = isIsolatedIngestion;
-
-    PartitionerConfig partitionerConfig = version.getPartitionerConfig();
-    if (partitionerConfig == null) {
-      this.venicePartitioner = new DefaultVenicePartitioner();
-      this.amplificationFactor = 1;
-    } else {
-      this.venicePartitioner = PartitionUtils.getVenicePartitioner(partitionerConfig);
-      this.amplificationFactor = partitionerConfig.getAmplificationFactor();
-    }
-
-    this.subPartitionCount = storeVersionPartitionCount * amplificationFactor;
-    this.reportStatusAdapter = new ReportStatusAdapter(new IngestionNotificationDispatcher(notifiers, kafkaVersionTopic, isCurrentVersion));
-    this.amplificationAdapter = new AmplificationAdapter(amplificationFactor);
-    this.cacheBackend = cacheBackend;
-    this.localKafkaServer = this.kafkaProps.getProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG);
-    this.isDaVinciClient = isDaVinciClient;
     this.isActiveActiveReplicationEnabled = version.isActiveActiveReplicationEnabled();
     this.offsetLagDeltaRelaxEnabled = serverConfig.getOffsetLagDeltaRelaxFactorForFastOnlineTransitionInRestart() > 0;
     this.ingestionCheckpointDuringGracefulShutdownEnabled = serverConfig.isServerIngestionCheckpointDuringGracefulShutdownEnabled();
@@ -899,16 +714,21 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
 
     int partitionId = partitionConsumptionState.getPartition();
-    boolean lagIsAcceptable = false;
+    boolean isLagAcceptable = false;
 
     if (!hybridStoreConfig.isPresent()) {
-    /**
-     * In theory, it will be 1 offset ahead of the current offset since getOffset returns the next available offset.
-     * Currently, we make it a sloppy in case Kafka topic have duplicate messages.
-     * TODO: find a better solution
-     */
-      lagIsAcceptable = cachedKafkaMetadataGetter.getOffset(localKafkaServer, kafkaVersionTopic, partitionId) <=
-        partitionConsumptionState.getLatestProcessedVersionTopicOffset() + SLOPPY_OFFSET_CATCHUP_THRESHOLD;
+      /**
+       * In theory, it will be 1 offset ahead of the current offset since getOffset returns the next available offset.
+       * Currently, we make it a sloppy in case Kafka topic have duplicate messages.
+       * TODO: find a better solution
+       */
+      final long versionTopicPartitionOffset = cachedKafkaMetadataGetter.getOffset(
+          getTopicManager(localKafkaServer),
+          kafkaVersionTopic,
+          partitionId
+      );
+      isLagAcceptable =
+          versionTopicPartitionOffset <= partitionConsumptionState.getLatestProcessedVersionTopicOffset() + SLOPPY_OFFSET_CATCHUP_THRESHOLD;
     } else {
       // Looks like none of the short-circuitry fired, so we need to measure lag!
       long offsetThreshold = hybridStoreConfig.get().getOffsetLagThresholdToGoOnline();
@@ -924,7 +744,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         long lag = measureHybridOffsetLag(partitionConsumptionState, shouldLogLag);
         boolean lagging = lag > offsetThreshold;
 
-        lagIsAcceptable = !lagging;
+        isLagAcceptable = !lagging;
 
         if (shouldLogLag) {
           logger.info(String.format("%s [Offset lag] partition %d is %slagging. Lag: [%d] %s Threshold [%d]", consumerTaskId,
@@ -991,14 +811,18 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             lagMeasurementTopic = realTimeTopic;
           }
 
-          if (!cachedKafkaMetadataGetter.containsTopic(lagMeasurementKafkaUrl, lagMeasurementTopic)) {
+          if (!cachedKafkaMetadataGetter.containsTopic(getTopicManager(lagMeasurementKafkaUrl), lagMeasurementTopic)) {
             timestampLagIsAcceptable = true;
             if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msgIdentifier)) {
               logger.info(String.format("%s [Time lag] Topic %s doesn't exist; ignoring time lag.", consumerTaskId, lagMeasurementTopic));
             }
           } else {
             try {
-              long latestProducerTimestampInTopic = cachedKafkaMetadataGetter.getProducerTimestampOfLastDataMessage(lagMeasurementKafkaUrl, lagMeasurementTopic, partitionId);
+              long latestProducerTimestampInTopic = cachedKafkaMetadataGetter.getProducerTimestampOfLastDataMessage(
+                  getTopicManager(lagMeasurementKafkaUrl),
+                  lagMeasurementTopic,
+                  partitionId
+              );
               if (latestProducerTimestampInTopic < 0 || latestProducerTimestampInTopic <= latestConsumedProducerTimestamp) {
                 timestampLagIsAcceptable = true;
                 if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msgIdentifier)) {
@@ -1031,14 +855,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           /**
            * If both threshold configs are on, both both offset lag and time lag must be within thresholds before online.
            */
-          lagIsAcceptable &= timestampLagIsAcceptable;
+          isLagAcceptable &= timestampLagIsAcceptable;
         } else {
-          lagIsAcceptable = timestampLagIsAcceptable;
+          isLagAcceptable = timestampLagIsAcceptable;
         }
       }
     }
 
-    if (lagIsAcceptable) {
+    if (isLagAcceptable) {
       if (hybridStoreConfig.isPresent() && amplificationFactor != 1) {
         // mark all sub-partitions in this user-partition to avoid duplicate calculations
         for (int subPartition : PartitionUtils
@@ -1053,7 +877,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       }
     }
 
-    return lagIsAcceptable;
+    return isLagAcceptable;
   }
 
   protected abstract boolean isRealTimeBufferReplayStarted(PartitionConsumptionState partitionConsumptionState);
@@ -2614,7 +2438,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   protected void processEndOfIncrementalPush(KafkaMessageEnvelope kafkaMessageEnvelope, ControlMessage endOfIncrementalPush,
-      int partition, long upstreamOffset, PartitionConsumptionState partitionConsumptionState) {
+      PartitionConsumptionState partitionConsumptionState) {
     // TODO: it is possible that we could turn incremental store to be read-only when incremental push is done
     CharSequence endVersion = ((EndOfIncrementalPush) endOfIncrementalPush.controlMessageUnion).version;
     // Reset incremental push version
@@ -2635,8 +2459,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * offset is stale and is not updated until the very end
    */
   private void processControlMessage(KafkaMessageEnvelope kafkaMessageEnvelope, ControlMessage controlMessage, int partition, long offset,
-      PartitionConsumptionState partitionConsumptionState)
-      throws InterruptedException {
+      PartitionConsumptionState partitionConsumptionState) {
     /**
      * If leader consumes control messages from topics other than version topic, it should produce
      * them to version topic; however, START_OF_SEGMENT and END_OF_SEGMENT should not be forwarded
@@ -2668,7 +2491,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         processStartOfIncrementalPush(controlMessage, partition, offset, partitionConsumptionState);
         break;
       case END_OF_INCREMENTAL_PUSH:
-        processEndOfIncrementalPush(kafkaMessageEnvelope, controlMessage, partition, offset, partitionConsumptionState);
+        processEndOfIncrementalPush(kafkaMessageEnvelope, controlMessage, partitionConsumptionState);
         break;
       case TOPIC_SWITCH:
         processTopicSwitch(controlMessage, partition, offset, partitionConsumptionState);
@@ -2852,7 +2675,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
          * Run a dummy validation to update DIV metadata.
          */
         validator.validateMessage(consumerRecord, endOfPushReceived, true);
-        return;
       }
     } finally {
       versionedDIVStats.recordDataValidationLatencyMs(storeName, versionNumber, LatencyUtils.getLatencyInMS(startTimeForMessageValidationInNS));
@@ -3051,7 +2873,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       if (serverConfig.isSharedConsumerPoolEnabled()) {
         return aggKafkaConsumerService.getConsumer(consumerProps, this);
       } else {
-        return factory.getConsumer(consumerProps);
+        return kafkaClientFactory.getConsumer(consumerProps);
       }
     });
   }
@@ -3149,6 +2971,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      * Potentially clean the mapping from transient record map. consumedOffset may be -1 when individual chunks are getting
      * produced to drainer queue from kafka callback thread {@link LeaderFollowerStoreIngestionTask#LeaderProducerMessageCallback}
      */
+    //This flag is introduced to help write integration test to exercise code path during UPDATE message processing in
+    //{@link LeaderFollowerStoreIngestionTask#hasProducedToKafka(VeniceConsumerRecordWrapper)}. This must be always set to true except
+    //as needed in integration test.
     if (purgeTransientRecordBuffer && isTransientRecordBufferUsed() && partitionConsumptionState.isEndOfPushReceived()
         && leaderProducedRecordContext != null && leaderProducedRecordContext.getConsumedOffset() != -1) {
       PartitionConsumptionState.TransientRecord transientRecord =
@@ -3617,150 +3442,17 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   /**
-   * Since get real-time topic offset, get producer timestamp, and check topic existence are expensive, so we will only
-   * retrieve such information after the predefined ttlMs
-   */
-  protected class CachedKafkaMetadataGetter {
-    private final long ttl;
-    private final Map<KafkaMetadataCacheKey, Pair<Long, Boolean>> topicExistenceCache = new VeniceConcurrentHashMap<>();
-    private final Map<KafkaMetadataCacheKey, Pair<Long, Long>> offsetCache = new VeniceConcurrentHashMap<>();
-    private final Map<KafkaMetadataCacheKey, Pair<Long, Long>> lastProducerTimestampCache = new VeniceConcurrentHashMap<>();
-
-    CachedKafkaMetadataGetter(long timeToLiveMs) {
-      this.ttl = MILLISECONDS.toNanos(timeToLiveMs);
-    }
-
-    /**
-     * @return Users of this method should be aware that Kafka will actually
-     * return the next available offset rather the latest used offset. Therefore,
-     * the value will be 1 offset greater than what's expected.
-     */
-    long getOffset(String sourceKafkaServer, String topicName, int partitionId) {
-      try {
-        return fetchMetadata(new KafkaMetadataCacheKey(sourceKafkaServer, topicName, Optional.of(partitionId)), offsetCache, () -> {
-          long latestOffset = getTopicManager(sourceKafkaServer).getPartitionLatestOffsetAndRetry(topicName, partitionId, 10);
-          // Get a new TTL start time after fetching fresh metadata.
-          return new Pair<>(System.nanoTime() + ttl, latestOffset);
-        });
-      } catch (TopicDoesNotExistException e) {
-        //It's observed in production that with java based admin client the topic may not be found temporarily, return error code
-        return StatsErrorCode.LAG_MEASUREMENT_FAILURE.code;
-      }
-    }
-
-    long getProducerTimestampOfLastDataMessage(String sourceKafkaServer, String topicName, int partitionId) {
-      try {
-        return fetchMetadata(new KafkaMetadataCacheKey(sourceKafkaServer, topicName, Optional.of(partitionId)), lastProducerTimestampCache, () -> {
-          long latestDataMessageProducerTimestamp = getTopicManager(sourceKafkaServer).getProducerTimestampOfLastDataRecord(topicName, partitionId, 10);
-          // Get a new TTL start time after fetching fresh metadata.
-          return new Pair<>(System.nanoTime() + ttl, latestDataMessageProducerTimestamp);
-        });
-      } catch (TopicDoesNotExistException e) {
-        //It's observed in production that with java based admin client the topic may not be found temporarily, return error code
-        return StatsErrorCode.LAG_MEASUREMENT_FAILURE.code;
-      }
-    }
-
-    boolean containsTopic(String sourceKafkaServer, String topicName) {
-      return fetchMetadata(new KafkaMetadataCacheKey(sourceKafkaServer, topicName, Optional.empty()), topicExistenceCache, () -> {
-        boolean topicExists = getTopicManager(sourceKafkaServer).containsTopic(topicName);
-        // Get a new TTL start time after fetching fresh metadata.
-        return new Pair<>(System.nanoTime() + ttl, topicExists);
-      });
-    }
-
-    /**
-     * Helper function to fetch metadata from cache or Kafka.
-     * @param key cache key: Topic name or TopicPartition
-     * @param metadataCache cache for this specific metadata
-     * @param freshMetadataSupplier function to fetch metadata from Kafka
-     * @param <K> type of the cache key
-     * @param <T> type of the metadata
-     * @return the cache value or the fresh metadata from Kafka
-     */
-    private <K, T> T fetchMetadata(K key, Map<K, Pair<Long, T>> metadataCache, Supplier<Pair<Long, T>> freshMetadataSupplier) {
-      long now = System.nanoTime();
-
-      Pair<Long, T> cachedValue = metadataCache.get(key);
-      /**
-       * The first entry of the pair is the expired time of this metadata; if the expired time is bigger than the current time,
-       * reuse the cached value.
-       */
-      if (cachedValue != null && cachedValue.getFirst() > now) {
-        return cachedValue.getSecond();
-      }
-
-      cachedValue = metadataCache.compute(key, (k, oldValue) -> {
-        if (oldValue != null && oldValue.getFirst() > now) {
-          return oldValue;
-        }
-        return freshMetadataSupplier.get();
-      });
-      return cachedValue.getSecond();
-    }
-
-    private class KafkaMetadataCacheKey {
-      String kafkaServer;
-      String topicName;
-      Optional<Integer> partitionId;
-
-      public KafkaMetadataCacheKey(String kafkaServer, String topicName, Optional<Integer> partitionId) {
-        this.kafkaServer = kafkaServer;
-        this.topicName = topicName;
-        this.partitionId = partitionId;
-      }
-
-      public String getKafkaServer() {
-        return kafkaServer;
-      }
-
-      public String getTopicName() {
-        return topicName;
-      }
-
-      public Optional<Integer> getPartitionId() {
-        return partitionId;
-      }
-
-      @Override
-      public int hashCode() {
-        int result = 1;
-        result = 31 * result + (kafkaServer == null ? 0 : kafkaServer.hashCode());
-        result = 31 * result + (topicName == null ? 0 : topicName.hashCode());
-        result = 31 * result + partitionId.hashCode();
-        return result;
-      }
-
-      @Override
-      public boolean equals(Object o) {
-        if (this == o) {
-          return true;
-        }
-        if (!(o instanceof KafkaMetadataCacheKey)) {
-          return false;
-        }
-
-        final KafkaMetadataCacheKey other = (KafkaMetadataCacheKey) o;
-        return Objects.equals(kafkaServer, other.kafkaServer)
-            && Objects.equals(topicName, other.topicName)
-            && Objects.equals(partitionId, other.partitionId);
-      }
-    }
-  }
-
-  /**
    * The function returns local or remote topic manager.
    * @param sourceKafkaServer The address of source kafka bootstrap server.
    * @return topic manager
    */
   protected TopicManager getTopicManager(String sourceKafkaServer) {
-    if (!sourceKafkaServer.equals(localKafkaServer)) {
-      // Use java-based kafka admin client to get remote topic manager
-      return topicManagerRepositoryJavaBased.getTopicManager(sourceKafkaServer);
+    if (sourceKafkaServer.equals(localKafkaServer)) {
+      // Use default kafka admin client (could be scala or java based) to get local topic manager
+      return topicManagerRepository.getTopicManager();
     }
-
-    // Use default kafka admin client (could be scala or java based) to get local topic manager
-    return topicManagerRepository.getTopicManager();
+    // Use java-based kafka admin client to get remote topic manager
+    return topicManagerRepositoryJavaBased.getTopicManager(sourceKafkaServer);
   }
 
   /**
@@ -3825,251 +3517,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   protected void updateLatestInMemoryLeaderConsumedRTOffset(PartitionConsumptionState pcs, String upstreamKafkaUrl, long offset) {
     throw new VeniceException("This API is for L/F model only!");
-  }
-
-  /**
-   * ReportStatusAdapter forwards status report requests to notificationDispatcher at USER-partition level. It will record
-   * all sub-partitions status reporting and report only once for user-partition when all the preconditions are met.
-   */
-  protected class ReportStatusAdapter {
-    private final IngestionNotificationDispatcher notificationDispatcher;
-    /*
-     * A user partition to status cleanup flag map, indicating whether we need to clean up partition report status when
-     * a sub-partition of the specified user partition is subscribed.
-     */
-    private final Map<Integer, AtomicBoolean> statusCleanupFlagMap = new VeniceConcurrentHashMap<>();
-    /*
-     * A user partition to a map from status to boolean. The internal map inidicates whether a certain ingestion status
-     * has been reported or not for the given user partition. This map is used to make sure each user partition will
-     * only report once for each status.
-     */
-    private final Map<Integer, Map<String, AtomicBoolean>> statusReportMap = new VeniceConcurrentHashMap<>();
-    /*
-     * A user partition to completable future map. COMPLETED reporting will be blocked here if corresponding future
-     * exists and is not done.
-     */
-    private final Map<Integer, CompletableFuture<Void>> completionReportLatchMap = new VeniceConcurrentHashMap<>();
-
-    public ReportStatusAdapter(IngestionNotificationDispatcher notificationDispatcher) {
-      this.notificationDispatcher = notificationDispatcher;
-    }
-
-    public void reportStarted(PartitionConsumptionState partitionConsumptionState) {
-      report(partitionConsumptionState, SubPartitionStatus.STARTED,
-          () -> notificationDispatcher.reportStarted(partitionConsumptionState));
-    }
-
-    public void reportRestarted(PartitionConsumptionState partitionConsumptionState) {
-      report(partitionConsumptionState, SubPartitionStatus.RESTARTED,
-          () -> notificationDispatcher.reportRestarted(partitionConsumptionState));
-    }
-
-    public void reportEndOfPushReceived(PartitionConsumptionState partitionConsumptionState) {
-      report(partitionConsumptionState, SubPartitionStatus.END_OF_PUSH_RECEIVED,
-          () -> notificationDispatcher.reportEndOfPushReceived(partitionConsumptionState));
-    }
-
-    public void reportStartOfBufferReplayReceived(PartitionConsumptionState partitionConsumptionState) {
-      report(partitionConsumptionState, SubPartitionStatus.START_OF_BUFFER_REPLAY_RECEIVED,
-          () -> notificationDispatcher.reportStartOfBufferReplayReceived(partitionConsumptionState));
-    }
-
-    public void reportStartOfIncrementalPushReceived(PartitionConsumptionState partitionConsumptionState, String version) {
-      report(partitionConsumptionState, SubPartitionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED, Optional.of(version),
-          () -> notificationDispatcher.reportStartOfIncrementalPushReceived(partitionConsumptionState, version));
-    }
-
-    public void reportEndOfIncrementalPushReceived(PartitionConsumptionState partitionConsumptionState, String version) {
-      report(partitionConsumptionState, SubPartitionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED, Optional.of(version),
-          () -> notificationDispatcher.reportEndOfIncrementalPushReceived(partitionConsumptionState, version));
-    }
-
-    public void reportProgress(PartitionConsumptionState partitionConsumptionState) {
-      report(partitionConsumptionState, SubPartitionStatus.PROGRESS,
-          () -> notificationDispatcher.reportProgress(partitionConsumptionState));
-    }
-
-    public void reportTopicSwitchReceived(PartitionConsumptionState partitionConsumptionState) {
-      report(partitionConsumptionState, SubPartitionStatus.TOPIC_SWITCH_RECEIVED,
-          () -> notificationDispatcher.reportTopicSwitchReceived(partitionConsumptionState));
-    }
-
-    public void reportCatchUpBaseTopicOffsetLag(PartitionConsumptionState partitionConsumptionState) {
-      report(partitionConsumptionState, SubPartitionStatus.CATCH_UP_BASE_TOPIC_OFFSET_LAG,
-          () -> notificationDispatcher.reportCatchUpBaseTopicOffsetLag(partitionConsumptionState));
-    }
-
-    public void reportCompleted(PartitionConsumptionState partitionConsumptionState) {
-      reportCompleted(partitionConsumptionState, false);
-    }
-
-    public void reportCompleted(PartitionConsumptionState partitionConsumptionState, boolean forceCompletion) {
-      if (amplificationFactor == 1) {
-        partitionConsumptionState.lagHasCaughtUp();
-        notificationDispatcher.reportCompleted(partitionConsumptionState, forceCompletion);
-        return;
-      }
-      int userPartition = partitionConsumptionState.getUserPartition();
-      // Initialize status reporting map.
-      statusReportMap.get(userPartition).putIfAbsent(SubPartitionStatus.COMPLETED.toString(), new AtomicBoolean(false));
-      for (int subPartitionId : PartitionUtils.getSubPartitions(userPartition, amplificationFactor)) {
-        if (!partitionConsumptionStateMap.containsKey(subPartitionId)
-            /*
-             * In processEndOfPush, endOfPushReceived is marked as true first then END_OF_PUSH_RECEIVED get reported.
-             * add a check in completion report to prevent a race condition that END_OF_PUSH_RECEIVED comes after completion reported.
-             */
-            || !partitionConsumptionStateMap.get(subPartitionId).hasSubPartitionStatus(SubPartitionStatus.END_OF_PUSH_RECEIVED.toString())
-            || !partitionConsumptionStateMap.get(subPartitionId).isComplete()) {
-          return;
-        }
-      }
-      /*
-       * We need to make sure END_OF_PUSH is reported first before COMPLETED can be reported, otherwise replica status
-       * could go back from COMPLETED to END_OF_PUSH_RECEIVED and version push would fail.
-       */
-      CompletableFuture<Void> latchFuture = completionReportLatchMap.get(userPartition);
-      if (latchFuture != null) {
-        try {
-          latchFuture.get();
-        } catch (InterruptedException | ExecutionException e) {
-          logger.info("Caught exception when waiting completion report condition", e);
-        }
-      }
-      // Make sure we only report once for each user partition.
-      if (statusReportMap.get(userPartition).get(SubPartitionStatus.COMPLETED.toString()).compareAndSet(false, true)) {
-        notificationDispatcher.reportCompleted(partitionConsumptionState, forceCompletion);
-        for (int subPartitionId : PartitionUtils.getSubPartitions(userPartition, amplificationFactor)) {
-          PartitionConsumptionState subPartitionConsumptionState = partitionConsumptionStateMap.get(subPartitionId);
-          if (subPartitionConsumptionState != null) {
-            subPartitionConsumptionState.lagHasCaughtUp();
-            subPartitionConsumptionState.completionReported();
-          }
-        }
-      }
-    }
-
-    // This method is called when PartitionConsumptionState are not initialized
-    public void reportError(int errorPartitionId, String message, Exception consumerEx) {
-      notificationDispatcher.reportError(errorPartitionId, message, consumerEx);
-    }
-
-    public void reportError(Collection<PartitionConsumptionState> pcsList, String message, Exception consumerEx) {
-      notificationDispatcher.reportError(getLeaderPcsList(pcsList), message, consumerEx);
-    }
-
-    private List<PartitionConsumptionState> getLeaderPcsList(Collection<PartitionConsumptionState> pcsList) {
-      List<PartitionConsumptionState> leaderPcsList = new ArrayList<>();
-      for (PartitionConsumptionState pcs : pcsList) {
-        if (pcs.getPartition() == PartitionUtils.getLeaderSubPartition(pcs.getUserPartition(), pcs.getAmplificationFactor())) {
-          leaderPcsList.add(pcs);
-        }
-      }
-      return leaderPcsList;
-    }
-
-    public void reportQuotaViolated(PartitionConsumptionState partitionConsumptionState) {
-      notificationDispatcher.reportQuotaViolated(partitionConsumptionState);
-    }
-
-    public void reportQuotaNotViolated(PartitionConsumptionState partitionConsumptionState) {
-      notificationDispatcher.reportQuotaNotViolated(partitionConsumptionState);
-    }
-
-    public void reportStopped(PartitionConsumptionState partitionConsumptionState) {
-      notificationDispatcher.reportStopped(partitionConsumptionState);
-    }
-
-    public void reportKilled(Collection<PartitionConsumptionState> pcsList, VeniceIngestionTaskKilledException ke) {
-      notificationDispatcher.reportKilled(getLeaderPcsList(pcsList), ke);
-    }
-
-    private void report(PartitionConsumptionState partitionConsumptionState, SubPartitionStatus subPartitionStatus, Runnable report) {
-      report(partitionConsumptionState, subPartitionStatus, Optional.empty(), report);
-    }
-
-    /**
-     * report status to all subPartitions of the given partitionConsumptionState's userPartition.
-     */
-    private void report(
-        PartitionConsumptionState partitionConsumptionState,
-        SubPartitionStatus subPartitionStatus,
-        Optional<String> version,
-        Runnable report) {
-      if (amplificationFactor == 1) {
-        report.run();
-        return;
-      }
-      /*
-       * Below we compose the version aware subPartition status name, so amplification factor can work properly with
-       * multiple incremental pushes.
-       */
-      String versionAwareSubPartitionStatus = subPartitionStatus.name() + (version.map(s -> "-" + s).orElse(""));
-      int userPartition = partitionConsumptionState.getUserPartition();
-      statusReportMap.get(userPartition).putIfAbsent(versionAwareSubPartitionStatus, new AtomicBoolean(false));
-      /*
-       * If we are reporting EOP, it means it is a fresh ingestion and COMPLETED reporting will have to wait until
-       * EOP has been reported.
-       */
-      if (subPartitionStatus.equals(SubPartitionStatus.END_OF_PUSH_RECEIVED)) {
-        completionReportLatchMap.putIfAbsent(userPartition, new CompletableFuture<>());
-      }
-
-      if ((subPartitionStatus.equals(SubPartitionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED)
-          || (subPartitionStatus.equals(SubPartitionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED))) &&
-          incrementalPushPolicy.equals(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME)) {
-        /*
-         * For inc push to RT policy, the control msg is only consumed by leader subPartition. We need to record the
-         * detailed subPartition status for every subPartition of the same user partition so that the below report logic
-         * can be triggered.
-         */
-        for (int subPartition : PartitionUtils.getSubPartitions(userPartition, amplificationFactor)) {
-          PartitionConsumptionState subPartitionConsumptionState = partitionConsumptionStateMap.get(subPartition);
-          subPartitionConsumptionState.recordSubPartitionStatus(versionAwareSubPartitionStatus);
-        }
-      } else {
-        partitionConsumptionState.recordSubPartitionStatus(versionAwareSubPartitionStatus);
-      }
-
-      // Check if all sub-partitions have received the same
-      for (int subPartition : PartitionUtils.getSubPartitions(userPartition, amplificationFactor)) {
-        PartitionConsumptionState consumptionState = partitionConsumptionStateMap.get(subPartition);
-        if (consumptionState == null || !consumptionState.hasSubPartitionStatus(versionAwareSubPartitionStatus)) {
-          return;
-        }
-      }
-      // Make sure we only report once for each partition status.
-      if (statusReportMap.get(userPartition).get(versionAwareSubPartitionStatus).compareAndSet(false, true)) {
-        report.run();
-        if (subPartitionStatus.equals(SubPartitionStatus.END_OF_PUSH_RECEIVED)) {
-          completionReportLatchMap.get(userPartition).complete(null);
-        }
-      }
-    }
-
-    /**
-     * This method contains the actual cleanup logic. It relies on AtomicBoolean to make sure only the first subPartition
-     * gets the chance to re-initialize user-level partition status.
-     */
-    public void initializePartitionStatus(int subPartition) {
-      int userPartition = PartitionUtils.getUserPartition(subPartition, amplificationFactor);
-      // Make sure we only initialize once for each user partition.
-      if (statusCleanupFlagMap.get(userPartition).compareAndSet(true, false)) {
-        statusReportMap.put(userPartition, new VeniceConcurrentHashMap<>());
-        /*
-         * By default, we are allowed to report COMPLETED, but if we found that EOP is being reported, we need to block
-         * completion reporting until EOP is fully reported.
-         */
-        completionReportLatchMap.remove(userPartition);
-      }
-    }
-
-    /**
-     * Set up clean up flag for the first sub-partition to re-initialize report status. This prevents re-subscription of
-     * the same topic partition reuses old reporting status.
-     */
-    public void preparePartitionStatusCleanup(int userPartition) {
-      statusCleanupFlagMap.put(userPartition, new AtomicBoolean(true));
-    }
   }
 
   public class AmplificationAdapter {
@@ -4180,7 +3627,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
          * then use this value to compare against the offset in the RT topic.
          */
         int userPartition = PartitionUtils.getUserPartition(partition, amplificationFactor);
-        lastOffsetInRealTimeTopic = cachedKafkaMetadataGetter.getOffset(sourceRealTimeTopicKafkaURL, leaderTopic, userPartition);
+        lastOffsetInRealTimeTopic = cachedKafkaMetadataGetter.getOffset(
+            getTopicManager(sourceRealTimeTopicKafkaURL),
+            leaderTopic,
+            userPartition
+        );
         latestLeaderOffset = -1;
         for (int subPartition : PartitionUtils.getSubPartitions(userPartition, amplificationFactor)) {
           long upstreamOffset = -1;
@@ -4192,7 +3643,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         }
       } else {
         latestLeaderOffset = getLeaderLatestOffset.apply(pcs, sourceRealTimeTopicKafkaURL);
-        lastOffsetInRealTimeTopic = cachedKafkaMetadataGetter.getOffset(sourceRealTimeTopicKafkaURL, leaderTopic, partition);
+        lastOffsetInRealTimeTopic = cachedKafkaMetadataGetter.getOffset(
+            getTopicManager(sourceRealTimeTopicKafkaURL),
+            leaderTopic,
+            partition
+        );
       }
       return new Pair<>(latestLeaderOffset, lastOffsetInRealTimeTopic);
     }
@@ -4206,5 +3661,4 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected boolean isTransientRecordBufferUsed() {
     return isWriteComputationEnabled;
   }
-
 }

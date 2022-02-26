@@ -35,7 +35,7 @@ public class HybridStoreQuotaEnforcementTest {
   private StoreIngestionTask storeIngestionTask;
   private ConcurrentMap<Integer, PartitionConsumptionState> partitionConsumptionStateMap;
   private AbstractStorageEngine storageEngine;
-  private StoreIngestionTask.ReportStatusAdapter reportStatusAdapter;
+  private ReportStatusAdapter reportStatusAdapter;
   private Store store;
   private Version version;
   private Map<Integer, Integer> subscribedPartitionToSize;
@@ -51,7 +51,7 @@ public class HybridStoreQuotaEnforcementTest {
   @BeforeMethod
   private void buildNewQuotaEnforcer() {
     storeIngestionTask = mock(StoreIngestionTask.class);
-    reportStatusAdapter = mock(StoreIngestionTask.ReportStatusAdapter.class);
+    reportStatusAdapter = mock(ReportStatusAdapter.class);
     partitionConsumptionStateMap = new VeniceConcurrentHashMap<>();
 
     for (int i = 1; i <= storePartitionCount; i++) {
