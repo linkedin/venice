@@ -146,6 +146,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   private final boolean quotaEnforcementEnabled;
 
+  private final boolean serverCalculateQuotaUsageBasedOnPartitionsAssignmentEnabled;
+
   private final long nodeCapacityInRcu;
 
   private final int kafkaMaxPollRecords;
@@ -306,6 +308,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     leakedResourceCleanUpIntervalInMS = TimeUnit.MINUTES.toMillis(serverProperties.getLong(SERVER_LEAKED_RESOURCE_CLEAN_UP_INTERVAL_IN_MINUTES, 10)); // 10 mins by default
     readOnlyForBatchOnlyStoreEnabled = serverProperties.getBoolean(SERVER_DB_READ_ONLY_FOR_BATCH_ONLY_STORE_ENABLED, true);
     quotaEnforcementEnabled = serverProperties.getBoolean(SERVER_QUOTA_ENFORCEMENT_ENABLED, false);
+    serverCalculateQuotaUsageBasedOnPartitionsAssignmentEnabled = serverProperties.getBoolean(SEVER_CALCULATE_QUOTA_USAGE_BASED_ON_PARTITIONS_ASSIGNMENT_ENABLED, true);
     //June 2018, venice-6 nodes were hitting ~20k keys per second. August 2018, no cluster has nodes above 3.5k keys per second
     nodeCapacityInRcu = serverProperties.getLong(SERVER_NODE_CAPACITY_RCU, 50000);
     kafkaMaxPollRecords = serverProperties.getInt(SERVER_KAFKA_MAX_POLL_RECORDS, 100);
@@ -535,6 +538,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public boolean isQuotaEnforcementEnabled() {
     return quotaEnforcementEnabled;
+  }
+
+  public boolean isServerCalculateQuotaUsageBasedOnPartitionsAssignmentEnabled() {
+    return serverCalculateQuotaUsageBasedOnPartitionsAssignmentEnabled;
   }
 
   public long getNodeCapacityInRcu(){

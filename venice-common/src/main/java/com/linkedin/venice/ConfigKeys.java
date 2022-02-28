@@ -410,6 +410,11 @@ public class ConfigKeys {
   public static final String SERVER_QUOTA_ENFORCEMENT_ENABLED = "server.quota.enforcement.enabled";
 
   /**
+   * Set to true to enable disk quota usage based on partitions assignment reported by the storage node
+   */
+  public static final String SEVER_CALCULATE_QUOTA_USAGE_BASED_ON_PARTITIONS_ASSIGNMENT_ENABLED = "server.calculate.quota.usage.based.on.partitions.assignment.enabled";
+
+  /**
    * Number of Read Capacity Units per second that the node can handle across all stores.
    */
   public static final String SERVER_NODE_CAPACITY_RCU = "server.node.capacity.rcu.per.second";
