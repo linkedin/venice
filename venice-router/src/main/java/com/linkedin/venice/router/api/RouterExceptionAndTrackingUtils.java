@@ -24,7 +24,11 @@ import static io.netty.handler.codec.http.HttpResponseStatus.*;
 
 public class RouterExceptionAndTrackingUtils {
   public enum FailureType {
-    REGULAR, SMART_RETRY_ABORTED_BY_SLOW_ROUTE, SMART_RETRY_ABORTED_BY_DELAY_CONSTRAINT, RESOURCE_NOT_FOUND
+    REGULAR,
+    SMART_RETRY_ABORTED_BY_SLOW_ROUTE,
+    SMART_RETRY_ABORTED_BY_DELAY_CONSTRAINT,
+    SMART_RETRY_ABORTED_BY_MAX_RETRY_ROUTE_LIMIT,
+    RESOURCE_NOT_FOUND
   }
 
   private static final StackTraceElement[] emptyStackTrace = new StackTraceElement[0];
@@ -138,6 +142,10 @@ public class RouterExceptionAndTrackingUtils {
         case SMART_RETRY_ABORTED_BY_DELAY_CONSTRAINT:
           if (storeName.isPresent()) {
             stats.recordDelayConstraintAbortedRetryRequest(storeName.get());
+          }
+        case SMART_RETRY_ABORTED_BY_MAX_RETRY_ROUTE_LIMIT:
+          if (storeName.isPresent()) {
+            stats.recordRetryRouteLimitAbortedRetryRequest(storeName.get());
           }
           return;
       }

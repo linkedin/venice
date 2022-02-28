@@ -264,7 +264,8 @@ public class VeniceDelegateMode extends ScatterGatherMode {
       if (!venicePath.isLongTailRetryAllowedForNewRoute()) {
         routerStats.getStatsByType(venicePath.getRequestType()).recordDisallowedRetryRequest(storeName);
         throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.of(storeName), Optional.of(venicePath.getRequestType()),
-            SERVICE_UNAVAILABLE, "The retry request aborted because there are too many retries for current request");
+            SERVICE_UNAVAILABLE, "The retry request aborted because there are too many retries for current request",
+            RouterExceptionAndTrackingUtils.FailureType.SMART_RETRY_ABORTED_BY_MAX_RETRY_ROUTE_LIMIT);
       } else {
         routerStats.getStatsByType(venicePath.getRequestType()).recordAllowedRetryRequest(storeName);
       }
