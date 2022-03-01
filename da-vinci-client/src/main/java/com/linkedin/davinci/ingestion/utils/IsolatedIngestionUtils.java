@@ -257,12 +257,13 @@ public class IsolatedIngestionUtils {
     if (lingeringIngestionProcessPid.isPresent()) {
       int pid = lingeringIngestionProcessPid.get();
       logger.info("Found lingering ingestion process ID: " + pid);
-      executeShellCommand("kill -9" + pid);
+      executeShellCommand("kill -9 " + pid);
       boolean hasLingeringProcess = true;
       while (hasLingeringProcess) {
         try {
           Thread.sleep(SHELL_COMMAND_WAIT_TIME);
-          if (!getLingeringIngestionProcessId(port).isPresent()) {
+          lingeringIngestionProcessPid = getLingeringIngestionProcessId(port);
+          if (!lingeringIngestionProcessPid.isPresent() || lingeringIngestionProcessPid.get() != pid) {
             logger.info("Lingering ingestion process on pid " + pid + " is killed.");
             hasLingeringProcess = false;
           }
@@ -308,16 +309,24 @@ public class IsolatedIngestionUtils {
       String output = IOUtils.toString(process.getInputStream());
       int exitCode = process.waitFor();
       if (exitCode != 0) {
-        logger.info("Exit code " + exitCode + " when executing shell command: " + command);
-        return "";
+        if (command.contains("kill")) {
+          throw new VeniceException("Encountered exitCode " + exitCode + " when executing shell command: " + command);
+        } else {
+          logger.info("Exit code " + exitCode + " when executing shell command: " + command);
+          return "";
+        }
       }
       Utils.closeQuietlyWithErrorLogged(process.getInputStream());
       Utils.closeQuietlyWithErrorLogged(process.getOutputStream());
       Utils.closeQuietlyWithErrorLogged(process.getErrorStream());
       return output;
     } catch (Exception e) {
-      logger.info("Encounter exception when executing shell command: " + command, e);
-      return "";
+      if (command.contains("kill")) {
+        throw new VeniceException("Encountered exception when executing shell command: " + command, e);
+      } else {
+        logger.info("Encounter exception when executing shell command: " + command, e);
+        return "";
+      }
     }
   }
 
@@ -366,7 +375,7 @@ public class IsolatedIngestionUtils {
   public static void destroyIsolatedIngestionProcessByPid(long pid) {
     String fullProcessName = executeShellCommand("ps -p " + pid + " -o command");
     if (fullProcessName.contains(IsolatedIngestionServer.class.getName())) {
-      executeShellCommand("kill -9" + pid);
+      executeShellCommand("kill -9 " + pid);
     } else {
       logger.warn("PID: " + pid + " does not belong to isolated ingestion process, will not kill the process.");
     }
