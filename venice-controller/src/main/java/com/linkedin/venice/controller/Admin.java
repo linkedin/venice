@@ -15,6 +15,7 @@ import com.linkedin.venice.helix.HelixReadOnlyZKSharedSchemaRepository;
 import com.linkedin.venice.helix.HelixReadOnlyZKSharedSystemStoreRepository;
 import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.meta.IncrementalPushPolicy;
+import com.linkedin.venice.meta.RegionPushDetails;
 import com.linkedin.venice.meta.StoreDataAudit;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
@@ -719,4 +720,8 @@ public interface Admin extends AutoCloseable, Closeable {
     Map<String, StoreDataAudit> getClusterStaleStores(String clusterName, Optional<String> regionFilter);
 
     int getStoreLargestUsedVersion(String clusterName, String storeName);
+
+    Map<String, RegionPushDetails> listStorePushInfo(String clusterName, String storeName);
+
+    RegionPushDetails getRegionPushDetails(String clusterName, String storeName);
 }

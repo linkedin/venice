@@ -284,6 +284,8 @@ public class AdminSparkServer extends AbstractVeniceService {
     httpService.get(GET_STALE_STORES_IN_CLUSTER.getPath(), storesRoutes.getStaleStoresInCluster(admin));
     httpService.get(GET_STORES_IN_CLUSTER.getPath(), storesRoutes.getStoresInCluster(admin));
     httpService.get(GET_STORE_LARGEST_USED_VERSION.getPath(), storesRoutes.getStoreLargestUsedVersion(admin));
+    httpService.get(GET_REGION_PUSH_DETAILS.getPath(), storesRoutes.getRegionPushDetails(admin));
+    httpService.get(LIST_STORE_PUSH_INFO.getPath(), storesRoutes.listStorePushInfo(admin));
 
     httpService.post(PREPARE_DATA_RECOVERY.getPath(), dataRecoveryRoutes.prepareDataRecovery(admin));
     httpService.get(IS_STORE_VERSION_READY_FOR_DATA_RECOVERY.getPath(), dataRecoveryRoutes.isStoreVersionReadyForDataRecovery(admin));

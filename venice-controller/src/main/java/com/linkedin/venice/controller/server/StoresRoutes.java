@@ -13,11 +13,13 @@ import com.linkedin.venice.controllerapi.MultiStoreTopicsResponse;
 import com.linkedin.venice.controllerapi.MultiVersionResponse;
 import com.linkedin.venice.controllerapi.OwnerResponse;
 import com.linkedin.venice.controllerapi.PartitionResponse;
+import com.linkedin.venice.controllerapi.RegionPushDetailsResponse;
 import com.linkedin.venice.controllerapi.RepushInfoResponse;
 import com.linkedin.venice.controllerapi.RepushInfo;
 import com.linkedin.venice.controllerapi.StorageEngineOverheadRatioResponse;
 import com.linkedin.venice.controllerapi.StoreComparisonInfo;
 import com.linkedin.venice.controllerapi.StoreComparisonResponse;
+import com.linkedin.venice.controllerapi.StoreHealthAuditResponse;
 import com.linkedin.venice.controllerapi.StoreMigrationResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.TrackableControllerResponse;
@@ -27,6 +29,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.kafka.TopicDoesNotExistException;
 import com.linkedin.venice.meta.IncrementalPushPolicy;
+import com.linkedin.venice.meta.RegionPushDetails;
 import com.linkedin.venice.meta.StoreDataAudit;
 import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Store;
@@ -37,6 +40,7 @@ import com.linkedin.venice.systemstore.schemas.StoreProperties;
 import com.linkedin.venice.utils.Utils;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -847,10 +851,39 @@ public class StoresRoutes extends AbstractRoute {
     return new VeniceRouteHandler<VersionResponse>(VersionResponse.class) {
       @Override
       public void internalHandle(Request request, VersionResponse veniceResponse) {
-        //AdminSparkServer.validateParams(request, GET_STORES_IN_CLUSTER.getParams(), admin);
+        AdminSparkServer.validateParams(request, GET_STORES_IN_CLUSTER.getParams(), admin);
         String cluster = request.queryParams(CLUSTER);
         String storeName = request.queryParams(NAME);
         veniceResponse.setVersion(admin.getStoreLargestUsedVersion(cluster, storeName));
+      }
+    };
+  }
+
+  public Route listStorePushInfo(Admin admin) {
+    return new VeniceRouteHandler<StoreHealthAuditResponse>(StoreHealthAuditResponse.class) {
+      @Override
+      public void internalHandle(Request request, StoreHealthAuditResponse veniceResponse) {
+        AdminSparkServer.validateParams(request, LIST_STORE_PUSH_INFO.getParams(), admin);
+        String cluster = request.queryParams(CLUSTER);
+        String store = request.queryParams(NAME);
+        Map<String, RegionPushDetails> details = admin.listStorePushInfo(cluster, store);
+
+        veniceResponse.setStoreName(store);
+        veniceResponse.setClusterName(cluster);
+        veniceResponse.setRegionPushDetails(details);
+      }
+    };
+  }
+
+  public Route getRegionPushDetails(Admin admin) {
+    return new VeniceRouteHandler<RegionPushDetailsResponse>(RegionPushDetailsResponse.class) {
+      @Override
+      public void internalHandle(Request request, RegionPushDetailsResponse veniceResponse) {
+        AdminSparkServer.validateParams(request, GET_REGION_PUSH_DETAILS.getParams(), admin);
+        String store = request.queryParams(NAME);
+        String cluster = request.queryParams(CLUSTER);
+        RegionPushDetails details = admin.getRegionPushDetails(cluster, store);
+        veniceResponse.setRegionPushDetails(details);
       }
     };
   }

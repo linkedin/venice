@@ -67,6 +67,7 @@ import com.linkedin.venice.controllerapi.MultiStoreInfoResponse;
 import com.linkedin.venice.controllerapi.MultiStoreStatusResponse;
 import com.linkedin.venice.controllerapi.NodeReplicasReadinessState;
 import com.linkedin.venice.controllerapi.ReadyForDataRecoveryResponse;
+import com.linkedin.venice.controllerapi.RegionPushDetailsResponse;
 import com.linkedin.venice.controllerapi.RepushInfo;
 import com.linkedin.venice.controllerapi.StoreComparisonInfo;
 import com.linkedin.venice.controllerapi.StoreResponse;
@@ -94,6 +95,7 @@ import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
+import com.linkedin.venice.meta.RegionPushDetails;
 import com.linkedin.venice.meta.RoutersClusterConfig;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataAudit;
@@ -3152,6 +3154,33 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   public List<StoreInfo> getClusterStores(String clusterName) { throw new UnsupportedOperationException("This function has no implementation."); }
+
+  @Override
+  public RegionPushDetails getRegionPushDetails(String clusterName, String storeName) { throw new UnsupportedOperationException("This function has no implementation."); }
+
+  /**
+   * This function will look for a single store, given a name and cluster name, and return information about the current
+   * push jobs for that store across all regions.
+   */
+
+  @Override
+  public Map<String, RegionPushDetails> listStorePushInfo(String clusterName, String storeName) {
+    Map<String, RegionPushDetails> retMap = new HashMap<>();
+
+    try {
+      Map<String, ControllerClient> controllerClientMap = getVeniceHelixAdmin().getControllerClientMap(clusterName);
+      for (Map.Entry<String, ControllerClient> entry : controllerClientMap.entrySet()) {
+        RegionPushDetailsResponse details = entry.getValue().getRegionPushDetails(storeName, clusterName);
+        if (details != null && details.getRegionPushDetails() != null) {
+          retMap.put(entry.getKey(), details.getRegionPushDetails());
+          retMap.get(entry.getKey()).setRegionName(entry.getKey());
+        }
+      }
+    } catch (Exception e) {
+      throw new VeniceException("Something went wrong trying to get store push info. ", e);
+    }
+    return retMap;
+  }
 
   /**
    * This function will check whether there are still resources left for the requested store in the requested

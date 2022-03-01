@@ -27,6 +27,7 @@ import com.linkedin.venice.controllerapi.PartitionResponse;
 import com.linkedin.venice.controllerapi.RoutersClusterConfigResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StoreComparisonResponse;
+import com.linkedin.venice.controllerapi.StoreHealthAuditResponse;
 import com.linkedin.venice.controllerapi.StoreMigrationResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.TrackableControllerResponse;
@@ -427,6 +428,9 @@ public class AdminTool {
           break;
         case REPLICATE_META_DATA:
           copyOverStoresMetadata(cmd);
+          break;
+        case LIST_STORE_PUSH_INFO:
+          listStorePushInfo(cmd);
           break;
         default:
           StringJoiner availableCommands = new StringJoiner(", ");
@@ -1940,6 +1944,15 @@ public class AdminTool {
     Optional<String> regionsFilterParam = Optional.ofNullable(getOptionalArgument(cmd, Arg.REGIONS_FILTER));
     ClusterStaleDataAuditResponse
         response = controllerClient.getClusterStaleStores(clusterParam, urlParam, regionsFilterParam);
+    printObject(response);
+  }
+
+  private static void listStorePushInfo(CommandLine cmd) {
+    String urlParam = getRequiredArgument(cmd, Arg.URL);
+    String clusterParam = getRequiredArgument(cmd, Arg.CLUSTER);
+    String storeParam = getRequiredArgument(cmd, Arg.STORE);
+
+    StoreHealthAuditResponse response = controllerClient.listStorePushInfo(clusterParam, urlParam, storeParam);
     printObject(response);
   }
 

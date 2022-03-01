@@ -61,6 +61,7 @@ import com.linkedin.venice.helix.HelixStoreGraveyard;
 import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.helix.ResourceAssignment;
 import com.linkedin.venice.helix.SafeHelixManager;
+import com.linkedin.venice.helix.VeniceOfflinePushMonitorAccessor;
 import com.linkedin.venice.helix.ZkClientFactory;
 import com.linkedin.venice.helix.ZkRoutersClusterManager;
 import com.linkedin.venice.helix.ZkStoreConfigAccessor;
@@ -89,6 +90,7 @@ import com.linkedin.venice.meta.PartitionerConfigImpl;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.ReadWriteSchemaRepository;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
+import com.linkedin.venice.meta.RegionPushDetails;
 import com.linkedin.venice.meta.RoutersClusterConfig;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.Store;
@@ -114,6 +116,7 @@ import com.linkedin.venice.pushmonitor.PartitionStatus;
 import com.linkedin.venice.pushmonitor.PushMonitor;
 import com.linkedin.venice.pushmonitor.PushMonitorDelegator;
 import com.linkedin.venice.pushmonitor.PushStatusDecider;
+import com.linkedin.venice.pushmonitor.StatusSnapshot;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreRecordDeleter;
 import com.linkedin.venice.replication.LeaderStorageNodeReplicator;
@@ -157,8 +160,10 @@ import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import io.tehuti.metrics.MetricsRepository;
 import java.nio.ByteBuffer;
+import java.sql.Timestamp;
 import java.security.cert.X509Certificate;
 import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -192,6 +197,7 @@ import org.apache.helix.controller.rebalancer.strategy.CrushRebalanceStrategy;
 import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.helix.manager.zk.ZKHelixManager;
 import org.apache.helix.manager.zk.ZNRecordSerializer;
+import org.apache.helix.manager.zk.ZkBaseDataAccessor;
 import org.apache.helix.model.ClusterConfig;
 import org.apache.helix.model.ExternalView;
 import org.apache.helix.model.HelixConfigScope;
@@ -5418,6 +5424,42 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     @Override
     public Map<String, StoreDataAudit> getClusterStaleStores(String clusterName, Optional<String> regionFilter) {
         throw new UnsupportedOperationException("This function has not been implemented.");
+    }
+
+    @Override
+    public Map<String, RegionPushDetails> listStorePushInfo(String clusterName, String storeName) {
+      throw new UnsupportedOperationException("This function has not been implemented.");
+    }
+
+    @Override
+    public RegionPushDetails getRegionPushDetails(String clusterName, String storeName) {
+      RegionPushDetails ret = new RegionPushDetails();
+      StoreInfo s = StoreInfo.fromStore(getStore(clusterName, storeName));
+
+      VeniceOfflinePushMonitorAccessor accessor = new VeniceOfflinePushMonitorAccessor(clusterName, getZkClient(), getAdapterSerializer());
+
+      Optional<Version> currentVersion = s.getVersion(s.getCurrentVersion());
+      String kafkaTopic = currentVersion.isPresent() ? currentVersion.get().kafkaTopicName() : "";
+      OfflinePushStatus zkData = accessor.getOfflinePushStatusAndItsPartitionStatuses(kafkaTopic);
+
+      for (StatusSnapshot status : zkData.getStatusHistory()) {
+        logger.error(status.getTime());
+        LocalDateTime timestamp = LocalDateTime.parse(status.getTime());
+        if (status.getStatus() == ExecutionStatus.COMPLETED && (ret.getPushEndTimestamp() == null || timestamp.compareTo(LocalDateTime.parse(ret.getPushEndTimestamp())) > 0)) {
+          ret.setPushEndTimestamp(timestamp.toString());
+        }
+        else if (status.getStatus() == ExecutionStatus.STARTED && (ret.getPushStartTimestamp()) == null || timestamp.compareTo(LocalDateTime.parse(ret.getPushStartTimestamp())) <= 0) {
+          ret.setPushStartTimestamp(timestamp.toString());
+        }
+        else if (status.getStatus() == ExecutionStatus.ERROR) {
+          ret.setErrorMessage(accessor.getOfflinePushStatusAndItsPartitionStatuses(kafkaTopic).getStatusDetails());
+          ret.setLatestFailedPush(timestamp.toString());
+        }
+      }
+      for (Version v : s.getVersions())
+        ret.getVersions().add(v.getNumber());
+      ret.setCurrentVersion(s.getCurrentVersion());
+      return ret;
     }
 
     @Override
