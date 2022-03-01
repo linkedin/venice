@@ -5,10 +5,14 @@ import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.davinci.client.DaVinciConfig;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.D2.D2ClientUtils;
+import com.linkedin.venice.client.store.AvroGenericStoreClient;
+import com.linkedin.venice.client.store.ClientConfig;
+import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.init.ClusterLeaderInitializationRoutine;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
@@ -23,6 +27,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
+import com.linkedin.venice.pushstatushelper.PushStatusStoreRecordDeleter;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.PropertyBuilder;
@@ -41,6 +46,7 @@ import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.common.PushStatusStoreUtils.*;
 import static com.linkedin.venice.hadoop.VenicePushJob.*;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.*;
 import static com.linkedin.venice.meta.IngestionMode.*;
@@ -50,6 +56,9 @@ import static org.testng.Assert.*;
 
 public class PushStatusStoreTest {
   private static final int TEST_TIMEOUT = 60_000; // ms
+  private static final int NUMBER_OF_SERVERS = 2;
+  private static final int PARTITION_COUNT = 2;
+  private static final int REPLICATION_FACTOR = 2;
 
   private VeniceClusterWrapper cluster;
   private ControllerClient controllerClient;
@@ -63,12 +72,14 @@ public class PushStatusStoreTest {
   public void setUp() {
     Properties extraProperties = new Properties();
     extraProperties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1L));
+    // all tests in this class will be reading incremental push status from push status store
+    extraProperties.setProperty(USE_PUSH_STATUS_STORE_FOR_INCREMENTAL_PUSH, String.valueOf(true));
     Utils.thisIsLocalhost();
     cluster = ServiceFactory.getVeniceCluster(
         1,
+        NUMBER_OF_SERVERS,
         1,
-        1,
-        1,
+        REPLICATION_FACTOR,
         10000,
         false,
         false,
@@ -102,7 +113,7 @@ public class PushStatusStoreTest {
     TestUtils.assertCommand(controllerClient.updateStore(storeName, new UpdateStoreQueryParams()
         .setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
         .setLeaderFollowerModel(true)
-        .setPartitionCount(2)
+        .setPartitionCount(PARTITION_COUNT)
         .setAmplificationFactor(1)
         .setIncrementalPushEnabled(true)));
     String daVinciPushStatusSystemStoreName = VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(storeName);
@@ -165,30 +176,87 @@ public class PushStatusStoreTest {
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testIncrementalPushStatusStoredInPushStatusStore() throws Exception {
-    VeniceProperties backendConfig = getBackendConfigBuilder().build();
     Properties h2vProperties = getH2VProperties();
     runH2V(h2vProperties, 1, cluster);
-    try (DaVinciClient daVinciClient = ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster, new DaVinciConfig(), backendConfig)) {
-      daVinciClient.subscribeAll().get();
+    try (AvroGenericStoreClient storeClient = ClientFactory.getAndStartGenericAvroClient(
+        ClientConfig.defaultGenericClientConfig(storeName)
+            .setD2Client(d2Client)
+            .setD2ServiceName(D2TestUtils.DEFAULT_TEST_SERVICE_NAME))) {
       h2vProperties = getH2VProperties();
       h2vProperties.setProperty(INCREMENTAL_PUSH, "true");
-
       int expectedVersionNumber = 1;
       long h2vStart = System.currentTimeMillis();
       String jobName = Utils.getUniqueString("batch-job-" + expectedVersionNumber);
-
       try (VenicePushJob job = new VenicePushJob(jobName, h2vProperties)) {
         job.run();
-        String storeName = (String) h2vProperties.get(VenicePushJob.VENICE_STORE_NAME_PROP);
         cluster.waitVersion(storeName, expectedVersionNumber, controllerClient);
         logger.info("**TIME** H2V" + expectedVersionNumber + " takes " + (System.currentTimeMillis() - h2vStart));
-        assertEquals(daVinciClient.get(1).get().toString(), "name 1");
+        assertEquals(storeClient.get(1).get().toString(), "name 1");
         Optional<String> incPushVersion = job.getIncrementalPushVersion();
-        Map<CharSequence, Integer> result = reader.getPartitionStatus(storeName, 1, 0, incPushVersion, Optional.of("SERVER_SIDE_INCREMENTAL_PUSH_STATUS"));
-        assertNotEquals(result.size(), 0);
-        for (Integer status : result.values()) {
-          assertTrue(status == ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED.getValue() || status == ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED.getValue());
+        for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
+          Map<CharSequence, Integer> statuses = reader.getPartitionStatus(
+              storeName, 1, partitionId, incPushVersion, Optional.of(SERVER_INCREMENTAL_PUSH_PREFIX));
+          assertNotNull(statuses);
+          assertEquals(statuses.size(), REPLICATION_FACTOR);
+          for (Integer status : statuses.values()) {
+            assertTrue(ExecutionStatus.isIncrementalPushStatus(status));
+          }
         }
+      }
+    }
+  }
+
+  /* The following test is targeted at verifying the behavior of controller when queryJobStatus is invoked for inc-push */
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testIncrementalPushStatusReadingFromPushStatusStoreInController() throws Exception {
+    Properties h2vProperties = getH2VProperties();
+    runH2V(h2vProperties, 1, cluster);
+    try (AvroGenericStoreClient storeClient = ClientFactory.getAndStartGenericAvroClient(
+        ClientConfig.defaultGenericClientConfig(storeName).setD2Client(d2Client)
+            .setD2ServiceName(D2TestUtils.DEFAULT_TEST_SERVICE_NAME))) {
+      h2vProperties.setProperty(INCREMENTAL_PUSH, "true");
+      int expectedVersionNumber = 1;
+      long h2vStart = System.currentTimeMillis();
+      String jobName = Utils.getUniqueString("batch-job-" + expectedVersionNumber);
+      try (VenicePushJob job = new VenicePushJob(jobName, h2vProperties)) {
+        job.run();
+        cluster.waitVersion(storeName, expectedVersionNumber, controllerClient);
+        logger.info("**TIME** H2V" + expectedVersionNumber + " takes " + (System.currentTimeMillis() - h2vStart));
+        assertEquals(storeClient.get(1).get().toString(), "name 1");
+        Optional<String> incPushVersion = job.getIncrementalPushVersion();
+        // verify partition replicas have reported their status to the push status store
+        Map<Integer, Map<CharSequence, Integer>> pushStatusMap = reader.getPartitionStatuses(storeName, 1, incPushVersion.get(), 2);
+        assertNotNull(pushStatusMap, "Server incremental push status cannot be null");
+        assertEquals(pushStatusMap.size(), PARTITION_COUNT, "Incremental push status of some partitions is missing");
+        for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
+          Map<CharSequence, Integer> pushStatus = pushStatusMap.get(partitionId);
+          assertNotNull(pushStatus, "Push status of a partition is missing");
+          for (Integer status : pushStatus.values()) {
+            assertEquals(status.intValue(), ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED.getValue());
+          }
+        }
+
+        // expect NOT_CREATED when all non-existing incremental push version is used to query the status
+        JobStatusQueryResponse response = controllerClient.queryJobStatus(job.getKafkaTopic(), Optional.of("randomIPVersion"));
+        assertEquals(response.getStatus(), ExecutionStatus.NOT_CREATED.name());
+
+        // verify that controller responds with EOIP when all partitions have sufficient replicas with EOIP
+        response = controllerClient.queryJobStatus(job.getKafkaTopic(), job.getIncrementalPushVersion());
+        assertEquals(response.getStatus(), ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED.name());
+
+        PushStatusStoreRecordDeleter statusStoreDeleter = new PushStatusStoreRecordDeleter(
+            cluster.getMasterVeniceController().getVeniceHelixAdmin().getVeniceWriterFactory());
+
+        // after deleting the the inc push status belonging to just one partition we should expect
+        // SOIP from the controller since other partition has replicas with EOIP status
+        statusStoreDeleter.deletePartitionIncrementalPushStatus(storeName, 1, incPushVersion.get(), 1);
+        response = controllerClient.queryJobStatus(job.getKafkaTopic(), job.getIncrementalPushVersion());
+        assertEquals(response.getStatus(), ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED.name());
+
+        // expect NOT_CREATED when statuses of all partitions are not available in the push status store
+        statusStoreDeleter.deletePartitionIncrementalPushStatus(storeName, 1, incPushVersion.get(), 0);
+        response = controllerClient.queryJobStatus(job.getKafkaTopic(), job.getIncrementalPushVersion());
+        assertEquals(response.getStatus(), ExecutionStatus.NOT_CREATED.name());
       }
     }
   }

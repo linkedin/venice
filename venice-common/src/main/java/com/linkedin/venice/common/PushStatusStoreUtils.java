@@ -13,6 +13,8 @@ public class PushStatusStoreUtils {
     HEARTBEAT, FULL_PUSH, INCREMENTAL_PUSH, SERVER_INCREMENTAL_PUSH;
   }
 
+  public static final String SERVER_INCREMENTAL_PUSH_PREFIX = "SERVER_SIDE_INCREMENTAL_PUSH_STATUS";
+
   public static PushStatusKey getHeartbeatKey(String instanceName) {
     PushStatusKey pushStatusKey = new PushStatusKey();
     pushStatusKey.keyStrings = Arrays.asList(instanceName);
@@ -52,8 +54,14 @@ public class PushStatusStoreUtils {
   public static PushStatusKey getServerIncrementalPushKey(int version, int partitionId,
       String incrementalPushVersion, String incrementalPushPrefix) {
     PushStatusKey pushStatusKey = new PushStatusKey();
+    /* upon modifying the order of keyStrings in PushStatusKey, please update getPartitionIdFromServerIncrementalPushKey()
+    to reflect an updated index of partitionId in keyStrings list. */
     pushStatusKey.keyStrings = Arrays.asList(version, partitionId, incrementalPushVersion, incrementalPushPrefix);
     pushStatusKey.messageType = PushStatusKeyType.SERVER_INCREMENTAL_PUSH.ordinal();
     return pushStatusKey;
+  }
+
+  public static int getPartitionIdFromServerIncrementalPushKey(PushStatusKey key) {
+    return (int) key.keyStrings.get(1);
   }
 }

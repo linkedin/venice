@@ -4,6 +4,7 @@ import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PartitionAssignment;
+import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
 import com.linkedin.venice.utils.Pair;
 import java.util.List;
 import java.util.Map;
@@ -65,16 +66,32 @@ public interface PushMonitor {
   OfflinePushStatus getOfflinePushOrThrow(String topic);
 
   /**
-   *
-   * @param incrementalPushVersion if this is presented, monitor will return specific status regarding this
-   *                               incremental push. (The status can be only either
-   *                               {@link ExecutionStatus#START_OF_INCREMENTAL_PUSH_RECEIVED} or
-   *                               {@link ExecutionStatus#END_OF_INCREMENTAL_PUSH_RECEIVED})
    * @return return the current status. If it's in error, some debugging info is also presented.
    */
   Pair<ExecutionStatus, Optional<String>> getPushStatusAndDetails(String topic);
 
-  Pair<ExecutionStatus, Optional<String>> getIncrementalPushStatusAndDetails(String topic, String incrementalPushVersion, HelixCustomizedViewOfflinePushRepository customizedViewOfflinePushRepository);
+  /**
+   * Returns incremental push's status read from (ZooKeeper backed) OfflinePushStatus
+   */
+  Pair<ExecutionStatus, Optional<String>> getIncrementalPushStatusAndDetails(String kafkaTopic,
+      String incrementalPushVersion,
+      HelixCustomizedViewOfflinePushRepository customizedViewOfflinePushRepository);
+
+  /**
+   * Returns incremental push's status read from push status store
+   */
+  Pair<ExecutionStatus, Optional<String>> getIncrementalPushStatusFromPushStatusStore(String kafkaTopic,
+      String incrementalPushVersion,
+      HelixCustomizedViewOfflinePushRepository customizedViewRepo,
+      PushStatusStoreReader pushStatusStoreReader);
+
+  /**
+   * Check if there are any ongoing incremental push for the given version topic.
+   * @param kafkaTopic to check for ongoing incremental push
+   * @return ongoing incremental push versions if there are any, otherwise an empty set is returned.
+   */
+  Set<String> getOngoingIncrementalPushVersions(String kafkaTopic,
+      HelixCustomizedViewOfflinePushRepository customizedViewRepo);
 
   /**
    * Find all ongoing pushes then return the topics associated to those pushes.
@@ -117,11 +134,4 @@ public interface PushMonitor {
   void recordPushPreparationDuration(String topic, long offlinePushWaitTimeInSecond);
 
   List<Instance> getReadyToServeInstances(PartitionAssignment partitionAssignment, int partitionId);
-
-  /**
-   * Check if there are any ongoing incremental push for the given version topic.
-   * @param topic to check for ongoing incremental push
-   * @return ongoing incremental push versions if there are any, otherwise an empty set is returned.
-   */
-  Set<String> getOngoingIncrementalPushVersions(String topic, HelixCustomizedViewOfflinePushRepository customizedViewOfflinePushRepository);
 }

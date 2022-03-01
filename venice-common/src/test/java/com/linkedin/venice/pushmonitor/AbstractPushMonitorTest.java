@@ -17,6 +17,7 @@ import com.linkedin.venice.meta.StoreCleaner;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.VersionStatus;
+import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
 import com.linkedin.venice.replication.TopicReplicator;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
@@ -37,6 +38,7 @@ import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
+import static com.linkedin.venice.pushmonitor.ExecutionStatus.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
@@ -273,73 +275,210 @@ public abstract class AbstractPushMonitorTest {
     verify(mockPushHealthStats, times(1)).recordFailedPush(eq(getStoreName()), anyLong());
   }
 
-  @Test
-  public void testQueryingIncrementalPushJobStatus() {
-    String topic = getTopic();
-    String incrementalPushVersion = String.valueOf(System.currentTimeMillis());
-    HelixCustomizedViewOfflinePushRepository customizedView = Mockito.mock(HelixCustomizedViewOfflinePushRepository.class);
-    Mockito.when(customizedView.getNumberOfReplicasInCompletedState(eq(topic), anyInt())).thenReturn(replicationFactor);
+  private OfflinePushStatus offlinePushStatusMock;
+  private PushStatusStoreReader statusStoreReaderMock;
+  private HelixCustomizedViewOfflinePushRepository customizedViewMock;
+  private final String incrementalPushVersion = "IncPush_42";
+  private final int partitionCountForIncPushTests = 3;
+  private final int replicationFactorForIncPushTests = 3;
 
-    monitor.startMonitorOfflinePush(topic, numberOfPartition, replicationFactor,
-        OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
+  private void prepareForIncrementalPushStatusTest(Map<Integer, Map<CharSequence, Integer>> pushStatusMap,
+      Map<Integer, Integer> completedStatusMap) {
+    statusStoreReaderMock = mock(PushStatusStoreReader.class);
+    customizedViewMock = mock(HelixCustomizedViewOfflinePushRepository.class);
+    offlinePushStatusMock = mock(OfflinePushStatus.class);
 
-    //prepare new partition status
-    List<ReplicaStatus> replicaStatuses = new ArrayList<>();
-    for (int i = 0; i < replicationFactor; i++) {
-      ReplicaStatus replicaStatus = new ReplicaStatus("test" + i);
-      replicaStatus.updateStatus(ExecutionStatus.STARTED);
-      replicaStatus.updateStatus(ExecutionStatus.COMPLETED);
-      replicaStatuses.add(replicaStatus);
+    when(offlinePushStatusMock.getNumberOfPartition()).thenReturn(partitionCountForIncPushTests);
+    when(offlinePushStatusMock.getReplicationFactor()).thenReturn(replicationFactorForIncPushTests);
+    when(statusStoreReaderMock.getPartitionStatuses(getStoreName(), Version.parseVersionFromVersionTopicName(getTopic()),
+        incrementalPushVersion, partitionCountForIncPushTests)).thenReturn(pushStatusMap);
+    when(customizedViewMock.getCompletedStatusReplicas(getTopic(), partitionCountForIncPushTests)).thenReturn(completedStatusMap);
+  }
+
+  /* Tests mutate/change count of completed status replicas to test various scenarios */
+  private Map<Integer, Integer> getCompletedStatusData() {
+    Map<Integer, Integer> completedStatusMap = new HashMap<>();
+    for (int partitionId = 0; partitionId < partitionCountForIncPushTests; partitionId++) {
+      completedStatusMap.put(partitionId, replicationFactorForIncPushTests);
+    }
+    return completedStatusMap;
+  }
+
+  /* Tests mutate inc push status data to test various scenarios */
+  private Map<Integer, Map<CharSequence, Integer>> getPushStatusData(ExecutionStatus expectedStatus) {
+    Map<Integer, Map<CharSequence, Integer>> partitionPushStatusMap = new HashMap<>();
+    for (int partitionId = 0; partitionId < partitionCountForIncPushTests; partitionId++) {
+      Map<CharSequence, Integer> replicaPushStatusMap = new HashMap<>();
+      for (int replicaId = 0; replicaId < replicationFactorForIncPushTests; replicaId++) {
+        replicaPushStatusMap.put("instance-" + replicaId, expectedStatus.getValue());
+      }
+      partitionPushStatusMap.put(partitionId, replicaPushStatusMap);
+    }
+    return partitionPushStatusMap;
+  }
+
+  @Test(description = "Expect NOT_CREATED status when incremental push statuses are empty for all partitions")
+  public void testGetIncrementalPushStatusWhenPushStatusIsEmptyForAllPartitions() {
+    // push statuses are missing for all partitions
+    Map<Integer, Map<CharSequence, Integer>> pushStatusMap = Collections.emptyMap();
+    Map<Integer, Integer> completedReplicas = Collections.emptyMap();
+    prepareForIncrementalPushStatusTest(pushStatusMap, completedReplicas);
+
+    ExecutionStatus actualStatus = monitor.getIncrementalPushStatusFromPushStatusStore(getTopic(),
+        incrementalPushVersion, customizedViewMock, statusStoreReaderMock, offlinePushStatusMock).getFirst();
+    Assert.assertEquals(actualStatus, ExecutionStatus.NOT_CREATED);
+  }
+
+  @Test(description = "Expect EOIP status when numberOfReplicasInCompletedState == replicationFactor and all these replicas have seen EOIP")
+  public void testCheckIncrementalPushStatusWhenAllPartitionReplicasHaveSeenEoip() {
+    Map<Integer, Map<CharSequence, Integer>> pushStatusMap = getPushStatusData(END_OF_INCREMENTAL_PUSH_RECEIVED);
+    Map<Integer, Integer> completedReplicas = getCompletedStatusData();
+    prepareForIncrementalPushStatusTest(pushStatusMap, completedReplicas);
+
+    ExecutionStatus actualStatus = monitor.getIncrementalPushStatusFromPushStatusStore(getTopic(),
+        incrementalPushVersion, customizedViewMock, statusStoreReaderMock, offlinePushStatusMock).getFirst();
+    Assert.assertEquals(actualStatus, END_OF_INCREMENTAL_PUSH_RECEIVED);
+  }
+
+  @Test(description = "Expect EOIP status when for just one partition numberOfReplicasInCompletedState == (replicationFactor - 1) and only one replica of that partition has not seen EOIP yet")
+  void testCheckIncrementalPushStatusWhenAllCompletedStateReplicasOfPartitionHaveSeenEoip() {
+    Map<Integer, Map<CharSequence, Integer>> pushStatusMap = getPushStatusData(END_OF_INCREMENTAL_PUSH_RECEIVED);
+    // simulate only one replica of partition 0 has not seen EOIP
+    pushStatusMap.get(0).remove("instance-0");
+    Map<Integer, Integer> completedReplicas = getCompletedStatusData();
+    // simulate in partition 0 the number of replicas in completed state are one less than the replication factor
+    completedReplicas.put(0, replicationFactor - 1);
+
+    prepareForIncrementalPushStatusTest(pushStatusMap, completedReplicas);
+
+    ExecutionStatus actualStatus = monitor.getIncrementalPushStatusFromPushStatusStore(getTopic(),
+        incrementalPushVersion, customizedViewMock, statusStoreReaderMock, offlinePushStatusMock).getFirst();
+    Assert.assertEquals(actualStatus, END_OF_INCREMENTAL_PUSH_RECEIVED);
+  }
+
+  /* The following case is unlikely but not impossible. This could be an indication of issues in other parts of the system */
+  @Test(description = "Expect EOIP status when for one partition numberOfReplicasInCompletedState == (replicationFactor - 2) and only one replica of that partition has not seen EOIP yet")
+  public void testCheckIncrementalPushStatusWhenNMinusOneReplicasOfPartitionHaveSeenEoip() {
+    Map<Integer, Map<CharSequence, Integer>> pushStatusMap = getPushStatusData(END_OF_INCREMENTAL_PUSH_RECEIVED);
+    // simulate only one replica of partition 0 has not seen EOIP
+    pushStatusMap.get(0).remove("instance-0");
+    Map<Integer, Integer> completedReplicas = getCompletedStatusData();
+    // simulate in partition 0 the number of replicas in completed state are two less than the replication factor
+    completedReplicas.put(0, replicationFactor - 2);
+
+    prepareForIncrementalPushStatusTest(pushStatusMap, completedReplicas);
+
+    ExecutionStatus actualStatus = monitor.getIncrementalPushStatusFromPushStatusStore(getTopic(),
+        incrementalPushVersion, customizedViewMock, statusStoreReaderMock, offlinePushStatusMock).getFirst();
+    Assert.assertEquals(actualStatus, END_OF_INCREMENTAL_PUSH_RECEIVED);
+  }
+
+  @Test(description = "Expect SOIP status when numberOfReplicasInCompletedState == replicationFactor and just one replica of one partition has not seen EOIP yet")
+  public void testCheckIncrementalPushStatusWhenOneCompletedStateReplicaOfPartitionHasNotSeenEoip() {
+    Map<Integer, Map<CharSequence, Integer>> pushStatusMap = getPushStatusData(END_OF_INCREMENTAL_PUSH_RECEIVED);
+    // simulate only one replica of partition 0 has not seen EOIP
+    pushStatusMap.get(0).remove("instance-0");
+    Map<Integer, Integer> completedReplicas = getCompletedStatusData();
+
+    prepareForIncrementalPushStatusTest(pushStatusMap, completedReplicas);
+
+    ExecutionStatus actualStatus = monitor.getIncrementalPushStatusFromPushStatusStore(getTopic(),
+        incrementalPushVersion, customizedViewMock, statusStoreReaderMock, offlinePushStatusMock).getFirst();
+    Assert.assertEquals(actualStatus, ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED);
+  }
+
+  @Test(description = "Expect SOIP status when for one partition numberOfReplicasInCompletedState == (replicationFactor - 2) and two replicas of that partition have not seen EOIP yet")
+  public void testCheckIncrementalPushStatusWhenNMinusTwoReplicasOfPartitionHaveSeenEoip() {
+    Map<Integer, Map<CharSequence, Integer>> pushStatusMap = getPushStatusData(END_OF_INCREMENTAL_PUSH_RECEIVED);
+    // simulate two replicas of partition 0 has not seen EOIP
+    pushStatusMap.get(0).put("instance-0", ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED.getValue());
+    pushStatusMap.get(0).put("instance-1", ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED.getValue());
+    Map<Integer, Integer> completedReplicas = getCompletedStatusData();
+    // simulate in partition 0 the number of replicas in completed state are two less than the replication factor
+    completedReplicas.put(0, replicationFactor - 2);
+
+    prepareForIncrementalPushStatusTest(pushStatusMap, completedReplicas);
+
+    ExecutionStatus actualStatus = monitor.getIncrementalPushStatusFromPushStatusStore(getTopic(),
+        incrementalPushVersion, customizedViewMock, statusStoreReaderMock, offlinePushStatusMock).getFirst();
+    Assert.assertEquals(actualStatus, ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED);
+  }
+
+  @Test(description = "Expect SOIP status when for one partition numberOfReplicasInCompletedState == replicationFactor and just one replica of only one partition has seen SOIP")
+  public void testCheckIncrementalPushStatusOnlyOneReplicasHasSeenSOIP() {
+    Map<Integer, Map<CharSequence, Integer>> pushStatusMap = getPushStatusData(ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED);
+    // simulate just one replica of only one partition has seen EOIP
+    pushStatusMap.get(0).remove("instance-0");
+    pushStatusMap.get(0).remove("instance-1");
+    for (int partitionId = 1; partitionId < partitionCountForIncPushTests; partitionId++) {
+      pushStatusMap.remove(partitionId);
     }
 
-    Map<String, List<Instance>> onlineInstanceMap = new HashMap<>();
-    List<Instance> onlineInstance = new ArrayList<>(replicationFactor);
-    for (int i = 0; i < replicationFactor; i++) {
-      onlineInstance.add(new Instance("test" + i, "test", i));
+    Map<Integer, Integer> completedReplicas = getCompletedStatusData();
+
+    prepareForIncrementalPushStatusTest(pushStatusMap, completedReplicas);
+
+    ExecutionStatus actualStatus = monitor.getIncrementalPushStatusFromPushStatusStore(getTopic(),
+        incrementalPushVersion, customizedViewMock, statusStoreReaderMock, offlinePushStatusMock).getFirst();
+    Assert.assertEquals(actualStatus, ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED);
+  }
+
+  @Test(description = "Expect SOIP status when for one partition numberOfReplicasInCompletedState == replicationFactor and just one replica of only one partition has seen EOIP")
+  public void testCheckIncrementalPushStatusOnlyOneReplicasHasSeenEOIP() {
+    Map<Integer, Map<CharSequence, Integer>> pushStatusMap = getPushStatusData(END_OF_INCREMENTAL_PUSH_RECEIVED);
+    // simulate just one replica of only one partition has seen EOIP
+    pushStatusMap.get(0).remove("instance-0");
+    pushStatusMap.get(0).remove("instance-1");
+    for (int partitionId = 1; partitionId < partitionCountForIncPushTests; partitionId++) {
+      pushStatusMap.remove(partitionId);
     }
-    onlineInstanceMap.put(HelixState.ONLINE_STATE, onlineInstance);
-    PartitionAssignment partitionAssignment = new PartitionAssignment(topic, numberOfPartition);
-    partitionAssignment.addPartition(new Partition(0, onlineInstanceMap));
-    doReturn(partitionAssignment).when(mockRoutingDataRepo).getPartitionAssignments(topic);
 
-    Assert.assertEquals(monitor.getIncrementalPushStatusAndDetails(topic, incrementalPushVersion, customizedView).getFirst(),
-        ExecutionStatus.NOT_CREATED);
+    Map<Integer, Integer> completedReplicas = getCompletedStatusData();
 
-    //update one of the replica status START -> COMPLETE -> START_OF_INCREMENTAL_PUSH_RECEIVED (SOIP_RECEIVED)
-    replicaStatuses.get(0).updateStatus(ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED, incrementalPushVersion);
-    prepareMockStore(topic);
+    prepareForIncrementalPushStatusTest(pushStatusMap, completedReplicas);
 
-    monitor.onPartitionStatusChange(topic, new ReadOnlyPartitionStatus(0, replicaStatuses));
-    //OfflinePushMonitor should return SOIP_RECEIVED if any of replica receives SOIP_RECEIVED
-    Assert.assertEquals(monitor.getIncrementalPushStatusAndDetails(topic, incrementalPushVersion, customizedView).getFirst(),
-        ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED);
+    ExecutionStatus actualStatus = monitor.getIncrementalPushStatusFromPushStatusStore(getTopic(),
+        incrementalPushVersion, customizedViewMock, statusStoreReaderMock, offlinePushStatusMock).getFirst();
+    Assert.assertEquals(actualStatus, ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED);
+  }
 
-    //update 2 of the replica status to END_OF_INCREMENTAL_PUSH_RECEIVED (EOIP_RECEIVED)
-    //and update the third one to EOIP_RECEIVED with wrong version
-    replicaStatuses.get(0).updateStatus(ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED, incrementalPushVersion);
+  /* The following case could happen during re-balancing */
+  @Test(description = "Expect EOIP status when numberOfReplicasInCompletedState == (replicationFactor) and (replicationFactor + 1) replicas have seen EOIP")
+  public void testCheckIncrementalPushStatusWhenNumberOfReplicasWithEoipAreMoreThanReplicationFactor() {
+    Map<Integer, Map<CharSequence, Integer>> pushStatusMap = getPushStatusData(END_OF_INCREMENTAL_PUSH_RECEIVED);
+    // simulate (replicationFactor + 1) replicas have EOIP
+    pushStatusMap.get(0).put("instance-3", END_OF_INCREMENTAL_PUSH_RECEIVED.getValue());
+    Map<Integer, Integer> completedReplicas = getCompletedStatusData();
 
-    replicaStatuses.get(1).updateStatus(ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED, incrementalPushVersion);
-    replicaStatuses.get(1).updateStatus(ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED, incrementalPushVersion);
+    prepareForIncrementalPushStatusTest(pushStatusMap, completedReplicas);
 
-    replicaStatuses.get(2).updateStatus(ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED, incrementalPushVersion);
-    replicaStatuses.get(2).updateStatus(ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED, "incorrect_version");
+    ExecutionStatus actualStatus = monitor.getIncrementalPushStatusFromPushStatusStore(getTopic(),
+        incrementalPushVersion, customizedViewMock, statusStoreReaderMock, offlinePushStatusMock).getFirst();
+    Assert.assertEquals(actualStatus, END_OF_INCREMENTAL_PUSH_RECEIVED);
+  }
 
-    monitor.onPartitionStatusChange(topic, new ReadOnlyPartitionStatus(0, replicaStatuses));
-    //OfflinePushMonitor should be able to filter out irrelevant IP versions
-    Assert.assertEquals(monitor.getIncrementalPushStatusAndDetails(topic, incrementalPushVersion, customizedView).getFirst(),
-        ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED);
+  @Test (description = "Expect ERROR status when any one replica belonging to any partition has non-incremental push status")
+  public void testCheckIncrementalPushStatusWhenAnyOfTheReplicaHasNonIncPushStatus() {
+    Map<Integer, Map<CharSequence, Integer>> pushStatusMap = getPushStatusData(END_OF_INCREMENTAL_PUSH_RECEIVED);
+    // simulate one replica has non-incremental push status
+    pushStatusMap.get(0).put("instance-0", ExecutionStatus.UNKNOWN.getValue());
+    Map<Integer, Integer> completedReplicas = getCompletedStatusData();
 
-    replicaStatuses.get(2).updateStatus(ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED, incrementalPushVersion);
+    prepareForIncrementalPushStatusTest(pushStatusMap, completedReplicas);
 
-    monitor.onPartitionStatusChange(topic, new ReadOnlyPartitionStatus(0, replicaStatuses));
-    Assert.assertEquals(monitor.getIncrementalPushStatusAndDetails(topic, incrementalPushVersion, customizedView).getFirst(),
-        ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED);
+    ExecutionStatus actualStatus = monitor.getIncrementalPushStatusFromPushStatusStore(getTopic(),
+        incrementalPushVersion, customizedViewMock, statusStoreReaderMock, offlinePushStatusMock).getFirst();
+    Assert.assertEquals(actualStatus, ExecutionStatus.ERROR);
+  }
 
-    replicaStatuses.get(0).updateStatus(ExecutionStatus.WARNING, incrementalPushVersion);
+  @Test (description = "Expect NOT_CREATED status when push status map is null")
+  public void testCheckIncrementalPushStatusWhenPushStatusMapisNull() {
+    Map<Integer, Integer> completedReplicas = getCompletedStatusData();
+    prepareForIncrementalPushStatusTest(null, completedReplicas);
 
-    monitor.onPartitionStatusChange(topic, new ReadOnlyPartitionStatus(0, replicaStatuses));
-    Assert.assertEquals(monitor.getIncrementalPushStatusAndDetails(topic, incrementalPushVersion, customizedView).getFirst(),
-        ExecutionStatus.ERROR);
+    ExecutionStatus actualStatus = monitor.getIncrementalPushStatusFromPushStatusStore(getTopic(),
+        incrementalPushVersion, customizedViewMock, statusStoreReaderMock, offlinePushStatusMock).getFirst();
+    Assert.assertEquals(actualStatus, ExecutionStatus.NOT_CREATED);
   }
 
   @Test

@@ -133,6 +133,11 @@ public enum ExecutionStatus {
     return status == START_OF_INCREMENTAL_PUSH_RECEIVED || status == END_OF_INCREMENTAL_PUSH_RECEIVED;
   }
 
+  public static boolean isIncrementalPushStatus(int statusVal) {
+    return statusVal == START_OF_INCREMENTAL_PUSH_RECEIVED.getValue()
+        || statusVal == END_OF_INCREMENTAL_PUSH_RECEIVED.getValue();
+  }
+
   public int getValue() {
     return value;
   }

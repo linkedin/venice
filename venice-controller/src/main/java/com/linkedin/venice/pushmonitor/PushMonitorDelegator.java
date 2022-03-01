@@ -11,6 +11,7 @@ import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreCleaner;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
 import com.linkedin.venice.replication.TopicReplicator;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -179,9 +180,25 @@ public class PushMonitorDelegator implements PushMonitor {
   }
 
   @Override
-  public Pair<ExecutionStatus, Optional<String>> getIncrementalPushStatusAndDetails(String topic, String incrementalPushVersion,
-      HelixCustomizedViewOfflinePushRepository customizedViewOfflinePushRepository) {
-    return getPushMonitor(topic).getIncrementalPushStatusAndDetails(topic, incrementalPushVersion, customizedViewOfflinePushRepository);
+  public Pair<ExecutionStatus, Optional<String>> getIncrementalPushStatusAndDetails(String kafkaTopic,
+      String incrementalPushVersion, HelixCustomizedViewOfflinePushRepository customizedViewRepo) {
+    return getPushMonitor(kafkaTopic)
+        .getIncrementalPushStatusAndDetails(kafkaTopic, incrementalPushVersion, customizedViewRepo);
+  }
+
+  @Override
+  public Pair<ExecutionStatus, Optional<String>> getIncrementalPushStatusFromPushStatusStore(String kafkaTopic,
+      String incrementalPushVersion, HelixCustomizedViewOfflinePushRepository customizedViewRepo,
+      PushStatusStoreReader pushStatusStoreReader) {
+    return getPushMonitor(kafkaTopic).getIncrementalPushStatusFromPushStatusStore(kafkaTopic,
+        incrementalPushVersion, customizedViewRepo, pushStatusStoreReader);
+  }
+
+  @Override
+  public Set<String> getOngoingIncrementalPushVersions(String kafkaTopic,
+      HelixCustomizedViewOfflinePushRepository customizedViewRepo) {
+    return getPushMonitor(kafkaTopic)
+        .getOngoingIncrementalPushVersions(kafkaTopic, customizedViewRepo);
   }
 
   @Override
@@ -217,10 +234,5 @@ public class PushMonitorDelegator implements PushMonitor {
 
   public List<Instance> getReadyToServeInstances(PartitionAssignment partitionAssignment, int partitionId) {
     return getPushMonitor(partitionAssignment.getTopic()).getReadyToServeInstances(partitionAssignment, partitionId);
-  }
-
-  @Override
-  public Set<String> getOngoingIncrementalPushVersions(String topic, HelixCustomizedViewOfflinePushRepository customizedViewOfflinePushRepository) {
-    return getPushMonitor(topic).getOngoingIncrementalPushVersions(topic, customizedViewOfflinePushRepository);
   }
 }

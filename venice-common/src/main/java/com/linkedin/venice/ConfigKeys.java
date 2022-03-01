@@ -1823,5 +1823,13 @@ public class ConfigKeys {
    * False: servers will not flush any data during shutdown. After restart, servers will resume ingestion from the last checkpoint.
    */
   public static final String SERVER_INGESTION_CHECKPOINT_DURING_GRACEFUL_SHUTDOWN_ENABLED = "server.ingestion.checkpoint.during.graceful.shutdown.enabled";
+
+  /**
+   * A config to control which status store to use for fetching incremental push job status from the controller. This config
+   * should be removed once the migration of push status to push status system store is complete.
+   * True: use push system status store
+   * False: use zookeeper store
+   */
+  public static final String USE_PUSH_STATUS_STORE_FOR_INCREMENTAL_PUSH = "controller.server.incremental.push.use.push.status.store";
 }
 

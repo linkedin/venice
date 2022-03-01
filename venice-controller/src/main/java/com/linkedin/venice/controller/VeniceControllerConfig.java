@@ -168,6 +168,8 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   private final boolean controllerInAzureFabric;
 
+  private boolean usePushStatusStoreForIncrementalPush;
+
   public VeniceControllerConfig(VeniceProperties props) {
     super(props);
     this.adminPort = props.getInt(ADMIN_PORT);
@@ -308,6 +310,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     this.aggregateRealTimeSourceRegion = props.getString(AGGREGATE_REAL_TIME_SOURCE_REGION, "");
     this.isAutoMaterializeMetaSystemStoreEnabled = props.getBoolean(CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE, false);
     this.isAutoMaterializeDaVinciPushStatusSystemStoreEnabled = props.getBoolean(CONTROLLER_AUTO_MATERIALIZE_DAVINCI_PUSH_STATUS_SYSTEM_STORE, false);
+    this.usePushStatusStoreForIncrementalPush = props.getBoolean(USE_PUSH_STATUS_STORE_FOR_INCREMENTAL_PUSH, false);
 
     this.replicationMetadataVersionId = props.getInt(REPLICATION_METADATA_VERSION_ID, 1);
     this.emergencySourceRegion = props.getString(EMERGENCY_SOURCE_REGION, "");
@@ -639,6 +642,10 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   public boolean isControllerInAzureFabric() {
     return controllerInAzureFabric;
+  }
+
+  public boolean usePushStatusStoreForIncrementalPush() {
+    return usePushStatusStoreForIncrementalPush;
   }
 
   /**
