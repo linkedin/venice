@@ -64,12 +64,21 @@ public class HelixCustomizedViewOfflinePushRepository extends HelixBaseRoutingRe
         .collect(Collectors.toList());
   }
 
-  public int getNumberOfReplicasInCompletedState(String kafkaTopic, int partitionId) {
+  private int getNumberOfReplicasInCompletedState(String kafkaTopic, int partitionId) {
     Partition partition;
     try (AutoCloseableLock ignored = new AutoCloseableLock(resourceAssignmentRWLock.readLock())) {
       partition = resourceAssignment.getPartition(kafkaTopic, partitionId);
     }
     return partition == null ? 0 : partition.getInstancesInState(COMPLETED.name()).size();
+  }
+
+  /* Returns map of partitionId and the number of completed replicas in that partition */
+  public Map<Integer, Integer> getCompletedStatusReplicas(String kafkaTopic, int numberOfPartitions) {
+    Map<Integer, Integer> replicaCount = new HashMap<>();
+    for (int partitionId = 0; partitionId < numberOfPartitions; partitionId++) {
+      replicaCount.put(partitionId, getNumberOfReplicasInCompletedState(kafkaTopic, partitionId));
+    }
+    return replicaCount;
   }
 
   @Override

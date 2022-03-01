@@ -1,6 +1,7 @@
 package com.linkedin.venice.pushstatushelper;
 
 import com.linkedin.d2.balancer.D2Client;
+import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.AvroSpecificStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
@@ -11,10 +12,19 @@ import com.linkedin.venice.pushstatus.PushStatusKey;
 import com.linkedin.venice.pushstatus.PushStatusValue;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.Closeable;
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -25,10 +35,12 @@ import org.apache.logging.log4j.Logger;
  * Don't keep a map of [storeName->client] to minimize states kept by controller.
  */
 public class PushStatusStoreReader implements Closeable {
+
   private static final Logger logger = LogManager.getLogger(PushStatusStoreReader.class);
   private final Map<String, AvroSpecificStoreClient<PushStatusKey, PushStatusValue>> veniceClients = new VeniceConcurrentHashMap<>();
   private final D2Client d2Client;
   private final long heartbeatExpirationTimeInSeconds;
+  private static final int PUSH_STATUS_READER_BATCH_GET_LIMIT = 100; // if store limit is less than this then batchGet will fail
 
   public PushStatusStoreReader(D2Client d2Client, long heartbeatExpirationTimeInSeconds) {
     this.d2Client = d2Client;
@@ -53,8 +65,79 @@ public class PushStatusStoreReader implements Closeable {
         return pushStatusValue.instances;
       }
     } catch (Exception e) {
+      logger.error("Failed to read push status of partition:{} store:{}", partitionId, storeName,  e);
       throw new VeniceException(e);
     }
+  }
+
+  /**
+   * Return statuses of all replicas belonging to partitions with partitionIds in the range [0 (inclusive), numberOfPartitions (exclusive))
+   * {partitionId: {instance:status, instance:status,...},...}
+   */
+  public Map<Integer, Map<CharSequence, Integer>> getPartitionStatuses(String storeName, int storeVersion,
+      String incrementalPushVersion, int numberOfPartitions) {
+    Set<Integer> partitionIds = IntStream.range(0, numberOfPartitions).boxed().collect(Collectors.toSet());
+    return getPartitionStatuses(
+        storeName, storeVersion, incrementalPushVersion, partitionIds, Optional.of(PUSH_STATUS_READER_BATCH_GET_LIMIT));
+  }
+
+  public Map<Integer, Map<CharSequence, Integer>> getPartitionStatuses(String storeName, int storeVersion,
+      String incrementalPushVersion, int numberOfPartitions, int batchGetLimit) {
+    Set<Integer> partitionIds = IntStream.range(0, numberOfPartitions).boxed().collect(Collectors.toSet());
+    return getPartitionStatuses(storeName, storeVersion, incrementalPushVersion, partitionIds, Optional.of(batchGetLimit));
+  }
+
+  /**
+   * Return statuses of all replicas belonging to partitions mentioned in partitionIds. If status is not available for
+   * a partition then empty map will be returned as a value for that partition.
+   * {partitionId: {instance:status, instance:status,...},...}
+   */
+  public Map<Integer, Map<CharSequence, Integer>> getPartitionStatuses(String storeName, int storeVersion,
+      String incrementalPushVersion, Set<Integer> partitionIds, Optional<Integer> batchGetLimitOption) {
+    // create push status key for each partition mentioned in partitionIds
+    List<PushStatusKey> pushStatusKeys = new ArrayList<>(partitionIds.size());
+    for (int partitionId : partitionIds) {
+      pushStatusKeys.add(PushStatusStoreUtils.getServerIncrementalPushKey(storeVersion, partitionId,
+          incrementalPushVersion, PushStatusStoreUtils.SERVER_INCREMENTAL_PUSH_PREFIX));
+    }
+    // get push status store client
+    AvroSpecificStoreClient<PushStatusKey, PushStatusValue> storeClient = getVeniceClient(storeName);
+    List<CompletableFuture<Map<PushStatusKey, PushStatusValue>>> completableFutures = new ArrayList<>();
+    Map<PushStatusKey, PushStatusValue> pushStatusMap = new HashMap<>();
+    int batchGetLimit = PUSH_STATUS_READER_BATCH_GET_LIMIT;
+    if (batchGetLimitOption.isPresent()) {
+      batchGetLimit = batchGetLimitOption.get();
+    }
+    int numberOfBatchRequests = partitionIds.size() / batchGetLimit + (partitionIds.size() % batchGetLimit == 0 ? 0 : 1);
+    try {
+      for (int i = 0; i < numberOfBatchRequests; i++) {
+        int start = i * batchGetLimit;
+        int end = Math.min(pushStatusKeys.size(), start + batchGetLimit);
+        Set<PushStatusKey> keySet = new HashSet<>(pushStatusKeys.subList(start, end));
+        CompletableFuture<Map<PushStatusKey, PushStatusValue>> completableFuture = storeClient.batchGet(keySet);
+        completableFutures.add(completableFuture);
+      }
+      for (CompletableFuture<Map<PushStatusKey, PushStatusValue>> completableFuture : completableFutures) {
+        Map<PushStatusKey, PushStatusValue> statuses = completableFuture.get();
+        if (statuses == null) {
+          logger.warn("Failed to get incremental push status of some partitions. BatchGet returned null.");
+          throw new VeniceException("Failed to get incremental push status of some partitions");
+        }
+        pushStatusMap.putAll(statuses);
+      }
+    } catch (InterruptedException | ExecutionException | VeniceClientException e) {
+      logger.error("Failed to get statuses of partitions. store:{}, storeVersion:{} incrementalPushVersion:{} "
+          + "partitionIds:{} Exception:{}", storeName, storeVersion, incrementalPushVersion, partitionIds, e);
+      throw new VeniceException("Failed to fetch push statuses from the push status store");
+    }
+    Map<Integer, Map<CharSequence, Integer>> result = new HashMap<>();
+    for (PushStatusKey pushStatusKey : pushStatusKeys) {
+      PushStatusValue pushStatusValue = pushStatusMap.get(pushStatusKey);
+      result.put(
+          PushStatusStoreUtils.getPartitionIdFromServerIncrementalPushKey(pushStatusKey),
+          (pushStatusValue == null || pushStatusValue.instances == null) ? Collections.emptyMap() : pushStatusValue.instances);
+    }
+    return result;
   }
 
   /**
@@ -80,7 +163,8 @@ public class PushStatusStoreReader implements Closeable {
     return System.currentTimeMillis() - lastReportTimeStamp <= TimeUnit.SECONDS.toMillis(heartbeatExpirationTimeInSeconds);
   }
 
-  private AvroSpecificStoreClient<PushStatusKey, PushStatusValue> getVeniceClient(String storeName) {
+  // visible for testing
+  AvroSpecificStoreClient<PushStatusKey, PushStatusValue> getVeniceClient(String storeName) {
     return veniceClients.computeIfAbsent(storeName, (s) -> {
       ClientConfig clientConfig = ClientConfig.defaultGenericClientConfig(VeniceSystemStoreUtils.getDaVinciPushStatusStoreName(storeName))
           .setD2Client(d2Client)

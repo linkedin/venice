@@ -302,6 +302,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     private final MetaStoreWriter metaStoreWriter;
     private final D2Client d2Client;
     private final Map<String, HelixReadWriteLiveClusterConfigRepository> clusterToLiveClusterConfigRepo;
+    private final boolean usePushStatusStoreToReadServerIncrementalPushStatus;
 
     /**
      * Level-1 controller, it always being connected to Helix. And will create sub-controller for specific cluster when
@@ -447,6 +448,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           pushStatusStoreReader = Optional.empty();
           pushStatusStoreDeleter = Optional.empty();
       }
+      usePushStatusStoreToReadServerIncrementalPushStatus = commonConfig.usePushStatusStoreForIncrementalPush();
 
       zkSharedSystemStoreRepository = new SharedHelixReadOnlyZKSharedSystemStoreRepository(
           zkClient, adapterSerializer, commonConfig.getSystemSchemaClusterName());
@@ -4117,12 +4119,23 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         return list.get(0);
     }
 
+    private Pair<ExecutionStatus, Optional<String>> getIncrementalPushStatus(String clusterName, Store store, String kafkaTopic,
+        int storeVersion, String incrementalPushVersion, PushMonitor monitor) {
+      HelixCustomizedViewOfflinePushRepository cvRepo = getHelixVeniceClusterResources(clusterName).getCustomizedViewRepository();
+      if (!usePushStatusStoreToReadServerIncrementalPushStatus) {
+        return monitor.getIncrementalPushStatusAndDetails(kafkaTopic, incrementalPushVersion, cvRepo);
+      }
+      if (!pushStatusStoreReader.isPresent()) {
+        throw new VeniceException("Cannot read server incremental push status from the status store.");
+      }
+      return monitor.getIncrementalPushStatusFromPushStatusStore(kafkaTopic, incrementalPushVersion, cvRepo, pushStatusStoreReader.get());
+    }
+
     private OfflinePushStatusInfo getOfflinePushStatusInfo(String clusterName, String kafkaTopic,
         Optional<String> incrementalPushVersion, PushMonitor monitor, Store store, int versionNumber) {
         Pair<ExecutionStatus, Optional<String>> statusAndDetails;
         if (incrementalPushVersion.isPresent()) {
-          HelixCustomizedViewOfflinePushRepository customizedViewRepo = getHelixVeniceClusterResources(clusterName).getCustomizedViewRepository();
-          statusAndDetails = monitor.getIncrementalPushStatusAndDetails(kafkaTopic, incrementalPushVersion.get(), customizedViewRepo);
+          statusAndDetails = getIncrementalPushStatus(clusterName, store, kafkaTopic, versionNumber, incrementalPushVersion.get(), monitor);
         } else {
           statusAndDetails = monitor.getPushStatusAndDetails(kafkaTopic);
         }
@@ -4252,13 +4265,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     @Override
     public Set<String> getOngoingIncrementalPushVersions(String clusterName, String kafkaTopic) {
-        checkControllerLeadershipFor(clusterName);
-        PushMonitor monitor = getHelixVeniceClusterResources(clusterName).getPushMonitor();
-        return monitor.getOngoingIncrementalPushVersions(kafkaTopic,
-            getHelixVeniceClusterResources(clusterName).getCustomizedViewRepository());
+      checkControllerLeadershipFor(clusterName);
+      return getHelixVeniceClusterResources(clusterName)
+          .getPushMonitor()
+          .getOngoingIncrementalPushVersions(kafkaTopic, getHelixVeniceClusterResources(clusterName).getCustomizedViewRepository());
     }
 
-    // TODO remove this method once we are fully on HaaS
+  // TODO remove this method once we are fully on HaaS
     // Create the controller cluster for venice cluster assignment if required.
     private void createControllerClusterIfRequired() {
         if(admin.getClusters().contains(controllerClusterName)) {

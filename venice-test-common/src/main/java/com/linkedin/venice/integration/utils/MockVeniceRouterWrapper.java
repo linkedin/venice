@@ -32,7 +32,7 @@ import java.util.concurrent.TimeUnit;
 import com.linkedin.venice.schema.SchemaEntry;
 
 import org.apache.commons.lang.StringUtils;
-import org.mockito.Matchers;
+import org.mockito.ArgumentMatchers;
 import org.mockito.Mockito;
 
 import static com.linkedin.venice.ConfigKeys.*;
@@ -79,7 +79,7 @@ public class MockVeniceRouterWrapper extends ProcessWrapper {
     doReturn(new SchemaEntry(1, "\"string\"")).when(mockSchemaRepository).getKeySchema(Mockito.anyString());
 
     HelixExternalViewRepository mockRepo = Mockito.mock(HelixExternalViewRepository.class);
-    doReturn(1).when(mockRepo).getNumberOfPartitions(Matchers.anyString());
+    doReturn(1).when(mockRepo).getNumberOfPartitions(ArgumentMatchers.anyString());
 
     Optional<HelixHybridStoreQuotaRepository> mockHybridStoreQuotaRepository = Optional.of(
         Mockito.mock(HelixHybridStoreQuotaRepository.class));

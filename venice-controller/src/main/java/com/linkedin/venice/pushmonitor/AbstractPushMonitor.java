@@ -12,6 +12,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreCleaner;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
+import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
 import com.linkedin.venice.replication.TopicReplicator;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.Time;
@@ -21,7 +22,6 @@ import com.linkedin.venice.utils.locks.ClusterLockManager;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -30,6 +30,8 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+
+import static com.linkedin.venice.pushmonitor.ExecutionStatus.*;
 
 
 /**
@@ -241,14 +243,122 @@ public abstract class AbstractPushMonitor
   }
 
   @Override
-  public Pair<ExecutionStatus, Optional<String>> getIncrementalPushStatusAndDetails(String topic,
-      String incrementalPushVersion, HelixCustomizedViewOfflinePushRepository customizedViewOfflinePushRepository) {
-    OfflinePushStatus pushStatus = getOfflinePush(topic);
+  public Pair<ExecutionStatus, Optional<String>> getIncrementalPushStatusAndDetails(String kafkaTopic,
+      String incrementalPushVersion, HelixCustomizedViewOfflinePushRepository customizedViewRepo) {
+    OfflinePushStatus pushStatus = getOfflinePush(kafkaTopic);
     if (pushStatus == null) {
       return new Pair<>(ExecutionStatus.NOT_CREATED, Optional.of("Offline job hasn't been created yet."));
     }
-    return new Pair<>(pushStatus.checkIncrementalPushStatus(incrementalPushVersion,
-        getRoutingDataRepository().getPartitionAssignments(topic), customizedViewOfflinePushRepository), Optional.empty());
+    Map<Integer, Map<CharSequence, Integer>> pushStatusMap = pushStatus.getIncrementalPushStatus(
+        getRoutingDataRepository().getPartitionAssignments(kafkaTopic), incrementalPushVersion);
+    Map<Integer, Integer> completedReplicas = customizedViewRepo.getCompletedStatusReplicas(
+        kafkaTopic, pushStatus.getNumberOfPartition());
+    return new Pair<>(checkIncrementalPushStatus(pushStatusMap, completedReplicas, kafkaTopic, incrementalPushVersion,
+        pushStatus.getNumberOfPartition(), pushStatus.getReplicationFactor()), Optional.empty());
+  }
+
+  @Override
+  public Pair<ExecutionStatus, Optional<String>> getIncrementalPushStatusFromPushStatusStore(String kafkaTopic,
+      String incrementalPushVersion, HelixCustomizedViewOfflinePushRepository customizedViewRepo,
+      PushStatusStoreReader pushStatusStoreReader) {
+    OfflinePushStatus pushStatus = getOfflinePush(kafkaTopic);
+    if (pushStatus == null) {
+      return new Pair<>(ExecutionStatus.NOT_CREATED, Optional.of("Offline job hasn't been created yet."));
+    }
+    return getIncrementalPushStatusFromPushStatusStore(kafkaTopic,
+        incrementalPushVersion, customizedViewRepo, pushStatusStoreReader, pushStatus);
+  }
+
+  // visible for unit testing
+  public Pair<ExecutionStatus, Optional<String>> getIncrementalPushStatusFromPushStatusStore(String kafkaTopic,
+      String incrementalPushVersion, HelixCustomizedViewOfflinePushRepository customizedViewRepo,
+      PushStatusStoreReader pushStatusStoreReader, OfflinePushStatus pushStatus) {
+    String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopic);
+    int storeVersion = Version.parseVersionFromVersionTopicName(kafkaTopic);
+    Map<Integer, Map<CharSequence, Integer>> pushStatusMap = pushStatusStoreReader.getPartitionStatuses(
+        storeName, storeVersion, incrementalPushVersion, pushStatus.getNumberOfPartition());
+    Map<Integer, Integer> completedReplicas = customizedViewRepo.getCompletedStatusReplicas(
+        kafkaTopic, pushStatus.getNumberOfPartition());
+    return new Pair<>(checkIncrementalPushStatus(pushStatusMap, completedReplicas, kafkaTopic, incrementalPushVersion,
+        pushStatus.getNumberOfPartition(), pushStatus.getReplicationFactor()), Optional.empty());
+  }
+
+  private ExecutionStatus checkIncrementalPushStatus(Map<Integer, Map<CharSequence, Integer>> pushStatusMap,
+      Map<Integer, Integer> completedReplicasInPartition, String kafkaTopic, String incrementalPushVersion,
+      int partitionCount, int replicationFactor) {
+    // when push status map is null or empty means that given incremental push hasn't been created/started yet
+    if (pushStatusMap == null || pushStatusMap.isEmpty()) {
+      return NOT_CREATED;
+    }
+    int numberOfPartitionsWithEnoughEoipReceivedReplicas = 0;
+    boolean isIncrementalPushStatusAvailableForAtLeastOneReplica = false;
+
+    for (int partitionId = 0; partitionId < partitionCount; partitionId++) {
+      Map<CharSequence, Integer> replicaStatusMap = pushStatusMap.get(partitionId);
+      // inc push status of replicas of this partition is not available yet
+      if (replicaStatusMap == null || replicaStatusMap.isEmpty()) {
+        continue;
+      }
+
+      int numberOfReplicasWithEoipStatus = 0;
+      for (Map.Entry<CharSequence, Integer> replicaStatus : replicaStatusMap.entrySet()) {
+        if (!ExecutionStatus.isIncrementalPushStatus(replicaStatus.getValue())) {
+          return ERROR;
+        }
+        isIncrementalPushStatusAvailableForAtLeastOneReplica = true;
+        if (replicaStatus.getValue() == END_OF_INCREMENTAL_PUSH_RECEIVED.getValue()) {
+          numberOfReplicasWithEoipStatus++;
+        }
+      }
+
+      // To consider a push job completed, EOIP status should be reported by all replicas with COMPLETED status
+      // in customized view and number of such replicas cannot be less than (replicationFactor - 1).
+      int minRequiredReplicationFactor = Math.max(1,
+          Math.max(replicationFactor - 1, completedReplicasInPartition.getOrDefault(partitionId, 0)));
+      if (numberOfReplicasWithEoipStatus >= minRequiredReplicationFactor) {
+        numberOfPartitionsWithEnoughEoipReceivedReplicas++;
+      } else {
+        logger.info("For partitionId {} need {} replicas to acknowledge the delivery of EOIP but got only {}. "
+                + "kafkaTopic:{} incrementalPushVersion:{}", partitionId, minRequiredReplicationFactor,
+            numberOfReplicasWithEoipStatus, kafkaTopic, incrementalPushVersion);
+      }
+    }
+    if (numberOfPartitionsWithEnoughEoipReceivedReplicas == partitionCount) {
+      return END_OF_INCREMENTAL_PUSH_RECEIVED;
+    }
+    logger.info("Only {} out of {} partitions are sufficiently replicated. kafkaTopic:{} incrementalPushVersion:{}",
+        numberOfPartitionsWithEnoughEoipReceivedReplicas, partitionCount, kafkaTopic, incrementalPushVersion);
+
+    // to report SOIP at least one replica should have seen either SOIP or EOIP
+    if (isIncrementalPushStatusAvailableForAtLeastOneReplica) {
+      return START_OF_INCREMENTAL_PUSH_RECEIVED;
+    }
+    return NOT_CREATED;
+  }
+
+  @Override
+  public Set<String> getOngoingIncrementalPushVersions(String kafkaTopic,
+      HelixCustomizedViewOfflinePushRepository customizedViewRepo) {
+    OfflinePushStatus pushStatus = getOfflinePush(kafkaTopic);
+    if (pushStatus == null) {
+      return Collections.emptySet();
+    }
+
+    PartitionAssignment partitionAssignment = getRoutingDataRepository().getPartitionAssignments(kafkaTopic);
+    String latestIncrementalPushVersion = pushStatus.getLatestIncrementalPushVersion(partitionAssignment);
+    if (latestIncrementalPushVersion == null || latestIncrementalPushVersion.isEmpty()) {
+      return Collections.emptySet();
+    }
+
+    // Incremental push is only ongoing if it's START_OF_INCREMENTAL_PUSH_RECEIVED. Other states are either terminal
+    // or invalid.
+    Pair<ExecutionStatus, Optional<String>> status =
+        getIncrementalPushStatusAndDetails(kafkaTopic, latestIncrementalPushVersion, customizedViewRepo);
+    if (status.getFirst() == START_OF_INCREMENTAL_PUSH_RECEIVED) {
+      return Collections.singleton(latestIncrementalPushVersion);
+    }
+
+    return Collections.emptySet();
   }
 
   @Override
@@ -655,18 +765,6 @@ public abstract class AbstractPushMonitor
   public void recordPushPreparationDuration(String topic, long offlinePushWaitTimeInSecond) {
     String storeName = Version.parseStoreFromKafkaTopicName(topic);
     aggPushHealthStats.recordPushPrepartionDuration(storeName, offlinePushWaitTimeInSecond);
-  }
-
-  @Override
-  public Set<String> getOngoingIncrementalPushVersions(String topic, HelixCustomizedViewOfflinePushRepository customizedViewOfflinePushRepository) {
-    OfflinePushStatus pushStatus = getOfflinePush(topic);
-    Set<String> result = new HashSet<>();
-    if (pushStatus != null) {
-      // No ongoing push job of any kind for the given topic
-      result.addAll(pushStatus.getOngoingIncrementalPushVersions(getRoutingDataRepository()
-          .getPartitionAssignments(topic), customizedViewOfflinePushRepository));
-    }
-    return result;
   }
 
   /**

@@ -2,7 +2,6 @@ package com.linkedin.venice.unit.matchers;
 
 import org.mockito.ArgumentMatcher;
 import org.mockito.ArgumentMatchers;
-import org.mockito.Matchers;
 
 public class LongEqualOrGreaterThanMatcher implements ArgumentMatcher<Long> {
   private final long lowerBound;
