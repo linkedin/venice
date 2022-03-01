@@ -7,6 +7,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.helix.VeniceJsonSerializer;
 import com.linkedin.venice.meta.IncrementalPushPolicy;
+import com.linkedin.venice.meta.RegionPushDetails;
 import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
@@ -896,6 +897,24 @@ public class ControllerClient implements Closeable {
   public VersionResponse getStoreLargestUsedVersion(String clusterName, String storeName) {
     QueryParams params = newParams().add(CLUSTER, clusterName).add(NAME, storeName);
     return request(ControllerRoute.GET_STORE_LARGEST_USED_VERSION, params, VersionResponse.class);
+  }
+
+  public RegionPushDetailsResponse getRegionPushDetails(String storeName, String clusterName) {
+    QueryParams params = newParams()
+        .add(CLUSTER, clusterName)
+        .add(NAME, storeName);
+    return request(ControllerRoute.GET_REGION_PUSH_DETAILS, params, RegionPushDetailsResponse.class);
+  }
+
+  public StoreHealthAuditResponse listStorePushInfo(String clusterName, String parentControllerUrl, String storeName) {
+    QueryParams params = newParams()
+        .add(CLUSTER, clusterName)
+        .add(NAME, storeName);
+    try (ControllerTransport transport = new ControllerTransport(sslFactory)) {
+      return transport.request(parentControllerUrl, ControllerRoute.LIST_STORE_PUSH_INFO, params, StoreHealthAuditResponse.class);
+    } catch (Exception e) {
+      return makeErrorResponse("controllerapi:ControllerClient:listStorePushInfo - " + e.toString(), e, StoreHealthAuditResponse.class);
+    }
   }
 
   public ControllerResponse configureIncrementalPushForCluster(IncrementalPushPolicy incrementalPushPolicyToApply, Optional<IncrementalPushPolicy> incrementalPushPolicyToFilter, Optional<String> regionsFilter) {

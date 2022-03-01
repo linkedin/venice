@@ -16,6 +16,7 @@ import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
 import com.linkedin.venice.controller.kafka.protocol.enums.SchemaType;
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
 import com.linkedin.venice.controllerapi.ClusterStaleDataAuditResponse;
+import com.linkedin.venice.controllerapi.StoreHealthAuditResponse;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
@@ -31,6 +32,8 @@ import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiColoMultiCluster
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.StoreInfo;
+import com.linkedin.venice.meta.StoreDataAudit;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.StatusSnapshot;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
@@ -151,6 +154,14 @@ public class TestStaleDataVisibility {
     try (ControllerClient controllerClient = new ControllerClient(clusterName, parentController.getControllerUrl())) {
       ClusterStaleDataAuditResponse response = controllerClient.getClusterStaleStores(clusterName, parentController.getControllerUrl(), Optional.empty());
       Assert.assertTrue(response.getAuditMap().containsKey(storeName));
+
+      //test store health check
+      StoreHealthAuditResponse healthResponse = controllerClient.listStorePushInfo(clusterName, parentController.getControllerUrl(), storeName);
+      Assert.assertTrue(response.getAuditMap().containsKey(healthResponse.getStoreName()));
+      Map<String, StoreInfo> auditMapEntry = response.getAuditMap().get(healthResponse.getStoreName()).getStaleRegions();
+      for (Map.Entry<String, StoreInfo> entry : auditMapEntry.entrySet())
+        if (entry.getValue().getName() == storeName)
+          Assert.assertTrue(healthResponse.getRegionsWithStaleData().contains(entry.getKey())); // verify that the same regions are stale across both responses for the same store
     }
   }
 }

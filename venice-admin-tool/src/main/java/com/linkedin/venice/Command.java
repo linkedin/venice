@@ -207,7 +207,9 @@ public enum Command {
   REPLICATE_META_DATA("replicate-meta-data", "Copy a cluster's all stores schemas and store level configs from source fabric to destination fabric",
       new Arg[] {URL, CLUSTER, SOURCE_FABRIC, DEST_FABRIC}),
   LIST_CLUSTER_STALE_STORES("list-cluster-stale-stores", "List all stores in a cluster which have stale replicas.",
-      new Arg[] {REGIONS_FILTER, URL, CLUSTER}, new Arg[] {MESSAGE_COUNT});
+      new Arg[] {REGIONS_FILTER, URL, CLUSTER}, new Arg[] {MESSAGE_COUNT}),
+  LIST_STORE_PUSH_INFO("list-store-push-info", "List information about current pushes and push history for a specific store.",
+      new Arg[] {URL, CLUSTER, STORE});
   private final String commandName;
   private final String description;
   private final Arg[] requiredArgs;
