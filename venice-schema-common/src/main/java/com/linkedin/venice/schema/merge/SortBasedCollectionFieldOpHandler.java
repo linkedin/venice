@@ -14,6 +14,7 @@ import java.util.Set;
 import java.util.function.Supplier;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
+import org.apache.commons.lang.NotImplementedException;
 
 
 public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationHandler {
@@ -34,7 +35,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
     if (ignoreIncomingRequest(putTimestamp, coloID, collectionFieldRmd)) {
       return UpdateResultStatus.NOT_UPDATE;
     }
-    validateFieldSchemaType(currValueRecord, fieldName, Schema.Type.ARRAY); // Validate before modifying any state.
+    validateFieldSchemaType(currValueRecord, fieldName, Schema.Type.ARRAY, false); // Validate before modifying any state.
 
     // Current list will be updated.
     final long currTopLevelTimestamp = collectionFieldRmd.getTopLevelFieldTimestamp();
@@ -193,12 +194,35 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
   private void validateFieldSchemaType(
       GenericRecord currValueRecord,
       String fieldName,
-      Schema.Type expectType
+      Schema.Type expectType,
+      boolean nullableAllowed
   ) {
-    final Schema.Type fieldSchemaType = currValueRecord.getSchema().getField(fieldName).schema().getType();
+    final Schema fieldSchema = currValueRecord.getSchema().getField(fieldName).schema();
+    final Schema.Type fieldSchemaType = fieldSchema.getType();
+    if (nullableAllowed && fieldSchemaType == Schema.Type.UNION) {
+      validateFieldSchemaIsNullableType(fieldSchema, expectType);
+      return;
+    }
+
     if (fieldSchemaType != expectType) {
-      throw new IllegalArgumentException(
+      throw new IllegalStateException(
           String.format("Expect field %s to be of type %s. But got: %s", fieldName, expectType, fieldSchemaType));
+    }
+  }
+
+  private void validateFieldSchemaIsNullableType(Schema fieldSchema, Schema.Type expectType) {
+    // // Expect a nullable type. Expect a union of [null, expected type]
+    if (fieldSchema.getType() != Schema.Type.UNION) {
+      throw new IllegalStateException("Expect a union. Got field schema: " + fieldSchema);
+    }
+    if (fieldSchema.getTypes().size() != 2) {
+      throw new IllegalStateException("Expect a union of size 2. Got field schema: " + fieldSchema);
+    }
+    if (fieldSchema.getTypes().get(0).getType() != Schema.Type.NULL) {
+      throw new IllegalStateException("Expect the first element in the union to be null. Got field schema: " + fieldSchema);
+    }
+    if (fieldSchema.getTypes().get(1).getType() != expectType) {
+      throw new IllegalStateException("Expect the second element in the union to be the expected type. Got field schema: " + fieldSchema);
     }
   }
 
@@ -211,8 +235,19 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
       GenericRecord currValueRecord,
       String fieldName
   ) {
-    // TODO: implement it
-    return null;
+    if (ignoreIncomingRequest(putTimestamp, coloID, collectionFieldRmd)) {
+      return UpdateResultStatus.NOT_UPDATE;
+    }
+    // Current map will be updated.
+    if (collectionFieldRmd.isInPutOnlyState()) {
+      collectionFieldRmd.setTopLevelFieldTimestamp(putTimestamp);
+      collectionFieldRmd.setTopLevelColoID(coloID);
+      currValueRecord.put(fieldName, toPutMap);
+      collectionFieldRmd.setPutOnlyPartLength(toPutMap.size());
+      return UpdateResultStatus.COMPLETELY_UPDATED;
+    } else {
+      throw new NotImplementedException("Cannot handle Put on a map that is in the collection merge state.");
+    }
   }
 
   @Override
@@ -226,7 +261,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
     if (ignoreIncomingRequest(deleteTimestamp, coloID, collectionFieldRmd)) {
       return UpdateResultStatus.NOT_UPDATE;
     }
-    validateFieldSchemaType(currValueRecord, fieldName, Schema.Type.ARRAY); // Validate before modifying any state.
+    validateFieldSchemaType(currValueRecord, fieldName, Schema.Type.ARRAY, false); // Validate before modifying any state.
     // Current list will be deleted (partially or completely).
     final int currPutOnlyPartLength = collectionFieldRmd.getPutOnlyPartLength();
     collectionFieldRmd.setTopLevelFieldTimestamp(deleteTimestamp);
@@ -266,8 +301,19 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
       GenericRecord currValueRecord,
       String fieldName
   ) {
-    // TODO: implement it
-    return null;
+    if (ignoreIncomingRequest(deleteTimestamp, coloID, collectionFieldRmd)) {
+      return UpdateResultStatus.NOT_UPDATE;
+    }
+    if (collectionFieldRmd.isInPutOnlyState()) {
+      validateFieldSchemaType(currValueRecord, fieldName, Schema.Type.MAP, true); // Validate before modifying any state.
+      collectionFieldRmd.setTopLevelFieldTimestamp(deleteTimestamp);
+      collectionFieldRmd.setTopLevelColoID(coloID);
+      collectionFieldRmd.setPutOnlyPartLength(0); // No put-only part because it should be deleted completely.
+      currValueRecord.put(fieldName, new IndexedHashMap<>(0));
+      return UpdateResultStatus.COMPLETELY_UPDATED;
+    } else {
+      throw new NotImplementedException("Cannot handle Delete on a map that is in the collection merge state.");
+    }
   }
 
   @Override
@@ -283,7 +329,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
     if (ignoreIncomingRequest(modifyTimestamp, Integer.MIN_VALUE, collectionFieldRmd)) {
       return UpdateResultStatus.NOT_UPDATE;
     }
-    validateFieldSchemaType(currValueRecord, fieldName, Schema.Type.ARRAY);
+    validateFieldSchemaType(currValueRecord, fieldName, Schema.Type.ARRAY, false);
     Set<Object> toAddElementSet = new HashSet<>(toAddElements);
     Set<Object> toRemoveElementSet = new HashSet<>(toRemoveElements);
     removeIntersectionElements(toAddElementSet, toRemoveElementSet);
@@ -575,8 +621,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
       Map<String, Object> newEntries,
       List<String> toRemoveKeys
   ) {
-    // TODO: implement it
-    return null;
+    throw new NotImplementedException("Collect merge on map has not been implemented yet.");
   }
 
   private boolean ignoreIncomingRequest(
