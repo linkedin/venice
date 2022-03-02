@@ -37,8 +37,8 @@ public class MapOrderPreservingSerDeTest {
   @Test
   public void testCollectionFieldsDeserializedInConsistentOrder() {
     Schema valueSchema = AvroCompatibilityHelper.parse(VALUE_SCHEMA_STR);
-    MapOrderPreservingSerializer<GenericRecord> serializer = MapOrderingPreservingSeDeFactory.getSerializer(valueSchema);
-    MapOrderPreservingDeserializer deserializer = MapOrderingPreservingSeDeFactory.getDeserializer(valueSchema, valueSchema);
+    MapOrderPreservingSerializer<GenericRecord> serializer = MapOrderingPreservingSerDeFactory.getSerializer(valueSchema);
+    MapOrderPreservingDeserializer deserializer = MapOrderingPreservingSerDeFactory.getDeserializer(valueSchema, valueSchema);
 
     List<Pair<String, Integer>> mapEntries = Arrays.asList(
         new Pair<>("cat_1", 1),
@@ -59,7 +59,7 @@ public class MapOrderPreservingSerDeTest {
   @Test
   public void testDeserializeEmptyCollectionFields() {
     Schema valueSchema = AvroCompatibilityHelper.parse(VALUE_SCHEMA_STR);
-    MapOrderPreservingSerializer<GenericRecord> serializer = MapOrderingPreservingSeDeFactory.getSerializer(valueSchema);
+    MapOrderPreservingSerializer<GenericRecord> serializer = MapOrderingPreservingSerDeFactory.getSerializer(valueSchema);
     MapOrderPreservingDeserializer deserializer = new MapOrderPreservingDeserializer(valueSchema, valueSchema);
 
     validateConsistentSerdeResults(Collections.emptyList(), Collections.emptyList(), serializer,

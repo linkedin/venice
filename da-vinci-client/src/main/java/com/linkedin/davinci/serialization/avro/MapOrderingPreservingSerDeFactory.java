@@ -10,7 +10,7 @@ import java.util.Map;
  * This class is a factory that creates {@link MapOrderPreservingSerializer} and {@link MapOrderPreservingDeserializer}
  * with given schemas and cache them.
  */
-public class MapOrderingPreservingSeDeFactory extends SerializerDeserializerFactory {
+public class MapOrderingPreservingSerDeFactory extends SerializerDeserializerFactory {
 
   private static final Map<Schema, MapOrderPreservingSerializer<?>> serializerMap
       = new VeniceConcurrentHashMap<>();

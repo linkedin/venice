@@ -1,6 +1,6 @@
 package com.linkedin.davinci.kafka.consumer;
 
-import com.linkedin.davinci.serialization.avro.MapOrderingPreservingSeDeFactory;
+import com.linkedin.davinci.serialization.avro.MapOrderingPreservingSerDeFactory;
 import com.linkedin.venice.schema.merge.MergeRecordHelper;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
@@ -96,7 +96,7 @@ public class StoreIngestionWriteComputeProcessor {
           // Map in write compute needs to have consistent ordering. On the sender side, users may not care about ordering
           // in their maps. However, on the receiver side, we still want to make sure that the same serialized map bytes
           // always get deserialized into maps with the same entry ordering.
-          return MapOrderingPreservingSeDeFactory.getDeserializer(writeComputeSchema, writeComputeSchema);
+          return MapOrderingPreservingSerDeFactory.getDeserializer(writeComputeSchema, writeComputeSchema);
         });
   }
 

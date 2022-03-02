@@ -1,12 +1,10 @@
 package com.linkedin.davinci.replication;
 
-import com.linkedin.davinci.replication.merge.MergeConflictResolver;
-import java.nio.ByteBuffer;
 import org.apache.avro.generic.GenericRecord;
 
 
 /**
- * A POJO class to store Replication Metadata ByteBuffer and the value schema id used to generate the schema for it.
+ * A POJO class to store RMD and the value schema ID used to generate the RMD schema.
  */
 public class ReplicationMetadataWithValueSchemaId {
   private final int valueSchemaId;

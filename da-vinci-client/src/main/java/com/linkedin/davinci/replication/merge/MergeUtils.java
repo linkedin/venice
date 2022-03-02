@@ -1,7 +1,11 @@
 package com.linkedin.davinci.replication.merge;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import org.apache.avro.generic.GenericRecord;
+
+import static com.linkedin.venice.VeniceConstants.*;
 
 
 public class MergeUtils {
@@ -45,6 +49,35 @@ public class MergeUtils {
     }
   }
 
+  public static long extractOffsetVectorSumFromReplicationMetadata(GenericRecord replicationMetadataRecord) {
+    if (replicationMetadataRecord == null) {
+      return 0;
+    }
+    Object offsetVectorObject = replicationMetadataRecord.get(REPLICATION_CHECKPOINT_VECTOR_FIELD);
+    return MergeUtils.sumOffsetVector(offsetVectorObject);
+  }
+
+  public static List<Long> extractTimestampFromReplicationMetadata(GenericRecord replicationMetadataRecord) {
+    // TODO: This function needs a heuristic to work on field level timestamps.  At time of writing, this function
+    // is only for recording the previous value of a record's timestamp, so we could consider specifying the incoming
+    // operation to identify if we care about the record level timestamp, or, certain fields and then returning an ordered
+    // list of those timestamps to compare post resolution.  I hesitate to commit to an implementation here prior to putting
+    // the full write compute resolution into uncommented fleshed out glory.  So we'll effectively ignore operations
+    // that aren't root level until then.
+    if (replicationMetadataRecord == null) {
+      return Collections.singletonList(0L);
+    }
+    Object timestampObject = replicationMetadataRecord.get(TIMESTAMP_FIELD_NAME);
+    Merge.ReplicationMetadataType replicationMetadataType = MergeUtils.getReplicationMetadataType(timestampObject);
+
+    if (replicationMetadataType == Merge.ReplicationMetadataType.ROOT_LEVEL_TIMESTAMP) {
+      return Collections.singletonList((long) timestampObject);
+    } else {
+      // not supported yet so ignore it
+      // TODO Must clone the results when PER_FIELD_TIMESTAMP mode is enabled to return the list.
+      return Collections.singletonList(0L);
+    }
+  }
 
   static List<Long> mergeOffsetVectors(List<Long> oldOffsetVector, Long newOffset, int sourceBrokerID) {
     if (sourceBrokerID < 0) {

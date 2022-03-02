@@ -98,7 +98,7 @@ public class MergeConflictResolverTest {
     newRecord.put("id", "id10");
     newRecord.put("name", "name10");
     newRecord.put("age", 20);
-    MergeConflictResolver mergeConflictResolver = new MergeConflictResolver(schemaRepository, storeName, replicationMetadataVersionId);
+    MergeConflictResolver mergeConflictResolver = new MergeConflictResolver(schemaRepository, storeName, valueSchemaID -> new GenericData.Record(aaSchema));
     ByteBuffer oldBB = getByteBufferOfRecord(valueRecord);
     ByteBuffer newBB = getByteBufferOfRecord(newRecord);
     MergeConflictResult mergeConflictResult  = mergeConflictResolver.put(Lazy.of(() -> oldBB),
@@ -169,7 +169,7 @@ public class MergeConflictResolverTest {
     timestampRecord.put(0, 20L);
     timestampRecord.put(1, new ArrayList<Long>());
 
-    MergeConflictResolver mergeConflictResolver = new MergeConflictResolver(schemaRepository, storeName, replicationMetadataVersionId);
+    MergeConflictResolver mergeConflictResolver = new MergeConflictResolver(schemaRepository, storeName, valueSchemaID -> new GenericData.Record(aaSchema));
     MergeConflictResult mergeConflictResult  = mergeConflictResolver.delete(timestampRecord, 1, 30,1, 0);
 
     // verify delete null value
@@ -230,7 +230,7 @@ public class MergeConflictResolverTest {
       writeTs.add((long) (i + 15));
     }
 
-    MergeConflictResolver mergeConflictResolver = new MergeConflictResolver(schemaRepository, storeName, replicationMetadataVersionId);
+    MergeConflictResolver mergeConflictResolver = new MergeConflictResolver(schemaRepository, storeName, null);
     MergeConflictResult mergeConflictResult = null;
     ByteBuffer oldBB = getByteBufferOfRecord(origRecord);
 
