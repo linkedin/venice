@@ -132,8 +132,6 @@ public class ReplicationMetadataRocksDBStoragePartitionTest extends AbstractStor
     ReplicationMetadataSchemaEntry rmdSchemaEnry = new ReplicationMetadataSchemaEntry(1, 1, aaSchema);
     doReturn(valueSchemaEntry).when(schemaRepository).getLatestValueSchema(anyString());
     doReturn(rmdSchemaEnry).when(schemaRepository).getReplicationMetadataSchema(anyString(), anyInt(), anyInt());
-
-    MergeConflictResolver mergeConflictResolver = new MergeConflictResolver(schemaRepository, storeName, 1);
   }
 
   @BeforeClass

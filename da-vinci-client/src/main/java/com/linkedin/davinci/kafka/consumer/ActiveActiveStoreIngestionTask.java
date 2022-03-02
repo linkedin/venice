@@ -5,6 +5,8 @@ import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.replication.ReplicationMetadataWithValueSchemaId;
 import com.linkedin.davinci.replication.merge.MergeConflictResolver;
 import com.linkedin.davinci.replication.merge.MergeConflictResult;
+import com.linkedin.davinci.replication.merge.MergeUtils;
+import com.linkedin.davinci.replication.merge.ReplicationMetadataSerDe;
 import com.linkedin.davinci.stats.AggVersionedStorageIngestionStats;
 import com.linkedin.davinci.storage.chunking.ChunkingUtils;
 import com.linkedin.davinci.storage.chunking.RawBytesChunkingAdapter;
@@ -44,6 +46,7 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.BooleanSupplier;
+import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.producer.Callback;
@@ -61,6 +64,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   private static final Logger logger = LogManager.getLogger(ActiveActiveStoreIngestionTask.class);
   private final int replicationMetadataVersionId;
   private final MergeConflictResolver mergeConflictResolver;
+  private final ReplicationMetadataSerDe replicationMetadataSerDe;
   private final Lazy<KeyLevelLocksManager> keyLevelLocksManager;
   private final AggVersionedStorageIngestionStats aggVersionedStorageIngestionStats;
 
@@ -87,7 +91,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         compressorFactory);
 
     this.replicationMetadataVersionId = version.getReplicationMetadataVersionId();
-    this.mergeConflictResolver = new MergeConflictResolver(builder.getSchemaRepo(), storeName, replicationMetadataVersionId);
     this.aggVersionedStorageIngestionStats = versionedStorageIngestionStats;
     int knownKafkaClusterNumber = serverConfig.getKafkaClusterIdToUrlMap().size();
     int consumerPoolSizePerKafkaCluster = serverConfig.getConsumerPoolSizePerKafkaCluster();
@@ -97,6 +100,12 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
      */
     int maxKeyLevelLocksPoolSize = Math.min(storeVersionPartitionCount, consumerPoolSizePerKafkaCluster) * knownKafkaClusterNumber + 1;
     this.keyLevelLocksManager = Lazy.of(() -> new KeyLevelLocksManager(getVersionTopic(), initialPoolSize, maxKeyLevelLocksPoolSize));
+    this.replicationMetadataSerDe = new ReplicationMetadataSerDe(builder.getSchemaRepo(), storeName, replicationMetadataVersionId);
+    this.mergeConflictResolver = new MergeConflictResolver(
+        builder.getSchemaRepo(),
+        storeName,
+        valueSchemaID -> new GenericData.Record(replicationMetadataSerDe.getReplicationMetadataSchema(valueSchemaID))
+    );
   }
 
   @Override
@@ -177,19 +186,18 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
    * @return The wrapper object containing replication metadata and value schema id
    */
   private ReplicationMetadataWithValueSchemaId getReplicationMetadataAndSchemaId(PartitionConsumptionState partitionConsumptionState, byte[] key, int subPartition) {
-    PartitionConsumptionState.TransientRecord transientRecord =
-        partitionConsumptionState.getTransientRecord(key);
-    if (transientRecord == null) {
-      long lookupStartTimeInNS = System.nanoTime();
-      byte[] replicationMetadataWithValueSchemaBytes = storageEngineRepository
-          .getLocalStorageEngine(kafkaVersionTopic).getReplicationMetadata(subPartition, key);
-      storeIngestionStats.recordIngestionReplicationMetadataLookUpLatency(storeName, LatencyUtils.getLatencyInMS(lookupStartTimeInNS));
-      return mergeConflictResolver.deserializeValueSchemaIdPrependedRmdBytes(replicationMetadataWithValueSchemaBytes);
-
-    } else {
+    PartitionConsumptionState.TransientRecord cachedRecord = partitionConsumptionState.getTransientRecord(key);
+    if (cachedRecord != null) {
       storeIngestionStats.recordIngestionReplicationMetadataCacheHitCount(storeName);
-      return new ReplicationMetadataWithValueSchemaId(transientRecord.getValueSchemaId(), transientRecord.getReplicationMetadataRecord());
+      return new ReplicationMetadataWithValueSchemaId(cachedRecord.getValueSchemaId(), cachedRecord.getReplicationMetadataRecord());
     }
+
+    final long lookupStartTimeInNS = System.nanoTime();
+    byte[] replicationMetadataWithValueSchemaBytes = storageEngineRepository
+        .getLocalStorageEngine(kafkaVersionTopic)
+        .getReplicationMetadata(subPartition, key);
+    storeIngestionStats.recordIngestionReplicationMetadataLookUpLatency(storeName, LatencyUtils.getLatencyInMS(lookupStartTimeInNS));
+    return replicationMetadataSerDe.deserializeValueSchemaIdPrependedRmdBytes(replicationMetadataWithValueSchemaBytes);
   }
 
   // This function may modify the original record in KME and it is unsafe to use the payload from KME directly after this function.
@@ -229,8 +237,11 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     Lazy<ByteBuffer> lazyOldValue = Lazy.of(() ->
         getValueBytesForKey(partitionConsumptionState, keyBytes, consumerRecord.topic(), consumerRecord.partition(), isChunkedTopic));
 
-    ReplicationMetadataWithValueSchemaId replicationMetadataWithValueSchemaId =
-        getReplicationMetadataAndSchemaId(partitionConsumptionState, keyBytes, subPartition);
+    ReplicationMetadataWithValueSchemaId replicationMetadataWithValueSchemaId = getReplicationMetadataAndSchemaId(
+        partitionConsumptionState,
+        keyBytes,
+        subPartition
+    );
 
     int oldValueSchemaId = -1;
     GenericRecord oldReplicationMetadataRecord = null;
@@ -239,9 +250,9 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       oldValueSchemaId = replicationMetadataWithValueSchemaId.getValueSchemaId();
       oldReplicationMetadataRecord = replicationMetadataWithValueSchemaId.getReplicationMetadataRecord();
     }
-    long writeTimestamp = mergeConflictResolver.getWriteTimestampFromKME(kafkaValue);
-    long offsetSumPreOperation = mergeConflictResolver.extractOffsetVectorSumFromReplicationMetadata(oldReplicationMetadataRecord);
-    List<Long> recordTimestampsPreOperation = mergeConflictResolver.extractTimestampFromReplicationMetadata(oldReplicationMetadataRecord);
+    final long writeTimestamp = getWriteTimestampFromKME(kafkaValue);
+    final long offsetSumPreOperation = MergeUtils.extractOffsetVectorSumFromReplicationMetadata(oldReplicationMetadataRecord);
+    List<Long> recordTimestampsPreOperation = MergeUtils.extractTimestampFromReplicationMetadata(oldReplicationMetadataRecord);
     // get the source offset and the id
     int sourceKafkaClusterId = kafkaClusterUrlToIdMap.getOrDefault(consumerRecordWrapper.kafkaUrl(), -1);
     long sourceOffset = consumerRecordWrapper.consumerRecord().offset();
@@ -279,6 +290,14 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     }
   }
 
+  private long getWriteTimestampFromKME(KafkaMessageEnvelope kme) {
+    if (kme.producerMetadata.logicalTimestamp >= 0) {
+      return kme.producerMetadata.logicalTimestamp;
+    } else {
+      return kme.producerMetadata.messageTimestamp;
+    }
+  }
+
   private void validatePostOperationResultsAndRecord(MergeConflictResult mergeConflictResult, Long offsetSumPreOperation, List<Long> timestampsPreOperation) {
     // Nothing was applied, no harm no foul
     if (mergeConflictResult.isUpdateIgnored()) {
@@ -286,7 +305,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     }
     // Post Validation checks on resolution
     GenericRecord replicationMetadataRecord = mergeConflictResult.getReplicationMetadataRecord();
-    if (offsetSumPreOperation > mergeConflictResolver.extractOffsetVectorSumFromReplicationMetadata(replicationMetadataRecord)) {
+    if (offsetSumPreOperation > MergeUtils.extractOffsetVectorSumFromReplicationMetadata(replicationMetadataRecord)) {
       // offsets went backwards, raise an alert!
       storeIngestionStats.recordOffsetRegressionDCRError();
       aggVersionedStorageIngestionStats.recordOffsetRegressionDCRError(storeName, versionNumber);
@@ -297,7 +316,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     // TODO: This comparison doesn't work well for write compute+schema evolution (can spike up). VENG-8129
     // this works fine for now however as we do not fully support A/A write compute operations (as we only do root timestamp comparisons).
 
-    List<Long> timestampsPostOperation = mergeConflictResolver.extractTimestampFromReplicationMetadata(replicationMetadataRecord);
+    List<Long> timestampsPostOperation = MergeUtils.extractTimestampFromReplicationMetadata(replicationMetadataRecord);
     for(int i = 0; i < timestampsPreOperation.size(); i++) {
       if (timestampsPreOperation.get(i) > timestampsPostOperation.get(i)) {
         // timestamps went backwards, raise an alert!
@@ -363,8 +382,10 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     final int valueSchemaId = mergeConflictResult.getValueSchemaId();
 
     GenericRecord replicationMetadataRecord = mergeConflictResult.getReplicationMetadataRecord();
-    final ByteBuffer updatedReplicationMetadataBytes = mergeConflictResolver.getByteBufferFromReplicationMetadata(
-        mergeConflictResult.getValueSchemaId(), mergeConflictResult.getReplicationMetadataRecord());
+    final ByteBuffer updatedReplicationMetadataBytes = replicationMetadataSerDe.serializeReplicationMetadata(
+        mergeConflictResult.getValueSchemaId(),
+        mergeConflictResult.getReplicationMetadataRecord()
+    );
 
     // finally produce and update the transient record map.
     if (updatedValueBytes == null) {

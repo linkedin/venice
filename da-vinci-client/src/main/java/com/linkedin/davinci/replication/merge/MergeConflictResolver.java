@@ -1,29 +1,16 @@
 package com.linkedin.davinci.replication.merge;
 
-import com.linkedin.davinci.replication.ReplicationMetadataWithValueSchemaId;
-import com.linkedin.davinci.serialization.avro.MapOrderingPreservingSeDeFactory;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
-import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
-import com.linkedin.venice.schema.rmd.ReplicationMetadataSchemaEntry;
-import com.linkedin.venice.serializer.AvroSerializer;
-import com.linkedin.venice.serializer.RecordDeserializer;
-import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.utils.Lazy;
-import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
-import org.apache.avro.Schema;
-import org.apache.avro.generic.GenericData;
+import java.util.function.Function;
 import org.apache.avro.generic.GenericRecord;
-import org.apache.avro.io.OptimizedBinaryDecoder;
-import org.apache.avro.io.OptimizedBinaryDecoderFactory;
 
 import static com.linkedin.venice.VeniceConstants.*;
-
 
 /**
  * TODO schema validation of old and new schema for WC enabled stores.
@@ -37,14 +24,16 @@ import static com.linkedin.venice.VeniceConstants.*;
 public class MergeConflictResolver {
   private final String storeName;
   private final ReadOnlySchemaRepository schemaRepository;
-  private final int replicationMetadataVersionId;
-  private final VeniceConcurrentHashMap<Integer, Schema> idToReplicationSchemaMap = new VeniceConcurrentHashMap<>();
-  private final VeniceConcurrentHashMap<Schema, RecordDeserializer<GenericRecord>> schemaToDeserializerMap = new VeniceConcurrentHashMap<>();
+  private final Function<Integer, GenericRecord> newRmdCreator;
 
-  public MergeConflictResolver(ReadOnlySchemaRepository schemaRepository, String storeName, int replicationMetadataVersionId) {
+  public MergeConflictResolver(
+      ReadOnlySchemaRepository schemaRepository,
+      String storeName,
+      Function<Integer, GenericRecord> newRmdCreator
+  ) {
     this.schemaRepository = schemaRepository;
     this.storeName = storeName;
-    this.replicationMetadataVersionId = replicationMetadataVersionId;
+    this.newRmdCreator = newRmdCreator;
   }
 
   /**
@@ -62,8 +51,16 @@ public class MergeConflictResolver {
    *                               the ReplicationMetadata for the newly inserted record.
    * @return A MergeConflictResult which denotes what update should be applied or if the operation should be ignored.
    */
-  public MergeConflictResult put(Lazy<ByteBuffer> oldValue, GenericRecord oldReplicationMetadataRecord, ByteBuffer newValue,
-      long writeOperationTimestamp, int oldValueSchemaId, int newValueSchemaId, long newValueSourceOffset, int newValueSourceBrokerID) {
+  public MergeConflictResult put(
+      Lazy<ByteBuffer> oldValue,
+      GenericRecord oldReplicationMetadataRecord,
+      ByteBuffer newValue,
+      long writeOperationTimestamp,
+      int oldValueSchemaId,
+      int newValueSchemaId,
+      long newValueSourceOffset,
+      int newValueSourceBrokerID
+  ) {
     /**
      * oldReplicationMetadata can be null in two cases:
      * 1. There is no value corresponding to the key
@@ -74,7 +71,7 @@ public class MergeConflictResolver {
      */
     // TODO: Honor BatchConflictResolutionPolicy when replication metadata is null
     if (oldReplicationMetadataRecord == null) {
-      GenericRecord newReplicationMetadata = new GenericData.Record(getReplicationMetadataSchema(newValueSchemaId));
+      GenericRecord newReplicationMetadata = newRmdCreator.apply(newValueSchemaId);
       newReplicationMetadata.put(TIMESTAMP_FIELD_NAME, writeOperationTimestamp);
       // A record which didn't come from an RT topic or has null metadata should have no offset vector.
       newReplicationMetadata.put(REPLICATION_CHECKPOINT_VECTOR_FIELD,
@@ -120,65 +117,11 @@ public class MergeConflictResolver {
     // TODO: Handle conflict resolution for write-compute
   }
 
-  public long extractOffsetVectorSumFromReplicationMetadata(GenericRecord replicationMetadataRecord) {
-    if (replicationMetadataRecord == null) {
-      return 0;
-    }
-    Object offsetVectorObject = replicationMetadataRecord.get(REPLICATION_CHECKPOINT_VECTOR_FIELD);
-    return MergeUtils.sumOffsetVector(offsetVectorObject);
-  }
-
-  /**
-   * @param valueSchemaIdPrependedBytes The raw bytes with value schema ID prepended.
-   * @return A {@link ReplicationMetadataWithValueSchemaId} object composed by extracting the value schema ID from the
-   *    * header of the replication metadata.
-   */
-  public ReplicationMetadataWithValueSchemaId deserializeValueSchemaIdPrependedRmdBytes(byte[] valueSchemaIdPrependedBytes) {
-    if (valueSchemaIdPrependedBytes == null) {
-      return null;
-    }
-    ByteBuffer rmdWithValueSchemaID = ByteBuffer.wrap(valueSchemaIdPrependedBytes);
-    final int valueSchemaId = rmdWithValueSchemaID.getInt();
-    OptimizedBinaryDecoder binaryDecoder =
-        OptimizedBinaryDecoderFactory.defaultFactory().createOptimizedBinaryDecoder(
-            rmdWithValueSchemaID.array(), // bytes of replication metadata with NO value schema ID.
-            rmdWithValueSchemaID.position(),
-            rmdWithValueSchemaID.remaining()
-        );
-    GenericRecord rmdRecord = getReplicationMetadataDeserializer(valueSchemaId).deserialize(binaryDecoder);
-
-    return new ReplicationMetadataWithValueSchemaId(
-        valueSchemaId,
-        rmdRecord
-    );
-  }
-
-  public List<Long> extractTimestampFromReplicationMetadata(GenericRecord replicationMetadataRecord) {
-    // TODO: This function needs a heuristic to work on field level timestamps.  At time of writing, this function
-    // is only for recording the previous value of a record's timestamp, so we could consider specifying the incoming
-    // operation to identify if we care about the record level timestamp, or, certain fields and then returning an ordered
-    // list of those timestamps to compare post resolution.  I hesitate to commit to an implementation here prior to putting
-    // the full write compute resolution into uncommented fleshed out glory.  So we'll effectively ignore operations
-    // that aren't root level until then.
-    if (replicationMetadataRecord == null) {
-      return Collections.singletonList(0L);
-    }
-    Object timestampObject = replicationMetadataRecord.get(TIMESTAMP_FIELD_NAME);
-    Merge.ReplicationMetadataType replicationMetadataType = MergeUtils.getReplicationMetadataType(timestampObject);
-
-    if (replicationMetadataType == Merge.ReplicationMetadataType.ROOT_LEVEL_TIMESTAMP) {
-      return Collections.singletonList((long) timestampObject);
-    } else {
-      // not supported yet so ignore it
-      // TODO Must clone the results when PER_FIELD_TIMESTAMP mode is enabled to return the list.
-      return Collections.singletonList(0L);
-    }
-  }
-
   /**
    * Perform conflict resolution when the incoming operation is a DELETE operation.
+   *
    * @param oldReplicationMetadataRecord The replication metadata of the currently persisted value.
-   * @param schemaIdOfOldValue The schema id of the currently persisted value.
+   * @param valueSchemaID The schema id of the currently persisted value.
    * @param writeOperationTimestamp The logical timestamp of the incoming record.
    * @param newValueSourceOffset The offset from which the new value originates in the realtime stream.  Used to build
    *                               the ReplicationMetadata for the newly inserted record.
@@ -187,7 +130,13 @@ public class MergeConflictResolver {
    *                                 the ReplicationMetadata for the newly inserted record.
    * @return A MergeConflictResult which denotes what update should be applied or if the operation should be ignored.
    */
-  public MergeConflictResult delete(GenericRecord oldReplicationMetadataRecord, int schemaIdOfOldValue, long writeOperationTimestamp, long newValueSourceOffset, int newValueSourceBrokerID) {
+  public MergeConflictResult delete(
+      GenericRecord oldReplicationMetadataRecord,
+      int valueSchemaID,
+      long writeOperationTimestamp,
+      long newValueSourceOffset,
+      int newValueSourceBrokerID
+  ) {
     /**
      * oldReplicationMetadata can be null in two cases:
      * 1. There is no value corresponding to the key
@@ -201,19 +150,19 @@ public class MergeConflictResolver {
       // If there is no existing record for the key or if the previous operation was a PUT from a batch push, it is
       // possible that schema Id of Old value will not be available. In that case, use largest value schema id to
       // serialize RMD.
-      if (schemaIdOfOldValue <= 0) {
-        schemaIdOfOldValue = schemaRepository.getLatestValueSchema(storeName).getId();
+      if (valueSchemaID <= 0) {
+        valueSchemaID = schemaRepository.getLatestValueSchema(storeName).getId();
       }
 
-      GenericRecord newReplicationMetadata = new GenericData.Record(getReplicationMetadataSchema(schemaIdOfOldValue));
+      GenericRecord newReplicationMetadata = newRmdCreator.apply(valueSchemaID);
       newReplicationMetadata.put(TIMESTAMP_FIELD_NAME, writeOperationTimestamp);
       newReplicationMetadata.put(REPLICATION_CHECKPOINT_VECTOR_FIELD,
           MergeUtils.mergeOffsetVectors(null, newValueSourceOffset, newValueSourceBrokerID));
-      return new MergeConflictResult(null, schemaIdOfOldValue, false, newReplicationMetadata);
+      return new MergeConflictResult(null, valueSchemaID, false, newReplicationMetadata);
     }
 
-    if (schemaIdOfOldValue <= 0) {
-      throw new VeniceException("Invalid schema Id of old value found when replication metadata exists for store = " + storeName + "; schema ID = " + schemaIdOfOldValue);
+    if (valueSchemaID <= 0) {
+      throw new VeniceException("Invalid schema Id of old value found when replication metadata exists for store = " + storeName + "; schema ID = " + valueSchemaID);
     }
 
     Object tsObject = oldReplicationMetadataRecord.get(TIMESTAMP_FIELD_NAME);
@@ -228,7 +177,7 @@ public class MergeConflictResolver {
         oldReplicationMetadataRecord.put(REPLICATION_CHECKPOINT_VECTOR_FIELD,
             MergeUtils.mergeOffsetVectors((List<Long>)oldReplicationMetadataRecord.get(REPLICATION_CHECKPOINT_VECTOR_FIELD), newValueSourceOffset, newValueSourceBrokerID));
 
-        return new MergeConflictResult(null, schemaIdOfOldValue,false, oldReplicationMetadataRecord);
+        return new MergeConflictResult(null, valueSchemaID,false, oldReplicationMetadataRecord);
       } else { // keep the old value
         return MergeConflictResult.getIgnoredResult();
       }
@@ -237,42 +186,5 @@ public class MergeConflictResolver {
     }
 
     // TODO: Handle conflict resolution for write-compute
-  }
-
-  public long getWriteTimestampFromKME(KafkaMessageEnvelope kme) {
-    if (kme.producerMetadata.logicalTimestamp >= 0) {
-      return kme.producerMetadata.logicalTimestamp;
-    } else {
-      return kme.producerMetadata.messageTimestamp;
-    }
-  }
-
-  private RecordDeserializer<GenericRecord> getReplicationMetadataDeserializer(int valueSchemaId) {
-    Schema replicationMetadataSchema = getReplicationMetadataSchema(valueSchemaId);
-    return schemaToDeserializerMap.computeIfAbsent(replicationMetadataSchema,
-        schema -> MapOrderingPreservingSeDeFactory.getDeserializer(replicationMetadataSchema, replicationMetadataSchema));
-  }
-
-  private RecordSerializer<GenericRecord> getReplicationMetadataSerializer(int valueSchemaId) {
-    Schema replicationMetadataSchema = getReplicationMetadataSchema(valueSchemaId);
-    return MapOrderingPreservingSeDeFactory.getSerializer(replicationMetadataSchema);
-  }
-
-  public ByteBuffer getByteBufferFromReplicationMetadata(int schemaId, GenericRecord replicationMetadataRecord) {
-    byte[] replicationMetadataBytes = getReplicationMetadataSerializer(schemaId)
-        .serialize(replicationMetadataRecord, AvroSerializer.REUSE.get());
-    return ByteBuffer.wrap(replicationMetadataBytes);
-  }
-
-  private Schema getReplicationMetadataSchema(int valueSchemaId) {
-    return idToReplicationSchemaMap.computeIfAbsent(valueSchemaId,  id -> {
-      ReplicationMetadataSchemaEntry
-          replicationMetadataSchemaEntry = schemaRepository.getReplicationMetadataSchema(storeName, valueSchemaId,
-          replicationMetadataVersionId);
-      if (replicationMetadataSchemaEntry == null) {
-        throw new VeniceException("Unable to fetch replication metadata schema from schema repository");
-      }
-      return replicationMetadataSchemaEntry.getSchema();
-    });
   }
 }
