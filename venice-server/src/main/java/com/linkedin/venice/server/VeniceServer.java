@@ -51,6 +51,7 @@ import com.linkedin.venice.stats.DiskHealthStats;
 import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.stats.VeniceJVMStats;
 import com.linkedin.venice.utils.CollectionUtils;
+import com.linkedin.venice.utils.Lazy;
 import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
@@ -76,7 +77,7 @@ public class VeniceServer {
   private final Optional<DynamicAccessController> storeAccessController;
   private final Optional<ClientConfig> clientConfigForConsumer;
   private final AtomicBoolean isStarted;
-  private List<AbstractVeniceService> services;
+  private final Lazy<List<AbstractVeniceService>> services;
 
   private StorageService storageService;
   private StorageMetadataService storageMetadataService;
@@ -91,6 +92,8 @@ public class VeniceServer {
   private ReadOnlyLiveClusterConfigRepository liveClusterConfigRepo;
   private Optional<HelixReadOnlyZKSharedSchemaRepository> readOnlyZKSharedSchemaRepository;
   private ZkClient zkClient;
+  /** Used by the metrics framework, even though static analysis cannot tell... */
+  @SuppressWarnings("unused")
   private VeniceJVMStats jvmStats;
   private ICProvider icProvider;
   StorageEngineBackedCompressorFactory compressorFactory;
@@ -134,6 +137,7 @@ public class VeniceServer {
     }
 
     this.isStarted = new AtomicBoolean(false);
+    this.services = Lazy.of(() -> createServices());
     this.veniceConfigLoader = veniceConfigLoader;
     this.metricsRepository = metricsRepository;
     this.sslFactory = sslFactory;
@@ -155,7 +159,7 @@ public class VeniceServer {
    */
   private List<AbstractVeniceService> createServices() {
     /* Services are created in the order they must be started */
-    List<AbstractVeniceService> services = new ArrayList<AbstractVeniceService>();
+    List<AbstractVeniceService> services = new ArrayList<>();
 
     VeniceServerConfig serverConfig = veniceConfigLoader.getVeniceServerConfig();
     // Create jvm metrics object
@@ -358,7 +362,7 @@ public class VeniceServer {
    *         are not finished starting.
    */
   public boolean isStarted() {
-    return isStarted.get() && services.stream().allMatch(AbstractVeniceService::isRunning);
+    return isStarted.get() && services.isPresent() && services.get().stream().allMatch(AbstractVeniceService::isRunning);
   }
 
   /**
@@ -376,9 +380,9 @@ public class VeniceServer {
      * in this function since internally it depends on d2 client to finish the initialization, and d2 client
      * is not started in the constructor.
      */
-    this.services = createServices();
+    List<AbstractVeniceService> veniceServiceList = this.services.get();
     // TODO - Efficient way to lock java heap
-    logger.info("Starting " + services.size() + " services.");
+    logger.info("Starting " + veniceServiceList.size() + " services.");
     long start = System.currentTimeMillis();
 
     /**
@@ -392,7 +396,7 @@ public class VeniceServer {
       throw new VeniceException("Got interrupted exception while delaying start for Router connection warming");
     }
 
-    for (AbstractVeniceService service : services) {
+    for (AbstractVeniceService service : veniceServiceList) {
       service.start();
     }
 
@@ -406,7 +410,7 @@ public class VeniceServer {
    * @throws Exception
    * */
   public void shutdown() throws VeniceException {
-    List<Exception> exceptions = new ArrayList<Exception>();
+    List<Exception> exceptions = new ArrayList<>();
     logger.info("Stopping all services ");
 
     /* Stop in reverse order */
@@ -417,7 +421,7 @@ public class VeniceServer {
         logger.info("The server is already stopped, ignoring duplicate attempt.");
         return;
       }
-      for (AbstractVeniceService service : CollectionUtils.reversed(services)) {
+      for (AbstractVeniceService service : CollectionUtils.reversed(services.get())) {
         try {
           service.stop();
         } catch (Exception e) {
