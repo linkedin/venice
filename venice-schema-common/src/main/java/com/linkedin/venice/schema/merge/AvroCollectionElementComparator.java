@@ -1,5 +1,6 @@
 package com.linkedin.venice.schema.merge;
 
+import com.linkedin.venice.schema.SchemaUtils;
 import com.linkedin.venice.utils.IndexedHashMap;
 import java.util.Map;
 import org.apache.avro.Schema;
@@ -22,10 +23,17 @@ public class AvroCollectionElementComparator {
 
   public int compare(Object o1, Object o2, Schema schema) {
     Validate.notNull(schema);
-    if (schema.getType() == Schema.Type.MAP) {
+    if (isMapOrNullableMap(schema)) {
       return compareMaps(validateAndCastToMapType(o1), validateAndCastToMapType(o2));
     }
     return GenericData.get().compare(o1, o2, schema);
+  }
+
+  private boolean isMapOrNullableMap(Schema schema) {
+    if (schema.getType() == Schema.Type.MAP) {
+      return true;
+    }
+    return SchemaUtils.isNullableUnionPair(schema) && (schema.getTypes().get(0).getType() == Schema.Type.MAP ||  schema.getTypes().get(1).getType() == Schema.Type.MAP);
   }
 
   private int compareMaps(IndexedHashMap<String, Object> map1, IndexedHashMap<String, Object> map2) {
