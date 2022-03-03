@@ -27,7 +27,9 @@ public class TestBatchForIngestionIsolation extends TestBatch {
     serverProperties.setProperty(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE, "300");
     serverProperties.setProperty(SERVER_INGESTION_MODE, IngestionMode.ISOLATED.toString());
 
+    serverProperties.setProperty(DATA_BASE_PATH, baseDataPath1);
     veniceClusterWrapper.addVeniceServer(new Properties(), serverProperties);
+    serverProperties.setProperty(DATA_BASE_PATH, baseDataPath2);
     veniceClusterWrapper.addVeniceServer(new Properties(), serverProperties);
 
     Properties routerProperties = new Properties();

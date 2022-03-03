@@ -1,5 +1,6 @@
 package com.linkedin.venice.endToEnd;
 
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
@@ -22,9 +23,6 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;
-
-import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
-
 import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
@@ -62,11 +60,13 @@ import static com.linkedin.venice.utils.TestPushUtils.*;
 @Test(singleThreaded = true)
 public abstract class TestBatch {
   private static final Logger LOGGER = Logger.getLogger(TestBatch.class);
-  private static final int TEST_TIMEOUT = 60 * Time.MS_PER_SECOND;
+  protected static final int TEST_TIMEOUT = 60 * Time.MS_PER_SECOND;
   private static final int MAX_RETRY_ATTEMPTS = 3;
   private static final String STRING_SCHEMA = "\"string\"";
+  protected static final String baseDataPath1 = Utils.getTempDataDirectory().getAbsolutePath();
+  protected static final String baseDataPath2 = Utils.getTempDataDirectory().getAbsolutePath();
 
-  private VeniceClusterWrapper veniceCluster;
+  protected VeniceClusterWrapper veniceCluster;
 
   public abstract VeniceClusterWrapper initializeVeniceCluster();
 
@@ -364,7 +364,7 @@ public abstract class TestBatch {
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testEarlyDeleteBackupStore() throws Exception {
-    testBatchStoreMultiVersionPush(inputDir -> {
+    String storeName = testBatchStoreMultiVersionPush(inputDir -> {
       Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir, false);
       return new Pair<>(recordSchema.getField("id").schema(),
           recordSchema.getField("name").schema());
@@ -374,6 +374,22 @@ public abstract class TestBatch {
         Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + i);
       }
     }, new UpdateStoreQueryParams().setBackupStrategy(BackupStrategy.DELETE_ON_NEW_PUSH_START));
+
+
+    // First version should be fully cleaned up, while newer versions should exists.
+    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+      String firstVersionDataPath1 = baseDataPath1 + "/rocksdb/" + storeName + "_v1";
+      String secondVersionDataPath1 = baseDataPath1 + "/rocksdb/" + storeName + "_v2";
+      String firstVersionDataPath2 = baseDataPath2 + "/rocksdb/" + storeName + "_v1";
+      String secondVersionDataPath2 = baseDataPath2 + "/rocksdb/" + storeName + "_v2";
+      File firstVersionDataFolder1 = new File(firstVersionDataPath1);
+      File firstVersionDataFolder2 = new File(firstVersionDataPath2);
+      Assert.assertFalse(firstVersionDataFolder1.exists() || firstVersionDataFolder2.exists());
+      File secondVersionDataFolder1 = new File(secondVersionDataPath1);
+      File secondVersionDataFolder2 = new File(secondVersionDataPath2);
+      Assert.assertTrue(secondVersionDataFolder1.exists() || secondVersionDataFolder2.exists());
+    });
+
   }
 
   @Test(timeOut = TEST_TIMEOUT)

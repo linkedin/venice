@@ -251,6 +251,11 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
     topicNameToLeaderFollowerEnabledFlagMap.remove(topicName);
   }
 
+  public int getTopicPartitionCount(String topicName) {
+    return topicNameToPartitionSetMap.getOrDefault(topicName, Collections.emptySet()).size() +
+        completedTopicPartitions.getOrDefault(topicName, Collections.emptySet()).size();
+  }
+
   private void setupMetricsCollection() {
     if (metricsRepository == null) {
       logger.warn("No metrics repository is set up in ingestion report listener, skipping metrics collection");

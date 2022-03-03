@@ -112,9 +112,20 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend implements
   @Override
   public void dropStoragePartitionGracefully(VeniceStoreVersionConfig storeConfig, int partition, int timeoutInSeconds,
       boolean removeEmptyStorageEngine) {
-    mainIngestionRequestClient.unsubscribeTopicPartition(storeConfig.getStoreVersionName(), partition);
-    super.dropStoragePartitionGracefully(storeConfig, partition, timeoutInSeconds, removeEmptyStorageEngine);
-    mainIngestionMonitorService.cleanupTopicPartitionState(storeConfig.getStoreVersionName(), partition);
+    String topicName = storeConfig.getStoreVersionName();
+    if (isTopicPartitionInLocal(topicName, partition)) {
+      logger.info("Dropping partition: " + partition + " of topic: " + topicName + " in main process.");
+      super.dropStoragePartitionGracefully(storeConfig, partition, timeoutInSeconds, removeEmptyStorageEngine);
+    } else {
+      logger.info("Dropping partition: " + partition + " of topic: " + topicName + " in forked ingestion process.");
+      mainIngestionRequestClient.unsubscribeTopicPartition(topicName, partition);
+    }
+    mainIngestionMonitorService.cleanupTopicPartitionState(topicName, partition);
+    if (mainIngestionMonitorService.getTopicPartitionCount(topicName) == 0) {
+      logger.info("No serving partitions exist for topic: " + topicName + ", dropping the topic storage.");
+      mainIngestionRequestClient.removeStorageEngine(topicName);
+      mainIngestionMonitorService.cleanupTopicState(topicName);
+    }
   }
 
   @Override
