@@ -1,6 +1,7 @@
 package com.linkedin.venice.pushmonitor;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.DataReplicationPolicy;
@@ -276,6 +277,8 @@ public abstract class AbstractPushMonitorTest {
   public void testQueryingIncrementalPushJobStatus() {
     String topic = getTopic();
     String incrementalPushVersion = String.valueOf(System.currentTimeMillis());
+    HelixCustomizedViewOfflinePushRepository customizedView = Mockito.mock(HelixCustomizedViewOfflinePushRepository.class);
+    Mockito.when(customizedView.getNumberOfReplicasInCompletedState(eq(topic), anyInt())).thenReturn(replicationFactor);
 
     monitor.startMonitorOfflinePush(topic, numberOfPartition, replicationFactor,
         OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
@@ -299,7 +302,7 @@ public abstract class AbstractPushMonitorTest {
     partitionAssignment.addPartition(new Partition(0, onlineInstanceMap));
     doReturn(partitionAssignment).when(mockRoutingDataRepo).getPartitionAssignments(topic);
 
-    Assert.assertEquals(monitor.getPushStatus(topic, Optional.of(incrementalPushVersion)),
+    Assert.assertEquals(monitor.getIncrementalPushStatusAndDetails(topic, incrementalPushVersion, customizedView).getFirst(),
         ExecutionStatus.NOT_CREATED);
 
     //update one of the replica status START -> COMPLETE -> START_OF_INCREMENTAL_PUSH_RECEIVED (SOIP_RECEIVED)
@@ -308,7 +311,7 @@ public abstract class AbstractPushMonitorTest {
 
     monitor.onPartitionStatusChange(topic, new ReadOnlyPartitionStatus(0, replicaStatuses));
     //OfflinePushMonitor should return SOIP_RECEIVED if any of replica receives SOIP_RECEIVED
-    Assert.assertEquals(monitor.getPushStatus(topic, Optional.of(incrementalPushVersion)),
+    Assert.assertEquals(monitor.getIncrementalPushStatusAndDetails(topic, incrementalPushVersion, customizedView).getFirst(),
         ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED);
 
     //update 2 of the replica status to END_OF_INCREMENTAL_PUSH_RECEIVED (EOIP_RECEIVED)
@@ -323,19 +326,19 @@ public abstract class AbstractPushMonitorTest {
 
     monitor.onPartitionStatusChange(topic, new ReadOnlyPartitionStatus(0, replicaStatuses));
     //OfflinePushMonitor should be able to filter out irrelevant IP versions
-    Assert.assertEquals(monitor.getPushStatus(topic, Optional.of(incrementalPushVersion)),
+    Assert.assertEquals(monitor.getIncrementalPushStatusAndDetails(topic, incrementalPushVersion, customizedView).getFirst(),
         ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED);
 
     replicaStatuses.get(2).updateStatus(ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED, incrementalPushVersion);
 
     monitor.onPartitionStatusChange(topic, new ReadOnlyPartitionStatus(0, replicaStatuses));
-    Assert.assertEquals(monitor.getPushStatus(topic, Optional.of(incrementalPushVersion)),
+    Assert.assertEquals(monitor.getIncrementalPushStatusAndDetails(topic, incrementalPushVersion, customizedView).getFirst(),
         ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED);
 
     replicaStatuses.get(0).updateStatus(ExecutionStatus.WARNING, incrementalPushVersion);
 
     monitor.onPartitionStatusChange(topic, new ReadOnlyPartitionStatus(0, replicaStatuses));
-    Assert.assertEquals(monitor.getPushStatus(topic, Optional.of(incrementalPushVersion)),
+    Assert.assertEquals(monitor.getIncrementalPushStatusAndDetails(topic, incrementalPushVersion, customizedView).getFirst(),
         ExecutionStatus.ERROR);
   }
 

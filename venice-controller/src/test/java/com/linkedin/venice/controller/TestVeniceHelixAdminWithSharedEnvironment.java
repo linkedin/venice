@@ -649,7 +649,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     Assert.assertEquals(store.peekNextVersion().getNumber(), 3);
     PushMonitor monitor = veniceAdmin.getHelixVeniceClusterResources(clusterName).getPushMonitor();
     TestUtils.waitForNonDeterministicCompletion(TOTAL_TIMEOUT_FOR_SHORT_TEST_MS, TimeUnit.MILLISECONDS,
-        () -> monitor.getPushStatusAndDetails(Version.composeKafkaTopic(storeName, 2), Optional.empty()).getFirst().equals(ExecutionStatus.COMPLETED)
+        () -> monitor.getPushStatusAndDetails(Version.composeKafkaTopic(storeName, 2)).getFirst().equals(ExecutionStatus.COMPLETED)
     );
   }
 

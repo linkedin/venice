@@ -2,6 +2,7 @@ package com.linkedin.venice.pushmonitor;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
+import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PartitionAssignment;
@@ -236,22 +237,25 @@ public abstract class AbstractPushMonitor
   }
 
   public ExecutionStatus getPushStatus(String topic) {
-    return getPushStatusAndDetails(topic, Optional.empty()).getFirst();
-  }
-
-  public ExecutionStatus getPushStatus(String topic, Optional<String> incrementalPushVersion) {
-    return getPushStatusAndDetails(topic, incrementalPushVersion).getFirst();
+    return getPushStatusAndDetails(topic).getFirst();
   }
 
   @Override
-  public Pair<ExecutionStatus, Optional<String>> getPushStatusAndDetails(String topic, Optional<String> incrementalPushVersion) {
+  public Pair<ExecutionStatus, Optional<String>> getIncrementalPushStatusAndDetails(String topic,
+      String incrementalPushVersion, HelixCustomizedViewOfflinePushRepository customizedViewOfflinePushRepository) {
     OfflinePushStatus pushStatus = getOfflinePush(topic);
     if (pushStatus == null) {
       return new Pair<>(ExecutionStatus.NOT_CREATED, Optional.of("Offline job hasn't been created yet."));
     }
-    if (incrementalPushVersion.isPresent()) {
-      return new Pair<>(pushStatus.checkIncrementalPushStatus(incrementalPushVersion.get(),
-          getRoutingDataRepository().getPartitionAssignments(topic)), Optional.empty());
+    return new Pair<>(pushStatus.checkIncrementalPushStatus(incrementalPushVersion,
+        getRoutingDataRepository().getPartitionAssignments(topic), customizedViewOfflinePushRepository), Optional.empty());
+  }
+
+  @Override
+  public Pair<ExecutionStatus, Optional<String>> getPushStatusAndDetails(String topic) {
+    OfflinePushStatus pushStatus = getOfflinePush(topic);
+    if (pushStatus == null) {
+      return new Pair<>(ExecutionStatus.NOT_CREATED, Optional.of("Offline job hasn't been created yet."));
     }
     return new Pair<>(pushStatus.getCurrentStatus(), pushStatus.getOptionalStatusDetails());
   }
@@ -654,13 +658,13 @@ public abstract class AbstractPushMonitor
   }
 
   @Override
-  public Set<String> getOngoingIncrementalPushVersions(String topic) {
+  public Set<String> getOngoingIncrementalPushVersions(String topic, HelixCustomizedViewOfflinePushRepository customizedViewOfflinePushRepository) {
     OfflinePushStatus pushStatus = getOfflinePush(topic);
     Set<String> result = new HashSet<>();
     if (pushStatus != null) {
       // No ongoing push job of any kind for the given topic
       result.addAll(pushStatus.getOngoingIncrementalPushVersions(getRoutingDataRepository()
-          .getPartitionAssignments(topic)));
+          .getPartitionAssignments(topic), customizedViewOfflinePushRepository));
     }
     return result;
   }

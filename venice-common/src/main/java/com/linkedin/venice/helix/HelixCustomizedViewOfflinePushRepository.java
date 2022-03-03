@@ -29,6 +29,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import static com.linkedin.venice.helix.ResourceAssignment.*;
+import static com.linkedin.venice.pushmonitor.ExecutionStatus.COMPLETED;
 
 
 /**
@@ -61,6 +62,14 @@ public class HelixCustomizedViewOfflinePushRepository extends HelixBaseRoutingRe
             .map(instance -> new ReplicaState(partitionId, instance.getNodeId(), LEADER_FOLLOWER_VENICE_STATE_FILLER,
                 e.getKey(), e.getKey().equals(ExecutionStatus.COMPLETED.name()))))
         .collect(Collectors.toList());
+  }
+
+  public int getNumberOfReplicasInCompletedState(String kafkaTopic, int partitionId) {
+    Partition partition;
+    try (AutoCloseableLock ignored = new AutoCloseableLock(resourceAssignmentRWLock.readLock())) {
+      partition = resourceAssignment.getPartition(kafkaTopic, partitionId);
+    }
+    return partition == null ? 0 : partition.getInstancesInState(COMPLETED.name()).size();
   }
 
   @Override
