@@ -2,6 +2,7 @@ package com.linkedin.venice.pushmonitor;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
+import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PartitionAssignment;
@@ -173,8 +174,14 @@ public class PushMonitorDelegator implements PushMonitor {
   }
 
   @Override
-  public Pair<ExecutionStatus, Optional<String>> getPushStatusAndDetails(String topic, Optional<String> incrementalPushVersion) {
-    return getPushMonitor(topic).getPushStatusAndDetails(topic, incrementalPushVersion);
+  public Pair<ExecutionStatus, Optional<String>> getPushStatusAndDetails(String topic) {
+    return getPushMonitor(topic).getPushStatusAndDetails(topic);
+  }
+
+  @Override
+  public Pair<ExecutionStatus, Optional<String>> getIncrementalPushStatusAndDetails(String topic, String incrementalPushVersion,
+      HelixCustomizedViewOfflinePushRepository customizedViewOfflinePushRepository) {
+    return getPushMonitor(topic).getIncrementalPushStatusAndDetails(topic, incrementalPushVersion, customizedViewOfflinePushRepository);
   }
 
   @Override
@@ -213,7 +220,7 @@ public class PushMonitorDelegator implements PushMonitor {
   }
 
   @Override
-  public Set<String> getOngoingIncrementalPushVersions(String topic) {
-    return getPushMonitor(topic).getOngoingIncrementalPushVersions(topic);
+  public Set<String> getOngoingIncrementalPushVersions(String topic, HelixCustomizedViewOfflinePushRepository customizedViewOfflinePushRepository) {
+    return getPushMonitor(topic).getOngoingIncrementalPushVersions(topic, customizedViewOfflinePushRepository);
   }
 }

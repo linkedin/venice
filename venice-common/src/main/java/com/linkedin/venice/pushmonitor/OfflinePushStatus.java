@@ -1,6 +1,7 @@
 package com.linkedin.venice.pushmonitor;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.Partition;
@@ -178,12 +179,10 @@ public class OfflinePushStatus {
   }
 
   /**
-   * The inner list: status history for all working replicas of the same partition
-   * The outer list: replica status history for different partitions; basically the outer list size should be equal
-   *                 to number of partition.
+   * Returns map of partitionId -> list of status history for all working replicas of a partition
    */
-  private List<List<StatusSnapshot>> getReplicaHistoryList(PartitionAssignment partitionAssignment) {
-    List<List<StatusSnapshot>> partitionAggregatedPushStatusList = new ArrayList<>(numberOfPartition);
+  private Map<Integer, List<StatusSnapshot>> getReplicaHistory(PartitionAssignment partitionAssignment) {
+    Map<Integer, List<StatusSnapshot>> partitionAggregatedPushStatus = new HashMap<>(numberOfPartition);
     for (PartitionStatus partitionStatus : getPartitionStatuses()) {
       List<StatusSnapshot> statusHistoryForAllReplicasOfSamePartition = new LinkedList<>();
       Partition partition = partitionAssignment.getPartition(partitionStatus.getPartitionId());
@@ -198,14 +197,14 @@ public class OfflinePushStatus {
               resultList.addAll(newStatusHistory);
               return resultList;
             });
-      partitionAggregatedPushStatusList.add(statusHistoryForAllReplicasOfSamePartition);
+      partitionAggregatedPushStatus.put(partitionStatus.getPartitionId(), statusHistoryForAllReplicasOfSamePartition);
     }
-    return partitionAggregatedPushStatusList;
+    return partitionAggregatedPushStatus;
   }
 
   private String getLatestIncrementalPushVersion(PartitionAssignment partitionAssignment) {
     String latestIncrementalPushVersion = null;
-    for (List<StatusSnapshot> replicaHistory : getReplicaHistoryList(partitionAssignment)) {
+    for (List<StatusSnapshot> replicaHistory : getReplicaHistory(partitionAssignment).values()) {
       for (StatusSnapshot statusSnapshot : replicaHistory) {
         String incPushVersion = statusSnapshot.getIncrementalPushVersion();
         if (!StringUtils.isEmpty(incPushVersion)) {
@@ -228,12 +227,12 @@ public class OfflinePushStatus {
    * @param partitionAssignment
    * @return ongoing incremental push version if any otherwise return null.
    */
-  public Set<String> getOngoingIncrementalPushVersions(PartitionAssignment partitionAssignment) {
+  public Set<String> getOngoingIncrementalPushVersions(PartitionAssignment partitionAssignment, HelixCustomizedViewOfflinePushRepository customizedViewRepo) {
     String latestIncrementalPushVersion = getLatestIncrementalPushVersion(partitionAssignment);
     if (StringUtils.isEmpty(latestIncrementalPushVersion)) {
       return Collections.emptySet();
     }
-    ExecutionStatus status = checkIncrementalPushStatus(latestIncrementalPushVersion, partitionAssignment);
+    ExecutionStatus status = checkIncrementalPushStatus(latestIncrementalPushVersion, partitionAssignment, customizedViewRepo);
     // Incremental push is only ongoing if it's START_OF_INCREMENTAL_PUSH_RECEIVED. Other states are either terminal
     // or invalid.
     if (status == START_OF_INCREMENTAL_PUSH_RECEIVED) {
@@ -245,47 +244,51 @@ public class OfflinePushStatus {
   /**
    * Check the status of the given incremental push version
    */
-  public ExecutionStatus checkIncrementalPushStatus(String incrementalPushVersion,
-      PartitionAssignment partitionAssignment) {
+  public ExecutionStatus checkIncrementalPushStatus(String incrementalPushVersion, PartitionAssignment partitionAssignment,
+      HelixCustomizedViewOfflinePushRepository customizedViewRepo) {
     //find all executeStatus that are related to certain incrementalPushVersion
-    List<List<StatusSnapshot>> incrementalPushReplicaHistoryList = getReplicaHistoryList(partitionAssignment).stream()
-        //filter the history list so that it only contains records that are related to certain IP version
-        .map(replicaHistory -> replicaHistory.stream()
-            .filter(statusSnapshot -> statusSnapshot.getIncrementalPushVersion().equals(incrementalPushVersion))
-            .collect(Collectors.toList())).collect(Collectors.toList());
+    Map<Integer, List<StatusSnapshot>> historyOfPartitionReplicas = getReplicaHistory(partitionAssignment);
+    int numberOfPartitionsWithEnoughEoipReceivedReplicas = 0;
+    boolean hasAnyReplicaSeenStartOfIncrementalPush = false;
+    for (Map.Entry<Integer, List<StatusSnapshot>> partitionEntry : historyOfPartitionReplicas.entrySet()) {
+      int numberOfReplicasWithEoipStatus = 0;
+      int partitionId = partitionEntry.getKey();
+      List<StatusSnapshot> replicaHistoryList = partitionEntry.getValue();
 
-    //If any of error status is reported, then return ERROR
-    if (incrementalPushReplicaHistoryList.stream()
-        .anyMatch(replicaHistory -> replicaHistory.stream()
-            .anyMatch(statusSnapshot -> statusSnapshot.getStatus() == WARNING))) {
-      return ERROR;
-    }
-
-    boolean allPartitionsHaveEnoughIncPushCompletedReplicas = false;
-    if (incrementalPushReplicaHistoryList.size() == numberOfPartition) {
-      allPartitionsHaveEnoughIncPushCompletedReplicas = true;
-      for (List<StatusSnapshot> replicaStatusOfTheSamePartition : incrementalPushReplicaHistoryList) {
-        if (replicaStatusOfTheSamePartition.stream()
-            .filter(statusSnapshot -> statusSnapshot.getStatus() == END_OF_INCREMENTAL_PUSH_RECEIVED)
-            .count() < replicationFactor) {
-          allPartitionsHaveEnoughIncPushCompletedReplicas = false;
-          break;
+      for (StatusSnapshot statusSnapshot : replicaHistoryList) {
+        if (!incrementalPushVersion.equals(statusSnapshot.getIncrementalPushVersion())) {
+          // does not belong to the current incremental push
+          continue;
+        }
+        // If error status is reported for any replica, then return ERROR
+        if (statusSnapshot.getStatus() == WARNING) {
+          return ERROR;
+        }
+        if (statusSnapshot.getStatus() == START_OF_INCREMENTAL_PUSH_RECEIVED) {
+          hasAnyReplicaSeenStartOfIncrementalPush = true;
+        }
+        if (statusSnapshot.getStatus() == END_OF_INCREMENTAL_PUSH_RECEIVED) {
+          numberOfReplicasWithEoipStatus++;
         }
       }
+
+      int minRequiredReplicationFactor = Math.max(1, Math.max(replicationFactor - 1, customizedViewRepo.getNumberOfReplicasInCompletedState(kafkaTopic, partitionId)));
+      if (numberOfReplicasWithEoipStatus >= minRequiredReplicationFactor) {
+        numberOfPartitionsWithEnoughEoipReceivedReplicas++;
+      } else {
+        logger.info("For partitionId {} need {} replicas to acknowledge the delivery of EOIP but got only {}. KafkaTopic:{}, IncrementalPushVersion:{}",
+            partitionId, minRequiredReplicationFactor, numberOfReplicasWithEoipStatus, kafkaTopic, incrementalPushVersion);
+      }
     }
-    if (allPartitionsHaveEnoughIncPushCompletedReplicas) {
+
+    if (numberOfPartitionsWithEnoughEoipReceivedReplicas == numberOfPartition) {
       return END_OF_INCREMENTAL_PUSH_RECEIVED;
     }
-
-    //IF any of SOIP is reported, then the job is started
-    if (incrementalPushReplicaHistoryList.stream()
-        .anyMatch(replicaHistory -> replicaHistory.stream()
-            .anyMatch(
-                statusSnapshot -> statusSnapshot.getStatus() == START_OF_INCREMENTAL_PUSH_RECEIVED))) {
+    logger.info("Only {} out of {} partitions are sufficiently replicated. KafkaTopic:{}, IncrementalPushVersion:{}",
+        numberOfPartitionsWithEnoughEoipReceivedReplicas, numberOfPartition, kafkaTopic, incrementalPushVersion);
+    if (hasAnyReplicaSeenStartOfIncrementalPush) {
       return START_OF_INCREMENTAL_PUSH_RECEIVED;
     }
-
-    //SNs haven't received this incremental push yet
     return NOT_CREATED;
   }
 

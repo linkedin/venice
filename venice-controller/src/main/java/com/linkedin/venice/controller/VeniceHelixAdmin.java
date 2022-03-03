@@ -4100,8 +4100,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     private OfflinePushStatusInfo getOfflinePushStatusInfo(String clusterName, String kafkaTopic,
         Optional<String> incrementalPushVersion, PushMonitor monitor, Store store, int versionNumber) {
-        Pair<ExecutionStatus, Optional<String>> statusAndDetails =
-            monitor.getPushStatusAndDetails(kafkaTopic, incrementalPushVersion);
+        Pair<ExecutionStatus, Optional<String>> statusAndDetails;
+        if (incrementalPushVersion.isPresent()) {
+          HelixCustomizedViewOfflinePushRepository customizedViewRepo = getHelixVeniceClusterResources(clusterName).getCustomizedViewRepository();
+          statusAndDetails = monitor.getIncrementalPushStatusAndDetails(kafkaTopic, incrementalPushVersion.get(), customizedViewRepo);
+        } else {
+          statusAndDetails = monitor.getPushStatusAndDetails(kafkaTopic);
+        }
         ExecutionStatus executionStatus = statusAndDetails.getFirst();
         Optional<String> details = statusAndDetails.getSecond();
         if (executionStatus.equals(ExecutionStatus.NOT_CREATED)) {
@@ -4230,7 +4235,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     public Set<String> getOngoingIncrementalPushVersions(String clusterName, String kafkaTopic) {
         checkControllerLeadershipFor(clusterName);
         PushMonitor monitor = getHelixVeniceClusterResources(clusterName).getPushMonitor();
-        return monitor.getOngoingIncrementalPushVersions(kafkaTopic);
+        return monitor.getOngoingIncrementalPushVersions(kafkaTopic,
+            getHelixVeniceClusterResources(clusterName).getCustomizedViewRepository());
     }
 
     // TODO remove this method once we are fully on HaaS

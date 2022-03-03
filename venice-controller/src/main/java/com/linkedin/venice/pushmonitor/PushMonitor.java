@@ -1,5 +1,6 @@
 package com.linkedin.venice.pushmonitor;
 
+import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PartitionAssignment;
@@ -71,7 +72,9 @@ public interface PushMonitor {
    *                               {@link ExecutionStatus#END_OF_INCREMENTAL_PUSH_RECEIVED})
    * @return return the current status. If it's in error, some debugging info is also presented.
    */
-  Pair<ExecutionStatus, Optional<String>> getPushStatusAndDetails(String topic, Optional<String> incrementalPushVersion);
+  Pair<ExecutionStatus, Optional<String>> getPushStatusAndDetails(String topic);
+
+  Pair<ExecutionStatus, Optional<String>> getIncrementalPushStatusAndDetails(String topic, String incrementalPushVersion, HelixCustomizedViewOfflinePushRepository customizedViewOfflinePushRepository);
 
   /**
    * Find all ongoing pushes then return the topics associated to those pushes.
@@ -120,5 +123,5 @@ public interface PushMonitor {
    * @param topic to check for ongoing incremental push
    * @return ongoing incremental push versions if there are any, otherwise an empty set is returned.
    */
-  Set<String> getOngoingIncrementalPushVersions(String topic);
+  Set<String> getOngoingIncrementalPushVersions(String topic, HelixCustomizedViewOfflinePushRepository customizedViewOfflinePushRepository);
 }
