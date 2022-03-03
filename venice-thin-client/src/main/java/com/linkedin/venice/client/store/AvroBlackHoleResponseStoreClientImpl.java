@@ -75,7 +75,7 @@ public class AvroBlackHoleResponseStoreClientImpl<K, V> extends AvroGenericStore
     List<ByteBuffer> serializedKeyList = new ArrayList<>();
     Iterator<K> iter = keySet.iterator();
     while (iter.hasNext()) {
-      serializedKeyList.add(ByteBuffer.wrap(getKeySerializer().serialize(iter.next(), reusedEncoder, reusedOutputStream)));
+      serializedKeyList.add(ByteBuffer.wrap(getKeySerializerWithoutRetry().serialize(iter.next(), reusedEncoder, reusedOutputStream)));
     }
     return computeRequestClientKeySerializer.serializeObjects(serializedKeyList, ByteBuffer.wrap(serializedComputeRequest), reusedEncoder, reusedOutputStream);
   }
@@ -84,7 +84,7 @@ public class AvroBlackHoleResponseStoreClientImpl<K, V> extends AvroGenericStore
     List<ByteBuffer> serializedKeyList = new ArrayList<>();
     Iterator<K> iter = keySet.iterator();
     while (iter.hasNext()) {
-      serializedKeyList.add(ByteBuffer.wrap(getKeySerializer().serialize(iter.next())));
+      serializedKeyList.add(ByteBuffer.wrap(getKeySerializerWithoutRetry().serialize(iter.next())));
     }
     return computeRequestClientKeySerializer.serializeObjects(serializedKeyList, ByteBuffer.wrap(serializedComputeRequest));
   }

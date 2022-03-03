@@ -3,6 +3,7 @@ package com.linkedin.venice.client.store;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.avroutil1.compatibility.AvroVersion;
 import com.linkedin.venice.HttpConstants;
+import com.linkedin.venice.client.exceptions.ServiceDiscoveryException;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.exceptions.VeniceClientHttpException;
 import com.linkedin.venice.client.schema.SchemaReader;
@@ -24,6 +25,8 @@ import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.CompressorFactory;
 import com.linkedin.venice.compute.ComputeRequestWrapper;
 import com.linkedin.venice.compute.protocol.response.ComputeResponseRecordV1;
+import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
 import com.linkedin.venice.read.protocol.response.streaming.StreamingFooterRecordV1;
 import com.linkedin.venice.schema.SchemaData;
@@ -149,6 +152,8 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
   private final boolean useBlackHoleDeserializer;
   private final boolean reuseObjectsForSerialization;
 
+  private final boolean forceClusterDiscoveryAtStartTime;
+
   private volatile boolean isServiceDiscovered = false;
 
   /**
@@ -194,6 +199,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
     this.useFastAvro = clientConfig.isUseFastAvro();
     this.useBlackHoleDeserializer = clientConfig.isUseBlackHoleDeserializer();
     this.reuseObjectsForSerialization = clientConfig.isReuseObjectsForSerialization();
+    this.forceClusterDiscoveryAtStartTime = clientConfig.isForceClusterDiscoveryAtStartTime();
     this.compressorFactory = new CompressorFactory();
   }
 
@@ -233,21 +239,56 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
     return TYPE_COMPUTE + "/" + storeName;
   }
 
-  protected RecordSerializer<K> getKeySerializer() {
-    return getKeySerializer(true);
+  protected RecordSerializer<K> getKeySerializerWithoutRetry() {
+    return getKeySerializerWithRetry(false, -1);
   }
 
-  private RecordSerializer<K> getKeySerializer(boolean retryOnServiceDiscoveryFailure) {
+  private RecordSerializer<K> getKeySerializerWithRetryWithShortInterval() {
+    return getKeySerializerWithRetry(true, 50);
+  }
+
+  private RecordSerializer<K> getKeySerializerWithRetryWithLongInterval() {
+    return getKeySerializerWithRetry(true, 1000);
+  }
+
+  private RecordSerializer<K> getKeySerializerWithRetry(boolean retryOnServiceDiscoveryFailure, int retryIntervalInMs) {
     if (null != keySerializer) {
       return keySerializer;
     }
+    Exception lastException = null;
     // Delay the dynamic d2 service discovery and key schema retrieval until it is necessary
     synchronized (this) {
       if (null != keySerializer) {
         return keySerializer;
       }
+      int retryTimes = retryOnServiceDiscoveryFailure ? 10 : 1;
+      int retryCnt = 0;
+      for (;retryCnt < retryTimes; ++retryCnt) {
+        if (retryCnt > 0) {
+          try {
+            // Short sleep interval should be good enough and we assume the next retry could hit a different Router.
+            Thread.sleep(retryIntervalInMs);
+          } catch (InterruptedException e) {
+            throw new VeniceException("Initialization of Venice client is interrupted");
+          }
+        }
+        try {
+          init();
+          break;
+        } catch (ServiceDiscoveryException e) {
+          if (e.getCause() instanceof VeniceNoStoreException) {
+            // No store error is not retriable
+            throw e;
+          }
+        } catch (Exception e) {
+          // Retry on other types of exceptions
+          lastException = e;
+        }
+      }
 
-      init(retryOnServiceDiscoveryFailure);
+      if (retryCnt == retryTimes) {
+        throw new VeniceException("Failed to initializing Venice Client for store: " + storeName, lastException);
+      }
 
       return keySerializer;
     }
@@ -274,8 +315,8 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
    * to, before initializing the serializer.
    * So if sub-implementation need to have its own serializer, please override the initSerializer method.
    */
-  protected void init(boolean retryOnServiceDiscoveryFailure) {
-    discoverD2Service(retryOnServiceDiscoveryFailure);
+  protected void init() {
+    discoverD2Service(false);
     initSerializer();
   }
 
@@ -305,15 +346,15 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
 
   // For testing
   public String getRequestPathByKey(K key) throws VeniceClientException {
-    byte[] serializedKey = getKeySerializer().serialize(key);
+    byte[] serializedKey = getKeySerializerWithoutRetry().serialize(key);
     return getStorageRequestPathForSingleKey(serializedKey);
   }
 
   @Override
   public CompletableFuture<V> get(final K key, final Optional<ClientStats> stats, final long preRequestTimeInNS) throws VeniceClientException {
     byte[] serializedKey = reuseObjectsForSerialization
-        ? getKeySerializer().serialize(key, AvroSerializer.REUSE.get())
-        : getKeySerializer().serialize(key);
+        ? getKeySerializerWithoutRetry().serialize(key, AvroSerializer.REUSE.get())
+        : getKeySerializerWithoutRetry().serialize(key);
     String requestPath = getStorageRequestPathForSingleKey(serializedKey);
     CompletableFuture<V> valueFuture = new CompletableFuture<>();
 
@@ -386,7 +427,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
 
   private byte[] serializeMultiGetRequest(List<K> keyList) {
     List<ByteBuffer> serializedKeyList = new ArrayList<>(keyList.size());
-    RecordSerializer serializer = getKeySerializer();
+    RecordSerializer serializer = getKeySerializerWithoutRetry();
     if (reuseObjectsForSerialization) {
       AvroSerializer.ReusableObjects reusableObjects = AvroSerializer.REUSE.get();
       for (int i = 0; i < keyList.size(); i++) {
@@ -477,7 +518,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
 
   private <T> T tryToDeserialize(RecordDeserializer<T> dataDeserializer, ByteBuffer data, int writerSchemaId,
       K key) {
-    return tryToDeserializeWithVerboseLogging(dataDeserializer, data, writerSchemaId, key, getKeySerializer(), getSchemaReader(), logger);
+    return tryToDeserializeWithVerboseLogging(dataDeserializer, data, writerSchemaId, key, getKeySerializerWithoutRetry(), getSchemaReader(), logger);
   }
 
   public static <T, K> T tryToDeserializeWithVerboseLogging(RecordDeserializer<T> dataDeserializer, ByteBuffer data, int writerSchemaId,
@@ -595,14 +636,14 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
 
   private byte[] serializeComputeRequest(List<K> keyList, byte[] serializedComputeRequest) {
     List<ByteBuffer> serializedKeyList = new ArrayList<>(keyList.size());
-    RecordSerializer keySerializer = getKeySerializer();
+    RecordSerializer keySerializer = getKeySerializerWithoutRetry();
     keyList.stream().forEach(key -> serializedKeyList.add(ByteBuffer.wrap(keySerializer.serialize(key))));
     return computeRequestClientKeySerializer.serializeObjects(serializedKeyList, ByteBuffer.wrap(serializedComputeRequest));
   }
 
   private byte[] serializeComputeRequest(List<K> keyList, byte[] serializedComputeRequest, BinaryEncoder reusedEncoder, ByteArrayOutputStream reusedOutputStream) {
     List<ByteBuffer> serializedKeyList = new ArrayList<>(keyList.size());
-    RecordSerializer keySerializer = getKeySerializer();
+    RecordSerializer keySerializer = getKeySerializerWithoutRetry();
     keyList.stream().forEach(key -> serializedKeyList.add(ByteBuffer.wrap(keySerializer.serialize(key, reusedEncoder, reusedOutputStream))));
     return computeRequestClientKeySerializer.serializeObjects(serializedKeyList, ByteBuffer.wrap(serializedComputeRequest), reusedEncoder, reusedOutputStream);
   }
@@ -725,22 +766,28 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
   public abstract RecordDeserializer<V> getDataRecordDeserializer(int schemaId) throws VeniceClientException;
 
   private void warmUpVeniceClient() {
-    /**
-     * Try to warm-up the Venice Client during start phase, and it may not work since it is possible that the passed d2
-     * client hasn't been fully started yet, when this happens, the warm-up will be delayed to the first query.
-     */
-    try {
-      getKeySerializer(false);
-      logger.info("Store Client warm-up is done during start phase for store: " + getStoreName());
-    } catch (Exception e) {
-      logger.info("Got the following exception when trying to warm up client during start phase for store: "
-          + getStoreName() + ", and will kick off an async warm-up", e);
+    if (forceClusterDiscoveryAtStartTime) {
       /**
-       * Kick off an async warm-up, and the D2 client could be ready during the async warm-up.
-       * If the D2 client isn't retry in the async warm-up phase, it will be delayed to the first query.
-       * Essentially, this is a best-effort.
+       * Force the client initialization and fail fast if any error happens.
        */
-      CompletableFuture.runAsync(() -> getKeySerializer());
+      getKeySerializerWithRetryWithShortInterval();
+    } else {
+      /**
+       * Try to warm-up the Venice Client during start phase, and it may not work since it is possible that the passed d2
+       * client hasn't been fully started yet, when this happens, the warm-up will be delayed to the first query.
+       */
+      try {
+        getKeySerializerWithoutRetry();
+      } catch (Exception e) {
+        logger.info("Got error when trying to warm up client during start phase for store: "
+            + getStoreName() + ", and will kick off an async warm-up: " + e.getMessage());
+        /**
+         * Kick off an async warm-up, and the D2 client could be ready during the async warm-up.
+         * If the D2 client isn't retry in the async warm-up phase, it will be delayed to the first query.
+         * Essentially, this is a best-effort.
+         */
+        CompletableFuture.runAsync(() -> getKeySerializerWithRetryWithLongInterval());
+      }
     }
   }
 
