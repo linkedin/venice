@@ -126,6 +126,8 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
         tempProps.setProperty(PARTICIPANT_MESSAGE_STORE_ENABLED, "true");
         childControllerProperties = Optional.of(tempProps);
       }
+      // Child controllers never turn on LF_MODEL_DEPENDENCY_CHECK_DISABLED
+      childControllerProperties.get().setProperty(LF_MODEL_DEPENDENCY_CHECK_DISABLED, "false");
 
       // Create multiclusters
       for (int i = 0; i < numberOfColos; i++) {

@@ -91,7 +91,7 @@ class IngestionNotificationDispatcher {
 
 
   void reportRestarted(PartitionConsumptionState pcs) {
-    report(pcs, ExecutionStatus.STARTED, notifier -> notifier.restarted(topic, pcs.getUserPartition(), pcs.getLatestProcessedVersionTopicOffset()));
+    report(pcs, ExecutionStatus.STARTED, notifier -> notifier.restarted(topic, pcs.getUserPartition(), pcs.getLatestProcessedLocalVersionTopicOffset()));
   }
 
   void reportCatchUpBaseTopicOffsetLag(PartitionConsumptionState pcs) {
@@ -116,7 +116,7 @@ class IngestionNotificationDispatcher {
   void reportCompleted(PartitionConsumptionState pcs, boolean forceCompletion) {
     report(pcs, ExecutionStatus.COMPLETED,
         notifier -> {
-          notifier.completed(topic, pcs.getUserPartition(), pcs.getLatestProcessedVersionTopicOffset());
+          notifier.completed(topic, pcs.getUserPartition(), pcs.getLatestProcessedLocalVersionTopicOffset());
           pcs.releaseLatch();
           pcs.completionReported();
         }, () -> {
@@ -124,7 +124,7 @@ class IngestionNotificationDispatcher {
             // Notifiers will not be sent a completion notification, they should only
             // receive the previously-sent error notification.
             logger.error("Processing completed WITH ERRORS for Partition: " + pcs.getUserPartition() +
-                ", Last Offset: " + pcs.getLatestProcessedVersionTopicOffset());
+                ", Last Offset: " + pcs.getLatestProcessedLocalVersionTopicOffset());
             return false;
           }
             if (!forceCompletion && !pcs.isComplete()) {
@@ -143,14 +143,14 @@ class IngestionNotificationDispatcher {
 
   void reportQuotaNotViolated(PartitionConsumptionState pcs) {
     report(pcs, HybridStoreQuotaStatus.QUOTA_NOT_VIOLATED,
-        notifier -> notifier.quotaNotViolated(topic, pcs.getUserPartition(), pcs.getLatestProcessedVersionTopicOffset()),
+        notifier -> notifier.quotaNotViolated(topic, pcs.getUserPartition(), pcs.getLatestProcessedLocalVersionTopicOffset()),
         () -> checkQuotaStatusReported(HybridStoreQuotaStatus.QUOTA_NOT_VIOLATED)
     );
   }
 
   void reportQuotaViolated(PartitionConsumptionState pcs) {
     report(pcs, HybridStoreQuotaStatus.QUOTA_VIOLATED,
-        notifier -> notifier.quotaViolated(topic, pcs.getUserPartition(), pcs.getLatestProcessedVersionTopicOffset()),
+        notifier -> notifier.quotaViolated(topic, pcs.getUserPartition(), pcs.getLatestProcessedLocalVersionTopicOffset()),
         () -> checkQuotaStatusReported(HybridStoreQuotaStatus.QUOTA_VIOLATED)
     );
   }
@@ -168,7 +168,7 @@ class IngestionNotificationDispatcher {
 
   void reportProgress(PartitionConsumptionState pcs) {
     report(pcs, ExecutionStatus.PROGRESS,
-        notifier -> notifier.progress(topic, pcs.getUserPartition(), pcs.getLatestProcessedVersionTopicOffset()),
+        notifier -> notifier.progress(topic, pcs.getUserPartition(), pcs.getLatestProcessedLocalVersionTopicOffset()),
         () -> {
 
           // Progress reporting happens too frequently for each Kafka Pull,
@@ -201,30 +201,30 @@ class IngestionNotificationDispatcher {
 
   void reportEndOfPushReceived(PartitionConsumptionState pcs) {
     report(pcs, ExecutionStatus.END_OF_PUSH_RECEIVED,
-        notifier -> notifier.endOfPushReceived(topic, pcs.getUserPartition(), pcs.getLatestProcessedVersionTopicOffset()));
+        notifier -> notifier.endOfPushReceived(topic, pcs.getUserPartition(), pcs.getLatestProcessedLocalVersionTopicOffset()));
   }
 
   void reportStartOfIncrementalPushReceived(PartitionConsumptionState pcs, String version) {
     report(pcs, ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED,
         notifier ->
-            notifier.startOfIncrementalPushReceived(topic, pcs.getUserPartition(), pcs.getLatestProcessedVersionTopicOffset(), version));
+            notifier.startOfIncrementalPushReceived(topic, pcs.getUserPartition(), pcs.getLatestProcessedLocalVersionTopicOffset(), version));
   }
 
   void reportEndOfIncrementalPushReceived(PartitionConsumptionState pcs, String version) {
     report(pcs, ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED,
         notifier ->
-            notifier.endOfIncrementalPushReceived(topic, pcs.getUserPartition(), pcs.getLatestProcessedVersionTopicOffset(),
+            notifier.endOfIncrementalPushReceived(topic, pcs.getUserPartition(), pcs.getLatestProcessedLocalVersionTopicOffset(),
                 pcs.getEndOfIncrementalPushTimestamp(version), version));
   }
 
   void reportStartOfBufferReplayReceived(PartitionConsumptionState pcs) {
     report(pcs, ExecutionStatus.START_OF_BUFFER_REPLAY_RECEIVED,
-        notifier -> notifier.startOfBufferReplayReceived(topic, pcs.getUserPartition(), pcs.getLatestProcessedVersionTopicOffset()));
+        notifier -> notifier.startOfBufferReplayReceived(topic, pcs.getUserPartition(), pcs.getLatestProcessedLocalVersionTopicOffset()));
   }
 
   void reportTopicSwitchReceived(PartitionConsumptionState pcs) {
     report(pcs, ExecutionStatus.TOPIC_SWITCH_RECEIVED,
-        notifier -> notifier.topicSwitchReceived(topic, pcs.getUserPartition(), pcs.getLatestProcessedVersionTopicOffset()));
+        notifier -> notifier.topicSwitchReceived(topic, pcs.getUserPartition(), pcs.getLatestProcessedLocalVersionTopicOffset()));
   }
 
   void reportDataRecoveryCompleted(PartitionConsumptionState pcs) {
@@ -301,7 +301,7 @@ class IngestionNotificationDispatcher {
   void reportStopped(PartitionConsumptionState pcs) {
     report(pcs, "STOPPED",
         notifier -> {
-          notifier.stopped(topic, pcs.getUserPartition(), pcs.getLatestProcessedVersionTopicOffset());
+          notifier.stopped(topic, pcs.getUserPartition(), pcs.getLatestProcessedLocalVersionTopicOffset());
         },
         () -> true);
   }

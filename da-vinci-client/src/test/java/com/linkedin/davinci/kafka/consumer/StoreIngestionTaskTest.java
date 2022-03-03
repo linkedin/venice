@@ -1624,6 +1624,16 @@ public class StoreIngestionTaskTest {
         byte[] value = ValueRecord.create(SCHEMA_ID, entry.getValue().get()).serialize();
         verify(mockAbstractStorageEngine, atLeastOnce()).put(partition, key, ByteBuffer.wrap(value));
       });
+
+      /**
+       * Verify that for batch push part, {@link PartitionConsumptionState#latestProcessedUpstreamRTOffsetMap} should
+       * never be updated
+       */
+      relevantPartitions.stream().forEach(partition -> {
+        Assert.assertTrue(storeIngestionTaskUnderTest.getPartitionConsumptionState(partition).isPresent());
+        PartitionConsumptionState pcs = storeIngestionTaskUnderTest.getPartitionConsumptionState(partition).get();
+        Assert.assertTrue(pcs.getLatestProcessedUpstreamRTOffsetMap().isEmpty());
+      });
     }, isLeaderFollowerModelEnabled, isActiveActiveReplicationEnabled);
   }
 

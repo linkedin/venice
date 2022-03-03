@@ -69,6 +69,7 @@ public class OffsetRecord {
     emptyPartitionState.previousStatuses = new HashMap<>();
     emptyPartitionState.leaderOffset = DEFAULT_UPSTREAM_OFFSET;
     emptyPartitionState.upstreamOffsetMap = new VeniceConcurrentHashMap<>();
+    emptyPartitionState.upstreamVersionTopicOffset = DEFAULT_UPSTREAM_OFFSET;
     return emptyPartitionState;
   }
 
@@ -82,6 +83,14 @@ public class OffsetRecord {
 
   public void setCheckpointLocalVersionTopicOffset(long offset) {
     this.partitionState.offset = offset;
+  }
+
+  public long getCheckpointUpstreamVersionTopicOffset() {
+    return this.partitionState.upstreamVersionTopicOffset;
+  }
+
+  public void setCheckpointUpstreamVersionTopicOffset(long upstreamVersionTopicOffset) {
+    this.partitionState.upstreamVersionTopicOffset = upstreamVersionTopicOffset;
   }
 
   public long getOffsetLag() {

@@ -142,9 +142,14 @@ public class PartitionConsumptionState {
   private long endOfPushTimestamp = 0;
 
   /**
-   * Latest version topic processed by drainer.
+   * Latest local version topic offset processed by drainer.
    */
-  private long latestProcessedVersionTopicOffset;
+  private long latestProcessedLocalVersionTopicOffset;
+  /**
+   * Latest upstream version topic offset processed by drainer; if batch native replication source is the same as local
+   * region, this tracking offset should remain as -1.
+   */
+  private long latestProcessedUpstreamVersionTopicOffset;
 
   /**
    * Key: source Kafka url
@@ -193,7 +198,8 @@ public class PartitionConsumptionState {
       offsetRecord.cloneUpstreamOffsetMap(latestProcessedUpstreamRTOffsetMap);
     }
     // Restore in-memory latest consumed version topic offset from the checkpoint version topic offset
-    this.latestProcessedVersionTopicOffset = offsetRecord.getLocalVersionTopicOffset();
+    this.latestProcessedLocalVersionTopicOffset = offsetRecord.getLocalVersionTopicOffset();
+    this.latestProcessedUpstreamVersionTopicOffset = offsetRecord.getCheckpointUpstreamVersionTopicOffset();
   }
 
   public int getPartition() {
@@ -218,7 +224,7 @@ public class PartitionConsumptionState {
     return this.deferredWrite;
   }
   public boolean isStarted() {
-    return getLatestProcessedVersionTopicOffset() > 0;
+    return getLatestProcessedLocalVersionTopicOffset() > 0;
   }
   public boolean isEndOfPushReceived() {
     return this.offsetRecord.isEndOfPushReceived();
@@ -305,6 +311,9 @@ public class PartitionConsumptionState {
         .append("PartitionConsumptionState{")
         .append("partition=").append(partition)
         .append(", hybrid=").append(hybrid)
+        .append(", latestProcessedLocalVersionTopicOffset=").append(latestProcessedLocalVersionTopicOffset)
+        .append(", latestProcessedUpstreamVersionTopicOffset=").append(latestProcessedUpstreamVersionTopicOffset)
+        .append(", latestProcessedUpstreamRTOffsetMap=").append(latestProcessedUpstreamRTOffsetMap)
         .append(", offsetRecord=" ).append(offsetRecord)
         .append(", errorReported=").append(errorReported)
         .append(", started=").append(isStarted())
@@ -568,10 +577,10 @@ public class PartitionConsumptionState {
    * return local version topic checkpoint offset, since leader has been consuming from the local version topic.
    */
   public long getLeaderOffset(String kafkaURL) {
-    if (offsetRecord.getLeaderTopic() != null && (!Version.isVersionTopic(offsetRecord.getLeaderTopic()) || getLatestProcessedUpstreamRTOffset(kafkaURL) > 0)) {
+    if (offsetRecord.getLeaderTopic() != null && !Version.isVersionTopic(offsetRecord.getLeaderTopic())) {
       return getLatestProcessedUpstreamRTOffset(kafkaURL);
     } else {
-      return getLatestProcessedVersionTopicOffset();
+      return latestProcessedUpstreamVersionTopicOffset >= 0 ? latestProcessedUpstreamVersionTopicOffset : latestProcessedLocalVersionTopicOffset;
     }
   }
 
@@ -587,12 +596,20 @@ public class PartitionConsumptionState {
 
   public long getEndOfPushTimestamp() {return endOfPushTimestamp;}
 
-  public void updateLatestProcessedVersionTopicOffset(long offset) {
-    this.latestProcessedVersionTopicOffset = offset;
+  public void updateLatestProcessedLocalVersionTopicOffset(long offset) {
+    this.latestProcessedLocalVersionTopicOffset = offset;
   }
 
-  public long getLatestProcessedVersionTopicOffset() {
-    return this.latestProcessedVersionTopicOffset;
+  public long getLatestProcessedLocalVersionTopicOffset() {
+    return this.latestProcessedLocalVersionTopicOffset;
+  }
+
+  public void updateLatestProcessedUpstreamVersionTopicOffset(long offset) {
+    this.latestProcessedUpstreamVersionTopicOffset = offset;
+  }
+
+  public long getLatestProcessedUpstreamVersionTopicOffset() {
+    return this.latestProcessedUpstreamVersionTopicOffset;
   }
 
   public long getEndOfIncrementalPushTimestamp(String incrementalPushVersion) {
@@ -609,5 +626,10 @@ public class PartitionConsumptionState {
 
   public boolean isDataRecoveryCompleted() {
     return isDataRecoveryCompleted;
+  }
+
+  // For testing only
+  public Map<String, Long> getLatestProcessedUpstreamRTOffsetMap() {
+    return this.latestProcessedUpstreamRTOffsetMap;
   }
 }

@@ -615,10 +615,17 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         leaderProducedRecordContext,
         (versionTopicOffset)
             -> offsetRecord.setCheckpointLocalVersionTopicOffset(versionTopicOffset),
-        (sourceKafkaUrl, realtimeTopicOffset)
-            -> offsetRecord.setLeaderUpstreamOffset(sourceKafkaUrl, realtimeTopicOffset),
-        (sourceKafkaUrl)
-            -> offsetRecord.getUpstreamOffset(sourceKafkaUrl),
+        (sourceKafkaUrl, upstreamTopicName, upstreamTopicOffset) -> {
+          if (Version.isRealTimeTopic(upstreamTopicName)) {
+            offsetRecord.setLeaderUpstreamOffset(sourceKafkaUrl, upstreamTopicOffset);
+          } else {
+            offsetRecord.setCheckpointUpstreamVersionTopicOffset(upstreamTopicOffset);
+          }
+        },
+        (sourceKafkaUrl, upstreamTopicName)
+            -> Version.isRealTimeTopic(upstreamTopicName)
+               ? offsetRecord.getUpstreamOffset(sourceKafkaUrl)
+               : offsetRecord.getCheckpointUpstreamVersionTopicOffset(),
         () -> {
           final String upstreamKafkaURL;
           if (isLeader(partitionConsumptionState)) {
@@ -653,11 +660,18 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         consumerRecordWrapper,
         leaderProducedRecordContext,
         (versionTopicOffset)
-            -> partitionConsumptionState.updateLatestProcessedVersionTopicOffset(versionTopicOffset),
-        (sourceKafkaUrl, realtimeTopicOffset)
-            -> partitionConsumptionState.updateLatestProcessedUpstreamRTOffset(sourceKafkaUrl, realtimeTopicOffset),
-        (sourceKafkaUrl)
-            -> partitionConsumptionState.getLatestProcessedUpstreamRTOffset(sourceKafkaUrl),
+            -> partitionConsumptionState.updateLatestProcessedLocalVersionTopicOffset(versionTopicOffset),
+        (sourceKafkaUrl, upstreamTopicName, upstreamTopicOffset) -> {
+          if (Version.isRealTimeTopic(upstreamTopicName)) {
+            partitionConsumptionState.updateLatestProcessedUpstreamRTOffset(sourceKafkaUrl, upstreamTopicOffset);
+          } else {
+            partitionConsumptionState.updateLatestProcessedUpstreamVersionTopicOffset(upstreamTopicOffset);
+          }
+        },
+        (sourceKafkaUrl, upstreamTopicName)
+            -> Version.isRealTimeTopic(upstreamTopicName)
+               ? partitionConsumptionState.getLatestProcessedUpstreamRTOffset(sourceKafkaUrl)
+               : partitionConsumptionState.getLatestProcessedUpstreamVersionTopicOffset(),
         () -> {
           final String upstreamKafkaURL;
           if (isLeader(partitionConsumptionState)) {
