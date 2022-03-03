@@ -20,7 +20,7 @@ import static com.linkedin.venice.ConfigKeys.*;
  * N.B.: The visibility of this class and its functions is package-private on purpose.
  */
 public class IntegrationTestUtils {
-  static final int MAX_ASYNC_START_WAIT_TIME_MS = 10 * Time.MS_PER_SECOND;
+  static final int MAX_ASYNC_START_WAIT_TIME_MS = 30 * Time.MS_PER_SECOND;
 
   /**
    * N.B.: Visibility is package-private on purpose.

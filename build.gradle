@@ -58,8 +58,8 @@ def pegasusVersion = '29.29.0'
 def avroUtilVersion = '0.2.75'
 
 ext.libraries = [
-    avro: 'org.apache.avro:avro:1.7.7',
-    avroMapred: 'org.apache.avro:avro-mapred:1.7.7',
+    avro: 'org.apache.avro:avro:1.9.2',
+    avroMapred: 'org.apache.avro:avro-mapred:1.9.2',
     avroUtilCompatibilityHelper: 'com.linkedin.avroutil1:helper-all:' + avroUtilVersion,
     avroUtilFastserde: 'com.linkedin.avroutil1:avro-fastserde:' + avroUtilVersion,
     brooklinCommon: 'com.linkedin.brooklin-li-common:brooklin-li-common:80.0.2',
