@@ -36,6 +36,7 @@ import java.util.concurrent.TimeUnit;
 import javax.annotation.Nonnull;
 
 import org.apache.commons.lang.StringUtils;
+import org.apache.commons.lang3.math.NumberUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -301,6 +302,7 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
      * 2. {@link HttpConstants.VENICE_SCHEMA_ID}
      */
     CompositeByteBuf content = Unpooled.compositeBuffer();
+    int totalRequestRcu = 0;
     for (FullHttpResponse response : responses) {
       if (response.status() != OK) {
         // Return error response directly.
@@ -319,6 +321,7 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
         }
       });
 
+      totalRequestRcu += getRCU(response);
       content.addComponent(true, response.content());
     }
 
@@ -328,7 +331,17 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
     });
     computeResponse.headers().add(HttpHeaderNames.CONTENT_LENGTH, content.readableBytes());
     computeResponse.headers().add(VENICE_COMPRESSION_STRATEGY, CompressionStrategy.NO_OP.getValue());
+    computeResponse.headers().add(VENICE_REQUEST_RCU, totalRequestRcu);
     return computeResponse;
+  }
+
+  private int getRCU(FullHttpResponse response) {
+    String rcuHeader = response.headers().get(VENICE_REQUEST_RCU);
+    if (NumberUtils.isCreatable(rcuHeader)) {
+      return Integer.parseInt(rcuHeader);
+    } else {
+      return 1;
+    }
   }
 
   /**
@@ -339,6 +352,7 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
   protected FullHttpResponse processMultiGetResponses(List<FullHttpResponse> responses, String storeName, int version) {
     long decompressedSize = 0;
     long decompressionTimeInNs = 0;
+    int totalRequestRcu = 0;
     CompositeByteBuf content = Unpooled.compositeBuffer();
     // Venice only supports either compression of the whole database or no compression at all.
     CompressionStrategy responseCompression = validateAndExtractCompressionStrategy(responses, storeName, version);
@@ -369,6 +383,8 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
         }
       });
 
+      totalRequestRcu += getRCU(response);
+
       decompressedSize += response.content().readableBytes();
       if (response instanceof VeniceFullHttpResponse) {
         decompressionTimeInNs += ((VeniceFullHttpResponse) response).getDecompressionTimeInNs();
@@ -391,6 +407,7 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
     });
     multiGetResponse.headers().add(HttpHeaderNames.CONTENT_LENGTH, content.readableBytes());
     multiGetResponse.headers().add(VENICE_COMPRESSION_STRATEGY, responseCompression.getValue());
+    multiGetResponse.headers().add(VENICE_REQUEST_RCU, totalRequestRcu);
     return multiGetResponse;
   }
 }
