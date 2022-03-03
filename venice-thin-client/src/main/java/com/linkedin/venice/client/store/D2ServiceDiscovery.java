@@ -48,7 +48,7 @@ public class D2ServiceDiscovery {
         if (attempt > 0) {
           TimeUnit.SECONDS.sleep(3);
         }
-        TransportClientResponse response = client.get(requestPath, requestHeaders).get();
+        TransportClientResponse response = client.get(requestPath, requestHeaders).get(1, TimeUnit.SECONDS);
         if (response == null) {
           /**
            * 'null' response indicates that the Router returns 404 based on the logic in

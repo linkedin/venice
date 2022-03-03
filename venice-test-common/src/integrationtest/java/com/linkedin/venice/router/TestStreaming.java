@@ -18,6 +18,7 @@ import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.integration.utils.D2TestUtils;
@@ -385,6 +386,32 @@ public class TestStreaming {
       if (d2Client != null) {
         D2ClientUtils.shutdownClient(d2Client);
       }
+    }
+  }
+
+  @Test (timeOut = 30000)
+  public void testWithForceClusterDiscovery() {
+    D2Client d2Client = null;
+    AvroGenericStoreClient d2StoreClient = null;
+    VeniceRouterWrapper veniceRouterWrapperWithHttpAsyncClient = null;
+    try {
+      veniceRouterWrapperWithHttpAsyncClient = veniceCluster.addVeniceRouter(new Properties());
+      d2Client = D2TestUtils.getD2Client(veniceCluster.getZk().getAddress(), false);
+      // Don't start d2 client
+      d2StoreClient = ClientFactory.getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName)
+          .setD2ServiceName(D2TestUtils.DEFAULT_TEST_SERVICE_NAME)
+          .setD2Client(d2Client)
+          .setForceClusterDiscoveryAtStartTime(true)
+      );
+      fail("An exception is expected here");
+    } catch (Throwable t) {
+      if (!(t instanceof VeniceException) || !t.getMessage().contains("Failed to initializing Venice Client")) {
+        fail("Unexpected exception received: " + t.getClass());
+      }
+    }
+    finally {
+      Utils.closeQuietlyWithErrorLogged(d2StoreClient);
+      Utils.closeQuietlyWithErrorLogged(veniceRouterWrapperWithHttpAsyncClient);
     }
   }
 }

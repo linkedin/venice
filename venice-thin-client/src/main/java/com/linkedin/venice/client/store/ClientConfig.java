@@ -47,6 +47,7 @@ public class ClientConfig<T extends SpecificRecord> {
   private long retryBackOffInMs = 0;
   private boolean useBlackHoleDeserializer = false;
   private boolean reuseObjectsForSerialization = false;
+  private boolean forceClusterDiscoveryAtStartTime = false;
 
   // Security settings
   private boolean isHttps = false;
@@ -99,6 +100,8 @@ public class ClientConfig<T extends SpecificRecord> {
         .setHttps(config.isHttps())
         .setSslEngineComponentFactory(config.getSslEngineComponentFactory())
 
+        .setForceClusterDiscoveryAtStartTime(config.isForceClusterDiscoveryAtStartTime())
+
         // Test settings
         .setTime(config.getTime());
 
@@ -117,6 +120,15 @@ public class ClientConfig<T extends SpecificRecord> {
 
   public ClientConfig<T> setStoreName(String storeName) {
     this.storeName = storeName;
+    return this;
+  }
+
+  public boolean isForceClusterDiscoveryAtStartTime() {
+    return forceClusterDiscoveryAtStartTime;
+  }
+
+  public ClientConfig<T> setForceClusterDiscoveryAtStartTime(boolean forceClusterDiscoveryAtStartTime) {
+    this.forceClusterDiscoveryAtStartTime = forceClusterDiscoveryAtStartTime;
     return this;
   }
 
