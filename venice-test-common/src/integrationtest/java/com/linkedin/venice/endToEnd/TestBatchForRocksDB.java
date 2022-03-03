@@ -24,9 +24,10 @@ public class TestBatchForRocksDB extends TestBatch {
     serverProperties.setProperty(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, "false");
     serverProperties.setProperty(SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED, "true");
     serverProperties.setProperty(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE, "300");
-
-    veniceClusterWrapper.addVeniceServer(serverProperties);
-    veniceClusterWrapper.addVeniceServer(serverProperties);
+    serverProperties.setProperty(DATA_BASE_PATH, baseDataPath1);
+    veniceClusterWrapper.addVeniceServer(new Properties(), serverProperties);
+    serverProperties.setProperty(DATA_BASE_PATH, baseDataPath2);
+    veniceClusterWrapper.addVeniceServer(new Properties(), serverProperties);
 
     Properties routerProperties = new Properties();
     routerProperties.put(ROUTER_CLIENT_DECOMPRESSION_ENABLED, "true");
