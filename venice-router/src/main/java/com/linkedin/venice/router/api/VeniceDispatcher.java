@@ -308,7 +308,8 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
         .set(HttpHeaderNames.CONTENT_TYPE, serverResponse.getFirstHeader(HttpHeaders.CONTENT_TYPE))
         .set(HttpHeaderNames.CONTENT_LENGTH, content.readableBytes())
         .set(HttpConstants.VENICE_SCHEMA_ID, serverResponse.getFirstHeader(HttpConstants.VENICE_SCHEMA_ID))
-        .set(HttpConstants.VENICE_COMPRESSION_STRATEGY, contentCompression.getValue());
+        .set(HttpConstants.VENICE_COMPRESSION_STRATEGY, contentCompression.getValue())
+        .set(VENICE_REQUEST_RCU, serverResponse.containsHeader(VENICE_REQUEST_RCU) ? serverResponse.getFirstHeader(VENICE_REQUEST_RCU) : 1);
     return response;
   }
 

@@ -167,6 +167,7 @@ public class TestVeniceDispatcher {
         Assert.assertEquals(responses.size(), 1);
         Assert.assertEquals(responses.get(0).status(), HttpResponseStatus.OK);
         Assert.assertEquals(responses.get(0).headers().get(VENICE_COMPRESSION_STRATEGY), String.valueOf(CompressionStrategy.GZIP.getValue()));
+        Assert.assertTrue(responses.get(0).headers().contains(VENICE_REQUEST_RCU));
       }, false, CompressionStrategy.GZIP);
     } finally {
       dispatcher.stop();

@@ -73,6 +73,7 @@ public class OutboundHttpWrapperHandler extends ChannelOutboundHandlerAdapter {
         isStreamingResponse = obj.isStreamingResponse();
         responseRcu = obj.getRCU();
       } else if (msg instanceof HttpShortcutResponse) {
+        // For Early terminated requests
         HttpShortcutResponse shortcutResponse = (HttpShortcutResponse)msg;
         responseStatus = shortcutResponse.getStatus();
         String message = shortcutResponse.getMessage();
@@ -85,6 +86,7 @@ public class OutboundHttpWrapperHandler extends ChannelOutboundHandlerAdapter {
           statsHandler.setRequestTerminatedEarly();
         }
       } else if (msg instanceof BinaryResponse) {
+        // For dictionary Fetch requests
         body = ((BinaryResponse) msg).getBody();
         contentType = HttpConstants.BINARY;
         responseStatus = ((BinaryResponse) msg).getStatus();
