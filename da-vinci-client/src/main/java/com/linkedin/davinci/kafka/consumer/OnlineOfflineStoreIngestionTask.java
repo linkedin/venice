@@ -97,7 +97,7 @@ public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
   @Override
   protected void updateLatestInMemoryProcessedOffset(PartitionConsumptionState partitionConsumptionState,
       VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope> consumerRecordWrapper, LeaderProducedRecordContext leaderProducedRecordContext) {
-    partitionConsumptionState.updateLatestProcessedVersionTopicOffset(consumerRecordWrapper.consumerRecord().offset());
+    partitionConsumptionState.updateLatestProcessedLocalVersionTopicOffset(consumerRecordWrapper.consumerRecord().offset());
   }
 
   @Override
@@ -133,7 +133,7 @@ public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
     }
 
     int partition = partitionConsumptionState.getPartition();
-    long currentOffset = partitionConsumptionState.getLatestProcessedVersionTopicOffset();
+    long currentOffset = partitionConsumptionState.getLatestProcessedLocalVersionTopicOffset();
     /**
      * After END_OF_PUSH received, `isReadyToServe()` is invoked for each message until the lag is caught up (otherwise,
      * if we only check ready to serve periodically, the lag may never catch up); in order not to slow down the hybrid
@@ -184,7 +184,7 @@ public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
       return false;
     }
 
-    long lastOffset = partitionConsumptionState.getLatestProcessedVersionTopicOffset();
+    long lastOffset = partitionConsumptionState.getLatestProcessedLocalVersionTopicOffset();
     if(lastOffset >= record.offset()) {
       logger.info(consumerTaskId + "The record was already processed Partition" + partitionId + " LastKnown " + lastOffset + " Current " + record.offset());
       return false;

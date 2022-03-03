@@ -113,4 +113,13 @@ public class PartitionStatus implements Comparable<PartitionStatus> {
   public int compareTo(PartitionStatus o) {
     return this.partitionId - o.partitionId;
   }
+
+  @Override
+  public String toString() {
+    StringBuilder sb = new StringBuilder();
+    for (Map.Entry<String, ReplicaStatus> entry : replicaStatusMap.entrySet()) {
+      sb.append(entry.getKey()).append(":").append(entry.getValue().getCurrentStatus().name()).append(" ");
+    }
+    return sb.toString();
+  }
 }

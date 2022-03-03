@@ -116,7 +116,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiFunction;
 import java.util.function.BooleanSupplier;
-import java.util.function.Consumer;
 import java.util.function.Supplier;
 import org.apache.avro.Schema;
 import org.apache.commons.codec.binary.Hex;
@@ -730,7 +729,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           partitionId
       );
       isLagAcceptable =
-          versionTopicPartitionOffset <= partitionConsumptionState.getLatestProcessedVersionTopicOffset() + SLOPPY_OFFSET_CATCHUP_THRESHOLD;
+          versionTopicPartitionOffset <= partitionConsumptionState.getLatestProcessedLocalVersionTopicOffset() + SLOPPY_OFFSET_CATCHUP_THRESHOLD;
     } else {
       // Looks like none of the short-circuitry fired, so we need to measure lag!
       long offsetThreshold = hybridStoreConfig.get().getOffsetLagThresholdToGoOnline();
@@ -3216,7 +3215,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     if (null == consumptionState) {
       return Optional.empty();
     }
-    return Optional.of(consumptionState.getLatestProcessedVersionTopicOffset());
+    return Optional.of(consumptionState.getLatestProcessedLocalVersionTopicOffset());
   }
 
   /**
@@ -3303,7 +3302,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           if (partitionConsumptionState.isCompletionReported()) {
             // Completion has been reported so extraDisjunctionCondition must be true to enter here.
             logger.info(consumerTaskId + " Partition " + partition + " synced offset: "
-                + partitionConsumptionState.getLatestProcessedVersionTopicOffset());
+                + partitionConsumptionState.getLatestProcessedLocalVersionTopicOffset());
           } else {
             // Check whether we need to warm-up cache here.
             if (storageEngine != null
