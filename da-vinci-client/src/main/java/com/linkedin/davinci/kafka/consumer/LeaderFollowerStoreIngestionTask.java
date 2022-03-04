@@ -1313,18 +1313,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
   protected long measureRTOffsetLagForSingleRegion(String sourceRealTimeTopicKafkaURL,
       PartitionConsumptionState partitionConsumptionState, boolean shouldLogLag) {
-    Pair<Long, Long> hybridLagPair =
+    long lag =
         amplificationAdapter.getLatestLeaderPersistedOffsetAndHybridTopicOffset(sourceRealTimeTopicKafkaURL,
-            partitionConsumptionState.getOffsetRecord().getLeaderTopic(), partitionConsumptionState);
-    long latestLeaderOffset = hybridLagPair.getFirst();
-    long lastOffsetInRealTimeTopic = hybridLagPair.getSecond();
-    long lag = lastOffsetInRealTimeTopic - latestLeaderOffset;
-    if (shouldLogLag) {
-      logger.info(String.format("%s partition %d real-time buffer lag offset for region: %s is: "
-              + "(Last RT offset [%d] - Last leader consumed offset [%d]) = Lag [%d]", consumerTaskId,
-          partitionConsumptionState.getPartition(), sourceRealTimeTopicKafkaURL, lastOffsetInRealTimeTopic,
-          latestLeaderOffset, lag));
-    }
+            partitionConsumptionState.getOffsetRecord().getLeaderTopic(), partitionConsumptionState, shouldLogLag);
     return lag;
   }
 
@@ -1966,8 +1957,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           // Fall back to calculate offset lag in the original approach
           if (Version.isRealTimeTopic(currentLeaderTopic)) {
             // Since partition count in RT : partition count in VT = 1 : AMP, we will need amplification factor adaptor to calculate the offset for every subPartitions.
-            Pair<Long, Long> hybridOffsetPair = amplificationAdapter.getLatestLeaderConsumedOffsetAndHybridTopicOffset(kafkaSourceAddress, currentLeaderTopic, pcs);
-            return (hybridOffsetPair.getSecond() - 1) - hybridOffsetPair.getFirst();
+            long lag = amplificationAdapter.getLatestLeaderConsumedOffsetAndHybridTopicOffset(kafkaSourceAddress, currentLeaderTopic, pcs, false);
+            return lag -1;
           } else {
             return (cachedKafkaMetadataGetter.getOffset(getTopicManager(kafkaSourceAddress), currentLeaderTopic, pcs.getPartition()) - 1)
                 - pcs.getLatestProcessedVersionTopicOffset();

@@ -3620,10 +3620,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      * {@link StoreIngestionTask#getLatestPersistedUpstreamOffsetForHybridOffsetLagMeasurement} to fetch latest leader
      * persisted offset for different data replication policy. The return value is a pair of [latestPersistedLeaderOffset, lastOffsetInRealTimeTopic]
      */
-    public Pair<Long, Long> getLatestLeaderPersistedOffsetAndHybridTopicOffset(String sourceRealTimeTopicKafkaURL, String leaderTopic, PartitionConsumptionState pcs) {
+    public long getLatestLeaderPersistedOffsetAndHybridTopicOffset(String sourceRealTimeTopicKafkaURL, String leaderTopic, PartitionConsumptionState pcs, boolean shouldLog) {
       return getLatestLeaderOffsetAndHybridTopicOffset(sourceRealTimeTopicKafkaURL, leaderTopic, pcs,
           (partitionConsumptionState, sourceKafkaUrl)
-              -> getLatestPersistedUpstreamOffsetForHybridOffsetLagMeasurement(partitionConsumptionState, sourceKafkaUrl));
+              -> getLatestPersistedUpstreamOffsetForHybridOffsetLagMeasurement(partitionConsumptionState, sourceKafkaUrl), shouldLog);
     }
 
     /**
@@ -3631,13 +3631,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      * {@link StoreIngestionTask#getLatestConsumedUpstreamOffsetForHybridOffsetLagMeasurement} to fetch latest leader
      * consumed offset for different data replication policy. The return value is a pair of [latestConsumedLeaderOffset, lastOffsetInRealTimeTopic]
      */
-    public Pair<Long, Long> getLatestLeaderConsumedOffsetAndHybridTopicOffset(String sourceRealTimeTopicKafkaURL, String leaderTopic, PartitionConsumptionState pcs) {
+    public long getLatestLeaderConsumedOffsetAndHybridTopicOffset(String sourceRealTimeTopicKafkaURL, String leaderTopic, PartitionConsumptionState pcs, boolean shouldLog) {
       return getLatestLeaderOffsetAndHybridTopicOffset(sourceRealTimeTopicKafkaURL, leaderTopic, pcs,
           (partitionConsumptionState, sourceKafkaUrl)
-              -> getLatestConsumedUpstreamOffsetForHybridOffsetLagMeasurement(partitionConsumptionState, sourceKafkaUrl));
+              -> getLatestConsumedUpstreamOffsetForHybridOffsetLagMeasurement(partitionConsumptionState, sourceKafkaUrl), shouldLog);
     }
 
-    private Pair<Long, Long> getLatestLeaderOffsetAndHybridTopicOffset(String sourceRealTimeTopicKafkaURL, String leaderTopic, PartitionConsumptionState pcs, BiFunction<PartitionConsumptionState, String, Long> getLeaderLatestOffset) {
+    private long getLatestLeaderOffsetAndHybridTopicOffset(String sourceRealTimeTopicKafkaURL, String leaderTopic, PartitionConsumptionState pcs, BiFunction<PartitionConsumptionState, String, Long> getLeaderLatestOffset, boolean shouldLog) {
       int partition = pcs.getPartition();
       long latestLeaderOffset;
       long lastOffsetInRealTimeTopic;
@@ -3674,7 +3674,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             partition
         );
       }
-      return new Pair<>(latestLeaderOffset, lastOffsetInRealTimeTopic);
+      long lag = lastOffsetInRealTimeTopic - latestLeaderOffset;
+      if (shouldLog) {
+        logger.info(String.format("%s partition %d real-time buffer lag offset for region: %s is: "
+                + "(Last RT offset [%d] - Last leader consumed offset [%d]) = Lag [%d]", consumerTaskId,
+            pcs.getPartition(), sourceRealTimeTopicKafkaURL, lastOffsetInRealTimeTopic,
+            latestLeaderOffset, lag));
+      }
+      return lag;
     }
   }
 
