@@ -1331,7 +1331,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    * N.B.: This could be optimized further by defining an Avro record to hold this data, since Avro would use
    * variable length encoding for the two integers, which would be smaller than their regular size.
    */
-  private static final int CONTROL_MESSAGE_KAFKA_KEY_LENGTH = GUID.class.getAnnotation(FixedSize.class).value() + Integer.SIZE * 2;
+  private static final int CONTROL_MESSAGE_KAFKA_KEY_LENGTH = GUID.class.getAnnotation(FixedSize.class).value() + Integer.BYTES * 2;
 
   /**
    * The Key part of the {@link KafkaKey} needs to be unique in order to avoid clobbering each other during
