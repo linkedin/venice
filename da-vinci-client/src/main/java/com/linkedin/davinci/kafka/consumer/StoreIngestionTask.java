@@ -116,6 +116,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiFunction;
 import java.util.function.BooleanSupplier;
+import java.util.function.Predicate;
 import java.util.function.Supplier;
 import org.apache.avro.Schema;
 import org.apache.commons.codec.binary.Hex;
@@ -1386,7 +1387,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       // Update thread name to include topic to make it easy debugging
       Thread.currentThread().setName("venice-consumer-" + kafkaVersionTopic);
       logger.info("Running " + consumerTaskId);
-      versionedStorageIngestionStats.resetIngestionTaskErroredGauge(storeName, versionNumber);
       versionedStorageIngestionStats.resetIngestionTaskPushTimeoutGauge(storeName, versionNumber);
 
       while (isRunning()) {
@@ -1431,7 +1431,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         logger.error(consumerTaskId + " has failed.", e);
         reportStatusAdapter.reportError(partitionConsumptionStateMap.values(), "Caught InterruptException during ingestion.", e);
         storeIngestionStats.recordIngestionFailure(storeName);
-        versionedStorageIngestionStats.setIngestionTaskErroredGauge(storeName, versionNumber);
       }
 
     } catch (Throwable t) {
@@ -1476,10 +1475,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             "Caught non-exception Throwable during ingestion.", new VeniceException(t));
       }
       storeIngestionStats.recordIngestionFailure(storeName);
-      if (partitionConsumptionStateMap.values().stream().anyMatch(PartitionConsumptionState::isEndOfPushReceived)) {
-        versionedStorageIngestionStats.setIngestionTaskErroredGauge(storeName, versionNumber);
-      }
-
     } finally {
       internalClose();
     }
@@ -1876,6 +1871,15 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   public Optional<PartitionConsumptionState> getPartitionConsumptionState(int partitionId) {
     return Optional.ofNullable(partitionConsumptionStateMap.get(partitionId));
+  }
+
+  public boolean hasAnyPartitionConsumptionState(Predicate<PartitionConsumptionState> pcsPredicate) {
+    for (Map.Entry<Integer, PartitionConsumptionState> partitionToConsumptionState : partitionConsumptionStateMap.entrySet()) {
+      if (pcsPredicate.test(partitionToConsumptionState.getValue())) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /**

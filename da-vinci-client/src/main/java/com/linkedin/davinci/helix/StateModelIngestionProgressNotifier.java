@@ -45,11 +45,9 @@ public abstract class StateModelIngestionProgressNotifier implements VeniceNotif
             "After waiting " + bootstrapToOnlineTimeoutInHours + " hours, resource:" + resourceName + " partition:"
                 + partitionId + " still can not become online from bootstrap.";
         logger.error(errorMsg);
-        // Report ingestion_failure and ingestion_task_errored_gauge
+        // Report ingestion_failure
         String storeName = Version.parseStoreFromKafkaTopicName(resourceName);
-        int versionNumber = Version.parseVersionFromKafkaTopicName(resourceName);
         storeIngestionService.getAggStoreIngestionStats().recordIngestionFailure(storeName);
-        storeIngestionService.getAggVersionedStorageIngestionStats().setIngestionTaskErroredGauge(storeName, versionNumber);
         VeniceException veniceException =  new VeniceException(errorMsg);
         storeIngestionService.getStoreIngestionTask(resourceName).reportError(errorMsg, partitionId, veniceException);
       }

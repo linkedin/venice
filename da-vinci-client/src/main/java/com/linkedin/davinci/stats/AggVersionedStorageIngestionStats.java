@@ -84,16 +84,6 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
     }
   }
 
-  // To prevent this metric being too noisy and align with the PreNotificationCheck of reportError, this flag should
-  // only be set if the ingestion task errored after EOP is received for any of the partitions.
-  public void setIngestionTaskErroredGauge(String storeName, int version) {
-    getStats(storeName, version).setIngestionTaskErroredGauge(1);
-  }
-
-  public void resetIngestionTaskErroredGauge(String storeName, int version) {
-    getStats(storeName, version).setIngestionTaskErroredGauge(0);
-  }
-
   public void recordRecordsConsumed(String storeName, int version, int count) {
     Utils.computeIfNotNull(getTotalStats(storeName), stat -> stat.recordRecordsConsumed(count));
     Utils.computeIfNotNull(getStats(storeName, version), stat -> stat.recordRecordsConsumed(count));
@@ -209,7 +199,6 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
 
     private StoreIngestionTask ingestionTask;
     private long rtTopicOffsetLagOverThreshold = 0;
-    private int ingestionTaskErroredGauge = 0;
     private int ingestionTaskPushTimeoutGauge = 0;
 
     private final Rate recordsConsumedRate;
@@ -417,12 +406,14 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
       return rtTopicOffsetLagOverThreshold;
     }
 
-    public void setIngestionTaskErroredGauge(int value) {
-      ingestionTaskErroredGauge = value;
-    }
-
+    // To prevent this metric being too noisy and align with the PreNotificationCheck of reportError, this metric should
+    // only be set if the ingestion task errored after EOP is received for any of the partitions.
     public int getIngestionTaskErroredGauge() {
-      return ingestionTaskErroredGauge;
+      if (ingestionTask == null) {
+        return 0;
+      }
+
+      return ingestionTask.hasAnyPartitionConsumptionState(pcs -> pcs.isErrorReported() && pcs.isComplete()) ? 1 : 0;
     }
 
     public long getBatchReplicationLag() {
