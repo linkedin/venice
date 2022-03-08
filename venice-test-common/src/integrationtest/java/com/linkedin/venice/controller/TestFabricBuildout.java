@@ -5,6 +5,7 @@ import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StoreComparisonResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
+import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.integration.utils.MirrorMakerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
@@ -79,8 +80,11 @@ public class TestFabricBuildout {
     ControllerClient dc0Client = ControllerClient.constructClusterControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
     // Create a test store only in dc0 colo
     NewStoreResponse newStoreResponse = dc0Client.retryableRequest(3, c -> c.createNewStore(storeName,
-        "", "\"string\"", "\"string\""));
+        "", "\"string\"", TestPushUtils.USER_SCHEMA_STRING_SIMPLE_WITH_DEFAULT));
     Assert.assertFalse(newStoreResponse.isError(), "The NewStoreResponse returned an error: " + newStoreResponse.getError());
+    // Enable read compute to test superset schema registration.
+    Assert.assertFalse(dc0Client.updateStore(storeName, new UpdateStoreQueryParams().setReadComputationEnabled(true)).isError());
+    Assert.assertFalse(dc0Client.addValueSchema(storeName, TestPushUtils.USER_SCHEMA_STRING_WITH_DEFAULT).isError());
     checkStoreConfig(dc0Client, storeName);
 
     // Call metadata copy over to copy dc0's store configs to dc1

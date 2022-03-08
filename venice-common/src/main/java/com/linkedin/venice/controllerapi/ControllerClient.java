@@ -697,11 +697,29 @@ public class ControllerClient implements Closeable {
     return request(ControllerRoute.ADD_VALUE_SCHEMA, params, SchemaResponse.class);
   }
 
+  public SchemaResponse addValueSchema(String storeName, String valueSchemaStr, int valueSchemaId) {
+    QueryParams params = newParams()
+        .add(NAME, storeName)
+        .add(VALUE_SCHEMA, valueSchemaStr)
+        .add(SCHEMA_ID, valueSchemaId);
+    return request(ControllerRoute.ADD_VALUE_SCHEMA, params, SchemaResponse.class);
+  }
+
   public SchemaResponse addDerivedSchema(String storeName, int valueSchemaId, String derivedSchemaStr) {
     QueryParams params = newParams()
         .add(NAME, storeName)
         .add(SCHEMA_ID, valueSchemaId)
         .add(DERIVED_SCHEMA, derivedSchemaStr);
+    return request(ControllerRoute.ADD_DERIVED_SCHEMA, params, SchemaResponse.class);
+  }
+
+  public SchemaResponse addDerivedSchema(String storeName, int valueSchemaId, String derivedSchemaStr,
+      int derivedSchemaId) {
+    QueryParams params = newParams()
+        .add(NAME, storeName)
+        .add(SCHEMA_ID, valueSchemaId)
+        .add(DERIVED_SCHEMA, derivedSchemaStr)
+        .add(DERIVED_SCHEMA_ID, derivedSchemaId);
     return request(ControllerRoute.ADD_DERIVED_SCHEMA, params, SchemaResponse.class);
   }
 
