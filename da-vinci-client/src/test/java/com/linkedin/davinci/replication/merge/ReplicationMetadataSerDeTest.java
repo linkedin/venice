@@ -5,8 +5,10 @@ import com.linkedin.davinci.replication.ReplicationMetadataWithValueSchemaId;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.schema.rmd.ReplicationMetadataSchemaEntry;
 import com.linkedin.venice.schema.rmd.ReplicationMetadataSchemaGenerator;
+import com.linkedin.venice.schema.rmd.v1.CollectionReplicationMetadata;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
+import java.util.List;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
@@ -73,11 +75,68 @@ public class ReplicationMetadataSerDeTest {
     GenericRecord rmdTimestamp = new GenericData.Record(rmdTimestampSchema);
     rmdTimestamp.put("Name", 1L);
     rmdTimestamp.put("Age", 1L);
-    rmdTimestamp.put("Items", 1L);
-    rmdTimestamp.put("PetNameToAge", 1L);
+    rmdTimestamp.put("Items", createCollectionFieldMetadataRecord(
+        rmdTimestampSchema.getField("Items").schema(),
+        23L,
+        1,
+        3,
+        Arrays.asList(1L, 2L, 3L),
+        Arrays.asList("foo", "bar"),
+        Arrays.asList(1L, 100L)
+    ));
+    rmdTimestamp.put("PetNameToAge", createCollectionFieldMetadataRecord(
+        rmdTimestampSchema.getField("PetNameToAge").schema(),
+        24L,
+        2,
+        5,
+        Arrays.asList(1L, 2L, 3L, 4L, 5L),
+        Arrays.asList("foo", "bar", "qaz"),
+        Arrays.asList(1L, 2L, 3L)
+    ));
     GenericRecord rmd = new GenericData.Record(rmdSchema);
     rmd.put("timestamp", rmdTimestamp);
     rmd.put("replication_checkpoint_vector", Arrays.asList(1L, 2L, 3L));
     return rmd;
+  }
+
+  private GenericRecord createCollectionFieldMetadataRecord(
+      Schema collectionFieldMetadataSchema,
+      long topLevelTimestamp,
+      int topLevelColoID,
+      int putOnlyPartLen,
+      List<Long> activeElementsTimestamps,
+      List<Object> deletedElements,
+      List<Long> deletedElementsTimestamps
+  ) {
+    GenericRecord collectionFieldMetadataRecord = new GenericData.Record(collectionFieldMetadataSchema);
+    collectionFieldMetadataRecord.put(
+        CollectionReplicationMetadata.COLLECTION_TOP_LEVEL_TS_FIELD_NAME,
+        topLevelTimestamp
+    );
+    collectionFieldMetadataRecord.put(
+        CollectionReplicationMetadata.COLLECTION_TOP_LEVEL_TS_FIELD_NAME,
+        topLevelTimestamp
+    );
+    collectionFieldMetadataRecord.put(
+        CollectionReplicationMetadata.COLLECTION_TOP_LEVEL_COLO_ID_FIELD_NAME,
+        topLevelColoID
+    );
+    collectionFieldMetadataRecord.put(
+        CollectionReplicationMetadata.COLLECTION_PUT_ONLY_PART_LENGTH_FIELD_NAME,
+        putOnlyPartLen
+    );
+    collectionFieldMetadataRecord.put(
+        CollectionReplicationMetadata.COLLECTION_ACTIVE_ELEM_TS_FIELD_NAME,
+        activeElementsTimestamps
+    );
+    collectionFieldMetadataRecord.put(
+        CollectionReplicationMetadata.COLLECTION_DELETED_ELEM_FIELD_NAME,
+        deletedElements
+    );
+    collectionFieldMetadataRecord.put(
+        CollectionReplicationMetadata.COLLECTION_DELETED_ELEM_TS_FIELD_NAME,
+        deletedElementsTimestamps
+    );
+    return collectionFieldMetadataRecord;
   }
 }
