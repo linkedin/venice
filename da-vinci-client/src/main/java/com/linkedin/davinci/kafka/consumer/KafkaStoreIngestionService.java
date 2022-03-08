@@ -65,7 +65,6 @@ import com.linkedin.venice.writer.SharedKafkaProducerService;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import io.tehuti.metrics.MetricsRepository;
 import java.nio.ByteBuffer;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -491,15 +490,10 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     String storeName = Version.parseStoreFromKafkaTopicName(veniceStoreVersionConfig.getStoreVersionName());
     int versionNumber = Version.parseVersionFromKafkaTopicName(veniceStoreVersionConfig.getStoreVersionName());
 
-    Pair<Store, Version> storeVersionPair = metadataRepo.waitVersion(storeName, versionNumber, Duration.ofSeconds(30));
+    Pair<Store, Version> storeVersionPair = Utils.waitStoreVersionOrThrow(
+        veniceStoreVersionConfig.getStoreVersionName(), metadataRepo);
     Store store = storeVersionPair.getFirst();
     Version version = storeVersionPair.getSecond();
-    if (store == null) {
-      throw new VeniceException("Store " + storeName + " does not exist.");
-    }
-    if (version == null) {
-      throw new VeniceException("Version " + veniceStoreVersionConfig.getStoreVersionName() + " does not exist.");
-    }
 
     BooleanSupplier isVersionCurrent = () -> {
       try {

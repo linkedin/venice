@@ -18,6 +18,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
+import java.time.Duration;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.IndexedRecord;
 import org.apache.commons.io.FileUtils;
@@ -846,5 +847,19 @@ public class Utils {
       return false;
     }
     return AvroCompatibilityHelper.isGenericRecord((IndexedRecord) object);
+  }
+
+  public static Pair<Store, Version> waitStoreVersionOrThrow(String storeVersionName, ReadOnlyStoreRepository metadataRepo) {
+    String storeName = Version.parseStoreFromKafkaTopicName(storeVersionName);
+    int versionNumber = Version.parseVersionFromKafkaTopicName(storeVersionName);
+
+    Pair<Store, Version> storeVersionPair = metadataRepo.waitVersion(storeName, versionNumber, Duration.ofSeconds(30));
+    if (storeVersionPair.getFirst() == null) {
+      throw new VeniceException("Store " + storeName + " does not exist.");
+    }
+    if (storeVersionPair.getSecond() == null) {
+      throw new VeniceException("Store " + storeName + " version " + versionNumber + " does not exist.");
+    }
+    return storeVersionPair;
   }
 }

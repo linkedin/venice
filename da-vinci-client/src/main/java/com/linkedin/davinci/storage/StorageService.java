@@ -13,7 +13,6 @@ import com.linkedin.davinci.store.rocksdb.RocksDBStorageEngineFactory;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
-import com.linkedin.venice.exceptions.VeniceRetriableException;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.PersistenceType;
@@ -24,10 +23,8 @@ import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.PartitionUtils;
-import com.linkedin.venice.utils.RetryUtils;
 import com.linkedin.venice.utils.Utils;
 import java.io.File;
-import java.time.Duration;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
@@ -398,15 +395,7 @@ public class StorageService extends AbstractVeniceService {
       return false;
     }
     try {
-      Optional<Version> version = RetryUtils.executeWithMaxAttempt(
-          () -> {
-            Optional<Version> optionalVersion = storeRepository.getStoreOrThrow(storeName).getVersion(versionNum);
-            if (!optionalVersion.isPresent()) {
-              throw new VeniceRetriableException("Version: " + versionNum + " does not exist in store: " + storeName
-                  + " (yet)");
-            }
-            return optionalVersion;
-            }, 3, Duration.ofSeconds(5), Collections.singletonList(VeniceRetriableException.class));
+      Optional<Version> version = storeRepository.getStoreOrThrow(storeName).getVersion(versionNum);
       if (version.isPresent()) {
         return version.get().isActiveActiveReplicationEnabled();
       } else {
