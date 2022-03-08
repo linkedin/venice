@@ -2270,12 +2270,6 @@ public class StoreIngestionTaskTest {
     doReturn(5L).when(mockOffsetRecordLagCaughtUp).getUpstreamOffset(inMemoryLocalKafkaBroker.getKafkaBootstrapServer());
     doReturn(5L).when(mockOffsetRecordLagCaughtUp).getUpstreamOffset(inMemoryRemoteKafkaBroker.getKafkaBootstrapServer());
 
-    OffsetRecord mockOffsetRecordVTLagCaughtUpRemoteRTLagging = mock(OffsetRecord.class);
-    doReturn(5L).when(mockOffsetRecordVTLagCaughtUpRemoteRTLagging).getLocalVersionTopicOffset();
-    doReturn(rtTopic).when(mockOffsetRecordVTLagCaughtUpRemoteRTLagging).getLeaderTopic();
-    doReturn(5L).when(mockOffsetRecordVTLagCaughtUpRemoteRTLagging).getUpstreamOffset(inMemoryLocalKafkaBroker.getKafkaBootstrapServer());
-    doReturn(150L).when(mockOffsetRecordVTLagCaughtUpRemoteRTLagging).getUpstreamOffset(inMemoryRemoteKafkaBroker.getKafkaBootstrapServer());
-
     OffsetRecord mockOffsetRecordLagCaughtUpTimestampLagging = mock(OffsetRecord.class);
     doReturn(5L).when(mockOffsetRecordLagCaughtUpTimestampLagging).getLocalVersionTopicOffset();
     doReturn(rtTopic).when(mockOffsetRecordLagCaughtUpTimestampLagging).getLeaderTopic();
@@ -2351,6 +2345,69 @@ public class StoreIngestionTaskTest {
     doReturn(System.currentTimeMillis() - 2 * MS_PER_DAY).when(mockTopicManager).getProducerTimestampOfLastDataRecord(anyString(), anyInt(), anyInt());
     doReturn(System.currentTimeMillis()).when(mockTopicManagerRemoteKafka).getProducerTimestampOfLastDataRecord(anyString(), anyInt(), anyInt());
     Assert.assertEquals(storeIngestionTaskUnderTest.isReadyToServe(mockPcsOffsetLagCaughtUpTimestampLagging), isDaVinciClient);
+  }
+
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testActiveActiveStoreIsReadyToServe(boolean isDaVinciClient) {
+    int partitionCount = 2;
+    int amplificationFactor = 1;
+    VenicePartitioner partitioner = getVenicePartitioner(1);
+    PartitionerConfig partitionerConfig = new PartitionerConfigImpl();
+    partitionerConfig.setPartitionerClass(partitioner.getClass().getName());
+    partitionerConfig.setAmplificationFactor(amplificationFactor);
+    HybridStoreConfig hybridStoreConfig = new HybridStoreConfigImpl(100, 100, -1, DataReplicationPolicy.ACTIVE_ACTIVE,
+        BufferReplayPolicy.REWIND_FROM_EOP);
+
+    MockStoreVersionConfigs storeAndVersionConfigs = setupStoreAndVersionMocks(partitionCount, partitionerConfig,
+        Optional.of(hybridStoreConfig), false, true, true, true);
+    Store mockStore = storeAndVersionConfigs.store;
+    Version version = storeAndVersionConfigs.version;
+    VeniceStoreVersionConfig storeConfig = storeAndVersionConfigs.storeVersionConfig;
+
+    StoreIngestionTaskFactory ingestionTaskFactory = getIngestionTaskFactoryBuilder(new RandomPollStrategy(),
+        Utils.setOf(PARTITION_FOO), Optional.of(hybridStoreConfig), Optional.empty(), 1, new HashMap<>())
+        .setIsDaVinciClient(isDaVinciClient)
+        .setTopicManagerRepositoryJavaBased(mockTopicManagerRepository)
+        .build();
+
+    TopicManager mockTopicManagerRemoteKafka = mock(TopicManager.class);
+    doReturn(mockTopicManager).when(mockTopicManagerRepository).getTopicManager(inMemoryLocalKafkaBroker.getKafkaBootstrapServer());
+    doReturn(mockTopicManagerRemoteKafka).when(mockTopicManagerRepository).getTopicManager(inMemoryRemoteKafkaBroker.getKafkaBootstrapServer());
+    doReturn(true).when(mockTopicManager).containsTopic(anyString());
+    doReturn(true).when(mockTopicManagerRemoteKafka).containsTopic(anyString());
+
+    Properties kafkaProps = new Properties();
+    kafkaProps.put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, inMemoryLocalKafkaBroker.getKafkaBootstrapServer());
+    int leaderSubPartition = PartitionUtils.getLeaderSubPartition(PARTITION_FOO, amplificationFactor);
+    storeIngestionTaskUnderTest = ingestionTaskFactory.getNewIngestionTask(mockStore, version, kafkaProps,
+        isCurrentVersion, storeConfig, leaderSubPartition, false,
+        new StorageEngineBackedCompressorFactory(mockStorageMetadataService), Optional.empty());
+
+    String rtTopic = Version.composeRealTimeTopic(mockStore.getName());
+    TopicSwitch topicSwitchWithMultipleSourceKafkaServers = new TopicSwitch();
+    topicSwitchWithMultipleSourceKafkaServers.sourceKafkaServers = new ArrayList<>();
+    topicSwitchWithMultipleSourceKafkaServers.sourceKafkaServers.add(inMemoryLocalKafkaBroker.getKafkaBootstrapServer());
+    topicSwitchWithMultipleSourceKafkaServers.sourceKafkaServers.add(inMemoryRemoteKafkaBroker.getKafkaBootstrapServer());
+    topicSwitchWithMultipleSourceKafkaServers.sourceTopicName = rtTopic;
+
+    OffsetRecord mockOffsetRecord = mock(OffsetRecord.class);
+    doReturn(5L).when(mockOffsetRecord).getLocalVersionTopicOffset();
+    doReturn(rtTopic).when(mockOffsetRecord).getLeaderTopic();
+    doReturn(5L).when(mockOffsetRecord).getUpstreamOffset(inMemoryLocalKafkaBroker.getKafkaBootstrapServer());
+    doReturn(5L).when(mockOffsetRecord).getUpstreamOffset(inMemoryRemoteKafkaBroker.getKafkaBootstrapServer());
+
+    // Local replication are caught up but remote replication are not. A/A storage node replica is not ready to serve
+    // Since host has caught up to lag in local VT, DaVinci replica will be marked ready to serve
+    PartitionConsumptionState mockPcsMultipleSourceKafkaServers = mock(PartitionConsumptionState.class);
+    doReturn(true).when(mockPcsMultipleSourceKafkaServers).isEndOfPushReceived();
+    doReturn(false).when(mockPcsMultipleSourceKafkaServers).isComplete();
+    doReturn(true).when(mockPcsMultipleSourceKafkaServers).isWaitingForReplicationLag();
+    doReturn(true).when(mockPcsMultipleSourceKafkaServers).isHybrid();
+    doReturn(topicSwitchWithMultipleSourceKafkaServers).when(mockPcsMultipleSourceKafkaServers).getTopicSwitch();
+    doReturn(mockOffsetRecord).when(mockPcsMultipleSourceKafkaServers).getOffsetRecord();
+    doReturn(5L).when(mockTopicManager).getPartitionLatestOffsetAndRetry(anyString(), anyInt(), anyInt());
+    doReturn(150L).when(mockTopicManagerRemoteKafka).getPartitionLatestOffsetAndRetry(anyString(), anyInt(), anyInt());
+    Assert.assertEquals(storeIngestionTaskUnderTest.isReadyToServe(mockPcsMultipleSourceKafkaServers), isDaVinciClient);
   }
 
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)

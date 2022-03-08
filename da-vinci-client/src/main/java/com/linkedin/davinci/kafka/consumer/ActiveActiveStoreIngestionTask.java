@@ -831,8 +831,15 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   }
 
   /**
-   * For stores in aggregate mode this is optimistic and  returns the minimum lag of all fabric. This is because in aggregate
-   * mode duplicate msg consumption happen from all fabric. So it should be fine to consider the lowest lag.
+   * For stores in aggregate mode this is optimistic and returns the minimum lag of all fabric. This is because in
+   * aggregate mode duplicate msg consumption happen from all fabric. So it should be fine to consider the lowest lag.
+   *
+   * For stores in active/active mode, if no fabric is unreachable, return the maximum lag of all fabrics. If only one
+   * fabric is unreachable, return the maximum lag of other fabrics. If more than one fabrics are unreachable, return
+   * Long.MAX_VALUE, which means the partition is not ready-to-serve.
+   * TODO: For active/active incremental push stores or stores with only one samza job, we should consider the weight of
+   * unreachable fabric and make the decision. For example, we should not let partition ready-to-serve when the only
+   * source fabric is unreachable.
    *
    * In non-aggregate mode of consumption only return the local fabric lag
    * @param sourceRealTimeTopicKafkaURLs
@@ -851,6 +858,24 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         }
       }
       return minLag;
+    } else if (this.hybridStoreConfig.get().getDataReplicationPolicy().equals(DataReplicationPolicy.ACTIVE_ACTIVE)) {
+      long maxLag = Long.MIN_VALUE;
+      int numberOfUnreachableRegions = 0;
+      for (String sourceRealTimeTopicKafkaURL : sourceRealTimeTopicKafkaURLs) {
+        try {
+          long lag = measureRTOffsetLagForSingleRegion(sourceRealTimeTopicKafkaURL, partitionConsumptionState, shouldLogLag);
+          maxLag = Math.max(lag, maxLag);
+        } catch (Exception e) {
+          logger.error("Failed to measure RT offset lag for topic {} partition id {} in {}",
+              partitionConsumptionState.getOffsetRecord().getLeaderTopic(), partitionConsumptionState.getPartition(),
+              sourceRealTimeTopicKafkaURL, e);
+          if (++numberOfUnreachableRegions > 1) {
+            logger.error("More than one regions are unreachable. Return {} as it is not ready-to-serve", Long.MAX_VALUE);
+            return Long.MAX_VALUE;
+          }
+        }
+      }
+      return maxLag;
     } else {
       if (sourceRealTimeTopicKafkaURLs.contains(localKafkaServer)) {
         return measureRTOffsetLagForSingleRegion(localKafkaServer, partitionConsumptionState, shouldLogLag);

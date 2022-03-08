@@ -1327,10 +1327,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
   protected long measureRTOffsetLagForSingleRegion(String sourceRealTimeTopicKafkaURL,
       PartitionConsumptionState partitionConsumptionState, boolean shouldLogLag) {
-    long lag =
-        amplificationAdapter.getLatestLeaderPersistedOffsetAndHybridTopicOffset(sourceRealTimeTopicKafkaURL,
-            partitionConsumptionState.getOffsetRecord().getLeaderTopic(), partitionConsumptionState, shouldLogLag);
-    return lag;
+    return amplificationAdapter.getLatestLeaderPersistedOffsetAndHybridTopicOffset(sourceRealTimeTopicKafkaURL,
+        partitionConsumptionState.getOffsetRecord().getLeaderTopic(), partitionConsumptionState, shouldLogLag);
   }
 
   protected long measureRTOffsetLagForMultiRegions(Set<String> sourceRealTimeTopicKafkaURLs,
