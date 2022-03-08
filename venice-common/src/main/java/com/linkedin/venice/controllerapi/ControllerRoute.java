@@ -54,8 +54,8 @@ public enum ControllerRoute {
   SKIP_ADMIN("/skip_admin_message", HttpMethod.POST, Collections.singletonList(OFFSET)),
 
   GET_KEY_SCHEMA("/get_key_schema", HttpMethod.GET, Collections.singletonList(NAME)),
-  ADD_VALUE_SCHEMA("/add_value_schema", HttpMethod.POST,  Arrays.asList(NAME, VALUE_SCHEMA)),
-  ADD_DERIVED_SCHEMA("/add_derived_schema", HttpMethod.POST, Arrays.asList(NAME, SCHEMA_ID, DERIVED_SCHEMA)),
+  ADD_VALUE_SCHEMA("/add_value_schema", HttpMethod.POST,  Arrays.asList(NAME, VALUE_SCHEMA), SCHEMA_ID),
+  ADD_DERIVED_SCHEMA("/add_derived_schema", HttpMethod.POST, Arrays.asList(NAME, SCHEMA_ID, DERIVED_SCHEMA), DERIVED_SCHEMA_ID),
   SET_OWNER("/set_owner", HttpMethod.POST, Arrays.asList(NAME, OWNER)),
   SET_PARTITION_COUNT("/set_partition_count", HttpMethod.POST, Arrays.asList(NAME, PARTITION_COUNT)),
   GET_ALL_VALUE_SCHEMA("/get_all_value_schema", HttpMethod.GET, Collections.singletonList(NAME)),

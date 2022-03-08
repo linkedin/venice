@@ -73,13 +73,25 @@ public class SchemaRoutes extends AbstractRoute {
         AdminSparkServer.validateParams(request, ADD_VALUE_SCHEMA.getParams(), admin);
         responseObject.setCluster(request.queryParams(CLUSTER));
         responseObject.setName(request.queryParams(NAME));
-        SchemaEntry valueSchemaEntry = admin.addValueSchema(
-            responseObject.getCluster(),
-            responseObject.getName(),
-            request.queryParams(VALUE_SCHEMA),
-            SchemaEntry.DEFAULT_SCHEMA_CREATION_COMPATIBILITY_TYPE
-            // TODO: Make compat type configurable to allow force registration
-        );
+        String schemaIdString = request.queryParams(SCHEMA_ID);
+        SchemaEntry valueSchemaEntry;
+        if (schemaIdString != null) {
+          // Schema id is specified which suggests that the request is coming from metadata copy.
+          valueSchemaEntry = admin.addValueSchema(
+              responseObject.getCluster(),
+              responseObject.getName(),
+              request.queryParams(VALUE_SCHEMA),
+              Integer.parseInt(schemaIdString)
+          );
+        } else {
+          valueSchemaEntry = admin.addValueSchema(
+              responseObject.getCluster(),
+              responseObject.getName(),
+              request.queryParams(VALUE_SCHEMA),
+              SchemaEntry.DEFAULT_SCHEMA_CREATION_COMPATIBILITY_TYPE
+              // TODO: Make compat type configurable to allow force registration
+          );
+        }
         responseObject.setId(valueSchemaEntry.getId());
         responseObject.setSchemaStr(valueSchemaEntry.getSchema().toString());
       } catch (Throwable e) {
@@ -117,8 +129,15 @@ public class SchemaRoutes extends AbstractRoute {
               + " doesn't exist");
         }
 
-        DerivedSchemaEntry derivedSchemaEntry = admin.addDerivedSchema(clusterName, storeName, valueSchemaId,
-            request.queryParams(DERIVED_SCHEMA));
+        String derivedSchemaIdString = request.queryParams(DERIVED_SCHEMA_ID);
+        DerivedSchemaEntry derivedSchemaEntry;
+        if (derivedSchemaIdString != null) {
+          // Derived schema id is specified which suggests that the request is coming from metadata copy.
+          derivedSchemaEntry = admin.addDerivedSchema(clusterName, storeName, valueSchemaId,
+              Integer.parseInt(derivedSchemaIdString), request.queryParams(DERIVED_SCHEMA));
+        } else {
+          derivedSchemaEntry = admin.addDerivedSchema(clusterName, storeName, valueSchemaId, request.queryParams(DERIVED_SCHEMA));
+        }
         responseObject.setId(derivedSchemaEntry.getValueSchemaId());
         responseObject.setDerivedSchemaId(derivedSchemaEntry.getId());
         responseObject.setSchemaStr(derivedSchemaEntry.getSchema().toString());

@@ -3816,10 +3816,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 + newValueSchemaId + " for store " + storeName + " in cluster " + clusterName + " Schema: " + valueSchemaStr);
         }
 
-        SchemaEntry schemaEntry = schemaRepository.addValueSchema(storeName, valueSchemaStr, newValueSchemaId);
-        // Write store schemas to metadata store.
-        Store store = getStore(clusterName, storeName);
-        return schemaEntry;
+      return schemaRepository.addValueSchema(storeName, valueSchemaStr, newValueSchemaId);
     }
 
     @Override

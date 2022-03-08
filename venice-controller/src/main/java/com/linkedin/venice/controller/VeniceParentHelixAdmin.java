@@ -2077,8 +2077,8 @@ public class VeniceParentHelixAdmin implements Admin {
       //defensive code checking
       Pair<Integer, Integer> actualValueSchemaIdPair = getDerivedSchemaId(clusterName, storeName, derivedSchemaStr);
       if (actualValueSchemaIdPair.getFirst() != valueSchemaId || actualValueSchemaIdPair.getSecond() != newDerivedSchemaId) {
-        throw new VeniceException(String.format("Something bad happens, the expected new value schema id pair is:"
-            + "%d_%d, but got: %d_%d", valueSchemaId, newDerivedSchemaId, actualValueSchemaIdPair.getFirst(),
+        throw new VeniceException(String.format("Something bad happened, the expected new value schema id pair is:"
+                + "%d_%d, but got: %d_%d", valueSchemaId, newDerivedSchemaId, actualValueSchemaIdPair.getFirst(),
             actualValueSchemaIdPair.getSecond()));
       }
 
@@ -3450,15 +3450,12 @@ public class VeniceParentHelixAdmin implements Admin {
       destFabricChildControllerClient.createNewStore(storeInfo.getName(), storeInfo.getOwner(), keySchema,
           valueAndDerivedSchemas[0].getSchemaStr());
       for (int i = 1; i < valueAndDerivedSchemas.length; i++) {
-        /**
-         * TODO: We should add both schema ID and schema string to dest fabrics. Otherwise the schemas IDs might be
-         *       different across colos.
-         */
-        if (valueAndDerivedSchemas[i].getDerivedSchemaId() == -1) {
-          destFabricChildControllerClient.addValueSchema(storeInfo.getName(), valueAndDerivedSchemas[i].getSchemaStr());
+        MultiSchemaResponse.Schema schema = valueAndDerivedSchemas[i];
+        if (schema.getDerivedSchemaId() == -1) {
+          destFabricChildControllerClient.addValueSchema(storeInfo.getName(), schema.getSchemaStr(), schema.getId());
         } else {
-          destFabricChildControllerClient.addDerivedSchema(storeInfo.getName(), valueAndDerivedSchemas[i].getId(),
-              valueAndDerivedSchemas[i].getSchemaStr());
+          destFabricChildControllerClient.addDerivedSchema(storeInfo.getName(), schema.getId(), schema.getSchemaStr(),
+              schema.getDerivedSchemaId());
         }
       }
       UpdateStoreQueryParams params = new UpdateStoreQueryParams(storeInfo, false);
