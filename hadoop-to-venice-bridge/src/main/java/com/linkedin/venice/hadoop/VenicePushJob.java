@@ -1615,9 +1615,9 @@ public class VenicePushJob implements AutoCloseable {
       throw new VeniceException("Got an error in keySchemaResponse: " + keySchemaResponse.toString());
     } else if (null == keySchemaResponse.getSchemaStr()) {
       // TODO: Fix the server-side request handling. This should not happen. We should get a 404 instead.
-      throw new VeniceException("Got a null schema in keySchemaResponse: " + keySchemaResponse.toString());
+      throw new VeniceException("Got a null schema in keySchemaResponse: " + keySchemaResponse);
     }
-    return Schema.parse(keySchemaResponse.getSchemaStr());
+    return AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation(keySchemaResponse.getSchemaStr());
   }
 
   /***

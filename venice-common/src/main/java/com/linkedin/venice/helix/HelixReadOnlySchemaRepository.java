@@ -362,8 +362,7 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
       if (latestValueSchemaId == SchemaData.INVALID_VALUE_SCHEMA_ID) {
         throw new VeniceException(storeName + " doesn't have latest schema!");
       }
-      SchemaEntry valueSchema = schemaData.getValueSchema(latestValueSchemaId);
-      return valueSchema;
+      return schemaData.getValueSchema(latestValueSchemaId);
     } finally {
       schemaLock.readLock().unlock();
     }
