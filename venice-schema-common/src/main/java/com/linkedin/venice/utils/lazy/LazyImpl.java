@@ -1,4 +1,4 @@
-package com.linkedin.venice.utils;
+package com.linkedin.venice.utils.lazy;
 
 import java.util.Objects;
 import java.util.Optional;

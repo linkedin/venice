@@ -21,7 +21,7 @@ import static org.mockito.Mockito.*;
 
 public class TopicPartitionsOffsetsTrackerTest {
 
-    private static final Duration OFFSETS_UPDATE_INTERVAL = Duration.ofMillis(0); // No interval
+    private static final Duration OFFSETS_UPDATE_INTERVAL = Duration.ZERO; // No interval
     private static final String TOPIC_1 = "topic_1";
     private static final String TOPIC_2 = "topic_2";
     private static final int PARTITION_ID = 2;

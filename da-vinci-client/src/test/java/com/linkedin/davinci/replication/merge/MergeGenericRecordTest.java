@@ -8,7 +8,7 @@ import com.linkedin.venice.schema.writecompute.WriteComputeProcessor;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.schema.rmd.ReplicationMetadataSchemaGenerator;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
-import com.linkedin.venice.utils.Lazy;
+import com.linkedin.venice.utils.lazy.Lazy;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -87,7 +87,7 @@ public class MergeGenericRecordTest {
     timeStampRecord.put(0, ts);
 
     ValueAndReplicationMetadata<GenericRecord>
-        valueAndReplicationMetadata = new ValueAndReplicationMetadata<>(valueRecord, timeStampRecord);
+        valueAndReplicationMetadata = new ValueAndReplicationMetadata<>(Lazy.of(() -> valueRecord), timeStampRecord);
 
     Merge<GenericRecord> genericRecordMerge = createMergeGenericRecord();
     ValueAndReplicationMetadata<GenericRecord> deletedValueAndReplicationMetadata1 = genericRecordMerge.delete(valueAndReplicationMetadata, 20, -1, 1, 0);
@@ -149,7 +149,7 @@ public class MergeGenericRecordTest {
     timeStampRecord.put(0, ts);
 
     ValueAndReplicationMetadata<GenericRecord>
-        valueAndReplicationMetadata = new ValueAndReplicationMetadata<>(valueRecord, timeStampRecord);
+        valueAndReplicationMetadata = new ValueAndReplicationMetadata<>(Lazy.of(() -> valueRecord), timeStampRecord);
 
     GenericRecord newRecord = new GenericData.Record(schema);
     newRecord.put("id", "id10");
@@ -200,7 +200,7 @@ public class MergeGenericRecordTest {
     timeStampRecord.put(0, ts);
 
     ValueAndReplicationMetadata<GenericRecord>
-        valueAndReplicationMetadata = new ValueAndReplicationMetadata<>(valueRecord, timeStampRecord);
+        valueAndReplicationMetadata = new ValueAndReplicationMetadata<>(Lazy.of(() -> valueRecord), timeStampRecord);
 
     Schema recordWriteComputeSchema = WriteComputeSchemaConverter.convertFromValueRecordSchema(schema);
 
@@ -311,7 +311,7 @@ public class MergeGenericRecordTest {
       writeTs.add((long) (i + 10));
     }
     ValueAndReplicationMetadata<GenericRecord>
-        valueAndReplicationMetadata = new ValueAndReplicationMetadata<>(origRecord, timeStampRecord);
+        valueAndReplicationMetadata = new ValueAndReplicationMetadata<>(Lazy.of(() -> origRecord), timeStampRecord);
     Merge<GenericRecord> genericRecordMerge = createMergeGenericRecord();
 
     for (int i = 0; i < 100; i++) {
@@ -325,8 +325,7 @@ public class MergeGenericRecordTest {
     Assert.assertEquals(valueAndReplicationMetadata.getValue().get("age"), 109);
     Assert.assertEquals((long) valueAndReplicationMetadata.getReplicationMetadata().get(TIMESTAMP_FIELD_NAME), 110);
 
-
-    valueAndReplicationMetadata = new ValueAndReplicationMetadata<>(origRecord, timeStampRecord);
+    valueAndReplicationMetadata = new ValueAndReplicationMetadata<>(Lazy.of(() -> origRecord), timeStampRecord);
     // swap timestamp and record order
     for (int i = 0; i < 100; i++) {
       for (int j = 0; j < 100; j++) {

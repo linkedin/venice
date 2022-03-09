@@ -3,6 +3,7 @@ package com.linkedin.davinci.replication.merge;
 import com.linkedin.avro.fastserde.coldstart.ColdPrimitiveLongList;
 import com.linkedin.avro.fastserde.primitive.PrimitiveLongArrayList;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
+import com.linkedin.davinci.replication.ReplicationMetadataWithValueSchemaId;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.schema.SchemaEntry;
@@ -11,11 +12,12 @@ import com.linkedin.venice.schema.rmd.ReplicationMetadataSchemaEntry;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
-import com.linkedin.venice.utils.Lazy;
+import com.linkedin.venice.utils.lazy.Lazy;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Optional;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
@@ -28,7 +30,7 @@ import static org.mockito.Mockito.*;
 
 
 public class MergeConflictResolverTest {
-  private static final String recordSchemaStr = "{\n"
+  private static final String VALUE_RECORD_SCHEMA_STR = "{\n"
       + "  \"type\" : \"record\",\n"
       + "  \"name\" : \"User\",\n"
       + "  \"namespace\" : \"example.avro\",\n"
@@ -53,20 +55,17 @@ public class MergeConflictResolverTest {
   private Schema aaSchema;
   private RecordSerializer<GenericRecord> serializer;
   private RecordDeserializer<GenericRecord> deserializer;
-  private final int replicationMetadataVersionId = 1;
-  private RecordSerializer<GenericRecord> rmdSerializer;
-  private RecordDeserializer<GenericRecord> rmdDeserializer;
 
   @BeforeClass
   public void setUp() {
     this.storeName = "store";
     this.schemaRepository = mock(ReadOnlySchemaRepository.class);
-    this.recordSchema = AvroCompatibilityHelper.parse(recordSchemaStr);
-    this.aaSchema = ReplicationMetadataSchemaGenerator.generateMetadataSchema(recordSchema, replicationMetadataVersionId);
+    this.recordSchema = AvroCompatibilityHelper.parse(VALUE_RECORD_SCHEMA_STR);
+    final int replicationMetadataVersionId = 1;
+    this.aaSchema = ReplicationMetadataSchemaGenerator.generateMetadataSchema(recordSchema,
+        replicationMetadataVersionId);
     this.serializer = FastSerializerDeserializerFactory.getFastAvroGenericSerializer(recordSchema);
     this.deserializer = FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(recordSchema, recordSchema);
-    this.rmdSerializer = FastSerializerDeserializerFactory.getFastAvroGenericSerializer(aaSchema);
-    this.rmdDeserializer = FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(aaSchema, aaSchema);
 
     ReplicationMetadataSchemaEntry
         rmdSchemaEntry = new ReplicationMetadataSchemaEntry(1, replicationMetadataVersionId, aaSchema);
@@ -102,21 +101,45 @@ public class MergeConflictResolverTest {
     MergeConflictResolver mergeConflictResolver = new MergeConflictResolver(schemaRepository, storeName, valueSchemaID -> new GenericData.Record(aaSchema));
     ByteBuffer oldBB = getByteBufferOfRecord(valueRecord);
     ByteBuffer newBB = getByteBufferOfRecord(newRecord);
-    MergeConflictResult mergeConflictResult  = mergeConflictResolver.put(Lazy.of(() -> oldBB),
-        GenericData.get().deepCopy(aaSchema, timestampRecord), newBB, 30, 1, 1, 1, 0);
+    MergeConflictResult mergeConflictResult  = mergeConflictResolver.put(
+        Lazy.of(() -> oldBB),
+        Optional.of(new ReplicationMetadataWithValueSchemaId(1, GenericData.get().deepCopy(aaSchema, timestampRecord))),
+        newBB,
+        30L,
+        1,
+        1L,
+        0,
+        0
+    );
 
     // verify id and name fields are from new record
-    GenericRecord result = deserializer.deserialize(mergeConflictResult.getNewValue());
+    GenericRecord result = deserializer.deserialize(mergeConflictResult.getNewValue().orElse(null));
     Assert.assertEquals(GenericData.get().compare(result, newRecord, recordSchema), 0);
 
     // verify update ignored.
-    mergeConflictResult  = mergeConflictResolver.put(Lazy.of(() -> oldBB),
-        GenericData.get().deepCopy(aaSchema, timestampRecord), newBB, 10, 1, 1, 1, 0);
+    mergeConflictResult  = mergeConflictResolver.put(
+        Lazy.of(() -> oldBB),
+        Optional.of(new ReplicationMetadataWithValueSchemaId(1, GenericData.get().deepCopy(aaSchema, timestampRecord))),
+        newBB,
+        10L,
+        1,
+        1L,
+        0,
+        0
+    );
     Assert.assertTrue(mergeConflictResult.isUpdateIgnored());
 
     // verify same timestamp case
-    mergeConflictResult  = mergeConflictResolver.put(Lazy.of(() -> oldBB),
-        GenericData.get().deepCopy(aaSchema, timestampRecord), newBB, 20, 1, 1,1, 0);
+    mergeConflictResult  = mergeConflictResolver.put(
+        Lazy.of(() -> oldBB),
+        Optional.of(new ReplicationMetadataWithValueSchemaId(1, GenericData.get().deepCopy(aaSchema, timestampRecord))),
+        newBB,
+        20L,
+        1,
+        1L,
+        0,
+        0
+    );
 
     if (MergeUtils.compareAndReturn(oldBB, newBB) == oldBB) {
       Assert.assertNull(mergeConflictResult.getNewValue());
@@ -125,34 +148,83 @@ public class MergeConflictResolverTest {
     }
 
     // verify overwrite with new value case
-    mergeConflictResult  = mergeConflictResolver.put(Lazy.of(() -> oldBB),
-        GenericData.get().deepCopy(aaSchema, timestampRecord), newBB, 30, 1, 1,1, 0);
-    Assert.assertEquals(mergeConflictResult.getNewValue(), newBB);
+    mergeConflictResult  = mergeConflictResolver.put(
+        Lazy.of(() -> oldBB),
+        Optional.of(new ReplicationMetadataWithValueSchemaId(1, GenericData.get().deepCopy(aaSchema, timestampRecord))),
+        newBB,
+        30L,
+        1,
+        1L,
+        0,
+        0
+    );
+    Assert.assertEquals(mergeConflictResult.getNewValue().orElse(null), newBB);
 
     // verify put with invalid schema id
-    Assert.assertThrows(VeniceException.class, () -> mergeConflictResolver.put(Lazy.of(() -> oldBB),
-        timestampRecord, newBB, 30, -1, 1,1, 0));
+    Assert.assertThrows(VeniceException.class, () -> mergeConflictResolver.put(
+        Lazy.of(() -> oldBB),
+        Optional.of(new ReplicationMetadataWithValueSchemaId(-1, timestampRecord)),
+        newBB,
+        30L,
+        1,
+        1L,
+        0,
+        0
+    ));
 
     // validate null old value
-    mergeConflictResult  = mergeConflictResolver.put(Lazy.of(() -> null),
-        GenericData.get().deepCopy(aaSchema, timestampRecord), newBB, 30, 1, 1,1, 0);
-    result = deserializer.deserialize(mergeConflictResult.getNewValue());
+    mergeConflictResult  = mergeConflictResolver.put(
+        Lazy.of(() -> null),
+        Optional.of(new ReplicationMetadataWithValueSchemaId(1,GenericData.get().deepCopy(aaSchema, timestampRecord) )),
+        newBB,
+        30L,
+        1,
+        1L,
+        0,
+        0
+    );
+    result = deserializer.deserialize(mergeConflictResult.getNewValue().orElse(null));
     Assert.assertEquals(GenericData.get().compare(result, newRecord, recordSchema), 0);
 
     // validate null old value BUT with an existing timestamp telling us that this was a deleted record, deletes should win on a tie, meaning
     // this should get an ignore result
-    mergeConflictResult  = mergeConflictResolver.put(Lazy.of(() -> null),
-        timestampRecord, newBB, 20L, 1, 1,1, 0);
+    mergeConflictResult  = mergeConflictResolver.put(
+        Lazy.of(() -> null),
+        Optional.of(new ReplicationMetadataWithValueSchemaId(1, timestampRecord)),
+        newBB,
+        20L,
+        1,
+        1L,
+        0,
+        0
+    );
     Assert.assertTrue(mergeConflictResult.isUpdateIgnored());
 
     // Validate null RMD for existing old value
-    mergeConflictResult  = mergeConflictResolver.put(Lazy.of(() -> oldBB), null, newBB, 30, 1, 1,1, 0);
-    Assert.assertEquals(mergeConflictResult.getNewValue(), newBB);
+    mergeConflictResult  = mergeConflictResolver.put(
+        Lazy.of(() -> oldBB),
+        Optional.empty(),
+        newBB,
+        30L,
+        1,
+        1L,
+        0,
+        0
+    );
+    Assert.assertEquals(mergeConflictResult.getNewValue().orElse(null), newBB);
 
     // validate error on per field TS record
     timestampRecord.put(0,  ts);
-    Assert.assertThrows(VeniceException.class,() -> mergeConflictResolver.put(Lazy.of(() -> oldBB),
-        timestampRecord, newBB, 10, 1, 1,1, 0));
+    Assert.assertThrows(VeniceException.class,() -> mergeConflictResolver.put(
+        Lazy.of(() -> oldBB),
+        Optional.of(new ReplicationMetadataWithValueSchemaId(1, timestampRecord)),
+        newBB,
+        10,
+        1,
+        1,
+        0,
+        0
+    ));
   }
 
   @Test
@@ -171,40 +243,65 @@ public class MergeConflictResolverTest {
     timestampRecord.put(1, new ArrayList<Long>());
 
     MergeConflictResolver mergeConflictResolver = new MergeConflictResolver(schemaRepository, storeName, valueSchemaID -> new GenericData.Record(aaSchema));
-    MergeConflictResult mergeConflictResult  = mergeConflictResolver.delete(timestampRecord, 1, 30,1, 0);
+    MergeConflictResult mergeConflictResult  = mergeConflictResolver.delete(
+        Optional.of(new ReplicationMetadataWithValueSchemaId(1, timestampRecord)),
+        30L,
+        1L,
+        0
+    );
 
     // verify delete null value
-    Assert.assertNull(mergeConflictResult.getNewValue());
+    Assert.assertNull(mergeConflictResult.getNewValue().orElse(null));
 
     // verify update ignored.
-    mergeConflictResult  = mergeConflictResolver.delete(timestampRecord, 1, 10,1, 0);
+    mergeConflictResult  = mergeConflictResolver.delete(
+        Optional.of(new ReplicationMetadataWithValueSchemaId(1, timestampRecord)),
+        10L,
+        1L,
+        0
+    );
     Assert.assertTrue(mergeConflictResult.isUpdateIgnored());
 
     // verify same timestamp case
-    mergeConflictResult  = mergeConflictResolver.delete(timestampRecord, 1, 30,1, 0);
-    Assert.assertNull(mergeConflictResult.getNewValue());
+    mergeConflictResult  = mergeConflictResolver.delete(
+        Optional.of(new ReplicationMetadataWithValueSchemaId(1, timestampRecord)),
+        30L,
+        1L,
+        0
+    );
+    Assert.assertFalse(mergeConflictResult.getNewValue().isPresent());
 
     // Validate null RMD for existing old value
-    mergeConflictResult  = mergeConflictResolver.delete(null, 1, 30,1, 0);
+    mergeConflictResult  = mergeConflictResolver.delete(Optional.empty(), 30,1, 0);
     Assert.assertFalse(mergeConflictResult.isUpdateIgnored());
-    Assert.assertNull(mergeConflictResult.getNewValue());
+    Assert.assertFalse(mergeConflictResult.getNewValue().isPresent());
 
     // Validate null RMD for invalid schema id
-    mergeConflictResult  = mergeConflictResolver.delete(null, -1, 30,1, 0);
+    mergeConflictResult  = mergeConflictResolver.delete(Optional.empty(), 30,1, 0);
     Assert.assertFalse(mergeConflictResult.isUpdateIgnored());
     Assert.assertEquals(mergeConflictResult.getValueSchemaId(), 1);
 
     // Validate delete wins on same timestamp
-    mergeConflictResult  = mergeConflictResolver.delete(timestampRecord, 1, 30L,1, 0);
+    mergeConflictResult  = mergeConflictResolver.delete(
+        Optional.of(new ReplicationMetadataWithValueSchemaId(1, timestampRecord)),
+        30L,
+        1L,
+        0
+    );
     Assert.assertFalse(mergeConflictResult.isUpdateIgnored());
     Assert.assertEquals(mergeConflictResult.getValueSchemaId(), 1);
 
     // verify invalid schema id for existing old value
-    Assert.assertThrows(VeniceException.class, () -> mergeConflictResolver.delete(timestampRecord, -1, 30,1, 0));
+    Assert.assertThrows(VeniceException.class, () -> mergeConflictResolver.delete(
+        Optional.of(new ReplicationMetadataWithValueSchemaId(-1, timestampRecord)),
+        30L,
+        1L,
+        0
+    ));
 
     // validate error on per field TS record
     timestampRecord.put(0,  ts);
-    Assert.assertThrows(VeniceException.class, () -> mergeConflictResolver.delete(timestampRecord, 1, 10,1, 0));
+    Assert.assertThrows(VeniceException.class, () -> mergeConflictResolver.delete(Optional.of(new ReplicationMetadataWithValueSchemaId(1, timestampRecord)), 10,1, 0));
   }
 
   @Test
@@ -239,12 +336,20 @@ public class MergeConflictResolverTest {
       ByteBuffer newBB = getByteBufferOfRecord(payload.get(i));
       for (int j = 0; j < 100; j++) {
         GenericRecord rmd = GenericData.get().deepCopy(aaSchema, tsRecord.get(j));
-        mergeConflictResult =  mergeConflictResolver.put(Lazy.of(() -> oldBB), rmd,  newBB,
-            writeTs.get(j), 1, 1,1, 0);
+        mergeConflictResult =  mergeConflictResolver.put(
+            Lazy.of(() -> oldBB),
+            Optional.of(new ReplicationMetadataWithValueSchemaId(1, rmd)),
+            newBB,
+            writeTs.get(j),
+            1,
+            1,
+            0,
+            0
+        );
       }
     }
 
-    GenericRecord result1 = deserializer.deserialize(mergeConflictResult.getNewValue());
+    GenericRecord result1 = deserializer.deserialize(mergeConflictResult.getNewValue().orElse(null));
 
     Assert.assertEquals((long)(mergeConflictResult.getReplicationMetadataRecord()).get(0), 115L);
 
@@ -252,11 +357,19 @@ public class MergeConflictResolverTest {
       for (int j = 0; j < 100; j++) {
         ByteBuffer newBB = getByteBufferOfRecord(payload.get(j));
         GenericRecord rmd = GenericData.get().deepCopy(aaSchema, tsRecord.get(j));
-        mergeConflictResult =  mergeConflictResolver.put(Lazy.of(() -> oldBB), rmd,  newBB,
-            writeTs.get(i), 1, 1,1, 0);
+        mergeConflictResult =  mergeConflictResolver.put(
+            Lazy.of(() -> oldBB),
+            Optional.of(new ReplicationMetadataWithValueSchemaId(1, rmd)),
+            newBB,
+            writeTs.get(i),
+            1,
+            1,
+            0,
+            0
+        );
       }
     }
-    GenericRecord result2 = deserializer.deserialize(mergeConflictResult.getNewValue());
+    GenericRecord result2 = deserializer.deserialize(mergeConflictResult.getNewValue().orElse(null));
 
     // validate order of operation change results in a same object
     Assert.assertEquals((long)(mergeConflictResult.getReplicationMetadataRecord()).get(0), 115L);
@@ -275,25 +388,25 @@ public class MergeConflictResolverTest {
 
   @Test(dataProvider = "Long-Lists-and-null")
   public void testOffsetVectorMergeAndSum(List<Long> newVector) {
-    newVector = MergeUtils.mergeOffsetVectors(newVector, 1L, 0);
-    newVector = MergeUtils.mergeOffsetVectors(newVector, 2L, 1);
-    newVector = MergeUtils.mergeOffsetVectors(newVector, 3L, 4);
-    newVector = MergeUtils.mergeOffsetVectors(newVector, 7L, 1);
-    newVector = MergeUtils.mergeOffsetVectors(newVector, 8L, 1);
-    newVector = MergeUtils.mergeOffsetVectors(newVector, 9L, 1);
-    newVector = MergeUtils.mergeOffsetVectors(newVector, 3L, 5);
+    newVector = MergeUtils.mergeOffsetVectors(Optional.ofNullable(newVector), 1L, 0);
+    newVector = MergeUtils.mergeOffsetVectors(Optional.ofNullable(newVector), 2L, 1);
+    newVector = MergeUtils.mergeOffsetVectors(Optional.ofNullable(newVector), 3L, 4);
+    newVector = MergeUtils.mergeOffsetVectors(Optional.ofNullable(newVector), 7L, 1);
+    newVector = MergeUtils.mergeOffsetVectors(Optional.ofNullable(newVector), 8L, 1);
+    newVector = MergeUtils.mergeOffsetVectors(Optional.ofNullable(newVector), 9L, 1);
+    newVector = MergeUtils.mergeOffsetVectors(Optional.ofNullable(newVector), 3L, 5);
     List<Long> expectedVector = Arrays.asList(1L, 9L, 0L, 0L, 3L, 3L);
     Assert.assertEquals(newVector, expectedVector);
     Assert.assertEquals(MergeUtils.sumOffsetVector(newVector), 16L);
 
     newVector.clear();
-    newVector = MergeUtils.mergeOffsetVectors(newVector, 3L, 5);
-    newVector = MergeUtils.mergeOffsetVectors(newVector, 9L, 1);
-    newVector = MergeUtils.mergeOffsetVectors(newVector, 1L, 0);
-    newVector = MergeUtils.mergeOffsetVectors(newVector, 2L, 1);
-    newVector = MergeUtils.mergeOffsetVectors(newVector, 3L, 4);
-    newVector = MergeUtils.mergeOffsetVectors(newVector, 7L, 1);
-    newVector = MergeUtils.mergeOffsetVectors(newVector, 8L, 1);
+    newVector = MergeUtils.mergeOffsetVectors(Optional.of(newVector), 3L, 5);
+    newVector = MergeUtils.mergeOffsetVectors(Optional.of(newVector), 9L, 1);
+    newVector = MergeUtils.mergeOffsetVectors(Optional.of(newVector), 1L, 0);
+    newVector = MergeUtils.mergeOffsetVectors(Optional.of(newVector), 2L, 1);
+    newVector = MergeUtils.mergeOffsetVectors(Optional.of(newVector), 3L, 4);
+    newVector = MergeUtils.mergeOffsetVectors(Optional.of(newVector), 7L, 1);
+    newVector = MergeUtils.mergeOffsetVectors(Optional.of(newVector), 8L, 1);
     expectedVector = Arrays.asList(1L, 8L, 0L, 0L, 3L, 3L);
     Assert.assertEquals(newVector, expectedVector);
     Assert.assertEquals(MergeUtils.sumOffsetVector(newVector), 15L);

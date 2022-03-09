@@ -1,5 +1,8 @@
 package com.linkedin.venice.schema.merge;
 
+import com.linkedin.venice.utils.lazy.Lazy;
+import com.linkedin.venice.utils.lazy.LazyImpl;
+import java.util.function.Supplier;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.commons.lang.Validate;
 
@@ -11,31 +14,23 @@ import javax.annotation.Nonnull;
  * replication metadata.
  */
 public class ValueAndReplicationMetadata<T> {
-  private T value;
+  private Lazy<T> value;
   private GenericRecord replicationMetadata;
   private boolean updateIgnored; // Whether we should skip the incoming message since it could be a stale message.
   private int resolvedSchemaID;
 
-  public ValueAndReplicationMetadata() {
-    this.value = null;
-    this.replicationMetadata = null;
-    // TODO: by default, update is not ignore to guarantee correctness. We need to ensure that it is set correctly in all cases.
-    this.updateIgnored = false;
-  }
-
-  public ValueAndReplicationMetadata(@Nonnull T value, @Nonnull GenericRecord replicationMetadata) {
-    Validate.notNull(value);
+  public ValueAndReplicationMetadata(Lazy<T> value, @Nonnull GenericRecord replicationMetadata) {
     Validate.notNull(replicationMetadata);
     this.value = value;
     this.replicationMetadata = replicationMetadata;
   }
 
   public T getValue() {
-    return value;
+    return value.get();
   }
 
   public void setValue(T value) {
-    this.value = value;
+    this.value = Lazy.of(() -> value);
   }
 
   public GenericRecord getReplicationMetadata() {

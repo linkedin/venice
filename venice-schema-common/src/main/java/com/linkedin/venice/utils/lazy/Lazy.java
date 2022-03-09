@@ -1,6 +1,5 @@
-package com.linkedin.venice.utils;
+package com.linkedin.venice.utils.lazy;
 
-import com.linkedin.venice.annotation.Threadsafe;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Predicate;
@@ -32,7 +31,6 @@ import java.util.Optional;
  * first initialization finishes, and furthermore guarantees that the initialization
  * routine will happen at most once.
  */
-@Threadsafe
 public interface Lazy<T> {
   /**
    * @param supplier to initialize the wrapped value

@@ -2,7 +2,7 @@ package com.linkedin.venice.kafka.consumer;
 
 import com.linkedin.venice.annotation.NotThreadsafe;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.utils.LazyResettable;
+import com.linkedin.venice.utils.lazy.LazyResettable;
 import com.linkedin.venice.utils.Utils;
 import java.time.Duration;
 import java.util.Collection;

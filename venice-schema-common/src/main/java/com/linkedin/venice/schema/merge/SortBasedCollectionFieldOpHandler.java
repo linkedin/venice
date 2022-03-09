@@ -12,11 +12,12 @@ import java.util.ListIterator;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Supplier;
+import javax.annotation.concurrent.ThreadSafe;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.commons.lang.NotImplementedException;
 
-
+@ThreadSafe
 public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationHandler {
 
   public SortBasedCollectionFieldOpHandler(AvroCollectionElementComparator elementComparator) {

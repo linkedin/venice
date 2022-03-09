@@ -4,6 +4,7 @@ import com.linkedin.venice.utils.IndexedHashMap;
 import com.linkedin.venice.schema.rmd.v1.CollectionReplicationMetadata;
 import java.util.List;
 import java.util.Map;
+import javax.annotation.concurrent.ThreadSafe;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.commons.lang.Validate;
 
@@ -11,6 +12,7 @@ import org.apache.commons.lang.Validate;
 /**
  * This class handles all operations on a collection field with replication metadata.
  */
+@ThreadSafe
 public abstract class CollectionFieldOperationHandler {
   protected final AvroCollectionElementComparator elementComparator;
 

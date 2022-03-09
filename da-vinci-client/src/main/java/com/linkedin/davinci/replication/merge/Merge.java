@@ -1,7 +1,8 @@
 package com.linkedin.davinci.replication.merge;
 
+import com.linkedin.venice.annotation.Threadsafe;
 import com.linkedin.venice.schema.merge.ValueAndReplicationMetadata;
-import com.linkedin.venice.utils.Lazy;
+import com.linkedin.venice.utils.lazy.Lazy;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 
@@ -37,15 +38,16 @@ import org.apache.avro.generic.GenericRecord;
  * passed in. The input {@link ValueAndReplicationMetadata} object may be mutated or replaced its inner variables. As such,
  * a caller of this function should not expect the passed in parameter to remain unchanged.
  */
+@Threadsafe
 public interface Merge<T> {
   /**
    * @param oldValueAndReplicationMetadata the old value and replication metadata which are persisted in the server prior to the write operation
    * @param newValue a record with all fields populated and with one of the registered value schemas
-   * @param writeOperationTimestamp the timestamp of the incoming write operation
-   * @param writeOperationColoID ID of the colo/fabric where this PUT request was originally received.
-   * @param sourceOffsetOfNewValue The offset from which the new value originates in the realtime stream.  Used to build
+   * @param putOperationTimestamp the timestamp of the incoming write operation
+   * @param putOperationColoID ID of the colo/fabric where this PUT request was originally received.
+   * @param newValueSourceOffset The offset from which the new value originates in the realtime stream.  Used to build
    *                               the ReplicationMetadata for the newly inserted record.
-   * @param sourceBrokerIDOfNewValue The ID of the broker from which the new value originates.  ID's should correspond
+   * @param newValueSourceBrokerID The ID of the broker from which the new value originates.  ID's should correspond
    *                                 to the kafkaClusterUrlIdMap configured in the LeaderFollowerIngestionTask.  Used to build
    *                                 the ReplicationMetadata for the newly inserted record.
    * @return the resulting {@link ValueAndReplicationMetadata} after merging the old one with the incoming write operation.
@@ -55,18 +57,18 @@ public interface Merge<T> {
   ValueAndReplicationMetadata<T> put(
       ValueAndReplicationMetadata<T> oldValueAndReplicationMetadata,
       T newValue,
-      long writeOperationTimestamp,
-      int writeOperationColoID,
-      long sourceOffsetOfNewValue,
-      int sourceBrokerIDOfNewValue
+      long putOperationTimestamp,
+      int putOperationColoID,
+      long newValueSourceOffset,
+      int newValueSourceBrokerID
   );
 
   /**
    * @param oldValueAndReplicationMetadata the old value and replication metadata which are persisted in the server prior to the write operation
-   * @param sourceOffsetOfNewValue The offset from which the new value originates in the realtime stream.  Used to build
+   * @param newValueSourceOffset The offset from which the new value originates in the realtime stream.  Used to build
    *                               the ReplicationMetadata for the newly inserted record.
    * @param deleteOperationColoID ID of the colo/fabric where this DELETE request was originally received.
-   * @param sourceBrokerIDOfNewValue The ID of the broker from which the new value originates.  ID's should correspond
+   * @param newValueSourceBrokerID The ID of the broker from which the new value originates.  ID's should correspond
    *                                 to the kafkaClusterUrlIdMap configured in the LeaderFollowerIngestionTask.  Used to build
    *                                 the ReplicationMetadata for the newly inserted record.
    * @return the resulting {@link ValueAndReplicationMetadata} after merging the old one with the incoming delete operation.
@@ -77,8 +79,8 @@ public interface Merge<T> {
       ValueAndReplicationMetadata<T> oldValueAndReplicationMetadata,
       long deleteOperationTimestamp,
       int deleteOperationColoID,
-      long sourceOffsetOfNewValue,
-      int sourceBrokerIDOfNewValue
+      long newValueSourceOffset,
+      int newValueSourceBrokerID
   );
 
   /**
@@ -87,11 +89,11 @@ public interface Merge<T> {
    * @param currValueSchema Schema of the current value that is to-be-updated here.
    * @param writeComputeSchema Schema used to generate the write compute record. This schema could be a union and that is
    *                           why this schema is needed when we already pass in the {@code writeOperation} generic record.
-   * @param writeOperationTimestamp the timestamp of the incoming write operation
+   * @param updateOperationTimestamp the timestamp of the incoming write operation
    * @param updateOperationColoID ID of the colo/fabric where this UPDATE request was originally received.
-   * @param sourceOffsetOfNewValue The offset from which the new value originates in the realtime stream.  Used to build
+   * @param newValueSourceOffset The offset from which the new value originates in the realtime stream.  Used to build
    *                               the ReplicationMetadata for the newly inserted record.
-   * @param sourceBrokerIDOfNewValue The ID of the broker from which the new value originates.  ID's should correspond
+   * @param newValueSourceBrokerID The ID of the broker from which the new value originates.  ID's should correspond
    *                                 to the kafkaClusterUrlIdMap configured in the LeaderFollowerIngestionTask.  Used to build
    *                                 the ReplicationMetadata for the newly inserted record.
    * @return the resulting {@link ValueAndReplicationMetadata} after merging the old one with the incoming write operation.
@@ -103,16 +105,22 @@ public interface Merge<T> {
       Lazy<GenericRecord> writeOperation,
       Schema currValueSchema,
       Schema writeComputeSchema,
-      long writeOperationTimestamp,
+      long updateOperationTimestamp,
       int updateOperationColoID,
-      long sourceOffsetOfNewValue,
-      int sourceBrokerIDOfNewValue
+      long newValueSourceOffset,
+      int newValueSourceBrokerID
   );
 
-  enum ReplicationMetadataType {
-    ROOT_LEVEL_TIMESTAMP(0), PER_FIELD_TIMESTAMP(1);
-    int val;
-    ReplicationMetadataType(int val) {
+  /**
+   * Type of the replication metadata timestamp. Note that replication metadata could contain more than just "timestamps".
+   */
+  enum RmdTimestampType {
+    VALUE_LEVEL_TIMESTAMP(0), // Top/value level timestamp.
+    PER_FIELD_TIMESTAMP(1);   // If a value is an Avro Record and it has per-record-field timestamp(s).
+
+    private final int val;
+
+    RmdTimestampType(int val) {
       this.val = val;
     }
   }

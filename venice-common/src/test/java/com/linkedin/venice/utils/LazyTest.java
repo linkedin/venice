@@ -1,6 +1,7 @@
 package com.linkedin.venice.utils;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.utils.lazy.Lazy;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;

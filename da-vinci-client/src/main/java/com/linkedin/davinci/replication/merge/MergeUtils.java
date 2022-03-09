@@ -1,8 +1,11 @@
 package com.linkedin.davinci.replication.merge;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
+import javax.annotation.Nullable;
 import org.apache.avro.generic.GenericRecord;
 
 import static com.linkedin.venice.VeniceConstants.*;
@@ -20,11 +23,11 @@ public class MergeUtils {
    * @param tsObject
    * @return
    */
-  public static Merge.ReplicationMetadataType getReplicationMetadataType(Object tsObject) {
+  public static Merge.RmdTimestampType getReplicationMetadataType(Object tsObject) {
     if (tsObject instanceof Long) {
-      return Merge.ReplicationMetadataType.ROOT_LEVEL_TIMESTAMP;
+      return Merge.RmdTimestampType.VALUE_LEVEL_TIMESTAMP;
     } else {
-      return Merge.ReplicationMetadataType.PER_FIELD_TIMESTAMP;
+      return Merge.RmdTimestampType.PER_FIELD_TIMESTAMP;
     }
   }
 
@@ -49,15 +52,12 @@ public class MergeUtils {
     }
   }
 
-  public static long extractOffsetVectorSumFromReplicationMetadata(GenericRecord replicationMetadataRecord) {
-    if (replicationMetadataRecord == null) {
-      return 0;
-    }
+  public static long extractOffsetVectorSumFromRmd(GenericRecord replicationMetadataRecord) {
     Object offsetVectorObject = replicationMetadataRecord.get(REPLICATION_CHECKPOINT_VECTOR_FIELD);
     return MergeUtils.sumOffsetVector(offsetVectorObject);
   }
 
-  public static List<Long> extractTimestampFromReplicationMetadata(GenericRecord replicationMetadataRecord) {
+  public static List<Long> extractTimestampFromRmd(GenericRecord replicationMetadataRecord) {
     // TODO: This function needs a heuristic to work on field level timestamps.  At time of writing, this function
     // is only for recording the previous value of a record's timestamp, so we could consider specifying the incoming
     // operation to identify if we care about the record level timestamp, or, certain fields and then returning an ordered
@@ -68,9 +68,9 @@ public class MergeUtils {
       return Collections.singletonList(0L);
     }
     Object timestampObject = replicationMetadataRecord.get(TIMESTAMP_FIELD_NAME);
-    Merge.ReplicationMetadataType replicationMetadataType = MergeUtils.getReplicationMetadataType(timestampObject);
+    Merge.RmdTimestampType rmdTimestampType = MergeUtils.getReplicationMetadataType(timestampObject);
 
-    if (replicationMetadataType == Merge.ReplicationMetadataType.ROOT_LEVEL_TIMESTAMP) {
+    if (rmdTimestampType == Merge.RmdTimestampType.VALUE_LEVEL_TIMESTAMP) {
       return Collections.singletonList((long) timestampObject);
     } else {
       // not supported yet so ignore it
@@ -79,22 +79,24 @@ public class MergeUtils {
     }
   }
 
-  static List<Long> mergeOffsetVectors(List<Long> oldOffsetVector, Long newOffset, int sourceBrokerID) {
+  /**
+   * @return If the input {@param oldOffsetVector} is {@link Optional#empty()}, the returned value could be null.
+   */
+  static @Nullable List<Long> mergeOffsetVectors(Optional<List<Long>> oldOffsetVector, Long newOffset, int sourceBrokerID) {
     if (sourceBrokerID < 0) {
       // Can happen if we could not deduce the sourceBrokerID (can happen due to a misconfiguration)
       // in such cases, we will not try to alter the existing offsetVector, instead just returning it.
-      return oldOffsetVector;
+      return oldOffsetVector.orElse(null);
     }
-    if (oldOffsetVector == null) {
-      oldOffsetVector = new ArrayList<>(sourceBrokerID);
-    }
+    final List<Long> offsetVector = oldOffsetVector.orElse(new ArrayList<>(sourceBrokerID));
+
     // Making sure there is room available for the insertion (fastserde LongList can't be cast to arraylist)
     // Lists in java require that gaps be filled, so first we fill any gaps by adding some initial offset values
-    for(int i = oldOffsetVector.size(); i <= sourceBrokerID; i++) {
-      oldOffsetVector.add(i, 0L);
+    for(int i = offsetVector.size(); i <= sourceBrokerID; i++) {
+      offsetVector.add(i, 0L);
     }
-    oldOffsetVector.set(sourceBrokerID, newOffset);
-    return oldOffsetVector;
+    offsetVector.set(sourceBrokerID, newOffset);
+    return offsetVector;
   }
 
   /**

@@ -2,7 +2,7 @@ package com.linkedin.venice.kafka.partitionoffset;
 
 import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.admin.KafkaAdminWrapper;
-import com.linkedin.venice.utils.Lazy;
+import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.utils.SystemTime;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Optional;
