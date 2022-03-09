@@ -1,5 +1,6 @@
 package com.linkedin.venice.restart;
 
+import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -83,9 +84,16 @@ public class TestRestartController {
     // restart controller
     cluster.restartVeniceController(port);
 
+    TestUtils.waitForNonDeterministicAssertion(OPERATION_TIMEOUT_MS, TimeUnit.MILLISECONDS, () -> {
+      VeniceHelixAdmin admin = cluster.getMasterVeniceController().getVeniceHelixAdmin();
+      int liveRoutersCount = admin.getHelixVeniceClusterResources(cluster.getClusterName()).getRoutersClusterManager().getLiveRoutersCount();
+      Assert.assertEquals(liveRoutersCount, 1);
+    });
     // As we have not push any data, the job status should be hanged on STARTED.
     TestUtils.waitForNonDeterministicAssertion(OPERATION_TIMEOUT_MS, TimeUnit.MILLISECONDS, () ->
       Assert.assertEquals(controllerClient.queryJobStatus(topicNameV2).getStatus(), ExecutionStatus.STARTED.toString()));
+
+
 
     // Finish the push and verify that it completes under the newly elected controller.
     veniceWriter = cluster.getVeniceWriter(topicNameV2);

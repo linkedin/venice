@@ -76,6 +76,8 @@ public class ZkRoutersClusterManager implements RoutersClusterManager, IZkChildL
     }
     routersClusterConfig = newRoutersClusterConfig;
     zkClient.subscribeStateChanges(zkStateListener);
+    // force a live router count update
+    changeLiveRouterCount(zkClient.getChildren(getRouterRootPath()).size());
     logger.info("Refresh finished for cluster " + clusterName + "'s " + getClass().getSimpleName());
   }
 
