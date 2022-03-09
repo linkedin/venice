@@ -15,6 +15,7 @@ import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.OptimizedBinaryDecoder;
 import org.apache.avro.io.OptimizedBinaryDecoderFactory;
+import org.apache.commons.lang3.Validate;
 
 
 /**
@@ -44,9 +45,7 @@ public class ReplicationMetadataSerDe {
    *    * header of the replication metadata.
    */
   public ReplicationMetadataWithValueSchemaId deserializeValueSchemaIdPrependedRmdBytes(byte[] valueSchemaIdPrependedBytes) {
-    if (valueSchemaIdPrependedBytes == null) {
-      return null;
-    }
+    Validate.notNull(valueSchemaIdPrependedBytes);
     ByteBuffer rmdWithValueSchemaID = ByteBuffer.wrap(valueSchemaIdPrependedBytes);
     final int valueSchemaId = rmdWithValueSchemaID.getInt();
     OptimizedBinaryDecoder binaryDecoder =

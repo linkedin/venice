@@ -26,7 +26,7 @@ public abstract class AdminTopicMetadataAccessor {
   public static Pair<Long, Long> getOffsets(Map<String, Long> metadata) {
     long localOffset = metadata.getOrDefault(OFFSET_KEY, UNDEFINED_VALUE);
     long upstreamOffset = metadata.getOrDefault(UPSTREAM_OFFSET_KEY, UNDEFINED_VALUE);
-    return new Pair<Long, Long>(localOffset, upstreamOffset);
+    return new Pair<>(localOffset, upstreamOffset);
   }
 
   public static long getExecutionId(Map<String, Long> metadata) {

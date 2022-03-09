@@ -3,6 +3,7 @@ package com.linkedin.venice.schema.merge;
 import com.linkedin.venice.schema.SchemaUtils;
 import com.linkedin.venice.utils.IndexedHashMap;
 import java.util.Map;
+import javax.annotation.concurrent.ThreadSafe;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericContainer;
 import org.apache.avro.generic.GenericData;
@@ -13,6 +14,7 @@ import org.apache.commons.lang.Validate;
  * This comparator is used to compare GenericRecord collection field elements which must have schemas. This comparison
  * is required in order to determine orders of 2 collection elements when their timestamps are the same.
  */
+@ThreadSafe
 public class AvroCollectionElementComparator {
 
   public static AvroCollectionElementComparator INSTANCE = new AvroCollectionElementComparator();

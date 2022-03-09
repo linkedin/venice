@@ -8,7 +8,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.schema.merge.ValueAndReplicationMetadata;
 import com.linkedin.venice.schema.rmd.v1.ReplicationMetadataSchemaGeneratorV1;
 import com.linkedin.venice.schema.writecompute.WriteComputeProcessor;
-import com.linkedin.venice.utils.Lazy;
+import com.linkedin.venice.utils.lazy.Lazy;
 import java.util.List;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
@@ -26,7 +26,7 @@ import static com.linkedin.venice.VeniceConstants.*;
  * 2. schema evolution is not supported, so it assumes incoming and old schema are same else else throws VeniceException
  * 3. Assumes new value to be GenericRecord type, does not support non-record values.
  */
-class MergeGenericRecord implements Merge<GenericRecord> {
+class MergeGenericRecord extends AbstractMerge<GenericRecord> {
   private static final AvroVersion RUNTIME_AVRO_VERSION = AvroCompatibilityHelper.getRuntimeAvroVersion();
   private final WriteComputeProcessor writeComputeProcessor;
   private final MergeRecordHelper mergeRecordHelper;
@@ -40,8 +40,13 @@ class MergeGenericRecord implements Merge<GenericRecord> {
 
   @Override
   public ValueAndReplicationMetadata<GenericRecord> put(
-      ValueAndReplicationMetadata<GenericRecord> oldValueAndReplicationMetadata, GenericRecord newValue,
-      long putOperationTimestamp, int putOperationColoID, long sourceOffsetOfNewValue, int sourceBrokerIDOfNewValue) {
+      ValueAndReplicationMetadata<GenericRecord> oldValueAndReplicationMetadata,
+      GenericRecord newValue,
+      long putOperationTimestamp,
+      int putOperationColoID,
+      long newValueSourceOffset,
+      int newValueSourceBrokerID
+  ) {
     final GenericRecord oldReplicationMetadata = oldValueAndReplicationMetadata.getReplicationMetadata();
     final GenericRecord oldValue = oldValueAndReplicationMetadata.getValue();
 
@@ -51,74 +56,85 @@ class MergeGenericRecord implements Merge<GenericRecord> {
     }
 
     final Object tsObject = oldReplicationMetadata.get(TIMESTAMP_FIELD_NAME);
-    ReplicationMetadataType replicationMetadataType = MergeUtils.getReplicationMetadataType(tsObject);
+    RmdTimestampType rmdTimestampType = MergeUtils.getReplicationMetadataType(tsObject);
 
-    switch (replicationMetadataType) {
-      case ROOT_LEVEL_TIMESTAMP:
-        long oldTimeStamp = (long) tsObject;
-        if (oldTimeStamp < putOperationTimestamp) {
-          // New value wins
-          oldValueAndReplicationMetadata.setValue(newValue);
-          oldReplicationMetadata.put(TIMESTAMP_FIELD_NAME, putOperationTimestamp);
-          updateReplicationCheckpointVector(oldReplicationMetadata, sourceOffsetOfNewValue, sourceBrokerIDOfNewValue);
-
-        } else if (oldTimeStamp == putOperationTimestamp) {
-          // for timestamp tie compare decide which one to store.
-          newValue = (GenericRecord) MergeUtils.compareAndReturn(oldValue, newValue);
-          if (newValue == oldValue) {
-            oldValueAndReplicationMetadata.setUpdateIgnored(true);
-          } else {
-            oldValueAndReplicationMetadata.setValue(newValue);
-            updateReplicationCheckpointVector(oldReplicationMetadata, sourceOffsetOfNewValue, sourceBrokerIDOfNewValue);
-          }
-
-        } else {
-          oldValueAndReplicationMetadata.setValue(oldValue);
-          oldValueAndReplicationMetadata.setUpdateIgnored(true);
-        }
-        return oldValueAndReplicationMetadata;
+    switch (rmdTimestampType) {
+      case VALUE_LEVEL_TIMESTAMP:
+        return putWithRecordLevelTimestamp(
+            (long) tsObject,
+            oldValueAndReplicationMetadata,
+            putOperationTimestamp,
+            newValueSourceOffset,
+            newValueSourceBrokerID,
+            newValue
+        );
 
       case PER_FIELD_TIMESTAMP:
-        GenericRecord timestampRecordForOldValue = (GenericRecord) tsObject;
-
-        // TODO: Support schema evolution, as the following assumes old/new schema are same.
-        updateReplicationCheckpointVector(oldReplicationMetadata, sourceOffsetOfNewValue, sourceBrokerIDOfNewValue);
-
-        // update the field values based on replication metadata
-        List<Schema.Field> oldTimestampRecordFields = timestampRecordForOldValue.getSchema().getFields();
-        boolean allFieldsNew = true;
-        boolean noFieldUpdated = true;
-        for (Schema.Field oldTimestampRecordField : oldTimestampRecordFields) {
-          final String fieldName = oldTimestampRecordField.name();
-          UpdateResultStatus fieldUpdateResult = mergeRecordHelper.putOnField(
-              oldValue,
-              timestampRecordForOldValue,
-              fieldName,
-              newValue.get(fieldName),
-              putOperationTimestamp,
-              putOperationColoID
-          );
-
-          allFieldsNew &= (fieldUpdateResult == UpdateResultStatus.COMPLETELY_UPDATED);
-          noFieldUpdated &= (fieldUpdateResult == UpdateResultStatus.NOT_UPDATE);
-        }
-        if (allFieldsNew) {
-          oldReplicationMetadata.put(TIMESTAMP_FIELD_NAME, putOperationTimestamp);
-        }
-        if (noFieldUpdated) {
-          oldValueAndReplicationMetadata.setUpdateIgnored(true);
-        }
-        return oldValueAndReplicationMetadata;
+        return handlePutWithPerFieldLevelTimestamp(
+            (GenericRecord) tsObject,
+            putOperationTimestamp,
+            newValueSourceOffset,
+            newValueSourceBrokerID,
+            putOperationColoID,
+            oldValueAndReplicationMetadata,
+            newValue
+        );
 
       default:
-        throw new VeniceException("Invalid replication metadata type"  + replicationMetadataType);
+        throw new VeniceException("Invalid replication metadata type"  + rmdTimestampType);
     }
+  }
+
+  private ValueAndReplicationMetadata<GenericRecord> handlePutWithPerFieldLevelTimestamp(
+      final GenericRecord timestampRecordForOldValue,
+      final long putOperationTimestamp,
+      final long sourceOffsetOfNewValue,
+      final int newValueSourceBrokerID,
+      final int putOperationColoID,
+      ValueAndReplicationMetadata<GenericRecord> oldValueAndReplicationMetadata,
+      GenericRecord newValue
+  ) {
+    final GenericRecord oldReplicationMetadata = oldValueAndReplicationMetadata.getReplicationMetadata();
+    final GenericRecord oldValue = oldValueAndReplicationMetadata.getValue();
+
+    // TODO: Support schema evolution, as the following assumes old/new schema are same.
+    updateReplicationCheckpointVector(oldReplicationMetadata, sourceOffsetOfNewValue, newValueSourceBrokerID);
+
+    // update the field values based on replication metadata
+    List<Schema.Field> oldTimestampRecordFields = timestampRecordForOldValue.getSchema().getFields();
+    boolean allFieldsNew = true;
+    boolean noFieldUpdated = true;
+    for (Schema.Field oldTimestampRecordField : oldTimestampRecordFields) {
+      final String fieldName = oldTimestampRecordField.name();
+      UpdateResultStatus fieldUpdateResult = mergeRecordHelper.putOnField(
+          oldValue,
+          timestampRecordForOldValue,
+          fieldName,
+          newValue.get(fieldName),
+          putOperationTimestamp,
+          putOperationColoID
+      );
+
+      allFieldsNew &= (fieldUpdateResult == UpdateResultStatus.COMPLETELY_UPDATED);
+      noFieldUpdated &= (fieldUpdateResult == UpdateResultStatus.NOT_UPDATE);
+    }
+    if (allFieldsNew) {
+      oldReplicationMetadata.put(TIMESTAMP_FIELD_NAME, putOperationTimestamp);
+    }
+    if (noFieldUpdated) {
+      oldValueAndReplicationMetadata.setUpdateIgnored(true);
+    }
+    return oldValueAndReplicationMetadata;
   }
 
   @Override
   public ValueAndReplicationMetadata<GenericRecord> delete(
       ValueAndReplicationMetadata<GenericRecord> oldValueAndReplicationMetadata,
-      long deleteOperationTimestamp, int deleteOperationColoID, long sourceOffsetOfNewValue, int sourceBrokerIDOfNewValue) {
+      long deleteOperationTimestamp,
+      int deleteOperationColoID,
+      long newValueSourceOffset,
+      int newValueSourceBrokerID
+  ) {
     if (RUNTIME_AVRO_VERSION.earlierThan(AvroVersion.AVRO_1_7)) {
       throw new VeniceException("'delete' operation won't work properly with Avro version before 1.7 and"
           + " the runtime Avro version is: " + RUNTIME_AVRO_VERSION);
@@ -126,25 +142,20 @@ class MergeGenericRecord implements Merge<GenericRecord> {
 
     final GenericRecord oldReplicationMetadata = oldValueAndReplicationMetadata.getReplicationMetadata();
     final Object tsObject = oldReplicationMetadata.get(TIMESTAMP_FIELD_NAME);
-    ReplicationMetadataType replicationMetadataType = MergeUtils.getReplicationMetadataType(tsObject);
+    RmdTimestampType rmdTimestampType = MergeUtils.getReplicationMetadataType(tsObject);
 
-    // Always update the vector field
-    updateReplicationCheckpointVector(oldReplicationMetadata, sourceOffsetOfNewValue, sourceBrokerIDOfNewValue);
-
-    switch (replicationMetadataType) {
-      case ROOT_LEVEL_TIMESTAMP:
-        long oldTimeStamp = (long) tsObject;
-        // Delete wins when old and new write operation timestamps are equal.
-        if (oldTimeStamp <= deleteOperationTimestamp) {
-          oldValueAndReplicationMetadata.setValue(null);
-          // Still need to track the delete timestamp in order to reject future PUT record with lower replication timestamp
-          oldReplicationMetadata.put(TIMESTAMP_FIELD_NAME, deleteOperationTimestamp);
-        } else {
-          oldValueAndReplicationMetadata.setUpdateIgnored(true);
-        }
-        return oldValueAndReplicationMetadata;
+    switch (rmdTimestampType) {
+      case VALUE_LEVEL_TIMESTAMP:
+        return deleteWithRecordLevelTimestamp(
+            (long) tsObject,
+            deleteOperationTimestamp,
+            newValueSourceOffset,
+            newValueSourceBrokerID,
+            oldValueAndReplicationMetadata
+        );
 
       case PER_FIELD_TIMESTAMP:
+        updateReplicationCheckpointVector(oldReplicationMetadata, newValueSourceOffset, newValueSourceBrokerID);
         UpdateResultStatus recordDeleteResultStatus = mergeRecordHelper.deleteRecord(
             oldValueAndReplicationMetadata.getValue(),
             (GenericRecord) tsObject,
@@ -162,7 +173,7 @@ class MergeGenericRecord implements Merge<GenericRecord> {
         return oldValueAndReplicationMetadata;
 
       default:
-        throw new VeniceException("Invalid replication metadata type type"  + replicationMetadataType);
+        throw new VeniceException("Invalid replication metadata type type"  + rmdTimestampType);
     }
   }
 
@@ -174,10 +185,10 @@ class MergeGenericRecord implements Merge<GenericRecord> {
       Schema writeComputeSchema,
       long updateOperationTimestamp,
       int updateOperationColoID,
-      long sourceOffsetOfNewValue,
-      int sourceBrokerIDOfNewValue
+      long newValueSourceOffset,
+      int newValueSourceBrokerID
   ) {
-    updateReplicationCheckpointVector(oldValueAndReplicationMetadata.getReplicationMetadata(), sourceOffsetOfNewValue, sourceBrokerIDOfNewValue);
+    updateReplicationCheckpointVector(oldValueAndReplicationMetadata.getReplicationMetadata(), newValueSourceOffset, newValueSourceBrokerID);
     return writeComputeProcessor.updateRecordWithRmd(
         currValueSchema,
         writeComputeSchema,
@@ -188,14 +199,8 @@ class MergeGenericRecord implements Merge<GenericRecord> {
     );
   }
 
-  private void updateReplicationCheckpointVector(GenericRecord oldReplicationMetadata, long sourceOffsetOfNewValue, int sourceBrokerIDOfNewValue) {
-    oldReplicationMetadata.put(
-        REPLICATION_CHECKPOINT_VECTOR_FIELD,
-        MergeUtils.mergeOffsetVectors(
-            (List<Long>) oldReplicationMetadata.get(REPLICATION_CHECKPOINT_VECTOR_FIELD),
-            sourceOffsetOfNewValue,
-            sourceBrokerIDOfNewValue
-        )
-    );
+  @Override
+  GenericRecord compareAndReturn(GenericRecord oldValue, GenericRecord newValue) {
+    return (GenericRecord) MergeUtils.compareAndReturn(oldValue, newValue); // TODO: use a object-content-based comparator.
   }
 }

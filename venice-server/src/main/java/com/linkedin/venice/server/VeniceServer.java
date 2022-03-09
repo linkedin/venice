@@ -52,7 +52,7 @@ import com.linkedin.venice.stats.DiskHealthStats;
 import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.stats.VeniceJVMStats;
 import com.linkedin.venice.utils.CollectionUtils;
-import com.linkedin.venice.utils.Lazy;
+import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;

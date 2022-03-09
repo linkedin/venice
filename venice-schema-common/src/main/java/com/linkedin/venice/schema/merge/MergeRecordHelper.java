@@ -1,5 +1,6 @@
 package com.linkedin.venice.schema.merge;
 
+import javax.annotation.concurrent.ThreadSafe;
 import javax.validation.constraints.NotNull;
 import org.apache.avro.generic.GenericRecord;
 
@@ -10,6 +11,7 @@ import org.apache.avro.generic.GenericRecord;
  *    1. Put a new record on an existing record.
  *    2. Partial update in write compute. Specifically, partial update tries to overrides specific fields in a record.
  */
+@ThreadSafe
 public interface MergeRecordHelper {
 
   UpdateResultStatus putOnField(

@@ -37,7 +37,7 @@ import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.stats.StatsErrorCode;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.LatencyUtils;
-import com.linkedin.venice.utils.Lazy;
+import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.LeaderMetadataWrapper;

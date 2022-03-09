@@ -17,7 +17,7 @@ import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.utils.Lazy;
+import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;

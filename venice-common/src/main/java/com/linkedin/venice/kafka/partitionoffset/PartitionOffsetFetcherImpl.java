@@ -6,7 +6,7 @@ import com.linkedin.venice.kafka.VeniceOperationAgainstKafkaTimedOut;
 import com.linkedin.venice.kafka.admin.KafkaAdminWrapper;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
-import com.linkedin.venice.utils.Lazy;
+import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.utils.RetryUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
