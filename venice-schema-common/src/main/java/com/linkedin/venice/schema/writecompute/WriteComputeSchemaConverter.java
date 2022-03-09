@@ -197,18 +197,22 @@ public class WriteComputeSchemaConverter {
             + "does not have a default value.", field.name()));
       }
 
+      final Schema.Field writeComputeField = AvroCompatibilityHelper.newField(null)
+          .setName(field.name())
+          .setSchema(
+              wrapNoopUnion(
+                  recordNamespace, field.schema().getType() == RECORD ?
+                      field.schema() :
+                      convert(field.schema(), field.name(), recordNamespace)
+              )
+          )
+          .setDoc(field.doc())
+          .setOrder(field.order())
+          .setDefault(Collections.emptyMap())
+          .build();
+
       // Convert each field. We'd like to skip parsing "RECORD" type in order to avoid recursive parsing
-      fieldList.add(AvroCompatibilityHelper.createSchemaField(
-          field.name(),
-          wrapNoopUnion(
-              recordNamespace, field.schema().getType() == RECORD ?
-                  field.schema() :
-                  convert(field.schema(), field.name(), recordNamespace)
-          ),
-          field.doc(),
-          Collections.emptyMap(),
-          field.order())
-      );
+      fieldList.add(writeComputeField);
     }
 
     newSchema.setFields(fieldList);

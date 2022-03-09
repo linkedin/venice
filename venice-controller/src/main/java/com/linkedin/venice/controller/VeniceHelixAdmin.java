@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller;
 
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.avroutil1.compatibility.AvroIncompatibleSchemaException;
 import com.linkedin.avroutil1.compatibility.RandomRecordGenerator;
 import com.linkedin.avroutil1.compatibility.RecordGenerationConfig;
@@ -117,6 +118,7 @@ import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreRecordDeleter;
 import com.linkedin.venice.replication.LeaderStorageNodeReplicator;
 import com.linkedin.venice.replication.TopicReplicator;
+import com.linkedin.venice.schema.AvroSchemaParseUtils;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
@@ -3723,7 +3725,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       AvroSerializer serializer;
       Schema existingSchema = null;
 
-      Schema newSchema = Schema.parse(schemaStr);
+      Schema newSchema = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(schemaStr);
       RandomRecordGenerator recordGenerator = new RandomRecordGenerator();
       RecordGenerationConfig genConfig = RecordGenerationConfig.newConfig().withAvoidNulls(true);
       RecordSerializer.ReusableObjects reusableObjects = AvroSerializer.REUSE.get();
@@ -3732,7 +3734,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         // check if new records written with new schema can be read using existing older schema
         //  Object record =
         Object record = recordGenerator.randomGeneric(newSchema, genConfig);
-        serializer = new AvroSerializer(newSchema);
+        serializer = new AvroSerializer<>(newSchema);
         byte[] bytes = serializer.serialize(record, reusableObjects);
         for (SchemaEntry schemaEntry : schemaEntries) {
           try {
@@ -3842,20 +3844,20 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     @Override
     public SchemaEntry addSupersetSchema(String clusterName, String storeName, String valueSchema,
-        int valueSchemaId, String supersetSchema, int supersetSchemaId) {
+        int valueSchemaId, String supersetSchemaStr, int supersetSchemaId) {
         checkControllerLeadershipFor(clusterName);
         ReadWriteSchemaRepository schemaRepository = getHelixVeniceClusterResources(clusterName).getSchemaRepository();
-        ReadWriteStoreRepository storeRepository = getHelixVeniceClusterResources(clusterName).getStoreMetadataRepository();
 
         // If the new superset schema does not exist in the schema repo, add it
-        SchemaEntry existingSchema = schemaRepository.getValueSchema(storeName, supersetSchemaId);
-        if (existingSchema != null) {
-            if (!AvroSchemaUtils.compareSchemaIgnoreFieldOrder(existingSchema.getSchema(), Schema.parse(supersetSchema))) {
-                throw new VeniceException("Existing schema with id " + existingSchema.getId() + " does not match with new schema " + supersetSchema);
-            }
+        final SchemaEntry existingSupersetSchemaEntry = schemaRepository.getValueSchema(storeName, supersetSchemaId);
+        if (existingSupersetSchemaEntry != null) {
+          final Schema newSupersetSchema = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(supersetSchemaStr);
+          if (!AvroSchemaUtils.compareSchemaIgnoreFieldOrder(existingSupersetSchemaEntry.getSchema(), newSupersetSchema)) {
+            throw new VeniceException("Existing schema with id " + existingSupersetSchemaEntry.getId() + " does not match with new schema " + supersetSchemaStr);
+          }
         } else {
-            logger.info("Adding superset schema: " + supersetSchema + " for store: " + storeName);
-            schemaRepository.addValueSchema(storeName, supersetSchema, supersetSchemaId);
+            logger.info("Adding superset schema: " + supersetSchemaStr + " for store: " + storeName);
+            schemaRepository.addValueSchema(storeName, supersetSchemaStr, supersetSchemaId);
         }
 
         // Update the store config
@@ -3871,7 +3873,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         checkControllerLeadershipFor(clusterName);
         SchemaEntry valueSchemaEntry = new SchemaEntry(SchemaData.UNKNOWN_SCHEMA_ID, valueSchemaStr);
         ReadWriteSchemaRepository schemaRepository = getHelixVeniceClusterResources(clusterName).getSchemaRepository();
-
         return schemaRepository.getValueSchemaIdIgnoreFieldOrder(storeName, valueSchemaEntry);
     }
 
@@ -4006,7 +4007,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         ReadWriteSchemaRepository schemaRepository = getHelixVeniceClusterResources(clusterName).getSchemaRepository();
         // If already a superset schema exists, try to generate the new superset from that and the input value schema
         SchemaEntry existingSchema = schemaRepository.getLatestValueSchema(store.getName());
-
         return existingSchema == null ? null : existingSchema.getSchema();
     }
 
