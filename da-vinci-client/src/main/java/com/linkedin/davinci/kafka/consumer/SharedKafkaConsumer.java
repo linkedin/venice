@@ -362,9 +362,9 @@ public class SharedKafkaConsumer implements KafkaConsumerWrapper {
   protected void sanitizeTopicsWithoutCorrespondingIngestionTask(ConsumerRecords<KafkaKey, KafkaMessageEnvelope> records) {
     // Check whether the returned records, which don't have the corresponding ingestion tasks
     topicsWithoutCorrespondingIngestionTask.clear();
-    for (ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record : records) {
-      if (getIngestionTaskForTopic(record.topic()) == null) {
-        topicsWithoutCorrespondingIngestionTask.add(record.topic());
+    for (TopicPartition topicPartition: records.partitions()) {
+      if (getIngestionTaskForTopic(topicPartition.topic()) == null) {
+        topicsWithoutCorrespondingIngestionTask.add(topicPartition.topic());
       }
     }
     if (!topicsWithoutCorrespondingIngestionTask.isEmpty()) {
@@ -481,8 +481,8 @@ public class SharedKafkaConsumer implements KafkaConsumerWrapper {
   /**
    * Get the corresponding {@link StoreIngestionTask} for the subscribed topic partition.
    */
-  public Optional<StoreIngestionTask> getIngestionTaskForTopicPartition(TopicPartition topicPartition) {
-    return Optional.ofNullable(topicToIngestionTaskMap.get(topicPartition.topic()));
+  public StoreIngestionTask getIngestionTaskForTopicPartition(TopicPartition topicPartition) {
+    return topicToIngestionTaskMap.get(topicPartition.topic());
   }
 
   /**
@@ -506,5 +506,14 @@ public class SharedKafkaConsumer implements KafkaConsumerWrapper {
   @Override
   public Optional<Long> getOffsetLag(String topic, int partition) {
     return delegate.getOffsetLag(topic, partition);
+  }
+
+  /**
+   * Package-private visibility, intended for testing only.
+   *
+   * @return a read-only view of this internal state
+   */
+  Set<String> getTopicsWithoutCorrespondingIngestionTask() {
+    return Collections.unmodifiableSet(topicsWithoutCorrespondingIngestionTask);
   }
 }

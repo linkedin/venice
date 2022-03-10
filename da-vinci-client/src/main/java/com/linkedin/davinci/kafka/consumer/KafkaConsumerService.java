@@ -18,7 +18,6 @@ import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -182,8 +181,8 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
             long beforeProducingToWriteBufferTimestamp = System.currentTimeMillis();
             for (Map.Entry<TopicPartition, List<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>>> entry : topicPartitionRecordsMap.entrySet()) {
               TopicPartition topicPartition = entry.getKey();
-              Optional<StoreIngestionTask> ingestionTask = consumer.getIngestionTaskForTopicPartition(topicPartition);
-              if (!ingestionTask.isPresent()) {
+              StoreIngestionTask ingestionTask = consumer.getIngestionTaskForTopicPartition(topicPartition);
+              if (ingestionTask == null) {
                 // defensive code
                 LOGGER.error("Couldn't find IngestionTask for topic partition : " + topicPartition + " after receiving records from `poll` request");
                 continue;
@@ -223,11 +222,11 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
                  *
                  */
                 Iterable<VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope>> veniceConsumerRecords = KafkaRecordWrapper
-                    .wrap(kafkaUrl, topicRecords, ingestionTask.get().getAmplificationFactor());
-                ingestionTask.get().produceToStoreBufferServiceOrKafka(veniceConsumerRecords, false);
+                    .wrap(kafkaUrl, topicRecords, ingestionTask.getAmplificationFactor());
+                ingestionTask.produceToStoreBufferServiceOrKafka(veniceConsumerRecords, false);
               } catch (Exception e) {
                 LOGGER.error("Received exception when StoreIngestionTask is processing the polled consumer record for topic: " + topic, e);
-                ingestionTask.get().setLastConsumerException(e);
+                ingestionTask.setLastConsumerException(e);
               }
             }
             stats.recordConsumerRecordsProducingToWriterBufferLatency(LatencyUtils.getElapsedTimeInMs(beforeProducingToWriteBufferTimestamp));
