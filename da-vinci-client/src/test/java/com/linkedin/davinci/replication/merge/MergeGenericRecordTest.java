@@ -202,7 +202,7 @@ public class MergeGenericRecordTest {
     ValueAndReplicationMetadata<GenericRecord>
         valueAndReplicationMetadata = new ValueAndReplicationMetadata<>(valueRecord, timeStampRecord);
 
-    Schema recordWriteComputeSchema = WriteComputeSchemaConverter.convert(schema);
+    Schema recordWriteComputeSchema = WriteComputeSchemaConverter.convertFromValueRecordSchema(schema);
 
     //construct write compute operation record
     Schema noOpSchema = recordWriteComputeSchema.getTypes().get(0).getField("name").schema().getTypes().get(0);
