@@ -1,14 +1,11 @@
 package com.linkedin.davinci.kafka.consumer;
 
-import com.linkedin.davinci.stats.KafkaConsumerServiceStats;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
-import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.VersionImpl;
-import com.linkedin.venice.utils.MockTime;
 import com.linkedin.venice.utils.Time;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -29,29 +26,21 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 
-public class PartitionWiseSharedKafkaConsumerTest {
+public class PartitionWiseSharedKafkaConsumerTest
+    extends AbstractSharedKafkaConsumerTest<PartitionWiseSharedKafkaConsumer, TopicPartition> {
   @Test
   public void testSubscriptionCleanupDuringPoll() throws InterruptedException {
-    KafkaConsumerWrapper consumer = mock(KafkaConsumerWrapper.class);
-    KafkaConsumerService consumerService = mock(KafkaConsumerService.class);
-    KafkaConsumerServiceStats consumerServiceStats = mock(KafkaConsumerServiceStats.class);
-    doReturn(consumerServiceStats).when(consumerService).getStats();
-    Time mockTime = new MockTime();
-    final long nonExistingTopicCleanupDelayMS = 1000;
     String existingTopic1 = "existingTopic1_v1";
     String existingTopicWithoutIngestionTask1 = "existingTopicWithoutIngestionTask1";
     String nonExistingTopic1 = "nonExistingTopic1_v1";
 
-    ReadOnlyStoreRepository repository = mock(ReadOnlyStoreRepository.class);
-    MetadataRepoBasedTopicExistingCheckerImpl topicExistenceChecker = new MetadataRepoBasedTopicExistingCheckerImpl(repository);
     Store store = mock(Store.class);
     doReturn(Optional.of(new VersionImpl("existingTopic", 1))).when(store).getVersion(1);
     doReturn(store).when(repository).getStoreOrThrow("existingTopic1");
     doReturn(store).when(repository).getStoreOrThrow("existingTopic2");
     doThrow(new VeniceNoStoreException(nonExistingTopic1)).when(repository).getStoreOrThrow("nonExistingTopic1");
 
-    PartitionWiseSharedKafkaConsumer sharedConsumer = new PartitionWiseSharedKafkaConsumer(
-        consumer, consumerService, 1, nonExistingTopicCleanupDelayMS, mockTime, topicExistenceChecker);
+    PartitionWiseSharedKafkaConsumer sharedConsumer = getConsumer();
 
     Set<TopicPartition> assignmentReturnedConsumer = new HashSet<>();
     TopicPartition existingTopicPartition1 = new TopicPartition(existingTopic1, 1);
@@ -103,7 +92,7 @@ public class PartitionWiseSharedKafkaConsumerTest {
     verify(consumer).assign(new HashSet<>(newAssignment));
     verify(consumerServiceStats).recordDetectedNoRunningIngestionTopicPartitionNum(1);
     // Shared Consumer should cleanup the subscriptions to the non-existing topics since the delay is exhausted
-    mockTime.sleep(nonExistingTopicCleanupDelayMS);
+    mockTime.sleep(NON_EXISTING_TOPIC_CLEANUP_DELAY_MS);
     sharedConsumer.poll(1000);
     newAssignment = new HashSet<>(assignmentReturnedConsumer);
     newAssignment.remove(nonExistingTopicPartition1);
@@ -117,20 +106,12 @@ public class PartitionWiseSharedKafkaConsumerTest {
 
   @Test
   public void testSubscriptionEmptyPoll() throws InterruptedException {
-    KafkaConsumerWrapper consumer = mock(KafkaConsumerWrapper.class);
-    KafkaConsumerService consumerService = mock(KafkaConsumerService.class);
-    KafkaConsumerServiceStats consumerServiceStats = mock(KafkaConsumerServiceStats.class);
-    doReturn(consumerServiceStats).when(consumerService).getStats();
-    Time mockTime = new MockTime();
-    final long nonExistingTopicCleanupDelayMS = 1000;
     String nonExistingTopic1 = "nonExistingTopic1_v3";
 
-    ReadOnlyStoreRepository repository = mock(ReadOnlyStoreRepository.class);
-    MetadataRepoBasedTopicExistingCheckerImpl topicExistenceChecker = new MetadataRepoBasedTopicExistingCheckerImpl(repository);
     doThrow(new VeniceNoStoreException(nonExistingTopic1)).when(repository).getStoreOrThrow("nonExistingTopic1");
 
-    PartitionWiseSharedKafkaConsumer sharedConsumer = new PartitionWiseSharedKafkaConsumer(
-        consumer, consumerService, 1, nonExistingTopicCleanupDelayMS, mockTime, topicExistenceChecker);
+    PartitionWiseSharedKafkaConsumer sharedConsumer = getConsumer();
+
     Set<TopicPartition> assignmentReturnedConsumer = new HashSet<>();
     assignmentReturnedConsumer.add(new TopicPartition(nonExistingTopic1, 1));
     doReturn(assignmentReturnedConsumer).when(consumer).getAssignment();
@@ -145,7 +126,7 @@ public class PartitionWiseSharedKafkaConsumerTest {
     sharedConsumer.poll(1000);
     Set<TopicPartition> newAssignment = new HashSet<>(assignmentReturnedConsumer);
     newAssignment.remove(new TopicPartition(nonExistingTopic1, 1));
-    mockTime.sleep(nonExistingTopicCleanupDelayMS);
+    mockTime.sleep(NON_EXISTING_TOPIC_CLEANUP_DELAY_MS);
     doReturn(Collections.emptySet()).when(consumer).getAssignment();
 
     sharedConsumer.poll(1000);
@@ -155,24 +136,16 @@ public class PartitionWiseSharedKafkaConsumerTest {
 
   @Test
   public void testIngestionTaskBehaviorWhenConsumerListTopicsReturnStaleInfo() throws InterruptedException {
-    KafkaConsumerWrapper consumer = mock(KafkaConsumerWrapper.class);
-    KafkaConsumerService consumerService = mock(KafkaConsumerService.class);
-    KafkaConsumerServiceStats consumerServiceStats = mock(KafkaConsumerServiceStats.class);
-    doReturn(consumerServiceStats).when(consumerService).getStats();
-    Time mockTime = new MockTime();
-    final long nonExistingTopicCleanupDelayMS = 1000;
     String existingTopic1 = "existingTopic1_v1";
     String nonExistingTopic1 = "nonExistingTopic1_v1";
 
-    ReadOnlyStoreRepository repository = mock(ReadOnlyStoreRepository.class);
-    MetadataRepoBasedTopicExistingCheckerImpl topicExistenceChecker = new MetadataRepoBasedTopicExistingCheckerImpl(repository);
     Store store = mock(Store.class);
     doReturn(Optional.of(new VersionImpl("existingTopic", 1))).when(store).getVersion(1);
     doReturn(store).when(repository).getStoreOrThrow("existingTopic1");
     doThrow(new VeniceNoStoreException(nonExistingTopic1)).when(repository).getStoreOrThrow("nonExistingTopic1");
 
-    PartitionWiseSharedKafkaConsumer sharedConsumer = new PartitionWiseSharedKafkaConsumer(
-        consumer, consumerService, 1, nonExistingTopicCleanupDelayMS, mockTime, topicExistenceChecker);
+    PartitionWiseSharedKafkaConsumer sharedConsumer = getConsumer();
+
     Map<String, List<PartitionInfo>> staledTopicListReturnedByConsumer = new HashMap<>();
     staledTopicListReturnedByConsumer.put(existingTopic1, Collections.emptyList());
     Map<String, List<PartitionInfo>> topicListReturnedByConsumer = new HashMap<>(staledTopicListReturnedByConsumer);
@@ -200,17 +173,45 @@ public class PartitionWiseSharedKafkaConsumerTest {
     verify(consumerServiceStats).recordDetectedDeletedTopicNum(1);
     verify(ingestionTaskForNonExistingTopic1, never()).setLastConsumerException(any());
     // No cleanup is expected
-    mockTime.sleep(nonExistingTopicCleanupDelayMS / 2);
+    mockTime.sleep(NON_EXISTING_TOPIC_CLEANUP_DELAY_MS / 2);
     sharedConsumer.poll(1000);
     verify(consumer, never()).assign(new ArrayList<>(newAssignment));
     verify(consumerServiceStats, times(2)).recordDetectedDeletedTopicNum(1);
     verify(ingestionTaskForNonExistingTopic1, never()).setLastConsumerException(any());
     // No cleanup is expected within delay
     doReturn(store).when(repository).getStoreOrThrow("nonExistingTopic1");
-    mockTime.sleep(nonExistingTopicCleanupDelayMS / 2 - 1);
+    mockTime.sleep(NON_EXISTING_TOPIC_CLEANUP_DELAY_MS / 2 - 1);
     sharedConsumer.poll(1000);
     verify(consumer, never()).assign(new ArrayList<>(newAssignment));
     verify(consumerServiceStats, times(2)).recordDetectedDeletedTopicNum(1);
     verify(ingestionTaskForNonExistingTopic1, never()).setLastConsumerException(any());
+  }
+
+  @Override
+  protected PartitionWiseSharedKafkaConsumer instantiateConsumer(
+      KafkaConsumerWrapper delegate,
+      KafkaConsumerService service,
+      int sanitizeInterval,
+      long cleanupDelayMS,
+      Time time,
+      TopicExistenceChecker topicChecker) {
+    return new PartitionWiseSharedKafkaConsumer(delegate, service, sanitizeInterval, cleanupDelayMS, time, topicChecker);
+  }
+
+  @Override
+  protected Set<TopicPartition> getThingsWithoutCorrespondingIngestionTask(PartitionWiseSharedKafkaConsumer consumer) {
+    return consumer.getTopicPartitionsWithoutCorrespondingIngestionTask();
+  }
+
+  @Override
+  protected Set<TopicPartition> instantiateUnitsOfSubscription(Set<TopicPartition> topicPartitions) {
+    return topicPartitions;
+  }
+
+  @Override
+  protected void subscribe(PartitionWiseSharedKafkaConsumer consumer, TopicPartition topicPartition,
+      StoreIngestionTask storeIngestionTask) {
+    /** This is called by {@link PartitionWiseKafkaConsumerService.VirtualSharedKafkaConsumer#subscribe(String, int, long)} */
+    consumer.addIngestionTaskForTopicPartition(topicPartition, storeIngestionTask);
   }
 }

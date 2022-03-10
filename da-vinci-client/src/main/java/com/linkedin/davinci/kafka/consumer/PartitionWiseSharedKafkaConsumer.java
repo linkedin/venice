@@ -8,11 +8,10 @@ import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
-import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.logging.log4j.LogManager;
@@ -31,6 +30,7 @@ public class PartitionWiseSharedKafkaConsumer extends SharedKafkaConsumer {
   private static final Logger LOGGER = LogManager.getLogger(PartitionWiseSharedKafkaConsumer.class);
 
   private final Map<TopicPartition, StoreIngestionTask> topicPartitionStoreIngestionTaskMap = new VeniceConcurrentHashMap<>();
+
   private final Set<TopicPartition> topicPartitionsWithoutCorrespondingIngestionTask = new HashSet<>();
 
   public PartitionWiseSharedKafkaConsumer(KafkaConsumerWrapper delegate, KafkaConsumerService service,
@@ -49,9 +49,9 @@ public class PartitionWiseSharedKafkaConsumer extends SharedKafkaConsumer {
     Set<TopicPartition> currentAssignment = getAssignment();
     for (TopicPartition topicPartition : currentAssignment) {
       if (topic.equals(topicPartition.topic())) {
-        Optional<StoreIngestionTask> ingestionTaskForTopicPartition = getIngestionTaskForTopicPartition(topicPartition);
-        if (ingestionTaskForTopicPartition.isPresent()) {
-          storeIngestionTasksOfSameTopic.add(ingestionTaskForTopicPartition.get());
+        StoreIngestionTask ingestionTaskForTopicPartition = getIngestionTaskForTopicPartition(topicPartition);
+        if (ingestionTaskForTopicPartition != null) {
+          storeIngestionTasksOfSameTopic.add(ingestionTaskForTopicPartition);
         }
       }
     }
@@ -62,9 +62,8 @@ public class PartitionWiseSharedKafkaConsumer extends SharedKafkaConsumer {
   protected void sanitizeTopicsWithoutCorrespondingIngestionTask(ConsumerRecords<KafkaKey, KafkaMessageEnvelope> records) {
     // Check whether the returned records, which don't have the corresponding ingestion tasks
     topicPartitionsWithoutCorrespondingIngestionTask.clear();
-    for (ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record : records) {
-      TopicPartition topicPartition = new TopicPartition(record.topic(), record.partition());
-      if (!getIngestionTaskForTopicPartition(topicPartition).isPresent()) {
+    for (TopicPartition topicPartition: records.partitions()) {
+      if (getIngestionTaskForTopicPartition(topicPartition) == null) {
         topicPartitionsWithoutCorrespondingIngestionTask.add(topicPartition);
       }
     }
@@ -102,8 +101,8 @@ public class PartitionWiseSharedKafkaConsumer extends SharedKafkaConsumer {
   }
 
   @Override
-  public Optional<StoreIngestionTask> getIngestionTaskForTopicPartition(TopicPartition topicPartition) {
-    return Optional.ofNullable(topicPartitionStoreIngestionTaskMap.get(topicPartition));
+  public StoreIngestionTask getIngestionTaskForTopicPartition(TopicPartition topicPartition) {
+    return topicPartitionStoreIngestionTaskMap.get(topicPartition);
   }
 
   /**
@@ -155,4 +154,13 @@ public class PartitionWiseSharedKafkaConsumer extends SharedKafkaConsumer {
     unSubscribeTopicPartitions(topicPartitionsToRemove);
   }
 
+
+  /**
+   * Package-private visibility, intended for testing only.
+   *
+   * @return a read-only view of this internal state
+   */
+  Set<TopicPartition> getTopicPartitionsWithoutCorrespondingIngestionTask() {
+    return Collections.unmodifiableSet(topicPartitionsWithoutCorrespondingIngestionTask);
+  }
 }
