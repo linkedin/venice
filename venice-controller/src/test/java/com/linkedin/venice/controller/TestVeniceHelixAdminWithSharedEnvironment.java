@@ -1252,7 +1252,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
   public void testAddAndRemoveDerivedSchema() {
     String storeName = Utils.getUniqueString("write_compute_store");
     String recordSchemaStr = TestPushUtils.USER_SCHEMA_STRING_WITH_DEFAULT;
-    Schema derivedSchema = WriteComputeSchemaConverter.convert(recordSchemaStr);
+    Schema derivedSchema = WriteComputeSchemaConverter.convertFromValueRecordSchema(recordSchemaStr);
 
     veniceAdmin.createStore(clusterName, storeName, storeOwner, KEY_SCHEMA, recordSchemaStr);
     veniceAdmin.addDerivedSchema(clusterName, storeName, 1, derivedSchema.toString());

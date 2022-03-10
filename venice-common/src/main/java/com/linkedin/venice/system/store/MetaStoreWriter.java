@@ -76,7 +76,7 @@ public class MetaStoreWriter implements Closeable {
       HelixReadOnlyZKSharedSchemaRepository schemaRepo) {
     this.topicManager = topicManager;
     this.writerFactory = writerFactory;
-    this.derivedComputeSchema = WriteComputeSchemaConverter.convert(
+    this.derivedComputeSchema = WriteComputeSchemaConverter.convertFromValueRecordSchema(
         AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.getCurrentProtocolVersionSchema());
     this.zkSharedSchemaRepository = schemaRepo;
   }

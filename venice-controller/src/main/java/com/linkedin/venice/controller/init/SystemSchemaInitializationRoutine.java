@@ -155,7 +155,7 @@ public class SystemSchemaInitializationRoutine implements ClusterLeaderInitializ
         }
         if (autoRegisterDerivedComputeSchema) {
           // Check and register derived compute schema
-          String derivedSchema = WriteComputeSchemaConverter.convert(schemaInLocalResources).toString();
+          String derivedSchema = WriteComputeSchemaConverter.convertFromValueRecordSchema(schemaInLocalResources).toString();
           Pair<Integer, Integer> derivedSchemaInfo = admin.getDerivedSchemaId(clusterToInit, systemStoreName, derivedSchema);
           if (derivedSchemaInfo.getFirst() == SchemaData.INVALID_VALUE_SCHEMA_ID) {
             /**
