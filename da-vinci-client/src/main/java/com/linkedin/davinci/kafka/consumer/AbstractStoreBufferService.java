@@ -13,6 +13,10 @@ public abstract class AbstractStoreBufferService extends AbstractVeniceService {
   public abstract void putConsumerRecord(VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope> consumerRecordWrapper,
       StoreIngestionTask ingestionTask, LeaderProducedRecordContext leaderProducedRecordContext) throws InterruptedException;
 
+  /**
+   * This method will wait for all the messages to be processed (persisted to disk) that are already
+   * queued up to drainer till now.
+   */
   public abstract void drainBufferedRecordsFromTopicPartition(String topic, int partition) throws InterruptedException;
 
   public abstract int getDrainerCount();

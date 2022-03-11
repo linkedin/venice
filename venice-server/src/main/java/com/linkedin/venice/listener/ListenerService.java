@@ -74,7 +74,7 @@ public class ListenerService extends AbstractVeniceService {
     computeExecutor = createThreadPool(serverConfig.getServerComputeThreadNum(), "StorageComputeThread", serverConfig.getComputeQueueCapacity());
     new ThreadPoolStats(metricsRepository, computeExecutor, "storage_compute_thread_pool");
 
-    StorageExecutionHandler requestHandler = createRequestHandler(
+    StorageReadRequestsHandler requestHandler = createRequestHandler(
         executor, computeExecutor, storageEngineRepository, storeMetadataRepository, schemaRepository, metadataRetriever, diskHealthService,
         serverConfig.isComputeFastAvroEnabled(), serverConfig.isEnableParallelBatchGet(), serverConfig.getParallelBatchGetChunkSize(), compressorFactory);
 
@@ -148,7 +148,7 @@ public class ListenerService extends AbstractVeniceService {
     return executor;
   }
 
-  protected StorageExecutionHandler createRequestHandler(
+  protected StorageReadRequestsHandler createRequestHandler(
       ThreadPoolExecutor executor,
       ThreadPoolExecutor computeExecutor,
       StorageEngineRepository storageEngineRepository,
@@ -160,7 +160,7 @@ public class ListenerService extends AbstractVeniceService {
       boolean parallelBatchGetEnabled,
       int parallelBatchGetChunkSize,
       StorageEngineBackedCompressorFactory compressorFactory) {
-    return new StorageExecutionHandler(
+    return new StorageReadRequestsHandler(
         executor, computeExecutor, storageEngineRepository, metadataRepository, schemaRepository, metadataRetriever, diskHealthService,
         fastAvroEnabled, parallelBatchGetEnabled, parallelBatchGetChunkSize, serverConfig, compressorFactory);
   }

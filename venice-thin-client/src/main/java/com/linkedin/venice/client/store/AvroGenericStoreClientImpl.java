@@ -34,7 +34,7 @@ public class AvroGenericStoreClientImpl<K, V> extends AbstractAvroStoreClient<K,
   }
 
   @Override
-  public RecordDeserializer<V> getDataRecordDeserializer(int schemaId) throws VeniceClientException {
+  public RecordDeserializer<V> getDataRecordDeserializer(final int writerSchemaId) throws VeniceClientException {
     SchemaReader schemaReader = getSchemaReader();
 
     // Get latest value schema
@@ -43,9 +43,9 @@ public class AvroGenericStoreClientImpl<K, V> extends AbstractAvroStoreClient<K,
       throw new VeniceClientException("Failed to get latest value schema for store: " + getStoreName());
     }
 
-    Schema writerSchema = schemaReader.getValueSchema(schemaId);
+    Schema writerSchema = schemaReader.getValueSchema(writerSchemaId);
     if (null == writerSchema) {
-      throw new VeniceClientException("Failed to get value schema for store: " + getStoreName() + " and id: " + schemaId);
+      throw new VeniceClientException("Failed to get value schema for store: " + getStoreName() + " and id: " + writerSchemaId);
     }
 
     /**

@@ -75,7 +75,7 @@ public class StatsHandler extends ChannelDuplexHandler {
    * {@link VerifySslHandler}
    * {@link ServerAclHandler}
    * {@link RouterRequestHttpHandler}
-   * {@link StorageExecutionHandler}
+   * {@link StorageReadRequestsHandler}
    *
    */
   private double firstPartLatency = -1;

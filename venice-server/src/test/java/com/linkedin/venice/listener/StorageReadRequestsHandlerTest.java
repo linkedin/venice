@@ -50,7 +50,7 @@ import static com.linkedin.venice.router.api.VenicePathParser.*;
 import static org.mockito.Mockito.*;
 
 
-public class StorageExecutionHandlerTest {
+public class StorageReadRequestsHandlerTest {
   @Test
   public static void storageExecutionHandlerPassesRequestsAndGeneratesResponses()
       throws Exception {
@@ -97,7 +97,8 @@ public class StorageExecutionHandlerTest {
         new LinkedBlockingQueue<>(2));
 
     //Actual test
-    StorageExecutionHandler testHandler = new StorageExecutionHandler(threadPoolExecutor, threadPoolExecutor, testRepository, metadataRepo, schemaRepo,
+    StorageReadRequestsHandler
+        testHandler = new StorageReadRequestsHandler(threadPoolExecutor, threadPoolExecutor, testRepository, metadataRepo, schemaRepo,
         mockMetadataRetriever, null, false, false, 10, serverConfig,
         mock(StorageEngineBackedCompressorFactory.class));
     testHandler.channelRead(mockCtx, testRequest);
@@ -131,7 +132,8 @@ public class StorageExecutionHandlerTest {
     RocksDBServerConfig dbServerConfig = mock(RocksDBServerConfig.class);
     doReturn(dbServerConfig).when(serverConfig).getRocksDBServerConfig();
 
-    StorageExecutionHandler testHandler = new StorageExecutionHandler(threadPoolExecutor, threadPoolExecutor, testRepository, metadataRepo, schemaRepo,
+    StorageReadRequestsHandler
+        testHandler = new StorageReadRequestsHandler(threadPoolExecutor, threadPoolExecutor, testRepository, metadataRepo, schemaRepo,
         mockMetadataRetriever, healthCheckService, false, false, 10, serverConfig,
         mock(StorageEngineBackedCompressorFactory.class));
 
@@ -222,10 +224,11 @@ public class StorageExecutionHandlerTest {
 
     LoggerContext ctx = ((LoggerContext)LogManager.getContext(false));
     Configuration config = ctx.getConfiguration();
-    config.addLoggerAppender((org.apache.logging.log4j.core.Logger) LogManager.getLogger(StorageExecutionHandler.class), errorCountAppender);
+    config.addLoggerAppender((org.apache.logging.log4j.core.Logger) LogManager.getLogger(StorageReadRequestsHandler.class), errorCountAppender);
 
     //Actual test
-    StorageExecutionHandler testHandler = new StorageExecutionHandler(threadPoolExecutor, threadPoolExecutor, testRepository, metadataRepo, schemaRepo,
+    StorageReadRequestsHandler
+        testHandler = new StorageReadRequestsHandler(threadPoolExecutor, threadPoolExecutor, testRepository, metadataRepo, schemaRepo,
         mockMetadataRetriever, null, false, false, 10, serverConfig, mock(StorageEngineBackedCompressorFactory.class));
     testHandler.channelRead(mockCtx, testRequest);
 
@@ -265,7 +268,7 @@ public class StorageExecutionHandlerTest {
     doReturn(expectedAdminResponse).when(mockMetadataRetriever).getConsumptionSnapshots(eq(topic), any());
 
     /**
-     * Capture the output written by {@link StorageExecutionHandler}
+     * Capture the output written by {@link StorageReadRequestsHandler}
      */
     ChannelHandlerContext mockCtx = mock(ChannelHandlerContext.class);
     doReturn(new UnpooledByteBufAllocator(true)).when(mockCtx).alloc();
@@ -282,7 +285,7 @@ public class StorageExecutionHandlerTest {
     doReturn(dbServerConfig).when(serverConfig).getRocksDBServerConfig();
 
     //Actual test
-    StorageExecutionHandler testHandler = new StorageExecutionHandler(threadPoolExecutor, threadPoolExecutor, mock(StorageEngineRepository.class),
+    StorageReadRequestsHandler testHandler = new StorageReadRequestsHandler(threadPoolExecutor, threadPoolExecutor, mock(StorageEngineRepository.class),
         mock(ReadOnlyStoreRepository.class), mock(ReadOnlySchemaRepository.class), mockMetadataRetriever, null, false, false,
         10, serverConfig, mock(StorageEngineBackedCompressorFactory.class));
     testHandler.channelRead(mockCtx, testRequest);
