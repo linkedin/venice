@@ -39,6 +39,11 @@ import javax.annotation.Nonnull;
  */
 public class PartitionWiseKafkaConsumerService extends KafkaConsumerService {
   private static final Logger logger = LogManager.getLogger(PartitionWiseKafkaConsumerService.class);
+  private static final String exceptionMessageForImproperUsage(String methodName) {
+    return methodName + " should never be called on " + VirtualSharedKafkaConsumer.class.getSimpleName() +
+        " but should rather be called on " + PartitionWiseSharedKafkaConsumer.class.getSimpleName();
+  }
+
   private final Map<String, VirtualSharedKafkaConsumer> versionTopicToVirtualConsumerMap;
   /**
    * Mapping from real-time topic partition to consumers. For hybrid store, different version topics from one store
@@ -237,7 +242,7 @@ public class PartitionWiseKafkaConsumerService extends KafkaConsumerService {
 
     @Override
     public ConsumerRecords<KafkaKey, KafkaMessageEnvelope> poll(long timeoutMs) {
-      throw new VeniceUnsupportedOperationException("poll method should not be called.");
+      throw new VeniceUnsupportedOperationException(exceptionMessageForImproperUsage("poll"));
     }
 
     @Override
@@ -253,17 +258,17 @@ public class PartitionWiseKafkaConsumerService extends KafkaConsumerService {
 
     @Override
     public Map<TopicPartition, Long> beginningOffsets(List<TopicPartition> topicPartitions) {
-      throw new VeniceUnsupportedOperationException("beginningOffsets method should not be called.");
+      throw new VeniceUnsupportedOperationException(exceptionMessageForImproperUsage("beginningOffsets"));
     }
 
     @Override
     public Map<TopicPartition, Long> endOffsets(List<TopicPartition> topicPartitions) {
-      throw new VeniceUnsupportedOperationException("endOffsets method should not be called.");
+      throw new VeniceUnsupportedOperationException(exceptionMessageForImproperUsage("endOffsets"));
     }
 
     @Override
     public void assign(Collection<TopicPartition> topicPartitions) {
-      throw new VeniceUnsupportedOperationException("assign method should not be called.");
+      throw new VeniceUnsupportedOperationException(exceptionMessageForImproperUsage("assign"));
     }
 
     @Override
@@ -291,7 +296,7 @@ public class PartitionWiseKafkaConsumerService extends KafkaConsumerService {
 
     @Override
     public Set<TopicPartition> paused() {
-      throw new VeniceUnsupportedOperationException("paused method should not be called.");
+      throw new VeniceUnsupportedOperationException(exceptionMessageForImproperUsage("paused"));
     }
 
     @Override

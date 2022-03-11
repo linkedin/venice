@@ -193,6 +193,7 @@ subprojects {
       exclude module: 'kafka_2.10' // This ends up getting pulled in by a few dependencies, unfortunately :/ ...
       exclude module: 'kafka_2.11'
       // exclude group: 'org.eclipse.jetty'
+      exclude module: 'clojure'
     }
     compileOnly {
       // These dependencies are transitively used at runtime, so we cannot exclude them further than compileOnly
