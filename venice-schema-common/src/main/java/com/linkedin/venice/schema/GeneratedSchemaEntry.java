@@ -8,25 +8,25 @@ import org.apache.avro.Schema;
  * corresponding value schema id
  */
 public class GeneratedSchemaEntry extends SchemaEntry {
-  protected final int valueSchemaId;
+  protected final int valueSchemaID;
 
-  public GeneratedSchemaEntry(int valueSchemaId, int protocolVersion, String schemaStr) {
+  public GeneratedSchemaEntry(int valueSchemaID, int protocolVersion, String schemaStr) {
     super(protocolVersion, schemaStr);
-    this.valueSchemaId = valueSchemaId;
+    this.valueSchemaID = valueSchemaID;
   }
 
-  public GeneratedSchemaEntry(int valueSchemaId, int protocolVersion, Schema schema) {
+  public GeneratedSchemaEntry(int valueSchemaID, int protocolVersion, Schema schema) {
     super(protocolVersion, schema);
-    this.valueSchemaId = valueSchemaId;
+    this.valueSchemaID = valueSchemaID;
   }
 
-  public GeneratedSchemaEntry(int valueSchemaId, int protocolVersion, byte[] bytes) {
+  public GeneratedSchemaEntry(int valueSchemaID, int protocolVersion, byte[] bytes) {
     super(protocolVersion, bytes);
-    this.valueSchemaId = valueSchemaId;
+    this.valueSchemaID = valueSchemaID;
   }
 
-  public int getValueSchemaId() {
-    return valueSchemaId;
+  public int getValueSchemaID() {
+    return valueSchemaID;
   }
 
   @Override
@@ -41,7 +41,6 @@ public class GeneratedSchemaEntry extends SchemaEntry {
 
   @Override
   public String toString() {
-    return String.format("value schema id: %d\t schema id: %d\t schema: %s",
-        valueSchemaId, getId(), getSchema().toString());
+    return String.format("value schema id: %d\t schema id: %d\t schema: %s", valueSchemaID, getId(), getSchema().toString());
   }
 }

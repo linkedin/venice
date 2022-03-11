@@ -18,6 +18,7 @@ import java.util.Objects;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 import org.apache.avro.Schema;
+import org.apache.avro.SchemaCompatibility;
 import org.apache.avro.io.ResolvingDecoder;
 import org.apache.avro.io.parsing.Symbol;
 import org.apache.commons.lang.StringUtils;
@@ -229,8 +230,61 @@ public class AvroSchemaUtils {
     return true;
   }
 
+  public static SchemaEntry generateSupersetSchemaFromAllValueSchemas(Collection<SchemaEntry> allValueSchemaEntries) {
+    if (allValueSchemaEntries.isEmpty()) {
+      throw new IllegalArgumentException("Value schema list cannot be empty.");
+    }
+    if (allValueSchemaEntries.size() == 1) {
+      return allValueSchemaEntries.iterator().next();
+    }
+    List<SchemaEntry> valueSchemaEntries = new ArrayList<>(allValueSchemaEntries);
+    Schema tmpSupersetSchema = valueSchemaEntries.get(0).getSchema();
+    int largestSchemaID = valueSchemaEntries.get(0).getId();
+
+    for (int i = 1; i < valueSchemaEntries.size(); i++) {
+      final SchemaEntry valueSchemaEntry = valueSchemaEntries.get(i);
+      final Schema valueSchema = valueSchemaEntry.getSchema();
+      validateTwoSchemasAreFullyCompatible(tmpSupersetSchema, valueSchema);
+      largestSchemaID = Math.max(largestSchemaID, valueSchemaEntry.getId());
+      /**
+       * Note that superset schema should be the second parameter. For the reason, please refer to the Javadoc of the
+       * {@link AvroSchemaUtils#generateSuperSetSchema} method.
+       */
+      tmpSupersetSchema = AvroSchemaUtils.generateSuperSetSchema(valueSchema, tmpSupersetSchema);
+    }
+    final Schema supersetSchema = tmpSupersetSchema;
+
+    // Check whether one of the existing schemas is the same as the generated superset schema.
+    SchemaEntry existingSupersetSchemaEntry = null;
+    for (SchemaEntry valueSchemaEntry : valueSchemaEntries) {
+      if (AvroSchemaUtils.compareSchemaIgnoreFieldOrder(valueSchemaEntry.getSchema(), supersetSchema)) {
+        existingSupersetSchemaEntry = valueSchemaEntry;
+        break;
+      }
+    }
+    if (existingSupersetSchemaEntry == null) {
+      final int supersetSchemaID = largestSchemaID + 1;
+      return new SchemaEntry(supersetSchemaID, supersetSchema);
+
+    } else {
+      return existingSupersetSchemaEntry;
+    }
+  }
+
+  private static void validateTwoSchemasAreFullyCompatible(Schema schema1, Schema schema2) {
+    SchemaCompatibility.SchemaPairCompatibility compatibility =
+        SchemaCompatibility.checkReaderWriterCompatibility(schema1, schema2);
+    if (compatibility.getType() != SchemaCompatibility.SchemaCompatibilityType.COMPATIBLE) {
+      throw new VeniceException("Expect all value schemas to be fully compatible. Got: " + schema1 + " and " + schema2);
+    }
+    compatibility = SchemaCompatibility.checkReaderWriterCompatibility(schema2, schema1);
+    if (compatibility.getType() != SchemaCompatibility.SchemaCompatibilityType.COMPATIBLE) {
+      throw new VeniceException("Expect all value schemas to be fully compatible. Got: " + schema1 + " and " + schema2);
+    }
+  }
+
   /**
-   * Generate super-set schema of two Schemas. If we have {A,B,C} and {A,B,D} it will generate {A,B,C,D}, where
+   * Generate superset schema of two Schemas. If we have {A,B,C} and {A,B,D} it will generate {A,B,C,D}, where
    * C/D could be nested record change as well eg, array/map of records, or record of records.
    * Prerequisite: The top-level schema are of type RECORD only and each field have default values. ie they are compatible
    * schemas and the generated schema will pick the default value from new schema.
@@ -240,10 +294,18 @@ public class AvroSchemaUtils {
    * @return Superset schema of existing and new schemas.
    */
   public static Schema generateSuperSetSchema(Schema existingSchema, Schema newSchema) {
+    if (existingSchema.getType() != newSchema.getType() || existingSchema.getType() != Schema.Type.RECORD) {
+      throw new VeniceException(String.format("The top-level schema must be of type RECORD only. Got existing schema " + "type: %s and new schema type: %s",
+          existingSchema.getType(), newSchema.getType()));
+    }
+    return generateSupersetSchemaHelper(existingSchema, newSchema);
+  }
+
+  // Visible for testing.
+  public static Schema generateSupersetSchemaHelper(Schema existingSchema, Schema newSchema) {
     if (existingSchema.getType() != newSchema.getType()) {
       throw new VeniceException("Incompatible schema");
     }
-
     if (Objects.equals(existingSchema, newSchema)) {
       return existingSchema;
     }
@@ -266,12 +328,12 @@ public class AvroSchemaUtils {
         }
 
         Schema superSetSchema = Schema.createRecord(newSchema.getName(), newSchema.getDoc(), newSchema.getNamespace(), false);
-        superSetSchema.setFields(mergeFields(existingSchema, newSchema));
+        superSetSchema.setFields(mergeRecordFields(existingSchema, newSchema));
         return superSetSchema;
       case ARRAY:
-        return Schema.createArray(generateSuperSetSchema(existingSchema.getElementType(), newSchema.getElementType()));
+        return Schema.createArray(generateSupersetSchemaHelper(existingSchema.getElementType(), newSchema.getElementType()));
       case MAP:
-        return Schema.createMap(generateSuperSetSchema(existingSchema.getValueType(), newSchema.getValueType()));
+        return Schema.createMap(generateSupersetSchemaHelper(existingSchema.getValueType(), newSchema.getValueType()));
       case UNION:
         return unionSchema(existingSchema, newSchema);
       default:
@@ -288,7 +350,7 @@ public class AvroSchemaUtils {
       if (existingSchemaInUnion == null) {
         combinedSchema.add(newSchemaInUnion);
       } else {
-        combinedSchema.add(generateSuperSetSchema(existingSchemaInUnion, newSchemaInUnion));
+        combinedSchema.add(generateSupersetSchemaHelper(existingSchemaInUnion, newSchemaInUnion));
         existingFieldToSchemaMap.remove(newSchemaInUnion.getName());
       }
     }
@@ -297,7 +359,7 @@ public class AvroSchemaUtils {
     return Schema.createUnion(combinedSchema);
   }
 
-  private static List<Schema.Field> mergeFields(Schema existingSchema, Schema newSchema) {
+  private static List<Schema.Field> mergeRecordFields(Schema existingSchema, Schema newSchema) {
     final List<Schema.Field> mergedFields = new ArrayList<>();
 
     for (final Schema.Field existingField : existingSchema.getFields()) {
@@ -312,7 +374,7 @@ public class AvroSchemaUtils {
       } else {
         // A field with the same name exists in the new schema.
         fieldBuilder
-            .setSchema(generateSuperSetSchema(existingField.schema(), newField.schema()))
+            .setSchema(generateSupersetSchemaHelper(existingField.schema(), newField.schema()))
             .setDoc(
                 // The preference is use the doc from the new field in the superset schema.
                 newField.doc() != null ? newField.doc() : existingField.doc()

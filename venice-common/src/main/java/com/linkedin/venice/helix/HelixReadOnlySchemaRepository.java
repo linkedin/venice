@@ -352,7 +352,7 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
         throw new VeniceNoStoreException(storeName);
       }
       Store store = storeRepository.getStoreOrThrow(storeName);
-      int latestValueSchemaId;
+      final int latestValueSchemaId;
 
       if (store.getLatestSuperSetValueSchemaId() != SchemaData.INVALID_VALUE_SCHEMA_ID) {
         latestValueSchemaId = store.getLatestSuperSetValueSchemaId();
@@ -372,7 +372,7 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
   public DerivedSchemaEntry getLatestDerivedSchema(String storeName, int valueSchemaId) {
     return (DerivedSchemaEntry)doSchemaOperation(storeName, (schemaData -> {
       Optional<DerivedSchemaEntry> latestDerivedSchemaEntry = schemaData.getDerivedSchemas().stream()
-          .filter(entry -> entry.getValueSchemaId() == valueSchemaId)
+          .filter(entry -> entry.getValueSchemaID() == valueSchemaId)
           .max(Comparator.comparing(DerivedSchemaEntry::getId));
 
       if (!latestDerivedSchemaEntry.isPresent()) {

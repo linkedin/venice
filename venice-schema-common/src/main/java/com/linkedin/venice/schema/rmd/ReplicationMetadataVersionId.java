@@ -1,16 +1,16 @@
 package com.linkedin.venice.schema.rmd;
 
 public class ReplicationMetadataVersionId {
-  int valueSchemaVersion;
-  int replicationMetadataProtocolVersion;
+  private final int valueSchemaID;
+  private final int replicationMetadataProtocolVersion;
 
-  public ReplicationMetadataVersionId(int valueSchemaVersion, int replicationMetadataProtocolVersion) {
-    this.valueSchemaVersion = valueSchemaVersion;
+  public ReplicationMetadataVersionId(int valueSchemaID, int replicationMetadataProtocolVersion) {
+    this.valueSchemaID = valueSchemaID;
     this.replicationMetadataProtocolVersion = replicationMetadataProtocolVersion;
   }
 
-  public int getValueSchemaVersion() {
-    return valueSchemaVersion;
+  public int getValueSchemaID() {
+    return valueSchemaID;
   }
 
   public int getReplicationMetadataProtocolVersion() {
@@ -21,7 +21,7 @@ public class ReplicationMetadataVersionId {
   public final int hashCode() {
     final int PRIME = 31;
     int result = 1;
-    result = PRIME * result + valueSchemaVersion;
+    result = PRIME * result + valueSchemaID;
     result = PRIME * result + replicationMetadataProtocolVersion;
     return result;
   }
@@ -33,7 +33,7 @@ public class ReplicationMetadataVersionId {
 
     ReplicationMetadataVersionId that = (ReplicationMetadataVersionId)o;
 
-    if (valueSchemaVersion != that.valueSchemaVersion) return false;
+    if (valueSchemaID != that.valueSchemaID) return false;
     if (replicationMetadataProtocolVersion != that.replicationMetadataProtocolVersion) return false;
 
     return true;

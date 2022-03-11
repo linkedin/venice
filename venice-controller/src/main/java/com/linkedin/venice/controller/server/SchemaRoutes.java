@@ -139,7 +139,7 @@ public class SchemaRoutes extends AbstractRoute {
         } else {
           derivedSchemaEntry = admin.addDerivedSchema(clusterName, storeName, valueSchemaId, request.queryParams(DERIVED_SCHEMA));
         }
-        responseObject.setId(derivedSchemaEntry.getValueSchemaId());
+        responseObject.setId(derivedSchemaEntry.getValueSchemaID());
         responseObject.setDerivedSchemaId(derivedSchemaEntry.getId());
         responseObject.setSchemaStr(derivedSchemaEntry.getSchema().toString());
       } catch (Throwable e) {
@@ -308,7 +308,7 @@ public class SchemaRoutes extends AbstractRoute {
 
         admin.getDerivedSchemas(cluster, store).forEach(derivedSchemaEntry -> {
           MultiSchemaResponse.Schema schema = new MultiSchemaResponse.Schema();
-          schema.setId(derivedSchemaEntry.getValueSchemaId());
+          schema.setId(derivedSchemaEntry.getValueSchemaID());
           schema.setDerivedSchemaId(derivedSchemaEntry.getId());
           schema.setSchemaStr(derivedSchemaEntry.getSchema().toString());
           schemas.add(schema);

@@ -217,10 +217,10 @@ public class HelixReadWriteSchemaRepositoryAdapter implements ReadWriteSchemaRep
   }
 
   @Override
-  public ReplicationMetadataSchemaEntry addMetadataSchema(String storeName, int valueSchemaId, String replicationMetadataSchemaStr, int replicationMetadataVersionId) {
+  public ReplicationMetadataSchemaEntry addReplicationMetadataSchema(String storeName, int valueSchemaId, String replicationMetadataSchemaStr, int replicationMetadataVersionId) {
     VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(storeName);
     if (HelixReadOnlyStoreRepositoryAdapter.forwardToRegularRepository(systemStoreType)) {
-      return readWriteRegularStoreSchemaRepository.addMetadataSchema(storeName, valueSchemaId, replicationMetadataSchemaStr, replicationMetadataVersionId);
+      return readWriteRegularStoreSchemaRepository.addReplicationMetadataSchema(storeName, valueSchemaId, replicationMetadataSchemaStr, replicationMetadataVersionId);
     }
     throw new VeniceException(errorMsgForUnsupportedOperationsAgainstSystemStore(storeName, systemStoreType, "addMetadataSchema"));
   }
