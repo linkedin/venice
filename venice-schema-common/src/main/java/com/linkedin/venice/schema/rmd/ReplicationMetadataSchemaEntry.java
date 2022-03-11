@@ -32,7 +32,7 @@ public class ReplicationMetadataSchemaEntry extends GeneratedSchemaEntry {
     if (getClass() != obj.getClass())
       return false;
     ReplicationMetadataSchemaEntry other = (ReplicationMetadataSchemaEntry) obj;
-    if (this.valueSchemaId != other.valueSchemaId) {
+    if (this.valueSchemaID != other.valueSchemaID) {
       return false;
     }
     if (this.getId() != other.getId()) {
@@ -44,7 +44,7 @@ public class ReplicationMetadataSchemaEntry extends GeneratedSchemaEntry {
   @Override
   public int hashCode() {
     int result = 1;
-    result = result * 31 + valueSchemaId;
+    result = result * 31 + valueSchemaID;
     result = result * 31 + getId();
     result = result * 31 + super.hashCode();
     return result;

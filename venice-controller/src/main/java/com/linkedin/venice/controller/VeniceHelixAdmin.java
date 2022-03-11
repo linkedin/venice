@@ -3919,16 +3919,17 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         checkControllerLeadershipFor(clusterName);
         ReadWriteSchemaRepository schemaRepository = getHelixVeniceClusterResources(clusterName).getSchemaRepository();
 
-        // If the new superset schema does not exist in the schema repo, add it
         final SchemaEntry existingSupersetSchemaEntry = schemaRepository.getValueSchema(storeName, supersetSchemaId);
-        if (existingSupersetSchemaEntry != null) {
+        if (existingSupersetSchemaEntry == null) {
+          // If the new superset schema does not exist in the schema repo, add it
+          logger.info("Adding superset schema: " + supersetSchemaStr + " for store: " + storeName);
+          schemaRepository.addValueSchema(storeName, supersetSchemaStr, supersetSchemaId);
+
+        } else {
           final Schema newSupersetSchema = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(supersetSchemaStr);
           if (!AvroSchemaUtils.compareSchemaIgnoreFieldOrder(existingSupersetSchemaEntry.getSchema(), newSupersetSchema)) {
             throw new VeniceException("Existing schema with id " + existingSupersetSchemaEntry.getId() + " does not match with new schema " + supersetSchemaStr);
           }
-        } else {
-            logger.info("Adding superset schema: " + supersetSchemaStr + " for store: " + storeName);
-            schemaRepository.addValueSchema(storeName, supersetSchemaStr, supersetSchemaId);
         }
 
         // Update the store config
@@ -3981,7 +3982,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       Collection<ReplicationMetadataSchemaEntry> schemaEntries =
           getHelixVeniceClusterResources(clusterName).getSchemaRepository().getReplicationMetadataSchemas(storeName);
       for (ReplicationMetadataSchemaEntry rmdSchemaEntry : schemaEntries) {
-        if (rmdSchemaEntry.getValueSchemaId() == valueSchemaID && rmdSchemaEntry.getId() == replicationMetadataVersionId) {
+        if (rmdSchemaEntry.getValueSchemaID() == valueSchemaID && rmdSchemaEntry.getId() == replicationMetadataVersionId) {
           return true;
         }
       }
@@ -4021,7 +4022,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         }
 
         return getHelixVeniceClusterResources(clusterName).getSchemaRepository()
-            .addMetadataSchema(storeName, valueSchemaId, replicationMetadataSchemaStr, replicationMetadataVersionId);
+            .addReplicationMetadataSchema(storeName, valueSchemaId, replicationMetadataSchemaStr, replicationMetadataVersionId);
     }
 
     @Override

@@ -12,6 +12,6 @@ public class ReplicationMetadataSchemaEntrySerializerTest {
     ReplicationMetadataSchemaEntry
         entry = serializer.deserialize("{\"type\": \"int\"}".getBytes(), "/store/store1/timestamp-metadata-schema/2-3");
     Assert.assertEquals(entry.getId(), 3);
-    Assert.assertEquals(entry.getValueSchemaId(), 2);
+    Assert.assertEquals(entry.getValueSchemaID(), 2);
   }
 }

@@ -86,7 +86,7 @@ public final class SchemaData {
   }
 
   public void addDerivedSchema(DerivedSchemaEntry derivedSchemaEntry) {
-    Pair<Integer, Integer> derivedSchemaId = new Pair<>(derivedSchemaEntry.getValueSchemaId(), derivedSchemaEntry.getId());
+    Pair<Integer, Integer> derivedSchemaId = new Pair<>(derivedSchemaEntry.getValueSchemaID(), derivedSchemaEntry.getId());
     derivedSchemaMap.put(derivedSchemaId, derivedSchemaEntry);
     derivedSchemaRMap.put(derivedSchemaEntry, derivedSchemaId);
   }
@@ -136,7 +136,7 @@ public final class SchemaData {
 
   public void addReplicationMetadataSchema(ReplicationMetadataSchemaEntry replicationMetadataSchemaEntry) {
     ReplicationMetadataVersionId
-        replicationMetadataVersionId = new ReplicationMetadataVersionId(replicationMetadataSchemaEntry.getValueSchemaId(), replicationMetadataSchemaEntry
+        replicationMetadataVersionId = new ReplicationMetadataVersionId(replicationMetadataSchemaEntry.getValueSchemaID(), replicationMetadataSchemaEntry
         .getId());
     replicationMetadataSchemaMap.put(replicationMetadataVersionId, replicationMetadataSchemaEntry);
     replicationMetadataSchemaRMap.put(replicationMetadataSchemaEntry.getSchema(), replicationMetadataVersionId);

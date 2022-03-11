@@ -28,7 +28,7 @@ public class SchemaEntry {
   private final int id;
   private Schema schema;
   private boolean failedParsing = false;
-
+  private String schemaStr;
   /**
    * Primary constructor taking a literal id and schema.
    */
@@ -50,6 +50,7 @@ public class SchemaEntry {
         throw new SchemaParseException(e);
       }
     }
+    this.schemaStr = schemaStr;
   }
 
   public SchemaEntry(int id, Schema schema) {
@@ -59,10 +60,18 @@ public class SchemaEntry {
 
     this.id = id;
     this.schema = schema;
+    this.schemaStr = null;
   }
 
   public SchemaEntry(int id, byte[] bytes) {
     this(id, new String(bytes));
+  }
+
+  public String getSchemaStr() {
+    if (schemaStr == null) {
+      schemaStr = schema.toString();
+    }
+    return schemaStr;
   }
 
   /** @return the id */

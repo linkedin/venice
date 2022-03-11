@@ -195,9 +195,8 @@ public class VeniceParentHelixAdminTest {
               + versionCreationResponseForMetaSystemStore.getError());
       TestUtils.waitForNonDeterministicPushCompletion(versionCreationResponseForMetaSystemStore.getKafkaTopic(),
           parentControllerClient, 30, TimeUnit.SECONDS, Optional.of(LOGGER));
-      /**
-       * Delete the store and try re-creation.
-       */
+
+      // Delete the store and try re-creation.
       assertFalse(parentControllerClient.disableAndDeleteStore(storeName).isError(), "Delete store shouldn't fail");
       // re-create the same store right away will fail because of lingering system store resources
       controllerResponse = parentControllerClient.createNewStore(storeName,"test", "\"string\"", "\"string\"");
@@ -431,7 +430,7 @@ public class VeniceParentHelixAdminTest {
 
   private void testAddValueSchemaDocUpdate(ControllerClient parentControllerClient) {
     // Adding store
-    String storeName = Utils.getUniqueString("test_store");;
+    String storeName = Utils.getUniqueString("test_store");
     String owner = "test_owner";
     String keySchemaStr = "\"long\"";
     String schemaStr = "{\"type\":\"record\",\"name\":\"KeyRecord\",\"fields\":[{\"name\":\"name\",\"type\":\"string\",\"doc\":\"name field\"},{\"name\":\"id1\",\"type\":\"double\"}]}";
@@ -446,7 +445,7 @@ public class VeniceParentHelixAdminTest {
 
   private void testAddBadValueSchema(ControllerClient parentControllerClient) {
     // Adding store
-    String storeName = Utils.getUniqueString("test_store");;
+    String storeName = Utils.getUniqueString("test_store");
     String owner = "test_owner";
     String keySchemaStr = "\"long\"";
     String schemaStr = "{\"type\":\"record\",\"name\":\"User\",\"namespace\":\"example.avro\",\"fields\":[{\"name\":\"name\",\"type\":\"string\"},{\"name\":\"kind\",\"type\":{\"type\":\"enum\",\"name\":\"Kind\",\"symbols\":[\"ONE\",\"TWO\"]}}]}";
@@ -464,10 +463,10 @@ public class VeniceParentHelixAdminTest {
         " \"type\": \"record\",\n" +
         " \"name\": \"User\",\n" +
         " \"fields\": [\n" +
-        "      { \"name\": \"id\", \"type\": \"string\"},\n" +
+        "      { \"name\": \"id\", \"type\": \"string\", \"default\": \"default_ID\"},\n" +
         "      {\n" +
         "       \"name\": \"value\",\n" +
-        "       \"type\": {\n" +
+        "       \"type\": [\"null\" , {\n" +
         "           \"type\": \"record\",\n" +
         "           \"name\": \"ValueRecord\",\n" +
         "           \"fields\" : [\n";
@@ -478,8 +477,9 @@ public class VeniceParentHelixAdminTest {
     }
     schemaStr +=
         "           ]\n" +
-            "        }\n" +
-            "      }\n" +
+            "      }]," +
+            "       \"default\": null\n" +
+            "    }\n" +
             " ]\n" +
             "}";
     return AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(schemaStr);
@@ -490,10 +490,10 @@ public class VeniceParentHelixAdminTest {
         " \"type\": \"record\",\n" +
         " \"name\": \"User\",\n" +
         " \"fields\": [\n" +
-        "      { \"name\": \"id\", \"type\": \"string\"},\n" +
+        "      { \"name\": \"id\", \"type\": \"string\", \"default\": \"default_ID\"},\n" +
         "      {\n" +
         "       \"name\": \"value\",\n" +
-        "       \"type\": {\n" +
+        "       \"type\": [\"null\" , {\n" +
         "           \"type\": \"record\",\n" +
         "           \"name\": \"ValueRecord\",\n" +
         "           \"fields\" : [\n" +
@@ -502,8 +502,9 @@ public class VeniceParentHelixAdminTest {
 
     schemaStr +=
         "           ]\n" +
-            "        }\n" +
-            "      }\n" +
+            "     }],\n" +
+            "    \"default\": null" +
+            "   }\n" +
             " ]\n" +
             "}";
     return AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(schemaStr);
@@ -514,10 +515,10 @@ public class VeniceParentHelixAdminTest {
         " \"type\": \"record\",\n" +
         " \"name\": \"User\",\n" +
         " \"fields\": [\n" +
-        "      { \"name\": \"id\", \"type\": \"string\"},\n" +
+        "      { \"name\": \"id\", \"type\": \"string\", \"default\": \"default_ID\"},\n" +
         "      {\n" +
         "       \"name\": \"value\",\n" +
-        "       \"type\": {\n" +
+        "       \"type\": [\"null\" ,{\n" +
         "           \"type\": \"record\",\n" +
         "           \"name\": \"ValueRecord\",\n" +
         "           \"fields\" : [\n" +
@@ -527,8 +528,9 @@ public class VeniceParentHelixAdminTest {
 
     schemaStr +=
         "           ]\n" +
-            "        }\n" +
-            "      }\n" +
+            "      }], " +
+            "     \"default\": null\n" +
+            "    }\n" +
             " ]\n" +
             "}";
     return AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(schemaStr);

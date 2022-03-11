@@ -318,7 +318,6 @@ public abstract class NativeMetadataRepository
     throw new VeniceException("Derived schema is not included in system store.");
   }
 
-  @Override
   public ReplicationMetadataSchemaEntry getReplicationMetadataSchema(String storeName, int valueSchemaId,
       int replicationMetadataVersionId) {
     throw new VeniceException("Function: getReplicationMetadataSchema is not supported!");

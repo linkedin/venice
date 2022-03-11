@@ -614,8 +614,8 @@ public class AdminExecutionTask implements Callable<Void> {
     int replicationMetadataVersionId = message.timestampMetadataVersionId;
 
     admin.addReplicationMetadataSchema(clusterName, storeName, valueSchemaId, replicationMetadataVersionId, replicationMetadataSchemaStr);
-    logger.info(String.format("Added metadata schema:\n %s\n to store: %s, value schema id: %d, metadata schema id: %d",
-        replicationMetadataSchemaStr, storeName, valueSchemaId, replicationMetadataVersionId));
+    logger.info("Added replication metadata schema for store {}, value schema ID {}, replication metadata version ID {}, and "
+        + "the added replication metadata schema: {}", storeName, valueSchemaId, replicationMetadataVersionId, replicationMetadataSchemaStr);
   }
 
   private void handleMetaSystemStoreCreationValidation(MetaSystemStoreAutoCreationValidation message) {

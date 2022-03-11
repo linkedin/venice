@@ -13,7 +13,6 @@ import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
 import com.linkedin.venice.schema.rmd.ReplicationMetadataSchemaEntry;
-import com.linkedin.venice.schema.rmd.ReplicationMetadataVersionId;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.utils.AvroSchemaUtils;
@@ -445,7 +444,7 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
     for (DerivedSchemaEntry derivedSchemaEntry : getDerivedSchemaMap(storeName).values().stream()
         .flatMap(List::stream).collect(Collectors.toList())) {
       if (derivedSchemaEntry.getSchema().equals(derivedSchema)) {
-        return new Pair<>(derivedSchemaEntry.getValueSchemaId(), derivedSchemaEntry.getId());
+        return new Pair<>(derivedSchemaEntry.getValueSchemaID(), derivedSchemaEntry.getId());
       }
     }
 
@@ -457,7 +456,7 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
 
     Map<Integer, List<DerivedSchemaEntry>> derivedSchemaEntryMap = new HashMap<>();
     accessor.getAllDerivedSchemas(storeName).forEach(derivedSchemaEntry ->
-      derivedSchemaEntryMap.computeIfAbsent(derivedSchemaEntry.getValueSchemaId(), id -> new ArrayList<>())
+      derivedSchemaEntryMap.computeIfAbsent(derivedSchemaEntry.getValueSchemaID(), id -> new ArrayList<>())
           .add(derivedSchemaEntry));
 
     return derivedSchemaEntryMap;
@@ -479,15 +478,14 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
     return accessor.getReplicationMetadataSchema(storeName, idPairStr);
   }
 
-  @Override
-  public ReplicationMetadataSchemaEntry addMetadataSchema(String storeName, int valueSchemaId, String replicationMetadataSchemaStr,  int replicationMetadataVersionId) {
+  public ReplicationMetadataSchemaEntry addReplicationMetadataSchema(String storeName, int valueSchemaId, String replicationMetadataSchemaStr,  int replicationMetadataVersionId) {
     ReplicationMetadataSchemaEntry replicationMetadataSchemaEntry =
         new ReplicationMetadataSchemaEntry(valueSchemaId, replicationMetadataVersionId, replicationMetadataSchemaStr);
 
     if (replicationMetadataVersionId == SchemaData.DUPLICATE_VALUE_SCHEMA_CODE) {
       logger.info("Replication metadata schema already exists. Skip adding it to repository. Schema: " + replicationMetadataSchemaStr);
     } else {
-      accessor.addMetadataSchema(storeName, replicationMetadataSchemaEntry);
+      accessor.addReplicationMetadataSchema(storeName, replicationMetadataSchemaEntry);
     }
 
     return replicationMetadataSchemaEntry;

@@ -118,7 +118,7 @@ public class HelixSchemaAccessor {
 
   public void addDerivedSchema(String storeName, DerivedSchemaEntry derivedSchemaEntry) {
     HelixUtils.create(schemaAccessor, getDerivedSchemaPath(storeName,
-        String.valueOf(derivedSchemaEntry.getValueSchemaId()), String.valueOf(derivedSchemaEntry.getId())), derivedSchemaEntry);
+        String.valueOf(derivedSchemaEntry.getValueSchemaID()), String.valueOf(derivedSchemaEntry.getId())), derivedSchemaEntry);
     logger.info("Added derived schema: " + derivedSchemaEntry + "for store: " + storeName);
   }
 
@@ -217,9 +217,9 @@ public class HelixSchemaAccessor {
         refreshAttemptsForZkReconnect, refreshIntervalForZkReconnectInMs);
   }
 
-  public void addMetadataSchema(String storeName, ReplicationMetadataSchemaEntry replicationMetadataSchemaEntry) {
+  public void addReplicationMetadataSchema(String storeName, ReplicationMetadataSchemaEntry replicationMetadataSchemaEntry) {
     HelixUtils.create(replicationMetadataSchemaAccessor, getReplicationMetadataSchemaPath(storeName,
-        String.valueOf(replicationMetadataSchemaEntry.getValueSchemaId()), String.valueOf(
+        String.valueOf(replicationMetadataSchemaEntry.getValueSchemaID()), String.valueOf(
             replicationMetadataSchemaEntry.getId())), replicationMetadataSchemaEntry);
     logger.info("Added replication metadata schema: " + replicationMetadataSchemaEntry + " for store: " + storeName);
   }
