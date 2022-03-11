@@ -24,7 +24,7 @@ public class HttpChannelInitializerTest {
   private VeniceServerConfig serverConfig;
   private Optional<StaticAccessController> accessController;
   private Optional<DynamicAccessController> storeAccessController;
-  private StorageExecutionHandler requestHandler;
+  private StorageReadRequestsHandler requestHandler;
 
   @BeforeMethod
   public void setUp(){
@@ -33,7 +33,7 @@ public class HttpChannelInitializerTest {
     sslFactory = Optional.of(mock(SSLEngineComponentFactory.class));
     accessController = Optional.of(mock(StaticAccessController.class));
     storeAccessController = Optional.of(mock(DynamicAccessController.class));
-    requestHandler = mock(StorageExecutionHandler.class);
+    requestHandler = mock(StorageReadRequestsHandler.class);
     serverConfig = mock(VeniceServerConfig.class);
     routingRepository = new CompletableFuture<>();
   }

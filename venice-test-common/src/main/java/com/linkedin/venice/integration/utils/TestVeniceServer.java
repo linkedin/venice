@@ -12,7 +12,7 @@ import com.linkedin.venice.acl.StaticAccessController;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.listener.ListenerService;
-import com.linkedin.venice.listener.StorageExecutionHandler;
+import com.linkedin.venice.listener.StorageReadRequestsHandler;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.RoutingDataRepository;
@@ -65,7 +65,7 @@ public class TestVeniceServer extends VeniceServer {
         metricsRepository, sslFactory, routerAccessController, storeAccessController, diskHealthService, compressorFactory) {
 
       @Override
-      protected StorageExecutionHandler createRequestHandler(
+      protected StorageReadRequestsHandler createRequestHandler(
           ThreadPoolExecutor executor,
           ThreadPoolExecutor computeExecutor,
           StorageEngineRepository storageEngineRepository,
@@ -78,7 +78,7 @@ public class TestVeniceServer extends VeniceServer {
           int parallelBatchGetChunkSize,
           StorageEngineBackedCompressorFactory compressorFactory) {
 
-        return new StorageExecutionHandler(
+        return new StorageReadRequestsHandler(
             executor, computeExecutor, storageEngineRepository, metadataRepository, schemaRepository, metadataRetriever, diskHealthService,
             fastAvroEnabled, parallelBatchGetEnabled, parallelBatchGetChunkSize, serverConfig, compressorFactory) {
           @Override

@@ -221,7 +221,7 @@ public class HelixSchemaAccessor {
     HelixUtils.create(replicationMetadataSchemaAccessor, getReplicationMetadataSchemaPath(storeName,
         String.valueOf(replicationMetadataSchemaEntry.getValueSchemaId()), String.valueOf(
             replicationMetadataSchemaEntry.getId())), replicationMetadataSchemaEntry);
-    logger.info("Added replication metadata schema: " + replicationMetadataSchemaEntry.toString() + " for store: " + storeName);
+    logger.info("Added replication metadata schema: " + replicationMetadataSchemaEntry + " for store: " + storeName);
   }
 
   public void subscribeReplicationMetadataSchemaCreationChange(String storeName, IZkChildListener childListener) {

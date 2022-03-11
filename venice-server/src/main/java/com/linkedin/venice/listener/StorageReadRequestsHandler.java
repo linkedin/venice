@@ -84,21 +84,19 @@ import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.BinaryDecoder;
-import org.apache.avro.io.BinaryEncoder;
-import org.apache.avro.io.DecoderFactory;
 import org.apache.avro.util.Utf8;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 
 /***
- * {@link StorageExecutionHandler} will take the incoming {@link RouterRequest}, and delegate the lookup request to
- * a thread pool {@link #executor}, which is being shared by all the requests.
- * Especially, this handler will execute parallel lookups for {@link MultiGetRouterRequestWrapper}.
+ * {@link StorageReadRequestsHandler} will take the incoming read requests from router{@link RouterRequest}, and delegate
+ * the lookup request to a thread pool {@link #executor}, which is being shared by all the requests. Especially, this
+ * handler will execute parallel lookups for {@link MultiGetRouterRequestWrapper}.
  */
 @ChannelHandler.Sharable
-public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
-  private static final Logger logger = LogManager.getLogger(StorageExecutionHandler.class);
+public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
+  private static final Logger logger = LogManager.getLogger(StorageReadRequestsHandler.class);
 
   /**
    * When constructing a {@link BinaryDecoder}, we pass in this 16 bytes array because if we pass anything
@@ -124,7 +122,7 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
   private final boolean keyValueProfilingEnabled;
   private final RocksDBComputeAccessMode rocksDBComputeAccessMode;
   private final VeniceServerConfig serverConfig;
-  private final Map<String, VenicePartitioner> venicePartitioners = new VeniceConcurrentHashMap<>();
+  private final Map<String, VenicePartitioner> resourceToPartitionerMap = new VeniceConcurrentHashMap<>();
   private final StorageEngineBackedCompressorFactory compressorFactory;
 
   private static class StorageExecReusableObjects extends AvroSerializer.AvroSerializerReusableObjects {
@@ -150,7 +148,7 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
   private final ThreadLocal<StorageExecReusableObjects> threadLocalReusableObjects = ThreadLocal.withInitial(
       StorageExecReusableObjects::new);
 
-  public StorageExecutionHandler(ThreadPoolExecutor executor, ThreadPoolExecutor computeExecutor,
+  public StorageReadRequestsHandler(ThreadPoolExecutor executor, ThreadPoolExecutor computeExecutor,
                                   StorageEngineRepository storageEngineRepository,
                                   ReadOnlyStoreRepository metadataStoreRepository,
                                   ReadOnlySchemaRepository schemaRepository,
@@ -183,7 +181,7 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
      *
      * The reason for this is two-fold:
      *
-     * 1. We want to make the {@link StorageExecutionHandler} fully non-blocking as far as Netty (which
+     * 1. We want to make the {@link StorageReadRequestsHandler} fully non-blocking as far as Netty (which
      *    is the one calling this function) is concerned. Therefore, it is beneficial to fork off the
      *    work into the executor from the very beginning.
      * 2. By making the execution asynchronous from the beginning, we can simplify the rest of the class
@@ -301,7 +299,7 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
     if (partitionerConfig == null || partitionerConfig.getAmplificationFactor() == 1) {
       return userPartition;
     }
-    VenicePartitioner venicePartitioner = venicePartitioners.computeIfAbsent(resourceName, k -> {
+    VenicePartitioner venicePartitioner = resourceToPartitionerMap.computeIfAbsent(resourceName, k -> {
       Properties partitionerParams = new Properties();
       if (partitionerConfig.getPartitionerParams() != null) {
         partitionerParams.putAll(partitionerConfig.getPartitionerParams());

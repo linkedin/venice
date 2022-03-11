@@ -1980,10 +1980,10 @@ public class VeniceParentHelixAdmin implements Admin {
         (SupersetSchemaCreation) AdminMessageType.SUPERSET_SCHEMA_CREATION.getNewInstance();
     supersetSchemaCreation.clusterName = clusterName;
     supersetSchemaCreation.storeName = storeName;
-    SchemaMeta schemaMeta = new SchemaMeta();
-    schemaMeta.definition = valueSchemaStr;
-    schemaMeta.schemaType = SchemaType.AVRO_1_4.getValue();
-    supersetSchemaCreation.valueSchema = schemaMeta;
+    SchemaMeta valueSchemaMeta = new SchemaMeta();
+    valueSchemaMeta.definition = valueSchemaStr;
+    valueSchemaMeta.schemaType = SchemaType.AVRO_1_4.getValue();
+    supersetSchemaCreation.valueSchema = valueSchemaMeta;
     supersetSchemaCreation.valueSchemaId = valueSchemaId;
 
     SchemaMeta supersetSchemaMeta = new SchemaMeta();
@@ -1991,7 +1991,6 @@ public class VeniceParentHelixAdmin implements Admin {
     supersetSchemaMeta.schemaType = SchemaType.AVRO_1_4.getValue();
     supersetSchemaCreation.supersetSchema = supersetSchemaMeta;
     supersetSchemaCreation.supersetSchemaId = supersetSchemaId;
-
 
     AdminOperation message = new AdminOperation();
     message.operationType = AdminMessageType.SUPERSET_SCHEMA_CREATION.getValue();

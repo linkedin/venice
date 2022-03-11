@@ -143,7 +143,7 @@ public class HttpTransportClient extends TransportClient {
         compressionStrategy = CompressionStrategy.valueOf(Integer.parseInt(compressionHeader.getValue()));
       }
 
-      byte[] body = null;
+      byte[] body;
       try (InputStream bodyStream = result.getEntity().getContent()) {
         body = IOUtils.toByteArray(bodyStream);
       } catch (IOException e) {

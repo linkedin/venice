@@ -68,7 +68,6 @@ import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
-import com.linkedin.venice.serialization.avro.ChunkedValueManifestSerializer;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.serializer.AvroGenericDeserializer;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
@@ -158,7 +157,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private static final String EXCEPTION_GROUP_CONSUMER = "consumer";
 
   protected static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER = RedundantExceptionFilter.getRedundantExceptionFilter();
-  protected static final ChunkedValueManifestSerializer CHUNKED_VALUE_MANIFEST_SERIALIZER = new ChunkedValueManifestSerializer(false);
 
   /** storage destination for consumption */
   protected final StorageEngineRepository storageEngineRepository;
@@ -1005,8 +1003,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
                     "Encountered null 'PartitionConsumptionState' when trying to apply delay compaction to topic: " +
                         kafkaVersionTopic + ", partition: " + consumingPartition);
               }
-              waitForAllMessageToBeProcessedFromTopicPartition(record.topic(), record.partition(),
-                  partitionConsumptionState);
+              waitForAllMessageToBeProcessedFromTopicPartition(record.topic(), record.partition(), partitionConsumptionState);
               storeVersionState = storageMetadataService.getStoreVersionState(kafkaVersionTopic);
               if (!storeVersionState.isPresent()) {
                 throw new VeniceException(
@@ -1753,7 +1750,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         newPartitionConsumptionState.setLeaderFollowerState(leaderState);
 
         partitionConsumptionStateMap.put(partition, newPartitionConsumptionState);
-        offsetRecord.getProducerPartitionStateMap().entrySet().stream().forEach(entry -> {
+        offsetRecord.getProducerPartitionStateMap().entrySet().forEach(entry -> {
           GUID producerGuid = GuidUtils.getGuidFromCharSequence(entry.getKey());
           ProducerTracker producerTracker = kafkaDataIntegrityValidator.registerProducer(producerGuid);
           producerTracker.setPartitionState(partition, entry.getValue());
@@ -2262,7 +2259,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   public abstract long getBatchReplicationLag();
 
-
   public abstract long getLeaderOffsetLag();
 
   public abstract long getBatchLeaderOffsetLag();
@@ -2431,8 +2427,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
   }
 
-
-
   private void processStartOfBufferReplay(ControlMessage controlMessage, long offset, PartitionConsumptionState partitionConsumptionState) {
     Optional<StoreVersionState> storeVersionState = storageMetadataService.getStoreVersionState(kafkaVersionTopic);
     if (storeVersionState.isPresent()) {
@@ -2564,7 +2558,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope> consumerRecordWrapper,
       PartitionConsumptionState partitionConsumptionState,
       LeaderProducedRecordContext leaderProducedRecordContext
-  ) throws InterruptedException {
+  ) {
     // De-serialize payload into Venice Message format
     ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord = consumerRecordWrapper.consumerRecord();
     KafkaKey kafkaKey = consumerRecord.key();
@@ -3497,15 +3491,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * This will make the calling thread to block.
    * @param topic
    * @param partition
-   * @param partitionConsumptionState
    * @throws InterruptedException
    */
-  protected void waitForAllMessageToBeProcessedFromTopicPartition(String topic, int partition,
-      PartitionConsumptionState partitionConsumptionState) throws InterruptedException {
-    /**
-     * This will wait for all the messages to be processed (persisted to disk) that are already
-     * queued up to drainer till now.
-     */
+  protected void waitForAllMessageToBeProcessedFromTopicPartition(
+      String topic,
+      int partition,
+      PartitionConsumptionState partitionConsumptionState
+  ) throws InterruptedException {
     storeBufferService.drainBufferedRecordsFromTopicPartition(topic, partition);
   }
 

@@ -25,12 +25,12 @@ public class LeaderProducedRecordContext {
   /**
    * Kafka address where the source kafka consumer record was consumed from.
    */
-  private String consumedKafkaUrl;
+  private final String consumedKafkaUrl;
   /**
    * This is the offset of the source kafka consumer record from upstream kafka
    * topic ( which could be either Real-Time or Stream-Reprocessing topic or remote VT topic).
    */
-  private long consumedOffset;
+  private final long consumedOffset;
 
   /**
    * Type of message should be only PUT/DELETE/CONTROL_MESSAGE and never be UPDATE.

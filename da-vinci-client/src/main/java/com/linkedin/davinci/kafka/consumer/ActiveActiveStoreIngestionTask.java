@@ -401,10 +401,26 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       deletePayload.schemaId = valueSchemaId;
       deletePayload.replicationMetadataVersionId = replicationMetadataVersionId;
       deletePayload.replicationMetadataPayload = updatedReplicationMetadataBytes;
-      LeaderProducedRecordContext leaderProducedRecordContext = LeaderProducedRecordContext.newDeleteRecord(consumerRecordWrapper.kafkaUrl(), consumerRecord.offset(), key, deletePayload);
-      produceToLocalKafka(consumerRecordWrapper, partitionConsumptionState, leaderProducedRecordContext,
-          (callback, sourceTopicOffset) -> veniceWriter.get().delete(key, callback, sourceTopicOffset,
-              new DeleteMetadata(valueSchemaId, replicationMetadataVersionId, updatedReplicationMetadataBytes)));
+
+      ProduceToTopic produceToTopicFunction = (callback, sourceTopicOffset) ->
+          veniceWriter.get().delete(
+              key,
+              callback,
+              sourceTopicOffset,
+              new DeleteMetadata(valueSchemaId, replicationMetadataVersionId, updatedReplicationMetadataBytes)
+          );
+      LeaderProducedRecordContext leaderProducedRecordContext = LeaderProducedRecordContext.newDeleteRecord(
+          consumerRecordWrapper.kafkaUrl(),
+          consumerRecord.offset(),
+          key,
+          deletePayload
+      );
+      produceToLocalKafka(
+          consumerRecordWrapper,
+          partitionConsumptionState,
+          leaderProducedRecordContext,
+          produceToTopicFunction
+      );
     } else {
       int valueLen = updatedValueBytes.remaining();
       partitionConsumptionState.setTransientRecord(consumerRecordWrapper.kafkaUrl(), consumerRecord.offset(), key, updatedValueBytes.array(), updatedValueBytes.position(),
@@ -425,21 +441,31 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         // used to persist on disk after producing to Kafka.
         updatedKeyBytes = ChunkingUtils.KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(key);
       }
-      LeaderProducedRecordContext leaderProducedRecordContext = LeaderProducedRecordContext.newPutRecord(consumerRecordWrapper.kafkaUrl(), consumerRecord.offset(), updatedKeyBytes, updatedPut);
+      ProduceToTopic produceToTopicFunction = (callback, sourceTopicOffset) -> {
+        final Callback newCallback = (recordMetadata, exception) -> {
+          if (doesResultReuseInput) {
+            // Restore the original header so this function is eventually idempotent as the original KME ByteBuffer
+            //will be recovered after producing the message to Kafka or if the production failing.
+            ByteUtils.prependIntHeaderToByteBuffer(updatedValueBytes, previousHeaderForPutValue, true);
+          }
+          callback.onCompletion(recordMetadata, exception);
+        };
+        return veniceWriter.get().put(
+            key,
+            ByteUtils.extractByteArray(updatedValueBytes),
+            valueSchemaId,
+            newCallback,
+            sourceTopicOffset,
+            new PutMetadata(replicationMetadataVersionId, updatedReplicationMetadataBytes)
+        );
+      };
 
-      produceToLocalKafka(consumerRecordWrapper, partitionConsumptionState, leaderProducedRecordContext,
-        (callback, sourceTopicOffset) -> {
-          final Callback newCallback = (recordMetadata, exception) -> {
-            if (doesResultReuseInput) {
-              // Restore the original header so this function is eventually idempotent as the original KME ByteBuffer
-              // will be recovered after producing the message to Kafka or if the production failing.
-              ByteUtils.prependIntHeaderToByteBuffer(updatedValueBytes, previousHeaderForPutValue, true);
-            }
-            callback.onCompletion(recordMetadata, exception);
-          };
-          return veniceWriter.get().put(key, ByteUtils.extractByteArray(updatedValueBytes),
-              valueSchemaId, newCallback, sourceTopicOffset, new PutMetadata(replicationMetadataVersionId, updatedReplicationMetadataBytes));
-        });
+      produceToLocalKafka(
+          consumerRecordWrapper,
+          partitionConsumptionState,
+          LeaderProducedRecordContext.newPutRecord(consumerRecordWrapper.kafkaUrl(), consumerRecord.offset(), updatedKeyBytes, updatedPut),
+          produceToTopicFunction
+        );
     }
   }
 

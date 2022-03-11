@@ -423,8 +423,7 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
       zkClient.subscribeStateChanges(zkStateListener);
       List<Store> stores = storeRepository.getAllStores();
       for (Store store : stores) {
-        String storeName = store.getName();
-        populateSchemaMap(storeName);
+        populateSchemaMap(store.getName());
       }
     } finally {
       schemaLock.writeLock().unlock();

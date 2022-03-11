@@ -24,7 +24,7 @@ public class TransportClientCallback {
   }
 
   public void completeFuture(int statusCode, int schemaId, CompressionStrategy compressionStrategy, byte[] body) {
-    if (statusCode == HttpStatus.SC_OK || (statusCode < 300 && statusCode >= 200)) {
+    if ((statusCode < 300 && statusCode >= 200)) {
       valueFuture.complete(new TransportClientResponse(schemaId, compressionStrategy, body));
     } else if (statusCode == HttpStatus.SC_NOT_FOUND) {
       valueFuture.complete(null);
