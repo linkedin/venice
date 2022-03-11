@@ -27,7 +27,7 @@ import static org.mockito.Mockito.*;
 
 
 public class TopicWiseSharedKafkaConsumerTest
-    extends AbstractSharedKafkaConsumerTest<SharedKafkaConsumer, String> {
+    extends AbstractSharedKafkaConsumerTest<TopicWiseSharedKafkaConsumer, String> {
   @Test
   public void testSubscriptionCleanupDuringPoll() throws InterruptedException {
     String existingTopic1 = "existingTopic1_v1";
@@ -182,18 +182,18 @@ public class TopicWiseSharedKafkaConsumerTest
   }
 
   @Override
-  protected SharedKafkaConsumer instantiateConsumer(
+  protected TopicWiseSharedKafkaConsumer instantiateConsumer(
       KafkaConsumerWrapper delegate,
       KafkaConsumerService service,
       int sanitizeInterval,
       long cleanupDelayMS,
       Time time,
       TopicExistenceChecker topicChecker) {
-    return new SharedKafkaConsumer(delegate, service, sanitizeInterval, cleanupDelayMS, time, topicChecker);
+    return new TopicWiseSharedKafkaConsumer(delegate, service, sanitizeInterval, cleanupDelayMS, time, topicChecker);
   }
 
   @Override
-  protected Set<String> getThingsWithoutCorrespondingIngestionTask(SharedKafkaConsumer consumer) {
+  protected Set<String> getThingsWithoutCorrespondingIngestionTask(TopicWiseSharedKafkaConsumer consumer) {
     return consumer.getTopicsWithoutCorrespondingIngestionTask();
   }
 
@@ -205,7 +205,7 @@ public class TopicWiseSharedKafkaConsumerTest
   }
 
   @Override
-  protected void subscribe(SharedKafkaConsumer consumer, TopicPartition topicPartition,
+  protected void subscribe(TopicWiseSharedKafkaConsumer consumer, TopicPartition topicPartition,
       StoreIngestionTask storeIngestionTask) {
     /** This is called by {@link TopicWiseKafkaConsumerService#attach(KafkaConsumerWrapper, String, StoreIngestionTask)} */
     consumer.attach(topicPartition.topic(), storeIngestionTask);

@@ -10,7 +10,6 @@ import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.time.Instant;
-import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
@@ -19,7 +18,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
-import org.apache.kafka.clients.consumer.ConsumerRecord;
+import java.util.function.Supplier;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.logging.log4j.LogManager;
@@ -35,7 +34,7 @@ import org.apache.logging.log4j.Logger;
  * In addition to the existing API of {@link KafkaConsumerWrapper}, this class also adds specific functions: {@link #attach},
  * {@link #detach}, which will be used by {@link KafkaConsumerService}.
  */
-public class SharedKafkaConsumer implements KafkaConsumerWrapper {
+abstract class SharedKafkaConsumer implements KafkaConsumerWrapper {
   private static final Logger LOGGER = LogManager.getLogger(SharedKafkaConsumer.class);
 
   /**
@@ -64,10 +63,6 @@ public class SharedKafkaConsumer implements KafkaConsumerWrapper {
    *    will fail.
    */
   private final Map<String, Long> nonExistingTopicDiscoverTimestampMap = new VeniceConcurrentHashMap<>();
-  /**
-   * This set is used to store the topics without corresponding ingestion tasks in each poll request.
-   */
-  private Set<String> topicsWithoutCorrespondingIngestionTask = new HashSet<>();
 
   protected final KafkaConsumerWrapper delegate;
   /**
@@ -87,14 +82,6 @@ public class SharedKafkaConsumer implements KafkaConsumerWrapper {
   private final AtomicInteger currentAssignmentSize;
 
   /**
-   * This field contains the mapping between subscribed topics and the corresponding {@link StoreIngestionTask} to handle
-   * all the messages from those topics.
-   * The reason to maintain a mapping here since different {@link SharedKafkaConsumer} could subscribe the same topic, and
-   * one use case is Hybrid store, and multiple store versions will consume the same real-time topic.
-   */
-  private final Map<String, StoreIngestionTask> topicToIngestionTaskMap = new VeniceConcurrentHashMap<>();
-
-  /**
    * This indicates if there is any thread waiting for a poll to happen
    */
   private final AtomicBoolean waitingForPoll = new AtomicBoolean(false);
@@ -102,7 +89,7 @@ public class SharedKafkaConsumer implements KafkaConsumerWrapper {
   /**
    * an ever increasing count of number of time poll has been invoked.
    */
-  private volatile long pollTimes = 0 ;
+  private volatile long pollTimes = 0;
 
   private final Time time;
 
@@ -110,12 +97,7 @@ public class SharedKafkaConsumer implements KafkaConsumerWrapper {
 
   public SharedKafkaConsumer(final KafkaConsumerWrapper delegate, final KafkaConsumerService service, final long nonExistingTopicCleanupDelayMS,
       TopicExistenceChecker topicExistenceChecker) {
-    this(delegate, service, 1000, nonExistingTopicCleanupDelayMS, topicExistenceChecker);
-  }
-
-  public SharedKafkaConsumer(final KafkaConsumerWrapper delegate, final KafkaConsumerService service,
-      int sanitizeTopicSubscriptionAfterPollTimes, long nonExistingTopicCleanupDelayMS, TopicExistenceChecker topicExistenceChecker) {
-    this(delegate, service, sanitizeTopicSubscriptionAfterPollTimes, nonExistingTopicCleanupDelayMS, new SystemTime(), topicExistenceChecker);
+    this(delegate, service, 1000, nonExistingTopicCleanupDelayMS, new SystemTime(), topicExistenceChecker);
   }
 
   SharedKafkaConsumer(final KafkaConsumerWrapper delegate, final KafkaConsumerService service,
@@ -154,29 +136,31 @@ public class SharedKafkaConsumer implements KafkaConsumerWrapper {
    */
   @Override
   public synchronized void unSubscribe(String topic, int partition) {
-    long currentPollTimes = pollTimes;
-    Instant startTime = Instant.now();
-    this.delegate.unSubscribe(topic, partition);
-
-    LOGGER.info(String.format("Shared consumer %s unsubscribed topic %s partition %d: . Took %d ms.",
-        this, topic, partition, Instant.now().toEpochMilli() - startTime.toEpochMilli()));
-    updateCurrentAssignment(delegate.getAssignment());
-    waitAfterUnsubscribe(currentPollTimes);
+    unSubscribeAction(() -> {
+      this.delegate.unSubscribe(topic, partition);
+      return 1;
+    });
   }
 
-  @Override
-  public synchronized void batchUnsubscribe(Set<TopicPartition> topicPartitionSet) {
+  /**
+   * This function encapsulates the logging, bookkeeping and required waiting period surrounding the action of
+   * unsubscribing some partition(s).
+   *
+   * @param action which performs the unsubscription and returns the number of partitions which were unsubscribed
+   */
+  protected synchronized void unSubscribeAction(Supplier<Integer> action) {
     long currentPollTimes = pollTimes;
     long startTime = System.currentTimeMillis();
-    this.delegate.batchUnsubscribe(topicPartitionSet);
+    int numberOfUnsubbedPartitions = action.get();
+    long elapsedTime = System.currentTimeMillis() - startTime;
 
-    LOGGER.info(String.format("Shared consumer %s unsubscribed %d partitions. Took %d ms.",
-        this, topicPartitionSet.size(), System.currentTimeMillis() - startTime));
+    LOGGER.info("Shared consumer {} unsubscribed {} partition(s) in {} ms.",
+        this.getClass().getSimpleName(), numberOfUnsubbedPartitions, elapsedTime);
     updateCurrentAssignment(delegate.getAssignment());
     waitAfterUnsubscribe(currentPollTimes);
   }
 
-  private void waitAfterUnsubscribe(long currentPollTimes) {
+  protected void waitAfterUnsubscribe(long currentPollTimes) {
     currentPollTimes++;
     waitingForPoll.set(true);
     //Wait for the next poll or maximum 10 seconds. Interestingly wait api does not provide any indication if wait returned
@@ -359,20 +343,7 @@ public class SharedKafkaConsumer implements KafkaConsumerWrapper {
     return records;
   }
 
-  protected void sanitizeTopicsWithoutCorrespondingIngestionTask(ConsumerRecords<KafkaKey, KafkaMessageEnvelope> records) {
-    // Check whether the returned records, which don't have the corresponding ingestion tasks
-    topicsWithoutCorrespondingIngestionTask.clear();
-    for (TopicPartition topicPartition: records.partitions()) {
-      if (getIngestionTaskForTopic(topicPartition.topic()) == null) {
-        topicsWithoutCorrespondingIngestionTask.add(topicPartition.topic());
-      }
-    }
-    if (!topicsWithoutCorrespondingIngestionTask.isEmpty()) {
-      LOGGER.error("Detected the following topics without attached ingestion task, and will unsubscribe them: " + topicsWithoutCorrespondingIngestionTask);
-      close(topicsWithoutCorrespondingIngestionTask);
-      kafkaConsumerService.getStats().recordDetectedNoRunningIngestionTopicNum(topicsWithoutCorrespondingIngestionTask.size());
-    }
-  }
+  protected abstract void sanitizeTopicsWithoutCorrespondingIngestionTask(ConsumerRecords<KafkaKey, KafkaMessageEnvelope> records);
 
   @Override
   public synchronized boolean hasSubscription() {
@@ -408,12 +379,6 @@ public class SharedKafkaConsumer implements KafkaConsumerWrapper {
   }
 
   @Override
-  public synchronized void assign(Collection<TopicPartition> topicPartitions) {
-    updateCurrentAssignment(new HashSet<>(topicPartitions));
-    this.delegate.assign(topicPartitions);
-  }
-
-  @Override
   public synchronized void seek(TopicPartition topicPartition, long nextOffset) {
     this.delegate.seek(topicPartition, nextOffset);
   }
@@ -445,45 +410,22 @@ public class SharedKafkaConsumer implements KafkaConsumerWrapper {
   /**
    * Attach the messages belonging to {@param topic} to the passed {@param ingestionTask}
    */
-  public void attach(String topic, StoreIngestionTask ingestionTask) {
-    topicToIngestionTaskMap.put(topic, ingestionTask);
-    LOGGER.info("Attached the message processing of topic: " + topic + " to the ingestion task belonging to version topic: "
-        + ingestionTask.getVersionTopic());
-  }
+  public abstract void attach(String topic, StoreIngestionTask ingestionTask);
 
   /**
    * Detach the messages processing belonging to the topics of the passed {@param ingestionTask}
    */
-  public void detach(StoreIngestionTask ingestionTask) {
-    Set<String> subscribedTopics = ingestionTask.getEverSubscribedTopics();
-    /**
-     * This logic is used to guard the resource leaking situation when the unsubscription doesn't happen before the detaching.
-     */
-    close(subscribedTopics);
-    subscribedTopics.forEach(topic -> topicToIngestionTaskMap.remove(topic));
-    LOGGER.info("Detached ingestion task, which has subscribed topics: " + subscribedTopics);
-  }
+  public abstract void detach(StoreIngestionTask ingestionTask);
 
   /**
    * Get the all corresponding {@link StoreIngestionTask}s for a particular topic.
    */
-  protected Set<StoreIngestionTask> getIngestionTasksForTopic(String topic) {
-    return Collections.singleton(getIngestionTaskForTopic(topic));
-  }
-
-  /**
-   * Get the corresponding {@link StoreIngestionTask} for the subscribed topic.
-   */
-  private StoreIngestionTask getIngestionTaskForTopic(String topic) {
-    return topicToIngestionTaskMap.get(topic);
-  }
+  protected abstract Set<StoreIngestionTask> getIngestionTasksForTopic(String topic);
 
   /**
    * Get the corresponding {@link StoreIngestionTask} for the subscribed topic partition.
    */
-  public StoreIngestionTask getIngestionTaskForTopicPartition(TopicPartition topicPartition) {
-    return topicToIngestionTaskMap.get(topicPartition.topic());
-  }
+  public abstract StoreIngestionTask getIngestionTaskForTopicPartition(TopicPartition topicPartition);
 
   /**
    * Get the {@link KafkaConsumerService} that creates this consumer.
@@ -506,14 +448,5 @@ public class SharedKafkaConsumer implements KafkaConsumerWrapper {
   @Override
   public Optional<Long> getOffsetLag(String topic, int partition) {
     return delegate.getOffsetLag(topic, partition);
-  }
-
-  /**
-   * Package-private visibility, intended for testing only.
-   *
-   * @return a read-only view of this internal state
-   */
-  Set<String> getTopicsWithoutCorrespondingIngestionTask() {
-    return Collections.unmodifiableSet(topicsWithoutCorrespondingIngestionTask);
   }
 }

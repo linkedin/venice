@@ -65,7 +65,7 @@ public class SharedKafkaConsumerBenchmark {
     ConsumerType consumerType = ConsumerType.valueOf(consumerTypeString);
     switch (consumerType) {
       case TOPIC_WISE:
-        this.consumer = new SharedKafkaConsumer(
+        this.consumer = new TopicWiseSharedKafkaConsumer(
             consumerDelegate, consumerService, NON_EXISTING_TOPIC_CLEANUP_DELAY_MS, null);
         break;
       case PARTITION_WISE:

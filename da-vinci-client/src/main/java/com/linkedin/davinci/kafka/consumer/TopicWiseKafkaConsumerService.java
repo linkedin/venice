@@ -44,7 +44,7 @@ public class TopicWiseKafkaConsumerService extends KafkaConsumerService {
   @Override
   public SharedKafkaConsumer createSharedKafkaConsumer(final KafkaConsumerWrapper kafkaConsumerWrapper, final long nonExistingTopicCleanupDelayMS,
       TopicExistenceChecker topicExistenceChecker) {
-    return new SharedKafkaConsumer(kafkaConsumerWrapper, this, nonExistingTopicCleanupDelayMS, topicExistenceChecker);
+    return new TopicWiseSharedKafkaConsumer(kafkaConsumerWrapper, this, nonExistingTopicCleanupDelayMS, topicExistenceChecker);
   }
 
   /**

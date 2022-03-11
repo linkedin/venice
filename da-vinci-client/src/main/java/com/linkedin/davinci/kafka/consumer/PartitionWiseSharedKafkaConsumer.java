@@ -29,6 +29,11 @@ public class PartitionWiseSharedKafkaConsumer extends SharedKafkaConsumer {
 
   private static final Logger LOGGER = LogManager.getLogger(PartitionWiseSharedKafkaConsumer.class);
 
+  private static final String exceptionMessageForImproperUsage(String methodName) {
+    return methodName + " should never be called on " + PartitionWiseSharedKafkaConsumer.class.getSimpleName() +
+        " but should rather be called on " + PartitionWiseKafkaConsumerService.VirtualSharedKafkaConsumer.class.getSimpleName();
+  }
+
   private final Map<TopicPartition, StoreIngestionTask> topicPartitionStoreIngestionTaskMap = new VeniceConcurrentHashMap<>();
 
   private final Set<TopicPartition> topicPartitionsWithoutCorrespondingIngestionTask = new HashSet<>();
@@ -97,7 +102,10 @@ public class PartitionWiseSharedKafkaConsumer extends SharedKafkaConsumer {
 
   @Override
   public void attach(String topic, StoreIngestionTask ingestionTask) {
-    throw new VeniceUnsupportedOperationException("Do not support topic level attach, only attach at topic partition level.");
+    throw new VeniceUnsupportedOperationException(
+        "Do not support topic level attach, only attach at topic partition level. This should only be called by "
+            + TopicWiseKafkaConsumerService.class.getSimpleName() + " which should never interact with any instance of "
+            + PartitionWiseSharedKafkaConsumer.class.getSimpleName());
   }
 
   @Override
@@ -126,19 +134,19 @@ public class PartitionWiseSharedKafkaConsumer extends SharedKafkaConsumer {
   @Override
   public synchronized void unSubscribe(String topic, int partition) {
     super.unSubscribe(topic, partition);
-    TopicPartition topicPartition = new TopicPartition(topic, partition);
     // Remove mapping.
+    TopicPartition topicPartition = new TopicPartition(topic, partition);
     topicPartitionStoreIngestionTaskMap.remove(topicPartition);
   }
 
   @Override
   public synchronized void assign(Collection<TopicPartition> topicPartitions) {
-    throw new VeniceUnsupportedOperationException("assign method for partition wise shared consumer should not be called.");
+    throw new VeniceUnsupportedOperationException(exceptionMessageForImproperUsage("assign"));
   }
 
   @Override
   public synchronized void batchUnsubscribe(Set<TopicPartition> topicPartitionSet) {
-    throw new VeniceUnsupportedOperationException("batchUnsubscribe method for partition wise shared consumer should not be called.");
+    throw new VeniceUnsupportedOperationException(exceptionMessageForImproperUsage("batchUnsubscribe"));
   }
 
   @Override
