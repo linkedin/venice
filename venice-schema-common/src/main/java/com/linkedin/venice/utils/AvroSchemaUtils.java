@@ -1,22 +1,13 @@
 package com.linkedin.venice.utils;
 
-import com.linkedin.venice.exceptions.InvalidVeniceSchemaException;
-import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.schema.SchemaEntry;
-
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.avroutil1.compatibility.AvroIncompatibleSchemaException;
 import com.linkedin.avroutil1.compatibility.AvroSchemaVerifier;
-
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
-
-import org.apache.avro.Schema;
-import org.apache.avro.io.ResolvingDecoder;
-import org.apache.avro.io.parsing.Symbol;
-import org.apache.commons.lang.StringUtils;
-
-import javax.annotation.Nullable;
+import com.linkedin.venice.exceptions.InvalidVeniceSchemaException;
+import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.schema.SchemaEntry;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -24,6 +15,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Collectors;
+import javax.annotation.Nullable;
+import org.apache.avro.Schema;
+import org.apache.avro.io.ResolvingDecoder;
+import org.apache.avro.io.parsing.Symbol;
+import org.apache.commons.lang.StringUtils;
 
 
 public class AvroSchemaUtils {
@@ -299,8 +295,11 @@ public class AvroSchemaUtils {
       if (f2 == null) {
         fields.add(AvroCompatibilityHelper.newField(f1).build());
       } else {
-        fields.add(AvroCompatibilityHelper.newField(f1)
+        fields.add(
+            AvroCompatibilityHelper.newField(f1)
                 .setSchema(generateSuperSetSchema(f1.schema(), f2.schema()))
+                // set default as AvroCompatibilityHelper builder might drop defaults if there is type mismatch
+                .setDefault(AvroCompatibilityHelper.getGenericDefaultValue(f1))
                 .setDoc(f1.doc() != null ? f1.doc() : f2.doc())
                 .build());
       }
@@ -308,7 +307,11 @@ public class AvroSchemaUtils {
 
     for (Schema.Field f2 : s2.getFields()) {
       if (s1.getField(f2.name()) == null) {
-        fields.add(AvroCompatibilityHelper.newField(f2).build());
+        fields.add(
+            AvroCompatibilityHelper.newField(f2)
+                // set default as AvroCompatibilityHelper builder might drop defaults if there is type mismatch
+                .setDefault(AvroCompatibilityHelper.getGenericDefaultValue(f2))
+                .build());
       }
     }
     return fields;
