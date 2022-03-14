@@ -531,21 +531,25 @@ public class VeniceParentHelixAdmin implements Admin {
       }
       executionIdValidatedClusters.add(clusterName);
     }
-    AdminCommandExecutionTracker adminCommandExecutionTracker = adminCommandExecutionTrackers.get(clusterName);
-    AdminCommandExecution execution =
-        adminCommandExecutionTracker.createExecution(AdminMessageType.valueOf(message).name());
-    message.executionId = execution.getExecutionId();
-    VeniceWriter<byte[], byte[], byte[]> veniceWriter = veniceWriterMap.get(clusterName);
-    byte[] serializedValue = adminOperationSerializer.serialize(message);
-    try {
-      Future<RecordMetadata> future = veniceWriter.put(emptyKeyByteArr, serializedValue, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
-      RecordMetadata meta = future.get();
+    try (AutoCloseableLock ignore = veniceHelixAdmin.getHelixVeniceClusterResources(clusterName)
+        .getClusterLockManager().createClusterReadLock()) {
+      // Obtain the cluster level read lock so during a graceful shutdown or leadership handover there will be no
+      // execution id gap (execution id is generated but the message is not sent).
+      AdminCommandExecutionTracker adminCommandExecutionTracker = adminCommandExecutionTrackers.get(clusterName);
+      AdminCommandExecution execution = adminCommandExecutionTracker.createExecution(AdminMessageType.valueOf(message).name());
+      message.executionId = execution.getExecutionId();
+      VeniceWriter<byte[], byte[], byte[]> veniceWriter = veniceWriterMap.get(clusterName);
+      byte[] serializedValue = adminOperationSerializer.serialize(message);
+      try {
+        Future<RecordMetadata> future = veniceWriter.put(emptyKeyByteArr, serializedValue, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+        RecordMetadata meta = future.get();
 
-      logger.info("Sent message: " + message + " to kafka, offset: " + meta.offset());
-      waitingMessageToBeConsumed(clusterName, storeName, message.executionId);
-      adminCommandExecutionTracker.startTrackingExecution(execution);
-    } catch (Exception e) {
-      throw new VeniceException("Got exception during sending message to Kafka -- " + e.getMessage(), e);
+        logger.info("Sent message: " + message + " to kafka, offset: " + meta.offset());
+        waitingMessageToBeConsumed(clusterName, storeName, message.executionId);
+        adminCommandExecutionTracker.startTrackingExecution(execution);
+      } catch (Exception e) {
+        throw new VeniceException("Got exception during sending message to Kafka -- " + e.getMessage(), e);
+      }
     }
   }
 
