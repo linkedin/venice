@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.avroutil1.compatibility.AvroIncompatibleSchemaException;
 import com.linkedin.avroutil1.compatibility.AvroSchemaVerifier;
+import com.linkedin.avroutil1.compatibility.FieldBuilder;
 import com.linkedin.venice.exceptions.InvalidVeniceSchemaException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.schema.SchemaEntry;
@@ -295,23 +296,25 @@ public class AvroSchemaUtils {
       if (f2 == null) {
         fields.add(AvroCompatibilityHelper.newField(f1).build());
       } else {
-        fields.add(
-            AvroCompatibilityHelper.newField(f1)
-                .setSchema(generateSuperSetSchema(f1.schema(), f2.schema()))
-                // set default as AvroCompatibilityHelper builder might drop defaults if there is type mismatch
-                .setDefault(AvroCompatibilityHelper.getGenericDefaultValue(f1))
-                .setDoc(f1.doc() != null ? f1.doc() : f2.doc())
-                .build());
+        FieldBuilder builder = AvroCompatibilityHelper.newField(f1)
+            .setSchema(generateSuperSetSchema(f1.schema(), f2.schema()))
+            .setDoc(f1.doc() != null ? f1.doc() : f2.doc());
+        if (f1.hasDefaultValue()) {
+          // set default as AvroCompatibilityHelper builder might drop defaults if there is type mismatch
+          builder.setDefault(AvroCompatibilityHelper.getGenericDefaultValue(f1));
+        }
+        fields.add(builder.build());
       }
     }
 
     for (Schema.Field f2 : s2.getFields()) {
       if (s1.getField(f2.name()) == null) {
-        fields.add(
-            AvroCompatibilityHelper.newField(f2)
-                // set default as AvroCompatibilityHelper builder might drop defaults if there is type mismatch
-                .setDefault(AvroCompatibilityHelper.getGenericDefaultValue(f2))
-                .build());
+        FieldBuilder builder =  AvroCompatibilityHelper.newField(f2);
+        if (f2.hasDefaultValue()) {
+          // set default as AvroCompatibilityHelper builder might drop defaults if there is type mismatch
+          builder.setDefault(AvroCompatibilityHelper.getGenericDefaultValue(f2));
+        }
+        fields.add(builder.build());
       }
     }
     return fields;
