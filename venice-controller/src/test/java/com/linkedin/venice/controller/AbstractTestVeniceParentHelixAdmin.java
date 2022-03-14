@@ -65,6 +65,7 @@ public class AbstractTestVeniceParentHelixAdmin {
   ParentHelixOfflinePushAccessor accessor;
   HelixReadOnlyStoreConfigRepository readOnlyStoreConfigRepository;
   Map<String, ControllerClient> controllerClients = new HashMap<>();
+  ClusterLockManager clusterLockManager;
 
   public void setupInternalMocks()  {
     topicManager = mock(TopicManager.class);
@@ -115,7 +116,7 @@ public class AbstractTestVeniceParentHelixAdmin {
     ZkRoutersClusterManager manager = mock(ZkRoutersClusterManager.class);
     doReturn(manager).when(resources).getRoutersClusterManager();
     doReturn(10).when(manager).getLiveRoutersCount();
-    ClusterLockManager clusterLockManager = mock(ClusterLockManager.class);
+    clusterLockManager = mock(ClusterLockManager.class);
     doReturn(clusterLockManager).when(resources).getClusterLockManager();
 
     adminStats = mock(VeniceAdminStats.class);
@@ -176,7 +177,8 @@ public class AbstractTestVeniceParentHelixAdmin {
   HelixVeniceClusterResources mockResources(VeniceControllerConfig config, String clusterName) {
     HelixVeniceClusterResources resources = mock(HelixVeniceClusterResources.class);
     doReturn(config).when(resources).getConfig();
-    doReturn(resources).when(internalAdmin).getHelixVeniceClusterResources(any());
+    doReturn(resources).when(internalAdmin).getHelixVeniceClusterResources(clusterName);
+    doReturn(clusterLockManager).when(resources).getClusterLockManager();
     return resources;
   }
 

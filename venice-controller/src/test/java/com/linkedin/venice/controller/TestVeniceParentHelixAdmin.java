@@ -56,6 +56,7 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import com.linkedin.venice.utils.locks.ClusterLockManager;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -1992,5 +1993,22 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     } catch (Throwable e) {
       Assert.fail("SetVersion command on parent controller should fail with VeniceUnsupportedOperationException");
     }
+  }
+
+  @Test
+  public void testSendAdminMessageAcquiresClusterReadLock() {
+    doReturn(CompletableFuture.completedFuture(new RecordMetadata(topicPartition, 0, 1, -1, -1L, -1, -1)))
+        .when(veniceWriter).put(any(), any(), anyInt());
+    when(zkClient.readData(zkMetadataNodePath, null))
+        .thenReturn(null)
+        .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, -1, 1));
+    parentAdmin.initVeniceControllerClusterResource(clusterName);
+    String storeName = "test-store";
+    String owner = "test-owner";
+    String keySchemaStr = "\"string\"";
+    String valueSchemaStr = "\"string\"";
+    parentAdmin.createStore(clusterName, storeName, owner, keySchemaStr, valueSchemaStr);
+    doReturn(clusterLockManager).when(resources).getClusterLockManager();
+    verify(clusterLockManager).createClusterReadLock();
   }
 }
