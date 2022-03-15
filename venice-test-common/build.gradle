@@ -72,7 +72,6 @@ dependencies {
   implementation libraries.rocksdbjni
   implementation libraries.routerApi
   implementation libraries.samzaApi
-  implementation libraries.scalaLogging
   implementation libraries.spark
   implementation libraries.testng
 
