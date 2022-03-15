@@ -3912,6 +3912,23 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         return schemaRepo.getReplicationMetadataVersionId(storeName, replicationMetadataSchemaStr);
     }
 
+    protected boolean checkIfValueSchemaAlreadyHasRmdSchema(
+        String clusterName,
+        String storeName,
+        final int valueSchemaID,
+        final int replicationMetadataVersionId
+    ) {
+      checkControllerLeadershipFor(clusterName);
+      Collection<ReplicationMetadataSchemaEntry> schemaEntries =
+          getHelixVeniceClusterResources(clusterName).getSchemaRepository().getReplicationMetadataSchemas(storeName);
+      for (ReplicationMetadataSchemaEntry rmdSchemaEntry : schemaEntries) {
+        if (rmdSchemaEntry.getValueSchemaId() == valueSchemaID && rmdSchemaEntry.getId() == replicationMetadataVersionId) {
+          return true;
+        }
+      }
+      return false;
+    }
+
     protected boolean checkIfMetadataSchemaAlreadyPresent(String clusterName, String storeName, int valueSchemaId,
         ReplicationMetadataSchemaEntry replicationMetadataSchemaEntry) {
         checkControllerLeadershipFor(clusterName);

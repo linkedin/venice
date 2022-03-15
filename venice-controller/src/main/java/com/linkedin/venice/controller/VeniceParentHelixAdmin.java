@@ -2183,6 +2183,14 @@ public class VeniceParentHelixAdmin implements Admin {
 
   private void updateReplicationMetadataSchema(String clusterName, String storeName, Schema valueSchema, int valueSchemaId) {
     int replicationMetadataVersionId = getMultiClusterConfigs().getCommonConfig().getReplicationMetadataVersionId();
+    final boolean valueSchemaAlreadyHasRmdSchema = getVeniceHelixAdmin()
+        .checkIfValueSchemaAlreadyHasRmdSchema(clusterName, storeName, valueSchemaId, replicationMetadataVersionId);
+    if (valueSchemaAlreadyHasRmdSchema) {
+      logger.info("Store {} in cluster {} already has a replication metadata schema for its value schema with "
+          + "ID {} and replication metadata version ID {}. So skip updating this value schema's RMD schema.",
+          storeName, clusterName, valueSchemaId, replicationMetadataVersionId);
+      return;
+    }
     String replicationMetadataSchemaStr = ReplicationMetadataSchemaGenerator.generateMetadataSchema(valueSchema, replicationMetadataVersionId).toString();
     addReplicationMetadataSchema(clusterName, storeName, valueSchemaId, replicationMetadataVersionId, replicationMetadataSchemaStr);
   }
