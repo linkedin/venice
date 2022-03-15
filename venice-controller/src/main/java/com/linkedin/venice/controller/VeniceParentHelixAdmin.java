@@ -3246,8 +3246,14 @@ public class VeniceParentHelixAdmin implements Admin {
             false,
             false
         );
-        if (audit.getStaleRegions().size() > 0 && !currentPushJobTopic.isPresent())
-          retMap.put(store.getKey(), audit);
+        if (audit.getStaleRegions().size() > 0 && !currentPushJobTopic.isPresent()) {
+          if (regionsFilter.isPresent() && (audit.getHealthyRegions().containsKey(regionsFilter.get()) || audit.getStaleRegions().containsKey(regionsFilter.get()))) {
+            retMap.put(store.getKey(), audit);
+          }
+          else if (!regionsFilter.isPresent()) {
+            retMap.put(store.getKey(), audit);
+          }
+        }
       }
     } catch (Exception e) {
       throw new VeniceException("Something went wrong trying to fetch stale stores.", e);
