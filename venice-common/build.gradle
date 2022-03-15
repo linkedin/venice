@@ -41,7 +41,6 @@ dependencies {
     exclude group: 'com.linkedin.container', module: 'container-eventbus-factory' // Keepin' it clean.
   }
 
-  implementation libraries.scalaLogging
   implementation libraries.tehuti
   implementation libraries.zkclient // It's necessary to pull in the most recent version of zkclient explicitly, otherwise Helix won't have it...
   implementation libraries.zookeeper // TODO: Get rid of ZK dependency in venice-common

@@ -89,7 +89,6 @@ ext.libraries = [
     ddsStorageCommonBase: 'com.linkedin.dds-storage-core:dds-storage-common-base:' + ddsStorageCoreVersion,
     oss: 'org.sonatype.oss:oss-parent:7',
     asyncHttpClient: 'org.apache.httpcomponents:httpasyncclient:4.1.2',
-    scalaLogging: 'com.typesafe.scala-logging:scala-logging_2.11:3.9.0',
     zookeeper: 'org.apache.zookeeper:zookeeper:3.4.6',
     zstd: 'com.github.luben:zstd-jni:1.4.4-7',
 
@@ -201,6 +200,7 @@ subprojects {
       // These dependencies are transitively used at runtime, so we cannot exclude them further than compileOnly
       exclude group: 'com.google.guava', module: 'guava' // Used by Brooklin at runtime
       exclude group: 'log4j', module: 'log4j'
+      exclude group: 'com.typesafe.scala-logging'
     }
     avroCompiler.extendsFrom compileOnly
   }
