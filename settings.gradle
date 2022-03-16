@@ -9,9 +9,6 @@ pluginManagement {
       }
     }
     mavenCentral() // when build fails, move this to first and then build, then move it back and build should work
-    maven {
-      url 'https://dl.bintray.com/linkedin/maven/'
-    }
   }
 }
 include 'venice-common'

@@ -71,7 +71,7 @@ ext.libraries = [
     commonsCodec: 'commons-codec:commons-codec:1.4',
     commonsIo: 'commons-io:commons-io:2.4',
     helix: 'org.apache.helix:helix-core:1.0.1.24',
-    kafka: internalKafkaGroup + ':kafka_2.11:' + internalKafkaVersion,
+    kafka: internalKafkaGroup + ':kafka_2.12:' + internalKafkaVersion,
     kafkaClients: internalKafkaGroup + ':kafka-clients:' + internalKafkaVersion,
     kafkaClientsTest: internalKafkaGroup + ':kafka-clients:' + internalKafkaVersion + ':test',
     mockito: 'org.mockito:mockito-core:3.3.3',
@@ -178,9 +178,6 @@ subprojects {
       }
     }
     mavenCentral() // when build fails, move this to first and then build, then move it back and build should work
-    maven {
-      url 'https://dl.bintray.com/linkedin/maven/'
-    }
   }
 
   configurations {
@@ -194,6 +191,7 @@ subprojects {
       exclude group: 'com.linkedin.linkedin-kafka-clients'
       exclude group: 'com.linkedin.util', module: 'util-sql'
       exclude module: 'kafka_2.10' // This ends up getting pulled in by a few dependencies, unfortunately :/ ...
+      exclude module: 'kafka_2.11'
       // exclude group: 'org.eclipse.jetty'
     }
     compileOnly {
