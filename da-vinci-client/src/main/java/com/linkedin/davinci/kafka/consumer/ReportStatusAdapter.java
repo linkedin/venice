@@ -85,7 +85,7 @@ class ReportStatusAdapter {
 
   public void reportEndOfIncrementalPushReceived(PartitionConsumptionState partitionConsumptionState, String version) {
     report(partitionConsumptionState, SubPartitionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED, Optional.of(version),
-        () -> notificationDispatcher.reportEndOfIncrementalPushReceived(partitionConsumptionState, version));
+        () -> notificationDispatcher.reportEndOfIncrementalPushRecived(partitionConsumptionState, version));
   }
 
   public void reportProgress(PartitionConsumptionState partitionConsumptionState) {

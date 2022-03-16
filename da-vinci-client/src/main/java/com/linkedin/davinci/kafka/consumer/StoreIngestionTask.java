@@ -2469,14 +2469,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     reportStatusAdapter.reportStartOfIncrementalPushReceived(partitionConsumptionState, startVersion.toString());
   }
 
-  protected void processEndOfIncrementalPush(KafkaMessageEnvelope kafkaMessageEnvelope, ControlMessage endOfIncrementalPush,
+  protected void processEndOfIncrementalPush(ControlMessage endOfIncrementalPush,
       PartitionConsumptionState partitionConsumptionState) {
     // TODO: it is possible that we could turn incremental store to be read-only when incremental push is done
     CharSequence endVersion = ((EndOfIncrementalPush) endOfIncrementalPush.controlMessageUnion).version;
     // Reset incremental push version
     partitionConsumptionState.setIncrementalPush(null);
-    partitionConsumptionState.setEndOfIncrementalPushTimestamp(endVersion.toString(),
-        kafkaMessageEnvelope.producerMetadata.messageTimestamp);
     reportStatusAdapter.reportEndOfIncrementalPushReceived(partitionConsumptionState, endVersion.toString());
   }
 
@@ -2523,7 +2521,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         processStartOfIncrementalPush(controlMessage, partition, offset, partitionConsumptionState);
         break;
       case END_OF_INCREMENTAL_PUSH:
-        processEndOfIncrementalPush(kafkaMessageEnvelope, controlMessage, partitionConsumptionState);
+        processEndOfIncrementalPush(controlMessage, partitionConsumptionState);
         break;
       case TOPIC_SWITCH:
         processTopicSwitch(controlMessage, partition, offset, partitionConsumptionState);

@@ -2,7 +2,6 @@ package com.linkedin.venice.pushstatushelper;
 
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.pushstatus.PushStatusValueWriteOpRecord;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.utils.SystemTime;
@@ -25,7 +24,7 @@ public class PushStatusStoreVeniceWriterCache implements AutoCloseable {
   // Local cache of VeniceWriters.
   private final Map<String, VeniceWriter> veniceWriters = new VeniceConcurrentHashMap<>();
   // avro-schemas does not support union type, using a static schemaStr to construct VeniceWriter
-  private final static String WRITE_COMPUTE_SCHEMA = "[" + PushStatusValueWriteOpRecord.SCHEMA$.toString() + "]";
+  private final static String WRITE_COMPUTE_SCHEMA = "[{\"type\":\"record\",\"name\":\"PushStatusValueWriteOpRecord\",\"namespace\":\"com.linkedin.venice.pushstatus\",\"fields\":[{\"name\":\"instances\",\"type\":[{\"type\":\"record\",\"name\":\"NoOp\",\"fields\":[]},{\"type\":\"record\",\"name\":\"instancesMapOps\",\"fields\":[{\"name\":\"mapUnion\",\"type\":{\"type\":\"map\",\"values\":\"int\"},\"default\":{}},{\"name\":\"mapDiff\",\"type\":{\"type\":\"array\",\"items\":\"string\"},\"default\":[]}]},{\"type\":\"map\",\"values\":\"int\"}],\"default\":{}},{\"name\":\"reportTimestamp\",\"type\":[\"NoOp\",\"null\",\"long\"],\"doc\":\"heartbeat.\",\"default\":{}}]},{\"type\":\"record\",\"name\":\"DelOp\",\"namespace\":\"com.linkedin.venice.pushstatus\",\"fields\":[]}]";
 
   // writerFactory Used for instantiating VeniceWriter
   public PushStatusStoreVeniceWriterCache(VeniceWriterFactory writerFactory) {

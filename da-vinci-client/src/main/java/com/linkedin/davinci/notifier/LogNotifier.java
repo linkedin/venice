@@ -56,9 +56,8 @@ public class LogNotifier implements VeniceNotifier {
   }
 
   @Override
-  public void endOfIncrementalPushReceived(String kafkaTopic, int partitionId, long offset, long highWatermark, String message) {
-    logger.info("Received END_OF_INCREMENTAL_PUSH for store:{} partitionId:{} offset:{} highWatermark:{} message:{}",
-        kafkaTopic, partitionId, offset, highWatermark, message);
+  public void endOfIncrementalPushReceived(String kafkaTopic, int partitionId, long offset, String message) {
+    logger.info(logMessage("Received END_OF_INCREMENTAL_PUSH", kafkaTopic, partitionId, offset, message));
   }
 
   @Override

@@ -47,11 +47,6 @@
     {
       "name": "leaderFollowerState",
       "type": "int"
-    },
-    {
-      "name": "highWatermark",
-      "doc": "Producer timestamp obtained from kafka envelope of EOIP control message",
-      "type": "long"
     }
   ]
 }

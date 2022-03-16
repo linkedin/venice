@@ -69,7 +69,6 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import static com.linkedin.venice.ConfigKeys.*;
-import static com.linkedin.venice.common.PushStatusStoreUtils.SERVER_INCREMENTAL_PUSH_PREFIX;
 import static java.lang.Thread.*;
 
 
@@ -426,15 +425,6 @@ public class DaVinciBackend implements Closeable {
     }
   }
 
-  protected void reportEndOfIncrementalPushStatus(String kafkaTopic, int subPartition, long highWatermark, Optional<String> incrementalPushVersion) {
-    VersionBackend versionBackend = versionByTopicMap.get(kafkaTopic);
-    if (versionBackend != null && versionBackend.isReportingPushStatus()) {
-      Version version = versionBackend.getVersion();
-      pushStatusStoreWriter.writeHighWatermark(version.getStoreName(), version.getNumber(), subPartition,
-          highWatermark, incrementalPushVersion, Optional.of(SERVER_INCREMENTAL_PUSH_PREFIX));
-    }
-  }
-
   protected void deleteStore(String storeName) {
     StoreBackend storeBackend = storeByNameMap.remove(storeName);
     if (storeBackend != null) {
@@ -571,12 +561,12 @@ public class DaVinciBackend implements Closeable {
     }
 
     @Override
-    public void endOfIncrementalPushReceived(String kafkaTopic, int partitionId, long offset, long highWatermark, String incrementalPushVersion) {
+    public void endOfIncrementalPushReceived(String kafkaTopic, int partitionId, long offset, String incrementalPushVersion) {
       ingestionReportExecutor.submit(() -> {
         VersionBackend versionBackend = versionByTopicMap.get(kafkaTopic);
         if (versionBackend != null) {
           versionBackend.tryStopHeartbeat();
-          reportEndOfIncrementalPushStatus(kafkaTopic, partitionId, highWatermark, Optional.of(incrementalPushVersion));
+          reportPushStatus(kafkaTopic, partitionId, ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED, Optional.of(incrementalPushVersion));
         }
       });
     }

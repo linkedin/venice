@@ -66,9 +66,9 @@ public class PushMonitorNotifier implements VeniceNotifier {
   }
 
   @Override
-  public void endOfIncrementalPushReceived(String topic, int partitionId, long offset, long highWatermark, String message) {
+  public void endOfIncrementalPushReceived(String topic, int partitionId, long offset, String message) {
     accessor.updateReplicaStatus(topic, partitionId, instanceId, ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED, offset, message);
-    pushStatusStoreAccessor.updateReplicaHighWatermarkStatus(topic, partitionId, instanceId, highWatermark, message);
+    pushStatusStoreAccessor.updateReplicaStatus(topic, partitionId, instanceId, ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED, offset, message);
   }
 
   @Override

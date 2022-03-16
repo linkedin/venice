@@ -45,10 +45,6 @@ public interface OfflinePushAccessor {
    */
   void updateReplicaStatus(String kafkaTopic, int partitionId, String instanceId, ExecutionStatus status,
       long progress, String message);
-
-  default void updateReplicaHighWatermarkStatus(String kafkaTopic, int partitionId, String instanceId,
-      long highWatermark, String message) {}
-
   /**
    * Update one particular replica status only by given topic, partition and instanceId to the persistent storage.
    */
