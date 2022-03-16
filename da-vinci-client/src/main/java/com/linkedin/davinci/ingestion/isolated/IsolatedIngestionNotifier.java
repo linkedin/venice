@@ -58,9 +58,8 @@ public class IsolatedIngestionNotifier implements VeniceNotifier {
   }
 
   @Override
-  public void endOfIncrementalPushReceived(String kafkaTopic, int partitionId, long offset, long highWatermark, String incrementalPushVersion) {
-    IngestionTaskReport report = createIngestionTaskReport(IngestionReportType.END_OF_INCREMENTAL_PUSH_RECEIVED,
-        kafkaTopic, partitionId, offset, highWatermark, incrementalPushVersion);
+  public void endOfIncrementalPushReceived(String kafkaTopic, int partitionId, long offset, String incrementalPushVersion) {
+    IngestionTaskReport report = createIngestionTaskReport(IngestionReportType.END_OF_INCREMENTAL_PUSH_RECEIVED, kafkaTopic, partitionId, offset, incrementalPushVersion);
     isolatedIngestionServer.reportIngestionStatus(report);
   }
 

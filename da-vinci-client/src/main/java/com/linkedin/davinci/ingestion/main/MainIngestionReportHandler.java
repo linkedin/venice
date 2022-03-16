@@ -85,8 +85,7 @@ public class MainIngestionReportHandler extends SimpleChannelInboundHandler<Full
         notifierHelper(topicName, notifier -> notifier.startOfIncrementalPushReceived(topicName, partitionId, offset));
         break;
       case END_OF_INCREMENTAL_PUSH_RECEIVED:
-        notifierHelper(topicName, notifier -> notifier.endOfIncrementalPushReceived(topicName, partitionId, offset,
-            report.highWatermark, report.message.toString()));
+        notifierHelper(topicName, notifier -> notifier.endOfIncrementalPushReceived(topicName, partitionId, offset));
         break;
       case TOPIC_SWITCH_RECEIVED:
         notifierHelper(topicName, notifier -> notifier.topicSwitchReceived(topicName, partitionId, offset));

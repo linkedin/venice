@@ -341,13 +341,6 @@ public class IsolatedIngestionUtils {
     return report;
   }
 
-  public static IngestionTaskReport createIngestionTaskReport(IngestionReportType ingestionReportType, String kafkaTopic,
-      int partitionId, long offset, long highWatermark, String message) {
-    IngestionTaskReport report = createIngestionTaskReport(ingestionReportType, kafkaTopic, partitionId, offset, message);
-    report.highWatermark = highWatermark;
-    return report;
-  }
-
   public static IngestionTaskReport createIngestionTaskReport(String kafkaTopic, int partitionId) {
     IngestionTaskReport report = new IngestionTaskReport();
     report.isPositive = true;

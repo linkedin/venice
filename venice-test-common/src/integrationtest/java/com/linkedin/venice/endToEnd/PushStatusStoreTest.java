@@ -41,7 +41,6 @@ import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 import static com.linkedin.venice.ConfigKeys.*;
-import static com.linkedin.venice.common.PushStatusStoreUtils.*;
 import static com.linkedin.venice.hadoop.VenicePushJob.*;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.*;
 import static com.linkedin.venice.meta.IngestionMode.*;
@@ -51,7 +50,6 @@ import static org.testng.Assert.*;
 
 public class PushStatusStoreTest {
   private static final int TEST_TIMEOUT = 60_000; // ms
-  private static final int PARTITION_COUNT = 2;
 
   private VeniceClusterWrapper cluster;
   private ControllerClient controllerClient;
@@ -104,7 +102,7 @@ public class PushStatusStoreTest {
     TestUtils.assertCommand(controllerClient.updateStore(storeName, new UpdateStoreQueryParams()
         .setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
         .setLeaderFollowerModel(true)
-        .setPartitionCount(PARTITION_COUNT)
+        .setPartitionCount(2)
         .setAmplificationFactor(1)
         .setIncrementalPushEnabled(true)));
     String daVinciPushStatusSystemStoreName = VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(storeName);
@@ -186,48 +184,10 @@ public class PushStatusStoreTest {
         logger.info("**TIME** H2V" + expectedVersionNumber + " takes " + (System.currentTimeMillis() - h2vStart));
         assertEquals(daVinciClient.get(1).get().toString(), "name 1");
         Optional<String> incPushVersion = job.getIncrementalPushVersion();
-
-        for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
-          Map<CharSequence, Integer> statuses = reader.getPartitionStatus(storeName, 1, partitionId,
-              incPushVersion, Optional.of(SERVER_INCREMENTAL_PUSH_PREFIX));
-          assertNotNull(statuses);
-          assertNotEquals(statuses.size(), 0);
-          for (Integer status : statuses.values()) {
-            assertTrue(status == ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED.getValue()
-                || status == ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED.getValue());
-          }
-        }
-      }
-    }
-  }
-
-  @Test(timeOut = TEST_TIMEOUT)
-  public void testIncrementalPushHighWatermarksStoredInPushStatusStore() throws Exception {
-    VeniceProperties backendConfig = getBackendConfigBuilder().build();
-    Properties h2vProperties = getH2VProperties();
-    runH2V(h2vProperties, 1, cluster);
-    try (DaVinciClient daVinciClient = ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster, new DaVinciConfig(), backendConfig)) {
-      daVinciClient.subscribeAll().get();
-      h2vProperties = getH2VProperties();
-      h2vProperties.setProperty(INCREMENTAL_PUSH, "true");
-
-      int expectedVersionNumber = 1;
-      long h2vStart = System.currentTimeMillis();
-      String jobName = Utils.getUniqueString("batch-job-" + expectedVersionNumber);
-
-      try (VenicePushJob job = new VenicePushJob(jobName, h2vProperties)) {
-        job.run();
-        String storeName = (String) h2vProperties.get(VenicePushJob.VENICE_STORE_NAME_PROP);
-        cluster.waitVersion(storeName, expectedVersionNumber);
-        logger.info("**TIME** H2V" + expectedVersionNumber + " takes " + (System.currentTimeMillis() - h2vStart));
-        assertEquals(daVinciClient.get(1).get().toString(), "name 1");
-        Optional<String> incPushVersion = job.getIncrementalPushVersion();
-
-        for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
-          Map<CharSequence, Long> watermarks = reader.getPartitionHighWatermarks(storeName, 1, partitionId,
-              incPushVersion, Optional.of(SERVER_INCREMENTAL_PUSH_PREFIX));
-          assertNotNull(watermarks);
-          assertNotEquals(watermarks.size(), 0);
+        Map<CharSequence, Integer> result = reader.getPartitionStatus(storeName, 1, 0, incPushVersion, Optional.of("SERVER_SIDE_INCREMENTAL_PUSH_STATUS"));
+        assertNotEquals(result.size(), 0);
+        for (Integer status : result.values()) {
+          assertTrue(status == ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED.getValue() || status == ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED.getValue());
         }
       }
     }

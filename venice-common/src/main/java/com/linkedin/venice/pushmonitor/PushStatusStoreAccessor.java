@@ -1,5 +1,6 @@
 package com.linkedin.venice.pushmonitor;
 
+import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreWriter;
@@ -12,8 +13,6 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_DERIVED_SCHEMA_ID;
-import static com.linkedin.venice.common.PushStatusStoreUtils.SERVER_INCREMENTAL_PUSH_PREFIX;
-
 
 /**
  * An implementation of {@link OfflinePushAccessor} that uses PushStatus system store to
@@ -21,7 +20,9 @@ import static com.linkedin.venice.common.PushStatusStoreUtils.SERVER_INCREMENTAL
  */
 public class PushStatusStoreAccessor implements OfflinePushAccessor {
 
-  private static final Logger logger = LogManager.getLogger(PushStatusStoreAccessor.class);
+  private static final Logger log = LogManager.getLogger(PushStatusStoreAccessor.class);
+
+  private static final String INCREMENTAL_PUSH_PREFIX = "SERVER_SIDE_INCREMENTAL_PUSH_STATUS";
   private final PushStatusStoreWriter storeWriter;
   private final ReadOnlyStoreRepository storeRepository;
 
@@ -82,28 +83,11 @@ public class PushStatusStoreAccessor implements OfflinePushAccessor {
       // report status only if Da-Vinci Push Status Store exist
       if (storeRepository.getStoreOrThrow(storeName).isDaVinciPushStatusStoreEnabled()) {
         storeWriter.writePushStatus(storeName, Version.parseVersionFromKafkaTopicName(kafkaTopic), partitionId,
-            status, Optional.of(message), Optional.of(SERVER_INCREMENTAL_PUSH_PREFIX));
+            status, Optional.of(message), Optional.of(INCREMENTAL_PUSH_PREFIX));
       }
     } catch (Exception e) {
-      logger.error("Failed to report server incremental push status. KafkaTopic:{} PartitionId:{} Status:{}",
+      log.error("Failed to report server incremental push status. KafkaTopic:{} PartitionId:{} Status:{}",
           kafkaTopic, partitionId, status.name(), e);
-    }
-  }
-
-  @Override
-  public void updateReplicaHighWatermarkStatus(String kafkaTopic, int partitionId, String instanceId,
-      long highWatermark, String message) {
-    String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopic);
-    try {
-      // report status only if Da-Vinci Push Status Store exist
-      if (!storeRepository.getStoreOrThrow(storeName).isDaVinciPushStatusStoreEnabled()) {
-        return;
-      }
-      storeWriter.writeHighWatermark(storeName, Version.parseVersionFromKafkaTopicName(kafkaTopic), partitionId,
-          highWatermark, Optional.of(message), Optional.of(SERVER_INCREMENTAL_PUSH_PREFIX));
-    } catch (Exception e) {
-      logger.error("Failed to report EOIP high watermark status. KafkaTopic:{} PartitionId:{} ",
-          kafkaTopic, partitionId, e);
     }
   }
 

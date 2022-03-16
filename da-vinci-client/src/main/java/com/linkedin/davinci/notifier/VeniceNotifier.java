@@ -87,7 +87,11 @@ public interface VeniceNotifier extends Closeable {
   /**
    * Consumption is completed for an incremental push
    */
-  default void endOfIncrementalPushReceived(String kafkaTopic, int partitionId, long offset, long highWatermark, String message) {}
+  default void endOfIncrementalPushReceived(String kafkaTopic, int partitionId, long offset) {
+    endOfIncrementalPushReceived(kafkaTopic, partitionId, offset, "");
+  }
+
+  default void endOfIncrementalPushReceived(String kafkaTopic, int partitionId, long offset, String message) {}
 
   default void catchUpBaseTopicOffsetLag(String kafkaTopic, int partitionId) {}
 

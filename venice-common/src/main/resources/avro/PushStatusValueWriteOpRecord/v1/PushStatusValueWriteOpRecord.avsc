@@ -49,39 +49,6 @@
       ],
       "doc": "heartbeat.",
       "default": {}
-    },
-    {
-      "name": "highWatermarks",
-      "type": [
-        "NoOp",
-        {
-          "type": "record",
-          "name": "HighWatermarksMapOps",
-          "fields": [
-            {
-              "name": "mapUnion",
-              "type": {
-                "type": "map",
-                "values": "long"
-              },
-              "default": {}
-            },
-            {
-              "name": "mapDiff",
-              "type": {
-                "type": "array",
-                "items": "string"
-              },
-              "default": []
-            }
-          ]
-        },
-        {
-          "type": "map",
-          "values": "long"
-        }
-      ],
-      "default": {}
     }
   ]
 }
