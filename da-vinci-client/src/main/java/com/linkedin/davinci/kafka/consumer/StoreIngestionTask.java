@@ -489,7 +489,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         incrementalPushPolicy,
         partitionConsumptionStateMap
     );
-    this.amplificationAdapter = new AmplificationAdapter(amplificationFactor);
+    this.amplificationAdapter = new AmplificationAdapter(
+        amplificationFactor,
+        reportStatusAdapter,
+        consumerActionsQueue,
+        partitionConsumptionStateMap,
+        this::nextSeqNum
+    );
     this.cacheBackend = cacheBackend;
     this.localKafkaServer = this.kafkaProps.getProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG);
     this.isDaVinciClient = builder.isDaVinciClient();
@@ -501,7 +507,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     if (serverConfig.isHybridQuotaEnabled() || storeRepository.getStoreOrThrow(storeName).isHybridStoreDiskQuotaEnabled()) {
       buildHybridQuotaEnforcer();
     }
-
   }
 
   public boolean isFutureVersion() {
@@ -563,7 +568,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     amplificationAdapter.subscribePartition(topic, partition, leaderState);
   }
 
-  public synchronized void subscribePartition(String topic, int partition) {
+  // Visible for testing
+  synchronized void subscribePartition(String topic, int partition) {
     subscribePartition(topic, partition, Optional.empty());
   }
 
@@ -3551,100 +3557,35 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     throw new VeniceException("This API is for L/F model only!");
   }
 
-  public class AmplificationAdapter {
-    private final int amplificationFactor;
-    public AmplificationAdapter(int amplificationFactor) {
-      this.amplificationFactor = amplificationFactor;
-    }
+  /**
+   * This method fetches/calculates latest leader persisted offset and last offset in RT topic. The method relies on
+   * {@link StoreIngestionTask#getLatestPersistedUpstreamOffsetForHybridOffsetLagMeasurement} to fetch latest leader
+   * persisted offset for different data replication policy. The return value is a pair of [latestPersistedLeaderOffset, lastOffsetInRealTimeTopic]
+   */
+  protected long getLatestLeaderPersistedOffsetAndHybridTopicOffset(String sourceRealTimeTopicKafkaURL, String leaderTopic, PartitionConsumptionState pcs, boolean shouldLog) {
+    return getLatestLeaderOffsetAndHybridTopicOffset(sourceRealTimeTopicKafkaURL, leaderTopic, pcs,
+        (partitionConsumptionState, sourceKafkaUrl)
+            -> getLatestPersistedUpstreamOffsetForHybridOffsetLagMeasurement(partitionConsumptionState, sourceKafkaUrl), shouldLog);
+  }
 
-    public void subscribePartition(String topic, int partition, Optional<LeaderFollowerStateType> leaderState) {
-      reportStatusAdapter.preparePartitionStatusCleanup(partition);
-      /*
-       * RT topic partition count : VT topic partition count is 1 : amp_factor. For every user partition, there should
-       * be only one sub-partition to act as leader to process and produce records from real-time topic partition to all
-       * sub-partitions of the same user partition of the version topic.
-       */
-      int leaderSubPartition = PartitionUtils.getLeaderSubPartition(partition, amplificationFactor);
-      for (int subPartition : PartitionUtils.getSubPartitions(partition, amplificationFactor)) {
-        if (leaderSubPartition == subPartition) {
-          consumerActionsQueue.add(new ConsumerAction(ConsumerActionType.SUBSCRIBE, topic, subPartition, nextSeqNum(), leaderState));
-        } else {
-          consumerActionsQueue.add(new ConsumerAction(ConsumerActionType.SUBSCRIBE, topic, subPartition, nextSeqNum(), Optional.empty()));
-        }
-      }
-    }
+  /**
+   * This method fetches/calculates latest leader consumed offset and last offset in RT topic. The method relies on
+   * {@link StoreIngestionTask#getLatestConsumedUpstreamOffsetForHybridOffsetLagMeasurement} to fetch latest leader
+   * consumed offset for different data replication policy. The return value is a pair of [latestConsumedLeaderOffset, lastOffsetInRealTimeTopic]
+   */
+  protected long getLatestLeaderConsumedOffsetAndHybridTopicOffset(String sourceRealTimeTopicKafkaURL, String leaderTopic, PartitionConsumptionState pcs, boolean shouldLog) {
+    return getLatestLeaderOffsetAndHybridTopicOffset(sourceRealTimeTopicKafkaURL, leaderTopic, pcs,
+        (partitionConsumptionState, sourceKafkaUrl)
+            -> getLatestConsumedUpstreamOffsetForHybridOffsetLagMeasurement(partitionConsumptionState, sourceKafkaUrl), shouldLog);
+  }
 
-    public void unSubscribePartition(String topic, int partition) {
-      for (int subPartition : PartitionUtils.getSubPartitions(partition, amplificationFactor)) {
-        consumerActionsQueue.add(new ConsumerAction(ConsumerActionType.UNSUBSCRIBE, topic, subPartition, nextSeqNum()));
-      }
-    }
-
-    public void resetPartitionConsumptionOffset(String topic, int partition) {
-      for (int subPartition : PartitionUtils.getSubPartitions(partition, amplificationFactor)) {
-        consumerActionsQueue.add(new ConsumerAction(ConsumerActionType.RESET_OFFSET, topic, subPartition, nextSeqNum()));
-      }
-    }
-
-    public void promoteToLeader(String topic, int partition, LeaderFollowerPartitionStateModel.LeaderSessionIdChecker checker) {
-      for (int subPartition : PartitionUtils.getSubPartitions(partition, amplificationFactor)) {
-        consumerActionsQueue.add(new ConsumerAction(ConsumerActionType.STANDBY_TO_LEADER, topic, subPartition, nextSeqNum(), checker));
-      }
-    }
-
-    public void demoteToStandby(String topic, int partition, LeaderFollowerPartitionStateModel.LeaderSessionIdChecker checker) {
-      for (int subPartition : PartitionUtils.getSubPartitions(partition, amplificationFactor)) {
-        consumerActionsQueue.add(new ConsumerAction(ConsumerActionType.LEADER_TO_STANDBY, topic, subPartition, nextSeqNum(), checker));
-      }
-    }
-
-    public LeaderFollowerStateType getLeaderState(int partition) {
-      int leaderSubPartition = PartitionUtils.getLeaderSubPartition(partition, amplificationFactor);
-      if (partitionConsumptionStateMap.containsKey(leaderSubPartition)) {
-        return partitionConsumptionStateMap.get(leaderSubPartition).getLeaderFollowerState();
-      }
-      // By default L/F state is STANDBY
-      return LeaderFollowerStateType.STANDBY;
-    }
-
-    public boolean isPartitionConsuming(int partition) {
-      for (int subPartition : PartitionUtils.getSubPartitions(partition, amplificationFactor)) {
-        if (partitionConsumptionStateMap.containsKey(subPartition)) {
-          return true;
-        }
-      }
-      return false;
-    }
-
-    public boolean isLeaderSubPartition(int subPartition) {
-      int userPartition = PartitionUtils.getUserPartition(subPartition, amplificationFactor);
-      int leaderSubPartition = PartitionUtils.getLeaderSubPartition(userPartition, amplificationFactor);
-      return subPartition == leaderSubPartition;
-    }
-
-    /**
-     * This method fetches/calculates latest leader persisted offset and last offset in RT topic. The method relies on
-     * {@link StoreIngestionTask#getLatestPersistedUpstreamOffsetForHybridOffsetLagMeasurement} to fetch latest leader
-     * persisted offset for different data replication policy. The return value is a pair of [latestPersistedLeaderOffset, lastOffsetInRealTimeTopic]
-     */
-    public long getLatestLeaderPersistedOffsetAndHybridTopicOffset(String sourceRealTimeTopicKafkaURL, String leaderTopic, PartitionConsumptionState pcs, boolean shouldLog) {
-      return getLatestLeaderOffsetAndHybridTopicOffset(sourceRealTimeTopicKafkaURL, leaderTopic, pcs,
-          (partitionConsumptionState, sourceKafkaUrl)
-              -> getLatestPersistedUpstreamOffsetForHybridOffsetLagMeasurement(partitionConsumptionState, sourceKafkaUrl), shouldLog);
-    }
-
-    /**
-     * This method fetches/calculates latest leader consumed offset and last offset in RT topic. The method relies on
-     * {@link StoreIngestionTask#getLatestConsumedUpstreamOffsetForHybridOffsetLagMeasurement} to fetch latest leader
-     * consumed offset for different data replication policy. The return value is a pair of [latestConsumedLeaderOffset, lastOffsetInRealTimeTopic]
-     */
-    public long getLatestLeaderConsumedOffsetAndHybridTopicOffset(String sourceRealTimeTopicKafkaURL, String leaderTopic, PartitionConsumptionState pcs, boolean shouldLog) {
-      return getLatestLeaderOffsetAndHybridTopicOffset(sourceRealTimeTopicKafkaURL, leaderTopic, pcs,
-          (partitionConsumptionState, sourceKafkaUrl)
-              -> getLatestConsumedUpstreamOffsetForHybridOffsetLagMeasurement(partitionConsumptionState, sourceKafkaUrl), shouldLog);
-    }
-
-    private long getLatestLeaderOffsetAndHybridTopicOffset(String sourceRealTimeTopicKafkaURL, String leaderTopic, PartitionConsumptionState pcs, BiFunction<PartitionConsumptionState, String, Long> getLeaderLatestOffset, boolean shouldLog) {
+  private long getLatestLeaderOffsetAndHybridTopicOffset(
+      String sourceRealTimeTopicKafkaURL,
+      String leaderTopic,
+      PartitionConsumptionState pcs,
+      BiFunction<PartitionConsumptionState, String, Long> getLeaderLatestOffset,
+      boolean shouldLog
+  ) {
       int partition = pcs.getPartition();
       long latestLeaderOffset;
       long lastOffsetInRealTimeTopic;
@@ -3690,7 +3631,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       }
       return lag;
     }
-  }
 
   /**
    * This is not a per record state. Rather it's used to indicate if the transient record buffer is being used at all
