@@ -49,8 +49,8 @@ public interface KafkaAdminWrapper extends Closeable {
    */
   default boolean containsTopicWithExpectationAndRetry(String topic, int maxAttempts, final boolean expectedResult) {
     Duration defaultInitialBackoff = Duration.ofMillis(100);
-    Duration defaultMaxBackoff = Duration.ofSeconds(3);
-    Duration defaultMaxDuration = Duration.ofSeconds(10);
+    Duration defaultMaxBackoff = Duration.ofSeconds(5);
+    Duration defaultMaxDuration = Duration.ofSeconds(60);
     return containsTopicWithExpectationAndRetry(
         topic,
         maxAttempts,
