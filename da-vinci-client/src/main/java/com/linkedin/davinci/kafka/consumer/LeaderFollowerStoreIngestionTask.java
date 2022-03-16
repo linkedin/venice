@@ -1335,7 +1335,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
   protected long measureRTOffsetLagForSingleRegion(String sourceRealTimeTopicKafkaURL,
       PartitionConsumptionState partitionConsumptionState, boolean shouldLogLag) {
-    return amplificationAdapter.getLatestLeaderPersistedOffsetAndHybridTopicOffset(sourceRealTimeTopicKafkaURL,
+    return getLatestLeaderPersistedOffsetAndHybridTopicOffset(sourceRealTimeTopicKafkaURL,
         partitionConsumptionState.getOffsetRecord().getLeaderTopic(), partitionConsumptionState, shouldLogLag);
   }
 
@@ -1971,7 +1971,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           // Fall back to calculate offset lag in the original approach
           if (Version.isRealTimeTopic(currentLeaderTopic)) {
             // Since partition count in RT : partition count in VT = 1 : AMP, we will need amplification factor adaptor to calculate the offset for every subPartitions.
-            long lag = amplificationAdapter.getLatestLeaderConsumedOffsetAndHybridTopicOffset(kafkaSourceAddress, currentLeaderTopic, pcs, false);
+            long lag = getLatestLeaderConsumedOffsetAndHybridTopicOffset(kafkaSourceAddress, currentLeaderTopic, pcs, false);
             return lag -1;
           } else {
             return (cachedKafkaMetadataGetter.getOffset(getTopicManager(kafkaSourceAddress), currentLeaderTopic, pcs.getPartition()) - 1)

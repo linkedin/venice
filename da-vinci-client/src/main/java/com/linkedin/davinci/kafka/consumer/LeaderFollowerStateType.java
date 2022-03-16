@@ -28,7 +28,7 @@ public enum LeaderFollowerStateType {
   private final int value;
   private static final Map<Integer, LeaderFollowerStateType> LEADER_FOLLOWER_STATES_TYPE_MAP = getLeaderFollowerStatesTypeMap();
 
-  private LeaderFollowerStateType(int value) {
+  LeaderFollowerStateType(int value) {
     this.value = value;
   }
 
