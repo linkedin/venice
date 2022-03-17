@@ -198,7 +198,7 @@ public class TestAdminSparkWithMocks {
 
     doReturn(version).when(admin)
         .incrementVersionIdempotent(clusterName, storeName, pushJobId1, 1, 1, Version.PushType.INCREMENTAL, false,
-            false, null, optionalSourceGridSourceFabric,  Optional.empty(), -1, optionalemergencySourceRegion);
+            false, null, optionalSourceGridSourceFabric,  Optional.empty(), -1, optionalemergencySourceRegion, false);
 
     // Add a banned route not relevant to the test just to make sure theres coverage for unbanned routes still be accessible
     AdminSparkServer server = ServiceFactory.getMockAdminSparkServer(admin, "clustername", Arrays.asList(ControllerRoute.ADD_DERIVED_SCHEMA));

@@ -136,6 +136,8 @@ public class ControllerApiConstants {
 
   public static final String REWIND_TIME_IN_SECONDS_OVERRIDE = "rewind_time_in_seconds_override";
 
+  public static final String DEFER_VERSION_SWAP = "defer_version_swap";
+
   public static final String REPLICATION_METADATA_VERSION_ID = "replication_metadata_version_id";
 
   public static final String APPLY_TARGET_VERSION_FILTER_FOR_INC_PUSH = "apply_target_version_filter_for_inc_push";

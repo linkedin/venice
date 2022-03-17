@@ -82,7 +82,7 @@ public class UserSystemStoreLifeCycleHelper {
       } else {
         version = parentAdmin.addVersionAndTopicOnly(clusterName, systemStoreName, pushJobId,
             systemStoreLargestUsedVersionNumber + 1, partitionCount, replicationFactor, Version.PushType.BATCH,
-            false, false, null, Optional.empty(), -1, Optional.empty());
+            false, false, null, Optional.empty(), -1, Optional.empty(), false);
       }
       parentAdmin.writeEndOfPush(clusterName, systemStoreName, version.getNumber(), true);
       createdSystemStoreTypes.add(systemStoreType);

@@ -49,7 +49,7 @@ public class TestClusterLevelConfigForActiveActiveReplication extends AbstractTe
      * Add a version
      */
     veniceAdmin.addVersionAndTopicOnly(clusterName, storeNameHybrid, pushJobId1, VERSION_ID_UNSET, 1, 1,
-        false, true, Version.PushType.STREAM, null, null, Optional.empty(), -1, 1, Optional.empty());
+        false, true, Version.PushType.STREAM, null, null, Optional.empty(), -1, 1, Optional.empty(), false);
 
     // Version 1 should exist.
     Assert.assertEquals(veniceAdmin.getStore(clusterName, storeNameHybrid).getVersions().size(), 1);
@@ -79,7 +79,7 @@ public class TestClusterLevelConfigForActiveActiveReplication extends AbstractTe
      * Add a version
      */
     veniceAdmin.addVersionAndTopicOnly(clusterName, storeNameIncremental, pushJobId1, VERSION_ID_UNSET, 1, 1,
-        false, true, Version.PushType.STREAM, null, null, Optional.empty(), -1, 1, Optional.empty());
+        false, true, Version.PushType.STREAM, null, null, Optional.empty(), -1, 1, Optional.empty(), false);
 
     // Version 1 should exist.
     Assert.assertEquals(veniceAdmin.getStore(clusterName, storeNameIncremental).getVersions().size(), 1);
@@ -109,7 +109,7 @@ public class TestClusterLevelConfigForActiveActiveReplication extends AbstractTe
      * Add a version
      */
     veniceAdmin.addVersionAndTopicOnly(clusterName, storeNameBatchOnly, pushJobId1, VERSION_ID_UNSET, 1, 1,
-            false, true, Version.PushType.STREAM, null, null, Optional.empty(), -1, 1, Optional.empty());
+            false, true, Version.PushType.STREAM, null, null, Optional.empty(), -1, 1, Optional.empty(), false);
 
     // Version 1 should exist.
     Assert.assertEquals(veniceAdmin.getStore(clusterName, storeNameBatchOnly).getVersions().size(), 1);

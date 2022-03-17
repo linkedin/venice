@@ -743,7 +743,17 @@ public abstract class AbstractPushMonitor
           "Updated store: " + store.getName() + " version: " + versionNumber + " to status: " + newStatus.toString());
       if (newStatus.equals(VersionStatus.ONLINE)) {
         if (versionNumber > store.getCurrentVersion()) {
-          store.setCurrentVersion(versionNumber);
+          // Here we'll check if version swap is deferred.  If so, we don't perform the setCurrentVersion.  We'll continue
+          // on and wait for an admin command to mark the version to 'current' OR just let the next push cycle it out.
+          if (!store.getVersion(versionNumber).isPresent()) {
+            // This shouldn't be possible, but putting a check here just in case things go pear shaped
+            throw new VeniceException(String.format("No version present for store %s version %d!  Aborting version swap!", storeName, versionNumber));
+          }
+          if(store.getVersion(versionNumber).get().isVersionSwapDeferred()) {
+            logger.info(String.format("Version swap is deferred for store %s on version %d. Skipping version swap.", store.getName(), versionNumber));
+          } else {
+            store.setCurrentVersion(versionNumber);
+          }
         } else {
           logger.info("Current version for store " + store.getName() + ": " + store.getCurrentVersion()
               + " is newer than the given version: " + versionNumber + ".  The current version will not be changed.");

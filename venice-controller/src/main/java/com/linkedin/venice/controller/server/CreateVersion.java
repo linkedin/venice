@@ -220,6 +220,11 @@ public class CreateVersion extends AbstractRoute {
           rewindTimeInSecondsOverride = Long.parseLong(rewindTimeInSecondsOverrideOptional.get());
         }
 
+        /**
+         * Version level override to defer marking this new version to the serving version post push completion.
+         */
+        boolean deferVersionSwap = Boolean.parseBoolean(request.queryParams(DEFER_VERSION_SWAP));
+
         switch(pushType) {
           case BATCH:
           case INCREMENTAL:
@@ -265,7 +270,7 @@ public class CreateVersion extends AbstractRoute {
             final Optional<X509Certificate> certInRequest = isAclEnabled() ? Optional.of(getCertificate(request)) : Optional.empty();
             final Version version =
                 admin.incrementVersionIdempotent(clusterName, storeName, pushJobId, partitionCount, replicationFactor,
-                   pushType, sendStartOfPush, sorted, dictionaryStr, sourceGridFabric, certInRequest, rewindTimeInSecondsOverride, emergencySourceRegion);
+                   pushType, sendStartOfPush, sorted, dictionaryStr, sourceGridFabric, certInRequest, rewindTimeInSecondsOverride, emergencySourceRegion, deferVersionSwap);
 
             // If Version partition count different from calculated partition count use the version count as store count
             // may have been updated later.
@@ -459,7 +464,7 @@ public class CreateVersion extends AbstractRoute {
         }
 
         admin.addVersionAndStartIngestion(clusterName, storeName, pushJobId, versionNumber, partitionCount, pushType,
-            remoteKafkaBootstrapServers, rewindTimeInSecondsOverride, replicationMetadataVersionId);
+            remoteKafkaBootstrapServers, rewindTimeInSecondsOverride, replicationMetadataVersionId, false);
         responseObject.setCluster(clusterName);
         responseObject.setName(storeName);
         responseObject.setVersion(versionNumber);

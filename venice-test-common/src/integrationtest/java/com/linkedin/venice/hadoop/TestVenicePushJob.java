@@ -373,6 +373,34 @@ public class TestVenicePushJob {
 
   }
 
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testRunJobWithDeferredVersionSwap() throws Exception {
+    File inputDir = getTempDataDirectory();
+    String storeName = Utils.getUniqueString("store");
+    String routerUrl = veniceCluster.getRandomRouterURL();
+    ControllerClient controllerClient = new ControllerClient(veniceCluster.getClusterName(), routerUrl);
+    Schema recordSchema = writeSimpleAvroFileWithStringToStringSchema(inputDir, false);
+    String inputDirPath = "file://" + inputDir.getAbsolutePath();
+    Properties props = defaultH2VProps(veniceCluster, inputDirPath, storeName);
+    props.setProperty(DEFER_VERSION_SWAP, "true");
+    createStoreForJob(veniceCluster, recordSchema, props);
+
+    // Create Version 1
+    TestPushUtils.runPushJob("Test push job", props);
+
+    TestUtils.waitForNonDeterministicAssertion(20, TimeUnit.SECONDS, () -> {
+      MultiStoreStatusResponse response = controllerClient.getFutureVersions(veniceCluster.getClusterName(), storeName);
+      Assert.assertEquals(response.getStoreStatusMap().size(), 1);
+      controllerClient.overrideSetActiveVersion(storeName, 1);
+    });
+
+    TestUtils.waitForNonDeterministicAssertion(20, TimeUnit.SECONDS, () -> {
+      StoreResponse storeResponse = controllerClient.getStore(storeName);
+      Assert.assertEquals(storeResponse.getStore().getCurrentVersion(), 1);
+    });
+
+  }
+
   /**
    * This is a (mostly) fast test as long as @BeforeMethod doesn't create a cluster
    * @throws Exception

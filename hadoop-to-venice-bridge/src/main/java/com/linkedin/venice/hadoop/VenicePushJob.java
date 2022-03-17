@@ -210,6 +210,8 @@ public class VenicePushJob implements AutoCloseable {
    */
   public static final String SUPPRESS_END_OF_PUSH_MESSAGE = "suppress.end.of.push.message";
 
+  public static final String DEFER_VERSION_SWAP = "defer.version.swap";
+
   /**
    * Relates to the above argument.  An overridable amount of buffer to be applied to the epoch (as the rewind isn't
    * perfectly instantaneous).  Defaults to 1 minute.
@@ -419,6 +421,7 @@ public class VenicePushJob implements AutoCloseable {
     boolean skipKifSafetyChecks;
     BufferReplayPolicy validateRemoteReplayPolicy;
     boolean suppressEndOfPushMessage;
+    boolean deferVersionSwap;
   }
   protected PushJobSetting pushJobSetting;
 
@@ -642,6 +645,7 @@ public class VenicePushJob implements AutoCloseable {
         SKIP_KIF_SAFETY_CHECKS_AND_TREAT_REPUSH_AS_REGULAR_PUSH, false);
     pushJobSettingToReturn.kafkaInputCombinerEnabled = props.getBoolean(KAFKA_INPUT_COMBINER_ENABLED, false);
     pushJobSettingToReturn.suppressEndOfPushMessage = props.getBoolean(SUPPRESS_END_OF_PUSH_MESSAGE, false);
+    pushJobSettingToReturn.deferVersionSwap = props.getBoolean(DEFER_VERSION_SWAP, false);
 
     if (pushJobSettingToReturn.isSourceKafka) {
       /**
@@ -1807,7 +1811,8 @@ public class VenicePushJob implements AutoCloseable {
         setting.controllerRetries,
         c -> c.requestTopicForWrites(setting.storeName, inputFileDataSize, pushType, pushId,
             askControllerToSendControlMessage, SORTED, finalWriteComputeEnabled, partitioners, dictionary,
-            Optional.ofNullable(setting.sourceGridFabric), jobLivenessHeartbeatEnabled, setting.rewindTimeInSecondsOverride)
+            Optional.ofNullable(setting.sourceGridFabric), jobLivenessHeartbeatEnabled, setting.rewindTimeInSecondsOverride,
+            setting.deferVersionSwap)
     );
     if (versionCreationResponse.isError()) {
       throw new VeniceException("Failed to create new store version with urls: " + setting.veniceControllerUrl

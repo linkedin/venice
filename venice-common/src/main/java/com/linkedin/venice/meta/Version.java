@@ -122,6 +122,10 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
 
   void setPartitionerConfig(PartitionerConfig partitionerConfig);
 
+  boolean isVersionSwapDeferred();
+
+  void setVersionSwapDeferred(boolean versionSwapDeferred);
+
   IncrementalPushPolicy getIncrementalPushPolicy();
 
   void setIncrementalPushPolicy(IncrementalPushPolicy incrementalPushPolicy);

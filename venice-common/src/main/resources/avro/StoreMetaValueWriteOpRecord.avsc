@@ -553,7 +553,8 @@
                       ],
                       "doc": "Properties related to data recovery mode behavior for this version. If absent (null), then the version never went go through data recovery.",
                       "default": null
-                    }
+                    },
+                    {"name": "deferVersionSwap", "type": "boolean", "default": false, "doc": "flag that informs venice controller to defer marking this version as the serving version after instances report ready to serve.  This version must be marked manually as the current version in order to serve traffic from it."}
                   ]
                 }
               },
