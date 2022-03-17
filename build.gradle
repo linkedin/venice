@@ -69,7 +69,7 @@ ext.libraries = [
     bouncyCastle: 'org.bouncycastle:bcprov-jdk15on:1.55',
     caffeine: 'com.github.ben-manes.caffeine:caffeine:2.8.5',
     commonsCodec: 'commons-codec:commons-codec:1.4',
-    commonsIo: 'commons-io:commons-io:2.4',
+    commonsIo: 'commons-io:commons-io:2.11',
     helix: 'org.apache.helix:helix-core:1.0.1.24',
     kafka: internalKafkaGroup + ':kafka_2.12:' + internalKafkaVersion,
     kafkaClients: internalKafkaGroup + ':kafka-clients:' + internalKafkaVersion,
