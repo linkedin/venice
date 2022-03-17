@@ -163,6 +163,23 @@ public class PushStatusStoreReader implements Closeable {
     return System.currentTimeMillis() - lastReportTimeStamp <= TimeUnit.SECONDS.toMillis(heartbeatExpirationTimeInSeconds);
   }
 
+  public Map<CharSequence, Integer> getSupposedlyOngoingIncrementalPushVersions(String storeName, int storeVersion) {
+    AvroSpecificStoreClient<PushStatusKey, PushStatusValue> storeClient = getVeniceClient(storeName);
+    PushStatusKey pushStatusKey = PushStatusStoreUtils.getOngoingIncrementalPushStatusesKey(storeVersion);
+    PushStatusValue pushStatusValue;
+    try {
+      pushStatusValue = storeClient.get(pushStatusKey).get();
+    } catch (InterruptedException | ExecutionException | VeniceException e) {
+      logger.error("Failed to get ongoing incremental pushes for store:{}.", storeName,  e);
+      throw new VeniceException(e);
+    }
+    if (pushStatusValue == null || pushStatusValue.instances == null) {
+      return Collections.emptyMap();
+    }
+    logger.info("Supposedly-ongoing incremental pushes for store:{} - {}", storeName, pushStatusValue.instances);
+    return pushStatusValue.instances;
+  }
+
   // visible for testing
   AvroSpecificStoreClient<PushStatusKey, PushStatusValue> getVeniceClient(String storeName) {
     return veniceClients.computeIfAbsent(storeName, (s) -> {

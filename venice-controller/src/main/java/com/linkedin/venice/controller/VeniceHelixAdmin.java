@@ -117,6 +117,7 @@ import com.linkedin.venice.pushmonitor.PushStatusDecider;
 import com.linkedin.venice.pushmonitor.StatusSnapshot;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreRecordDeleter;
+import com.linkedin.venice.pushstatushelper.PushStatusStoreWriter;
 import com.linkedin.venice.replication.LeaderStorageNodeReplicator;
 import com.linkedin.venice.replication.TopicReplicator;
 import com.linkedin.venice.schema.AvroSchemaParseUtils;
@@ -207,6 +208,7 @@ import org.apache.http.HttpStatus;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.controller.UserSystemStoreLifeCycleHelper.*;
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.*;
 import static com.linkedin.venice.meta.Version.*;
@@ -293,6 +295,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     private final Optional<SSLFactory> sslFactory;
     private final String pushJobStatusStoreClusterName;
     private final Optional<PushStatusStoreReader> pushStatusStoreReader;
+    private final Optional<PushStatusStoreWriter> pushStatusStoreWriter;
     private final Optional<PushStatusStoreRecordDeleter> pushStatusStoreDeleter;
     private final SharedHelixReadOnlyZKSharedSystemStoreRepository zkSharedSystemStoreRepository;
     private final SharedHelixReadOnlyZKSharedSchemaRepository zkSharedSchemaRepository;
@@ -440,10 +443,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           pushStatusStoreReader = Optional.of(
               new PushStatusStoreReader(d2Client, commonConfig.getPushStatusStoreHeartbeatExpirationTimeInSeconds())
           );
-          pushStatusStoreDeleter = Optional.of(new PushStatusStoreRecordDeleter(getVeniceWriterFactory()));
+          pushStatusStoreWriter = Optional.of(
+              new PushStatusStoreWriter(veniceWriterFactory, Utils.getHostName(),
+              commonConfig.getProps().getInt(PUSH_STATUS_STORE_DERIVED_SCHEMA_ID, 1))
+          );
+          pushStatusStoreDeleter = Optional.of(new PushStatusStoreRecordDeleter(veniceWriterFactory));
       } else {
-          pushStatusStoreReader = Optional.empty();
-          pushStatusStoreDeleter = Optional.empty();
+        pushStatusStoreReader = Optional.empty();
+        pushStatusStoreWriter = Optional.empty();
+        pushStatusStoreDeleter = Optional.empty();
       }
       usePushStatusStoreToReadServerIncrementalPushStatus = commonConfig.usePushStatusStoreForIncrementalPush();
 
@@ -4169,6 +4177,16 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             int val2 = o2.getExecutionStatus().getValue();
             return val2 - val1;
         }));
+
+        ExecutionStatus status = list.get(0).getExecutionStatus();
+        // if status is not SOIP remove incremental push version from the supposedlyOngoingIncrementalPushVersions
+        if (incrementalPushVersion.isPresent()
+            && (status == ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED || status == ExecutionStatus.NOT_CREATED)
+            && usePushStatusStoreToReadServerIncrementalPushStatus
+            && pushStatusStoreWriter.isPresent()) {
+          pushStatusStoreWriter.get().removeFromSupposedlyOngoingIncrementalPushVersions(store.getName(),
+              versionNumber, incrementalPushVersion.get());
+        }
         return list.get(0);
     }
 
@@ -4319,9 +4337,29 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     @Override
     public Set<String> getOngoingIncrementalPushVersions(String clusterName, String kafkaTopic) {
       checkControllerLeadershipFor(clusterName);
-      return getHelixVeniceClusterResources(clusterName)
-          .getPushMonitor()
-          .getOngoingIncrementalPushVersions(kafkaTopic, getHelixVeniceClusterResources(clusterName).getCustomizedViewRepository());
+      PushMonitor pushMonitor = getHelixVeniceClusterResources(clusterName).getPushMonitor();
+      Set<String> supposedlyOngoingIncrementalPushVersions;
+      if (usePushStatusStoreToReadServerIncrementalPushStatus) {
+        if (!pushStatusStoreReader.isPresent()) {
+          logger.error("Failed to get ongoing incremental push versions. PushStatusStoreReader cannot be empty.");
+          throw new VeniceException("Failed to get ongoing incremental push versions.");
+        }
+        supposedlyOngoingIncrementalPushVersions = pushMonitor.getOngoingIncrementalPushVersions(kafkaTopic, pushStatusStoreReader.get());
+      } else {
+        supposedlyOngoingIncrementalPushVersions = pushMonitor.getOngoingIncrementalPushVersions(kafkaTopic);
+      }
+
+      Set<String> ongoingIncrementalPushVersions = new HashSet<>();
+      // Incremental push is ongoing only if its current status is START_OF_INCREMENTAL_PUSH_RECEIVED.
+      for (String incPushVersion : supposedlyOngoingIncrementalPushVersions) {
+        ExecutionStatus status = getOffLinePushStatus(clusterName, kafkaTopic, Optional.of(incPushVersion)).getExecutionStatus();
+        if (status == ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED) {
+          ongoingIncrementalPushVersions.add(incPushVersion);
+        }
+      }
+      logger.debug("Ongoing incremental push versions in cluster:{} on store:{} - {}",
+          clusterName, Version.parseStoreFromKafkaTopicName(kafkaTopic), ongoingIncrementalPushVersions);
+      return ongoingIncrementalPushVersions;
     }
 
   // TODO remove this method once we are fully on HaaS
@@ -5112,6 +5150,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         return veniceWriterFactory;
     }
 
+    public VeniceControllerConfig getControllerConfig() {
+      return multiClusterConfigs.getCommonConfig();
+    }
+
     @Override
     public ControllerKafkaClientFactory getVeniceConsumerFactory() {
         return veniceConsumerFactory;
@@ -5156,6 +5198,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         dataRecoveryManager.close();
         Utils.closeQuietlyWithErrorLogged(topicManagerRepository);
         pushStatusStoreReader.ifPresent(PushStatusStoreReader::close);
+        pushStatusStoreWriter.ifPresent(PushStatusStoreWriter::close);
         pushStatusStoreDeleter.ifPresent(PushStatusStoreRecordDeleter::close);
         clusterControllerClientPerColoMap.forEach((clusterName, controllerClientMap) -> controllerClientMap.values().forEach(
             Utils::closeQuietlyWithErrorLogged));

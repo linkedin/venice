@@ -10,10 +10,11 @@ import java.util.Optional;
  */
 public class PushStatusStoreUtils {
   public enum PushStatusKeyType {
-    HEARTBEAT, FULL_PUSH, INCREMENTAL_PUSH, SERVER_INCREMENTAL_PUSH;
+    HEARTBEAT, FULL_PUSH, INCREMENTAL_PUSH, SERVER_INCREMENTAL_PUSH, ONGOING_INCREMENTAL_PUSHES;
   }
 
   public static final String SERVER_INCREMENTAL_PUSH_PREFIX = "SERVER_SIDE_INCREMENTAL_PUSH_STATUS";
+  public static final String ONGOING_INCREMENTAL_PUSH_STATUSES_KEY = "ONGOING_INCREMENTAL_PUSHES";
 
   public static PushStatusKey getHeartbeatKey(String instanceName) {
     PushStatusKey pushStatusKey = new PushStatusKey();
@@ -58,6 +59,13 @@ public class PushStatusStoreUtils {
     to reflect an updated index of partitionId in keyStrings list. */
     pushStatusKey.keyStrings = Arrays.asList(version, partitionId, incrementalPushVersion, incrementalPushPrefix);
     pushStatusKey.messageType = PushStatusKeyType.SERVER_INCREMENTAL_PUSH.ordinal();
+    return pushStatusKey;
+  }
+
+  public static PushStatusKey getOngoingIncrementalPushStatusesKey(int version) {
+    PushStatusKey pushStatusKey = new PushStatusKey();
+    pushStatusKey.keyStrings = Arrays.asList(version, ONGOING_INCREMENTAL_PUSH_STATUSES_KEY);
+    pushStatusKey.messageType = PushStatusKeyType.ONGOING_INCREMENTAL_PUSHES.ordinal();
     return pushStatusKey;
   }
 
