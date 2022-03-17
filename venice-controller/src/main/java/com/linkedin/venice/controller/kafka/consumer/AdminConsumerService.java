@@ -1,6 +1,7 @@
 package com.linkedin.venice.controller.kafka.consumer;
 
 import com.linkedin.venice.schema.SchemaReader;
+import com.linkedin.venice.controller.AdminTopicMetadataAccessor;
 import com.linkedin.venice.controller.VeniceControllerConfig;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controller.ZkAdminTopicMetadataAccessor;
@@ -15,6 +16,7 @@ import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import io.tehuti.metrics.MetricsRepository;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.ThreadFactory;
@@ -142,6 +144,25 @@ public class AdminConsumerService extends AbstractVeniceService {
 
   public long getFailingOffset() {
     return consumerTask.getFailingOffset();
+  }
+
+  public Map<String, Long> getAdminTopicMetadata(String clusterName) {
+    if (clusterName.equals(config.getClusterName())) {
+      return adminTopicMetadataAccessor.getMetadata(clusterName);
+    } else {
+      throw new VeniceException("This AdminConsumptionService is for cluster: " + config.getClusterName()
+          + ".  Cannot get the last succeed execution Id for cluster: " + clusterName);
+    }
+  }
+
+  public void updateAdminTopicMetadata(String clusterName, long executionId, long offset, long upstreamOffset) {
+    if (clusterName.equals(config.getClusterName())) {
+      Map<String, Long> metadata = AdminTopicMetadataAccessor.generateMetadataMap(offset, upstreamOffset, executionId);
+      adminTopicMetadataAccessor.updateMetadata(clusterName, metadata);
+    } else {
+      throw new VeniceException("This AdminConsumptionService is for cluster: " + config.getClusterName()
+          + ".  Cannot get the last succeed execution Id for cluster: " + clusterName);
+    }
   }
 
   private KafkaConsumerWrapper createKafkaConsumer(String clusterName) {

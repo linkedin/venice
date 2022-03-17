@@ -124,7 +124,10 @@ public enum ControllerRoute {
   LIST_STORE_PUSH_INFO("/list_store_push_info", HttpMethod.GET, Arrays.asList(CLUSTER, NAME)),
   GET_REGION_PUSH_DETAILS("/get_region_push_details", HttpMethod.GET, Arrays.asList(CLUSTER, NAME)),
   UPDATE_KAFKA_TOPIC_LOG_COMPACTION("/update_kafka_topic_log_compaction", HttpMethod.GET, Arrays.asList(TOPIC, KAFKA_TOPIC_LOG_COMPACTION_ENABLED)),
-  UPDATE_KAFKA_TOPIC_RETENTION("/update_kafka_topic_retention", HttpMethod.GET, Arrays.asList(TOPIC, KAFKA_TOPIC_RETENTION_IN_MS));
+  UPDATE_KAFKA_TOPIC_RETENTION("/update_kafka_topic_retention", HttpMethod.GET, Arrays.asList(TOPIC, KAFKA_TOPIC_RETENTION_IN_MS)),
+  GET_ADMIN_TOPIC_METADATA("/get_admin_topic_metadata", HttpMethod.GET, Collections.singletonList(CLUSTER), NAME),
+  UPDATE_ADMIN_TOPIC_METADATA("/update_admin_topic_metadata", HttpMethod.POST, Arrays.asList(CLUSTER, EXECUTION_ID),
+      NAME, OFFSET, UPSTREAM_OFFSET);
 
   private final String path;
   private final HttpMethod httpMethod;

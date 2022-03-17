@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller;
 
+import com.linkedin.venice.controllerapi.AdminTopicMetadataResponse;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
@@ -86,11 +87,16 @@ public class TestFabricBuildout {
     Assert.assertFalse(dc0Client.updateStore(storeName, new UpdateStoreQueryParams().setReadComputationEnabled(true)).isError());
     Assert.assertFalse(dc0Client.addValueSchema(storeName, TestPushUtils.USER_SCHEMA_STRING_WITH_DEFAULT).isError());
     checkStoreConfig(dc0Client, storeName);
+    // Mimic source fabric store-level execution id
+    Assert.assertFalse(dc0Client.updateAdminTopicMetadata(2L, Optional.of(storeName), Optional.empty(), Optional.empty()).isError());
 
     // Call metadata copy over to copy dc0's store configs to dc1
     parentControllerClient.copyOverStoreMetadata("dc-0","dc-1", storeName);
     ControllerClient dc1Client = ControllerClient.constructClusterControllerClient(clusterName, childDatacenters.get(1).getControllerConnectString());
     checkStoreConfig(dc1Client, storeName);
+    AdminTopicMetadataResponse response = dc1Client.getAdminTopicMetadata(Optional.of(storeName));
+    Assert.assertFalse(response.isError());
+    Assert.assertEquals(response.getExecutionId(), 2L);
   }
 
   @Test(timeOut = TEST_TIMEOUT)

@@ -58,6 +58,7 @@ import com.linkedin.venice.controller.lingeringjob.IdentityParserImpl;
 import com.linkedin.venice.controller.lingeringjob.LingeringStoreVersionChecker;
 import com.linkedin.venice.controller.migration.MigrationPushStrategyZKAccessor;
 import com.linkedin.venice.controllerapi.AdminCommandExecution;
+import com.linkedin.venice.controllerapi.AdminTopicMetadataResponse;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.IncrementalPushVersionsResponse;
@@ -2640,6 +2641,17 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
+  public Map<String, Long> getAdminTopicMetadata(String clusterName, Optional<String> storeName) {
+    throw new VeniceUnsupportedOperationException("getAdminTopicMetadata");
+  }
+
+  @Override
+  public void updateAdminTopicMetadata(String clusterName, long executionId, Optional<String> storeName,
+      Optional<Long> offset, Optional<Long> upstreamOffset) {
+    throw new VeniceUnsupportedOperationException("updateAdminTopicMetadata");
+  }
+
+  @Override
   public RoutersClusterConfig getRoutersClusterConfig(String clusterName) {
     throw new VeniceUnsupportedOperationException("getRoutersClusterConfig");
   }
@@ -3453,11 +3465,24 @@ public class VeniceParentHelixAdmin implements Admin {
       ControllerClient destFabricChildControllerClient =
           ControllerClient.constructClusterControllerClient(clusterName, destFabricChildControllerUrl, sslFactory);
 
-      // Src fabric local controller dumps out the store's configs and schemas
-      StoreInfo storeInfo = srcFabricChildControllerClient.getStore(storeName).getStore();
-      String keySchema = srcFabricChildControllerClient.getKeySchema(storeName).getSchemaStr();
-      MultiSchemaResponse.Schema[] valueAndDerivedSchemas =
-          srcFabricChildControllerClient.getAllValueAndDerivedSchema(storeName).getSchemas();
+      long storeExecutionId;
+      StoreInfo storeInfo;
+      String keySchema;
+      MultiSchemaResponse.Schema[] valueAndDerivedSchemas;
+      // Acquire a lock to guarantee parent controller cannot send new admin messages for the store during metadata dump
+      acquireAdminMessageLock(clusterName, storeName);
+      try {
+        // Src fabric local controller dumps out the store's execution id, configs and schemas
+        storeExecutionId = srcFabricChildControllerClient.getAdminTopicMetadata(Optional.of(storeName)).getExecutionId();
+        storeInfo = srcFabricChildControllerClient.getStore(storeName).getStore();
+        keySchema = srcFabricChildControllerClient.getKeySchema(storeName).getSchemaStr();
+        valueAndDerivedSchemas = srcFabricChildControllerClient.getAllValueAndDerivedSchema(storeName).getSchemas();
+      } catch (Exception e) {
+        throw new VeniceException("Error when getting store " + storeName + " metadata from source fabric " + srcFabric
+            + " Exception: " + e.getMessage());
+      } finally {
+        releaseAdminMessageLock(clusterName);
+      }
 
       // sort schemas with sorted value schemas first, and then sorted derived schemas.
       Arrays.sort(valueAndDerivedSchemas, new Comparator<MultiSchemaResponse.Schema>() {
@@ -3488,6 +3513,13 @@ public class VeniceParentHelixAdmin implements Admin {
       if (response.isError()) {
         throw new VeniceException("Failed to update store " + response.getError());
       }
+
+      response = destFabricChildControllerClient.updateAdminTopicMetadata(storeExecutionId, Optional.of(storeName),
+          Optional.empty(), Optional.empty());
+      if (response.isError()) {
+        throw new VeniceException("Failed to update store's execution id " + response.getError());
+      }
+
       return storeInfo;
     } catch (Exception e) {
       throw new VeniceException("Error copying src fabric's metadata to dest fabric.", e.getCause());

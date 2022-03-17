@@ -1,0 +1,93 @@
+package com.linkedin.venice.controller.server;
+
+import com.linkedin.venice.HttpConstants;
+import com.linkedin.venice.acl.DynamicAccessController;
+import com.linkedin.venice.controller.Admin;
+import com.linkedin.venice.controller.AdminTopicMetadataAccessor;
+import com.linkedin.venice.controllerapi.AdminTopicMetadataResponse;
+import com.linkedin.venice.controllerapi.ControllerResponse;
+import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.utils.Pair;
+import java.util.Map;
+import java.util.Optional;
+import org.apache.http.HttpStatus;
+import spark.Route;
+
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
+import static com.linkedin.venice.controllerapi.ControllerRoute.*;
+
+
+public class AdminTopicMetadataRoutes extends AbstractRoute {
+  public AdminTopicMetadataRoutes(Optional<DynamicAccessController> accessController) {
+    super(accessController);
+  }
+
+  public Route getAdminTopicMetadata(Admin admin) {
+    return (request, response) -> {
+      AdminTopicMetadataResponse responseObject = new AdminTopicMetadataResponse();
+      response.type(HttpConstants.JSON);
+      try {
+        // No ACL check on getting admin topic metadata
+        AdminSparkServer.validateParams(request, GET_ADMIN_TOPIC_METADATA.getParams(), admin);
+        String clusterName = request.queryParams(CLUSTER);
+        Optional<String> storeName = Optional.ofNullable(request.queryParams(NAME));
+
+        responseObject.setCluster(clusterName);
+        storeName.ifPresent(responseObject::setName);
+
+        Map<String, Long> metadata = admin.getAdminTopicMetadata(clusterName, storeName);
+
+        responseObject.setExecutionId(AdminTopicMetadataAccessor.getExecutionId(metadata));
+        if (!storeName.isPresent()) {
+          Pair<Long, Long> offsets = AdminTopicMetadataAccessor.getOffsets(metadata);
+          responseObject.setOffset(Optional.of(offsets.getFirst()));
+          responseObject.setUpstreamOffset(Optional.of(offsets.getSecond()));
+        }
+      } catch (Throwable e) {
+        responseObject.setError(e.getMessage());
+        AdminSparkServer.handleError(new VeniceException(e), request, response);
+      }
+      return AdminSparkServer.mapper.writeValueAsString(responseObject);
+    };
+  }
+
+  public Route updateAdminTopicMetadata(Admin admin) {
+    return (request, response) -> {
+      ControllerResponse responseObject = new ControllerResponse();
+      response.type(HttpConstants.JSON);
+      try {
+        if (!isAllowListUser(request)) {
+          response.status(HttpStatus.SC_FORBIDDEN);
+          responseObject.setError("Only admin users are allowed to run " + request.url());
+          return AdminSparkServer.mapper.writeValueAsString(responseObject);
+        }
+
+        AdminSparkServer.validateParams(request, UPDATE_ADMIN_TOPIC_METADATA.getParams(), admin);
+        String clusterName = request.queryParams(CLUSTER);
+        long executionId = Long.parseLong(request.queryParams(EXECUTION_ID));
+        Optional<String> storeName = Optional.ofNullable(request.queryParams(NAME));
+        Optional<Long> offset = Optional.ofNullable(request.queryParams(OFFSET)).map(Long::parseLong);
+        Optional<Long> upstreamOffset = Optional.ofNullable(request.queryParams(UPSTREAM_OFFSET)).map(Long::parseLong);
+
+        if (storeName.isPresent()) {
+          if (offset.isPresent() || upstreamOffset.isPresent()) {
+            throw new VeniceException("There is no store-level offsets to be updated");
+          }
+        } else {
+          if (!offset.isPresent() || !upstreamOffset.isPresent()) {
+            throw new VeniceException("Offsets must be provided to update cluster-level admin topic metadata");
+          }
+        }
+
+        responseObject.setCluster(clusterName);
+        storeName.ifPresent(responseObject::setName);
+
+        admin.updateAdminTopicMetadata(clusterName, executionId, storeName, offset, upstreamOffset);
+      } catch (Throwable e) {
+        responseObject.setError(e.getMessage());
+        AdminSparkServer.handleError(new VeniceException(e), request, response);
+      }
+      return AdminSparkServer.mapper.writeValueAsString(responseObject);
+    };
+  }
+}

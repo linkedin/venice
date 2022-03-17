@@ -178,6 +178,7 @@ public class AdminSparkServer extends AbstractVeniceService {
     ClusterRoutes clusterRoutes = new ClusterRoutes(accessController);
     NewClusterBuildOutRoutes newClusterBuildOutRoutes = new NewClusterBuildOutRoutes(accessController);
     DataRecoveryRoutes dataRecoveryRoutes = new DataRecoveryRoutes(accessController);
+    AdminTopicMetadataRoutes adminTopicMetadataRoutes = new AdminTopicMetadataRoutes(accessController);
 
     httpService.get(SET_VERSION.getPath(), (request, response) -> {
       response.type(HttpConstants.TEXT_HTML);
@@ -292,6 +293,9 @@ public class AdminSparkServer extends AbstractVeniceService {
     httpService.post(DATA_RECOVERY.getPath(), dataRecoveryRoutes.dataRecovery(admin));
     httpService.get(UPDATE_KAFKA_TOPIC_LOG_COMPACTION.getPath(), controllerRoutes.updateKafkaTopicLogCompaction(admin));
     httpService.get(UPDATE_KAFKA_TOPIC_RETENTION.getPath(), controllerRoutes.updateKafkaTopicRetention(admin));
+
+    httpService.get(GET_ADMIN_TOPIC_METADATA.getPath(), adminTopicMetadataRoutes.getAdminTopicMetadata(admin));
+    httpService.post(UPDATE_ADMIN_TOPIC_METADATA.getPath(), adminTopicMetadataRoutes.updateAdminTopicMetadata(admin));
 
     httpService.awaitInitialization(); // Wait for server to be initialized
     Exception e = initFailure.get();
