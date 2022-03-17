@@ -546,7 +546,7 @@ public class AdminExecutionTask implements Callable<Void> {
     } else {
       // New version for regular Venice store.
       admin.addVersionAndStartIngestion(clusterName, storeName, pushJobId, versionNumber, numberOfPartitions, pushType,
-          remoteKafkaBootstrapServers, rewindTimeInSecondsOverride, replicationMetadataVersionId);
+          remoteKafkaBootstrapServers, rewindTimeInSecondsOverride, replicationMetadataVersionId, message.versionSwapDeferred);
     }
   }
 

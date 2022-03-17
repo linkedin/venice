@@ -727,7 +727,7 @@ public class VeniceParentHelixAdmin implements Admin {
   @Override
   public void addVersionAndStartIngestion(String clusterName, String storeName, String pushJobId, int versionNumber,
       int numberOfPartitions, Version.PushType pushType, String remoteKafkaBootstrapServers,
-      long rewindTimeInSecondsOverride, int replicationMetadataVersionId) {
+      long rewindTimeInSecondsOverride, int replicationMetadataVersionId, boolean versionSwapDeferred) {
     // Parent controller will always pick the replicationMetadataVersionId from configs.
     replicationMetadataVersionId = getMultiClusterConfigs().getCommonConfig().getReplicationMetadataVersionId();
     Version version = getVeniceHelixAdmin().addVersionOnly(clusterName, storeName, pushJobId, versionNumber, numberOfPartitions, pushType,
@@ -1048,7 +1048,7 @@ public class VeniceParentHelixAdmin implements Admin {
   public Version incrementVersionIdempotent(String clusterName, String storeName, String pushJobId,
       int numberOfPartitions, int replicationFactor, Version.PushType pushType, boolean sendStartOfPush,
       boolean sorted, String compressionDictionary, Optional<String> sourceGridFabric,
-      Optional<X509Certificate> requesterCert, long rewindTimeInSecondsOverride, Optional<String> emergencySourceRegion) {
+      Optional<X509Certificate> requesterCert, long rewindTimeInSecondsOverride, Optional<String> emergencySourceRegion, boolean versionSwapDeferred) {
     Optional<String> currentPushTopic = getTopicForCurrentPushJob(clusterName, storeName, pushType.isIncremental(), Version.isPushIdRePush(pushJobId));
     if (currentPushTopic.isPresent()) {
       int currentPushVersion = Version.parseVersionFromKafkaTopicName(currentPushTopic.get());
@@ -1112,7 +1112,7 @@ public class VeniceParentHelixAdmin implements Admin {
       newVersion = getVeniceHelixAdmin().getIncrementalPushVersion(clusterName, storeName);
     } else {
       newVersion = addVersionAndTopicOnly(clusterName, storeName, pushJobId, VERSION_ID_UNSET, numberOfPartitions,
-          replicationFactor, pushType, sendStartOfPush, sorted, compressionDictionary, sourceGridFabric, rewindTimeInSecondsOverride, emergencySourceRegion);
+          replicationFactor, pushType, sendStartOfPush, sorted, compressionDictionary, sourceGridFabric, rewindTimeInSecondsOverride, emergencySourceRegion, versionSwapDeferred);
     }
     cleanupHistoricalVersions(clusterName, storeName);
     if (VeniceSystemStoreType.getSystemStoreType(storeName) == null) {
@@ -1131,11 +1131,12 @@ public class VeniceParentHelixAdmin implements Admin {
 
   public Version addVersionAndTopicOnly(String clusterName, String storeName, String pushJobId, int versionNumber,
       int numberOfPartitions, int replicationFactor, Version.PushType pushType, boolean sendStartOfPush, boolean sorted,
-      String compressionDictionary, Optional<String> sourceGridFabric, long rewindTimeInSecondsOverride, Optional<String> emergencySourceRegion) {
+      String compressionDictionary, Optional<String> sourceGridFabric, long rewindTimeInSecondsOverride, Optional<String> emergencySourceRegion,
+      boolean versionSwapDeferred) {
     int replicationMetadataVersionId = getMultiClusterConfigs().getCommonConfig().getReplicationMetadataVersionId();
     Pair<Boolean, Version> result = getVeniceHelixAdmin().addVersionAndTopicOnly(clusterName, storeName, pushJobId,
         versionNumber, numberOfPartitions, replicationFactor, sendStartOfPush, sorted, pushType, compressionDictionary,
-        null, sourceGridFabric, rewindTimeInSecondsOverride, replicationMetadataVersionId, emergencySourceRegion);
+        null, sourceGridFabric, rewindTimeInSecondsOverride, replicationMetadataVersionId, emergencySourceRegion, versionSwapDeferred);
     Version newVersion = result.getSecond();
     if (result.getFirst()) {
       if (newVersion.isActiveActiveReplicationEnabled()) {
@@ -1181,6 +1182,7 @@ public class VeniceParentHelixAdmin implements Admin {
       addVersion.rewindTimeInSecondsOverride = -1;
     }
     addVersion.timestampMetadataVersionId = version.getReplicationMetadataVersionId();
+    addVersion.versionSwapDeferred = version.isVersionSwapDeferred();
     return addVersion;
   }
 

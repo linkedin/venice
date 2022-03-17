@@ -133,7 +133,7 @@ public interface Admin extends AutoCloseable, Closeable {
      */
     void addVersionAndStartIngestion(String clusterName, String storeName, String pushJobId, int versionNumber,
         int numberOfPartitions, Version.PushType pushType, String remoteKafkaBootstrapServers,
-        long rewindTimeInSecondsOverride, int replicationMetadataVersionId);
+        long rewindTimeInSecondsOverride, int replicationMetadataVersionId, boolean versionSwapDeferred);
 
     default boolean hasWritePermissionToBatchJobHeartbeatStore(
         X509Certificate requesterCert,
@@ -153,13 +153,13 @@ public interface Admin extends AutoCloseable, Closeable {
     default Version incrementVersionIdempotent(String clusterName, String storeName, String pushJobId,
         int numberOfPartitions, int replicationFactor) {
         return incrementVersionIdempotent(clusterName, storeName, pushJobId, numberOfPartitions, replicationFactor,
-            Version.PushType.BATCH, false, false, null, Optional.empty(), Optional.empty(), -1, Optional.empty());
+            Version.PushType.BATCH, false, false, null, Optional.empty(), Optional.empty(), -1, Optional.empty(), false);
     }
 
     Version incrementVersionIdempotent(String clusterName, String storeName, String pushJobId, int numberOfPartitions,
         int replicationFactor, Version.PushType pushType, boolean sendStartOfPush, boolean sorted, String compressionDictionary,
         Optional<String> sourceGridFabric, Optional<X509Certificate> requesterCert, long rewindTimeInSecondsOverride,
-        Optional<String> emergencySourceRegion);
+        Optional<String> emergencySourceRegion, boolean versionSwapDeferred);
 
     String getRealTimeTopic(String clusterName, String storeName);
 

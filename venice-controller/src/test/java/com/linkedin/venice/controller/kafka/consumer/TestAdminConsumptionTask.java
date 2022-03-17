@@ -971,7 +971,7 @@ public class TestAdminConsumptionTask {
     veniceWriter.put(emptyKeyBytes, getKillOfflinePushJobMessage(clusterName, storeTopicName, 3L),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
     doThrow(new VeniceException("Mocked add version exception")).when(admin).addVersionAndStartIngestion(clusterName,
-        storeName, mockPushJobId, 1, 1, Version.PushType.BATCH, null, -1, 1);
+        storeName, mockPushJobId, 1, 1, Version.PushType.BATCH, null, -1, 1, false);
     // isMasterController() is called once every consumption cycle (1000ms) and for every message processed in AdminExecutionTask.
     // Provide a sufficient number of true -> false -> true to mimic a transfer of mastership and resubscribed behavior
     // while stuck on a failing message.
@@ -1076,7 +1076,7 @@ public class TestAdminConsumptionTask {
     doThrow(new VeniceOperationAgainstKafkaTimedOut("Mocking kafka topic creation timeout"))
         .when(admin)
         .addVersionAndStartIngestion(clusterName, storeName, mockPushJobId, versionNumber, numberOfPartitions,
-            Version.PushType.BATCH, null, -1, 1);
+            Version.PushType.BATCH, null, -1, 1, false);
     Future<RecordMetadata> future = veniceWriter.put(emptyKeyBytes,
         getAddVersionMessage(clusterName, storeName, mockPushJobId, versionNumber, numberOfPartitions, 1L),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);

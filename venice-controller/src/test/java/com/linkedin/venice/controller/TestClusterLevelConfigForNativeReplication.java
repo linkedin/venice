@@ -66,7 +66,7 @@ public class TestClusterLevelConfigForNativeReplication extends AbstractTestVeni
      * Add a version
      */
     veniceAdmin.addVersionAndTopicOnly(clusterName, storeName, pushJobId1, VERSION_ID_UNSET, 1, 1,
-        false, true, Version.PushType.BATCH, null, null, Optional.empty(), -1, 1, Optional.empty());
+        false, true, Version.PushType.BATCH, null, null, Optional.empty(), -1, 1, Optional.empty(), false);
     // Version 1 should exist.
     Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getVersions().size(), 1);
     // L/F should be enabled by cluster-level config

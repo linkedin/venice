@@ -183,6 +183,15 @@ public class ControllerClient implements Closeable {
     return request(ControllerRoute.STORAGE_ENGINE_OVERHEAD_RATIO, params, StorageEngineOverheadRatioResponse.class);
   }
 
+  public VersionCreationResponse requestTopicForWrites(
+      String storeName, long storeSize, PushType pushType, String pushJobId, boolean sendStartOfPush,
+      boolean sorted, boolean wcEnabled, Optional<String> partitioners, Optional<String> compressionDictionary,
+      Optional<String> sourceGridFabric, boolean batchJobHeartbeatEnabled, long rewindTimeInSecondsOverride
+  ) {
+    return requestTopicForWrites(storeName, storeSize, pushType, pushJobId, sendStartOfPush, sorted, wcEnabled, partitioners,
+        compressionDictionary, sourceGridFabric, batchJobHeartbeatEnabled, rewindTimeInSecondsOverride, false);
+  }
+
   /**
    * Request a topic for the VeniceWriter to write into.  A new H2V push, or a Samza bulk processing job should both use
    * this method.  The push job ID needs to be unique for this push.  Multiple requests with the same pushJobId are
@@ -207,7 +216,7 @@ public class ControllerClient implements Closeable {
   public VersionCreationResponse requestTopicForWrites(
           String storeName, long storeSize, PushType pushType, String pushJobId, boolean sendStartOfPush,
           boolean sorted, boolean wcEnabled, Optional<String> partitioners, Optional<String> compressionDictionary,
-          Optional<String> sourceGridFabric, boolean batchJobHeartbeatEnabled, long rewindTimeInSecondsOverride
+          Optional<String> sourceGridFabric, boolean batchJobHeartbeatEnabled, long rewindTimeInSecondsOverride, boolean deferVersionSwap
   ) {
     QueryParams params = newParams()
         .add(NAME, storeName)
@@ -221,7 +230,8 @@ public class ControllerClient implements Closeable {
         .add(COMPRESSION_DICTIONARY, compressionDictionary)
         .add(SOURCE_GRID_FABRIC, sourceGridFabric)
         .add(BATCH_JOB_HEARTBEAT_ENABLED, batchJobHeartbeatEnabled)
-        .add(REWIND_TIME_IN_SECONDS_OVERRIDE, rewindTimeInSecondsOverride);
+        .add(REWIND_TIME_IN_SECONDS_OVERRIDE, rewindTimeInSecondsOverride)
+        .add(DEFER_VERSION_SWAP, deferVersionSwap);
 
     return request(ControllerRoute.REQUEST_TOPIC, params, VersionCreationResponse.class);
   }

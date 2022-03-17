@@ -1354,7 +1354,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     @Override
     public void addVersionAndStartIngestion(
         String clusterName, String storeName, String pushJobId, int versionNumber, int numberOfPartitions,
-        Version.PushType pushType, String remoteKafkaBootstrapServers, long rewindTimeInSecondsOverride, int replicationMetadataVersionId) {
+        Version.PushType pushType, String remoteKafkaBootstrapServers, long rewindTimeInSecondsOverride, int replicationMetadataVersionId, boolean versionSwapDeferred) {
         Store store = getStore(clusterName, storeName);
         if (null == store) {
             throw new VeniceNoStoreException(storeName, clusterName);
@@ -1367,7 +1367,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             addVersion(clusterName, storeName, pushJobId, versionNumber, numberOfPartitions,
                 getReplicationFactor(clusterName, storeName), true, false, false,
                 true, pushType, null, remoteKafkaBootstrapServers, Optional.empty(),
-                rewindTimeInSecondsOverride, replicationMetadataVersionId, Optional.empty());
+                rewindTimeInSecondsOverride, replicationMetadataVersionId, Optional.empty(), versionSwapDeferred);
         }
     }
 
@@ -1425,11 +1425,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     public Pair<Boolean, Version> addVersionAndTopicOnly(String clusterName, String storeName, String pushJobId,
         int versionNumber, int numberOfPartitions, int replicationFactor, boolean sendStartOfPush, boolean sorted,
         PushType pushType, String compressionDictionary, String remoteKafkaBootstrapServers, Optional<String> sourceGridFabric,
-        long rewindTimeInSecondsOverride, int replicationMetadataVersionId, Optional<String> emergencySourceRegion) {
+        long rewindTimeInSecondsOverride, int replicationMetadataVersionId, Optional<String> emergencySourceRegion, boolean versionSwapDeferred) {
         return addVersion(clusterName, storeName, pushJobId, versionNumber, numberOfPartitions, replicationFactor,
             false, sendStartOfPush, sorted, false, pushType,
             compressionDictionary, remoteKafkaBootstrapServers, sourceGridFabric, rewindTimeInSecondsOverride,
-            replicationMetadataVersionId, emergencySourceRegion);
+            replicationMetadataVersionId, emergencySourceRegion, versionSwapDeferred);
     }
 
     /**
@@ -1610,7 +1610,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         int numberOfPartitions, int replicationFactor, boolean startIngestion, boolean sendStartOfPush,
         boolean sorted, boolean useFastKafkaOperationTimeout, Version.PushType pushType, String compressionDictionary,
         String remoteKafkaBootstrapServers, Optional<String> sourceGridFabric, long rewindTimeInSecondsOverride,
-        int replicationMetadataVersionId, Optional<String> emergencySourceRegion) {
+        int replicationMetadataVersionId, Optional<String> emergencySourceRegion, boolean versionSwapDeferred) {
         if (isClusterInMaintenanceMode(clusterName)) {
             throw new HelixClusterMaintenanceModeException(clusterName);
         }
@@ -1796,6 +1796,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
                     version.setReplicationMetadataVersionId(replicationMetadataVersionId);
 
+                    version.setVersionSwapDeferred(versionSwapDeferred);
+
                     repository.updateStore(store);
                     logger.info("Add version: " + version.getNumber() + " for store: " + storeName);
 
@@ -1975,14 +1977,14 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     public Version incrementVersionIdempotent(String clusterName, String storeName, String pushJobId,
         int numberOfPartitions, int replicationFactor, Version.PushType pushType, boolean sendStartOfPush, boolean sorted,
         String compressionDictionary, Optional<String> sourceGridFabric, Optional<X509Certificate> requesterCert,
-        long rewindTimeInSecondsOverride, Optional<String> emergencySourceRegion) {
+        long rewindTimeInSecondsOverride, Optional<String> emergencySourceRegion, boolean versionSwapDeferred) {
         checkControllerLeadershipFor(clusterName);
 
         return pushType.isIncremental() ? getIncrementalPushVersion(clusterName, storeName)
             : addVersion(clusterName, storeName, pushJobId, VERSION_ID_UNSET, numberOfPartitions, replicationFactor,
                 true, sendStartOfPush, sorted, false, pushType,
                 compressionDictionary, null, sourceGridFabric, rewindTimeInSecondsOverride,
-                REPLICATION_METADATA_VERSION_ID_UNSET, emergencySourceRegion).getSecond();
+                REPLICATION_METADATA_VERSION_ID_UNSET, emergencySourceRegion, versionSwapDeferred).getSecond();
     }
 
     /**

@@ -201,6 +201,16 @@ public class VersionImpl implements Version {
   }
 
   @Override
+  public boolean isVersionSwapDeferred() {
+    return this.storeVersion.deferVersionSwap;
+  }
+
+  @Override
+  public void setVersionSwapDeferred(boolean deferVersionSwap) {
+    this.storeVersion.deferVersionSwap = deferVersionSwap;
+  }
+
+  @Override
   public IncrementalPushPolicy getIncrementalPushPolicy() {
     return IncrementalPushPolicy.valueOf(this.storeVersion.incrementalPushPolicy);
   }
@@ -397,6 +407,7 @@ public class VersionImpl implements Version {
     clonedVersion.setUseVersionLevelHybridConfig(isUseVersionLevelHybridConfig());
     clonedVersion.setActiveActiveReplicationEnabled(isActiveActiveReplicationEnabled());
     clonedVersion.setReplicationMetadataVersionId(getReplicationMetadataVersionId());
+    clonedVersion.setVersionSwapDeferred(isVersionSwapDeferred());
     return clonedVersion;
   }
 

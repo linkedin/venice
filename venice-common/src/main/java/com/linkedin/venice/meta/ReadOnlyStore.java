@@ -350,6 +350,17 @@ public class ReadOnlyStore implements Store {
     public void setPartitionerConfig(PartitionerConfig partitionerConfig) {
       throw new UnsupportedOperationException();
     }
+
+    @Override
+    public boolean isVersionSwapDeferred() {
+      return this.delegate.isVersionSwapDeferred();
+    }
+
+    @Override
+    public void setVersionSwapDeferred(boolean versionSwapDeferred) {
+      throw new UnsupportedOperationException();
+    }
+
     @Override
     public IncrementalPushPolicy getIncrementalPushPolicy() {
       return this.delegate.getIncrementalPushPolicy();
