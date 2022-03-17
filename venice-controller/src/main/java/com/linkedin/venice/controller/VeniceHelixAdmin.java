@@ -1199,7 +1199,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             } else if (!storeConfig.getCluster().equals(oldCluster)) {
                 throw new VeniceException("Store " + storeName + " is expected to be in " + oldCluster + " cluster, but is actually in " + storeConfig.getCluster());
             }
-            Store store = getStore(oldCluster, storeName);
+            Store store = getStore(initiatingCluster, storeName);
             storeConfig.setCluster(newCluster);
             storeConfigAccessor.updateConfig(storeConfig, store.isStoreMetaSystemStoreEnabled());
             logger.info("Store " + storeName + " now belongs to cluster " + newCluster + " instead of " + oldCluster);
@@ -5164,7 +5164,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
      */
     protected void checkControllerLeadershipFor(String clusterName) {
         if (!isLeaderControllerFor(clusterName)) {
-            throw new VeniceException("This controller:" + controllerName + " is not the leader controller for '" + clusterName);
+            throw new VeniceException("This controller:" + controllerName + " is not the leader controller for " + clusterName);
         }
     }
 
