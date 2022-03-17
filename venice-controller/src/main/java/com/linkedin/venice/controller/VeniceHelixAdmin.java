@@ -160,7 +160,6 @@ import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import io.tehuti.metrics.MetricsRepository;
 import java.nio.ByteBuffer;
-import java.sql.Timestamp;
 import java.security.cert.X509Certificate;
 import java.time.Duration;
 import java.time.LocalDateTime;
@@ -4993,6 +4992,28 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     @Override
     public Optional<AdminCommandExecutionTracker> getAdminCommandExecutionTracker(String clusterName) {
         return Optional.empty();
+    }
+
+    public Map<String, Long> getAdminTopicMetadata(String clusterName, Optional<String> storeName) {
+      if (storeName.isPresent()) {
+        Long executionId = executionIdAccessor.getLastSucceededExecutionIdMap(clusterName).get(storeName.get());
+        return executionId == null ?
+            Collections.emptyMap() : AdminTopicMetadataAccessor.generateMetadataMap(-1, -1, executionId);
+      }
+      return adminConsumerServices.get(clusterName).getAdminTopicMetadata(clusterName);
+    }
+
+    public void updateAdminTopicMetadata(String clusterName, long executionId, Optional<String> storeName,
+        Optional<Long> offset, Optional<Long> upstreamOffset) {
+      if (storeName.isPresent()) {
+        executionIdAccessor.updateLastSucceededExecutionIdMap(clusterName, storeName.get(), executionId);
+      } else {
+        if (!offset.isPresent() || !upstreamOffset.isPresent()) {
+          throw new VeniceException("Offsets must be provided to update cluster-level admin topic metadata");
+        }
+        adminConsumerServices.get(clusterName).updateAdminTopicMetadata(clusterName, executionId, offset.get(),
+            upstreamOffset.get());
+      }
     }
 
     @Override

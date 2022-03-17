@@ -1052,6 +1052,21 @@ public class ControllerClient implements Closeable {
     }
   }
 
+  public AdminTopicMetadataResponse getAdminTopicMetadata(Optional<String> storeName) {
+    QueryParams params = newParams().add(NAME, storeName);
+    return request(ControllerRoute.GET_ADMIN_TOPIC_METADATA, params, AdminTopicMetadataResponse.class);
+  }
+
+  public ControllerResponse updateAdminTopicMetadata(long executionId, Optional<String> storeName,
+      Optional<Long> offset, Optional<Long> upstreamOffset) {
+    QueryParams params = newParams()
+        .add(EXECUTION_ID, executionId)
+        .add(NAME, storeName)
+        .add(OFFSET, offset)
+        .add(UPSTREAM_OFFSET, upstreamOffset);
+    return request(ControllerRoute.UPDATE_ADMIN_TOPIC_METADATA, params, ControllerResponse.class);
+  }
+
   /***
    * Add all global parameters in this method. Always use a form of this method to generate
    * a new list of NameValuePair objects for making HTTP requests.

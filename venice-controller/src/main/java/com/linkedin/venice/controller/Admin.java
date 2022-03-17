@@ -724,4 +724,9 @@ public interface Admin extends AutoCloseable, Closeable {
     Map<String, RegionPushDetails> listStorePushInfo(String clusterName, String storeName);
 
     RegionPushDetails getRegionPushDetails(String clusterName, String storeName);
+
+    Map<String, Long> getAdminTopicMetadata(String clusterName, Optional<String> storeName);
+
+    void updateAdminTopicMetadata(String clusterName, long executionId, Optional<String> storeName,
+        Optional<Long> offset, Optional<Long> upstreamOffset);
 }
