@@ -31,6 +31,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import org.mockito.Mockito;
@@ -275,7 +276,6 @@ public abstract class AbstractPushMonitorTest {
     verify(mockPushHealthStats, times(1)).recordFailedPush(eq(getStoreName()), anyLong());
   }
 
-  private OfflinePushStatus offlinePushStatusMock;
   private PushStatusStoreReader statusStoreReaderMock;
   private HelixCustomizedViewOfflinePushRepository customizedViewMock;
   private final String incrementalPushVersion = "IncPush_42";
@@ -286,10 +286,7 @@ public abstract class AbstractPushMonitorTest {
       Map<Integer, Integer> completedStatusMap) {
     statusStoreReaderMock = mock(PushStatusStoreReader.class);
     customizedViewMock = mock(HelixCustomizedViewOfflinePushRepository.class);
-    offlinePushStatusMock = mock(OfflinePushStatus.class);
 
-    when(offlinePushStatusMock.getNumberOfPartition()).thenReturn(partitionCountForIncPushTests);
-    when(offlinePushStatusMock.getReplicationFactor()).thenReturn(replicationFactorForIncPushTests);
     when(statusStoreReaderMock.getPartitionStatuses(getStoreName(), Version.parseVersionFromVersionTopicName(getTopic()),
         incrementalPushVersion, partitionCountForIncPushTests)).thenReturn(pushStatusMap);
     when(customizedViewMock.getCompletedStatusReplicas(getTopic(), partitionCountForIncPushTests)).thenReturn(completedStatusMap);
@@ -324,8 +321,8 @@ public abstract class AbstractPushMonitorTest {
     Map<Integer, Integer> completedReplicas = Collections.emptyMap();
     prepareForIncrementalPushStatusTest(pushStatusMap, completedReplicas);
 
-    ExecutionStatus actualStatus = monitor.getIncrementalPushStatusFromPushStatusStore(getTopic(),
-        incrementalPushVersion, customizedViewMock, statusStoreReaderMock, offlinePushStatusMock).getFirst();
+    ExecutionStatus actualStatus = monitor.getIncrementalPushStatusFromPushStatusStore(getTopic(), incrementalPushVersion,
+        customizedViewMock, statusStoreReaderMock, partitionCountForIncPushTests, replicationFactorForIncPushTests).getFirst();
     Assert.assertEquals(actualStatus, ExecutionStatus.NOT_CREATED);
   }
 
@@ -335,8 +332,8 @@ public abstract class AbstractPushMonitorTest {
     Map<Integer, Integer> completedReplicas = getCompletedStatusData();
     prepareForIncrementalPushStatusTest(pushStatusMap, completedReplicas);
 
-    ExecutionStatus actualStatus = monitor.getIncrementalPushStatusFromPushStatusStore(getTopic(),
-        incrementalPushVersion, customizedViewMock, statusStoreReaderMock, offlinePushStatusMock).getFirst();
+    ExecutionStatus actualStatus = monitor.getIncrementalPushStatusFromPushStatusStore(getTopic(), incrementalPushVersion,
+        customizedViewMock, statusStoreReaderMock, partitionCountForIncPushTests, replicationFactorForIncPushTests).getFirst();
     Assert.assertEquals(actualStatus, END_OF_INCREMENTAL_PUSH_RECEIVED);
   }
 
@@ -351,8 +348,8 @@ public abstract class AbstractPushMonitorTest {
 
     prepareForIncrementalPushStatusTest(pushStatusMap, completedReplicas);
 
-    ExecutionStatus actualStatus = monitor.getIncrementalPushStatusFromPushStatusStore(getTopic(),
-        incrementalPushVersion, customizedViewMock, statusStoreReaderMock, offlinePushStatusMock).getFirst();
+    ExecutionStatus actualStatus = monitor.getIncrementalPushStatusFromPushStatusStore(getTopic(), incrementalPushVersion,
+        customizedViewMock, statusStoreReaderMock, partitionCountForIncPushTests, replicationFactorForIncPushTests).getFirst();
     Assert.assertEquals(actualStatus, END_OF_INCREMENTAL_PUSH_RECEIVED);
   }
 
@@ -368,8 +365,8 @@ public abstract class AbstractPushMonitorTest {
 
     prepareForIncrementalPushStatusTest(pushStatusMap, completedReplicas);
 
-    ExecutionStatus actualStatus = monitor.getIncrementalPushStatusFromPushStatusStore(getTopic(),
-        incrementalPushVersion, customizedViewMock, statusStoreReaderMock, offlinePushStatusMock).getFirst();
+    ExecutionStatus actualStatus = monitor.getIncrementalPushStatusFromPushStatusStore(getTopic(), incrementalPushVersion,
+        customizedViewMock, statusStoreReaderMock, partitionCountForIncPushTests, replicationFactorForIncPushTests).getFirst();
     Assert.assertEquals(actualStatus, END_OF_INCREMENTAL_PUSH_RECEIVED);
   }
 
@@ -382,8 +379,8 @@ public abstract class AbstractPushMonitorTest {
 
     prepareForIncrementalPushStatusTest(pushStatusMap, completedReplicas);
 
-    ExecutionStatus actualStatus = monitor.getIncrementalPushStatusFromPushStatusStore(getTopic(),
-        incrementalPushVersion, customizedViewMock, statusStoreReaderMock, offlinePushStatusMock).getFirst();
+    ExecutionStatus actualStatus = monitor.getIncrementalPushStatusFromPushStatusStore(getTopic(), incrementalPushVersion,
+        customizedViewMock, statusStoreReaderMock, partitionCountForIncPushTests, replicationFactorForIncPushTests).getFirst();
     Assert.assertEquals(actualStatus, ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED);
   }
 
@@ -399,8 +396,8 @@ public abstract class AbstractPushMonitorTest {
 
     prepareForIncrementalPushStatusTest(pushStatusMap, completedReplicas);
 
-    ExecutionStatus actualStatus = monitor.getIncrementalPushStatusFromPushStatusStore(getTopic(),
-        incrementalPushVersion, customizedViewMock, statusStoreReaderMock, offlinePushStatusMock).getFirst();
+    ExecutionStatus actualStatus = monitor.getIncrementalPushStatusFromPushStatusStore(getTopic(), incrementalPushVersion,
+        customizedViewMock, statusStoreReaderMock, partitionCountForIncPushTests, replicationFactorForIncPushTests).getFirst();
     Assert.assertEquals(actualStatus, ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED);
   }
 
@@ -418,8 +415,8 @@ public abstract class AbstractPushMonitorTest {
 
     prepareForIncrementalPushStatusTest(pushStatusMap, completedReplicas);
 
-    ExecutionStatus actualStatus = monitor.getIncrementalPushStatusFromPushStatusStore(getTopic(),
-        incrementalPushVersion, customizedViewMock, statusStoreReaderMock, offlinePushStatusMock).getFirst();
+    ExecutionStatus actualStatus = monitor.getIncrementalPushStatusFromPushStatusStore(getTopic(), incrementalPushVersion,
+        customizedViewMock, statusStoreReaderMock, partitionCountForIncPushTests, replicationFactorForIncPushTests).getFirst();
     Assert.assertEquals(actualStatus, ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED);
   }
 
@@ -437,8 +434,8 @@ public abstract class AbstractPushMonitorTest {
 
     prepareForIncrementalPushStatusTest(pushStatusMap, completedReplicas);
 
-    ExecutionStatus actualStatus = monitor.getIncrementalPushStatusFromPushStatusStore(getTopic(),
-        incrementalPushVersion, customizedViewMock, statusStoreReaderMock, offlinePushStatusMock).getFirst();
+    ExecutionStatus actualStatus = monitor.getIncrementalPushStatusFromPushStatusStore(getTopic(), incrementalPushVersion,
+        customizedViewMock, statusStoreReaderMock, partitionCountForIncPushTests, replicationFactorForIncPushTests).getFirst();
     Assert.assertEquals(actualStatus, ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED);
   }
 
@@ -452,8 +449,8 @@ public abstract class AbstractPushMonitorTest {
 
     prepareForIncrementalPushStatusTest(pushStatusMap, completedReplicas);
 
-    ExecutionStatus actualStatus = monitor.getIncrementalPushStatusFromPushStatusStore(getTopic(),
-        incrementalPushVersion, customizedViewMock, statusStoreReaderMock, offlinePushStatusMock).getFirst();
+    ExecutionStatus actualStatus = monitor.getIncrementalPushStatusFromPushStatusStore(getTopic(), incrementalPushVersion,
+        customizedViewMock, statusStoreReaderMock, partitionCountForIncPushTests, replicationFactorForIncPushTests).getFirst();
     Assert.assertEquals(actualStatus, END_OF_INCREMENTAL_PUSH_RECEIVED);
   }
 
@@ -466,8 +463,8 @@ public abstract class AbstractPushMonitorTest {
 
     prepareForIncrementalPushStatusTest(pushStatusMap, completedReplicas);
 
-    ExecutionStatus actualStatus = monitor.getIncrementalPushStatusFromPushStatusStore(getTopic(),
-        incrementalPushVersion, customizedViewMock, statusStoreReaderMock, offlinePushStatusMock).getFirst();
+    ExecutionStatus actualStatus = monitor.getIncrementalPushStatusFromPushStatusStore(getTopic(), incrementalPushVersion,
+        customizedViewMock, statusStoreReaderMock, partitionCountForIncPushTests, replicationFactorForIncPushTests).getFirst();
     Assert.assertEquals(actualStatus, ExecutionStatus.ERROR);
   }
 
@@ -476,9 +473,26 @@ public abstract class AbstractPushMonitorTest {
     Map<Integer, Integer> completedReplicas = getCompletedStatusData();
     prepareForIncrementalPushStatusTest(null, completedReplicas);
 
-    ExecutionStatus actualStatus = monitor.getIncrementalPushStatusFromPushStatusStore(getTopic(),
-        incrementalPushVersion, customizedViewMock, statusStoreReaderMock, offlinePushStatusMock).getFirst();
+    ExecutionStatus actualStatus = monitor.getIncrementalPushStatusFromPushStatusStore(getTopic(), incrementalPushVersion,
+        customizedViewMock, statusStoreReaderMock, partitionCountForIncPushTests, replicationFactorForIncPushTests).getFirst();
     Assert.assertEquals(actualStatus, ExecutionStatus.NOT_CREATED);
+  }
+
+  @Test
+  public void testGetOngoingIncrementalPushVersions() {
+    Map<CharSequence, Integer> ipVersions = new HashMap<CharSequence, Integer>() {{
+      put("incPush1", 7);
+      put("incPush2", 7);
+      put("incPush3", 7);
+      put("incPush4", 7);
+    }};
+    statusStoreReaderMock = mock(PushStatusStoreReader.class);
+    when(statusStoreReaderMock.getSupposedlyOngoingIncrementalPushVersions(anyString(), anyInt())).thenReturn(ipVersions);
+    Set<String> ongoIpVersions = monitor.getOngoingIncrementalPushVersions(getTopic(), statusStoreReaderMock);
+    for (CharSequence ipVersion : ipVersions.keySet()) {
+      Assert.assertTrue(ongoIpVersions.contains(ipVersion.toString()));
+    }
+    verify(statusStoreReaderMock).getSupposedlyOngoingIncrementalPushVersions(anyString(), anyInt());
   }
 
   @Test

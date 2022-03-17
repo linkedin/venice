@@ -25,13 +25,15 @@ import com.linkedin.venice.meta.IngestionMode;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.pushmonitor.KillOfflinePushMessage;
-import com.linkedin.venice.pushmonitor.PushStatusStoreAccessor;
+import com.linkedin.venice.pushstatushelper.PushStatusStoreWriter;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.stats.HelixMessageChannelStats;
 import com.linkedin.venice.status.StatusMessageHandler;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.writer.VeniceWriterFactory;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
 import java.util.List;
@@ -48,6 +50,8 @@ import org.apache.helix.model.LeaderStandbySMD;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+
+import static com.linkedin.venice.ConfigKeys.*;
 
 
 /**
@@ -238,14 +242,21 @@ public class HelixParticipationService extends AbstractVeniceService implements 
    */
   private void asyncStart() {
     zkClient = ZkClientFactory.newZkClient(zkAddress);
+
+    // we use push status store for persisting incremental push statuses
+    VeniceProperties veniceProperties = veniceConfigLoader.getVeniceServerConfig().getClusterProperties();
+    VeniceWriterFactory writerFactory =new VeniceWriterFactory(veniceProperties.toProperties());
+    PushStatusStoreWriter statusStoreWriter = new PushStatusStoreWriter(
+        writerFactory, instance.getNodeId(), veniceProperties.getInt(PUSH_STATUS_STORE_DERIVED_SCHEMA_ID, 1));
+
     // Record replica status in Zookeeper.
     // Need to be started before connecting to ZK, otherwise some notification will not be sent by this notifier.
     PushMonitorNotifier pushMonitorNotifier = new PushMonitorNotifier(
         new VeniceOfflinePushMonitorAccessor(clusterName, zkClient, new HelixAdapterSerializer(),
             veniceConfigLoader.getVeniceClusterConfig().getRefreshAttemptsForZkReconnect(),
             veniceConfigLoader.getVeniceClusterConfig().getRefreshIntervalForZkReconnectInMs()),
-        new PushStatusStoreAccessor(veniceConfigLoader.getVeniceServerConfig().getClusterProperties(),
-            helixReadOnlyStoreRepository, instance.getNodeId()),
+        statusStoreWriter,
+        helixReadOnlyStoreRepository,
         instance.getNodeId());
 
     ingestionBackend.addPushStatusNotifier(pushMonitorNotifier);

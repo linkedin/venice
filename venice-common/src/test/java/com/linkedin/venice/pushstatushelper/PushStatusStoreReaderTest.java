@@ -1,6 +1,7 @@
 package com.linkedin.venice.pushstatushelper;
 
 import com.linkedin.d2.balancer.D2Client;
+import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.AvroSpecificStoreClient;
 import com.linkedin.venice.common.PushStatusStoreUtils;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -225,5 +226,77 @@ public class  PushStatusStoreReaderTest {
     for (Set<PushStatusKey> keySet : keySets) {
       verify(storeClientMock).batchGet(keySet);
     }
+  }
+
+  @Test(description = "Expect an exception if venice system store client throws an exception",
+      expectedExceptions = VeniceException.class)
+  public void testGetSupposedlyOngoingIncrementalPushVersionsWithClientException() {
+    PushStatusKey pushStatusKey = PushStatusStoreUtils.getOngoingIncrementalPushStatusesKey(storeVersion);
+    PushStatusStoreReader storeReaderSpy = spy(new PushStatusStoreReader(d2ClientMock, 10));
+
+    doReturn(storeClientMock).when(storeReaderSpy).getVeniceClient(any());
+    when(storeClientMock.get(pushStatusKey)).thenThrow(VeniceClientException.class);
+
+    storeReaderSpy.getSupposedlyOngoingIncrementalPushVersions(storeName, storeVersion);
+    verify(storeClientMock).get(pushStatusKey);
+    verify(storeReaderSpy).getVeniceClient(any());
+  }
+
+  @Test(description = "Expect an empty result when key-value for ongoing incremental pushes doesn't exist")
+  public void testGetSupposedlyOngoingIncrementalPushVersionsWhenIncPushVersionsDoesNotExist()
+      throws ExecutionException, InterruptedException {
+    PushStatusKey pushStatusKey = PushStatusStoreUtils.getOngoingIncrementalPushStatusesKey(storeVersion);
+    PushStatusStoreReader storeReaderSpy = spy(new PushStatusStoreReader(d2ClientMock, 10));
+    CompletableFuture<PushStatusValue> completableFutureMock = mock(CompletableFuture.class);
+
+    doReturn(storeClientMock).when(storeReaderSpy).getVeniceClient(any());
+    when(storeClientMock.get(pushStatusKey)).thenReturn(completableFutureMock);
+    when(completableFutureMock.get()).thenReturn(null);
+
+    assertEqualsDeep(storeReaderSpy.getSupposedlyOngoingIncrementalPushVersions(storeName, storeVersion),
+        Collections.emptyMap());
+    verify(completableFutureMock).get();
+    verify(storeClientMock).get(pushStatusKey);
+  }
+
+  @Test(description = "Expect an empty result when inc push versions are missing in the returned result")
+  public void testGetSupposedlyOngoingIncrementalPushVersionsWhenIncPushVersionsAreMissing()
+      throws ExecutionException, InterruptedException {
+    PushStatusKey pushStatusKey = PushStatusStoreUtils.getOngoingIncrementalPushStatusesKey(storeVersion);
+    PushStatusValue pushStatusValue = new PushStatusValue();
+    pushStatusValue.instances = null; // to make intentions clear explicitly setting it to null
+    PushStatusStoreReader storeReaderSpy = spy(new PushStatusStoreReader(d2ClientMock, 10));
+    CompletableFuture<PushStatusValue> completableFutureMock = mock(CompletableFuture.class);
+
+    doReturn(storeClientMock).when(storeReaderSpy).getVeniceClient(any());
+    when(storeClientMock.get(pushStatusKey)).thenReturn(completableFutureMock);
+    when(completableFutureMock.get()).thenReturn(pushStatusValue);
+
+    assertEqualsDeep(storeReaderSpy.getSupposedlyOngoingIncrementalPushVersions(storeName, storeVersion),
+        Collections.emptyMap());
+    verify(completableFutureMock).get();
+    verify(storeClientMock).get(pushStatusKey);
+  }
+
+  @Test(description = "Expect all inc push versions when inc push versions are found in push status store")
+  public void testGetSupposedlyOngoingIncrementalPushVersionsWhenIncPushVersionsAreAvailable()
+      throws ExecutionException, InterruptedException {
+    PushStatusKey pushStatusKey = PushStatusStoreUtils.getOngoingIncrementalPushStatusesKey(storeVersion);
+    PushStatusValue pushStatusValue = new PushStatusValue();
+    pushStatusValue.instances = new HashMap<>();
+    pushStatusValue.instances.put("inc_push_v1",7);
+    pushStatusValue.instances.put("inc_push_v2",7);
+    pushStatusValue.instances.put("inc_push_v3",7);
+    PushStatusStoreReader storeReaderSpy = spy(new PushStatusStoreReader(d2ClientMock, 10));
+    CompletableFuture<PushStatusValue> completableFutureMock = mock(CompletableFuture.class);
+
+    doReturn(storeClientMock).when(storeReaderSpy).getVeniceClient(any());
+    when(storeClientMock.get(pushStatusKey)).thenReturn(completableFutureMock);
+    when(completableFutureMock.get()).thenReturn(pushStatusValue);
+
+    assertEqualsDeep(storeReaderSpy.getSupposedlyOngoingIncrementalPushVersions(storeName, storeVersion),
+        pushStatusValue.instances);
+    verify(completableFutureMock).get();
+    verify(storeClientMock).get(pushStatusKey);
   }
 }

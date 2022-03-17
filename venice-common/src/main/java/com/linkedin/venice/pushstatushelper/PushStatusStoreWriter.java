@@ -34,7 +34,11 @@ public class PushStatusStoreWriter implements AutoCloseable {
    * @param derivedSchemaId writeCompute schema for updating push status
    */
   public PushStatusStoreWriter(VeniceWriterFactory writerFactory, String instanceName, int derivedSchemaId) {
-    this.veniceWriterCache = new PushStatusStoreVeniceWriterCache(writerFactory);
+    this(new PushStatusStoreVeniceWriterCache(writerFactory), instanceName, derivedSchemaId);
+  }
+
+  PushStatusStoreWriter(PushStatusStoreVeniceWriterCache veniceWriterCache, String instanceName, int derivedSchemaId) {
+    this.veniceWriterCache = veniceWriterCache;
     this.instanceName = instanceName;
     this.derivedSchemaId = derivedSchemaId;
   }
@@ -69,6 +73,44 @@ public class PushStatusStoreWriter implements AutoCloseable {
     logger.info("Updating pushStatus of " + instanceName + " to " + status.toString() +
         ". storeName: " + storeName + " , version: " + version + " , partition: " + partitionId);
     writer.update(pushStatusKey, writeComputeRecord, AvroProtocolDefinition.PUSH_STATUS_SYSTEM_SCHEMA_STORE.getCurrentProtocolVersion(), derivedSchemaId, null);
+
+    // If this is a server side SOIP status update then add this incremental
+    // push to the ongoing incremental pushes in push status store.
+    if (status == ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED
+        && incrementalPushVersion.isPresent() && incrementalPushPrefix.isPresent()) {
+      addToSupposedlyOngoingIncrementalPushVersions(storeName, version, incrementalPushVersion.get(), status);
+    }
+  }
+
+  // For storing ongoing incremental push versions, we are (re)using 'instances' field of the PushStatusValue record.
+  public void addToSupposedlyOngoingIncrementalPushVersions(String storeName, int storeVersion,
+      String incrementalPushVersion, ExecutionStatus status) {
+    PushStatusKey pushStatusKey = PushStatusStoreUtils.getOngoingIncrementalPushStatusesKey(storeVersion);
+    PushStatusValueWriteOpRecord writeComputeRecord = new PushStatusValueWriteOpRecord();
+    instancesMapOps incrementalPushes = new instancesMapOps();
+    incrementalPushes.mapUnion = Collections.singletonMap(incrementalPushVersion, status.getValue());
+    incrementalPushes.mapDiff = Collections.emptyList();
+    writeComputeRecord.instances = incrementalPushes;
+    writeComputeRecord.reportTimestamp = new NoOp();
+    logger.info("Adding incremental push version:{} to ongoingIncrementalPushes of store:{} from instance:{}",
+        incrementalPushVersion, storeName, instanceName);
+    veniceWriterCache.prepareVeniceWriter(storeName).update(pushStatusKey, writeComputeRecord,
+        AvroProtocolDefinition.PUSH_STATUS_SYSTEM_SCHEMA_STORE.getCurrentProtocolVersion(), derivedSchemaId, null);
+  }
+
+  public void removeFromSupposedlyOngoingIncrementalPushVersions(String storeName, int storeVersion,
+      String incrementalPushVersion) {
+    PushStatusKey pushStatusKey = PushStatusStoreUtils.getOngoingIncrementalPushStatusesKey(storeVersion);
+    PushStatusValueWriteOpRecord writeComputeRecord = new PushStatusValueWriteOpRecord();
+    instancesMapOps incrementalPushes = new instancesMapOps();
+    incrementalPushes.mapUnion = Collections.emptyMap();
+    incrementalPushes.mapDiff = Collections.singletonList(incrementalPushVersion);
+    writeComputeRecord.instances = incrementalPushes;
+    writeComputeRecord.reportTimestamp = new NoOp();
+    logger.info("Removing incremental push version:{} from ongoingIncrementalPushes of store:{} from instance:{}",
+        incrementalPushVersion, storeName, instanceName);
+    veniceWriterCache.prepareVeniceWriter(storeName).update(pushStatusKey, writeComputeRecord,
+        AvroProtocolDefinition.PUSH_STATUS_SYSTEM_SCHEMA_STORE.getCurrentProtocolVersion(), derivedSchemaId, null);
   }
 
   @Override

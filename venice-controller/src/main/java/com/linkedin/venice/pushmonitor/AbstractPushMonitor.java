@@ -265,22 +265,20 @@ public abstract class AbstractPushMonitor
     if (pushStatus == null) {
       return new Pair<>(ExecutionStatus.NOT_CREATED, Optional.of("Offline job hasn't been created yet."));
     }
-    return getIncrementalPushStatusFromPushStatusStore(kafkaTopic,
-        incrementalPushVersion, customizedViewRepo, pushStatusStoreReader, pushStatus);
+    return getIncrementalPushStatusFromPushStatusStore(kafkaTopic, incrementalPushVersion, customizedViewRepo,
+        pushStatusStoreReader, pushStatus.getNumberOfPartition(), pushStatus.getReplicationFactor());
   }
 
-  // visible for unit testing
   public Pair<ExecutionStatus, Optional<String>> getIncrementalPushStatusFromPushStatusStore(String kafkaTopic,
       String incrementalPushVersion, HelixCustomizedViewOfflinePushRepository customizedViewRepo,
-      PushStatusStoreReader pushStatusStoreReader, OfflinePushStatus pushStatus) {
+      PushStatusStoreReader pushStatusStoreReader, int numberOfPartitions, int replicationFactor) {
     String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopic);
     int storeVersion = Version.parseVersionFromVersionTopicName(kafkaTopic);
-    Map<Integer, Map<CharSequence, Integer>> pushStatusMap = pushStatusStoreReader.getPartitionStatuses(
-        storeName, storeVersion, incrementalPushVersion, pushStatus.getNumberOfPartition());
-    Map<Integer, Integer> completedReplicas = customizedViewRepo.getCompletedStatusReplicas(
-        kafkaTopic, pushStatus.getNumberOfPartition());
+    Map<Integer, Map<CharSequence, Integer>> pushStatusMap
+        = pushStatusStoreReader.getPartitionStatuses(storeName, storeVersion, incrementalPushVersion, numberOfPartitions);
+    Map<Integer, Integer> completedReplicas = customizedViewRepo.getCompletedStatusReplicas(kafkaTopic, numberOfPartitions);
     return new Pair<>(checkIncrementalPushStatus(pushStatusMap, completedReplicas, kafkaTopic, incrementalPushVersion,
-        pushStatus.getNumberOfPartition(), pushStatus.getReplicationFactor()), Optional.empty());
+        numberOfPartitions, replicationFactor), Optional.empty());
   }
 
   private ExecutionStatus checkIncrementalPushStatus(Map<Integer, Map<CharSequence, Integer>> pushStatusMap,
@@ -337,28 +335,34 @@ public abstract class AbstractPushMonitor
   }
 
   @Override
-  public Set<String> getOngoingIncrementalPushVersions(String kafkaTopic,
-      HelixCustomizedViewOfflinePushRepository customizedViewRepo) {
+  public Set<String> getOngoingIncrementalPushVersions(String kafkaTopic) {
     OfflinePushStatus pushStatus = getOfflinePush(kafkaTopic);
-    if (pushStatus == null) {
-      return Collections.emptySet();
+    String latestIncrementalPushVersion = null;
+    if (pushStatus != null) {
+      latestIncrementalPushVersion =
+          pushStatus.getLatestIncrementalPushVersion(getRoutingDataRepository().getPartitionAssignments(kafkaTopic));
     }
-
-    PartitionAssignment partitionAssignment = getRoutingDataRepository().getPartitionAssignments(kafkaTopic);
-    String latestIncrementalPushVersion = pushStatus.getLatestIncrementalPushVersion(partitionAssignment);
     if (latestIncrementalPushVersion == null || latestIncrementalPushVersion.isEmpty()) {
       return Collections.emptySet();
     }
+    return Collections.singleton(latestIncrementalPushVersion);
+  }
 
-    // Incremental push is only ongoing if it's START_OF_INCREMENTAL_PUSH_RECEIVED. Other states are either terminal
-    // or invalid.
-    Pair<ExecutionStatus, Optional<String>> status =
-        getIncrementalPushStatusAndDetails(kafkaTopic, latestIncrementalPushVersion, customizedViewRepo);
-    if (status.getFirst() == START_OF_INCREMENTAL_PUSH_RECEIVED) {
-      return Collections.singleton(latestIncrementalPushVersion);
-    }
-
-    return Collections.emptySet();
+  /**
+   * Get ongoing incremental push versions from the push status store
+   * @param kafkaTopic kafka topic belonging to a store version for which we are fetching ongoing inc-pushe versions
+   * @param pushStatusStoreReader - push status system store reader
+   * @return set of (supposedly) ongoing incremental pushes
+   */
+  @Override
+  public Set<String> getOngoingIncrementalPushVersions(String kafkaTopic, PushStatusStoreReader pushStatusStoreReader) {
+    String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopic);
+    int storeVersion = Version.parseVersionFromVersionTopicName(kafkaTopic);
+    return pushStatusStoreReader.getSupposedlyOngoingIncrementalPushVersions(storeName, storeVersion)
+        .keySet()
+        .stream()
+        .map(CharSequence::toString)
+        .collect(Collectors.toSet());
   }
 
   @Override

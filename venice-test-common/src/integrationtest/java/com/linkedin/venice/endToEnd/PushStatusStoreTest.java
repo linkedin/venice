@@ -10,8 +10,10 @@ import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controller.Admin;
+import com.linkedin.venice.controller.VeniceControllerConfig;
 import com.linkedin.venice.controller.init.ClusterLeaderInitializationRoutine;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.IncrementalPushVersionsResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
@@ -28,17 +30,23 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreRecordDeleter;
+import com.linkedin.venice.pushstatushelper.PushStatusStoreWriter;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.io.File;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -50,6 +58,7 @@ import static com.linkedin.venice.common.PushStatusStoreUtils.*;
 import static com.linkedin.venice.hadoop.VenicePushJob.*;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.*;
 import static com.linkedin.venice.meta.IngestionMode.*;
+import static com.linkedin.venice.pushmonitor.ExecutionStatus.*;
 import static com.linkedin.venice.utils.TestPushUtils.*;
 import static org.testng.Assert.*;
 
@@ -258,6 +267,103 @@ public class PushStatusStoreTest {
         response = controllerClient.queryJobStatus(job.getKafkaTopic(), job.getIncrementalPushVersion());
         assertEquals(response.getStatus(), ExecutionStatus.NOT_CREATED.name());
       }
+    }
+  }
+
+  /* The following test is targeted at verifying the behavior of a controller when getOngoingIncrementalPushVersions is invoked. */
+  @Test(timeOut = 4 * TEST_TIMEOUT)
+  public void testGetOngoingIncrementalPushVersions() throws Exception {
+    // To verify various scenarios this test uses the fabricated data
+    // (we add inc push status data manually to push status store); however,
+    // to make sure all required components and resources are working/available
+    // we do run a batch and an inc push job first.
+
+    String kafkaTopic;
+    IncrementalPushVersionsResponse incPushVersionResponse;
+    int storeVersion = 1;
+    // run a batch job
+    Properties h2vProperties = getH2VProperties();
+    runH2V(h2vProperties, storeVersion, cluster);
+
+    // run an inc push job
+    h2vProperties.setProperty(INCREMENTAL_PUSH, "true");
+    String incPushJobName = Utils.getUniqueString("inc_push_job_" + storeVersion);
+    Optional<String> incPushVersion;
+    try (VenicePushJob incPushJob = new VenicePushJob(incPushJobName, h2vProperties)) {
+      incPushJob.run();
+      cluster.waitVersion(storeName, storeVersion, controllerClient);
+      assertTrue(incPushJob.getIncrementalPushVersion().isPresent(), "Incremental push version is missing");
+      incPushVersion = incPushJob.getIncrementalPushVersion();
+      kafkaTopic = incPushJob.getKafkaTopic();
+      JobStatusQueryResponse response = controllerClient.queryJobStatus(incPushJob.getKafkaTopic(), incPushVersion);
+      assertEquals(response.getStatus(), ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED.name());
+      incPushVersionResponse = controllerClient.getOngoingIncrementalPushVersions(kafkaTopic);
+      assertFalse(incPushVersionResponse.isError());
+      // since inc push job has already finished there shouldn't be any entry in ongoing inc push versions
+      assertTrue(incPushVersionResponse.getIncrementalPushVersions().isEmpty());
+    }
+
+    // remainder of the test uses fabricated data
+    VeniceControllerConfig controllerConfig = cluster.getMasterVeniceController().getVeniceHelixAdmin().getControllerConfig();
+    int derivedSchemaId = controllerConfig.getProps().getInt(PUSH_STATUS_STORE_DERIVED_SCHEMA_ID, 1);
+    VeniceWriterFactory veniceWriterFactory = new VeniceWriterFactory(controllerConfig.getProps().toProperties());
+
+    Set<String> incPushVersions = new HashSet<>(Arrays.asList("inc_push_v1", "inc_push_v2", "inc_push_v3"));
+    Map<String, PushStatusStoreWriter> pushStatusStoreWriterMap = new HashMap<>();
+    for (String ipVersion : incPushVersions) {
+      for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
+        for (int replicaId = 0; replicaId < REPLICATION_FACTOR; replicaId++) {
+          String instance = ipVersion + "_" + partitionId + "_" + replicaId;
+          PushStatusStoreWriter pushStatusStoreWriter = pushStatusStoreWriterMap.compute(instance,
+              (k, v) -> v == null ? new PushStatusStoreWriter(veniceWriterFactory, instance, derivedSchemaId) : v);
+          pushStatusStoreWriter.writePushStatus(storeName, storeVersion, partitionId, START_OF_INCREMENTAL_PUSH_RECEIVED,
+              Optional.of(ipVersion), Optional.of(SERVER_INCREMENTAL_PUSH_PREFIX));
+        }
+      }
+    }
+
+    TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () ->
+        assertEquals(controllerClient.getOngoingIncrementalPushVersions(kafkaTopic)
+            .getIncrementalPushVersions().size(), incPushVersions.size())
+    );
+
+    // verify all the incPushVersions are present in ongoing inc push versions
+    incPushVersionResponse = controllerClient.getOngoingIncrementalPushVersions(kafkaTopic);
+    assertFalse(incPushVersionResponse.isError());
+    logger.debug("ongoing inc push versions - expected:{} actual:{}",
+        incPushVersions, incPushVersionResponse.getIncrementalPushVersions());
+    assertEqualsDeep(incPushVersionResponse.getIncrementalPushVersions(), incPushVersions,
+        "Expected and actual ongoing inc push versions do not match");
+
+    // change status of one of the inc-push versions to EOIP to indicate that it has been completed
+    String eoipedIncPushVersion = new ArrayList<>(incPushVersions).get(0);
+    for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
+      for (int replicaId = 0; replicaId < REPLICATION_FACTOR; replicaId++) {
+        String instance = eoipedIncPushVersion + "_" + partitionId + "_" + replicaId;
+        PushStatusStoreWriter pushStatusStoreWriter = pushStatusStoreWriterMap.compute(instance,
+            (k, v) -> v == null ? new PushStatusStoreWriter(veniceWriterFactory, instance, derivedSchemaId) : v);
+        pushStatusStoreWriter.writePushStatus(storeName, storeVersion, partitionId, END_OF_INCREMENTAL_PUSH_RECEIVED,
+            Optional.of(eoipedIncPushVersion), Optional.of(SERVER_INCREMENTAL_PUSH_PREFIX));
+      }
+    }
+
+    TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
+      JobStatusQueryResponse response = controllerClient.queryJobStatus(kafkaTopic, Optional.of(eoipedIncPushVersion));
+        assertEquals(response.getStatus(), END_OF_INCREMENTAL_PUSH_RECEIVED.name());
+    });
+
+    // verify that all incPushVersions except eoipedIncPushVersion are present in ongoing inc push versions
+    incPushVersions.remove(eoipedIncPushVersion);
+    incPushVersionResponse = controllerClient.getOngoingIncrementalPushVersions(kafkaTopic);
+    assertFalse(incPushVersionResponse.isError());
+    logger.debug("ongoing inc push versions - expected:{} actual:{}",
+        incPushVersions, incPushVersionResponse.getIncrementalPushVersions());
+    assertEqualsDeep(incPushVersionResponse.getIncrementalPushVersions(), new HashSet<>(incPushVersions),
+        "Expected and actual ongoing inc push versions do not match");
+
+    // close status store writers
+    for (PushStatusStoreWriter writer : pushStatusStoreWriterMap.values()) {
+      writer.close();
     }
   }
 

@@ -195,10 +195,13 @@ public class PushMonitorDelegator implements PushMonitor {
   }
 
   @Override
-  public Set<String> getOngoingIncrementalPushVersions(String kafkaTopic,
-      HelixCustomizedViewOfflinePushRepository customizedViewRepo) {
-    return getPushMonitor(kafkaTopic)
-        .getOngoingIncrementalPushVersions(kafkaTopic, customizedViewRepo);
+  public Set<String> getOngoingIncrementalPushVersions(String kafkaTopic) {
+    return getPushMonitor(kafkaTopic).getOngoingIncrementalPushVersions(kafkaTopic);
+  }
+
+  @Override
+  public Set<String> getOngoingIncrementalPushVersions(String kafkaTopic, PushStatusStoreReader pushStatusStoreReader) {
+    return getPushMonitor(kafkaTopic).getOngoingIncrementalPushVersions(kafkaTopic, pushStatusStoreReader);
   }
 
   @Override

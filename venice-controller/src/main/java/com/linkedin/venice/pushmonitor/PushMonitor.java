@@ -90,8 +90,9 @@ public interface PushMonitor {
    * @param kafkaTopic to check for ongoing incremental push
    * @return ongoing incremental push versions if there are any, otherwise an empty set is returned.
    */
-  Set<String> getOngoingIncrementalPushVersions(String kafkaTopic,
-      HelixCustomizedViewOfflinePushRepository customizedViewRepo);
+  Set<String> getOngoingIncrementalPushVersions(String kafkaTopic);
+
+  Set<String> getOngoingIncrementalPushVersions(String kafkaTopic, PushStatusStoreReader pushStatusStoreReader);
 
   /**
    * Find all ongoing pushes then return the topics associated to those pushes.
