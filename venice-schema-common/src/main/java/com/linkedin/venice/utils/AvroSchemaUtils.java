@@ -293,18 +293,16 @@ public class AvroSchemaUtils {
 
     for (Schema.Field f1 : s1.getFields()) {
       Schema.Field f2 = s2.getField(f1.name());
-      if (f2 == null) {
-        fields.add(AvroCompatibilityHelper.newField(f1).build());
-      } else {
-        FieldBuilder builder = AvroCompatibilityHelper.newField(f1)
-            .setSchema(generateSuperSetSchema(f1.schema(), f2.schema()))
-            .setDoc(f1.doc() != null ? f1.doc() : f2.doc());
-        if (f1.hasDefaultValue()) {
-          // set default as AvroCompatibilityHelper builder might drop defaults if there is type mismatch
-          builder.setDefault(AvroCompatibilityHelper.getGenericDefaultValue(f1));
-        }
-        fields.add(builder.build());
+      FieldBuilder builder = AvroCompatibilityHelper.newField(f1);
+
+      // set default as AvroCompatibilityHelper builder might drop defaults if there is type mismatch
+      if (f1.hasDefaultValue()) {
+        builder.setDefault(AvroCompatibilityHelper.getGenericDefaultValue(f1));
       }
+      if (f2 != null) {
+        builder.setSchema(generateSuperSetSchema(f1.schema(), f2.schema())).setDoc(f1.doc() != null ? f1.doc() : f2.doc());
+      }
+      fields.add(builder.build());
     }
 
     for (Schema.Field f2 : s2.getFields()) {
