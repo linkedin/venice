@@ -1825,10 +1825,11 @@ public class VeniceParentHelixAdmin implements Admin {
       sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
 
       /**
-       * if active-active replication is getting enabled for the store then generate and register the Replication metadata schema
+       * If active-active replication is getting enabled for the store, generate and register the Replication metadata schema
+       * for all existing value schemas.
        */
       if (activeActiveReplicationEnabled.isPresent() && activeActiveReplicationEnabled.get() && !store.isActiveActiveReplicationEnabled()) {
-        updateReplicationMetadataSchemaForStore(clusterName, storeName, store);
+        updateReplicationMetadataSchemaForAllValueSchema(clusterName, storeName);
       }
     } finally {
       releaseAdminMessageLock(clusterName);
