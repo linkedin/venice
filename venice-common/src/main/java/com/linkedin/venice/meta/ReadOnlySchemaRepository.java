@@ -8,6 +8,8 @@ import com.linkedin.venice.schema.SchemaEntry;
 
 import com.linkedin.venice.utils.Pair;
 import java.util.Collection;
+import java.util.Optional;
+import org.apache.commons.lang3.NotImplementedException;
 
 
 public interface ReadOnlySchemaRepository extends VeniceResource {
@@ -39,6 +41,18 @@ public interface ReadOnlySchemaRepository extends VeniceResource {
    * Get the most recent value schema added to the given store
    */
   SchemaEntry getLatestValueSchema(String storeName);
+
+  /**
+   * Get the superset value schema for a given store. Each store has at most one active superset schema. Specifically a
+   * store must have some features enabled (e.g. read compute) to have a superset value schema which evolves as new value
+   * schemas are added.
+   *
+   * @return Superset value or {@link Optional#empty()} if store {@param storeName} does not have any superset value schema.
+   */
+  default Optional<SchemaEntry> getSupersetSchema(String storeName) {
+    // TODO: Implement it.
+    throw new NotImplementedException("Implementation coming soon!");
+  }
 
   /**
    * Look up derived schema id and its corresponding value schema id
