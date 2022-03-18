@@ -6,7 +6,6 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.offsets.OffsetRecord;
-import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.service.AbstractVeniceService;
 import java.util.Optional;
@@ -24,10 +23,6 @@ public class StorageEngineMetadataService extends AbstractVeniceService implemen
   private final StorageEngineRepository storageEngineRepository;
   private final InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer;
 
-  public StorageEngineMetadataService(StorageEngineRepository storageEngineRepository) {
-    this(storageEngineRepository, AvroProtocolDefinition.PARTITION_STATE.getSerializer());
-  }
-
   public StorageEngineMetadataService(StorageEngineRepository storageEngineRepository, InternalAvroSpecificSerializer<PartitionState> serializer) {
     this.storageEngineRepository = storageEngineRepository;
     this.partitionStateSerializer = serializer;
@@ -42,7 +37,7 @@ public class StorageEngineMetadataService extends AbstractVeniceService implemen
   public void clearOffset(String topicName, int partitionId) {
     AbstractStorageEngine<?> storageEngine = this.storageEngineRepository.getLocalStorageEngine(topicName);
     if (storageEngine == null) {
-      logger.info("Store " + topicName +  " could not be located, ignoring the reset partition message.");
+      logger.info("Store " + topicName + " could not be located, ignoring the reset partition message.");
       return;
     }
     storageEngine.clearPartitionOffset(partitionId);
