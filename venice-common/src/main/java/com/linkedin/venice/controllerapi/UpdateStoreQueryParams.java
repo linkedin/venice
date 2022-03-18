@@ -72,6 +72,7 @@ public class UpdateStoreQueryParams extends QueryParams {
             .setReplicationFactor(srcStore.getReplicationFactor())
             .setAutoSchemaPushJobEnabled(srcStore.isSchemaAutoRegisterFromPushJobEnabled())
             .setStorageQuotaInByte(srcStore.getStorageQuotaInByte())
+            .setStoreMetaSystemStoreEnabled(srcStore.isStoreMetaSystemStoreEnabled())
             .setWriteComputationEnabled(srcStore.isWriteComputationEnabled());
 
     if (storeMigrating) {
@@ -177,6 +178,15 @@ public class UpdateStoreQueryParams extends QueryParams {
   public UpdateStoreQueryParams setEnableWrites(boolean enableWrites) {
     return putBoolean(ENABLE_WRITES, enableWrites);
   }
+
+  public UpdateStoreQueryParams setStoreMetaSystemStoreEnabled(boolean enableMetaSystemStore) {
+    return putBoolean(META_SYSTEM_STORE_ENABLED, enableMetaSystemStore);
+  }
+
+  public Optional<Boolean> isMetaSystemStoreEnabled() {
+    return getBoolean(META_SYSTEM_STORE_ENABLED);
+  }
+
   public Optional<Boolean> getEnableWrites() {
     return getBoolean(ENABLE_WRITES);
   }

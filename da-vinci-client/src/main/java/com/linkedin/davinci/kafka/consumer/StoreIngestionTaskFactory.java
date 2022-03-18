@@ -19,6 +19,7 @@ import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
+import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.DiskUsage;
 import com.linkedin.venice.writer.VeniceWriterFactory;
@@ -131,6 +132,7 @@ public class StoreIngestionTaskFactory {
     private InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer;
     private boolean isDaVinciClient;
     private RemoteIngestionRepairService remoteIngestionRepairService;
+    private MetaStoreWriter metaStoreWriter;
 
     private interface Setter {
       void apply();
@@ -167,6 +169,14 @@ public class StoreIngestionTaskFactory {
 
     public KafkaClientFactory getKafkaClientFactory() {
       return kafkaClientFactory;
+    }
+
+    public Builder setMetaStoreWriter(MetaStoreWriter metaStoreWriter) {
+      return set(() -> this.metaStoreWriter = metaStoreWriter);
+    }
+
+    public MetaStoreWriter getMetaStoreWriter() {
+      return this.metaStoreWriter;
     }
 
     public Builder setKafkaClientFactory(KafkaClientFactory consumerFactory) {

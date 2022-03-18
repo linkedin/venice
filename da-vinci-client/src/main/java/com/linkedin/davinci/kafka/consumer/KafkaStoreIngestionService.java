@@ -436,6 +436,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         .setPartitionStateSerializer(partitionStateSerializer)
         .setIsDaVinciClient(isDaVinciClient)
         .setRemoteIngestionRepairService(remoteIngestionRepairService)
+        .setMetaStoreWriter(metaStoreWriter)
         .build();
   }
 

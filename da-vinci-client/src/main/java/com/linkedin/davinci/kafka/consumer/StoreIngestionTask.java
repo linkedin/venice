@@ -18,6 +18,7 @@ import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.davinci.utils.KafkaRecordWrapper;
 import com.linkedin.davinci.utils.StoragePartitionDiskUsage;
+import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.PersistenceFailureException;
 import com.linkedin.venice.exceptions.UnsubscribedTopicPartitionException;
@@ -72,6 +73,7 @@ import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.serializer.AvroGenericDeserializer;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.stats.StatsErrorCode;
+import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.CollectionUtils;
@@ -364,6 +366,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private final boolean ingestionCheckpointDuringGracefulShutdownEnabled;
 
   protected boolean isDataRecovery;
+  protected final MetaStoreWriter metaStoreWriter;
 
   public StoreIngestionTask(
       StoreIngestionTaskFactory.Builder builder,
@@ -502,6 +505,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.isActiveActiveReplicationEnabled = version.isActiveActiveReplicationEnabled();
     this.offsetLagDeltaRelaxEnabled = serverConfig.getOffsetLagDeltaRelaxFactorForFastOnlineTransitionInRestart() > 0;
     this.ingestionCheckpointDuringGracefulShutdownEnabled = serverConfig.isServerIngestionCheckpointDuringGracefulShutdownEnabled();
+    this.metaStoreWriter = builder.getMetaStoreWriter();
 
     // Build quota enforcer needs sub partition count prepared.
     if (serverConfig.isHybridQuotaEnabled() || storeRepository.getStoreOrThrow(storeName).isHybridStoreDiskQuotaEnabled()) {
@@ -3091,7 +3095,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       return;
     }
 
-    waitValueSchemaAvailable(schemaId);
+    waitUntilValueSchemaAvailable(schemaId);
   }
 
   protected StoreVersionState waitVersionStateAvailable(String kafkaTopic) throws InterruptedException {
@@ -3114,7 +3118,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
   }
 
-  private void waitValueSchemaAvailable(int schemaId) throws InterruptedException {
+  private void waitUntilValueSchemaAvailable(int schemaId) throws InterruptedException {
     // Considering value schema is immutable for an existing store, we can cache it locally
     if (availableSchemaIds.contains(schemaId)) {
       return;
@@ -3136,6 +3140,15 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         logger.info("Found new value schema [" + schemaId + "] for " + storeName +
             " after " + NANOSECONDS.toSeconds(elapsedTime));
         availableSchemaIds.add(schemaId);
+        // TODO: Query metastore for existence of value schema id before doing an update. During bounce of large
+        // cluster these metastore writes could be spiky
+        if (metaStoreWriter != null && !VeniceSystemStoreType.META_STORE.isSystemStore(storeName)) {
+          String metaStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName);
+          String metaStoreRT = Version.composeRealTimeTopic(metaStoreName);
+          if (topicManagerRepository.getTopicManager(localKafkaServer).containsTopic(metaStoreRT)) {
+            metaStoreWriter.writeInUseValueSchema(storeName, versionNumber, schemaId);
+          }
+        }
         return;
       }
 
@@ -3154,7 +3167,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * value cannot be deserialized. Currently the deserialization dry-run won't happen in the following cases:
    *
    * 1. Value is chunked. A single piece of value cannot be deserialized. In this case, the schema id is not added in
-   *    availableSchemaIds by {@link StoreIngestionTask#waitValueSchemaAvailable}.
+   *    availableSchemaIds by {@link StoreIngestionTask#waitUntilValueSchemaAvailable}.
    * 2. Value is compressed, which cannot be deserialized without decompression.
    * 3. Ingestion isolation is enabled, in which ingestion happens on forked process instead of this main process.
    */
@@ -3386,7 +3399,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       return;
     }
     try {
-      waitValueSchemaAvailable(valueSchemaId);
+      waitUntilValueSchemaAvailable(valueSchemaId);
     } catch (InterruptedException e) {
       logger.error("Got interrupted while trying to fetch value schema");
       return;

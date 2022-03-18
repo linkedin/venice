@@ -4,6 +4,7 @@ import com.linkedin.avroutil1.compatibility.AvroIncompatibleSchemaException;
 import com.linkedin.avroutil1.compatibility.RandomRecordGenerator;
 import com.linkedin.avroutil1.compatibility.RecordGenerationConfig;
 import com.linkedin.d2.balancer.D2Client;
+import com.linkedin.util.factory.TestGeneratorUtil;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.SSLConfig;
@@ -2995,6 +2996,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         });
     }
 
+    public void setMetaSystemStoreEnabled(String clusterName, String storeName, boolean metaSystemStoreEnabled) {
+      storeMetadataUpdate(clusterName, storeName, store -> {
+      store.setStoreMetadataSystemStoreEnabled(metaSystemStoreEnabled);
+      return store;
+      });
+    }
+
     /**
      * This function will check whether the store update will cause the case that a store can not have the specified
      * hybrid store and incremental push configs.
@@ -3159,6 +3167,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         Optional<String> nativeReplicationSourceFabric = params.getNativeReplicationSourceFabric();
         Optional<Boolean> activeActiveReplicationEnabled = params.getActiveActiveReplicationEnabled();
         Optional<Boolean> applyTargetVersionFilterForIncPush = params.applyTargetVersionFilterForIncPush();
+        Optional<Boolean> isMetaSystemStoreEnabled = params.isMetaSystemStoreEnabled();
 
         final Optional<HybridStoreConfig> newHybridStoreConfig;
         if (hybridRewindSeconds.isPresent() || hybridOffsetLagThreshold.isPresent()
@@ -3452,6 +3461,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
             if (applyTargetVersionFilterForIncPush.isPresent()) {
                 setApplyTargetVersionFilterForIncPush(clusterName, storeName, applyTargetVersionFilterForIncPush.get());
+            }
+
+            if (isMetaSystemStoreEnabled.isPresent()) {
+              setMetaSystemStoreEnabled(clusterName, storeName, isMetaSystemStoreEnabled.get());
             }
             logger.info("Finished updating store: " + storeName + " in cluster: " + clusterName);
         } catch (VeniceException e) {

@@ -709,6 +709,7 @@ public class AdminTool {
     booleanParam(cmd, Arg.WRITEABILITY, p -> params.setEnableWrites(p), argSet);
     longParam(cmd, Arg.STORAGE_QUOTA, p -> params.setStorageQuotaInByte(p), argSet);
     booleanParam(cmd, Arg.HYBRID_STORE_OVERHEAD_BYPASS, p -> params.setHybridStoreOverheadBypass(p), argSet);
+    booleanParam(cmd, Arg.META_SYSTEM_STORE_ENABLED, p -> params.setStoreMetaSystemStoreEnabled(p), argSet);
     longParam(cmd, Arg.READ_QUOTA, p -> params.setReadQuotaInCU(p), argSet);
     longParam(cmd, Arg.HYBRID_REWIND_SECONDS, p -> params.setHybridRewindSeconds(p), argSet);
     longParam(cmd, Arg.HYBRID_OFFSET_LAG, p -> params.setHybridOffsetLagThreshold(p), argSet);
