@@ -19,7 +19,6 @@ import com.linkedin.venice.schema.rmd.ReplicationMetadataSchemaEntry;
 import com.linkedin.venice.utils.TestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
-
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Iterator;
@@ -37,7 +36,6 @@ import static org.testng.Assert.*;
 
 public class TestParentControllerWithMultiDataCenter {
   private static final int TEST_TIMEOUT = 90_000; // ms
-
   private static final int NUMBER_OF_CHILD_DATACENTERS = 2;
   private static final int NUMBER_OF_CLUSTERS = 1;
   private static final String[] CLUSTER_NAMES =
@@ -282,13 +280,13 @@ public class TestParentControllerWithMultiDataCenter {
   public void testEnableActiveActiveReplicationSchema() {
     String clusterName = CLUSTER_NAMES[0];
     String storeName = Utils.getUniqueString("store");
-    String recordSchemaStr1 = BASIC_USER_SCHEMA_STRING_WITH_DEFAULT;
-    String recordSchemaStr2 = TestPushUtils.USER_SCHEMA_STRING_SIMPLE_WITH_DEFAULT;
-    String recordSchemaStr3 = TestPushUtils.USER_SCHEMA_STRING_WITH_DEFAULT;
+    String valueRecordSchemaStr1 = BASIC_USER_SCHEMA_STRING_WITH_DEFAULT;
+    String valueRecordSchemaStr2 = TestPushUtils.USER_SCHEMA_STRING_SIMPLE_WITH_DEFAULT;
+    String valueRecordSchemaStr3 = TestPushUtils.USER_SCHEMA_STRING_WITH_DEFAULT;
 
-    Schema replicationMetadataSchema1 = ReplicationMetadataSchemaGenerator.generateMetadataSchema(recordSchemaStr1, 1);
-    Schema replicationMetadataSchema2 = ReplicationMetadataSchemaGenerator.generateMetadataSchema(recordSchemaStr2, 1);
-    Schema replicationMetadataSchema3 = ReplicationMetadataSchemaGenerator.generateMetadataSchema(recordSchemaStr3, 1);
+    Schema rmdSchema1 = ReplicationMetadataSchemaGenerator.generateMetadataSchema(valueRecordSchemaStr1, 1);
+    Schema rmdSchema2 = ReplicationMetadataSchemaGenerator.generateMetadataSchema(valueRecordSchemaStr2, 1);
+    Schema rmdSchema3 = ReplicationMetadataSchemaGenerator.generateMetadataSchema(valueRecordSchemaStr3, 1);
 
     VeniceControllerWrapper parentController =
         parentControllers.stream().filter(c -> c.isMasterController(clusterName)).findAny().get();
@@ -298,13 +296,14 @@ public class TestParentControllerWithMultiDataCenter {
        * Create a test store
        */
       NewStoreResponse newStoreResponse = parentControllerClient.retryableRequest(5,
-          c -> c.createNewStore(storeName, "", "\"string\"", recordSchemaStr1));
+          c -> c.createNewStore(storeName, "", "\"string\"", valueRecordSchemaStr1));
       Assert.assertFalse(newStoreResponse.isError(), "The NewStoreResponse returned an error: " + newStoreResponse.getError());
 
       SchemaResponse schemaResponse2 = parentControllerClient.retryableRequest(5,
-          c -> c.addValueSchema(storeName, recordSchemaStr2));
+          c -> c.addValueSchema(storeName, valueRecordSchemaStr2));
       Assert.assertFalse(schemaResponse2.isError(), "addValeSchema returned error: " + schemaResponse2.getError());
 
+      // Enable AA on store
       UpdateStoreQueryParams updateStoreToEnableAARepl =
           new UpdateStoreQueryParams().setLeaderFollowerModel(true).setNativeReplicationEnabled(true).setActiveActiveReplicationEnabled(true);
       TestPushUtils.updateStore(clusterName, storeName, parentControllerClient, updateStoreToEnableAARepl);
@@ -325,21 +324,25 @@ public class TestParentControllerWithMultiDataCenter {
         Admin veniceHelixAdmin = childDatacenters.get(0).getControllers().values().iterator().next().getVeniceAdmin();
         TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, false, true, () -> {
               Collection<ReplicationMetadataSchemaEntry> replicationMetadataSchemas = veniceHelixAdmin.getReplicationMetadataSchemas(clusterName, storeName);
-              Assert.assertEquals(replicationMetadataSchemas.size(), 1);
-              Assert.assertEquals(replicationMetadataSchemas.iterator().next().getSchema(), replicationMetadataSchema2);
+              // Expect two RMD schemas because there were 2 value schemas when AA was enabled on this store.
+              Assert.assertEquals(replicationMetadataSchemas.size(), 2);
+              Iterator<ReplicationMetadataSchemaEntry> iterator = replicationMetadataSchemas.iterator();
+              Assert.assertEquals(iterator.next().getSchema(), rmdSchema1);
+              Assert.assertEquals(iterator.next().getSchema(), rmdSchema2);
         });
 
         //Add a new value schema for the store and make sure the corresponding new metadata schema is generated.
         SchemaResponse schemaResponse3 =
-            parentControllerClient.retryableRequest(5, c -> c.addValueSchema(storeName, recordSchemaStr3));
+            parentControllerClient.retryableRequest(5, c -> c.addValueSchema(storeName, valueRecordSchemaStr3));
         Assert.assertFalse(schemaResponse3.isError(), "addValeSchema returned error: " + schemaResponse3.getError());
 
         Collection<ReplicationMetadataSchemaEntry> replicationMetadataSchemas = veniceHelixAdmin.getReplicationMetadataSchemas(clusterName, storeName);
-        Assert.assertEquals(replicationMetadataSchemas.size(), 2);
+        Assert.assertEquals(replicationMetadataSchemas.size(), 3);
 
         Iterator<ReplicationMetadataSchemaEntry> iterator = replicationMetadataSchemas.iterator();
-        Assert.assertEquals(iterator.next().getSchema(), replicationMetadataSchema2);
-        Assert.assertEquals(iterator.next().getSchema(), replicationMetadataSchema3);
+        Assert.assertEquals(iterator.next().getSchema(), rmdSchema1);
+        Assert.assertEquals(iterator.next().getSchema(), rmdSchema2);
+        Assert.assertEquals(iterator.next().getSchema(), rmdSchema3);
 
         //Add a new version for the store and make sure all new metadata schema are generated.
         VersionCreationResponse vcr =
@@ -363,9 +366,9 @@ public class TestParentControllerWithMultiDataCenter {
         Assert.assertEquals(replicationMetadataSchemas.size(), 3);
 
         Iterator<ReplicationMetadataSchemaEntry> iterator2 = replicationMetadataSchemas.iterator();
-        Assert.assertEquals(iterator2.next().getSchema(), replicationMetadataSchema1);
-        Assert.assertEquals(iterator2.next().getSchema(), replicationMetadataSchema2);
-        Assert.assertEquals(iterator2.next().getSchema(), replicationMetadataSchema3);
+        Assert.assertEquals(iterator2.next().getSchema(), rmdSchema1);
+        Assert.assertEquals(iterator2.next().getSchema(), rmdSchema2);
+        Assert.assertEquals(iterator2.next().getSchema(), rmdSchema3);
       }
     }
   }
