@@ -1577,6 +1577,7 @@ public class VeniceParentHelixAdmin implements Admin {
       Optional<Boolean> activeActiveReplicationEnabled = params.getActiveActiveReplicationEnabled();
       Optional<String> regionsFilter = params.getRegionsFilter();
       Optional<Boolean> applyTargetStoreFilterForIncPush = params.applyTargetVersionFilterForIncPush();
+      Optional<Boolean> isMetaSystemStoreEnabled = params.isMetaSystemStoreEnabled();
 
       /**
        * Check whether parent controllers will only propagate the update configs to child controller, or all unchanged
@@ -1796,6 +1797,11 @@ public class VeniceParentHelixAdmin implements Admin {
       setStore.applyTargetVersionFilterForIncPush = applyTargetStoreFilterForIncPush
           .map(addToUpdatedConfigList(updatedConfigsList, APPLY_TARGET_VERSION_FILTER_FOR_INC_PUSH))
           .orElseGet(store::isApplyTargetVersionFilterForIncPush);
+
+      setStore.metaSystemStoreEnabled = isMetaSystemStoreEnabled
+          .map(addToUpdatedConfigList(updatedConfigsList, META_SYSTEM_STORE_ENABLED))
+          .orElseGet(store::isStoreMetadataSystemStoreEnabled);
+
 
       /**
        * By default, parent controllers will not try to replicate the unchanged store configs to child controllers;

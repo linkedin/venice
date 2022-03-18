@@ -11,7 +11,6 @@ import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
-import com.linkedin.venice.pushmonitor.ReplicaStatus;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
@@ -20,9 +19,12 @@ import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.systemstore.schemas.StoreKeySchemas;
 import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
 import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
+import com.linkedin.venice.systemstore.schemas.StoreMetaValueWriteOpRecord;
 import com.linkedin.venice.systemstore.schemas.StoreReplicaStatus;
 import com.linkedin.venice.systemstore.schemas.StoreValueSchema;
 import com.linkedin.venice.systemstore.schemas.StoreValueSchemas;
+import com.linkedin.venice.systemstore.schemas.storeReplicaStatusesMapOps;
+import com.linkedin.venice.systemstore.schemas.storeValueSchemaIdsWrittenPerStoreVersionListOps;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -40,13 +42,9 @@ import java.util.Optional;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
-import org.apache.avro.generic.GenericData;
-import org.apache.avro.generic.GenericRecord;
+import org.apache.avro.specific.SpecificRecord;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-
-import static com.linkedin.venice.schema.writecompute.WriteComputeConstants.*;
-import static com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter.*;
 
 
 /**
@@ -62,7 +60,6 @@ public class MetaStoreWriter implements Closeable {
   public static final String KEY_STRING_VERSION_NUMBER = "KEY_VERSION_NUMBER";
   public static final String KEY_STRING_PARTITION_ID = "KEY_PARTITION_ID";
   public static final String KEY_STRING_SCHEMA_ID = "KEY_SCHEMA_ID";
-
   private static final Logger LOGGER = LogManager.getLogger(MetaStoreWriter.class);
 
   private final Map<String, VeniceWriter> metaStoreWriterMap = new VeniceConcurrentHashMap<>();
@@ -146,11 +143,31 @@ public class MetaStoreWriter implements Closeable {
     writeStoreValueSchemasIndividually(storeName, valueSchemas);
   }
 
-  /**
-   * Improved version of writeStoreValueSchemas. Instead of writing all value schemas into one K/V pair we write it to
-   * a different key space where each K/V pair only represents one version of the value schema. This allows us to store
-   * many versions of a large value schema.
-   */
+  public void writeInUseValueSchema(String storeName, int versionNumber, int valueSchemaId) {
+    update(storeName, MetaStoreDataType.VALUE_SCHEMAS_WRITTEN_PER_STORE_VERSION, () -> {
+      Map<String,String> map = new HashMap<>(2);
+      map.put(KEY_STRING_STORE_NAME, storeName);
+      map.put(KEY_STRING_VERSION_NUMBER, Integer.toString(versionNumber));
+      return map;
+      }, () -> {
+      // Construct an update
+      StoreMetaValueWriteOpRecord writeOpRecord = new StoreMetaValueWriteOpRecord();
+      writeOpRecord.timestamp = System.currentTimeMillis();
+      List<Integer> list = new ArrayList<>();
+      list.add(valueSchemaId);
+      storeValueSchemaIdsWrittenPerStoreVersionListOps listOps = new storeValueSchemaIdsWrittenPerStoreVersionListOps();
+      listOps.setUnion = list;
+      listOps.setDiff = Collections.emptyList();
+      writeOpRecord.storeValueSchemaIdsWrittenPerStoreVersion = listOps;
+      return writeOpRecord;
+    });
+  }
+
+    /**
+     * Improved version of writeStoreValueSchemas. Instead of writing all value schemas into one K/V pair we write it to
+     * a different key space where each K/V pair only represents one version of the value schema. This allows us to store
+     * many versions of a large value schema.
+     */
   private void writeStoreValueSchemasIndividually(String storeName, Collection<SchemaEntry> valueSchemas) {
     for (SchemaEntry schemaEntry : valueSchemas) {
       write(storeName, MetaStoreDataType.STORE_VALUE_SCHEMA, () -> new HashMap<String, String>() {{
@@ -201,18 +218,18 @@ public class MetaStoreWriter implements Closeable {
       put(KEY_STRING_PARTITION_ID, Integer.toString(partitionId));
     }}, () -> {
       // Construct an update
-      GenericRecord update = new GenericData.Record(derivedComputeSchema.getTypes().get(0));
-      update.put("timestamp", System.currentTimeMillis());
-      GenericRecord storeReplicaStatusesUpdate = new GenericData.Record(
-          derivedComputeSchema.getTypes().get(0).getField("storeReplicaStatuses").schema().getTypes().get(2));
+      StoreMetaValueWriteOpRecord writeOpRecord = new StoreMetaValueWriteOpRecord();
+      writeOpRecord.timestamp = System.currentTimeMillis();
+
       Map<CharSequence, StoreReplicaStatus> instanceStatusMap = new HashMap<>();
       StoreReplicaStatus replicaStatus = new StoreReplicaStatus();
       replicaStatus.status = executionStatus.getValue();
       instanceStatusMap.put(instance.getUrl(true), replicaStatus);
-      storeReplicaStatusesUpdate.put(MAP_UNION, instanceStatusMap);
-      storeReplicaStatusesUpdate.put(MAP_DIFF, Collections.emptyList());
-      update.put("storeReplicaStatuses", storeReplicaStatusesUpdate);
-      return update;
+      storeReplicaStatusesMapOps replicaStatusesMapOps = new storeReplicaStatusesMapOps();
+      replicaStatusesMapOps.mapUnion = instanceStatusMap;
+      replicaStatusesMapOps.mapDiff = Collections.emptyList();
+      writeOpRecord.storeReplicaStatuses = replicaStatusesMapOps;
+      return writeOpRecord;
     });
   }
 
@@ -241,17 +258,16 @@ public class MetaStoreWriter implements Closeable {
       put(KEY_STRING_VERSION_NUMBER, Integer.toString(version));
       put(KEY_STRING_PARTITION_ID, Integer.toString(partitionId));
     }}, () -> {
-      // Construct an update
-      GenericRecord update = new GenericData.Record(derivedComputeSchema.getTypes().get(0));
-      update.put("timestamp", System.currentTimeMillis());
-      GenericRecord storeReplicaStatusesUpdate = new GenericData.Record(
-          derivedComputeSchema.getTypes().get(0).getField("storeReplicaStatuses").schema().getTypes().get(2));
+      // Construct an update WC record
+      StoreMetaValueWriteOpRecord writeOpRecord = new StoreMetaValueWriteOpRecord();
+      writeOpRecord.timestamp = System.currentTimeMillis();
+      storeReplicaStatusesMapOps replicaStatusesMapOps = new storeReplicaStatusesMapOps();
       List<CharSequence> deletedReplicas = new ArrayList<>();
       deletedReplicas.add(instance.getUrl(true));
-      storeReplicaStatusesUpdate.put(MAP_UNION, Collections.emptyMap());
-      storeReplicaStatusesUpdate.put(MAP_DIFF, deletedReplicas);
-      update.put("storeReplicaStatuses", storeReplicaStatusesUpdate);
-      return update;
+      replicaStatusesMapOps.mapDiff = deletedReplicas;
+      replicaStatusesMapOps.mapUnion = Collections.emptyMap();
+      writeOpRecord.storeReplicaStatuses = replicaStatusesMapOps;
+      return writeOpRecord;
     });
   }
 
@@ -305,7 +321,7 @@ public class MetaStoreWriter implements Closeable {
   }
 
   private void update(String storeName, MetaStoreDataType dataType, Supplier<Map<String, String>> keyStringSupplier,
-      Supplier<GenericRecord> updateSupplier) {
+      Supplier<SpecificRecord> updateSupplier) {
     String metaStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName);
     VeniceWriter writer = prepareToWrite(metaStoreName);
     if (derivedComputeSchemaId == -1) {
@@ -323,7 +339,7 @@ public class MetaStoreWriter implements Closeable {
       this.derivedComputeSchemaId = derivedSchemaId.getSecond();
     }
     StoreMetaKey key = dataType.getStoreMetaKey(keyStringSupplier.get());
-    GenericRecord update = updateSupplier.get();
+    SpecificRecord update = updateSupplier.get();
     writer.update(key, update, AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.currentProtocolVersion.get(),
         derivedComputeSchemaId, null);
     writer.flush();

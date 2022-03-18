@@ -5,6 +5,7 @@ import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
+import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
@@ -17,6 +18,8 @@ import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.read.RequestType;
+import com.linkedin.venice.system.store.MetaStoreDataType;
+import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.TestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
@@ -29,6 +32,7 @@ import java.io.File;
 import java.io.IOException;
 import java.text.DecimalFormat;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Properties;
@@ -53,6 +57,7 @@ import org.testng.annotations.Test;
 
 import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.hadoop.VenicePushJob.*;
+import static com.linkedin.venice.system.store.MetaStoreWriter.*;
 import static com.linkedin.venice.utils.TestPushUtils.*;
 
 //TODO: write a H2VWrapper that can handle the whole flow
@@ -579,6 +584,36 @@ public abstract class TestBatch {
   }
 
   @Test(timeOut = TEST_TIMEOUT)
+  public void testMetaStoreSchemaValidation() throws Exception {
+    String storeName = testBatchStore(inputDir -> {
+      Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir, false);
+      return new Pair<>(recordSchema.getField("id").schema(),
+          recordSchema.getField("name").schema());
+    }, properties -> {}, (avroClient, vsonClient, metricsRepository) -> {
+      //test single get
+      for (int i = 1; i <= 100; i ++) {
+        Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + i);
+      }
+    }, new UpdateStoreQueryParams().setLeaderFollowerModel(true).setStoreMetaSystemStoreEnabled(true));
+
+    String metaStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName);
+    //Query meta store
+    try(AvroGenericStoreClient avroClient = ClientFactory.getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(metaStoreName)
+        .setVeniceURL(veniceCluster.getRandomRouterURL()))) {
+      try {
+        StoreMetaKey key = MetaStoreDataType.VALUE_SCHEMAS_WRITTEN_PER_STORE_VERSION.getStoreMetaKey(new HashMap<String, String>() {{
+          put(KEY_STRING_STORE_NAME, storeName);
+          put(KEY_STRING_VERSION_NUMBER, Integer.toString(1));
+        }});
+        Object value = avroClient.get(key).get();
+        System.out.println(value);
+      } catch (Exception e) {
+        Assert.fail("get request to fetch schema from meta store fails");
+      }
+    }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
   public void testKafkaInputBatchJob() throws Exception {
     H2VValidator validator = (avroClient, vsonClient, metricsRepository) -> {
       //test single get
@@ -780,6 +815,12 @@ public abstract class TestBatch {
     if (StringUtils.isEmpty(existingStore)) {
       createStoreForJob(veniceCluster.getClusterName(), schemas.getFirst().toString(), schemas.getSecond().toString(), props,
           storeParms, addDerivedSchema).close();
+    }
+
+    if (storeParms != null && storeParms.isMetaSystemStoreEnabled().orElse(false)) {
+      try (ControllerClient controllerClient = new ControllerClient(veniceCluster.getClusterName(), veniceCluster.getRandomRouterURL())) {
+        controllerClient.emptyPush(VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName), storeName, 10000);
+      }
     }
 
     TestPushUtils.runPushJob("Test Batch push job", props);

@@ -35,6 +35,7 @@ public enum Arg {
   READABILITY("readability", "rb", true, "store's readability"),
   WRITEABILITY("writeability", "wb", true, "store's writeability"),
   STORAGE_QUOTA("storage-quota", "sq", true, "maximum capacity a store version could have"),
+  META_SYSTEM_STORE_ENABLED("meta-system-store-enabled", "ms", true, "whether meta system store is enabled or not"),
   HYBRID_STORE_DISK_QUOTA_ENABLED("hybrid-store-disk-quota-enabled", "hsq", true, "whether or not enable disk quota for a hybrid store"),
   HYBRID_STORE_OVERHEAD_BYPASS("hybrid-store-overhead-bypass", "ob", true, "for hybrid stores, if set to false, updating storage quota will be multiplied by store db overhead ratio."),
   READ_QUOTA("read-quota", "rq", true, "quota for read request hit this store. Measurement is capacity unit"),
