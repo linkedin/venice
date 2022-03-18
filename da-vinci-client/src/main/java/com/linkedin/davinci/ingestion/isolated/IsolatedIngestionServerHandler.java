@@ -254,8 +254,8 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
       }
       switch (IngestionMetadataUpdateType.valueOf(ingestionStorageMetadata.metadataUpdateType)) {
         case PUT_OFFSET_RECORD:
-          isolatedIngestionServer.getStorageMetadataService().put(topicName, partitionId, new OffsetRecord(ingestionStorageMetadata.payload.array(), isolatedIngestionServer
-              .getPartitionStateSerializer()));
+          isolatedIngestionServer.getStorageMetadataService().put(topicName, partitionId,
+              new OffsetRecord(ingestionStorageMetadata.payload.array(), isolatedIngestionServer.getPartitionStateSerializer()));
           break;
         case CLEAR_OFFSET_RECORD:
           isolatedIngestionServer.getStorageMetadataService().clearOffset(topicName, partitionId);
@@ -269,9 +269,10 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
         default:
           break;
       }
-    } catch (Exception e) {
+    } catch (VeniceException e) {
       logger.error("Encounter exception while updating storage metadata", e);
-      report.isPositive = false;
+      // Will not retry the message as the VeniceException indicates topic not found in storage engine repository.
+      report.isPositive = true;
       report.message = e.getClass().getSimpleName() + "_" + e.getMessage();
     }
     return report;
