@@ -146,7 +146,7 @@ class MergeGenericRecord extends AbstractMerge<GenericRecord> {
 
     switch (rmdTimestampType) {
       case VALUE_LEVEL_TIMESTAMP:
-        return deleteWithRecordLevelTimestamp(
+        return deleteWithValueLevelTimestamp(
             (long) tsObject,
             deleteOperationTimestamp,
             newValueSourceOffset,

@@ -289,7 +289,13 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         );
         break;
       case DELETE:
-        mergeConflictResult = mergeConflictResolver.delete(rmdWithValueSchemaID, writeTimestamp, sourceOffset, sourceKafkaClusterId);
+        mergeConflictResult = mergeConflictResolver.delete(
+            rmdWithValueSchemaID,
+            writeTimestamp,
+            sourceOffset,
+            sourceKafkaClusterId,
+            sourceKafkaClusterId
+        );
         break;
       case UPDATE:
         throw new VeniceUnsupportedOperationException("Update operation not yet supported in Active/Active.");

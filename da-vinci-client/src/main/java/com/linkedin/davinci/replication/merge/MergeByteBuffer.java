@@ -50,12 +50,11 @@ public class MergeByteBuffer extends AbstractMerge<ByteBuffer> {
       long newValueSourceOffset,
       int newValueSourceBrokerID
   ) {
-
     final GenericRecord oldReplicationMetadata = oldValueAndReplicationMetadata.getReplicationMetadata();
     final Object tsObject = oldReplicationMetadata.get(TIMESTAMP_FIELD_NAME);
     RmdTimestampType rmdTimestampType = MergeUtils.getReplicationMetadataType(tsObject);
     if (rmdTimestampType == RmdTimestampType.VALUE_LEVEL_TIMESTAMP) {
-      return deleteWithRecordLevelTimestamp(
+      return deleteWithValueLevelTimestamp(
           (long) tsObject,
           deleteOperationTimestamp,
           newValueSourceOffset,

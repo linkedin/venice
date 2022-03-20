@@ -50,7 +50,7 @@ abstract class AbstractMerge<T> implements Merge<T> {
     return oldValueAndReplicationMetadata;
   }
 
-  protected ValueAndReplicationMetadata<T> deleteWithRecordLevelTimestamp(
+  protected ValueAndReplicationMetadata<T> deleteWithValueLevelTimestamp(
       final long oldTimestamp,
       final long deleteOperationTimestamp,
       final long newValueSourceOffset,
