@@ -128,16 +128,18 @@ public class MergeConflictResolver {
    * @param deleteOperationTimestamp The logical timestamp of the incoming record.
    * @param newValueSourceOffset The offset from which the new value originates in the realtime stream.  Used to build
    *                               the ReplicationMetadata for the newly inserted record.
-   * @param newValueSourceBrokerID The ID of the broker from which the new value originates.  ID's should correspond
+   * @param deleteOperationSourceBrokerID The ID of the broker from which the new value originates.  ID's should correspond
    *                                 to the kafkaClusterUrlIdMap configured in the LeaderFollowerIngestionTask.  Used to build
    *                                 the ReplicationMetadata for the newly inserted record.
+   * @param deleteOperationColoID ID of the colo/fabric where this new Delete request came from.
    * @return A MergeConflictResult which denotes what update should be applied or if the operation should be ignored.
    */
   public MergeConflictResult delete(
       Optional<ReplicationMetadataWithValueSchemaId> rmdWithValueSchemaID,
-      long deleteOperationTimestamp,
-      long newValueSourceOffset,
-      int newValueSourceBrokerID
+      final long deleteOperationTimestamp,
+      final long newValueSourceOffset,
+      final int deleteOperationSourceBrokerID,
+      final int deleteOperationColoID
   ) {
     /**
      * oldReplicationMetadata can be null in two cases:
@@ -153,7 +155,7 @@ public class MergeConflictResolver {
       GenericRecord newReplicationMetadata = newRmdCreator.apply(valueSchemaID);
       newReplicationMetadata.put(TIMESTAMP_FIELD_NAME, deleteOperationTimestamp);
       newReplicationMetadata.put(REPLICATION_CHECKPOINT_VECTOR_FIELD,
-          MergeUtils.mergeOffsetVectors(Optional.empty(), newValueSourceOffset, newValueSourceBrokerID));
+          MergeUtils.mergeOffsetVectors(Optional.empty(), newValueSourceOffset, deleteOperationSourceBrokerID));
       return new MergeConflictResult(Optional.empty(), valueSchemaID, false, newReplicationMetadata);
     } else if (rmdWithValueSchemaID.get().getValueSchemaId() <= 0) {
       throw new VeniceException("Invalid schema Id of old value found when replication metadata exists for store = "
@@ -166,23 +168,24 @@ public class MergeConflictResolver {
     Merge.RmdTimestampType rmdTimestampType = MergeUtils.getReplicationMetadataType(tsObject);
 
     if (rmdTimestampType == Merge.RmdTimestampType.VALUE_LEVEL_TIMESTAMP) {
-      long oldTimestamp = (long) tsObject;
-      // delete wins on tie
-      if (oldTimestamp <= deleteOperationTimestamp) {
-        // update RMD ts
-        oldReplicationMetadataRecord.put(TIMESTAMP_FIELD_NAME, deleteOperationTimestamp);
-        oldReplicationMetadataRecord.put(REPLICATION_CHECKPOINT_VECTOR_FIELD,
-            MergeUtils.mergeOffsetVectors(
-                Optional.ofNullable((List<Long>)oldReplicationMetadataRecord.get(REPLICATION_CHECKPOINT_VECTOR_FIELD)),
-                newValueSourceOffset,
-                newValueSourceBrokerID
-            )
-        );
+      ValueAndReplicationMetadata<ByteBuffer> valueAndRmd = new ValueAndReplicationMetadata<>(
+          Lazy.of(() -> null), // Current value can be passed as null because it is not needed to handle the Delete request.
+          oldReplicationMetadataRecord
+      );
+      valueAndRmd = mergeByteBuffer.delete(
+          valueAndRmd,
+          deleteOperationTimestamp,
+          deleteOperationColoID,
+          newValueSourceOffset,
+          deleteOperationSourceBrokerID
+      );
 
-        return new MergeConflictResult(Optional.empty(), valueSchemaID,false, oldReplicationMetadataRecord);
-      } else { // keep the old value
+      if (valueAndRmd.isUpdateIgnored()) {
         return MergeConflictResult.getIgnoredResult();
+      } else {
+        return new MergeConflictResult(Optional.empty(), valueSchemaID,false, oldReplicationMetadataRecord);
       }
+
     } else {
       throw new VeniceUnsupportedOperationException("Field level MD not supported");
     }

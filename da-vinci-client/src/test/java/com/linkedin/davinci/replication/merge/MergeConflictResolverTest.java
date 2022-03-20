@@ -247,6 +247,7 @@ public class MergeConflictResolverTest {
         Optional.of(new ReplicationMetadataWithValueSchemaId(1, timestampRecord)),
         30L,
         1L,
+        0,
         0
     );
 
@@ -258,6 +259,7 @@ public class MergeConflictResolverTest {
         Optional.of(new ReplicationMetadataWithValueSchemaId(1, timestampRecord)),
         10L,
         1L,
+        0,
         0
     );
     Assert.assertTrue(mergeConflictResult.isUpdateIgnored());
@@ -267,17 +269,18 @@ public class MergeConflictResolverTest {
         Optional.of(new ReplicationMetadataWithValueSchemaId(1, timestampRecord)),
         30L,
         1L,
+        0,
         0
     );
     Assert.assertFalse(mergeConflictResult.getNewValue().isPresent());
 
     // Validate null RMD for existing old value
-    mergeConflictResult  = mergeConflictResolver.delete(Optional.empty(), 30,1, 0);
+    mergeConflictResult  = mergeConflictResolver.delete(Optional.empty(), 30,1, 0, 0);
     Assert.assertFalse(mergeConflictResult.isUpdateIgnored());
     Assert.assertFalse(mergeConflictResult.getNewValue().isPresent());
 
     // Validate null RMD for invalid schema id
-    mergeConflictResult  = mergeConflictResolver.delete(Optional.empty(), 30,1, 0);
+    mergeConflictResult  = mergeConflictResolver.delete(Optional.empty(), 30,1, 0, 0);
     Assert.assertFalse(mergeConflictResult.isUpdateIgnored());
     Assert.assertEquals(mergeConflictResult.getValueSchemaId(), 1);
 
@@ -286,6 +289,7 @@ public class MergeConflictResolverTest {
         Optional.of(new ReplicationMetadataWithValueSchemaId(1, timestampRecord)),
         30L,
         1L,
+        0,
         0
     );
     Assert.assertFalse(mergeConflictResult.isUpdateIgnored());
@@ -296,12 +300,22 @@ public class MergeConflictResolverTest {
         Optional.of(new ReplicationMetadataWithValueSchemaId(-1, timestampRecord)),
         30L,
         1L,
+        0,
         0
     ));
 
     // validate error on per field TS record
     timestampRecord.put(0,  ts);
-    Assert.assertThrows(VeniceException.class, () -> mergeConflictResolver.delete(Optional.of(new ReplicationMetadataWithValueSchemaId(1, timestampRecord)), 10,1, 0));
+    Assert.assertThrows(
+        VeniceException.class,
+        () -> mergeConflictResolver.delete(
+            Optional.of(new ReplicationMetadataWithValueSchemaId(1, timestampRecord)),
+            10,
+            1,
+            0,
+            0
+        )
+    );
   }
 
   @Test
