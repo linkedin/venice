@@ -46,6 +46,8 @@ import org.apache.avro.specific.SpecificRecord;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import static com.linkedin.venice.schema.writecompute.WriteComputeConstants.*;
+
 
 /**
  * This class is to write metadata: store properties/key schema/value schemas/replica statuses to meta system store.

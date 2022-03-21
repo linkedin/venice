@@ -17,6 +17,7 @@ import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.meta.ETLStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.schema.AvroSchemaParseUtils;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.SslUtils;
@@ -354,9 +355,9 @@ public class VeniceParentHelixAdminTest {
     String storeName = Utils.getUniqueString("test_store");
     String owner = "test_owner";
     String keySchemaStr = "\"long\"";
-    Schema valueSchema = generateSchema(false);
+    Schema valueSchemaV1 = generateSchema(false);
 
-    NewStoreResponse newStoreResponse = parentControllerClient.createNewStore(storeName, owner, keySchemaStr, valueSchema.toString());
+    NewStoreResponse newStoreResponse = parentControllerClient.createNewStore(storeName, owner, keySchemaStr, valueSchemaV1.toString());
     Assert.assertNotNull(newStoreResponse);
     Assert.assertFalse(newStoreResponse.isError(), "error in newStoreResponse: " + newStoreResponse.getError());
 
@@ -367,38 +368,45 @@ public class VeniceParentHelixAdminTest {
     Assert.assertNotNull(updateStoreResponse);
     Assert.assertFalse(updateStoreResponse.isError(), "error in updateStoreResponse: " + updateStoreResponse.getError());
 
-    valueSchema = generateSchema(true);
-    SchemaResponse addSchemaRespone = parentControllerClient.addValueSchema(storeName, valueSchema.toString());
-    Assert.assertNotNull(addSchemaRespone);
-    Assert.assertFalse(addSchemaRespone.isError(), "error in addSchemaRespone: " + addSchemaRespone.getError());
+    Schema valueSchemaV2 = generateSchema(true);
+    SchemaResponse addSchemaResponse = parentControllerClient.addValueSchema(storeName, valueSchemaV2.toString());
+    Assert.assertNotNull(addSchemaResponse);
+    Assert.assertFalse(addSchemaResponse.isError(), "error in addSchemaResponse: " + addSchemaResponse.getError());
 
     MultiSchemaResponse schemaResponse = parentControllerClient.getAllValueSchema(storeName);
     Assert.assertNotNull(schemaResponse);
     Assert.assertFalse(schemaResponse.isError(), "error in schemaResponse: " + schemaResponse.getError());
     Assert.assertNotNull(schemaResponse.getSchemas());
-    Assert.assertEquals(schemaResponse.getSchemas().length,3);
+    Assert.assertEquals(schemaResponse.getSchemas().length,3,
+        "2 value schemas + 1 superset schema. So should expect a total of 3 schemas.");
 
     StoreResponse storeResponse = parentControllerClient.getStore(storeName);
     Assert.assertNotNull(storeResponse);
     Assert.assertFalse(storeResponse.isError(), "error in storeResponse: " + storeResponse.getError());
     Assert.assertNotNull(storeResponse.getStore());
-    Assert.assertTrue(storeResponse.getStore().getLatestSuperSetValueSchemaId() != -1);
+    Assert.assertEquals(storeResponse.getStore().getLatestSuperSetValueSchemaId(), 3,
+        "Superset schema ID should be the latest schema ID among schema ID 1, 2, 3");
 
-    valueSchema = generateSuperSetSchemaNewField();
-    addSchemaRespone = parentControllerClient.addValueSchema(storeName, valueSchema.toString());
-    Assert.assertNotNull(addSchemaRespone);
-    Assert.assertFalse(addSchemaRespone.isError(), "error in addSchemaRespone: " + addSchemaRespone.getError());
+    Schema valueSchemaV3 = generateSuperSetSchemaNewField();
+    addSchemaResponse = parentControllerClient.addValueSchema(storeName, valueSchemaV3.toString());
+    Assert.assertNotNull(addSchemaResponse);
+    Assert.assertFalse(addSchemaResponse.isError(), "error in addSchemaResponse: " + addSchemaResponse.getError());
 
     schemaResponse = parentControllerClient.getAllValueSchema(storeName);
     Assert.assertNotNull(schemaResponse);
     Assert.assertFalse(schemaResponse.isError(), "error in schemaResponse: " + schemaResponse.getError());
     Assert.assertNotNull(schemaResponse.getSchemas());
     Assert.assertEquals(schemaResponse.getSchemas().length,4);
+
+    storeResponse = parentControllerClient.getStore(storeName);
+    Assert.assertEquals(storeResponse.getStore().getLatestSuperSetValueSchemaId(), 4,
+        "Superset schema ID should be the same as the latest value schema because the latest value schema should "
+            + "be the superset schema at this point.");
   }
 
   private void testSuperSetSchemaGenWithSameUpcomingSchema(ControllerClient parentControllerClient) {
     // Adding store
-    String storeName = Utils.getUniqueString("test_store");;
+    String storeName = Utils.getUniqueString("test_store");
     String owner = "test_owner";
     String keySchemaStr = "\"long\"";
     Schema valueSchema = generateSchema(false);
@@ -417,7 +425,8 @@ public class VeniceParentHelixAdminTest {
 
     Assert.assertEquals(schemaResponse.getSchemas().length,2);
     StoreResponse storeResponse = parentControllerClient.getStore(storeName);
-    Assert.assertTrue(storeResponse.getStore().getLatestSuperSetValueSchemaId() == -1);
+    Assert.assertEquals(storeResponse.getStore().getLatestSuperSetValueSchemaId(), 2,
+        "Second schema should be the superset schema.");
   }
 
   private void testAddValueSchemaDocUpdate(ControllerClient parentControllerClient) {
@@ -427,9 +436,9 @@ public class VeniceParentHelixAdminTest {
     String keySchemaStr = "\"long\"";
     String schemaStr = "{\"type\":\"record\",\"name\":\"KeyRecord\",\"fields\":[{\"name\":\"name\",\"type\":\"string\",\"doc\":\"name field\"},{\"name\":\"id1\",\"type\":\"double\"}]}";
     String schemaStrDoc = "{\"type\":\"record\",\"name\":\"KeyRecord\",\"fields\":[{\"name\":\"name\",\"type\":\"string\",\"doc\":\"name field updated\"},{\"name\":\"id1\",\"type\":\"double\"}]}";
-    Schema valueSchema = Schema.parse(schemaStr);
+    Schema valueSchema = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(schemaStr);
     parentControllerClient.createNewStore(storeName, owner, keySchemaStr, valueSchema.toString());
-    valueSchema = Schema.parse(schemaStrDoc);
+    valueSchema = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(schemaStrDoc);
     parentControllerClient.addValueSchema(storeName, valueSchema.toString());
     MultiSchemaResponse schemaResponse = parentControllerClient.getAllValueSchema(storeName);
     Assert.assertEquals(schemaResponse.getSchemas().length,2);
@@ -442,9 +451,9 @@ public class VeniceParentHelixAdminTest {
     String keySchemaStr = "\"long\"";
     String schemaStr = "{\"type\":\"record\",\"name\":\"User\",\"namespace\":\"example.avro\",\"fields\":[{\"name\":\"name\",\"type\":\"string\"},{\"name\":\"kind\",\"type\":{\"type\":\"enum\",\"name\":\"Kind\",\"symbols\":[\"ONE\",\"TWO\"]}}]}";
     String schemaStr1 = "{\"type\":\"record\",\"name\":\"User\",\"namespace\":\"example.avro\",\"fields\":[{\"name\":\"name\",\"type\":\"string\"},{\"name\":\"kind\",\"type\":{\"type\":\"enum\",\"name\":\"Kind\",\"symbols\":[\"ONE\",\"FOUR\",\"THREE\"]}}]}";
-    Schema valueSchema = Schema.parse(schemaStr);
+    Schema valueSchema = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(schemaStr);
     parentControllerClient.createNewStore(storeName, owner, keySchemaStr, valueSchema.toString());
-    valueSchema = Schema.parse(schemaStr1);
+    valueSchema = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(schemaStr1);
     parentControllerClient.addValueSchema(storeName, valueSchema.toString());
     SchemaResponse schemaResponse = parentControllerClient.addValueSchema(storeName, valueSchema.toString());
     Assert.assertTrue(schemaResponse.isError());
@@ -473,7 +482,7 @@ public class VeniceParentHelixAdminTest {
             "      }\n" +
             " ]\n" +
             "}";
-    return Schema.parse(schemaStr);
+    return AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(schemaStr);
   }
 
   private Schema generateSuperSetSchema() {
@@ -497,7 +506,7 @@ public class VeniceParentHelixAdminTest {
             "      }\n" +
             " ]\n" +
             "}";
-    return Schema.parse(schemaStr);
+    return AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(schemaStr);
   }
 
   private Schema generateSuperSetSchemaNewField() {
@@ -522,6 +531,6 @@ public class VeniceParentHelixAdminTest {
             "      }\n" +
             " ]\n" +
             "}";
-    return Schema.parse(schemaStr);
+    return AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(schemaStr);
   }
 }

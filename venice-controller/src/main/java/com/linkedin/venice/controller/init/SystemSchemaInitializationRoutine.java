@@ -136,7 +136,7 @@ public class SystemSchemaInitializationRoutine implements ClusterLeaderInitializ
         if (null == knownSchema) {
           try {
             admin.addValueSchema(clusterToInit, systemStoreName, schemaInLocalResources.toString(), schemaVersion,
-                DirectionalSchemaCompatibilityType.NONE);
+                DirectionalSchemaCompatibilityType.NONE, false);
           } catch (Exception e) {
             LOGGER.error(
                 "Caught Exception when attempting to register '" + protocolDefinition.name() + "' schema version '" + schemaVersion + "'. Will bubble up.");

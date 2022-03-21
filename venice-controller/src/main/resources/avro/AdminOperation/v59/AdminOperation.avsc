@@ -68,6 +68,12 @@
             {
               "name": "schemaId",
               "type": "int"
+            },
+            {
+              "name": "doUpdateSupersetSchemaID",
+              "type": "boolean",
+              "doc": "Whether this superset schema ID should be updated to be the value schema ID for this store.",
+              "default": false
             }
           ]
         },
