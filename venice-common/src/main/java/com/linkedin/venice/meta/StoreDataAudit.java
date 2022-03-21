@@ -30,11 +30,13 @@ public class StoreDataAudit {
     public int getLatestCreatedVersion() { return latestCreatedVersion; }
     public int getLatestSuccessfulPushVersion() { return latestSuccessfulPushVersion; }
     public String getStoreName() { return storeName; }
-    public void setHealthyRegions(Map<String, StoreInfo> healthyRegions) { healthyRegions = healthyRegions; }
-    public void setStaleRegions(Map<String, StoreInfo> staleRegions) { staleRegions = staleRegions; }
-    public void setLatestCreatedVersion(int latestCreatedVersion) { latestCreatedVersion = latestCreatedVersion; }
-    public void setLatestSuccessfulPushVersion(int latestSuccessfulPushVersion) { latestSuccessfulPushVersion = latestSuccessfulPushVersion; }
-    public void setStoreName(String storeName) { storeName = storeName; }
+    public void setHealthyRegions(Map<String, StoreInfo> healthyRegions) { this.healthyRegions = healthyRegions; }
+    public void setStaleRegions(Map<String, StoreInfo> staleRegions) { this.staleRegions = staleRegions; }
+    public void setLatestCreatedVersion(int latestCreatedVersion) { this.latestCreatedVersion = latestCreatedVersion; }
+    public void setLatestSuccessfulPushVersion(int latestSuccessfulPushVersion) {
+        this.latestSuccessfulPushVersion = latestSuccessfulPushVersion;
+    }
+    public void setStoreName(String storeName) { this.storeName = storeName; }
 
     public void insert(String regionName, StoreInfo info) {
         if (storeName == "")
