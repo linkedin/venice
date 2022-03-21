@@ -144,7 +144,7 @@ public class MergeConflictResolverTest {
     if (MergeUtils.compareAndReturn(oldBB, newBB) == oldBB) {
       Assert.assertNull(mergeConflictResult.getNewValue());
     } else {
-      Assert.assertEquals(mergeConflictResult.getNewValue(), newBB);
+      Assert.assertEquals(mergeConflictResult.getNewValue().orElse(null), newBB);
     }
 
     // verify overwrite with new value case
