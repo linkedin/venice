@@ -1,9 +1,8 @@
 package com.linkedin.davinci.stats;
 
-import com.linkedin.venice.stats.AbstractVeniceStatsReporter;
 import com.linkedin.venice.stats.Gauge;
 import io.tehuti.metrics.MetricsRepository;
-import java.util.function.Supplier;
+import java.util.function.DoubleSupplier;
 
 import static com.linkedin.venice.stats.StatsErrorCode.NULL_DIV_STATS;
 
@@ -100,8 +99,8 @@ public class DIVStatsReporter extends AbstractVeniceStatsReporter<DIVStats> {
   }
 
   private static class DIVStatsCounter extends Gauge {
-    DIVStatsCounter(AbstractVeniceStatsReporter reporter, Supplier<Double> supplier) {
-      super(() -> reporter.getStats() == null ? NULL_DIV_STATS.code : supplier.get());
+    DIVStatsCounter(AbstractVeniceStatsReporter reporter, DoubleSupplier supplier) {
+      super(() -> reporter.getStats() == null ? NULL_DIV_STATS.code : supplier.getAsDouble());
     }
   }
 }

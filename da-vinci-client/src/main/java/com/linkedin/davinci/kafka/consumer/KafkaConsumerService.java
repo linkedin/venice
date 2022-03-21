@@ -51,7 +51,6 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
   private static final Logger LOGGER = LogManager.getLogger(KafkaConsumerService.class);
 
   private final long readCycleDelayMs;
-  private final long sharedConsumerNonExistingTopicCleanupDelayMS;
   private final List<Integer> consumerPartitionsNumSubscribed;
   private final ExecutorService consumerExecutor;
   private final EventThrottler bandwidthThrottler;
@@ -71,7 +70,6 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
       final KafkaConsumerServiceStats stats, final long sharedConsumerNonExistingTopicCleanupDelayMS,
       final TopicExistenceChecker topicExistenceChecker, final boolean liveConfigBasedKafkaThrottlingEnabled) {
     this.readCycleDelayMs = readCycleDelayMs;
-    this.sharedConsumerNonExistingTopicCleanupDelayMS = sharedConsumerNonExistingTopicCleanupDelayMS;
     this.bandwidthThrottler = bandwidthThrottler;
     this.recordsThrottler = recordsThrottler;
     this.liveConfigBasedKafkaThrottlingEnabled = liveConfigBasedKafkaThrottlingEnabled;
@@ -152,15 +150,22 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
     @Override
     public void run() {
       boolean addSomeDelay = false;
-      Map<TopicPartition, List<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>>> topicPartitionRecordsMap = new HashMap<>();
+
+      // Pre-allocate some variables to clobber in the loop
+      long beforePollingTimeStamp;
+      ConsumerRecords<KafkaKey, KafkaMessageEnvelope> records;
+      long beforeProducingToWriteBufferTimestamp;
+      StoreIngestionTask ingestionTask;
+      List<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>> topicRecords;
+      Iterable<VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope>> veniceConsumerRecords;
+      long totalBytes;
       while (!stopped) {
         try {
           if (addSomeDelay) {
             Thread.sleep(readCycleDelayMs);
             addSomeDelay = false;
           }
-          long beforePollingTimeStamp = System.currentTimeMillis();
-          ConsumerRecords<KafkaKey, KafkaMessageEnvelope> records;
+          beforePollingTimeStamp = System.currentTimeMillis();
           if (liveConfigBasedKafkaThrottlingEnabled) {
             records = kafkaClusterBasedRecordThrottler.poll(consumer, kafkaUrl, readCycleDelayMs);
           } else {
@@ -168,27 +173,16 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
           }
           stats.recordPollRequestLatency(LatencyUtils.getElapsedTimeInMs(beforePollingTimeStamp));
           stats.recordPollResultNum(records.count());
-          long totalBytes = 0;
           if (!records.isEmpty()) {
-            topicPartitionRecordsMap.clear();
-            for (ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record : records) {
-              totalBytes += record.serializedKeySize() + record.serializedValueSize();
-              String topic = record.topic();
-              int partitionId = record.partition();
-              TopicPartition topicPartition = new TopicPartition(topic, partitionId);
-              topicPartitionRecordsMap.computeIfAbsent(topicPartition, k -> new LinkedList<>()).add(record);
-            }
-            long beforeProducingToWriteBufferTimestamp = System.currentTimeMillis();
-            for (Map.Entry<TopicPartition, List<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>>> entry : topicPartitionRecordsMap.entrySet()) {
-              TopicPartition topicPartition = entry.getKey();
-              StoreIngestionTask ingestionTask = consumer.getIngestionTaskForTopicPartition(topicPartition);
+            beforeProducingToWriteBufferTimestamp = System.currentTimeMillis();
+            for (TopicPartition topicPartition : records.partitions()) {
+              ingestionTask = consumer.getIngestionTaskForTopicPartition(topicPartition);
               if (ingestionTask == null) {
                 // defensive code
                 LOGGER.error("Couldn't find IngestionTask for topic partition : " + topicPartition + " after receiving records from `poll` request");
                 continue;
               }
-              String topic = topicPartition.topic();
-              List<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>> topicRecords = entry.getValue();
+              topicRecords = records.records(topicPartition);
               try {
                 /**
                  * This function could be blocked by the following reasons:
@@ -221,17 +215,23 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
                  * all the buffered messages for the paused partitions, but just slightly more complicate.
                  *
                  */
-                Iterable<VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope>> veniceConsumerRecords = KafkaRecordWrapper
-                    .wrap(kafkaUrl, topicRecords, ingestionTask.getAmplificationFactor());
+                veniceConsumerRecords = KafkaRecordWrapper.wrap(kafkaUrl, topicRecords, ingestionTask.getAmplificationFactor());
                 ingestionTask.produceToStoreBufferServiceOrKafka(veniceConsumerRecords, false);
               } catch (Exception e) {
-                LOGGER.error("Received exception when StoreIngestionTask is processing the polled consumer record for topic: " + topic, e);
+                LOGGER.error("Received exception when StoreIngestionTask is processing the polled consumer record for topic: " + topicPartition, e);
                 ingestionTask.setLastConsumerException(e);
               }
             }
             stats.recordConsumerRecordsProducingToWriterBufferLatency(LatencyUtils.getElapsedTimeInMs(beforeProducingToWriteBufferTimestamp));
-            recordPartitionsPerConsumerSensor();
-            bandwidthThrottler.maybeThrottle(totalBytes);
+            if (bandwidthThrottler.getMaxRatePerSecond() > 0) {
+              // Bandwidth throttling requires doing an O(N) operation proportional to the number of records
+              // consumed, so we will do it only if it's enabled, and avoid it otherwise.
+              totalBytes = 0;
+              for (ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record : records) {
+                totalBytes += record.serializedKeySize() + record.serializedValueSize();
+              }
+              bandwidthThrottler.maybeThrottle(totalBytes);
+            }
             recordsThrottler.maybeThrottle(records.count());
           } else {
             // No result came back, here will add some delay
@@ -276,6 +276,7 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
   public void setPartitionsNumSubscribed(SharedKafkaConsumer consumer, int assignedPartitions) {
     if (readOnlyConsumersList.contains(consumer)) {
       consumerPartitionsNumSubscribed.set(readOnlyConsumersList.indexOf(consumer), assignedPartitions);
+      recordPartitionsPerConsumerSensor();
     } else {
       throw new VeniceException("Shared consumer cannot be found in KafkaConsumerService.");
     }

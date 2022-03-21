@@ -3,8 +3,6 @@ package com.linkedin.davinci.stats;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.stats.AbstractVeniceAggVersionedStats;
-import com.linkedin.venice.stats.AbstractVeniceStatsReporter;
 import com.linkedin.venice.stats.Gauge;
 import com.linkedin.venice.stats.StatsErrorCode;
 import io.tehuti.metrics.MetricsRepository;

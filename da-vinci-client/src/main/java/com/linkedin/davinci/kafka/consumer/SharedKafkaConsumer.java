@@ -9,7 +9,6 @@ import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
-import java.time.Instant;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
@@ -18,7 +17,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.Supplier;
+import java.util.function.IntSupplier;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.logging.log4j.LogManager;
@@ -148,10 +147,10 @@ abstract class SharedKafkaConsumer implements KafkaConsumerWrapper {
    *
    * @param action which performs the unsubscription and returns the number of partitions which were unsubscribed
    */
-  protected synchronized void unSubscribeAction(Supplier<Integer> action) {
+  protected synchronized void unSubscribeAction(IntSupplier action) {
     long currentPollTimes = pollTimes;
     long startTime = System.currentTimeMillis();
-    int numberOfUnsubbedPartitions = action.get();
+    int numberOfUnsubbedPartitions = action.getAsInt();
     long elapsedTime = System.currentTimeMillis() - startTime;
 
     LOGGER.info("Shared consumer {} unsubscribed {} partition(s) in {} ms.",

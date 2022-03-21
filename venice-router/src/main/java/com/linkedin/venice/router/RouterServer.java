@@ -529,7 +529,7 @@ public class RouterServer extends AbstractVeniceService {
         .build();
 
     SecurityStats securityStats = new SecurityStats(this.metricsRepository, "security",
-        () -> secureRouter != null ? secureRouter.getConnectedCount() : 0);
+        secureRouter != null ? () -> secureRouter.getConnectedCount() : () -> 0);
     RouterThrottleStats routerThrottleStats = new RouterThrottleStats(this.metricsRepository, "router_throttler_stats");
     routerEarlyThrottler = new EventThrottler(config.getMaxRouterReadCapacityCu(), config.getRouterQuotaCheckWindow(), "router-early-throttler", true, EventThrottler.REJECT_STRATEGY);
 

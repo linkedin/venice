@@ -6,7 +6,6 @@ import com.linkedin.venice.exceptions.validation.DuplicateDataException;
 import com.linkedin.venice.exceptions.validation.MissingDataException;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.utils.Utils;
-import com.linkedin.venice.stats.AbstractVeniceAggVersionedStats;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Arrays;
 import java.util.HashSet;

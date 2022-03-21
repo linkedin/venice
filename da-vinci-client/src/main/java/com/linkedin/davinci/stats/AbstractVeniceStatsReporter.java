@@ -1,5 +1,6 @@
-package com.linkedin.venice.stats;
+package com.linkedin.davinci.stats;
 
+import com.linkedin.venice.stats.AbstractVeniceStats;
 import io.tehuti.metrics.MetricsRepository;
 
 
