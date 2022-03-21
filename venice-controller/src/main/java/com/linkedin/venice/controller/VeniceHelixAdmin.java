@@ -503,12 +503,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
       // Create the controller cluster if required.
       if (isControllerClusterHAAS) {
-          if (!helixAdminClient.isVeniceControllerClusterCreated(controllerClusterName)) {
-              helixAdminClient.createVeniceControllerCluster(controllerClusterName, commonConfig.isControllerInAzureFabric());
-          } else if (!helixAdminClient.isClusterInGrandCluster(controllerClusterName)) {
-              // This is possible when transitioning to HaaS for the first time or if the grand cluster is reset.
-              helixAdminClient.addClusterToGrandCluster(controllerClusterName);
-          }
+          checkAndCreateVeniceControllerCluster(commonConfig.isControllerInAzureFabric());
       } else {
           createControllerClusterIfRequired();
       }
@@ -518,6 +513,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       // Initialized the helix manger for the level1 controller. If the controller cluster leader is going to be in
       // HaaS then level1 controllers should be only in participant mode.
       initLevel1Controller(isControllerClusterHAAS);
+    }
+
+    private void checkAndCreateVeniceControllerCluster(boolean isControllerInAzure) {
+      if (!helixAdminClient.isVeniceControllerClusterCreated()) {
+        helixAdminClient.createVeniceControllerCluster(isControllerInAzure);
+      }
+      if (!helixAdminClient.isClusterInGrandCluster(controllerClusterName)) {
+        helixAdminClient.addClusterToGrandCluster(controllerClusterName);
+      }
     }
 
     private void initLevel1Controller(boolean isParticipantOnly) {
@@ -4332,25 +4336,27 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
     private void setupStorageClusterAsNeeded(String clusterName, boolean isControllerInAzureFabric) {
-        if (helixAdminClient.isVeniceStorageClusterCreated(clusterName)) {
-            if (!helixAdminClient.isClusterInGrandCluster(clusterName)) {
-                helixAdminClient.addClusterToGrandCluster(clusterName);
-            }
-            return;
-        }
-        Map<String, String> helixClusterProperties = new HashMap<>();
-        helixClusterProperties.put(ZKHelixManager.ALLOW_PARTICIPANT_AUTO_JOIN, String.valueOf(true));
-        long delayRebalanceTimeMs = multiClusterConfigs.getControllerConfig(clusterName).getDelayToRebalanceMS();
-        if (delayRebalanceTimeMs > 0) {
+        if (!helixAdminClient.isVeniceStorageClusterCreated(clusterName)) {
+          Map<String, String> helixClusterProperties = new HashMap<>();
+          helixClusterProperties.put(ZKHelixManager.ALLOW_PARTICIPANT_AUTO_JOIN, String.valueOf(true));
+          long delayRebalanceTimeMs = multiClusterConfigs.getControllerConfig(clusterName).getDelayToRebalanceMS();
+          if (delayRebalanceTimeMs > 0) {
             helixClusterProperties.put(ClusterConfig.ClusterConfigProperty.DELAY_REBALANCE_ENABLED.name(), String.valueOf(true));
             helixClusterProperties.put(ClusterConfig.ClusterConfigProperty.DELAY_REBALANCE_TIME.name(),
                 String.valueOf(delayRebalanceTimeMs));
+          }
+          helixClusterProperties.put(ClusterConfig.ClusterConfigProperty.PERSIST_BEST_POSSIBLE_ASSIGNMENT.name(), String.valueOf(true));
+          // Topology and fault zone type fields are used by CRUSH alg. Helix would apply the constrains on CRUSH alg to choose proper instance to hold the replica.
+          helixClusterProperties.put(ClusterConfig.ClusterConfigProperty.TOPOLOGY.name(), "/" + HelixUtils.TOPOLOGY_CONSTRAINT);
+          helixClusterProperties.put(ClusterConfig.ClusterConfigProperty.FAULT_ZONE_TYPE.name(), HelixUtils.TOPOLOGY_CONSTRAINT);
+          helixAdminClient.createVeniceStorageCluster(clusterName, helixClusterProperties, isControllerInAzureFabric);
         }
-        helixClusterProperties.put(ClusterConfig.ClusterConfigProperty.PERSIST_BEST_POSSIBLE_ASSIGNMENT.name(), String.valueOf(true));
-        // Topology and fault zone type fields are used by CRUSH alg. Helix would apply the constrains on CRUSH alg to choose proper instance to hold the replica.
-        helixClusterProperties.put(ClusterConfig.ClusterConfigProperty.TOPOLOGY.name(), "/" + HelixUtils.TOPOLOGY_CONSTRAINT);
-        helixClusterProperties.put(ClusterConfig.ClusterConfigProperty.FAULT_ZONE_TYPE.name(), HelixUtils.TOPOLOGY_CONSTRAINT);
-        helixAdminClient.createVeniceStorageCluster(clusterName, controllerClusterName, helixClusterProperties, isControllerInAzureFabric);
+        if (!helixAdminClient.isClusterInGrandCluster(clusterName)) {
+          helixAdminClient.addClusterToGrandCluster(clusterName);
+        }
+        if (!helixAdminClient.isVeniceStorageClusterInControllerCluster(clusterName)) {
+          helixAdminClient.addVeniceStorageClusterToControllerCluster(clusterName);
+        }
     }
 
     // TODO remove this method once we are fully on HaaS
