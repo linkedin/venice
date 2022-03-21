@@ -4,8 +4,6 @@ import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionTask;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.stats.AbstractVeniceAggVersionedStats;
-import com.linkedin.venice.stats.AbstractVeniceStatsReporter;
 import com.linkedin.venice.stats.Gauge;
 import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.Utils;
@@ -18,7 +16,7 @@ import io.tehuti.metrics.stats.Max;
 import io.tehuti.metrics.stats.Rate;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.function.Supplier;
+import java.util.function.DoubleSupplier;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -793,17 +791,17 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
     }
 
     private static class IngestionStatsGauge extends Gauge {
-      IngestionStatsGauge(AbstractVeniceStatsReporter reporter, Supplier<Double> supplier) {
+      IngestionStatsGauge(AbstractVeniceStatsReporter reporter, DoubleSupplier supplier) {
         this(reporter, supplier, NULL_INGESTION_STATS.code);
       }
 
-      IngestionStatsGauge(AbstractVeniceStatsReporter reporter, Supplier<Double> supplier, int defaultValue) {
+      IngestionStatsGauge(AbstractVeniceStatsReporter reporter, DoubleSupplier supplier, int defaultValue) {
         /**
          * If a version doesn't exist, the corresponding reporter stat doesn't exist after the host restarts,
          * which is not an error. The users of the stats should decide whether it's reasonable to emit an error
          * code simply because the version is not created yet.
          */
-        super(() -> reporter.getStats() == null ? defaultValue : supplier.get());
+        super(() -> reporter.getStats() == null ? defaultValue : supplier.getAsDouble());
       }
     }
   }

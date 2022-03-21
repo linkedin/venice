@@ -9,6 +9,7 @@ import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.Rate;
 import io.tehuti.utils.Time;
 import java.util.concurrent.TimeUnit;
+import java.util.function.LongSupplier;
 import java.util.function.Supplier;
 
 import org.apache.commons.lang.Validate;
@@ -42,7 +43,7 @@ public class EventThrottler {
   public static final EventThrottlingStrategy BLOCK_STRATEGY = new BlockEventThrottlingStrategy();
   public static final EventThrottlingStrategy REJECT_STRATEGY = new RejectEventThrottlingStrategy();
 
-  private final Supplier<Long> maxRatePerSecondProvider;
+  private final LongSupplier maxRatePerSecondProvider;
   private final long enforcementIntervalMs;
   private final String throttlerName;
   private final boolean checkQuotaBeforeRecording;
@@ -112,7 +113,7 @@ public class EventThrottler {
    * @param checkQuotaBeforeRecording if true throttler will check the quota before recording usage, otherwise throttler will record usage then check the quota.
    * @param throttlingStrategy the strategy how throttler handle the quota exceeding case.
    */
-  public EventThrottler(Supplier<Long> maxRatePerSecondProvider,
+  public EventThrottler(LongSupplier maxRatePerSecondProvider,
       long intervalMs,
       String throttlerName,
       boolean checkQuotaBeforeRecording,
@@ -131,7 +132,7 @@ public class EventThrottler {
    */
   public EventThrottler(
       @Nonnull io.tehuti.utils.Time time,
-      Supplier<Long> maxRatePerSecondProvider,
+      LongSupplier maxRatePerSecondProvider,
       long intervalMs,
       String throttlerName,
       boolean checkQuotaBeforeRecording,
@@ -145,7 +146,7 @@ public class EventThrottler {
     this.throttlerName = throttlerName != null ? throttlerName : THROTTLER_NAME;
     this.checkQuotaBeforeRecording = checkQuotaBeforeRecording;
 
-    long maxRatePerSecond = maxRatePerSecondProvider.get();
+    long maxRatePerSecond = maxRatePerSecondProvider.getAsLong();
     if (maxRatePerSecond >= 0) {
       initialize(maxRatePerSecond);
     }
@@ -213,7 +214,7 @@ public class EventThrottler {
   }
 
   public long getMaxRatePerSecond() {
-    long maxRatePerSecond = maxRatePerSecondProvider.get();
+    long maxRatePerSecond = maxRatePerSecondProvider.getAsLong();
     // If quota was disabled but enabled at run time, we need to initialize the required structures.
     initialize(maxRatePerSecond);
     return maxRatePerSecond;

@@ -1,13 +1,16 @@
-package com.linkedin.venice.stats;
+package com.linkedin.davinci.stats;
 
+import com.linkedin.venice.stats.AbstractVeniceStats;
+import com.linkedin.venice.stats.Gauge;
+import com.linkedin.venice.stats.StatsSupplier;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.function.Supplier;
+import java.util.function.DoubleSupplier;
 
 import static com.linkedin.venice.meta.Store.NON_EXISTING_VERSION;
 
 public class VeniceVersionedStatsReporter<STATS, STATS_REPORTER extends AbstractVeniceStatsReporter<STATS>>
-    extends AbstractVeniceStats{
+    extends AbstractVeniceStats {
   private static AtomicBoolean isVersionStatsSetup = new AtomicBoolean(false);
 
   private int currentVersion = NON_EXISTING_VERSION;
@@ -111,8 +114,8 @@ public class VeniceVersionedStatsReporter<STATS, STATS_REPORTER extends Abstract
    * suffix class name to metric name to indicate metric's types.)
    */
   private static class VersionStat extends Gauge {
-    VersionStat(Supplier<Double> supplier) {
-      super(() -> supplier.get());
+    VersionStat(DoubleSupplier supplier) {
+      super(() -> supplier.getAsDouble());
     }
   }
 

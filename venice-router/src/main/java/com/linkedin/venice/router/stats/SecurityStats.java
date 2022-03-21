@@ -8,17 +8,17 @@ import io.tehuti.metrics.stats.Avg;
 import io.tehuti.metrics.stats.Count;
 import io.tehuti.metrics.stats.Max;
 import io.tehuti.metrics.stats.Min;
-import java.util.function.Supplier;
+import java.util.function.IntSupplier;
 
 
 public class SecurityStats extends AbstractVeniceStats {
-  private final Supplier<Integer> secureConnectionCountSupplier;
+  private final IntSupplier secureConnectionCountSupplier;
   private final Sensor sslErrorCount;
   private final Sensor sslSuccessCount;
   private final Sensor sslLiveConnectionCount;
   private final Sensor nonSslConnectionCount;
 
-  public SecurityStats(MetricsRepository repository, String name, Supplier<Integer> secureConnectionCountSupplier) {
+  public SecurityStats(MetricsRepository repository, String name, IntSupplier secureConnectionCountSupplier) {
     super(repository, name);
     this.secureConnectionCountSupplier = secureConnectionCountSupplier;
     this.sslErrorCount = registerSensor("ssl_error", new Count());
@@ -48,6 +48,6 @@ public class SecurityStats extends AbstractVeniceStats {
    * This function will be triggered in every ssl event.
    */
   private void recordLiveConnectionCount() {
-    this.sslLiveConnectionCount.record(secureConnectionCountSupplier.get());
+    this.sslLiveConnectionCount.record(secureConnectionCountSupplier.getAsInt());
   }
 }

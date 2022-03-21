@@ -2,6 +2,7 @@ package com.linkedin.venice.stats;
 
 import com.linkedin.davinci.stats.DIVStats;
 import com.linkedin.davinci.stats.DIVStatsReporter;
+import com.linkedin.davinci.stats.VeniceVersionedStatsReporter;
 import com.linkedin.venice.tehuti.MockTehutiReporter;
 import com.linkedin.venice.utils.Utils;
 
