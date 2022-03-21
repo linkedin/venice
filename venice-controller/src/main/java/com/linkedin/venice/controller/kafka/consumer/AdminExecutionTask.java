@@ -267,12 +267,14 @@ public class AdminExecutionTask implements Callable<Void> {
     String clusterName = message.clusterName.toString();
     String storeName = message.storeName.toString();
     String schemaStr = message.schema.definition.toString();
-    int schemaId = message.schemaId;
+    final int schemaId = message.schemaId;
+    final boolean doUpdateSupersetSchemaID = message.doUpdateSupersetSchemaID;
 
-    SchemaEntry valueSchemaEntry = admin.addValueSchema(clusterName, storeName, schemaStr, schemaId);
-    logger.info("Added value schema: " + schemaStr + " to store: " + storeName + ", schema id: " + valueSchemaEntry.getId());
+    SchemaEntry valueSchemaEntry = admin.addValueSchema(clusterName, storeName, schemaStr, schemaId, doUpdateSupersetSchemaID);
+    logger.info("Added value schema {} to store {} in cluster {} with schema ID {} and "
+            + "[update_superset_schema_ID_with_value_schema_ID == {}]",
+        schemaStr, storeName, clusterName, valueSchemaEntry.getId(), doUpdateSupersetSchemaID);
   }
-
 
   private void handleDerivedSchemaCreation(DerivedSchemaCreation message) {
     String clusterName = message.clusterName.toString();

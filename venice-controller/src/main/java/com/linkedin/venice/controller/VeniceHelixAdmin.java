@@ -695,7 +695,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             ReadWriteSchemaRepository schemaRepo = clusterResources.getSchemaRepository();
             schemaRepo.initKeySchema(storeName, keySchema);
             schemaRepo.addValueSchema(storeName, valueSchema, HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID);
-            // Write store schemas to metadata store.
             logger.info(String.format("Completed creating Store %s in cluster %s with owner %s and largestUsedVersionNumber %d",
                     storeName, clusterName, owner, newStore.getLargestUsedVersionNumber()));
         }
@@ -3809,33 +3808,66 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         DirectionalSchemaCompatibilityType expectedCompatibilityType) {
         checkControllerLeadershipFor(clusterName);
         ReadWriteSchemaRepository schemaRepository = getHelixVeniceClusterResources(clusterName).getSchemaRepository();
-
-        SchemaEntry schemaEntry = schemaRepository.addValueSchema(storeName, valueSchemaStr, expectedCompatibilityType);
-        // Write store schemas to metadata store.
-        Store store = getStore(clusterName, storeName);
-
+        schemaRepository.addValueSchema(storeName, valueSchemaStr, expectedCompatibilityType);
         return new SchemaEntry(schemaRepository.getValueSchemaId(storeName, valueSchemaStr), valueSchemaStr);
     }
 
     @Override
-    public SchemaEntry addValueSchema(String clusterName, String storeName, String valueSchemaStr, int schemaId) {
+    public SchemaEntry addValueSchema(
+        String clusterName,
+        String storeName,
+        String valueSchemaStr,
+        int schemaId,
+        boolean doUpdateSupersetSchemaID
+    ) {
         return addValueSchema(clusterName, storeName, valueSchemaStr, schemaId,
-            SchemaEntry.DEFAULT_SCHEMA_CREATION_COMPATIBILITY_TYPE);
+            SchemaEntry.DEFAULT_SCHEMA_CREATION_COMPATIBILITY_TYPE, doUpdateSupersetSchemaID);
     }
 
-    public SchemaEntry addValueSchema(String clusterName, String storeName, String valueSchemaStr, int schemaId,
-        DirectionalSchemaCompatibilityType compatibilityType) {
-        checkControllerLeadershipFor(clusterName);
-        ReadWriteSchemaRepository schemaRepository = getHelixVeniceClusterResources(clusterName).getSchemaRepository();
-        int newValueSchemaId = schemaRepository.preCheckValueSchemaAndGetNextAvailableId(storeName, valueSchemaStr,
-            compatibilityType);
-        if (newValueSchemaId != SchemaData.DUPLICATE_VALUE_SCHEMA_CODE && newValueSchemaId != schemaId) {
-            throw new VeniceException("Inconsistent value schema id between the caller and the local schema repository."
-                + " Expected new schema id of " + schemaId + " but the next available id from the local repository is "
-                + newValueSchemaId + " for store " + storeName + " in cluster " + clusterName + " Schema: " + valueSchemaStr);
-        }
+    public SchemaEntry addValueSchema(
+        String clusterName,
+        String storeName,
+        String valueSchemaStr,
+        int schemaId,
+        DirectionalSchemaCompatibilityType compatibilityType,
+        final boolean doUpdateSupersetSchemaID
+    ) {
+      checkControllerLeadershipFor(clusterName);
+      ReadWriteSchemaRepository schemaRepository = getHelixVeniceClusterResources(clusterName).getSchemaRepository();
+      int newValueSchemaId = schemaRepository.preCheckValueSchemaAndGetNextAvailableId(
+          storeName,
+          valueSchemaStr,
+          compatibilityType
+      );
+      if (newValueSchemaId != SchemaData.DUPLICATE_VALUE_SCHEMA_CODE && newValueSchemaId != schemaId) {
+        throw new VeniceException("Inconsistent value schema id between the caller and the local schema repository."
+            + " Expected new schema id of " + schemaId + " but the next available id from the local repository is "
+            + newValueSchemaId + " for store " + storeName + " in cluster " + clusterName + " Schema: " + valueSchemaStr);
+      }
 
+      if (doUpdateSupersetSchemaID) {
+        logger.info("For store {} in cluster {}, value schema is the same as superset schema. Update superset"
+            + " schema ID to {}.", storeName, clusterName, schemaId);
+        updateSupersetSchemaForStore(storeName, clusterName, schemaId);
+      }
       return schemaRepository.addValueSchema(storeName, valueSchemaStr, newValueSchemaId);
+    }
+
+    private void updateSupersetSchemaForStore(String storeName, String clusterName, int newSupersetSchemaID) {
+      final HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
+      try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
+        ReadWriteStoreRepository repository = resources.getStoreMetadataRepository();
+        Store store = repository.getStore(storeName);
+        final int existingSupersetSchemaID = store.getLatestSuperSetValueSchemaId();
+        if (existingSupersetSchemaID > newSupersetSchemaID) {
+          throw new VeniceException("New superset schema ID should not be smaller than existing superset schema ID. "
+              + "Got existing superset schema ID: " + existingSupersetSchemaID + " and new superset schema ID: " +
+              newSupersetSchemaID + " for store " + storeName + " in cluster " + clusterName);
+        }
+        // Update source-of-truth store state.
+        store.setLatestSuperSetValueSchemaId(newSupersetSchemaID);
+        repository.updateStore(store);
+      }
     }
 
     @Override

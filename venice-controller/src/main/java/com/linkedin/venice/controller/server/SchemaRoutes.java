@@ -81,7 +81,8 @@ public class SchemaRoutes extends AbstractRoute {
               responseObject.getCluster(),
               responseObject.getName(),
               request.queryParams(VALUE_SCHEMA),
-              Integer.parseInt(schemaIdString)
+              Integer.parseInt(schemaIdString),
+              false
           );
         } else {
           valueSchemaEntry = admin.addValueSchema(

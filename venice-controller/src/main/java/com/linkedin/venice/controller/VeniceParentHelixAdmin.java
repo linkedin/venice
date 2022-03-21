@@ -1939,17 +1939,22 @@ public class VeniceParentHelixAdmin implements Admin {
         return new SchemaEntry(getVeniceHelixAdmin().getValueSchemaId(clusterName, storeName, newValueSchemaStr), newValueSchemaStr);
       }
 
-      Store store = getVeniceHelixAdmin().getStore(clusterName, storeName);
+      final Store store = getVeniceHelixAdmin().getStore(clusterName, storeName);
       Schema existingValueSchema = getVeniceHelixAdmin().getLatestValueSchema(clusterName, store);
 
+      final boolean doUpdateSupersetSchemaID;
       if (existingValueSchema != null && store.isReadComputationEnabled()) {
         Schema newValueSchema = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(newValueSchemaStr);
         Schema newSuperSetSchema = AvroSchemaUtils.generateSuperSetSchema(existingValueSchema, newValueSchema);
         String newSuperSetSchemaStr = newSuperSetSchema.toString();
 
-        // Register super-set schema only if it does not match with existing or new schema.
-        if (!AvroSchemaUtils.compareSchemaIgnoreFieldOrder(newSuperSetSchema, newValueSchema) &&
-            !AvroSchemaUtils.compareSchemaIgnoreFieldOrder(newSuperSetSchema, existingValueSchema)) {
+        if (AvroSchemaUtils.compareSchemaIgnoreFieldOrder(newSuperSetSchema, newValueSchema)) {
+          doUpdateSupersetSchemaID = true;
+
+        } else if (AvroSchemaUtils.compareSchemaIgnoreFieldOrder(newSuperSetSchema, existingValueSchema)) {
+          doUpdateSupersetSchemaID = false;
+
+        } else {
           // validate compatibility of the new superset schema
           getVeniceHelixAdmin().checkPreConditionForAddValueSchemaAndGetNewSchemaId(
               clusterName, storeName, newSuperSetSchemaStr, expectedCompatibilityType);
@@ -1958,12 +1963,20 @@ public class VeniceParentHelixAdmin implements Admin {
           if (supersetSchemaId == SchemaData.INVALID_VALUE_SCHEMA_ID) {
             supersetSchemaId = newValueSchemaId + 1;
           }
-          return addSupersetValueSchemaEntry(clusterName, storeName, newValueSchemaStr, newValueSchemaId,
-              newSuperSetSchemaStr, supersetSchemaId);
+          return addSupersetValueSchemaEntry(
+              clusterName,
+              storeName,
+              newValueSchemaStr,
+              newValueSchemaId,
+              newSuperSetSchemaStr,
+              supersetSchemaId
+          );
         }
+      } else {
+        doUpdateSupersetSchemaID = false;
       }
 
-      SchemaEntry schemaEntry = addValueSchemaEntry(clusterName, storeName, newValueSchemaStr, newValueSchemaId);
+      SchemaEntry schemaEntry = addValueSchemaEntry(clusterName, storeName, newValueSchemaStr, newValueSchemaId, doUpdateSupersetSchemaID);
 
       /**
        * if active-active replication is enabled for the store then generate and register the new Replication metadata schema
@@ -2007,8 +2020,13 @@ public class VeniceParentHelixAdmin implements Admin {
     return new SchemaEntry(valueSchemaId, valueSchemaStr);
   }
 
-  private SchemaEntry addValueSchemaEntry(String clusterName, String storeName, String valueSchemaStr,
-      int newValueSchemaId) {
+  private SchemaEntry addValueSchemaEntry(
+      String clusterName,
+      String storeName,
+      String valueSchemaStr,
+      final int newValueSchemaId,
+      final boolean doUpdateSupersetSchemaID
+  ) {
     logger.info("Adding value schema: " + valueSchemaStr + " to store: " + storeName + " in cluster: " + clusterName);
 
     ValueSchemaCreation valueSchemaCreation =
@@ -2020,11 +2038,11 @@ public class VeniceParentHelixAdmin implements Admin {
     schemaMeta.schemaType = SchemaType.AVRO_1_4.getValue();
     valueSchemaCreation.schema = schemaMeta;
     valueSchemaCreation.schemaId = newValueSchemaId;
+    valueSchemaCreation.doUpdateSupersetSchemaID = doUpdateSupersetSchemaID;
 
     AdminOperation message = new AdminOperation();
     message.operationType = AdminMessageType.VALUE_SCHEMA_CREATION.getValue();
     message.payloadUnion = valueSchemaCreation;
-
     sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
 
     //defensive code checking
@@ -2045,7 +2063,7 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
-  public SchemaEntry addValueSchema(String clusterName, String storeName, String valueSchemaStr, int schemaId) {
+  public SchemaEntry addValueSchema(String clusterName, String storeName, String valueSchemaStr, int schemaId, boolean doUpdateSupersetSchemaID) {
     throw new VeniceUnsupportedOperationException("addValueSchema");
   }
 

@@ -133,7 +133,8 @@ public class ConsumerIntegrationTest {
         systemStoreName,
         NEW_PROTOCOL_SCHEMA.toString(),
         NEW_PROTOCOL_VERSION,
-        DirectionalSchemaCompatibilityType.NONE
+        DirectionalSchemaCompatibilityType.NONE,
+        false
     );
   }
 
