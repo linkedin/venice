@@ -11,10 +11,9 @@ public interface HelixAdminClient {
 
   /**
    * Check if the Venice controller cluster is created and configured.
-   * @param controllerClusterName that wish to be checked.
    * @return true or false.
    */
-  boolean isVeniceControllerClusterCreated(String controllerClusterName);
+  boolean isVeniceControllerClusterCreated();
 
   /**
    * Check if the given Venice storage cluster is created and configured.
@@ -25,20 +24,31 @@ public interface HelixAdminClient {
 
   /**
    * Create and configure the Venice controller cluster.
-   * @param controllerClusterName to be created.
    * @param isControllerInAzureFabric whether the controller is in Azure fabric.
    */
-  void createVeniceControllerCluster(String controllerClusterName, boolean isControllerInAzureFabric);
+  void createVeniceControllerCluster(boolean isControllerInAzureFabric);
 
   /**
    * Create and configure the Venice storage cluster.
    * @param clusterName of the Venice storage cluster.
-   * @param controllerClusterName of the corresponding controller cluster.
    * @param helixClusterProperties to be applied to the new cluster.
    * @param isControllerInAzureFabric whether the controller is in Azure fabric.
    */
-  void createVeniceStorageCluster(String clusterName, String controllerClusterName,
-      Map<String, String> helixClusterProperties, boolean isControllerInAzureFabric);
+  void createVeniceStorageCluster(String clusterName, Map<String, String> helixClusterProperties,
+      boolean isControllerInAzureFabric);
+
+  /**
+   * Check if the given Venice storage cluster's cluster resource is in the Venice controller cluster.
+   * @param clusterName of the Venice storage cluster.
+   * @return ture of false.
+   */
+  boolean isVeniceStorageClusterInControllerCluster(String clusterName);
+
+  /**
+   * Add the given Venice storage cluster's cluster resource to the controller cluster.
+   * @param clusterName of the Venice storage cluster.
+   */
+  void addVeniceStorageClusterToControllerCluster(String clusterName);
 
   /**
    * Check if the grand cluster managed by HaaS controllers is aware of the given cluster.

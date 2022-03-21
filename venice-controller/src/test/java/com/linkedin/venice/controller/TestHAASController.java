@@ -9,16 +9,29 @@ import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
+import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.VeniceProperties;
+import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Properties;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import org.apache.helix.manager.zk.ZKHelixManager;
 import org.apache.helix.model.LiveInstance;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
+import static com.linkedin.venice.ConfigKeys.*;
+import static org.mockito.Mockito.*;
 import static org.testng.Assert.*;
 
 
@@ -171,6 +184,53 @@ public class TestHAASController {
           assertEquals(jobStatusQueryResponse.getStatus(), ExecutionStatus.COMPLETED.toString());
         });
       });
+    }
+  }
+
+  private static class InitTask implements Callable<Void> {
+
+    private final HelixAdminClient client;
+    private final HashMap<String, String> helixClusterProperties;
+
+    public InitTask(HelixAdminClient client) {
+      this.client = client;
+      helixClusterProperties = new HashMap<>();
+      helixClusterProperties.put(ZKHelixManager.ALLOW_PARTICIPANT_AUTO_JOIN, String.valueOf(true));
+    }
+
+    @Override
+    public Void call() throws Exception {
+      client.createVeniceControllerCluster(false);
+      client.addClusterToGrandCluster("venice-controllers");
+      for (int i = 0; i < 10; i++) {
+        String clusterName = "cluster-" + String.valueOf(i);
+        client.createVeniceStorageCluster(clusterName, new HashMap<>(), false);
+        client.addClusterToGrandCluster(clusterName);
+        client.addVeniceStorageClusterToControllerCluster(clusterName);
+      }
+      return null;
+    }
+  }
+
+  @Test(timeOut = 60 * Time.MS_PER_SECOND)
+  public void testConcurrentClusterInitialization() throws InterruptedException, ExecutionException {
+    try (VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster(0, 0, 0, 1);
+        HelixAsAServiceWrapper helixAsAServiceWrapper = startAndWaitForHAASToBeAvailable(venice.getZk().getAddress())) {
+      VeniceControllerMultiClusterConfig controllerMultiClusterConfig = mock(VeniceControllerMultiClusterConfig.class);
+      doReturn(helixAsAServiceWrapper.getZkAddress()).when(controllerMultiClusterConfig).getZkAddress();
+      doReturn(HelixAsAServiceWrapper.HELIX_SUPER_CLUSTER_NAME).when(controllerMultiClusterConfig).getControllerHAASSuperClusterName();
+      doReturn("venice-controllers").when(controllerMultiClusterConfig).getControllerClusterName();
+      doReturn(3).when(controllerMultiClusterConfig).getControllerClusterReplica();
+      ExecutorService
+          executorService = new ThreadPoolExecutor(3, 3, 60, TimeUnit.SECONDS, new LinkedBlockingQueue<>(), new DaemonThreadFactory("test-concurrent-cluster-init"));
+      List<Callable<Void>> tasks = new ArrayList<>();
+      for (int i = 0; i < 3; i++) {
+        tasks.add(new InitTask(new ZkHelixAdminClient(controllerMultiClusterConfig, new MetricsRepository())));
+      }
+      List<Future<Void>> results = executorService.invokeAll(tasks);
+      for (Future<Void> result : results) {
+        result.get();
+      }
     }
   }
 
