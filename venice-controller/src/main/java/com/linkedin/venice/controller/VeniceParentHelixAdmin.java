@@ -3231,10 +3231,17 @@ public class VeniceParentHelixAdmin implements Admin {
       //iterate through child controllers
       for (Map.Entry<String, ControllerClient> controller : childControllers.entrySet()) {
         MultiStoreInfoResponse response = controller.getValue().getClusterStores(clusterName); // get all stores from child
+        logger.error("ASDF125 " + response.getStoreInfoList().size());
         response.getStoreInfoList().forEach((storeInfo) -> {
           dataMap.putIfAbsent(storeInfo.getName(), new StoreDataAudit());
           dataMap.get(storeInfo.getName()).setStoreName(storeInfo.getName());
           dataMap.get(storeInfo.getName()).insert(controller.getKey(), storeInfo); // StoreDataAudit.insert manages version, and healthy/stale region delineation
+          for (Map.Entry<String, StoreInfo> entry : dataMap.get(storeInfo.getName()).getHealthyRegions().entrySet()) {
+            logger.error("ASDF124 " + entry.getValue().getVersions() + ", " + entry.getValue().getCurrentVersion() + " (" + entry.getKey() + ")");
+          }
+          logger.error("ASDF124 " + dataMap.get(storeInfo.getName()).getLatestCreatedVersion());
+          logger.error("ASDF124 " + dataMap.get(storeInfo.getName()).getLatestSuccessfulPushVersion());
+          logger.error("ASDF124 state of return obj: " + dataMap.get(storeInfo.getName()).toString());
         });
       }
       //filter out
@@ -3249,15 +3256,21 @@ public class VeniceParentHelixAdmin implements Admin {
         if (audit.getStaleRegions().size() > 0 && !currentPushJobTopic.isPresent()) {
           if (regionsFilter.isPresent() && (audit.getHealthyRegions().containsKey(regionsFilter.get()) || audit.getStaleRegions().containsKey(regionsFilter.get()))) {
             retMap.put(store.getKey(), audit);
+            logger.error("ASDF126 INSERT REGION FILTER");
           }
           else if (!regionsFilter.isPresent()) {
             retMap.put(store.getKey(), audit);
+            logger.error("INSERT NO REGION FILTER");
+          }
+          else {
+            logger.error("ASDF126 NOT PUTTING IN RETMAP");
           }
         }
       }
     } catch (Exception e) {
       throw new VeniceException("Something went wrong trying to fetch stale stores.", e);
     }
+    logger.error("ASDF126 " + retMap.size());
     return retMap;
   }
 
@@ -3279,7 +3292,7 @@ public class VeniceParentHelixAdmin implements Admin {
     return aggregatedLargestUsedVersionNumber;
   }
 
-  public List<StoreInfo> getClusterStores(String clusterName) { throw new UnsupportedOperationException("This function has no implementation."); }
+  public ArrayList<StoreInfo> getClusterStores(String clusterName) { throw new UnsupportedOperationException("This function has no implementation."); }
 
   @Override
   public RegionPushDetails getRegionPushDetails(String clusterName, String storeName) { throw new UnsupportedOperationException("This function has no implementation."); }

@@ -56,6 +56,7 @@ public class StoreDataAudit {
                 healthyRegions.forEach((key, value) -> staleRegions.merge(key, value, (a, b) -> value));
                 healthyRegions.clear();
                 healthyRegions.put(regionName, info);
+                setLatestCreatedVersion(info.getLargestUsedVersionNumber());
             }
         } else { // new store is equal to latest, add info to healthy region
             healthyRegions.put(regionName, info);
@@ -78,5 +79,19 @@ public class StoreDataAudit {
         else {
             return null;
         }
+    }
+
+    public String toString() {
+        String ret = "{ \"";
+        ret += getStoreName() + "\": { healthy: {";
+        for (Map.Entry<String, StoreInfo> entry : getHealthyRegions().entrySet()) {
+            ret += "\"" + entry.getKey() + "\", ";
+        }
+        ret += " }, stale: { ";
+        for (Map.Entry<String, StoreInfo> entry : getStaleRegions().entrySet()) {
+            ret += "\"" + entry.getKey() + "\", ";
+        }
+        ret += " } }";
+        return ret;
     }
 }

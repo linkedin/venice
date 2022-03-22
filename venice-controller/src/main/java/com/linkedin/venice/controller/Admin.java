@@ -40,6 +40,7 @@ import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.io.Closeable;
 import java.io.IOException;
 import java.security.cert.X509Certificate;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
@@ -720,7 +721,7 @@ public interface Admin extends AutoCloseable, Closeable {
      * Return all stores in a cluster.
      * @return
      */
-    List<StoreInfo> getClusterStores(String clusterName);
+    ArrayList<StoreInfo> getClusterStores(String clusterName);
 
     Map<String, StoreDataAudit> getClusterStaleStores(String clusterName, Optional<String> regionFilter);
 

@@ -95,6 +95,8 @@ public class TestStaleDataVisibility {
     VeniceControllerWrapper parentController =
         parentControllers.stream().filter(c -> c.isLeaderController(clusterName)).findAny().get();
 
+    console.log(storeName + " is our store name ASDY1");
+
     // create a store via parent controller url
     Properties props = defaultH2VProps(parentController.getControllerUrl(), inputDirPath, storeName);
     createStoreForJob(clusterName, recordSchema, props).close();
@@ -102,16 +104,25 @@ public class TestStaleDataVisibility {
       job.run();
     }
 
-    // get single child controller, empty push to it
-    VeniceControllerWrapper childController = childControllers.get(0).get(0);
-    Properties props2 = defaultH2VProps(childController.getControllerUrl(), inputDirPath, storeName);
-    try (VenicePushJob job = new VenicePushJob("Test push job", props2)) {
-      job.run();
-    }
-
     try (ControllerClient controllerClient = new ControllerClient(clusterName, parentController.getControllerUrl())) {
+
+      // the store should not be appearing in the stale data audit
+      ClusterStaleDataAuditResponse emptyResponse = controllerClient.getClusterStaleStores(clusterName, parentController.getControllerUrl(), Optional.empty());
+      Assert.assertFalse(emptyResponse.getAuditMap().get(storeName).getStaleRegions().containsKey(storeName));
+
+      // get single child controller, empty push to it
+      VeniceControllerWrapper childController = childControllers.get(0).get(0);
+      Properties props2 = defaultH2VProps(childController.getControllerUrl(), inputDirPath, storeName);
+      try (VenicePushJob job = new VenicePushJob("Test push job", props2)) {
+        job.run();
+      }
+
+      // store should now appear as stale
       ClusterStaleDataAuditResponse response = controllerClient.getClusterStaleStores(clusterName, parentController.getControllerUrl(), Optional.empty());
-      Assert.assertTrue(response.getAuditMap().containsKey(storeName));
+      for (Map.Entry<String, StoreDataAudit> entry : response.getAuditMap().entrySet()) {
+        LOGGER.error("ASDF123" + entry.getValue().toString());
+      }
+      Assert.assertTrue(response.getAuditMap().get(storeName).getStaleRegions().containsKey(storeName));
 
       //test store health check
       StoreHealthAuditResponse healthResponse = controllerClient.listStorePushInfo(clusterName, parentController.getControllerUrl(), storeName);
