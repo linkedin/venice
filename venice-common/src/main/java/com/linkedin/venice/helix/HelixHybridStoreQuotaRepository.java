@@ -2,12 +2,15 @@ package com.linkedin.venice.helix;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.pushmonitor.HybridStoreQuotaStatus;
+import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
 import org.apache.helix.PropertyType;
 import org.apache.helix.api.listeners.RoutingTableChangeListener;
@@ -29,6 +32,9 @@ public class HelixHybridStoreQuotaRepository implements RoutingTableChangeListen
   private final Map<PropertyType, List<String>> dataSource;
 
   private RoutingTableProvider routingTableProvider;
+
+  // lock object protects resourceToStatusMap.
+  private final Lock lock = new ReentrantLock();
   private Map<String, HybridStoreQuotaStatus> resourceToStatusMap;  // Topic to quota state
 
   public HelixHybridStoreQuotaRepository(SafeHelixManager manager) {
@@ -44,11 +50,13 @@ public class HelixHybridStoreQuotaRepository implements RoutingTableChangeListen
    *
    */
   public List<String> getHybridQuotaViolatedStores() {
-    List<String> hybridQuotaViolatedStores = resourceToStatusMap.keySet()
-        .stream()
-        .filter(originalResources -> resourceToStatusMap.get(originalResources).equals(HybridStoreQuotaStatus.QUOTA_VIOLATED))
-        .collect(Collectors.toList());
-    return hybridQuotaViolatedStores;
+    try (AutoCloseableLock ignore = new AutoCloseableLock(lock)) {
+      List<String> hybridQuotaViolatedStores = resourceToStatusMap.keySet()
+          .stream()
+          .filter(originalResources -> resourceToStatusMap.get(originalResources).equals(HybridStoreQuotaStatus.QUOTA_VIOLATED))
+          .collect(Collectors.toList());
+      return hybridQuotaViolatedStores;
+    }
   }
 
   /**
@@ -58,12 +66,14 @@ public class HelixHybridStoreQuotaRepository implements RoutingTableChangeListen
    * @return
    */
   public HybridStoreQuotaStatus getHybridStoreQuotaStatus(@Nonnull String resourceName) {
-    if (resourceToStatusMap.containsKey(resourceName)) {
-      return resourceToStatusMap.get(resourceName);
+    try (AutoCloseableLock ignore = new AutoCloseableLock(lock)) {
+      if (resourceToStatusMap.containsKey(resourceName)) {
+        return resourceToStatusMap.get(resourceName);
+      }
+      String errorMessage = "Resource '" + resourceName + "' does not exist";
+      logger.warn(errorMessage);
+      return HybridStoreQuotaStatus.UNKNOWN;
     }
-    String errorMessage = "Resource '" + resourceName + "' does not exist";
-    logger.warn(errorMessage);
-    return HybridStoreQuotaStatus.UNKNOWN;
   }
 
   public void refresh() {
@@ -128,14 +138,14 @@ public class HelixHybridStoreQuotaRepository implements RoutingTableChangeListen
         newResourceToStatusMap.put(resourceName, status);
       }
       Set<String> deletedResourceNames;
-      synchronized (resourceToStatusMap) {
+      try (AutoCloseableLock ignore = new AutoCloseableLock(lock)) {
         deletedResourceNames = resourceToStatusMap.keySet()
             .stream()
             .filter(originalResources -> !newResourceToStatusMap.containsKey(originalResources))
             .collect(Collectors.toSet());
         this.resourceToStatusMap = newResourceToStatusMap;
-        logger.info("Updated resource execution status map.");
       }
+      logger.info("Updated resource execution status map.");
       logger.info("Hybrid store quota view is changed. The number of active resources is " + resourcesInCustomizedView.size()
           + ", and the number of deleted resource is " + deletedResourceNames.size());
     }
