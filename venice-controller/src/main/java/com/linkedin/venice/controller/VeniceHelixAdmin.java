@@ -5583,9 +5583,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
     @Override
-    public List<StoreInfo> getClusterStores(String clusterName) {
+    public ArrayList<StoreInfo> getClusterStores(String clusterName) {
       //Return all stores at this step in the process
-      return getAllStores(clusterName).stream()
+      return (ArrayList<StoreInfo>) getAllStores(clusterName).stream()
           .map(store -> StoreInfo.fromStore(store)).collect(Collectors.toList());
     }
 
