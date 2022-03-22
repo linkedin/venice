@@ -1035,7 +1035,6 @@ public class VenicePushJob implements AutoCloseable {
         updatePushJobDetailsWithConfigs();
         updatePushJobDetailsWithLivenessHeartbeatException(pushJobHeartbeatSender);
         sendPushJobDetailsToController();
-        deleteOutdatedIncrementalPushStatusIfNeeded();
       }
 
       if (pushJobSetting.enablePBNJ) {
@@ -1310,22 +1309,6 @@ public class VenicePushJob implements AutoCloseable {
       logger.info("No compression dictionary is generated with the strategy " + storeSetting.compressionStrategy);
     }
     return Optional.ofNullable(compressionDictionary);
-  }
-
-  private void deleteOutdatedIncrementalPushStatusIfNeeded() {
-    // delete outdated incremental push status
-    // TODO(xnma): if VenicePushJob might hang forever, incremental push status wont get purged.
-    // Design and implement a better scenario when Da Vinci have incremental push use cases.
-    if (pushJobSetting.isIncrementalPush && kafkaTopicInfo.daVinciPushStatusStoreEnabled) {
-      try (PushStatusStoreRecordDeleter pushStatusStoreDeleter =
-          new PushStatusStoreRecordDeleter(new VeniceWriterFactory(getVeniceWriterProperties(kafkaTopicInfo)))) {
-        pushStatusStoreDeleter.deletePushStatus(
-            pushJobSetting.storeName,
-            kafkaTopicInfo.version,
-            pushJobSetting.incrementalPushVersion, kafkaTopicInfo.partitionCount
-        );
-      }
-    }
   }
 
   private void throwVeniceException(Throwable e) throws VeniceException {
