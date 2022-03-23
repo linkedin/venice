@@ -231,7 +231,7 @@ public class TestSchemaEntry {
         "                        \"name\": \"SuitType\", \"type\": \"enum\", \"symbols\": [\"SPADES\", \"DIAMONDS\", \"HEART\", \"CLUBS\"]\n" +
         "                }\n" +
         "              },\n" +
-        "               {\"name\": \"salary\", \"type\": \"long\"}\n" +
+        "               {\"name\": \"salary\", \"type\": \"float\", \"default\" : 123.0}\n" +
         "           ]\n" +
         "        }";
     String schemaStr2 = "{\n" +
@@ -246,12 +246,14 @@ public class TestSchemaEntry {
         "                        \"name\": \"SuitType\", \"type\": \"enum\", \"symbols\": [\"SPADES\", \"DIAMONDS\", \"CLUBS\", \"HEART\"]\n" +
         "                } \n" +
         "              },\n" +
-        "               {\"name\": \"salary\", \"type\": \"long\", \"default\": 123 }" +
+        "               {\"name\": \"salary\", \"type\": \"float\", \"default\": 123 }" +
         "           ]\n" +
         "        }";
 
     SchemaEntry entry1 = new SchemaEntry(1, schemaStr1);
     SchemaEntry entry2 = new SchemaEntry(2, schemaStr2);
     Assert.assertTrue(entry1.isNewSchemaCompatible(entry2, DirectionalSchemaCompatibilityType.FULL));
+    // schema equals decides whether we register a new schema or not.
+    Assert.assertFalse(entry1.equals(entry2));
   }
 }
