@@ -14,7 +14,7 @@ import org.testng.Assert;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
-import static com.linkedin.venice.VeniceConstants.*;
+import static com.linkedin.venice.schema.rmd.ReplicationMetadataConstants.*;
 import static org.apache.avro.Schema.Type.*;
 
 

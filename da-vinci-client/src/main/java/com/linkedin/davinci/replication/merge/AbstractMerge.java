@@ -4,9 +4,8 @@ import com.linkedin.venice.schema.merge.ValueAndReplicationMetadata;
 import java.util.List;
 import java.util.Optional;
 import org.apache.avro.generic.GenericRecord;
-import scala.Int;
 
-import static com.linkedin.venice.VeniceConstants.*;
+import static com.linkedin.venice.schema.rmd.ReplicationMetadataConstants.*;
 
 
 /**

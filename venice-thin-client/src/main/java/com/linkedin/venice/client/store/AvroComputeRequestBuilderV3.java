@@ -21,7 +21,6 @@ import java.util.Set;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.BinaryEncoder;
-import org.codehaus.jackson.node.JsonNodeFactory;
 
 import static com.linkedin.venice.VeniceConstants.*;
 import static com.linkedin.venice.compute.protocol.request.enums.ComputeOperationType.*;

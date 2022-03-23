@@ -147,7 +147,7 @@ import org.testng.annotations.Test;
 
 import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.*;
 import static com.linkedin.venice.ConfigKeys.*;
-import static com.linkedin.venice.VeniceConstants.*;
+import static com.linkedin.venice.schema.rmd.ReplicationMetadataConstants.*;
 import static com.linkedin.venice.utils.TestUtils.*;
 import static com.linkedin.venice.utils.Time.*;
 import static org.mockito.Mockito.*;

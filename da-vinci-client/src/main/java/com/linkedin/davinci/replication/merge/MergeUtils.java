@@ -1,14 +1,13 @@
 package com.linkedin.davinci.replication.merge;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import javax.annotation.Nullable;
 import org.apache.avro.generic.GenericRecord;
 
-import static com.linkedin.venice.VeniceConstants.*;
+import static com.linkedin.venice.schema.rmd.ReplicationMetadataConstants.*;
 
 
 public class MergeUtils {
@@ -23,11 +22,11 @@ public class MergeUtils {
    * @param tsObject
    * @return
    */
-  public static Merge.RmdTimestampType getReplicationMetadataType(Object tsObject) {
+  public static RmdTimestampType getReplicationMetadataType(Object tsObject) {
     if (tsObject instanceof Long) {
-      return Merge.RmdTimestampType.VALUE_LEVEL_TIMESTAMP;
+      return RmdTimestampType.VALUE_LEVEL_TIMESTAMP;
     } else {
-      return Merge.RmdTimestampType.PER_FIELD_TIMESTAMP;
+      return RmdTimestampType.PER_FIELD_TIMESTAMP;
     }
   }
 
@@ -68,9 +67,9 @@ public class MergeUtils {
       return Collections.singletonList(0L);
     }
     Object timestampObject = replicationMetadataRecord.get(TIMESTAMP_FIELD_NAME);
-    Merge.RmdTimestampType rmdTimestampType = MergeUtils.getReplicationMetadataType(timestampObject);
+    RmdTimestampType rmdTimestampType = MergeUtils.getReplicationMetadataType(timestampObject);
 
-    if (rmdTimestampType == Merge.RmdTimestampType.VALUE_LEVEL_TIMESTAMP) {
+    if (rmdTimestampType == RmdTimestampType.VALUE_LEVEL_TIMESTAMP) {
       return Collections.singletonList((long) timestampObject);
     } else {
       // not supported yet so ignore it

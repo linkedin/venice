@@ -106,6 +106,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     int maxKeyLevelLocksPoolSize = Math.min(storeVersionPartitionCount, consumerPoolSizePerKafkaCluster) * knownKafkaClusterNumber + 1;
     this.keyLevelLocksManager = Lazy.of(() -> new KeyLevelLocksManager(getVersionTopic(), initialPoolSize, maxKeyLevelLocksPoolSize));
     this.replicationMetadataSerDe = new ReplicationMetadataSerDe(builder.getSchemaRepo(), storeName, replicationMetadataVersionId);
+
     this.mergeConflictResolver = new MergeConflictResolver(
         builder.getSchemaRepo(),
         storeName,

@@ -9,10 +9,15 @@ import com.linkedin.venice.utils.lazy.Lazy;
 import java.nio.ByteBuffer;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.Function;
+import java.util.stream.Collectors;
+import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 
-import static com.linkedin.venice.VeniceConstants.*;
+import static com.linkedin.venice.schema.rmd.ReplicationMetadataConstants.*;
+import static com.linkedin.venice.schema.rmd.v1.CollectionReplicationMetadata.*;
+
 
 /**
  * TODO schema validation of old and new schema for WC enabled stores.
@@ -45,7 +50,7 @@ public class MergeConflictResolver {
   /**
    * Perform conflict resolution when the incoming operation is a PUT operation.
    * @param oldValue A Lazy supplier of currently persisted value.
-   * @param rmdWithValueSchemaID The replication metadata of the currently persisted value and the value schema ID.
+   * @param rmdWithValueSchemaIdOptional The replication metadata of the currently persisted value and the value schema ID.
    * @param newValue The value in the incoming record.
    * @param putOperationTimestamp The logical timestamp of the incoming record.
    * @param newValueSchemaID The schema id of the value in the incoming record.
@@ -60,7 +65,7 @@ public class MergeConflictResolver {
    */
   public MergeConflictResult put(
       Lazy<ByteBuffer> oldValue,
-      Optional<ReplicationMetadataWithValueSchemaId> rmdWithValueSchemaID,
+      Optional<ReplicationMetadataWithValueSchemaId> rmdWithValueSchemaIdOptional,
       ByteBuffer newValue,
       final long putOperationTimestamp,
       final int newValueSchemaID,
@@ -68,36 +73,23 @@ public class MergeConflictResolver {
       final int newValueSourceBrokerID,
       final int newValueColoID
   ) {
-    // TODO: Honor BatchConflictResolutionPolicy when replication metadata is null
-    if (!rmdWithValueSchemaID.isPresent()) {
-      /**
-       * Replication metadata could be null in two cases:
-       *    1. There is no value corresponding to the key
-       *    2. There is a value corresponding to the key but it came from the batch push and the BatchConflictResolutionPolicy
-       *
-       * Specifies that no per-record replication metadata should be persisted for batch push data.
-       * In such cases, the incoming PUT operation will be applied directly and we should store the updated RMD for it.
-       */
-      GenericRecord newReplicationMetadata = newRmdCreator.apply(newValueSchemaID);
-      newReplicationMetadata.put(TIMESTAMP_FIELD_NAME, putOperationTimestamp);
-      // A record which didn't come from an RT topic or has null metadata should have no offset vector.
-      newReplicationMetadata.put(REPLICATION_CHECKPOINT_VECTOR_FIELD,
-          MergeUtils.mergeOffsetVectors(Optional.empty(), newValueSourceOffset, newValueSourceBrokerID));
-
-      return new MergeConflictResult(Optional.of(newValue), newValueSchemaID, true, newReplicationMetadata);
-
-    } else if (rmdWithValueSchemaID.get().getValueSchemaId() <= 0) {
+    if (!rmdWithValueSchemaIdOptional.isPresent()) {
+      // TODO: Honor BatchConflictResolutionPolicy when replication metadata is null
+      return putWithNoReplicationMetadata(newValue, putOperationTimestamp, newValueSchemaID, newValueSourceOffset, newValueSourceBrokerID);
+    }
+    ReplicationMetadataWithValueSchemaId rmdWithValueSchemaID = rmdWithValueSchemaIdOptional.get();
+    if (rmdWithValueSchemaID.getValueSchemaId() <= 0) {
       throw new VeniceException("Invalid schema Id of old value found when replication metadata exists for store = "
-          + storeName + "; schema ID = " + rmdWithValueSchemaID.get().getValueSchemaId());
+          + storeName + "; schema ID = " + rmdWithValueSchemaID.getValueSchemaId());
     }
 
-    final GenericRecord oldReplicationMetadataRecord = rmdWithValueSchemaID.get().getReplicationMetadataRecord();
-    Object existingTimestampObject = oldReplicationMetadataRecord.get(TIMESTAMP_FIELD_NAME);
-    Merge.RmdTimestampType rmdTimestampType = MergeUtils.getReplicationMetadataType(existingTimestampObject);
+    final GenericRecord oldRmd = rmdWithValueSchemaID.getReplicationMetadataRecord();
+    Object oldTimestampObject = oldRmd.get(TIMESTAMP_FIELD_NAME);
+    RmdTimestampType rmdTimestampType = MergeUtils.getReplicationMetadataType(oldTimestampObject);
 
     switch (rmdTimestampType) {
       case VALUE_LEVEL_TIMESTAMP:
-        ValueAndReplicationMetadata<ByteBuffer> valueAndRmd = new ValueAndReplicationMetadata<>(oldValue, oldReplicationMetadataRecord);
+        ValueAndReplicationMetadata<ByteBuffer> valueAndRmd = new ValueAndReplicationMetadata<>(oldValue, oldRmd);
         valueAndRmd = mergeByteBuffer.put(
             valueAndRmd,
             newValue,
@@ -113,12 +105,109 @@ public class MergeConflictResolver {
         }
 
       case PER_FIELD_TIMESTAMP:
-        // TODO: Handle conflict resolution for write-compute.
-        throw new VeniceUnsupportedOperationException("Field level replication metadata not supported");
+        final int oldValueSchemaID = rmdWithValueSchemaID.getValueSchemaId();
+        final GenericRecord oldValueFieldTimestampsRecord =
+            (GenericRecord) rmdWithValueSchemaID.getReplicationMetadataRecord().get(TIMESTAMP_FIELD_NAME);
+        if (ignoreNewPut(oldValueSchemaID, oldValueFieldTimestampsRecord, newValueSchemaID, putOperationTimestamp)) {
+          return MergeConflictResult.getIgnoredResult();
+        }
+        throw new VeniceUnsupportedOperationException("Field level RMD timestamp not-ignoring-new-put situation not supported.");
+        /**
+         * TODO Implement following steps:
+         *    1. Read old value from RocksDB.
+         *    2. Deserialize old value bytes to a GenericRecord.
+         *    3. Deserialize new value bytes to a GenericRecord.
+         *    4. Look at both schemas and decide if the superset schema should be used for the merged value and RMD.
+         *       If so, do it.
+         *    5. Call mergeGenericRecord.put(...)
+         */
 
       default:
         throw new VeniceUnsupportedOperationException("Not supported replication metadata type: " + rmdTimestampType);
     }
+  }
+
+  // Visit for testing
+  boolean ignoreNewPut(
+      final int oldValueSchemaID,
+      GenericRecord oldValueFieldTimestampsRecord,
+      final int newValueSchemaID,
+      final long putOperationTimestamp
+  ) {
+    Schema oldValueSchema = schemaRepository.getValueSchema(storeName, oldValueSchemaID).getSchema();
+    List<Schema.Field> oldValueFields = oldValueSchema.getFields();
+
+    if (oldValueSchemaID == newValueSchemaID) {
+      for (Schema.Field field : oldValueFields) {
+        if (isRmdFieldTimestampSmallerOrEqual(oldValueFieldTimestampsRecord, field.name(), putOperationTimestamp)) {
+          return false;
+        }
+      }
+      // All timestamps of existing fields are strictly greater than the new put timestamp. So, new Put can be ignored.
+      return true;
+
+    } else {
+      Schema newValueSchema = schemaRepository.getValueSchema(storeName, newValueSchemaID).getSchema();
+      Set<String> oldFieldNames = oldValueFields.stream().map(Schema.Field::name).collect(Collectors.toSet());
+      Set<String> newFieldNames = newValueSchema.getFields().stream().map(Schema.Field::name).collect(Collectors.toSet());
+
+      if (oldFieldNames.containsAll(newFieldNames)) {
+        // New value fields set is a subset of existing/old value fields set.
+        for (String newFieldName : newFieldNames) {
+          if (isRmdFieldTimestampSmallerOrEqual(oldValueFieldTimestampsRecord, newFieldName, putOperationTimestamp)) {
+            return false;
+          }
+        }
+        // All timestamps of existing fields are strictly greater than the new put timestamp. So, new Put can be ignored.
+        return true;
+
+      } else {
+        // Should not ignore new value because it contains field(s) that the existing value does not contain.
+        return false;
+      }
+    }
+  }
+
+  private boolean isRmdFieldTimestampSmallerOrEqual(
+      GenericRecord oldValueFieldTimestampsRecord,
+      String fieldName,
+      final long newTimestamp
+  ) {
+    final Object fieldTimestampObj = oldValueFieldTimestampsRecord.get(fieldName);
+    final long oldFieldTimestamp;
+    if (fieldTimestampObj instanceof Long) {
+      oldFieldTimestamp = (Long) fieldTimestampObj;
+    } else if (fieldTimestampObj instanceof GenericRecord) {
+      oldFieldTimestamp = (Long) ((GenericRecord) fieldTimestampObj).get(COLLECTION_TOP_LEVEL_TS_FIELD_NAME);
+    } else {
+      throw new VeniceException("Replication metadata field timestamp is expected to be either a long or a GenericRecord. "
+          + "Got: " + fieldTimestampObj);
+    }
+    return oldFieldTimestamp <= newTimestamp;
+  }
+
+  private MergeConflictResult putWithNoReplicationMetadata(
+      ByteBuffer newValue,
+      final long putOperationTimestamp,
+      final int newValueSchemaID,
+      final long newValueSourceOffset,
+      final int newValueSourceBrokerID
+  ) {
+    /**
+     * Replication metadata could be null in two cases:
+     *    1. There is no value corresponding to the key
+     *    2. There is a value corresponding to the key but it came from the batch push and the BatchConflictResolutionPolicy
+     *
+     * Specifies that no per-record replication metadata should be persisted for batch push data.
+     * In such cases, the incoming PUT operation will be applied directly and we should store the updated RMD for it.
+     */
+    GenericRecord newReplicationMetadata = newRmdCreator.apply(newValueSchemaID);
+    newReplicationMetadata.put(TIMESTAMP_FIELD_NAME, putOperationTimestamp);
+    // A record which didn't come from an RT topic or has null metadata should have no offset vector.
+    newReplicationMetadata.put(REPLICATION_CHECKPOINT_VECTOR_FIELD,
+        MergeUtils.mergeOffsetVectors(Optional.empty(), newValueSourceOffset, newValueSourceBrokerID));
+
+    return new MergeConflictResult(Optional.of(newValue), newValueSchemaID, true, newReplicationMetadata);
   }
 
   /**
@@ -165,9 +254,9 @@ public class MergeConflictResolver {
     final GenericRecord oldReplicationMetadataRecord = rmdWithValueSchemaID.get().getReplicationMetadataRecord();
     final int valueSchemaID = rmdWithValueSchemaID.get().getValueSchemaId();
     Object tsObject = oldReplicationMetadataRecord.get(TIMESTAMP_FIELD_NAME);
-    Merge.RmdTimestampType rmdTimestampType = MergeUtils.getReplicationMetadataType(tsObject);
+    RmdTimestampType rmdTimestampType = MergeUtils.getReplicationMetadataType(tsObject);
 
-    if (rmdTimestampType == Merge.RmdTimestampType.VALUE_LEVEL_TIMESTAMP) {
+    if (rmdTimestampType == RmdTimestampType.VALUE_LEVEL_TIMESTAMP) {
       ValueAndReplicationMetadata<ByteBuffer> valueAndRmd = new ValueAndReplicationMetadata<>(
           Lazy.of(() -> null), // Current value can be passed as null because it is not needed to handle the Delete request.
           oldReplicationMetadataRecord
