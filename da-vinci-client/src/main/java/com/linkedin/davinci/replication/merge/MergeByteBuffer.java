@@ -6,7 +6,7 @@ import java.nio.ByteBuffer;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 
-import static com.linkedin.venice.VeniceConstants.*;
+import static com.linkedin.venice.schema.rmd.ReplicationMetadataConstants.*;
 
 
 /**

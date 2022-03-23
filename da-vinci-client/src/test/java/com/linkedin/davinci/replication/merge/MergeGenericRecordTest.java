@@ -19,7 +19,7 @@ import org.apache.avro.generic.GenericRecord;
 import org.testng.annotations.Test;
 import org.testng.Assert;
 
-import static com.linkedin.venice.VeniceConstants.*;
+import static com.linkedin.venice.schema.rmd.ReplicationMetadataConstants.*;
 import static com.linkedin.venice.schema.writecompute.WriteComputeConstants.*;
 
 

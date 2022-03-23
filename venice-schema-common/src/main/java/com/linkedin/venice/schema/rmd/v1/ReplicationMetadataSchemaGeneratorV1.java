@@ -8,7 +8,7 @@ import java.util.Arrays;
 import java.util.List;
 import org.apache.avro.Schema;
 
-import static com.linkedin.venice.VeniceConstants.*;
+import static com.linkedin.venice.schema.rmd.ReplicationMetadataConstants.*;
 import static org.apache.avro.Schema.Type.*;
 
 
