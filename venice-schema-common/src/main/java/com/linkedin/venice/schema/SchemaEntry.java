@@ -39,7 +39,7 @@ public class SchemaEntry {
 
     this.id = id;
     try {
-      this.schema = Schema.parse(schemaStr);
+      this.schema = AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation(schemaStr);
     } catch (Exception e) {
       if ((e instanceof AvroTypeException) && (AvroCompatibilityHelper.getRuntimeAvroVersion().laterThan(AvroVersion.AVRO_1_8))) {
         this.schema = Schema.create(Schema.Type.NULL);
