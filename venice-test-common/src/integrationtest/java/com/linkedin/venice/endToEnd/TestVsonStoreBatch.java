@@ -19,12 +19,10 @@ import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
-import java.util.Set;
 import java.util.function.Consumer;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
@@ -264,29 +262,8 @@ public class TestVsonStoreBatch {
           properties.setProperty(VENICE_DISCOVER_URL_PROP, properties.getProperty(VENICE_URL_PROP));
           properties.setProperty(VENICE_URL_PROP, "invalid_venice_urls");
         },
-        (avroClient, vsonClient, metricsRepository) -> {
-          // Sleeping to wait for dictionary download since there is no previous version to fallback to.
-          Utils.sleep(1000);
-          //test single get
-          for (int i = 1; i <= 100; i ++) {
-            Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + i);
-          }
-
-          //test batch get
-          for (int i = 0; i < 10; i ++) {
-            Set<String> keys = new HashSet<>();
-            for (int j = 1; j <= 10; j ++) {
-              keys.add(Integer.toString(i * 10 + j));
-            }
-
-            Map<CharSequence, CharSequence> values = (Map<CharSequence, CharSequence>) avroClient.batchGet(keys).get();
-            Assert.assertEquals(values.size(), 10);
-
-            for (int j = 1; j <= 10; j ++) {
-              Assert.assertEquals(values.get(Integer.toString(i * 10 + j)).toString(), "test_name_" + ((i * 10) + j));
-            }
-          }
-        }, new UpdateStoreQueryParams().setCompressionStrategy(CompressionStrategy.ZSTD_WITH_DICT));
+        TestBatch.getSimpleFileWithUserSchemaValidatorForZstd(),
+        new UpdateStoreQueryParams().setCompressionStrategy(CompressionStrategy.ZSTD_WITH_DICT));
   }
 
   private String testBatchStore(TestBatch.InputFileWriter inputFileWriter, Consumer<Properties> extraProps, TestBatch.H2VValidator dataValidator) throws Exception {
