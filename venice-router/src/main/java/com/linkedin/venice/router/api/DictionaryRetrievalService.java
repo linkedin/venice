@@ -332,8 +332,8 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
                 DEFAULT_DICTIONARY_DOWNLOAD_INTERVAL_IN_MS, TimeUnit.MILLISECONDS);
           }
         } else {
-          logger.info("Dictionary downloaded asynchronously for resource: " + kafkaTopic);
           initCompressorFromDictionary(version, dictionary);
+          logger.info("Dictionary downloaded and compressor is ready for resource: " + kafkaTopic);
         }
         return null;
       }, executor);

@@ -249,6 +249,34 @@ public abstract class TestBatch {
         }, new UpdateStoreQueryParams().setCompressionStrategy(CompressionStrategy.ZSTD_WITH_DICT));
   }
 
+  static H2VValidator getSimpleFileWithUserSchemaValidatorForZstd() {
+    return (avroClient, vsonClient, metricsRepository) -> {
+      // Wait for the first get to succeed. After the first one, the following gets must succeed without retry.
+      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, true,
+          () -> Assert.assertEquals(avroClient.get(Integer.toString(1)).get().toString(), "test_name_1"));
+
+      // test single get, starting from i = 2.
+      for (int i = 2; i <= 100; i++) {
+        Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + i);
+      }
+
+      // test batch get.
+      for (int i = 0; i < 10; i++) {
+        Set<String> keys = new HashSet<>();
+        for (int j = 1; j <= 10; j++) {
+          keys.add(Integer.toString(i * 10 + j));
+        }
+
+        Map<CharSequence, CharSequence> values = (Map<CharSequence, CharSequence>) avroClient.batchGet(keys).get();
+        Assert.assertEquals(values.size(), 10);
+
+        for (int j = 1; j <= 10; j++) {
+          Assert.assertEquals(values.get(Integer.toString(i * 10 + j)).toString(), "test_name_" + ((i * 10) + j));
+        }
+      }
+    };
+  }
+
   @Test(timeOut = TEST_TIMEOUT)
   public void testZstdCompressingAvroRecordWhenNoFallbackAvailableWithSleep() throws Exception {
     testBatchStore(
@@ -265,29 +293,8 @@ public abstract class TestBatch {
           properties.setProperty(VENICE_URL_PROP, "invalid_venice_urls");
           properties.setProperty(ZSTD_COMPRESSION_LEVEL, String.valueOf(17));
         },
-        (avroClient, vsonClient, metricsRepository) -> {
-          // Sleeping to wait for dictionary download since there is no previous version to fallback to.
-          Utils.sleep(1000);
-          //test single get
-          for (int i = 1; i <= 100; i ++) {
-            Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + i);
-          }
-
-          //test batch get
-          for (int i = 0; i < 10; i ++) {
-            Set<String> keys = new HashSet<>();
-            for (int j = 1; j <= 10; j ++) {
-              keys.add(Integer.toString(i * 10 + j));
-            }
-
-            Map<CharSequence, CharSequence> values = (Map<CharSequence, CharSequence>) avroClient.batchGet(keys).get();
-            Assert.assertEquals(values.size(), 10);
-
-            for (int j = 1; j <= 10; j ++) {
-              Assert.assertEquals(values.get(Integer.toString(i * 10 + j)).toString(), "test_name_" + ((i * 10) + j));
-            }
-          }
-        }, new UpdateStoreQueryParams().setCompressionStrategy(CompressionStrategy.ZSTD_WITH_DICT));
+        getSimpleFileWithUserSchemaValidatorForZstd(),
+        new UpdateStoreQueryParams().setCompressionStrategy(CompressionStrategy.ZSTD_WITH_DICT));
   }
 
   @Test(timeOut = TEST_TIMEOUT)
@@ -306,27 +313,7 @@ public abstract class TestBatch {
           properties.setProperty(VENICE_DISCOVER_URL_PROP, properties.getProperty(VENICE_URL_PROP));
           properties.setProperty(VENICE_URL_PROP, "invalid_venice_urls");
         },
-        (avroClient, vsonClient, metricsRepository) -> {
-          //test single get
-          for (int i = 1; i <= 100; i ++) {
-            Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + i);
-          }
-
-          //test batch get
-          for (int i = 0; i < 10; i ++) {
-            Set<String> keys = new HashSet<>();
-            for (int j = 1; j <= 10; j ++) {
-              keys.add(Integer.toString(i * 10 + j));
-            }
-
-            Map<CharSequence, CharSequence> values = (Map<CharSequence, CharSequence>) avroClient.batchGet(keys).get();
-            Assert.assertEquals(values.size(), 10);
-
-            for (int j = 1; j <= 10; j ++) {
-              Assert.assertEquals(values.get(Integer.toString(i * 10 + j)).toString(), "test_name_" + ((i * 10) + j));
-            }
-          }
-        });
+        getSimpleFileWithUserSchemaValidatorForZstd());
 
     // Then, enabling dictionary compression. After some time has passed, dictionary would have been downloaded and the new version should be served.
     testBatchStore(
