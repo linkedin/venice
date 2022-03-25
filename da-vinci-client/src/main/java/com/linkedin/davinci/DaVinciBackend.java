@@ -202,6 +202,7 @@ public class DaVinciBackend implements Closeable {
     Map<String, Set<Integer>> expectedBootstrapVersions = new HashMap<>();
     Map<String, Version> storeNameToBootstrapVersionMap = new HashMap<>();
     Map<String, List<Integer>> storeNameToPartitionListMap = new HashMap<>();
+    Set<String> unusedStores = new HashSet<>();
     for (AbstractStorageEngine storageEngine : storageEngines) {
       String kafkaTopicName = storageEngine.getStoreName();
       String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopicName);
@@ -211,13 +212,14 @@ public class DaVinciBackend implements Closeable {
         if (managedClients.isPresent() && !managedClients.get().contains(storeName) && storeBackend.isManaged()) {
           // If the store is not-managed, all its versions will be removed.
           logger.info("Deleting unused managed version " + kafkaTopicName);
-          deleteStore(storeName);
+          unusedStores.add(storeName);
           storageService.removeStorageEngine(kafkaTopicName);
           continue;
         }
       } catch (VeniceNoStoreException e) {
         // The store does not exist in Venice anymore, so it will be deleted.
         logger.info("Deleting invalid local version " + kafkaTopicName);
+        unusedStores.add(storeName);
         storageService.removeStorageEngine(kafkaTopicName);
         continue;
       }
@@ -238,6 +240,11 @@ public class DaVinciBackend implements Closeable {
         logger.info("Deleting obsolete local version " + kafkaTopicName);
         storageService.removeStorageEngine(kafkaTopicName);
         continue;
+      }
+
+      // Remove unused stores' StoreBackend object here to avoid duplicate metrics issued caused by re-init StoreBackend.
+      for (String unusedStoreName : unusedStores) {
+        deleteStore(unusedStoreName);
       }
 
       Version version = storeRepository.getStoreOrThrow(storeName).getVersion(versionNumber)
