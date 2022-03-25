@@ -4039,7 +4039,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
               calculateNumberOfPartitions(clusterName, systemStoreName, DEFAULT_META_SYSTEM_STORE_SIZE),
               getReplicationFactor(clusterName, systemStoreName));
           int versionNumber = version.getNumber();
-          writeEndOfPush(clusterName, storeName, versionNumber, true);
+          writeEndOfPush(clusterName, systemStoreName, versionNumber, true);
           throw new VeniceException("System store: " + systemStoreName + " pushed failed. Issuing a new empty push to create version: " + versionNumber);
         } else {
           throw new VeniceRetriableException("System store:" + systemStoreName + " push is still ongoing, will check it again. This is not an error.");
