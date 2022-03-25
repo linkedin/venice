@@ -16,7 +16,7 @@ import static com.linkedin.venice.schema.rmd.ReplicationMetadataConstants.*;
 import static org.mockito.Mockito.*;
 
 
-public class TestMergeConflictWithFieldLevelTimestamp extends TestMergeConflictWithValueLevelTimestamp {
+public class TestMergeConflictWithFieldLevelTimestamp extends TestMergeConflictResolver {
 
   @Test
   public void testNewPutIgnored() {

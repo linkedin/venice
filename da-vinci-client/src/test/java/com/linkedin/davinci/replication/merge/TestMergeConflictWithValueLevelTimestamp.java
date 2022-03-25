@@ -4,14 +4,6 @@ import com.linkedin.avro.fastserde.coldstart.ColdPrimitiveLongList;
 import com.linkedin.avro.fastserde.primitive.PrimitiveLongArrayList;
 import com.linkedin.davinci.replication.ReplicationMetadataWithValueSchemaId;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.meta.ReadOnlySchemaRepository;
-import com.linkedin.venice.schema.AvroSchemaParseUtils;
-import com.linkedin.venice.schema.SchemaEntry;
-import com.linkedin.venice.schema.rmd.ReplicationMetadataSchemaGenerator;
-import com.linkedin.venice.schema.rmd.ReplicationMetadataSchemaEntry;
-import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
-import com.linkedin.venice.serializer.RecordDeserializer;
-import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -19,55 +11,16 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
-import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 import org.testng.Assert;
-import org.testng.annotations.BeforeClass;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
-import static com.linkedin.davinci.replication.merge.TestMergeConflictSchemaConstants.*;
 import static com.linkedin.venice.schema.rmd.ReplicationMetadataConstants.*;
-import static org.mockito.Mockito.*;
 
 
-public class TestMergeConflictWithValueLevelTimestamp {
-  private static final int RMD_VERSION_ID = 1;
-
-  protected String storeName;
-  protected ReadOnlySchemaRepository schemaRepository;
-  protected Schema valueRecordSchemaV1;
-  protected Schema rmdSchemaV1;
-  protected Schema valueRecordSchemaV2;
-  private Schema rmdSchemaV2;
-  private RecordSerializer<GenericRecord> serializer;
-  private RecordDeserializer<GenericRecord> deserializer;
-
-  @BeforeClass
-  public void setUp() {
-    this.storeName = "store";
-    this.schemaRepository = mock(ReadOnlySchemaRepository.class);
-    this.valueRecordSchemaV1 = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(VALUE_RECORD_SCHEMA_STR_V1);
-    this.rmdSchemaV1 = ReplicationMetadataSchemaGenerator.generateMetadataSchema(valueRecordSchemaV1, RMD_VERSION_ID);
-    this.valueRecordSchemaV2 = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(VALUE_RECORD_SCHEMA_STR_V2);
-    this.rmdSchemaV2 = ReplicationMetadataSchemaGenerator.generateMetadataSchema(valueRecordSchemaV2, RMD_VERSION_ID);
-
-    this.serializer = FastSerializerDeserializerFactory.getFastAvroGenericSerializer(valueRecordSchemaV1);
-    this.deserializer = FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(valueRecordSchemaV1,
-        valueRecordSchemaV1);
-
-    ReplicationMetadataSchemaEntry rmdSchemaEntry
-        = new ReplicationMetadataSchemaEntry(1, RMD_VERSION_ID, rmdSchemaV1);
-    doReturn(rmdSchemaEntry).when(schemaRepository).getReplicationMetadataSchema(anyString(), anyInt(), anyInt());
-
-    SchemaEntry valueSchemaEntry = new SchemaEntry(1, valueRecordSchemaV1);
-    doReturn(valueSchemaEntry).when(schemaRepository).getLatestValueSchema(anyString());
-  }
-
-  private ByteBuffer getByteBufferOfRecord(GenericRecord record) {
-    return ByteBuffer.wrap(serializer.serialize(record));
-  }
+public class TestMergeConflictWithValueLevelTimestamp extends TestMergeConflictResolver {
 
   @Test
   public void testPut() {
@@ -412,5 +365,9 @@ public class TestMergeConflictWithValueLevelTimestamp {
     expectedVector = Arrays.asList(1L, 8L, 0L, 0L, 3L, 3L);
     Assert.assertEquals(newVector, expectedVector);
     Assert.assertEquals(MergeUtils.sumOffsetVector(newVector), 15L);
+  }
+
+  private ByteBuffer getByteBufferOfRecord(GenericRecord record) {
+    return ByteBuffer.wrap(serializer.serialize(record));
   }
 }
