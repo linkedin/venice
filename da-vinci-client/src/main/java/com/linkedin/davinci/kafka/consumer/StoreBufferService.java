@@ -29,14 +29,14 @@ import static java.util.stream.Collectors.*;
 
 
 /**
- * This class is serving as a {@link VeniceConsumerRecordWrapper} buffer with an accompanying pool of drainer threads. The drainers
+ * This class is serving as a {@link ConsumerRecord} buffer with an accompanying pool of drainer threads. The drainers
  * pull records out of the buffer and delegate the persistence and validation to the appropriate {@link StoreIngestionTask}.
  *
  * High-level idea:
  * 1. {@link StoreBufferService} will be maintaining a fixed number (configurable) of {@link StoreBufferDrainer} pool;
  * 2. For each {@link StoreBufferDrainer}, there is a corresponding {@link BlockingQueue}, which will buffer {@link QueueNode};
  * 3. All the records belonging to the same topic+partition will be allocated to the same drainer thread, otherwise DIV will fail;
- * 4. The logic to assign topic+partition to drainer, please check {@link #getDrainerIndexForConsumerRecord(VeniceConsumerRecordWrapper)};
+ * 4. The logic to assign topic+partition to drainer, please check {@link #getDrainerIndexForConsumerRecord(ConsumerRecord, int)};
  * 5. There is still a thread executing {@link StoreIngestionTask} for each topic, which will handle admin actions, such
  * as subscribe, unsubscribe, kill and so on, and also poll consumer records from Kafka and put them into {@link #blockingQueueArr}
  * maintained by {@link StoreBufferService};
@@ -51,26 +51,30 @@ public class StoreBufferService extends AbstractStoreBufferService {
    */
   private static class QueueNode implements Measurable {
     /**
-     * Considering the overhead of {@link VeniceConsumerRecordWrapper} and its internal structures.
+     * Considering the overhead of {@link ConsumerRecord} and its internal structures.
      */
     private static final int QUEUE_NODE_OVERHEAD_IN_BYTE = 256;
-    private final VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope> consumerRecordWrapper;
     private final ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord;
     private final StoreIngestionTask ingestionTask;
     private final LeaderProducedRecordContext leaderProducedRecordContext;
     private final Optional<CompletableFuture<Void>> queuedRecordPersistedFuture;
+    private final String kafkaUrl;
 
-    public QueueNode(VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope> consumerRecordWrapper, StoreIngestionTask ingestionTask,
-        LeaderProducedRecordContext leaderProducedRecordContext, Optional<CompletableFuture<Void>> queuedRecordPersistedFuture) {
-      this.consumerRecordWrapper = consumerRecordWrapper;
+    public QueueNode(
+        ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
+        StoreIngestionTask ingestionTask,
+        LeaderProducedRecordContext leaderProducedRecordContext,
+        Optional<CompletableFuture<Void>> queuedRecordPersistedFuture,
+        String kafkaUrl) {
+      this.consumerRecord = consumerRecord;
       this.ingestionTask = ingestionTask;
       this.leaderProducedRecordContext = leaderProducedRecordContext;
       this.queuedRecordPersistedFuture = queuedRecordPersistedFuture;
-      this.consumerRecord = consumerRecordWrapper.consumerRecord();
+      this.kafkaUrl = kafkaUrl;
     }
 
-    public VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope> getConsumerRecordWrapper() {
-      return this.consumerRecordWrapper;
+    public ConsumerRecord<KafkaKey, KafkaMessageEnvelope> getConsumerRecord() {
+      return this.consumerRecord;
     }
 
     public StoreIngestionTask getIngestionTask() {
@@ -81,6 +85,10 @@ public class StoreBufferService extends AbstractStoreBufferService {
 
     public Optional<CompletableFuture<Void>> getQueuedRecordPersistedFuture() {
       return queuedRecordPersistedFuture;
+    }
+
+    public String getKafkaUrl() {
+      return this.kafkaUrl;
     }
 
     /**
@@ -120,8 +128,8 @@ public class StoreBufferService extends AbstractStoreBufferService {
   };
 
   /**
-   * Worker thread, which will invoke {@link StoreIngestionTask#processConsumerRecord(VeniceConsumerRecordWrapper, LeaderProducedRecordContext)} to process
-   * each {@link VeniceConsumerRecordWrapper} buffered in {@link BlockingQueue}.
+   * Worker thread, which will invoke {@link StoreIngestionTask#processConsumerRecord(ConsumerRecord, LeaderProducedRecordContext, String)} to process
+   * each {@link ConsumerRecord} buffered in {@link BlockingQueue}.
    */
   private static class StoreBufferDrainer implements Runnable {
     private static final Logger LOGGER = LogManager.getLogger(StoreBufferDrainer.class);
@@ -150,15 +158,14 @@ public class StoreBufferService extends AbstractStoreBufferService {
         try {
           node = blockingQueue.take();
 
-          VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope> consumerRecordWrapper = node.getConsumerRecordWrapper();
-          consumerRecord = consumerRecordWrapper.consumerRecord();
+          consumerRecord = node.getConsumerRecord();
           leaderProducedRecordContext = node.getLeaderProducedRecordContext();
           ingestionTask = node.getIngestionTask();
           recordPersistedFuture = node.getQueuedRecordPersistedFuture();
 
           long startTime = System.currentTimeMillis();
 
-          ingestionTask.processConsumerRecord(consumerRecordWrapper, leaderProducedRecordContext);
+          ingestionTask.processConsumerRecord(consumerRecord, leaderProducedRecordContext, node.getKafkaUrl());
 
           //complete the leaderProducedRecordContext future as processing for this leaderProducedRecordContext is done here.
           if (leaderProducedRecordContext != null) {
@@ -238,8 +245,8 @@ public class StoreBufferService extends AbstractStoreBufferService {
   }
 
   protected int getDrainerIndexForConsumerRecord(
-      VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope> consumerRecordWrapper) {
-    ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord = consumerRecordWrapper.consumerRecord();
+      ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
+      int subPartition) {
     String topic = consumerRecord.topic();
     /**
      * This will guarantee that 'topicHash' will be a positive integer, whose maximum value is
@@ -247,14 +254,17 @@ public class StoreBufferService extends AbstractStoreBufferService {
      * positive for most of time to guarantee even partition assignment.
      */
     int topicHash = Math.abs(topic.hashCode() / 2);
-    return Math.abs((topicHash + consumerRecordWrapper.getSubPartition()) % this.drainerNum);
+    return Math.abs((topicHash + subPartition) % this.drainerNum);
   }
 
   @Override
-  public void putConsumerRecord(VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope> consumerRecordWrapper,
-      StoreIngestionTask ingestionTask, LeaderProducedRecordContext leaderProducedRecordContext) throws InterruptedException {
-    ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord = consumerRecordWrapper.consumerRecord();
-    int drainerIndex = getDrainerIndexForConsumerRecord(consumerRecordWrapper);
+  public void putConsumerRecord(
+      ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
+      StoreIngestionTask ingestionTask,
+      LeaderProducedRecordContext leaderProducedRecordContext,
+      int subPartition,
+      String kafkaUrl) throws InterruptedException {
+    int drainerIndex = getDrainerIndexForConsumerRecord(consumerRecord, subPartition);
     Optional<CompletableFuture<Void>> recordFuture = Optional.empty();
     if (leaderProducedRecordContext == null) {
       /**
@@ -266,7 +276,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
     }
 
     blockingQueueArr.get(drainerIndex)
-        .put(new QueueNode(consumerRecordWrapper, ingestionTask, leaderProducedRecordContext, recordFuture));
+        .put(new QueueNode(consumerRecord, ingestionTask, leaderProducedRecordContext, recordFuture, kafkaUrl));
     // Setup the last queued record's future
     Optional<PartitionConsumptionState> partitionConsumptionState = ingestionTask.getPartitionConsumptionState(consumerRecord.partition());
     if (partitionConsumptionState.isPresent() && recordFuture.isPresent()) {
@@ -290,15 +300,15 @@ public class StoreBufferService extends AbstractStoreBufferService {
 
   protected void internalDrainBufferedRecordsFromTopicPartition(String topic, int partition,int retryNum,
       int sleepIntervalInMS) throws InterruptedException {
-    VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope>
-        fakeRecord = new VeniceConsumerRecordWrapper<>(new ConsumerRecord<>(topic, partition, -1, null, null));
-    int workerIndex = getDrainerIndexForConsumerRecord(fakeRecord);
+    ConsumerRecord<KafkaKey, KafkaMessageEnvelope>
+        fakeRecord = new ConsumerRecord<>(topic, partition, -1, null, null);
+    int workerIndex = getDrainerIndexForConsumerRecord(fakeRecord, partition);
     BlockingQueue<QueueNode> blockingQueue = blockingQueueArr.get(workerIndex);
     if (!drainerList.get(workerIndex).isRunning.get()) {
       throw new VeniceException("Drainer thread " + workerIndex + " has stopped running, cannot drain the topic " + topic);
     }
 
-    QueueNode fakeNode = new QueueNode(fakeRecord, null, null, Optional.empty());
+    QueueNode fakeNode = new QueueNode(fakeRecord, null, null, Optional.empty(), "dummyKafkaUrl");
 
     int cur = 0;
     while (cur++ < retryNum) {

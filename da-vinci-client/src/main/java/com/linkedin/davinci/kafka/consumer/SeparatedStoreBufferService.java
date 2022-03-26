@@ -37,10 +37,10 @@ public class SeparatedStoreBufferService extends AbstractStoreBufferService {
   }
 
   @Override
-  public void putConsumerRecord(VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope> consumerRecordWrapper,
-      StoreIngestionTask ingestionTask, LeaderProducedRecordContext leaderProducedRecordContext) throws InterruptedException {
-    ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord = consumerRecordWrapper.consumerRecord();
-    Optional<PartitionConsumptionState> partitionConsumptionState = ingestionTask.getPartitionConsumptionState(consumerRecordWrapper.getSubPartition());
+  public void putConsumerRecord(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
+      StoreIngestionTask ingestionTask, LeaderProducedRecordContext leaderProducedRecordContext, int subPartition,
+      String kafkaUrl) throws InterruptedException {
+    Optional<PartitionConsumptionState> partitionConsumptionState = ingestionTask.getPartitionConsumptionState(subPartition);
 
     boolean sortedInput = false;
     if (partitionConsumptionState.isPresent()) {
@@ -62,9 +62,11 @@ public class SeparatedStoreBufferService extends AbstractStoreBufferService {
       }
     }
     if (sortedInput) {
-      sortedServiceDelegate.putConsumerRecord(consumerRecordWrapper, ingestionTask, leaderProducedRecordContext);
+      sortedServiceDelegate.putConsumerRecord(consumerRecord, ingestionTask, leaderProducedRecordContext, subPartition,
+          kafkaUrl);
     } else {
-      unsortedServiceDelegate.putConsumerRecord(consumerRecordWrapper, ingestionTask, leaderProducedRecordContext);
+      unsortedServiceDelegate.putConsumerRecord(consumerRecord, ingestionTask, leaderProducedRecordContext,
+          subPartition, kafkaUrl);
     }
   }
 

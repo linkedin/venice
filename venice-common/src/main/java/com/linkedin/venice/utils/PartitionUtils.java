@@ -11,6 +11,8 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.UserPartitionAwarePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
+import it.unimi.dsi.fastutil.ints.IntArrayList;
+import it.unimi.dsi.fastutil.ints.IntList;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -65,10 +67,10 @@ public class PartitionUtils {
     }
   }
 
-  public static List<Integer> getSubPartitions(Collection<Integer> userPartitions, int amplificationFactor) {
+  public static IntList getSubPartitions(Collection<Integer> userPartitions, int amplificationFactor) {
     checkAmplificationFactor(amplificationFactor);
-    List<Integer> subPartitions = new ArrayList<>();
-    for (Integer userPartition : userPartitions) {
+    IntList subPartitions = new IntArrayList();
+    for (int userPartition : userPartitions) {
       int subPartition = userPartition * amplificationFactor;
       for (int i = 0; i < amplificationFactor; ++i, ++subPartition) {
         subPartitions.add(subPartition);
@@ -88,12 +90,18 @@ public class PartitionUtils {
         getLeaderSubPartition(partition, amplificationFactor) : partition;
   }
 
-  public static List<Integer> getSubPartitions(int userPartition, int amplificationFactor) {
-    return getSubPartitions(Collections.singleton(userPartition), amplificationFactor);
+  public static IntList getSubPartitions(int userPartition, int amplificationFactor) {
+    checkAmplificationFactor(amplificationFactor);
+    IntList subPartitions = new IntArrayList(amplificationFactor);
+    int subPartition = userPartition * amplificationFactor;
+    for (int i = 0; i < amplificationFactor; ++i, ++subPartition) {
+      subPartitions.add(subPartition);
+    }
+    return subPartitions;
   }
 
-  public static List<Integer> getUserPartitions(Collection<Integer> subPartitions, int amplificationFactor) {
-    List<Integer> userPartitions = new ArrayList<>();
+  public static IntList getUserPartitions(Collection<Integer> subPartitions, int amplificationFactor) {
+    IntList userPartitions = new IntArrayList(subPartitions.size());
     for (Integer subPartition : subPartitions) {
       userPartitions.add(getUserPartition(subPartition, amplificationFactor));
     }

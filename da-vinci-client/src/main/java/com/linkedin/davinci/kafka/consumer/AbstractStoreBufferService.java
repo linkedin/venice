@@ -3,6 +3,7 @@ package com.linkedin.davinci.kafka.consumer;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.service.AbstractVeniceService;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
 
 
 /**
@@ -10,8 +11,9 @@ import com.linkedin.venice.service.AbstractVeniceService;
  */
 public abstract class AbstractStoreBufferService extends AbstractVeniceService {
 
-  public abstract void putConsumerRecord(VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope> consumerRecordWrapper,
-      StoreIngestionTask ingestionTask, LeaderProducedRecordContext leaderProducedRecordContext) throws InterruptedException;
+  public abstract void putConsumerRecord(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
+      StoreIngestionTask ingestionTask, LeaderProducedRecordContext leaderProducedRecordContext, int subPartition,
+      String kafkaUrl) throws InterruptedException;
 
   /**
    * This method will wait for all the messages to be processed (persisted to disk) that are already
