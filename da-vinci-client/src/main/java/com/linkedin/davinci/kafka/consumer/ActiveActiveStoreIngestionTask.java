@@ -117,13 +117,12 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
 
   @Override
   protected DelegateConsumerRecordResult delegateConsumerRecord(
-      VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope> consumerRecordWrapper) {
-    ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord = consumerRecordWrapper.consumerRecord();
+      ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord, int subPartition, String kafkaUrl) {
     if (!Version.isRealTimeTopic(consumerRecord.topic())) {
       /**
        * We don't need to lock the partition here because during VT consumption there is only one consumption source.
        */
-      return super.delegateConsumerRecord(consumerRecordWrapper);
+      return super.delegateConsumerRecord(consumerRecord, subPartition, kafkaUrl);
     } else {
       /**
        * The below flow must be executed in a critical session for the same key:
@@ -141,7 +140,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       ReentrantLock keyLevelLock = this.keyLevelLocksManager.get().acquireLockByKey(keyByteBuffer);
       keyLevelLock.lock();
       try {
-        return super.delegateConsumerRecord(consumerRecordWrapper);
+        return super.delegateConsumerRecord(consumerRecord, subPartition, kafkaUrl);
       } finally {
         keyLevelLock.unlock();
         this.keyLevelLocksManager.get().releaseLock(keyByteBuffer);
@@ -216,8 +215,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   }
 
   // This function may modify the original record in KME and it is unsafe to use the payload from KME directly after this function.
-  protected void processMessageAndMaybeProduceToKafka(VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope> consumerRecordWrapper,
-      PartitionConsumptionState partitionConsumptionState, int subPartition) {
+  protected void processMessageAndMaybeProduceToKafka(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
+      PartitionConsumptionState partitionConsumptionState, int subPartition, String kafkaUrl) {
     /**
      * With {@link com.linkedin.davinci.replication.BatchConflictResolutionPolicy.BATCH_WRITE_LOSES} there is no need
      * to perform DCR before EOP and L/F DIV passthrough mode should be used. If the version is going through data
@@ -225,10 +224,9 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
      * TODO. We need to refactor this logic when we support other batch conflict resolution policy.
      */
     if (!partitionConsumptionState.isEndOfPushReceived() || isDataRecovery && partitionConsumptionState.getTopicSwitch() != null) {
-      super.processMessageAndMaybeProduceToKafka(consumerRecordWrapper, partitionConsumptionState, subPartition);
+      super.processMessageAndMaybeProduceToKafka(consumerRecord, partitionConsumptionState, subPartition, kafkaUrl);
       return;
     }
-    ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord = consumerRecordWrapper.consumerRecord();
     KafkaKey kafkaKey = consumerRecord.key();
     KafkaMessageEnvelope kafkaValue = consumerRecord.value();
     byte[] keyBytes = kafkaKey.getKey();
@@ -268,8 +266,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
             MergeUtils.extractTimestampFromRmd(rmdWithValueSchemaID.get().getReplicationMetadataRecord()) :
             Collections.singletonList(0L);
     // get the source offset and the id
-    int sourceKafkaClusterId = kafkaClusterUrlToIdMap.getOrDefault(consumerRecordWrapper.kafkaUrl(), -1);
-    long sourceOffset = consumerRecordWrapper.consumerRecord().offset();
+    int sourceKafkaClusterId = kafkaClusterUrlToIdMap.getOrDefault(kafkaUrl, -1);
+    long sourceOffset = consumerRecord.offset();
     final MergeConflictResult mergeConflictResult;
 
     aggVersionedStorageIngestionStats.recordTotalDCR(storeName, versionNumber);
@@ -316,7 +314,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     } else {
       validatePostOperationResultsAndRecord(mergeConflictResult, offsetSumPreOperation, recordTimestampsPreOperation);
       // This function may modify the original record in KME and it is unsafe to use the payload from KME directly after this call.
-      producePutOrDeleteToKafka(mergeConflictResult, partitionConsumptionState, keyBytes, isChunkedTopic, consumerRecordWrapper);
+      producePutOrDeleteToKafka(mergeConflictResult, partitionConsumptionState, keyBytes, isChunkedTopic, consumerRecord,
+          subPartition, kafkaUrl);
     }
   }
 
@@ -401,12 +400,18 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
    * @param partitionConsumptionState The {@link PartitionConsumptionState} of the current partition
    * @param key The key bytes of the incoming record.
    * @param isChunkedTopic If the store version is chunked.
-   * @param consumerRecordWrapper The {@link VeniceConsumerRecordWrapper} for the current record.
+   * @param consumerRecord The {@link ConsumerRecord} for the current record.
+   * @param subPartition
+   * @param kafkaUrl
    */
-  private void producePutOrDeleteToKafka(MergeConflictResult mergeConflictResult,
-      PartitionConsumptionState partitionConsumptionState, byte[] key,
-      boolean isChunkedTopic, VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope> consumerRecordWrapper) {
-    final ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord = consumerRecordWrapper.consumerRecord();
+  private void producePutOrDeleteToKafka(
+      MergeConflictResult mergeConflictResult,
+      PartitionConsumptionState partitionConsumptionState,
+      byte[] key,
+      boolean isChunkedTopic,
+      ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
+      int subPartition,
+      String kafkaUrl) {
 
     final ByteBuffer updatedValueBytes = mergeConflictResult.getNewValue().orElse(null);
     final int valueSchemaId = mergeConflictResult.getValueSchemaId();
@@ -421,7 +426,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     if (updatedValueBytes == null) {
       storeIngestionStats.recorTombstoneCreatedDCR();
       aggVersionedStorageIngestionStats.recordTombStoneCreationDCR(storeName, versionNumber);
-      partitionConsumptionState.setTransientRecord(consumerRecordWrapper.kafkaUrl(), consumerRecord.offset(), key, valueSchemaId, replicationMetadataRecord);
+      partitionConsumptionState.setTransientRecord(kafkaUrl, consumerRecord.offset(), key, valueSchemaId, replicationMetadataRecord);
       Delete deletePayload = new Delete();
       deletePayload.schemaId = valueSchemaId;
       deletePayload.replicationMetadataVersionId = replicationMetadataVersionId;
@@ -435,20 +440,21 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
               new DeleteMetadata(valueSchemaId, replicationMetadataVersionId, updatedReplicationMetadataBytes)
           );
       LeaderProducedRecordContext leaderProducedRecordContext = LeaderProducedRecordContext.newDeleteRecord(
-          consumerRecordWrapper.kafkaUrl(),
+          kafkaUrl,
           consumerRecord.offset(),
           key,
           deletePayload
       );
       produceToLocalKafka(
-          consumerRecordWrapper,
+          consumerRecord,
           partitionConsumptionState,
           leaderProducedRecordContext,
-          produceToTopicFunction
-      );
+          produceToTopicFunction,
+          subPartition,
+          kafkaUrl);
     } else {
       int valueLen = updatedValueBytes.remaining();
-      partitionConsumptionState.setTransientRecord(consumerRecordWrapper.kafkaUrl(), consumerRecord.offset(), key, updatedValueBytes.array(), updatedValueBytes.position(),
+      partitionConsumptionState.setTransientRecord(kafkaUrl, consumerRecord.offset(), key, updatedValueBytes.array(), updatedValueBytes.position(),
           valueLen, valueSchemaId, replicationMetadataRecord);
 
       boolean doesResultReuseInput = mergeConflictResult.doesResultReuseInput();
@@ -486,11 +492,10 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       };
 
       produceToLocalKafka(
-          consumerRecordWrapper,
+          consumerRecord,
           partitionConsumptionState,
-          LeaderProducedRecordContext.newPutRecord(consumerRecordWrapper.kafkaUrl(), consumerRecord.offset(), updatedKeyBytes, updatedPut),
-          produceToTopicFunction
-        );
+          LeaderProducedRecordContext.newPutRecord(kafkaUrl, consumerRecord.offset(), updatedKeyBytes, updatedPut),
+          produceToTopicFunction, subPartition, kafkaUrl);
     }
   }
 
@@ -742,10 +747,14 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   }
 
   @Override
-  protected void updateOffsetMetadataInOffsetRecord(PartitionConsumptionState partitionConsumptionState, OffsetRecord offsetRecord,
-      VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope> consumerRecordWrapper, LeaderProducedRecordContext leaderProducedRecordContext) {
+  protected void updateOffsetMetadataInOffsetRecord(
+      PartitionConsumptionState partitionConsumptionState,
+      OffsetRecord offsetRecord,
+      ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
+      LeaderProducedRecordContext leaderProducedRecordContext,
+      String kafkaUrl) {
     updateOffsets(partitionConsumptionState,
-        consumerRecordWrapper,
+        consumerRecord,
         leaderProducedRecordContext,
         (versionTopicOffset)
             -> offsetRecord.setCheckpointLocalVersionTopicOffset(versionTopicOffset),
@@ -763,9 +772,9 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         () -> {
           final String upstreamKafkaURL;
           if (isLeader(partitionConsumptionState)) {
-            upstreamKafkaURL = consumerRecordWrapper.kafkaUrl(); // Wherever leader consumes from is considered as "upstream"
+            upstreamKafkaURL = kafkaUrl; // Wherever leader consumes from is considered as "upstream"
           } else {
-            KafkaMessageEnvelope kafkaValue = consumerRecordWrapper.consumerRecord().value();
+            KafkaMessageEnvelope kafkaValue = consumerRecord.value();
             if (kafkaValue.leaderMetadataFooter == null) {
               /**
                * This "leaderMetadataFooter" field do not get populated in 2 cases:
@@ -788,10 +797,13 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   }
 
   @Override
-  protected void updateLatestInMemoryProcessedOffset(PartitionConsumptionState partitionConsumptionState,
-      VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope> consumerRecordWrapper, LeaderProducedRecordContext leaderProducedRecordContext) {
+  protected void updateLatestInMemoryProcessedOffset(
+      PartitionConsumptionState partitionConsumptionState,
+      ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
+      LeaderProducedRecordContext leaderProducedRecordContext,
+      String kafkaUrl) {
     updateOffsets(partitionConsumptionState,
-        consumerRecordWrapper,
+        consumerRecord,
         leaderProducedRecordContext,
         (versionTopicOffset)
             -> partitionConsumptionState.updateLatestProcessedLocalVersionTopicOffset(versionTopicOffset),
@@ -809,9 +821,10 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         () -> {
           final String upstreamKafkaURL;
           if (isLeader(partitionConsumptionState)) {
-            upstreamKafkaURL = consumerRecordWrapper.kafkaUrl(); // Wherever leader consumes from is considered as "upstream"
+            // Wherever leader consumes from is considered as "upstream"
+            upstreamKafkaURL = kafkaUrl;
           } else {
-            KafkaMessageEnvelope kafkaValue = consumerRecordWrapper.consumerRecord().value();
+            KafkaMessageEnvelope kafkaValue = consumerRecord.value();
             if (kafkaValue.leaderMetadataFooter == null) {
               /**
                * This "leaderMetadataFooter" field do not get populated in 2 cases:

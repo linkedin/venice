@@ -10,6 +10,7 @@ dependencies {
   implementation project(':venice-thin-client')
   implementation project(':venice-consumer')
 
+  implementation libraries.fastUtil
   implementation libraries.rocksdbjni
   implementation libraries.kafkaClients
   implementation libraries.zkclient // It's necessary to pull in the most recent version of zkclient explicitly, otherwise Helix won't have it...

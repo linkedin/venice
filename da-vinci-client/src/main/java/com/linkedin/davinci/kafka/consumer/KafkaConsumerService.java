@@ -1,7 +1,6 @@
 package com.linkedin.davinci.kafka.consumer;
 
 import com.linkedin.davinci.stats.KafkaConsumerServiceStats;
-import com.linkedin.davinci.utils.KafkaRecordWrapper;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
@@ -11,13 +10,13 @@ import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.LatencyUtils;
+import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.Utils;
+import it.unimi.dsi.fastutil.ints.IntArrayList;
+import it.unimi.dsi.fastutil.ints.IntList;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
-import java.util.LinkedList;
 import java.util.List;
-import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -51,7 +50,7 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
   private static final Logger LOGGER = LogManager.getLogger(KafkaConsumerService.class);
 
   private final long readCycleDelayMs;
-  private final List<Integer> consumerPartitionsNumSubscribed;
+  private final IntList consumerPartitionsNumSubscribed;
   private final ExecutorService consumerExecutor;
   private final EventThrottler bandwidthThrottler;
   private final EventThrottler recordsThrottler;
@@ -79,7 +78,7 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
     this.kafkaUrl = consumerProperties.getProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG);
     // Initialize consumers and consumerExecutor
     consumerExecutor = Executors.newFixedThreadPool(numOfConsumersPerKafkaCluster, new DaemonThreadFactory("venice-shared-consumer-for-" + kafkaUrl));
-    consumerPartitionsNumSubscribed = new ArrayList<>(numOfConsumersPerKafkaCluster);
+    consumerPartitionsNumSubscribed = new IntArrayList(numOfConsumersPerKafkaCluster);
     ArrayList<SharedKafkaConsumer> consumers = new ArrayList<>(numOfConsumersPerKafkaCluster);
     for (int i = 0; i < numOfConsumersPerKafkaCluster; ++i) {
       /**
@@ -156,8 +155,7 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
       ConsumerRecords<KafkaKey, KafkaMessageEnvelope> records;
       long beforeProducingToWriteBufferTimestamp;
       StoreIngestionTask ingestionTask;
-      List<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>> topicRecords;
-      Iterable<VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope>> veniceConsumerRecords;
+      List<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>> partitionRecords;
       long totalBytes;
       while (!stopped) {
         try {
@@ -182,7 +180,7 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
                 LOGGER.error("Couldn't find IngestionTask for topic partition : " + topicPartition + " after receiving records from `poll` request");
                 continue;
               }
-              topicRecords = records.records(topicPartition);
+              partitionRecords = records.records(topicPartition);
               try {
                 /**
                  * This function could be blocked by the following reasons:
@@ -215,8 +213,11 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
                  * all the buffered messages for the paused partitions, but just slightly more complicate.
                  *
                  */
-                veniceConsumerRecords = KafkaRecordWrapper.wrap(kafkaUrl, topicRecords, ingestionTask.getAmplificationFactor());
-                ingestionTask.produceToStoreBufferServiceOrKafka(veniceConsumerRecords, false);
+                ingestionTask.produceToStoreBufferServiceOrKafka(
+                    partitionRecords,
+                    false,
+                    PartitionUtils.getSubPartition(topicPartition.topic(), topicPartition.partition(), ingestionTask.getAmplificationFactor()),
+                    kafkaUrl);
               } catch (Exception e) {
                 LOGGER.error("Received exception when StoreIngestionTask is processing the polled consumer record for topic: " + topicPartition, e);
                 ingestionTask.setLastConsumerException(e);

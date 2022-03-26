@@ -89,15 +89,22 @@ public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
   }
 
   @Override
-  protected void updateOffsetMetadataInOffsetRecord(PartitionConsumptionState partitionConsumptionState, OffsetRecord offsetRecord,
-      VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope> consumerRecordWrapper, LeaderProducedRecordContext leaderProducedRecordContext) {
-    offsetRecord.setCheckpointLocalVersionTopicOffset(consumerRecordWrapper.consumerRecord().offset());
+  protected void updateOffsetMetadataInOffsetRecord(
+      PartitionConsumptionState partitionConsumptionState,
+      OffsetRecord offsetRecord,
+      ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
+      LeaderProducedRecordContext leaderProducedRecordContext,
+      String kafkaUrl) {
+    offsetRecord.setCheckpointLocalVersionTopicOffset(consumerRecord.offset());
   }
 
   @Override
-  protected void updateLatestInMemoryProcessedOffset(PartitionConsumptionState partitionConsumptionState,
-      VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope> consumerRecordWrapper, LeaderProducedRecordContext leaderProducedRecordContext) {
-    partitionConsumptionState.updateLatestProcessedLocalVersionTopicOffset(consumerRecordWrapper.consumerRecord().offset());
+  protected void updateLatestInMemoryProcessedOffset(
+      PartitionConsumptionState partitionConsumptionState,
+      ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
+      LeaderProducedRecordContext leaderProducedRecordContext,
+      String kafkaUrl) {
+    partitionConsumptionState.updateLatestProcessedLocalVersionTopicOffset(consumerRecord.offset());
   }
 
   @Override
@@ -170,7 +177,7 @@ public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
    * that has lower offset than the recorded latest consumed offset.
    */
   @Override
-  protected boolean shouldProcessRecord(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record) {
+  protected boolean shouldProcessRecord(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record, int subPartition) {
     String recordTopic = record.topic();
     if(!kafkaVersionTopic.equals(recordTopic)) {
       throw new VeniceMessageException(consumerTaskId + "Message retrieved from different topic. Expected " + this.kafkaVersionTopic
@@ -190,7 +197,7 @@ public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
       return false;
     }
 
-    return super.shouldProcessRecord(record);
+    return super.shouldProcessRecord(record, subPartition);
   }
 
   @Override
