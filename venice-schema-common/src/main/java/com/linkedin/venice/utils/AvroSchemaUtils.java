@@ -233,89 +233,111 @@ public class AvroSchemaUtils {
    * Generate super-set schema of two Schemas. If we have {A,B,C} and {A,B,D} it will generate {A,B,C,D}, where
    * C/D could be nested record change as well eg, array/map of records, or record of records.
    * Prerequisite: The top-level schema are of type RECORD only and each field have default values. ie they are compatible
-   * schemas and the generated schema will pick the default value from s1.
-   * @param s1 1st input schema
-   * @param s2 2nd input schema
-   * @return super set schema of s1 and s2
+   * schemas and the generated schema will pick the default value from new schema.
+   *
+   * @param existingSchema Existing schema
+   * @param newSchema New schema
+   * @return Superset schema of existing and new schemas.
    */
-  public static Schema generateSuperSetSchema(Schema s1, Schema s2) {
-    if (s1.getType() != s2.getType()) {
+  public static Schema generateSuperSetSchema(Schema existingSchema, Schema newSchema) {
+    if (existingSchema.getType() != newSchema.getType()) {
       throw new VeniceException("Incompatible schema");
     }
 
-    if (Objects.equals(s1, s2)) {
-      return s1;
+    if (Objects.equals(existingSchema, newSchema)) {
+      return existingSchema;
     }
 
     // Special handling for String vs Avro string comparison,
     // return the schema with avro.java.string property for string type
-    if (s1.getType() == Schema.Type.STRING) {
-      return AvroCompatibilityHelper.getSchemaPropAsJsonString(s1, "avro.java.string") != null ? s1 : s2;
+    if (existingSchema.getType() == Schema.Type.STRING) {
+      return AvroCompatibilityHelper.getSchemaPropAsJsonString(existingSchema, "avro.java.string") != null ? existingSchema : newSchema;
     }
 
-    switch (s1.getType()) {
+    switch (existingSchema.getType()) {
       case RECORD:
-        if (!StringUtils.equals(s1.getNamespace(), s2.getNamespace())) {
-          throw new VeniceException("Trying to merge schema with different namespace.");
+        if (!StringUtils.equals(existingSchema.getNamespace(), newSchema.getNamespace())) {
+          throw new VeniceException(String.format("Trying to merge record schemas with different namespace. "
+              + "Got existing schema namespace: %s and new schema namespace: %s", existingSchema.getNamespace(), newSchema.getNamespace()));
         }
-        Schema superSetSchema = Schema.createRecord(s1.getName(), s1.getDoc(), s1.getNamespace(), false);
-        superSetSchema.setFields(mergeFields(s1, s2));
+        if (!StringUtils.equals(existingSchema.getName(), newSchema.getName())) {
+          throw new VeniceException(String.format("Trying to merge record schemas with different name. "
+              + "Got existing schema name: %s and new schema name: %s", existingSchema.getName(), newSchema.getName()));
+        }
+
+        Schema superSetSchema = Schema.createRecord(newSchema.getName(), newSchema.getDoc(), newSchema.getNamespace(), false);
+        superSetSchema.setFields(mergeFields(existingSchema, newSchema));
         return superSetSchema;
       case ARRAY:
-        return Schema.createArray(generateSuperSetSchema(s1.getElementType(), s2.getElementType()));
+        return Schema.createArray(generateSuperSetSchema(existingSchema.getElementType(), newSchema.getElementType()));
       case MAP:
-        return Schema.createMap(generateSuperSetSchema(s1.getValueType(), s2.getValueType()));
+        return Schema.createMap(generateSuperSetSchema(existingSchema.getValueType(), newSchema.getValueType()));
       case UNION:
-        return unionSchema(s1, s2);
+        return unionSchema(existingSchema, newSchema);
       default:
         throw new VeniceException("Super set schema not supported");
     }
   }
 
-  private static Schema unionSchema(Schema s1, Schema s2) {
+  private static Schema unionSchema(Schema existingUnionSchema, Schema newUnionSchema) {
     List<Schema> combinedSchema = new ArrayList<>();
-    Map<String, Schema> s2Schema = s2.getTypes().stream().collect(Collectors.toMap(s -> s.getName(), s -> s));
-    for (Schema s : s1.getTypes()) {
-      if (s2Schema.get(s.getName()) != null) {
-        combinedSchema.add(generateSuperSetSchema(s, s2Schema.get(s.getName())));
-        s2Schema.remove(s.getName());
+    Map<String, Schema> existingFieldToSchemaMap = existingUnionSchema.getTypes().stream().collect(Collectors.toMap(s -> s.getName(), s -> s));
+    for (Schema newSchemaInUnion : newUnionSchema.getTypes()) {
+      final Schema existingSchemaInUnion = existingFieldToSchemaMap.get(newSchemaInUnion.getName());
+
+      if (existingSchemaInUnion == null) {
+        combinedSchema.add(newSchemaInUnion);
       } else {
-        combinedSchema.add(s);
+        combinedSchema.add(generateSuperSetSchema(existingSchemaInUnion, newSchemaInUnion));
+        existingFieldToSchemaMap.remove(newSchemaInUnion.getName());
       }
     }
-    s2Schema.forEach((k, v) -> combinedSchema.add(v));
+    existingFieldToSchemaMap.forEach((k, v) -> combinedSchema.add(v));
 
     return Schema.createUnion(combinedSchema);
   }
 
-  private static List<Schema.Field> mergeFields(Schema s1, Schema s2) {
-    List<Schema.Field> fields = new ArrayList<>();
+  private static List<Schema.Field> mergeFields(Schema existingSchema, Schema newSchema) {
+    final List<Schema.Field> mergedFields = new ArrayList<>();
 
-    for (Schema.Field f1 : s1.getFields()) {
-      Schema.Field f2 = s2.getField(f1.name());
-      FieldBuilder builder = AvroCompatibilityHelper.newField(f1);
+    for (final Schema.Field existingField : existingSchema.getFields()) {
+      final Schema.Field newField = newSchema.getField(existingField.name());
+      FieldBuilder fieldBuilder = AvroCompatibilityHelper.newField(existingField);
 
-      // set default as AvroCompatibilityHelper builder might drop defaults if there is type mismatch
-      if (f1.hasDefaultValue()) {
-        builder.setDefault(AvroCompatibilityHelper.getGenericDefaultValue(f1));
-      }
-      if (f2 != null) {
-        builder.setSchema(generateSuperSetSchema(f1.schema(), f2.schema())).setDoc(f1.doc() != null ? f1.doc() : f2.doc());
-      }
-      fields.add(builder.build());
-    }
-
-    for (Schema.Field f2 : s2.getFields()) {
-      if (s1.getField(f2.name()) == null) {
-        FieldBuilder builder =  AvroCompatibilityHelper.newField(f2);
-        if (f2.hasDefaultValue()) {
-          // set default as AvroCompatibilityHelper builder might drop defaults if there is type mismatch
-          builder.setDefault(AvroCompatibilityHelper.getGenericDefaultValue(f2));
+      if (newField == null) {
+        if (existingField.hasDefaultValue()) {
+          fieldBuilder.setDefault(AvroCompatibilityHelper.getGenericDefaultValue(existingField));
         }
-        fields.add(builder.build());
+
+      } else {
+        // A field with the same name exists in the new schema.
+        fieldBuilder
+            .setSchema(generateSuperSetSchema(existingField.schema(), newField.schema()))
+            .setDoc(
+                // The preference is use the doc from the new field in the superset schema.
+                newField.doc() != null ? newField.doc() : existingField.doc()
+            );
+        if (newField.hasDefaultValue()) {
+          // The preference is use the default value from the new field in the superset schema.
+          fieldBuilder.setDefault(AvroCompatibilityHelper.getGenericDefaultValue(newField));
+        } else if (existingField.hasDefaultValue()) {
+          fieldBuilder.setDefault(AvroCompatibilityHelper.getGenericDefaultValue(existingField));
+        }
+      }
+      mergedFields.add(fieldBuilder.build());
+    }
+
+    for (final Schema.Field newField : newSchema.getFields()) {
+      if (existingSchema.getField(newField.name()) == null) {
+        FieldBuilder fieldBuilder =  AvroCompatibilityHelper.newField(newField);
+        if (newField.hasDefaultValue()) {
+          // Set default as AvroCompatibilityHelper builder might drop defaults if there is type mismatch
+          fieldBuilder.setDefault(AvroCompatibilityHelper.getGenericDefaultValue(newField));
+        }
+        mergedFields.add(fieldBuilder.build());
       }
     }
-    return fields;
+    return mergedFields;
   }
 
   /**
