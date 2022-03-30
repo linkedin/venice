@@ -1188,7 +1188,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         switch (MessageType.valueOf(envelope)) {
           case PUT:
             // Issue an read to get the current value of the key
-            byte[] actualValue = storageEngine.get(consumerRecord.partition(), key.getKey(), true);
+            byte[] actualValue = storageEngine.get(consumerRecord.partition(), key.getKey(), false);
             if (actualValue != null) {
               int actualSchemaId = ByteUtils.readInt(actualValue, 0);
               Put put = (Put) envelope.payloadUnion;
@@ -1207,7 +1207,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             /**
              * Lossy if the key/value pair is added back to the storage engine after the first DELETE message.
              */
-            actualValue = storageEngine.get(consumerRecord.partition(), key.getKey(), true);
+            actualValue = storageEngine.get(consumerRecord.partition(), key.getKey(), false);
             if (actualValue == null) {
               lossy = false;
               logMsg += Utils.NEW_LINE_CHAR;
@@ -2255,7 +2255,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                 getSubPartitionId(keyBytes, consumerRecord.topic(), consumerRecord.partition()),
                 ByteBuffer.wrap(keyBytes), isChunkedTopic, null, null, null,
                 storageMetadataService.getStoreVersionCompressionStrategy(kafkaVersionTopic),
-                serverConfig.isComputeFastAvroEnabled(), schemaRepository, storeName, compressorFactory, true);
+                serverConfig.isComputeFastAvroEnabled(), schemaRepository, storeName, compressorFactory, false);
             storeIngestionStats.recordWriteComputeLookUpLatency(storeName,
                 LatencyUtils.getLatencyInMS(lookupStartTimeInNS));
           } catch (Exception e) {
