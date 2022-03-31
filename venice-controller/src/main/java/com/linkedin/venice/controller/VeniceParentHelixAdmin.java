@@ -1,6 +1,5 @@
 package com.linkedin.venice.controller;
 
-import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.acl.AclException;
 import com.linkedin.venice.acl.DynamicAccessController;
@@ -58,7 +57,6 @@ import com.linkedin.venice.controller.lingeringjob.IdentityParserImpl;
 import com.linkedin.venice.controller.lingeringjob.LingeringStoreVersionChecker;
 import com.linkedin.venice.controller.migration.MigrationPushStrategyZKAccessor;
 import com.linkedin.venice.controllerapi.AdminCommandExecution;
-import com.linkedin.venice.controllerapi.AdminTopicMetadataResponse;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.IncrementalPushVersionsResponse;
@@ -327,10 +325,10 @@ public class VeniceParentHelixAdmin implements Admin {
     getVeniceHelixAdmin().initVeniceControllerClusterResource(clusterName);
     asyncSetupEnabledMap.put(clusterName, true);
     // We might not be able to call a lot of functions of veniceHelixAdmin since
-    // current controller might not be the master controller for the given clusterName
-    // Even current controller is master controller, it will take some time to become 'master'
-    // since VeniceHelixAdmin.start won't wait for state becomes 'Master', but a lot of
-    // VeniceHelixAdmin functions have 'mastership' check.
+    // current controller might not be the leader controller for the given clusterName
+    // Even current controller is leader controller, it will take some time to become 'leader'
+    // since VeniceHelixAdmin.start won't wait for state becomes 'Leader', but a lot of
+    // VeniceHelixAdmin functions have 'leadership' check.
 
     // Check whether the admin topic exists or not
     String topicName = AdminTopicUtils.getTopicNameFromClusterName(clusterName);
@@ -404,7 +402,7 @@ public class VeniceParentHelixAdmin implements Admin {
           isStoreReady = createOrVerifyInternalStore(clusterName, storeName, storeDescriptor, keySchema, valueSchema,
               partitionCount);
         } catch (VeniceException e) {
-          // Verification attempts (i.e. a controller running this routine but is not the master of the cluster) do not
+          // Verification attempts (i.e. a controller running this routine but is not the leader of the cluster) do not
           // count towards the retry count.
           logger.info("VeniceException occurred during " + storeDescriptor + " setup with store " + storeName
               + " in cluster " + clusterName, e);
@@ -436,7 +434,7 @@ public class VeniceParentHelixAdmin implements Admin {
                                               String keySchema, String valueSchema, int partitionCount) {
     boolean storeReady = false;
     if (isLeaderControllerFor(clusterName)) {
-      // We should only perform the store validation if the current controller is the master controller of the requested cluster.
+      // We should only perform the store validation if the current controller is the leader controller of the requested cluster.
       Store store = getStore(clusterName, storeName);
       if (store == null) {
         createStore(clusterName, storeName, VENICE_INTERNAL_STORE_OWNER, keySchema, valueSchema, true);
@@ -481,7 +479,7 @@ public class VeniceParentHelixAdmin implements Admin {
       }
       storeReady = true;
     } else {
-      // Verify that the store is indeed created by another controller. This is to prevent if the initial master fails
+      // Verify that the store is indeed created by another controller. This is to prevent if the initial leader fails
       // or when the cluster happens to be leaderless for a bit.
       try (ControllerClient controllerClient =
            ControllerClient.constructClusterControllerClient(clusterName, getLeaderController(clusterName).getUrl(false), sslFactory)) {
@@ -937,7 +935,7 @@ public class VeniceParentHelixAdmin implements Admin {
       int v2 = Version.parseVersionFromKafkaTopicName(t2);
       return v1 - v2;
     }).collect(Collectors.toList());
-    Set<String> grandfatheringTopics = sortedNonTruncatedTopics.stream().filter(Version::isStreamReprocessingTopic)
+    Set<String> streamReprocessingTopics = sortedNonTruncatedTopics.stream().filter(Version::isStreamReprocessingTopic)
         .collect(Collectors.toSet());
     List<String> sortedNonTruncatedVersionTopics = sortedNonTruncatedTopics.stream().filter(topic ->
         !Version.isStreamReprocessingTopic(topic)).collect(Collectors.toList());
@@ -967,9 +965,9 @@ public class VeniceParentHelixAdmin implements Admin {
       truncateKafkaTopic(topic);
       logger.info("Errored topic: " + topic + " got truncated");
       String correspondingStreamReprocessingTopic = Version.composeStreamReprocessingTopicFromVersionTopic(topic);
-      if (grandfatheringTopics.contains(correspondingStreamReprocessingTopic)) {
+      if (streamReprocessingTopics.contains(correspondingStreamReprocessingTopic)) {
         truncateKafkaTopic(correspondingStreamReprocessingTopic);
-        logger.info("Corresponding grandfathering topic: " + correspondingStreamReprocessingTopic + " also got truncated.");
+        logger.info("Corresponding stream reprocessing topic: " + correspondingStreamReprocessingTopic + " also got truncated.");
       }
     }
   }
@@ -2280,14 +2278,14 @@ public class VeniceParentHelixAdmin implements Admin {
     for (Map.Entry<String, ControllerClient> entry: controllerClients.entrySet()) {
       String region = entry.getKey();
       ControllerClient controllerClient = entry.getValue();
-      String masterControllerUrl = "Unspecified master controller url";
+      String leaderControllerUrl = "Unspecified leader controller url";
       try {
-        masterControllerUrl = controllerClient.getMasterControllerUrl();
+        leaderControllerUrl = controllerClient.getLeaderControllerUrl();
       } catch (VeniceException getMasterException) {
         logger.warn("Couldn't query " + region + " for job status of " + kafkaTopic, getMasterException);
         statuses.add(ExecutionStatus.UNKNOWN);
         extraInfo.put(region, ExecutionStatus.UNKNOWN.toString());
-        extraDetails.put(region, "Failed to get master controller url " + getMasterException.getMessage());
+        extraDetails.put(region, "Failed to get leader controller url " + getMasterException.getMessage());
         continue;
       }
       JobStatusQueryResponse response = controllerClient.queryJobStatus(kafkaTopic, incrementalPushVersion);
@@ -2296,7 +2294,7 @@ public class VeniceParentHelixAdmin implements Admin {
         logger.warn("Couldn't query " + region + " for job " + kafkaTopic + " status: " + response.getError());
         statuses.add(ExecutionStatus.UNKNOWN);
         extraInfo.put(region, ExecutionStatus.UNKNOWN.toString());
-        extraDetails.put(region, masterControllerUrl + " " + response.getError());
+        extraDetails.put(region, leaderControllerUrl + " " + response.getError());
       } else {
         ExecutionStatus status = ExecutionStatus.valueOf(response.getStatus());
 
@@ -2304,7 +2302,7 @@ public class VeniceParentHelixAdmin implements Admin {
         extraInfo.put(region, response.getStatus());
         Optional<String> statusDetails = response.getOptionalStatusDetails();
         if (statusDetails.isPresent()) {
-          extraDetails.put(region, masterControllerUrl + " " + statusDetails.get());
+          extraDetails.put(region, leaderControllerUrl + " " + statusDetails.get());
         }
       }
     }
@@ -2544,18 +2542,18 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
-  public void addInstanceToWhitelist(String clusterName, String helixNodeId) {
-    throw new VeniceException("addInstanceToWhitelist is not supported!");
+  public void addInstanceToAllowlist(String clusterName, String helixNodeId) {
+    throw new VeniceException("addInstanceToAllowlist is not supported!");
   }
 
   @Override
-  public void removeInstanceFromWhiteList(String clusterName, String helixNodeId) {
-    throw new VeniceException("removeInstanceFromWhiteList is not supported!");
+  public void removeInstanceFromAllowList(String clusterName, String helixNodeId) {
+    throw new VeniceException("removeInstanceFromAllowList is not supported!");
   }
 
   @Override
-  public Set<String> getWhitelist(String clusterName) {
-    throw new VeniceException("getWhitelist is not supported!");
+  public Set<String> getAllowlist(String clusterName) {
+    throw new VeniceException("getAllowlist is not supported!");
   }
 
   @Override
@@ -2735,8 +2733,8 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
-  public boolean isMasterControllerOfControllerCluster() {
-    return getVeniceHelixAdmin().isMasterControllerOfControllerCluster();
+  public boolean isLeaderControllerOfControllerCluster() {
+    return getVeniceHelixAdmin().isLeaderControllerOfControllerCluster();
   }
 
   @Override

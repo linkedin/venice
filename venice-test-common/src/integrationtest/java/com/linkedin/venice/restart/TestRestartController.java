@@ -42,12 +42,12 @@ public class TestRestartController {
   }
 
   /**
-   * Scenario is 1. stop the original master; 2. create new version to test master failover. 3. restart the failed one.
-   * 4. complete push to test master could
+   * Scenario is 1. stop the original leader; 2. create new version to test leader failover. 3. restart the failed one.
+   * 4. complete push to test leader could
    */
   @Test(timeOut = 60 * Time.MS_PER_SECOND)
-  public void testMasterControllerFailover() {
-    String storeName = Utils.getUniqueString("testMasterControllerFailover");
+  public void testLeaderControllerFailover() {
+    String storeName = Utils.getUniqueString("testLeaderControllerFailover");
     int dataSize = 1000;
     cluster.getNewStore(storeName);
 
@@ -64,14 +64,14 @@ public class TestRestartController {
     veniceWriter.broadcastStartOfPush(new HashMap<>());
     veniceWriter.put("1", "1", 1);
 
-    // Stop the original master
-    int port = cluster.stopMasterVeniceControler();
+    // Stop the original leader
+    int port = cluster.stopLeaderVeniceControler();
 
     // Push rest of data.
     veniceWriter.put("2", "2", 1);
     veniceWriter.broadcastEndOfPush(new HashMap<>());
 
-    // After stopping origin master, the new master could handle the push status report correctly.
+    // After stopping origin leader, the new leader could handle the push status report correctly.
     TestUtils.waitForNonDeterministicPushCompletion(topicName, controllerClient, OPERATION_TIMEOUT_MS, TimeUnit.MILLISECONDS, Optional.empty());
     VersionCreationResponse responseV2 = createNewVersionWithRetry(storeName, dataSize);
     Assert.assertFalse(responseV2.isError());
@@ -85,7 +85,7 @@ public class TestRestartController {
     cluster.restartVeniceController(port);
 
     TestUtils.waitForNonDeterministicAssertion(OPERATION_TIMEOUT_MS, TimeUnit.MILLISECONDS, () -> {
-      VeniceHelixAdmin admin = cluster.getMasterVeniceController().getVeniceHelixAdmin();
+      VeniceHelixAdmin admin = cluster.getLeaderVeniceController().getVeniceHelixAdmin();
       int liveRoutersCount = admin.getHelixVeniceClusterResources(cluster.getClusterName()).getRoutersClusterManager().getLiveRoutersCount();
       Assert.assertEquals(liveRoutersCount, 1);
     });
@@ -117,7 +117,7 @@ public class TestRestartController {
   }
 
   /**
-   * Objective of the test is to verify on controller restart the new master controller is able to update the
+   * Objective of the test is to verify on controller restart the new leader controller is able to update the
    * successful_push_duration_sec_gauge metrics with the last successful push duration for the store.
    */
   @Test(timeOut = 60 * Time.MS_PER_SECOND)
@@ -139,41 +139,41 @@ public class TestRestartController {
     veniceWriter.put("2", "2", 1);
     veniceWriter.broadcastEndOfPush(new HashMap<>());
 
-    // After stopping origin master, the new master could handle the push status report correctly.
+    // After stopping origin leader, the new leader could handle the push status report correctly.
     TestUtils.waitForNonDeterministicPushCompletion(topicName, controllerClient, OPERATION_TIMEOUT_MS, TimeUnit.MILLISECONDS, Optional.empty());
-    VeniceControllerWrapper controllerWrapper = cluster.getMasterVeniceController();
+    VeniceControllerWrapper controllerWrapper = cluster.getLeaderVeniceController();
     double duration = controllerWrapper.getMetricRepository().getMetric("." + storeName + "--successful_push_duration_sec_gauge.Gauge").value();
 
-    int oldMasterPort = cluster.getMasterVeniceController().getPort();
-    int newMasterPort = 0;
+    int oldLeaderPort = cluster.getLeaderVeniceController().getPort();
+    int newLeaderPort = 0;
     for (VeniceControllerWrapper cw : cluster.getVeniceControllers()) {
-      if (cw.getPort() != oldMasterPort) {
-        newMasterPort = cw.getPort();
+      if (cw.getPort() != oldLeaderPort) {
+        newLeaderPort = cw.getPort();
         break;
       }
     }
-    cluster.stopMasterVeniceControler();
-    controllerWrapper = cluster.getMasterVeniceController();
-    Assert.assertEquals(controllerWrapper.getPort(), newMasterPort);
+    cluster.stopLeaderVeniceControler();
+    controllerWrapper = cluster.getLeaderVeniceController();
+    Assert.assertEquals(controllerWrapper.getPort(), newLeaderPort);
     double duration1 = controllerWrapper.getMetricRepository().getMetric("." + storeName + "--successful_push_duration_sec_gauge.Gauge").value();
     Assert.assertEquals(duration, duration1);
 
-    cluster.restartVeniceController(oldMasterPort);
-    controllerWrapper = cluster.getMasterVeniceController();
-    Assert.assertEquals(controllerWrapper.getPort(), newMasterPort);
+    cluster.restartVeniceController(oldLeaderPort);
+    controllerWrapper = cluster.getLeaderVeniceController();
+    Assert.assertEquals(controllerWrapper.getPort(), newLeaderPort);
     duration1 = controllerWrapper.getMetricRepository().getMetric("." + storeName + "--successful_push_duration_sec_gauge.Gauge").value();
     Assert.assertEquals(duration, duration1);
 
   }
 
   private VersionCreationResponse createNewVersionWithRetry(String storeName, int dataSize) {
-    // After restart, regardless who is master, there should be only one master and could handle request correctly.
+    // After restart, regardless who is leader, there should be only one leader and could handle request correctly.
     VersionCreationResponse response = null;
     try {
       response = cluster.getNewVersion(storeName, dataSize);
     } catch (VeniceException e) {
-      // Some times, the master controller would be changed after getting it from cluster. Just retry on the new master.
-      cluster.getMasterVeniceController();
+      // Some times, the leader controller would be changed after getting it from cluster. Just retry on the new leader.
+      cluster.getLeaderVeniceController();
       response = cluster.getNewVersion(storeName, dataSize);
     }
     return response;

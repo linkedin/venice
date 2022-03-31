@@ -31,27 +31,27 @@ import org.apache.logging.log4j.Logger;
  * 1. When Controller needs to clean up topics for retired versions or uncompleted store pushes or store deletion, it only
  * truncates the topics (lower topic retention) instead of deleting them right away.
  * 2. The {@link TopicCleanupService} is working as a single process to clean up all the unused topics.
- * With this way, most of time (no mastership handover), there is only one controller talking to Kafka to delete topic, which is expected
+ * With this way, most of time (no leadership handover), there is only one controller talking to Kafka to delete topic, which is expected
  * from Kafka's perspective to avoid concurrent topic deletion.
- * In theory, it is still possible to have two controllers talking to Kafka to delete topic during mastership handover since
- * the previous master controller could be still working on the topic cleaning up but the new master controller starts
+ * In theory, it is still possible to have two controllers talking to Kafka to delete topic during leadership handover since
+ * the previous leader controller could be still working on the topic cleaning up but the new leader controller starts
  * processing.
  *
  * If required, there might be several ways to alleviate this potential concurrent Kafka topic deletion:
- * 1. Do master controller check every time when deleting topic;
- * 2. Register a callback to monitor mastership change;
+ * 1. Do leader controller check every time when deleting topic;
+ * 2. Register a callback to monitor leadership change;
  * 3. Use a global Zookeeper lock;
  *
  * Right now, {@link TopicCleanupService} is fully decoupled from {@link com.linkedin.venice.meta.Store} since there is
- * only one process actively running to cleanup topics and the controller running this process may not be the master
+ * only one process actively running to cleanup topics and the controller running this process may not be the leader
  * controller of the cluster owning the store that the topic to be deleted belongs to.
  *
  *
  * Here is how {@link TopicCleanupService} works to clean up deprecated topics [topic with low retention policy]:
- * 1. This service is only running in master controller of controller cluster, which means there should be only one
- * topic cleanup service running among all the Venice clusters (not strictly considering master handover.);
+ * 1. This service is only running in leader controller of controller cluster, which means there should be only one
+ * topic cleanup service running among all the Venice clusters (not strictly considering leader handover.);
  * 2. This service is running in a infinite loop, which will execute the following operations:
- *    2.1 For every round, check whether current controller is the master controller of controller parent.
+ *    2.1 For every round, check whether current controller is the leader controller of controller parent.
  *        If yes, continue; Otherwise, sleep for a pre-configured period and check again;
  *    2.2 Collect all the topics and categorize them based on store names;
  *    2.3 For deprecated real-time topic, will remove it right away;
@@ -66,7 +66,7 @@ public class TopicCleanupService extends AbstractVeniceService {
   protected final int delayFactor;
   private final int minNumberOfUnusedKafkaTopicsToPreserve;
   private final AtomicBoolean stop = new AtomicBoolean(false);
-  private boolean isMasterControllerOfControllerCluster = false;
+  private boolean isLeaderControllerOfControllerCluster = false;
   private long refreshQueueCycle = Time.MS_PER_MINUTE;
   protected final VeniceControllerMultiClusterConfig multiClusterConfigs;
 
@@ -114,20 +114,20 @@ public class TopicCleanupService extends AbstractVeniceService {
           break;
         }
         try {
-          if (admin.isMasterControllerOfControllerCluster()) {
-            if (!isMasterControllerOfControllerCluster) {
+          if (admin.isLeaderControllerOfControllerCluster()) {
+            if (!isLeaderControllerOfControllerCluster) {
               /**
-               * Sleep for some time when current controller firstly becomes master controller of controller cluster.
-               * This is trying to avoid concurrent Kafka topic deletion sent by both previous master controller
-               * (Kafka topic cleanup doesn't finish in a short period) and the new master controller.
+               * Sleep for some time when current controller firstly becomes leader controller of controller cluster.
+               * This is trying to avoid concurrent Kafka topic deletion sent by both previous leader controller
+               * (Kafka topic cleanup doesn't finish in a short period) and the new leader controller.
                */
-              isMasterControllerOfControllerCluster = true;
-              LOGGER.info("Current controller becomes the master controller of controller cluster");
+              isLeaderControllerOfControllerCluster = true;
+              LOGGER.info("Current controller becomes the leader controller of controller cluster");
               continue;
             }
             cleanupVeniceTopics();
           } else {
-            isMasterControllerOfControllerCluster = false;
+            isLeaderControllerOfControllerCluster = false;
           }
         } catch (Exception e) {
           LOGGER.error("Received exception when cleaning up topics", e);
@@ -311,7 +311,7 @@ public class TopicCleanupService extends AbstractVeniceService {
     String clusterName = storeConfig.get().getCluster();
     /**
      * Check whether RT topic for the meta system store exists or not to decide whether we should clean replica statuses from meta System Store or not.
-     * Since {@link TopicCleanupService} will be running in the master Controller of Controller Cluster, so
+     * Since {@link TopicCleanupService} will be running in the leader Controller of Controller Cluster, so
      * we won't have access to store repository for every Venice cluster, and the existence of RT topic for
      * meta System store is the way to check whether meta System store is enabled or not.
      */

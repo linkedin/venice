@@ -24,7 +24,7 @@ public class ClusterRoutes  extends AbstractRoute {
     return new VeniceRouteHandler<ControllerResponse>(ControllerResponse.class) {
       @Override
       public void internalHandle(Request request, ControllerResponse veniceResponse) {
-        // Only allow whitelist users to run this command
+        // Only allow allowlist users to run this command
         if (!isAllowListUser(request)) {
           veniceResponse.setError("Only admin users are allowed to run " + request.url());
           return;
@@ -49,7 +49,7 @@ public class ClusterRoutes  extends AbstractRoute {
     return new VeniceRouteHandler<StoreMigrationResponse>(StoreMigrationResponse.class) {
       @Override
       public void internalHandle(Request request, StoreMigrationResponse veniceResponse) {
-        // Only allow whitelist users to run this command
+        // Only allow allowlist users to run this command
         if (!isAllowListUser(request)) {
           veniceResponse.setError("Only admin users are allowed to run " + request.url());
           return;
@@ -66,7 +66,7 @@ public class ClusterRoutes  extends AbstractRoute {
     return new VeniceRouteHandler<ControllerResponse>(ControllerResponse.class) {
       @Override
       public void internalHandle(Request request, ControllerResponse veniceResponse) {
-        // Only allow whitelist users to run this command
+        // Only allow allowlist users to run this command
         if (!isAllowListUser(request)) {
           veniceResponse.setError("Only admin users are allowed to run " + request.url());
           return;

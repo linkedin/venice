@@ -199,7 +199,7 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
         return new HashSet<>(Arrays.asList(storeDirs));
       }
     } else {
-      LOGGER.info("RocksDB master dir: " + databaseDir + " doesn't exist, so nothing to restore");
+      LOGGER.info("RocksDB dir: " + databaseDir + " doesn't exist, so nothing to restore");
     }
     return new HashSet<>();
   }

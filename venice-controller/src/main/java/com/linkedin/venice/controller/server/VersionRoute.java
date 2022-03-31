@@ -21,7 +21,7 @@ public class VersionRoute extends AbstractRoute {
 
       @Override
       public void internalHandle(Request request, MultiVersionStatusResponse veniceResponse) {
-        // Only allow whitelist users to run this command
+        // Only allow allowlist users to run this command
         if (!isAllowListUser(request)) {
           veniceResponse.setError("Only admin users are allowed to run " + request.url());
           return;

@@ -46,7 +46,7 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
   static ServiceProvider<VeniceMultiClusterWrapper> generateService(
       String coloName,
       int numberOfClusters, int numberOfControllers, int numberOfServers, int numberOfRouters, int replicationFactor,
-      int partitionSize, boolean enableWhitelist, boolean enableAutoJoinWhitelist, long rebalanceDelayMs,
+      int partitionSize, boolean enableAllowlist, boolean enableAutoJoinAllowlist, long rebalanceDelayMs,
       int minActiveReplica, boolean sslToStorageNodes, boolean randomizeClusterName, boolean multiColoSetup,
       Optional<ZkServerWrapper> optionalZkServerWrapper, Optional<KafkaBrokerWrapper> optionalKafkaBrokerWrapper,
       Optional<Properties> childControllerProperties, Optional<VeniceProperties> veniceProperties, boolean multiD2,
@@ -110,8 +110,8 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
         // Create a wrapper for cluster without controller.
         VeniceClusterWrapper clusterWrapper =
             ServiceFactory.getVeniceClusterWrapperForMultiCluster(coloName, zkServerWrapper, kafkaBrokerWrapper, brooklinWrapper,
-                clusterNames[i], clusterToD2, 0, numberOfServers, numberOfRouters, replicationFactor, partitionSize, enableWhitelist,
-                enableAutoJoinWhitelist, rebalanceDelayMs, minActiveReplica, sslToStorageNodes, false, veniceProperties, forkServer, kafkaClusterMap);
+                clusterNames[i], clusterToD2, 0, numberOfServers, numberOfRouters, replicationFactor, partitionSize, enableAllowlist,
+                enableAutoJoinAllowlist, rebalanceDelayMs, minActiveReplica, sslToStorageNodes, false, veniceProperties, forkServer, kafkaClusterMap);
         controllerMap.values().stream().forEach(clusterWrapper::addVeniceControllerWrapper);
         clusterWrapperMap.put(clusterWrapper.getClusterName(), clusterWrapper);
         clusterWrapper.setExternalControllerDiscoveryURL(controllerMap.values().stream()
@@ -189,21 +189,21 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
     return this.controllers.values().stream().filter(controller -> controller.isRunning()).findAny().get();
   }
 
-  public VeniceControllerWrapper getMasterController(String clusterName) {
-    return getMasterController(clusterName, 60 * Time.MS_PER_SECOND);
+  public VeniceControllerWrapper getLeaderController(String clusterName) {
+    return getLeaderController(clusterName, 60 * Time.MS_PER_SECOND);
   }
 
-  public VeniceControllerWrapper getMasterController(String clusterName, long timeoutMs) {
+  public VeniceControllerWrapper getLeaderController(String clusterName, long timeoutMs) {
     long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMs);
     while (System.nanoTime() < deadline) {
       for (VeniceControllerWrapper controller : controllers.values()) {
-        if (controller.isRunning() && controller.isMasterController(clusterName)) {
+        if (controller.isRunning() && controller.isLeaderController(clusterName)) {
           return controller;
         }
       }
       Utils.sleep(Time.MS_PER_SECOND);
     }
-    throw new VeniceException("Master controller does not exist, cluster=" + clusterName);
+    throw new VeniceException("Leader controller does not exist, cluster=" + clusterName);
   }
 
   public String getControllerConnectString(){

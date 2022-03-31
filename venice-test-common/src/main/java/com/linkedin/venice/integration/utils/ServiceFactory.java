@@ -148,15 +148,15 @@ public class ServiceFactory {
     return getService(MirrorMakerWrapper.SERVICE_NAME, MirrorMakerWrapper.generateService(sourceKafka, targetKafka));
   }
 
-  public static MirrorMakerWrapper getKafkaMirrorMaker(KafkaBrokerWrapper sourceKafka, KafkaBrokerWrapper targetKafka, String whitelistForKMM) {
-    return getService(MirrorMakerWrapper.SERVICE_NAME, MirrorMakerWrapper.generateService(sourceKafka, targetKafka, whitelistForKMM));
+  public static MirrorMakerWrapper getKafkaMirrorMaker(KafkaBrokerWrapper sourceKafka, KafkaBrokerWrapper targetKafka, String allowlistForKMM) {
+    return getService(MirrorMakerWrapper.SERVICE_NAME, MirrorMakerWrapper.generateService(sourceKafka, targetKafka, allowlistForKMM));
   }
 
   public static MirrorMakerWrapper getKafkaMirrorMaker(
       String sourceKafkaAddress,
       String targetKafkaAddress,
       String targetZkAddress,
-      String topicWhitelist,
+      String topicAllowlist,
       Properties consumerProperties,
       Properties producerProperties) {
     return getService(
@@ -165,7 +165,7 @@ public class ServiceFactory {
             sourceKafkaAddress,
             targetKafkaAddress,
             targetZkAddress,
-            topicWhitelist,
+            topicAllowlist,
             consumerProperties,
             producerProperties));
   }
@@ -439,36 +439,36 @@ public class ServiceFactory {
     }
 
   public static VeniceClusterWrapper getVeniceCluster(int numberOfControllers, int numberOfServers, int numberOfRouters,
-      int replicationFactor, int partitionSize, boolean enableWhitelist, boolean enableAutoJoinWhitelist,
+      int replicationFactor, int partitionSize, boolean enableAllowlist, boolean enableAutoJoinAllowlist,
       long delayToRebalanceMS, int minActiveReplica, boolean sslToStorageNodes, boolean sslToKafka) {
     return getVeniceCluster(Utils.getUniqueString("venice-cluster"), numberOfControllers, numberOfServers, numberOfRouters, replicationFactor, partitionSize,
-        enableWhitelist, enableAutoJoinWhitelist, delayToRebalanceMS, minActiveReplica, sslToStorageNodes, sslToKafka);
+        enableAllowlist, enableAutoJoinAllowlist, delayToRebalanceMS, minActiveReplica, sslToStorageNodes, sslToKafka);
   }
 
   public static VeniceClusterWrapper getVeniceCluster(String clusterName, int numberOfControllers, int numberOfServers, int numberOfRouters,
-      int replicaFactor, int partitionSize, boolean enableWhitelist, boolean enableAutoJoinWhitelist,
+      int replicaFactor, int partitionSize, boolean enableAllowlist, boolean enableAutoJoinAllowlist,
       long delayToRebalanceMS, int minActiveReplica, boolean sslToStorageNodes, boolean sslToKafka) {
     return getVeniceCluster(clusterName, numberOfControllers, numberOfServers, numberOfRouters, replicaFactor, partitionSize,
-        enableWhitelist, enableAutoJoinWhitelist, delayToRebalanceMS, minActiveReplica, sslToStorageNodes, sslToKafka, false);
+        enableAllowlist, enableAutoJoinAllowlist, delayToRebalanceMS, minActiveReplica, sslToStorageNodes, sslToKafka, false);
   }
 
   // TODO instead of passing more and more parameters here, we could create a class ClusterOptions to include all of options to start a cluster. Then we only need one parameter here.
   // Or a builder pattern
   public static VeniceClusterWrapper getVeniceCluster(String clusterName, int numberOfControllers, int numberOfServers, int numberOfRouters,
-      int replicaFactor, int partitionSize, boolean enableWhitelist, boolean enableAutoJoinWhitelist,
+      int replicaFactor, int partitionSize, boolean enableAllowlist, boolean enableAutoJoinAllowlist,
       long delayToRebalanceMS, int minActiveReplica, boolean sslToStorageNodes, boolean sslToKafka, boolean isKafkaOpenSSLEnabled) {
     return getService(VeniceClusterWrapper.SERVICE_NAME,
         VeniceClusterWrapper.generateService(clusterName, numberOfControllers, numberOfServers, numberOfRouters, replicaFactor,
-            partitionSize, enableWhitelist, enableAutoJoinWhitelist, delayToRebalanceMS, minActiveReplica, sslToStorageNodes,
+            partitionSize, enableAllowlist, enableAutoJoinAllowlist, delayToRebalanceMS, minActiveReplica, sslToStorageNodes,
             sslToKafka, isKafkaOpenSSLEnabled, new Properties()));
   }
 
   public static VeniceClusterWrapper getVeniceCluster(String clusterName, int numberOfControllers, int numberOfServers, int numberOfRouters,
-      int replicaFactor, int partitionSize, boolean enableWhitelist, boolean enableAutoJoinWhitelist,
+      int replicaFactor, int partitionSize, boolean enableAllowlist, boolean enableAutoJoinAllowlist,
       long delayToRebalanceMS, int minActiveReplica, boolean sslToStorageNodes, boolean sslToKafka, boolean isKafkaOpenSSLEnabled, Properties extraProperties) {
     return getService(VeniceClusterWrapper.SERVICE_NAME,
         VeniceClusterWrapper.generateService(clusterName, numberOfControllers, numberOfServers, numberOfRouters, replicaFactor,
-            partitionSize, enableWhitelist, enableAutoJoinWhitelist, delayToRebalanceMS, minActiveReplica, sslToStorageNodes,
+            partitionSize, enableAllowlist, enableAutoJoinAllowlist, delayToRebalanceMS, minActiveReplica, sslToStorageNodes,
             sslToKafka, isKafkaOpenSSLEnabled, extraProperties));
   }
 
@@ -484,8 +484,8 @@ public class ServiceFactory {
       int numberOfRouters,
       int replicaFactor,
       int partitionSize,
-      boolean enableWhitelist,
-      boolean enableAutoJoinWhitelist,
+      boolean enableAllowlist,
+      boolean enableAutoJoinAllowlist,
       long delayToRebalanceMS,
       int minActiveReplica,
       boolean sslToStorageNodes,
@@ -496,8 +496,8 @@ public class ServiceFactory {
   ) {
     return getService(VeniceClusterWrapper.SERVICE_NAME,
         VeniceClusterWrapper.generateService(coloName, false, zkServerWrapper, kafkaBrokerWrapper, brooklinWrapper, clusterName, clusterToD2,
-            numberOfControllers, numberOfServers, numberOfRouters, replicaFactor, partitionSize, enableWhitelist,
-            enableAutoJoinWhitelist, delayToRebalanceMS, minActiveReplica, sslToStorageNodes, sslToKafka, false,
+            numberOfControllers, numberOfServers, numberOfRouters, replicaFactor, partitionSize, enableAllowlist,
+            enableAutoJoinAllowlist, delayToRebalanceMS, minActiveReplica, sslToStorageNodes, sslToKafka, false,
             veniceProperties.orElse(EMPTY_VENICE_PROPS).toProperties(), forkServer, kafkaClusterMap));
   }
 
@@ -548,32 +548,32 @@ public class ServiceFactory {
   public static VeniceTwoLayerMultiColoMultiClusterWrapper getVeniceTwoLayerMultiColoMultiClusterWrapper(int numberOfColos,
       int numberOfClustersInEachColo, int numberOfParentControllers, int numberOfControllers, int numberOfServers, int numberOfRouters,
       int replicationFactor, Optional<VeniceProperties> parentControllerProps,
-      Optional<Properties> childControllerProperties, Optional<VeniceProperties> serverProps, boolean multiD2, String whitelistForKMM) {
+      Optional<Properties> childControllerProperties, Optional<VeniceProperties> serverProps, boolean multiD2, String allowlistForKMM) {
     return getService(VeniceTwoLayerMultiColoMultiClusterWrapper.SERVICE_NAME,
         VeniceTwoLayerMultiColoMultiClusterWrapper.generateService(numberOfColos, numberOfClustersInEachColo, numberOfParentControllers,
             numberOfControllers, numberOfServers, numberOfRouters, replicationFactor, parentControllerProps,
-            childControllerProperties, serverProps, multiD2, whitelistForKMM, false, Optional.empty()));
+            childControllerProperties, serverProps, multiD2, allowlistForKMM, false, Optional.empty()));
   }
 
   public static VeniceTwoLayerMultiColoMultiClusterWrapper getVeniceTwoLayerMultiColoMultiClusterWrapper(int numberOfColos,
       int numberOfClustersInEachColo, int numberOfParentControllers, int numberOfControllers, int numberOfServers, int numberOfRouters,
       int replicationFactor, Optional<VeniceProperties> parentControllerProps, Optional<Properties> childControllerProperties,
-      Optional<VeniceProperties> serverProps, boolean multiD2, String whitelistForKMM, boolean forkServer) {
+      Optional<VeniceProperties> serverProps, boolean multiD2, String allowlistForKMM, boolean forkServer) {
     return getService(VeniceTwoLayerMultiColoMultiClusterWrapper.SERVICE_NAME,
         VeniceTwoLayerMultiColoMultiClusterWrapper.generateService(numberOfColos, numberOfClustersInEachColo, numberOfParentControllers,
             numberOfControllers, numberOfServers, numberOfRouters, replicationFactor, parentControllerProps,
-            childControllerProperties, serverProps, multiD2, whitelistForKMM, forkServer, Optional.empty()));
+            childControllerProperties, serverProps, multiD2, allowlistForKMM, forkServer, Optional.empty()));
   }
 
   public static VeniceTwoLayerMultiColoMultiClusterWrapper getVeniceTwoLayerMultiColoMultiClusterWrapper(int numberOfColos,
       int numberOfClustersInEachColo, int numberOfParentControllers, int numberOfControllers, int numberOfServers, int numberOfRouters,
       int replicationFactor, Optional<VeniceProperties> parentControllerProps,
-      Optional<Properties> childControllerProperties, Optional<VeniceProperties> serverProps, boolean multiD2, String whitelistForKMM,
+      Optional<Properties> childControllerProperties, Optional<VeniceProperties> serverProps, boolean multiD2, String allowlistForKMM,
       boolean forkServer, Optional<Integer> parentKafkaPort) {
     return getService(VeniceTwoLayerMultiColoMultiClusterWrapper.SERVICE_NAME,
         VeniceTwoLayerMultiColoMultiClusterWrapper.generateService(numberOfColos, numberOfClustersInEachColo, numberOfParentControllers,
             numberOfControllers, numberOfServers, numberOfRouters, replicationFactor, parentControllerProps,
-            childControllerProperties, serverProps, multiD2, whitelistForKMM, forkServer, parentKafkaPort));
+            childControllerProperties, serverProps, multiD2, allowlistForKMM, forkServer, parentKafkaPort));
   }
 
   public static HelixAsAServiceWrapper getHelixController(String zkAddress) {

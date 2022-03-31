@@ -23,7 +23,7 @@ public class CreateStore extends AbstractRoute {
     return new VeniceRouteHandler<NewStoreResponse>(NewStoreResponse.class) {
       @Override
       public void internalHandle(Request request, NewStoreResponse veniceResponse) {
-        // Only allow whitelist users to run this command
+        // Only allow allowlist users to run this command
         if (!isAllowListUser(request)) {
           veniceResponse.setError("Only admin users are allowed to run " + request.url());
           return;

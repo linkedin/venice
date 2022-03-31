@@ -88,7 +88,7 @@ public class TestRouterReadQuotaThrottler {
     long timeWindowInSec = TimeUnit.MILLISECONDS.toSeconds(ReadRequestThrottler.DEFAULT_STORE_QUOTA_TIME_WINDOW);
     // Setup read quota for the store.
     long totalQuota = 10;
-    cluster.getMasterVeniceController()
+    cluster.getLeaderVeniceController()
         .getVeniceAdmin()
         .updateStore(cluster.getClusterName(), storeName, new UpdateStoreQueryParams()
             .setReadQuotaInCU(totalQuota));

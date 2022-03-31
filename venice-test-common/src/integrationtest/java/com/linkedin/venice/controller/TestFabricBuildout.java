@@ -57,7 +57,7 @@ public class TestFabricBuildout {
         Optional.of(properties),
         Optional.empty(),
         false,
-        MirrorMakerWrapper.DEFAULT_TOPIC_WHITELIST);
+        MirrorMakerWrapper.DEFAULT_TOPIC_ALLOWLIST);
 
     childDatacenters = multiColoMultiClusterWrapper.getClusters();
     parentControllers = multiColoMultiClusterWrapper.getParentControllers();
@@ -75,7 +75,7 @@ public class TestFabricBuildout {
 
     // Test the admin channel with the regular KMM pipeline
     VeniceControllerWrapper parentController =
-        parentControllers.stream().filter(c -> c.isMasterController(clusterName)).findAny().get();
+        parentControllers.stream().filter(c -> c.isLeaderController(clusterName)).findAny().get();
     ControllerClient parentControllerClient = ControllerClient.constructClusterControllerClient(clusterName, parentController.getControllerUrl());
 
     ControllerClient dc0Client = ControllerClient.constructClusterControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
@@ -102,7 +102,7 @@ public class TestFabricBuildout {
   @Test(timeOut = TEST_TIMEOUT)
   public void testCompareStore() {
     String clusterName = CLUSTER_NAMES[0];
-    VeniceControllerWrapper parentController = parentControllers.stream().filter(c -> c.isMasterController(clusterName)).findAny().get();
+    VeniceControllerWrapper parentController = parentControllers.stream().filter(c -> c.isLeaderController(clusterName)).findAny().get();
     try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentController.getControllerUrl());
         ControllerClient childControllerClient0 = new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
         ControllerClient childControllerClient1 = new ControllerClient(clusterName, childDatacenters.get(1).getControllerConnectString())) {

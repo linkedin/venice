@@ -62,7 +62,7 @@ public class TestVeniceControllerConfig {
   }
 
   @Test(expectedExceptions = VeniceException.class)
-  public void emptyWhitelist() {
+  public void emptyAllowlist() {
     PropertyBuilder build = new PropertyBuilder()
         .put("child.cluster.url.dc1", "http://host:1234, http://host:5678")
         .put("child.cluster.url.dc2", "http://host:1234, http://host:5678");
@@ -70,7 +70,7 @@ public class TestVeniceControllerConfig {
   }
 
   @Test(expectedExceptions = VeniceException.class)
-  public void nullWhitelist() {
+  public void nullAllowlist() {
     PropertyBuilder build = new PropertyBuilder()
         .put("child.cluster.url.dc1", "http://host:1234, http://host:5678")
         .put("child.cluster.url.dc2", "http://host:1234, http://host:5678");

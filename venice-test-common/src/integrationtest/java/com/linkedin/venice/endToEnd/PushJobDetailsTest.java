@@ -75,7 +75,7 @@ public class PushJobDetailsTest {
     controllerProperties.setProperty(TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS, String.valueOf(Long.MAX_VALUE));
     controllerProperties.setProperty(PUSH_JOB_STATUS_STORE_CLUSTER_NAME, venice.getClusterName());
     parentController = ServiceFactory.getVeniceParentController(venice.getClusterName(), zkWrapper.getAddress(),
-        venice.getKafka(), new VeniceControllerWrapper[]{venice.getMasterVeniceController()},
+        venice.getKafka(), new VeniceControllerWrapper[]{venice.getLeaderVeniceController()},
         new VeniceProperties(controllerProperties), false);
     controllerClient = venice.getControllerClient();
     parentControllerClient = new ControllerClient(venice.getClusterName(), parentController.getControllerUrl());

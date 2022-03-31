@@ -32,7 +32,7 @@ import static com.linkedin.venice.CommonConfigKeys.*;
  */
 public class DefaultSSLFactory implements SSLFactory {
 
-  public static final String[] CIPHER_SUITE_WHITELIST = {
+  public static final String[] CIPHER_SUITE_ALLOWLIST = {
       // Preferred ciphersuites:
       "TLS_RSA_WITH_AES_128_CBC_SHA256",
       "TLS_RSA_WITH_AES_128_GCM_SHA256",
@@ -98,7 +98,7 @@ public class DefaultSSLFactory implements SSLFactory {
   public static String[] filterDisallowedCiphersuites(String[] ciphersuites)
       throws SSLProtocolException {
     Set<String> allowedCiphers = new HashSet<String>();
-    Collections.addAll(allowedCiphers, CIPHER_SUITE_WHITELIST);
+    Collections.addAll(allowedCiphers, CIPHER_SUITE_ALLOWLIST);
 
     Set<String> supportedCiphers = new HashSet<String>();
     Collections.addAll(supportedCiphers, ciphersuites);
@@ -107,7 +107,7 @@ public class DefaultSSLFactory implements SSLFactory {
     String[] allowedCiphersuites = supportedCiphers.toArray(new String[0]);
 
     if (allowedCiphersuites == null || allowedCiphersuites.length == 0) {
-      throw new SSLProtocolException("No Whitelisted SSL Ciphers Available.");
+      throw new SSLProtocolException("No Allowlisted SSL Ciphers Available.");
     }
 
     return allowedCiphersuites;

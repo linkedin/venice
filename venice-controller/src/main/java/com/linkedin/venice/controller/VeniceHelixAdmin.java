@@ -4,7 +4,6 @@ import com.linkedin.avroutil1.compatibility.AvroIncompatibleSchemaException;
 import com.linkedin.avroutil1.compatibility.RandomRecordGenerator;
 import com.linkedin.avroutil1.compatibility.RecordGenerationConfig;
 import com.linkedin.d2.balancer.D2Client;
-import com.linkedin.util.factory.TestGeneratorUtil;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.SSLConfig;
@@ -65,7 +64,7 @@ import com.linkedin.venice.helix.VeniceOfflinePushMonitorAccessor;
 import com.linkedin.venice.helix.ZkClientFactory;
 import com.linkedin.venice.helix.ZkRoutersClusterManager;
 import com.linkedin.venice.helix.ZkStoreConfigAccessor;
-import com.linkedin.venice.helix.ZkWhitelistAccessor;
+import com.linkedin.venice.helix.ZkAllowlistAccessor;
 import com.linkedin.venice.kafka.KafkaClientFactory.MetricsParameters;
 import com.linkedin.venice.kafka.TopicDoesNotExistException;
 import com.linkedin.venice.kafka.TopicManager;
@@ -112,7 +111,6 @@ import com.linkedin.venice.participant.protocol.enums.ParticipantMessageType;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.KillOfflinePushMessage;
 import com.linkedin.venice.pushmonitor.OfflinePushStatus;
-import com.linkedin.venice.pushmonitor.PartitionStatus;
 import com.linkedin.venice.pushmonitor.PushMonitor;
 import com.linkedin.venice.pushmonitor.PushMonitorDelegator;
 import com.linkedin.venice.pushmonitor.PushStatusDecider;
@@ -196,7 +194,6 @@ import org.apache.helix.controller.rebalancer.strategy.CrushRebalanceStrategy;
 import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.helix.manager.zk.ZKHelixManager;
 import org.apache.helix.manager.zk.ZNRecordSerializer;
-import org.apache.helix.manager.zk.ZkBaseDataAccessor;
 import org.apache.helix.model.ClusterConfig;
 import org.apache.helix.model.ExternalView;
 import org.apache.helix.model.HelixConfigScope;
@@ -225,8 +222,8 @@ import static com.linkedin.venice.utils.AvroSchemaUtils.*;
  * hold a level1 helix controller which will keep connecting to Helix, there is a cluster only used for all of these
  * level1 controllers(controller's cluster). The second level is our venice clusters. Like prod cluster, dev cluster
  * etc. Each of cluster will be Helix resource in the controller's cluster. Helix will choose one of level1 controller
- * becoming the master of our venice cluster. In our distributed controllers state transition handler, a level2 controller
- * will be initialized to manage this venice cluster only. If this level1 controller is chosen as the master controller
+ * becoming the leader of our venice cluster. In our distributed controllers state transition handler, a level2 controller
+ * will be initialized to manage this venice cluster only. If this level1 controller is chosen as the leader controller
  * of multiple Venice clusters, multiple level2 controller will be created based on cluster specific config.
  * <p>
  * Admin is shared by multiple cluster's controllers running in one physical Venice controller instance.
@@ -278,7 +275,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     private TopicManagerRepository topicManagerRepository;
     private final ZkClient zkClient;
     private final HelixAdapterSerializer adapterSerializer;
-    private final ZkWhitelistAccessor whitelistAccessor;
+    private final ZkAllowlistAccessor allowlistAccessor;
     private final ExecutionIdAccessor executionIdAccessor;
     private final Optional<TopicReplicator> onlineOfflineTopicReplicator;
     private final Optional<TopicReplicator> leaderFollowerTopicReplicator;
@@ -292,7 +289,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     private final Map<String, String> participantMessageStoreRTTMap;
     private final Map<String, VeniceWriter> participantMessageWriterMap;
     private final boolean isControllerClusterHAAS;
-    private final String coloMasterClusterName;
+    private final String coloLeaderClusterName;
     private final Optional<SSLFactory> sslFactory;
     private final String pushJobStatusStoreClusterName;
     private final Optional<PushStatusStoreReader> pushStatusStoreReader;
@@ -423,7 +420,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                                                                multiClusterConfigs.getKafkaMinLogCompactionLagInMs(),
                                                                veniceConsumerFactory,
                                                                metricsRepository);
-      this.whitelistAccessor = new ZkWhitelistAccessor(zkClient, adapterSerializer);
+      this.allowlistAccessor = new ZkAllowlistAccessor(zkClient, adapterSerializer);
       this.executionIdAccessor = new ZkExecutionIdAccessor(zkClient, adapterSerializer);
       this.storeConfigRepo = new HelixReadOnlyStoreConfigRepository(zkClient, adapterSerializer,
           commonConfig.getRefreshAttemptsForZkReconnect(), commonConfig.getRefreshIntervalForZkReconnectInMs());
@@ -437,7 +434,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       this.participantMessageStoreRTTMap = new VeniceConcurrentHashMap<>();
       this.participantMessageWriterMap = new VeniceConcurrentHashMap<>();
       isControllerClusterHAAS = commonConfig.isControllerClusterLeaderHAAS();
-      coloMasterClusterName = commonConfig.getClusterName();
+      coloLeaderClusterName = commonConfig.getClusterName();
       pushJobStatusStoreClusterName = commonConfig.getPushJobStatusStoreClusterName();
       if (commonConfig.isDaVinciPushStatusStoreEnabled()) {
           pushStatusStoreReader = Optional.of(
@@ -673,7 +670,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             if (existingStore != null) {
                 /*
                  * We already check the pre-condition before, so if we could find a store with the same name,
-                 * it means the store is a legacy store which is left by a failed deletion. So we should delete it.
+                 * it means the store is a reprocessing store which is left by a failed deletion. So we should delete it.
                  */
                 deleteStore(clusterName, storeName, existingStore.getLargestUsedVersionNumber(), true);
             }
@@ -835,7 +832,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             // could be deleted later after controller is recovered.
             // A worse case is deletion succeeded in parent controller but failed in production controller. After skip
             // the admin message offset, a store was left in some prod colos. While user re-create the store, we will
-            // delete this legacy store if isDeleting is true for this store.
+            // delete this reprocessing store if isDeleting is true for this store.
             storeConfig.setDeleting(true);
         }
     }
@@ -4092,8 +4089,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 + ", could not be removed from that cluster.");
         }
 
-        // Remove storage node from both whitelist and helix instances list.
-        removeInstanceFromWhiteList(clusterName, instanceId);
+        // Remove storage node from both allowlist and helix instances list.
+        removeInstanceFromAllowList(clusterName, instanceId);
         helixAdminClient.dropStorageInstance(clusterName, instanceId);
         logger.info("Removed storage node: " + instanceId + " from cluster: " + clusterName);
     }
@@ -4536,19 +4533,19 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 throw new VeniceNoStoreException(storeName);
             }
             if (store.isHybrid()) {
-                if (multiClusterConfigs.getCommonConfig().isEnableNearlinePushSSLWhitelist()
-                    && (!multiClusterConfigs.getCommonConfig().getPushSSLWhitelist().contains(storeName))) {
-                    // whitelist is enabled but the given store is not in that list, so ssl is not enabled for this store.
+                if (multiClusterConfigs.getCommonConfig().isEnableNearlinePushSSLAllowlist()
+                    && (!multiClusterConfigs.getCommonConfig().getPushSSLAllowlist().contains(storeName))) {
+                    // allowlist is enabled but the given store is not in that list, so ssl is not enabled for this store.
                     return false;
                 }
             } else {
-                if (multiClusterConfigs.getCommonConfig().isEnableOfflinePushSSLWhitelist()
-                    && (!multiClusterConfigs.getCommonConfig().getPushSSLWhitelist().contains(storeName))) {
-                    // whitelist is enabled but the given store is not in that list, so ssl is not enabled for this store.
+                if (multiClusterConfigs.getCommonConfig().isEnableOfflinePushSSLAllowlist()
+                    && (!multiClusterConfigs.getCommonConfig().getPushSSLAllowlist().contains(storeName))) {
+                    // allowlist is enabled but the given store is not in that list, so ssl is not enabled for this store.
                     return false;
                 }
             }
-            // whitelist is not enabled, or whitelist is enabled and the given store is in that list, so ssl is enabled for this store for push.
+            // allowlist is not enabled, or allowlist is enabled and the given store is in that list, so ssl is enabled for this store for push.
             return true;
         } else {
             return false;
@@ -4662,12 +4659,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
                 if (attempt < maxAttempts) {
                     logger.warn(
-                        "Master controller does not exist, cluster=" + clusterName + ", attempt=" + attempt + "/" + maxAttempts);
+                        "Leader controller does not exist, cluster=" + clusterName + ", attempt=" + attempt + "/" + maxAttempts);
                     Utils.sleep(5 * Time.MS_PER_SECOND);
                 }
             }
 
-            String message = "Master controller does not exist, cluster=" + clusterName;
+            String message = "Leader controller does not exist, cluster=" + clusterName;
             logger.error(message);
             throw new VeniceException(message);
         }
@@ -4677,7 +4674,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
      * Get the Venice controller leader for a given Venice cluster when running Helix as a Service. We need to look at
      * the external view of the controller cluster to find the Venice logic leader for a Venice cluster. In HaaS the
      * controller leader property will be a HaaS controller and is not the Venice controller that we want.
-     * TODO replace the implementation of Admin#getMasterController with this method once we are fully on HaaS
+     * TODO replace the implementation of Admin#getLeaderController with this method once we are fully on HaaS
      * @param clusterName of the Venice cluster
      * @return
      */
@@ -4716,21 +4713,21 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
     @Override
-    public void addInstanceToWhitelist(String clusterName, String helixNodeId) {
+    public void addInstanceToAllowlist(String clusterName, String helixNodeId) {
         checkControllerLeadershipFor(clusterName);
-        whitelistAccessor.addInstanceToWhiteList(clusterName, helixNodeId);
+        allowlistAccessor.addInstanceToAllowList(clusterName, helixNodeId);
     }
 
     @Override
-    public void removeInstanceFromWhiteList(String clusterName, String helixNodeId) {
+    public void removeInstanceFromAllowList(String clusterName, String helixNodeId) {
         checkControllerLeadershipFor(clusterName);
-        whitelistAccessor.removeInstanceFromWhiteList(clusterName, helixNodeId);
+        allowlistAccessor.removeInstanceFromAllowList(clusterName, helixNodeId);
     }
 
     @Override
-    public Set<String> getWhitelist(String clusterName) {
+    public Set<String> getAllowlist(String clusterName) {
         checkControllerLeadershipFor(clusterName);
-        return whitelistAccessor.getWhiteList(clusterName);
+        return allowlistAccessor.getAllowList(clusterName);
     }
 
     protected void checkPreConditionForKillOfflinePush(String clusterName, String kafkaTopic) {
@@ -5182,8 +5179,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         multiClusterConfigs.addClusterConfig(config);
     }
 
-    public ZkWhitelistAccessor getWhitelistAccessor() {
-        return whitelistAccessor;
+    public ZkAllowlistAccessor getAllowlistAccessor() {
+        return allowlistAccessor;
     }
 
     public StoreGraveyard getStoreGraveyard() {
@@ -5214,16 +5211,16 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
     /**
-     * This function is used to detect whether current node is the master controller of controller cluster.
+     * This function is used to detect whether current node is the leader controller of controller cluster.
      *
      * Be careful to use this function since it will talk to Zookeeper directly every time.
      *
      * @return
      */
     @Override
-    public boolean isMasterControllerOfControllerCluster() {
+    public boolean isLeaderControllerOfControllerCluster() {
         if (isControllerClusterHAAS) {
-          return isLeaderControllerFor(coloMasterClusterName);
+          return isLeaderControllerFor(coloLeaderClusterName);
         }
         LiveInstance leader = manager.getHelixDataAccessor().getProperty(level1KeyBuilder.controllerLeader());
         if (null == leader || null == leader.getId()) {

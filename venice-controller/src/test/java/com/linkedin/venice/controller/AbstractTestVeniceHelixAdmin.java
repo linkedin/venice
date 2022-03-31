@@ -3,7 +3,6 @@ package com.linkedin.venice.controller;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.VeniceStateModel;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
-import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.integration.utils.D2TestUtils;
@@ -12,8 +11,6 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.participant.protocol.ParticipantMessageKey;
-import com.linkedin.venice.participant.protocol.ParticipantMessageValue;
 import com.linkedin.venice.stats.HelixMessageChannelStats;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.MockTestStateModelFactory;
@@ -37,7 +34,7 @@ import static com.linkedin.venice.ConfigKeys.*;
 
 
 class AbstractTestVeniceHelixAdmin {
-  static final long MASTER_CHANGE_TIMEOUT_MS = 10 * Time.MS_PER_SECOND;
+  static final long LEADER_CHANGE_TIMEOUT_MS = 10 * Time.MS_PER_SECOND;
   static final long TOTAL_TIMEOUT_FOR_LONG_TEST_MS = 60 * Time.MS_PER_SECOND;
   static final long TOTAL_TIMEOUT_FOR_SHORT_TEST_MS = 10 * Time.MS_PER_SECOND;
   static final int DEFAULT_REPLICA_COUNT = 1;
@@ -92,7 +89,7 @@ class AbstractTestVeniceHelixAdmin {
     veniceAdmin = new VeniceHelixAdmin(multiClusterConfig, new MetricsRepository(), D2TestUtils.getAndStartD2Client(zkAddress));
     veniceAdmin.initVeniceControllerClusterResource(clusterName);
     startParticipant();
-    waitUntilIsMaster(veniceAdmin, clusterName, MASTER_CHANGE_TIMEOUT_MS);
+    waitUntilIsLeader(veniceAdmin, clusterName, LEADER_CHANGE_TIMEOUT_MS);
   }
 
   public void cleanupCluster() {
@@ -178,12 +175,12 @@ class AbstractTestVeniceHelixAdmin {
     return properties;
   }
 
-  void waitUntilIsMaster(VeniceHelixAdmin admin, String cluster, long timeout) {
+  void waitUntilIsLeader(VeniceHelixAdmin admin, String cluster, long timeout) {
     List<VeniceHelixAdmin> admins = Collections.singletonList(admin);
-    waitForAMaster(admins, cluster, timeout);
+    waitForALeader(admins, cluster, timeout);
   }
 
-  void waitForAMaster(List<VeniceHelixAdmin> admins, String cluster, long timeout) {
+  void waitForALeader(List<VeniceHelixAdmin> admins, String cluster, long timeout) {
     int sleepDuration = 100;
     for (long i = 0; i < timeout; i += sleepDuration) {
       for (VeniceHelixAdmin admin : admins) {
@@ -199,25 +196,25 @@ class AbstractTestVeniceHelixAdmin {
       }
     }
 
-    Assert.fail("No VeniceHelixAdmin became master for cluster: " + cluster + " after timeout: " + timeout);
+    Assert.fail("No VeniceHelixAdmin became leader for cluster: " + cluster + " after timeout: " + timeout);
   }
 
-  VeniceHelixAdmin getMaster(List<VeniceHelixAdmin> admins, String cluster) {
+  VeniceHelixAdmin getLeader(List<VeniceHelixAdmin> admins, String cluster) {
     for (VeniceHelixAdmin admin : admins) {
       if (admin.isLeaderControllerFor(cluster)) {
         return admin;
       }
     }
-    throw new VeniceException("no master found for cluster: " + cluster);
+    throw new VeniceException("no leader found for cluster: " + cluster);
   }
 
-  VeniceHelixAdmin getSlave(List<VeniceHelixAdmin> admins, String cluster) {
+  VeniceHelixAdmin getFollower(List<VeniceHelixAdmin> admins, String cluster) {
     for (VeniceHelixAdmin admin : admins) {
       if (!admin.isLeaderControllerFor(cluster)) {
         return admin;
       }
     }
-    throw new VeniceException("no slave found for cluster: " + cluster);
+    throw new VeniceException("no follower found for cluster: " + cluster);
   }
 
   /**

@@ -79,7 +79,7 @@ public class TestParentControllerWithMultiDataCenter {
     String storeName = Utils.getUniqueString("store");
 
     VeniceControllerWrapper parentController =
-        parentControllers.stream().filter(c -> c.isMasterController(clusterName)).findAny().get();
+        parentControllers.stream().filter(c -> c.isLeaderController(clusterName)).findAny().get();
     ControllerClient parentControllerClient = ControllerClient.constructClusterControllerClient(clusterName, parentController.getControllerUrl());
 
     /**
@@ -165,7 +165,7 @@ public class TestParentControllerWithMultiDataCenter {
     String storeName = Utils.getUniqueString("store");
 
     VeniceControllerWrapper parentController =
-        parentControllers.stream().filter(c -> c.isMasterController(clusterName)).findAny().get();
+        parentControllers.stream().filter(c -> c.isLeaderController(clusterName)).findAny().get();
     ControllerClient parentControllerClient = new ControllerClient(clusterName, parentController.getControllerUrl());
 
     /**
@@ -289,7 +289,7 @@ public class TestParentControllerWithMultiDataCenter {
     Schema rmdSchema3 = ReplicationMetadataSchemaGenerator.generateMetadataSchema(valueRecordSchemaStr3, 1);
 
     VeniceControllerWrapper parentController =
-        parentControllers.stream().filter(c -> c.isMasterController(clusterName)).findAny().get();
+        parentControllers.stream().filter(c -> c.isLeaderController(clusterName)).findAny().get();
 
     try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentController.getControllerUrl())) {
       /**

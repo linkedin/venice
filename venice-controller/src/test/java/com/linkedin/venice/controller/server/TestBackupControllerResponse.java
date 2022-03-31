@@ -31,10 +31,10 @@ public class TestBackupControllerResponse {
         VeniceControllerWrapper controller2 = ServiceFactory.getVeniceController(clusterName, kafka)) {
       // TODO: Eliminate sleep to make test reliable
       Thread.sleep(2000);
-      VeniceControllerWrapper nonMasterController = !controller1.isMasterController(clusterName) ? controller1 : controller2;
+      VeniceControllerWrapper nonLeaderController = !controller1.isLeaderController(clusterName) ? controller1 : controller2;
       try {
         transport.request(
-            nonMasterController.getControllerUrl(),
+            nonLeaderController.getControllerUrl(),
             REQUEST_TOPIC,
             new QueryParams().add(CLUSTER, clusterName),
             VersionCreationResponse.class);
@@ -46,7 +46,7 @@ public class TestBackupControllerResponse {
 
       try {
         transport.request(
-            nonMasterController.getControllerUrl(),
+            nonLeaderController.getControllerUrl(),
             JOB,
             new QueryParams().add(CLUSTER, clusterName),
             VersionCreationResponse.class);

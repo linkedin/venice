@@ -22,7 +22,7 @@ public class SkipAdminRoute extends AbstractRoute {
       ControllerResponse responseObject = new ControllerResponse();
       response.type(HttpConstants.JSON);
       try {
-        // Only allow whitelist users to run this command
+        // Only allow allowlist users to run this command
         if (!isAllowListUser(request)) {
           response.status(HttpStatus.SC_FORBIDDEN);
           responseObject.setError("Only admin users are allowed to run " + request.url());

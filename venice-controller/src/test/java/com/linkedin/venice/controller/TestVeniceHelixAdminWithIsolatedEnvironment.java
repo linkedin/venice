@@ -71,51 +71,51 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
     List<VeniceHelixAdmin> allAdmins = new ArrayList<>();
     allAdmins.add(veniceAdmin);
     allAdmins.add(newAdmin);
-    waitForAMaster(allAdmins, clusterName, MASTER_CHANGE_TIMEOUT_MS);
+    waitForALeader(allAdmins, clusterName, LEADER_CHANGE_TIMEOUT_MS);
 
     //Can not add store through a standby controller
     Assert.assertThrows(VeniceNoClusterException.class, () -> {
-      VeniceHelixAdmin slave = getSlave(allAdmins, clusterName);
-      slave.createStore(clusterName, "failedStore", "dev", KEY_SCHEMA, VALUE_SCHEMA);
+      VeniceHelixAdmin follower = getFollower(allAdmins, clusterName);
+      follower.createStore(clusterName, "failedStore", "dev", KEY_SCHEMA, VALUE_SCHEMA);
     });
 
-    //Stop current master.
-    final VeniceHelixAdmin curMaster = getMaster(allAdmins, clusterName);
+    //Stop current leader.
+    final VeniceHelixAdmin curLeader = getLeader(allAdmins, clusterName);
     TestUtils.waitForNonDeterministicCompletion(TOTAL_TIMEOUT_FOR_SHORT_TEST_MS, TimeUnit.MILLISECONDS,
-        () -> curMaster.getOffLinePushStatus(clusterName, version.kafkaTopicName())
+        () -> curLeader.getOffLinePushStatus(clusterName, version.kafkaTopicName())
             .getExecutionStatus()
             .equals(ExecutionStatus.COMPLETED));
-    curMaster.stop(clusterName);
+    curLeader.stop(clusterName);
     Thread.sleep(1000);
-    VeniceHelixAdmin oldMaster = curMaster;
-    //wait master change event
-    waitForAMaster(allAdmins, clusterName, MASTER_CHANGE_TIMEOUT_MS);
-    //Now get status from new master controller.
-    VeniceHelixAdmin newMaster = getMaster(allAdmins, clusterName);
-    Assert.assertEquals(newMaster.getOffLinePushStatus(clusterName, version.kafkaTopicName()).getExecutionStatus(), ExecutionStatus.COMPLETED,
+    VeniceHelixAdmin oldLeader = curLeader;
+    //wait leader change event
+    waitForALeader(allAdmins, clusterName, LEADER_CHANGE_TIMEOUT_MS);
+    //Now get status from new leader controller.
+    VeniceHelixAdmin newLeader = getLeader(allAdmins, clusterName);
+    Assert.assertEquals(newLeader.getOffLinePushStatus(clusterName, version.kafkaTopicName()).getExecutionStatus(), ExecutionStatus.COMPLETED,
         "Offline push should be completed");
-    // Stop and start participant to use new master to trigger state transition.
+    // Stop and start participant to use new leader to trigger state transition.
     stopAllParticipants();
-    HelixExternalViewRepository routing = newMaster.getHelixVeniceClusterResources(clusterName).getRoutingDataRepository();
-    Assert.assertEquals(routing.getMasterController().getPort(),
-        Utils.parsePortFromHelixNodeIdentifier(newMaster.getControllerName()),
-        "Master controller is changed.");
+    HelixExternalViewRepository routing = newLeader.getHelixVeniceClusterResources(clusterName).getRoutingDataRepository();
+    Assert.assertEquals(routing.getLeaderController().getPort(),
+        Utils.parsePortFromHelixNodeIdentifier(newLeader.getControllerName()),
+        "leader controller is changed.");
     TestUtils.waitForNonDeterministicCompletion(TOTAL_TIMEOUT_FOR_SHORT_TEST_MS, TimeUnit.MILLISECONDS,
         () -> routing.getReadyToServeInstances(version.kafkaTopicName(), 0).isEmpty());
     startParticipant(true, NODE_ID);
     Thread.sleep(1000l);
-    //New master controller create resource and trigger state transition on participant.
-    newMaster.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1);
+    //New leader controller create resource and trigger state transition on participant.
+    newLeader.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1);
     Version newVersion = new VersionImpl(storeName, 2);
-    Assert.assertEquals(newMaster.getOffLinePushStatus(clusterName, newVersion.kafkaTopicName()).getExecutionStatus(),
-        ExecutionStatus.STARTED, "Can not trigger state transition from new master");
+    Assert.assertEquals(newLeader.getOffLinePushStatus(clusterName, newVersion.kafkaTopicName()).getExecutionStatus(),
+        ExecutionStatus.STARTED, "Can not trigger state transition from new leader");
     //Start original controller again, now it should become leader again based on Helix's logic.
-    oldMaster.initVeniceControllerClusterResource(clusterName);
-    newMaster.stop(clusterName);
+    oldLeader.initVeniceControllerClusterResource(clusterName);
+    newLeader.stop(clusterName);
     Thread.sleep(1000l);
-    waitForAMaster(allAdmins, clusterName, MASTER_CHANGE_TIMEOUT_MS);
+    waitForALeader(allAdmins, clusterName, LEADER_CHANGE_TIMEOUT_MS);
     // find the leader controller and test it could continue to add store as normal.
-    getMaster(allAdmins, clusterName).createStore(clusterName, "failedStore", "dev", KEY_SCHEMA, VALUE_SCHEMA);
+    getLeader(allAdmins, clusterName).createStore(clusterName, "failedStore", "dev", KEY_SCHEMA, VALUE_SCHEMA);
   }
 
   @Test
@@ -270,20 +270,20 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
   public void testGetLeaderController() {
     Assert.assertEquals(veniceAdmin.getLeaderController(clusterName).getNodeId(),
         Utils.getHelixNodeIdentifier(controllerConfig.getAdminPort()));
-    // Create a new controller and test getMasterController again.
+    // Create a new controller and test getLeaderController again.
     int newAdminPort = controllerConfig.getAdminPort() - 10;
     PropertyBuilder builder = new PropertyBuilder().put(controllerProps.toProperties()).put("admin.port", newAdminPort);
     VeniceProperties newControllerProps = builder.build();
     VeniceControllerConfig newConfig = new VeniceControllerConfig(newControllerProps);
-    VeniceHelixAdmin newMasterAdmin = new VeniceHelixAdmin(
+    VeniceHelixAdmin newLeaderAdmin = new VeniceHelixAdmin(
         TestUtils.getMultiClusterConfigFromOneCluster(newConfig),
         new MetricsRepository(),
         D2TestUtils.getAndStartD2Client(zkAddress)
     );
     List<VeniceHelixAdmin> admins = new ArrayList<>();
     admins.add(veniceAdmin);
-    admins.add(newMasterAdmin);
-    waitForAMaster(admins, clusterName, MASTER_CHANGE_TIMEOUT_MS);
+    admins.add(newLeaderAdmin);
+    waitForALeader(admins, clusterName, LEADER_CHANGE_TIMEOUT_MS);
     if (veniceAdmin.isLeaderControllerFor(clusterName)) {
         Assert.assertEquals(veniceAdmin.getLeaderController(clusterName).getNodeId(),
             Utils.getHelixNodeIdentifier(controllerConfig.getAdminPort()));
@@ -291,18 +291,18 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
       Assert.assertEquals(veniceAdmin.getLeaderController(clusterName).getNodeId(),
           Utils.getHelixNodeIdentifier(newAdminPort));
     }
-    newMasterAdmin.stop(clusterName);
-    admins.remove(newMasterAdmin);
-    waitForAMaster(admins, clusterName, MASTER_CHANGE_TIMEOUT_MS);
+    newLeaderAdmin.stop(clusterName);
+    admins.remove(newLeaderAdmin);
+    waitForALeader(admins, clusterName, LEADER_CHANGE_TIMEOUT_MS);
     Assert.assertEquals(veniceAdmin.getLeaderController(clusterName).getNodeId(),
         Utils.getHelixNodeIdentifier(controllerConfig.getAdminPort()), "Controller should be back to original one.");
     veniceAdmin.stop(clusterName);
-    TestUtils.waitForNonDeterministicCompletion(MASTER_CHANGE_TIMEOUT_MS, TimeUnit.MILLISECONDS,
+    TestUtils.waitForNonDeterministicCompletion(LEADER_CHANGE_TIMEOUT_MS, TimeUnit.MILLISECONDS,
         () -> !veniceAdmin.isLeaderControllerFor(clusterName));
 
     //The cluster should be leaderless now
     Assert.assertFalse(veniceAdmin.isLeaderControllerFor(clusterName));
-    Assert.assertFalse(newMasterAdmin.isLeaderControllerFor(clusterName));
+    Assert.assertFalse(newLeaderAdmin.isLeaderControllerFor(clusterName));
   }
 
   @Test
@@ -315,9 +315,9 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
     Properties properties = getControllerProperties(clusterName);
     properties.put(ConfigKeys.SSL_TO_KAFKA, true);
     properties.put(ConfigKeys.SSL_KAFKA_BOOTSTRAP_SERVERS, kafkaBrokerWrapper.getSSLAddress());
-    properties.put(ConfigKeys.ENABLE_OFFLINE_PUSH_SSL_WHITELIST, true);
-    properties.put(ConfigKeys.ENABLE_HYBRID_PUSH_SSL_WHITELIST,  false);
-    properties.put(ConfigKeys.PUSH_SSL_WHITELIST, storeName1);
+    properties.put(ConfigKeys.ENABLE_OFFLINE_PUSH_SSL_ALLOWLIST, true);
+    properties.put(ConfigKeys.ENABLE_HYBRID_PUSH_SSL_ALLOWLIST,  false);
+    properties.put(ConfigKeys.PUSH_SSL_ALLOWLIST, storeName1);
 
     veniceAdmin = new VeniceHelixAdmin(
         TestUtils.getMultiClusterConfigFromOneCluster(new VeniceControllerConfig(new VeniceProperties(properties))),
@@ -337,9 +337,9 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
         .setHybridOffsetLagThreshold(1000L));
 
     Assert.assertTrue(veniceAdmin.isSSLEnabledForPush(clusterName, storeName1),
-        "Store1 is in the whitelist, ssl should be enabled.");
+        "Store1 is in the allowlist, ssl should be enabled.");
     Assert.assertFalse(veniceAdmin.isSSLEnabledForPush(clusterName, storeName2),
-        "Store2 is not in the whitelist, ssl should be disabled.");
+        "Store2 is not in the allowlist, ssl should be disabled.");
     Assert.assertTrue(veniceAdmin.isSSLEnabledForPush(clusterName, storeName3),
         "Store3 is hybrid store, and ssl for nearline push is disabled, so by default ssl should be enabled because we turned on the cluster level ssl switcher.");
   }

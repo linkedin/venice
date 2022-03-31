@@ -127,7 +127,7 @@ public class TestHolisticSeverHealthCheck {
 
     // Wait until push is completed.
     TestUtils.waitForNonDeterministicCompletion(120, TimeUnit.SECONDS,
-        () -> cluster.getMasterVeniceController()
+        () -> cluster.getLeaderVeniceController()
             .getVeniceAdmin()
             .getOffLinePushStatus(cluster.getClusterName(), topicName)
             .getExecutionStatus()
@@ -171,7 +171,7 @@ public class TestHolisticSeverHealthCheck {
     }
 
     // Mock CustomizedView so that getReadyToServeInstances returns an empty list.
-    VeniceHelixAdmin admin = (VeniceHelixAdmin) cluster.getMasterVeniceController().getVeniceAdmin();
+    VeniceHelixAdmin admin = (VeniceHelixAdmin) cluster.getLeaderVeniceController().getVeniceAdmin();
     ResourceAssignment resourceAssignment = admin.getHelixVeniceClusterResources(cluster.getClusterName())
         .getCustomizedViewRepository()
         .getResourceAssignment();

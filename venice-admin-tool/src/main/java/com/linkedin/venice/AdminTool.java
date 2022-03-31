@@ -282,11 +282,11 @@ public class AdminTool {
         case REMOVE_NODE:
           removeNodeFromCluster(cmd);
           break;
-        case WHITE_LIST_ADD_NODE:
-          addNodeIntoWhiteList(cmd);
+        case ALLOW_LIST_ADD_NODE:
+          addNodeIntoAllowList(cmd);
           break;
-        case WHITE_LIST_REMOVE_NODE:
-          removeNodeFromWhiteList(cmd);
+        case ALLOW_LIST_REMOVE_NODE:
+          removeNodeFromAllowList(cmd);
           break;
         case REPLICAS_OF_STORE:
           printReplicaListForStoreVersion(cmd);
@@ -860,15 +860,15 @@ public class AdminTool {
     printObject(response);
   }
 
-  private static void addNodeIntoWhiteList(CommandLine cmd){
+  private static void addNodeIntoAllowList(CommandLine cmd){
     String storageNodeId = getRequiredArgument(cmd, Arg.STORAGE_NODE);
-    ControllerResponse response = controllerClient.addNodeIntoWhiteList(storageNodeId);
+    ControllerResponse response = controllerClient.addNodeIntoAllowList(storageNodeId);
     printSuccess(response);
   }
 
-  private static void removeNodeFromWhiteList(CommandLine cmd){
+  private static void removeNodeFromAllowList(CommandLine cmd){
     String storageNodeId = getRequiredArgument(cmd, Arg.STORAGE_NODE);
-    ControllerResponse response = controllerClient.removeNodeFromWhiteList(storageNodeId);
+    ControllerResponse response = controllerClient.removeNodeFromAllowList(storageNodeId);
     printSuccess(response);
   }
 
@@ -983,7 +983,7 @@ public class AdminTool {
         getRequiredArgument(cmd, Arg.KAFKA_BOOTSTRAP_SERVERS),
         getRequiredArgument(cmd, Arg.KAFKA_BOOTSTRAP_SERVERS_DESTINATION),
         getRequiredArgument(cmd, Arg.KAFKA_ZOOKEEPER_CONNECTION_URL_DESTINATION),
-        getRequiredArgument(cmd, Arg.KAFKA_TOPIC_WHITELIST),
+        getRequiredArgument(cmd, Arg.KAFKA_TOPIC_ALLOWLIST),
         loadProperties(cmd, Arg.KAFKA_CONSUMER_CONFIG_FILE),
         loadProperties(cmd, Arg.KAFKA_PRODUCER_CONFIG_FILE));
 
@@ -1124,7 +1124,7 @@ public class AdminTool {
   private static void printMigrationStatus(ControllerClient controller, String storeName) {
     StoreInfo store = controller.getStore(storeName).getStore();
 
-    System.err.println("\n" + controller.getClusterName() + "\t" + controller.getMasterControllerUrl());
+    System.err.println("\n" + controller.getClusterName() + "\t" + controller.getLeaderControllerUrl());
 
     if (null == store) {
       System.err.println(storeName + " DOES NOT EXIST in this cluster " + controller.getClusterName());
@@ -1252,7 +1252,7 @@ public class AdminTool {
     int srcLatestOnlineVersion = getLatestOnlineVersionNum(srcVersions);
     int destLatestOnlineVersion = getLatestOnlineVersionNum(destVersions);
 
-    System.err.println(destControllerClient.getMasterControllerUrl());
+    System.err.println(destControllerClient.getLeaderControllerUrl());
     if (srcLatestOnlineVersion == -1) {
       System.err.println("Original store doesn't have online version");
     } else {
@@ -1403,7 +1403,7 @@ public class AdminTool {
 
     if (destControllerClient.getStore(storeName).getStore() != null) {
       // If multi-colo, both parent and child dest controllers will consume the delete store message
-      System.err.println("Deleting cloned store " + storeName + " in " + destControllerClient.getMasterControllerUrl() + " ...");
+      System.err.println("Deleting cloned store " + storeName + " in " + destControllerClient.getLeaderControllerUrl() + " ...");
       destControllerClient.updateStore(storeName, new UpdateStoreQueryParams().setEnableReads(false).setEnableWrites(false));
       TrackableControllerResponse deleteResponse = destControllerClient.deleteStore(storeName);
       printObject(deleteResponse);

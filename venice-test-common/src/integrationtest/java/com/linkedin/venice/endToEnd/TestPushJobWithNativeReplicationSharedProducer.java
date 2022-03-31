@@ -25,7 +25,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.stream.IntStream;
 import org.apache.avro.Schema;
 import org.apache.commons.io.FileUtils;
-import org.apache.commons.io.IOUtils;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.log4j.Logger;
 import org.testng.Assert;
@@ -72,7 +71,7 @@ public class TestPushJobWithNativeReplicationSharedProducer {
      * Reduce leader promotion delay to 3 seconds;
      * Create a testing environment with 1 parent fabric and 2 child fabrics;
      * Set server and replication factor to 2 to ensure at least 1 leader replica and 1 follower replica;
-     * KMM whitelist config allows replicating all topics.
+     * KMM allowlist config allows replicating all topics.
      */
     Properties serverProperties = new Properties();
     serverProperties.put(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 1L);
@@ -92,7 +91,7 @@ public class TestPushJobWithNativeReplicationSharedProducer {
     multiColoMultiClusterWrapper =
         ServiceFactory.getVeniceTwoLayerMultiColoMultiClusterWrapper(NUMBER_OF_CHILD_DATACENTERS, NUMBER_OF_CLUSTERS, 1,
             1, 2, 1, 2, Optional.of(new VeniceProperties(controllerProps)), Optional.of(controllerProps),
-            Optional.of(new VeniceProperties(serverProperties)), false, MirrorMakerWrapper.DEFAULT_TOPIC_WHITELIST);
+            Optional.of(new VeniceProperties(serverProperties)), false, MirrorMakerWrapper.DEFAULT_TOPIC_ALLOWLIST);
     childDatacenters = multiColoMultiClusterWrapper.getClusters();
     parentControllers = multiColoMultiClusterWrapper.getParentControllers();
   }
@@ -113,7 +112,7 @@ public class TestPushJobWithNativeReplicationSharedProducer {
     String clusterName = CLUSTER_NAMES[0];
     File inputDir = getTempDataDirectory();
     VeniceControllerWrapper parentController =
-        parentControllers.stream().filter(c -> c.isMasterController(clusterName)).findAny().get();
+        parentControllers.stream().filter(c -> c.isLeaderController(clusterName)).findAny().get();
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
 
     try {

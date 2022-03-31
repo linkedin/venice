@@ -54,22 +54,22 @@ public class TestStartMultiControllers {
           "Not enough active controllers in the cluster"));
 
     TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
-      int masterControllerCount = 0;
+      int leaderControllerCount = 0;
       for (VeniceControllerWrapper controller : cluster.getVeniceControllers()) {
-        if (controller.isMasterControllerOfControllerCluster()) {
-          masterControllerCount++;
+        if (controller.isLeaderControllerOfControllerCluster()) {
+          leaderControllerCount++;
         }
       }
-      Assert.assertEquals(masterControllerCount, 1, "There should be only one master controller in the cluster");
+      Assert.assertEquals(leaderControllerCount, 1, "There should be only one leader controller in the cluster");
     });
 
-    int oldMasterControllerPort = cluster.stopMasterVeniceControler();
+    int oldLeaderControllerPort = cluster.stopLeaderVeniceControler();
 
     TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () ->
       Assert.assertTrue(getActiveControllerCount(helixManager) >= minControllerCount,
           "Not enough active controllers in the cluster"));
 
-    Assert.assertNotSame(cluster.getMasterVeniceController().getPort(), oldMasterControllerPort);
+    Assert.assertNotSame(cluster.getLeaderVeniceController().getPort(), oldLeaderControllerPort);
   }
 
   private int getActiveControllerCount(SafeHelixManager helixManager) {

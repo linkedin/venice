@@ -25,7 +25,7 @@ public class AdminCommandExecutionRoutes extends AbstractRoute {
     return (request, response) -> {
       AdminCommandExecutionResponse responseObject = new AdminCommandExecutionResponse();
       response.type(HttpConstants.JSON);
-      // Only allow whitelist users to run this command
+      // Only allow allowlist users to run this command
       if (!isAllowListUser(request)) {
         response.status(HttpStatus.SC_FORBIDDEN);
         responseObject.setError("Only admin users are allowed to run " + request.url());
@@ -58,7 +58,7 @@ public class AdminCommandExecutionRoutes extends AbstractRoute {
     return (request, response) -> {
       LastSucceedExecutionIdResponse responseObject = new LastSucceedExecutionIdResponse();
       response.type(HttpConstants.JSON);
-      // Only allow whitelist users to run this command
+      // Only allow allowlist users to run this command
       if (!isAllowListUser(request)) {
         response.status(HttpStatus.SC_FORBIDDEN);
         responseObject.setError("Only admin users are allowed to run " + request.url());

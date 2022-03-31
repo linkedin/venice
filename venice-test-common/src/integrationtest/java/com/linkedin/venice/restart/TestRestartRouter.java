@@ -64,11 +64,11 @@ public class TestRestartRouter {
     Assert.assertEquals(versionNum, 1);
     //restart
     cluster.restartVeniceRouter(routerWrapper.getPort());
-    //wait unit find the master controller.(After restart, it need some time to read data from zk.)
+    //wait unit find the leader controller.(After restart, it need some time to read data from zk.)
     TestUtils.waitForNonDeterministicCompletion(3, TimeUnit.SECONDS, () -> {
       RoutingDataRepository repository = routerWrapper.getRoutingDataRepository();
       try {
-        repository.getMasterController();
+        repository.getLeaderController();
         return true;
       } catch (VeniceException e) {
         return false;

@@ -45,13 +45,13 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
       Optional<VeniceProperties> serverProperties) {
     return generateService(numberOfColos, numberOfClustersInEachColo, numberOfParentControllers, numberOfControllers,
         numberOfServers, numberOfRouters, replicationFactor, parentControllerProperties, Optional.empty(),
-        serverProperties, false, MirrorMakerWrapper.DEFAULT_TOPIC_WHITELIST, false, Optional.empty());
+        serverProperties, false, MirrorMakerWrapper.DEFAULT_TOPIC_ALLOWLIST, false, Optional.empty());
   }
 
   static ServiceProvider<VeniceTwoLayerMultiColoMultiClusterWrapper> generateService(int numberOfColos,
       int numberOfClustersInEachColo, int numberOfParentControllers, int numberOfControllers, int numberOfServers,
       int numberOfRouters, int replicationFactor, Optional<VeniceProperties> parentControllerProperties,
-      Optional<Properties> childControllerProperties, Optional<VeniceProperties> serverProperties, boolean multiD2, String whitelistConfigForKMM,
+      Optional<Properties> childControllerProperties, Optional<VeniceProperties> serverProperties, boolean multiD2, String allowlistConfigForKMM,
       boolean forkServer, Optional<Integer> parentKafkaPort) {
 
     final List<VeniceControllerWrapper> parentControllers = new ArrayList<>(numberOfParentControllers);
@@ -114,7 +114,7 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
       }
       String childColoList = commonSeparatedStringJoiner.toString();
       activeActiveRequiredChildControllerProps.put(ACTIVE_ACTIVE_REAL_TIME_SOURCE_FABRIC_LIST, childColoList);
-      activeActiveRequiredChildControllerProps.put(NATIVE_REPLICATION_FABRIC_WHITELIST, childColoList + "," + VeniceControllerWrapper.DEFAULT_PARENT_DATA_CENTER_REGION_NAME);
+      activeActiveRequiredChildControllerProps.put(NATIVE_REPLICATION_FABRIC_ALLOWLIST, childColoList + "," + VeniceControllerWrapper.DEFAULT_PARENT_DATA_CENTER_REGION_NAME);
 
       if (childControllerProperties.isPresent()) {
         childControllerProperties.get().putAll(parentControllerProperties.orElse(new VeniceProperties()).toProperties());
@@ -169,7 +169,7 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
 
       // Create MirrorMakers
       for (VeniceMultiClusterWrapper multiCluster : multiClusters) {
-        MirrorMakerWrapper mirrorMakerWrapper = ServiceFactory.getKafkaMirrorMaker(parentKafka, multiCluster.getKafkaBrokerWrapper(), whitelistConfigForKMM);
+        MirrorMakerWrapper mirrorMakerWrapper = ServiceFactory.getKafkaMirrorMaker(parentKafka, multiCluster.getKafkaBrokerWrapper(), allowlistConfigForKMM);
         mirrorMakers.add(mirrorMakerWrapper);
       }
 
@@ -257,35 +257,35 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
     return parentKafkaBrokerWrapper;
   }
 
-  public VeniceControllerWrapper getMasterParentControllerWithRetries(String clusterName) {
-    return getMasterParentControllerWithRetries(clusterName, 60 * Time.MS_PER_SECOND);
+  public VeniceControllerWrapper getLeaderParentControllerWithRetries(String clusterName) {
+    return getLeaderParentControllerWithRetries(clusterName, 60 * Time.MS_PER_SECOND);
   }
 
-  public VeniceControllerWrapper getMasterParentControllerWithRetries(String clusterName, long timeoutMs) {
+  public VeniceControllerWrapper getLeaderParentControllerWithRetries(String clusterName, long timeoutMs) {
     long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMs);
     while (System.nanoTime() < deadline) {
       for (VeniceControllerWrapper controller : parentControllers) {
-        if (controller.isRunning() && controller.isMasterController(clusterName)) {
+        if (controller.isRunning() && controller.isLeaderController(clusterName)) {
           return controller;
         }
       }
       Utils.sleep(Time.MS_PER_SECOND);
     }
-    throw new VeniceException("Master controller does not exist, cluster=" + clusterName);
+    throw new VeniceException("Leader controller does not exist, cluster=" + clusterName);
   }
 
   public void addMirrorMakerBetween(VeniceMultiClusterWrapper srcColo, VeniceMultiClusterWrapper dstColo,
-      String whitelistConfigForKMM) {
+      String allowlistConfigForKMM) {
     MirrorMakerWrapper mirrorMakerWrapper =
         ServiceFactory.getKafkaMirrorMaker(srcColo.getKafkaBrokerWrapper(), dstColo.getKafkaBrokerWrapper(),
-            whitelistConfigForKMM);
+            allowlistConfigForKMM);
     mirrorMakers.add(mirrorMakerWrapper);
   }
 
   public void addMirrorMakerBetween(KafkaBrokerWrapper srcKafka, KafkaBrokerWrapper dstKafka,
-      String whitelistConfigForKMM) {
+      String allowlistConfigForKMM) {
     MirrorMakerWrapper mirrorMakerWrapper =
-        ServiceFactory.getKafkaMirrorMaker(srcKafka, dstKafka, whitelistConfigForKMM);
+        ServiceFactory.getKafkaMirrorMaker(srcKafka, dstKafka, allowlistConfigForKMM);
     mirrorMakers.add(mirrorMakerWrapper);
   }
 }

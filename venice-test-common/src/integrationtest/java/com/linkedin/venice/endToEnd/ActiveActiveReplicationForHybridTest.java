@@ -117,7 +117,7 @@ public class ActiveActiveReplicationForHybridTest {
 
     controllerProps.put(LF_MODEL_DEPENDENCY_CHECK_DISABLED, "true");
     controllerProps.put(AGGREGATE_REAL_TIME_SOURCE_REGION, DEFAULT_PARENT_DATA_CENTER_REGION_NAME);
-    controllerProps.put(NATIVE_REPLICATION_FABRIC_WHITELIST, DEFAULT_PARENT_DATA_CENTER_REGION_NAME + ",dc-0");
+    controllerProps.put(NATIVE_REPLICATION_FABRIC_ALLOWLIST, DEFAULT_PARENT_DATA_CENTER_REGION_NAME + ",dc-0");
     int parentKafkaPort = Utils.getFreePort();
     controllerProps.put(CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + DEFAULT_PARENT_DATA_CENTER_REGION_NAME, "localhost:" + parentKafkaPort);
     multiColoMultiClusterWrapper =
@@ -133,7 +133,7 @@ public class ActiveActiveReplicationForHybridTest {
             Optional.of(controllerProps),
             Optional.of(new VeniceProperties(serverProperties)),
             false,
-            MirrorMakerWrapper.DEFAULT_TOPIC_WHITELIST,
+            MirrorMakerWrapper.DEFAULT_TOPIC_ALLOWLIST,
             false,
             Optional.of(parentKafkaPort));
     childDatacenters = multiColoMultiClusterWrapper.getClusters();
@@ -164,7 +164,7 @@ public class ActiveActiveReplicationForHybridTest {
     String storeName3 = Utils.getUniqueString("test-hybrid-non-agg-store");
     String storeName4 = Utils.getUniqueString("test-incremental-push-store");
     VeniceControllerWrapper parentController =
-        parentControllers.stream().filter(c -> c.isMasterController(clusterName)).findAny().get();
+        parentControllers.stream().filter(c -> c.isLeaderController(clusterName)).findAny().get();
 
     try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentController.getControllerUrl());
         ControllerClient dc0Client = new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
@@ -241,7 +241,7 @@ public class ActiveActiveReplicationForHybridTest {
     String clusterName = CLUSTER_NAMES[0];
     String storeName = Utils.getUniqueString("test-store");
     VeniceControllerWrapper parentController =
-        parentControllers.stream().filter(c -> c.isMasterController(clusterName)).findAny().get();
+        parentControllers.stream().filter(c -> c.isLeaderController(clusterName)).findAny().get();
     try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentController.getControllerUrl())) {
       parentControllerClient.createNewStore(storeName, "owner", STRING_SCHEMA, STRING_SCHEMA);
 
@@ -285,7 +285,7 @@ public class ActiveActiveReplicationForHybridTest {
     String clusterName = CLUSTER_NAMES[0];
     String storeName = Utils.getUniqueString("test-store");
     VeniceControllerWrapper parentController =
-        parentControllers.stream().filter(c -> c.isMasterController(clusterName)).findAny().get();
+        parentControllers.stream().filter(c -> c.isLeaderController(clusterName)).findAny().get();
 
     try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentController.getControllerUrl())) {
       parentControllerClient.createNewStore(storeName, "owner", STRING_SCHEMA, STRING_SCHEMA);
@@ -322,7 +322,7 @@ public class ActiveActiveReplicationForHybridTest {
           VeniceMultiClusterWrapper childDataCenter = childDatacenters.get(dataCenterIndex);
 
           try (ControllerClient childControllerClient = new ControllerClient(clusterName,
-              childDataCenter.getMasterController(clusterName).getControllerUrl())) {
+              childDataCenter.getLeaderController(clusterName).getControllerUrl())) {
             TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
               StoreResponse storeResponse = TestUtils.assertCommand(childControllerClient.getStore(storeName));
               Assert.assertEquals(storeResponse.getStore().getCurrentVersion(), 1);
@@ -458,7 +458,7 @@ public class ActiveActiveReplicationForHybridTest {
     String clusterName = CLUSTER_NAMES[0];
     String storeName = Utils.getUniqueString("test-store");
     VeniceControllerWrapper parentController =
-        parentControllers.stream().filter(c -> c.isMasterController(clusterName)).findAny().get();
+        parentControllers.stream().filter(c -> c.isLeaderController(clusterName)).findAny().get();
     try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentController.getControllerUrl())) {
       parentControllerClient.createNewStore(storeName, "owner", STRING_SCHEMA, STRING_SCHEMA);
       updateStore(storeName, parentControllerClient, Optional.of(true), Optional.of(true), Optional.of(false));
@@ -483,7 +483,7 @@ public class ActiveActiveReplicationForHybridTest {
     String clusterName = CLUSTER_NAMES[0];
     String storeName = Utils.getUniqueString("test-store");
     VeniceControllerWrapper parentController =
-        parentControllers.stream().filter(c -> c.isMasterController(clusterName)).findAny().get();
+        parentControllers.stream().filter(c -> c.isLeaderController(clusterName)).findAny().get();
     try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentController.getControllerUrl())) {
       parentControllerClient.createNewStore(storeName, "owner", STRING_SCHEMA, STRING_SCHEMA);
       updateStore(storeName, parentControllerClient, Optional.of(true), Optional.of(true), Optional.of(false));
@@ -492,7 +492,7 @@ public class ActiveActiveReplicationForHybridTest {
       parentControllerClient.emptyPush(storeName, Utils.getUniqueString("empty-hybrid-push"), 1L);
 
       // Verify that version 1 is already created in dc-0 region
-      try (ControllerClient childControllerClient = new ControllerClient(clusterName, childDatacenters.get(0).getMasterController(clusterName).getControllerUrl())) {
+      try (ControllerClient childControllerClient = new ControllerClient(clusterName, childDatacenters.get(0).getLeaderController(clusterName).getControllerUrl())) {
         TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
           StoreResponse storeResponse = TestUtils.assertCommand(childControllerClient.getStore(storeName));
           Assert.assertEquals(storeResponse.getStore().getCurrentVersion(), 1);
@@ -631,7 +631,7 @@ public class ActiveActiveReplicationForHybridTest {
     String clusterName = CLUSTER_NAMES[0];
     String storeName = Utils.getUniqueString("hybridAA-test-store");
     VeniceControllerWrapper parentController =
-        parentControllers.stream().filter(c -> c.isMasterController(clusterName)).findAny().get();
+        parentControllers.stream().filter(c -> c.isLeaderController(clusterName)).findAny().get();
     int batchDataRangeEnd = 10;
     int overlapDataRangeStart = 5;
     int streamDataRangeEnd = 15;

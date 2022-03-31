@@ -331,7 +331,9 @@ public class ConfigKeys {
   public static final String LISTENER_PORT = "listener.port";
   public static final String DATA_BASE_PATH = "data.base.path";
   public static final String AUTOCREATE_DATA_PATH = "autocreate.data.path";
+  // go/inclusivecode deprecated(alias="enable.server.allowlist")
   public static final String ENABLE_SERVER_WHITE_LIST = "enable.server.whitelist";
+  public static final String ENABLE_SERVER_ALLOW_LIST = "enable.server.allowlist";
   public static final String MAX_ONLINE_OFFLINE_STATE_TRANSITION_THREAD_NUMBER = "max.state.transition.thread.number";
   public static final String MAX_LEADER_FOLLOWER_STATE_TRANSITION_THREAD_NUMBER = "max.leader.follower.state.transition.thread.number";
   public static final String STORE_WRITER_NUMBER = "store.writer.number";
@@ -1046,7 +1048,7 @@ public class ConfigKeys {
 
   /**
    * Venice uses a helix cluster to assign controllers to each named venice cluster.  This is the number of controllers
-   * assigned to each venice cluster.  Should normally be 3; one master controller and 2 standby controllers.
+   * assigned to each venice cluster.  Should normally be 3; one leader controller and 2 standby controllers.
    * */
   public static final String CONTROLLER_CLUSTER_REPLICA = "controller.cluster.replica";
 
@@ -1104,8 +1106,7 @@ public class ConfigKeys {
    * The format for key/value would be like "key=child.cluster.url.ei-ltx1, value=url1;url2;url3"
    * the cluster name should be human readable, ex: ei-ltx1
    * the url should be of the form http://host:port
-   *
-   * Note that every cluster name supplied must also be specified in the child.cluster.whitelist in order to be included
+   * Note that every cluster name supplied must also be specified in the child.cluster.allowlist in order to be included
    * */
   public static final String CHILD_CLUSTER_URL_PREFIX = "child.cluster.url";
 
@@ -1151,9 +1152,13 @@ public class ConfigKeys {
    * The highest priority source fabric selection config, specified in parent controller.
    */
   public static final String EMERGENCY_SOURCE_REGION = "emergency.source.region";
+
+  // go/inclusivecode deprecated(alias="child.cluster.allowlist")
+  public static final String CHILD_CLUSTER_WHITELIST = "child.cluster.whitelist";
+
   /**
    * Only required when controller.parent.mode=true
-   * This is a comma-separated whitelist of cluster names used in the keys with the child.cluster.url prefix.
+   * This is a comma-separated allowlist of cluster names used in the keys with the child.cluster.url prefix.
    *
    * Example, if we have the following child.cluster.url keys:
    *
@@ -1163,23 +1168,25 @@ public class ConfigKeys {
    *
    * And we want to use all three cluster, then we set
    *
-   * child.cluster.whitelist=cluster1,cluster2,cluster3
+   * child.cluster.allowlist=cluster1,cluster2,cluster3
    *
    * If we only want to use clusters 1 and 3 we can set
    *
-   * child.cluster.whitelist=cluster1,cluster3
+   * child.cluster.allowlist=cluster1,cluster3
    *
    */
-  public static final String CHILD_CLUSTER_WHITELIST = "child.cluster.whitelist";
+  public static final String CHILD_CLUSTER_ALLOWLIST = "child.cluster.allowlist";
+
+  // go/inclusivecode deprecated(alias="native.replication.fabric.allowlist")
+  public static final String NATIVE_REPLICATION_FABRIC_WHITELIST = "native.replication.fabric.whitelist";
 
   /**
-   * Previously {@link #CHILD_CLUSTER_WHITELIST} is used to also represent the white list of source fabrics
+   * Previously {@link #CHILD_CLUSTER_ALLOWLIST} is used to also represent the allowlist of source fabrics
    * for native replication; however, the final migration plan decides that a Kafka cluster in parent fabric
    * can also be the source fabric, so the below config is introduced to represent all potential source
    * fabrics for native replication.
    */
-  public static final String NATIVE_REPLICATION_FABRIC_WHITELIST = "native.replication.fabric.whitelist";
-
+  public static final String NATIVE_REPLICATION_FABRIC_ALLOWLIST = "native.replication.fabric.allowlist";
   /**
    * A list of potential parent fabrics. Logically, there is only one parent fabric; during native replication
    * migration, there will be two Kafka clusters in parent fabric, so we need two fabric names to represent
@@ -1243,22 +1250,30 @@ public class ConfigKeys {
    */
   public static final String KEYSTORE_ENV = "VENICE_KEYSTORE";
 
-  /**
-   * The switcher to enable/disable the whitelist of ssl offline pushes. If we disable the whitelist here, depends on
-   * the config "SSL_TO_KAFKA", all pushes will be secured by SSL or none of pushes will be secured by SSL.
-   */
+  // go/inclusivecode deprecated(alias="enable.offline.push.ssl.allowlist")
   public static final String ENABLE_OFFLINE_PUSH_SSL_WHITELIST = "enable.offline.push.ssl.whitelist";
   /**
-   * The switcher to enable/disable the whitelist of ssl hybrid pushes including both batch and near-line pushes for
-   * that store. If we disable the whitelist here, depends on the config "SSL_TO_KAFKA", all pushes will be secured by
+   * The switcher to enable/disable the allowlist of ssl offline pushes. If we disable the allowlist here, depends on
+   * the config "SSL_TO_KAFKA", all pushes will be secured by SSL or none of pushes will be secured by SSL.
+   */
+  public static final String ENABLE_OFFLINE_PUSH_SSL_ALLOWLIST = "enable.offline.push.ssl.allowlist";
+
+  // go/inclusivecode deprecated(alias="enable.hybrid.push.ssl.allowlist")
+  public static final String ENABLE_HYBRID_PUSH_SSL_WHITELIST = "enable.hybrid.push.ssl.whitelist";
+  /**
+   * The switcher to enable/disable the allowlist of ssl hybrid pushes including both batch and near-line pushes for
+   * that store. If we disable the allowlist here, depends on the config "SSL_TO_KAFKA", all pushes will be secured by
    * SSL or none of pushes will be secured by SSL.
    */
-  public static final String ENABLE_HYBRID_PUSH_SSL_WHITELIST = "enable.hybrid.push.ssl.whitelist";
+  public static final String ENABLE_HYBRID_PUSH_SSL_ALLOWLIST = "enable.hybrid.push.ssl.allowlist";
+
+  // go/inclusivecode deprecated(alias="push.ssl.allowlist")
+  public static final String PUSH_SSL_WHITELIST = "push.ssl.whitelist";
 
   /**
-   * Whitelist of stores which are allowed to push data with SSL.
+   * Allowlist of stores which are allowed to push data with SSL.
    */
-  public static final String PUSH_SSL_WHITELIST = "push.ssl.whitelist";
+  public static final String PUSH_SSL_ALLOWLIST = "push.ssl.allowlist";
 
   /**
    * Whether to block storage requests on the non-ssl port.  Will still allow metadata requests on the non-ssl port

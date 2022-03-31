@@ -98,7 +98,7 @@ public class JobRoutes extends AbstractRoute {
       ControllerResponse responseObject = new ControllerResponse();
       response.type(HttpConstants.JSON);
       try {
-        // Also allow whitelist users to run this command
+        // Also allow allowlist users to run this command
         if (!isAllowListUser(request) && !hasWriteAccessToTopic(request)) {
           response.status(HttpStatus.SC_FORBIDDEN);
           responseObject.setError(

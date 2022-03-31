@@ -28,7 +28,6 @@ import org.apache.samza.system.SystemStream;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
-import org.testng.annotations.Test;
 
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.*;
 import static com.linkedin.venice.ConfigKeys.*;
@@ -100,7 +99,7 @@ public class TestActiveActiveReplicationWithDownColo {
             Optional.of(controllerProps),
             Optional.of(new VeniceProperties(serverProperties)),
             false,
-            MirrorMakerWrapper.DEFAULT_TOPIC_WHITELIST,
+            MirrorMakerWrapper.DEFAULT_TOPIC_ALLOWLIST,
             false,
             Optional.of(parentKafkaPort));
     childDatacenters = multiColoMultiClusterWrapper.getClusters();
@@ -130,7 +129,7 @@ public class TestActiveActiveReplicationWithDownColo {
     String clusterName = CLUSTER_NAMES[0];
     String storeName = Utils.getUniqueString("test-store");
     VeniceControllerWrapper parentController =
-        parentControllers.stream().filter(c -> c.isMasterController(clusterName)).findAny().get();
+        parentControllers.stream().filter(c -> c.isLeaderController(clusterName)).findAny().get();
     try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentController.getControllerUrl())) {
       parentControllerClient.createNewStore(storeName, "owner", INT_SCHEMA, STRING_SCHEMA);
       ActiveActiveReplicationForHybridTest.updateStore(storeName, parentControllerClient, Optional.of(true), Optional.of(true), Optional.of(false));
@@ -141,7 +140,7 @@ public class TestActiveActiveReplicationWithDownColo {
 
     // Verify that version 1 is created in all colos
     for(int i = 0; i < NUMBER_OF_CHILD_DATACENTERS; i++) {
-      try (ControllerClient childControllerClient = new ControllerClient(clusterName, childDatacenters.get(i).getMasterController(clusterName).getControllerUrl())) {
+      try (ControllerClient childControllerClient = new ControllerClient(clusterName, childDatacenters.get(i).getLeaderController(clusterName).getControllerUrl())) {
         TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
           StoreResponse storeResponse = childControllerClient.getStore(storeName);
           Assert.assertFalse(storeResponse.isError());
@@ -225,7 +224,7 @@ public class TestActiveActiveReplicationWithDownColo {
 
     // Lets verify from the other two colos
     for(int i = 0; i < NUMBER_OF_CHILD_DATACENTERS - 1; i++) {
-      try (ControllerClient childControllerClient = new ControllerClient(clusterName, childDatacenters.get(i).getMasterController(clusterName).getControllerUrl())) {
+      try (ControllerClient childControllerClient = new ControllerClient(clusterName, childDatacenters.get(i).getLeaderController(clusterName).getControllerUrl())) {
         TestUtils.waitForNonDeterministicAssertion(6000, TimeUnit.SECONDS, () -> {
           StoreResponse storeResponse = childControllerClient.getStore(storeName);
           Assert.assertFalse(storeResponse.isError());

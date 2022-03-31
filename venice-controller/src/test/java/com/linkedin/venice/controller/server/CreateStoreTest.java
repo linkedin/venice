@@ -129,7 +129,7 @@ public class CreateStoreTest {
   }
 
   @Test
-  public void testCreateStoreWhenNotMasterController() throws Exception {
+  public void testCreateStoreWhenNotLeaderController() throws Exception {
     Admin admin = mock(Admin.class);
     Request request = mock(Request.class);
     Response response = mock(Response.class);

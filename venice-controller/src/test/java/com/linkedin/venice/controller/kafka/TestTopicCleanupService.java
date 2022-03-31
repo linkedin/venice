@@ -194,7 +194,7 @@ public class TestTopicCleanupService {
 
     doReturn(false).when(admin).isTopicTruncatedBasedOnRetention(Long.MAX_VALUE);
     doReturn(true).when(admin).isTopicTruncatedBasedOnRetention(1000L);
-    doReturn(true).when(admin).isMasterControllerOfControllerCluster();
+    doReturn(true).when(admin).isLeaderControllerOfControllerCluster();
     // Resource is still alive
     doReturn(true).when(admin).isResourceStillAlive(storeName2 + "_v2");
 
@@ -218,7 +218,7 @@ public class TestTopicCleanupService {
   }
 
   @Test
-  public void testRunWhenCurrentControllerChangeFromMasterToSlave() throws Exception {
+  public void testRunWhenCurrentControllerChangeFromLeaderToFollower() throws Exception {
     String storeName1 = Utils.getUniqueString("store1");
     doReturn(Optional.of(new StoreConfig(storeName1))).when(storeConfigRepository).getStoreConfig(storeName1);
     Map<String, Long> storeTopics1 = new HashMap<>();
@@ -233,12 +233,12 @@ public class TestTopicCleanupService {
 
     doReturn(false).when(admin).isTopicTruncatedBasedOnRetention(Long.MAX_VALUE);
     doReturn(true).when(admin).isTopicTruncatedBasedOnRetention(1000L);
-    when(admin.isMasterControllerOfControllerCluster()).thenReturn(true).thenReturn(false);
+    when(admin.isLeaderControllerOfControllerCluster()).thenReturn(true).thenReturn(false);
 
     topicCleanupService.start();
     TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
-      // As long as admin#isMasterControllerOfControllerCluster has been invoked 3 times, all the store cleanup logic should be done already
-      verify(admin, atLeast(3)).isMasterControllerOfControllerCluster();
+      // As long as admin#isLeaderControllerOfControllerCluster has been invoked 3 times, all the store cleanup logic should be done already
+      verify(admin, atLeast(3)).isLeaderControllerOfControllerCluster();
     });
     verify(topicManager, never()).ensureTopicIsDeletedAndBlock(storeName1 + "_v1");
     verify(topicManager, never()).ensureTopicIsDeletedAndBlock(storeName1 + "_v2");
@@ -249,7 +249,7 @@ public class TestTopicCleanupService {
   }
 
   @Test
-  public void testRunWhenCurrentControllerChangeFromSlaveToMaster() throws Exception {
+  public void testRunWhenCurrentControllerChangeFromFollowerToLeader() throws Exception {
     String storeName1 = Utils.getUniqueString("store1");
     doReturn(Optional.of(new StoreConfig(storeName1))).when(storeConfigRepository).getStoreConfig(storeName1);
     Map<String, Long> storeTopics1 = new HashMap<>();
@@ -264,7 +264,7 @@ public class TestTopicCleanupService {
 
     doReturn(false).when(admin).isTopicTruncatedBasedOnRetention(Long.MAX_VALUE);
     doReturn(true).when(admin).isTopicTruncatedBasedOnRetention(1000L);
-    when(admin.isMasterControllerOfControllerCluster()).thenReturn(false).thenReturn(true);
+    when(admin.isLeaderControllerOfControllerCluster()).thenReturn(false).thenReturn(true);
 
     topicCleanupService.start();
     TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {

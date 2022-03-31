@@ -56,7 +56,6 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
-import com.linkedin.venice.utils.locks.ClusterLockManager;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -1190,11 +1189,11 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     doReturn(failResponse).when(failClient).queryJobStatus(anyString(), any());
     clientMap.put(null, failClient);
 
-    // Completely failing client that cannot even complete mastership discovery.
+    // Completely failing client that cannot even complete leadership discovery.
     ControllerClient completelyFailingClient = mock(ControllerClient.class);
     doReturn(failResponse).when(completelyFailingClient).queryJobStatus(anyString(), any());
-    String completelyFailingExceptionMessage = "Unable to discover master controller";
-    doThrow(new VeniceException(completelyFailingExceptionMessage)).when(completelyFailingClient).getMasterControllerUrl();
+    String completelyFailingExceptionMessage = "Unable to discover leader controller";
+    doThrow(new VeniceException(completelyFailingExceptionMessage)).when(completelyFailingClient).getLeaderControllerUrl();
 
     // Verify clients work as expected
     for (ExecutionStatus status : ExecutionStatus.values()) {

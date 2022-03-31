@@ -45,7 +45,6 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Optional;
 import java.util.Properties;
-import java.util.Random;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
@@ -115,7 +114,7 @@ public class TestStoreMigration {
         Optional.of(childControllerProperties),
         Optional.of(new VeniceProperties(serverProperties)),
         true,
-        MirrorMakerWrapper.DEFAULT_TOPIC_WHITELIST);
+        MirrorMakerWrapper.DEFAULT_TOPIC_ALLOWLIST);
 
     multiClusterWrapper = twoLayerMultiColoMultiClusterWrapper.getClusters().get(0);
     String[] clusterNames = multiClusterWrapper.getClusterNames();

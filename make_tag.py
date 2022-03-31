@@ -2,6 +2,7 @@
 
 # To use, just execute the script from the root directory of your checked out venice repository
 # It will parse the output of `git tag` to identify the correct next version, then it will
+# /go/inclusivecode deferred(branch migrations will be done later)
 # create the tag and push it to master
 
 import sys
@@ -54,6 +55,7 @@ def getRemote():
   raise Exception("Failed to parse remotes for this git repository")
 
 def makeTag(remote):
+  # /go/inclusivecode deferred(branch migrations will be done later)
   pull_success = call(["git", "pull", "--rebase", remote, "master"])
   if pull_success != 0:
     sys.exit()
@@ -66,6 +68,7 @@ def makeTag(remote):
   call(["git", "push", remote, tag_name])
 
 def getTags(remote):
+  # /go/inclusivecode deferred(branch migrations will be done later)
   call(["git", "fetch", remote, "master", "--tags"])
 
 remote = getRemote()

@@ -244,24 +244,24 @@ public class TestHelixExternalViewRepository {
   @Test
   public void testControllerChanged()
       throws Exception {
-    Instance master = repository.getMasterController();
-    Assert.assertEquals(master.getHost(), Utils.getHostName());
-    Assert.assertEquals(master.getPort(), adminPort);
+    Instance leaderController = repository.getLeaderController();
+    Assert.assertEquals(leaderController.getHost(), Utils.getHostName());
+    Assert.assertEquals(leaderController.getPort(), adminPort);
 
     //Start up stand by controller by different port
     int newAdminPort = adminPort + 1;
-    SafeHelixManager newMaster = new SafeHelixManager(
+    SafeHelixManager newLeader = new SafeHelixManager(
         HelixManagerFactory.getZKHelixManager(
             clusterName, Utils.getHelixNodeIdentifier(newAdminPort), InstanceType.CONTROLLER, zkAddress));
-    newMaster.connect();
-    //Stop master and wait stand by become master
+    newLeader.connect();
+    //Stop leader and wait stand by become leader
     controller.disconnect();
     Thread.sleep(1000l);
-    master = repository.getMasterController();
-    Assert.assertEquals(master.getHost(), Utils.getHostName());
-    Assert.assertEquals(master.getPort(), newAdminPort);
+    leaderController = repository.getLeaderController();
+    Assert.assertEquals(leaderController.getHost(), Utils.getHostName());
+    Assert.assertEquals(leaderController.getPort(), newAdminPort);
 
-    newMaster.disconnect();
+    newLeader.disconnect();
   }
 
   @Test

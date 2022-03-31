@@ -59,9 +59,9 @@ public class VeniceControllerClusterConfig {
   private String sslFactoryClassName;
   private int refreshAttemptsForZkReconnect;
   private long refreshIntervalForZkReconnectInMs;
-  private boolean enableOfflinePushSSLWhitelist;
-  private boolean enableNearlinePushSSLWhitelist;
-  private List<String> pushSSLWhitelist;
+  private boolean enableOfflinePushSSLAllowlist;
+  private boolean enableNearlinePushSSLAllowlist;
+  private List<String> pushSSLAllowlist;
 
   /**
    * TODO: the follower 3 cluster level configs remains in the code base in case the new cluster level configs are not
@@ -336,9 +336,13 @@ public class VeniceControllerClusterConfig {
     refreshAttemptsForZkReconnect = props.getInt(REFRESH_ATTEMPTS_FOR_ZK_RECONNECT, 3);
     refreshIntervalForZkReconnectInMs =
         props.getLong(REFRESH_INTERVAL_FOR_ZK_RECONNECT_MS, java.util.concurrent.TimeUnit.SECONDS.toMillis(10));
-    enableOfflinePushSSLWhitelist = props.getBoolean(ENABLE_OFFLINE_PUSH_SSL_WHITELIST, true);
-    enableNearlinePushSSLWhitelist = props.getBoolean(ENABLE_HYBRID_PUSH_SSL_WHITELIST, true);
-    pushSSLWhitelist = props.getList(PUSH_SSL_WHITELIST, new ArrayList<>());
+    enableOfflinePushSSLAllowlist = props.getBooleanWithAlternative(ENABLE_OFFLINE_PUSH_SSL_ALLOWLIST,
+        // go/inclusivecode deferred(Reference will be removed when clients have migrated)
+        ENABLE_OFFLINE_PUSH_SSL_WHITELIST, true);
+    enableNearlinePushSSLAllowlist = props.getBooleanWithAlternative(ENABLE_HYBRID_PUSH_SSL_ALLOWLIST,
+        // go/inclusivecode deferred(Reference will be removed when clients have migrated)
+        ENABLE_HYBRID_PUSH_SSL_WHITELIST, true);
+    pushSSLAllowlist = props.getListWithAlternative(PUSH_SSL_ALLOWLIST, PUSH_SSL_WHITELIST, new ArrayList<>());
     helixRebalanceAlg = props.getString(HELIX_REBALANCE_ALG, CrushRebalanceStrategy.class.getName());
     adminTopicReplicationFactor = props.getInt(ADMIN_TOPIC_REPLICATION_FACTOR, 3);
     this.pushMonitorType = PushMonitorType
@@ -470,16 +474,16 @@ public class VeniceControllerClusterConfig {
     return refreshIntervalForZkReconnectInMs;
   }
 
-  public boolean isEnableOfflinePushSSLWhitelist() {
-    return enableOfflinePushSSLWhitelist;
+  public boolean isEnableOfflinePushSSLAllowlist() {
+    return enableOfflinePushSSLAllowlist;
   }
 
-  public List<String> getPushSSLWhitelist() {
-    return pushSSLWhitelist;
+  public List<String> getPushSSLAllowlist() {
+    return pushSSLAllowlist;
   }
 
-  public boolean isEnableNearlinePushSSLWhitelist() {
-    return enableNearlinePushSSLWhitelist;
+  public boolean isEnableNearlinePushSSLAllowlist() {
+    return enableNearlinePushSSLAllowlist;
   }
 
   public String getHelixRebalanceAlg() {

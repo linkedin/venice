@@ -48,7 +48,7 @@ public class TestVsonStoreBatch {
   public void setUp() {
     veniceCluster = ServiceFactory.getVeniceCluster();
     controllerClient = new ControllerClient(veniceCluster.getClusterName(),
-        veniceCluster.getMasterVeniceController().getControllerUrl());
+        veniceCluster.getLeaderVeniceController().getControllerUrl());
   }
 
   @AfterClass

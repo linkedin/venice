@@ -15,18 +15,26 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.ExecutionException;
 import org.testng.Assert;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
 public class TestSslTransportClient {
-  @Test
-  public void SslTransportClientCanTalkToRouter() throws ExecutionException, InterruptedException, IOException {
+  @DataProvider(name = "leaderControllerPathProvider")
+  private static Object[][] dataProvider() {
+    // go/inclusivecode deprecated (alias="leader_controller")
+    return new Object[][] {{"/master_controller"},
+        {"/leader_controller"}};
+  }
+
+  @Test(dataProvider = "leaderControllerPathProvider")
+  public void SslTransportClientCanTalkToRouter(String leaderControllerPath) throws ExecutionException, InterruptedException, IOException {
     try (ZkServerWrapper zkServer = ServiceFactory.getZkServer();
         MockVeniceRouterWrapper router = ServiceFactory.getMockVeniceRouter(zkServer.getAddress(), true, new Properties())) {
       String routerSslUrl = "https://" + router.getHost() + ":" + router.getSslPort();
       try (HttpsTransportClient client = new HttpsTransportClient(routerSslUrl, SslUtils.getLocalSslFactory())) {
 
-        TransportClientResponse transportClientResponse = client.get("/master_controller").get();
+        TransportClientResponse transportClientResponse = client.get(leaderControllerPath).get();
         byte[] response = transportClientResponse.getBody();
 
         String responseJson = new String(response, StandardCharsets.UTF_8);

@@ -360,7 +360,7 @@ public class TestAdminSparkServerWithMultiServers {
 
   @Test(timeOut = TEST_TIMEOUT)
   public void controllerClientCanRemoveNodeFromCluster() {
-    Admin admin = cluster.getMasterVeniceController().getVeniceAdmin();
+    Admin admin = cluster.getLeaderVeniceController().getVeniceAdmin();
     VeniceServerWrapper server = cluster.getVeniceServers().get(0);
     String nodeId = Utils.getHelixNodeIdentifier(server.getPort());
     // Trying to remove a live node.

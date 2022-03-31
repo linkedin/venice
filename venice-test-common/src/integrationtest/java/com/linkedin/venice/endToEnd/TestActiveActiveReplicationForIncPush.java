@@ -73,7 +73,7 @@ public class TestActiveActiveReplicationForIncPush {
      * Reduce leader promotion delay to 3 seconds;
      * Create a testing environment with 1 parent fabric and 3 child fabrics;
      * Set server and replication factor to 2 to ensure at least 1 leader replica and 1 follower replica;
-     * KMM whitelist config allows replicating all topics.
+     * KMM allowlist config allows replicating all topics.
      */
     Properties serverProperties = new Properties();
     serverProperties.put(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 1L);
@@ -92,7 +92,7 @@ public class TestActiveActiveReplicationForIncPush {
     controllerProps.put(CHILD_DATA_CENTER_KAFKA_ZK_PREFIX + "." + "corp-venice-native", corpVeniceNativeKafka.getZkAddress());
     controllerProps.put(LF_MODEL_DEPENDENCY_CHECK_DISABLED, "true");
     controllerProps.put(AGGREGATE_REAL_TIME_SOURCE_REGION, DEFAULT_PARENT_DATA_CENTER_REGION_NAME);
-    controllerProps.put(NATIVE_REPLICATION_FABRIC_WHITELIST, DEFAULT_PARENT_DATA_CENTER_REGION_NAME);
+    controllerProps.put(NATIVE_REPLICATION_FABRIC_ALLOWLIST, DEFAULT_PARENT_DATA_CENTER_REGION_NAME);
     int parentKafkaPort = Utils.getFreePort();
     controllerProps.put(CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + DEFAULT_PARENT_DATA_CENTER_REGION_NAME, "localhost:" + parentKafkaPort);
 
@@ -109,7 +109,7 @@ public class TestActiveActiveReplicationForIncPush {
             Optional.of(controllerProps),
             Optional.of(new VeniceProperties(serverProperties)),
             false,
-            MirrorMakerWrapper.DEFAULT_TOPIC_WHITELIST,
+            MirrorMakerWrapper.DEFAULT_TOPIC_ALLOWLIST,
             false,
             Optional.of(parentKafkaPort));
     childDatacenters = multiColoMultiClusterWrapper.getClusters();
@@ -137,7 +137,7 @@ public class TestActiveActiveReplicationForIncPush {
     File inputDirInc2 = getTempDataDirectory();
 
     VeniceControllerWrapper parentController =
-        parentControllers.stream().filter(c -> c.isMasterController(clusterName)).findAny().get();
+        parentControllers.stream().filter(c -> c.isLeaderController(clusterName)).findAny().get();
     String inputDirPathBatch = "file:" + inputDirBatch.getAbsolutePath();
     String inputDirPathInc1 = "file:" + inputDirInc1.getAbsolutePath();
     String inputDirPathInc2 = "file:" + inputDirInc2.getAbsolutePath();

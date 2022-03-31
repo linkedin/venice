@@ -15,7 +15,6 @@ import com.linkedin.venice.controller.kafka.protocol.admin.UpdateStore;
 import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
 import com.linkedin.venice.controller.kafka.protocol.enums.SchemaType;
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
-import com.linkedin.venice.controllerapi.ClusterStaleDataAuditResponse;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
@@ -93,7 +92,7 @@ public class TestMultiDataCenterPush {
     multiColoMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiColoMultiClusterWrapper(
         NUMBER_OF_CHILD_DATACENTERS, NUMBER_OF_CLUSTERS, 1, 1, 1, 1,
         1, Optional.empty(), Optional.empty(), Optional.of(new VeniceProperties(serverProperties)), false,
-        MirrorMakerWrapper.DEFAULT_TOPIC_WHITELIST);
+        MirrorMakerWrapper.DEFAULT_TOPIC_ALLOWLIST);
 
     childClusters = multiColoMultiClusterWrapper.getClusters();
     childControllers = childClusters.stream()
@@ -130,15 +129,15 @@ public class TestMultiDataCenterPush {
     Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir);
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
     String storeName = Utils.getUniqueString("store");
-    VeniceControllerWrapper parentController = multiColoMultiClusterWrapper.getMasterParentControllerWithRetries(clusterName);
-    Properties props = defaultH2VProps(parentController.getControllerUrl(), inputDirPath, storeName);
+    VeniceControllerWrapper leaderController = multiColoMultiClusterWrapper.getLeaderParentControllerWithRetries(clusterName);
+    Properties props = defaultH2VProps(leaderController.getControllerUrl(), inputDirPath, storeName);
     createStoreForJob(clusterName, recordSchema, props).close();
 
     try (VenicePushJob job = new VenicePushJob("Test push job", props)) {
       job.run();
       // Verify job properties
       Assert.assertEquals(job.getKafkaTopic(), Version.composeKafkaTopic(storeName, 1));
-      for (int version : parentController.getVeniceAdmin()
+      for (int version : leaderController.getVeniceAdmin()
           .getCurrentVersionsForMultiColos(clusterName, storeName)
           .values()) {
         Assert.assertEquals(version, 1);
@@ -183,7 +182,7 @@ public class TestMultiDataCenterPush {
     String v3Topic = storeName + "_v3";
 
     // Verify the topics in parent controller
-    TopicManager parentTopicManager = parentController.getVeniceAdmin().getTopicManager();
+    TopicManager parentTopicManager = leaderController.getVeniceAdmin().getTopicManager();
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
       Assert.assertFalse(parentTopicManager.containsTopicAndAllPartitionsAreOnline(v1Topic), "Topic: " + v1Topic + " should be deleted after push");
       Assert.assertFalse(parentTopicManager.containsTopicAndAllPartitionsAreOnline(v2Topic), "Topic: " + v2Topic + " should be deleted after push");
@@ -202,7 +201,7 @@ public class TestMultiDataCenterPush {
      * In order to speed up integration test, reuse the multi data center cluster for hybrid store RT topic retention time testing
      */
     String hybridStoreName = Utils.getUniqueString("hybrid_store");
-    Properties pushJobPropsForHybrid = defaultH2VProps(parentController.getControllerUrl(), inputDirPath, hybridStoreName);
+    Properties pushJobPropsForHybrid = defaultH2VProps(leaderController.getControllerUrl(), inputDirPath, hybridStoreName);
     // Create a hybrid store.
     createStoreForJob(clusterName, recordSchema, pushJobPropsForHybrid).close();
     /**
@@ -359,7 +358,7 @@ public class TestMultiDataCenterPush {
   @Test(timeOut = TEST_TIMEOUT)
   public void testFailedAdminMessages() {
     String clusterName = CLUSTER_NAMES[1];
-    VeniceControllerWrapper parentController = multiColoMultiClusterWrapper.getMasterParentControllerWithRetries(clusterName);
+    VeniceControllerWrapper parentController = multiColoMultiClusterWrapper.getLeaderParentControllerWithRetries(clusterName);
     Admin admin = parentController.getVeniceAdmin();
     VeniceWriterFactory veniceWriterFactory = admin.getVeniceWriterFactory();
     VeniceWriter<byte[], byte[], byte[]> veniceWriter = veniceWriterFactory.createBasicVeniceWriter(AdminTopicUtils.getTopicNameFromClusterName(CLUSTER_NAMES[1]));
@@ -420,7 +419,7 @@ public class TestMultiDataCenterPush {
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
     String storeName = Utils.getUniqueString("test-re-push-store");
     long userSetHybridRewindInSeconds = Time.SECONDS_PER_DAY;
-    VeniceControllerWrapper parentController = multiColoMultiClusterWrapper.getMasterParentControllerWithRetries(clusterName);
+    VeniceControllerWrapper parentController = multiColoMultiClusterWrapper.getLeaderParentControllerWithRetries(clusterName);
     Properties props = defaultH2VProps(parentController.getControllerUrl(), inputDirPath, storeName);
     createStoreForJob(clusterName, recordSchema, props).close();
     VeniceWriter<String, String, byte[]> incPushToVTWriter = null;

@@ -102,7 +102,7 @@ public class AdminExecutionTask implements Callable<Void> {
   public Void call() {
     while (!internalTopic.isEmpty()) {
       if (!admin.isLeaderControllerFor(clusterName)) {
-        throw new VeniceRetriableException("This controller is no longer the master of: " + clusterName
+        throw new VeniceRetriableException("This controller is no longer the leader of: " + clusterName
             + ". The consumption task should unsubscribe soon");
       }
       AdminOperationWrapper adminOperationWrapper = internalTopic.peek();

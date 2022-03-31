@@ -75,7 +75,7 @@ public class DataRecoveryTest {
 
     controllerProps.put(LF_MODEL_DEPENDENCY_CHECK_DISABLED, "true");
     controllerProps.put(AGGREGATE_REAL_TIME_SOURCE_REGION, DEFAULT_PARENT_DATA_CENTER_REGION_NAME);
-    controllerProps.put(NATIVE_REPLICATION_FABRIC_WHITELIST, DEFAULT_PARENT_DATA_CENTER_REGION_NAME + ", dc-0");
+    controllerProps.put(NATIVE_REPLICATION_FABRIC_ALLOWLIST, DEFAULT_PARENT_DATA_CENTER_REGION_NAME + ", dc-0");
     int parentKafkaPort = Utils.getFreePort();
     controllerProps.put(CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + DEFAULT_PARENT_DATA_CENTER_REGION_NAME,
         "localhost:" + parentKafkaPort);
@@ -86,7 +86,7 @@ public class DataRecoveryTest {
     multiColoMultiClusterWrapper =
         ServiceFactory.getVeniceTwoLayerMultiColoMultiClusterWrapper(NUMBER_OF_CHILD_DATACENTERS, NUMBER_OF_CLUSTERS, 1,
             1, 2, 1, 2, Optional.of(new VeniceProperties(controllerProps)), Optional.of(controllerProps),
-            Optional.of(new VeniceProperties(serverProperties)), false, MirrorMakerWrapper.DEFAULT_TOPIC_WHITELIST,
+            Optional.of(new VeniceProperties(serverProperties)), false, MirrorMakerWrapper.DEFAULT_TOPIC_ALLOWLIST,
             false, Optional.of(parentKafkaPort));
     childDatacenters = multiColoMultiClusterWrapper.getClusters();
     parentControllers = multiColoMultiClusterWrapper.getParentControllers();
@@ -142,7 +142,7 @@ public class DataRecoveryTest {
       Assert.assertFalse(
           parentControllerClient.dataRecovery("dc-0", "dc-1", storeName, 1, false, true, Optional.empty()).isError());
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
-        Admin dc1Admin = childDatacenters.get(1).getMasterController(clusterName).getVeniceAdmin();
+        Admin dc1Admin = childDatacenters.get(1).getLeaderController(clusterName).getVeniceAdmin();
         Assert.assertTrue(dc1Admin.getStore(clusterName, storeName).containsVersion(1));
         Assert.assertTrue(dc1Admin.getTopicManager().containsTopic(Version.composeKafkaTopic(storeName, 1)));
       });

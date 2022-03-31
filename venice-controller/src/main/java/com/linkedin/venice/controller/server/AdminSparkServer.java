@@ -121,16 +121,17 @@ public class AdminSparkServer extends AbstractVeniceService {
       stats.recordRequest();
       /**
        * If SSL is enforced, there is nothing to do in the secure admin server which has SSL enabled already;
-       * but in the insecure admin server, we need to fail most of the routes except cluster/master-controller
+       * but in the insecure admin server, we need to fail most of the routes except cluster/leader-controller
        * discovery.
        *
-       * TODO: Currently we allow insecure access to cluster/master-controller discovery because D2Client inside
+       * TODO: Currently we allow insecure access to cluster/leader-controller discovery because D2Client inside
        *       VeniceSystemProducer is not secure yet; once the new D2Client is used everywhere, we are safe to
        *       switch the controller D2 announcement result to the secure URL and stop insecure access to
-       *       cluster/master-controller discovery.
+       *       cluster/leader-controller discovery.
        */
       if (enforceSSL && !sslEnabled) {
-        if (!CLUSTER_DISCOVERY.pathEquals(request.uri()) && !MASTER_CONTROLLER.pathEquals(request.uri())) {
+        if (!CLUSTER_DISCOVERY.pathEquals(request.uri()) && !LEADER_CONTROLLER.pathEquals(request.uri())
+          && !MASTER_CONTROLLER.pathEquals(request.uri())) {
           httpService.halt(403, "Access denied, Venice Controller has enforced SSL.");
         }
       }
@@ -225,8 +226,10 @@ public class AdminSparkServer extends AbstractVeniceService {
     httpService.get(NODE_REPLICAS.getPath(), nodesAndReplicas.listReplicasForStorageNode(admin));
     httpService.get(NODE_REMOVABLE.getPath(), nodesAndReplicas.isNodeRemovable(admin));
     httpService.get(NODE_REPLICAS_READINESS.getPath(), nodesAndReplicas.nodeReplicasReadiness(admin));
-    httpService.post(WHITE_LIST_ADD_NODE.getPath(), nodesAndReplicas.addNodeIntoWhiteList(admin));
-    httpService.post(WHITE_LIST_REMOVE_NODE.getPath(), nodesAndReplicas.removeNodeFromWhiteList(admin));
+    httpService.post(WHITE_LIST_ADD_NODE.getPath(), nodesAndReplicas.addNodeIntoAllowList(admin));
+    httpService.post(ALLOW_LIST_ADD_NODE.getPath(), nodesAndReplicas.addNodeIntoAllowList(admin));
+    httpService.post(WHITE_LIST_REMOVE_NODE.getPath(), nodesAndReplicas.removeNodeFromAllowList(admin));
+    httpService.post(ALLOW_LIST_REMOVE_NODE.getPath(), nodesAndReplicas.removeNodeFromAllowList(admin));
     httpService.post(REMOVE_NODE.getPath(), nodesAndReplicas.removeNodeFromCluster(admin));
 
     // Operations for key schema/value schema
@@ -244,9 +247,10 @@ public class AdminSparkServer extends AbstractVeniceService {
     httpService.post(SET_OWNER.getPath(), storesRoutes.setOwner(admin));
     httpService.post(SET_PARTITION_COUNT.getPath(), storesRoutes.setPartitionCount(admin));
 
+    httpService.get(MASTER_CONTROLLER.getPath(), controllerRoutes.getLeaderController(admin));
     // This API should be used by CORP controller only. H2V could talk to any of controllers in CORP to find who is the
-    // current master CORP controller. In other colos, router will find the master controller instead of calling this API.
-    httpService.get(MASTER_CONTROLLER.getPath(), controllerRoutes.getMasterController(admin));
+    // current leader CORP controller. In other colos, router will find the leader controller instead of calling this API.
+    httpService.get(LEADER_CONTROLLER.getPath(), controllerRoutes.getLeaderController(admin));
 
     httpService.get(EXECUTION.getPath(), adminCommandExecutionRoutes.getExecution(admin));
     httpService.get(LAST_SUCCEED_EXECUTION_ID.getPath(), adminCommandExecutionRoutes.getLastSucceedExecutionId(admin));
@@ -346,9 +350,10 @@ public class AdminSparkServer extends AbstractVeniceService {
     if (StringUtils.isEmpty(clusterName) && !CLUSTER_DISCOVERY.pathEquals(request.pathInfo())) {
       throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, CLUSTER + " is a required parameter", ExceptionType.BAD_REQUEST);
     }
-    if (!MASTER_CONTROLLER.pathEquals(request.pathInfo())
+    if (!LEADER_CONTROLLER.pathEquals(request.pathInfo()) && !MASTER_CONTROLLER.pathEquals(request.pathInfo())
         && !CLUSTER_DISCOVERY.pathEquals(request.pathInfo()) && !admin.isLeaderControllerFor(clusterName)) {
-      // Skip master controller check for '/master_controller' and '/discover_cluster' request
+      // go/inclusivecode deprecated (alias="leader_controller")
+      // Skip leader controller check for '/master_controller' and '/discover_cluster' request
       throw new VeniceHttpException(HttpConstants.SC_MISDIRECTED_REQUEST, "This controller " + Utils.getHostName() + " is not the active controller", ExceptionType.INCORRECT_CONTROLLER);
     }
     for (String param : requiredParams) {

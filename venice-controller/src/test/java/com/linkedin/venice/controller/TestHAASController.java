@@ -12,7 +12,6 @@ import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
-import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -30,7 +29,6 @@ import org.apache.helix.model.LiveInstance;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
-import static com.linkedin.venice.ConfigKeys.*;
 import static org.mockito.Mockito.*;
 import static org.testng.Assert.*;
 
@@ -56,9 +54,9 @@ public class TestHAASController {
         HelixAsAServiceWrapper helixAsAServiceWrapper = startAndWaitForHAASToBeAvailable(venice.getZk().getAddress())) {
       VeniceControllerWrapper controllerWrapper = venice.addVeniceController(enableControllerClusterHAASProperties);
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS,
-          () -> assertTrue(controllerWrapper.isMasterControllerOfControllerCluster(),
-              "The only Venice controller should be appointed the colo master"));
-      assertTrue(controllerWrapper.isMasterController(venice.getClusterName()),
+          () -> assertTrue(controllerWrapper.isLeaderControllerOfControllerCluster(),
+              "The only Venice controller should be appointed the colo leader"));
+      assertTrue(controllerWrapper.isLeaderController(venice.getClusterName()),
           "The only Venice controller should be the leader of Venice cluster " + venice.getClusterName());
       venice.addVeniceServer(new Properties(), new Properties());
       VersionCreationResponse response = venice.getNewStoreVersion();
@@ -91,9 +89,9 @@ public class TestHAASController {
       TestUtils.waitForNonDeterministicCompletion(30, TimeUnit.SECONDS,
           () -> {
             for (VeniceControllerWrapper newController : newControllers) {
-              if (newController.isMasterController(venice.getClusterName())) {
-                assertTrue(newController.isMasterControllerOfControllerCluster(),
-                    "The colo master Venice controller should be the leader of the only Venice cluster");
+              if (newController.isLeaderController(venice.getClusterName())) {
+                assertTrue(newController.isLeaderControllerOfControllerCluster(),
+                    "The colo leader Venice controller should be the leader of the only Venice cluster");
                 return true;
               }
             }
@@ -121,7 +119,7 @@ public class TestHAASController {
       VeniceControllerWrapper controllerWrapper =
           venice.addVeniceController(enableControllerAndStorageClusterHAASProperties);
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS,
-          () -> assertTrue(controllerWrapper.isMasterController(venice.getClusterName()),
+          () -> assertTrue(controllerWrapper.isLeaderController(venice.getClusterName()),
               "The only Venice controller should become the leader of the only Venice cluster"));
       venice.addVeniceServer(new Properties(), new Properties());
       venice.addVeniceServer(new Properties(), new Properties());

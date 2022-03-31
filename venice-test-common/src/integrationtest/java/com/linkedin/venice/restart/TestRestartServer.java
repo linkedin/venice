@@ -58,7 +58,7 @@ public class TestRestartServer {
 
     // Wait push completed.
     TestUtils.waitForNonDeterministicCompletion(20, TimeUnit.SECONDS,
-        () -> cluster.getMasterVeniceController()
+        () -> cluster.getLeaderVeniceController()
             .getVeniceAdmin()
             .getOffLinePushStatus(cluster.getClusterName(), topicName)
             .getExecutionStatus()

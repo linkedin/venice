@@ -79,6 +79,7 @@ public class MirrorMakerTest {
         + " --kafka-zk-url-source " + sourceKafka.getZkAddress()
         + " --kafka-zk-url-dest " + destinationKafka.getZkAddress()
         + " --kafka-bootstrap-servers-dest " + destinationKafka.getAddress()
+        // go/inclusivelanguage deferred(will be changed when mirrormaker provides alias)
         + " --kafka-topic-whitelist '.*'";
     String cliCommand = "java -jar venice-admin-tool/build/libs/venice-admin-tool-0.1.jar " + cliCommandParams;
     LOGGER.info("Manual MM params for admin-tool: \n" + cliCommand);
@@ -164,34 +165,34 @@ public class MirrorMakerTest {
   }
 
   @Test
-  public void whitelistRegexTest() {
+  public void allowlistRegexTest() {
     String topic1 = "topic1";
     String topic2 = "topic_2";
 
-    String whitelistForTopic1 = topic1;
-    String whitelistForTopic2 = topic2;
-    String whitelistForBothTopics = topic1 + "|" + topic2;
-    String whitelistForBothTopicsWithCSV = topic1 + "," + topic2;
+    String allowlistForTopic1 = topic1;
+    String allowlistForTopic2 = topic2;
+    String allowlistForBothTopics = topic1 + "|" + topic2;
+    String allowlistForBothTopicsWithCSV = topic1 + "," + topic2;
 
-    Assert.assertTrue(Pattern.matches(whitelistForTopic1, topic1));
-    Assert.assertFalse(Pattern.matches(whitelistForTopic2, topic1));
-    Assert.assertTrue(Pattern.matches(whitelistForTopic2, topic2));
-    Assert.assertFalse(Pattern.matches(whitelistForTopic1, topic2));
-    Assert.assertTrue(Pattern.matches(whitelistForBothTopics, topic1));
-    Assert.assertTrue(Pattern.matches(whitelistForBothTopics, topic2));
+    Assert.assertTrue(Pattern.matches(allowlistForTopic1, topic1));
+    Assert.assertFalse(Pattern.matches(allowlistForTopic2, topic1));
+    Assert.assertTrue(Pattern.matches(allowlistForTopic2, topic2));
+    Assert.assertFalse(Pattern.matches(allowlistForTopic1, topic2));
+    Assert.assertTrue(Pattern.matches(allowlistForBothTopics, topic1));
+    Assert.assertTrue(Pattern.matches(allowlistForBothTopics, topic2));
 
-    Whitelist kafkaWhiteListForTopic1 = new Whitelist(whitelistForTopic1);
-    Whitelist kafkaWhiteListForTopic2 = new Whitelist(whitelistForTopic2);
-    Whitelist kafkaWhiteListForBothTopics = new Whitelist(whitelistForBothTopics);
-    Whitelist kafkaWhiteListForBothTopicsWithCSV = new Whitelist(whitelistForBothTopicsWithCSV);
+    Whitelist kafkaAllowListForTopic1 = new Whitelist(allowlistForTopic1);
+    Whitelist kafkaAllowListForTopic2 = new Whitelist(allowlistForTopic2);
+    Whitelist kafkaAllowListForBothTopics = new Whitelist(allowlistForBothTopics);
+    Whitelist kafkaAllowListForBothTopicsWithCSV = new Whitelist(allowlistForBothTopicsWithCSV);
 
-    Assert.assertTrue(kafkaWhiteListForTopic1.isTopicAllowed(topic1, true));
-    Assert.assertFalse(kafkaWhiteListForTopic2.isTopicAllowed(topic1, true));
-    Assert.assertTrue(kafkaWhiteListForTopic2.isTopicAllowed(topic2, true));
-    Assert.assertFalse(kafkaWhiteListForTopic1.isTopicAllowed(topic2, true));
-    Assert.assertTrue(kafkaWhiteListForBothTopics.isTopicAllowed(topic1, true));
-    Assert.assertTrue(kafkaWhiteListForBothTopics.isTopicAllowed(topic2, true));
-    Assert.assertTrue(kafkaWhiteListForBothTopicsWithCSV.isTopicAllowed(topic1, true));
-    Assert.assertTrue(kafkaWhiteListForBothTopicsWithCSV.isTopicAllowed(topic2, true));
+    Assert.assertTrue(kafkaAllowListForTopic1.isTopicAllowed(topic1, true));
+    Assert.assertFalse(kafkaAllowListForTopic2.isTopicAllowed(topic1, true));
+    Assert.assertTrue(kafkaAllowListForTopic2.isTopicAllowed(topic2, true));
+    Assert.assertFalse(kafkaAllowListForTopic1.isTopicAllowed(topic2, true));
+    Assert.assertTrue(kafkaAllowListForBothTopics.isTopicAllowed(topic1, true));
+    Assert.assertTrue(kafkaAllowListForBothTopics.isTopicAllowed(topic2, true));
+    Assert.assertTrue(kafkaAllowListForBothTopicsWithCSV.isTopicAllowed(topic1, true));
+    Assert.assertTrue(kafkaAllowListForBothTopicsWithCSV.isTopicAllowed(topic2, true));
   }
 }

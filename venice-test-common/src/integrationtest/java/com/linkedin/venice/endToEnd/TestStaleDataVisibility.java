@@ -1,61 +1,22 @@
 package com.linkedin.venice.endToEnd;
 
 import com.linkedin.venice.ConfigKeys;
-import com.linkedin.venice.client.store.AvroGenericStoreClient;
-import com.linkedin.venice.client.store.ClientConfig;
-import com.linkedin.venice.client.store.ClientFactory;
-import com.linkedin.venice.compression.CompressionStrategy;
-import com.linkedin.venice.controller.Admin;
-import com.linkedin.venice.controller.kafka.AdminTopicUtils;
-import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
-import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
-import com.linkedin.venice.controller.kafka.protocol.admin.SchemaMeta;
-import com.linkedin.venice.controller.kafka.protocol.admin.StoreCreation;
-import com.linkedin.venice.controller.kafka.protocol.admin.UpdateStore;
-import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
-import com.linkedin.venice.controller.kafka.protocol.enums.SchemaType;
-import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
 import com.linkedin.venice.controllerapi.ClusterStaleDataAuditResponse;
 import com.linkedin.venice.controllerapi.StoreHealthAuditResponse;
 import com.linkedin.venice.controllerapi.ControllerClient;
-import com.linkedin.venice.controllerapi.ControllerResponse;
-import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
-import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
-import com.linkedin.venice.controllerapi.VersionCreationResponse;
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.integration.utils.MirrorMakerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiColoMultiClusterWrapper;
-import com.linkedin.venice.kafka.TopicManager;
-import com.linkedin.venice.meta.IncrementalPushPolicy;
-import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.StoreInfo;
-import com.linkedin.venice.meta.StoreDataAudit;
-import com.linkedin.venice.pushmonitor.ExecutionStatus;
-import com.linkedin.venice.pushmonitor.StatusSnapshot;
-import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
-import com.linkedin.venice.utils.DataProviderUtils;
-import com.linkedin.venice.utils.TestPushUtils;
-import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
-import com.linkedin.venice.writer.VeniceWriter;
-import com.linkedin.venice.writer.VeniceWriterFactory;
 
-import io.tehuti.Metric;
-
-import java.util.Collections;
-import java.util.HashMap;
 import java.util.Optional;
-import java.util.Set;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
 import org.apache.avro.Schema;
-import org.apache.avro.util.Utf8;
 import org.apache.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
@@ -63,15 +24,12 @@ import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 import java.io.File;
-import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
-import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
-import static com.linkedin.venice.hadoop.VenicePushJob.*;
 import static com.linkedin.venice.utils.TestPushUtils.*;
 
 public class TestStaleDataVisibility {
@@ -97,7 +55,7 @@ public class TestStaleDataVisibility {
     multiColoMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiColoMultiClusterWrapper(
       NUMBER_OF_CHILD_DATACENTERS, NUMBER_OF_CLUSTERS, 1, 1, 1, 1,
       1, Optional.empty(), Optional.of(childControllerProperties), Optional.of(new VeniceProperties(serverProperties)), false,
-      MirrorMakerWrapper.DEFAULT_TOPIC_WHITELIST);
+      MirrorMakerWrapper.DEFAULT_TOPIC_ALLOWLIST);
 
     childClusters = multiColoMultiClusterWrapper.getClusters();
     childControllers = childClusters.stream()
@@ -135,7 +93,7 @@ public class TestStaleDataVisibility {
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
     String storeName = Utils.getUniqueString("store");
     VeniceControllerWrapper parentController =
-        parentControllers.stream().filter(c -> c.isMasterController(clusterName)).findAny().get();
+        parentControllers.stream().filter(c -> c.isLeaderController(clusterName)).findAny().get();
 
     // create a store via parent controller url
     Properties props = defaultH2VProps(parentController.getControllerUrl(), inputDirPath, storeName);

@@ -7,7 +7,6 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.helix.VeniceJsonSerializer;
 import com.linkedin.venice.meta.IncrementalPushPolicy;
-import com.linkedin.venice.meta.RegionPushDetails;
 import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
@@ -52,7 +51,7 @@ public class ControllerClient implements Closeable {
   private final String clusterName;
   private final String localHostName;
   private final VeniceJsonSerializer<Version> versionVeniceJsonSerializer = new VeniceJsonSerializer<>(Version.class);
-  private String masterControllerUrl;
+  private String leaderControllerUrl;
   private final List<String> controllerDiscoveryUrls;
 
   private static final Map<String, ControllerClient> clusterToClientMap = new VeniceConcurrentHashMap<>();
@@ -85,7 +84,7 @@ public class ControllerClient implements Closeable {
   }
 
   /**
-   * @param discoveryUrls comma-delimited urls to find master controller.
+   * @param discoveryUrls comma-delimited urls to find leader controller.
    */
   public ControllerClient(String clusterName, String discoveryUrls, Optional<SSLFactory> sslFactory) {
     if (StringUtils.isEmpty(discoveryUrls)) {
@@ -129,7 +128,7 @@ public class ControllerClient implements Closeable {
     clusterToClientMap.clear();
   }
 
-  protected String discoverMasterController() {
+  protected String discoverLeaderController() {
     List<String> urls = new ArrayList<>(this.controllerDiscoveryUrls);
     Collections.shuffle(urls);
 
@@ -137,16 +136,17 @@ public class ControllerClient implements Closeable {
     try (ControllerTransport transport = new ControllerTransport(sslFactory)) {
       for (String url : urls) {
         try {
-          String masterUrl = transport.request(url, ControllerRoute.MASTER_CONTROLLER, newParams(), MasterControllerResponse.class).getUrl();
-          logger.info("Discovered master controller " + masterUrl + " from " + url);
-          return masterUrl;
+          // TODO: Change this to LEADER_CONTROLLER after backend components with inclusive endpoints are deployed completely
+          String leaderControllerUrl = transport.request(url, ControllerRoute.MASTER_CONTROLLER, newParams(), LeaderControllerResponse.class).getUrl();
+          logger.info("Discovered leader controller " + leaderControllerUrl + " from " + url);
+          return leaderControllerUrl;
         } catch (Exception e) {
-          logger.warn("Unable to discover master controller from " + url);
+          logger.warn("Unable to discover leader controller from " + url);
           lastException = e;
         }
       }
     }
-    String message = "Unable to discover master controller from " + this.controllerDiscoveryUrls;
+    String message = "Unable to discover leader controller from " + this.controllerDiscoveryUrls;
     logger.error(message, lastException);
     throw new VeniceException(message, lastException);
   }
@@ -172,8 +172,8 @@ public class ControllerClient implements Closeable {
   }
 
   @Deprecated
-  public static StoreResponse getStore(String urlsToFindMasterController, String clusterName, String storeName) {
-    try (ControllerClient client = new ControllerClient(clusterName, urlsToFindMasterController)) {
+  public static StoreResponse getStore(String urlsToFindLeaderController, String clusterName, String storeName) {
+    try (ControllerClient client = new ControllerClient(clusterName, urlsToFindLeaderController)) {
       return client.getStore(storeName);
     }
   }
@@ -664,14 +664,14 @@ public class ControllerClient implements Closeable {
     return request(ControllerRoute.NODE_REMOVABLE, params, NodeStatusResponse.class);
   }
 
-  public ControllerResponse addNodeIntoWhiteList(String instanceId) {
+  public ControllerResponse addNodeIntoAllowList(String instanceId) {
     QueryParams params = newParams().add(STORAGE_NODE_ID, instanceId);
-    return request(ControllerRoute.WHITE_LIST_ADD_NODE, params, ControllerResponse.class);
+    return request(ControllerRoute.ALLOW_LIST_ADD_NODE, params, ControllerResponse.class);
   }
 
-  public ControllerResponse removeNodeFromWhiteList(String instanceId) {
+  public ControllerResponse removeNodeFromAllowList(String instanceId) {
     QueryParams params = newParams().add(STORAGE_NODE_ID, instanceId);
-    return request(ControllerRoute.WHITE_LIST_REMOVE_NODE, params, ControllerResponse.class);
+    return request(ControllerRoute.ALLOW_LIST_REMOVE_NODE, params, ControllerResponse.class);
   }
 
   public ControllerResponse removeNodeFromCluster(String instanceId) {
@@ -1111,23 +1111,23 @@ public class ControllerClient implements Closeable {
     try (ControllerTransport transport = new ControllerTransport(sslFactory)) {
       for (int attempt = 1; attempt <= maxAttempts; ++attempt) {
         try {
-          return transport.request(getMasterControllerUrl(), route, params, responseType, timeoutMs, data);
+          return transport.request(getLeaderControllerUrl(), route, params, responseType, timeoutMs, data);
         } catch (ExecutionException | TimeoutException e) {
-          // Controller is unreachable. Let's wait for a new master to be elected.
-          // Total wait time should be at least master election time (~30 seconds)
+          // Controller is unreachable. Let's wait for a new leader to be elected.
+          // Total wait time should be at least leader election time (~30 seconds)
           lastException = e;
         } catch (VeniceHttpException e) {
           if (e.getHttpStatusCode() != HttpConstants.SC_MISDIRECTED_REQUEST) {
             throw e;
           }
-          // Master controller has changed. Let's wait for a new master to realize it.
+          // leader controller has changed. Let's wait for a new leader to realize it.
           lastException = e;
         }
 
         if (attempt < maxAttempts) {
           logger.info("Retrying controller request" +
                   ", attempt=" + attempt + "/" + maxAttempts +
-                  ", controller=" + this.masterControllerUrl +
+                  ", controller=" + this.leaderControllerUrl +
                   ", route=" + route.getPath() +
                   ", params=" + params.getNameValuePairs() +
                   ", timeout=" + timeoutMs,
@@ -1140,7 +1140,7 @@ public class ControllerClient implements Closeable {
     }
 
     String message = "Unable to make controller request" +
-        ", controller=" + this.masterControllerUrl +
+        ", controller=" + this.leaderControllerUrl +
         ", route=" + route.getPath() +
         ", params=" + params.getAbbreviatedNameValuePairs() +
         ", timeout=" + timeoutMs;
@@ -1163,9 +1163,9 @@ public class ControllerClient implements Closeable {
     return this.clusterName;
   }
 
-  public String getMasterControllerUrl() {
-    this.masterControllerUrl = discoverMasterController();
-    return this.masterControllerUrl;
+  public String getLeaderControllerUrl() {
+    this.leaderControllerUrl = discoverLeaderController();
+    return this.leaderControllerUrl;
   }
 
   public Collection<String> getControllerDiscoveryUrls() {

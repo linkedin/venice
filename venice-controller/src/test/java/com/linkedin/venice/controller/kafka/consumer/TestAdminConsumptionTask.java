@@ -134,7 +134,7 @@ public class TestAdminConsumptionTask {
     mockKafkaConsumer = mock(KafkaConsumerWrapper.class);
 
     admin = mock(VeniceHelixAdmin.class);
-    // By default, current controller is the master controller
+    // By default, current controller is the leader controller
     doReturn(true).when(admin).isLeaderControllerFor(clusterName);
     doReturn(true).when(admin).isAdminTopicConsumptionEnabled(clusterName);
 
@@ -201,8 +201,8 @@ public class TestAdminConsumptionTask {
   }
 
   @Test (timeOut = TIMEOUT)
-  public void testRunWhenNotMasterController() throws IOException, InterruptedException {
-    // Update admin to be a slave controller
+  public void testRunWhenNotLeaderController() throws IOException, InterruptedException {
+    // Update admin to be a follower controller
     doReturn(false).when(admin).isLeaderControllerFor(clusterName);
 
     AdminConsumptionTask task = getAdminConsumptionTask(new RandomPollStrategy(), false);
@@ -675,7 +675,7 @@ public class TestAdminConsumptionTask {
     veniceWriter.put(emptyKeyBytes,
         getStoreCreationMessage(clusterName, storeName1, owner, keySchema, valueSchema, 1),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
-    // This scenario mostly happens when master controller fails over
+    // This scenario mostly happens when leader controller fails over
     veniceWriter = getVeniceWriter(inMemoryKafkaBroker);
     veniceWriter.put(emptyKeyBytes,
         getStoreCreationMessage(clusterName, storeName2, owner, keySchema, valueSchema, 2),
@@ -932,7 +932,7 @@ public class TestAdminConsumptionTask {
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
     TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS,
         () -> Assert.assertEquals(getLastExecutionId(clusterName), 2L));
-    // Mimic a transfer of mastership
+    // Mimic a transfer of leadership
     doReturn(false).when(admin).isLeaderControllerFor(clusterName);
     TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS,
         () -> Assert.assertEquals((long) task.getLastSucceededExecutionId(), -1));
@@ -972,8 +972,8 @@ public class TestAdminConsumptionTask {
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
     doThrow(new VeniceException("Mocked add version exception")).when(admin).addVersionAndStartIngestion(clusterName,
         storeName, mockPushJobId, 1, 1, Version.PushType.BATCH, null, -1, 1, false);
-    // isMasterController() is called once every consumption cycle (1000ms) and for every message processed in AdminExecutionTask.
-    // Provide a sufficient number of true -> false -> true to mimic a transfer of mastership and resubscribed behavior
+    // isLeaderController() is called once every consumption cycle (1000ms) and for every message processed in AdminExecutionTask.
+    // Provide a sufficient number of true -> false -> true to mimic a transfer of leaderShip and resubscribed behavior
     // while stuck on a failing message.
     when(admin.isLeaderControllerFor(clusterName)).thenReturn(
       true,true, true, true, true, false, false, false, true

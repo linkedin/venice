@@ -157,8 +157,8 @@ public class VeniceClusterWrapper extends ProcessWrapper {
       int numberOfRouters,
       int replicationFactor,
       int partitionSize,
-      boolean enableWhitelist,
-      boolean enableAutoJoinWhitelist,
+      boolean enableAllowlist,
+      boolean enableAutoJoinAllowlist,
       long rebalanceDelayMs,
       int minActiveReplica,
       boolean sslToStorageNodes,
@@ -198,8 +198,8 @@ public class VeniceClusterWrapper extends ProcessWrapper {
 
       for (int i = 0; i < numberOfServers; i++) {
         Properties featureProperties = new Properties();
-        featureProperties.setProperty(SERVER_ENABLE_SERVER_WHITE_LIST, Boolean.toString(enableWhitelist));
-        featureProperties.setProperty(SERVER_IS_AUTO_JOIN, Boolean.toString(enableAutoJoinWhitelist));
+        featureProperties.setProperty(SERVER_ENABLE_SERVER_WHITE_LIST, Boolean.toString(enableAllowlist));
+        featureProperties.setProperty(SERVER_IS_AUTO_JOIN, Boolean.toString(enableAutoJoinAllowlist));
         featureProperties.setProperty(SERVER_ENABLE_SSL, Boolean.toString(sslToStorageNodes));
         featureProperties.setProperty(SERVER_SSL_TO_KAFKA, Boolean.toString(sslToKafka));
         if (!veniceRouterWrappers.isEmpty()) {
@@ -237,7 +237,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
             final VeniceClusterWrapper finalClusterWrapper = veniceClusterWrapper;
             TestUtils.waitForNonDeterministicAssertion(2, TimeUnit.MINUTES, true, () -> {
               for (AvroProtocolDefinition avroProtocolDefinition : CLUSTER_LEADER_INITIALIZATION_ROUTINES) {
-                Store store = finalClusterWrapper.getMasterVeniceController().getVeniceAdmin().getStore(clusterName,
+                Store store = finalClusterWrapper.getLeaderVeniceController().getVeniceAdmin().getStore(clusterName,
                     avroProtocolDefinition.getSystemStoreName());
                 Assert.assertNotNull(store, "Store: " + avroProtocolDefinition.getSystemStoreName()
                     + " should be initialized by " + ClusterLeaderInitializationRoutine.class.getSimpleName());
@@ -245,7 +245,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
                   // Check against the HelixReadOnlyZKSharedSystemStoreRepository instead of the
                   // ReadWriteStoreRepository because of the way we implemented getStore for meta system stores in
                   // HelixReadOnlyStoreRepositoryAdapter.
-                  Store readOnlyStore = finalClusterWrapper.getMasterVeniceController().getVeniceAdmin()
+                  Store readOnlyStore = finalClusterWrapper.getLeaderVeniceController().getVeniceAdmin()
                       .getReadOnlyZKSharedSystemStoreRepository().getStore(avroProtocolDefinition.getSystemStoreName());
                   Assert.assertNotNull(readOnlyStore, "Store: " + avroProtocolDefinition.getSystemStoreName()
                       + "should be initialized by " + ClusterLeaderInitializationRoutine.class.getSimpleName());
@@ -278,8 +278,8 @@ public class VeniceClusterWrapper extends ProcessWrapper {
       int numberOfRouters,
       int replicationFactor,
       int partitionSize,
-      boolean enableWhitelist,
-      boolean enableAutoJoinWhitelist,
+      boolean enableAllowlist,
+      boolean enableAutoJoinAllowlist,
       long rebalanceDelayMs,
       int minActiveReplica,
       boolean sslToStorageNodes,
@@ -313,8 +313,8 @@ public class VeniceClusterWrapper extends ProcessWrapper {
           numberOfRouters,
           replicationFactor,
           partitionSize,
-          enableWhitelist,
-          enableAutoJoinWhitelist,
+          enableAllowlist,
+          enableAutoJoinAllowlist,
           rebalanceDelayMs,
           minActiveReplica,
           sslToStorageNodes,
@@ -453,21 +453,21 @@ public class VeniceClusterWrapper extends ProcessWrapper {
         .collect(Collectors.joining(","));
   }
 
-  public VeniceControllerWrapper getMasterVeniceController() {
-    return getMasterVeniceController(60 * Time.MS_PER_SECOND);
+  public VeniceControllerWrapper getLeaderVeniceController() {
+    return getLeaderVeniceController(60 * Time.MS_PER_SECOND);
   }
 
-  public synchronized VeniceControllerWrapper getMasterVeniceController(long timeoutMs) {
+  public synchronized VeniceControllerWrapper getLeaderVeniceController(long timeoutMs) {
     long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMs);
     while (System.nanoTime() < deadline) {
       for (VeniceControllerWrapper controller : veniceControllerWrappers.values()) {
-        if (controller.isRunning() && controller.isMasterController(clusterName)) {
+        if (controller.isRunning() && controller.isLeaderController(clusterName)) {
           return controller;
         }
       }
       Utils.sleep(Time.MS_PER_SECOND);
     }
-    throw new VeniceException("Master controller does not exist, cluster=" + clusterName);
+    throw new VeniceException("Leader controller does not exist, cluster=" + clusterName);
   }
 
   public VeniceControllerWrapper addVeniceController(Properties properties) {
@@ -501,14 +501,14 @@ public class VeniceClusterWrapper extends ProcessWrapper {
   /**
    * @deprecated Future use should consider {@link #addVeniceServer(Properties, Properties)}
    *
-   * @param enableWhitelist
-   * @param enableAutoJoinWhiteList
+   * @param enableAllowlist
+   * @param enableAutoJoinAllowList
    * @return
    */
-  public VeniceServerWrapper addVeniceServer(boolean enableWhitelist, boolean enableAutoJoinWhiteList) {
+  public VeniceServerWrapper addVeniceServer(boolean enableAllowlist, boolean enableAutoJoinAllowList) {
     Properties featureProperties = new Properties();
-    featureProperties.setProperty(SERVER_ENABLE_SERVER_WHITE_LIST, Boolean.toString(enableWhitelist));
-    featureProperties.setProperty(SERVER_IS_AUTO_JOIN, Boolean.toString(enableAutoJoinWhiteList));
+    featureProperties.setProperty(SERVER_ENABLE_SERVER_ALLOW_LIST, Boolean.toString(enableAllowlist));
+    featureProperties.setProperty(SERVER_IS_AUTO_JOIN, Boolean.toString(enableAutoJoinAllowList));
     VeniceServerWrapper veniceServerWrapper =
         ServiceFactory.getVeniceServer(clusterName, kafkaBrokerWrapper, getKafka().getZkAddress(), featureProperties, new Properties());
     synchronized (this) {
@@ -540,17 +540,17 @@ public class VeniceClusterWrapper extends ProcessWrapper {
   }
 
   /**
-   * Find the master controller, stop it and return its port.
+   * Find the leader controller, stop it and return its port.
    * @return
    */
-  public synchronized int stopMasterVeniceControler() {
+  public synchronized int stopLeaderVeniceControler() {
     try {
-      VeniceControllerWrapper masterController = getMasterVeniceController();
-      int port = masterController.getPort();
-      masterController.stop();
+      VeniceControllerWrapper leaderController = getLeaderVeniceController();
+      int port = leaderController.getPort();
+      leaderController.stop();
       return port;
     } catch (Exception e) {
-      throw new VeniceException("Can not stop master controller.", e);
+      throw new VeniceException("Can not stop leader controller.", e);
     }
   }
 
@@ -586,7 +586,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
    * @return the replicas which are effected after stopping this server.
    */
   public synchronized List<Replica> stopVeniceServer(int port) {
-    Admin admin = getMasterVeniceController().getVeniceAdmin();
+    Admin admin = getLeaderVeniceController().getVeniceAdmin();
     List<Replica> effectedReplicas = admin.getReplicasOfStorageNode(clusterName, Utils.getHelixNodeIdentifier(port));
     stopVeniceComponent(veniceServerWrappers, port);
     return effectedReplicas;
@@ -618,7 +618,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
    * know which server you should fail.
    */
   public synchronized List<VeniceServerWrapper> findVeniceServer(String resourceName, int partition, HelixState state) {
-    Admin admin = getMasterVeniceController().getVeniceAdmin();
+    Admin admin = getLeaderVeniceController().getVeniceAdmin();
 
     List<Replica> replicas = admin.getReplicas(clusterName, resourceName);
     List<VeniceServerWrapper> result = new ArrayList<>();

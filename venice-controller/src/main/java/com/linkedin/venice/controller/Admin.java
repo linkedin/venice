@@ -401,16 +401,16 @@ public interface Admin extends AutoCloseable, Closeable {
         boolean isFromInstanceView);
 
     /**
-     * Get instance of master controller. If there is no master controller for the given cluster, throw a
+     * Get instance of leader controller. If there is no leader controller for the given cluster, throw a
      * VeniceException.
      */
     Instance getLeaderController(String clusterName);
 
-    void addInstanceToWhitelist(String clusterName, String helixNodeId);
+    void addInstanceToAllowlist(String clusterName, String helixNodeId);
 
-    void removeInstanceFromWhiteList(String clusterName, String helixNodeId);
+    void removeInstanceFromAllowList(String clusterName, String helixNodeId);
 
-    Set<String> getWhitelist(String clusterName);
+    Set<String> getAllowlist(String clusterName);
 
     /**
      * Kill an offline push if it ran into errors or the corresponding version is being retired.
@@ -497,11 +497,11 @@ public interface Admin extends AutoCloseable, Closeable {
 
     /**
      * This function can be used to perform cluster-wide operations which need to be performed by a single process
-     * only in the whole cluster. There could be a race condition during master controller failover,
+     * only in the whole cluster. There could be a race condition during leader controller failover,
      * and so long operation should have some way of guarding against that.
      * @return
      */
-    boolean isMasterControllerOfControllerCluster();
+    boolean isLeaderControllerOfControllerCluster();
 
     boolean isTopicTruncated(String topicName);
 
