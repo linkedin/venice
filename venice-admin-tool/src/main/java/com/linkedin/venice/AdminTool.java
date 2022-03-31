@@ -1956,9 +1956,8 @@ public class AdminTool {
   private static void listClusterStaleStores(CommandLine cmd) {
     String clusterParam = getRequiredArgument(cmd, Arg.CLUSTER);
     String urlParam = getRequiredArgument(cmd, Arg.URL);
-    Optional<String> regionsFilterParam = Optional.ofNullable(getOptionalArgument(cmd, Arg.REGIONS_FILTER));
     ClusterStaleDataAuditResponse
-        response = controllerClient.getClusterStaleStores(clusterParam, urlParam, regionsFilterParam);
+        response = controllerClient.getClusterStaleStores(clusterParam, urlParam);
     printObject(response);
   }
 

@@ -723,7 +723,7 @@ public interface Admin extends AutoCloseable, Closeable {
      */
     ArrayList<StoreInfo> getClusterStores(String clusterName);
 
-    Map<String, StoreDataAudit> getClusterStaleStores(String clusterName, Optional<String> regionFilter);
+    Map<String, StoreDataAudit> getClusterStaleStores(String clusterName);
 
     int getStoreLargestUsedVersion(String clusterName, String storeName);
 

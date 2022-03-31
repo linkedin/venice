@@ -5590,7 +5590,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
     @Override
-    public Map<String, StoreDataAudit> getClusterStaleStores(String clusterName, Optional<String> regionFilter) {
+    public Map<String, StoreDataAudit> getClusterStaleStores(String clusterName) {
         throw new UnsupportedOperationException("This function has not been implemented.");
     }
 

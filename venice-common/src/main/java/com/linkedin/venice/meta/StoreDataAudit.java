@@ -50,14 +50,13 @@ public class StoreDataAudit {
         if (getLatestCreatedVersion() != info.getCurrentVersion()) {
             if (getLatestCreatedVersion() > info.getLargestUsedVersionNumber()) { // new store is stale
                 staleRegions.put(regionName, info);
-                setLatestSuccessfulPushVersion(info.getLargestUsedVersionNumber());
             }
             else { // new store is latest, make all healthy regions stale, add new info to healthy region
                 healthyRegions.forEach((key, value) -> staleRegions.merge(key, value, (a, b) -> value));
                 healthyRegions.clear();
                 healthyRegions.put(regionName, info);
-                setLatestCreatedVersion(info.getLargestUsedVersionNumber());
             }
+            setLatestCreatedVersion(info.getLargestUsedVersionNumber());
         } else { // new store is equal to latest, add info to healthy region
             healthyRegions.put(regionName, info);
         }

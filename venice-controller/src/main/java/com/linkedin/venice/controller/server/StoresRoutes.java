@@ -827,8 +827,7 @@ public class StoresRoutes extends AbstractRoute {
       public void internalHandle(Request request, ClusterStaleDataAuditResponse veniceResponse) {
         AdminSparkServer.validateParams(request, GET_STALE_STORES_IN_CLUSTER.getParams(), admin);
         String cluster = request.queryParams(CLUSTER);
-        Optional<String> regionName = Optional.ofNullable(request.queryParamOrDefault(REGIONS_FILTER, null));
-        Map<String, StoreDataAudit> staleStores = admin.getClusterStaleStores(cluster, regionName);
+        Map<String, StoreDataAudit> staleStores = admin.getClusterStaleStores(cluster);
         veniceResponse.setAuditMap(staleStores);
         veniceResponse.setCluster(cluster);
       }
