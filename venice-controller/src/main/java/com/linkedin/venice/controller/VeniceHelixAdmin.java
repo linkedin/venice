@@ -5924,6 +5924,16 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
     @Override
+    public Optional<String> getAggregateRealTimeTopicSource(String clusterName) {
+      String sourceRegion = multiClusterConfigs.getControllerConfig(clusterName).getAggregateRealTimeSourceRegion();
+      if (sourceRegion != null && sourceRegion.length() > 0) {
+        return Optional.of(getNativeReplicationKafkaBootstrapServerAndZkAddress(sourceRegion).getFirst());
+      } else {
+        return Optional.empty();
+      }
+    }
+
+    @Override
     public boolean isActiveActiveReplicationEnabledInAllRegion(String clusterName, String storeName, boolean checkCurrentVersion) {
         throw new VeniceUnsupportedOperationException("isActiveActiveReplicationEnabledInAllRegion is not supported in child controller!");
     }

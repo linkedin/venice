@@ -3356,6 +3356,11 @@ public class VeniceParentHelixAdmin implements Admin {
     return getMultiClusterConfigs().getEmergencySourceRegion().equals("") ? Optional.empty() : Optional.of(getMultiClusterConfigs().getEmergencySourceRegion());
   }
 
+  @Override
+  public Optional<String> getAggregateRealTimeTopicSource(String clusterName) {
+    return getVeniceHelixAdmin().getAggregateRealTimeTopicSource(clusterName);
+  }
+
   public List<String> getClustersLeaderOf() {
     return getVeniceHelixAdmin().getClustersLeaderOf();
   }
