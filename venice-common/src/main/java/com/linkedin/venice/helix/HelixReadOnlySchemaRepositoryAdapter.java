@@ -114,17 +114,6 @@ public class HelixReadOnlySchemaRepositoryAdapter implements ReadOnlySchemaRepos
     return systemStoreSchemaRepository.getLatestDerivedSchema(systemStoreType.getZkSharedStoreName(), valueSchemaId);
   }
 
-
-  @Override
-  public ReplicationMetadataVersionId getReplicationMetadataVersionId(String storeName, String replicationMetadataSchemaStr) {
-    VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(storeName);
-    if (HelixReadOnlyStoreRepositoryAdapter.forwardToRegularRepository(systemStoreType)) {
-      return regularStoreSchemaRepository.getReplicationMetadataVersionId(storeName, replicationMetadataSchemaStr);
-    }
-    return systemStoreSchemaRepository.getReplicationMetadataVersionId(systemStoreType.getZkSharedStoreName(),
-        replicationMetadataSchemaStr);
-  }
-
   @Override
   public ReplicationMetadataSchemaEntry getReplicationMetadataSchema(String storeName, int valueSchemaId, int replicationMetadataVersionId) {
     VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(storeName);

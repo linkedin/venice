@@ -204,12 +204,6 @@ public class StoreValueSchemasCacheService extends AbstractVeniceService impleme
     throw new VeniceException("Function: getLatestDerivedSchema is not supported!");
   }
 
-
-  @Override
-  public ReplicationMetadataVersionId getReplicationMetadataVersionId(String storeName, String replicationMetadataSchemaStr) {
-    throw new VeniceException("Function: getReplicationMetadataVersionId is not supported!");
-  }
-
   @Override
   public ReplicationMetadataSchemaEntry getReplicationMetadataSchema(String storeName, int valueSchemaId, int replicationMetadataVersionId) {
     throw new VeniceException("Function: getReplicationMetadataSchema is not supported!");

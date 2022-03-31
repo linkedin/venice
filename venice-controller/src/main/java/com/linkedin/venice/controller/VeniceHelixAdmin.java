@@ -2097,6 +2097,18 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         }
     }
 
+  @Override
+  public Optional<Schema> getReplicationMetadataSchema(String clusterName, String storeName, int valueSchemaID, int rmdVersionID) {
+      checkControllerLeadershipFor(clusterName);
+    ReadWriteSchemaRepository schemaRepo = getHelixVeniceClusterResources(clusterName).getSchemaRepository();
+    SchemaEntry schemaEntry = schemaRepo.getReplicationMetadataSchema(storeName, valueSchemaID, rmdVersionID);
+    if (schemaEntry == null) {
+      return Optional.empty();
+    } else {
+      return Optional.of(schemaEntry.getSchema());
+    }
+  }
+
     @Override
     public Version getIncrementalPushVersion(String clusterName, String storeName) {
         checkControllerLeadershipFor(clusterName);
@@ -3949,12 +3961,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         checkControllerLeadershipFor(clusterName);
         ReadWriteSchemaRepository schemaRepo = getHelixVeniceClusterResources(clusterName).getSchemaRepository();
         return schemaRepo.getReplicationMetadataSchemas(storeName);
-    }
-
-    public ReplicationMetadataVersionId getReplicationMetadataVersionId(String clusterName, String storeName, String replicationMetadataSchemaStr) {
-        checkControllerLeadershipFor(clusterName);
-        ReadWriteSchemaRepository schemaRepo = getHelixVeniceClusterResources(clusterName).getSchemaRepository();
-        return schemaRepo.getReplicationMetadataVersionId(storeName, replicationMetadataSchemaStr);
     }
 
     protected boolean checkIfValueSchemaAlreadyHasRmdSchema(
