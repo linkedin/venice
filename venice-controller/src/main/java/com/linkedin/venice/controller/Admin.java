@@ -28,7 +28,6 @@ import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.schema.rmd.ReplicationMetadataSchemaEntry;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreRecordDeleter;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
-import com.linkedin.venice.schema.rmd.ReplicationMetadataVersionId;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
 import com.linkedin.venice.status.protocol.BatchJobHeartbeatKey;
@@ -47,6 +46,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import org.apache.avro.Schema;
 
 
 public interface Admin extends AutoCloseable, Closeable {
@@ -255,7 +255,7 @@ public interface Admin extends AutoCloseable, Closeable {
 
     Collection<ReplicationMetadataSchemaEntry> getReplicationMetadataSchemas(String clusterName, String storeName);
 
-    ReplicationMetadataVersionId getReplicationMetadataVersionId(String clusterName, String storeName, String replicationMetadataSchemaStr);
+    Optional<Schema> getReplicationMetadataSchema(String clusterName, String storeName, int valueSchemaID, int rmdVersionID);
 
     ReplicationMetadataSchemaEntry addReplicationMetadataSchema(String clusterName, String storeName, int valueSchemaId, int replicationMetadataVersionId, String replicationMetadataSchemaStr);
 

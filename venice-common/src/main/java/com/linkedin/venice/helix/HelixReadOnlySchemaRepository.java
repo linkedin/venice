@@ -385,16 +385,6 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
   }
 
   @Override
-  public ReplicationMetadataVersionId getReplicationMetadataVersionId(String storeName, String replicationMetadataSchemaStr) {
-    return (ReplicationMetadataVersionId)doSchemaOperation(storeName, ((schemaData) -> {
-      ReplicationMetadataSchemaEntry replicationMetadataSchemaEntry =
-          new ReplicationMetadataSchemaEntry(SchemaData.UNKNOWN_SCHEMA_ID, SchemaData.UNKNOWN_SCHEMA_ID,
-              replicationMetadataSchemaStr);
-      return schemaData.getReplicationMetadataVersionId(replicationMetadataSchemaEntry);
-    }));
-  }
-
-  @Override
   public ReplicationMetadataSchemaEntry getReplicationMetadataSchema(String storeName, int valueSchemaId, int replicationMetadataVersionId) {
     return (ReplicationMetadataSchemaEntry)doSchemaOperation(storeName, ((schemaData) -> schemaData.getReplicationMetadataSchema(valueSchemaId,
         replicationMetadataVersionId)));

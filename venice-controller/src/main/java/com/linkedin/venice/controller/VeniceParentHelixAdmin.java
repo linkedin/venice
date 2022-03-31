@@ -110,7 +110,6 @@ import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
 import com.linkedin.venice.schema.rmd.ReplicationMetadataSchemaEntry;
 import com.linkedin.venice.schema.rmd.ReplicationMetadataSchemaGenerator;
-import com.linkedin.venice.schema.rmd.ReplicationMetadataVersionId;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -2130,8 +2129,8 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
-  public ReplicationMetadataVersionId getReplicationMetadataVersionId(String clusterName, String storeName, String replicationMetadataSchemaStr) {
-    return getVeniceHelixAdmin().getReplicationMetadataVersionId(clusterName, storeName, replicationMetadataSchemaStr);
+  public Optional<Schema> getReplicationMetadataSchema(String clusterName, String storeName, int valueSchemaID, int rmdVersionID) {
+    return getVeniceHelixAdmin().getReplicationMetadataSchema(clusterName, storeName, valueSchemaID, rmdVersionID);
   }
 
   @Override
@@ -2172,19 +2171,33 @@ public class VeniceParentHelixAdmin implements Admin {
 
       sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
 
-      //defensive code checking
-      ReplicationMetadataVersionId
-          actualValueSchemaId = getReplicationMetadataVersionId(clusterName, storeName, replicationMetadataSchemaStr);
-      if (actualValueSchemaId.getValueSchemaVersion() != valueSchemaId || actualValueSchemaId.getReplicationMetadataProtocolVersion() != replicationMetadataVersionId) {
-        throw new VeniceException(String.format("Something bad happens, the expected new value schema id pair is:"
-                + "%d_%d, but got: %d_%d", valueSchemaId, replicationMetadataVersionId, actualValueSchemaId.getValueSchemaVersion(),
-            actualValueSchemaId.getReplicationMetadataProtocolVersion()));
-      }
+      // Be defensive and check that RMD schema has been added indeed.
+      final Schema expectedRmdSchema = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(replicationMetadataSchemaStr);
+      validateRmdSchemaIsAddedAsExpected(clusterName, storeName, valueSchemaId, replicationMetadataVersionId, expectedRmdSchema);
+      return new ReplicationMetadataSchemaEntry(valueSchemaId, replicationMetadataVersionId, replicationMetadataSchemaStr);
 
-      return new ReplicationMetadataSchemaEntry(valueSchemaId, replicationMetadataVersionId,
-          replicationMetadataSchemaStr);
     } finally {
       releaseAdminMessageLock(clusterName);
+    }
+  }
+
+  private void validateRmdSchemaIsAddedAsExpected(
+      String clusterName,
+      String storeName,
+      int valueSchemaID,
+      int rmdVersionID,
+      Schema expectedRmdSchema
+  ) {
+    final Schema addedRmdSchema = getReplicationMetadataSchema(clusterName, storeName, valueSchemaID, rmdVersionID).orElse(null);
+    if (addedRmdSchema == null) {
+      throw new VeniceException(String.format("No replication metadata schema found for store %s in cluster %s with value "
+          + "schema ID %s and RMD protocol version ID %d", storeName, clusterName, valueSchemaID, rmdVersionID));
+    }
+    if (!AvroSchemaUtils.compareSchemaIgnoreFieldOrder(addedRmdSchema, expectedRmdSchema)) {
+      throw new VeniceException(String.format("For store %s in cluster %s with value schema ID %d and RMD protocol"
+              + " version ID %d. Expected RMD schema %s. But got RMD schema: %s",
+          storeName, clusterName, valueSchemaID, rmdVersionID, expectedRmdSchema.toString(true), addedRmdSchema.toString(true))
+      );
     }
   }
 

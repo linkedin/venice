@@ -73,8 +73,7 @@ public interface ReadOnlySchemaRepository extends VeniceResource {
    */
   DerivedSchemaEntry getLatestDerivedSchema(String storeName, int valueSchemaId);
 
-
-  ReplicationMetadataVersionId getReplicationMetadataVersionId(String storeName, String replicationMetadataSchemaStr);
   ReplicationMetadataSchemaEntry getReplicationMetadataSchema(String storeName, int valueSchemaId, int replicationMetadataVersionId);
+
   Collection<ReplicationMetadataSchemaEntry> getReplicationMetadataSchemas(String storeName);
 }

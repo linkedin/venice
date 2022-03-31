@@ -480,31 +480,6 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
   }
 
   @Override
-  public ReplicationMetadataVersionId getReplicationMetadataVersionId(String storeName, String replicationMetadataSchemaStr) {
-    Schema replicationMetadataSchema = Schema.parse(replicationMetadataSchemaStr);
-    for (ReplicationMetadataSchemaEntry replicationMetadataSchemaEntry : getReplicationMetadataSchemaMap(storeName).values().stream()
-        .flatMap(List::stream).collect(Collectors.toList())) {
-      if (replicationMetadataSchemaEntry.getSchema().equals(replicationMetadataSchema)) {
-        return new ReplicationMetadataVersionId(replicationMetadataSchemaEntry.getValueSchemaId(), replicationMetadataSchemaEntry
-            .getId());
-      }
-    }
-
-    return new ReplicationMetadataVersionId(SchemaData.INVALID_VALUE_SCHEMA_ID, SchemaData.INVALID_VALUE_SCHEMA_ID);
-  }
-
-  private Map<Integer, List<ReplicationMetadataSchemaEntry>> getReplicationMetadataSchemaMap(String storeName) {
-    preCheckStoreCondition(storeName);
-
-    Map<Integer, List<ReplicationMetadataSchemaEntry>> replicationMetadataSchemaEntryMap = new HashMap<>();
-    accessor.getAllReplicationMetadataSchemas(storeName).forEach(replicationMetadataSchemaEntry ->
-        replicationMetadataSchemaEntryMap.computeIfAbsent(replicationMetadataSchemaEntry.getValueSchemaId(), id -> new ArrayList<>())
-            .add(replicationMetadataSchemaEntry));
-
-    return replicationMetadataSchemaEntryMap;
-  }
-
-  @Override
   public ReplicationMetadataSchemaEntry addMetadataSchema(String storeName, int valueSchemaId, String replicationMetadataSchemaStr,  int replicationMetadataVersionId) {
     ReplicationMetadataSchemaEntry replicationMetadataSchemaEntry =
         new ReplicationMetadataSchemaEntry(valueSchemaId, replicationMetadataVersionId, replicationMetadataSchemaStr);
