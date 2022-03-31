@@ -316,20 +316,25 @@ public class CreateVersion extends AbstractRoute {
              * At this point parent corp cluster is already set in the responseObject.setKafkaBootstrapServers().
              * So we only need to override for 1 and 2.
              */
-            if (pushType.isIncremental() && version.getIncrementalPushPolicy().equals(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME) &&
-                admin.isParent() && isActiveActiveReplicationEnabledInAllRegion.get() ) {
-              Optional<String> overRideSourceRegion = emergencySourceRegion.isPresent() ? emergencySourceRegion : Optional.empty();
-              if (!overRideSourceRegion.isPresent() && sourceGridFabric.isPresent()) {
-                overRideSourceRegion = sourceGridFabric;
-              }
-              if (overRideSourceRegion.isPresent()) {
-                Pair<String, String> sourceKafkaBootstrapServersAndZk = admin.getNativeReplicationKafkaBootstrapServerAndZkAddress(overRideSourceRegion.get());
-                String sourceKafkaBootstrapServers = sourceKafkaBootstrapServersAndZk.getFirst();
-                if (sourceKafkaBootstrapServers == null) {
-                  throw new VeniceException("Failed to get the kafka URL for the source region: " + overRideSourceRegion.get());
+            if (pushType.isIncremental() && version.getIncrementalPushPolicy().equals(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME) && admin.isParent()) {
+              if (isActiveActiveReplicationEnabledInAllRegion.get()) {
+                Optional<String> overRideSourceRegion =
+                    emergencySourceRegion.isPresent() ? emergencySourceRegion : Optional.empty();
+                if (!overRideSourceRegion.isPresent() && sourceGridFabric.isPresent()) {
+                  overRideSourceRegion = sourceGridFabric;
                 }
-                responseObject.setKafkaBootstrapServers(sourceKafkaBootstrapServers);
-                LOGGER.info("Incremental Push to RT Policy job source region is being overridden with: " + overRideSourceRegion.get() + " address:" + sourceKafkaBootstrapServers);
+                if (overRideSourceRegion.isPresent()) {
+                  Pair<String, String> sourceKafkaBootstrapServersAndZk = admin.getNativeReplicationKafkaBootstrapServerAndZkAddress(overRideSourceRegion.get());
+                  String sourceKafkaBootstrapServers = sourceKafkaBootstrapServersAndZk.getFirst();
+                  if (sourceKafkaBootstrapServers == null) {
+                    throw new VeniceException("Failed to get the kafka URL for the source region: " + overRideSourceRegion.get());
+                  }
+                  responseObject.setKafkaBootstrapServers(sourceKafkaBootstrapServers);
+                  LOGGER.info("Incremental Push to RT Policy job source region is being overridden with: " + overRideSourceRegion.get() + " address:" + sourceKafkaBootstrapServers);
+                }
+              } else if (version.isNativeReplicationEnabled()) {
+                Optional<String> aggregateRealTimeTopicSourceKafkaServers = admin.getAggregateRealTimeTopicSource(clusterName);
+                aggregateRealTimeTopicSourceKafkaServers.ifPresent(source -> responseObject.setKafkaBootstrapServers(source));
               }
               LOGGER.info("Incremental Push to RT Policy job final source region address is: " + responseObject.getKafkaBootstrapServers());
             }

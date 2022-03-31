@@ -636,6 +636,11 @@ public interface Admin extends AutoCloseable, Closeable {
     Optional<String> getEmergencySourceRegion();
 
     /**
+     * Return the source Kafka boostrap server url for aggregate real-time topic updates
+     */
+    Optional<String> getAggregateRealTimeTopicSource(String clusterName);
+
+    /**
      * Returns true if A/A replication is enabled in all child controller and parent controller. This is implemented only in parent controller.
      * Otherwise return false.
      */
