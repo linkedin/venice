@@ -34,7 +34,7 @@ public class AbstractTestAdminSparkServer {
     parentZk = ServiceFactory.getZkServer();
     parentController =
         ServiceFactory.getVeniceParentController(new String[]{cluster.getClusterName()}, parentZk.getAddress(),
-            cluster.getKafka(), new VeniceControllerWrapper[]{cluster.getMasterVeniceController()}, null, false, 1,
+            cluster.getKafka(), new VeniceControllerWrapper[]{cluster.getLeaderVeniceController()}, null, false, 1,
             new VeniceProperties(extraProperties), authorizerService);
 
     if (!useParentRestEndpoint) {
@@ -46,7 +46,7 @@ public class AbstractTestAdminSparkServer {
     }
 
     TestUtils.waitForNonDeterministicCompletion(TEST_TIMEOUT, TimeUnit.MILLISECONDS,
-        () -> parentController.isMasterController(cluster.getClusterName()));
+        () -> parentController.isLeaderController(cluster.getClusterName()));
   }
 
   public void cleanUp() {

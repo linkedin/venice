@@ -7,7 +7,6 @@ import com.linkedin.venice.utils.ForkedJavaProcess;
 import com.linkedin.venice.utils.PropertyBuilder;
 import java.io.File;
 import java.util.Arrays;
-import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import kafka.tools.MirrorMaker;
@@ -21,9 +20,9 @@ import org.apache.logging.log4j.Logger;
 public class MirrorMakerWrapper extends ProcessWrapper {
   public static final Logger logger = LogManager.getLogger(MirrorMakerWrapper.class);
   public static final String SERVICE_NAME = "MirrorMaker";
-  public static final String DEFAULT_TOPIC_WHITELIST = ".*";
+  public static final String DEFAULT_TOPIC_ALLOWLIST = ".*";
 
-  private final String topicWhitelist;
+  private final String topicAllowlist;
   private final String consumerConfigPath;
   private final String producerConfigPath;
   private Process mirrorMakerProcess;
@@ -32,19 +31,19 @@ public class MirrorMakerWrapper extends ProcessWrapper {
       KafkaBrokerWrapper sourceKafka,
       KafkaBrokerWrapper targetKafka) {
 
-    return generateService(sourceKafka, targetKafka, DEFAULT_TOPIC_WHITELIST);
+    return generateService(sourceKafka, targetKafka, DEFAULT_TOPIC_ALLOWLIST);
   }
 
   static StatefulServiceProvider<MirrorMakerWrapper> generateService(
       KafkaBrokerWrapper sourceKafka,
       KafkaBrokerWrapper targetKafka,
-      String whitelistForKMM) {
+      String allowlistForKMM) {
 
     return generateService(
         sourceKafka.getAddress(),
         targetKafka.getAddress(),
         targetKafka.getZkAddress(),
-        whitelistForKMM,
+        allowlistForKMM,
         new Properties(),
         new Properties());
   }
@@ -53,7 +52,7 @@ public class MirrorMakerWrapper extends ProcessWrapper {
       String sourceKafkaAddress,
       String targetKafkaAddress,
       String targetZkAddress,
-      String topicWhitelist,
+      String topicAllowlist,
       Properties consumerProperties,
       Properties producerProperties) {
 
@@ -61,7 +60,7 @@ public class MirrorMakerWrapper extends ProcessWrapper {
       String consumerConfigPath = createConsumerConfig(dataDirectory, sourceKafkaAddress, consumerProperties);
       String producerConfigPath = createProducerConfig(dataDirectory, targetKafkaAddress, targetZkAddress, producerProperties);
       logger.info("MirrorMaker: source:" + sourceKafkaAddress + " dest:" + targetKafkaAddress);
-      return new MirrorMakerWrapper(serviceName, dataDirectory, topicWhitelist, consumerConfigPath, producerConfigPath);
+      return new MirrorMakerWrapper(serviceName, dataDirectory, topicAllowlist, consumerConfigPath, producerConfigPath);
     };
   }
 
@@ -92,13 +91,13 @@ public class MirrorMakerWrapper extends ProcessWrapper {
   MirrorMakerWrapper(
       String serviceName,
       File dataDirectory,
-      String topicWhitelist,
+      String topicAllowlist,
       String consumerConfigPath,
       String producerConfigPath) throws Exception {
     super(serviceName, dataDirectory);
     logger.info("Source config: " + Utils.loadProps(consumerConfigPath));
     logger.info("Target config: " + Utils.loadProps(producerConfigPath));
-    this.topicWhitelist = topicWhitelist;
+    this.topicAllowlist = topicAllowlist;
     this.consumerConfigPath = consumerConfigPath;
     this.producerConfigPath = producerConfigPath;
   }
@@ -115,7 +114,8 @@ public class MirrorMakerWrapper extends ProcessWrapper {
         Arrays.asList(
             "--consumer.config", consumerConfigPath,
             "--producer.config", producerConfigPath,
-            "--whitelist", topicWhitelist,
+            // go/inclusivecode deferred (will be changes when mirrormaker api has an alias)
+            "--whitelist", topicAllowlist,
             "--offset.commit.interval.ms", "1000",
             "--message.handler", IdentityPartitioningMessageHandler.class.getName(),
             "--consumer.rebalance.listener", IdentityNewConsumerRebalanceListener.class.getName(),

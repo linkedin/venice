@@ -127,11 +127,11 @@ public class TestDelayedRebalance {
     // Test the case that set the shorter delayed time for a cluster, to check whether helix will do the rebalance earlier.
     String topicName = createVersionAndPushData();
     // shorter delayed time
-    cluster.getMasterVeniceController()
+    cluster.getLeaderVeniceController()
         .getVeniceHelixAdmin()
         .setDelayedRebalanceTime(cluster.getClusterName(), testTimeOutMS / 2);
     Assert.assertEquals(
-        cluster.getMasterVeniceController().getVeniceHelixAdmin().getDelayedRebalanceTime(cluster.getClusterName()),
+        cluster.getLeaderVeniceController().getVeniceHelixAdmin().getDelayedRebalanceTime(cluster.getClusterName()),
         testTimeOutMS / 2);
     stopAServer(topicName);
 
@@ -156,9 +156,9 @@ public class TestDelayedRebalance {
     // Then enable the delayed rebalance again to test whether helix will do rebalance immediately.
     String topicName = createVersionAndPushData();
     // disable delayed rebalance
-    cluster.getMasterVeniceController().getVeniceHelixAdmin().setDelayedRebalanceTime(cluster.getClusterName(), 0);
+    cluster.getLeaderVeniceController().getVeniceHelixAdmin().setDelayedRebalanceTime(cluster.getClusterName(), 0);
     Assert.assertEquals(
-        cluster.getMasterVeniceController().getVeniceHelixAdmin().getDelayedRebalanceTime(cluster.getClusterName()), 0);
+        cluster.getLeaderVeniceController().getVeniceHelixAdmin().getDelayedRebalanceTime(cluster.getClusterName()), 0);
     // wait the config change come into effect
     Thread.sleep(testTimeOutMS);
     int failServerPort = stopAServer(topicName);
@@ -176,12 +176,12 @@ public class TestDelayedRebalance {
       throws InterruptedException {
     String topicName = createVersionAndPushData();
     // disable delayed rebalance
-    cluster.getMasterVeniceController().getVeniceHelixAdmin().setDelayedRebalanceTime(cluster.getClusterName(), 0);
+    cluster.getLeaderVeniceController().getVeniceHelixAdmin().setDelayedRebalanceTime(cluster.getClusterName(), 0);
     Assert.assertEquals(
-        cluster.getMasterVeniceController().getVeniceHelixAdmin().getDelayedRebalanceTime(cluster.getClusterName()), 0);
+        cluster.getLeaderVeniceController().getVeniceHelixAdmin().getDelayedRebalanceTime(cluster.getClusterName()), 0);
 
     //Enable delayed rebalance
-    cluster.getMasterVeniceController().getVeniceHelixAdmin().setDelayedRebalanceTime(cluster.getClusterName(), delayRebalanceMS);
+    cluster.getLeaderVeniceController().getVeniceHelixAdmin().setDelayedRebalanceTime(cluster.getClusterName(), delayRebalanceMS);
     // wait the config change come into effect
     Thread.sleep(testTimeOutMS);
     // Fail on server

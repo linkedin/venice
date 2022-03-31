@@ -156,7 +156,7 @@ public class TestHybrid {
     try (VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster(1,2,1,1, 1000000, false, false, extraProperties);
         ZkServerWrapper parentZk = ServiceFactory.getZkServer();
         VeniceControllerWrapper parentController = ServiceFactory.getVeniceParentController(
-            venice.getClusterName(), parentZk.getAddress(), venice.getKafka(), new VeniceControllerWrapper[]{venice.getMasterVeniceController()}, false);
+            venice.getClusterName(), parentZk.getAddress(), venice.getKafka(), new VeniceControllerWrapper[]{venice.getLeaderVeniceController()}, false);
         ControllerClient controllerClient = new ControllerClient(venice.getClusterName(), parentController.getControllerUrl());
         TopicManager topicManager = new TopicManager(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, 0l, TestUtils.getVeniceConsumerFactory(venice.getKafka()))
     ) {
@@ -404,7 +404,7 @@ public class TestHybrid {
          */
         if (!isLeaderFollowerModelEnabled) {
           // Verify replication exists for versions 2 and 3, but not for version 1
-          VeniceHelixAdmin veniceHelixAdmin = (VeniceHelixAdmin) venice.getMasterVeniceController().getVeniceAdmin();
+          VeniceHelixAdmin veniceHelixAdmin = (VeniceHelixAdmin) venice.getLeaderVeniceController().getVeniceAdmin();
           Field topicReplicatorField = veniceHelixAdmin.getClass().getDeclaredField("onlineOfflineTopicReplicator");
           topicReplicatorField.setAccessible(true);
           Optional<TopicReplicator> topicReplicatorOptional = (Optional<TopicReplicator>) topicReplicatorField.get(veniceHelixAdmin);
@@ -493,7 +493,7 @@ public class TestHybrid {
     try (VeniceClusterWrapper veniceClusterWrapper = ServiceFactory.getVeniceCluster(1,3,
         1,2, 1000000, false, false, extraProperties)) {
       try {
-        Admin admin = veniceClusterWrapper.getMasterVeniceController().getVeniceAdmin();
+        Admin admin = veniceClusterWrapper.getLeaderVeniceController().getVeniceAdmin();
         String clusterName = veniceClusterWrapper.getClusterName();
         String storeName = Utils.getUniqueString("test-store");
         long streamingRewindSeconds = 25L;
@@ -667,7 +667,7 @@ public class TestHybrid {
     SystemProducer veniceBatchProducer1 = null, veniceBatchProducer2 = null;
     try {
       VeniceClusterWrapper veniceClusterWrapper = sharedVenice;
-      Admin admin = veniceClusterWrapper.getMasterVeniceController().getVeniceAdmin();
+      Admin admin = veniceClusterWrapper.getLeaderVeniceController().getVeniceAdmin();
       String clusterName = veniceClusterWrapper.getClusterName();
       String storeName1 = Utils.getUniqueString("test-store1");
       String storeName2 = Utils.getUniqueString("test-store2");
@@ -781,7 +781,7 @@ public class TestHybrid {
        */
       String tmpTopic1 = storeName + "_tmp1_rt";
       String tmpTopic2 = storeName + "_tmp2_rt";
-      TopicManager topicManager = venice.getMasterVeniceController().getVeniceAdmin().getTopicManager();
+      TopicManager topicManager = venice.getLeaderVeniceController().getVeniceAdmin().getTopicManager();
       topicManager.createTopic(tmpTopic1, partitionCnt, 1, true);
       topicManager.createTopic(tmpTopic2, partitionCnt, 1, true);
 
@@ -856,7 +856,7 @@ public class TestHybrid {
   @Test(timeOut = 180 * Time.MS_PER_SECOND, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testLeaderCanReleaseLatch(boolean isIngestionIsolationEnabled) {
     VeniceClusterWrapper veniceClusterWrapper = isIngestionIsolationEnabled ? ingestionIsolationEnabledSharedVenice : sharedVenice;
-    Admin admin = veniceClusterWrapper.getMasterVeniceController().getVeniceAdmin();
+    Admin admin = veniceClusterWrapper.getLeaderVeniceController().getVeniceAdmin();
     String clusterName = veniceClusterWrapper.getClusterName();
     String storeName = Utils.getUniqueString("test-store");
 

@@ -48,8 +48,13 @@ public enum ControllerRoute {
   NODE_REPLICAS("/storage_node_replicas", HttpMethod.GET, Collections.singletonList(STORAGE_NODE_ID)),
   NODE_REMOVABLE("/node_removable", HttpMethod.GET, Collections.singletonList(STORAGE_NODE_ID), INSTANCE_VIEW, LOCKED_STORAGE_NODE_IDS),
   NODE_REPLICAS_READINESS("/node_replicas_readiness", HttpMethod.GET, Collections.singletonList(STORAGE_NODE_ID)),
+  // go/inclusivecode deprecated (alias="/allow_list_add_node)
   WHITE_LIST_ADD_NODE("/white_list_add_node", HttpMethod.POST, Collections.singletonList(STORAGE_NODE_ID)),
+  ALLOW_LIST_ADD_NODE("/allow_list_add_node", HttpMethod.POST, Collections.singletonList(STORAGE_NODE_ID)),
+  // go/inclusivecode deprecated (alias="/allow_list_remove_node)
   WHITE_LIST_REMOVE_NODE("/white_list_remove_node", HttpMethod.POST, Collections.singletonList(STORAGE_NODE_ID)),
+  ALLOW_LIST_REMOVE_NODE("/allow_list_remove_node", HttpMethod.POST, Collections.singletonList(STORAGE_NODE_ID)),
+
   REMOVE_NODE("/remove_node", HttpMethod.POST, Collections.singletonList(STORAGE_NODE_ID)),
   SKIP_ADMIN("/skip_admin_message", HttpMethod.POST, Collections.singletonList(OFFSET)),
 
@@ -64,7 +69,9 @@ public enum ControllerRoute {
   GET_VALUE_SCHEMA_ID("/get_value_schema_id", HttpMethod.POST, Arrays.asList(NAME, VALUE_SCHEMA)),
   GET_VALUE_OR_DERIVED_SCHEMA_ID("/get_value_or_derived_schema_id", HttpMethod.POST, Arrays.asList(NAME, DERIVED_SCHEMA)),
   REMOVE_DERIVED_SCHEMA("/remove_derived_schema", HttpMethod.POST, Arrays.asList(NAME, SCHEMA_ID, DERIVED_SCHEMA_ID)),
+  // go/inclusivecode deprecated (alias="/leader_controller)
   MASTER_CONTROLLER("/master_controller", HttpMethod.GET, Collections.emptyList()),
+  LEADER_CONTROLLER("/leader_controller", HttpMethod.GET, Collections.emptyList()),
 
   EXECUTION("/execution", HttpMethod.GET, Collections.singletonList(EXECUTION_ID)),
   LAST_SUCCEED_EXECUTION_ID("/last_succeed_execution_id", HttpMethod.GET, Collections.emptyList()),

@@ -64,7 +64,7 @@ public class TopicManager implements Closeable {
   /**
    * Default setting is that no log compaction should happen for hybrid store version topics
    * if the messages are produced within 24 hours; otherwise servers could encounter MISSING
-   * data DIV errors for grandfathering jobs which could potentially generate lots of
+   * data DIV errors for reprocessing jobs which could potentially generate lots of
    * duplicate keys.
    */
   public static final long DEFAULT_KAFKA_MIN_LOG_COMPACTION_LAG_MS = 24 * Time.MS_PER_HOUR;

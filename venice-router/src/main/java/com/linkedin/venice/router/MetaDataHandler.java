@@ -2,7 +2,7 @@ package com.linkedin.venice.router;
 
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponseV2;
-import com.linkedin.venice.controllerapi.MasterControllerResponse;
+import com.linkedin.venice.controllerapi.LeaderControllerResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.exceptions.ExceptionType;
@@ -63,7 +63,7 @@ import static io.netty.handler.codec.http.HttpResponseStatus.*;
 
 /**
  * This MetaDataHandle is used to handle the following meta data requests:
- * 1. Controller lookup: /controller, and it will return master controller url as the content.
+ * 1. Controller lookup: /controller, and it will return leader controller url as the content.
  * 2. Key schema lookup: /key_schema/${storeName}, and it will return key schema in json format.
  *    The client can use {@link com.linkedin.venice.controllerapi.SchemaResponse} to parse it.
  * 3. Single value schema lookup: /value_schema/${storeName}/${valueSchemaId}, and it will return
@@ -118,8 +118,9 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
     VenicePathParserHelper helper = parseRequest(req);
 
     String resourceType = helper.getResourceType(); //may be null
-    if (TYPE_MASTER_CONTROLLER.equals(resourceType)) {
-      // URI: /master_controller
+    if (TYPE_LEADER_CONTROLLER.equals(resourceType) || TYPE_LEADER_CONTROLLER_LEGACY.equals(resourceType)) {
+      // go/inclusivecode deprecated(alias="leader_controller")
+      // URI: /leader_controller or /master_controller. Remove reference when the non inclusive term is removed.
       handleControllerLookup(ctx);
     } else if (TYPE_KEY_SCHEMA.equals(resourceType)) {
       // URI: /key_schema/${storeName}
@@ -155,12 +156,12 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
   }
 
   private void handleControllerLookup(ChannelHandlerContext ctx) throws IOException {
-    MasterControllerResponse responseObject = new MasterControllerResponse();
+    LeaderControllerResponse responseObject = new LeaderControllerResponse();
     responseObject.setCluster(clusterName);
-    responseObject.setUrl(routing.getMasterController().getUrl());
+    responseObject.setUrl(routing.getLeaderController().getUrl());
     logger.info(
-        "For cluster " + responseObject.getCluster() + ", the master controller url is " + responseObject.getUrl()
-            + ", last refreshed at " + routing.getMasterControllerChangeTimeMs());
+        "For cluster " + responseObject.getCluster() + ", the leader controller url is " + responseObject.getUrl()
+            + ", last refreshed at " + routing.getLeaderControllerChangeTimeMs());
     setupResponseAndFlush(OK, mapper.writeValueAsBytes(responseObject), true, ctx);
   }
 

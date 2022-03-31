@@ -105,7 +105,7 @@ public class MixedIngestionBenchmark {
     // Wait push completed.
 
     TestUtils.waitForNonDeterministicCompletion(testTimeOutMS, TimeUnit.MILLISECONDS,
-        () -> cluster.getMasterVeniceController()
+        () -> cluster.getLeaderVeniceController()
             .getVeniceAdmin()
             .getOffLinePushStatus(cluster.getClusterName(), topicName)
             .getExecutionStatus()

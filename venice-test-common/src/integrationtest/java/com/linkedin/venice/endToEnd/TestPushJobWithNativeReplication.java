@@ -89,7 +89,7 @@ public class  TestPushJobWithNativeReplication {
      * Reduce leader promotion delay to 3 seconds;
      * Create a testing environment with 1 parent fabric and 2 child fabrics;
      * Set server and replication factor to 2 to ensure at least 1 leader replica and 1 follower replica;
-     * KMM whitelist config allows replicating all topics.
+     * KMM allowlist config allows replicating all topics.
      */
     Properties serverProperties = new Properties();
     serverProperties.put(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 1L);
@@ -104,7 +104,7 @@ public class  TestPushJobWithNativeReplication {
     Properties controllerProps = new Properties();
     controllerProps.put(DEFAULT_MAX_NUMBER_OF_PARTITIONS, 1000);
     controllerProps.put(AGGREGATE_REAL_TIME_SOURCE_REGION, DEFAULT_PARENT_DATA_CENTER_REGION_NAME);
-    controllerProps.put(NATIVE_REPLICATION_FABRIC_WHITELIST, DEFAULT_PARENT_DATA_CENTER_REGION_NAME);
+    controllerProps.put(NATIVE_REPLICATION_FABRIC_ALLOWLIST, DEFAULT_PARENT_DATA_CENTER_REGION_NAME);
     int parentKafkaPort = Utils.getFreePort();
     controllerProps.put(CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + DEFAULT_PARENT_DATA_CENTER_REGION_NAME, "localhost:" + parentKafkaPort);
     multiColoMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiColoMultiClusterWrapper(
@@ -119,7 +119,7 @@ public class  TestPushJobWithNativeReplication {
         Optional.of(controllerProps),
         Optional.of(new VeniceProperties(serverProperties)),
         false,
-        MirrorMakerWrapper.DEFAULT_TOPIC_WHITELIST,
+        MirrorMakerWrapper.DEFAULT_TOPIC_ALLOWLIST,
         false,
         Optional.of(parentKafkaPort));
     childDatacenters = multiColoMultiClusterWrapper.getClusters();
@@ -407,7 +407,7 @@ public class  TestPushJobWithNativeReplication {
     final AtomicReference<Optional<VeniceControllerWrapper>> atomicOptionalParentController = new AtomicReference<>();
     TestUtils.waitForNonDeterministicCompletion(10, TimeUnit.SECONDS, () -> {
       Optional<VeniceControllerWrapper> optionalParentController = parentControllers.stream()
-          .filter(c -> c.isMasterController(clusterName))
+          .filter(c -> c.isLeaderController(clusterName))
           .findAny();
       atomicOptionalParentController.set(optionalParentController);
       return optionalParentController.isPresent();

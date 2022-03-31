@@ -12,7 +12,7 @@ import org.apache.helix.zookeeper.impl.client.ZkClient;
  * This class is intended to only be used in Controller, which is sharing one instance across
  * all the clusters.
  * Since the leader->standby transition for a given cluster will clear all the resources, this implementation
- * will do nothing in {@link #clear()} since it will be shared across all the clusters, whose master are
+ * will do nothing in {@link #clear()} since it will be shared across all the clusters, whose leader are
  * in the same Controller node.
  */
 public class SharedHelixReadOnlyZKSharedSchemaRepository

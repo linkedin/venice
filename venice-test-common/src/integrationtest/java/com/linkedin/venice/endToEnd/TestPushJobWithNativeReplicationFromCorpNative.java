@@ -122,7 +122,7 @@ public class TestPushJobWithNativeReplicationFromCorpNative {
      * Reduce leader promotion delay to 3 seconds;
      * Create a testing environment with 1 parent fabric and 3 child fabrics;
      * Set server and replication factor to 2 to ensure at least 1 leader replica and 1 follower replica;
-     * KMM whitelist config allows replicating all topics.
+     * KMM allowlist config allows replicating all topics.
      */
     Properties serverProperties = new Properties();
     serverProperties.put(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 1L);
@@ -141,7 +141,7 @@ public class TestPushJobWithNativeReplicationFromCorpNative {
     controllerProps.put(CHILD_DATA_CENTER_KAFKA_ZK_PREFIX + "." + "corp-venice-native", corpVeniceNativeKafka.getZkAddress());
     controllerProps.put(LF_MODEL_DEPENDENCY_CHECK_DISABLED, "true");
     controllerProps.put(AGGREGATE_REAL_TIME_SOURCE_REGION, DEFAULT_PARENT_DATA_CENTER_REGION_NAME);
-    controllerProps.put(NATIVE_REPLICATION_FABRIC_WHITELIST, DEFAULT_PARENT_DATA_CENTER_REGION_NAME);
+    controllerProps.put(NATIVE_REPLICATION_FABRIC_ALLOWLIST, DEFAULT_PARENT_DATA_CENTER_REGION_NAME);
     controllerProps.put(BatchJobHeartbeatConfigs.HEARTBEAT_STORE_CLUSTER_CONFIG.getConfigName(), VPJ_HEARTBEAT_STORE_CLUSTER);
     controllerProps.put(BatchJobHeartbeatConfigs.HEARTBEAT_ENABLED_CONFIG.getConfigName(), true);
 
@@ -161,7 +161,7 @@ public class TestPushJobWithNativeReplicationFromCorpNative {
             Optional.of(controllerProps),
             Optional.of(new VeniceProperties(serverProperties)),
             false,
-            MirrorMakerWrapper.DEFAULT_TOPIC_WHITELIST,
+            MirrorMakerWrapper.DEFAULT_TOPIC_ALLOWLIST,
             false,
             Optional.of(parentKafkaPort));
     childDatacenters = multiColoMultiClusterWrapper.getClusters();
@@ -169,8 +169,8 @@ public class TestPushJobWithNativeReplicationFromCorpNative {
 
     // Setup an additional MirrorMaker between corp-native-kafka and dc-1 and dc-2. Note that there is no KMM between
     // the corp-native-kafka and dc-0.
-    multiColoMultiClusterWrapper.addMirrorMakerBetween(corpVeniceNativeKafka, childDatacenters.get(1).getKafkaBrokerWrapper(), MirrorMakerWrapper.DEFAULT_TOPIC_WHITELIST);
-    multiColoMultiClusterWrapper.addMirrorMakerBetween(corpVeniceNativeKafka, childDatacenters.get(2).getKafkaBrokerWrapper(), MirrorMakerWrapper.DEFAULT_TOPIC_WHITELIST);
+    multiColoMultiClusterWrapper.addMirrorMakerBetween(corpVeniceNativeKafka, childDatacenters.get(1).getKafkaBrokerWrapper(), MirrorMakerWrapper.DEFAULT_TOPIC_ALLOWLIST);
+    multiColoMultiClusterWrapper.addMirrorMakerBetween(corpVeniceNativeKafka, childDatacenters.get(2).getKafkaBrokerWrapper(), MirrorMakerWrapper.DEFAULT_TOPIC_ALLOWLIST);
     corpDefaultParentKafka = multiColoMultiClusterWrapper.getParentKafkaBrokerWrapper();
   }
 
@@ -189,7 +189,7 @@ public class TestPushJobWithNativeReplicationFromCorpNative {
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
     String storeName = Utils.getUniqueString("test_store");
     VeniceControllerWrapper parentController =
-        parentControllers.stream().filter(c -> c.isMasterController(clusterName)).findAny().get();
+        parentControllers.stream().filter(c -> c.isLeaderController(clusterName)).findAny().get();
     Properties props = defaultH2VProps(parentController.getControllerUrl(), inputDirPath, storeName);
     props.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
     String keySchemaStr = recordSchema.getField(props.getProperty(VenicePushJob.KEY_FIELD_PROP)).schema().toString();
@@ -278,7 +278,7 @@ public class TestPushJobWithNativeReplicationFromCorpNative {
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
     String userStoreName = Utils.getUniqueString("user_store");
     VeniceControllerWrapper parentController =
-        parentControllers.stream().filter(c -> c.isMasterController(userStoreClusterName)).findAny().get();
+        parentControllers.stream().filter(c -> c.isLeaderController(userStoreClusterName)).findAny().get();
     Properties vpjProps = defaultH2VProps(parentController.getControllerUrl(), inputDirPath, userStoreName);
     vpjProps.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
 
@@ -378,7 +378,7 @@ public class TestPushJobWithNativeReplicationFromCorpNative {
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
     String storeName = Utils.getUniqueString("store");
     VeniceControllerWrapper parentController =
-        parentControllers.stream().filter(c -> c.isMasterController(clusterName)).findAny().get();
+        parentControllers.stream().filter(c -> c.isLeaderController(clusterName)).findAny().get();
     Properties props = defaultH2VProps(parentController.getControllerUrl(), inputDirPath, storeName);
     props.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
     String keySchemaStr = recordSchema.getField(props.getProperty(VenicePushJob.KEY_FIELD_PROP)).schema().toString();
@@ -477,7 +477,7 @@ public class TestPushJobWithNativeReplicationFromCorpNative {
     File inputDirBatch = getTempDataDirectory();
     File inputDirInc = getTempDataDirectory();
     VeniceControllerWrapper parentController =
-        parentControllers.stream().filter(c -> c.isMasterController(clusterName)).findAny().get();
+        parentControllers.stream().filter(c -> c.isLeaderController(clusterName)).findAny().get();
     String inputDirPathBatch = "file:" + inputDirBatch.getAbsolutePath();
     String inputDirPathInc = "file:" + inputDirInc.getAbsolutePath();
 
@@ -651,7 +651,7 @@ public class TestPushJobWithNativeReplicationFromCorpNative {
     String valueSchemaStr = STRING_SCHEMA;
 
     VeniceControllerWrapper parentController =
-        parentControllers.stream().filter(c -> c.isMasterController(clusterName)).findAny().get();
+        parentControllers.stream().filter(c -> c.isLeaderController(clusterName)).findAny().get();
     try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentController.getControllerUrl())) {
       NewStoreResponse newStoreResponse = parentControllerClient.createNewStore(batchOnlyStoreName, "", keySchemaStr, valueSchemaStr);
       Assert.assertFalse(newStoreResponse.isError());
@@ -804,7 +804,7 @@ public class TestPushJobWithNativeReplicationFromCorpNative {
     String clusterName = CLUSTER_NAMES[0];
     File inputDir = getTempDataDirectory();
     VeniceControllerWrapper parentController =
-        parentControllers.stream().filter(c -> c.isMasterController(clusterName)).findAny().get();
+        parentControllers.stream().filter(c -> c.isLeaderController(clusterName)).findAny().get();
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
     String storeName = Utils.getUniqueString("store");
     Properties props = defaultH2VProps(parentController.getControllerUrl(), inputDirPath, storeName);

@@ -33,8 +33,8 @@ public class AbstractRoute {
   /**
    * Default constructor for different controller request routes.
    *
-   * TODO: once Venice Admin white list proposal is approved, we can transfer the whitelist to all routes
-   * through this constructor; make sure Nuage is also in the whitelist so that they can create stores
+   * TODO: once Venice Admin allowlist proposal is approved, we can transfer the allowlist to all routes
+   * through this constructor; make sure Nuage is also in the allowlist so that they can create stores
    * @param accessController the access client that check whether a certificate can access a resource
    */
   public AbstractRoute(Optional<DynamicAccessController> accessController) {
@@ -130,7 +130,7 @@ public class AbstractRoute {
     X509Certificate certificate = getCertificate(request);
 
     String storeName = request.queryParamOrDefault(NAME, STORE_UNKNOWN);
-    return accessController.get().isWhitelistUsers(certificate, storeName, HTTP_GET);
+    return accessController.get().isAllowlistUsers(certificate, storeName, HTTP_GET);
   }
 
   /**

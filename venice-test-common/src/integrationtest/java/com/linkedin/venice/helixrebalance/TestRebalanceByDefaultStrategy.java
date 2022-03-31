@@ -58,7 +58,7 @@ public class TestRebalanceByDefaultStrategy {
     veniceWriter.broadcastEndOfPush(new HashMap<>());
 
     TestUtils.waitForNonDeterministicCompletion(TIMEOUT_MS, TimeUnit.MILLISECONDS,
-        () -> cluster.getMasterVeniceController()
+        () -> cluster.getLeaderVeniceController()
             .getVeniceAdmin()
             .getOffLinePushStatus(cluster.getClusterName(), topicName)
             .getExecutionStatus()
@@ -80,7 +80,7 @@ public class TestRebalanceByDefaultStrategy {
       String instanceId = Utils.getHelixNodeIdentifier(port);
       TestUtils.waitForNonDeterministicCompletion(RETRY_REMOVE_TIMEOUT_MS, TimeUnit.MILLISECONDS, () -> {
         try {
-          if (cluster.getMasterVeniceController().getVeniceAdmin().isInstanceRemovable(clusterName, instanceId,
+          if (cluster.getLeaderVeniceController().getVeniceAdmin().isInstanceRemovable(clusterName, instanceId,
               Collections.emptyList(), false).isRemovable()) {
             cluster.stopVeniceServer(port);
             Thread.sleep(UPGRADE_TIME_MS);
@@ -98,7 +98,7 @@ public class TestRebalanceByDefaultStrategy {
 
     //Ensure each partition has 3 online replica
     TestUtils.waitForNonDeterministicCompletion(TIMEOUT_MS, TimeUnit.MILLISECONDS, () -> {
-      List<Replica> replicas = cluster.getMasterVeniceController().getVeniceAdmin().getReplicas(clusterName, topicName);
+      List<Replica> replicas = cluster.getLeaderVeniceController().getVeniceAdmin().getReplicas(clusterName, topicName);
       String log = "";
       boolean isAllOnline = true;
       for (Replica replica : replicas) {

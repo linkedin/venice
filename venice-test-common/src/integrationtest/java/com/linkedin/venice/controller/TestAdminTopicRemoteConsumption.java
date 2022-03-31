@@ -65,7 +65,7 @@ public class TestAdminTopicRemoteConsumption {
 
     // Test the admin channel with the regular KMM pipeline
     VeniceControllerWrapper parentController =
-        parentControllers.stream().filter(c -> c.isMasterController(clusterName)).findAny().get();
+        parentControllers.stream().filter(c -> c.isLeaderController(clusterName)).findAny().get();
     ControllerClient parentControllerClient = ControllerClient.constructClusterControllerClient(clusterName, parentController.getControllerUrl());
 
     // Create a test store
@@ -94,7 +94,7 @@ public class TestAdminTopicRemoteConsumption {
     String adminTopicSourceRegion = "parent";
     controllerProps.put(ADMIN_TOPIC_REMOTE_CONSUMPTION_ENABLED, "true");
     controllerProps.put(ADMIN_TOPIC_SOURCE_REGION, adminTopicSourceRegion);
-    controllerProps.put(NATIVE_REPLICATION_FABRIC_WHITELIST, adminTopicSourceRegion);
+    controllerProps.put(NATIVE_REPLICATION_FABRIC_ALLOWLIST, adminTopicSourceRegion);
     controllerProps.put(CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + adminTopicSourceRegion, parentKafka.getAddress());
     controllerProps.put(CHILD_DATA_CENTER_KAFKA_ZK_PREFIX + "." + adminTopicSourceRegion, parentKafka.getZkAddress());
     addedControllerWrapper = clusterInDc0.addVeniceController(controllerProps);

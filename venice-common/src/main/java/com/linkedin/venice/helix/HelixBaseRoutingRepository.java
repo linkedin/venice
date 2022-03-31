@@ -59,9 +59,9 @@ public abstract class HelixBaseRoutingRepository
 
   protected ResourceAssignment resourceAssignment = new ResourceAssignment();
   /**
-   * Master controller of cluster.
+   * leader controller of cluster.
    */
-  private volatile Instance masterController = null;
+  private volatile Instance leaderController = null;
 
   protected final ListenerManager<RoutingDataChangedListener> listenerManager;
 
@@ -69,7 +69,7 @@ public abstract class HelixBaseRoutingRepository
 
   protected volatile Map<String, Integer> resourceToIdealPartitionCountMap;
 
-  private long masterControllerChangeTimeMs = -1;
+  private long leaderControllerChangeTimeMs = -1;
 
   private RoutingTableProvider routingTableProvider;
 
@@ -198,12 +198,12 @@ public abstract class HelixBaseRoutingRepository
   }
 
   @Override
-  public Instance getMasterController() {
-    if (masterController == null) {
+  public Instance getLeaderController() {
+    if (leaderController == null) {
       throw new VeniceException(
-          "There is no master controller for this controller or we have not received master changed event from helix.");
+          "There is no leader controller for this controller or we have not received leader changed event from helix.");
     }
-    return masterController;
+    return leaderController;
   }
 
   @Override
@@ -222,8 +222,8 @@ public abstract class HelixBaseRoutingRepository
   }
 
   @Override
-  public long getMasterControllerChangeTimeMs() {
-    return this.masterControllerChangeTimeMs;
+  public long getLeaderControllerChangeTimeMs() {
+    return this.leaderControllerChangeTimeMs;
   }
 
   @Override
@@ -232,15 +232,15 @@ public abstract class HelixBaseRoutingRepository
       //Finalized notification, listener will be removed.
       return;
     }
-    logger.info("Got notification type:" + changeContext.getType() + ". Master controller is changed.");
+    logger.info("Got notification type:" + changeContext.getType() + ". Leader controller is changed.");
     LiveInstance leader = manager.getHelixDataAccessor().getProperty(keyBuilder.controllerLeader());
-    this.masterControllerChangeTimeMs = System.currentTimeMillis();
+    this.leaderControllerChangeTimeMs = System.currentTimeMillis();
     if (leader == null) {
-      this.masterController = null;
-      logger.error("Cluster do not have master controller now!");
+      this.leaderController = null;
+      logger.error("Cluster do not have leader controller now!");
     } else {
-      this.masterController = createInstanceFromLiveInstance(leader);
-      logger.info("New master controller is:" + masterController.getHost() + ":" + masterController.getPort());
+      this.leaderController = createInstanceFromLiveInstance(leader);
+      logger.info("New leader controller is:" + leaderController.getHost() + ":" + leaderController.getPort());
     }
   }
 

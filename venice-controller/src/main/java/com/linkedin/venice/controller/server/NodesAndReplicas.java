@@ -35,7 +35,7 @@ public class NodesAndReplicas extends AbstractRoute {
   private static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER = RedundantExceptionFilter.getRedundantExceptionFilter();
 
   /**
-   * TODO: Make sure services "venice-hooks-deployable" is also in whitelist
+   * TODO: Make sure services "venice-hooks-deployable" is also in allowlist
    */
   public NodesAndReplicas(Optional<DynamicAccessController> accessController) {
     super(accessController);
@@ -46,7 +46,7 @@ public class NodesAndReplicas extends AbstractRoute {
       MultiNodeResponse responseObject = new MultiNodeResponse();
       response.type(HttpConstants.JSON);
       try {
-        // Only allow whitelist users to run this command
+        // Only allow allowlist users to run this command
         if (!isAllowListUser(request)) {
           response.status(HttpStatus.SC_FORBIDDEN);
           responseObject.setError("Only admin users are allowed to run " + request.url());
@@ -73,7 +73,7 @@ public class NodesAndReplicas extends AbstractRoute {
       MultiNodesStatusResponse responseObject = new MultiNodesStatusResponse();
       response.type(HttpConstants.JSON);
       try {
-        // Only allow whitelist users to run this command
+        // Only allow allowlist users to run this command
         if (!isAllowListUser(request)) {
           response.status(HttpStatus.SC_FORBIDDEN);
           responseObject.setError("Only admin users are allowed to run " + request.url());
@@ -96,7 +96,7 @@ public class NodesAndReplicas extends AbstractRoute {
       MultiReplicaResponse responseObject = new MultiReplicaResponse();
       response.type(HttpConstants.JSON);
       try {
-        // Only allow whitelist users to run this command
+        // Only allow allowlist users to run this command
         if (!isAllowListUser(request)) {
           response.status(HttpStatus.SC_FORBIDDEN);
           responseObject.setError("Only admin users are allowed to run " + request.url());
@@ -125,7 +125,7 @@ public class NodesAndReplicas extends AbstractRoute {
       MultiReplicaResponse responseObject = new MultiReplicaResponse();
       response.type(HttpConstants.JSON);
       try {
-        // Only allow whitelist users to run this command
+        // Only allow allowlist users to run this command
         if (!isAllowListUser(request)) {
           response.status(HttpStatus.SC_FORBIDDEN);
           responseObject.setError("Only admin users are allowed to run " + request.url());
@@ -153,7 +153,7 @@ public class NodesAndReplicas extends AbstractRoute {
       NodeStatusResponse responseObject = new NodeStatusResponse();
       response.type(HttpConstants.JSON);
       try {
-        // Only allow whitelist users to run this command
+        // Only allow allowlist users to run this command
         if (!isAllowListUser(request)) {
           response.status(HttpStatus.SC_FORBIDDEN);
           responseObject.setError("Only admin users are allowed to run " + request.url());
@@ -203,7 +203,7 @@ public class NodesAndReplicas extends AbstractRoute {
       ControllerResponse responseObject = new ControllerResponse();
       response.type(HttpConstants.JSON);
       try {
-        // Only allow whitelist users to run this command
+        // Only allow allowlist users to run this command
         if (!isAllowListUser(request)) {
           response.status(HttpStatus.SC_FORBIDDEN);
           responseObject.setError("Only admin users are allowed to run " + request.url());
@@ -222,22 +222,22 @@ public class NodesAndReplicas extends AbstractRoute {
     };
   }
 
-  public Route addNodeIntoWhiteList(Admin admin) {
+  public Route addNodeIntoAllowList(Admin admin) {
     return (request, response) -> {
       ControllerResponse responseObject = new ControllerResponse();
       response.type(HttpConstants.JSON);
       try {
-        // Only allow whitelist users to run this command
+        // Only allow allowlist users to run this command
         if (!isAllowListUser(request)) {
           response.status(HttpStatus.SC_FORBIDDEN);
           responseObject.setError("Only admin users are allowed to run " + request.url());
           return AdminSparkServer.mapper.writeValueAsString(responseObject);
         }
-        AdminSparkServer.validateParams(request, WHITE_LIST_ADD_NODE.getParams(), admin);
+        AdminSparkServer.validateParams(request, ALLOW_LIST_ADD_NODE.getParams(), admin);
         String cluster = request.queryParams(CLUSTER);
         responseObject.setCluster(cluster);
         String nodeId = request.queryParams(STORAGE_NODE_ID);
-        admin.addInstanceToWhitelist(cluster, nodeId);
+        admin.addInstanceToAllowlist(cluster, nodeId);
       } catch (Throwable e) {
         responseObject.setError(e.getMessage());
         AdminSparkServer.handleError(e, request, response);
@@ -246,12 +246,12 @@ public class NodesAndReplicas extends AbstractRoute {
     };
   }
 
-  public Route removeNodeFromWhiteList(Admin admin){
+  public Route removeNodeFromAllowList(Admin admin){
     return (request, response) -> {
       ControllerResponse responseObject = new ControllerResponse();
       response.type(HttpConstants.JSON);
       try {
-        // Only allow whitelist users to run this command
+        // Only allow allowlist users to run this command
         if (!isAllowListUser(request)) {
           response.status(HttpStatus.SC_FORBIDDEN);
           responseObject.setError("Only admin users are allowed to run " + request.url());
@@ -261,7 +261,7 @@ public class NodesAndReplicas extends AbstractRoute {
         String cluster = request.queryParams(CLUSTER);
         responseObject.setCluster(cluster);
         String nodeId = request.queryParams(STORAGE_NODE_ID);
-        admin.removeInstanceFromWhiteList(cluster, nodeId);
+        admin.removeInstanceFromAllowList(cluster, nodeId);
       } catch (Throwable e) {
         responseObject.setError(e.getMessage());
         AdminSparkServer.handleError(e, request, response);
@@ -275,7 +275,7 @@ public class NodesAndReplicas extends AbstractRoute {
       NodeReplicasReadinessResponse responseObj = new NodeReplicasReadinessResponse();
       response.type(HttpConstants.JSON);
       try {
-        // Only allow whitelist users to run this command
+        // Only allow allowlist users to run this command
         if (!isAllowListUser(request)) {
           response.status(HttpStatus.SC_FORBIDDEN);
           responseObj.setError("Only admin users are allowed to run " + request.url());

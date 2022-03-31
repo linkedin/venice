@@ -30,7 +30,7 @@ public class TestControllerEnforeSSL {
   @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testInsecureRouteFailWhenEnforcingSSL() {
     /**
-     * Once controller enforce SSL, all routes except cluster/master controller discovery in insecure port will fail.
+     * Once controller enforce SSL, all routes except cluster/leader controller discovery in insecure port will fail.
      */
     Properties extraProperties = new Properties();
     extraProperties.setProperty(CONTROLLER_ENFORCE_SSL, "true");
@@ -41,7 +41,7 @@ public class TestControllerEnforeSSL {
              new String[]{CLUSTER_NAME}, kafkaBrokerWrapper, 1, 10, 0, 1,
              null, null, false, false, extraProperties);
          ControllerClient controllerClient = ControllerClient.constructClusterControllerClient(CLUSTER_NAME, controllerWrapper.getControllerUrl())) {
-      TestUtils.waitForNonDeterministicCompletion(5, TimeUnit.SECONDS, () -> controllerWrapper.isMasterController(CLUSTER_NAME));
+      TestUtils.waitForNonDeterministicCompletion(5, TimeUnit.SECONDS, () -> controllerWrapper.isLeaderController(CLUSTER_NAME));
 
       /**
        * Add a test store through backend API directly without going though Controller listener service ({@link com.linkedin.venice.controller.server.AdminSparkServer}).
@@ -51,12 +51,12 @@ public class TestControllerEnforeSSL {
       admin.createStore(CLUSTER_NAME, storeName, "dev", KEY_SCHEMA, VALUE_SCHEMA);
 
       /**
-       * Master controller discovery should still work.
+       * leader controller discovery should still work.
        */
       try {
-        controllerClient.getMasterControllerUrl();
+        controllerClient.getLeaderControllerUrl();
       } catch (Exception e) {
-        Assert.fail("Master controller discover should still work after enforcing SSL.");
+        Assert.fail("Leader controller discover should still work after enforcing SSL.");
       }
 
       /**

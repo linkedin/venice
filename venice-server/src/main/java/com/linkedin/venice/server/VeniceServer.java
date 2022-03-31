@@ -30,8 +30,8 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixExternalViewRepository;
 import com.linkedin.venice.helix.HelixReadOnlyZKSharedSchemaRepository;
 import com.linkedin.venice.helix.SafeHelixManager;
-import com.linkedin.venice.helix.WhitelistAccessor;
-import com.linkedin.venice.helix.ZkWhitelistAccessor;
+import com.linkedin.venice.helix.AllowlistAccessor;
+import com.linkedin.venice.helix.ZkAllowlistAccessor;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.listener.ListenerService;
@@ -129,12 +129,12 @@ public class VeniceServer {
     // force out any potential config errors using a wildcard store name
     veniceConfigLoader.getStoreConfig("");
 
-    if (!isServerInWhiteList(
+    if (!isServerInAllowList(
         veniceConfigLoader.getVeniceClusterConfig().getZookeeperAddress(),
         veniceConfigLoader.getVeniceClusterConfig().getClusterName(),
         veniceConfigLoader.getVeniceServerConfig().getListenerPort(),
-        veniceConfigLoader.getVeniceServerConfig().isServerWhitelistEnabled())) {
-      throw new VeniceException("Can not create a venice server because this server has not been added into white list.");
+        veniceConfigLoader.getVeniceServerConfig().isServerAllowlistEnabled())) {
+      throw new VeniceException("Can not create a venice server because this server has not been added into allowlist.");
     }
 
     this.isStarted = new AtomicBoolean(false);
@@ -464,24 +464,24 @@ public class VeniceServer {
     }
   }
 
-  protected static boolean isServerInWhiteList(String zkAddress, String clusterName, int listenPort, boolean enableServerWhitelist) {
-    if (!enableServerWhitelist) {
-      logger.info("Check whitelist is disable, continue to start participant.");
+  protected static boolean isServerInAllowList(String zkAddress, String clusterName, int listenPort, boolean enableServerAllowlist) {
+    if (!enableServerAllowlist) {
+      logger.info("Check allowlist is disable, continue to start participant.");
       return true;
     }
-    try (WhitelistAccessor accessor = new ZkWhitelistAccessor(zkAddress)) {
-      // Note: If a server has been added in to the white list, then node is failed or shutdown by SRE. once it
-      // start up again, it will automatically join the cluster because it already exists in the white list.
+    try (AllowlistAccessor accessor = new ZkAllowlistAccessor(zkAddress)) {
+      // Note: If a server has been added in to the allowlist, then node is failed or shutdown by SRE. once it
+      // start up again, it will automatically join the cluster because it already exists in the allowlist.
       String participantName = Utils.getHelixNodeIdentifier(listenPort);
-      if (!accessor.isInstanceInWhitelist(clusterName, participantName)) {
-        logger.info(participantName + " is not in the white list of " + clusterName + ", stop starting venice server");
+      if (!accessor.isInstanceInAllowlist(clusterName, participantName)) {
+        logger.info(participantName + " is not in the allowlist of " + clusterName + ", stop starting venice server");
         return false;
       } else {
-        logger.info(participantName + " has been added into white list, continue to start participant.");
+        logger.info(participantName + " has been added into allowlist, continue to start participant.");
         return true;
       }
     } catch (Exception e) {
-      String errorMsg = "Met error during checking white list.";
+      String errorMsg = "Met error during checking allowlist.";
       logger.error(errorMsg, e);
       throw new VeniceException(errorMsg, e);
     }

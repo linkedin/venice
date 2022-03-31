@@ -22,7 +22,7 @@ public class RoutersClusterConfigRoutes extends AbstractRoute {
     return new VeniceRouteHandler<ControllerResponse>(ControllerResponse.class) {
       @Override
       public void internalHandle(Request request, ControllerResponse veniceResponse) {
-        // Only allow whitelist users to run this command
+        // Only allow allowlist users to run this command
         if (!isAllowListUser(request)) {
           veniceResponse.setError("Only admin users are allowed to run " + request.url());
           return;
@@ -41,7 +41,7 @@ public class RoutersClusterConfigRoutes extends AbstractRoute {
     return new VeniceRouteHandler<ControllerResponse>(ControllerResponse.class) {
       @Override
       public void internalHandle(Request request, ControllerResponse veniceResponse) {
-        // Only allow whitelist users to run this command
+        // Only allow allowlist users to run this command
         if (!isAllowListUser(request)) {
           veniceResponse.setError("Only admin users are allowed to run " + request.url());
           return;
@@ -60,7 +60,7 @@ public class RoutersClusterConfigRoutes extends AbstractRoute {
     return new VeniceRouteHandler<ControllerResponse>(ControllerResponse.class) {
       @Override
       public void internalHandle(Request request, ControllerResponse veniceResponse) {
-        // Only allow whitelist users to run this command
+        // Only allow allowlist users to run this command
         if (!isAllowListUser(request)) {
           veniceResponse.setError("Only admin users are allowed to run " + request.url());
           return;
@@ -81,7 +81,7 @@ public class RoutersClusterConfigRoutes extends AbstractRoute {
     return new VeniceRouteHandler<RoutersClusterConfigResponse>(RoutersClusterConfigResponse.class) {
       @Override
       public void internalHandle(Request request, RoutersClusterConfigResponse veniceResponse) {
-        // Only allow whitelist users to run this command
+        // Only allow allowlist users to run this command
         if (!isAllowListUser(request)) {
           veniceResponse.setError("Only admin users are allowed to run " + request.url());
           return;

@@ -43,7 +43,7 @@ public class TestInstanceRemovable {
 
   @Test(timeOut = 120 * Time.MS_PER_SECOND)
   public void testIsInstanceRemovableDuringPush() {
-    String storeName = Utils.getUniqueString("testMasterControllerFailover");
+    String storeName = Utils.getUniqueString("testLeaderControllerFailover");
     int partitionCount = 2;
     int dataSize = partitionCount * partitionSize;
 
@@ -57,7 +57,7 @@ public class TestInstanceRemovable {
       veniceWriter.broadcastStartOfPush(new HashMap<>());
 
       TestUtils.waitForNonDeterministicCompletion(3, TimeUnit.SECONDS,
-          () -> cluster.getMasterVeniceController()
+          () -> cluster.getLeaderVeniceController()
               .getVeniceAdmin()
               .getOffLinePushStatus(cluster.getClusterName(), topicName)
               .getExecutionStatus()
@@ -86,14 +86,14 @@ public class TestInstanceRemovable {
         // stop a server during push
         cluster.stopVeniceServer(serverPort1);
         TestUtils.waitForNonDeterministicCompletion(3, TimeUnit.SECONDS,
-            () -> cluster.getMasterVeniceController().getVeniceAdmin().getReplicas(clusterName, topicName).size() == 4);
+            () -> cluster.getLeaderVeniceController().getVeniceAdmin().getReplicas(clusterName, topicName).size() == 4);
         // could remove the rest of nodes as well
         Assert.assertTrue(client.isNodeRemovable(Utils.getHelixNodeIdentifier(serverPort2)).isRemovable());
         Assert.assertTrue(client.isNodeRemovable(Utils.getHelixNodeIdentifier(serverPort3)).isRemovable());
         // stop one more server
         cluster.stopVeniceServer(serverPort2);
         TestUtils.waitForNonDeterministicCompletion(3, TimeUnit.SECONDS,
-            () -> cluster.getMasterVeniceController().getVeniceAdmin().getReplicas(clusterName, topicName).size() == 2);
+            () -> cluster.getLeaderVeniceController().getVeniceAdmin().getReplicas(clusterName, topicName).size() == 2);
         // Even if there are no alive storage nodes, push should not fail.
         Assert.assertTrue(client.isNodeRemovable(Utils.getHelixNodeIdentifier(serverPort3)).isRemovable());
         // Add the storage servers back and the ingestion should still be able to complete.
@@ -101,7 +101,7 @@ public class TestInstanceRemovable {
         cluster.addVeniceServer(new Properties(), new Properties());
         veniceWriter.broadcastEndOfPush(new HashMap<>());
         TestUtils.waitForNonDeterministicCompletion(3, TimeUnit.SECONDS,
-            () -> cluster.getMasterVeniceController()
+            () -> cluster.getLeaderVeniceController()
                 .getVeniceAdmin()
                 .getOffLinePushStatus(cluster.getClusterName(), topicName)
                 .getExecutionStatus()
@@ -112,7 +112,7 @@ public class TestInstanceRemovable {
 
   @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testIsInstanceRemovableAfterPush() {
-    String storeName = Utils.getUniqueString("testMasterControllerFailover");
+    String storeName = Utils.getUniqueString("testLeaderControllerFailover");
     int partitionCount = 2;
     int dataSize = partitionCount * partitionSize;
 
@@ -130,7 +130,7 @@ public class TestInstanceRemovable {
 
     // Wait push completed.
     TestUtils.waitForNonDeterministicCompletion(3, TimeUnit.SECONDS,
-        () -> cluster.getMasterVeniceController()
+        () -> cluster.getLeaderVeniceController()
             .getVeniceAdmin()
             .getOffLinePushStatus(cluster.getClusterName(), topicName)
             .getExecutionStatus()
@@ -158,7 +158,7 @@ public class TestInstanceRemovable {
 
     cluster.stopVeniceServer(serverPort1);
     TestUtils.waitForNonDeterministicCompletion(3, TimeUnit.SECONDS,
-        () -> cluster.getMasterVeniceController().getVeniceAdmin().getReplicas(clusterName, topicName).size() == 4);
+        () -> cluster.getLeaderVeniceController().getVeniceAdmin().getReplicas(clusterName, topicName).size() == 4);
     // Can not remove node cause, it will trigger re-balance.
     try (ControllerClient client = new ControllerClient(clusterName, urls)) {
       Assert.assertTrue(client.isNodeRemovable(Utils.getHelixNodeIdentifier(serverPort1)).isRemovable());
@@ -168,7 +168,7 @@ public class TestInstanceRemovable {
       VeniceServerWrapper newServer = cluster.addVeniceServer(false, false);
       int serverPort4 = newServer.getPort();
       TestUtils.waitForNonDeterministicCompletion(3, TimeUnit.SECONDS,
-          () -> cluster.getMasterVeniceController()
+          () -> cluster.getLeaderVeniceController()
               .getVeniceAdmin()
               .getReplicasOfStorageNode(clusterName, Utils.getHelixNodeIdentifier(serverPort4)).size() == 2);
       // After replica number back to 3, all of node could be removed.

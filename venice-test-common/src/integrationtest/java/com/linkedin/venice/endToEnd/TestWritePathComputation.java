@@ -19,7 +19,7 @@ import java.util.concurrent.TimeUnit;
 
 public class TestWritePathComputation {
   private static final Logger logger = Logger.getLogger(TestWritePathComputation.class);
-  private static final long GET_MASTER_CONTROLLER_TIMEOUT = 20 * Time.MS_PER_SECOND;
+  private static final long GET_LEADER_CONTROLLER_TIMEOUT = 20 * Time.MS_PER_SECOND;
 
   @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testFeatureFlagSingleDC() {
@@ -28,13 +28,13 @@ public class TestWritePathComputation {
       String storeName = "test-store0";
 
       // Create store
-      Admin admin = multiClusterWrapper.getMasterController(clusterName,GET_MASTER_CONTROLLER_TIMEOUT).getVeniceAdmin();
+      Admin admin = multiClusterWrapper.getLeaderController(clusterName, GET_LEADER_CONTROLLER_TIMEOUT).getVeniceAdmin();
       admin.createStore(clusterName, storeName, "tester", "\"string\"", "\"string\"");
       Assert.assertTrue(admin.hasStore(clusterName, storeName));
       Assert.assertFalse(admin.getStore(clusterName, storeName).isWriteComputationEnabled());
 
       // Set flag
-      String controllerUrl = multiClusterWrapper.getMasterController(clusterName, GET_MASTER_CONTROLLER_TIMEOUT).getControllerUrl();
+      String controllerUrl = multiClusterWrapper.getLeaderController(clusterName, GET_LEADER_CONTROLLER_TIMEOUT).getControllerUrl();
       try (ControllerClient controllerClient = new ControllerClient(clusterName, controllerUrl)) {
         controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setWriteComputationEnabled(true));
         Assert.assertTrue(admin.getStore(clusterName, storeName).isWriteComputationEnabled());
@@ -57,8 +57,8 @@ public class TestWritePathComputation {
       String storeName = "test-store0";
 
       // Create store
-      Admin parentAdmin = twoLayerMultiColoMultiClusterWrapper.getMasterParentControllerWithRetries(clusterName).getVeniceAdmin();
-      Admin childAdmin = multiCluster.getMasterController(clusterName, GET_MASTER_CONTROLLER_TIMEOUT).getVeniceAdmin();
+      Admin parentAdmin = twoLayerMultiColoMultiClusterWrapper.getLeaderParentControllerWithRetries(clusterName).getVeniceAdmin();
+      Admin childAdmin = multiCluster.getLeaderController(clusterName, GET_LEADER_CONTROLLER_TIMEOUT).getVeniceAdmin();
       parentAdmin.createStore(clusterName, storeName, "tester", "\"string\"", "\"string\"");
       TestUtils.waitForNonDeterministicAssertion(15, TimeUnit.SECONDS, () -> {
         Assert.assertTrue(parentAdmin.hasStore(clusterName, storeName));

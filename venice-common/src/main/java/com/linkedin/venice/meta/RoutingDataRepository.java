@@ -25,14 +25,14 @@ public interface RoutingDataRepository extends VeniceResource, OnlineInstanceFin
   boolean containsKafkaTopic(String kafkaTopic);
 
   /**
-   * Query the master controller of current cluster.
+   * Query the leader controller of current cluster.
    */
-  Instance getMasterController();
+  Instance getLeaderController();
 
   /**
-   * Timestamp in milliseconds of the last time master controller changed.
+   * Timestamp in milliseconds of the last time leader controller changed.
    */
-  long getMasterControllerChangeTimeMs();
+  long getLeaderControllerChangeTimeMs();
 
   /**
    * Add a listener on kafka topic to get the notification when routing data is changed.

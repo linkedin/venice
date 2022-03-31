@@ -434,7 +434,7 @@ public class MetaSystemStoreTest {
       Assert.assertTrue(nativeMetadataRepository instanceof ThinClientMetaStoreBasedRepository);
       nativeMetadataRepository.subscribe(regularVeniceStoreName);
       Collection<SchemaEntry> metaStoreSchemaEntries = nativeMetadataRepository.getValueSchemas(regularVeniceStoreName);
-      assertEquals(metaStoreSchemaEntries.size(), venice.getMasterVeniceController()
+      assertEquals(metaStoreSchemaEntries.size(), venice.getLeaderVeniceController()
           .getVeniceAdmin()
           .getValueSchemas(venice.getClusterName(), regularVeniceStoreName)
           .size(), "Number of value schemas should be the same between meta system store and controller");
@@ -447,7 +447,7 @@ public class MetaSystemStoreTest {
               numberOfLargeSchemaVersions,
               "There should be " + numberOfLargeSchemaVersions + " versions of value schemas in total"));
       SchemaEntry latestValueSchema = nativeMetadataRepository.getLatestValueSchema(regularVeniceStoreName);
-      assertEquals(latestValueSchema, venice.getMasterVeniceController()
+      assertEquals(latestValueSchema, venice.getLeaderVeniceController()
               .getVeniceAdmin()
               .getValueSchema(venice.getClusterName(), regularVeniceStoreName, latestValueSchema.getId()),
           "NativeMetadataRepository is not returning the right schema id and/or schema pair");
@@ -507,15 +507,15 @@ public class MetaSystemStoreTest {
     nativeMetadataRepository.subscribe(regularVeniceStoreName);
     Store store = nativeMetadataRepository.getStore(regularVeniceStoreName);
     Store controllerStore = new ReadOnlyStore(
-        venice.getMasterVeniceController().getVeniceAdmin().getStore(venice.getClusterName(), regularVeniceStoreName));
+        venice.getLeaderVeniceController().getVeniceAdmin().getStore(venice.getClusterName(), regularVeniceStoreName));
     assertEquals(store, controllerStore);
     SchemaEntry keySchema = nativeMetadataRepository.getKeySchema(regularVeniceStoreName);
-    SchemaEntry controllerKeySchema = venice.getMasterVeniceController()
+    SchemaEntry controllerKeySchema = venice.getLeaderVeniceController()
         .getVeniceAdmin()
         .getKeySchema(venice.getClusterName(), regularVeniceStoreName);
     assertEquals(keySchema, controllerKeySchema);
     Collection<SchemaEntry> valueSchemas = nativeMetadataRepository.getValueSchemas(regularVeniceStoreName);
-    Collection<SchemaEntry> controllerValueSchemas = venice.getMasterVeniceController()
+    Collection<SchemaEntry> controllerValueSchemas = venice.getLeaderVeniceController()
         .getVeniceAdmin()
         .getValueSchemas(venice.getClusterName(), regularVeniceStoreName);
     assertEquals(valueSchemas, controllerValueSchemas);
@@ -530,7 +530,7 @@ public class MetaSystemStoreTest {
     });
     assertFalse(controllerClient.addValueSchema(regularVeniceStoreName, VALUE_SCHEMA_2).isError());
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
-      assertEquals(nativeMetadataRepository.getValueSchemas(regularVeniceStoreName), venice.getMasterVeniceController()
+      assertEquals(nativeMetadataRepository.getValueSchemas(regularVeniceStoreName), venice.getLeaderVeniceController()
           .getVeniceAdmin()
           .getValueSchemas(venice.getClusterName(), regularVeniceStoreName));
     });

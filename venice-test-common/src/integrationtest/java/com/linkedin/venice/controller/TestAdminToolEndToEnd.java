@@ -67,7 +67,7 @@ public class TestAdminToolEndToEnd {
         kafkaFetchQuota);
 
     String[] adminToolArgs =
-        {"--update-cluster-config", "--url", venice.getMasterVeniceController().getControllerUrl(),
+        {"--update-cluster-config", "--url", venice.getLeaderVeniceController().getControllerUrl(),
             "--cluster", clusterName,
             "--fabric", regionName,
             "--" + Arg.SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND.getArgName(), String.valueOf(kafkaFetchQuota)};
@@ -82,7 +82,7 @@ public class TestAdminToolEndToEnd {
     });
 
     String[] disallowStoreMigrationArg =
-        {"--update-cluster-config", "--url", venice.getMasterVeniceController().getControllerUrl(),
+        {"--update-cluster-config", "--url", venice.getLeaderVeniceController().getControllerUrl(),
             "--cluster", clusterName,
             "--" + Arg.ALLOW_STORE_MIGRATION.getArgName(), String.valueOf(false)};
     AdminTool.main(disallowStoreMigrationArg);
@@ -94,7 +94,7 @@ public class TestAdminToolEndToEnd {
 
     try {
       String[] startMigrationArgs =
-          {"--migrate-store", "--url", venice.getMasterVeniceController().getControllerUrl(),
+          {"--migrate-store", "--url", venice.getLeaderVeniceController().getControllerUrl(),
               "--store", "anyStore",
               "--cluster-src", clusterName,
               "--cluster-dest", "anyCluster"};
@@ -107,7 +107,7 @@ public class TestAdminToolEndToEnd {
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testIncrementalPushBatchMigrationCommand() throws Exception {
-    try (ControllerClient controllerClient = new ControllerClient(clusterName, venice.getMasterVeniceController().getControllerUrl())) {
+    try (ControllerClient controllerClient = new ControllerClient(clusterName, venice.getLeaderVeniceController().getControllerUrl())) {
       // Create 2 inc push stores with Incremental Push to VT policy
       String testStoreName1 = Utils.getUniqueString("test-store");
       NewStoreResponse newStoreResponse = controllerClient.createNewStore(testStoreName1, "test",
@@ -129,7 +129,7 @@ public class TestAdminToolEndToEnd {
 
       // Migrate all of them to Incremental Push to RT policy
       String[] adminToolArgs =
-          {"--configure-incremental-push-for-cluster", "--url", venice.getMasterVeniceController().getControllerUrl(),
+          {"--configure-incremental-push-for-cluster", "--url", venice.getLeaderVeniceController().getControllerUrl(),
               "--cluster", clusterName,
               "--incremental-push-policy-to-filter", "PUSH_TO_VERSION_TOPIC",
               "--incremental-push-policy-to-apply", "INCREMENTAL_PUSH_SAME_AS_REAL_TIME"};
@@ -151,7 +151,7 @@ public class TestAdminToolEndToEnd {
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testWipeClusterCommand() throws Exception {
-    try (ControllerClient controllerClient = new ControllerClient(clusterName, venice.getMasterVeniceController().getControllerUrl())) {
+    try (ControllerClient controllerClient = new ControllerClient(clusterName, venice.getLeaderVeniceController().getControllerUrl())) {
       // Create 2 stores. Store 1 has 2 versions
       String testStoreName1 = Utils.getUniqueString("test-store");
       NewStoreResponse newStoreResponse = controllerClient.createNewStore(testStoreName1, "test",
@@ -171,7 +171,7 @@ public class TestAdminToolEndToEnd {
 
       // Delete a version
       String[] wipeClusterArgs1 =
-          {"--wipe-cluster", "--url", venice.getMasterVeniceController().getControllerUrl(),
+          {"--wipe-cluster", "--url", venice.getLeaderVeniceController().getControllerUrl(),
               "--cluster", clusterName,
               "--fabric", "dc-0",
               "--store", testStoreName1,
@@ -184,7 +184,7 @@ public class TestAdminToolEndToEnd {
 
       // Delete a store
       String[] wipeClusterArgs2 =
-          {"--wipe-cluster", "--url", venice.getMasterVeniceController().getControllerUrl(),
+          {"--wipe-cluster", "--url", venice.getLeaderVeniceController().getControllerUrl(),
               "--cluster", clusterName,
               "--fabric", "dc-0",
               "--store", testStoreName1};
@@ -194,7 +194,7 @@ public class TestAdminToolEndToEnd {
 
       // Wipe a cluster
       String[] wipeClusterArgs3 =
-          {"--wipe-cluster", "--url", venice.getMasterVeniceController().getControllerUrl(),
+          {"--wipe-cluster", "--url", venice.getLeaderVeniceController().getControllerUrl(),
               "--cluster", clusterName,
               "--fabric", "dc-0"};
       AdminTool.main(wipeClusterArgs3);
@@ -216,7 +216,7 @@ public class TestAdminToolEndToEnd {
   public void testNodeReplicasReadinessCommand() throws Exception {
     VeniceServerWrapper server =  venice.getVeniceServers().get(0);
     String[] nodeReplicasReadinessArgs =
-        {"--node-replicas-readiness", "--url", venice.getMasterVeniceController().getControllerUrl(),
+        {"--node-replicas-readiness", "--url", venice.getLeaderVeniceController().getControllerUrl(),
             "--cluster", clusterName,
             "--storage-node", Utils.getHelixNodeIdentifier(server.getPort())};
     AdminTool.main(nodeReplicasReadinessArgs);

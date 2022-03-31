@@ -55,7 +55,7 @@ public class ReplicaStatusTest {
   @Test
   public void testUpdateStatusFromTopicSwitchReceived() {
     /**
-     * For grandfathering, it's possible that END_OF_PUSH_RECEIVED status will come after a TOPIC_SWITCH status
+     * For reprocessing, it's possible that END_OF_PUSH_RECEIVED status will come after a TOPIC_SWITCH status
      */
     testStatusesUpdate(TOPIC_SWITCH_RECEIVED, END_OF_PUSH_RECEIVED, STARTED, ERROR, PROGRESS, COMPLETED);
   }

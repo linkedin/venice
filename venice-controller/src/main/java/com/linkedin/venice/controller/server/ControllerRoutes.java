@@ -4,8 +4,8 @@ import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controllerapi.ChildAwareResponse;
+import com.linkedin.venice.controllerapi.LeaderControllerResponse;
 import com.linkedin.venice.controllerapi.ControllerResponse;
-import com.linkedin.venice.controllerapi.MasterControllerResponse;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.utils.Utils;
 import java.util.Map;
@@ -25,13 +25,13 @@ public class ControllerRoutes extends AbstractRoute {
   }
 
   /**
-   * No ACL check; any user is allowed to check master controller.
+   * No ACL check; any user is allowed to check leader controller.
    */
-  public Route getMasterController(Admin admin) {
+  public Route getLeaderController(Admin admin) {
     return (request, response) -> {
-      MasterControllerResponse responseObject = new MasterControllerResponse();
+      LeaderControllerResponse responseObject = new LeaderControllerResponse();
       try {
-        AdminSparkServer.validateParams(request, MASTER_CONTROLLER.getParams(), admin);
+        AdminSparkServer.validateParams(request, LEADER_CONTROLLER.getParams(), admin);
         String cluster = request.queryParams(CLUSTER);
         responseObject.setCluster(cluster);
         responseObject.setUrl(admin.getLeaderController(cluster).getUrl(isAclEnabled()));
@@ -88,7 +88,7 @@ public class ControllerRoutes extends AbstractRoute {
     return (request, response) -> {
       ControllerResponse responseObject = new ControllerResponse();
       response.type(HttpConstants.JSON);
-      // Only allow whitelist users to run this command
+      // Only allow allowlist users to run this command
       if (!isAllowListUser(request)) {
         response.status(HttpStatus.SC_FORBIDDEN);
         responseObject.setError("Only admin users are allowed to run " + request.url());

@@ -32,11 +32,11 @@ public class VeniceServerTest {
   }
 
   @Test
-  public void testStartServerWhenEnableWhitelistCheckingFailed() {
+  public void testStartServerWhenEnableAllowlistCheckingFailed() {
     try (VeniceClusterWrapper cluster = ServiceFactory.getVeniceCluster(1, 0, 0)) {
       Assert.assertThrows(VeniceException.class, () -> {
         Properties featureProperties = new Properties();
-        featureProperties.setProperty(SERVER_ENABLE_SERVER_WHITE_LIST, Boolean.toString(true));
+        featureProperties.setProperty(SERVER_ENABLE_SERVER_ALLOW_LIST, Boolean.toString(true));
         featureProperties.setProperty(SERVER_IS_AUTO_JOIN, Boolean.toString(false));
         cluster.addVeniceServer(featureProperties, new Properties());
       });
@@ -45,10 +45,10 @@ public class VeniceServerTest {
   }
 
   @Test
-  public void testStartServerWhenEnableWhitelistCheckingSuccessful() {
+  public void testStartServerWhenEnableAllowlistCheckingSuccessful() {
     try (VeniceClusterWrapper cluster = ServiceFactory.getVeniceCluster(1, 0, 0)) {
       Properties featureProperties = new Properties();
-      featureProperties.setProperty(SERVER_ENABLE_SERVER_WHITE_LIST, Boolean.toString(true));
+      featureProperties.setProperty(SERVER_ENABLE_SERVER_ALLOW_LIST, Boolean.toString(true));
       featureProperties.setProperty(SERVER_IS_AUTO_JOIN, Boolean.toString(true));
       cluster.addVeniceServer(featureProperties, new Properties());
       Assert.assertTrue(cluster.getVeniceServers().get(0).getVeniceServer().isStarted());
@@ -92,7 +92,7 @@ public class VeniceServerTest {
     try (VeniceClusterWrapper cluster = ServiceFactory.getVeniceCluster(0, 0, 0)) {
       Thread t = new Thread(() -> {
         Properties featureProperties = new Properties();
-        featureProperties.setProperty(SERVER_ENABLE_SERVER_WHITE_LIST, Boolean.toString(false));
+        featureProperties.setProperty(SERVER_ENABLE_SERVER_ALLOW_LIST, Boolean.toString(false));
         featureProperties.setProperty(SERVER_IS_AUTO_JOIN, Boolean.toString(true));
         cluster.addVeniceServer(featureProperties, new Properties());
       });

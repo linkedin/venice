@@ -424,7 +424,7 @@ public class CreateVersion extends AbstractRoute {
       VersionResponse responseObject = new VersionResponse();
       response.type(HttpConstants.JSON);
       try {
-        // Also allow whitelist users to run this command
+        // Also allow allowlist users to run this command
         if (!isAllowListUser(request) && !hasWriteAccessToTopic(request)) {
           response.status(HttpStatus.SC_FORBIDDEN);
           responseObject.setError("ACL failed for request " + request.url());
@@ -482,7 +482,7 @@ public class CreateVersion extends AbstractRoute {
       ControllerResponse responseObject = new ControllerResponse();
       response.type(HttpConstants.JSON);
       try {
-        // Also allow whitelist users to run this command
+        // Also allow allowlist users to run this command
         if (!isAllowListUser(request) && !hasWriteAccessToTopic(request)) {
           response.status(HttpStatus.SC_FORBIDDEN);
           responseObject.setError("ACL failed for request " + request.url());
@@ -510,7 +510,7 @@ public class CreateVersion extends AbstractRoute {
       ControllerResponse responseObject = new ControllerResponse();
       response.type(HttpConstants.JSON);
       try {
-        // Also allow whitelist users to run this command
+        // Also allow allowlist users to run this command
         if (!isAllowListUser(request) && !hasWriteAccessToTopic(request)) {
           response.status(HttpStatus.SC_FORBIDDEN);
           responseObject.setError("You don't have permission to end this push job; please grant write ACL for yourself.");
@@ -544,7 +544,7 @@ public class CreateVersion extends AbstractRoute {
       String clusterName = null;
       Version version = null;
       try {
-        // Only allow whitelist users to run this command
+        // Only allow allowlist users to run this command
         if (!isAllowListUser(request)) {
           response.status(HttpStatus.SC_FORBIDDEN);
           responseObject.setError("Only admin users are allowed to run " + request.url());

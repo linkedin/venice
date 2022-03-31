@@ -39,7 +39,7 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
    */
   enum PushType {
     BATCH(0), //Batch jobs will create a new version topic and write to it in a batch manner.
-    STREAM_REPROCESSING(1), // Grandfathering jobs will create a new version topic and a grandfathering topic.
+    STREAM_REPROCESSING(1), // reprocessing jobs will create a new version topic and a reprocessing topic.
     STREAM(2), // Stream jobs will write to a buffer or RT topic.
     INCREMENTAL(3); // Incremental jobs will re-use an existing version topic and write on top of it.
 

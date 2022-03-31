@@ -64,7 +64,7 @@ public class SchemaRoutes extends AbstractRoute {
       SchemaResponse responseObject = new SchemaResponse();
       response.type(HttpConstants.JSON);
       try {
-        // Only allow whitelist users to run this command
+        // Only allow allowlist users to run this command
         if (!isAllowListUser(request) && !hasWriteAccessToTopic(request)) {
           response.status(HttpStatus.SC_FORBIDDEN);
           responseObject.setError("User is neither Admin nor has write access to topic to run " + request.url());
@@ -108,7 +108,7 @@ public class SchemaRoutes extends AbstractRoute {
       SchemaResponse responseObject = new SchemaResponse();
       response.type(HttpConstants.JSON);
       try {
-        // Only allow whitelist users to run this command
+        // Only allow allowlist users to run this command
         if (!isAllowListUser(request)) {
           response.status(HttpStatus.SC_FORBIDDEN);
           responseObject.setError("Only admin users are allowed to run " + request.url());
@@ -331,7 +331,7 @@ public class SchemaRoutes extends AbstractRoute {
       SchemaResponse responseObject = new SchemaResponse();
       response.type(HttpConstants.JSON);
       try {
-        // Only allow whitelist users to run this command
+        // Only allow allowlist users to run this command
         if (!isAllowListUser(request)) {
           response.status(HttpStatus.SC_FORBIDDEN);
           responseObject.setError("Only admin users are allowed to run " + request.url());

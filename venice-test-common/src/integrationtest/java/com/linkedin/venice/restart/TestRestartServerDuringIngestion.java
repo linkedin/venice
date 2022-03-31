@@ -110,7 +110,7 @@ public abstract class TestRestartServerDuringIngestion {
     AvroGenericDeserializer deserializer = new AvroGenericDeserializer(Schema.parse(stringSchemaStr), Schema.parse(stringSchemaStr));
 
     String storeName = Utils.getUniqueString("test_store");
-    String veniceUrl = cluster.getMasterVeniceController().getControllerUrl();
+    String veniceUrl = cluster.getLeaderVeniceController().getControllerUrl();
     Properties properties = new Properties();
     properties.put(VenicePushJob.VENICE_URL_PROP, veniceUrl);
     properties.put(VenicePushJob.VENICE_STORE_NAME_PROP, storeName);
@@ -164,7 +164,7 @@ public abstract class TestRestartServerDuringIngestion {
 
       // Wait push completed.
       TestUtils.waitForNonDeterministicCompletion(20, TimeUnit.SECONDS,
-          () -> cluster.getMasterVeniceController()
+          () -> cluster.getLeaderVeniceController()
               .getVeniceAdmin()
               .getOffLinePushStatus(cluster.getClusterName(), topic)
               .getExecutionStatus()
@@ -256,7 +256,7 @@ public abstract class TestRestartServerDuringIngestion {
     AvroSerializer serializer = new AvroSerializer(AvroCompatibilityHelper.parse(stringSchemaStr));
 
     String storeName = Utils.getUniqueString("test_store");
-    String veniceUrl = cluster.getMasterVeniceController().getControllerUrl();
+    String veniceUrl = cluster.getLeaderVeniceController().getControllerUrl();
     Properties properties = new Properties();
     properties.put(VenicePushJob.VENICE_URL_PROP, veniceUrl);
     properties.put(VenicePushJob.VENICE_STORE_NAME_PROP, storeName);
@@ -287,7 +287,7 @@ public abstract class TestRestartServerDuringIngestion {
 
       // Wait push completed.
       TestUtils.waitForNonDeterministicCompletion(20, TimeUnit.SECONDS,
-          () -> cluster.getMasterVeniceController()
+          () -> cluster.getLeaderVeniceController()
               .getVeniceAdmin()
               .getOffLinePushStatus(cluster.getClusterName(), topic)
               .getExecutionStatus()

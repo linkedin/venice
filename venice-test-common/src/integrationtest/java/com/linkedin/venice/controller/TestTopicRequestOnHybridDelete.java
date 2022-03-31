@@ -106,7 +106,7 @@ public class TestTopicRequestOnHybridDelete {
       ControllerResponse response = finalControllerClient.deleteStore(storeName);
       Assert.assertFalse(response.isError());
 
-      TopicManager topicManager = venice.getMasterVeniceController().getVeniceAdmin().getTopicManager();
+      TopicManager topicManager = venice.getLeaderVeniceController().getVeniceAdmin().getTopicManager();
       try {
         topicManager.ensureTopicIsDeletedAndBlock(composeRealTimeTopic(storeName));
       } catch (ExecutionException e) {

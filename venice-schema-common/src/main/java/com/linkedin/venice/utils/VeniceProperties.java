@@ -235,6 +235,16 @@ public class VeniceProperties {
     }
   }
 
+  public String getStringWithAlternative(String preferredKey , String altKey, String defaultValue) {
+    if (containsKey(preferredKey)) {
+      return get(preferredKey);
+    } else if (containsKey(altKey) ){
+      return get(altKey);
+    } else {
+      return defaultValue;
+    }
+  }
+
   public String getString(String key) {
     if (containsKey(key)) {
       return get(key);
@@ -243,9 +253,29 @@ public class VeniceProperties {
     }
   }
 
+  public String getStringWithAlternative(String preferredKey, String altKey) {
+    if (containsKey(preferredKey)) {
+      return get(preferredKey);
+    } else if (containsKey(altKey)) {
+      return get(altKey);
+    }  else {
+      throw new UndefinedPropertyException(preferredKey);
+    }
+  }
+
   public boolean getBoolean(String key, boolean defaultValue) {
     if (containsKey(key)) {
       return "true".equalsIgnoreCase(get(key));
+    } else {
+      return defaultValue;
+    }
+  }
+
+  public boolean getBooleanWithAlternative(String preferredKey, String altKey ,  boolean defaultValue) {
+    if (containsKey(preferredKey)) {
+      return "true".equalsIgnoreCase(get(preferredKey));
+    } else if (containsKey(altKey)) {
+      return "true".equalsIgnoreCase(get(altKey));
     } else {
       return defaultValue;
     }
@@ -352,6 +382,21 @@ public class VeniceProperties {
     }
 
     String value = get(key);
+    String[] pieces = value.split("\\s*,\\s*");
+    return Arrays.asList(pieces);
+  }
+
+  public List<String> getListWithAlternative(String preferredKey, String altKey, List<String> defaultValue) {
+    if (!containsKey(preferredKey) && !containsKey(altKey)) {
+      return defaultValue;
+    }
+    String value = "";
+    if (containsKey(preferredKey)) {
+      value = get(preferredKey);
+    } else if (containsKey(altKey)){
+      value = get(altKey);
+    }
+
     String[] pieces = value.split("\\s*,\\s*");
     return Arrays.asList(pieces);
   }

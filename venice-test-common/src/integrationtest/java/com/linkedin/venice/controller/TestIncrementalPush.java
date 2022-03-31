@@ -80,7 +80,7 @@ public class TestIncrementalPush {
     // validate it still returns valid status from backup version
     String finalIncPushVerison1 = incPushVerison;
     TestUtils.waitForNonDeterministicCompletion(3, TimeUnit.SECONDS,
-        () -> cluster.getMasterVeniceController()
+        () -> cluster.getLeaderVeniceController()
             .getVeniceAdmin()
             .getOffLinePushStatus(cluster.getClusterName(), finalTopicName1, Optional.of(finalIncPushVerison1))
             .getExecutionStatus()
@@ -92,7 +92,7 @@ public class TestIncrementalPush {
     String finalIncPushVerison = incPushVerison;
     // validate current version query works
     TestUtils.waitForNonDeterministicCompletion(3, TimeUnit.SECONDS,
-        () -> cluster.getMasterVeniceController()
+        () -> cluster.getLeaderVeniceController()
             .getVeniceAdmin()
             .getOffLinePushStatus(cluster.getClusterName(), finalTopicName, Optional.of(finalIncPushVerison))
             .getExecutionStatus()

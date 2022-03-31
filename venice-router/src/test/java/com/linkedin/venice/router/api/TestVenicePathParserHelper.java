@@ -18,11 +18,11 @@ import static com.linkedin.venice.router.utils.VeniceRouterUtils.*;
 public class TestVenicePathParserHelper {
   @Test
   public void parsesResourceTypes(){
-    String controllerUri = "http://myhost:1234/" + TYPE_MASTER_CONTROLLER;
+    String controllerUri = "http://myhost:1234/" + TYPE_LEADER_CONTROLLER;
     BasicFullHttpRequest request = new BasicFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET,
         controllerUri, -1, -1);
 
-    Assert.assertEquals(parseRequest(request).getResourceType(), TYPE_MASTER_CONTROLLER);
+    Assert.assertEquals(parseRequest(request).getResourceType(), TYPE_LEADER_CONTROLLER);
     Assert.assertTrue(parseRequest(request).isInvalidStorageRequest());
 
     String storageUri = "http://myhost:1234/" + TYPE_STORAGE + "/storename/key?f=b64&fee=fi&foe=fum";

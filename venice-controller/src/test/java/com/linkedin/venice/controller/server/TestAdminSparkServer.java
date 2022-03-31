@@ -573,18 +573,18 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
   }
 
   @Test(timeOut = TEST_TIMEOUT)
-  public void controllerClientCanUpdateWhiteList() {
-    Admin admin = cluster.getMasterVeniceController().getVeniceAdmin();
+  public void controllerClientCanUpdateAllowList() {
+    Admin admin = cluster.getLeaderVeniceController().getVeniceAdmin();
 
     String nodeId = Utils.getHelixNodeIdentifier(34567);
-    Assert.assertFalse(admin.getWhitelist(cluster.getClusterName()).contains(nodeId),
-        nodeId + " has not been added into white list.");
-    controllerClient.addNodeIntoWhiteList(nodeId);
-    Assert.assertTrue(admin.getWhitelist(cluster.getClusterName()).contains(nodeId),
-        nodeId + " has been added into white list.");
-    controllerClient.removeNodeFromWhiteList(nodeId);
-    Assert.assertFalse(admin.getWhitelist(cluster.getClusterName()).contains(nodeId),
-        nodeId + " has been removed from white list.");
+    Assert.assertFalse(admin.getAllowlist(cluster.getClusterName()).contains(nodeId),
+        nodeId + " has not been added into allowlist.");
+    controllerClient.addNodeIntoAllowList(nodeId);
+    Assert.assertTrue(admin.getAllowlist(cluster.getClusterName()).contains(nodeId),
+        nodeId + " has been added into allowlist.");
+    controllerClient.removeNodeFromAllowList(nodeId);
+    Assert.assertFalse(admin.getAllowlist(cluster.getClusterName()).contains(nodeId),
+        nodeId + " has been removed from allowlist.");
   }
 
   @Test(timeOut = TEST_TIMEOUT)
@@ -620,7 +620,7 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
       ControllerResponse response = controllerClient.updateStore(storeName, queryParams);
 
       Assert.assertFalse(response.isError(), response.getError());
-      Store store = cluster.getMasterVeniceController().getVeniceAdmin().getStore(cluster.getClusterName(), storeName);
+      Store store = cluster.getLeaderVeniceController().getVeniceAdmin().getStore(cluster.getClusterName(), storeName);
       Assert.assertEquals(store.getOwner(), owner);
       Assert.assertEquals(store.getPartitionCount(), partitionCount);
       Assert.assertEquals(store.getCurrentVersion(), current);
@@ -635,7 +635,7 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
       Assert.assertFalse(controllerClient.updateStore(storeName, queryParams).isError(),
           "We should be able to disable store writes again.");
 
-      store = cluster.getMasterVeniceController().getVeniceAdmin().getStore(cluster.getClusterName(), storeName);
+      store = cluster.getLeaderVeniceController().getVeniceAdmin().getStore(cluster.getClusterName(), storeName);
       Assert.assertEquals(store.isAccessControlled(), accessControlled);
     } finally {
       deleteStore(storeName);
@@ -658,7 +658,7 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
           .setEnableReads(enableReads));
 
       Assert.assertFalse(response.isError(), response.getError());
-      Store store = cluster.getMasterVeniceController().getVeniceAdmin().getStore(cluster.getClusterName(), storeName);
+      Store store = cluster.getLeaderVeniceController().getVeniceAdmin().getStore(cluster.getClusterName(), storeName);
       Assert.assertEquals(store.getPartitionCount(), partitionCount);
       Assert.assertEquals(store.getCurrentVersion(), current);
       Assert.assertEquals(store.isEnableReads(), enableReads);
@@ -798,7 +798,7 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
     try {
       Assert.assertEquals(
           ControllerClient.discoverCluster(
-              cluster.getMasterVeniceController().getControllerUrl(),
+              cluster.getLeaderVeniceController().getControllerUrl(),
               storeName,
               Optional.empty(),
               1
@@ -856,7 +856,7 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
       // Child fabric should return the same result since they are sharing kafka. Wait for resource of v1 to be cleaned
       // up since for child fabric we only consider a topic is deletable if its resource is deleted.
       TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
-        Assert.assertFalse(cluster.getMasterVeniceController().getVeniceAdmin().isResourceStillAlive(
+        Assert.assertFalse(cluster.getLeaderVeniceController().getVeniceAdmin().isResourceStillAlive(
             Version.composeKafkaTopic(storeName, 1)));
       });
       MultiStoreTopicsResponse childMultiStoreTopicResponse = controllerClient.getDeletableStoreTopics();

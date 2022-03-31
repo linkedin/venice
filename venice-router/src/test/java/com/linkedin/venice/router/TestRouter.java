@@ -11,7 +11,7 @@ import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.client.store.InternalAvroStoreClient;
 import com.linkedin.venice.controllerapi.ControllerRoute;
-import com.linkedin.venice.controllerapi.MasterControllerResponse;
+import com.linkedin.venice.controllerapi.LeaderControllerResponse;
 import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.MockVeniceRouterWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
@@ -122,10 +122,12 @@ public class TestRouter {
       try (CloseableHttpAsyncClient httpClient = HttpAsyncClients.custom().setSSLStrategy(sslSessionStrategy).build()) {
 
         httpClient.start();
-        HttpGet request = new HttpGet("https://" + router.getHost() + ":" + router.getSslPort() + ControllerRoute.MASTER_CONTROLLER.getPath());
+        HttpGet request = new HttpGet("https://" + router.getHost() + ":" + router.getSslPort() + ControllerRoute.LEADER_CONTROLLER
+            .getPath());
         HttpResponse response = httpClient.execute(request, null).get();
         String jsonContent = IOUtils.toString(response.getEntity().getContent());
-        MasterControllerResponse controllerResponse = new ObjectMapper().readValue(jsonContent, MasterControllerResponse.class);
+        LeaderControllerResponse
+            controllerResponse = new ObjectMapper().readValue(jsonContent, LeaderControllerResponse.class);
         Assert.assertEquals(controllerResponse.getCluster(), router.getClusterName());
       }
 
@@ -142,7 +144,8 @@ public class TestRouter {
 
       try (CloseableHttpAsyncClient httpClient = HttpAsyncClients.createDefault()) {
         httpClient.start();
-        HttpGet request = new HttpGet("http://" + router.getHost() + ":" + router.getSslPort() + ControllerRoute.MASTER_CONTROLLER.getPath());
+        HttpGet request = new HttpGet("http://" + router.getHost() + ":" + router.getSslPort() + ControllerRoute.LEADER_CONTROLLER
+            .getPath());
         HttpResponse response = httpClient.execute(request, null).get();
         Assert.assertEquals(response.getStatusLine().getStatusCode(), HttpStatus.SC_FORBIDDEN);
       }

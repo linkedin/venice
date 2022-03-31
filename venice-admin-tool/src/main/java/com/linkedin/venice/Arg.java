@@ -61,7 +61,7 @@ public enum Arg {
   KAFKA_ZOOKEEPER_CONNECTION_URL("kafka-zk-url", "kzu", true, "Kafka's Zookeeper URL(s)"),
   KAFKA_ZOOKEEPER_CONNECTION_URL_SOURCE("kafka-zk-url-source", "kzs", true, "Kafka's Zookeeper URL(s) for the source cluster"),
   KAFKA_ZOOKEEPER_CONNECTION_URL_DESTINATION("kafka-zk-url-dest", "kzd", true, "Kafka's Zookeeper URL(s) for the destination cluster"),
-  KAFKA_TOPIC_WHITELIST("kafka-topic-whitelist", "ktw", true, "Kafka topic whilelist"),
+  KAFKA_TOPIC_ALLOWLIST("kafka-topic-allowlist", "kta", true, "Kafka topic allowlist"),
   KAFKA_TOPIC_NAME("kafka-topic-name", "ktn", true, "Kafka topic name"),
   KAFKA_TOPIC_PARTITION("kafka-topic-partition", "ktp", true, "Kafka topic partition number"),
   KAFKA_CONSUMER_CONFIG_FILE("kafka-conumer-config-file", "kcc", true, "Configuration file for SSL (optional, if plain-text is available)"),

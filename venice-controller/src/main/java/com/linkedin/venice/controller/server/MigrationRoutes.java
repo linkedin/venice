@@ -23,7 +23,7 @@ public class MigrationRoutes extends AbstractRoute {
       MigrationPushStrategyResponse strategyResponse = new MigrationPushStrategyResponse();
       response.type(HttpConstants.JSON);
       try {
-        // Only allow whitelist users to run this command
+        // Only allow allowlist users to run this command
         if (!isAllowListUser(request)) {
           response.status(HttpStatus.SC_FORBIDDEN);
           strategyResponse.setError("Only admin users are allowed to run " + request.url());
@@ -42,7 +42,7 @@ public class MigrationRoutes extends AbstractRoute {
       ControllerResponse updateResponse = new ControllerResponse();
       response.type(HttpConstants.JSON);
       try {
-        // Only allow whitelist users to run this command
+        // Only allow allowlist users to run this command
         if (!isAllowListUser(request)) {
           response.status(HttpStatus.SC_FORBIDDEN);
           updateResponse.setError("Only admin users are allowed to run " + request.url());

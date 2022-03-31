@@ -65,7 +65,7 @@ public class VeniceParentHelixAdminTest {
     properties.setProperty(TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS, String.valueOf(Long.MAX_VALUE));
     properties.setProperty(TERMINAL_STATE_TOPIC_CHECK_DELAY_MS, String.valueOf(1000L));
     try (VeniceControllerWrapper parentController = ServiceFactory.getVeniceParentController(venice.getClusterName(),
-        zkServerWrapper.getAddress(), venice.getKafka(), new VeniceControllerWrapper[]{venice.getMasterVeniceController()},
+        zkServerWrapper.getAddress(), venice.getKafka(), new VeniceControllerWrapper[]{venice.getLeaderVeniceController()},
         new VeniceProperties(properties), false);
     ControllerClient parentControllerClient = new ControllerClient(venice.getClusterName(), parentController.getControllerUrl())) {
       String storeName = Utils.getUniqueString("testStore");
@@ -86,9 +86,9 @@ public class VeniceParentHelixAdminTest {
     Properties properties = new Properties();
     properties.setProperty(REPLICATION_METADATA_VERSION_ID, String.valueOf(1));
     try (VeniceControllerWrapper parentControllerWrapper = ServiceFactory.getVeniceParentController(venice.getClusterName(), zkServerWrapper.getAddress(), venice.getKafka(),
-        new VeniceControllerWrapper[]{venice.getMasterVeniceController()}, new VeniceProperties(properties), false)) {
+        new VeniceControllerWrapper[]{venice.getLeaderVeniceController()}, new VeniceProperties(properties), false)) {
       String parentControllerUrl = parentControllerWrapper.getControllerUrl();
-      String childControllerUrl = venice.getMasterVeniceController().getControllerUrl();
+      String childControllerUrl = venice.getLeaderVeniceController().getControllerUrl();
       // Adding store
       String storeName = "test_store";
       String owner = "test_owner";
@@ -166,7 +166,7 @@ public class VeniceParentHelixAdminTest {
     properties.setProperty(TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS, String.valueOf(Long.MAX_VALUE));
     properties.setProperty(TERMINAL_STATE_TOPIC_CHECK_DELAY_MS, String.valueOf(1000L));
     try (VeniceControllerWrapper parentController = ServiceFactory.getVeniceParentController(venice.getClusterName(),
-        zkServerWrapper.getAddress(), venice.getKafka(), new VeniceControllerWrapper[]{venice.getMasterVeniceController()},
+        zkServerWrapper.getAddress(), venice.getKafka(), new VeniceControllerWrapper[]{venice.getLeaderVeniceController()},
         new VeniceProperties(properties), false);
         ControllerClient parentControllerClient = new ControllerClient(venice.getClusterName(), parentController.getControllerUrl())) {
       String storeName = Utils.getUniqueString("testStore");
@@ -209,7 +209,7 @@ public class VeniceParentHelixAdminTest {
   public void testHybridAndETLStoreConfig() {
     try (VeniceControllerWrapper parentControllerWrapper =
             ServiceFactory.getVeniceParentController(venice.getClusterName(), zkServerWrapper.getAddress(), venice.getKafka(),
-                new VeniceControllerWrapper[]{venice.getMasterVeniceController()},false)) {
+                new VeniceControllerWrapper[]{venice.getLeaderVeniceController()},false)) {
       String controllerUrl = parentControllerWrapper.getControllerUrl();
 
       // Adding store

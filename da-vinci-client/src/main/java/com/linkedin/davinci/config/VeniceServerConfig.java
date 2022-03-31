@@ -42,7 +42,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   private final int listenerPort;
   private final RocksDBServerConfig rocksDBServerConfig;
-  private final boolean enableServerWhiteList;
+  private final boolean enableServerAllowList;
   private final boolean autoCreateDataPath; // default true
   /**
    * Maximum number of thread that the thread pool would keep to run the Helix online offline state transition.
@@ -286,7 +286,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
         Paths.get(System.getProperty("java.io.tmpdir"), "venice-server-data").toAbsolutePath().toString());
     autoCreateDataPath = Boolean.parseBoolean(serverProperties.getString(AUTOCREATE_DATA_PATH, "true"));
     rocksDBServerConfig = new RocksDBServerConfig(serverProperties);
-    enableServerWhiteList = serverProperties.getBoolean(ENABLE_SERVER_WHITE_LIST, false);
+    enableServerAllowList = serverProperties.getBooleanWithAlternative(ENABLE_SERVER_WHITE_LIST, ENABLE_SERVER_ALLOW_LIST, false);
     maxOnlineOfflineStateTransitionThreadNumber = serverProperties.getInt(MAX_ONLINE_OFFLINE_STATE_TRANSITION_THREAD_NUMBER, 100);
     maxLeaderFollowerStateTransitionThreadNumber = serverProperties.getInt(MAX_LEADER_FOLLOWER_STATE_TRANSITION_THREAD_NUMBER, 20);
     storeWriterNumber = serverProperties.getInt(STORE_WRITER_NUMBER, 8);
@@ -466,8 +466,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     return rocksDBServerConfig;
   }
 
-  public boolean isServerWhitelistEnabled() {
-    return enableServerWhiteList;
+  public boolean isServerAllowlistEnabled() {
+    return enableServerAllowList;
   }
 
   public int getMaxOnlineOfflineStateTransitionThreadNumber() {

@@ -7,7 +7,6 @@ import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.security.SSLFactory;
 
-import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
@@ -51,13 +50,14 @@ public class D2ControllerClient extends ControllerClient{
   }
 
   @Override
-  protected String discoverMasterController() {
-    MasterControllerResponse controllerResponse = d2ClientGet(
+  protected String discoverLeaderController() {
+    LeaderControllerResponse controllerResponse = d2ClientGet(
         this.d2Client,
         this.d2ServiceName,
+        // TODO: Change this to LEADER_CONTROLLER after backend components with inclusive endpoints are deployed completely
         ControllerRoute.MASTER_CONTROLLER.getPath(),
         newParams(),
-        MasterControllerResponse.class);
+        LeaderControllerResponse.class);
     /**
      * Current controller D2 announcement is announcing url with http: prefix and the regular HTTP port number (1576);
      * if we change the D2 announcement, the existing Samza users which depend on D2 result would break; if we upgrade

@@ -324,7 +324,7 @@ public class HelixVeniceClusterResources implements VeniceResource {
   }
 
   /**
-   * Lock the resource for shutdown operation(mastership handle over and controller shutdown). Once
+   * Lock the resource for shutdown operation(leadership handle over and controller shutdown). Once
    * acquired the lock, no other thread could operate for this cluster.
    */
   public AutoCloseableLock lockForShutdown() {

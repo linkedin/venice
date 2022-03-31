@@ -61,7 +61,7 @@ public class TestPushJobWithNativeReplicationAndKMM {
      * Reduce leader promotion delay to 3 seconds;
      * Create a testing environment with 1 parent fabric and 3 child fabrics;
      * Set server and replication factor to 2 to ensure at least 1 leader replica and 1 follower replica;
-     * KMM whitelist config allows replicating all topics.
+     * KMM allowlist config allows replicating all topics.
      */
     Properties serverProperties = new Properties();
     serverProperties.put(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 1L);
@@ -86,12 +86,12 @@ public class TestPushJobWithNativeReplicationAndKMM {
         Optional.of(controllerProps),
         Optional.of(new VeniceProperties(serverProperties)),
         false,
-        MirrorMakerWrapper.DEFAULT_TOPIC_WHITELIST);
+        MirrorMakerWrapper.DEFAULT_TOPIC_ALLOWLIST);
     childDatacenters = multiColoMultiClusterWrapper.getClusters();
     parentControllers = multiColoMultiClusterWrapper.getParentControllers();
 
     //setup an additional MirrorMaker between dc-0 and dc-1
-    multiColoMultiClusterWrapper.addMirrorMakerBetween(childDatacenters.get(0), childDatacenters.get(1), MirrorMakerWrapper.DEFAULT_TOPIC_WHITELIST);
+    multiColoMultiClusterWrapper.addMirrorMakerBetween(childDatacenters.get(0), childDatacenters.get(1), MirrorMakerWrapper.DEFAULT_TOPIC_ALLOWLIST);
   }
 
   @AfterClass(alwaysRun = true)
@@ -107,7 +107,7 @@ public class TestPushJobWithNativeReplicationAndKMM {
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
     String storeName = Utils.getUniqueString("store");
     VeniceControllerWrapper parentController =
-        parentControllers.stream().filter(c -> c.isMasterController(clusterName)).findAny().get();
+        parentControllers.stream().filter(c -> c.isLeaderController(clusterName)).findAny().get();
     Properties props = defaultH2VProps(parentController.getControllerUrl(), inputDirPath, storeName);
     props.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
     String keySchemaStr = recordSchema.getField(props.getProperty(VenicePushJob.KEY_FIELD_PROP)).schema().toString();

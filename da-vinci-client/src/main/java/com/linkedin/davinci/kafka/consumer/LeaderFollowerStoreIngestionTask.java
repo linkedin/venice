@@ -320,7 +320,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
         /**
          * 1. If leader(itself) was consuming from local VT previously, just set the state as STANDBY for this partition;
-         * 2. otherwise, leader would unsubscribe from the previous feed topic (real-time topic, grandfathering
+         * 2. otherwise, leader would unsubscribe from the previous feed topic (real-time topic, reprocessing
          *    transient topic or remote VT); then drain all the messages from the feed topic, which would produce the
          *    corresponding result message to local VT; block on the callback of the final message that it needs to
          *    produce; finally the new follower will switch back to consume from local VT using the latest VT offset
@@ -366,7 +366,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    *
    * The only drawback is that for regular batch push, leader flag is never on at least a few minutes after the leader
    * consumes the last message (END_OF_PUSH), which is an acceptable trade-off for us in order to share and test the
-   * same code path between regular push job, hybrid store and grandfathering job.
+   * same code path between regular push job, hybrid store and reprocessing job.
    *
    * @throws InterruptedException
    */
@@ -1017,7 +1017,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       /**
        * If either (1) this is a follower replica or (2) this is a leader replica who is consuming from version topic
        * in a local Kafka cluster, we can update the offset metadata in offset record right after consuming a message;
-       * otherwise, if the leader is consuming from real-time topic or grandfathering topic, it should update offset
+       * otherwise, if the leader is consuming from real-time topic or reprocessing topic, it should update offset
        * metadata after successfully produce a corresponding message.
        */
       KafkaMessageEnvelope kafkaValue = consumerRecord.value();
@@ -1314,7 +1314,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
        *    TopicSwitch control message.), so leader topic can be null during the 5 minutes inactivity.
        * 2. It's also possible that the replica is promoted to leader already but haven't received the TopicSwitch
        *    command from controllers to start consuming from real-time topic (for example, reprocessing Samza job has
-       *    finished producing the batch input to the transient grandfathering topic, but user haven't sent END_OF_PUSH
+       *    finished producing the batch input to the transient reprocessing topic, but user haven't sent END_OF_PUSH
        *    so controllers haven't sent TopicSwitch).
        */
       return Long.MAX_VALUE;

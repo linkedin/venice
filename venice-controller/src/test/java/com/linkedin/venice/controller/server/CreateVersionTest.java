@@ -80,8 +80,8 @@ public class CreateVersionTest {
         false);
     Route createVersionRoute = createVersion.requestTopicForPushing(admin);
 
-    // Not a whitelist user.
-    doReturn(false).when(accessClient).isWhitelistUsers(certificate, storeName, HTTP_GET);
+    // Not a allowlist user.
+    doReturn(false).when(accessClient).isAllowlistUsers(certificate, storeName, HTTP_GET);
 
     /**
      * Create version should fail if user doesn't have "Write" method access to the topic
@@ -232,7 +232,7 @@ public class CreateVersionTest {
     CreateVersion createVersion = new CreateVersion(Optional.of(accessClient), false, false);
     Route createVersionRoute = createVersion.requestTopicForPushing(admin);
 
-    doReturn(true).when(accessClient).isWhitelistUsers(certificate, storeName, HTTP_GET);
+    doReturn(true).when(accessClient).isAllowlistUsers(certificate, storeName, HTTP_GET);
 
     /**
      * Create version should return version topic if the store is hybrid and incremental but the current version's

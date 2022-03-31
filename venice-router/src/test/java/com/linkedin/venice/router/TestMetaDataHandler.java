@@ -1,9 +1,8 @@
 package com.linkedin.venice.router;
 
 import com.linkedin.venice.common.VeniceSystemStoreType;
-import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
-import com.linkedin.venice.controllerapi.MasterControllerResponse;
+import com.linkedin.venice.controllerapi.LeaderControllerResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -21,7 +20,6 @@ import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.OnlineInstanceFinderDelegator;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
-import com.linkedin.venice.meta.ReadOnlyStore;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.SerializableSystemStore;
 import com.linkedin.venice.meta.Store;
@@ -31,11 +29,9 @@ import com.linkedin.venice.meta.SystemStoreAttributes;
 import com.linkedin.venice.meta.SystemStoreAttributesImpl;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
-import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.HybridStoreQuotaStatus;
 import com.linkedin.venice.pushmonitor.PartitionStatusOnlineInstanceFinder;
-import com.linkedin.venice.router.api.VenicePathParser;
 import com.linkedin.venice.routerapi.HybridStoreQuotaStatusResponse;
 import com.linkedin.venice.routerapi.PushStatusResponse;
 import com.linkedin.venice.routerapi.ReplicaState;
@@ -61,6 +57,7 @@ import org.codehaus.jackson.map.ObjectMapper;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 import org.testng.Assert;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 import static com.linkedin.venice.VeniceConstants.*;
@@ -125,18 +122,44 @@ public class TestMetaDataHandler {
   public void testControllerLookup() throws IOException {
     // Mock RoutingDataRepository
     RoutingDataRepository routingRepo = Mockito.mock(RoutingDataRepository.class);
-    String masterControllerHost = "myControllerHost";
-    int masterControllerPort = 1234;
-    Instance masterControllerInstance = new Instance("1", masterControllerHost, masterControllerPort);
-    Mockito.doReturn(masterControllerInstance).when(routingRepo).getMasterController();
+    String leaderControllerHost = "myControllerHost";
+    int leaderControllerPort = 1234;
+    Instance leaderControllerInstance = new Instance("1", leaderControllerHost, leaderControllerPort);
+    Mockito.doReturn(leaderControllerInstance).when(routingRepo).getLeaderController();
 
-    FullHttpResponse response = passRequestToMetadataHandler("http://myRouterHost:4567/master_controller", routingRepo, null);
+    FullHttpResponse response = passRequestToMetadataHandler("http://myRouterHost:4567/leader_controller", routingRepo, null);
 
     Assert.assertEquals(response.status().code(), 200);
     Assert.assertEquals(response.headers().get(CONTENT_TYPE), "application/json");
-    MasterControllerResponse controllerResponse = mapper.readValue(response.content().array(),
-        MasterControllerResponse.class);
-    Assert.assertEquals(controllerResponse.getUrl(), "http://" + masterControllerHost + ":" + masterControllerPort);
+    LeaderControllerResponse controllerResponse = mapper.readValue(response.content().array(),
+        LeaderControllerResponse.class);
+    Assert.assertEquals(controllerResponse.getUrl(), "http://" + leaderControllerHost + ":" + leaderControllerPort);
+  }
+
+  // The deprecated non inclusive URL must also continue to work.
+  @DataProvider(name = "controllerUrlProvider")
+  private static Object[][] dataProvider() {
+    // go/inclusivecode deprecated (alias="leader_controller")
+    return new Object[][] {{"/master_controller"},
+        {"/leader_controller"}};
+  }
+
+  @Test(dataProvider = "controllerUrlProvider")
+  public void testControllerLookupLegacy(String controllerUrl) throws IOException {
+    // Mock RoutingDataRepository
+    RoutingDataRepository routingRepo = Mockito.mock(RoutingDataRepository.class);
+    String leaderControllerHost = "myControllerHost";
+    int leaderControllerPort = 1234;
+    Instance leaderControllerInstance = new Instance("1", leaderControllerHost, leaderControllerPort);
+    Mockito.doReturn(leaderControllerInstance).when(routingRepo).getLeaderController();
+    FullHttpResponse response = passRequestToMetadataHandler("http://myRouterHost:4567" + controllerUrl,
+        routingRepo, null);
+
+    Assert.assertEquals(response.status().code(), 200);
+    Assert.assertEquals(response.headers().get(CONTENT_TYPE), "application/json");
+    LeaderControllerResponse controllerResponse = mapper.readValue(response.content().array(),
+        LeaderControllerResponse.class);
+    Assert.assertEquals(controllerResponse.getUrl(), "http://" + leaderControllerHost + ":" + leaderControllerPort);
   }
 
   @Test

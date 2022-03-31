@@ -93,7 +93,7 @@ public class DaVinciClusterAgnosticTest {
         multiClusterVenice.getClusterToD2(), false, 3, new VeniceProperties(testProperties), Optional.empty());
     for (String cluster : clusterNames) {
       try (ControllerClient controllerClient = new ControllerClient(cluster,
-          multiClusterVenice.getMasterController(cluster).getControllerUrl())) {
+          multiClusterVenice.getLeaderController(cluster).getControllerUrl())) {
         // Verify the participant store is up and running in child colo
         String participantStoreName = VeniceSystemStoreUtils.getParticipantStoreNameForCluster(cluster);
         TestUtils.waitForNonDeterministicPushCompletion(Version.composeKafkaTopic(participantStoreName, 1),

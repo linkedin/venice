@@ -188,9 +188,11 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
             props.getString(ACTIVE_ACTIVE_REAL_TIME_SOURCE_FABRIC_LIST, ""));
     validateActiveActiveConfigs();
     if (this.parent) {
-      String dataCenterWhitelist = props.getString(CHILD_CLUSTER_WHITELIST);
-      this.childDataCenterControllerUrlMap = parseClusterMap(props, dataCenterWhitelist);
-      this.childDataCenterControllerD2Map = parseClusterMap(props, dataCenterWhitelist, true);
+
+      // go/inclusivecode deferred(Will be replaced when clients have migrated)
+      String dataCenterAllowlist = props.getStringWithAlternative(CHILD_CLUSTER_ALLOWLIST, CHILD_CLUSTER_WHITELIST);
+      this.childDataCenterControllerUrlMap = parseClusterMap(props, dataCenterAllowlist);
+      this.childDataCenterControllerD2Map = parseClusterMap(props, dataCenterAllowlist, true);
       this.d2ServiceName = childDataCenterControllerD2Map.isEmpty() ? null : props.getString(CHILD_CLUSTER_D2_SERVICE_NAME);
 
       if (childDataCenterControllerUrlMap.isEmpty() && childDataCenterControllerD2Map.isEmpty()) {
@@ -198,21 +200,26 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
       }
       String parentFabricList = props.getString(PARENT_KAFKA_CLUSTER_FABRIC_LIST, "");
       this.parentFabrics = Utils.parseCommaSeparatedStringToSet(parentFabricList);
-      String nativeReplicationSourceFabricWhitelist = props.getString(NATIVE_REPLICATION_FABRIC_WHITELIST, dataCenterWhitelist);
-      this.childDataCenterKafkaUrlMap = parseChildDataCenterKafkaUrl(props, nativeReplicationSourceFabricWhitelist);
-      this.childDataCenterKafkaZkMap = parseChildDataCenterKafkaZk(props, nativeReplicationSourceFabricWhitelist);
+      String nativeReplicationSourceFabricAllowlist = props.getStringWithAlternative(NATIVE_REPLICATION_FABRIC_ALLOWLIST,
+          // go/inclusivecode deferred(will be rewoved once all configs have migrated)
+          NATIVE_REPLICATION_FABRIC_WHITELIST, dataCenterAllowlist);
+      this.childDataCenterKafkaUrlMap = parseChildDataCenterKafkaUrl(props, nativeReplicationSourceFabricAllowlist);
+      this.childDataCenterKafkaZkMap = parseChildDataCenterKafkaZk(props, nativeReplicationSourceFabricAllowlist);
     } else {
       this.childDataCenterControllerUrlMap = Collections.emptyMap();
       this.childDataCenterControllerD2Map = Collections.emptyMap();
       this.d2ServiceName = null;
       this.parentFabrics = Collections.emptySet();
-      String nativeReplicationSourceFabricWhitelist = props.getString(NATIVE_REPLICATION_FABRIC_WHITELIST, "");
-      if (nativeReplicationSourceFabricWhitelist == null || nativeReplicationSourceFabricWhitelist.length() == 0) {
+
+      String nativeReplicationSourceFabricAllowlist = props.getStringWithAlternative(NATIVE_REPLICATION_FABRIC_ALLOWLIST,
+          // go/inclusivecode deferred(will be removed once all configs have migrated)
+          NATIVE_REPLICATION_FABRIC_WHITELIST, "");
+      if (nativeReplicationSourceFabricAllowlist == null || nativeReplicationSourceFabricAllowlist.length() == 0) {
         this.childDataCenterKafkaUrlMap = Collections.emptyMap();
         this.childDataCenterKafkaZkMap = Collections.emptyMap();
       } else {
-        this.childDataCenterKafkaUrlMap = parseChildDataCenterKafkaUrl(props, nativeReplicationSourceFabricWhitelist);
-        this.childDataCenterKafkaZkMap = parseChildDataCenterKafkaZk(props, nativeReplicationSourceFabricWhitelist);
+        this.childDataCenterKafkaUrlMap = parseChildDataCenterKafkaUrl(props, nativeReplicationSourceFabricAllowlist);
+        this.childDataCenterKafkaZkMap = parseChildDataCenterKafkaZk(props, nativeReplicationSourceFabricAllowlist);
       }
     }
     this.nativeReplicationSourceFabric = props.getString(NATIVE_REPLICATION_SOURCE_FABRIC, "");
@@ -458,8 +465,8 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     return enableTopicReplicator;
   }
 
-  public static Map<String, String> parseClusterMap(VeniceProperties clusterPros, String datacenterWhitelist) {
-    return parseClusterMap(clusterPros, datacenterWhitelist, false);
+  public static Map<String, String> parseClusterMap(VeniceProperties clusterPros, String datacenterAllowlist) {
+    return parseClusterMap(clusterPros, datacenterAllowlist, false);
   }
 
   public double getStorageEngineOverheadRatio() {
@@ -657,13 +664,13 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
    * its controller urls.
    *
    * @param clusterPros list of child controller uris
-   * @param datacenterWhitelist data centers that are taken into account
+   * @param datacenterAllowlist data centers that are taken into account
    * @param D2Routing whether uses D2 to route or not
    * @return
    */
-  public static Map<String, String> parseClusterMap(VeniceProperties clusterPros, String datacenterWhitelist, Boolean D2Routing) {
+  public static Map<String, String> parseClusterMap(VeniceProperties clusterPros, String datacenterAllowlist, Boolean D2Routing) {
     String propsPrefix =  D2Routing ? CHILD_CLUSTER_D2_PREFIX : CHILD_CLUSTER_URL_PREFIX;
-    return parseChildDataCenterToValue(propsPrefix, clusterPros, datacenterWhitelist,
+    return parseChildDataCenterToValue(propsPrefix, clusterPros, datacenterAllowlist,
         (m, k, v, errMsg) -> {
           m.computeIfAbsent(k, key -> {
             String[] uriList = v.split(",\\s*");
@@ -695,8 +702,8 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
    * This helper function will parse the config with above format and return a Map from data center to
    * its Kafka bootstrap server urls.
    */
-  private static Map<String, String> parseChildDataCenterKafkaUrl(VeniceProperties clusterPros, String datacenterWhitelist) {
-    return parseChildDataCenterToValue(CHILD_DATA_CENTER_KAFKA_URL_PREFIX, clusterPros, datacenterWhitelist,
+  private static Map<String, String> parseChildDataCenterKafkaUrl(VeniceProperties clusterPros, String datacenterAllowlist) {
+    return parseChildDataCenterToValue(CHILD_DATA_CENTER_KAFKA_URL_PREFIX, clusterPros, datacenterAllowlist,
         (m, k, v, e) -> {
           m.putIfAbsent(k, v);
         });
@@ -710,23 +717,23 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
    * This helper function will parse the config with above format and return a Map from data center to
    * its Kafka zk address.
    */
-  private static Map<String, String> parseChildDataCenterKafkaZk(VeniceProperties clusterPros, String datacenterWhitelist) {
-    return parseChildDataCenterToValue(CHILD_DATA_CENTER_KAFKA_ZK_PREFIX, clusterPros, datacenterWhitelist,
+  private static Map<String, String> parseChildDataCenterKafkaZk(VeniceProperties clusterPros, String datacenterAllowlist) {
+    return parseChildDataCenterToValue(CHILD_DATA_CENTER_KAFKA_ZK_PREFIX, clusterPros, datacenterAllowlist,
         (m, k, v, e) -> {
           m.putIfAbsent(k, v);
         });
   }
 
   private static Map<String, String> parseChildDataCenterToValue(String configPrefix, VeniceProperties clusterPros,
-      String datacenterWhitelist, PutToMap mappingFunction) {
+      String datacenterAllowlist, PutToMap mappingFunction) {
     Properties childDataCenterKafkaUriProps = clusterPros.clipAndFilterNamespace(configPrefix).toProperties();
 
-    if (StringUtils.isEmpty(datacenterWhitelist)) {
-      throw new VeniceException("child controller list must have a whitelist");
+    if (StringUtils.isEmpty(datacenterAllowlist)) {
+      throw new VeniceException("child controller list must have a allowlist");
     }
 
     Map<String, String> outputMap = new HashMap<>();
-    List<String> whitelist = Arrays.asList(datacenterWhitelist.split(",\\s*"));
+    List<String> allowlist = Arrays.asList(datacenterAllowlist.split(",\\s*"));
 
     for (Map.Entry<Object, Object> uriEntry : childDataCenterKafkaUriProps.entrySet()) {
       String datacenter = (String) uriEntry.getKey();
@@ -741,7 +748,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
         throw new VeniceException(errMsg + ": found no value for: " + datacenter);
       }
 
-      if (whitelist.contains(datacenter)) {
+      if (allowlist.contains(datacenter)) {
         mappingFunction.apply(outputMap, datacenter, value, errMsg);
       }
     }
