@@ -1,10 +1,14 @@
 package com.linkedin.davinci.replication.merge;
 
 import com.linkedin.davinci.replication.ReplicationMetadataWithValueSchemaId;
+import com.linkedin.venice.annotation.Threadsafe;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
+import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.merge.ValueAndReplicationMetadata;
+import com.linkedin.venice.utils.AvroSchemaUtils;
+import com.linkedin.venice.utils.AvroSupersetSchemaUtils;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.nio.ByteBuffer;
 import java.util.List;
@@ -28,12 +32,14 @@ import static com.linkedin.venice.schema.rmd.v1.CollectionReplicationMetadata.*;
  * If the incoming TS is lower than the entirety of the old replication metadata, then drop the new value.
  * If the incoming TS is partially higher, partially lower, than the old replication metadata, then query the old value, deserialize it, and pass it to Merge<GR>, Merge<Map> or Merge<List> .
  */
+@Threadsafe
 public class MergeConflictResolver {
   private final String storeName;
   private final ReadOnlySchemaRepository schemaRepository;
   private final Function<Integer, GenericRecord> newRmdCreator;
   private final MergeGenericRecord mergeGenericRecord;
   private final MergeByteBuffer mergeByteBuffer;
+  private final MergedValueSchemaResolver mergedValueSchemaResolver;
 
   public MergeConflictResolver(
       ReadOnlySchemaRepository schemaRepository,
@@ -43,7 +49,8 @@ public class MergeConflictResolver {
     this.schemaRepository = schemaRepository;
     this.storeName = storeName;
     this.newRmdCreator = newRmdCreator;
-    this.mergeGenericRecord = null; // TODO: use it to handle per-field timestamp cases.
+    this.mergeGenericRecord = null; // TODO: get its value from this constructor and use it to handle per-field timestamp cases.
+    this.mergedValueSchemaResolver = null;  // TODO: get its value from this constructor.
     this.mergeByteBuffer = new MergeByteBuffer();
   }
 
@@ -111,24 +118,25 @@ public class MergeConflictResolver {
         if (ignoreNewPut(oldValueSchemaID, oldValueFieldTimestampsRecord, newValueSchemaID, putOperationTimestamp)) {
           return MergeConflictResult.getIgnoredResult();
         }
-        throw new VeniceUnsupportedOperationException("Field level RMD timestamp not-ignoring-new-put situation not supported.");
         /**
          * TODO Implement following steps:
-         *    1. Read old value from RocksDB.
-         *    2. Deserialize old value bytes to a GenericRecord.
-         *    3. Deserialize new value bytes to a GenericRecord.
-         *    4. Look at both schemas and decide if the superset schema should be used for the merged value and RMD.
-         *       If so, do it.
-         *    5. Call mergeGenericRecord.put(...)
+         *    1. Call "mergedValueSchemaResolver.getSchemaForMergedValue(oldValueSchemaID, newValueSchemaID)" to get
+         *       merged-value-record schema entry.
+         *    2. Use the merged-value-record schema ID to get its corresponding RMD schema.
+         *    3. Use the new RMD schema from step (2) to convert the old RMD if the new RMD schema is a superset of the old RMD schema.
+         *    4. Use the new value schema to deserialize the new value.
+         *    5. Use the merged-value-record schema to deserialize old value.
+         *    6. Call "mergeGenericRecord.put(...)"
+         *    7. Convert the result from "mergeGenericRecord.put(...)" to {@link MergeConflictResult} and return.
          */
+        throw new VeniceUnsupportedOperationException("Field level RMD timestamp not-ignoring-new-put situation not supported.");
 
       default:
         throw new VeniceUnsupportedOperationException("Not supported replication metadata type: " + rmdTimestampType);
     }
   }
 
-  // Visit for testing
-  boolean ignoreNewPut(
+  private boolean ignoreNewPut(
       final int oldValueSchemaID,
       GenericRecord oldValueFieldTimestampsRecord,
       final int newValueSchemaID,

@@ -2,6 +2,7 @@ package com.linkedin.venice.schema;
 
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
 import com.linkedin.venice.utils.AvroSchemaUtils;
+import com.linkedin.venice.utils.AvroSupersetSchemaUtils;
 import org.apache.avro.Schema;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -18,37 +19,6 @@ public class TestSchemaData {
     SchemaEntry keySchema = schemaData.getKeySchema();
     Assert.assertEquals(keySchema.getId(), 1);
     Assert.assertEquals(keySchemaStr, keySchema.getSchema().toString());
-  }
-
-  @Test
-  public void  testSuperSetSchemaDefaultCompatibility() {
-     String valueSchemaStr1 = "{" +
-        "  \"namespace\" : \"example.avro\",  " +
-        "  \"type\": \"record\",   " +
-        "  \"name\": \"User\",     " +
-        "  \"fields\": [           " +
-        "       { \"name\": \"id\", \"type\": \"string\", \"default\": \"id\"},  " +
-        "       { \"name\": \"name\", \"type\": \"string\", \"default\": \"venice\"},  " +
-         "       { \"name\": \"weight\", \"type\": \"float\", \"default\": 0},  " +
-         "       { \"name\": \"age\", \"type\": \"float\", \"default\": -1 }" +
-        "  ] " +
-        " } ";
-
-    String valueSchemaStr2 = "{" +
-        "  \"namespace\" : \"example.avro\",  " +
-        "  \"type\": \"record\",   " +
-        "  \"name\": \"User\",     " +
-        "  \"fields\": [           " +
-        "       { \"name\": \"id\", \"type\": \"string\", \"default\": \"id\"},  " +
-        "       { \"name\": \"name\", \"type\": \"string\", \"default\": \"venice\"},  " +
-        "       { \"name\": \"address\", \"type\": \"string\", \"default\": \"italy\" }" +
-        "  ] " +
-        " } ";
-
-   Schema newValueSchema = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(valueSchemaStr1);
-   Schema existingValueSchema = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(valueSchemaStr2);
-   Schema newSuperSetSchema = AvroSchemaUtils.generateSuperSetSchema(existingValueSchema, newValueSchema);
-   Assert.assertTrue(new SchemaEntry(1, valueSchemaStr2).isNewSchemaCompatible(new SchemaEntry(2, newSuperSetSchema), DirectionalSchemaCompatibilityType.FULL));
   }
 
   @Test
