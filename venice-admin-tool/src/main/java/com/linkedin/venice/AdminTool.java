@@ -133,30 +133,29 @@ public class AdminTool {
       String storeName;
       String versionString;
       String topicName;
-      String sslConfigPath;
 
       int version;
       MultiStoreResponse storeResponse;
       ControllerResponse response;
 
-      if (Arrays.stream(foundCommand.getRequiredArgs()).anyMatch(arg -> arg.equals(Arg.URL)) &&
-          Arrays.stream(foundCommand.getRequiredArgs()).anyMatch(arg -> arg.equals(Arg.CLUSTER))) {
+      if (Arrays.asList(foundCommand.getRequiredArgs()).contains(Arg.URL) &&
+          Arrays.asList(foundCommand.getRequiredArgs()).contains(Arg.CLUSTER)) {
         veniceUrl = getRequiredArgument(cmd, Arg.URL);
         clusterName = getRequiredArgument(cmd, Arg.CLUSTER);
 
         /**
          * SSL config file is not mandatory now; build the controller with SSL config if provided.
          */
-        if (cmd.hasOption(Arg.SSL_CONFIG_PATH.first())) {
-          /**
-           * Build SSL factory
-           */
-          sslConfigPath = getOptionalArgument(cmd, Arg.SSL_CONFIG_PATH);
-          Properties sslProperties = SslUtils.loadSSLConfig(sslConfigPath);
-          String sslFactoryClassName = sslProperties.getProperty(SSL_FACTORY_CLASS_NAME, DEFAULT_SSL_FACTORY_CLASS_NAME);
-          sslFactory = Optional.of(SslUtils.getSSLFactory(sslProperties, sslFactoryClassName));
-        }
+        buildSslFactory(cmd);
         controllerClient = ControllerClient.constructClusterControllerClient(clusterName, veniceUrl, sslFactory);
+      }
+
+      if (Arrays.asList(foundCommand.getRequiredArgs()).contains(Arg.CLUSTER_SRC)) {
+        /**
+         * Build SSL factory for store migration commands if SSL config is provided.
+         * SSL factory will be used when constructing src/dest parent/child controller clients.
+         */
+        buildSslFactory(cmd);
       }
 
       if (cmd.hasOption(Arg.FLAT_JSON.toString())){
@@ -509,6 +508,15 @@ public class AdminTool {
       }
     }
     return Command.getCommand(foundCommand, cmd);
+  }
+
+  private static void buildSslFactory(CommandLine cmd) throws IOException {
+    if (cmd.hasOption(Arg.SSL_CONFIG_PATH.first())) {
+      String sslConfigPath = getOptionalArgument(cmd, Arg.SSL_CONFIG_PATH);
+      Properties sslProperties = SslUtils.loadSSLConfig(sslConfigPath);
+      String sslFactoryClassName = sslProperties.getProperty(SSL_FACTORY_CLASS_NAME, DEFAULT_SSL_FACTORY_CLASS_NAME);
+      sslFactory = Optional.of(SslUtils.getSSLFactory(sslProperties, sslFactoryClassName));
+    }
   }
 
   private static MultiStoreResponse queryStoreList(CommandLine cmd) {
