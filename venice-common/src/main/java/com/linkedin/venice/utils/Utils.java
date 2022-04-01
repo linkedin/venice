@@ -842,13 +842,6 @@ public class Utils {
     return params;
   }
 
-  public static boolean isGenericRecord(Object object) {
-    if (!(object instanceof IndexedRecord)) {
-      return false;
-    }
-    return AvroCompatibilityHelper.isGenericRecord((IndexedRecord) object);
-  }
-
   public static Pair<Store, Version> waitStoreVersionOrThrow(String storeVersionName, ReadOnlyStoreRepository metadataRepo) {
     String storeName = Version.parseStoreFromKafkaTopicName(storeVersionName);
     int versionNumber = Version.parseVersionFromKafkaTopicName(storeVersionName);
