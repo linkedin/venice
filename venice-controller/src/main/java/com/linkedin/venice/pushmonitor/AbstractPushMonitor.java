@@ -392,8 +392,7 @@ public abstract class AbstractPushMonitor
       return Collections.emptyMap();
     }
     Map<String, Long> progress = new HashMap<>(pushStatus.getProgress());
-    Set<String> liveInstances = this.routingDataRepository.getLiveInstancesMap().keySet();
-    progress.keySet().removeIf(replicaId -> !liveInstances.contains(ReplicaStatus.getInstanceIdFromReplicaId(replicaId)));
+    progress.keySet().removeIf(replicaId -> !routingDataRepository.isLiveInstance(ReplicaStatus.getInstanceIdFromReplicaId(replicaId)));
     return progress;
   }
 

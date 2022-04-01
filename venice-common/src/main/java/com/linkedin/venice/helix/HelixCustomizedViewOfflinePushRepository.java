@@ -173,9 +173,11 @@ public class HelixCustomizedViewOfflinePushRepository extends HelixBaseRoutingRe
       }
       final ResourceAssignmentChanges updates;
       try (AutoCloseableLock ignored = new AutoCloseableLock(resourceAssignmentRWLock.writeLock())) {
-            // Update the live instances as well. Helix updates live instances in this routing data
-            // changed event.
-        this.liveInstancesMap = Collections.unmodifiableMap(liveInstanceSnapshot);
+          try (AutoCloseableLock ignore = new AutoCloseableLock(liveInstancesMapLock)) {
+          // Update the live instances as well. Helix updates live instances in this routing data
+          // changed event.
+          this.liveInstancesMap = Collections.unmodifiableMap(liveInstanceSnapshot);
+        }
         updates = resourceAssignment.updateResourceAssignment(newResourceAssignment);
         logger.info("Updated resource assignment and live instances for .");
       }
