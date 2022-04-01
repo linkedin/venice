@@ -725,9 +725,9 @@ public class VeniceParentHelixAdmin implements Admin {
   @Override
   public void addVersionAndStartIngestion(String clusterName, String storeName, String pushJobId, int versionNumber,
       int numberOfPartitions, Version.PushType pushType, String remoteKafkaBootstrapServers,
-      long rewindTimeInSecondsOverride, int replicationMetadataVersionId, boolean versionSwapDeferred) {
+      long rewindTimeInSecondsOverride, int ignoredRmdVersionID, boolean versionSwapDeferred) {
     // Parent controller will always pick the replicationMetadataVersionId from configs.
-    replicationMetadataVersionId = getMultiClusterConfigs().getCommonConfig().getReplicationMetadataVersionId();
+    final int replicationMetadataVersionId = getRmdVersionID(clusterName);
     Version version = getVeniceHelixAdmin().addVersionOnly(clusterName, storeName, pushJobId, versionNumber, numberOfPartitions, pushType,
         remoteKafkaBootstrapServers, rewindTimeInSecondsOverride, replicationMetadataVersionId);
     if (version.isActiveActiveReplicationEnabled()) {
@@ -739,6 +739,16 @@ public class VeniceParentHelixAdmin implements Admin {
     } finally {
       releaseAdminMessageLock(clusterName);
     }
+  }
+
+  private int getRmdVersionID(final String clusterName) {
+    final VeniceControllerConfig controllerClusterConfig = getMultiClusterConfigs().getControllerConfig(clusterName);
+    if (controllerClusterConfig == null) {
+      throw new VeniceException("No controller cluster config found for cluster " + clusterName);
+    }
+    final int rmdVersionID = controllerClusterConfig.getReplicationMetadataVersionId();
+    logger.info("Use RMD version ID {} for cluster {}", rmdVersionID, clusterName);
+    return rmdVersionID;
   }
 
   /**
@@ -1131,7 +1141,7 @@ public class VeniceParentHelixAdmin implements Admin {
       int numberOfPartitions, int replicationFactor, Version.PushType pushType, boolean sendStartOfPush, boolean sorted,
       String compressionDictionary, Optional<String> sourceGridFabric, long rewindTimeInSecondsOverride, Optional<String> emergencySourceRegion,
       boolean versionSwapDeferred) {
-    int replicationMetadataVersionId = getMultiClusterConfigs().getCommonConfig().getReplicationMetadataVersionId();
+    final int replicationMetadataVersionId = getRmdVersionID(clusterName);
     Pair<Boolean, Version> result = getVeniceHelixAdmin().addVersionAndTopicOnly(clusterName, storeName, pushJobId,
         versionNumber, numberOfPartitions, replicationFactor, sendStartOfPush, sorted, pushType, compressionDictionary,
         null, sourceGridFabric, rewindTimeInSecondsOverride, replicationMetadataVersionId, emergencySourceRegion, versionSwapDeferred);
@@ -2269,7 +2279,7 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   private void updateReplicationMetadataSchema(String clusterName, String storeName, Schema valueSchema, int valueSchemaId) {
-    final int rmdVersionId = getMultiClusterConfigs().getCommonConfig().getReplicationMetadataVersionId();
+    final int rmdVersionId = getRmdVersionID(clusterName);
     final boolean valueSchemaAlreadyHasRmdSchema = getVeniceHelixAdmin()
         .checkIfValueSchemaAlreadyHasRmdSchema(clusterName, storeName, valueSchemaId, rmdVersionId);
     if (valueSchemaAlreadyHasRmdSchema) {

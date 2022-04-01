@@ -17,6 +17,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
@@ -37,7 +38,7 @@ import static com.linkedin.venice.ConfigKeys.*;
  * {@link VeniceControllerClusterConfig}. TODO: remove one of them
  */
 public class VeniceControllerConfig extends VeniceControllerClusterConfig {
-  private static final Logger LOGGER = LogManager.getLogger(VeniceControllerConfig.class);
+  private static final Logger logger = LogManager.getLogger(VeniceControllerConfig.class);
 
   private final int adminPort;
   private final int adminSecurePort;
@@ -148,11 +149,6 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
    * new user store creation.
    */
   private final boolean isAutoMaterializeDaVinciPushStatusSystemStoreEnabled;
-
-  /**
-   * Metadata Version id to be used.
-   */
-  private final int replicationMetadataVersionId;
 
   private final String emergencySourceRegion;
 
@@ -307,7 +303,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     this.zkSharedDaVinciPushStatusSystemSchemaStoreAutoCreationEnabled = props.getBoolean(CONTROLLER_ZK_SHARED_DAVINCI_PUSH_STATUS_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED, false);
     this.systemStoreAclSynchronizationDelayMs = props.getLong(CONTROLLER_SYSTEM_STORE_ACL_SYNCHRONIZATION_DELAY_MS, TimeUnit.HOURS.toMillis(1));
     this.regionName = RegionUtils.getLocalRegionName(props, parent);
-    LOGGER.info("Final region name for this node: " + this.regionName);
+    logger.info("Final region name for this node: " + this.regionName);
     this.disabledRoutes = parseControllerRoutes(props, CONTROLLER_DISABLED_ROUTES, Collections.emptyList());
     this.adminTopicRemoteConsumptionEnabled = props.getBoolean(ADMIN_TOPIC_REMOTE_CONSUMPTION_ENABLED, false);
     if (adminTopicRemoteConsumptionEnabled && (childDataCenterKafkaUrlMap == null || childDataCenterKafkaUrlMap.isEmpty())) {
@@ -318,8 +314,6 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     this.isAutoMaterializeMetaSystemStoreEnabled = props.getBoolean(CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE, false);
     this.isAutoMaterializeDaVinciPushStatusSystemStoreEnabled = props.getBoolean(CONTROLLER_AUTO_MATERIALIZE_DAVINCI_PUSH_STATUS_SYSTEM_STORE, false);
     this.usePushStatusStoreForIncrementalPush = props.getBoolean(USE_PUSH_STATUS_STORE_FOR_INCREMENTAL_PUSH, false);
-
-    this.replicationMetadataVersionId = props.getInt(REPLICATION_METADATA_VERSION_ID, 1);
     this.emergencySourceRegion = props.getString(EMERGENCY_SOURCE_REGION, "");
     this.allowClusterWipe = props.getBoolean(ALLOW_CLUSTER_WIPE, false);
     this.useKafkaMirrorMaker = props.getBoolean(USE_KAFKA_MIRROR_MAKER, true);
@@ -336,10 +330,10 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
               ConfigKeys.ACTIVE_ACTIVE_REAL_TIME_SOURCE_FABRIC_LIST, ConfigKeys.ACTIVE_ACTIVE_ENABLED_ON_CONTROLLER));
 
     } else if (this.activeActiveEnabledOnController) {
-      LOGGER.info(String.format("A/A is enabled on a child controller and %s == %s",
+      logger.info(String.format("A/A is enabled on a child controller and %s == %s",
               ConfigKeys.ACTIVE_ACTIVE_REAL_TIME_SOURCE_FABRIC_LIST, this.activeActiveRealTimeSourceFabrics));
     } else {
-      LOGGER.info("A/A is not enabled on child controller." +
+      logger.info("A/A is not enabled on child controller." +
               (!this.activeActiveRealTimeSourceFabrics.isEmpty() ?
                       String.format(" But %s is still set to %s.", ConfigKeys.ACTIVE_ACTIVE_REAL_TIME_SOURCE_FABRIC_LIST, this.activeActiveRealTimeSourceFabrics) : ""));
     }
@@ -616,8 +610,6 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   public boolean isAutoMaterializeDaVinciPushStatusSystemStoreEnabled() {
     return isAutoMaterializeDaVinciPushStatusSystemStoreEnabled;
   }
-
-  public int getReplicationMetadataVersionId() { return replicationMetadataVersionId; }
 
   public String getEmergencySourceRegion() {
     return emergencySourceRegion;

@@ -49,7 +49,7 @@ public class VeniceControllerService extends AbstractVeniceService {
       logger.info("Controller works as a parent controller.");
     } else {
       this.admin = internalAdmin;
-      logger.info("Controller works as a normal controller.");
+      logger.info("Controller works as a child controller.");
     }
     Optional<SchemaReader> kafkaMessageEnvelopeSchemaReader = Optional.empty();
     try {

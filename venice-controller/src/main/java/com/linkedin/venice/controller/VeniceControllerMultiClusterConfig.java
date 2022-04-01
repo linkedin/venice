@@ -17,14 +17,15 @@ public class VeniceControllerMultiClusterConfig {
 
   private final Map<String, VeniceControllerConfig> clusterToControllerConfigMap;
 
-  public VeniceControllerMultiClusterConfig(Collection<VeniceProperties> propertiesCollection) {
-    clusterToControllerConfigMap = new HashMap<>(propertiesCollection.size());
-    for (VeniceProperties properties : propertiesCollection) {
-      VeniceControllerConfig controllerConfig = new VeniceControllerConfig(properties);
-      clusterToControllerConfigMap.put(controllerConfig.getClusterName(), controllerConfig);
+  public VeniceControllerMultiClusterConfig(Collection<VeniceProperties> controllerClusterProperties) {
+    clusterToControllerConfigMap = new HashMap<>();
+    for (VeniceProperties properties : controllerClusterProperties) {
+      final VeniceControllerConfig controllerClusterConfig = new VeniceControllerConfig(properties);
+      clusterToControllerConfigMap.put(controllerClusterConfig.getClusterName(), controllerClusterConfig);
     }
   }
 
+  // This contructor is used for testing.
   public VeniceControllerMultiClusterConfig(Map<String, VeniceControllerConfig> clusterToControllerConfigMap){
     this.clusterToControllerConfigMap = new HashMap<>(clusterToControllerConfigMap);
   }
