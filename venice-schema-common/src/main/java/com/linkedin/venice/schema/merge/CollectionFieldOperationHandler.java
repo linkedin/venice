@@ -25,7 +25,7 @@ public abstract class CollectionFieldOperationHandler {
       final long putTimestamp,
       final int coloID,
       List<Object> newList,
-      CollectionReplicationMetadata collectionFieldRmd,
+      CollectionReplicationMetadata<Object> collectionFieldRmd,
       GenericRecord currValueRecord,
       String fieldName
   );
@@ -34,7 +34,7 @@ public abstract class CollectionFieldOperationHandler {
       final long putTimestamp,
       final int coloID,
       IndexedHashMap<String, Object> newMap,
-      CollectionReplicationMetadata collectionFieldRmd,
+      CollectionReplicationMetadata<String> collectionFieldRmd,
       GenericRecord currValueRecord,
       String fieldName
   );
@@ -42,7 +42,7 @@ public abstract class CollectionFieldOperationHandler {
   public abstract UpdateResultStatus handleDeleteList(
       final long deleteTimestamp,
       final int coloID,
-      CollectionReplicationMetadata collectionFieldRmd,
+      CollectionReplicationMetadata<Object> collectionFieldRmd,
       GenericRecord currValueRecord,
       String fieldName
   );
@@ -50,14 +50,14 @@ public abstract class CollectionFieldOperationHandler {
   public abstract UpdateResultStatus handleDeleteMap(
       final long deleteTimestamp,
       final int coloID,
-      CollectionReplicationMetadata collectionFieldRmd,
+      CollectionReplicationMetadata<String> collectionFieldRmd,
       GenericRecord currValueRecord,
       String fieldName
   );
 
   public abstract UpdateResultStatus handleModifyList(
       final long modifyTimestamp,
-      CollectionReplicationMetadata collectionFieldRmd,
+      CollectionReplicationMetadata<Object> collectionFieldRmd,
       GenericRecord currValueRecord,
       String fieldName,
       List<Object> newEntries,
@@ -66,7 +66,7 @@ public abstract class CollectionFieldOperationHandler {
 
   public abstract UpdateResultStatus handleModifyMap(
       final long modifyTimestamp,
-      CollectionReplicationMetadata collectionFieldRmd,
+      CollectionReplicationMetadata<String> collectionFieldRmd,
       GenericRecord currValueRecord,
       String fieldName,
       Map<String, Object> newEntries,

@@ -23,7 +23,7 @@ import static org.apache.avro.Schema.Type.*;
  * metadata schema and its generic record away for users.
  */
 @NotThreadSafe
-public class CollectionReplicationMetadata {
+public class CollectionReplicationMetadata<DELETED_ELEMENT_TYPE> {
   // Constants that are used to construct collection field's timestamp RECORD
   public static final String COLLECTION_TOP_LEVEL_TS_FIELD_NAME = "topLevelFieldTimestamp";
   public static final String COLLECTION_TOP_LEVEL_COLO_ID_FIELD_NAME = "topLevelColoID";
@@ -34,7 +34,7 @@ public class CollectionReplicationMetadata {
   public static final Schema COLLECTION_TS_ARRAY_SCHEMA = Schema.createArray(Schema.create(LONG));
 
   private final GenericRecord collectionRmdRecord;
-  private final Map<Object, ElementTimestampAndIdx> deletedElementInfo;
+  private final Map<DELETED_ELEMENT_TYPE, ElementTimestampAndIdx> deletedElementInfo;
 
   // Copy constructor for testing purpose.
   public CollectionReplicationMetadata(CollectionReplicationMetadata other) {
@@ -55,7 +55,7 @@ public class CollectionReplicationMetadata {
     if (!deletedElementInfo.isEmpty()) {
       deletedElementInfo.clear();
     }
-    final List<Object> deletedElements = getDeletedElements();
+    final List<DELETED_ELEMENT_TYPE> deletedElements = getDeletedElements();
     final List<Long> deletedElementTimestamps = getDeletedElementTimestamps();
 
     for (int i = 0; i < deletedElements.size(); i++) {
@@ -161,8 +161,8 @@ public class CollectionReplicationMetadata {
     return (List<Long>) collectionRmdRecord.get(COLLECTION_DELETED_ELEM_TS_FIELD_NAME);
   }
 
-  public List<Object> getDeletedElements() {
-    return (List<Object>) collectionRmdRecord.get(COLLECTION_DELETED_ELEM_FIELD_NAME);
+  public List<DELETED_ELEMENT_TYPE> getDeletedElements() {
+    return (List<DELETED_ELEMENT_TYPE>) collectionRmdRecord.get(COLLECTION_DELETED_ELEM_FIELD_NAME);
   }
 
   // Setters
@@ -182,7 +182,7 @@ public class CollectionReplicationMetadata {
     collectionRmdRecord.put(COLLECTION_ACTIVE_ELEM_TS_FIELD_NAME, collectionActiveTimestamps);
   }
 
-  public void setDeletedElements(List<Object> deletedElements) {
+  public void setDeletedElements(List<DELETED_ELEMENT_TYPE> deletedElements) {
     collectionRmdRecord.put(COLLECTION_DELETED_ELEM_FIELD_NAME, deletedElements);
     populateDeletedElementSet();
   }
