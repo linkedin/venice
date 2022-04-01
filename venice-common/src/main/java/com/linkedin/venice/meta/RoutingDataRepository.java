@@ -56,6 +56,8 @@ public interface RoutingDataRepository extends VeniceResource, OnlineInstanceFin
    */
   Map<String, Instance> getLiveInstancesMap();
 
+  boolean isLiveInstance(String instanceId);
+
   ResourceAssignment getResourceAssignment();
 
   /**

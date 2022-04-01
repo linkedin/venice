@@ -4092,10 +4092,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         checkControllerLeadershipFor(clusterName);
         List<String> instances = helixAdminClient.getInstancesInCluster(clusterName);
         RoutingDataRepository routingDataRepository = getHelixVeniceClusterResources(clusterName).getRoutingDataRepository();
-        Set<String> liveInstances = routingDataRepository.getLiveInstancesMap().keySet();
         Map<String, String> instancesStatusesMap = new HashMap<>();
         for (String instance : instances) {
-            if (liveInstances.contains(instance)) {
+            if (routingDataRepository.isLiveInstance(instance)) {
                 instancesStatusesMap.put(instance, InstanceStatus.CONNECTED.toString());
             } else {
                 instancesStatusesMap.put(instance, InstanceStatus.DISCONNECTED.toString());
@@ -4116,7 +4115,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         checkControllerLeadershipFor(clusterName);
         logger.info("Removing storage node: " + instanceId + " from cluster: " + clusterName);
         RoutingDataRepository routingDataRepository = getHelixVeniceClusterResources(clusterName).getRoutingDataRepository();
-        if (routingDataRepository.getLiveInstancesMap().containsKey(instanceId)) {
+        if (routingDataRepository.isLiveInstance(instanceId)) {
             // The given storage node is still connected to cluster.
             throw new VeniceException("Storage node: " + instanceId + " is still connected to cluster: " + clusterName
                 + ", could not be removed from that cluster.");

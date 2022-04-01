@@ -6,6 +6,7 @@ import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.routerapi.ReplicaState;
 import com.linkedin.venice.utils.HelixUtils;
+import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -97,7 +98,7 @@ public class HelixExternalViewRepository extends HelixBaseRoutingRepository {
         if (routingTableSnapshot.getExternalViews() == null || routingTableSnapshot.getExternalViews().size() <= 0){
             logger.info("Ignore the empty external view.");
             // Update live instances even if there is nonthing in the external view.
-            synchronized (liveInstancesMap) {
+            try (AutoCloseableLock ignored = new AutoCloseableLock(this.liveInstancesMapLock)) {
                 liveInstancesMap = convertLiveInstances(routingTableSnapshot.getLiveInstances());
             }
             logger.info("Updated live instances.");
@@ -172,7 +173,9 @@ public class HelixExternalViewRepository extends HelixBaseRoutingRepository {
         ResourceAssignmentChanges updates;
         synchronized (resourceAssignment) {
             // Update the live instances as well. Helix updates live instances in this routing data changed event.
-            this.liveInstancesMap = Collections.unmodifiableMap(liveInstanceSnapshot);
+            try (AutoCloseableLock ignored = new AutoCloseableLock(this.liveInstancesMapLock)) {
+                this.liveInstancesMap = Collections.unmodifiableMap(liveInstanceSnapshot);
+            }
             updates = resourceAssignment.updateResourceAssignment(newResourceAssignment);
             logger.info("Updated resource assignment and live instances.");
         }

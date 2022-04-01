@@ -282,7 +282,7 @@ public class TestHelixStatusMessageChannel {
     newChannel.registerHandler(StoreStatusMessage.class, message -> received[0] = true);
     // Wait until new instance is connected to zk.
     TestUtils.waitForNonDeterministicCompletion(WAIT_ZK_TIME, TimeUnit.MILLISECONDS,
-        () -> routingDataRepository.getLiveInstancesMap().containsKey(Utils.getHelixNodeIdentifier(port + 1)));
+        () -> routingDataRepository.isLiveInstance(Utils.getHelixNodeIdentifier(port + 1)));
 
     HelixStatusMessageChannel controllerChannel =
         getControllerChannel(new TimeoutTestStoreStatusMessageHandler(timeoutCount));

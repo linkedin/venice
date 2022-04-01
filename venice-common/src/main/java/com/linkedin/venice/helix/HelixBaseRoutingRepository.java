@@ -9,11 +9,14 @@ import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.routerapi.ReplicaState;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 import org.apache.helix.NotificationContext;
 import org.apache.helix.PropertyKey;
 import org.apache.helix.PropertyType;
@@ -65,7 +68,8 @@ public abstract class HelixBaseRoutingRepository
 
   protected final ListenerManager<RoutingDataChangedListener> listenerManager;
 
-  protected volatile Map<String, Instance> liveInstancesMap = new HashMap<>();
+  protected final Lock liveInstancesMapLock = new ReentrantLock();
+  protected Map<String, Instance> liveInstancesMap = new HashMap<>();
 
   protected volatile Map<String, Integer> resourceToIdealPartitionCountMap;
 
@@ -219,6 +223,13 @@ public abstract class HelixBaseRoutingRepository
   @Override
   public Map<String, Instance> getLiveInstancesMap() {
     return liveInstancesMap;
+  }
+
+  @Override
+  public boolean isLiveInstance(String instanceId) {
+    try (AutoCloseableLock ignored = new AutoCloseableLock(this.liveInstancesMapLock)) {
+      return liveInstancesMap.containsKey(instanceId);
+    }
   }
 
   @Override
