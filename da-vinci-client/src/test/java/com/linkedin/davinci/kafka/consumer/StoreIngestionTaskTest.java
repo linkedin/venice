@@ -1074,13 +1074,13 @@ public class StoreIngestionTaskTest {
     localVeniceWriter.broadcastStartOfPush(new HashMap<>());
     localVeniceWriter.put(putKeyFoo, putValue, SCHEMA_ID).get();
 
+    doThrow(new UnsubscribedTopicPartitionException(topic, PARTITION_FOO))
+        .when(mockLocalKafkaConsumer).resetOffset(topic, PARTITION_FOO);
+
     runTest(Utils.setOf(PARTITION_FOO), () -> {
       verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT_MS))
           .put(PARTITION_FOO, putKeyFoo, ByteBuffer.wrap(ValueRecord.create(SCHEMA_ID, putValue).serialize()));
-
       storeIngestionTaskUnderTest.unSubscribePartition(topic, PARTITION_FOO);
-      doThrow(new UnsubscribedTopicPartitionException(topic, PARTITION_FOO))
-          .when(mockLocalKafkaConsumer).resetOffset(topic, PARTITION_FOO);
       // Reset should be able to handle the scenario, when the topic partition has been unsubscribed.
       storeIngestionTaskUnderTest.resetPartitionConsumptionOffset(topic, PARTITION_FOO);
       verify(mockLocalKafkaConsumer, timeout(TEST_TIMEOUT_MS)).unSubscribe(topic, PARTITION_FOO);
