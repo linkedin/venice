@@ -119,6 +119,7 @@ import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.status.protocol.PushJobStatusRecordKey;
 import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.utils.AvroSchemaUtils;
+import com.linkedin.venice.utils.AvroSupersetSchemaUtils;
 import com.linkedin.venice.utils.CollectionUtils;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.PartitionUtils;
@@ -1964,7 +1965,7 @@ public class VeniceParentHelixAdmin implements Admin {
       final boolean doUpdateSupersetSchemaID;
       if (existingValueSchema != null && (store.isReadComputationEnabled() || store.isWriteComputationEnabled())) {
         Schema newValueSchema = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(newValueSchemaStr);
-        Schema newSuperSetSchema = AvroSchemaUtils.generateSuperSetSchema(existingValueSchema, newValueSchema);
+        Schema newSuperSetSchema = AvroSupersetSchemaUtils.generateSuperSetSchema(existingValueSchema, newValueSchema);
         String newSuperSetSchemaStr = newSuperSetSchema.toString();
 
         if (AvroSchemaUtils.compareSchemaIgnoreFieldOrder(newSuperSetSchema, newValueSchema)) {
