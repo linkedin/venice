@@ -304,7 +304,7 @@ public class PushStatusStoreTest {
     }
 
     // remainder of the test uses fabricated data
-    VeniceControllerConfig controllerConfig = cluster.getMasterVeniceController().getVeniceHelixAdmin().getControllerConfig();
+    VeniceControllerConfig controllerConfig = cluster.getLeaderVeniceController().getVeniceHelixAdmin().getControllerConfig();
     int derivedSchemaId = controllerConfig.getProps().getInt(PUSH_STATUS_STORE_DERIVED_SCHEMA_ID, 1);
     VeniceWriterFactory veniceWriterFactory = new VeniceWriterFactory(controllerConfig.getProps().toProperties());
 
