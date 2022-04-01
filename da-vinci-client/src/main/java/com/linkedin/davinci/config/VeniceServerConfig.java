@@ -174,8 +174,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   private final boolean diskHealthCheckServiceEnabled;
 
-  private final boolean holisticHealthCheckServiceEnabled;
-
   private final boolean computeFastAvroEnabled;
 
   private final long participantMessageConsumptionDelayMs;
@@ -323,8 +321,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     diskHealthCheckIntervalInMS = TimeUnit.SECONDS.toMillis(serverProperties.getLong(SERVER_DISK_HEALTH_CHECK_INTERVAL_IN_SECONDS, 10)); // 10 seconds by default
     diskHealthCheckTimeoutInMs = TimeUnit.SECONDS.toMillis(serverProperties.getLong(SERVER_DISK_HEALTH_CHECK_TIMEOUT_IN_SECONDS, 30)); // 30 seconds by default
     diskHealthCheckServiceEnabled = serverProperties.getBoolean(SERVER_DISK_HEALTH_CHECK_SERVICE_ENABLED, true);
-    holisticHealthCheckServiceEnabled =
-        serverProperties.getBoolean(SERVER_HOLISTIC_HEALTH_CHECK_SERVICE_ENABLED, false);
     computeFastAvroEnabled = serverProperties.getBoolean(SERVER_COMPUTE_FAST_AVRO_ENABLED, true);
     participantMessageConsumptionDelayMs = serverProperties.getLong(PARTICIPANT_MESSAGE_CONSUMPTION_DELAY_MS, 60000);
     serverPromotionToLeaderReplicaDelayMs = TimeUnit.SECONDS.toMillis(serverProperties.getLong(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 300));  // 5 minutes by default
@@ -576,10 +572,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public boolean isDiskHealthCheckServiceEnabled() {
     return diskHealthCheckServiceEnabled;
-  }
-
-  public boolean isHolisticHealthCheckServiceEnabled() {
-    return holisticHealthCheckServiceEnabled;
   }
 
   public BlockingQueue<Runnable> getExecutionQueue(int capacity) {
