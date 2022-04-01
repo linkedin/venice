@@ -524,7 +524,7 @@ public class SortBasedCollectionFieldOperationHandlerTest {
           op.getOpTimestamp(),
           op.getOpColoID(),
           ((PutListOperation) op).getNewList(),
-          collectionMetadata,
+          (CollectionReplicationMetadata<Object>) collectionMetadata,
           currValueRecord,
           op.getFieldName()
       );
@@ -534,7 +534,7 @@ public class SortBasedCollectionFieldOperationHandlerTest {
           op.getOpTimestamp(),
           op.getOpColoID(),
           ((PutMapOperation) op).getNewMap(),
-          collectionMetadata,
+          (CollectionReplicationMetadata<String>) collectionMetadata,
           currValueRecord,
           op.getFieldName()
       );
@@ -542,7 +542,7 @@ public class SortBasedCollectionFieldOperationHandlerTest {
     } else if (op instanceof MergeListOperation) {
       handler.handleModifyList(
           op.getOpTimestamp(),
-          collectionMetadata,
+          (CollectionReplicationMetadata<Object>) collectionMetadata,
           currValueRecord,
           op.getFieldName(),
           ((MergeListOperation) op).getNewElements(),
@@ -552,7 +552,7 @@ public class SortBasedCollectionFieldOperationHandlerTest {
     } else if (op instanceof MergeMapOperation) {
       handler.handleModifyMap(
           op.getOpTimestamp(),
-          collectionMetadata,
+          (CollectionReplicationMetadata<String>) collectionMetadata,
           currValueRecord,
           op.getFieldName(),
           ((MergeMapOperation) op).getNewEntries(),
@@ -563,7 +563,7 @@ public class SortBasedCollectionFieldOperationHandlerTest {
       handler.handleDeleteList(
           op.getOpTimestamp(),
           op.getOpColoID(),
-          collectionMetadata,
+          (CollectionReplicationMetadata<Object>) collectionMetadata,
           currValueRecord,
           op.getFieldName()
       );
@@ -572,7 +572,7 @@ public class SortBasedCollectionFieldOperationHandlerTest {
       handler.handleDeleteMap(
           op.getOpTimestamp(),
           op.getOpColoID(),
-          collectionMetadata,
+          (CollectionReplicationMetadata<String>) collectionMetadata,
           currValueRecord,
           op.getFieldName()
       );
