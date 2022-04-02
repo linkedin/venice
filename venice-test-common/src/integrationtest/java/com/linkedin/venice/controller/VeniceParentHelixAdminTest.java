@@ -81,7 +81,7 @@ public class VeniceParentHelixAdminTest {
     }
   }
 
-  @Test(timeOut = DEFAULT_TEST_TIMEOUT)
+  @Test(timeOut = 2 * DEFAULT_TEST_TIMEOUT)
   public void testAddVersion() {
     Properties properties = new Properties();
     properties.setProperty(REPLICATION_METADATA_VERSION_ID, String.valueOf(1));
@@ -90,13 +90,14 @@ public class VeniceParentHelixAdminTest {
       String parentControllerUrl = parentControllerWrapper.getControllerUrl();
       String childControllerUrl = venice.getLeaderVeniceController().getControllerUrl();
       // Adding store
-      String storeName = "test_store";
+      String storeName = Utils.getUniqueString("test_store");
       String owner = "test_owner";
       String keySchemaStr = "\"long\"";
       Schema valueSchema = generateSchema(false);
       try (ControllerClient parentControllerClient = new ControllerClient(venice.getClusterName(), parentControllerUrl);
           ControllerClient childControllerClient = new ControllerClient(venice.getClusterName(), childControllerUrl)) {
-        parentControllerClient.createNewStore(storeName, owner, keySchemaStr, valueSchema.toString());
+        TestUtils.assertCommand(parentControllerClient.createNewStore(storeName, owner, keySchemaStr, valueSchema.toString()),
+            "Failed to create store:" + storeName);
 
         // Configure the store to hybrid
         UpdateStoreQueryParams params =
@@ -130,7 +131,7 @@ public class VeniceParentHelixAdminTest {
           assertTrue(versionFromChild.isPresent() && versionFromChild.get().getHybridStoreConfig().getRewindTimeInSeconds() == 600);
         });
 
-        // Need to skill the current version since it is not allowed to have multiple ongoing versions.
+        // Need to kill the current version since it is not allowed to have multiple ongoing versions.
         parentControllerResponse = parentControllerClient.killOfflinePushJob(Version.composeKafkaTopic(storeName, 1));
         Assert.assertFalse(parentControllerResponse.isError(), parentControllerResponse.getError());
         // Test add version with rewind time override
