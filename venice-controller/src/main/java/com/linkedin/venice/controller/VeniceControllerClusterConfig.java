@@ -214,6 +214,7 @@ public class VeniceControllerClusterConfig {
   private boolean disableParentRequestTopicForStreamPushes;
 
   private int defaultReadQuotaPerRouter;
+  private int replicationMetadataVersionId;
 
   public VeniceControllerClusterConfig(VeniceProperties props) {
     try {
@@ -354,6 +355,7 @@ public class VeniceControllerClusterConfig {
     this.jettyConfigOverrides = props.clipAndFilterNamespace(CONTROLLER_JETTY_CONFIG_OVERRIDE_PREFIX);
     this.disableParentRequestTopicForStreamPushes = props.getBoolean(CONTROLLER_DISABLE_PARENT_REQUEST_TOPIC_FOR_STREAM_PUSHES, false);
     this.defaultReadQuotaPerRouter = props.getInt(CONTROLLER_DEFAULT_READ_QUOTA_PER_ROUTER, DEFAULT_PER_ROUTER_READ_QUOTA);
+    this.replicationMetadataVersionId = props.getInt(REPLICATION_METADATA_VERSION_ID,1);
   }
 
   public int getDefaultReadQuotaPerRouter() {
@@ -592,5 +594,9 @@ public class VeniceControllerClusterConfig {
 
   public VeniceProperties getJettyConfigOverrides() {
     return jettyConfigOverrides;
+  }
+
+  public int getReplicationMetadataVersionId() {
+    return replicationMetadataVersionId;
   }
 }

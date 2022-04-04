@@ -60,7 +60,10 @@ public class VeniceKafkaInputReducer extends VeniceReducer {
         valueBytesAndSchemaId -> new VeniceWriterMessage(
             keyBytes,
             valueBytesAndSchemaId.getBytes(),
-            valueBytesAndSchemaId.getSchemaID()
+            valueBytesAndSchemaId.getSchemaID(),
+            getCallback(),
+            isEnableWriteCompute(),
+            getDerivedValueSchemaId()
         ));
   }
 
@@ -84,13 +87,18 @@ public class VeniceKafkaInputReducer extends VeniceReducer {
     }
     if (lastValue.valueType.equals(MapperValueType.DELETE)) {
       // Deleted record
+      if (lastValue.replicationMetadataPayload.remaining() != 0) {
+        return Optional.of(new VeniceWriterMessage(keyBytes, null, lastValue.schemaId, lastValue.replicationMetadataVersionId,
+            lastValue.replicationMetadataPayload, getCallback(), isEnableWriteCompute(), getDerivedValueSchemaId()));
+      }
       return Optional.empty();
     }
     byte[] valueBytes = ByteUtils.extractByteArray(lastValue.value);
-    if (lastValue.replicationMetadataPayload != null) {
-      return Optional.of(new VeniceWriterMessage(keyBytes, valueBytes, lastValue.schemaId, lastValue.replicationMetadataVersionId, lastValue.replicationMetadataPayload));
+    if (lastValue.replicationMetadataPayload.remaining() != 0) {
+      return Optional.of(new VeniceWriterMessage(keyBytes, valueBytes, lastValue.schemaId, lastValue.replicationMetadataVersionId,
+          lastValue.replicationMetadataPayload, getCallback(), isEnableWriteCompute(), getDerivedValueSchemaId()));
     }
-    return Optional.of(new VeniceWriterMessage(keyBytes, valueBytes, lastValue.schemaId));
+    return Optional.of(new VeniceWriterMessage(keyBytes, valueBytes, lastValue.schemaId, getCallback(), isEnableWriteCompute(), getDerivedValueSchemaId()));
   }
 
   private List<KafkaInputMapperValue> getMapperValues(Iterator<BytesWritable> valueIterator) {

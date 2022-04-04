@@ -432,6 +432,11 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     return delete(key, callback, leaderMetadataWrapper, APP_DEFAULT_LOGICAL_TS, Optional.ofNullable(deleteMetadata));
   }
 
+  @Override
+  public Future<RecordMetadata> delete(K key, Callback callback,  DeleteMetadata deleteMetadata) {
+    return delete(key, callback, DEFAULT_LEADER_METADATA_WRAPPER, APP_DEFAULT_LOGICAL_TS, Optional.ofNullable(deleteMetadata));
+  }
+
   /**
    * Execute a standard "delete" on the key.
    *

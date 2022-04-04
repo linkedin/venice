@@ -19,6 +19,7 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.writer.AbstractVeniceWriter;
+import com.linkedin.venice.writer.DeleteMetadata;
 import com.linkedin.venice.writer.PutMetadata;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
@@ -39,6 +40,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Consumer;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericDatumWriter;
 import org.apache.avro.io.Encoder;
@@ -81,17 +83,41 @@ public class VeniceReducer
     private final int valueSchemaId;
     private final int replicationMetadataVersionId;
     private final ByteBuffer replicationMetadataPayload;
+    private final Consumer<AbstractVeniceWriter<byte[], byte[], byte[]> > consumer;
 
-    public VeniceWriterMessage(byte[] keyBytes, byte[] valueBytes, int valueSchemaId) {
-      this(keyBytes, valueBytes, valueSchemaId, -1, null);
+    public VeniceWriterMessage(byte[] keyBytes, byte[] valueBytes, int valueSchemaId, Callback callback, boolean enableWriteCompute, int derivedValueSchemaId) {
+      this(keyBytes, valueBytes, valueSchemaId, -1, null, callback, enableWriteCompute, derivedValueSchemaId);
     }
 
-    public VeniceWriterMessage(byte[] keyBytes, byte[] valueBytes, int valueSchemaId, int replicationMetadataVersionId, ByteBuffer replicationMetadataPayload) {
+    public VeniceWriterMessage(byte[] keyBytes, byte[] valueBytes, int valueSchemaId, int replicationMetadataVersionId,
+        ByteBuffer replicationMetadataPayload, Callback callback, boolean enableWriteCompute, int derivedValueSchemaId) {
       this.keyBytes = keyBytes;
       this.valueBytes = valueBytes;
       this.valueSchemaId = valueSchemaId;
       this.replicationMetadataPayload = replicationMetadataPayload;
       this.replicationMetadataVersionId = replicationMetadataVersionId;
+      this.consumer = writer -> {
+        if (replicationMetadataPayload != null) {
+          if (replicationMetadataPayload.remaining() == 0) {
+            throw new VeniceException("Found empty replication metadata");
+          }
+          if (valueBytes == null) {
+            DeleteMetadata deleteMetadata = new DeleteMetadata(valueSchemaId, replicationMetadataVersionId, replicationMetadataPayload);
+            writer.delete(keyBytes, callback, deleteMetadata);
+          } else {
+            PutMetadata putMetadata = (new PutMetadata(replicationMetadataVersionId, replicationMetadataPayload));
+            writer.put(keyBytes, valueBytes, valueSchemaId, callback, putMetadata);
+          }
+        } else if (enableWriteCompute && derivedValueSchemaId > 0) {
+          writer.update(keyBytes, valueBytes, valueSchemaId, derivedValueSchemaId, callback);
+        } else {
+          writer.put(keyBytes, valueBytes, valueSchemaId, callback, null);
+        }
+      };
+    }
+
+    public Consumer<AbstractVeniceWriter<byte[], byte[], byte[]> > getConsumer() {
+      return consumer;
     }
 
     public ByteBuffer getReplicationMetadataPayload() {
@@ -193,12 +219,8 @@ public class VeniceReducer
       Optional<VeniceWriterMessage> message = extract(key, values, reporter);
       if (message.isPresent()) {
         try {
-          if (message.get().replicationMetadataPayload != null) {
-            PutMetadata putMetadata = new PutMetadata(message.get().getReplicationMetadataVersionId(), message.get().getReplicationMetadataPayload());
-            sendMessageToKafka(message.get().keyBytes, message.get().valueBytes, message.get().valueSchemaId, reporter, putMetadata);
-          } else {
-            sendMessageToKafka(message.get().keyBytes, message.get().valueBytes, message.get().valueSchemaId, reporter);
-          }
+          VeniceWriterMessage veniceWriterMessage = message.get();
+          sendMessageToKafka(reporter, veniceWriterMessage.getConsumer());
         } catch (VeniceException e) {
           if (e instanceof TopicAuthorizationVeniceException) {
             MRJobCounterHelper.incrWriteAclAuthorizationFailureCount(reporter, 1);
@@ -216,6 +238,18 @@ public class VeniceReducer
     updateExecutionTimeStatus(timeOfLastReduceFunctionStartInNS);
   }
 
+  protected Callback getCallback() {
+    return callback;
+  }
+
+  protected int getDerivedValueSchemaId() {
+    return derivedValueSchemaId;
+  }
+
+  protected boolean isEnableWriteCompute() {
+    return enableWriteCompute;
+  }
+
   protected Optional<VeniceWriterMessage> extract(BytesWritable key, Iterator<BytesWritable> values, Reporter reporter) {
     /**
      * Don't use {@link BytesWritable#getBytes()} since it could be padded or modified by some other records later on.
@@ -230,7 +264,7 @@ public class VeniceReducer
       throw new VeniceException("'DuplicateKeyPrinter' is not initialized properly");
     }
     duplicateKeyPrinter.detectAndHandleDuplicateKeys(keyBytes, valueBytes, values, reporter);
-    return Optional.of(new VeniceWriterMessage(keyBytes, valueBytes, valueSchemaId));
+    return Optional.of(new VeniceWriterMessage(keyBytes, valueBytes, valueSchemaId, getCallback(), isEnableWriteCompute(), getDerivedValueSchemaId()));
   }
 
   protected boolean hasReportedFailure(Reporter reporter, boolean isDuplicateKeyAllowed) {
@@ -307,20 +341,12 @@ public class VeniceReducer
     aggregateTimeOfReduceExecutionInNS += (timeOfLastReduceFunctionEndInNS - timeOfLastReduceFunctionStartInNS);
   }
 
-  protected void sendMessageToKafka(byte[] keyBytes, byte[] valueBytes, int valueSchemaId, Reporter reporter) {
-    sendMessageToKafka(keyBytes, valueBytes, valueSchemaId, reporter, null);
-  }
-
-  protected void sendMessageToKafka(byte[] keyBytes, byte[] valueBytes, int valueSchemaId, Reporter reporter, PutMetadata putMetadata) {
+  protected void sendMessageToKafka(Reporter reporter, Consumer<AbstractVeniceWriter<byte[], byte[], byte[]> > writerConsumer) {
     maybePropagateCallbackException();
     if (null == veniceWriter) {
       veniceWriter = createBasicVeniceWriter();
     }
-    if (enableWriteCompute && derivedValueSchemaId > 0) {
-      veniceWriter.update(keyBytes, valueBytes, valueSchemaId, derivedValueSchemaId, callback);
-    } else {
-      veniceWriter.put(keyBytes, valueBytes, valueSchemaId, callback, putMetadata);
-    }
+    writerConsumer.accept(veniceWriter);
     messageSent++;
     telemetry();
     MRJobCounterHelper.incrOutputRecordCount(reporter, 1);

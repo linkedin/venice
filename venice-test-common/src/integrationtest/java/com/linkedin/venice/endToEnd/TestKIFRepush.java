@@ -1,0 +1,167 @@
+package com.linkedin.venice.endToEnd;
+
+import com.linkedin.venice.ConfigKeys;
+import com.linkedin.venice.client.store.AvroGenericStoreClient;
+import com.linkedin.venice.client.store.ClientConfig;
+import com.linkedin.venice.client.store.ClientFactory;
+import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
+import com.linkedin.venice.hadoop.VenicePushJob;
+import com.linkedin.venice.integration.utils.MirrorMakerWrapper;
+import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
+import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiColoMultiClusterWrapper;
+import com.linkedin.venice.meta.VeniceUserStoreType;
+import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.samza.VeniceSystemFactory;
+import com.linkedin.venice.samza.VeniceSystemProducer;
+import com.linkedin.venice.utils.TestPushUtils;
+import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.VeniceProperties;
+import io.tehuti.metrics.MetricsRepository;
+import java.io.File;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Properties;
+import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
+import org.apache.avro.Schema;
+import org.apache.samza.config.MapConfig;
+import org.testng.Assert;
+import org.testng.annotations.AfterClass;
+import org.testng.annotations.BeforeClass;
+import org.testng.annotations.Test;
+
+import static com.linkedin.venice.CommonConfigKeys.*;
+import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.hadoop.VenicePushJob.*;
+import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.*;
+import static com.linkedin.venice.samza.VeniceSystemFactory.*;
+import static com.linkedin.venice.utils.TestPushUtils.*;
+
+
+public class TestKIFRepush {
+  private static final int TEST_TIMEOUT = 360 * Time.MS_PER_SECOND;
+  private static final String[] CLUSTER_NAMES =
+      IntStream.range(0, 1).mapToObj(i -> "venice-cluster" + i).toArray(String[]::new);
+
+  private List<VeniceMultiClusterWrapper> childDatacenters;
+  private List<VeniceControllerWrapper> parentControllers;
+  private VeniceTwoLayerMultiColoMultiClusterWrapper multiColoMultiClusterWrapper;
+
+  @BeforeClass
+  public void setUp() {
+    Properties serverProperties = new Properties();
+    serverProperties.setProperty(ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1));
+    serverProperties.put(LF_MODEL_DEPENDENCY_CHECK_DISABLED, "true");
+    serverProperties.put(AGGREGATE_REAL_TIME_SOURCE_REGION, DEFAULT_PARENT_DATA_CENTER_REGION_NAME);
+    serverProperties.put(NATIVE_REPLICATION_FABRIC_WHITELIST, DEFAULT_PARENT_DATA_CENTER_REGION_NAME + ",dc-0");
+    serverProperties.put(CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + DEFAULT_PARENT_DATA_CENTER_REGION_NAME, "localhost:" + Utils.getFreePort());
+
+    multiColoMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiColoMultiClusterWrapper(
+        1, 1, 1, 1, 1, 1,
+        1, Optional.empty(), Optional.empty(), Optional.of(new VeniceProperties(serverProperties)), false, ".*");
+
+    childDatacenters = multiColoMultiClusterWrapper.getClusters();
+    parentControllers = multiColoMultiClusterWrapper.getParentControllers();
+  }
+
+  @AfterClass
+  public void cleanUp() {
+    multiColoMultiClusterWrapper.close();
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testKIFRepushActiveActiveStore() throws Exception{
+    String clusterName = CLUSTER_NAMES[0];
+    VeniceClusterWrapper clusterWrapper = childDatacenters.get(0).getClusters().get(clusterName);
+    String parentControllerURLs =
+        parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(Collectors.joining(","));
+    ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerURLs);
+    TestUtils.assertCommand(parentControllerClient.configureActiveActiveReplicationForCluster(
+        true, VeniceUserStoreType.BATCH_ONLY.toString(), Optional.empty()));
+    // create a active-active enabled store and run batch push job
+    File inputDir = getTempDataDirectory();
+    Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir);
+    String inputDirPath = "file:" + inputDir.getAbsolutePath();
+    String storeName = Utils.getUniqueString("store");
+    Properties props = defaultH2VProps(parentControllers.get(0).getControllerUrl(), inputDirPath, storeName);
+    String keySchemaStr = recordSchema.getField(props.getProperty(VenicePushJob.KEY_FIELD_PROP)).schema().toString();
+    String valueSchemaStr = recordSchema.getField(props.getProperty(VenicePushJob.VALUE_FIELD_PROP)).schema().toString();
+    UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams()
+        .setLeaderFollowerModel(true)
+        .setActiveActiveReplicationEnabled(true)
+        .setHybridRewindSeconds(5)
+        .setHybridOffsetLagThreshold(2)
+        .setNativeReplicationEnabled(true);
+    createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props,storeParms ).close();
+
+    TestPushUtils.runPushJob("Run push job", props);
+
+    // run samza to stream put and delete
+    runSamzaStreamJob(storeName);
+
+    // run repush
+    props.setProperty(SOURCE_KAFKA, "true");
+    props.setProperty(KAFKA_INPUT_BROKER_URL,  clusterWrapper.getKafka().getAddress());
+    props.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
+    TestPushUtils.runPushJob("Run repush job", props);
+    ControllerClient controllerClient = new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
+    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS,
+        () -> Assert.assertEquals(controllerClient.getStore(storeName).getStore().getCurrentVersion(), 2));
+
+    clusterWrapper.refreshAllRouterMetaData();
+    // Validate repush from version 2
+    MetricsRepository metricsRepository = new MetricsRepository();
+    try (AvroGenericStoreClient avroClient = ClientFactory.getAndStartGenericAvroClient(
+        ClientConfig.defaultGenericClientConfig(storeName)
+            .setVeniceURL(clusterWrapper.getRandomRouterURL())
+            .setMetricsRepository(metricsRepository))) {
+      //test single get
+      for (int i = 0; i < 10; i ++) {
+        Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "stream_" + i);
+      }
+      // test deletes
+      for (int i = 10; i < 20; i ++) {
+        Assert.assertNull(avroClient.get(Integer.toString(i)).get());
+      }
+      // test old data
+      for (int i = 20; i < 100; i ++) {
+        Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + i);
+      }
+    }
+  }
+
+  private void runSamzaStreamJob(String storeName) {
+    Map<String, String> samzaConfig = new HashMap<>();
+    String configPrefix = SYSTEMS_PREFIX + "venice" + DOT;
+    samzaConfig.put(configPrefix + VENICE_PUSH_TYPE, Version.PushType.STREAM.toString());
+    samzaConfig.put(configPrefix + VENICE_STORE, storeName);
+    samzaConfig.put(configPrefix + VENICE_AGGREGATE, "false");
+    samzaConfig.put(D2_ZK_HOSTS_PROPERTY, childDatacenters.get(0).getZkServerWrapper().getAddress());
+    samzaConfig.put(VENICE_PARENT_D2_ZK_HOSTS, "dfd"); //parentController.getKafkaZkAddress());
+    samzaConfig.put(DEPLOYMENT_ID, Utils.getUniqueString("venice-push-id"));
+    samzaConfig.put(SSL_ENABLED, "false");
+    VeniceSystemFactory factory = new VeniceSystemFactory();
+
+    try (VeniceSystemProducer veniceProducer = factory.getClosableProducer("venice", new MapConfig(samzaConfig), null)) {
+      veniceProducer.start();
+      // send puts
+      for (int i = 0; i < 10; i++) {
+        sendStreamingRecord(veniceProducer, storeName, i);
+      }
+      // send deletes
+      for (int i = 10; i < 20; i++) {
+        sendStreamingDeleteRecord(veniceProducer, storeName, Integer.toString(i));
+      }
+    }
+  }
+}

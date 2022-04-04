@@ -21,6 +21,7 @@ public class TestVeniceKafkaInputReducer {
   private static final RecordSerializer KAFKA_INPUT_MAPPER_VALUE_SERIALIZER =
       FastSerializerDeserializerFactory.getFastAvroGenericSerializer(KafkaInputMapperValue.SCHEMA$);
   private static final String VALUE_PREFIX = "value_";
+  private static final String RMD_VALUE_PREFIX = "rmd_value_";
 
   public List<BytesWritable> getValues(List<MapperValueType> valueTypes) {
     List<BytesWritable> values = new ArrayList<>();
@@ -30,7 +31,7 @@ public class TestVeniceKafkaInputReducer {
       value.offset = offset++;
       value.schemaId = -1;
       value.valueType = valueType;
-      value.replicationMetadataPayload = ByteBuffer.wrap(new byte[0]);
+      value.replicationMetadataPayload = ByteBuffer.wrap(RMD_VALUE_PREFIX.getBytes());
       if (valueType.equals(MapperValueType.DELETE)) {
         value.value = ByteBuffer.wrap(new byte[0]);
       } else {
@@ -76,7 +77,7 @@ public class TestVeniceKafkaInputReducer {
     ));
 
     messageOptional = reducer.extract(keyWritable, values.iterator(), Mockito.mock(Reporter.class));
-    Assert.assertFalse(messageOptional.isPresent());
+    Assert.assertTrue(messageOptional.isPresent());
 
     /**
      * Construct a list of values, which contains both 'PUT' and 'DELETE', but 'DELETE' is in the middle.

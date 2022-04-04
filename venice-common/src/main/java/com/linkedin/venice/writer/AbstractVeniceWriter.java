@@ -38,6 +38,8 @@ public abstract class AbstractVeniceWriter <K, V, U> implements Closeable {
 
   public abstract Future<RecordMetadata> put(K key, V value, int valueSchemaId, Callback callback, PutMetadata putMetadata);
 
+  public abstract Future<RecordMetadata> delete(K key, Callback callback, DeleteMetadata deleteMetadata);
+
   public abstract Future<RecordMetadata> update(K key, U update, int valueSchemaId, int derivedSchemaId, Callback callback);
 
   public abstract void flush();

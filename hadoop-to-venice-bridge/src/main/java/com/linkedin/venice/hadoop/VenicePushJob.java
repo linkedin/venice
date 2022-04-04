@@ -40,7 +40,6 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
-import com.linkedin.venice.pushstatushelper.PushStatusStoreRecordDeleter;
 import com.linkedin.venice.schema.AvroSchemaParseUtils;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -50,12 +49,12 @@ import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.status.protocol.PushJobDetailsStatusTuple;
 import com.linkedin.venice.utils.DictionaryUtils;
 import com.linkedin.venice.utils.EncodingUtils;
-import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.writer.ApacheKafkaProducer;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
@@ -1695,6 +1694,9 @@ public class VenicePushJob implements AutoCloseable {
     }
 
     if (setting.isSourceKafka) {
+      if (storeSetting.isWriteComputeEnabled) {
+        throw new VeniceException("KIF repush is not available for for write compute store.");
+      }
       int sourceVersionNumber = Version.parseVersionFromKafkaTopicName(pushJobSetting.kafkaInputTopic);
       Optional<Version> sourceVersion = storeResponse.getStore().getVersion(sourceVersionNumber);
       if (!sourceVersion.isPresent()) {
@@ -1877,7 +1879,12 @@ public class VenicePushJob implements AutoCloseable {
             + " source version: " + sourceVersion.getNumber() + " is using: " + sourceVersion.isChunkingEnabled()
             + ", new version: " + newVersion.getNumber() + " is using: " + newVersion.isChunkingEnabled());
       }
-
+      if (sourceVersion.getReplicationMetadataVersionId() != newVersion.getReplicationMetadataVersionId()) {
+        throw new VeniceException("Replication Metadata Version Id config mismatch between the source version and the new version is "
+            + "not supported by Kafka Input Format, "
+            + " source version: " + sourceVersion.getNumber() + " is using RMD ID: " + sourceVersion.getReplicationMetadataVersionId()
+            + ", new version: " + newVersion.getNumber() + " is using RMD ID: " + newVersion.getReplicationMetadataVersionId());
+      }
       if (!pushJobSetting.allowKifRepushForIncPushFromVTToVT) {
         if ((sourceVersion.isIncrementalPushEnabled() && sourceVersion.getIncrementalPushPolicy().equals(IncrementalPushPolicy.PUSH_TO_VERSION_TOPIC))
             && (newVersion.isIncrementalPushEnabled() && newVersion.getIncrementalPushPolicy().equals(IncrementalPushPolicy.PUSH_TO_VERSION_TOPIC))) {
