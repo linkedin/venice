@@ -124,7 +124,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
         D2TestUtils.getAndStartD2Client(zkAddress)
     );
     //Start stand by controller
-    newLeaderAdmin.initVeniceControllerClusterResource(clusterName);
+    newLeaderAdmin.initStorageCluster(clusterName);
     Assert.assertFalse(veniceAdmin.isLeaderControllerFor(clusterName) && newLeaderAdmin.isLeaderControllerFor(clusterName),
         "At most one controller can be the leader.");
     veniceAdmin.stop(clusterName);
@@ -132,7 +132,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     waitUntilIsLeader(newLeaderAdmin, clusterName, LEADER_CHANGE_TIMEOUT_MS);
     Assert.assertTrue(newLeaderAdmin.isLeaderControllerFor(clusterName),
         "The new controller should be the leader controller right now.");
-    veniceAdmin.initVeniceControllerClusterResource(clusterName);
+    veniceAdmin.initStorageCluster(clusterName);
     waitForALeader(Arrays.asList(veniceAdmin, newLeaderAdmin), clusterName, LEADER_CHANGE_TIMEOUT_MS);
 
     /* XOR */
@@ -140,7 +140,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     Assert.assertFalse(veniceAdmin.isLeaderControllerFor(clusterName) && newLeaderAdmin.isLeaderControllerFor(clusterName));
 
     //resume to the original venice admin
-    veniceAdmin.initVeniceControllerClusterResource(clusterName);
+    veniceAdmin.initStorageCluster(clusterName);
     newLeaderAdmin.close();
     waitUntilIsLeader(veniceAdmin, clusterName, LEADER_CHANGE_TIMEOUT_MS);
   }
@@ -154,7 +154,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     VeniceProperties newClusterProps = builder.build();
     VeniceControllerConfig newClusterConfig = new VeniceControllerConfig(newClusterProps);
     veniceAdmin.addConfig(newClusterConfig);
-    veniceAdmin.initVeniceControllerClusterResource(newClusterName);
+    veniceAdmin.initStorageCluster(newClusterName);
     waitUntilIsLeader(veniceAdmin, newClusterName, LEADER_CHANGE_TIMEOUT_MS);
 
     Assert.assertTrue(veniceAdmin.isLeaderControllerFor(clusterName));

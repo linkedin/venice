@@ -94,7 +94,7 @@ public interface Admin extends AutoCloseable, Closeable {
         }
     }
 
-    void initVeniceControllerClusterResource(String clusterName);
+    void initStorageCluster(String clusterName);
 
     boolean isClusterValid(String clusterName);
 

@@ -90,7 +90,7 @@ public class VeniceControllerService extends AbstractVeniceService {
   @Override
   public boolean startInner() {
     for (String clusterName : multiClusterConfigs.getClusters()) {
-      admin.initVeniceControllerClusterResource(clusterName);
+      admin.initStorageCluster(clusterName);
       consumerServicesByClusters.get(clusterName).start();
       logger.info("started cluster: " + clusterName);
     }

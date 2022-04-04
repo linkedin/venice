@@ -321,8 +321,8 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
-  public synchronized void initVeniceControllerClusterResource(String clusterName) {
-    getVeniceHelixAdmin().initVeniceControllerClusterResource(clusterName);
+  public synchronized void initStorageCluster(String clusterName) {
+    getVeniceHelixAdmin().initStorageCluster(clusterName);
     asyncSetupEnabledMap.put(clusterName, true);
     // We might not be able to call a lot of functions of veniceHelixAdmin since
     // current controller might not be the leader controller for the given clusterName

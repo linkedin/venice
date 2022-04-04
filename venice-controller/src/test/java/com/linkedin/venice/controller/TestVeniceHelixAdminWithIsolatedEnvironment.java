@@ -67,7 +67,7 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
         D2TestUtils.getAndStartD2Client(zkAddress)
     );
     //Start stand by controller
-    newAdmin.initVeniceControllerClusterResource(clusterName);
+    newAdmin.initStorageCluster(clusterName);
     List<VeniceHelixAdmin> allAdmins = new ArrayList<>();
     allAdmins.add(veniceAdmin);
     allAdmins.add(newAdmin);
@@ -110,7 +110,7 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
     Assert.assertEquals(newLeader.getOffLinePushStatus(clusterName, newVersion.kafkaTopicName()).getExecutionStatus(),
         ExecutionStatus.STARTED, "Can not trigger state transition from new leader");
     //Start original controller again, now it should become leader again based on Helix's logic.
-    oldLeader.initVeniceControllerClusterResource(clusterName);
+    oldLeader.initStorageCluster(clusterName);
     newLeader.stop(clusterName);
     Thread.sleep(1000l);
     waitForALeader(allAdmins, clusterName, LEADER_CHANGE_TIMEOUT_MS);
@@ -280,6 +280,7 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
         new MetricsRepository(),
         D2TestUtils.getAndStartD2Client(zkAddress)
     );
+    newLeaderAdmin.initStorageCluster(clusterName);
     List<VeniceHelixAdmin> admins = new ArrayList<>();
     admins.add(veniceAdmin);
     admins.add(newLeaderAdmin);
@@ -325,7 +326,7 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
         D2TestUtils.getAndStartD2Client(zkAddress)
     );
 
-    veniceAdmin.initVeniceControllerClusterResource(clusterName);
+    veniceAdmin.initStorageCluster(clusterName);
 
     TestUtils.waitForNonDeterministicCompletion(5, TimeUnit.SECONDS, ()->veniceAdmin.isLeaderControllerFor(clusterName));
     veniceAdmin.createStore(clusterName, storeName1, "test", KEY_SCHEMA, VALUE_SCHEMA);
@@ -361,7 +362,7 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
             new MetricsRepository(),
             D2TestUtils.getAndStartD2Client(zkAddress)
     );
-    veniceAdmin.initVeniceControllerClusterResource(clusterName);
+    veniceAdmin.initStorageCluster(clusterName);
     TestUtils.waitForNonDeterministicCompletion(5, TimeUnit.SECONDS, ()->veniceAdmin.isLeaderControllerFor(clusterName));
     veniceAdmin.createStore(clusterName, storeName1, "test", KEY_SCHEMA, VALUE_SCHEMA);
     veniceAdmin.createStore(clusterName, storeName2, "test", KEY_SCHEMA, VALUE_SCHEMA);
@@ -390,7 +391,7 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
         new MetricsRepository(),
         D2TestUtils.getAndStartD2Client(zkAddress)
     );
-    veniceAdmin.initVeniceControllerClusterResource(clusterName);
+    veniceAdmin.initStorageCluster(clusterName);
 
     TestUtils.waitForNonDeterministicCompletion(5, TimeUnit.SECONDS, ()->veniceAdmin.isLeaderControllerFor(clusterName));
     // Store3 is a batch store

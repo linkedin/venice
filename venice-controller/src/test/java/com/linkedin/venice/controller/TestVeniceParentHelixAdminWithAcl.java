@@ -73,7 +73,7 @@ public class TestVeniceParentHelixAdminWithAcl extends AbstractTestVeniceParentH
     String keySchemaStr = "\"string\"";
     String valueSchemaStr = "\"string\"";
     initializeParentAdmin(Optional.of(authorizerService));
-    parentAdmin.initVeniceControllerClusterResource(clusterName);
+    parentAdmin.initStorageCluster(clusterName);
     parentAdmin.createStore(clusterName, storeName, "dev", keySchemaStr, valueSchemaStr, false, Optional.of(accessPerm));
     Assert.assertEquals(1, authorizerService.setAclsCounter);
     AclBinding actualAB = authorizerService.describeAcls(new Resource(storeName));
@@ -96,7 +96,7 @@ public class TestVeniceParentHelixAdminWithAcl extends AbstractTestVeniceParentH
     String keySchemaStr = "\"string\"";
     String valueSchemaStr = "\"string\"";
     initializeParentAdmin(Optional.of(authorizerService));
-    parentAdmin.initVeniceControllerClusterResource(clusterName);
+    parentAdmin.initStorageCluster(clusterName);
     Assert.assertThrows(VeniceException.class,
         () -> parentAdmin.createStore(clusterName, storeName, "dev", keySchemaStr, valueSchemaStr, false,
             Optional.of(accessPerm)));
@@ -117,7 +117,7 @@ public class TestVeniceParentHelixAdminWithAcl extends AbstractTestVeniceParentH
     when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(null)
         .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, -1, 1));
     initializeParentAdmin(Optional.of(authorizerService));
-    parentAdmin.initVeniceControllerClusterResource(clusterName);
+    parentAdmin.initStorageCluster(clusterName);
     parentAdmin.deleteStore(clusterName, storeName, 0, true);
     Assert.assertEquals(1, authorizerService.clearAclCounter);
     AclBinding actualAB = authorizerService.describeAcls(new Resource(storeName));
