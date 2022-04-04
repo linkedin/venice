@@ -1984,12 +1984,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         String compressionDictionary, Optional<String> sourceGridFabric, Optional<X509Certificate> requesterCert,
         long rewindTimeInSecondsOverride, Optional<String> emergencySourceRegion, boolean versionSwapDeferred) {
         checkControllerLeadershipFor(clusterName);
-
+      VeniceControllerClusterConfig clusterConfig = getHelixVeniceClusterResources(clusterName).getConfig();
+      int replicationMetadataVersionId = clusterConfig.getReplicationMetadataVersionId();
         return pushType.isIncremental() ? getIncrementalPushVersion(clusterName, storeName)
             : addVersion(clusterName, storeName, pushJobId, VERSION_ID_UNSET, numberOfPartitions, replicationFactor,
                 true, sendStartOfPush, sorted, false, pushType,
                 compressionDictionary, null, sourceGridFabric, rewindTimeInSecondsOverride,
-                REPLICATION_METADATA_VERSION_ID_UNSET, emergencySourceRegion, versionSwapDeferred).getSecond();
+                replicationMetadataVersionId, emergencySourceRegion, versionSwapDeferred).getSecond();
     }
 
     /**

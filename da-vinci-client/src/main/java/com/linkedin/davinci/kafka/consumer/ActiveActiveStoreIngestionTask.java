@@ -153,7 +153,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   protected void putInStorageEngine(AbstractStorageEngine storageEngine, int partition, byte[] keyBytes,
       Put put) {
     // TODO: Honor BatchConflictResolutionPolicy and maybe persist RMD for batch push records.
-    if (partitionConsumptionStateMap.get(partition).isEndOfPushReceived() && !isDaVinciClient) {
+    if ((partitionConsumptionStateMap.get(partition).isEndOfPushReceived() || put.replicationMetadataPayload.remaining() != 0) && !isDaVinciClient) {
       byte[] metadataBytesWithValueSchemaId = prependReplicationMetadataBytesWithValueSchemaId(put.replicationMetadataPayload, put.schemaId);
       storageEngine.putWithReplicationMetadata(partition, keyBytes, put.putValue, metadataBytesWithValueSchemaId);
     } else {
@@ -165,7 +165,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   protected void removeFromStorageEngine(AbstractStorageEngine storageEngine, int partition, byte[] keyBytes,
       Delete delete) {
     // TODO: Honor BatchConflictResolutionPolicy and maybe persist RMD for batch push records.
-    if (partitionConsumptionStateMap.get(partition).isEndOfPushReceived() && !isDaVinciClient) {
+    if ((partitionConsumptionStateMap.get(partition).isEndOfPushReceived()  || delete.replicationMetadataPayload.remaining() != 0) && !isDaVinciClient) {
       byte[] metadataBytesWithValueSchemaId = prependReplicationMetadataBytesWithValueSchemaId(delete.replicationMetadataPayload, delete.schemaId);
       storageEngine.deleteWithReplicationMetadata(partition, keyBytes, metadataBytesWithValueSchemaId);
     } else {

@@ -15,6 +15,7 @@ import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.IncrementalPushPolicy;
+import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.read.RequestType;
@@ -35,6 +36,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -613,6 +615,32 @@ public abstract class TestBatch {
       return new Pair<>(recordSchema.getField("id").schema(),
           recordSchema.getField("name").schema());
     }, properties -> {}, validator);
+    // Re-push with Kafka Input
+    testRepush(storeName, validator);
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testKafkaInputAAStore() throws Exception {
+    H2VValidator validator = (avroClient, vsonClient, metricsRepository) -> {
+      //test single get
+      for (int i = 1; i <= 100; i ++) {
+        Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + i);
+      }
+    };
+    ControllerClient controllerClient = new ControllerClient(veniceCluster.getClusterName(), veniceCluster.getRandomRouterURL());
+
+    String storeName = testBatchStore(inputDir -> {
+      Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir, false);
+      return new Pair<>(recordSchema.getField("id").schema(),
+          recordSchema.getField("name").schema());
+    }, properties -> {}, validator, new UpdateStoreQueryParams()
+        .setLeaderFollowerModel(true)
+        .setActiveActiveReplicationEnabled(true)
+        .setHybridRewindSeconds(5)
+        .setHybridOffsetLagThreshold(2)
+        .setNativeReplicationEnabled(true));
+    TestUtils.assertCommand(controllerClient.configureActiveActiveReplicationForCluster(
+        true, VeniceUserStoreType.HYBRID_ONLY.toString(), Optional.empty()));
     // Re-push with Kafka Input
     testRepush(storeName, validator);
   }

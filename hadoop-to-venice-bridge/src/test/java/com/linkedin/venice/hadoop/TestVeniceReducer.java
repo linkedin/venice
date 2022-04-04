@@ -8,6 +8,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.writer.AbstractVeniceWriter;
+import com.linkedin.venice.writer.DeleteMetadata;
 import com.linkedin.venice.writer.PutMetadata;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.util.Arrays;
@@ -447,6 +448,11 @@ public class TestVeniceReducer extends AbstractTestVeniceMR {
       }
 
       @Override
+      public Future<RecordMetadata> delete(Object key, Callback callback, DeleteMetadata deleteMetadata) {
+        return null;
+      }
+
+      @Override
       public Future<RecordMetadata> update(Object key, Object update, int valueSchemaId,
           int derivedSchemaId, Callback callback) {
         // no-op
@@ -487,6 +493,11 @@ public class TestVeniceReducer extends AbstractTestVeniceMR {
       @Override
       public Future<RecordMetadata> put(Object key, Object value, int valueSchemaId, Callback callback, PutMetadata putMetadata) {
         callback.onCompletion(null, new VeniceException("Some writer exception"));
+        return null;
+      }
+
+      @Override
+      public Future<RecordMetadata> delete(Object key, Callback callback, DeleteMetadata deleteMetadata) {
         return null;
       }
 
