@@ -155,7 +155,7 @@ public class TestClusterLevelConfigForActiveActiveReplication extends AbstractTe
             D2TestUtils.getAndStartD2Client(zkAddress)
     );
 
-    veniceAdmin.initVeniceControllerClusterResource(clusterName);
+    veniceAdmin.initStorageCluster(clusterName);
     TopicManagerRepository originalTopicManagerRepository = veniceAdmin.getTopicManagerRepository();
 
     TopicManager mockedTopicManager = mock(TopicManager.class);

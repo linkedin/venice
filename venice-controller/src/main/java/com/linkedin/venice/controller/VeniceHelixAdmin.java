@@ -125,7 +125,6 @@ import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
 import com.linkedin.venice.schema.rmd.ReplicationMetadataSchemaEntry;
-import com.linkedin.venice.schema.rmd.ReplicationMetadataVersionId;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -308,11 +307,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
      * Level-1 controller, it always being connected to Helix. And will create sub-controller for specific cluster when
      * getting notification from Helix.
      */
-    private SafeHelixManager manager;
+    private SafeHelixManager helixManager;
     /**
      * Builder used to build the data path to access Helix internal data of level-1 cluster.
      */
-    private PropertyKey.Builder level1KeyBuilder;
+    private PropertyKey.Builder controllerClusterKeyBuilder;
 
     private String pushJobDetailsRTTopic;
 
@@ -515,9 +514,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       controllerStateModelFactory = new VeniceDistClusterControllerStateModelFactory(
           zkClient, adapterSerializer, this, multiClusterConfigs, metricsRepository, controllerInitialization,
           onlineOfflineTopicReplicator, leaderFollowerTopicReplicator, accessController, helixAdminClient);
-      // Initialized the helix manger for the level1 controller. If the controller cluster leader is going to be in
-      // HaaS then level1 controllers should be only in participant mode.
-      initLevel1Controller(isControllerClusterHAAS);
     }
 
     private void checkAndCreateVeniceControllerCluster(boolean isControllerInAzure) {
@@ -529,22 +525,27 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       }
     }
 
-    private void initLevel1Controller(boolean isParticipantOnly) {
-        InstanceType instanceType = isParticipantOnly ? InstanceType.PARTICIPANT : InstanceType.CONTROLLER_PARTICIPANT;
-        manager = new SafeHelixManager(HelixManagerFactory
+    private synchronized void connectToControllerCluster() {
+        if (helixManager != null) {
+          logger.warn("Controller " + controllerName + " is already connected to the controller cluster");
+          return;
+        }
+        InstanceType instanceType = isControllerClusterHAAS ? InstanceType.PARTICIPANT : InstanceType.CONTROLLER_PARTICIPANT;
+        SafeHelixManager tempManager = new SafeHelixManager(HelixManagerFactory
             .getZKHelixManager(controllerClusterName, controllerName, instanceType,
                 multiClusterConfigs.getControllerClusterZkAddress()));
-        StateMachineEngine stateMachine = manager.getStateMachineEngine();
+        StateMachineEngine stateMachine = tempManager.getStateMachineEngine();
         stateMachine.registerStateModelFactory(LeaderStandbySMD.name, controllerStateModelFactory);
         try {
-            manager.connect();
+            tempManager.connect();
         } catch (Exception ex) {
-            String errorMessage =
-                " Error starting Helix controller cluster " + controllerClusterName + " controller " + controllerName;
+            String errorMessage = " Error connecting to Helix controller cluster " + controllerClusterName
+                + " with controller " + controllerName;
             logger.error(errorMessage, ex);
             throw new VeniceException(errorMessage, ex);
         }
-        level1KeyBuilder = new PropertyKey.Builder(manager.getClusterName());
+        controllerClusterKeyBuilder = new PropertyKey.Builder(tempManager.getClusterName());
+        helixManager = tempManager;
     }
 
     public ZkClient getZkClient() {
@@ -565,7 +566,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
     @Override
-    public synchronized void initVeniceControllerClusterResource(String clusterName) {
+    public synchronized void initStorageCluster(String clusterName) {
+        if (helixManager == null) {
+          connectToControllerCluster();
+        }
         //Simply validate cluster name here.
         clusterName = clusterName.trim();
         if (clusterName.startsWith("/") || clusterName.endsWith("/") || clusterName.indexOf(' ') >= 0) {
@@ -593,7 +597,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         PropertyKey.Builder keyBuilder = new PropertyKey.Builder(controllerClusterName);
         while (System.currentTimeMillis() - startTime < CONTROLLER_CLUSTER_RESOURCE_EV_TIMEOUT_MS) {
             ExternalView externalView =
-                manager.getHelixDataAccessor().getProperty(keyBuilder.externalView(clusterName));
+                helixManager.getHelixDataAccessor().getProperty(keyBuilder.externalView(clusterName));
             String partitionName = HelixUtils.getPartitionName(clusterName, 0);
             if (externalView != null && externalView.getStateMap(partitionName) != null
                 && !externalView.getStateMap(partitionName).isEmpty()) {
@@ -4139,7 +4143,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     @Override
     public void stopVeniceController() {
         try {
-            manager.disconnect();
+            helixManager.disconnect();
             topicManagerRepository.close();
             zkClient.close();
             admin.close();
@@ -4713,7 +4717,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             PropertyKey.Builder keyBuilder = new PropertyKey.Builder(clusterName);
 
             for (int attempt = 1; attempt <= maxAttempts; ++attempt) {
-                LiveInstance instance = manager.getHelixDataAccessor().getProperty(keyBuilder.controllerLeader());
+                LiveInstance instance = helixManager.getHelixDataAccessor().getProperty(keyBuilder.controllerLeader());
                 if (instance != null) {
                     String id = instance.getId();
                     return new Instance(id, Utils.parseHostFromHelixNodeIdentifier(id), Utils.parsePortFromHelixNodeIdentifier(id), multiClusterConfigs.getAdminSecurePort());
@@ -4748,7 +4752,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         PropertyKey.Builder keyBuilder = new PropertyKey.Builder(controllerClusterName);
         String partitionName = HelixUtils.getPartitionName(clusterName, 0);
         for (int attempt = 1; attempt <= maxAttempts; ++attempt) {
-            ExternalView externalView = manager.getHelixDataAccessor().getProperty(keyBuilder.externalView(clusterName));
+            ExternalView externalView = helixManager.getHelixDataAccessor().getProperty(keyBuilder.externalView(clusterName));
             if (externalView == null || externalView.getStateMap(partitionName) == null) {
                 // Assignment is incomplete, try again later
                 continue;
@@ -4969,13 +4973,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         boolean enable = delayedTime > 0;
         PropertyKey.Builder keyBuilder = new PropertyKey.Builder(clusterName);
         PropertyKey clusterConfigPath = keyBuilder.clusterConfig();
-        ClusterConfig clusterConfig = manager.getHelixDataAccessor().getProperty(clusterConfigPath);
+        ClusterConfig clusterConfig = helixManager.getHelixDataAccessor().getProperty(clusterConfigPath);
         if (clusterConfig == null) {
             throw new VeniceException("Got a null clusterConfig from: " + clusterConfigPath);
         }
         clusterConfig.getRecord()
             .setLongField(ClusterConfig.ClusterConfigProperty.DELAY_REBALANCE_TIME.name(), delayedTime);
-        manager.getHelixDataAccessor().setProperty(keyBuilder.clusterConfig(), clusterConfig);
+        helixManager.getHelixDataAccessor().setProperty(keyBuilder.clusterConfig(), clusterConfig);
         //TODO use the helix new config API below once it's ready. Right now helix has a bug that controller would not get the update from the new config.
         /* ConfigAccessor configAccessor = new ConfigAccessor(zkClient);
         HelixConfigScope clusterScope =
@@ -4995,7 +4999,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     long getDelayedRebalanceTime(String clusterName) {
         PropertyKey.Builder keyBuilder = new PropertyKey.Builder(clusterName);
         PropertyKey clusterConfigPath = keyBuilder.clusterConfig();
-        ClusterConfig clusterConfig = manager.getHelixDataAccessor().getProperty(clusterConfigPath);
+        ClusterConfig clusterConfig = helixManager.getHelixDataAccessor().getProperty(clusterConfigPath);
         if (clusterConfig == null) {
             throw new VeniceException("Got a null clusterConfig from: " + clusterConfigPath);
         }
@@ -5205,7 +5209,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     @Override
     public void close() {
-        manager.disconnect();
+        helixManager.disconnect();
         Utils.closeQuietlyWithErrorLogged(zkSharedSystemStoreRepository);
         Utils.closeQuietlyWithErrorLogged(zkSharedSchemaRepository);
         zkClient.close();
@@ -5289,9 +5293,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         if (isControllerClusterHAAS) {
           return isLeaderControllerFor(coloLeaderClusterName);
         }
-        LiveInstance leader = manager.getHelixDataAccessor().getProperty(level1KeyBuilder.controllerLeader());
+        LiveInstance leader = helixManager.getHelixDataAccessor().getProperty(controllerClusterKeyBuilder.controllerLeader());
         if (null == leader || null == leader.getId()) {
-            logger.warn("Cannot determine the leader from getProperty(level1KeyBuilder.controllerLeader(), "
+            logger.warn("Cannot determine the leader from getProperty(controllerClusterKeyBuilder.controllerLeader(), "
                 + "leader: " + leader
                 + (null == leader ? "" : ", leader.getId(): " + leader.getId()));
             return false;

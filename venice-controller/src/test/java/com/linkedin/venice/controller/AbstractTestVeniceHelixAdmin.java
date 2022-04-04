@@ -87,7 +87,7 @@ class AbstractTestVeniceHelixAdmin {
     controllerConfig = new VeniceControllerConfig(controllerProps);
     multiClusterConfig = TestUtils.getMultiClusterConfigFromOneCluster(controllerConfig);
     veniceAdmin = new VeniceHelixAdmin(multiClusterConfig, new MetricsRepository(), D2TestUtils.getAndStartD2Client(zkAddress));
-    veniceAdmin.initVeniceControllerClusterResource(clusterName);
+    veniceAdmin.initStorageCluster(clusterName);
     startParticipant();
     waitUntilIsLeader(veniceAdmin, clusterName, LEADER_CHANGE_TIMEOUT_MS);
   }
