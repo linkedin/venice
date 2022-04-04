@@ -46,7 +46,7 @@ public class ClientFactory {
   public static <K, V> AvroGenericStoreClient<K, V> getAndStartGenericStoreClient(StoreMetadata storeMetadata, ClientConfig clientConfig) {
     final DispatchingAvroGenericStoreClient<K, V> dispatchingStoreClient = new DispatchingAvroGenericStoreClient<>(storeMetadata, clientConfig);
     StatsAvroGenericStoreClient<K, V> statsStoreClient;
-    if (clientConfig.isLongTailRetryEnabledForSingleGet()) {
+    if (clientConfig.isLongTailRetryEnabledForSingleGet() || clientConfig.isLongTailRetryEnabledForBatchGet()) {
       statsStoreClient = new StatsAvroGenericStoreClient<>(new RetriableAvroGenericStoreClient<>(dispatchingStoreClient, clientConfig), clientConfig);
     } else {
       statsStoreClient = new StatsAvroGenericStoreClient<>(dispatchingStoreClient, clientConfig);

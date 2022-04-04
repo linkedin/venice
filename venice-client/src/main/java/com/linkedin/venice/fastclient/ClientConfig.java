@@ -5,6 +5,7 @@ import com.linkedin.r2.transport.common.Client;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.AvroSpecificStoreClient;
+import com.linkedin.venice.fastclient.meta.ClientRoutingStrategy;
 import com.linkedin.venice.fastclient.stats.ClientStats;
 import com.linkedin.venice.fastclient.stats.ClusterStats;
 import com.linkedin.venice.read.RequestType;
@@ -27,6 +28,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
   private final Map<RequestType, ClientStats> clientStatsMap = new VeniceConcurrentHashMap<>();
   private final ClusterStats clusterStats;
   private final Executor deserializationExecutor;
+  private final ClientRoutingStrategy clientRoutingStrategy;
   /**
    * For dual-read support.
    */
@@ -56,8 +58,9 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
   private final long metadataRefreshInvervalInSeconds;
 
   private final boolean longTailRetryEnabledForSingleGet;
+  private final boolean longTailRetryEnabledForBatchGet;
   private final int longTailRetryThresholdForSingletGetInMicroSeconds;
-
+  private final int longTailRetryThresholdForBatchGetInMicroSeconds;
   private ClientConfig(String storeName,
       Client r2Client,
       MetricsRepository metricsRepository,
@@ -65,6 +68,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       boolean speculativeQueryEnabled,
       Class<T> specificValueClass,
       Executor deserializationExecutor,
+      ClientRoutingStrategy clientRoutingStrategy,
       boolean dualReadEnabled,
       AvroGenericStoreClient<K, V> genericThinClient,
       AvroSpecificStoreClient<K, T> specificThinClient,
@@ -77,7 +81,10 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       DaVinciClient<StoreMetaKey, StoreMetaValue> daVinciClientForMetaStore,
       long metadataRefreshInvervalInSeconds,
       boolean longTailRetryEnabledForSingleGet,
-      int longTailRetryThresholdForSingletGetInMicroSeconds) {
+      int longTailRetryThresholdForSingletGetInMicroSeconds,
+      boolean longTailRetryEnabledForBatchGet,
+      int longTailRetryThresholdForBatchGetInMicroSeconds
+      ) {
     if (storeName == null || storeName.isEmpty()) {
       throw new VeniceClientException("storeName param shouldn't be empty");
     }
@@ -98,6 +105,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     this.speculativeQueryEnabled = speculativeQueryEnabled;
     this.specificValueClass = specificValueClass;
     this.deserializationExecutor = deserializationExecutor;
+    this.clientRoutingStrategy = clientRoutingStrategy;
     this.dualReadEnabled = dualReadEnabled;
     this.genericThinClient = genericThinClient;
     this.specificThinClient = specificThinClient;
@@ -125,9 +133,17 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     this.longTailRetryEnabledForSingleGet = longTailRetryEnabledForSingleGet;
     this.longTailRetryThresholdForSingletGetInMicroSeconds = longTailRetryThresholdForSingletGetInMicroSeconds;
 
+    this.longTailRetryEnabledForBatchGet = longTailRetryEnabledForBatchGet;
+    this.longTailRetryThresholdForBatchGetInMicroSeconds = longTailRetryThresholdForBatchGetInMicroSeconds;
+
     if (this.longTailRetryThresholdForSingletGetInMicroSeconds <= 0) {
       throw new VeniceClientException("longTailRetryThresholdForSingletGetInMicroSeconds must be positive, but got: "
           + this.longTailRetryThresholdForSingletGetInMicroSeconds);
+    }
+
+    if (this.longTailRetryThresholdForBatchGetInMicroSeconds <= 0) {
+      throw new VeniceClientException("longTailRetryThresholdForBatchGetInMicroSeconds must be positive, but got: "
+          + this.longTailRetryThresholdForBatchGetInMicroSeconds);
     }
 
     if (this.speculativeQueryEnabled && this.longTailRetryEnabledForSingleGet) {
@@ -215,6 +231,18 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     return longTailRetryThresholdForSingletGetInMicroSeconds;
   }
 
+  public boolean isLongTailRetryEnabledForBatchGet() {
+    return longTailRetryEnabledForBatchGet;
+  }
+
+  public int getLongTailRetryThresholdForBatchGetInMicroSeconds() {
+    return longTailRetryThresholdForBatchGetInMicroSeconds;
+  }
+
+  public ClientRoutingStrategy getClientRoutingStrategy() {
+    return clientRoutingStrategy;
+  }
+
   public static class ClientConfigBuilder<K, V, T extends SpecificRecord> {
     private MetricsRepository metricsRepository;
     private String statsPrefix = "";
@@ -222,6 +250,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     private Class<T> specificValueClass;
     private String storeName;
     private Executor deserializationExecutor;
+    private ClientRoutingStrategy clientRoutingStrategy;
     private Client r2Client;
     private boolean dualReadEnabled = false;
     private AvroGenericStoreClient<K, V> genericThinClient;
@@ -237,10 +266,13 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
 
     private DaVinciClient<StoreMetaKey, StoreMetaValue> daVinciClientForMetaStore;
 
-    private long metadataRefreshInvervalInSeconds = -1;
+    private long metadataRefreshIntervalInSeconds = -1;
 
     private boolean longTailRetryEnabledForSingleGet = false;
     private int longTailRetryThresholdForSingletGetInMicroSeconds = 1000; // 1ms.
+
+    private boolean longTailRetryEnabledForBatchGet = false;
+    private int longTailRetryThresholdForBatchtGetInMicroSeconds = 10000; // 10ms.
 
     public ClientConfigBuilder<K, V, T> setStoreName(String storeName) {
       this.storeName = storeName;
@@ -269,6 +301,11 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
 
     public ClientConfigBuilder<K, V, T> setDeserializationExecutor(Executor deserializationExecutor) {
       this.deserializationExecutor = deserializationExecutor;
+      return this;
+    }
+
+    public ClientConfigBuilder<K, V, T> setClientRoutingStrategy(ClientRoutingStrategy clientRoutingStrategy) {
+      this.clientRoutingStrategy = clientRoutingStrategy;
       return this;
     }
 
@@ -323,8 +360,8 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       return this;
     }
 
-    public ClientConfigBuilder<K, V, T> setMetadataRefreshInvervalInSeconds(long metadataRefreshInvervalInSeconds) {
-      this.metadataRefreshInvervalInSeconds = metadataRefreshInvervalInSeconds;
+    public ClientConfigBuilder<K, V, T> setMetadataRefreshIntervalInSeconds(long metadataRefreshIntervalInSeconds) {
+      this.metadataRefreshIntervalInSeconds = metadataRefreshIntervalInSeconds;
       return this;
     }
 
@@ -344,6 +381,17 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       return this;
     }
 
+    public ClientConfigBuilder<K, V, T> setLongTailRetryEnabledForBatchGet(boolean longTailRetryEnabledForBatchGet) {
+      this.longTailRetryEnabledForBatchGet = longTailRetryEnabledForBatchGet;
+      return this;
+    }
+
+    public ClientConfigBuilder<K, V, T> setLongTailRetryThresholdForBatchGetInMicroSeconds(
+        int longTailRetryThresholdForBatchGetInMicroSeconds) {
+      this.longTailRetryThresholdForBatchtGetInMicroSeconds = longTailRetryThresholdForBatchGetInMicroSeconds;
+      return this;
+    }
+
     public ClientConfigBuilder<K, V, T> clone() {
       return new ClientConfigBuilder()
           .setStoreName(storeName)
@@ -353,6 +401,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           .setSpeculativeQueryEnabled(speculativeQueryEnabled)
           .setSpecificValueClass(specificValueClass)
           .setDeserializationExecutor(deserializationExecutor)
+          .setClientRoutingStrategy(clientRoutingStrategy)
           .setDualReadEnabled(dualReadEnabled)
           .setGenericThinClient(genericThinClient)
           .setSpecificThinClient(specificThinClient)
@@ -363,9 +412,11 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           .setRoutingPendingRequestCounterInstanceBlockThreshold(routingPendingRequestCounterInstanceBlockThreshold)
           .setMaxAllowedKeyCntInBatchGetReq(maxAllowedKeyCntInBatchGetReq)
           .setDaVinciClientForMetaStore(daVinciClientForMetaStore)
-          .setMetadataRefreshInvervalInSeconds(metadataRefreshInvervalInSeconds)
+          .setMetadataRefreshIntervalInSeconds(metadataRefreshIntervalInSeconds)
           .setLongTailRetryEnabledForSingleGet(longTailRetryEnabledForSingleGet)
-          .setLongTailRetryThresholdForSingletGetInMicroSeconds(longTailRetryThresholdForSingletGetInMicroSeconds);
+          .setLongTailRetryThresholdForSingletGetInMicroSeconds(longTailRetryThresholdForSingletGetInMicroSeconds)
+          .setLongTailRetryEnabledForBatchGet(longTailRetryEnabledForBatchGet)
+          .setLongTailRetryThresholdForBatchGetInMicroSeconds(longTailRetryThresholdForBatchtGetInMicroSeconds);
     }
 
     public ClientConfig<K, V, T> build() {
@@ -376,6 +427,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           speculativeQueryEnabled,
           specificValueClass,
           deserializationExecutor,
+          clientRoutingStrategy,
           dualReadEnabled,
           genericThinClient,
           specificThinClient,
@@ -385,10 +437,11 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           routingUnavailableRequestCounterResetDelayMS,
           routingPendingRequestCounterInstanceBlockThreshold,
           maxAllowedKeyCntInBatchGetReq,
-          daVinciClientForMetaStore,
-          metadataRefreshInvervalInSeconds,
+          daVinciClientForMetaStore, metadataRefreshIntervalInSeconds,
           longTailRetryEnabledForSingleGet,
-          longTailRetryThresholdForSingletGetInMicroSeconds);
+          longTailRetryThresholdForSingletGetInMicroSeconds,
+          longTailRetryEnabledForBatchGet,
+          longTailRetryThresholdForBatchtGetInMicroSeconds);
     }
   }
 }

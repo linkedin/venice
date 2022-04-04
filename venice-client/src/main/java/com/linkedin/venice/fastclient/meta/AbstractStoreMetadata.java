@@ -18,7 +18,11 @@ public abstract class AbstractStoreMetadata implements StoreMetadata {
 
   public AbstractStoreMetadata(ClientConfig clientConfig) {
     this.instanceHealthMonitor = new InstanceHealthMonitor(clientConfig);
-    this.routingStrategy = new LeastLoadedClientRoutingStrategy(this.instanceHealthMonitor);
+    if ( null != clientConfig.getClientRoutingStrategy()) {
+      this.routingStrategy = clientConfig.getClientRoutingStrategy();
+    } else {
+      this.routingStrategy = new LeastLoadedClientRoutingStrategy(this.instanceHealthMonitor);
+    }
     this.storeName = clientConfig.getStoreName();
   }
 

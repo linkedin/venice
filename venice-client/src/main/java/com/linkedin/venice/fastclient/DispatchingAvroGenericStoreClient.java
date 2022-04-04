@@ -30,6 +30,7 @@ import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
@@ -355,6 +356,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
   private void streamingBatchGetInternal(BatchGetRequestContext<K, V> requestContext, Set<K> keys,
       BiConsumer<TransportClientResponseForRoute, Throwable> transportClientResponseCompletionHandler) {
     /* Prepare each of the routes needed to query the keys */
+    requestContext.instanceHealthMonitor = metadata.getInstanceHealthMonitor();
     String uriForBatchGetRequest = composeURIForBatchGetRequest(requestContext);
     int currentVersion = requestContext.currentVersion;
     Map<Integer, List<String>> partitionRouteMap = new HashMap<>();
@@ -365,7 +367,8 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
       int partitionId = metadata.getPartitionId(currentVersion, keyBytes);
       // Find routes for each partition
       List<String> routes = partitionRouteMap.computeIfAbsent(partitionId,
-          (partId) -> metadata.getReplicas(requestContext.requestId, currentVersion, partitionId, 1));
+          (partId) -> metadata.getReplicas(requestContext.requestId, currentVersion, partitionId, 1
+          , requestContext.getRoutesForPartitionMapping().getOrDefault(partId, Collections.emptySet())));
 
       if (routes.isEmpty()) {
         /* If a partition doesn't have a available route then there is something wrong about or metadata and this is
