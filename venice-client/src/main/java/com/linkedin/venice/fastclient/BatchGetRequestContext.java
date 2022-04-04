@@ -5,11 +5,14 @@ import com.linkedin.venice.fastclient.transport.TransportClientResponseForRoute;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
@@ -38,9 +41,20 @@ public class BatchGetRequestContext<K, V> extends RequestContext {
 
   private final AtomicReference<Throwable> partialResponseException = new AtomicReference<>();
 
+  private Map<Integer, Set<String>> routesForPartition = new HashMap<>();
+
+  // True if long tail retry was triggered
+  boolean longTailRetryTriggered = false;
+  // Number of keys triggered in the retry request
+  int numberOfKeysSentInRetryRequest = 0;
+  // Number of keys that were successfully resolved in retry request
+  AtomicInteger numberOfKeysCompletedInOriginalRequest = new AtomicInteger();
+  AtomicInteger numberOfKeysCompletedInRetryRequest = new AtomicInteger();
+
   void addKey(String route, K key, int partitionId) {
     Validate.notNull(route);
     routeRequests.computeIfAbsent(route, r -> new RouteRequestContext<>()).addKeyInfo(key, partitionId);
+    routesForPartition.computeIfAbsent(partitionId,(k) -> new HashSet<>()).add(route);
   }
 
   Set<String> getRoutes() {
@@ -145,6 +159,14 @@ public class BatchGetRequestContext<K, V> extends RequestContext {
       throw new VeniceClientException(
           new IllegalStateException(String.format("Unexpected route %s", response.getRouteId())));
     }
+  }
+
+  public Map<Integer, Set<String>> getRoutesForPartitionMapping() {
+    return routesForPartition;
+  }
+
+  public void setRoutesForPartitionMapping(Map<Integer, Set<String>> routesForPartition) {
+    this.routesForPartition = routesForPartition;
   }
 
   /**

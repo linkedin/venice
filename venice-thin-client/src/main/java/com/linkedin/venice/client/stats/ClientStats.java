@@ -41,6 +41,9 @@ public class ClientStats extends AbstractVeniceHttpStats {
   private final Sensor appTimedOutRequestSensor;
   private final Sensor appTimedOutRequestResultRatioSensor;
   private final Sensor clientFutureTimeoutSensor;
+  private final Sensor retryRequestKeyCountSensor;
+  private final Sensor retryRequestSuccessKeyCountSensor;
+  private final Sensor retryKeySuccessRatioSensor;
 
   private final Rate requestRate;
 
@@ -118,6 +121,14 @@ public class ClientStats extends AbstractVeniceHttpStats {
     appTimedOutRequestResultRatioSensor = registerSensorWithDetailedPercentiles("app_timed_out_request_result_ratio",
         new Avg(), new Min(), new Max());
     clientFutureTimeoutSensor = registerSensor("client_future_timeout", new Avg(), new Min(), new Max());
+    Rate retryRequestKeyCount = new Rate();
+    retryRequestKeyCountSensor = registerSensor("retry_request_key_count", retryRequestKeyCount, new Avg(), new Max());
+    Rate retryRequestSuccessKeyCount = new Rate();
+    retryRequestSuccessKeyCountSensor = registerSensor("retry_request_success_key_count", retryRequestKeyCount, new Avg(), new Max());
+    retryKeySuccessRatioSensor = registerSensor("retry_key_success_ratio",
+        new TehutiUtils.SimpleRatioStat(retryRequestSuccessKeyCount, successRequestKeyCount));
+    /** Metrics relevant to track long tail retry */
+
   }
 
   protected Rate getRequestRate() {

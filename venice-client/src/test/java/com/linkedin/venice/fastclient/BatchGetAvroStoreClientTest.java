@@ -161,6 +161,7 @@ public class BatchGetAvroStoreClientTest {
     keys.add("nonExisting");
     Map<String, GenericRecord> results = new ConcurrentHashMap<>();
     AtomicBoolean isComplete = new AtomicBoolean();
+    AtomicBoolean isDuplicate = new AtomicBoolean();
     CountDownLatch completeLatch = new CountDownLatch(1);
     genericFastClient.streamingBatchGet(keys, new StreamingCallback<String, GenericRecord>() {
       @Override
@@ -169,7 +170,11 @@ public class BatchGetAvroStoreClientTest {
         if ( "nonExisting".equals(key)) {
           Assert.assertNull(value);
         } else {
-          results.put(key, value);
+          if ( results.containsKey(key)) {
+            isDuplicate.set(true);
+          } else {
+            results.put(key, value);
+          }
         }
       }
 
@@ -186,6 +191,8 @@ public class BatchGetAvroStoreClientTest {
     if (!completeLatch.await(TIME_OUT_IN_SECONDS, TimeUnit.SECONDS)) {
       Assert.fail("Test did not complete within timeout");
     }
+
+    Assert.assertFalse(isDuplicate.get(),"Duplicate records received");
     for (int i = 0; i < recordCnt; ++i) {
       String key = keyPrefix + i;
       GenericRecord value = results.get(key);

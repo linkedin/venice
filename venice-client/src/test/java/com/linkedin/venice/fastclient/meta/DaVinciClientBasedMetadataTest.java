@@ -101,7 +101,7 @@ public class DaVinciClientBasedMetadataTest {
     clientConfigBuilder.setMetricsRepository(new MetricsRepository());
     clientConfigBuilder.setSpeculativeQueryEnabled(true);
     clientConfigBuilder.setDaVinciClientForMetaStore(daVinciClientForMetaStore);
-    clientConfigBuilder.setMetadataRefreshInvervalInSeconds(1); // Faster refreshes for faster tests
+    clientConfigBuilder.setMetadataRefreshIntervalInSeconds(1); // Faster refreshes for faster tests
     daVinciClientBasedMetadata = new DaVinciClientBasedMetadata(clientConfigBuilder.build());
     daVinciClientBasedMetadata.start();
   }
