@@ -270,4 +270,20 @@ public class TestAvroSchemaUtils {
 
     Assert.assertTrue(AvroSchemaUtils.hasDocFieldChange(s1, s2));
   }
+
+  @Test(expectedExceptions = AvroTypeException.class, expectedExceptionsMessageRegExp = "Invalid default for field.*")
+  void testAvroValidDefaults() {
+    String str = "{" +
+        "  \"namespace\" : \"example.avro\",  " +
+        "  \"type\": \"record\",   " +
+        "  \"name\": \"User\",     " +
+        "  \"fields\": [           " +
+        "       { \"name\": \"id\", \"type\": \"string\", \"default\": \"id\"},  " +
+        "       { \"name\": \"name\", \"type\": \"string\", \"default\": \"venice\"},  " +
+        "       { \"name\": \"weight\", \"type\": \"float\", \"default\": 0},  " +
+        "       { \"name\": \"age\", \"type\": \"float\", \"default\": 0 }" +
+        "  ] " +
+        " } ";
+    AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(str);
+  }
 }
