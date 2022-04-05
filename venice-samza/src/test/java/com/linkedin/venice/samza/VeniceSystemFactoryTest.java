@@ -64,7 +64,7 @@ public class VeniceSystemFactoryTest {
         "  \"fields\" : [ {\n" +
         "    \"name\" : \"number\",\n" +
         "    \"type\" : [ \"double\", \"null\" ],\n" +
-        "    \"default\" : 100\n" + "  }, {\n" +
+        "    \"default\" : 100.0\n" + "  }, {\n" +
         "    \"name\" : \"string\",\n" +
         "    \"type\" : [ \"string\", \"null\" ],\n" +
         "    \"default\" : \"100\"\n" + "  }, {\n" +
