@@ -758,7 +758,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       /**
        * If offset lag threshold is set to -1, time lag threshold will be the only criterion for going online.
        */
-      if (offsetThreshold > 0) {
+      if (offsetThreshold >= 0) {
         long lag = measureHybridOffsetLag(partitionConsumptionState, shouldLogLag);
         boolean lagging = lag > offsetThreshold;
 
@@ -865,7 +865,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             }
           }
         }
-        if (offsetThreshold > 0) {
+        if (offsetThreshold >= 0) {
           /**
            * If both threshold configs are on, both both offset lag and time lag must be within thresholds before online.
            */
@@ -3638,6 +3638,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             leaderTopic,
             partition
         );
+      }
+      if (latestLeaderOffset == -1) {
+        // If leader hasn't consumed anything yet we should use the value of 0 to calculate the exact offset lag.
+        latestLeaderOffset = 0;
       }
       long lag = lastOffsetInRealTimeTopic - latestLeaderOffset;
       if (shouldLog) {

@@ -978,6 +978,23 @@ public class TestHybrid {
     }
   }
 
+  @Test(timeOut = 60 * Time.MS_PER_SECOND)
+  public void testHybridWithZeroLagThreshold() throws Exception {
+    UpdateStoreQueryParams params = new UpdateStoreQueryParams()
+        // set hybridRewindSecond to a big number so following versions won't ignore old records in RT
+        .setHybridRewindSeconds(2000000)
+        .setHybridOffsetLagThreshold(0)
+        .setPartitionCount(2)
+        .setLeaderFollowerModel(true);
+    String storeName = Utils.getUniqueString("store");
+    sharedVenice.useControllerClient(client -> {
+      client.createNewStore(storeName, "owner", DEFAULT_KEY_SCHEMA, DEFAULT_VALUE_SCHEMA);
+      client.updateStore(storeName, params);
+    });
+    sharedVenice.createVersion(storeName, DEFAULT_KEY_SCHEMA, DEFAULT_VALUE_SCHEMA,
+        IntStream.range(0, 10).mapToObj(i -> new AbstractMap.SimpleEntry<>(i, i)));
+  }
+
   @Test(timeOut = 180 * Time.MS_PER_SECOND, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testHybridStoreTimeLagThresholdWithEmptyRT(boolean isRealTimeTopicEmpty) throws Exception {
     SystemProducer veniceProducer = null;
