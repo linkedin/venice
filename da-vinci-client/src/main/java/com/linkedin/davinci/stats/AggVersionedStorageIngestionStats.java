@@ -1,6 +1,7 @@
 package com.linkedin.davinci.stats;
 
 import com.linkedin.davinci.config.VeniceServerConfig;
+import com.linkedin.davinci.kafka.consumer.PartitionConsumptionState;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionTask;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Version;
@@ -410,8 +411,10 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
       if (ingestionTask == null) {
         return 0;
       }
-
-      return ingestionTask.hasAnyPartitionConsumptionState(pcs -> pcs.isErrorReported() && pcs.isComplete()) ? 1 : 0;
+      boolean anyErrorReported = ingestionTask.hasAnyPartitionConsumptionState(
+          PartitionConsumptionState::isErrorReported);
+      boolean anyCompleted = ingestionTask.hasAnyPartitionConsumptionState(PartitionConsumptionState::isComplete);
+      return anyCompleted && anyErrorReported ? 1 : 0;
     }
 
     public long getBatchReplicationLag() {
