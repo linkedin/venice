@@ -105,6 +105,10 @@ public abstract class TestRead {
     return false;
   }
 
+  protected VeniceClusterWrapper getVeniceCluster() {
+    return veniceCluster;
+  }
+
   @BeforeClass(alwaysRun = true)
   public void setUp() throws VeniceClientException {
     if (!isTestEnabled()) {
