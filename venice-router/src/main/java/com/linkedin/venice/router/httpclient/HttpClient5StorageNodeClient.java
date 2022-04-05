@@ -148,13 +148,13 @@ public class HttpClient5StorageNodeClient implements StorageNodeClient {
     String uri = request.getUrl() + request.getQuery();
     Method method = Method.normalizedValueOf(request.getMethod());
     SimpleRequestBuilder simpleRequestBuilder = SimpleRequestBuilder.create(method)
-        .setUri(uri)
-        .setRequestConfig(
-            RequestConfig.custom()
-                .setConnectionRequestTimeout(request.getTimeout(), TimeUnit.MILLISECONDS)
-                .setResponseTimeout(request.getTimeout(), TimeUnit.MILLISECONDS)
-                .build()
-        );
+        .setUri(uri);
+    if (request.hasTimeout()) {
+      simpleRequestBuilder.setRequestConfig(RequestConfig.custom()
+          .setConnectionRequestTimeout(request.getTimeout(), TimeUnit.MILLISECONDS)
+          .setResponseTimeout(request.getTimeout(), TimeUnit.MILLISECONDS)
+          .build());
+    }
     getRandomClient().execute(simpleRequestBuilder.build(), new FutureCallback<SimpleHttpResponse>() {
       @Override
       public void completed(SimpleHttpResponse result) {
