@@ -58,6 +58,7 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
    */
   private final String rocksDBPath;
   private final Cache sharedCache;
+  private  Cache sharedRMDCache = null;
   private final Map<String, RocksDBStorageEngine> storageEngineMap = new HashMap<>();
   private final Optional<Statistics> aggStatistics;
 
@@ -121,14 +122,23 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
 
     // Shared cache across all the RocksDB databases
     if (RocksDBBlockCacheImplementations.CLOCK.equals(rocksDBServerConfig.getRocksDBBlockCacheImplementation())) {
-      this.sharedCache = new ClockCache(
-          rocksDBServerConfig.getRocksDBBlockCacheSizeInBytes(),
-          rocksDBServerConfig.getRocksDBBlockCacheShardBits(),
-          rocksDBServerConfig.getRocksDBBlockCacheStrictCapacityLimit());
+      long cacheSize = rocksDBServerConfig.getRocksDBBlockCacheSizeInBytes();
+      if (rocksDBServerConfig.isUseSeparateCFCacheEnabled()) {
+        cacheSize *= (1 -rocksDBServerConfig.getCacheRatioForCF());
+        this.sharedRMDCache = new ClockCache((long)(cacheSize * rocksDBServerConfig.getCacheRatioForCF()),
+            rocksDBServerConfig.getRocksDBBlockCacheShardBits(),
+            rocksDBServerConfig.getRocksDBBlockCacheStrictCapacityLimit());
+      }
+      this.sharedCache = new ClockCache(rocksDBServerConfig.getRocksDBBlockCacheSizeInBytes(),
+              rocksDBServerConfig.getRocksDBBlockCacheShardBits(),
+              rocksDBServerConfig.getRocksDBBlockCacheStrictCapacityLimit());
+
     } else {
       // Default to LRUCache
-      this.sharedCache = new LRUCache(
-          rocksDBServerConfig.getRocksDBBlockCacheSizeInBytes(),
+      this.sharedCache = new LRUCache(rocksDBServerConfig.getRocksDBBlockCacheSizeInBytes(),
+              rocksDBServerConfig.getRocksDBBlockCacheShardBits(),
+              rocksDBServerConfig.getRocksDBBlockCacheStrictCapacityLimit());
+      this.sharedRMDCache = new LRUCache(rocksDBServerConfig.getRocksDBBlockCacheSizeInBytes(),
           rocksDBServerConfig.getRocksDBBlockCacheShardBits(),
           rocksDBServerConfig.getRocksDBBlockCacheStrictCapacityLimit());
     }
@@ -180,6 +190,10 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
 
   public Cache getSharedCache() {
     return sharedCache;
+  }
+
+  public Cache getSharedRMDCache() {
+    return sharedRMDCache;
   }
 
   @Override

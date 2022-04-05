@@ -27,7 +27,6 @@ public class ReplicationMetadataRocksDBStoragePartition extends RocksDBStoragePa
   private static final Logger LOGGER = LogManager.getLogger(ReplicationMetadataRocksDBStoragePartition.class);
 
   // The value still uses "timestamp" for backward compatibility
-  private static final byte[] REPLICATION_METADATA_COLUMN_FAMILY = "timestamp_metadata".getBytes();
   private RocksDBSstFileWriter rocksDBSstFileWriter = null;
   private final String fullPathForTempSSTFileDir;
 

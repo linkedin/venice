@@ -58,6 +58,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
   private static final Logger LOGGER = LogManager.getLogger(RocksDBStoragePartition.class);
   protected static final ReadOptions readOptionsToSkipCache = new ReadOptions().setFillCache(false);
   protected static final ReadOptions readOptionsDefault = new ReadOptions();
+  protected static final byte[] REPLICATION_METADATA_COLUMN_FAMILY = "timestamp_metadata".getBytes();
 
   private static final FlushOptions WAIT_FOR_FLUSH_OPTIONS = new FlushOptions().setWaitForFlush(true);
 
@@ -196,9 +197,20 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
        * There are some possible optimization opportunities for column families. For example, optimizeForSmallDb() option
        * may be applied if we are sure replicationMetadata column family is smaller in size.
        */
-      ColumnFamilyOptions columnFamilyOptions = new ColumnFamilyOptions(options);
-      columnFamilyNameList
-          .forEach(name -> columnFamilyDescriptors.add(new ColumnFamilyDescriptor(name, columnFamilyOptions)));
+      ColumnFamilyOptions columnFamilyOptions;
+      for (byte[] name : columnFamilyNameList) {
+        if (name == REPLICATION_METADATA_COLUMN_FAMILY) {
+          if (!rocksDBServerConfig.isRocksDBPlainTableFormatEnabled()) {
+            columnFamilyOptions = new ColumnFamilyOptions(getRMDStoreOptions(storagePartitionConfig));
+          } else {
+            columnFamilyOptions = new ColumnFamilyOptions(options);
+          }
+          columnFamilyDescriptors.add(new ColumnFamilyDescriptor(name, columnFamilyOptions));
+        } else {
+          columnFamilyOptions = new ColumnFamilyOptions(options);
+          columnFamilyDescriptors.add(new ColumnFamilyDescriptor(name, columnFamilyOptions));
+        }
+      }
       /**
        * This new open(ReadOnly)WithColumnFamily API replace original open(ReadOnly) API to reduce code duplication.
        * In the default case, we will only open DEFAULT_COLUMN_FAMILY, which is what old API does internally.
@@ -312,6 +324,74 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     if (storagePartitionConfig.isWriteOnlyConfig()) {
       options
           .setLevel0FileNumCompactionTrigger(rocksDBServerConfig.getLevel0FileNumCompactionTriggerWriteOnlyVersion());
+      options.setLevel0SlowdownWritesTrigger(rocksDBServerConfig.getLevel0SlowdownWritesTriggerWriteOnlyVersion());
+      options.setLevel0StopWritesTrigger(rocksDBServerConfig.getLevel0StopWritesTriggerWriteOnlyVersion());
+    } else {
+      options.setLevel0FileNumCompactionTrigger(rocksDBServerConfig.getLevel0FileNumCompactionTrigger());
+      options.setLevel0SlowdownWritesTrigger(rocksDBServerConfig.getLevel0SlowdownWritesTrigger());
+      options.setLevel0StopWritesTrigger(rocksDBServerConfig.getLevel0StopWritesTrigger());
+    }
+
+    // Memtable options
+    options.setWriteBufferSize(rocksDBServerConfig.getRocksDBMemtableSizeInBytes());
+    options.setMaxWriteBufferNumber(rocksDBServerConfig.getRocksDBMaxMemtableCount());
+    options.setMaxTotalWalSize(rocksDBServerConfig.getRocksDBMaxTotalWalSizeInBytes());
+    options.setMaxBytesForLevelBase(rocksDBServerConfig.getRocksDBMaxBytesForLevelBase());
+    options.setMemtableHugePageSize(rocksDBServerConfig.getMemTableHugePageSize());
+
+    options.setCreateMissingColumnFamilies(true); // This config allows to create new column family automatically.
+    return options;
+  }
+
+  private Options getRMDStoreOptions(StoragePartitionConfig storagePartitionConfig) {
+    Options options = new Options();
+
+    options.setEnv(factory.getEnv());
+    options.setRateLimiter(factory.getRateLimiter());
+    options.setSstFileManager(factory.getSstFileManager());
+    options.setWriteBufferManager(factory.getWriteBufferManager());
+
+    options.setCreateIfMissing(true);
+    options.setCompressionType(rocksDBServerConfig.getRocksDBOptionsCompressionType());
+    options.setCompactionStyle(rocksDBServerConfig.getRocksDBOptionsCompactionStyle());
+    options.setBytesPerSync(rocksDBServerConfig.getRocksDBBytesPerSync());
+    options.setUseDirectReads(rocksDBServerConfig.getRocksDBUseDirectReads());
+    options.setMaxOpenFiles(rocksDBServerConfig.getMaxOpenFiles());
+    options.setTargetFileSizeBase(rocksDBServerConfig.getTargetFileSizeInBytes());
+    options.setMaxFileOpeningThreads(rocksDBServerConfig.getMaxFileOpeningThreads());
+
+    /**
+     * Disable the stat dump threads, which will create excessive threads, which will eventually crash
+     * storage node.
+     */
+    options.setStatsDumpPeriodSec(0);
+    options.setStatsPersistPeriodSec(0);
+
+    aggStatistics.ifPresent(options::setStatistics);
+
+      /**
+       * Auto compaction setting.
+       * For now, this optimization won't apply to the plaintable format.
+       */
+      options.setDisableAutoCompactions(storagePartitionConfig.isDisableAutoCompaction());
+
+      // Cache index and bloom filter in block cache
+      // and share the same cache across all the RocksDB databases
+      BlockBasedTableConfig tableConfig = new BlockBasedTableConfig();
+      tableConfig.setBlockSize(rocksDBServerConfig.getRocksDBSSTFileBlockSizeInBytes());
+      tableConfig.setBlockCache(factory.getSharedRMDCache());
+      tableConfig.setCacheIndexAndFilterBlocks(rocksDBServerConfig.isRocksDBSetCacheIndexAndFilterBlocks());
+
+      // TODO Consider Adding "cache_index_and_filter_blocks_with_high_priority" to allow for preservation of indexes in memory.
+      // https://github.com/facebook/rocksdb/wiki/Block-Cache#caching-index-and-filter-blocks
+      // https://github.com/facebook/rocksdb/wiki/Block-Cache#lru-cache
+
+      tableConfig.setBlockCacheCompressedSize(rocksDBServerConfig.getRocksDBBlockCacheCompressedSizeInBytes());
+      tableConfig.setFormatVersion(2); // Latest version
+      options.setTableFormatConfig(tableConfig);
+
+    if (storagePartitionConfig.isWriteOnlyConfig()) {
+      options.setLevel0FileNumCompactionTrigger(rocksDBServerConfig.getLevel0FileNumCompactionTriggerWriteOnlyVersion());
       options.setLevel0SlowdownWritesTrigger(rocksDBServerConfig.getLevel0SlowdownWritesTriggerWriteOnlyVersion());
       options.setLevel0StopWritesTrigger(rocksDBServerConfig.getLevel0StopWritesTriggerWriteOnlyVersion());
     } else {

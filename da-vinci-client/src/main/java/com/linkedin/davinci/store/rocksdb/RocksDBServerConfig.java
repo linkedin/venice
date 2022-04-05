@@ -256,6 +256,8 @@ public class RocksDBServerConfig {
   private final int level0StopWritesTriggerWriteOnlyVersion;
   private final boolean putReuseByteBufferEnabled;
   private final boolean atomicFlushEnabled;
+  private final boolean useSeparateCFCache;
+  private final double cacheRatioForCF;
 
   private final RocksDBComputeAccessMode serverStorageOperation;
 
@@ -361,6 +363,8 @@ public class RocksDBServerConfig {
 
     this.putReuseByteBufferEnabled = props.getBoolean(ROCKSDB_PUT_REUSE_BYTE_BUFFER, false);
     this.atomicFlushEnabled = props.getBoolean(ROCKSDB_ATOMIC_FLUSH_ENABLED, true);
+    this.useSeparateCFCache = props.getBoolean(ROCKSDB_ATOMIC_FLUSH_ENABLED, false);
+    this.cacheRatioForCF = props.getDouble(ROCKSDB_BLOCK_CACHE_SHARD_BITS, 0.1);
 
     String rocksDBOperationType =
         props.getString(ROCKSDB_COMPUTE_ACCESS_MODE, RocksDBComputeAccessMode.SINGLE_GET.name());
@@ -538,5 +542,13 @@ public class RocksDBServerConfig {
 
   public boolean isAtomicFlushEnabled() {
     return atomicFlushEnabled;
+  }
+
+  public double getCacheRatioForCF() {
+    return cacheRatioForCF;
+  }
+
+  public boolean isUseSeparateCFCacheEnabled() {
+    return useSeparateCFCache;
   }
 }
