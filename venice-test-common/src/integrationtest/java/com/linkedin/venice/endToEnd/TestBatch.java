@@ -10,6 +10,7 @@ import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
+import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
@@ -597,7 +598,7 @@ public abstract class TestBatch {
         Object value = avroClient.get(key).get();
         System.out.println(value);
       } catch (Exception e) {
-        Assert.fail("get request to fetch schema from meta store fails");
+        Assert.fail("get request to fetch schema from meta store fails", e);
       }
     }
   }
@@ -639,8 +640,6 @@ public abstract class TestBatch {
         .setHybridRewindSeconds(5)
         .setHybridOffsetLagThreshold(2)
         .setNativeReplicationEnabled(true));
-    TestUtils.assertCommand(controllerClient.configureActiveActiveReplicationForCluster(
-        true, VeniceUserStoreType.HYBRID_ONLY.toString(), Optional.empty()));
     // Re-push with Kafka Input
     testRepush(storeName, validator);
   }
@@ -834,7 +833,10 @@ public abstract class TestBatch {
 
     if (storeParms != null && storeParms.isMetaSystemStoreEnabled().orElse(false)) {
       try (ControllerClient controllerClient = new ControllerClient(veniceCluster.getClusterName(), veniceCluster.getRandomRouterURL())) {
-        controllerClient.emptyPush(VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName), storeName, 10000);
+        VersionCreationResponse versionCreationResponse = controllerClient.emptyPush(
+            VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName), storeName, 10000);
+        TestUtils.waitForNonDeterministicPushCompletion(versionCreationResponse.getKafkaTopic(), controllerClient, 10000,
+            TimeUnit.SECONDS, Optional.empty());
       }
     }
 

@@ -1,13 +1,22 @@
 package com.linkedin.venice.client.store;
 
+import com.linkedin.venice.client.exceptions.ServiceDiscoveryException;
 import com.linkedin.venice.client.store.transport.D2TransportClient;
+import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.MockVeniceRouterWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
+import com.linkedin.venice.utils.MockTime;
 import java.util.Properties;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeoutException;
 import org.testng.Assert;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
+
+import static org.mockito.Mockito.*;
 
 
 public class TestD2ServiceDiscovery {
@@ -31,5 +40,23 @@ public class TestD2ServiceDiscovery {
         }
       }
     }
+  }
+
+  @DataProvider(name = "exceptionProvider")
+  public static Object[][] exceptionProvider() {
+    return new Object[][] {
+        {new TimeoutException("Fake timeout")}, {new ExecutionException(new RuntimeException("Fake execution exception"))}
+    };
+  }
+
+
+  @Test (dataProvider ="exceptionProvider", expectedExceptions = ServiceDiscoveryException.class, expectedExceptionsMessageRegExp = "Failed to find d2 service for test after 10 attempts")
+  public void testRetry(Exception e) throws InterruptedException, ExecutionException, TimeoutException {
+    D2TransportClient mockTransportClient = mock(D2TransportClient.class);
+    CompletableFuture<TransportClientResponse> mockFuture = mock(CompletableFuture.class);
+    doThrow(e).when(mockFuture).get(anyLong(), any());
+    doReturn(mockFuture).when(mockTransportClient).get(anyString(), any());
+
+    new D2ServiceDiscovery(new MockTime()).find(mockTransportClient, "test");
   }
 }
