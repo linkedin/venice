@@ -150,9 +150,10 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     this.partitionId = storagePartitionConfig.getPartitionId();
     this.aggStatistics = factory.getAggStatistics();
 
-    Options options = getStoreOptions(storagePartitionConfig);
     // If writing to offset metadata partition METADATA_PARTITION_ID enable WAL write to sync up offset on server
     // restart,
+    Options options = getStoreOptions(storagePartitionConfig, false);
+    // If writing to offset metadata partition METADATA_PARTITION_ID enable WAL write to sync up offset on server restart,
     // if WAL is disabled then all ingestion progress made would be lost in case of non-graceful shutdown of server.
     this.writeOptions = new WriteOptions().setDisableWAL(this.partitionId != METADATA_PARTITION_ID);
 
@@ -199,17 +200,12 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
        */
       ColumnFamilyOptions columnFamilyOptions;
       for (byte[] name : columnFamilyNameList) {
-        if (name == REPLICATION_METADATA_COLUMN_FAMILY) {
-          if (!rocksDBServerConfig.isRocksDBPlainTableFormatEnabled()) {
-            columnFamilyOptions = new ColumnFamilyOptions(getRMDStoreOptions(storagePartitionConfig));
-          } else {
-            columnFamilyOptions = new ColumnFamilyOptions(options);
-          }
-          columnFamilyDescriptors.add(new ColumnFamilyDescriptor(name, columnFamilyOptions));
+        if (name == REPLICATION_METADATA_COLUMN_FAMILY && !rocksDBServerConfig.isRocksDBPlainTableFormatEnabled()) {
+          columnFamilyOptions = new ColumnFamilyOptions(getStoreOptions(storagePartitionConfig, true));
         } else {
           columnFamilyOptions = new ColumnFamilyOptions(options);
-          columnFamilyDescriptors.add(new ColumnFamilyDescriptor(name, columnFamilyOptions));
         }
+        columnFamilyDescriptors.add(new ColumnFamilyDescriptor(name, columnFamilyOptions));
       }
       /**
        * This new open(ReadOnly)WithColumnFamily API replace original open(ReadOnly) API to reduce code duplication.
@@ -263,7 +259,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     return envOptions;
   }
 
-  private Options getStoreOptions(StoragePartitionConfig storagePartitionConfig) {
+  private Options getStoreOptions(StoragePartitionConfig storagePartitionConfig, boolean isRMD) {
     Options options = new Options();
 
     options.setEnv(factory.getEnv());
@@ -308,7 +304,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
       // and share the same cache across all the RocksDB databases
       BlockBasedTableConfig tableConfig = new BlockBasedTableConfig();
       tableConfig.setBlockSize(rocksDBServerConfig.getRocksDBSSTFileBlockSizeInBytes());
-      tableConfig.setBlockCache(factory.getSharedCache());
+      tableConfig.setBlockCache(factory.getSharedCache(isRMD));
       tableConfig.setCacheIndexAndFilterBlocks(rocksDBServerConfig.isRocksDBSetCacheIndexAndFilterBlocks());
 
       // TODO Consider Adding "cache_index_and_filter_blocks_with_high_priority" to allow for preservation of indexes in
@@ -324,74 +320,6 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     if (storagePartitionConfig.isWriteOnlyConfig()) {
       options
           .setLevel0FileNumCompactionTrigger(rocksDBServerConfig.getLevel0FileNumCompactionTriggerWriteOnlyVersion());
-      options.setLevel0SlowdownWritesTrigger(rocksDBServerConfig.getLevel0SlowdownWritesTriggerWriteOnlyVersion());
-      options.setLevel0StopWritesTrigger(rocksDBServerConfig.getLevel0StopWritesTriggerWriteOnlyVersion());
-    } else {
-      options.setLevel0FileNumCompactionTrigger(rocksDBServerConfig.getLevel0FileNumCompactionTrigger());
-      options.setLevel0SlowdownWritesTrigger(rocksDBServerConfig.getLevel0SlowdownWritesTrigger());
-      options.setLevel0StopWritesTrigger(rocksDBServerConfig.getLevel0StopWritesTrigger());
-    }
-
-    // Memtable options
-    options.setWriteBufferSize(rocksDBServerConfig.getRocksDBMemtableSizeInBytes());
-    options.setMaxWriteBufferNumber(rocksDBServerConfig.getRocksDBMaxMemtableCount());
-    options.setMaxTotalWalSize(rocksDBServerConfig.getRocksDBMaxTotalWalSizeInBytes());
-    options.setMaxBytesForLevelBase(rocksDBServerConfig.getRocksDBMaxBytesForLevelBase());
-    options.setMemtableHugePageSize(rocksDBServerConfig.getMemTableHugePageSize());
-
-    options.setCreateMissingColumnFamilies(true); // This config allows to create new column family automatically.
-    return options;
-  }
-
-  private Options getRMDStoreOptions(StoragePartitionConfig storagePartitionConfig) {
-    Options options = new Options();
-
-    options.setEnv(factory.getEnv());
-    options.setRateLimiter(factory.getRateLimiter());
-    options.setSstFileManager(factory.getSstFileManager());
-    options.setWriteBufferManager(factory.getWriteBufferManager());
-
-    options.setCreateIfMissing(true);
-    options.setCompressionType(rocksDBServerConfig.getRocksDBOptionsCompressionType());
-    options.setCompactionStyle(rocksDBServerConfig.getRocksDBOptionsCompactionStyle());
-    options.setBytesPerSync(rocksDBServerConfig.getRocksDBBytesPerSync());
-    options.setUseDirectReads(rocksDBServerConfig.getRocksDBUseDirectReads());
-    options.setMaxOpenFiles(rocksDBServerConfig.getMaxOpenFiles());
-    options.setTargetFileSizeBase(rocksDBServerConfig.getTargetFileSizeInBytes());
-    options.setMaxFileOpeningThreads(rocksDBServerConfig.getMaxFileOpeningThreads());
-
-    /**
-     * Disable the stat dump threads, which will create excessive threads, which will eventually crash
-     * storage node.
-     */
-    options.setStatsDumpPeriodSec(0);
-    options.setStatsPersistPeriodSec(0);
-
-    aggStatistics.ifPresent(options::setStatistics);
-
-      /**
-       * Auto compaction setting.
-       * For now, this optimization won't apply to the plaintable format.
-       */
-      options.setDisableAutoCompactions(storagePartitionConfig.isDisableAutoCompaction());
-
-      // Cache index and bloom filter in block cache
-      // and share the same cache across all the RocksDB databases
-      BlockBasedTableConfig tableConfig = new BlockBasedTableConfig();
-      tableConfig.setBlockSize(rocksDBServerConfig.getRocksDBSSTFileBlockSizeInBytes());
-      tableConfig.setBlockCache(factory.getSharedRMDCache());
-      tableConfig.setCacheIndexAndFilterBlocks(rocksDBServerConfig.isRocksDBSetCacheIndexAndFilterBlocks());
-
-      // TODO Consider Adding "cache_index_and_filter_blocks_with_high_priority" to allow for preservation of indexes in memory.
-      // https://github.com/facebook/rocksdb/wiki/Block-Cache#caching-index-and-filter-blocks
-      // https://github.com/facebook/rocksdb/wiki/Block-Cache#lru-cache
-
-      tableConfig.setBlockCacheCompressedSize(rocksDBServerConfig.getRocksDBBlockCacheCompressedSizeInBytes());
-      tableConfig.setFormatVersion(2); // Latest version
-      options.setTableFormatConfig(tableConfig);
-
-    if (storagePartitionConfig.isWriteOnlyConfig()) {
-      options.setLevel0FileNumCompactionTrigger(rocksDBServerConfig.getLevel0FileNumCompactionTriggerWriteOnlyVersion());
       options.setLevel0SlowdownWritesTrigger(rocksDBServerConfig.getLevel0SlowdownWritesTriggerWriteOnlyVersion());
       options.setLevel0StopWritesTrigger(rocksDBServerConfig.getLevel0StopWritesTriggerWriteOnlyVersion());
     } else {
@@ -685,7 +613,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
   public synchronized void drop() {
     close();
     try {
-      Options storeOptions = getStoreOptions(new StoragePartitionConfig(storeName, partitionId));
+      Options storeOptions = getStoreOptions(new StoragePartitionConfig(storeName, partitionId), false);
       RocksDB.destroyDB(fullPathForPartitionDB, storeOptions);
       storeOptions.close();
     } catch (RocksDBException e) {
