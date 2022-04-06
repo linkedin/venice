@@ -59,7 +59,7 @@ public class ReplicationMetadataRocksDBStoragePartitionTest extends AbstractStor
   private StorageService storageService;
   private VeniceStoreVersionConfig storeConfig;
 
-  private Map<String, Pair<String, String>> generateInputWithMetadata(int recordCnt) {
+  protected Map<String, Pair<String, String>> generateInputWithMetadata(int recordCnt) {
     return generateInputWithMetadata(0, recordCnt, false, false);
   }
 
@@ -87,7 +87,7 @@ public class ReplicationMetadataRocksDBStoragePartitionTest extends AbstractStor
     return records;
   }
 
-  private String getTempDatabaseDir(String storeName) {
+  protected String getTempDatabaseDir(String storeName) {
     File storeDir = new File(DATA_BASE_DIR, storeName).getAbsoluteFile();
     if (!storeDir.mkdirs()) {
       throw new VeniceException("Failed to mkdirs for path: " + storeDir.getPath());
@@ -96,7 +96,7 @@ public class ReplicationMetadataRocksDBStoragePartitionTest extends AbstractStor
     return storeDir.getPath();
   }
 
-  private void removeDir(String path) {
+  protected void removeDir(String path) {
     File file = new File(path);
     if (file.exists() && !file.delete()) {
       throw new VeniceException("Failed to remove path: " + path);
@@ -111,7 +111,6 @@ public class ReplicationMetadataRocksDBStoragePartitionTest extends AbstractStor
     when(mockStore.getVersion(versionNumber)).thenReturn(Optional.of(mockVersion));
     when(mockReadOnlyStoreRepository.hasStore(storeName)).thenReturn(true);
     when(mockReadOnlyStoreRepository.getStoreOrThrow(storeName)).thenReturn(mockStore);
-
     VeniceProperties serverProps = AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB);
     storageService = new StorageService(
         AbstractStorageEngineTest.getVeniceConfigLoader(serverProps),
@@ -452,7 +451,7 @@ public class ReplicationMetadataRocksDBStoragePartitionTest extends AbstractStor
   }
 
   @DataProvider(name = "testIngestionDataProvider")
-  private Object[][] testIngestionDataProvider() {
+  protected Object[][] testIngestionDataProvider() {
     return new Object[][] { { true, false, false, true }, // Sorted input without interruption, with verifyChecksum
         { true, false, false, false }, // Sorted input without interruption, without verifyChecksum
         { true, true, true, false }, // Sorted input with interruption, without verifyChecksum

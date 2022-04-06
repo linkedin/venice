@@ -58,7 +58,7 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
    */
   private final String rocksDBPath;
   private final Cache sharedCache;
-  private  Cache sharedRMDCache = null;
+  private  Cache sharedRMDCache;
   private final Map<String, RocksDBStorageEngine> storageEngineMap = new HashMap<>();
   private final Optional<Statistics> aggStatistics;
 
@@ -122,25 +122,29 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
 
     // Shared cache across all the RocksDB databases
     if (RocksDBBlockCacheImplementations.CLOCK.equals(rocksDBServerConfig.getRocksDBBlockCacheImplementation())) {
-      long cacheSize = rocksDBServerConfig.getRocksDBBlockCacheSizeInBytes();
-      if (rocksDBServerConfig.isUseSeparateCFCacheEnabled()) {
-        cacheSize *= (1 -rocksDBServerConfig.getCacheRatioForCF());
-        this.sharedRMDCache = new ClockCache((long)(cacheSize * rocksDBServerConfig.getCacheRatioForCF()),
+      if (rocksDBServerConfig.isUseSeparateRMDCacheEnabled()) {
+        this.sharedRMDCache = new ClockCache(
+            rocksDBServerConfig.getRocksDBRMDBlockCacheSizeInBytes(),
             rocksDBServerConfig.getRocksDBBlockCacheShardBits(),
             rocksDBServerConfig.getRocksDBBlockCacheStrictCapacityLimit());
       }
-      this.sharedCache = new ClockCache(rocksDBServerConfig.getRocksDBBlockCacheSizeInBytes(),
-              rocksDBServerConfig.getRocksDBBlockCacheShardBits(),
-              rocksDBServerConfig.getRocksDBBlockCacheStrictCapacityLimit());
+      this.sharedCache = new ClockCache(
+          rocksDBServerConfig.getRocksDBBlockCacheSizeInBytes(),
+          rocksDBServerConfig.getRocksDBBlockCacheShardBits(),
+          rocksDBServerConfig.getRocksDBBlockCacheStrictCapacityLimit());
 
     } else {
       // Default to LRUCache
-      this.sharedCache = new LRUCache(rocksDBServerConfig.getRocksDBBlockCacheSizeInBytes(),
-              rocksDBServerConfig.getRocksDBBlockCacheShardBits(),
-              rocksDBServerConfig.getRocksDBBlockCacheStrictCapacityLimit());
-      this.sharedRMDCache = new LRUCache(rocksDBServerConfig.getRocksDBBlockCacheSizeInBytes(),
+      this.sharedCache = new LRUCache(
+          rocksDBServerConfig.getRocksDBBlockCacheSizeInBytes(),
           rocksDBServerConfig.getRocksDBBlockCacheShardBits(),
           rocksDBServerConfig.getRocksDBBlockCacheStrictCapacityLimit());
+      if (rocksDBServerConfig.isUseSeparateRMDCacheEnabled()) {
+        this.sharedRMDCache = new LRUCache(
+            rocksDBServerConfig.getRocksDBRMDBlockCacheSizeInBytes(),
+            rocksDBServerConfig.getRocksDBBlockCacheShardBits(),
+            rocksDBServerConfig.getRocksDBBlockCacheStrictCapacityLimit());
+      }
     }
 
     if (rocksDBServerConfig.isRocksDBStatisticsEnabled()) {
@@ -188,12 +192,8 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
     return env;
   }
 
-  public Cache getSharedCache() {
-    return sharedCache;
-  }
-
-  public Cache getSharedRMDCache() {
-    return sharedRMDCache;
+  public Cache getSharedCache(boolean isRMD) {
+    return rocksDBServerConfig.isUseSeparateRMDCacheEnabled() && isRMD ? sharedRMDCache : sharedCache;
   }
 
   @Override
@@ -250,6 +250,7 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
     });
     storageEngineMap.clear();
     sharedCache.close();
+    sharedRMDCache.close();
     writeBufferManager.close();
     rateLimiter.close();
     this.env.close();

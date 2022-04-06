@@ -47,6 +47,11 @@ public class RocksDBServerConfig {
    * Shared block cache across all the RocksDB databases.
    */
   public static final String ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES = "rocksdb.block.cache.size.in.bytes";
+
+  /**
+   * Shared block cache used by RMD column family across all the RocksDB databases.
+   */
+  public static final String ROCKSDB_RMD_BLOCK_CACHE_SIZE_IN_BYTES = "rocksdb.rmd.block.cache.size.in.bytes";
   /**
    * Shared block cache for compressed data.
    */
@@ -200,6 +205,7 @@ public class RocksDBServerConfig {
   public static final String ROCKSDB_WRITE_QUOTA_BYTES_PER_SECOND = "rocksdb.write.quota.bytes.per.second";
   public static final String ROCKSDB_AUTO_TUNED_RATE_LIMITER_ENABLED = "rocksdb.auto.tuned.rate.limited.enabled";
   public static final String ROCKSDB_ATOMIC_FLUSH_ENABLED = "rocksdb.atomic.flush.enabled";
+  public static final String ROCKSDB_SEPRATE_RMD_CACHE_ENABLED = "rocksdb.separate.rmd.cache.enabled";
 
   private final boolean rocksDBUseDirectReads;
 
@@ -210,6 +216,7 @@ public class RocksDBServerConfig {
   private final CompactionStyle rocksDBOptionsCompactionStyle;
 
   private final long rocksDBBlockCacheSizeInBytes;
+  private final long rocksDBRMDBlockCacheSizeInBytes;
   private final long rocksDBBlockCacheCompressedSizeInBytes;
   private final boolean rocksDBBlockCacheStrictCapacityLimit;
   private final boolean rocksDBSetCacheIndexAndFilterBlocks;
@@ -256,8 +263,7 @@ public class RocksDBServerConfig {
   private final int level0StopWritesTriggerWriteOnlyVersion;
   private final boolean putReuseByteBufferEnabled;
   private final boolean atomicFlushEnabled;
-  private final boolean useSeparateCFCache;
-  private final double cacheRatioForCF;
+  private final boolean separateRMDCacheEnabled;
 
   private final RocksDBComputeAccessMode serverStorageOperation;
 
@@ -289,6 +295,8 @@ public class RocksDBServerConfig {
         props.getSizeInBytes(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 16 * 1024 * 1024 * 1024L); // 16GB
     this.rocksDBBlockCacheCompressedSizeInBytes =
         props.getSizeInBytes(ROCKSDB_BLOCK_CACHE_COMPRESSED_SIZE_IN_BYTES, 0L); // disable compressed cache
+    this.rocksDBRMDBlockCacheSizeInBytes = props.getSizeInBytes(ROCKSDB_RMD_BLOCK_CACHE_SIZE_IN_BYTES, 2 * 1024 * 1024 * 1024L); // 2GB
+
 
     this.rocksDBBlockCacheImplementation = RocksDBBlockCacheImplementations
         .valueOf(props.getString(ROCKSDB_BLOCK_CACHE_IMPLEMENTATION, RocksDBBlockCacheImplementations.LRU.toString()));
@@ -363,8 +371,7 @@ public class RocksDBServerConfig {
 
     this.putReuseByteBufferEnabled = props.getBoolean(ROCKSDB_PUT_REUSE_BYTE_BUFFER, false);
     this.atomicFlushEnabled = props.getBoolean(ROCKSDB_ATOMIC_FLUSH_ENABLED, true);
-    this.useSeparateCFCache = props.getBoolean(ROCKSDB_ATOMIC_FLUSH_ENABLED, false);
-    this.cacheRatioForCF = props.getDouble(ROCKSDB_BLOCK_CACHE_SHARD_BITS, 0.1);
+    this.separateRMDCacheEnabled = props.getBoolean(ROCKSDB_SEPRATE_RMD_CACHE_ENABLED, false);
 
     String rocksDBOperationType =
         props.getString(ROCKSDB_COMPUTE_ACCESS_MODE, RocksDBComputeAccessMode.SINGLE_GET.name());
@@ -428,6 +435,10 @@ public class RocksDBServerConfig {
 
   public long getRocksDBBlockCacheSizeInBytes() {
     return rocksDBBlockCacheSizeInBytes;
+  }
+
+  public long getRocksDBRMDBlockCacheSizeInBytes() {
+    return rocksDBRMDBlockCacheSizeInBytes;
   }
 
   public RocksDBBlockCacheImplementations getRocksDBBlockCacheImplementation() {
@@ -544,11 +555,7 @@ public class RocksDBServerConfig {
     return atomicFlushEnabled;
   }
 
-  public double getCacheRatioForCF() {
-    return cacheRatioForCF;
-  }
-
-  public boolean isUseSeparateCFCacheEnabled() {
-    return useSeparateCFCache;
+  public boolean isUseSeparateRMDCacheEnabled() {
+    return separateRMDCacheEnabled;
   }
 }
