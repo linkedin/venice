@@ -29,26 +29,28 @@ public class CollectionTimestampMergeRecordHelper extends PerFieldTimestampMerge
 
   @Override
   public UpdateResultStatus putOnField(
-      GenericRecord currRecord,
-      GenericRecord currTimestampRecord,
+      GenericRecord oldRecord,
+      GenericRecord oldTimestampRecord,
       String fieldName,
       Object newFieldValue,
-      final long putTimestamp,
+      final long newPutTimestamp,
       final int putOperationColoID
   ) {
-    Object currFieldValue = currRecord.get(fieldName);
-    if (currFieldValue instanceof List || currFieldValue instanceof Map) {
+    Object oldFieldValue = oldRecord.get(fieldName);
+    if (oldFieldValue instanceof List || oldFieldValue instanceof Map) {
       // Collection field must have collection timestamp at this point.
-      Object collectionFieldTimestampObj = currTimestampRecord.get(fieldName);
+      Object collectionFieldTimestampObj = oldTimestampRecord.get(fieldName);
       if (!(collectionFieldTimestampObj instanceof GenericRecord)) {
         throw new IllegalStateException(
-            String.format("Expect field %s to be a generic record from timestamp record %s", fieldName, currTimestampRecord));
+            String.format("Expect field %s to be a generic record from timestamp record %s", fieldName,
+                oldTimestampRecord));
       }
       GenericRecord collectionFieldTimestamp = (GenericRecord) collectionFieldTimestampObj;
-      return putOnFieldWithCollectionTimestamp(collectionFieldTimestamp, currRecord, newFieldValue, fieldName, putTimestamp, putOperationColoID);
+      return putOnFieldWithCollectionTimestamp(collectionFieldTimestamp, oldRecord, newFieldValue, fieldName,
+          newPutTimestamp, putOperationColoID);
 
     } else {
-      return super.putOnField(currRecord, currTimestampRecord, fieldName, newFieldValue, putTimestamp, putOperationColoID);
+      return super.putOnField(oldRecord, oldTimestampRecord, fieldName, newFieldValue, newPutTimestamp, putOperationColoID);
     }
   }
 

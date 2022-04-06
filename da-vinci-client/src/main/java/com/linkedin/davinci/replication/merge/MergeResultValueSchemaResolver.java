@@ -9,7 +9,7 @@ import com.linkedin.venice.schema.SchemaEntry;
  * of the new value.
  */
 @Threadsafe
-interface MergedValueSchemaResolver {
+interface MergeResultValueSchemaResolver {
 
   /**
    * It decides/resolves which schema to use given two schema IDs of two values that are going to be merged. Calling this
@@ -20,5 +20,5 @@ interface MergedValueSchemaResolver {
    * @param secondValueSchemaID Self-explanatory
    * @return A schema that should be used for the merged result.
    */
-  SchemaEntry getSchemaForMergedValue(final int firstValueSchemaID, final int secondValueSchemaID);
+  SchemaEntry getMergeResultValueSchema(final int firstValueSchemaID, final int secondValueSchemaID);
 }

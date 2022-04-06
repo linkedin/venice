@@ -14,35 +14,37 @@ abstract class PerFieldTimestampMergeRecordHelper implements MergeRecordHelper {
 
   @Override
   public UpdateResultStatus putOnField(
-      GenericRecord currRecord,
-      GenericRecord currTimestampRecord,
+      GenericRecord oldRecord,
+      GenericRecord oldTimestampRecord,
       String fieldName,
       Object newFieldValue,
-      final long putTimestamp,
+      final long newPutTimestamp,
       final int putOperationColoID
   ) {
-    final long currTimestamp = validateAndGetPrimitiveTimestamp(currTimestampRecord, fieldName);
-    if (currTimestamp > putTimestamp) {
+    final long oldTimestamp = validateAndGetPrimitiveTimestamp(oldTimestampRecord, fieldName);
+    if (oldTimestamp > newPutTimestamp) {
       // Current field does not change.
-      return UpdateResultStatus.NOT_UPDATE;
+      return UpdateResultStatus.NOT_UPDATED_AT_ALL;
 
-    } else if (currTimestamp == putTimestamp) {
-      Object currFieldValue = currRecord.get(fieldName);
-      newFieldValue = compareAndReturn(currFieldValue, newFieldValue, currRecord.getSchema().getField(fieldName).schema());
-      final boolean currFieldCompletelyReplacedByNewField = newFieldValue != currFieldValue;
-      currRecord.put(fieldName, newFieldValue);
-      return currFieldCompletelyReplacedByNewField ? UpdateResultStatus.COMPLETELY_UPDATED : UpdateResultStatus.NOT_UPDATE;
+    } else if (oldTimestamp == newPutTimestamp) {
+      Object oldFieldValue = oldRecord.get(fieldName);
+      newFieldValue = compareAndReturn(oldFieldValue, newFieldValue, oldRecord.getSchema().getField(fieldName).schema());
+      final boolean newFieldCompletelyReplaceOldField = newFieldValue != oldFieldValue;
+      if (newFieldCompletelyReplaceOldField) {
+        oldRecord.put(fieldName, newFieldValue);
+      }
+      return newFieldCompletelyReplaceOldField ? UpdateResultStatus.COMPLETELY_UPDATED : UpdateResultStatus.NOT_UPDATED_AT_ALL;
 
     } else {
       // New field value wins.
-      currRecord.put(fieldName, newFieldValue);
-      currTimestampRecord.put(fieldName, putTimestamp);
+      oldRecord.put(fieldName, newFieldValue);
+      oldTimestampRecord.put(fieldName, newPutTimestamp);
       return UpdateResultStatus.COMPLETELY_UPDATED;
     }
   }
 
   private Object compareAndReturn(Object object1, Object object2, Schema schema) {
-    final int compareResult =AvroCollectionElementComparator.INSTANCE.compare(object1, object2, schema);
+    final int compareResult = AvroCollectionElementComparator.INSTANCE.compare(object1, object2, schema);
     if (compareResult == 0) {
       return object1;
     }
@@ -72,14 +74,14 @@ abstract class PerFieldTimestampMergeRecordHelper implements MergeRecordHelper {
       final UpdateResultStatus
           fieldUpdateResult = deleteRecordField(currRecord, currTimestampRecord, fieldName, deleteTimestamp, coloID);
       allFieldsDeleted &= (fieldUpdateResult == UpdateResultStatus.COMPLETELY_UPDATED);
-      allFieldsDeleteIgnored &= (fieldUpdateResult == UpdateResultStatus.NOT_UPDATE);
+      allFieldsDeleteIgnored &= (fieldUpdateResult == UpdateResultStatus.NOT_UPDATED_AT_ALL);
     }
 
     if (allFieldsDeleted) {
       return UpdateResultStatus.COMPLETELY_UPDATED;
     }
     if (allFieldsDeleteIgnored) {
-      return UpdateResultStatus.NOT_UPDATE;
+      return UpdateResultStatus.NOT_UPDATED_AT_ALL;
     }
     return UpdateResultStatus.PARTIALLY_UPDATED;
   }
@@ -102,7 +104,7 @@ abstract class PerFieldTimestampMergeRecordHelper implements MergeRecordHelper {
       }
       return UpdateResultStatus.COMPLETELY_UPDATED;
     } else {
-      return UpdateResultStatus.NOT_UPDATE;
+      return UpdateResultStatus.NOT_UPDATED_AT_ALL;
     }
   }
 

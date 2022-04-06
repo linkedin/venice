@@ -41,7 +41,9 @@ import org.apache.avro.generic.GenericRecord;
 @Threadsafe
 public interface Merge<T> {
   /**
-   * @param oldValueAndReplicationMetadata the old value and replication metadata which are persisted in the server prior to the write operation
+   * @param oldValueAndReplicationMetadata the old value and replication metadata which are persisted in the server prior
+   *                                       to the write operation. Note that some implementation(s) may require the old
+   *                                       value to be non-null. Please refer to the Javadoc of specific implementation.
    * @param newValue a record with all fields populated and with one of the registered value schemas
    * @param putOperationTimestamp the timestamp of the incoming write operation
    * @param putOperationColoID ID of the colo/fabric where this PUT request was originally received.

@@ -75,7 +75,7 @@ public class WriteComputeHandlerV2 extends WriteComputeHandlerV1 {
         if (recordDeleteResultStatus == UpdateResultStatus.COMPLETELY_UPDATED) {
           // All fields are deleted.
           currRecordAndRmd.setValue(null);
-        } else if (recordDeleteResultStatus == UpdateResultStatus.NOT_UPDATE) {
+        } else if (recordDeleteResultStatus == UpdateResultStatus.NOT_UPDATED_AT_ALL) {
           currRecordAndRmd.setUpdateIgnored(true);
         }
         return currRecordAndRmd;

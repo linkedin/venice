@@ -47,4 +47,37 @@ class TestMergeConflictSchemaConstants {
       + "    \"default\" : -1\n"
       + "  }]\n"
       + "}";
+
+
+  static final String USER_SCHEMA_STR_V3 = "{" +
+      "  \"namespace\" : \"example.avro\",  " +
+      "  \"type\": \"record\",   " +
+      "  \"name\": \"User\",     " +
+      "  \"fields\": [           " +
+      "       { \"name\": \"id\", \"type\": \"string\", \"default\": \"id\"}, " +
+      "       { \"name\": \"name\", \"type\": \"string\", \"default\": \"venice\"}" +
+      "  ] " +
+      " } ";
+
+  static final String USER_SCHEMA_STR_V4 = "{" +
+      "  \"namespace\" : \"example.avro\",  " +
+      "  \"type\": \"record\",   " +
+      "  \"name\": \"User\",     " +
+      "  \"fields\": [           " +
+      "       { \"name\": \"name\", \"type\": \"string\", \"default\": \"venice\"},  " +
+      "       { \"name\": \"weight\", \"type\": \"float\", \"default\": 0.0} " +
+      "  ] " +
+      " } ";
+
+  // A superset schema of schema V3 and V4.
+  static final String USER_SCHEMA_STR_V5 = "{" +
+      "  \"namespace\" : \"example.avro\",  " +
+      "  \"type\": \"record\",   " +
+      "  \"name\": \"User\",     " +
+      "  \"fields\": [           " +
+      "       { \"name\": \"id\", \"type\": \"string\", \"default\": \"id\"},  " +
+      "       { \"name\": \"name\", \"type\": \"string\", \"default\": \"venice\"},  " +
+      "       { \"name\": \"weight\", \"type\": \"float\", \"default\": 0.0}" +
+      "  ] " +
+      " } ";
 }

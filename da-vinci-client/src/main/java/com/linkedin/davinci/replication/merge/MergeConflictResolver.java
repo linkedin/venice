@@ -1,14 +1,13 @@
 package com.linkedin.davinci.replication.merge;
 
 import com.linkedin.davinci.replication.ReplicationMetadataWithValueSchemaId;
+import com.linkedin.davinci.serialization.avro.MapOrderingPreservingSerDeFactory;
 import com.linkedin.venice.annotation.Threadsafe;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.merge.ValueAndReplicationMetadata;
-import com.linkedin.venice.utils.AvroSchemaUtils;
-import com.linkedin.venice.utils.AvroSupersetSchemaUtils;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.nio.ByteBuffer;
 import java.util.List;
@@ -17,7 +16,9 @@ import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
+import org.apache.commons.lang3.Validate;
 
 import static com.linkedin.venice.schema.rmd.ReplicationMetadataConstants.*;
 import static com.linkedin.venice.schema.rmd.v1.CollectionReplicationMetadata.*;
@@ -39,26 +40,32 @@ public class MergeConflictResolver {
   private final Function<Integer, GenericRecord> newRmdCreator;
   private final MergeGenericRecord mergeGenericRecord;
   private final MergeByteBuffer mergeByteBuffer;
-  private final MergedValueSchemaResolver mergedValueSchemaResolver;
+  private final MergeResultValueSchemaResolver mergeResultValueSchemaResolver;
+  private final ReplicationMetadataSerDe rmdSerde;
 
-  public MergeConflictResolver(
+  MergeConflictResolver(
       ReadOnlySchemaRepository schemaRepository,
       String storeName,
-      Function<Integer, GenericRecord> newRmdCreator
+      Function<Integer, GenericRecord> newRmdCreator,
+      MergeGenericRecord mergeGenericRecord,
+      MergeByteBuffer mergeByteBuffer,
+      MergeResultValueSchemaResolver mergeResultValueSchemaResolver,
+      ReplicationMetadataSerDe rmdSerde
   ) {
-    this.schemaRepository = schemaRepository;
-    this.storeName = storeName;
-    this.newRmdCreator = newRmdCreator;
-    this.mergeGenericRecord = null; // TODO: get its value from this constructor and use it to handle per-field timestamp cases.
-    this.mergedValueSchemaResolver = null;  // TODO: get its value from this constructor.
-    this.mergeByteBuffer = new MergeByteBuffer();
+    this.schemaRepository = Validate.notNull(schemaRepository);
+    this.storeName = Validate.notNull(storeName);
+    this.newRmdCreator = Validate.notNull(newRmdCreator);
+    this.mergeGenericRecord = Validate.notNull(mergeGenericRecord);
+    this.mergeResultValueSchemaResolver = Validate.notNull(mergeResultValueSchemaResolver);
+    this.mergeByteBuffer = Validate.notNull(mergeByteBuffer);
+    this.rmdSerde = Validate.notNull(rmdSerde);
   }
 
   /**
    * Perform conflict resolution when the incoming operation is a PUT operation.
-   * @param oldValue A Lazy supplier of currently persisted value.
+   * @param oldValueBytesProvider A Lazy supplier of currently persisted value.
    * @param rmdWithValueSchemaIdOptional The replication metadata of the currently persisted value and the value schema ID.
-   * @param newValue The value in the incoming record.
+   * @param newValueBytes The value in the incoming record.
    * @param putOperationTimestamp The logical timestamp of the incoming record.
    * @param newValueSchemaID The schema id of the value in the incoming record.
    * @param newValueSourceOffset The offset from which the new value originates in the realtime stream.  Used to build
@@ -71,9 +78,9 @@ public class MergeConflictResolver {
    * @return A MergeConflictResult which denotes what update should be applied or if the operation should be ignored.
    */
   public MergeConflictResult put(
-      Lazy<ByteBuffer> oldValue,
+      Lazy<ByteBuffer> oldValueBytesProvider,
       Optional<ReplicationMetadataWithValueSchemaId> rmdWithValueSchemaIdOptional,
-      ByteBuffer newValue,
+      ByteBuffer newValueBytes,
       final long putOperationTimestamp,
       final int newValueSchemaID,
       final long newValueSourceOffset,
@@ -82,7 +89,7 @@ public class MergeConflictResolver {
   ) {
     if (!rmdWithValueSchemaIdOptional.isPresent()) {
       // TODO: Honor BatchConflictResolutionPolicy when replication metadata is null
-      return putWithNoReplicationMetadata(newValue, putOperationTimestamp, newValueSchemaID, newValueSourceOffset, newValueSourceBrokerID);
+      return putWithNoReplicationMetadata(newValueBytes, putOperationTimestamp, newValueSchemaID, newValueSourceOffset, newValueSourceBrokerID);
     }
     ReplicationMetadataWithValueSchemaId rmdWithValueSchemaID = rmdWithValueSchemaIdOptional.get();
     if (rmdWithValueSchemaID.getValueSchemaId() <= 0) {
@@ -90,16 +97,16 @@ public class MergeConflictResolver {
           + storeName + "; schema ID = " + rmdWithValueSchemaID.getValueSchemaId());
     }
 
-    final GenericRecord oldRmd = rmdWithValueSchemaID.getReplicationMetadataRecord();
-    Object oldTimestampObject = oldRmd.get(TIMESTAMP_FIELD_NAME);
+    final GenericRecord oldRmdRecord = rmdWithValueSchemaID.getReplicationMetadataRecord();
+    final Object oldTimestampObject = oldRmdRecord.get(TIMESTAMP_FIELD_NAME);
     RmdTimestampType rmdTimestampType = MergeUtils.getReplicationMetadataType(oldTimestampObject);
 
     switch (rmdTimestampType) {
       case VALUE_LEVEL_TIMESTAMP:
-        ValueAndReplicationMetadata<ByteBuffer> valueAndRmd = new ValueAndReplicationMetadata<>(oldValue, oldRmd);
+        ValueAndReplicationMetadata<ByteBuffer> valueAndRmd = new ValueAndReplicationMetadata<>(oldValueBytesProvider, oldRmdRecord);
         valueAndRmd = mergeByteBuffer.put(
             valueAndRmd,
-            newValue,
+            newValueBytes,
             putOperationTimestamp,
             newValueColoID,
             newValueSourceOffset,
@@ -112,28 +119,65 @@ public class MergeConflictResolver {
         }
 
       case PER_FIELD_TIMESTAMP:
+        if (!(oldTimestampObject instanceof GenericRecord)) {
+          throw new IllegalStateException("Per-field RMD timestamp must be a GenericRecord. Got: " + oldTimestampObject
+              + " and store name is: " + storeName);
+        }
+        final GenericRecord oldValueFieldTimestampsRecord = (GenericRecord) oldTimestampObject;
         final int oldValueSchemaID = rmdWithValueSchemaID.getValueSchemaId();
-        final GenericRecord oldValueFieldTimestampsRecord =
-            (GenericRecord) rmdWithValueSchemaID.getReplicationMetadataRecord().get(TIMESTAMP_FIELD_NAME);
         if (ignoreNewPut(oldValueSchemaID, oldValueFieldTimestampsRecord, newValueSchemaID, putOperationTimestamp)) {
           return MergeConflictResult.getIgnoredResult();
         }
-        /**
-         * TODO Implement following steps:
-         *    1. Call "mergedValueSchemaResolver.getSchemaForMergedValue(oldValueSchemaID, newValueSchemaID)" to get
-         *       merged-value-record schema entry.
-         *    2. Use the merged-value-record schema ID to get its corresponding RMD schema.
-         *    3. Use the new RMD schema from step (2) to convert the old RMD if the new RMD schema is a superset of the old RMD schema.
-         *    4. Use the new value schema to deserialize the new value.
-         *    5. Use the merged-value-record schema to deserialize old value.
-         *    6. Call "mergeGenericRecord.put(...)"
-         *    7. Convert the result from "mergeGenericRecord.put(...)" to {@link MergeConflictResult} and return.
-         */
-        throw new VeniceUnsupportedOperationException("Field level RMD timestamp not-ignoring-new-put situation not supported.");
+        final SchemaEntry mergeResultValueSchemaEntry = mergeResultValueSchemaResolver.getMergeResultValueSchema(oldValueSchemaID, newValueSchemaID);
+        final Schema mergeResultValueSchema = mergeResultValueSchemaEntry.getSchema();
+
+        // RMD record should have the mergeResultRmdSchema.
+        GenericRecord expandedOldRmdRecord = mayConvertRmdToUseMergeResultSchema(mergeResultValueSchemaEntry.getId(), oldValueSchemaID, oldRmdRecord);
+        final Schema newValueWriterSchema = getValueSchema(newValueSchemaID);
+        // New value record and old value record should both have the mergedValueSchema
+        GenericRecord newValueRecord = deserializeValue(newValueBytes, newValueWriterSchema, newValueWriterSchema);
+        Lazy<GenericRecord> oldValueRecordProvider = Lazy.of(() -> {
+          ByteBuffer oldValueBytes = oldValueBytesProvider.get();
+          if (oldValueBytes == null) {
+            return new GenericData.Record(mergeResultValueSchema);
+          }
+          final Schema oldValueWriterSchema = getValueSchema(oldValueSchemaID);
+          return deserializeValue(oldValueBytes, oldValueWriterSchema, mergeResultValueSchema);
+        });
+        ValueAndReplicationMetadata<GenericRecord> oldValueAndRmd = new ValueAndReplicationMetadata<>(
+            oldValueRecordProvider,
+            expandedOldRmdRecord
+        );
+        // Actual merge happens here!
+        ValueAndReplicationMetadata<GenericRecord> mergedValueAndRmd = mergeGenericRecord.put(
+            oldValueAndRmd,
+            newValueRecord,
+            putOperationTimestamp,
+            newValueColoID,
+            newValueSourceOffset,
+            newValueSourceBrokerID
+        );
+
+        ByteBuffer mergedValueBytes = ByteBuffer.wrap(
+            MapOrderingPreservingSerDeFactory.getSerializer(mergeResultValueSchema).serialize(mergedValueAndRmd.getValue())
+        );
+        return new MergeConflictResult(Optional.of(mergedValueBytes), newValueSchemaID, true, mergedValueAndRmd.getReplicationMetadata());
 
       default:
         throw new VeniceUnsupportedOperationException("Not supported replication metadata type: " + rmdTimestampType);
     }
+  }
+
+  private GenericRecord mayConvertRmdToUseMergeResultSchema(final int mergeResultValueSchemaID, final int oldValueSchemaID, GenericRecord oldRmdRecord) {
+    if (mergeResultValueSchemaID == oldValueSchemaID) {
+      return oldRmdRecord;
+    }
+    final ByteBuffer rmdBytes = rmdSerde.serializeRmdRecord(oldValueSchemaID, oldRmdRecord);
+    return rmdSerde.deserializeRmdBytes(oldValueSchemaID, mergeResultValueSchemaID, rmdBytes);
+  }
+
+  private GenericRecord deserializeValue(ByteBuffer bytes, Schema writerSchema, Schema readerSchema) {
+    return MapOrderingPreservingSerDeFactory.getDeserializer(writerSchema, readerSchema).deserialize(bytes);
   }
 
   private boolean ignoreNewPut(
@@ -142,7 +186,7 @@ public class MergeConflictResolver {
       final int newValueSchemaID,
       final long putOperationTimestamp
   ) {
-    Schema oldValueSchema = schemaRepository.getValueSchema(storeName, oldValueSchemaID).getSchema();
+    final Schema oldValueSchema = getValueSchema(oldValueSchemaID);
     List<Schema.Field> oldValueFields = oldValueSchema.getFields();
 
     if (oldValueSchemaID == newValueSchemaID) {
@@ -155,7 +199,7 @@ public class MergeConflictResolver {
       return true;
 
     } else {
-      Schema newValueSchema = schemaRepository.getValueSchema(storeName, newValueSchemaID).getSchema();
+      Schema newValueSchema = getValueSchema(newValueSchemaID);
       Set<String> oldFieldNames = oldValueFields.stream().map(Schema.Field::name).collect(Collectors.toSet());
       Set<String> newFieldNames = newValueSchema.getFields().stream().map(Schema.Field::name).collect(Collectors.toSet());
 
@@ -174,6 +218,10 @@ public class MergeConflictResolver {
         return false;
       }
     }
+  }
+
+  private Schema getValueSchema(final int valueSchemaID) {
+    return schemaRepository.getValueSchema(storeName, valueSchemaID).getSchema();
   }
 
   private boolean isRmdFieldTimestampSmallerOrEqual(
