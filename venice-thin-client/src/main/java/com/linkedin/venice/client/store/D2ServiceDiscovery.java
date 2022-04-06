@@ -4,11 +4,12 @@ import com.linkedin.venice.client.exceptions.ServiceDiscoveryException;
 import com.linkedin.venice.client.store.transport.D2TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponseV2;
-import com.linkedin.venice.exceptions.ExceptionType;
 import com.linkedin.venice.exceptions.VeniceException;
 
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
-import java.util.Optional;
+import com.linkedin.venice.utils.SystemTime;
+import com.linkedin.venice.utils.Time;
+import java.util.concurrent.TimeoutException;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.codehaus.jackson.map.DeserializationConfig;
@@ -29,6 +30,16 @@ import static com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponseV2.*;
 public class D2ServiceDiscovery {
   private static final Logger LOGGER = LogManager.getLogger(D2ServiceDiscovery.class);
 
+  private final Time time;
+
+  public D2ServiceDiscovery() {
+    this(new SystemTime());
+  }
+
+  public D2ServiceDiscovery(Time time) {
+    this.time = time;
+  }
+
   private static final ObjectMapper OBJECT_MAPPER =
       new ObjectMapper().disable(DeserializationConfig.Feature.FAIL_ON_UNKNOWN_PROPERTIES);
 
@@ -46,9 +57,10 @@ public class D2ServiceDiscovery {
     for (int attempt = 0; attempt < maxAttempts; ++attempt) {
       try {
         if (attempt > 0) {
-          TimeUnit.SECONDS.sleep(3);
+          time.sleep(TimeUnit.SECONDS.toMillis(3));
         }
-        TransportClientResponse response = client.get(requestPath, requestHeaders).get(1, TimeUnit.SECONDS);
+        TransportClientResponse response = client.get(requestPath, requestHeaders).get(3, TimeUnit.SECONDS);
+
         if (response == null) {
           /**
            * 'null' response indicates that the Router returns 404 based on the logic in
@@ -66,7 +78,7 @@ public class D2ServiceDiscovery {
         LOGGER.info("Found d2 service {} for {}", result.getD2Service(), storeName);
         return result;
 
-      } catch (ExecutionException e) {
+      } catch (TimeoutException | ExecutionException e) {
         LOGGER.warn("Failed to find d2 service for {}, attempt {}/{}, reason {}", storeName, attempt + 1, maxAttempts, e.getCause());
 
       } catch (InterruptedException e) {
