@@ -34,7 +34,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
       String fieldName
   ) {
     if (ignoreIncomingRequest(putTimestamp, coloID, collectionFieldRmd)) {
-      return UpdateResultStatus.NOT_UPDATE;
+      return UpdateResultStatus.NOT_UPDATED_AT_ALL;
     }
     validateFieldSchemaType(currValueRecord, fieldName, Schema.Type.ARRAY, false); // Validate before modifying any state.
 
@@ -237,7 +237,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
       String fieldName
   ) {
     if (ignoreIncomingRequest(putTimestamp, coloID, collectionFieldRmd)) {
-      return UpdateResultStatus.NOT_UPDATE;
+      return UpdateResultStatus.NOT_UPDATED_AT_ALL;
     }
     // Current map will be updated.
     if (collectionFieldRmd.isInPutOnlyState()) {
@@ -260,7 +260,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
       String fieldName
   ) {
     if (ignoreIncomingRequest(deleteTimestamp, coloID, collectionFieldRmd)) {
-      return UpdateResultStatus.NOT_UPDATE;
+      return UpdateResultStatus.NOT_UPDATED_AT_ALL;
     }
     validateFieldSchemaType(currValueRecord, fieldName, Schema.Type.ARRAY, false); // Validate before modifying any state.
     // Current list will be deleted (partially or completely).
@@ -303,7 +303,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
       String fieldName
   ) {
     if (ignoreIncomingRequest(deleteTimestamp, coloID, collectionFieldRmd)) {
-      return UpdateResultStatus.NOT_UPDATE;
+      return UpdateResultStatus.NOT_UPDATED_AT_ALL;
     }
     if (collectionFieldRmd.isInPutOnlyState()) {
       validateFieldSchemaType(currValueRecord, fieldName, Schema.Type.MAP, true); // Validate before modifying any state.
@@ -328,14 +328,14 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
   ) {
     // When timestamps are the same, full put/delete on a collection field always takes precedence over collection merge.
     if (ignoreIncomingRequest(modifyTimestamp, Integer.MIN_VALUE, collectionFieldRmd)) {
-      return UpdateResultStatus.NOT_UPDATE;
+      return UpdateResultStatus.NOT_UPDATED_AT_ALL;
     }
     validateFieldSchemaType(currValueRecord, fieldName, Schema.Type.ARRAY, false);
     Set<Object> toAddElementSet = new HashSet<>(toAddElements);
     Set<Object> toRemoveElementSet = new HashSet<>(toRemoveElements);
     removeIntersectionElements(toAddElementSet, toRemoveElementSet);
     if (toAddElements.isEmpty() && toRemoveElementSet.isEmpty()) {
-      return UpdateResultStatus.NOT_UPDATE;
+      return UpdateResultStatus.NOT_UPDATED_AT_ALL;
     }
 
     if (collectionFieldRmd.isInPutOnlyState()) {
@@ -357,7 +357,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
       throw new IllegalStateException("Expect list to be in the put-only state.");
     }
     if (toAddElementSet.isEmpty() && toRemoveElementSet.isEmpty()) {
-      return UpdateResultStatus.NOT_UPDATE;
+      return UpdateResultStatus.NOT_UPDATED_AT_ALL;
     }
     List<Object> currElements = (List<Object>) currValueRecord.get(fieldName);
     if (currElements == null) {
@@ -446,7 +446,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
       throw new IllegalStateException("Expect list to be in the collection-merge state.");
     }
     if (toAddElementSet.isEmpty() && toRemoveElementSet.isEmpty()) {
-      return UpdateResultStatus.NOT_UPDATE;
+      return UpdateResultStatus.NOT_UPDATED_AT_ALL;
     }
 
     List<Object> currElements = (List<Object>) currValueRecord.get(fieldName);
@@ -550,7 +550,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
     sortElementAndTimestampList(deletedElementAndTsList, elementSchemaSupplier);
     setDeletedDeletedElementAndTsList(deletedElementAndTsList, collectionFieldRmd);
 
-    return updated ? UpdateResultStatus.PARTIALLY_UPDATED : UpdateResultStatus.NOT_UPDATE;
+    return updated ? UpdateResultStatus.PARTIALLY_UPDATED : UpdateResultStatus.NOT_UPDATED_AT_ALL;
   }
 
   private void setNewActiveElementAndTsList(

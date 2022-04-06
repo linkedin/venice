@@ -19,7 +19,7 @@ import static org.mockito.Mockito.*;
 
 
 public class TestMergeConflictResolver {
-  private static final int RMD_VERSION_ID = 1;
+  protected static final int RMD_VERSION_ID = 1;
 
   protected String storeName;
   protected ReadOnlySchemaRepository schemaRepository;

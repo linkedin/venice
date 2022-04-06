@@ -11,13 +11,13 @@ import org.apache.avro.Schema;
 import org.apache.commons.lang3.Validate;
 
 @Threadsafe
-public class MergedValueSchemaResolverImpl implements MergedValueSchemaResolver {
+public class MergeResultValueSchemaResolverImpl implements MergeResultValueSchemaResolver {
 
   private final ReadOnlySchemaRepository schemaRepository;
   private final String storeName;
   private final Map<String, SchemaEntry> resolvedSchemaCache;
 
-  public MergedValueSchemaResolverImpl(ReadOnlySchemaRepository schemaRepository, String storeName) {
+  public MergeResultValueSchemaResolverImpl(ReadOnlySchemaRepository schemaRepository, String storeName) {
     this.schemaRepository = Validate.notNull(schemaRepository);
     Validate.notNull(storeName);
     if (storeName.isEmpty()) {
@@ -28,7 +28,7 @@ public class MergedValueSchemaResolverImpl implements MergedValueSchemaResolver 
   }
 
   /**
-   * For general purpose, refer to Javadoc of {@link MergedValueSchemaResolver#getSchemaForMergedValue(int, int)}.
+   * For general purpose, refer to Javadoc of {@link MergeResultValueSchemaResolver#getMergeResultValueSchema(int, int)}.
    *
    * This implementation handles 3 situations:
    *
@@ -42,7 +42,7 @@ public class MergedValueSchemaResolverImpl implements MergedValueSchemaResolver 
    *          Get and return the registered superset schema on this store.
    */
   @Override
-  public SchemaEntry getSchemaForMergedValue(final int firstValueSchemaID, final int secondValueSchemaID) {
+  public SchemaEntry getMergeResultValueSchema(final int firstValueSchemaID, final int secondValueSchemaID) {
     if (firstValueSchemaID == secondValueSchemaID) {
       return schemaRepository.getValueSchema(storeName, secondValueSchemaID);
     }

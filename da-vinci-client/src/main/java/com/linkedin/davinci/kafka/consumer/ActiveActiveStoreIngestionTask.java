@@ -4,6 +4,7 @@ import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.replication.ReplicationMetadataWithValueSchemaId;
 import com.linkedin.davinci.replication.merge.MergeConflictResolver;
+import com.linkedin.davinci.replication.merge.MergeConflictResolverFactory;
 import com.linkedin.davinci.replication.merge.MergeConflictResult;
 import com.linkedin.davinci.replication.merge.MergeUtils;
 import com.linkedin.davinci.replication.merge.ReplicationMetadataSerDe;
@@ -49,7 +50,6 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.BooleanSupplier;
-import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.producer.Callback;
@@ -65,7 +65,7 @@ import static com.linkedin.venice.VeniceConstants.*;
  */
 public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestionTask {
   private static final Logger logger = LogManager.getLogger(ActiveActiveStoreIngestionTask.class);
-  private final int replicationMetadataVersionId;
+  private final int rmdProtocolVersionID;
   private final MergeConflictResolver mergeConflictResolver;
   private final ReplicationMetadataSerDe replicationMetadataSerDe;
   private final Lazy<KeyLevelLocksManager> keyLevelLocksManager;
@@ -95,7 +95,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         cacheBackend,
         compressorFactory);
 
-    this.replicationMetadataVersionId = version.getReplicationMetadataVersionId();
+    this.rmdProtocolVersionID = version.getReplicationMetadataVersionId();
     this.aggVersionedStorageIngestionStats = versionedStorageIngestionStats;
     int knownKafkaClusterNumber = serverConfig.getKafkaClusterIdToUrlMap().size();
     int consumerPoolSizePerKafkaCluster = serverConfig.getConsumerPoolSizePerKafkaCluster();
@@ -105,13 +105,9 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
      */
     int maxKeyLevelLocksPoolSize = Math.min(storeVersionPartitionCount, consumerPoolSizePerKafkaCluster) * knownKafkaClusterNumber + 1;
     this.keyLevelLocksManager = Lazy.of(() -> new KeyLevelLocksManager(getVersionTopic(), initialPoolSize, maxKeyLevelLocksPoolSize));
-    this.replicationMetadataSerDe = new ReplicationMetadataSerDe(builder.getSchemaRepo(), storeName, replicationMetadataVersionId);
-
-    this.mergeConflictResolver = new MergeConflictResolver(
-        builder.getSchemaRepo(),
-        storeName,
-        valueSchemaID -> new GenericData.Record(replicationMetadataSerDe.getReplicationMetadataSchema(valueSchemaID))
-    );
+    this.replicationMetadataSerDe = new ReplicationMetadataSerDe(builder.getSchemaRepo(), storeName,
+        rmdProtocolVersionID);
+    this.mergeConflictResolver = MergeConflictResolverFactory.INSTANCE.createMergeConflictResolver(builder.getSchemaRepo(), replicationMetadataSerDe, getStoreName());
     this.remoteIngestionRepairService = builder.getRemoteIngestionRepairService();
   }
 
@@ -200,7 +196,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     PartitionConsumptionState.TransientRecord cachedRecord = partitionConsumptionState.getTransientRecord(key);
     if (cachedRecord != null) {
       storeIngestionStats.recordIngestionReplicationMetadataCacheHitCount(storeName);
-      return Optional.of(new ReplicationMetadataWithValueSchemaId(cachedRecord.getValueSchemaId(), cachedRecord.getReplicationMetadataRecord()));
+      return Optional.of(new ReplicationMetadataWithValueSchemaId(cachedRecord.getValueSchemaId(), rmdProtocolVersionID, cachedRecord.getReplicationMetadataRecord()));
     }
 
     final long lookupStartTimeInNS = System.nanoTime();
@@ -417,7 +413,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     final int valueSchemaId = mergeConflictResult.getValueSchemaId();
 
     GenericRecord replicationMetadataRecord = mergeConflictResult.getReplicationMetadataRecord();
-    final ByteBuffer updatedReplicationMetadataBytes = replicationMetadataSerDe.serializeReplicationMetadata(
+    final ByteBuffer updatedReplicationMetadataBytes = replicationMetadataSerDe.serializeRmdRecord(
         mergeConflictResult.getValueSchemaId(),
         mergeConflictResult.getReplicationMetadataRecord()
     );
@@ -429,7 +425,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       partitionConsumptionState.setTransientRecord(kafkaUrl, consumerRecord.offset(), key, valueSchemaId, replicationMetadataRecord);
       Delete deletePayload = new Delete();
       deletePayload.schemaId = valueSchemaId;
-      deletePayload.replicationMetadataVersionId = replicationMetadataVersionId;
+      deletePayload.replicationMetadataVersionId = rmdProtocolVersionID;
       deletePayload.replicationMetadataPayload = updatedReplicationMetadataBytes;
 
       ProduceToTopic produceToTopicFunction = (callback, sourceTopicOffset) ->
@@ -437,7 +433,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
               key,
               callback,
               sourceTopicOffset,
-              new DeleteMetadata(valueSchemaId, replicationMetadataVersionId, updatedReplicationMetadataBytes)
+              new DeleteMetadata(valueSchemaId, rmdProtocolVersionID, updatedReplicationMetadataBytes)
           );
       LeaderProducedRecordContext leaderProducedRecordContext = LeaderProducedRecordContext.newDeleteRecord(
           kafkaUrl,
@@ -463,7 +459,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       Put updatedPut = new Put();
       updatedPut.putValue = ByteUtils.prependIntHeaderToByteBuffer(updatedValueBytes, valueSchemaId, doesResultReuseInput);
       updatedPut.schemaId = valueSchemaId;
-      updatedPut.replicationMetadataVersionId = replicationMetadataVersionId;
+      updatedPut.replicationMetadataVersionId = rmdProtocolVersionID;
       updatedPut.replicationMetadataPayload = updatedReplicationMetadataBytes;
 
       byte[] updatedKeyBytes = key;
@@ -487,7 +483,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
             valueSchemaId,
             newCallback,
             sourceTopicOffset,
-            new PutMetadata(replicationMetadataVersionId, updatedReplicationMetadataBytes)
+            new PutMetadata(rmdProtocolVersionID, updatedReplicationMetadataBytes)
         );
       };
 

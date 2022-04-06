@@ -57,7 +57,7 @@ public class ReplicationMetadataSerDeTest {
     // Serialize this RMD record to bytes.
     Schema actualRmdSchema = rmdSerDe.getReplicationMetadataSchema(valueSchemaID);
     Assert.assertEquals(actualRmdSchema, rmdSchema);
-    ByteBuffer rmdBytes = rmdSerDe.serializeReplicationMetadata(valueSchemaID, rmd);
+    ByteBuffer rmdBytes = rmdSerDe.serializeRmdRecord(valueSchemaID, rmd);
 
     // Prepend value schema ID to RMD bytes.
     ByteBuffer rmdAndValueSchemaIDBytes = ByteBuffer.allocate(Integer.BYTES + rmdBytes.remaining());
