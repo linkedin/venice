@@ -3240,14 +3240,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     emitMetrics.set(false);
   }
 
-  public Optional<Long> getCurrentOffset(int partitionId) {
-    PartitionConsumptionState consumptionState = partitionConsumptionStateMap.get(partitionId);
-    if (null == consumptionState) {
-      return Optional.empty();
-    }
-    return Optional.of(consumptionState.getLatestProcessedLocalVersionTopicOffset());
-  }
-
   /**
    * To check whether the given partition is still consuming message from Kafka
    */

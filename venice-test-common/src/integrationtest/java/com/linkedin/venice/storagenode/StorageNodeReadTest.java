@@ -169,14 +169,12 @@ public class StorageNodeReadTest {
 
       // Multi-get
       List<MultiGetRouterRequestKeyV1> keys = new ArrayList<>();
-      Set<Integer> partitionIdSet = new HashSet<>();
       for (int i = 0; i < 10; ++i) {
         MultiGetRouterRequestKeyV1 requestKey = new MultiGetRouterRequestKeyV1();
         keyBytes = keySerializer.serialize(null, keyPrefix + i);
         requestKey.keyBytes = ByteBuffer.wrap(keyBytes);
         requestKey.keyIndex = i;
         requestKey.partitionId = getPartitionId(keyBytes);
-        partitionIdSet.add(requestKey.partitionId);
         keys.add(requestKey);
       }
       RecordSerializer<MultiGetRouterRequestKeyV1> serializer = SerializerDeserializerFactory.getAvroGenericSerializer(MultiGetRouterRequestKeyV1.SCHEMA$);
@@ -206,20 +204,6 @@ public class StorageNodeReadTest {
         byte[] body = IOUtils.toByteArray(bodyStream);
         Assert.assertEquals(multiGetResponse.getStatusLine().getStatusCode(), HttpStatus.SC_OK,
             "Response did not return 200: " + new String(body));
-        /**
-         * Validate header: {@link HttpConstants.VENICE_OFFSET}
-         */
-        Header partitionOffsetHeader = multiGetResponse.getFirstHeader(HttpConstants.VENICE_OFFSET);
-        Assert.assertNotNull(partitionOffsetHeader);
-        String headerValue = partitionOffsetHeader.getValue();
-        Map<Integer, Long> partitionOffsetMap = PartitionOffsetMapUtils.deserializePartitionOffsetMap(headerValue);
-        partitionIdSet.forEach( partitionId -> {
-          Long offset = partitionOffsetMap.get(partitionId);
-          Assert.assertNotNull(offset);
-          // TODO: Figure out why the assertion below occasionally fails...
-          Assert.assertTrue(offset > 0, "Offset <= 0 for partition '" + partitionId + "'.");
-        });
-
         Iterable<MultiGetResponseRecordV1> values = deserializer.deserializeObjects(body);
         Map<Integer, String> results = new HashMap<>();
         values.forEach(K -> {
