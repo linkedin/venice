@@ -6,9 +6,6 @@ import io.netty.buffer.ByteBuf;
 
 
 public class StorageResponseObject extends ReadResponse {
-  // The latest offset the storage node has seen for the requested partition
-  private long offset;
-
   // Value record storing both schema id and the real data
   private ValueRecord valueRecord;
 
@@ -27,14 +24,6 @@ public class StorageResponseObject extends ReadResponse {
     return this.valueRecord != null;
   }
 
-  public void setOffset(long offset) {
-    this.offset = offset;
-  }
-
-  public long getOffset() {
-    return offset;
-  }
-
   public int getRecordCount() {
     if (isFound()) {
       return 1;
@@ -51,10 +40,5 @@ public class StorageResponseObject extends ReadResponse {
   @Override
   public int getResponseSchemaIdHeader() {
     return getValueRecord().getSchemaId();
-  }
-
-  @Override
-  public String getResponseOffsetHeader() {
-    return Long.toString(offset);
   }
 }

@@ -39,7 +39,6 @@ public class OutboundHttpWrapperHandler extends ChannelOutboundHandlerAdapter {
     ByteBuf body;
     String contentType = HttpConstants.AVRO_BINARY;
     HttpResponseStatus responseStatus = OK;
-    String offsetHeader = "-1";
     int schemaIdHeader = -1;
     int responseRcu = 1;
     CompressionStrategy compressionStrategy = CompressionStrategy.NO_OP;
@@ -64,7 +63,6 @@ public class OutboundHttpWrapperHandler extends ChannelOutboundHandlerAdapter {
         compressionStrategy = obj.getCompressionStrategy();
         if (obj.isFound()) {
           body = obj.getResponseBody();
-          offsetHeader = obj.getResponseOffsetHeader();
           schemaIdHeader = obj.getResponseSchemaIdHeader();
         } else {
           body = Unpooled.EMPTY_BUFFER;
@@ -129,7 +127,6 @@ public class OutboundHttpWrapperHandler extends ChannelOutboundHandlerAdapter {
     response.headers().set(CONTENT_TYPE, contentType);
     response.headers().set(CONTENT_LENGTH, body.readableBytes());
     response.headers().set(HttpConstants.VENICE_COMPRESSION_STRATEGY, compressionStrategy.getValue());
-    response.headers().set(HttpConstants.VENICE_OFFSET, offsetHeader);
     response.headers().set(HttpConstants.VENICE_SCHEMA_ID, schemaIdHeader);
     response.headers().set(HttpConstants.VENICE_REQUEST_RCU, responseRcu);
     if (isStreamingResponse) {

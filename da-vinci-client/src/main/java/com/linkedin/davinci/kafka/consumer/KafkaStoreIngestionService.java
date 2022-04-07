@@ -972,15 +972,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   }
 
   @Override
-  public Optional<Long> getOffset(String topicName, int partitionId) {
-    StoreIngestionTask ingestionTask = topicNameToIngestionTaskMap.get(topicName);
-    if (null == ingestionTask) {
-      return Optional.empty();
-    }
-    return ingestionTask.getCurrentOffset(partitionId);
-  }
-
-  @Override
   public boolean isStoreVersionChunked(String topicName) {
     return storageMetadataService.isStoreVersionChunked(topicName);
   }

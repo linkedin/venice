@@ -1,12 +1,6 @@
 package com.linkedin.venice.listener.request;
 
-import com.linkedin.venice.HttpConstants;
-import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.read.RequestType;
-import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
-import io.netty.handler.codec.http.FullHttpRequest;
 import io.netty.handler.codec.http.HttpRequest;
-import java.net.URI;
 
 
 public abstract class MultiKeyRouterRequestWrapper<K> extends RouterRequest {
