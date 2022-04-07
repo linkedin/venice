@@ -480,7 +480,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       sharedKafkaProducerService.start();
     }
     if (participantStoreConsumptionTask != null) {
-      participantStoreConsumerExecutorService = Executors.newSingleThreadExecutor();
+      participantStoreConsumerExecutorService = Executors.newSingleThreadExecutor(new DaemonThreadFactory("ParticipantStoreConsumptionTask"));
       participantStoreConsumerExecutorService.submit(participantStoreConsumptionTask);
     }
     // Although the StoreConsumptionTasks are now running in their own threads, there is no async
