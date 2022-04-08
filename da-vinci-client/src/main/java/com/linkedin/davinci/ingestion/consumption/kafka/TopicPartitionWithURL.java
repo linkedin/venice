@@ -10,11 +10,21 @@ public class TopicPartitionWithURL {
 
   private final TopicPartition topicPartition;
   private final String kafkaServerURL;
+  /**
+   * This field is need to support a situation where a topic partition in the same Kafka cluster needs to have multiple
+   * concurrent consumption sessions. For example, there are 2 users of the {@link KafkaConsumptionService#startConsuming}
+   * method and one user wants to start consuming tp_0 starting at offset 10 and another user wants to start consuming
+   * tp_0 in the same Kafka cluster starting at offset 38. Each user should get their own consumed data stream without knowing
+   * the other consumed data stream. In this case, users need to provide a unique {@param owner} to identify their own
+   * {@link TopicPartitionWithURL}.
+   */
+  private final String owner;
   private int hashCode;
 
-  public TopicPartitionWithURL(TopicPartition topicPartition, String kafkaServerURL) {
+  public TopicPartitionWithURL(TopicPartition topicPartition, String kafkaServerURL, String owner) {
     this.topicPartition = Validate.notNull(topicPartition);
     this.kafkaServerURL = Validate.notNull(kafkaServerURL);
+    this.owner = Validate.notNull(owner);
     this.hashCode = NO_HASH_CODE;
   }
 
@@ -26,10 +36,14 @@ public class TopicPartitionWithURL {
     return kafkaServerURL;
   }
 
+  public String getOwner() {
+    return owner;
+  }
+
   @Override
   public int hashCode() {
     if (hashCode == NO_HASH_CODE) {
-      return hashCode = Objects.hash(topicPartition, kafkaServerURL);
+      return hashCode = Objects.hash(topicPartition, kafkaServerURL, owner);
     }
     return hashCode;
   }
@@ -43,6 +57,8 @@ public class TopicPartitionWithURL {
       return false;
     }
     TopicPartitionWithURL other = (TopicPartitionWithURL) o;
-    return this.kafkaServerURL.equals(other.kafkaServerURL) && this.topicPartition.equals(other.topicPartition);
+    return this.owner.equals(other.owner) &&
+        this.kafkaServerURL.equals(other.kafkaServerURL) &&
+        this.topicPartition.equals(other.topicPartition);
   }
 }
