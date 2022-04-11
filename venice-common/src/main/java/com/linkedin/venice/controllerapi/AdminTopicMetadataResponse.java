@@ -13,22 +13,22 @@ public class AdminTopicMetadataResponse extends ControllerResponse {
    * The last persisted offset in local admin topic, which is cluster-level and stored in
    * /venice/<clusterName>/adminTopicMetadata znode
    */
-  private Optional<Long> offset = Optional.empty();
+  private long offset = -1;
   /**
    * The last persisted offset in source admin topic, which is cluster-level and stored in
    * /venice/<clusterName>/adminTopicMetadata znode
    */
-  private Optional<Long> upstreamOffset = Optional.empty();
+  private long upstreamOffset = -1;
 
   public long getExecutionId() {
     return executionId;
   }
 
-  public Optional<Long> getOffset() {
+  public long getOffset() {
     return offset;
   }
 
-  public Optional<Long> getUpstreamOffset() {
+  public long getUpstreamOffset() {
     return upstreamOffset;
   }
 
@@ -36,11 +36,11 @@ public class AdminTopicMetadataResponse extends ControllerResponse {
     this.executionId = executionId;
   }
 
-  public void setOffset(Optional<Long> offset) {
+  public void setOffset(long offset) {
     this.offset = offset;
   }
 
-  public void setUpstreamOffset(Optional<Long> upstreamOffset) {
+  public void setUpstreamOffset(long upstreamOffset) {
     this.upstreamOffset = upstreamOffset;
   }
 }

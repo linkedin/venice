@@ -480,7 +480,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       sharedKafkaProducerService.start();
     }
     if (participantStoreConsumptionTask != null) {
-      participantStoreConsumerExecutorService = Executors.newSingleThreadExecutor();
+      participantStoreConsumerExecutorService = Executors.newSingleThreadExecutor(new DaemonThreadFactory("ParticipantStoreConsumptionTask"));
       participantStoreConsumerExecutorService.submit(participantStoreConsumptionTask);
     }
     // Although the StoreConsumptionTasks are now running in their own threads, there is no async
@@ -969,15 +969,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
      */
     kafkaConsumerProperties.setProperty(ConsumerConfig.CLIENT_ID_CONFIG, groupId);
     return kafkaConsumerProperties;
-  }
-
-  @Override
-  public Optional<Long> getOffset(String topicName, int partitionId) {
-    StoreIngestionTask ingestionTask = topicNameToIngestionTaskMap.get(topicName);
-    if (null == ingestionTask) {
-      return Optional.empty();
-    }
-    return ingestionTask.getCurrentOffset(partitionId);
   }
 
   @Override

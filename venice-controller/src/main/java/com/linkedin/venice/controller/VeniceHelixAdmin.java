@@ -671,7 +671,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         HelixVeniceClusterResources clusterResources = getHelixVeniceClusterResources(clusterName);
         logger.info(String.format("Start creating store %s in cluster %s with owner %s", storeName, clusterName, owner));
         try (AutoCloseableLock ignore = clusterResources.getClusterLockManager().createStoreWriteLock(storeName)) {
-            checkPreConditionForCreateStore(clusterName, storeName, keySchema, valueSchema, isSystemStore, isUsingKMM(clusterName));
+            checkPreConditionForCreateStore(clusterName, storeName, keySchema, valueSchema, isSystemStore, true);
             VeniceControllerClusterConfig config = getHelixVeniceClusterResources(clusterName).getConfig();
             Store newStore = new ZKStore(storeName, owner, System.currentTimeMillis(), config.getPersistenceType(),
                 config.getRoutingStrategy(), config.getReadStrategy(), config.getOfflinePushStrategy(),
@@ -3104,6 +3104,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         checkControllerLeadershipFor(clusterName);
         Optional<Map<String, Integer>> regionToKafkaFetchQuota = params.getServerKafkaFetchQuotaRecordsPerSecond();
         Optional<Boolean> storeMigrationAllowed = params.getStoreMigrationAllowed();
+        Optional<Boolean> childControllerAdminTopicConsumptionEnabled = params.getChildControllerAdminTopicConsumptionEnabled();
 
         HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
         try (AutoCloseableLock ignore = resources.getClusterLockManager().createClusterWriteLock()) {
@@ -3118,6 +3119,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 }
             });
             storeMigrationAllowed.ifPresent(clonedClusterConfig::setStoreMigrationAllowed);
+            childControllerAdminTopicConsumptionEnabled.ifPresent(clonedClusterConfig::setChildControllerAdminTopicConsumptionEnabled);
             clusterConfigRepository.updateConfigs(clonedClusterConfig);
         }
     }
@@ -5777,6 +5779,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         } else {
             try (AutoCloseableLock ignore = resources.getClusterLockManager().createClusterWriteLock()) {
                 for (Store store : resources.getStoreMetadataRepository().getAllStores()) {
+                    // Do not delete system stores as some are initialized when controller starts and will not be copied from source fabric
+                    if (store.isSystemStore()) {
+                        continue;
+                    }
                     setStoreReadWriteability(clusterName, store.getName(), false);
                     deleteStore(clusterName, store.getName(), Store.IGNORE_VERSION, false, true);
                 }
@@ -5827,7 +5833,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         Set<String> topics = getTopicManager().listTopics();
         /**
          * So far, there is still a policy for Venice Store to keep the latest couple of topics to avoid KMM crash, so
-         * this function will skip the version topic check if the cluster is using KMM.
+         * this function will skip the Version Topic check for now.
          * Once Venice gets rid of KMM, we could consider to remove all the deprecated version topics.
          * So for topic check, we will ensure the RT topic for the Venice store will be deleted, and all other system
          * store topics.
@@ -5838,8 +5844,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 storeNameForTopic = Version.parseStoreFromRealTimeTopic(topic);
             } else if (Version.isVersionTopicOrStreamReprocessingTopic(topic)) {
                 storeNameForTopic = Version.parseStoreFromKafkaTopicName(topic);
-                if (storeNameForTopic.equals(storeName) && isUsingKMM(clusterName)) {
-                    /** Skip version topic check if the cluster is using KMM */
+                if (storeNameForTopic.equals(storeName)) {
+                    /** Skip Version Topic Check */
                     storeNameForTopic = null;
                 }
             }
@@ -6156,7 +6162,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         if (isParent()) {
             return true;
         }
-        return multiClusterConfigs.getControllerConfig(clusterName).isChildControllerAdminTopicConsumptionEnabled();
+        // Enable child controller admin topic consumption when both cfg2 config and live config are true.
+        boolean adminTopicConsumptionEnabled;
+        HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
+        try (AutoCloseableLock ignore = resources.getClusterLockManager().createClusterReadLock()) {
+            HelixReadWriteLiveClusterConfigRepository clusterConfigRepository = getReadWriteLiveClusterConfigRepository(clusterName);
+            adminTopicConsumptionEnabled = clusterConfigRepository.getConfigs().isChildControllerAdminTopicConsumptionEnabled()
+                    && multiClusterConfigs.getControllerConfig(clusterName).isChildControllerAdminTopicConsumptionEnabled();
+        }
+        return adminTopicConsumptionEnabled;
     }
 
     @Override

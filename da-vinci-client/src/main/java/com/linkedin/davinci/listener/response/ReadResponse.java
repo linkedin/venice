@@ -2,8 +2,6 @@ package com.linkedin.davinci.listener.response;
 
 import com.linkedin.venice.compression.CompressionStrategy;
 import io.netty.buffer.ByteBuf;
-import io.netty.handler.codec.http.HttpResponseStatus;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
@@ -190,6 +188,4 @@ public abstract class ReadResponse {
   public abstract ByteBuf getResponseBody();
 
   public abstract int getResponseSchemaIdHeader();
-
-  public abstract String getResponseOffsetHeader();
 }

@@ -60,6 +60,7 @@ public class ParticipantStoreConsumptionTask implements Runnable, Closeable {
     logger.info("Started running " + getClass().getSimpleName());
 
     while (!isClosing.get()) {
+      stats.recordHeartbeat();
       try {
         Thread.sleep(participantMessageConsumptionDelayMs);
 
@@ -89,6 +90,7 @@ public class ParticipantStoreConsumptionTask implements Runnable, Closeable {
             }
           } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
+            logger.info("Got InterruptedException while killing consumption task for topic: " + topic, e);
             break;
           } catch (Exception e) {
             if (!filter.isRedundantException(e.getMessage())) {
@@ -98,6 +100,7 @@ public class ParticipantStoreConsumptionTask implements Runnable, Closeable {
           }
         }
       } catch (InterruptedException e) {
+        logger.info("Received InterruptedException, and will exit", e);
         break;
       } catch (Exception e) {
         // Some expected exception can be thrown during initializing phase of the participant store or if participant

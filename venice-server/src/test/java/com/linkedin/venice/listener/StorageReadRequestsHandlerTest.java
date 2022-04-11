@@ -74,7 +74,6 @@ public class StorageReadRequestsHandlerTest {
     doReturn(testStore).when(testRepository).getLocalStorageEngine(topic);
 
     MetadataRetriever mockMetadataRetriever = mock(MetadataRetriever.class);
-    doReturn(Optional.of(expectedOffset)).when(mockMetadataRetriever).getOffset(Mockito.anyString(), Mockito.anyInt());
 
     ReadOnlySchemaRepository schemaRepo = mock(ReadOnlySchemaRepository.class);
     VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
@@ -109,11 +108,9 @@ public class StorageReadRequestsHandlerTest {
     Assert.assertEquals(outputArray.size(), 1);
     StorageResponseObject obj = (StorageResponseObject) outputArray.get(0);
     byte[] response = obj.getValueRecord().getDataInBytes();
-    long offset = obj.getOffset();
 
     //Verification
     Assert.assertEquals(response, valueString.getBytes());
-    Assert.assertEquals(offset, expectedOffset);
     Assert.assertEquals(obj.getValueRecord().getSchemaId(), schemaId);
   }
 
@@ -191,7 +188,6 @@ public class StorageReadRequestsHandlerTest {
     doThrow(new VeniceException(exceptionMessage)).when(testRepository).getLocalStorageEngine(topic);
 
     MetadataRetriever mockMetadataRetriever = mock(MetadataRetriever.class);
-    doReturn(Optional.of(expectedOffset)).when(mockMetadataRetriever).getOffset(Mockito.anyString(), Mockito.anyInt());
 
     ReadOnlySchemaRepository schemaRepo = mock(ReadOnlySchemaRepository.class);
     ReadOnlyStoreRepository metadataRepo = mock(ReadOnlyStoreRepository.class);
