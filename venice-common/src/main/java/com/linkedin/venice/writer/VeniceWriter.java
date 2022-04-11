@@ -54,6 +54,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
+import javax.annotation.Nonnull;
 import org.apache.avro.specific.FixedSize;
 import org.apache.avro.util.Utf8;
 import org.apache.commons.lang.Validate;
@@ -63,8 +64,6 @@ import org.apache.kafka.common.errors.TopicAuthorizationException;
 import org.apache.kafka.common.protocol.Errors;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-
-import javax.annotation.Nonnull;
 
 import static com.linkedin.venice.ConfigKeys.*;
 
@@ -213,6 +212,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   private final ChunkedValueManifestSerializer chunkedValueManifestSerializer = new ChunkedValueManifestSerializer(true);
   private final Map<CharSequence, CharSequence> defaultDebugInfo;
   private final boolean elapsedTimeForClosingSegmentEnabled;
+  private final Object[] partitionLocks;
 
   private String writerId;
   /**
@@ -291,6 +291,11 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       } else {
         this.numberOfPartitions = producer.getNumberOfPartitions(topicName);
       }
+      // Prepare locks for all partitions instead of using map to avoid the searching and creation cost during ingestion.
+      this.partitionLocks = new Object[numberOfPartitions];
+      for (int i=0; i < numberOfPartitions; i++) {
+        partitionLocks[i] = new Object();
+      }
       this.producerGUID = GuidUtils.getGUID(props);
       this.logger = LogManager.getLogger(VeniceWriter.class.getSimpleName() + " [" + GuidUtils.getHexFromGuid(producerGUID) + "]");
       OPEN_VENICE_WRITER_COUNT.incrementAndGet();
@@ -328,7 +333,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    * Call flush on the internal {@link KafkaProducerWrapper}.
    */
   public void flush() {
-    producer.flush();
+      producer.flush();
   }
 
   public String toString() {
@@ -967,34 +972,36 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    * @param updateDIV if true, the partition's segment's checksum will be updated and its sequence number incremented
    *                  if false, the checksum and seq# update are omitted, which is the right thing to do during retries
    */
-  private synchronized Future<RecordMetadata> sendMessage(
+  private Future<RecordMetadata> sendMessage(
       KeyProvider keyProvider,
       KafkaMessageEnvelopeProvider valueProvider,
       int partition,
       Callback callback,
       boolean updateDIV) {
-    KafkaMessageEnvelope kafkaValue = valueProvider.getKafkaMessageEnvelope();
-    KafkaKey key = keyProvider.getKey(kafkaValue.producerMetadata);
-    if (updateDIV) {
-      segmentsMap.get(partition).addToCheckSum(key, kafkaValue);
-    }
-    Callback messageCallback = callback;
-    if (null == callback) {
-      messageCallback = new KafkaMessageCallback(key, kafkaValue, logger);
-    } else if (callback instanceof CompletableFutureCallback) {
-      CompletableFutureCallback completableFutureCallBack = (CompletableFutureCallback)callback;
-      if (completableFutureCallBack.callback == null) {
-        completableFutureCallBack.callback = new KafkaMessageCallback(key, kafkaValue, logger);
+    synchronized (this.partitionLocks[partition]) {
+      KafkaMessageEnvelope kafkaValue = valueProvider.getKafkaMessageEnvelope();
+      KafkaKey key = keyProvider.getKey(kafkaValue.producerMetadata);
+      if (updateDIV) {
+        segmentsMap.get(partition).addToCheckSum(key, kafkaValue);
       }
-    }
+      Callback messageCallback = callback;
+      if (null == callback) {
+        messageCallback = new KafkaMessageCallback(key, kafkaValue, logger);
+      } else if (callback instanceof CompletableFutureCallback) {
+        CompletableFutureCallback completableFutureCallBack = (CompletableFutureCallback)callback;
+        if (completableFutureCallBack.callback == null) {
+          completableFutureCallBack.callback = new KafkaMessageCallback(key, kafkaValue, logger);
+        }
+      }
 
-    try {
-      return producer.sendMessage(topicName, key, kafkaValue, partition, messageCallback);
-    } catch (Exception e) {
-      if (ExceptionUtils.recursiveClassEquals(e, TopicAuthorizationException.class)) {
-        throw new TopicAuthorizationVeniceException("You do not have permission to write to this store. Please check that ACLs are set correctly.", e);
-      } else {
-        throw e;
+      try {
+        return producer.sendMessage(topicName, key, kafkaValue, partition, messageCallback);
+      } catch (Exception e) {
+        if (ExceptionUtils.recursiveClassEquals(e, TopicAuthorizationException.class)) {
+          throw new TopicAuthorizationVeniceException("You do not have permission to write to this store. Please check that ACLs are set correctly.", e);
+        } else {
+          throw e;
+        }
       }
     }
   }
@@ -1278,38 +1285,40 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    * @param debugInfo arbitrary key/value pairs of information that will be propagated alongside the control message.
    * @param callback callback to execute when the record has been acknowledged by the Kafka server (null means no callback)
    */
-  public synchronized void sendControlMessage(ControlMessage controlMessage, int partition, Map<String, String> debugInfo, Callback callback, LeaderMetadataWrapper leaderMetadataWrapper) {
-    // Work around until we upgrade to a more modern Avro version which supports overriding the
-    // String implementation.
-    controlMessage.debugInfo = getDebugInfo(debugInfo);
-    int attempt = 1;
-    boolean updateCheckSum = true;
-    while (true) {
-      try {
-        boolean isEndOfSegment = ControlMessageType.valueOf(controlMessage).equals(ControlMessageType.END_OF_SEGMENT);
-        sendMessage(this::getControlMessageKey, MessageType.CONTROL_MESSAGE, controlMessage, isEndOfSegment,
-            partition, callback, updateCheckSum, leaderMetadataWrapper, Optional.empty()).get();
-        return;
-      } catch (InterruptedException|ExecutionException e) {
-        if (e.getMessage().contains(Errors.UNKNOWN_TOPIC_OR_PARTITION.message())) {
-          /**
-           * Not a super clean way to match the exception, but unfortunately, since it is wrapped inside of an
-           * {@link ExecutionException}, there may be no other way.
-           */
-          String errorMessage = "Caught a UNKNOWN_TOPIC_OR_PARTITION error, attempt "
-              + attempt + "/" + maxAttemptsWhenTopicMissing;
-          if (attempt < maxAttemptsWhenTopicMissing) {
-            attempt++;
-            updateCheckSum = false; // checksum has already been updated, and should not be updated again for retries
-            logger.warn(errorMessage + ", will sleep " + sleepTimeMsWhenTopicMissing + " ms before the next attempt.");
+  public void sendControlMessage(ControlMessage controlMessage, int partition, Map<String, String> debugInfo, Callback callback, LeaderMetadataWrapper leaderMetadataWrapper) {
+    synchronized (this.partitionLocks[partition]) {
+      // Work around until we upgrade to a more modern Avro version which supports overriding the
+      // String implementation.
+      controlMessage.debugInfo = getDebugInfo(debugInfo);
+      int attempt = 1;
+      boolean updateCheckSum = true;
+      while (true) {
+        try {
+          boolean isEndOfSegment = ControlMessageType.valueOf(controlMessage).equals(ControlMessageType.END_OF_SEGMENT);
+          sendMessage(this::getControlMessageKey, MessageType.CONTROL_MESSAGE, controlMessage, isEndOfSegment, partition, callback, updateCheckSum, leaderMetadataWrapper, Optional.empty()).get();
+          return;
+        } catch (InterruptedException | ExecutionException e) {
+          if (e.getMessage().contains(Errors.UNKNOWN_TOPIC_OR_PARTITION.message())) {
+            /**
+             * Not a super clean way to match the exception, but unfortunately, since it is wrapped inside of an
+             * {@link ExecutionException}, there may be no other way.
+             */
+            String errorMessage = "Caught a UNKNOWN_TOPIC_OR_PARTITION error, attempt " + attempt
+                + "/" + maxAttemptsWhenTopicMissing;
+            if (attempt < maxAttemptsWhenTopicMissing) {
+              attempt++;
+              updateCheckSum = false; // checksum has already been updated, and should not be updated again for retries
+              logger.warn(errorMessage + ", will sleep " + sleepTimeMsWhenTopicMissing + " ms before the next attempt.");
+            } else {
+              throw new VeniceException(errorMessage + ", will bubble up.");
+            }
+          } else if (e.getCause() != null && e.getCause().getClass().equals(TopicAuthorizationException.class)) {
+            throw new TopicAuthorizationVeniceException(
+                "You do not have permission to write to this store. Please check that ACLs are set correctly.", e);
           } else {
-            throw new VeniceException(errorMessage + ", will bubble up.");
+            throw new VeniceException("Got an exception while trying to send a control message (" + ControlMessageType.valueOf(controlMessage)
+                .name() + ")", e);
           }
-        } else if (e.getCause() != null && e.getCause().getClass().equals(TopicAuthorizationException.class)) {
-          throw new TopicAuthorizationVeniceException("You do not have permission to write to this store. Please check that ACLs are set correctly.", e);
-        } else {
-          throw new VeniceException("Got an exception while trying to send a control message (" +
-              ControlMessageType.valueOf(controlMessage).name() + ")", e);
         }
       }
     }
@@ -1321,13 +1330,15 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    * Producer DIV will be recalculated (not DIV pass-through mode); checksum for the input partition in this producer
    * will also be updated.
    */
-  public synchronized Future<RecordMetadata> asyncSendControlMessage(ControlMessage controlMessage, int partition, Map<String, String> debugInfo, Callback callback,
+  public Future<RecordMetadata> asyncSendControlMessage(ControlMessage controlMessage, int partition, Map<String, String> debugInfo, Callback callback,
       LeaderMetadataWrapper leaderMetadataWrapper) {
-    controlMessage.debugInfo = getDebugInfo(debugInfo);
-    boolean updateCheckSum = true;
-    boolean isEndOfSegment = ControlMessageType.valueOf(controlMessage).equals(ControlMessageType.END_OF_SEGMENT);
-    return sendMessage(this::getControlMessageKey, MessageType.CONTROL_MESSAGE, controlMessage, isEndOfSegment,
-        partition, callback, updateCheckSum, leaderMetadataWrapper, Optional.empty());
+    synchronized (this.partitionLocks[partition]) {
+      controlMessage.debugInfo = getDebugInfo(debugInfo);
+      boolean updateCheckSum = true;
+      boolean isEndOfSegment = ControlMessageType.valueOf(controlMessage).equals(ControlMessageType.END_OF_SEGMENT);
+      return sendMessage(this::getControlMessageKey, MessageType.CONTROL_MESSAGE, controlMessage, isEndOfSegment,
+          partition, callback, updateCheckSum, leaderMetadataWrapper, Optional.empty());
+    }
   }
 
   /**
@@ -1460,25 +1471,26 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    * @param partition in which to start a new segment
    * @return the {@link Segment} which was just started
    */
-  private synchronized Segment startSegment(int partition) {
-    Segment currentSegment = segmentsMap.get(partition);
+  private Segment startSegment(int partition) {
+    synchronized (this.partitionLocks[partition]) {
+      Segment currentSegment = segmentsMap.get(partition);
 
-    if (null == currentSegment) {
-      currentSegment = new Segment(partition, 0, checkSumType);
-      segmentsMap.put(partition, currentSegment);
-    } else if (currentSegment.isEnded()) {
-      int newSegmentNumber = currentSegment.getSegmentNumber() + 1;
-      currentSegment = new Segment(partition, newSegmentNumber, checkSumType);
-      segmentsMap.put(partition, currentSegment);
+      if (null == currentSegment) {
+        currentSegment = new Segment(partition, 0, checkSumType);
+        segmentsMap.put(partition, currentSegment);
+      } else if (currentSegment.isEnded()) {
+        int newSegmentNumber = currentSegment.getSegmentNumber() + 1;
+        currentSegment = new Segment(partition, newSegmentNumber, checkSumType);
+        segmentsMap.put(partition, currentSegment);
+      }
+      segmentsCreationTimeMap.put(partition, time.getMilliseconds());
+      if (!currentSegment.isStarted()) {
+        sendStartOfSegment(partition, null);
+        currentSegment.start();
+      }
+
+      return currentSegment;
     }
-    segmentsCreationTimeMap.put(partition, time.getMilliseconds());
-    if (!currentSegment.isStarted()) {
-      sendStartOfSegment(partition, null);
-
-      currentSegment.start();
-    }
-
-    return currentSegment;
   }
 
   private void endAllSegments(boolean finalSegment) {
@@ -1488,21 +1500,23 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   /**
    * @param partition in which to end the current segment
    */
-  public synchronized void endSegment(int partition, boolean finalSegment) {
-    Segment currentSegment = segmentsMap.get(partition);
-    if (null == currentSegment) {
-      logger.warn("endSegment(partition " + partition + ") called but currentSegment == null. Ignoring.");
-    } else if (!currentSegment.isStarted()) {
-      logger.warn("endSegment(partition " + partition + ") called but currentSegment.begun == false. Ignoring.");
-    } else if (currentSegment.isEnded()) {
-      logger.warn("endSegment(partition " + partition + ") called but currentSegment.ended == true. Ignoring.");
-    } else {
-      sendEndOfSegment(
-          partition,
-          new HashMap<>(), // TODO: Add extra debugging info
-          finalSegment // TODO: This will not always be true, once we support streaming, or more than one segment per mapper in batch
-      );
-      currentSegment.end(finalSegment);
+  public void endSegment(int partition, boolean finalSegment) {
+    synchronized (this.partitionLocks[partition]) {
+      Segment currentSegment = segmentsMap.get(partition);
+      if (null == currentSegment) {
+        logger.warn("endSegment(partition " + partition + ") called but currentSegment == null. Ignoring.");
+      } else if (!currentSegment.isStarted()) {
+        logger.warn("endSegment(partition " + partition + ") called but currentSegment.begun == false. Ignoring.");
+      } else if (currentSegment.isEnded()) {
+        logger.warn("endSegment(partition " + partition + ") called but currentSegment.ended == true. Ignoring.");
+      } else {
+        sendEndOfSegment(
+            partition,
+            new HashMap<>(), // TODO: Add extra debugging info
+            finalSegment // TODO: This will not always be true, once we support streaming, or more than one segment per mapper in batch
+        );
+        currentSegment.end(finalSegment);
+      }
     }
   }
 

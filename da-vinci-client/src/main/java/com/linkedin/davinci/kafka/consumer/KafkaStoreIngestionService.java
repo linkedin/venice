@@ -90,6 +90,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import static com.linkedin.venice.ConfigConstants.*;
+import static com.linkedin.venice.ConfigKeys.*;
 import static java.lang.Thread.*;
 import static org.apache.kafka.common.config.SslConfigs.*;
 
@@ -219,6 +220,18 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     Properties veniceWriterProperties = veniceConfigLoader.getVeniceClusterConfig().getClusterProperties().toProperties();
     if (serverConfig.isKafkaOpenSSLEnabled()) {
       veniceWriterProperties.setProperty(SSL_CONTEXT_PROVIDER_CLASS_CONFIG, DEFAULT_KAFKA_SSL_CONTEXT_PROVIDER_CLASS_NAME);
+    }
+
+    /**
+     * Setup default batch size and linger time for better producing performance during server new push ingestion.
+     * These configs are set for large volume ingestion, not for integration test.
+     */
+    if (!veniceWriterProperties.containsKey(KAFKA_BATCH_SIZE)) {
+      veniceWriterProperties.put(KAFKA_BATCH_SIZE, DEFAULT_KAFKA_BATCH_SIZE);
+    }
+
+    if (!veniceWriterProperties.containsKey(KAFKA_LINGER_MS)) {
+      veniceWriterProperties.put(KAFKA_LINGER_MS, DEFAULT_KAFKA_LINGER_MS);
     }
 
     if (serverConfig.isSharedKafkaProducerEnabled()) {
