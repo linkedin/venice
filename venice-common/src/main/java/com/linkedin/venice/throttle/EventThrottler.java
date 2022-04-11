@@ -162,7 +162,7 @@ public class EventThrottler {
    * @param eventsSeen Number of events seen since last invocation. Basis for
    *        determining whether its necessary to sleep.
    */
-  public synchronized void maybeThrottle(double eventsSeen) {
+  public void maybeThrottle(double eventsSeen) {
     if (getMaxRatePerSecond() >= 0) {
       long now = time.milliseconds();
       try {

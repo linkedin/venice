@@ -30,5 +30,12 @@ public class ConfigConstants {
    * The default BoringSslContextProvider mainly relies on conscrypt.
    */
   public static final String DEFAULT_KAFKA_SSL_CONTEXT_PROVIDER_CLASS_NAME = "org.apache.kafka.common.security.ssl.BoringSslContextProvider";
+
+  /**
+   * Default Kafka batch size and linger time for better producer performance during ingestion.
+   */
+  public static final String DEFAULT_KAFKA_BATCH_SIZE = "524288";
+
+  public static final String DEFAULT_KAFKA_LINGER_MS = "1000";
   // End of server config default value
 }

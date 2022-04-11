@@ -44,6 +44,7 @@ public class IntegrationTestUtils {
         .put(KAFKA_ZK_ADDRESS, kafkaBrokerWrapper.getZkAddress())
         .put(KAFKA_REQUEST_TIMEOUT_MS, 5000)
         .put(KAFKA_DELIVERY_TIMEOUT_MS, 5000)
+        .put(KAFKA_LINGER_MS, 0)
         .put(KAFKA_MAX_BLOCK_MS, 60000)
 
         // Other configs

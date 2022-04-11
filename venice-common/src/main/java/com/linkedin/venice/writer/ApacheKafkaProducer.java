@@ -91,7 +91,7 @@ public class ApacheKafkaProducer implements KafkaProducerWrapper {
       properties.put(ProducerConfig.COMPRESSION_TYPE_CONFIG, "gzip");
     }
 
-    //Setup ssl config if needed.
+    // Setup ssl config if needed.
     if (KafkaSSLUtils.validateAndCopyKafakaSSLConfig(props, properties)) {
       LOGGER.info("Will initialize an SSL Kafka producer");
     } else {
