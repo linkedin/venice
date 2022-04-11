@@ -168,6 +168,12 @@ public class ControllerApiConstants {
   public static final String ALLOW_STORE_MIGRATION = "allow.store.migration";
 
   /**
+   * Whether admin consumption should be enabled. This config will only control the behavior in Child Controller.
+   * The value for this config is read from cluster configs in Zk.
+   */
+  public static final String CHILD_CONTROLLER_ADMIN_TOPIC_CONSUMPTION_ENABLED = "child.controller.admin.topic.consumption.enabled";
+
+  /**
    * For Blueshift data copy over across fabrics.
    */
   public static final String SOURCE_FABRIC = "source_fabric";

@@ -99,7 +99,9 @@ public enum Command {
           INCREMENTAL_PUSH_POLICY, BACKUP_VERSION_RETENTION_DAY, REPLICATION_FACTOR, NATIVE_REPLICATION_SOURCE_FABRIC, REPLICATE_ALL_CONFIGS,
           ACTIVE_ACTIVE_REPLICATION_ENABLED, REGIONS_FILTER, APPLY_TARGET_VERSION_FILTER_FOR_INC_PUSH, META_SYSTEM_STORE_ENABLED}),
   UPDATE_CLUSTER_CONFIG("update-cluster-config", "Update live cluster configs",
-      new Arg[] {URL, CLUSTER}, new Arg[] {FABRIC, SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND, ALLOW_STORE_MIGRATION}),
+      new Arg[] {URL, CLUSTER},
+      new Arg[] {FABRIC, SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND, ALLOW_STORE_MIGRATION,
+          CHILD_CONTROLLER_ADMIN_TOPIC_CONSUMPTION_ENABLED}),
   EMPTY_PUSH("empty-push", "Do an empty push into an existing store",
       new Arg[]{URL, CLUSTER, STORE, PUSH_ID, STORE_SIZE}),
   ENABLE_THROTTLING("enable-throttling", "Enable the feature that throttling read request on all routers",
@@ -213,7 +215,13 @@ public enum Command {
   UPDATE_KAFKA_TOPIC_LOG_COMPACTION("update-kafka-topic-log-compaction", "Update log compaction config of a topic through controllers",
       new Arg[]{URL, KAFKA_TOPIC_NAME, KAFKA_TOPIC_LOG_COMPACTION_ENABLED}, new Arg[]{CLUSTER}),
   UPDATE_KAFKA_TOPIC_RETENTION("update-kafka-topic-retention", "Update retention config of a topic through controllers",
-      new Arg[]{URL, KAFKA_TOPIC_NAME, KAFKA_TOPIC_RETENTION_IN_MS}, new Arg[]{CLUSTER});
+      new Arg[]{URL, KAFKA_TOPIC_NAME, KAFKA_TOPIC_RETENTION_IN_MS}, new Arg[]{CLUSTER}),
+  START_FABRIC_BUILDOUT("start-fabric-buildout", "Start building a cluster in destination fabric by copying stores metadata and data from source fabric",
+      new Arg[] {URL, CLUSTER, SOURCE_FABRIC, DEST_FABRIC}, new Arg[] {RETRY}),
+  CHECK_FABRIC_BUILDOUT_STATUS("check-fabric-buildout-status", "Check the status of cluster building in destination fabric",
+      new Arg[] {URL, CLUSTER, SOURCE_FABRIC, DEST_FABRIC}),
+  END_FABRIC_BUILDOUT("end-fabric-buildout", "End the building of a cluster in destination fabric",
+      new Arg[] {URL, CLUSTER, SOURCE_FABRIC, DEST_FABRIC});
 
   private final String commandName;
   private final String description;

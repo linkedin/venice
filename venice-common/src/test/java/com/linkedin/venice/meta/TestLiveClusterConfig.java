@@ -12,8 +12,8 @@ public class TestLiveClusterConfig {
   private static final String NON_CONFIGURED_REGION = "NonConfiguredRegion";
 
   private static final ObjectMapper objectMapper = new ObjectMapper();
-  static final String serialized = String.format("{\"%s\":{\"%s\": 1500},\"%s\":true}", ConfigKeys.SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND,
-      CONFIGURED_REGION, ConfigKeys.ALLOW_STORE_MIGRATION);
+  static final String serialized = String.format("{\"%s\":{\"%s\": 1500},\"%s\":true,\"%s\":true}", ConfigKeys.SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND,
+      CONFIGURED_REGION, ConfigKeys.ALLOW_STORE_MIGRATION, ConfigKeys.CHILD_CONTROLLER_ADMIN_TOPIC_CONSUMPTION_ENABLED);
 
   @Test
   public void deserializesAsJson() throws IOException {

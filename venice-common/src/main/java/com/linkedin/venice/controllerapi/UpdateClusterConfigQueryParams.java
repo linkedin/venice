@@ -44,6 +44,14 @@ public class UpdateClusterConfigQueryParams extends QueryParams {
     return getBoolean(ALLOW_STORE_MIGRATION);
   }
 
+  public UpdateClusterConfigQueryParams setChildControllerAdminTopicConsumptionEnabled(boolean consumptionEnabled) {
+    return putBoolean(CHILD_CONTROLLER_ADMIN_TOPIC_CONSUMPTION_ENABLED, consumptionEnabled);
+  }
+
+  public Optional<Boolean> getChildControllerAdminTopicConsumptionEnabled() {
+    return getBoolean(CHILD_CONTROLLER_ADMIN_TOPIC_CONSUMPTION_ENABLED);
+  }
+
   //***************** above this line are getters and setters *****************
 
   private UpdateClusterConfigQueryParams putBoolean(String name, boolean value) {

@@ -17,7 +17,6 @@ public class HttpConstants {
   public static final String HTTPS_POST = "POST";
 
 
-  public static final String VENICE_OFFSET = "X-VENICE-OFFSET";
   public static final String VENICE_STORE_VERSION = "X-VENICE-STORE-VERSION";
   public static final String VENICE_PARTITION = "X-VENICE-PARTITION";
   public static final String VENICE_API_VERSION = "X-VENICE-API-VERSION";

@@ -198,7 +198,7 @@ public class TestAdminToolEndToEnd {
               "--cluster", clusterName,
               "--fabric", "dc-0"};
       AdminTool.main(wipeClusterArgs3);
-      MultiStoreResponse multiStoreResponse = controllerClient.queryStoreList();
+      MultiStoreResponse multiStoreResponse = controllerClient.queryStoreList(false);
       Assert.assertEquals(multiStoreResponse.getStores().length, 0);
 
       // Redo fabric buildup. Create the store and version again.

@@ -4,6 +4,7 @@ import com.linkedin.venice.client.store.QueryTool;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.AclResponse;
+import com.linkedin.venice.controllerapi.AdminTopicMetadataResponse;
 import com.linkedin.venice.controllerapi.ClusterStaleDataAuditResponse;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
@@ -24,6 +25,7 @@ import com.linkedin.venice.controllerapi.NodeReplicasReadinessResponse;
 import com.linkedin.venice.controllerapi.NodeStatusResponse;
 import com.linkedin.venice.controllerapi.OwnerResponse;
 import com.linkedin.venice.controllerapi.PartitionResponse;
+import com.linkedin.venice.controllerapi.ReadyForDataRecoveryResponse;
 import com.linkedin.venice.controllerapi.RoutersClusterConfigResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StoreComparisonResponse;
@@ -55,6 +57,7 @@ import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
+import com.linkedin.venice.utils.RetryUtils;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -65,8 +68,10 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -437,6 +442,15 @@ public class AdminTool {
         case UPDATE_KAFKA_TOPIC_RETENTION:
           updateKafkaTopicRetention(cmd);
           break;
+        case START_FABRIC_BUILDOUT:
+          startFabricBuildout(cmd);
+          break;
+        case CHECK_FABRIC_BUILDOUT_STATUS:
+          checkFabricBuildoutStatus(cmd);
+          break;
+        case END_FABRIC_BUILDOUT:
+          endFabricBuildout(cmd);
+          break;
         default:
           StringJoiner availableCommands = new StringJoiner(", ");
           for (Command c : Command.values()){
@@ -780,6 +794,11 @@ public class AdminTool {
     String storeMigrationAllowed = getOptionalArgument(cmd, Arg.ALLOW_STORE_MIGRATION);
     if (storeMigrationAllowed != null) {
       params.setStoreMigrationAllowed(Boolean.parseBoolean(storeMigrationAllowed));
+    }
+
+    String adminTopicConsumptionEnabled = getOptionalArgument(cmd, Arg.CHILD_CONTROLLER_ADMIN_TOPIC_CONSUMPTION_ENABLED);
+    if (adminTopicConsumptionEnabled != null) {
+      params.setChildControllerAdminTopicConsumptionEnabled(Boolean.parseBoolean(adminTopicConsumptionEnabled));
     }
 
     return params;
@@ -1971,7 +1990,6 @@ public class AdminTool {
   }
 
   private static void compareStore(CommandLine cmd) {
-    String clusterName = getRequiredArgument(cmd, Arg.CLUSTER);
     String storeName = getRequiredArgument(cmd, Arg.STORE);
     String fabricA = getRequiredArgument(cmd, Arg.FABRIC_A);
     String fabricB = getRequiredArgument(cmd, Arg.FABRIC_B);
@@ -1980,23 +1998,7 @@ public class AdminTool {
     if (response.isError()) {
       throw new VeniceException("Error comparing store " + storeName + ". Error: " + response.getError());
     }
-    if (isStoreReadyInFabricB(response)) {
-      System.out.println("Store " + storeName + " is ready in " + fabricB + " " + clusterName);
-    } else {
-      System.out.println("Store " + storeName + " is not ready in " + fabricB + " " + clusterName + ". Details:");
-      printObject(response);
-    }
-  }
-
-  private static boolean isStoreReadyInFabricB(StoreComparisonResponse response) {
-    // Criteria: store properties, schemas, version states must be identical. Criteria could be relaxed in the future.
-    if (!response.getPropertyDiff().isEmpty()) {
-      return false;
-    }
-    if (!response.getSchemaDiff().isEmpty()) {
-      return false;
-    }
-    return response.getVersionStateDiff().isEmpty();
+    printObject(response);
   }
 
   private static void copyOverStoresMetadata(CommandLine cmd) {
@@ -2050,6 +2052,197 @@ public class AdminTool {
   @FunctionalInterface
   interface UpdateTopicConfigFunction {
     ControllerResponse apply(ControllerClient controllerClient);
+  }
+
+  private static void startFabricBuildout(CommandLine cmd) {
+    String clusterName = getRequiredArgument(cmd, Arg.CLUSTER);
+    String srcFabric = getRequiredArgument(cmd, Arg.SOURCE_FABRIC);
+    String destFabric = getRequiredArgument(cmd, Arg.DEST_FABRIC);
+    boolean retry = cmd.hasOption(Arg.RETRY.toString());
+    String latestStep = "";
+
+    try {
+      latestStep = "constructing child controller clients";
+      Map<String, String> map = getAndCheckChildControllerUrlMap(clusterName, Optional.of(srcFabric), Optional.of(destFabric));
+      ControllerClient srcFabricChildControllerClient = new ControllerClient(clusterName, map.get(srcFabric), sslFactory);
+      ControllerClient destFabricChildControllerClient = new ControllerClient(clusterName, map.get(destFabric), sslFactory);
+
+      latestStep = "step1: disallowing store migration from/to cluster " + clusterName;
+      System.out.println(latestStep);
+      checkControllerResponse(controllerClient.updateClusterConfig(new UpdateClusterConfigQueryParams()
+          .setStoreMigrationAllowed(false)));
+
+      latestStep = "step2: disabling " + clusterName + " admin topic consumption in dest fabric child controller";
+      System.out.println(latestStep);
+      checkControllerResponse(destFabricChildControllerClient.updateClusterConfig(new UpdateClusterConfigQueryParams()
+          .setChildControllerAdminTopicConsumptionEnabled(false)));
+
+      if (!retry) {
+        latestStep = "step3: wiping " + clusterName + " in dest fabric";
+        System.out.println(latestStep);
+        checkControllerResponse(controllerClient.wipeCluster(destFabric, Optional.empty(), Optional.empty()));
+
+        latestStep = "step4: copying cluster-level admin topic execution id and offsets";
+        System.out.println(latestStep);
+        AdminTopicMetadataResponse response = checkControllerResponse(srcFabricChildControllerClient
+            .getAdminTopicMetadata(Optional.empty()));
+        checkControllerResponse(destFabricChildControllerClient.updateAdminTopicMetadata(response.getExecutionId(),
+            Optional.empty(), Optional.of(response.getOffset()), Optional.of(response.getUpstreamOffset())));
+      }
+
+      latestStep = "step5: copying store metadata and starting data recovery for non-existent stores in dest fabric";
+      System.out.println(latestStep);
+      List<String> failedStores = copyStoreMetadataAndStartDataRecovery(srcFabric, destFabric,
+          srcFabricChildControllerClient, destFabricChildControllerClient);
+
+      if (failedStores.isEmpty()) {
+        latestStep = "step6: enabling admin consumption in dest fabric child controller";
+        System.out.println(latestStep);
+        checkControllerResponse(destFabricChildControllerClient.updateClusterConfig(new UpdateClusterConfigQueryParams()
+            .setChildControllerAdminTopicConsumptionEnabled(true)));
+        System.out.println("Command succeeded. Please run check-fabric-buildout-status to track buildout progress");
+      } else {
+        System.err.println("Command failed for some stores " + failedStores
+            + " Please investigate and rerun start-fabric-buildout with --retry option");
+      }
+    } catch (Exception e) {
+      System.err.println("Command failed during " + latestStep + ". Exception: " + e);
+    }
+  }
+
+  private static List<String> copyStoreMetadataAndStartDataRecovery(String srcFabric, String destFabric,
+      ControllerClient srcFabricChildControllerClient, ControllerClient destFabricChildControllerClient) {
+    List<String> failedStores = new ArrayList<>();
+    int maxAttempts = 3;
+    long delayInMillis = 10000;
+    MultiStoreResponse multiStoreResponse = checkControllerResponse(srcFabricChildControllerClient.queryStoreList(false));
+
+    for (String storeName : multiStoreResponse.getStores()) {
+      if (destFabricChildControllerClient.getStore(storeName).getStore() == null) {
+        System.out.println("Start copying store " + storeName + " metadata and data from src to dest fabric...");
+        for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+          try {
+            StoreInfo storeInfo = checkControllerResponse(controllerClient.copyOverStoreMetadata(srcFabric, destFabric,
+                storeName)).getStore();
+            for (Version version: storeInfo.getVersions()) {
+              checkControllerResponse(controllerClient.prepareDataRecovery(srcFabric, destFabric, storeName,
+                  version.getNumber(), Optional.empty()));
+              RetryUtils.executeWithMaxAttempt(() -> {
+                ReadyForDataRecoveryResponse response = checkControllerResponse(controllerClient
+                    .isStoreVersionReadyForDataRecovery(srcFabric, destFabric, storeName, version.getNumber(), Optional.empty()));
+                if (!response.isReady()) {
+                  throw new VeniceException("Store " + storeName + " version " + version.getNumber()
+                      + " is not ready for data recovery: " + response.getReason());
+                }
+              }, maxAttempts, Duration.ofMillis(delayInMillis), Collections.singletonList(VeniceException.class));
+              checkControllerResponse(controllerClient.dataRecovery(srcFabric, destFabric, storeName,
+                  version.getNumber(), false, true, Optional.empty()));
+            }
+            break;
+          } catch (Exception e) {
+            System.err.println("Failed to copy store " + storeName + " from src to dest fabric, attempt=" + attempt
+                + "/" + maxAttempts + ". Exception: " + e);
+            if (attempt == maxAttempts) {
+              failedStores.add(storeName);
+              System.err.println("Wiping store " + storeName + " in dest fabric. Store copy over failed after retries");
+              checkControllerResponse(controllerClient.wipeCluster(destFabric, Optional.of(storeName), Optional.empty()));
+            } else {
+              System.err.println("Wiping store " + storeName + " in dest fabric. Will retry store copy over in "
+                  + delayInMillis + " ms");
+              checkControllerResponse(controllerClient.wipeCluster(destFabric, Optional.of(storeName), Optional.empty()));
+              Utils.sleep(delayInMillis);
+            }
+          }
+        }
+      }
+    }
+    return failedStores;
+  }
+
+  private static void checkFabricBuildoutStatus(CommandLine cmd) {
+    String clusterName = getRequiredArgument(cmd, Arg.CLUSTER);
+    String srcFabric = getRequiredArgument(cmd, Arg.SOURCE_FABRIC);
+    String destFabric = getRequiredArgument(cmd, Arg.DEST_FABRIC);
+
+    Map<String, String> map = getAndCheckChildControllerUrlMap(clusterName, Optional.of(srcFabric), Optional.empty());
+    ControllerClient srcFabricChildControllerClient = new ControllerClient(clusterName, map.get(srcFabric), sslFactory);
+
+    MultiStoreResponse multiStoreResponse = checkControllerResponse(srcFabricChildControllerClient.queryStoreList(false));
+    double numberOfStores = multiStoreResponse.getStores().length;
+    List<String> completedStores = new ArrayList<>();
+    List<String> pendingStores = new ArrayList<>();
+    List<String> failedStores = new ArrayList<>();
+    List<String> unknownStores = new ArrayList<>();
+    for (String storeName : multiStoreResponse.getStores()) {
+      try {
+        StoreComparisonResponse response = checkControllerResponse(controllerClient.compareStore(storeName, srcFabric, destFabric));
+        if (response.getVersionStateDiff().isEmpty() && response.getPropertyDiff().isEmpty()
+            && response.getSchemaDiff().isEmpty()) {
+          completedStores.add(storeName);
+        } else if (!response.getVersionStateDiff().isEmpty()) {
+          Map<Integer, VersionStatus> destFabricVersionStateDiffMap = response.getVersionStateDiff().getOrDefault(
+              destFabric, Collections.emptyMap());
+          for (Map.Entry<Integer, VersionStatus> entry : destFabricVersionStateDiffMap.entrySet()) {
+            if (VersionStatus.ERROR.equals(entry.getValue())) {
+              failedStores.add(storeName);
+              break;
+            }
+          }
+          if (!failedStores.contains(storeName)) {
+            pendingStores.add(storeName);
+          }
+        } else {
+          pendingStores.add(storeName);
+        }
+      } catch (Exception e) {
+        unknownStores.add(storeName);
+      }
+    }
+
+    System.out.println("=================== Fabric Buildout Report ====================");
+    System.out.println(completedStores.size() / numberOfStores * 100 + "% stores in dest fabric are ready : "+ completedStores);
+    System.out.println(pendingStores.size() / numberOfStores * 100 + "% stores in dest fabric are still in progress: " + pendingStores);
+    System.out.println(failedStores.size() / numberOfStores * 100 + "% stores in dest fabric have ingestion error: " + failedStores);
+    System.out.println(unknownStores.size() / numberOfStores * 100 + "% stores are not comparable"
+        + " (stores do not exist in dest fabric or compare-store requests fail): " + unknownStores);
+  }
+
+  private static void endFabricBuildout(CommandLine cmd) {
+    String clusterName = getRequiredArgument(cmd, Arg.CLUSTER);
+    try {
+      getAndCheckChildControllerUrlMap(clusterName, Optional.empty(), Optional.empty());
+      System.out.println("Enabling store migration from/to cluster " + clusterName);
+      checkControllerResponse(controllerClient.updateClusterConfig(new UpdateClusterConfigQueryParams()
+          .setStoreMigrationAllowed(true)));
+      System.out.println("Command succeeded. Fabric buildout ended.");
+    } catch (Exception e) {
+      System.err.println("Command failed. Exception: " + e);
+    }
+  }
+
+  private static Map<String, String> getAndCheckChildControllerUrlMap(String clusterName, Optional<String> srcFabric,
+      Optional<String> destFabric) {
+    Map<String, String> childControllerUrlMap = checkControllerResponse(
+        controllerClient.listChildControllers(clusterName)).getChildClusterMap();
+    if (childControllerUrlMap == null) {
+      throw new VeniceException("ERROR: Child controller could not run fabric buildout commands");
+    }
+    if (srcFabric.isPresent() && !childControllerUrlMap.containsKey(srcFabric.get())) {
+      throw new VeniceException("ERROR: Parent controller does not know the src fabric controller url "
+          + childControllerUrlMap);
+    }
+    if (destFabric.isPresent() && !childControllerUrlMap.containsKey(destFabric.get())) {
+      throw new VeniceException("ERROR: Parent controller does not know the dest fabric controller url "
+          + childControllerUrlMap);
+    }
+    return childControllerUrlMap;
+  }
+
+  private static <T extends ControllerResponse> T checkControllerResponse(T controllerResponse) {
+    if (controllerResponse.isError()) {
+      throw new VeniceException("ControllerResponse has error " + controllerResponse.getError());
+    }
+    return controllerResponse;
   }
 
   private static void printErrAndExit(String err) {

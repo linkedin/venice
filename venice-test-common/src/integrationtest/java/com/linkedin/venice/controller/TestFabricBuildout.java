@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller;
 
+import com.linkedin.venice.AdminTool;
 import com.linkedin.venice.controllerapi.AdminTopicMetadataResponse;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
@@ -17,6 +18,7 @@ import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.utils.TestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.VeniceProperties;
 import java.util.List;
 import java.util.Optional;
 import java.util.Properties;
@@ -43,8 +45,14 @@ public class TestFabricBuildout {
 
   @BeforeClass
   public void setUp() {
-    Properties properties = new Properties();
-    properties.setProperty(CONTROLLER_ENABLE_BATCH_PUSH_FROM_ADMIN_IN_CHILD, "true");
+    Properties childControllerProperties = new Properties();
+    childControllerProperties.setProperty(CONTROLLER_ENABLE_BATCH_PUSH_FROM_ADMIN_IN_CHILD, "true");
+    childControllerProperties.setProperty(ALLOW_CLUSTER_WIPE, "true");
+    childControllerProperties.setProperty(USE_KAFKA_MIRROR_MAKER, "false");
+    childControllerProperties.setProperty(ENABLE_LEADER_FOLLOWER_AS_DEFAULT_FOR_ALL_STORES, "true");
+    childControllerProperties.setProperty(ENABLE_NATIVE_REPLICATION_AS_DEFAULT_FOR_BATCH_ONLY, "true");
+    Properties serverProperties = new Properties();
+    serverProperties.put(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 1L);
     multiColoMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiColoMultiClusterWrapper(
         NUMBER_OF_CHILD_DATACENTERS,
         NUMBER_OF_CLUSTERS,
@@ -54,8 +62,8 @@ public class TestFabricBuildout {
         1,
         1,
         Optional.empty(),
-        Optional.of(properties),
-        Optional.empty(),
+        Optional.of(childControllerProperties),
+        Optional.of(new VeniceProperties(serverProperties)),
         false,
         MirrorMakerWrapper.DEFAULT_TOPIC_ALLOWLIST);
 
@@ -100,6 +108,44 @@ public class TestFabricBuildout {
   }
 
   @Test(timeOut = TEST_TIMEOUT)
+  public void testStartFabricBuildout() throws Exception {
+    String clusterName = CLUSTER_NAMES[0];
+    VeniceControllerWrapper parentController = parentControllers.stream().filter(c -> c.isLeaderController(clusterName)).findAny().get();
+    try (ControllerClient childControllerClient0 = new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
+        ControllerClient childControllerClient1 = new ControllerClient(clusterName, childDatacenters.get(1).getControllerConnectString())) {
+      String testStoreName1 = Utils.getUniqueString("test-store");
+      NewStoreResponse newStoreResponse = childControllerClient0.createNewStore(testStoreName1, "test", "\"string\"", "\"string\"");
+      Assert.assertFalse(newStoreResponse.isError());
+      checkStoreConfig(childControllerClient0, testStoreName1);
+      VersionCreationResponse versionCreationResponse = childControllerClient0.emptyPush(testStoreName1,
+          Utils.getUniqueString("empty-push-1"), 1L);
+      Assert.assertFalse(versionCreationResponse.isError());
+      String testStoreName2 = Utils.getUniqueString("test-store");
+      newStoreResponse = childControllerClient0.createNewStore(testStoreName2, "test", "\"string\"", "\"string\"");
+      Assert.assertFalse(newStoreResponse.isError());
+      checkStoreConfigAndCurrentVersion(childControllerClient0, testStoreName1, 1);
+      checkStoreConfig(childControllerClient0, testStoreName2);
+
+      // Create some leftovers in the dest fabric. The leftovers should be cleaned up during fabric buildout.
+      newStoreResponse = childControllerClient1.createNewStore(testStoreName1, "test", "\"string\"", "\"string\"");
+      Assert.assertFalse(newStoreResponse.isError());
+      childControllerClient1.updateStore(testStoreName1, new UpdateStoreQueryParams().setPartitionCount(1));
+      versionCreationResponse = childControllerClient1.emptyPush(testStoreName1, Utils.getUniqueString("empty-push-1"), 1L);
+      Assert.assertFalse(versionCreationResponse.isError());
+      checkStoreConfigAndCurrentVersion(childControllerClient1, testStoreName1, 1);
+
+      String[] args = {"--start-fabric-buildout", "--url", parentController.getControllerUrl(),
+          "--cluster", clusterName,
+          "--source-fabric", "dc-0",
+          "--dest-fabric", "dc-1"};
+      AdminTool.main(args);
+
+      checkStoreConfigAndCurrentVersion(childControllerClient1, testStoreName1, 1);
+      checkStoreConfig(childControllerClient1, testStoreName2);
+    }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
   public void testCompareStore() {
     String clusterName = CLUSTER_NAMES[0];
     VeniceControllerWrapper parentController = parentControllers.stream().filter(c -> c.isLeaderController(clusterName)).findAny().get();
@@ -131,13 +177,22 @@ public class TestFabricBuildout {
     }
   }
 
-  private static void checkStoreConfig(ControllerClient childControllerClient,
-      String storeName) {
+  private static void checkStoreConfig(ControllerClient childControllerClient, String storeName) {
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, false, true, () -> {
       StoreResponse storeResponse = childControllerClient.getStore(storeName);
       Assert.assertFalse(storeResponse.isError());
       StoreInfo storeInfo = storeResponse.getStore();
       Assert.assertNotNull(storeInfo);
+    });
+  }
+
+  private static void checkStoreConfigAndCurrentVersion(ControllerClient childControllerClient, String storeName,
+      int versionNum) {
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, false, true, () -> {
+      StoreResponse storeResponse = childControllerClient.getStore(storeName);
+      Assert.assertFalse(storeResponse.isError());
+      Assert.assertNotNull(storeResponse.getStore());
+      Assert.assertEquals(storeResponse.getStore().getCurrentVersion(), versionNum);
     });
   }
 }

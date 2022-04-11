@@ -9,6 +9,7 @@ import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.utils.KafkaSSLUtils;
 import com.linkedin.venice.utils.VeniceProperties;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
@@ -33,7 +34,7 @@ public class ApacheKafkaProducer implements KafkaProducerWrapper {
   public static final String PROPERTIES_KAFKA_PREFIX = "kafka.";
   private static final Logger LOGGER = LogManager.getLogger(ApacheKafkaProducer.class);
 
-  private final KafkaProducer<KafkaKey, KafkaMessageEnvelope> producer;
+  private KafkaProducer<KafkaKey, KafkaMessageEnvelope> producer;
 
   public ApacheKafkaProducer(VeniceProperties props) {
     this(props, true);
@@ -154,6 +155,7 @@ public class ApacheKafkaProducer implements KafkaProducerWrapper {
    * @return the number of partitions for this topic.
    */
   public int getNumberOfPartitions(String topic) {
+    ensureProducerIsNotClosed();
     // TODO: This blocks forever. We need to be able to interrupt it and throw if it "times out".
     return producer.partitionsFor(topic).size();
   }
@@ -171,11 +173,18 @@ public class ApacheKafkaProducer implements KafkaProducerWrapper {
     return sendMessage(kafkaRecord, callback);
   }
 
+  private void ensureProducerIsNotClosed() {
+    if (producer == null) {
+      throw new VeniceException("The internal KafkaProducer has been closed");
+    }
+  }
+
   @Override
   public Future<RecordMetadata> sendMessage(ProducerRecord<KafkaKey, KafkaMessageEnvelope> record, Callback callback) {
+    ensureProducerIsNotClosed();
     try {
       return producer.send(record, callback);
-     }catch (Exception e) {
+     } catch (Exception e) {
       throw new VeniceException(
           "Got an error while trying to produce message into Kafka. Topic: '" + record.topic() + "', partition: " + record.partition(), e);
     }
@@ -190,27 +199,28 @@ public class ApacheKafkaProducer implements KafkaProducerWrapper {
 
   @Override
   public void close(int closeTimeOutMs) {
-    if (producer != null) {
-      // Flush out all the messages in the producer buffer
-      producer.flush();
-      LOGGER.info("Flushed all the messages in producer before closing");
-      producer.close(closeTimeOutMs, TimeUnit.MILLISECONDS);
-    }
+    close(closeTimeOutMs, true);
   }
 
   @Override
   public void close(int closeTimeOutMs, boolean doFlush) {
     if (producer != null) {
       if (doFlush) {
-        close(closeTimeOutMs);
-      } else {
-        producer.close(closeTimeOutMs, TimeUnit.MILLISECONDS);
+        // Flush out all the messages in the producer buffer
+        producer.flush();
+        LOGGER.info("Flushed all the messages in producer before closing");
       }
+      producer.close(closeTimeOutMs, TimeUnit.MILLISECONDS);
+      // Recycle the internal buffer allocated by KafkaProducer ASAP.
+      producer = null;
     }
   }
 
   @Override
   public Map<String, Double> getMeasurableProducerMetrics() {
+    if (producer == null) {
+      return Collections.emptyMap();
+    }
     Map<String, Double> extractedMetrics = new HashMap<>();
     for (Map.Entry<MetricName, ? extends Metric> entry : producer.metrics().entrySet()) {
       try {
@@ -232,6 +242,7 @@ public class ApacheKafkaProducer implements KafkaProducerWrapper {
    */
   @Override
   public String getBrokerLeaderHostname(String topic, int partition) {
+    ensureProducerIsNotClosed();
     Node leader = producer.partitionsFor(topic).get(partition).leader();
     if (leader != null) {
       return leader.host() + "/" + leader.id();

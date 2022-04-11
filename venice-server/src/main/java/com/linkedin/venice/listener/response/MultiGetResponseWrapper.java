@@ -7,6 +7,10 @@ import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordSerializer;
 
 public class MultiGetResponseWrapper extends MultiKeyResponseWrapper<MultiGetResponseRecordV1> {
+  public MultiGetResponseWrapper(int maxKeyCount) {
+    super(maxKeyCount);
+  }
+
   @Override
   protected byte[] serializedResponse() {
     RecordSerializer<MultiGetResponseRecordV1> serializer =

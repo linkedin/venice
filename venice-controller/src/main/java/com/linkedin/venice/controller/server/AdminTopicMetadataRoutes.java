@@ -40,8 +40,8 @@ public class AdminTopicMetadataRoutes extends AbstractRoute {
         responseObject.setExecutionId(AdminTopicMetadataAccessor.getExecutionId(metadata));
         if (!storeName.isPresent()) {
           Pair<Long, Long> offsets = AdminTopicMetadataAccessor.getOffsets(metadata);
-          responseObject.setOffset(Optional.of(offsets.getFirst()));
-          responseObject.setUpstreamOffset(Optional.of(offsets.getSecond()));
+          responseObject.setOffset(offsets.getFirst());
+          responseObject.setUpstreamOffset(offsets.getSecond());
         }
       } catch (Throwable e) {
         responseObject.setError(e.getMessage());

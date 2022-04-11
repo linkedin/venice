@@ -4,11 +4,9 @@ import com.linkedin.davinci.listener.response.AdminResponse;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.utils.ComplementSet;
 import java.nio.ByteBuffer;
-import java.util.Optional;
 
 
 public interface MetadataRetriever {
-  Optional<Long> getOffset(String topicName, int partitionId);
   boolean isStoreVersionChunked(String topicName);
   CompressionStrategy getStoreVersionCompressionStrategy(String topicName);
   ByteBuffer getStoreVersionCompressionDictionary(String topicName);

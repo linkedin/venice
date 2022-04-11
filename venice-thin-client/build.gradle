@@ -31,5 +31,7 @@ dependencies {
 
   testImplementation project(':venice-common')
   testImplementation project(':venice-test-common')
+  testImplementation libraries.kafkaClientsTest
+  testImplementation libraries.kafkaClients
   testImplementation libraries.netty
 }

@@ -3484,13 +3484,20 @@ public class VeniceParentHelixAdmin implements Admin {
         }
         versionsB.remove(versionB.get());
       } else {
-        result.addVersionStateDiff(fabricA, fabricB, versionNum, version.getStatus(),
-            VersionStatus.NOT_CREATED);
+        if (storeB.getLargestUsedVersionNumber() >= versionNum) {
+          // Version was added but then deleted due to errors
+          result.addVersionStateDiff(fabricA, fabricB, versionNum, version.getStatus(), VersionStatus.ERROR);
+        } else {
+          result.addVersionStateDiff(fabricA, fabricB, versionNum, version.getStatus(), VersionStatus.NOT_CREATED);
+        }
       }
     }
     for (Version version : versionsB) {
-      result.addVersionStateDiff(fabricA, fabricB, version.getNumber(),
-          VersionStatus.NOT_CREATED, version.getStatus());
+      if (storeA.getLargestUsedVersionNumber() >= version.getNumber()) {
+        result.addVersionStateDiff(fabricA, fabricB, version.getNumber(), VersionStatus.ERROR, version.getStatus());
+      } else {
+        result.addVersionStateDiff(fabricA, fabricB, version.getNumber(), VersionStatus.NOT_CREATED, version.getStatus());
+      }
     }
   }
 

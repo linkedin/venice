@@ -35,15 +35,12 @@ import com.linkedin.venice.listener.response.BinaryResponse;
 import com.linkedin.venice.listener.response.ComputeResponseWrapper;
 import com.linkedin.venice.listener.response.HttpShortcutResponse;
 import com.linkedin.venice.listener.response.MultiGetResponseWrapper;
-import com.linkedin.venice.listener.response.MultiKeyResponseWrapper;
 import com.linkedin.venice.listener.response.StorageResponseObject;
 import com.linkedin.venice.meta.PartitionerConfig;
-import com.linkedin.venice.meta.PartitionerConfigImpl;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.read.protocol.request.router.MultiGetRouterRequestKeyV1;
@@ -69,13 +66,11 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
-import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -342,15 +337,12 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
     boolean isChunked = metadataRetriever.isStoreVersionChunked(topic);
 
     AbstractStorageEngine storageEngine = storageEngineRepository.getLocalStorageEngine(topic);
-    Optional<Long> offsetObj = metadataRetriever.getOffset(topic, subPartition);
-    long offset = offsetObj.isPresent() ? offsetObj.get() : OffsetRecord.LOWEST_OFFSET;
     StorageResponseObject response = new StorageResponseObject();
     response.setCompressionStrategy(metadataRetriever.getStoreVersionCompressionStrategy(topic));
     response.setDatabaseLookupLatency(0);
 
     ValueRecord valueRecord = SingleGetChunkingAdapter.get(storageEngine, subPartition, key, isChunked, response);
     response.setValueRecord(valueRecord);
-    response.setOffset(offset);
 
     if (keyValueProfilingEnabled) {
       response.setOptionalKeySizeList(Optional.of(Arrays.asList(key.length)));
@@ -365,7 +357,7 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
     Iterable<MultiGetRouterRequestKeyV1> keys = request.getKeys();
     AbstractStorageEngine store = storageEngineRepository.getLocalStorageEngine(topic);
 
-    MultiGetResponseWrapper responseWrapper = new MultiGetResponseWrapper();
+    MultiGetResponseWrapper responseWrapper = new MultiGetResponseWrapper(request.getKeyCount());
     responseWrapper.setCompressionStrategy(metadataRetriever.getStoreVersionCompressionStrategy(topic));
     responseWrapper.setDatabaseLookupLatency(0);
     boolean isChunked = metadataRetriever.isStoreVersionChunked(topic);
@@ -381,7 +373,6 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
     ReentrantLock requestLock = new ReentrantLock();
     CompletableFuture[] chunkFutures = new CompletableFuture[splitSize];
     PartitionerConfig partitionerConfig = getPartitionerConfig(request.getResourceName());
-    Set<Integer> subPartitionIds = VeniceConcurrentHashMap.newKeySet();
 
     Optional<List<Integer>> optionalKeyList =  keyValueProfilingEnabled
         ? Optional.of(new ArrayList<>(totalKeyNum)) : Optional.empty();
@@ -401,7 +392,6 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
           optionalKeyList.ifPresent(list -> list.add(key.keyBytes.remaining()));
           int subPartitionId = getSubPartitionId(key.partitionId, request.getResourceName(),
               partitionerConfig, key.keyBytes.array());
-          subPartitionIds.add(subPartitionId);
           MultiGetResponseRecordV1 record =
               BatchGetChunkingAdapter.get(store, subPartitionId, key.keyBytes, isChunked, responseWrapper);
           if (null == record) {
@@ -436,11 +426,6 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
       }, executorService);
     }
 
-    // Offset data
-    for (int subPartitionId : subPartitionIds) {
-      addPartitionOffsetMapping(topic, subPartitionId, responseWrapper);
-    }
-
     return CompletableFuture.allOf(chunkFutures).handle((v, e) -> {
       if (e != null) {
         throw new VeniceException(e);
@@ -455,17 +440,15 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
     String topic = request.getResourceName();
     Iterable<MultiGetRouterRequestKeyV1> keys = request.getKeys();
     PartitionerConfig partitionerConfig = getPartitionerConfig(request.getResourceName());
-    Set<Integer> subPartitionIds = new HashSet<>();
     AbstractStorageEngine store = storageEngineRepository.getLocalStorageEngine(topic);
 
-    MultiGetResponseWrapper responseWrapper = new MultiGetResponseWrapper();
+    MultiGetResponseWrapper responseWrapper = new MultiGetResponseWrapper(request.getKeyCount());
     responseWrapper.setCompressionStrategy(metadataRetriever.getStoreVersionCompressionStrategy(topic));
     responseWrapper.setDatabaseLookupLatency(0);
     boolean isChunked = metadataRetriever.isStoreVersionChunked(topic);
     for (MultiGetRouterRequestKeyV1 key : keys) {
       int subPartitionId = getSubPartitionId(key.partitionId, request.getResourceName(),
           partitionerConfig, key.keyBytes.array());
-      subPartitionIds.add(subPartitionId);
       MultiGetResponseRecordV1 record =
           BatchGetChunkingAdapter.get(store, subPartitionId, key.keyBytes, isChunked, responseWrapper);
       if (null == record) {
@@ -488,11 +471,6 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
       }
     }
 
-    // Offset data
-    for (int subPartitionId : subPartitionIds) {
-      addPartitionOffsetMapping(topic, subPartitionId, responseWrapper);
-    }
-
     return responseWrapper;
   }
 
@@ -502,7 +480,6 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
     Iterable<ComputeRouterRequestKeyV1> keys = request.getKeys();
     AbstractStorageEngine store = storageEngineRepository.getLocalStorageEngine(topic);
     PartitionerConfig partitionerConfig = getPartitionerConfig(request.getResourceName());
-    Set<Integer> subPartitionIds = new HashSet<>();
 
     Schema valueSchema;
     if (request.getValueSchemaId() != -1) {
@@ -522,7 +499,7 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
       computeResultSchemaCache.putIfAbsent(computeResultSchemaStr, computeResultSchema);
     }
 
-    ComputeResponseWrapper responseWrapper = new ComputeResponseWrapper();
+    ComputeResponseWrapper responseWrapper = new ComputeResponseWrapper(request.getKeyCount());
     CompressionStrategy compressionStrategy = metadataRetriever.getStoreVersionCompressionStrategy(topic);
     boolean isChunked = metadataRetriever.isStoreVersionChunked(topic);
 
@@ -558,7 +535,6 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
       clearFieldsInReusedRecord(reuseResultRecord, computeResultSchema);
       int subPartitionId = getSubPartitionId(key.partitionId, request.getResourceName(),
           partitionerConfig, key.keyBytes.array());
-      subPartitionIds.add(subPartitionId);
       ComputeResponseRecordV1 record = computeResult(store,
                                                      storeName,
                                                      key.keyBytes,
@@ -584,11 +560,6 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
       }
     }
 
-    // Offset data
-    for (int subPartitionId : subPartitionIds) {
-      addPartitionOffsetMapping(topic, subPartitionId, responseWrapper);
-    }
-
     return responseWrapper;
   }
 
@@ -597,13 +568,6 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
     ByteBuffer dictionary = metadataRetriever.getStoreVersionCompressionDictionary(topic);
 
     return new BinaryResponse(dictionary);
-  }
-
-  private void addPartitionOffsetMapping(String topic, int partitionId,
-      MultiKeyResponseWrapper responseWrapper) {
-    Optional<Long> offsetObj = metadataRetriever.getOffset(topic, partitionId);
-    long offset = offsetObj.isPresent() ? offsetObj.get() : OffsetRecord.LOWEST_OFFSET;
-    responseWrapper.addPartitionOffsetMapping(partitionId, offset);
   }
 
   private void clearFieldsInReusedRecord(GenericRecord record, Schema schema) {

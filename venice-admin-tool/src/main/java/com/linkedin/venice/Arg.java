@@ -116,7 +116,9 @@ public enum Arg {
   STORE_CONFIG_VALUE_FILTER("store-config-value-filter", "scvf", true, "n optional argument in list-store command; if the config name argument is used in the command, users must specify the config value filter too."),
   ALLOW_STORE_MIGRATION(ConfigKeys.ALLOW_STORE_MIGRATION, "asm", true, "whether stores are allowed to be migrated from/to a cluster"),
   KAFKA_TOPIC_LOG_COMPACTION_ENABLED("kafka-topic-log-compaction-enabled", "ktlce", true, "Enable/disable Kafka log compaction for a topic"),
-  KAFKA_TOPIC_RETENTION_IN_MS("kafka-topic-retention-in-ms", "ktrim", true, "Kafka topic retention time in milliseconds");
+  KAFKA_TOPIC_RETENTION_IN_MS("kafka-topic-retention-in-ms", "ktrim", true, "Kafka topic retention time in milliseconds"),
+  CHILD_CONTROLLER_ADMIN_TOPIC_CONSUMPTION_ENABLED(ConfigKeys.CHILD_CONTROLLER_ADMIN_TOPIC_CONSUMPTION_ENABLED, "atc", true, "whether child controller consumes admin topic"),
+  RETRY("retry", "r", false, "Retry this operation");
 
   private final String argName;
   private final String first;
