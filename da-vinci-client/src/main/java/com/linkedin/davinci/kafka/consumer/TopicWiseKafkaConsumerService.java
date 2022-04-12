@@ -72,16 +72,16 @@ public class TopicWiseKafkaConsumerService extends KafkaConsumerService {
 
     int minAssignmentPerConsumer = Integer.MAX_VALUE;
     for (SharedKafkaConsumer consumer : readOnlyConsumersList) {
-      if (ingestionTask.isHybridMode()) {
-        /**
-         * Firstly, we need to make sure multiple store versions won't share the same consumer since for Hybrid stores,
-         * all the store versions will consume the same RT topic with different offset.
-         */
-        if (checkWhetherConsumerHasSubscribedSameStore(consumer, versionTopic)) {
-          logger.info("Current consumer has already subscribed the same store as the new topic: " + versionTopic + ", "
-              + "will skip it and try next consumer in consumer pool");
-          continue;
-        }
+      /**
+       * A Venice server host may consume from 2 version topics that belongs to the same store because each store has 2
+       * versions. We need to make sure multiple store versions won't share the same consumer. Because for Hybrid stores,
+       * both the store versions will consume the same RT topic with different offset.
+       * To simplify the logic here, we ensure that one consumer consumes from only one version topic of a specific store.
+       */
+      if (checkWhetherConsumerHasSubscribedSameStore(consumer, versionTopic)) {
+        logger.info("Current consumer has already subscribed the same store as the new topic: " + versionTopic + ", "
+            + "will skip it and try next consumer in consumer pool");
+        continue;
       }
       /**
        * Find the zero loaded consumer by topics. There is a delay between {@link SharedKafkaConsumer#attach(String, StoreIngestionTask)}
