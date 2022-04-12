@@ -81,7 +81,12 @@ public class TopicWiseSharedKafkaConsumer extends SharedKafkaConsumer {
         + ingestionTask.getVersionTopic());
   }
 
-  public void detach(StoreIngestionTask ingestionTask) {
+  @Override
+  public void unsubscribeAll(String versionTopic) {
+    StoreIngestionTask ingestionTask = topicToIngestionTaskMap.get(versionTopic);
+    if (ingestionTask == null) {
+      return;
+    }
     Set<String> subscribedTopics = ingestionTask.getEverSubscribedTopics();
     /**
      * This logic is used to guard the resource leaking situation when the unsubscription doesn't happen before the detaching.

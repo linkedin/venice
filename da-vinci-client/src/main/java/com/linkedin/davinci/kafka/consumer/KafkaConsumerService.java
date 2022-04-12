@@ -120,9 +120,9 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
   public abstract void attach(KafkaConsumerWrapper consumer, String topic, StoreIngestionTask ingestionTask);
 
   /**
-   * Detach the messages processing belonging to the topics of the passed {@param ingestionTask}
+   * Stop all subscription associated with the given version topic.
    */
-  public abstract void detach(StoreIngestionTask ingestionTask);
+  public abstract void unsubscribeAll(String versionTopic);
 
   @Override
   public boolean startInner() throws Exception {

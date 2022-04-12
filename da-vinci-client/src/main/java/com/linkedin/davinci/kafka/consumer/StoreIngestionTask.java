@@ -1603,7 +1603,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         consumerMap.values().forEach(consumer -> consumer.close(everSubscribedTopics));
       }
       if (aggKafkaConsumerService != null) {
-        aggKafkaConsumerService.detach(this);
+        aggKafkaConsumerService.unsubscribeAll(getVersionTopic());
       }
       closeProducers();
     } catch (Exception e) {
@@ -2840,15 +2840,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   public abstract void consumerUnSubscribeAllTopics(PartitionConsumptionState partitionConsumptionState);
 
   public void consumerSubscribe(String topic, int partition, long startOffset, String kafkaURL) {
-    final long getConsumerTimeStart = System.currentTimeMillis();
     KafkaConsumerWrapper consumer = getConsumer(kafkaURL, !Objects.equals(kafkaURL, localKafkaServer));
-    versionedStorageIngestionStats.recordSubscribeGetConsumerLatency(storeName, versionNumber,
-            LatencyUtils.getElapsedTimeInMs(getConsumerTimeStart));
-
-    final long consumerSubscribeTimeStart = System.currentTimeMillis();
     subscribe(consumer, topic, partition, startOffset);
-    versionedStorageIngestionStats.recordSubscribeConsumerSubscribeLatency(storeName, versionNumber,
-            LatencyUtils.getElapsedTimeInMs(consumerSubscribeTimeStart));
   }
 
   public void consumerResetOffset(String topic, PartitionConsumptionState partitionConsumptionState) {

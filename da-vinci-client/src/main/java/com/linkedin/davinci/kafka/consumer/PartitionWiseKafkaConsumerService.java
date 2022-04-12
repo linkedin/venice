@@ -94,14 +94,13 @@ public class PartitionWiseKafkaConsumerService extends KafkaConsumerService {
    * Detach the messages processing belonging to the topics of the passed {@param ingestionTask}
    */
   @Override
-  public void detach(StoreIngestionTask ingestionTask) {
-    String versionTopic = ingestionTask.getVersionTopic();
+  public void unsubscribeAll(String versionTopic) {
     if (!versionTopicToVirtualConsumerMap.containsKey(versionTopic)) {
       logger.warn("No assigned consumer found for this version topic: " + versionTopic);
       return;
     }
     versionTopicToVirtualConsumerMap.computeIfPresent(versionTopic, (vt, consumer) -> {
-      consumer.detach(ingestionTask);
+      consumer.detach(versionTopic);
       return null;
     });
   }
@@ -304,8 +303,8 @@ public class PartitionWiseKafkaConsumerService extends KafkaConsumerService {
       return this.sharedKafkaConsumerMap.keySet();
     }
 
-    public void detach(StoreIngestionTask ingestionTask) {
-      sharedKafkaConsumerMap.forEach((topicPartition, consumer) -> consumer.detach(ingestionTask));
+    public void detach(String versionTopic) {
+      sharedKafkaConsumerMap.forEach((topicPartition, consumer) -> consumer.unsubscribeAll(versionTopic));
       sharedKafkaConsumerMap.clear();
     }
   }
