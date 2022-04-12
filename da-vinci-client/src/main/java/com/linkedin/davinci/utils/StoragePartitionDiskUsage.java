@@ -35,7 +35,7 @@ public class StoragePartitionDiskUsage {
    * @param recordSize
    * @return true if recordSize >= 0
    */
-  public boolean add(int recordSize) {
+  public boolean add(long recordSize) {
     if (recordSize < 0) {
       return false;
     }
@@ -47,6 +47,15 @@ public class StoragePartitionDiskUsage {
    * When you want to check usage for a partition, use this method.
    * It will query syncing with real DB at a calculated frequency based on time and/or size trigger.
    * Generally calling this method should be quick
+   *
+   * TODO Consider alternative usage measurement mechanisms:
+   *      1. Register a listener to invocations of {@link AbstractStorageEngine#sync(int)} and refresh the disk
+   *         usage right after each sync, rather than doing it after some time lag.
+   *      2. Disregard the in-memory bookkeeping entirely, and only rely on the on-disk size, since the delta
+   *         should be bounded by the sync interval, and it is probably easier to reason about the system if it
+   *         can only pause consumption right after syncing to disk, rather than allowing the system to pause
+   *         in the middle of a sync interval, thus letting more data linger in-memory.
+   *
    * @return the disk usage for this partition
    */
   public long getUsage() {

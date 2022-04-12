@@ -53,6 +53,7 @@ import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
+import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.offsets.DeepCopyStorageMetadataService;
 import com.linkedin.venice.offsets.InMemoryStorageMetadataService;
 import com.linkedin.venice.offsets.OffsetRecord;
@@ -496,10 +497,10 @@ public class StoreIngestionTaskTest {
     kafkaProps.put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, inMemoryLocalKafkaBroker.getKafkaBootstrapServer());
 
     int leaderSubPartition = PartitionUtils.getLeaderSubPartition(PARTITION_FOO, amplificationFactor);
+    doReturn(new DeepCopyStorageEngine(mockAbstractStorageEngine)).when(mockStorageEngineRepository).getLocalStorageEngine(topic);
     storeIngestionTaskUnderTest = ingestionTaskFactory.getNewIngestionTask(mockStore, version, kafkaProps,
         isCurrentVersion, storeConfig, leaderSubPartition, false,
         new StorageEngineBackedCompressorFactory(mockStorageMetadataService), Optional.empty());
-    doReturn(new DeepCopyStorageEngine(mockAbstractStorageEngine)).when(mockStorageEngineRepository).getLocalStorageEngine(topic);
 
     Future testSubscribeTaskFuture = null;
     try {
@@ -2469,10 +2470,15 @@ public class StoreIngestionTaskTest {
     VeniceStoreVersionConfig mockVeniceStoreVersionConfig = mock(VeniceStoreVersionConfig.class);
     doReturn(versionTopic).when(mockVeniceStoreVersionConfig).getStoreVersionName();
 
+    Version mockVersion = mock(Version.class);
+    doReturn(1).when(mockVersion).getPartitionCount();
+    doReturn(VersionStatus.STARTED).when(mockVersion).getStatus();
+
     ReadOnlyStoreRepository mockReadOnlyStoreRepository = mock(ReadOnlyStoreRepository.class);
     Store mockStore = mock(Store.class);
     doReturn(mockStore).when(mockReadOnlyStoreRepository).getStoreOrThrow(eq(storeName));
     doReturn(false).when(mockStore).isHybridStoreDiskQuotaEnabled();
+    doReturn(Optional.of(mockVersion)).when(mockStore).getVersion(1);
 
     Properties mockKafkaConsumerProperties = mock(Properties.class);
     doReturn("localhost").when(mockKafkaConsumerProperties).getProperty(eq(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG));
@@ -2492,7 +2498,7 @@ public class StoreIngestionTaskTest {
     LeaderFollowerStoreIngestionTask ingestionTask = new LeaderFollowerStoreIngestionTask(
         builder,
         mockStore,
-        mock(Version.class),
+        mockVersion,
         mockKafkaConsumerProperties,
         () -> true,
         mockVeniceStoreVersionConfig,

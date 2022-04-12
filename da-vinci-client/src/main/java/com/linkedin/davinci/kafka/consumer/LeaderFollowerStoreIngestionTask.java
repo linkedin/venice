@@ -262,7 +262,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   }
 
   @Override
-  protected void processConsumerAction(ConsumerAction message) throws InterruptedException {
+  protected void processConsumerAction(ConsumerAction message, Store store) throws InterruptedException {
     ConsumerActionType operation = message.getType();
     String topic = message.getTopic();
     int partition = message.getPartition();
@@ -286,7 +286,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
               + ", because this replica is the leader already.");
           return;
         }
-        Store store = storeRepository.getStoreOrThrow(storeName);
         if (store.isMigrationDuplicateStore()) {
           partitionConsumptionState.setLeaderFollowerState(PAUSE_TRANSITION_FROM_STANDBY_TO_LEADER);
           logger.info(consumerTaskId + " for partition " + partition + " is paused transition from STANDBY to LEADER");
@@ -1552,12 +1551,12 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    *
    * This function should be called as one of the first steps in processing pipeline for all messages consumed from any kafka topic.
    *
-   * The caller {@link StoreIngestionTask#produceToStoreBufferServiceOrKafka(Iterable, boolean, int, String)} of this function should
+   * The caller {@link StoreIngestionTask#produceToStoreBufferServiceOrKafka(Iterable, boolean, org.apache.kafka.common.TopicPartition, String)} of this function should
    * not process this consumerRecord any further if it was produced to kafka (returns true),
    * Otherwise it should continue to process the message as it would.
    *
    * This function assumes {@link #shouldProcessRecord(ConsumerRecord, int)} has been called which happens in
-   * {@link StoreIngestionTask#produceToStoreBufferServiceOrKafka(Iterable, boolean, int, String)} before calling this and the it was decided that
+   * {@link StoreIngestionTask#produceToStoreBufferServiceOrKafka(Iterable, boolean, org.apache.kafka.common.TopicPartition, String)} before calling this and the it was decided that
    * this record needs to be processed. It does not perform any validation check on the PartitionConsumptionState object
    * to keep the goal of the function simple and not overload.
    *
