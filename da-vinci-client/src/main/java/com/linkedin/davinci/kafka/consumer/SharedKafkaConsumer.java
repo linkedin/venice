@@ -31,7 +31,7 @@ import org.apache.logging.log4j.Logger;
  * topics. Also the support for function: {@link #hasSubscription(Set)} since it could be shared by multiple users.
  *
  * In addition to the existing API of {@link KafkaConsumerWrapper}, this class also adds specific functions: {@link #attach},
- * {@link #detach}, which will be used by {@link KafkaConsumerService}.
+ * {@link #unsubscribeAll}, which will be used by {@link KafkaConsumerService}.
  */
 abstract class SharedKafkaConsumer implements KafkaConsumerWrapper {
   private static final Logger LOGGER = LogManager.getLogger(SharedKafkaConsumer.class);
@@ -335,7 +335,7 @@ abstract class SharedKafkaConsumer implements KafkaConsumerWrapper {
      * 2. Copying them to a new {@link ConsumerRecords} is not GC friendly.
      * 3. Even copying them to  a new {@link ConsumerRecords} couldn't guarantee the consistency between returned consumer records
      *    and the corresponding ingestion tasks since the caller will try to fetch the ingestion task for each record again, and
-     *    {@link #detach} could happen in-between, so the caller has to handle this situation of non corresponding ingestion task anyway.
+     *    {@link #unsubscribeAll} could happen in-between, so the caller has to handle this situation of non corresponding ingestion task anyway.
      *
      * The consumer subscription cleanup will take effect in the next {@link #poll} request.
      */
@@ -412,9 +412,9 @@ abstract class SharedKafkaConsumer implements KafkaConsumerWrapper {
   public abstract void attach(String topic, StoreIngestionTask ingestionTask);
 
   /**
-   * Detach the messages processing belonging to the topics of the passed {@param ingestionTask}
+   * Stop all subscription associated with the given version topic.
    */
-  public abstract void detach(StoreIngestionTask ingestionTask);
+  public abstract void unsubscribeAll(String versionTopic);
 
   /**
    * Get the all corresponding {@link StoreIngestionTask}s for a particular topic.

@@ -150,12 +150,12 @@ public class PartitionWiseSharedKafkaConsumer extends SharedKafkaConsumer {
   }
 
   @Override
-  public void detach(StoreIngestionTask storeIngestionTask) {
+  public void unsubscribeAll(String versionTopic) {
     Set<TopicPartition> topicPartitionsToRemove = new HashSet<>();
     for(Map.Entry<TopicPartition, StoreIngestionTask> entry : topicPartitionStoreIngestionTaskMap.entrySet()) {
       TopicPartition topicPartition = entry.getKey();
       StoreIngestionTask ingestionTaskForCurrentTopicPartition = entry.getValue();
-      if (ingestionTaskForCurrentTopicPartition == storeIngestionTask) {
+      if (ingestionTaskForCurrentTopicPartition.getVersionTopic().equals(versionTopic)) {
         topicPartitionsToRemove.add(topicPartition);
       }
     }

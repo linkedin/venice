@@ -109,13 +109,12 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
   }
 
   /**
-   * {@link #detach(StoreIngestionTask)} will be called when an ingestion task is killed, {@link AggKafkaConsumerService}
-   * will try to detach the ingestion task from all consumer pools; if a consumer pool is not polling records for the
-   * ingestion task, it will ignore the detach request.
-   * @param ingestionTask
+   * {@link #unsubscribeAll(String)} will be called when an ingestion task is killed, {@link AggKafkaConsumerService}
+   * will try to stop all subscription associated with the given version topic.
+   * @param versionTopic
    */
-  public void detach(StoreIngestionTask ingestionTask) {
-    kafkaServerToConsumerService.values().forEach(consumerService -> consumerService.detach(ingestionTask));
+  public void unsubscribeAll(String versionTopic) {
+    kafkaServerToConsumerService.values().forEach(consumerService -> consumerService.unsubscribeAll(versionTopic));
   }
 
   private KafkaConsumerServiceStats createKafkaConsumerServiceStats(String kafkaUrl) {

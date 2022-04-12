@@ -31,7 +31,7 @@ import static com.linkedin.venice.stats.StatsErrorCode.*;
 public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersionedStats<
     AggVersionedStorageIngestionStats.StorageIngestionStats,
     AggVersionedStorageIngestionStats.StorageIngestionStatsReporter> {
-  private static final Logger LOGGER = LogManager.getLogger(AggVersionedStorageIngestionStats.class);
+  private static final Logger logger = LogManager.getLogger(AggVersionedStorageIngestionStats.class);
 
   private static final String RECORDS_CONSUMED_METRIC_NAME = "records_consumed";
   private static final String BYTES_CONSUMED_METRIC_NAME = "bytes_consumed";
@@ -62,7 +62,7 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
 
   public void setIngestionTask(String storeVersionTopic, StoreIngestionTask ingestionTask) {
     if (!Version.isVersionTopicOrStreamReprocessingTopic(storeVersionTopic)) {
-      LOGGER.warn("Invalid store version topic name: " + storeVersionTopic);
+      logger.warn("Invalid store version topic name: " + storeVersionTopic);
       return;
     }
     String storeName = Version.parseStoreFromKafkaTopicName(storeVersionTopic);
@@ -78,7 +78,7 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
         registerConditionalStats(storeName);
       }
     } catch (Exception e) {
-      LOGGER.warn("Failed to set up versioned storage ingestion stats of store: " + storeName
+      logger.warn("Failed to set up versioned storage ingestion stats of store: " + storeName
           + ", version: " + version);
     }
   }
@@ -181,16 +181,6 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
     Utils.computeIfNotNull(getStats(storeName, version), stat -> stat.recordSubscribePrepLatency(value));
   }
 
-  public void recordSubscribeGetConsumerLatency(String storeName, int version, double value) {
-    Utils.computeIfNotNull(getTotalStats(storeName), stat -> stat.recordSubscribeGetConsumerLatency(value));
-    Utils.computeIfNotNull(getStats(storeName, version), stat -> stat.recordSubscribeGetConsumerLatency(value));
-  }
-
-  public void recordSubscribeConsumerSubscribeLatency(String storeName, int version, double value) {
-    Utils.computeIfNotNull(getTotalStats(storeName), stat -> stat.recordSubscribeConsumerSubscribeLatency(value));
-    Utils.computeIfNotNull(getStats(storeName, version), stat -> stat.recordSubscribeConsumerSubscribeLatency(value));
-  }
-
   static class StorageIngestionStats {
     private static final MetricConfig METRIC_CONFIG = new MetricConfig();
     private final MetricsRepository localMetricRepository = new MetricsRepository(METRIC_CONFIG);
@@ -238,8 +228,6 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
     private final Map<Integer, Sensor> regionIdToHybridAvgConsumedOffsetSensorMap;
     private final Sensor stalePartitionsWithoutIngestionTaskSensor;
     private final Sensor subscribePrepLatencySensor;
-    private final Sensor subscribeGetConsumerLatencySensor;
-    private final Sensor subscribeConsumerSubscribeLatencySensor;
     /**
      * Measure the count of ignored updates due to conflict resolution
      */
@@ -332,20 +320,9 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
 
       subscribeGetConsumerLatencyAvg = new Avg();
       subscribeGetConsumerLatencyMax = new Max();
-      subscribeGetConsumerLatencySensor = localMetricRepository.sensor(SUBSCRIBE_ACTION_GET_CONSUMER_LATENCY);
-      subscribeGetConsumerLatencySensor.add(SUBSCRIBE_ACTION_GET_CONSUMER_LATENCY
-          + subscribeGetConsumerLatencyMax.getClass().getSimpleName(), subscribeGetConsumerLatencyMax);
-      subscribeGetConsumerLatencySensor.add(SUBSCRIBE_ACTION_GET_CONSUMER_LATENCY
-          + subscribeGetConsumerLatencyAvg.getClass().getSimpleName(), subscribeGetConsumerLatencyAvg);
 
       subscribeConsumerSubscribeLatencyAvg = new Avg();
       subscribeConsumerSubscribeLatencyMax = new Max();
-      subscribeConsumerSubscribeLatencySensor = localMetricRepository.sensor(
-          SUBSCRIBE_SUBSCRIBE_ACTION_CONSUMER_SUBSCRIBE_LATENCY);
-      subscribeConsumerSubscribeLatencySensor.add(SUBSCRIBE_SUBSCRIBE_ACTION_CONSUMER_SUBSCRIBE_LATENCY
-          + subscribeConsumerSubscribeLatencyMax.getClass().getSimpleName(), subscribeConsumerSubscribeLatencyMax);
-      subscribeConsumerSubscribeLatencySensor.add(SUBSCRIBE_SUBSCRIBE_ACTION_CONSUMER_SUBSCRIBE_LATENCY
-          + subscribeConsumerSubscribeLatencyAvg.getClass().getSimpleName(), subscribeConsumerSubscribeLatencyAvg);
       updatedIgnoredDCRRate = new Rate();
       conflictResolutionUpdateIgnoredSensor = localMetricRepository.sensor(UPDATE_IGNORED_DCR);
       conflictResolutionUpdateIgnoredSensor.add(UPDATE_IGNORED_DCR + updatedIgnoredDCRRate.getClass().getSimpleName(),
@@ -534,14 +511,6 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
 
     public void recordSubscribePrepLatency(double value) {
       subscribePrepLatencySensor.record(value);
-    }
-
-    public void recordSubscribeGetConsumerLatency(double value) {
-      subscribeGetConsumerLatencySensor.record(value);
-    }
-
-    public void recordSubscribeConsumerSubscribeLatency(double value) {
-      subscribeConsumerSubscribeLatencySensor.record(value);
     }
 
     public double getRecordsConsumed() {

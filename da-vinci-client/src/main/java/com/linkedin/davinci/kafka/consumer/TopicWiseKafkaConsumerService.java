@@ -90,7 +90,7 @@ public class TopicWiseKafkaConsumerService extends KafkaConsumerService {
        */
       if (!isConsumerAssignedTopic(consumer)) {
         chosenConsumer = consumer;
-        assignTopicToConsumer(versionTopic, chosenConsumer);
+        assignVersionTopicToConsumer(versionTopic, chosenConsumer);
         logger.info("Assigned a shared consumer with index of " + readOnlyConsumersList.indexOf(chosenConsumer) +
             " without any assigned topic for topic: " + versionTopic);
         return chosenConsumer;
@@ -108,7 +108,7 @@ public class TopicWiseKafkaConsumerService extends KafkaConsumerService {
       throw new VeniceException("Failed to find consumer for topic: " + versionTopic + ", and it might be caused by that all"
           + " the existing consumers have subscribed the same store, and that might be caused by a bug or resource leaking");
     }
-    assignTopicToConsumer(versionTopic, chosenConsumer);
+    assignVersionTopicToConsumer(versionTopic, chosenConsumer);
     logger.info("Assigned a shared consumer with index of " + readOnlyConsumersList.indexOf(chosenConsumer) + " for topic: "
         + versionTopic + " with least # of partitions assigned: " + minAssignmentPerConsumer);
     return chosenConsumer;
@@ -146,15 +146,14 @@ public class TopicWiseKafkaConsumerService extends KafkaConsumerService {
    * Detach the messages processing belonging to the topics of the passed {@param ingestionTask}
    */
   @Override
-  public synchronized void detach(StoreIngestionTask ingestionTask) {
-    String versionTopic = ingestionTask.getVersionTopic();
+  public synchronized void unsubscribeAll(String versionTopic) {
     SharedKafkaConsumer sharedKafkaConsumer = versionTopicToConsumerMap.get(versionTopic);
     if (null == sharedKafkaConsumer) {
       logger.warn("No assigned shared consumer found for this version topic: " + versionTopic);
       return;
     }
     removeTopicFromConsumer(versionTopic, sharedKafkaConsumer);
-    sharedKafkaConsumer.detach(ingestionTask);
+    sharedKafkaConsumer.unsubscribeAll(versionTopic);
   }
 
   /**
@@ -166,17 +165,18 @@ public class TopicWiseKafkaConsumerService extends KafkaConsumerService {
     return consumerToStoresMap.containsKey(consumer);
   }
 
-  private void assignTopicToConsumer(String topic, SharedKafkaConsumer consumer) {
-    versionTopicToConsumerMap.put(topic, consumer);
-    consumerToStoresMap.computeIfAbsent(consumer, k -> new HashSet<>()).add(Version.parseStoreFromKafkaTopicName(topic));
+  private void assignVersionTopicToConsumer(String versionTopic, SharedKafkaConsumer consumer) {
+    versionTopicToConsumerMap.put(versionTopic, consumer);
+    consumerToStoresMap.computeIfAbsent(consumer, k -> new HashSet<>()).add(Version.parseStoreFromKafkaTopicName(versionTopic));
   }
 
-  private void removeTopicFromConsumer(String topic, SharedKafkaConsumer consumer) {
-    versionTopicToConsumerMap.remove(topic);
-    consumerToStoresMap.compute(consumer, (k, v) -> {
-      if (v != null) {
-        v.remove(Version.parseStoreFromKafkaTopicName(topic));
-        return v.isEmpty() ? null : v;
+  private void removeTopicFromConsumer(String versionTopic, SharedKafkaConsumer consumer) {
+    versionTopicToConsumerMap.remove(versionTopic);
+    final String storeName = Version.parseStoreFromKafkaTopicName(versionTopic);
+    consumerToStoresMap.compute(consumer, (k, assignedStores) -> {
+      if (assignedStores != null) {
+        assignedStores.remove(storeName);
+        return assignedStores.isEmpty() ? null : assignedStores;
       }
       return null;
     });

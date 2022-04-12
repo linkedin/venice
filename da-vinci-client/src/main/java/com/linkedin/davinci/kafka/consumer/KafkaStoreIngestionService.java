@@ -821,7 +821,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       // in the map since isRunning is set to false already.
       topicNameToIngestionTaskMap.remove(topicName);
       if (null != aggKafkaConsumerService) {
-        aggKafkaConsumerService.detach(consumerTask);
+        aggKafkaConsumerService.unsubscribeAll(consumerTask.getVersionTopic());
       }
 
       /**
