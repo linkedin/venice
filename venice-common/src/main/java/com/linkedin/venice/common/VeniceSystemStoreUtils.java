@@ -2,8 +2,6 @@ package com.linkedin.venice.common;
 
 import com.linkedin.venice.meta.Store;
 
-import static com.linkedin.venice.common.VeniceSystemStoreType.*;
-
 
 public class VeniceSystemStoreUtils {
   public static final String PARTICIPANT_STORE = "participant_store";
@@ -35,5 +33,9 @@ public class VeniceSystemStoreUtils {
 
   public static String getDaVinciPushStatusStoreName(String storeName) {
     return VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(storeName);
+  }
+
+  public static String getMetaStoreName(String storeName) {
+    return VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName);
   }
 }

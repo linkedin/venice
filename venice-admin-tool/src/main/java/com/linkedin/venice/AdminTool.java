@@ -2,6 +2,7 @@ package com.linkedin.venice;
 
 import com.linkedin.venice.client.store.QueryTool;
 import com.linkedin.venice.common.VeniceSystemStoreType;
+import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.AclResponse;
 import com.linkedin.venice.controllerapi.AdminTopicMetadataResponse;
@@ -219,6 +220,9 @@ public class AdminTool {
           break;
         case DELETE_STORE:
           deleteStore(cmd);
+          break;
+        case BACKFILL_SYSTEM_STORES:
+          backfillSystemStores(cmd);
           break;
         case EMPTY_PUSH:
           emptyPush(cmd);
@@ -587,17 +591,85 @@ public class AdminTool {
     printObject(response);
   }
 
+  private static void backfillSystemStores(CommandLine cmd) {
+    String clusterName = getRequiredArgument(cmd, Arg.CLUSTER, Command.BACKFILL_SYSTEM_STORES);
+    String systemStoreType = getRequiredArgument(cmd, Arg.SYSTEM_STORE_TYPE, Command.BACKFILL_SYSTEM_STORES);
+    if (!(systemStoreType.equalsIgnoreCase(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.toString())
+        || systemStoreType.equalsIgnoreCase(VeniceSystemStoreType.META_STORE.toString()))) {
+      printErrAndExit("System store type: " + systemStoreType + " is not supported.");
+    }
+    String[] stores = controllerClient.queryStoreList(false).getStores();
+    List<String> failedToGetStoreInfoStoreList = new ArrayList<>();
+    List<String> alreadyHaveSystemStoreList = new ArrayList<>();
+    List<String> emptyPushFailedStoreList = new ArrayList<>();
+    // store size param is used to determine how many partitions to create; however, for system store
+    // it is determined by shared ZK based store. Hence, it is not really relevant.
+    long storeSize = 32 * 1024 * 1024;
+    System.out.println("Cluster: " + clusterName + " has " + stores.length + " stores in it. Running" + systemStoreType + " backfill task...");
+    for (String storeName : stores) {
+      try {
+        StoreResponse storeResponse = controllerClient.getStore(storeName);
+        if (storeResponse == null || storeResponse.isError()) {
+          failedToGetStoreInfoStoreList.add(storeName);
+          continue;
+        }
+        StoreInfo storeInfo = storeResponse.getStore();
+        if (hasGivenSystemStore(storeInfo, systemStoreType)) {
+          alreadyHaveSystemStoreList.add(storeName);
+          continue;
+        }
+        String systemStoreName = getSystemStoreName(storeInfo, systemStoreType);
+        String pushId = "BACKFILL_" + systemStoreName;
+        System.out.println("Running empty push for: " + systemStoreName);
+        if (!executeEmptyPush(systemStoreName, pushId, storeSize)) {
+          emptyPushFailedStoreList.add(storeName);
+          System.err.println("Empty push failed for: " + systemStoreName);
+        }
+      } catch (Exception e) {
+        emptyPushFailedStoreList.add(storeName);
+      }
+    }
+    System.out.println("Finished backfill task.\nStats - ");
+    System.out.println("Failed to get store details for the stores: " + failedToGetStoreInfoStoreList);
+    System.out.println("Stores that already have system store of a given type: " + alreadyHaveSystemStoreList);
+    System.out.println("Empty push failed for stores: " + emptyPushFailedStoreList);
+  }
+
+  private static boolean hasGivenSystemStore(StoreInfo storeInfo, String systemStoreType) {
+    if (systemStoreType.equalsIgnoreCase(VeniceSystemStoreType.META_STORE.toString())) {
+      return storeInfo.isStoreMetaSystemStoreEnabled();
+    }
+    if (systemStoreType.equalsIgnoreCase(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.toString())) {
+      return storeInfo.isDaVinciPushStatusStoreEnabled();
+    }
+    throw new IllegalArgumentException(systemStoreType + " is not a valid system store type.");
+  }
+
+  private static String getSystemStoreName(StoreInfo storeInfo, String systemStoreType) {
+    if (systemStoreType.equalsIgnoreCase(VeniceSystemStoreType.META_STORE.toString())) {
+      return VeniceSystemStoreUtils.getMetaStoreName(storeInfo.getName());
+    }
+    if (systemStoreType.equalsIgnoreCase(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.toString())) {
+      return VeniceSystemStoreUtils.getDaVinciPushStatusStoreName(storeInfo.getName());
+    }
+    throw new IllegalArgumentException(systemStoreType + " is not a valid system store type.");
+  }
+
   private static void emptyPush(CommandLine cmd) {
     String store = getRequiredArgument(cmd, Arg.STORE, Command.EMPTY_PUSH);
     String pushId = getRequiredArgument(cmd, Arg.PUSH_ID, Command.EMPTY_PUSH);
     String storeSizeString = getRequiredArgument(cmd, Arg.STORE_SIZE, Command.EMPTY_PUSH);
     long storeSize = Utils.parseLongFromString(storeSizeString, Arg.STORE_SIZE.name());
+    executeEmptyPush(store, pushId, storeSize);
+  }
 
+  // returns false on error otherwise true
+  private static boolean executeEmptyPush(String store, String pushId, long storeSize) {
     verifyStoreExistence(store, true);
     VersionCreationResponse versionCreationResponse = controllerClient.emptyPush(store, pushId, storeSize);
     printObject(versionCreationResponse);
     if (versionCreationResponse.isError()) {
-      return;
+      return false;
     }
     // Kafka topic name in  the above response is null, and it will be fixed with this code change.
     String topicName = Version.composeKafkaTopic(store, versionCreationResponse.getVersion());
@@ -607,7 +679,7 @@ public class AdminTool {
           controllerClient -> controllerClient.queryJobStatus(topicName));
       printObject(jobStatusQueryResponse);
       if (jobStatusQueryResponse.isError()) {
-        return;
+        return false;
       }
       ExecutionStatus executionStatus = ExecutionStatus.valueOf(jobStatusQueryResponse.getStatus());
       if (executionStatus.isTerminal()) {
@@ -615,6 +687,7 @@ public class AdminTool {
       }
       Utils.sleep(TimeUnit.SECONDS.toMillis(5));
     }
+    return true;
   }
 
   private static void setEnableStoreWrites(CommandLine cmd, boolean enableWrites){
