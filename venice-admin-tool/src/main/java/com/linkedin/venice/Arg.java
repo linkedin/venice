@@ -118,6 +118,7 @@ public enum Arg {
   KAFKA_TOPIC_LOG_COMPACTION_ENABLED("kafka-topic-log-compaction-enabled", "ktlce", true, "Enable/disable Kafka log compaction for a topic"),
   KAFKA_TOPIC_RETENTION_IN_MS("kafka-topic-retention-in-ms", "ktrim", true, "Kafka topic retention time in milliseconds"),
   CHILD_CONTROLLER_ADMIN_TOPIC_CONSUMPTION_ENABLED(ConfigKeys.CHILD_CONTROLLER_ADMIN_TOPIC_CONSUMPTION_ENABLED, "atc", true, "whether child controller consumes admin topic"),
+  SYSTEM_STORE_TYPE("system-store-type", "sst", true, "Type of system store to backfill. Supported types are davinci_push_status_store and meta_store"),
   RETRY("retry", "r", false, "Retry this operation");
 
   private final String argName;

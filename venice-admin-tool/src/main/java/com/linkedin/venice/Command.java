@@ -45,6 +45,8 @@ public enum Command {
       new Arg[]{OWNER, VSON_STORE}),
   DELETE_STORE("delete-store", "Delete the given store including both metadata and all versions in this store",
       new Arg[]{URL, CLUSTER, STORE}),
+  BACKFILL_SYSTEM_STORES("backfill-system-stores", "Create system stores of a given type for user stores in a cluster",
+      new Arg[]{URL, CLUSTER, SYSTEM_STORE_TYPE}),
   SET_VERSION("set-version", "Set the version that will be served",
       new Arg[] {URL, CLUSTER, STORE, VERSION}),
   ADD_SCHEMA("add-schema", "",
