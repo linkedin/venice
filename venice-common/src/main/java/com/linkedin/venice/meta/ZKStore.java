@@ -13,6 +13,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.stream.Collectors;
 import org.apache.avro.util.Utf8;
 import org.codehaus.jackson.annotate.JsonProperty;
@@ -187,6 +188,8 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
     setStoreMetaSystemStoreEnabled(store.isStoreMetaSystemStoreEnabled());
     setActiveActiveReplicationEnabled(store.isActiveActiveReplicationEnabled());
     setApplyTargetVersionFilterForIncPush(store.isApplyTargetVersionFilterForIncPush());
+    setRmdVersionID(store.getRmdVersionID());
+
     for (Version storeVersion : store.getVersions()) {
       forceAddVersion(storeVersion.cloneVersion(), true);
     }
@@ -558,6 +561,17 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
   @Override
   public boolean isNativeReplicationEnabled() {
     return this.storeProperties.nativeReplicationEnabled;
+  }
+
+  @Override
+  public Optional<Integer> getRmdVersionID() {
+    final int rmdVersionID = this.storeProperties.replicationMetadataVersionID;
+    return rmdVersionID == -1 ? Optional.empty() : Optional.of(rmdVersionID);
+  }
+
+  @Override
+  public void setRmdVersionID(Optional<Integer> rmdVersionID) {
+    this.storeProperties.replicationMetadataVersionID = rmdVersionID.orElse(-1);
   }
 
   @Override

@@ -7,6 +7,7 @@ import com.linkedin.venice.systemstore.schemas.StoreVersion;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 
 
 /**
@@ -407,6 +408,16 @@ public class SystemStore extends AbstractStore {
   @Override
   public boolean isNativeReplicationEnabled() {
     return zkSharedStore.isNativeReplicationEnabled();
+  }
+
+  @Override
+  public Optional<Integer> getRmdVersionID() {
+    return zkSharedStore.getRmdVersionID();
+  }
+
+  @Override
+  public void setRmdVersionID(Optional<Integer> rmdVersionID) {
+    throwUnsupportedOperationException("Cannot set RmdVersionID here.");
   }
 
   @Override

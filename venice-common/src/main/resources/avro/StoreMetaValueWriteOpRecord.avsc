@@ -229,6 +229,12 @@
               "default": false
             },
             {
+              "name": "replicationMetadataVersionID",
+              "type": "int",
+              "default": -1,
+              "doc": "RMD (Replication metadata) version ID on the store-level. Default -1 means NOT_SET and the cluster-level RMD version ID should be used for stores."
+            },
+            {
               "name": "pushStreamSourceAddress",
               "type": "string",
               "doc": "Address to the kafka broker which holds the source of truth topic for this store version.",
