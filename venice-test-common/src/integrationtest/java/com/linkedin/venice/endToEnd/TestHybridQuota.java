@@ -59,6 +59,7 @@ public class TestHybridQuota {
     Properties serverPropertiesWithSharedConsumer = new Properties();
     serverPropertiesWithSharedConsumer.setProperty(SSL_TO_KAFKA, "false");
     extraProperties.put(HELIX_HYBRID_STORE_QUOTA_ENABLED, true);
+    extraProperties.put(HYBRID_QUOTA_ENFORCEMENT_ENABLED, true);
     extraProperties.setProperty(SERVER_SHARED_CONSUMER_POOL_ENABLED, "true");
     extraProperties.setProperty(SERVER_CONSUMER_POOL_SIZE_PER_KAFKA_CLUSTER, "3");
     sharedVenice.addVeniceServer(serverPropertiesWithSharedConsumer, extraProperties);

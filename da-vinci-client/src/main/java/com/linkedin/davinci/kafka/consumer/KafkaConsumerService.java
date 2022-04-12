@@ -10,7 +10,6 @@ import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.LatencyUtils;
-import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.Utils;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.ints.IntList;
@@ -216,7 +215,7 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
                 ingestionTask.produceToStoreBufferServiceOrKafka(
                     partitionRecords,
                     false,
-                    PartitionUtils.getSubPartition(topicPartition.topic(), topicPartition.partition(), ingestionTask.getAmplificationFactor()),
+                    topicPartition,
                     kafkaUrl);
               } catch (Exception e) {
                 LOGGER.error("Received exception when StoreIngestionTask is processing the polled consumer record for topic: " + topicPartition, e);

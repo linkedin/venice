@@ -32,7 +32,7 @@ public class VersionImpl implements Version {
   }
 
   public VersionImpl(String storeName, int number, String pushJobId) {
-    this(storeName, number, System.currentTimeMillis(), pushJobId, 0, new PartitionerConfigImpl(), null);
+    this(storeName, number, System.currentTimeMillis(), pushJobId, 1, new PartitionerConfigImpl(), null);
   }
 
   public VersionImpl(String storeName, int number, String pushJobId, int partitionCount) {

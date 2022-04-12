@@ -8,7 +8,7 @@ import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.*;
 
 /**
  * TODO: create a abstract class to hold similar logic between {@link RocksDBMemoryEnforcement}
- * and {@link HybridStoreQuotaEnforcement}
+ * and {@link StorageUtilizationManager}
  */
 public class RocksDBMemoryEnforcement implements StoreDataChangedListener {
   private StoreIngestionTask task;

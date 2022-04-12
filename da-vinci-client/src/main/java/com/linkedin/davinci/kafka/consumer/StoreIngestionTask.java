@@ -16,7 +16,6 @@ import com.linkedin.davinci.store.AbstractStoragePartition;
 import com.linkedin.davinci.store.StoragePartitionConfig;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
 import com.linkedin.davinci.store.record.ValueRecord;
-import com.linkedin.davinci.utils.StoragePartitionDiskUsage;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.PersistenceFailureException;
@@ -85,8 +84,6 @@ import com.linkedin.venice.utils.Timer;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.writer.LeaderMetadataWrapper;
-import it.unimi.dsi.fastutil.ints.Int2IntMap;
-import it.unimi.dsi.fastutil.ints.Int2IntOpenHashMap;
 import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
 import it.unimi.dsi.fastutil.ints.IntSet;
 import it.unimi.dsi.fastutil.ints.IntSets;
@@ -99,7 +96,6 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -257,9 +253,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   // It's for stats measuring purpose
   protected int recordCount = 0;
 
-  /** this is used to handle hybrid write quota */
-  protected Optional<HybridStoreQuotaEnforcement> hybridQuotaEnforcer;
-  protected volatile Optional<Int2IntMap> subscribedPartitionToSize;
+  private final StorageUtilizationManager storageUtilizationManager;
 
   private final AggKafkaConsumerService aggKafkaConsumerService;
   /**
@@ -361,8 +355,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final String localKafkaServer;
   private int valueSchemaId = -1;
 
-  private final Map<Integer, StoragePartitionDiskUsage> partitionConsumptionSizeMap = new VeniceConcurrentHashMap<>();
-
   protected final boolean isDaVinciClient;
 
   private final boolean offsetLagDeltaRelaxEnabled;
@@ -431,9 +423,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     this.diskUsage = builder.getDiskUsage();
 
+    AbstractStorageEngine storageEngine = storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic);
     this.rocksDBMemoryStats = Optional.ofNullable(
         storageEngineRepository.hasLocalStorageEngine(kafkaVersionTopic)
-            && storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic).getType().equals(PersistenceType.ROCKS_DB) ?
+            && storageEngine.getType().equals(PersistenceType.ROCKS_DB) ?
             builder.getRocksDBMemoryStats() : null
     );
 
@@ -442,10 +435,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.serverConfig = builder.getServerConfig();
 
     this.defaultReadyToServeChecker = getDefaultReadyToServeChecker();
-
-    this.hybridQuotaEnforcer = Optional.empty();
-
-    this.subscribedPartitionToSize = Optional.empty();
 
     this.aggKafkaConsumerService = builder.getAggKafkaConsumerService();
 
@@ -470,7 +459,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     long pushTimeoutInMs;
     try {
-      pushTimeoutInMs = HOURS.toMillis(storeRepository.getStoreOrThrow(storeName).getBootstrapToOnlineTimeoutInHours());
+      pushTimeoutInMs = HOURS.toMillis(store.getBootstrapToOnlineTimeoutInHours());
     } catch (Exception e) {
       logger.warn("Error when getting bootstrap to online timeout config for store " + storeName
           + ". Will use default timeout threshold which is 24 hours", e);
@@ -510,10 +499,19 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.ingestionCheckpointDuringGracefulShutdownEnabled = serverConfig.isServerIngestionCheckpointDuringGracefulShutdownEnabled();
     this.metaStoreWriter = builder.getMetaStoreWriter();
 
-    // Build quota enforcer needs sub partition count prepared.
-    if (serverConfig.isHybridQuotaEnabled() || storeRepository.getStoreOrThrow(storeName).isHybridStoreDiskQuotaEnabled()) {
-      buildHybridQuotaEnforcer();
-    }
+    this.storageUtilizationManager = new StorageUtilizationManager(
+        storageEngine,
+        store,
+        kafkaVersionTopic,
+        subPartitionCount,
+        Collections.unmodifiableMap(partitionConsumptionStateMap),
+        serverConfig.isHybridQuotaEnabled(),
+        serverConfig.isServerCalculateQuotaUsageBasedOnPartitionsAssignmentEnabled(),
+        reportStatusAdapter,
+        (topic, partition) -> getConsumers().forEach(consumer -> consumer.pause(topic, partition)),
+        (topic, partition) -> getConsumers().forEach(consumer -> consumer.resume(topic, partition))
+    );
+    this.storeRepository.registerStoreDataChangedListener(this.storageUtilizationManager);
   }
 
   public boolean isFutureVersion() {
@@ -523,26 +521,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected void throwIfNotRunning() {
     if (!isRunning()) {
       throw new VeniceException(" Topic " + kafkaVersionTopic + " is shutting down, no more messages accepted");
-    }
-  }
-
-  protected void buildHybridQuotaEnforcer() {
-    /*
-     * We will enforce hybrid quota only if this is hybrid mode && persistence type is rocks DB
-     */
-    AbstractStorageEngine storageEngine = storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic);
-    if (isHybridMode() && storageEngine.getType().equals(PersistenceType.ROCKS_DB)) {
-      this.hybridQuotaEnforcer = Optional.of(new HybridStoreQuotaEnforcement(
-          this,
-          storageEngine,
-          storeRepository.getStoreOrThrow(storeName),
-          kafkaVersionTopic,
-          subPartitionCount,
-          partitionConsumptionSizeMap,
-          partitionConsumptionStateMap));
-      this.storeRepository.registerStoreDataChangedListener(hybridQuotaEnforcer.get());
-      // subscribedPartitionToSize can be accessed by multiple threads, when shared consumer is enabled.
-      this.subscribedPartitionToSize = Optional.of(new Int2IntOpenHashMap());
     }
   }
 
@@ -947,14 +925,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    *
    * @param records : received consumer records
    * @param whetherToApplyThrottling : whether to apply throttling in this function or not.
-   * @param subPartition
+   * @param topicPartition
    * @throws InterruptedException
    */
   protected void produceToStoreBufferServiceOrKafka(Iterable<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>> records,
-      boolean whetherToApplyThrottling, int subPartition, String kafkaUrl) throws InterruptedException {
+      boolean whetherToApplyThrottling, TopicPartition topicPartition, String kafkaUrl) throws InterruptedException {
     long totalBytesRead = 0;
     double elapsedTimeForPuttingIntoQueue = 0;
-    List<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>> processedRecords = new LinkedList<>();
     long beforeProcessingTimestamp = System.currentTimeMillis();
     int recordQueuedToDrainer = 0;
     int recordProducedToKafka = 0;
@@ -965,6 +942,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      * will be dropped.
      */
     IntSet compactingPartitions = new IntOpenHashSet();
+    int subPartition = PartitionUtils.getSubPartition(topicPartition.topic(), topicPartition.partition(), amplificationFactor);
 
     for (ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record: records) {
       if (!shouldProcessRecord(record, subPartition)) {
@@ -1102,7 +1080,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
       // Check schema id availability before putting consumer record to drainer queue
       waitReadyToProcessRecord(record);
-      processedRecords.add(record);
       long kafkaProduceStartTimeInNS = System.nanoTime();
       // This function may modify the original record in KME and it is unsafe to use the payload from KME directly after this call.
 
@@ -1142,17 +1119,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     long quotaEnforcementStartTimeInNS = System.nanoTime();
     /**
-     * Enforces hybrid quota on this batch poll if this is hybrid store and persistence type is rocksDB
      * Even if the records list is empty, we still need to check quota to potentially resume partition
      */
-    boolean isHybridQuotaEnabled = storeRepository.getStoreOrThrow(storeName).isHybridStoreDiskQuotaEnabled();
-    if (isHybridQuotaEnabled && !hybridQuotaEnforcer.isPresent()) {
-      buildHybridQuotaEnforcer();
-    }
-    if (isHybridQuotaEnabled && hybridQuotaEnforcer.isPresent()) {
-      refillPartitionToSizeMap(processedRecords);
-      hybridQuotaEnforcer.get().checkPartitionQuota(subscribedPartitionToSize.get());
-    }
+    storageUtilizationManager.enforcePartitionQuota(topicPartition.partition(), totalBytesRead);
+
     if (emitMetrics.get()) {
       storeIngestionStats.recordQuotaEnforcementLatency(storeName, LatencyUtils.getLatencyInMS(quotaEnforcementStartTimeInNS));
       if (totalBytesRead > 0) {
@@ -1167,7 +1137,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         storeIngestionStats.recordProduceToKafkaLatency(storeName, elapsedTimeForProducingToKafka);
       }
 
-      emitDiskQuotaUsageMetric();
+      storeIngestionStats.recordStorageQuotaUsed(storeName, storageUtilizationManager.getDiskQuotaUsage());
     }
 
     if (whetherToApplyThrottling) {
@@ -1204,28 +1174,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
   }
 
-  private void emitDiskQuotaUsageMetric() {
-    // Calculate disk quota on this server based on partitions #.
-    Store store = storeRepository.getStoreOrThrow(storeName);
-    long storeQuota = store.getStorageQuotaInByte();
-    double serverDiskQuotaForStore = storeQuota * 1.0D;
-    int storePartitionCount = store.getPartitionCount();
-
-    // TODO: Remove this config when prod cluster metric is reported correctly.
-    if (serverConfig.isServerCalculateQuotaUsageBasedOnPartitionsAssignmentEnabled() && storePartitionCount > 0) {
-      serverDiskQuotaForStore *= (double) partitionConsumptionSizeMap.size() / storePartitionCount;
-    }
-
-    // Calculate total current disk usage for all partitions.
-    double storeDiskUsage = 0.0D;
-    for (StoragePartitionDiskUsage storagePartitionDiskUsage: partitionConsumptionSizeMap.values()) {
-      long partitionDiskUsage = storagePartitionDiskUsage.getUsage();
-      storeDiskUsage += partitionDiskUsage;
-    }
-
-    storeIngestionStats.recordStorageQuotaUsed(storeName, serverDiskQuotaForStore > 0 ? (storeDiskUsage / serverDiskQuotaForStore) : 0);
-  }
-
   private void drainExceptionQueue(BlockingQueue<PartitionExceptionInfo> exceptionQueue, String exceptionGroup) {
     while (!exceptionQueue.isEmpty()) {
       try {
@@ -1255,7 +1203,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
   }
 
-  protected void processMessages(boolean usingSharedConsumer) throws InterruptedException {
+  protected void processMessages(boolean usingSharedConsumer, Store store) throws InterruptedException {
     Exception ingestionTaskException = lastStoreIngestionException.get();
     if (null != ingestionTaskException) {
       throw new VeniceException("Unexpected store ingestion task level exception, will error out the entire" +
@@ -1313,8 +1261,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
 
     idleCounter = 0;
-    maybeUnsubscribeCompletedPartitions();
-    recordDiskQuotaAllowedForStore();
+    maybeUnsubscribeCompletedPartitions(store);
+    recordDiskQuotaAllowedForStore(store);
 
     if (usingSharedConsumer) {
       /**
@@ -1324,9 +1272,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
        * are available records, this function needs to check whether we need to resume the consumption when there are
        * paused consumption because of hybrid quota violation.
        */
-      boolean isHybridQuotaEnabled = storeRepository.getStoreOrThrow(storeName).isHybridStoreDiskQuotaEnabled();
-      if (isHybridQuotaEnabled && hybridQuotaEnforcer.isPresent() && hybridQuotaEnforcer.get().hasPausedPartitionIngestion()) {
-        hybridQuotaEnforcer.get().checkPartitionQuota(subscribedPartitionToSize.get());
+      if (storageUtilizationManager.hasPausedPartitionIngestion()) {
+        storageUtilizationManager.checkAllPartitionsQuota();
       }
       Thread.sleep(readCycleDelayMs);
 
@@ -1335,11 +1282,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
   }
 
-  private void maybeUnsubscribeCompletedPartitions() {
+  private void maybeUnsubscribeCompletedPartitions(Store store) {
     if (hybridStoreConfig.isPresent() || (!serverConfig.isUnsubscribeAfterBatchpushEnabled())) {
       return;
     }
-    Store store = storeRepository.getStoreOrThrow(storeName);
     // unsubscribe completed backup version and batch-store versions.
     if (versionNumber <= store.getCurrentVersion()) {
       Set<TopicPartition> topicPartitionsToUnsubscribe = new HashSet<>();
@@ -1358,9 +1304,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
   }
 
-  private void recordDiskQuotaAllowedForStore() {
+  private void recordDiskQuotaAllowedForStore(Store store) {
     if (emitMetrics.get()) {
-      long currentQuota = storeRepository.getStoreOrThrow(storeName).getStorageQuotaInByte();
+      long currentQuota = store.getStorageQuotaInByte();
       storeIngestionStats.recordDiskQuotaAllowed(storeName, currentQuota);
     }
   }
@@ -1410,7 +1356,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         produceToStoreBufferServiceOrKafka(
             entry.getValue().records(topicPartition),
             true,
-            PartitionUtils.getSubPartition(topicPartition.topic(), topicPartition.partition(), amplificationFactor),
+            topicPartition,
             entry.getKey());
       }
     }
@@ -1429,10 +1375,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       versionedStorageIngestionStats.resetIngestionTaskPushTimeoutGauge(storeName, versionNumber);
 
       while (isRunning()) {
-        processConsumerActions();
+        Store store = storeRepository.getStoreOrThrow(storeName);
+        processConsumerActions(store);
         checkLongRunningTaskState();
         checkLongRunningDBCompaction();
-        processMessages(serverConfig.isSharedConsumerPoolEnabled());
+        processMessages(serverConfig.isSharedConsumerPoolEnabled(), store);
       }
 
       // If the ingestion task is stopped gracefully (server stops), persist processed offset to disk
@@ -1630,7 +1577,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   /**
    * Consumes the kafka actions messages in the queue.
    */
-  private void processConsumerActions() throws InterruptedException {
+  private void processConsumerActions(Store store) throws InterruptedException {
     Instant startTime = Instant.now();
     for (;;) {
       // Do not want to remove a message from the queue unless it has been processed.
@@ -1641,7 +1588,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       try {
         logger.info("Starting consumer action " + action);
         action.incrementAttempt();
-        processConsumerAction(action);
+        processConsumerAction(action, store);
         consumerActionsQueue.poll();
         logger.info("Finished consumer action " + action);
 
@@ -1806,7 +1753,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           consumerSubscribe(topic, newPartitionConsumptionState.getSourceTopicPartition(topic), offsetRecord.getLocalVersionTopicOffset(), localKafkaServer);
           logger.info(consumerTaskId + " subscribed to: Topic " + topic + " Partition Id " + partition + " Offset " + offsetRecord.getLocalVersionTopicOffset());
         }
-        partitionConsumptionSizeMap.put(partition, new StoragePartitionDiskUsage(partition, storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic)));
+        storageUtilizationManager.initPartition(partition);
         break;
       case UNSUBSCRIBE:
         logger.info(consumerTaskId + " UnSubscribed to: Topic " + topic + " Partition Id " + partition);
@@ -1848,7 +1795,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
          * two variables to avoid the race condition.
          */
         partitionConsumptionStateMap.remove(partition);
-        partitionConsumptionSizeMap.remove(partition);
+        storageUtilizationManager.removePartition(partition);
         kafkaDataIntegrityValidator.clearPartition(partition);
 
         // Clean up the db compaction state.
@@ -1879,7 +1826,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           partitionConsumptionStateMap.put(partition,
               new PartitionConsumptionState(partition, amplificationFactor, new OffsetRecord(partitionStateSerializer), hybridStoreConfig.isPresent(),
                   isIncrementalPushEnabled, incrementalPushPolicy));
-          partitionConsumptionSizeMap.put(partition, new StoragePartitionDiskUsage(partition, storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic)));
+          storageUtilizationManager.initPartition(partition);
         } else {
           logger.info(consumerTaskId + " No need to reset offset by Kafka consumer, since the consumer is not " +
               "subscribing Topic: " + topic + " Partition Id: " + partition);
@@ -1897,7 +1844,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   protected abstract void checkLongRunningTaskState() throws InterruptedException;
-  protected abstract void processConsumerAction(ConsumerAction message) throws InterruptedException;
+  protected abstract void processConsumerAction(ConsumerAction message, Store store) throws InterruptedException;
   protected abstract Set<String> getConsumptionSourceKafkaAddress(PartitionConsumptionState partitionConsumptionState);
 
   protected void startConsumingAsLeader(PartitionConsumptionState partitionConsumptionState) {
@@ -3254,29 +3201,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   /**
-   * Refill subscribedPartitionToSize map with the batch records size for each subscribed partition
-   * Even when @param records are empty, we should still call this method. As stalled partitions
-   * won't appear in @param records but the disk might have more space available for them now and
-   * these partitions need to be resumed.
-   * @param records
-   */
-  private void refillPartitionToSizeMap(List<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>> records) {
-    // Prepare the temporary subscribedPartitionToSize map.
-    Int2IntMap tmpSubscribedPartitionToSize = new Int2IntOpenHashMap(partitionConsumptionStateMap.size());
-    for (int partition : partitionConsumptionStateMap.keySet()) {
-      tmpSubscribedPartitionToSize.put(partition, 0);
-    }
-    int partition, recordSize;
-    for (ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record : records) {
-      partition = record.partition();
-      recordSize = record.serializedKeySize() + record.serializedValueSize();
-      tmpSubscribedPartitionToSize.put(partition, tmpSubscribedPartitionToSize.getOrDefault(partition, 0) + recordSize);
-    }
-    // Prepared subscribedPartitionToSize map is ready, get it referenced by original one.
-    subscribedPartitionToSize = Optional.of(tmpSubscribedPartitionToSize);
-  }
-
-  /**
    * Override the {@link CommonClientConfigs#BOOTSTRAP_SERVERS_CONFIG} config with a remote Kafka bootstrap url.
    */
   protected Properties updateKafkaConsumerProperties(Properties localConsumerProps, String remoteKafkaSourceAddress, boolean consumeRemotely) {
@@ -3433,16 +3357,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       }
     }
     reportStatusAdapter.reportError(pcsList, message, e);
-  }
-
-  public void reportQuotaViolated(int subPartitionId) {
-    PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(subPartitionId);
-    reportStatusAdapter.reportQuotaViolated(partitionConsumptionState);
-  }
-
-  public void reportQuotaNotViolated(int subPartitionId) {
-    PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(subPartitionId);
-    reportStatusAdapter.reportQuotaNotViolated(partitionConsumptionState);
   }
 
   public int getAmplificationFactor() {

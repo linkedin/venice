@@ -1,20 +1,15 @@
 package com.linkedin.davinci.kafka.consumer;
 
 import com.linkedin.davinci.store.AbstractStorageEngine;
-import com.linkedin.davinci.utils.StoragePartitionDiskUsage;
-import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
 import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentMap;
+import org.mockito.ArgumentMatcher;
 import org.testng.Assert;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.BeforeMethod;
@@ -23,7 +18,7 @@ import org.testng.annotations.Test;
 import static org.mockito.Mockito.*;
 
 @Test
-public class HybridStoreQuotaEnforcementTest {
+public class StorageUtilizationManagerTest {
 
   private final long storeQuotaInBytes = 100l;
   private final long newStoreQuotaInBytes = 200l;
@@ -32,14 +27,12 @@ public class HybridStoreQuotaEnforcementTest {
   private final String topic = Version.composeKafkaTopic(storeName, 1);
   private final int storeVersion = Version.parseVersionFromKafkaTopicName(topic);
 
-  private StoreIngestionTask storeIngestionTask;
   private ConcurrentMap<Integer, PartitionConsumptionState> partitionConsumptionStateMap;
   private AbstractStorageEngine storageEngine;
   private ReportStatusAdapter reportStatusAdapter;
   private Store store;
   private Version version;
-  private Map<Integer, Integer> subscribedPartitionToSize;
-  private HybridStoreQuotaEnforcement quotaEnforcer;
+  private StorageUtilizationManager quotaEnforcer;
 
   @BeforeClass
   public void setUp() {
@@ -50,7 +43,6 @@ public class HybridStoreQuotaEnforcementTest {
 
   @BeforeMethod
   private void buildNewQuotaEnforcer() {
-    storeIngestionTask = mock(StoreIngestionTask.class);
     reportStatusAdapter = mock(ReportStatusAdapter.class);
     partitionConsumptionStateMap = new VeniceConcurrentHashMap<>();
 
@@ -66,17 +58,18 @@ public class HybridStoreQuotaEnforcementTest {
     when(store.getVersion(storeVersion)).thenReturn(Optional.of(version));
     when(store.isHybridStoreDiskQuotaEnabled()).thenReturn(true);
     when(version.getStatus()).thenReturn(VersionStatus.STARTED);
-    when(storeIngestionTask.isMetricsEmissionEnabled()).thenReturn(false);
-    when(storeIngestionTask.getReportStatusAdapter()).thenReturn(reportStatusAdapter);
 
-    Map<Integer, StoragePartitionDiskUsage> partitionConsumptionSizeMap = new HashMap<>();
-    quotaEnforcer = new HybridStoreQuotaEnforcement(storeIngestionTask,
-                                                    storageEngine,
-                                                    store,
-                                                    topic,
-                                                    storePartitionCount,
-                                                    partitionConsumptionSizeMap,
-                                                    partitionConsumptionStateMap);
+    quotaEnforcer = new StorageUtilizationManager(
+        storageEngine,
+        store,
+        topic,
+        storePartitionCount,
+        partitionConsumptionStateMap,
+        true,
+        true,
+        reportStatusAdapter,
+        (t, p) -> {},
+        (t, p) -> {});
   }
 
   @Test
@@ -92,17 +85,19 @@ public class HybridStoreQuotaEnforcementTest {
 
     // Quota is reported as not violated at the current stage.
     for (int i = 1; i <= storePartitionCount; i++) {
-      verify(storeIngestionTask, times(1)).reportQuotaNotViolated(i);
+      PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(i);
+      verify(reportStatusAdapter, times(1)).reportQuotaNotViolated(partitionConsumptionState);
     }
 
     // Trigger quota violation to pause these partitions.
-    buildDummyPartitionToSizeMap(20);
-    runTest(() -> {
-      for (int i = 1; i <= storePartitionCount; i++) {
-        Assert.assertTrue(quotaEnforcer.isPartitionPausedIngestion(i));
-        verify(storeIngestionTask, times(1)).reportQuotaViolated(i);
-      }
-    });
+    verify(reportStatusAdapter, times(0)).reportQuotaViolated(any());
+    addUsageToAllPartitions(20);
+    verify(reportStatusAdapter, times(storePartitionCount)).reportQuotaViolated(any());
+    for (int i = 1; i <= storePartitionCount; i++) {
+      Assert.assertTrue(quotaEnforcer.isPartitionPausedIngestion(i));
+      PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(i);
+      verify(reportStatusAdapter).reportQuotaViolated(partitionConsumptionState);
+    }
 
     // handleStoreChanged should get these paused partitions back, when feature is disabled.
     when(store.isHybridStoreDiskQuotaEnabled()).thenReturn(false);
@@ -110,33 +105,30 @@ public class HybridStoreQuotaEnforcementTest {
     for (int i = 1; i <= storePartitionCount; i++) {
       Assert.assertFalse(quotaEnforcer.isPartitionPausedIngestion(i));
       // Expect a new round of QuotaNotViolate are reported.
-      verify(storeIngestionTask, times(2)).reportQuotaNotViolated(i);
+      PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(i);
+      verify(reportStatusAdapter, times(2)).reportQuotaNotViolated(partitionConsumptionState);
     }
   }
 
   @Test
   public void testHybridStoreBatchPushExceededQuota() throws Exception {
     // should not throw exception as the partitions size break write quota
-    buildDummyPartitionToSizeMap(10);
-    runTest(() -> {});
+    addUsageToAllPartitions(10);
   }
 
   @Test
   public void testHybridStorePushNotExceededQuota() throws Exception {
     // expect no exceptions
-    buildDummyPartitionToSizeMap(5);
-    runTest(() -> {});
+    addUsageToAllPartitions(5);
   }
 
   @Test
   public void testRTJobNotExceededQuota() throws Exception {
     setUpOnlineVersion();
-    buildDummyPartitionToSizeMap(5);
-    runTest(() -> {
-      for (int i = 1; i <= storePartitionCount; i++) {
-        Assert.assertFalse(quotaEnforcer.isPartitionPausedIngestion(i));
-      }
-    });
+    addUsageToAllPartitions(5);
+    for (int i = 1; i <= storePartitionCount; i++) {
+      Assert.assertFalse(quotaEnforcer.isPartitionPausedIngestion(i));
+    }
   }
 
   @Test
@@ -144,36 +136,32 @@ public class HybridStoreQuotaEnforcementTest {
     setUpOnlineVersion();
 
     // these partitions should be paused for exceeding write quota
-    buildDummyPartitionToSizeMap(10);
-    runTest(() -> {
-      for (int i = 1; i <= storePartitionCount; i++) {
-        Assert.assertTrue(quotaEnforcer.isPartitionPausedIngestion(i));
-        verify(storeIngestionTask, times(1)).reportQuotaViolated(i);
-      }
-    });
+    addUsageToAllPartitions(10);
+    verify(reportStatusAdapter, times(storePartitionCount)).reportQuotaViolated(any());
+    for (int i = 1; i <= storePartitionCount; i++) {
+      Assert.assertTrue(quotaEnforcer.isPartitionPausedIngestion(i));
+      PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(i);
+      verify(reportStatusAdapter).reportQuotaViolated(partitionConsumptionState);
+    }
 
     // The later same partitions consumptions should be paused too even with size zero
-    buildDummyPartitionToSizeMap(0);
-    runTest(() -> {
-      for (int i = 1; i <= storePartitionCount; i++) {
-        Assert.assertTrue(quotaEnforcer.isPartitionPausedIngestion(i));
-      }
-    });
+    addUsageToAllPartitions(0);
+    for (int i = 1; i <= storePartitionCount; i++) {
+      Assert.assertTrue(quotaEnforcer.isPartitionPausedIngestion(i));
+    }
 
     // check after store change and bumping quota, paused partition should be resumed
     when(store.getStorageQuotaInByte()).thenReturn(newStoreQuotaInBytes);
     quotaEnforcer.handleStoreChanged(store);
-    runTest(()-> {
-      for (int i = 1; i <= storePartitionCount; i++) {
-        Assert.assertFalse(quotaEnforcer.isPartitionPausedIngestion(i));
-      }
-    });
+    for (int i = 1; i <= storePartitionCount; i++) {
+      Assert.assertFalse(quotaEnforcer.isPartitionPausedIngestion(i));
+    }
   }
 
   @Test
   public void testReportCompletionForOnlineVersion() throws Exception {
     setUpOnlineVersion();
-    buildDummyPartitionToSizeMap(10);
+    addUsageToAllPartitions(10);
     for (int i = 1; i <= storePartitionCount; i++) {
       PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
       // The version is online but completion is not reported. We should expect the enforcer report completion.
@@ -181,31 +169,33 @@ public class HybridStoreQuotaEnforcementTest {
       when(pcs.getLeaderFollowerState()).thenReturn(LeaderFollowerStateType.STANDBY);
       partitionConsumptionStateMap.put(i, pcs);
     }
-    runTest(() -> {
-      for (int i = 1; i <= storePartitionCount; i++) {
-        verify(reportStatusAdapter, times(10)).reportCompleted(any());
-        Assert.assertTrue(quotaEnforcer.isPartitionPausedIngestion(i));
-      }
-    });
-  }
-
-  private void runTest(Runnable assertions) throws Exception {
-    quotaEnforcer.checkPartitionQuota(subscribedPartitionToSize);
-    assertions.run();
-  }
-
-  private void buildDummyPartitionToSizeMap(int partitionSize) {
-    subscribedPartitionToSize = new HashMap<>();
+    verify(reportStatusAdapter, times(storePartitionCount)).reportCompleted(any());
     for (int i = 1; i <= storePartitionCount; i++) {
-      subscribedPartitionToSize.put(i, partitionSize);
+      Assert.assertTrue(quotaEnforcer.isPartitionPausedIngestion(i));
+      verify(reportStatusAdapter).reportCompleted(argThat(new PartitionNumberMatcher(i)));
+    }
+  }
+
+  private static class PartitionNumberMatcher implements ArgumentMatcher<PartitionConsumptionState> {
+    private final int expectedPartition;
+
+    public PartitionNumberMatcher(int expectedPartition) {
+      this.expectedPartition = expectedPartition;
+    }
+
+    @Override
+    public boolean matches(PartitionConsumptionState argument) {
+      return argument.getPartition() == expectedPartition;
+    }
+  }
+
+  private void addUsageToAllPartitions(int partitionSize) {
+    for (int i = 1; i <= storePartitionCount; i++) {
+      quotaEnforcer.enforcePartitionQuota(i, partitionSize);
     }
   }
 
   private void setUpOnlineVersion() {
-    KafkaConsumerWrapper consumer = mock(KafkaConsumerWrapper.class);
-    List<KafkaConsumerWrapper> consumerList = new ArrayList<>();
-    consumerList.add(consumer);
-    when(storeIngestionTask.getConsumers()).thenReturn(consumerList);
     when(version.getStatus()).thenReturn(VersionStatus.ONLINE);
     quotaEnforcer.handleStoreChanged(store);
   }
