@@ -61,6 +61,7 @@ public class StoreInfo {
     storeInfo.setStoreMetadataSystemStoreEnabled(store.isStoreMetadataSystemStoreEnabled());
     storeInfo.setVersions(store.getVersions());
     storeInfo.setWriteComputationEnabled(store.isWriteComputationEnabled());
+    storeInfo.setReplicationMetadataVersionId(store.getRmdVersionID().orElse(-1));
     return storeInfo;
   }
   /**
@@ -191,6 +192,11 @@ public class StoreInfo {
    * Whether or not write-path computation feature is enabled for this store
    */
   private boolean writeComputationEnabled = false;
+
+  /**
+   * RMD (Replication metadata) version ID on the store-level. Default is -1.
+   */
+  public int replicationMetadataVersionId = -1;
 
   /**
    * Whether read-path computation is enabled for this store.
@@ -549,6 +555,14 @@ public class StoreInfo {
 
   public void setWriteComputationEnabled(boolean writeComputationEnabled) {
     this.writeComputationEnabled = writeComputationEnabled;
+  }
+
+  public int getReplicationMetadataVersionId() {
+    return replicationMetadataVersionId;
+  }
+
+  public void setReplicationMetadataVersionId(int replicationMetadataVersionId) {
+    this.replicationMetadataVersionId = replicationMetadataVersionId;
   }
 
   public boolean isReadComputationEnabled() {

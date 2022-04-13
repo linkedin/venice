@@ -1581,6 +1581,7 @@ public class VeniceParentHelixAdmin implements Admin {
       Optional<Boolean> incrementalPushEnabled = params.getIncrementalPushEnabled();
       Optional<Boolean> storeMigration = params.getStoreMigration();
       Optional<Boolean> writeComputationEnabled = params.getWriteComputationEnabled();
+      Optional<Integer> replicationMetadataVersionID = params.getReplicationMetadataVersionID();
       Optional<Boolean> readComputationEnabled = params.getReadComputationEnabled();
       Optional<Integer> bootstrapToOnlineTimeoutInHours = params.getBootstrapToOnlineTimeoutInHours();
       Optional<Boolean> leaderFollowerModelEnabled = params.getLeaderFollowerModelEnabled();
@@ -1769,6 +1770,9 @@ public class VeniceParentHelixAdmin implements Admin {
       setStore.writeComputationEnabled = writeComputationEnabled
           .map(addToUpdatedConfigList(updatedConfigsList, WRITE_COMPUTATION_ENABLED))
           .orElseGet(currStore::isWriteComputationEnabled);
+      setStore.replicationMetadataVersionID = replicationMetadataVersionID
+          .map(addToUpdatedConfigList(updatedConfigsList, REPLICATION_METADATA_PROTOCOL_VERSION_ID))
+          .orElse(currStore.getRmdVersionID().orElse(-1));
       setStore.readComputationEnabled = readComputationEnabled
           .map(addToUpdatedConfigList(updatedConfigsList, READ_COMPUTATION_ENABLED))
           .orElseGet(currStore::isReadComputationEnabled);
