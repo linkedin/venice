@@ -168,8 +168,18 @@ public class ApacheKafkaConsumer implements KafkaConsumerWrapper {
   }
 
   @Override
-  public boolean hasSubscription() {
+  public boolean hasAnySubscription() {
     return !kafkaConsumer.assignment().isEmpty();
+  }
+
+  @Override
+  public boolean hasSubscribedAnyTopic(Set<String> topics) {
+    for (TopicPartition subscribedTopicPartition : kafkaConsumer.assignment()) {
+      if (topics.contains(subscribedTopicPartition.topic())) {
+        return true;
+      }
+    }
+    return false;
   }
 
   @Override

@@ -28,7 +28,7 @@ import org.apache.logging.log4j.Logger;
  * This class is a synchronized version of {@link KafkaConsumerWrapper}.
  * Especially, this class adds the special support for function: {@link #close(Set)} since this consumer could
  * subscript to multiple topics and the customer could only remove the subscriptions belonging to the specified
- * topics. Also the support for function: {@link #hasSubscription(Set)} since it could be shared by multiple users.
+ * topics. Also the support for function: {@link #hasSubscribedAnyTopic(Set)} since it could be shared by multiple users.
  *
  * In addition to the existing API of {@link KafkaConsumerWrapper}, this class also adds specific functions: {@link #attach},
  * {@link #unsubscribeAll}, which will be used by {@link KafkaConsumerService}.
@@ -318,7 +318,7 @@ abstract class SharedKafkaConsumer implements KafkaConsumerWrapper {
      * If the consumer does not have subscription, sleep the specified timeout and return.
      */
     try {
-      if (!hasSubscription()) {
+      if (!hasAnySubscription()) {
         // TODO: removing this sleep inside the poll with synchronization, this sleep should be added by the logic calling this poll method.
         Thread.sleep(timeoutMs);
         return ConsumerRecords.empty();
@@ -345,7 +345,7 @@ abstract class SharedKafkaConsumer implements KafkaConsumerWrapper {
   protected abstract void sanitizeTopicsWithoutCorrespondingIngestionTask(ConsumerRecords<KafkaKey, KafkaMessageEnvelope> records);
 
   @Override
-  public synchronized boolean hasSubscription() {
+  public synchronized boolean hasAnySubscription() {
     return !this.currentAssignment.isEmpty();
   }
 
@@ -353,9 +353,9 @@ abstract class SharedKafkaConsumer implements KafkaConsumerWrapper {
    * This function will return true as long as any topic in the passed {@param topics} has been subscribed.
    */
   @Override
-  public synchronized boolean hasSubscription(Set<String> topics) {
-    for (TopicPartition topicPartition : currentAssignment) {
-      if (topics.contains(topicPartition.topic())) {
+  public synchronized boolean hasSubscribedAnyTopic(Set<String> topics) {
+    for (TopicPartition subscribedTopicPartition : currentAssignment) {
+      if (topics.contains(subscribedTopicPartition.topic())) {
         return true;
       }
     }

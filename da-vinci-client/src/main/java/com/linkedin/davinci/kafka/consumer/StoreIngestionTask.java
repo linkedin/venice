@@ -245,7 +245,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final ReadyToServeCheck defaultReadyToServeChecker;
 
   // Kafka bootstrap url to consumer
-  protected Map<String, KafkaConsumerWrapper> consumerMap;
+  protected Map<String, KafkaConsumerWrapper> kafkaUrlToConsumerMap;
 
   private final KafkaClusterBasedRecordThrottler kafkaClusterBasedRecordThrottler;
 
@@ -402,7 +402,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.availableSchemaIds = new IntOpenHashSet();
     this.deserializedSchemaIds = new IntOpenHashSet();
     this.consumerActionsQueue = new PriorityBlockingQueue<>(CONSUMER_ACTION_QUEUE_INIT_CAPACITY);
-    this.consumerMap = new VeniceConcurrentHashMap<>();
+    this.kafkaUrlToConsumerMap = new VeniceConcurrentHashMap<>();
     this.kafkaClusterBasedRecordThrottler = builder.getKafkaClusterBasedRecordThrottler();
 
     // partitionConsumptionStateMap could be accessed by multiple threads: consumption thread and the thread handling kill message
@@ -1313,31 +1313,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
 
     idleCounter = 0;
+    maybeUnsubscribeCompletedPartitions();
+    recordDiskQuotaAllowedForStore();
 
-    if (!hybridStoreConfig.isPresent() && serverConfig.isUnsubscribeAfterBatchpushEnabled()) {
-      Store store = storeRepository.getStoreOrThrow(storeName);
-      // unsubscribe completed backup version and batch-store versions.
-      if (versionNumber <= store.getCurrentVersion()) {
-        Set<TopicPartition> topicPartitionsToUnsubscribe = new HashSet<>();
-        for (PartitionConsumptionState state : partitionConsumptionStateMap.values()) {
-          if (state.isCompletionReported() && !state.isIncrementalPushEnabled()
-              && consumerHasSubscription(kafkaVersionTopic, state)) {
-            logger.info("Unsubscribing completed partitions " + state.getPartition() + " of store : " + store.getName()
-                + " version : "  + versionNumber + " current version: " + store.getCurrentVersion());
-            topicPartitionsToUnsubscribe.add(new TopicPartition(kafkaVersionTopic, state.getPartition()));
-            forceUnSubscribedCount++;
-          }
-        }
-        if (topicPartitionsToUnsubscribe.size() != 0) {
-          consumerBatchUnsubscribe(topicPartitionsToUnsubscribe);
-        }
-      }
-    }
-
-    if (emitMetrics.get()) {
-      long currentQuota = storeRepository.getStoreOrThrow(storeName).getStorageQuotaInByte();
-      storeIngestionStats.recordDiskQuotaAllowed(storeName, currentQuota);
-    }
     if (usingSharedConsumer) {
       /**
        * While using the shared consumer, we still need to check hybrid quota here since the actual disk usage could change
@@ -1351,13 +1329,47 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         hybridQuotaEnforcer.get().checkPartitionQuota(subscribedPartitionToSize.get());
       }
       Thread.sleep(readCycleDelayMs);
+
+    } else {
+      getRecordsFromDedicatedConsumerToProcess();
+    }
+  }
+
+  private void maybeUnsubscribeCompletedPartitions() {
+    if (hybridStoreConfig.isPresent() || (!serverConfig.isUnsubscribeAfterBatchpushEnabled())) {
       return;
     }
+    Store store = storeRepository.getStoreOrThrow(storeName);
+    // unsubscribe completed backup version and batch-store versions.
+    if (versionNumber <= store.getCurrentVersion()) {
+      Set<TopicPartition> topicPartitionsToUnsubscribe = new HashSet<>();
+      for (PartitionConsumptionState state : partitionConsumptionStateMap.values()) {
+        if (state.isCompletionReported() && !state.isIncrementalPushEnabled()
+            && consumerHasSubscription(kafkaVersionTopic, state)) {
+          logger.info("Unsubscribing completed partitions " + state.getPartition() + " of store : " + store.getName()
+              + " version : "  + versionNumber + " current version: " + store.getCurrentVersion());
+          topicPartitionsToUnsubscribe.add(new TopicPartition(kafkaVersionTopic, state.getPartition()));
+          forceUnSubscribedCount++;
+        }
+      }
+      if (topicPartitionsToUnsubscribe.size() != 0) {
+        consumerBatchUnsubscribe(topicPartitionsToUnsubscribe);
+      }
+    }
+  }
 
+  private void recordDiskQuotaAllowedForStore() {
+    if (emitMetrics.get()) {
+      long currentQuota = storeRepository.getStoreOrThrow(storeName).getStorageQuotaInByte();
+      storeIngestionStats.recordDiskQuotaAllowed(storeName, currentQuota);
+    }
+  }
+
+  private void getRecordsFromDedicatedConsumerToProcess() throws InterruptedException {
     long beforePollingTimestamp = System.currentTimeMillis();
 
     boolean wasIdle = (recordCount == 0);
-    Map<String, ConsumerRecords<KafkaKey, KafkaMessageEnvelope>> recordsByKafkaURLs = consumerPoll(readCycleDelayMs);
+    Map<String, ConsumerRecords<KafkaKey, KafkaMessageEnvelope>> recordsByKafkaURLs = dedicatedConsumerPoll(readCycleDelayMs);
     recordCount = 0;
     long estimatedSize = 0;
     for (ConsumerRecords<KafkaKey, KafkaMessageEnvelope> consumerRecords : recordsByKafkaURLs.values()) {
@@ -1596,11 +1608,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         }
       }
 
-      if (consumerMap == null || consumerMap.size() == 0) {
+      if (kafkaUrlToConsumerMap == null || kafkaUrlToConsumerMap.size() == 0) {
         // Consumer constructor error-ed out, nothing can be cleaned up.
         logger.warn("Error in consumer creation, skipping close for topic " + kafkaVersionTopic);
       } else {
-        consumerMap.values().forEach(consumer -> consumer.close(everSubscribedTopics));
+        kafkaUrlToConsumerMap.values().forEach(consumer -> consumer.close(everSubscribedTopics));
       }
       if (aggKafkaConsumerService != null) {
         aggKafkaConsumerService.unsubscribeAll(getVersionTopic());
@@ -2807,7 +2819,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   public boolean consumerHasSubscription() {
-    return consumerMap.values().stream().anyMatch(consumer -> consumer.hasSubscription(everSubscribedTopics));
+    return kafkaUrlToConsumerMap.values().stream().anyMatch(consumer -> consumer.hasSubscribedAnyTopic(everSubscribedTopics));
   }
 
   public boolean consumerHasSubscription(String topic, PartitionConsumptionState partitionConsumptionState) {
@@ -2832,7 +2844,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   public void consumerBatchUnsubscribe(Set<TopicPartition> topicPartitionSet) {
     Instant startTime = Instant.now();
-    consumerMap.values().forEach(consumer -> consumer.batchUnsubscribe(topicPartitionSet));
+    kafkaUrlToConsumerMap.values().forEach(consumer -> consumer.batchUnsubscribe(topicPartitionSet));
     logger.info(String.format("Consumer unsubscribed %d partitions. Took %d ms",
         topicPartitionSet.size(), Instant.now().toEpochMilli() - startTime.toEpochMilli()));
   }
@@ -2850,13 +2862,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   /**
-   * Poll consumer(s) to get a map from Kafka URLs to consumed records from that Kafka URL.
+   * Poll dedicated consumer(s) to get a map from Kafka URLs to consumed records from that Kafka URL.
    *
    * This method is only called for dedicated Kafka consumer
    * @param pollTimeoutMs
    * @return
    */
-  protected Map<String, ConsumerRecords<KafkaKey, KafkaMessageEnvelope>> consumerPoll(long pollTimeoutMs) {
+  protected Map<String, ConsumerRecords<KafkaKey, KafkaMessageEnvelope>> dedicatedConsumerPoll(long pollTimeoutMs) {
     if (!storeRepository.getStoreOrThrow(storeName).getVersion(versionNumber).isPresent()) {
       //If the version is not found, it must have been retired/deleted by controller, Let's kill this ingestion task.
       throw new VeniceIngestionTaskKilledException("Version " + versionNumber + " does not exist. Should not poll.");
@@ -2865,9 +2877,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      * Since the number of entries in the consumerMap is practically always much smaller than the default map size (16),
      * creating a map with a size of the key set size of consumerMap is more memory efficient.
      */
-    final Map<String, ConsumerRecords<KafkaKey, KafkaMessageEnvelope>> recordsByKafkaURLs = new HashMap<>(consumerMap.keySet().size());
-    consumerMap.forEach((kafkaURL, consumer) -> {
-      if (consumer.hasSubscription()) {
+    final Map<String, ConsumerRecords<KafkaKey, KafkaMessageEnvelope>> recordsByKafkaURLs = new HashMap<>(
+        kafkaUrlToConsumerMap.keySet().size());
+    kafkaUrlToConsumerMap.forEach((kafkaURL, consumer) -> {
+      if (consumer.hasAnySubscription()) {
         ConsumerRecords<KafkaKey, KafkaMessageEnvelope> consumerRecords;
 
         if (serverConfig.isLiveConfigBasedKafkaThrottlingEnabled()) {
@@ -2900,7 +2913,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   private KafkaConsumerWrapper getConsumer(String kafkaURL, boolean consumeRemotely) {
-    return consumerMap.computeIfAbsent(kafkaURL, source -> {
+    return kafkaUrlToConsumerMap.computeIfAbsent(kafkaURL, source -> {
       Properties consumerProps = updateKafkaConsumerProperties(kafkaProps, kafkaURL, consumeRemotely);
       if (serverConfig.isSharedConsumerPoolEnabled()) {
         return aggKafkaConsumerService.getConsumer(consumerProps, this);
@@ -3218,7 +3231,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   Collection<KafkaConsumerWrapper> getConsumers() {
-    return consumerMap.values();
+    return kafkaUrlToConsumerMap.values();
   }
 
   public boolean isMetricsEmissionEnabled() {

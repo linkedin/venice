@@ -37,7 +37,6 @@ import com.linkedin.venice.schema.merge.MergeRecordHelper;
 import com.linkedin.venice.stats.StatsErrorCode;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.LatencyUtils;
-import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.writer.LeaderMetadataWrapper;
@@ -1906,7 +1905,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           }
 
           String sourceKafkaURL = getSourceKafkaUrlForOffsetLagMeasurement(pcs);
-          KafkaConsumerWrapper kafkaConsumer = consumerMap.get(sourceKafkaURL);
+          KafkaConsumerWrapper kafkaConsumer = kafkaUrlToConsumerMap.get(sourceKafkaURL);
           // Consumer might not existed in the map after the consumption state is created, but before attaching the
           // corresponding consumer in consumerMap.
           if (kafkaConsumer != null) {
@@ -1963,7 +1962,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             currentLeaderTopic = kafkaVersionTopic;
           }
           final String kafkaSourceAddress = getSourceKafkaUrlForOffsetLagMeasurement(pcs);
-          KafkaConsumerWrapper kafkaConsumer = consumerMap.get(kafkaSourceAddress);
+          KafkaConsumerWrapper kafkaConsumer = kafkaUrlToConsumerMap.get(kafkaSourceAddress);
           // Consumer might not existed in the map after the consumption state is created, but before attaching the
           // corresponding consumer in consumerMap.
           if (kafkaConsumer != null) {
@@ -2033,7 +2032,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         .filter(partitionConsumptionStateFilter)
         //the lag is (latest VT offset - consumed VT offset)
         .mapToLong((pcs) -> {
-          KafkaConsumerWrapper kafkaConsumer = consumerMap.get(localKafkaServer);
+          KafkaConsumerWrapper kafkaConsumer = kafkaUrlToConsumerMap.get(localKafkaServer);
           // Consumer might not existed in the map after the consumption state is created, but before attaching the
           // corresponding consumer in consumerMap.
           if (kafkaConsumer != null) {

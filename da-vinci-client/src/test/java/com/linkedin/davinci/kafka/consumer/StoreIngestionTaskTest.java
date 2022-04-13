@@ -1399,10 +1399,10 @@ public class StoreIngestionTaskTest {
 
     runTest(Utils.setOf(PARTITION_FOO),
         () -> {
-          doReturn(true).when(mockLocalKafkaConsumer).hasSubscription(anySet());
+          doReturn(true).when(mockLocalKafkaConsumer).hasSubscribedAnyTopic(anySet());
           Store mockStore = mock(Store.class);
           doReturn(1).when(mockStore).getCurrentVersion();
-          doReturn(Optional.of(new VersionImpl("storeName", 1))).when(mockStore).getVersion(1);
+          doReturn(Optional.of(new VersionImpl("storeName", 1, Version.numberBasedDummyPushId(1)))).when(mockStore).getVersion(1);
           doReturn(mockStore).when(mockMetadataRepo).getStoreOrThrow(storeNameWithoutVersionInfo);
           doReturn(getOffsetRecord(offset, true)).when(mockStorageMetadataService).getLastOffset(topic, PARTITION_FOO);
         },
@@ -2170,14 +2170,14 @@ public class StoreIngestionTaskTest {
     }
 
     // Verify can ingest at least some record from local and remote Kafka
-    Map<String, ConsumerRecords<KafkaKey, KafkaMessageEnvelope>> kafkaUrlToConsumerRecords1 = storeIngestionTaskUnderTest.consumerPoll(1 * Time.MS_PER_SECOND);
+    Map<String, ConsumerRecords<KafkaKey, KafkaMessageEnvelope>> kafkaUrlToConsumerRecords1 = storeIngestionTaskUnderTest.dedicatedConsumerPoll(1 * Time.MS_PER_SECOND);
     Assert.assertEquals(kafkaUrlToConsumerRecords1.size(), 2);
     Assert.assertFalse(kafkaUrlToConsumerRecords1.get(inMemoryLocalKafkaBroker.getKafkaBootstrapServer()).isEmpty());
     Assert.assertFalse(kafkaUrlToConsumerRecords1.get(inMemoryRemoteKafkaBroker.getKafkaBootstrapServer()).isEmpty());
 
     // Drain local and remote Kafka
     while (true) {
-      Map<String, ConsumerRecords<KafkaKey, KafkaMessageEnvelope>> kafkaUrlToConsumerRecords = storeIngestionTaskUnderTest.consumerPoll(1 * Time.MS_PER_SECOND);
+      Map<String, ConsumerRecords<KafkaKey, KafkaMessageEnvelope>> kafkaUrlToConsumerRecords = storeIngestionTaskUnderTest.dedicatedConsumerPoll(1 * Time.MS_PER_SECOND);
       if (kafkaUrlToConsumerRecords.size() == 0) {
         break;
       }
@@ -2195,7 +2195,7 @@ public class StoreIngestionTaskTest {
     }
 
     // Verify does not ingest from remote Kafka
-    Map<String, ConsumerRecords<KafkaKey, KafkaMessageEnvelope>> kafkaUrlToConsumerRecords2 = storeIngestionTaskUnderTest.consumerPoll(1 * Time.MS_PER_SECOND);
+    Map<String, ConsumerRecords<KafkaKey, KafkaMessageEnvelope>> kafkaUrlToConsumerRecords2 = storeIngestionTaskUnderTest.dedicatedConsumerPoll(1 * Time.MS_PER_SECOND);
     Assert.assertEquals(kafkaUrlToConsumerRecords2.size(), 1);
     Assert.assertFalse(kafkaUrlToConsumerRecords2.containsKey(inMemoryRemoteKafkaBroker.getKafkaBootstrapServer()));
 
@@ -2205,7 +2205,7 @@ public class StoreIngestionTaskTest {
 
     // Verify resumes ingestion from remote Kafka
     int mockInteractionsBeforePoll = Mockito.mockingDetails(mockRemoteKafkaConsumer).getInvocations().size();
-    Map<String, ConsumerRecords<KafkaKey, KafkaMessageEnvelope>> kafkaUrlToConsumerRecords3 = storeIngestionTaskUnderTest.consumerPoll(1 * Time.MS_PER_SECOND);
+    Map<String, ConsumerRecords<KafkaKey, KafkaMessageEnvelope>> kafkaUrlToConsumerRecords3 = storeIngestionTaskUnderTest.dedicatedConsumerPoll(1 * Time.MS_PER_SECOND);
     Assert.assertTrue(kafkaUrlToConsumerRecords3.containsKey(inMemoryRemoteKafkaBroker.getKafkaBootstrapServer()));
     int mockInteractionsAfterPoll = Mockito.mockingDetails(mockRemoteKafkaConsumer).getInvocations().size();
     Assert.assertEquals(mockInteractionsBeforePoll, mockInteractionsAfterPoll, "Remote consumer should not poll for new records but return previously cached records");
