@@ -83,6 +83,7 @@ public class ControllerApiConstants {
   public static final String PUSH_JOB_DETAILS = "push_job_details";
 
   public static final String WRITE_COMPUTATION_ENABLED = "write_computation_enabled";
+  public static final String REPLICATION_METADATA_PROTOCOL_VERSION_ID = "replication_metadata_protocol_version_id";
   public static final String READ_COMPUTATION_ENABLED = "read_computation_enabled";
   public static final String BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS = "bootstrap_to_online_timeout_in_hours";
 

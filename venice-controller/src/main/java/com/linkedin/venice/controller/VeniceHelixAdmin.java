@@ -2913,6 +2913,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         });
     }
 
+    public void setReplicationMetadataVersionID(String clusterName, String storeName, int rmdVersionID) {
+      storeMetadataUpdate(clusterName, storeName, store -> {
+        store.setRmdVersionID(Optional.of(rmdVersionID));
+        return store;
+      });
+    }
+
     public void setReadComputationEnabled(String clusterName, String storeName,
         boolean computationEnabled) {
         storeMetadataUpdate(clusterName, storeName, store -> {
@@ -3176,6 +3183,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         Optional<Boolean> incrementalPushEnabled = params.getIncrementalPushEnabled();
         Optional<Boolean> storeMigration = params.getStoreMigration();
         Optional<Boolean> writeComputationEnabled = params.getWriteComputationEnabled();
+        Optional<Integer> replicationMetadataVersionID = params.getReplicationMetadataVersionID();
         Optional<Boolean> readComputationEnabled = params.getReadComputationEnabled();
         Optional<Integer> bootstrapToOnlineTimeoutInHours = params.getBootstrapToOnlineTimeoutInHours();
         Optional<Boolean> leaderFollowerModelEnabled = params.getLeaderFollowerModelEnabled();
@@ -3404,6 +3412,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
             if (writeComputationEnabled.isPresent()) {
                 setWriteComputationEnabled(clusterName, storeName, writeComputationEnabled.get());
+            }
+
+            if (replicationMetadataVersionID.isPresent()) {
+              setReplicationMetadataVersionID(clusterName, storeName, replicationMetadataVersionID.get());
             }
 
             if (readComputationEnabled.isPresent()) {

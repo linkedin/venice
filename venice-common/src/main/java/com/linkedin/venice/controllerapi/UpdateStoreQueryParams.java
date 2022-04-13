@@ -75,6 +75,10 @@ public class UpdateStoreQueryParams extends QueryParams {
             .setStoreMetaSystemStoreEnabled(srcStore.isStoreMetaSystemStoreEnabled())
             .setWriteComputationEnabled(srcStore.isWriteComputationEnabled());
 
+    if (srcStore.getReplicationMetadataVersionId() != -1) {
+      updateStoreQueryParams.setReplicationMetadataVersionID(srcStore.getReplicationMetadataVersionId());
+    }
+
     if (storeMigrating) {
       updateStoreQueryParams
           .setLargestUsedVersionNumber(0) // Decrease the largestUsedVersionNumber to trigger bootstrap in dest cluster
@@ -322,12 +326,21 @@ public class UpdateStoreQueryParams extends QueryParams {
     return getBoolean(WRITE_COMPUTATION_ENABLED);
   }
 
+  public UpdateStoreQueryParams setReplicationMetadataVersionID(int replicationMetadataVersionID) {
+    return putInteger(REPLICATION_METADATA_PROTOCOL_VERSION_ID, replicationMetadataVersionID);
+  }
+
+  public Optional<Integer> getReplicationMetadataVersionID() {
+    return getInteger(REPLICATION_METADATA_PROTOCOL_VERSION_ID);
+  }
+
   public UpdateStoreQueryParams setReadComputationEnabled(boolean readComputationEnabled) {
     return putBoolean(READ_COMPUTATION_ENABLED, readComputationEnabled);
   }
   public Optional<Boolean> getReadComputationEnabled() {
     return getBoolean(READ_COMPUTATION_ENABLED);
   }
+
   public UpdateStoreQueryParams setBootstrapToOnlineTimeoutInHours(int bootstrapToOnlineTimeoutInHours) {
     return putInteger(BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS, bootstrapToOnlineTimeoutInHours);
   }

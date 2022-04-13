@@ -424,6 +424,15 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     veniceAdmin.setHybridStoreDiskQuotaEnabled(clusterName, storeName, true);
     Assert.assertTrue(veniceAdmin.getStore(clusterName, storeName).isHybridStoreDiskQuotaEnabled());
 
+    // test setting per-store RMD (replication metadata) version ID
+    Optional<Integer> rmdVersionID = veniceAdmin.getStore(clusterName, storeName).getRmdVersionID();
+    Assert.assertFalse(rmdVersionID.isPresent());
+
+    veniceAdmin.setReplicationMetadataVersionID(clusterName, storeName, 2);
+    rmdVersionID = veniceAdmin.getStore(clusterName, storeName).getRmdVersionID();
+    Assert.assertTrue(rmdVersionID.isPresent());
+    Assert.assertEquals((int) rmdVersionID.get(), 2);
+
     // test hybrid config
     //set incrementalPushEnabled to be false as hybrid and incremental are mutex
     veniceAdmin.setIncrementalPushEnabled(clusterName, storeName, false);
