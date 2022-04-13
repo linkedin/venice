@@ -1344,6 +1344,31 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   }
 
   @Override
+  public boolean isReadyToServeAnnouncedWithRTLag() {
+    if (!hybridStoreConfig.isPresent() || partitionConsumptionStateMap.isEmpty()) {
+      return false;
+    }
+    long offsetLagThreshold = hybridStoreConfig.get().getOffsetLagThresholdToGoOnline();
+    for (PartitionConsumptionState pcs : partitionConsumptionStateMap.values()) {
+      if (pcs.hasLagCaughtUp() && offsetLagThreshold >= 0) {
+        Set<String> sourceRealTimeTopicKafkaURLs = getRealTimeDataSourceKafkaAddress(pcs);
+        if (sourceRealTimeTopicKafkaURLs.isEmpty()) {
+          return true;
+        }
+        String sourceRealTimeTopicKafkaURL = sourceRealTimeTopicKafkaURLs.iterator().next();
+        try {
+          if (measureRTOffsetLagForSingleRegion(sourceRealTimeTopicKafkaURL, pcs, false) > offsetLagThreshold) {
+            return true;
+          }
+        } catch (Exception e) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  @Override
   protected void reportIfCatchUpBaseTopicOffset(PartitionConsumptionState pcs) {
     int partition = pcs.getPartition();
 

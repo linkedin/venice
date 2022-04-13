@@ -872,6 +872,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return isLagAcceptable;
   }
 
+  public boolean isReadyToServeAnnouncedWithRTLag() {
+    return false;
+  }
+
   protected long getLatestConsumedProducerTimestampWithSubPartition(long consumedProducerTimestamp,
       PartitionConsumptionState partitionConsumptionState) {
     long latestConsumedProducerTimestamp = consumedProducerTimestamp;
