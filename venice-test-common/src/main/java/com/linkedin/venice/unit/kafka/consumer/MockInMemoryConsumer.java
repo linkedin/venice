@@ -82,8 +82,18 @@ public class MockInMemoryConsumer implements KafkaConsumerWrapper {
   }
 
   @Override
-  public boolean hasSubscription() {
+  public boolean hasAnySubscription() {
     return !offsets.isEmpty();
+  }
+
+  @Override
+  public boolean hasSubscribedAnyTopic(Set<String> topics) {
+    for (TopicPartition subscribedTopicPartition : offsets.keySet()) {
+      if (topics.contains(subscribedTopicPartition.topic())) {
+        return true;
+      }
+    }
+    return false;
   }
 
   @Override

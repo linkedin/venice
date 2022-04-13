@@ -29,11 +29,15 @@ public interface KafkaConsumerWrapper extends AutoCloseable {
 
   ConsumerRecords<KafkaKey, KafkaMessageEnvelope> poll(long timeoutMs);
 
-  boolean hasSubscription();
+  /**
+   * @return True if this consumer has subscribed any topic partition at all and vice versa.
+   */
+  boolean hasAnySubscription();
 
-  default boolean hasSubscription(Set<String> topics) {
-    return hasSubscription();
-  }
+  /**
+   * @return True if this consumer has subscribed any topic in the given topic set {@param topics} and false otherwise.
+   */
+  boolean hasSubscribedAnyTopic(Set<String> topics);
 
   boolean hasSubscription(String topic, int partition);
 

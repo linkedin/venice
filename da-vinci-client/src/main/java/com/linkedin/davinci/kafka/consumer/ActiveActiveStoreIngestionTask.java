@@ -939,7 +939,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           if (kafkaSourceAddress == null) {
             return 0;
           }
-          KafkaConsumerWrapper kafkaConsumer = consumerMap.get(kafkaSourceAddress);
+          KafkaConsumerWrapper kafkaConsumer = kafkaUrlToConsumerMap.get(kafkaSourceAddress);
           // Consumer might not existed in the map after the consumption state is created, but before attaching the
           // corresponding consumer in consumerMap.
           if (kafkaConsumer != null) {

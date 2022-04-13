@@ -24,10 +24,10 @@ public class KafkaConsumerServiceTest {
   @Test
   public void testTopicWiseGetConsumer() throws Exception {
     SharedKafkaConsumer consumer1 = mock(SharedKafkaConsumer.class);
-    when(consumer1.hasSubscription()).thenReturn(true);
+    when(consumer1.hasAnySubscription()).thenReturn(true);
 
     SharedKafkaConsumer consumer2 = mock(SharedKafkaConsumer.class);
-    when(consumer2.hasSubscription()).thenReturn(true);
+    when(consumer2.hasAnySubscription()).thenReturn(true);
 
     String storeName1 = Utils.getUniqueString("test_consumer_service1");
     StoreIngestionTask task1 = mock(StoreIngestionTask.class);
@@ -91,10 +91,10 @@ public class KafkaConsumerServiceTest {
   @Test
   public void testTopicWiseGetConsumerForHybridMode() throws Exception {
     KafkaConsumerWrapper consumer1 = mock(KafkaConsumerWrapper.class);
-    when(consumer1.hasSubscription()).thenReturn(false);
+    when(consumer1.hasAnySubscription()).thenReturn(false);
 
     KafkaConsumerWrapper consumer2 = mock(KafkaConsumerWrapper.class);
-    when(consumer1.hasSubscription()).thenReturn(false);
+    when(consumer1.hasAnySubscription()).thenReturn(false);
 
     KafkaClientFactory factory = mock(KafkaClientFactory.class);
     when(factory.getConsumer(any())).thenReturn(consumer1, consumer2);
@@ -142,10 +142,10 @@ public class KafkaConsumerServiceTest {
   @Test
   public void testPartitionWiseGetConsumer() throws Exception {
     PartitionWiseSharedKafkaConsumer consumer1 = mock(PartitionWiseSharedKafkaConsumer.class);
-    when(consumer1.hasSubscription()).thenReturn(true);
+    when(consumer1.hasAnySubscription()).thenReturn(true);
 
     PartitionWiseSharedKafkaConsumer consumer2 = mock(PartitionWiseSharedKafkaConsumer.class);
-    when(consumer2.hasSubscription()).thenReturn(true);
+    when(consumer2.hasAnySubscription()).thenReturn(true);
 
     String storeName1 = Utils.getUniqueString("test_consumer_service1");
     StoreIngestionTask task1 = mock(StoreIngestionTask.class);
@@ -206,16 +206,16 @@ public class KafkaConsumerServiceTest {
       TopicPartition topicPartition = new TopicPartition(topicForStoreName1, partitionId);
       Assert.assertNull(assignedConsumerForTask1.getSharedKafkaConsumerMap().get(topicPartition));
     }
-    Assert.assertFalse(assignedConsumerForTask1.hasSubscription());
+    Assert.assertFalse(assignedConsumerForTask1.hasAnySubscription());
   }
 
   @Test
   public void testPartitionWiseGetConsumerForRTTopic() throws Exception {
     KafkaConsumerWrapper consumer1 = mock(KafkaConsumerWrapper.class);
-    when(consumer1.hasSubscription()).thenReturn(false);
+    when(consumer1.hasAnySubscription()).thenReturn(false);
 
     KafkaConsumerWrapper consumer2 = mock(KafkaConsumerWrapper.class);
-    when(consumer2.hasSubscription()).thenReturn(false);
+    when(consumer2.hasAnySubscription()).thenReturn(false);
 
     KafkaClientFactory factory = mock(KafkaClientFactory.class);
     when(factory.getConsumer(any())).thenReturn(consumer1, consumer2);

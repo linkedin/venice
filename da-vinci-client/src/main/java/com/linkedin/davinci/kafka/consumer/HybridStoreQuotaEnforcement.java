@@ -59,7 +59,7 @@ public class HybridStoreQuotaEnforcement implements StoreDataChangedListener {
   private long diskQuotaPerPartition;
   private boolean isHybridStoreDiskQuotaEnabled;
   // protects isHybridStoreDiskQuotaEnabled.
-  private final Lock lock = new ReentrantLock();
+  private final Lock hybridStoreDiskQuotaLock = new ReentrantLock();
 
   public HybridStoreQuotaEnforcement(StoreIngestionTask storeIngestionTask, AbstractStorageEngine storageEngine,
       Store store, String versionTopic, int storePartitionCount,
@@ -135,7 +135,7 @@ public class HybridStoreQuotaEnforcement implements StoreDataChangedListener {
       resumeAllPartitions();
     }
 
-    try (AutoCloseableLock ignored = new AutoCloseableLock(lock)) {
+    try (AutoCloseableLock ignored = new AutoCloseableLock(hybridStoreDiskQuotaLock)) {
       boolean isHybridQuotaUpdated = isHybridStoreDiskQuotaUpdated(store);
       boolean isHybridQuotaChangedToDisabled = isHybridStoreDiskQuotaEnabled && !store.isHybridStoreDiskQuotaEnabled();
 
@@ -162,7 +162,7 @@ public class HybridStoreQuotaEnforcement implements StoreDataChangedListener {
    * @param subscribedPartitionToSize with partition id as key and batch records size as value
    */
   protected void checkPartitionQuota(Map<Integer, Integer> subscribedPartitionToSize) {
-    try (AutoCloseableLock ignored = new AutoCloseableLock(lock)) {
+    try (AutoCloseableLock ignored = new AutoCloseableLock(hybridStoreDiskQuotaLock)) {
       if (!isHybridStoreDiskQuotaEnabled) {
         return;
       }

@@ -245,8 +245,18 @@ public class PartitionWiseKafkaConsumerService extends KafkaConsumerService {
     }
 
     @Override
-    public boolean hasSubscription() {
+    public boolean hasAnySubscription() {
       return !sharedKafkaConsumerMap.isEmpty();
+    }
+
+    @Override
+    public boolean hasSubscribedAnyTopic(Set<String> topics) {
+      for (TopicPartition subscribedTopicPartition : sharedKafkaConsumerMap.keySet()) {
+        if (topics.contains(subscribedTopicPartition.topic())) {
+          return true;
+        }
+      }
+      return false;
     }
 
     @Override
