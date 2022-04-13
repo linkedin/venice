@@ -1008,6 +1008,36 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     }
   }
 
+  @Override
+  public boolean isReadyToServeAnnouncedWithRTLag() {
+    if (!hybridStoreConfig.isPresent() || partitionConsumptionStateMap.isEmpty()) {
+      return false;
+    }
+    long offsetLagThreshold = hybridStoreConfig.get().getOffsetLagThresholdToGoOnline();
+    for (PartitionConsumptionState pcs : partitionConsumptionStateMap.values()) {
+      if (pcs.hasLagCaughtUp() && offsetLagThreshold >= 0) {
+        Set<String> sourceRealTimeTopicKafkaURLs = getRealTimeDataSourceKafkaAddress(pcs);
+        if (sourceRealTimeTopicKafkaURLs.isEmpty()) {
+          return true;
+        }
+        int numberOfUnreachableRegions = 0;
+        for (String sourceRealTimeTopicKafkaURL : sourceRealTimeTopicKafkaURLs) {
+          try {
+            // Return true if offset lag in any reachable region is larger than the threshold
+            if (measureRTOffsetLagForSingleRegion(sourceRealTimeTopicKafkaURL, pcs, false) > offsetLagThreshold) {
+              return true;
+            }
+          } catch (Exception e) {
+            if (++numberOfUnreachableRegions > 1) {
+              return true;
+            }
+          }
+        }
+      }
+    }
+    return false;
+  }
+
   Runnable buildRepairTask(String sourceKafkaUrl, String newSourceTopicName, int sourceTopicPartition,
       long rewindStartTimestamp, PartitionConsumptionState pcs) {
     return () -> {

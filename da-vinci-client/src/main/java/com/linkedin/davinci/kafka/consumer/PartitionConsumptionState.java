@@ -231,6 +231,9 @@ public class PartitionConsumptionState {
   public void lagHasCaughtUp() {
     this.lagCaughtUp = true;
   }
+  public boolean hasLagCaughtUp() {
+    return lagCaughtUp;
+  }
   public boolean isCompletionReported() {
     return completionReported;
   }

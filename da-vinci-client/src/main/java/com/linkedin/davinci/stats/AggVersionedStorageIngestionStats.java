@@ -52,6 +52,7 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
   private static final String TIMESTAMP_REGRESSION_DCR_ERROR = "timestamp_regression_dcr_error";
   private static final String OFFSET_REGRESSION_DCR_ERROR = "offset_regression_dcr_error";
   private static final String TOMBSTONE_CREATION_DCR = "tombstone_creation_dcr";
+  private static final String READY_TO_SERVE_WITH_RT_LAG_METRIC_NAME = "ready_to_serve_with_rt_lag";
 
   private static final String MAX = "_max";
   private static final String AVG = "_avg";
@@ -478,6 +479,16 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
       }
     }
 
+    public double getReadyToServeWithRTLag() {
+      if (ingestionTask == null) {
+        return 0;
+      }
+      if (ingestionTask.isReadyToServeAnnouncedWithRTLag()) {
+        return 1;
+      }
+      return 0;
+    }
+
     public double getStalePartitionsWithoutIngestionTaskCount() {
       return stalePartitionsWithoutIngestionTaskCount.measure(METRIC_CONFIG, System.currentTimeMillis());
     }
@@ -739,6 +750,9 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
 
       registerSensor(LEADER_STALLED_HYBRID_INGESTION_METRIC_NAME,
           new IngestionStatsGauge(this, () -> getStats().getLeaderStalledHybridIngestion(), 0));
+
+      registerSensor(READY_TO_SERVE_WITH_RT_LAG_METRIC_NAME,
+          new IngestionStatsGauge(this, () -> getStats().getReadyToServeWithRTLag(), 0));
 
 
       if (getStats().ingestionTask.isActiveActiveReplicationEnabled()) {
