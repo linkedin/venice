@@ -10,6 +10,7 @@ import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Properties;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.logging.log4j.LogManager;
@@ -35,7 +36,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
   private final boolean liveConfigBasedKafkaThrottlingEnabled;
   private final KafkaConsumerService.ConsumerAssignmentStrategy sharedConsumerAssignmentStrategy;
 
-  private final Map<String, KafkaConsumerService> kafkaServerToConsumerService = new VeniceConcurrentHashMap<>();
+  private final Map<String, KafkaConsumerService> kafkaServerToConsumerServiceMap = new VeniceConcurrentHashMap<>();
   private final Map<String, String> kafkaClusterUrlToAliasMap;
 
   public AggKafkaConsumerService(final KafkaClientFactory consumerFactory, final VeniceServerConfig serverConfig,
@@ -64,28 +65,47 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
 
   @Override
   public void stopInner() throws Exception {
-    for (KafkaConsumerService consumerService : kafkaServerToConsumerService.values()) {
+    for (KafkaConsumerService consumerService : kafkaServerToConsumerServiceMap.values()) {
       consumerService.stop();
     }
   }
 
   /**
-   * Get {@link KafkaConsumerService} for a specific Kafka bootstrap url; if there is no consumer pool for the required
-   * Kafka cluster, create and start a new consumer pool
+   * Get {@link KafkaConsumerService} for a specific Kafka bootstrap url.
    */
-  public KafkaConsumerService getKafkaConsumerService(final Properties consumerProperties) {
-    String kafkaUrl = consumerProperties.getProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG);
+  public Optional<KafkaConsumerService> getKafkaConsumerService(final String kafkaURL) {
+    return Optional.ofNullable(kafkaServerToConsumerServiceMap.get(kafkaURL));
+  }
+
+  /**
+   * Create a new {@link KafkaConsumerService} given consumerProperties which must contain a value for "bootstrap.servers".
+   * If a {@link KafkaConsumerService} for the given "bootstrap.servers" (Kafka URL) has already been created, this method
+   * returns the created {@link KafkaConsumerService}.
+   *
+   * @param consumerProperties consumer properties that are used to create {@link KafkaConsumerService}
+   */
+  public synchronized KafkaConsumerService createKafkaConsumerService(final Properties consumerProperties) {
+    final String kafkaUrl = consumerProperties.getProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG);
+    if (kafkaUrl == null || kafkaUrl.isEmpty()) {
+      throw new IllegalArgumentException("Kafka URL must be set in the consumer properties config. Got: " + kafkaUrl);
+    }
+    final KafkaConsumerService alreadyCreatedConsumerService = kafkaServerToConsumerServiceMap.get(kafkaUrl);
+    if (alreadyCreatedConsumerService != null) {
+      logger.warn("KafkaConsumerService has already been created for Kafka cluster with URL: {}", kafkaUrl);
+      return alreadyCreatedConsumerService;
+    }
+
     //TODO: introduce builder pattern due to significant # of parameters for KafkaConsumerService.
     switch (sharedConsumerAssignmentStrategy) {
       case PARTITION_WISE_SHARED_CONSUMER_ASSIGNMENT_STRATEGY:
-        return kafkaServerToConsumerService.computeIfAbsent(kafkaUrl, url -> {
-            KafkaConsumerServiceStats stats = createKafkaConsumerServiceStats(url);
-            return new PartitionWiseKafkaConsumerService(consumerFactory, consumerProperties, readCycleDelayMs, numOfConsumersPerKafkaCluster,
-                bandwidthThrottler, recordsThrottler, kafkaClusterBasedRecordThrottler, stats, sharedConsumerNonExistingTopicCleanupDelayMS,
-                topicExistenceChecker, liveConfigBasedKafkaThrottlingEnabled);
+        return kafkaServerToConsumerServiceMap.computeIfAbsent(kafkaUrl, url -> {
+          KafkaConsumerServiceStats stats = createKafkaConsumerServiceStats(url);
+          return new PartitionWiseKafkaConsumerService(consumerFactory, consumerProperties, readCycleDelayMs, numOfConsumersPerKafkaCluster,
+              bandwidthThrottler, recordsThrottler, kafkaClusterBasedRecordThrottler, stats, sharedConsumerNonExistingTopicCleanupDelayMS,
+              topicExistenceChecker, liveConfigBasedKafkaThrottlingEnabled);
         });
       case TOPIC_WISE_SHARED_CONSUMER_ASSIGNMENT_STRATEGY:
-        return kafkaServerToConsumerService.computeIfAbsent(kafkaUrl, url -> {
+        return kafkaServerToConsumerServiceMap.computeIfAbsent(kafkaUrl, url -> {
           KafkaConsumerServiceStats stats = createKafkaConsumerServiceStats(url);
           return new TopicWiseKafkaConsumerService(consumerFactory, consumerProperties, readCycleDelayMs, numOfConsumersPerKafkaCluster,
               bandwidthThrottler, recordsThrottler, kafkaClusterBasedRecordThrottler, stats, sharedConsumerNonExistingTopicCleanupDelayMS,
@@ -94,18 +114,20 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
       default:
         throw new VeniceException("Unknown shared consumer assignment strategy: " + sharedConsumerAssignmentStrategy);
     }
-
   }
-
 
   /**
    * Get a shared consumer based both consumer properties (which contains Kafka bootstrap url) as well as ingestion task.
+   * Note that this method does not create a {@link KafkaConsumerService} if there is not one for the given {@param kafkaURL}.
    */
-  public KafkaConsumerWrapper getConsumer(final Properties consumerProperties, StoreIngestionTask ingestionTask) {
-    KafkaConsumerService consumerService = getKafkaConsumerService(consumerProperties);
-    KafkaConsumerWrapper selectedConsumer = consumerService.getConsumer(ingestionTask);
-    consumerService.attach(selectedConsumer, ingestionTask.getVersionTopic(), ingestionTask);
-    return selectedConsumer;
+  public Optional<KafkaConsumerWrapper> getConsumer(final String kafkaURL, StoreIngestionTask ingestionTask) {
+    Optional<KafkaConsumerService> consumerService = getKafkaConsumerService(kafkaURL);
+    if (!consumerService.isPresent()) {
+      return Optional.empty();
+    }
+    KafkaConsumerWrapper selectedConsumer = consumerService.get().getConsumer(ingestionTask);
+    consumerService.get().attach(selectedConsumer, ingestionTask.getVersionTopic(), ingestionTask);
+    return Optional.of(selectedConsumer);
   }
 
   /**
@@ -114,7 +136,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
    * @param versionTopic
    */
   public void unsubscribeAll(String versionTopic) {
-    kafkaServerToConsumerService.values().forEach(consumerService -> consumerService.unsubscribeAll(versionTopic));
+    kafkaServerToConsumerServiceMap.values().forEach(consumerService -> consumerService.unsubscribeAll(versionTopic));
   }
 
   private KafkaConsumerServiceStats createKafkaConsumerServiceStats(String kafkaUrl) {
