@@ -644,13 +644,12 @@ public class StoreIngestionTaskTest {
     AggKafkaConsumerService aggKafkaConsumerService = mock(AggKafkaConsumerService.class);
 
     doAnswer(invocation -> {
-      Properties consumerProps = invocation.getArgument(0, Properties.class);
-      String kafkaUrl = consumerProps.getProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG);
+      String kafkaUrl = invocation.getArgument(0, String.class);
       if (kafkaUrl.equals(inMemoryRemoteKafkaBroker.getKafkaBootstrapServer())) {
-        return inMemoryRemoteKafkaConsumer;
+        return Optional.of(inMemoryRemoteKafkaConsumer);
       }
 
-      return inMemoryLocalKafkaConsumer;
+      return Optional.of(inMemoryLocalKafkaConsumer);
     }).when(aggKafkaConsumerService).getConsumer(any(), any());
 
     EventThrottler mockUnorderedBandwidthThrottler = mock(EventThrottler.class);

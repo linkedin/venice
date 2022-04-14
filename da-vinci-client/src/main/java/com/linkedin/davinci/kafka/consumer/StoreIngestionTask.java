@@ -2799,8 +2799,31 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   public abstract void consumerUnSubscribeAllTopics(PartitionConsumptionState partitionConsumptionState);
 
   public void consumerSubscribe(String topic, int partition, long startOffset, String kafkaURL) {
-    KafkaConsumerWrapper consumer = getConsumer(kafkaURL, !Objects.equals(kafkaURL, localKafkaServer));
-    subscribe(consumer, topic, partition, startOffset);
+    final boolean consumeRemotely = !Objects.equals(kafkaURL, localKafkaServer);
+    Optional<KafkaConsumerWrapper> consumer = getConsumer(kafkaURL, consumeRemotely);
+
+    if (!consumer.isPresent()) {
+      if (serverConfig.isSharedConsumerPoolEnabled()) {
+        /**
+         * Note that {@link KafkaConsumerService} creation only happens upon topic partition subscription. In other cases,
+         * such as unsubscription, resetting topic partition consuming offset, etc, if a {@link KafkaConsumerService}/
+         * {@link KafkaConsumerWrapper} does not exist for this {@link StoreIngestionTask} and a Kafka URL, no {@link KafkaConsumerService}
+         * will get created.
+         *
+         * The rationale is that if a topic partition has never been subscribed, we should do nothing when we need to
+         * unsubscribe it, or resetting its consuming offset, etc.
+         */
+        aggKafkaConsumerService.createKafkaConsumerService(createKafkaConsumerProperties(kafkaProps, kafkaURL, consumeRemotely));
+        consumer = aggKafkaConsumerService.getConsumer(kafkaURL, this);
+        if (!consumer.isPresent()) {
+          throw new VeniceException("Shared consumer must exist for version topic: " + getVersionTopic() + " in Kafka cluster: " + kafkaURL);
+        }
+
+      } else {
+        throw new VeniceException("Dedicated consumer must exist for version topic: " + getVersionTopic() + " in Kafka cluster: " + kafkaURL);
+      }
+    }
+    subscribe(consumer.get(), topic, partition, startOffset);
   }
 
   public void consumerResetOffset(String topic, PartitionConsumptionState partitionConsumptionState) {
@@ -2851,23 +2874,31 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
     Map<String, KafkaConsumerWrapper> consumerByKafkaURL = new HashMap<>(sourceKafkaURLs.size());
     sourceKafkaURLs.forEach(sourceKafkaURL -> {
-      consumerByKafkaURL.put(
-              sourceKafkaURL,
-              getConsumer(sourceKafkaURL, partitionConsumptionState.consumeRemotely())
-      );
+      Optional<KafkaConsumerWrapper> consumer = getConsumer(sourceKafkaURL, partitionConsumptionState.consumeRemotely());
+      if (consumer.isPresent()) {
+        consumerByKafkaURL.put(sourceKafkaURL, consumer.get());
+      } else {
+        logger.warn("No consumer found for version topic: " + getVersionTopic() + " in Kafka cluster: " + sourceKafkaURL);
+      }
     });
     return consumerByKafkaURL;
   }
 
-  private KafkaConsumerWrapper getConsumer(String kafkaURL, boolean consumeRemotely) {
-    return kafkaUrlToConsumerMap.computeIfAbsent(kafkaURL, source -> {
-      Properties consumerProps = updateKafkaConsumerProperties(kafkaProps, kafkaURL, consumeRemotely);
+  private Optional<KafkaConsumerWrapper> getConsumer(String kafkaURL, boolean consumeRemotely) {
+    KafkaConsumerWrapper consumer = kafkaUrlToConsumerMap.computeIfAbsent(kafkaURL, source -> {
+
       if (serverConfig.isSharedConsumerPoolEnabled()) {
-        return aggKafkaConsumerService.getConsumer(consumerProps, this);
+        // Note that if shared consumer is enabled, there is no new consumer nor consumer service created here.
+        Optional<KafkaConsumerWrapper> existingKafkaConsumer = aggKafkaConsumerService.getConsumer(kafkaURL, this);
+        return existingKafkaConsumer.orElse(null);
+
       } else {
+        Properties consumerProps = createKafkaConsumerProperties(kafkaProps, kafkaURL, consumeRemotely);
         return kafkaClientFactory.getConsumer(consumerProps);
       }
     });
+
+    return Optional.ofNullable(consumer);
   }
 
   /**
@@ -3203,7 +3234,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   /**
    * Override the {@link CommonClientConfigs#BOOTSTRAP_SERVERS_CONFIG} config with a remote Kafka bootstrap url.
    */
-  protected Properties updateKafkaConsumerProperties(Properties localConsumerProps, String remoteKafkaSourceAddress, boolean consumeRemotely) {
+  protected Properties createKafkaConsumerProperties(Properties localConsumerProps, String remoteKafkaSourceAddress, boolean consumeRemotely) {
     Properties newConsumerProps = new Properties();
     newConsumerProps.putAll(localConsumerProps);
     newConsumerProps.setProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, remoteKafkaSourceAddress);

@@ -369,9 +369,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
           metricsRepository,
           new MetadataRepoBasedTopicExistingCheckerImpl(this.getMetadataRepo()));
       /**
-       * After initializing a {@link AggKafkaConsumerService} service, it doesn't contain any consumer pool yet until
-       * a new Kafka cluster is registered; here we explicitly register the local Kafka cluster by invoking
-       * {@link AggKafkaConsumerService#getKafkaConsumerService(Properties)}
+       * After initializing a {@link AggKafkaConsumerService} service, it doesn't contain KafkaConsumerService yet until
+       * a new Kafka cluster is registered; here we explicitly create KafkaConsumerService for the local Kafka cluster.
        *
        * Pass through all the customized Kafka consumer configs into the consumer as long as the customized config key
        * starts with {@link ConfigKeys#SERVER_LOCAL_CONSUMER_CONFIG_PREFIX}; the clipping and filtering work is done
@@ -385,7 +384,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       if (!serverConfig.getKafkaConsumerConfigsForLocalConsumption().isEmpty()) {
         commonKafkaConsumerConfigs.putAll(serverConfig.getKafkaConsumerConfigsForLocalConsumption().toProperties());
       }
-      aggKafkaConsumerService.getKafkaConsumerService(commonKafkaConsumerConfigs);
+      aggKafkaConsumerService.createKafkaConsumerService(commonKafkaConsumerConfigs);
     } else {
       aggKafkaConsumerService = null;
     }
