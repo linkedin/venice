@@ -6159,14 +6159,19 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     @Override
     public boolean isAdminTopicConsumptionEnabled(String clusterName) {
+        if (!isLeaderControllerFor(clusterName)) {
+            // Defensive code: disable admin topic consumption on standby controllers
+            return false;
+        }
         if (isParent()) {
             return true;
         }
-        // Enable child controller admin topic consumption when both cfg2 config and live config are true.
         boolean adminTopicConsumptionEnabled;
+        // HelixVeniceClusterResources should exist on leader controller
         HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
         try (AutoCloseableLock ignore = resources.getClusterLockManager().createClusterReadLock()) {
             HelixReadWriteLiveClusterConfigRepository clusterConfigRepository = getReadWriteLiveClusterConfigRepository(clusterName);
+            // Enable child controller admin topic consumption when both cfg2 config and live config are true
             adminTopicConsumptionEnabled = clusterConfigRepository.getConfigs().isChildControllerAdminTopicConsumptionEnabled()
                     && multiClusterConfigs.getControllerConfig(clusterName).isChildControllerAdminTopicConsumptionEnabled();
         }
