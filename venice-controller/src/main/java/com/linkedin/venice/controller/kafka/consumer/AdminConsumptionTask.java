@@ -1,7 +1,5 @@
 package com.linkedin.venice.controller.kafka.consumer;
 
-import com.linkedin.venice.common.VeniceSystemStoreType;
-import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controller.AdminTopicMetadataAccessor;
 import com.linkedin.venice.controller.ExecutionIdAccessor;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
@@ -283,10 +281,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     while (isRunning.get()) {
       try {
         Utils.sleep(READ_CYCLE_DELAY_MS);
-        if (!admin.isAdminTopicConsumptionEnabled(clusterName)) {
-          continue;
-        }
-        if (!admin.isLeaderControllerFor(clusterName)) {
+        if (!admin.isLeaderControllerFor(clusterName) || !admin.isAdminTopicConsumptionEnabled(clusterName)) {
           unSubscribe();
           continue;
         }
