@@ -25,11 +25,11 @@ import java.util.List;
  * store types should be added here especially if they also would like to share metadata in Zookeeper.
  */
 public enum VeniceSystemStoreType {
-  DAVINCI_PUSH_STATUS_STORE(String.format(Store.SYSTEM_STORE_FORMAT, "davinci_push_status_store_"), true,
+  DAVINCI_PUSH_STATUS_STORE(String.format(Store.SYSTEM_STORE_FORMAT, "davinci_push_status_store"), true,
       PushStatusKey.SCHEMA$.toString(), PushStatusValue.SCHEMA$.toString(), AvroProtocolDefinition.PUSH_STATUS_SYSTEM_SCHEMA_STORE.getSystemStoreName(), true, Method.WRITE_SYSTEM_STORE),
 
   // New Metadata system store
-  META_STORE(String.format(Store.SYSTEM_STORE_FORMAT, "meta_store_"), true, StoreMetaKey.SCHEMA$.toString(),
+  META_STORE(String.format(Store.SYSTEM_STORE_FORMAT, "meta_store"), true, StoreMetaKey.SCHEMA$.toString(),
       StoreMetaValue.SCHEMA$.toString(), AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.getSystemStoreName(),
       true, Method.READ_SYSTEM_STORE),
 
@@ -100,7 +100,7 @@ public enum VeniceSystemStoreType {
   }
 
   public String getZkSharedStoreNameInCluster(String clusterName) {
-    return isNewMedataRepositoryAdopted() ? zkSharedStoreName : zkSharedStoreName + clusterName;
+    return isNewMedataRepositoryAdopted() ? zkSharedStoreName : zkSharedStoreName + VeniceSystemStoreUtils.SEPARATOR + clusterName;
   }
 
   public boolean isNewMedataRepositoryAdopted() {
@@ -113,7 +113,7 @@ public enum VeniceSystemStoreType {
    * @return
    */
   public String getSystemStoreName(String regularStoreName) {
-    return getPrefix() + regularStoreName;
+    return getPrefix() + VeniceSystemStoreUtils.SEPARATOR + regularStoreName;
   }
 
   /**
@@ -132,7 +132,7 @@ public enum VeniceSystemStoreType {
    */
   public String extractRegularStoreName(String systemStoreName) {
     if (isSystemStore(systemStoreName)) {
-      return systemStoreName.substring((getPrefix()).length());
+      return systemStoreName.substring((getPrefix() + VeniceSystemStoreUtils.SEPARATOR).length());
     }
     throw new IllegalArgumentException("Invalid system store name: " + systemStoreName + " for system store type: " + name());
   }
@@ -195,10 +195,9 @@ public enum VeniceSystemStoreType {
     if (storeName == null) {
       return null;
     }
-    for (int i = 0; i < VALUES.size(); i++) {
-      String prefix = VALUES.get(i).getPrefix();
-      if (storeName.startsWith(prefix)) {
-        return VALUES.get(i);
+    for (VeniceSystemStoreType systemStoreType : VALUES) {
+      if (storeName.startsWith(systemStoreType.getPrefix())) {
+        return systemStoreType;
       }
     }
     return null;
