@@ -58,7 +58,7 @@ public class ClusterLockManager {
   private ReentrantReadWriteLock prepareStoreLock(String storeName) {
     // For a regular store's system store operation, acquire the regular store's lock.
     VeniceSystemStoreType systemStore = VeniceSystemStoreType.getSystemStoreType(storeName);
-    if (systemStore != null) {
+    if (systemStore != null && systemStore.isStoreZkShared()) {
       String regularStoreName = systemStore.extractRegularStoreName(storeName);
       if (!regularStoreName.equals(clusterName)) {
         storeName = regularStoreName;
