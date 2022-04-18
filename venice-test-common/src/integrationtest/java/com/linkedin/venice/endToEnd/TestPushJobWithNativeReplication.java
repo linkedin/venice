@@ -80,7 +80,10 @@ public class  TestPushJobWithNativeReplication {
 
   @DataProvider(name = "storeSize")
   public static Object[][] storeSize() {
-    return new Object[][]{{50, 2}, {5000, 20}};
+    return new Object[][]{
+        {50, 2},
+        {5000, 20}
+    };
   }
 
   @BeforeClass(alwaysRun = true)

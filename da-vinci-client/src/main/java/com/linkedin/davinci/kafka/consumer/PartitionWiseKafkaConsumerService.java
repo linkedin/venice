@@ -15,6 +15,7 @@ import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 
@@ -30,7 +31,7 @@ import javax.annotation.Nonnull;
 /**
  * {@link PartitionWiseKafkaConsumerService} is used to allocate share consumer from consumer pool at partition granularity.
  * One shared consumer may have multiple topics, and each topic may have multiple consumers.
- * We will prepare a virtual consumer for each topic during {@link KafkaConsumerService#getConsumer(StoreIngestionTask)} phase.
+ * We will prepare a virtual consumer for each topic during {@link KafkaConsumerService#assignConsumerFor(StoreIngestionTask)} phase.
  * When {@link StoreIngestionTask#subscribe(KafkaConsumerWrapper, String, int, long)} is called, it will allocate real shared consumer
  * class to that specific topic-partition.
  *
@@ -39,7 +40,7 @@ import javax.annotation.Nonnull;
  */
 public class PartitionWiseKafkaConsumerService extends KafkaConsumerService {
   private static final Logger logger = LogManager.getLogger(PartitionWiseKafkaConsumerService.class);
-  private static final String exceptionMessageForImproperUsage(String methodName) {
+  private static String exceptionMessageForImproperUsage(String methodName) {
     return methodName + " should never be called on " + VirtualSharedKafkaConsumer.class.getSimpleName() +
         " but should rather be called on " + PartitionWiseSharedKafkaConsumer.class.getSimpleName();
   }
@@ -73,7 +74,12 @@ public class PartitionWiseKafkaConsumerService extends KafkaConsumerService {
   }
 
   @Override
-  public KafkaConsumerWrapper getConsumer(StoreIngestionTask ingestionTask) {
+  public Optional<KafkaConsumerWrapper> getConsumerAssignedToVersionTopic(String versionTopic) {
+    return Optional.ofNullable(versionTopicToVirtualConsumerMap.get(versionTopic));
+  }
+
+  @Override
+  public KafkaConsumerWrapper assignConsumerFor(StoreIngestionTask ingestionTask) {
     // Check whether this version topic has been subscribed before or not.
     String versionTopic = ingestionTask.getVersionTopic();
     if (versionTopicToVirtualConsumerMap.containsKey(versionTopic)) {
@@ -165,7 +171,7 @@ public class PartitionWiseKafkaConsumerService extends KafkaConsumerService {
   }
 
   /**
-   * {@link VirtualSharedKafkaConsumer} is a virtual topic-wise consumer for {@link KafkaConsumerService#getConsumer(StoreIngestionTask)}.
+   * {@link VirtualSharedKafkaConsumer} is a virtual topic-wise consumer for {@link KafkaConsumerService#assignConsumerFor(StoreIngestionTask)}.
    * It only maintains the mapping from partition to real {@link SharedKafkaConsumer}. This mapping will only be decided
    * by calling {@link StoreIngestionTask#subscribe(KafkaConsumerWrapper, String, int, long)} for a specific partition,
    * then {@link PartitionWiseKafkaConsumerService#getSharedConsumerForPartition(StoreIngestionTask, String, int)} will find real

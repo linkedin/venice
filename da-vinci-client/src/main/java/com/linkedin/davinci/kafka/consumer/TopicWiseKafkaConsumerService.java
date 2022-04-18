@@ -10,6 +10,7 @@ import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import org.apache.logging.log4j.LogManager;
@@ -47,6 +48,11 @@ public class TopicWiseKafkaConsumerService extends KafkaConsumerService {
     return new TopicWiseSharedKafkaConsumer(kafkaConsumerWrapper, this, nonExistingTopicCleanupDelayMS, topicExistenceChecker);
   }
 
+  @Override
+  public synchronized Optional<KafkaConsumerWrapper> getConsumerAssignedToVersionTopic(String versionTopic) {
+    return Optional.ofNullable(versionTopicToConsumerMap.get(versionTopic));
+  }
+
   /**
    * This function will return a consumer for the passed {@link StoreIngestionTask}.
    * If the version topic of the passed {@link StoreIngestionTask} has been attached before, the previously assigned
@@ -59,7 +65,7 @@ public class TopicWiseKafkaConsumerService extends KafkaConsumerService {
    * @return
    */
   @Override
-  public synchronized KafkaConsumerWrapper getConsumer(StoreIngestionTask ingestionTask) {
+  public synchronized KafkaConsumerWrapper assignConsumerFor(StoreIngestionTask ingestionTask) {
     String versionTopic = ingestionTask.getVersionTopic();
     // Check whether this version topic has been subscribed before or not.
     SharedKafkaConsumer chosenConsumer = null;
@@ -158,7 +164,7 @@ public class TopicWiseKafkaConsumerService extends KafkaConsumerService {
 
   /**
    * This function will check a consumer is assigned topic or not. Since we may not have too many consumers and this
-   * function will be only called when {@link KafkaConsumerService#getConsumer(StoreIngestionTask)} called at the
+   * function will be only called when {@link KafkaConsumerService#assignConsumerFor(StoreIngestionTask)} called at the
    * first time.
    */
   private boolean isConsumerAssignedTopic(SharedKafkaConsumer consumer) {

@@ -53,8 +53,8 @@ public class KafkaConsumerServiceTest {
         2, mock(EventThrottler.class), mock(EventThrottler.class), mock(KafkaClusterBasedRecordThrottler.class),
         mock(KafkaConsumerServiceStats.class), TimeUnit.MINUTES.toMillis(1), mock(TopicExistenceChecker.class), true);
 
-    KafkaConsumerWrapper assignedConsumerForTask1 = consumerService.getConsumer(task1);
-    KafkaConsumerWrapper assignedConsumerForTask2 = consumerService.getConsumer(task2);
+    KafkaConsumerWrapper assignedConsumerForTask1 = consumerService.assignConsumerFor(task1);
+    KafkaConsumerWrapper assignedConsumerForTask2 = consumerService.assignConsumerFor(task2);
     Assert.assertNotEquals(assignedConsumerForTask1, assignedConsumerForTask2,
         "We should avoid to share consumer when there is consumer not assigned topic.");
 
@@ -75,7 +75,7 @@ public class KafkaConsumerServiceTest {
     StoreIngestionTask task3 = mock(StoreIngestionTask.class);
     when(task3.getVersionTopic()).thenReturn(topicForStoreName3);
     when(task3.isHybridMode()).thenReturn(true);
-    KafkaConsumerWrapper assignedConsumerForTask3 = consumerService.getConsumer(task3);
+    KafkaConsumerWrapper assignedConsumerForTask3 = consumerService.assignConsumerFor(task3);
     Assert.assertEquals(assignedConsumerForTask3, assignedConsumerForTask2,
         "The assigned consumer should come with least partitions, when no zero loaded consumer available.");
   }
@@ -112,15 +112,15 @@ public class KafkaConsumerServiceTest {
     when(task1.getVersionTopic()).thenReturn(topicForStoreVersion1);
     when(task1.isHybridMode()).thenReturn(true);
 
-    KafkaConsumerWrapper assignedConsumerForV1 = consumerService.getConsumer(task1);
-    Assert.assertEquals(consumerService.getConsumer(task1), assignedConsumerForV1, "The 'getConsumer' function should be idempotent");
+    KafkaConsumerWrapper assignedConsumerForV1 = consumerService.assignConsumerFor(task1);
+    Assert.assertEquals(consumerService.assignConsumerFor(task1), assignedConsumerForV1, "The 'getConsumer' function should be idempotent");
 
     String topicForStoreVersion2 = Version.composeKafkaTopic(storeName, 2);
     StoreIngestionTask task2 = mock(StoreIngestionTask.class);
     when(task2.getVersionTopic()).thenReturn(topicForStoreVersion2);
     when(task2.isHybridMode()).thenReturn(true);
 
-    KafkaConsumerWrapper assignedConsumerForV2 = consumerService.getConsumer(task2);
+    KafkaConsumerWrapper assignedConsumerForV2 = consumerService.assignConsumerFor(task2);
     Assert.assertNotEquals(assignedConsumerForV2, assignedConsumerForV1, "The 'getConsumer' function should return a different consumer from v1");
 
 
@@ -130,7 +130,7 @@ public class KafkaConsumerServiceTest {
     when(task3.isHybridMode()).thenReturn(true);
 
     try {
-      consumerService.getConsumer(task3);
+      consumerService.assignConsumerFor(task3);
       Assert.fail("An exception should be thrown since all 2 consumers should be occupied by other versions");
     } catch (VeniceException e) {
       // expected
@@ -170,9 +170,9 @@ public class KafkaConsumerServiceTest {
         mock(KafkaConsumerServiceStats.class), TimeUnit.MINUTES.toMillis(1), mock(TopicExistenceChecker.class), true);
 
     PartitionWiseKafkaConsumerService.VirtualSharedKafkaConsumer assignedConsumerForTask1 =
-        (PartitionWiseKafkaConsumerService.VirtualSharedKafkaConsumer) consumerService.getConsumer(task1);
+        (PartitionWiseKafkaConsumerService.VirtualSharedKafkaConsumer) consumerService.assignConsumerFor(task1);
     PartitionWiseKafkaConsumerService.VirtualSharedKafkaConsumer assignedConsumerForTask2 =
-        (PartitionWiseKafkaConsumerService.VirtualSharedKafkaConsumer) consumerService.getConsumer(task2);
+        (PartitionWiseKafkaConsumerService.VirtualSharedKafkaConsumer) consumerService.assignConsumerFor(task2);
     int partitionNumForTask1 = 4;
     int partitionNumForTask2 = 2;
     for (int partitionId = 0; partitionId < partitionNumForTask1; partitionId++) {
@@ -235,10 +235,10 @@ public class KafkaConsumerServiceTest {
     when(task1.isHybridMode()).thenReturn(true);
 
     PartitionWiseKafkaConsumerService.VirtualSharedKafkaConsumer assignedConsumerForV1 =
-        (PartitionWiseKafkaConsumerService.VirtualSharedKafkaConsumer) consumerService.getConsumer(task1);
+        (PartitionWiseKafkaConsumerService.VirtualSharedKafkaConsumer) consumerService.assignConsumerFor(task1);
 
 
-    Assert.assertEquals(consumerService.getConsumer(task1), assignedConsumerForV1, "The 'getConsumer' function should be idempotent");
+    Assert.assertEquals(consumerService.assignConsumerFor(task1), assignedConsumerForV1, "The 'getConsumer' function should be idempotent");
 
     String topicForStoreVersion2 = Version.composeKafkaTopic(storeName, 2);
     StoreIngestionTask task2 = mock(StoreIngestionTask.class);
@@ -246,7 +246,7 @@ public class KafkaConsumerServiceTest {
     when(task2.isHybridMode()).thenReturn(true);
 
     PartitionWiseKafkaConsumerService.VirtualSharedKafkaConsumer assignedConsumerForV2 =
-        (PartitionWiseKafkaConsumerService.VirtualSharedKafkaConsumer) consumerService.getConsumer(task2);
+        (PartitionWiseKafkaConsumerService.VirtualSharedKafkaConsumer) consumerService.assignConsumerFor(task2);
     Assert.assertNotEquals(assignedConsumerForV2, assignedConsumerForV1, "The 'getConsumer' function should return a different consumer from v1");
     assignedConsumerForV1.subscribe(realTimeTopic, 0, 0);
     assignedConsumerForV1.subscribe(realTimeTopic, 1, 0);
@@ -269,7 +269,7 @@ public class KafkaConsumerServiceTest {
     when(task3.isHybridMode()).thenReturn(true);
 
     PartitionWiseKafkaConsumerService.VirtualSharedKafkaConsumer assignedConsumerForV3 =
-        (PartitionWiseKafkaConsumerService.VirtualSharedKafkaConsumer) consumerService.getConsumer(task3);
+        (PartitionWiseKafkaConsumerService.VirtualSharedKafkaConsumer) consumerService.assignConsumerFor(task3);
     // We only have 2 consumers and the RT has two 2 partitions, 3rd time RT subscribing partition 0 should not work, we could not find consumer.
     Assert.assertThrows(VeniceException.class, () -> assignedConsumerForV3.subscribe(realTimeTopic, 0, 0));
 

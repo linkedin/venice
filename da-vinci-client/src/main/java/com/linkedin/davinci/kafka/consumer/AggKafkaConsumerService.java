@@ -116,16 +116,20 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
     }
   }
 
-  /**
-   * Get a shared consumer based both consumer properties (which contains Kafka bootstrap url) as well as ingestion task.
-   * Note that this method does not create a {@link KafkaConsumerService} if there is not one for the given {@param kafkaURL}.
-   */
-  public Optional<KafkaConsumerWrapper> getConsumer(final String kafkaURL, StoreIngestionTask ingestionTask) {
+  public Optional<KafkaConsumerWrapper> getAssignedConsumerFor(final String kafkaURL, String versionTopic) {
     Optional<KafkaConsumerService> consumerService = getKafkaConsumerService(kafkaURL);
     if (!consumerService.isPresent()) {
       return Optional.empty();
     }
-    KafkaConsumerWrapper selectedConsumer = consumerService.get().getConsumer(ingestionTask);
+    return  consumerService.get().getConsumerAssignedToVersionTopic(versionTopic);
+  }
+
+  public Optional<KafkaConsumerWrapper> assignConsumerFor(final String kafkaURL, StoreIngestionTask ingestionTask) {
+    Optional<KafkaConsumerService> consumerService = getKafkaConsumerService(kafkaURL);
+    if (!consumerService.isPresent()) {
+      return Optional.empty();
+    }
+    KafkaConsumerWrapper selectedConsumer = consumerService.get().assignConsumerFor(ingestionTask);
     consumerService.get().attach(selectedConsumer, ingestionTask.getVersionTopic(), ingestionTask);
     return Optional.of(selectedConsumer);
   }
