@@ -16,6 +16,7 @@ import it.unimi.dsi.fastutil.ints.IntList;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -107,12 +108,16 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
   }
 
   /**
-   * This function will return a consumer for the passed {@link StoreIngestionTask}.
-   *
-   * @param ingestionTask
-   * @return
+   * @return a consumer that was previously assigned to a version topic {@link StoreIngestionTask#getVersionTopic()}. In
+   *         other words, if {@link this#assignConsumerFor} is never called, there is no assigned consumer to given version
+   *         topic. Hence, {@link Optional#empty()} is returned.
    */
-  public abstract KafkaConsumerWrapper getConsumer(StoreIngestionTask ingestionTask);
+  public abstract Optional<KafkaConsumerWrapper> getConsumerAssignedToVersionTopic(String versionTopic);
+
+  /**
+   * This function assigns a consumer for the given {@link StoreIngestionTask} and returns the assigned consumer.
+   */
+  public abstract KafkaConsumerWrapper assignConsumerFor(StoreIngestionTask ingestionTask);
   /**
    * Attach the messages belonging to {@param topic} to the passed {@param ingestionTask}
    */

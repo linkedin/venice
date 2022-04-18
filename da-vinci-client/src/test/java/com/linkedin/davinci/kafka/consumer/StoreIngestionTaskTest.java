@@ -650,7 +650,16 @@ public class StoreIngestionTaskTest {
       }
 
       return Optional.of(inMemoryLocalKafkaConsumer);
-    }).when(aggKafkaConsumerService).getConsumer(any(), any());
+    }).when(aggKafkaConsumerService).getAssignedConsumerFor(any(), any());
+
+    doAnswer(invocation -> {
+      String kafkaUrl = invocation.getArgument(0, String.class);
+      if (kafkaUrl.equals(inMemoryRemoteKafkaBroker.getKafkaBootstrapServer())) {
+        return Optional.of(inMemoryRemoteKafkaConsumer);
+      }
+
+      return Optional.of(inMemoryLocalKafkaConsumer);
+    }).when(aggKafkaConsumerService).assignConsumerFor(any(), any());
 
     EventThrottler mockUnorderedBandwidthThrottler = mock(EventThrottler.class);
     EventThrottler mockUnorderedRecordsThrottler = mock(EventThrottler.class);

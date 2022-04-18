@@ -2814,7 +2814,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
          * unsubscribe it, or resetting its consuming offset, etc.
          */
         aggKafkaConsumerService.createKafkaConsumerService(createKafkaConsumerProperties(kafkaProps, kafkaURL, consumeRemotely));
-        consumer = aggKafkaConsumerService.getConsumer(kafkaURL, this);
+        consumer = aggKafkaConsumerService.assignConsumerFor(kafkaURL, this);
+
         if (!consumer.isPresent()) {
           throw new VeniceException("Shared consumer must exist for version topic: " + getVersionTopic() + " in Kafka cluster: " + kafkaURL);
         }
@@ -2889,7 +2890,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
       if (serverConfig.isSharedConsumerPoolEnabled()) {
         // Note that if shared consumer is enabled, there is no new consumer nor consumer service created here.
-        Optional<KafkaConsumerWrapper> existingKafkaConsumer = aggKafkaConsumerService.getConsumer(kafkaURL, this);
+        Optional<KafkaConsumerWrapper> existingKafkaConsumer = aggKafkaConsumerService.getAssignedConsumerFor(kafkaURL, getVersionTopic());
         return existingKafkaConsumer.orElse(null);
 
       } else {
