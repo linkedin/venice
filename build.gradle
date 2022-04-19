@@ -133,7 +133,7 @@ ext.libraries = [
     restliDocgen: 'com.linkedin.pegasus:restli-docgen:' + pegasusVersion,
 
     // RocksDB
-    rocksdbjni: 'org.rocksdb:rocksdbjni:6.20.3',
+    rocksdbjni: 'org.rocksdb:rocksdbjni:7.0.3',
 
     // Flatbuffers lib, currently for benchmark only
     flatbuffersJava: 'com.google.flatbuffers:flatbuffers-java:1.11.0',
