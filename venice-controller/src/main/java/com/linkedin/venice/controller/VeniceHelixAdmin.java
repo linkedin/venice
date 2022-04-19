@@ -3032,6 +3032,14 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       });
     }
 
+    public void disableDavinciPushStatusStore(String clusterName, String storeName) {
+      logger.info("Disabling davinci push status store for store:{} of cluster:{}", storeName, clusterName);
+      storeMetadataUpdate(clusterName, storeName, store -> {
+        store.setDaVinciPushStatusStoreEnabled(false);
+        return store;
+      });
+    }
+
     /**
      * This function will check whether the store update will cause the case that a store can not have the specified
      * hybrid store and incremental push configs.
@@ -3494,6 +3502,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
             if (isMetaSystemStoreEnabled.isPresent()) {
               setMetaSystemStoreEnabled(clusterName, storeName, isMetaSystemStoreEnabled.get());
+            }
+
+            if (params.disableDavinciPushStatusStore().isPresent() && params.disableDavinciPushStatusStore().get()) {
+              disableDavinciPushStatusStore(clusterName, storeName);
             }
             logger.info("Finished updating store: " + storeName + " in cluster: " + clusterName);
         } catch (VeniceException e) {

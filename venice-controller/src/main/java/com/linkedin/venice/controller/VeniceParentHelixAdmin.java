@@ -1828,6 +1828,9 @@ public class VeniceParentHelixAdmin implements Admin {
           .map(addToUpdatedConfigList(updatedConfigsList, META_SYSTEM_STORE_ENABLED))
           .orElseGet(currStore::isStoreMetadataSystemStoreEnabled);
 
+      setStore.disableDavinciPushStatusStore = params.disableDavinciPushStatusStore()
+          .map(addToUpdatedConfigList(updatedConfigsList, DISABLE_DAVINCI_PUSH_STATUS_STORE))
+          .orElse(false);
 
       /**
        * By default, parent controllers will not try to replicate the unchanged store configs to child controllers;
