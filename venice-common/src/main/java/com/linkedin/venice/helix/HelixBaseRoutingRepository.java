@@ -227,7 +227,7 @@ public abstract class HelixBaseRoutingRepository
 
   @Override
   public boolean isLiveInstance(String instanceId) {
-    try (AutoCloseableLock ignored = new AutoCloseableLock(this.liveInstancesMapLock)) {
+    try (AutoCloseableLock ignored = AutoCloseableLock.of(this.liveInstancesMapLock)) {
       return liveInstancesMap.containsKey(instanceId);
     }
   }

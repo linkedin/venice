@@ -48,7 +48,7 @@ public class HelixCustomizedViewOfflinePushRepository extends HelixBaseRoutingRe
   @Override
   public List<ReplicaState> getReplicaStates(String kafkaTopic, int partitionId) {
     Partition partition;
-    try (AutoCloseableLock ignored = new AutoCloseableLock(resourceAssignmentRWLock.readLock())) {
+    try (AutoCloseableLock ignored = AutoCloseableLock.of(resourceAssignmentRWLock.readLock())) {
        partition = resourceAssignment.getPartition(kafkaTopic, partitionId);
     }
     if (partition == null) {
@@ -66,7 +66,7 @@ public class HelixCustomizedViewOfflinePushRepository extends HelixBaseRoutingRe
 
   private int getNumberOfReplicasInCompletedState(String kafkaTopic, int partitionId) {
     Partition partition;
-    try (AutoCloseableLock ignored = new AutoCloseableLock(resourceAssignmentRWLock.readLock())) {
+    try (AutoCloseableLock ignored = AutoCloseableLock.of(resourceAssignmentRWLock.readLock())) {
       partition = resourceAssignment.getPartition(kafkaTopic, partitionId);
     }
     return partition == null ? 0 : partition.getInstancesInState(COMPLETED.name()).size();
@@ -172,8 +172,8 @@ public class HelixCustomizedViewOfflinePushRepository extends HelixBaseRoutingRe
         newResourceAssignment.setPartitionAssignment(resourceName, partitionAssignment);
       }
       final ResourceAssignmentChanges updates;
-      try (AutoCloseableLock ignored = new AutoCloseableLock(resourceAssignmentRWLock.writeLock())) {
-          try (AutoCloseableLock ignore = new AutoCloseableLock(liveInstancesMapLock)) {
+      try (AutoCloseableLock ignored = AutoCloseableLock.of(resourceAssignmentRWLock.writeLock())) {
+          try (AutoCloseableLock ignore = AutoCloseableLock.of(liveInstancesMapLock)) {
           // Update the live instances as well. Helix updates live instances in this routing data
           // changed event.
           this.liveInstancesMap = Collections.unmodifiableMap(liveInstanceSnapshot);
@@ -186,7 +186,7 @@ public class HelixCustomizedViewOfflinePushRepository extends HelixBaseRoutingRe
       // Notify listeners that listen on customized view data change
       for (String kafkaTopic : updates.getUpdatedResources()) {
         PartitionAssignment partitionAssignment;
-        try (AutoCloseableLock ignored = new AutoCloseableLock(resourceAssignmentRWLock.readLock())) {
+        try (AutoCloseableLock ignored = AutoCloseableLock.of(resourceAssignmentRWLock.readLock())) {
           partitionAssignment = resourceAssignment.getPartitionAssignment(kafkaTopic);
         }
         listenerManager.trigger(kafkaTopic, listener -> listener.onCustomizedViewChange(partitionAssignment));

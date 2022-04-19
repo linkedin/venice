@@ -72,7 +72,7 @@ public class PartitionOffsetFetcherImpl implements PartitionOffsetFetcher {
 
   @Override
   public Map<Integer, Long> getTopicLatestOffsets(String topic) {
-    try (AutoCloseableLock ignore = new AutoCloseableLock(rawConsumerLock)) {
+    try (AutoCloseableLock ignore = AutoCloseableLock.of(rawConsumerLock)) {
       List<PartitionInfo> partitionInfoList = kafkaRawBytesConsumer.get().partitionsFor(topic);
       if (null == partitionInfoList || partitionInfoList.isEmpty()) {
         logger.warn("Unexpected! Topic: " + topic + " has a null partition set, returning empty map for latest offsets");
@@ -95,7 +95,7 @@ public class PartitionOffsetFetcherImpl implements PartitionOffsetFetcher {
     if (partition < 0) {
       throw new IllegalArgumentException("Cannot retrieve latest offsets for invalid partition " + partition);
     }
-    try (AutoCloseableLock ignore = new AutoCloseableLock(rawConsumerLock)) {
+    try (AutoCloseableLock ignore = AutoCloseableLock.of(rawConsumerLock)) {
       if (doTopicCheck && !kafkaAdminWrapper.get().containsTopicWithExpectationAndRetry(topic, 3, true)) {
         throw new TopicDoesNotExistException("Topic " + topic + " does not exist!");
       }
@@ -148,7 +148,7 @@ public class PartitionOffsetFetcherImpl implements PartitionOffsetFetcher {
 
   @Override
   public Map<Integer, Long> getTopicOffsetsByTime(String topic, long timestamp) {
-    try (AutoCloseableLock ignore = new AutoCloseableLock(rawConsumerLock)) {
+    try (AutoCloseableLock ignore = AutoCloseableLock.of(rawConsumerLock)) {
       int remainingAttempts = 5;
       List<PartitionInfo> partitionInfoList = kafkaRawBytesConsumer.get().partitionsFor(topic);
       // N.B.: During unit test development, getting a null happened occasionally without apparent
@@ -213,7 +213,7 @@ public class PartitionOffsetFetcherImpl implements PartitionOffsetFetcher {
       int maxAttempt,
       Duration delay
   ) {
-    try (AutoCloseableLock ignore = new AutoCloseableLock(rawConsumerLock)) {
+    try (AutoCloseableLock ignore = AutoCloseableLock.of(rawConsumerLock)) {
       final int expectedPartitionNum = timestampsToSearch.size();
       Map<TopicPartition, Long> result = offsetsForTimesWithRetry(timestampsToSearch, maxAttempt, delay)
               .entrySet()
@@ -270,7 +270,7 @@ public class PartitionOffsetFetcherImpl implements PartitionOffsetFetcher {
           int maxAttempt,
           Duration delay
   ) {
-    try (AutoCloseableLock ignore = new AutoCloseableLock(rawConsumerLock)) {
+    try (AutoCloseableLock ignore = AutoCloseableLock.of(rawConsumerLock)) {
       return RetryUtils.executeWithMaxAttempt(
           () -> kafkaRawBytesConsumer.get().offsetsForTimes(timestampsToSearch, kafkaOperationTimeout),
           maxAttempt,
@@ -285,7 +285,7 @@ public class PartitionOffsetFetcherImpl implements PartitionOffsetFetcher {
           int maxAttempt,
           Duration delay
   ) {
-    try (AutoCloseableLock ignore = new AutoCloseableLock(rawConsumerLock)) {
+    try (AutoCloseableLock ignore = AutoCloseableLock.of(rawConsumerLock)) {
       return RetryUtils.executeWithMaxAttempt(
           () -> kafkaRawBytesConsumer.get().endOffsets(partitions),
           maxAttempt,
@@ -404,7 +404,7 @@ public class PartitionOffsetFetcherImpl implements PartitionOffsetFetcher {
       throw new IllegalArgumentException("Last record count must be greater than or equal to 1. Got: " + lastRecordsCount);
     }
 
-    try (AutoCloseableLock ignore = new AutoCloseableLock(kafkaRecordConsumerLock)) {
+    try (AutoCloseableLock ignore = AutoCloseableLock.of(kafkaRecordConsumerLock)) {
       if (!kafkaAdminWrapper.get().containsTopicWithExpectationAndRetry(topic, 3, true)) {
         throw new TopicDoesNotExistException("Topic " + topic + " does not exist!");
       }
@@ -481,14 +481,14 @@ public class PartitionOffsetFetcherImpl implements PartitionOffsetFetcher {
 
   @Override
   public List<PartitionInfo> partitionsFor(String topic) {
-    try (AutoCloseableLock ignore = new AutoCloseableLock(rawConsumerLock)) {
+    try (AutoCloseableLock ignore = AutoCloseableLock.of(rawConsumerLock)) {
       return kafkaRawBytesConsumer.get().partitionsFor(topic);
     }
   }
 
   @Override
   public long getOffsetByTimeIfOutOfRange(TopicPartition topicPartition, long timestamp) throws TopicDoesNotExistException {
-    try (AutoCloseableLock ignore = new AutoCloseableLock(rawConsumerLock)) {
+    try (AutoCloseableLock ignore = AutoCloseableLock.of(rawConsumerLock)) {
       long latestOffset = getLatestOffset(topicPartition.topic(), topicPartition.partition(), true);
       if (latestOffset <= 0) {
         long nextOffset = LOWEST_OFFSET + 1;
@@ -575,7 +575,7 @@ public class PartitionOffsetFetcherImpl implements PartitionOffsetFetcher {
    * @throws TopicDoesNotExistException
    */
   private long getEarliestOffset(String topic, int partition) throws TopicDoesNotExistException {
-    try (AutoCloseableLock ignore = new AutoCloseableLock(rawConsumerLock)) {
+    try (AutoCloseableLock ignore = AutoCloseableLock.of(rawConsumerLock)) {
       if (!kafkaAdminWrapper.get().containsTopicWithExpectationAndRetry(topic, 3, true)) {
         throw new TopicDoesNotExistException("Topic " + topic + " does not exist!");
       }

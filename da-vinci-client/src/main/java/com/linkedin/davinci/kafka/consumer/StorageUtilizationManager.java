@@ -171,7 +171,7 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
       resumeAllPartitions();
     }
 
-    try (AutoCloseableLock ignored = new AutoCloseableLock(hybridStoreDiskQuotaLock)) {
+    try (AutoCloseableLock ignored = AutoCloseableLock.of(hybridStoreDiskQuotaLock)) {
       boolean isHybridQuotaUpdated = isHybridStoreDiskQuotaUpdated(store);
       boolean oldHybridQuotaEnabledState = isHybridQuotaEnabled();
       setStoreQuota(store);
@@ -203,7 +203,7 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
    * to find more details.
    */
   public void checkAllPartitionsQuota() {
-    try (AutoCloseableLock ignored = new AutoCloseableLock(hybridStoreDiskQuotaLock)) {
+    try (AutoCloseableLock ignored = AutoCloseableLock.of(hybridStoreDiskQuotaLock)) {
       if (!isHybridQuotaEnabled()) {
         return;
       }
@@ -216,7 +216,7 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
   }
 
   public void enforcePartitionQuota(int partition, long additionalRecordSizeUsed) {
-    try (AutoCloseableLock ignored = new AutoCloseableLock(hybridStoreDiskQuotaLock)) {
+    try (AutoCloseableLock ignored = AutoCloseableLock.of(hybridStoreDiskQuotaLock)) {
       if (!isHybridQuotaEnabled()) {
         return;
       }
