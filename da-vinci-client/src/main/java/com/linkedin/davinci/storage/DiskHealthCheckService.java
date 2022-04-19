@@ -56,19 +56,19 @@ public class DiskHealthCheckService extends AbstractVeniceService {
   private Thread runner;
 
   private void setDiskHealthy(boolean diskHealthy) {
-    try (AutoCloseableLock ignore = new AutoCloseableLock(lock)) {
+    try (AutoCloseableLock ignore = AutoCloseableLock.of(lock)) {
       this.diskHealthy = diskHealthy;
     }
   }
 
   private boolean getDiskHealthy() {
-    try (AutoCloseableLock ignore = new AutoCloseableLock(lock)) {
+    try (AutoCloseableLock ignore = AutoCloseableLock.of(lock)) {
       return diskHealthy;
     }
   }
 
   private void setLastStatusUpdateTimeInNS(long lastStatusUpdateTimeInNS) {
-    try (AutoCloseableLock ignore = new AutoCloseableLock(lock)) {
+    try (AutoCloseableLock ignore = AutoCloseableLock.of(lock)) {
       this.lastStatusUpdateTimeInNS = lastStatusUpdateTimeInNS;
     }
   }
@@ -106,7 +106,7 @@ public class DiskHealthCheckService extends AbstractVeniceService {
       return true;
     }
 
-    try (AutoCloseableLock ignore = new AutoCloseableLock(lock)) {
+    try (AutoCloseableLock ignore = AutoCloseableLock.of(lock)) {
       if (LatencyUtils.getLatencyInMS(lastStatusUpdateTimeInNS) > healthCheckTimeoutMs) {
         /**
          * Disk operation hangs so the status has not been updated for {@link healthCheckTimeoutMs};
@@ -204,7 +204,7 @@ public class DiskHealthCheckService extends AbstractVeniceService {
               }
             }
 
-            try (AutoCloseableLock ignore = new AutoCloseableLock(lock)) {
+            try (AutoCloseableLock ignore = AutoCloseableLock.of(lock)) {
               // update the disk health status
               diskHealthy = fileReadableAndCorrect;
               lastStatusUpdateTimeInNS = System.nanoTime();

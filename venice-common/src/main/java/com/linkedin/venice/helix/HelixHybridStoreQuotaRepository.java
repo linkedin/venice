@@ -50,7 +50,7 @@ public class HelixHybridStoreQuotaRepository implements RoutingTableChangeListen
    *
    */
   public List<String> getHybridQuotaViolatedStores() {
-    try (AutoCloseableLock ignore = new AutoCloseableLock(lock)) {
+    try (AutoCloseableLock ignore = AutoCloseableLock.of(lock)) {
       List<String> hybridQuotaViolatedStores = resourceToStatusMap.keySet()
           .stream()
           .filter(originalResources -> resourceToStatusMap.get(originalResources).equals(HybridStoreQuotaStatus.QUOTA_VIOLATED))
@@ -66,7 +66,7 @@ public class HelixHybridStoreQuotaRepository implements RoutingTableChangeListen
    * @return
    */
   public HybridStoreQuotaStatus getHybridStoreQuotaStatus(@Nonnull String resourceName) {
-    try (AutoCloseableLock ignore = new AutoCloseableLock(lock)) {
+    try (AutoCloseableLock ignore = AutoCloseableLock.of(lock)) {
       if (resourceToStatusMap.containsKey(resourceName)) {
         return resourceToStatusMap.get(resourceName);
       }
@@ -138,7 +138,7 @@ public class HelixHybridStoreQuotaRepository implements RoutingTableChangeListen
         newResourceToStatusMap.put(resourceName, status);
       }
       Set<String> deletedResourceNames;
-      try (AutoCloseableLock ignore = new AutoCloseableLock(lock)) {
+      try (AutoCloseableLock ignore = AutoCloseableLock.of(lock)) {
         deletedResourceNames = resourceToStatusMap.keySet()
             .stream()
             .filter(originalResources -> !newResourceToStatusMap.containsKey(originalResources))

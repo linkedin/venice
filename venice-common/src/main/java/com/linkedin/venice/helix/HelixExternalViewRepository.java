@@ -98,7 +98,7 @@ public class HelixExternalViewRepository extends HelixBaseRoutingRepository {
         if (routingTableSnapshot.getExternalViews() == null || routingTableSnapshot.getExternalViews().size() <= 0){
             logger.info("Ignore the empty external view.");
             // Update live instances even if there is nonthing in the external view.
-            try (AutoCloseableLock ignored = new AutoCloseableLock(this.liveInstancesMapLock)) {
+            try (AutoCloseableLock ignored = AutoCloseableLock.of(this.liveInstancesMapLock)) {
                 liveInstancesMap = convertLiveInstances(routingTableSnapshot.getLiveInstances());
             }
             logger.info("Updated live instances.");
@@ -173,7 +173,7 @@ public class HelixExternalViewRepository extends HelixBaseRoutingRepository {
         ResourceAssignmentChanges updates;
         synchronized (resourceAssignment) {
             // Update the live instances as well. Helix updates live instances in this routing data changed event.
-            try (AutoCloseableLock ignored = new AutoCloseableLock(this.liveInstancesMapLock)) {
+            try (AutoCloseableLock ignored = AutoCloseableLock.of(this.liveInstancesMapLock)) {
                 this.liveInstancesMap = Collections.unmodifiableMap(liveInstanceSnapshot);
             }
             updates = resourceAssignment.updateResourceAssignment(newResourceAssignment);
