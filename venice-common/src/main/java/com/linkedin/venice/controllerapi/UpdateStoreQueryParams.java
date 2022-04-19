@@ -187,8 +187,16 @@ public class UpdateStoreQueryParams extends QueryParams {
     return putBoolean(META_SYSTEM_STORE_ENABLED, enableMetaSystemStore);
   }
 
+  public UpdateStoreQueryParams setDisableDavinciPushStatusStore() {
+    return putBoolean(DISABLE_DAVINCI_PUSH_STATUS_STORE, true);
+  }
+
   public Optional<Boolean> isMetaSystemStoreEnabled() {
     return getBoolean(META_SYSTEM_STORE_ENABLED);
+  }
+
+  public Optional<Boolean> disableDavinciPushStatusStore() {
+    return getBoolean(DISABLE_DAVINCI_PUSH_STATUS_STORE);
   }
 
   public Optional<Boolean> getEnableWrites() {

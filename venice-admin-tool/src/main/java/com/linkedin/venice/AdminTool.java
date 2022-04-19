@@ -604,6 +604,7 @@ public class AdminTool {
     List<String> failedToGetStoreInfoStoreList = new ArrayList<>();
     List<String> alreadyHaveSystemStoreList = new ArrayList<>();
     List<String> emptyPushFailedStoreList = new ArrayList<>();
+    List<String> writeDisabledStores = new ArrayList<>();
     // store size param is used to determine how many partitions to create; however, for system store
     // it is determined by shared ZK based store. Hence, it is not really relevant.
     long storeSize = 32 * 1024 * 1024;
@@ -620,6 +621,10 @@ public class AdminTool {
           alreadyHaveSystemStoreList.add(storeName);
           continue;
         }
+        if (!storeInfo.isEnableStoreWrites()) {
+          writeDisabledStores.add(storeName);
+          continue;
+        }
         String systemStoreName = getSystemStoreName(storeInfo, systemStoreType);
         String pushId = "BACKFILL_" + systemStoreName;
         System.out.println("Running empty push for: " + systemStoreName);
@@ -633,7 +638,8 @@ public class AdminTool {
     }
     System.out.println("Finished backfill task.\nStats - ");
     System.out.println("Failed to get store details for the stores: " + failedToGetStoreInfoStoreList);
-    System.out.println("Stores that already have system store of a given type: " + alreadyHaveSystemStoreList);
+    System.out.println("Skipping stores that already have system store of a given type: " + alreadyHaveSystemStoreList);
+    System.out.println("Skipping stores that have disabled writes: " + writeDisabledStores);
     System.out.println("Empty push failed for stores: " + emptyPushFailedStoreList);
   }
 
@@ -845,6 +851,10 @@ public class AdminTool {
      */
     boolean replicateAllConfigs = cmd.hasOption(Arg.REPLICATE_ALL_CONFIGS.toString());
     params.setReplicateAllConfigs(replicateAllConfigs);
+
+    if (cmd.hasOption(Arg.DISABLE_DAVINCI_PUSH_STATUS_STORE.toString())) {
+      params.setDisableDavinciPushStatusStore();
+    }
 
     /**
      * By default when SRE updates storage quota using AdminTool, we will set the bypass as true,
