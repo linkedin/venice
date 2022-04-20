@@ -401,7 +401,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
            * Potential risk: it's possible that Kafka consumer would starve one of the partitions for a long
            * time even though there are new messages in it, so it's possible that the old leader is still producing
            * after waiting for 5 minutes; if it does happen, followers will detect upstream offset rewind by
-           * a different producer GUID.
+           * a different producer host name.
            */
           long lastTimestamp = getLastConsumedMessageTimestamp(kafkaVersionTopic, partition);
           if (LatencyUtils.getElapsedTimeInMs(lastTimestamp) > newLeaderInactiveTime) {
@@ -1146,20 +1146,13 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
      * If upstream offset is rewound and it's from a different producer, we encounter a split-brain
      * issue (multiple leaders producing to the same partition at the same time)
      *
-     * The condition is a little messy here. This is due to the fact that we have 2 mechanisms to detect the issue.
-     * 1. (old) we identify a Venice writer by checking message's GUID.
-     * 2. We identify a Venice writer by checking message's "leaderMetadataFooter.hostName".
-     *
-     * We would need the second mechanism because once "pass-through" message reproducing is enabled (and it's the
-     * enabled by default in latest code base), leader will re-use the same GUID as the one that's passed from the
-     * upstream message.
-     *
-     * TODO:Remove old condition check once every SN is bumped to have "pass-through" mode enabled.
+     * Since every SN enables pass-through mode for messages before EOP, leader will re-use the same GUID as the one
+     * passed from the upstream message. For reprocessing job, GUIDs of contiguous upstream messages might be different.
+     * Instead of comparing GUIDs, we compare leader host names to identify the split-brain issue.
      */
     final KafkaMessageEnvelope kafkaValue = consumerRecord.value();
-    if ((offsetRecord.getLeaderGUID() != null && !kafkaValue.producerMetadata.producerGUID.equals(offsetRecord.getLeaderGUID()))
-        || (kafkaValue.leaderMetadataFooter != null && offsetRecord.getLeaderHostId() != null
-        && !kafkaValue.leaderMetadataFooter.hostName.toString().equals(offsetRecord.getLeaderHostId()))) {
+    if (kafkaValue.leaderMetadataFooter != null && offsetRecord.getLeaderHostId() != null
+        && !kafkaValue.leaderMetadataFooter.hostName.toString().equals(offsetRecord.getLeaderHostId())) {
       /**
        * Check whether the data inside rewind message is the same the data inside storage engine; if so,
        * we don't consider it as lossy rewind; otherwise, report potentially lossy upstream rewind.
@@ -1168,14 +1161,16 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
        * otherwise, don't fail the push job, it's streaming ingestion now so it's serving online traffic already.
        */
       String logMsg = String.format(consumerTaskId + " partition %d received message with upstreamOffset: %d;"
-              + " but recorded upstreamOffset is: %d. Recorded producer GUID: %s; Received message producer GUID: %s; "
-              + "Received message producer host: %s. Multiple leaders are producing. ",
+              + " but recorded upstreamOffset is: %d. Received message producer GUID: %s; Recorded producer GUID: %s;"
+              + " Received message producer host: %s; Recorded producer host: %s."
+              + " Multiple leaders are producing. ",
           consumerRecord.partition(),
           newUpstreamOffset,
           previousUpstreamOffset,
-          GuidUtils.getHexFromGuid(offsetRecord.getLeaderGUID()),
-          GuidUtils.getHexFromGuid(kafkaValue.producerMetadata.producerGUID),
-          kafkaValue.leaderMetadataFooter == null ? "unknown" : kafkaValue.leaderMetadataFooter.hostName.toString()
+          kafkaValue.producerMetadata.producerGUID == null ? "unknown": GuidUtils.getHexFromGuid(kafkaValue.producerMetadata.producerGUID),
+          offsetRecord.getLeaderGUID() == null ? "unknown" : GuidUtils.getHexFromGuid(offsetRecord.getLeaderGUID()),
+          kafkaValue.leaderMetadataFooter.hostName.toString(),
+          offsetRecord.getLeaderHostId()
       );
 
       boolean lossy = true;
