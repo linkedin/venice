@@ -314,16 +314,9 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
       }
     }
 
-    if (pushType.equals(Version.PushType.STREAM) && hybridStoreDiskQuotaEnabled) {
+    if ((pushType.equals(Version.PushType.STREAM) || pushType.equals(Version.PushType.STREAM_REPROCESSING)) && hybridStoreDiskQuotaEnabled) {
       hybridStoreQuotaMonitor = Optional.of(new RouterBasedHybridStoreQuotaMonitor(
-          new D2TransportClient(discoveryResponse.getD2Service(), d2Client), storeName));
-      hybridStoreQuotaMonitor.get().start();
-    }
-
-    if(pushType.equals(Version.PushType.STREAM_REPROCESSING) && hybridStoreDiskQuotaEnabled) {
-      String versionTopic = Version.composeVersionTopicFromStreamReprocessingTopic(topicName);
-      hybridStoreQuotaMonitor = Optional.of(new RouterBasedHybridStoreQuotaMonitor(
-          new D2TransportClient(discoveryResponse.getD2Service(), d2Client), versionTopic));
+          new D2TransportClient(discoveryResponse.getD2Service(), d2Client), storeName, pushType, topicName));
       hybridStoreQuotaMonitor.get().start();
     }
   }
