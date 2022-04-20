@@ -100,7 +100,8 @@ public class TestHybridQuota {
     long streamingRewindSeconds = 10L;
     long streamingMessageLag = 2L;
 
-    String storeName = Utils.getUniqueString("test-store");
+    // Setting a store name that looks like a VT to verify that the quota logic can still work
+    String storeName = Utils.getUniqueString("test-store") + "_v1";
     File inputDir = getTempDataDirectory();
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
     Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir); // records 1-100
