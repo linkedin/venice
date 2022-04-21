@@ -3354,6 +3354,16 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
+  public Map<String, String> getChildDataCenterControllerD2Map(String clusterName) {
+    return getVeniceHelixAdmin().getChildDataCenterControllerD2Map(clusterName);
+  }
+
+  @Override
+  public  String getChildControllerD2ServiceName(String clusterName) {
+    return getVeniceHelixAdmin().getChildControllerD2ServiceName(clusterName);
+  }
+
+  @Override
   public HelixReadOnlyStoreConfigRepository getStoreConfigRepo() {
     return getVeniceHelixAdmin().getStoreConfigRepo();
   }

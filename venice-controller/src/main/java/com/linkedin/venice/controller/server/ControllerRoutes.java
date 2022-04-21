@@ -54,8 +54,9 @@ public class ControllerRoutes extends AbstractRoute {
         veniceResponse.setCluster(clusterName);
 
         if (admin.isParent()) {
-          Map<String, String> childControllerUrls = admin.getChildDataCenterControllerUrlMap(clusterName);
-          veniceResponse.setChildClusterMap(childControllerUrls);
+          veniceResponse.setChildDataCenterControllerUrlMap(admin.getChildDataCenterControllerUrlMap(clusterName));
+          veniceResponse.setChildDataCenterControllerD2Map(admin.getChildDataCenterControllerD2Map(clusterName));
+          veniceResponse.setD2ServiceName(admin.getChildControllerD2ServiceName(clusterName));
         }
       }
     };
