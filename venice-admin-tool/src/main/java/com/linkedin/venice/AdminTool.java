@@ -1625,11 +1625,14 @@ public class AdminTool {
         .getLocation()
         .getPath())
         .getName();
-    new HelpFormatter().printHelp(command + " --<command> [parameters]\n\nCommands:",
+
+    HelpFormatter helpFormatter = new HelpFormatter();
+    helpFormatter.setWidth(140);
+    helpFormatter.printHelp(command + " --<command> [parameters]\n\nCommands:",
         new Options().addOptionGroup(commandGroup));
 
     /* Parameters */
-    new HelpFormatter().printHelp("Parameters: ", options);
+    helpFormatter.printHelp("Parameters: ", options);
 
     /* Examples */
     System.out.println("\nExamples:");
@@ -1639,14 +1642,20 @@ public class AdminTool {
       StringJoiner exampleArgs = new StringJoiner(" ");
       for (Arg a : c.getRequiredArgs()){
         exampleArgs.add("--" + a.toString());
-        exampleArgs.add("<" + a.toString() + ">");
+        if (a.isParameterized()) {
+          exampleArgs.add("<" + a + ">");
+        }
       }
       for (Arg a : c.getOptionalArgs()){
         exampleArgs.add("[--" + a.toString());
-        exampleArgs.add("<" + a.toString() + ">]");
+        String param = "";
+        if (a.isParameterized()) {
+          param += "<" + a + ">";
+        }
+        exampleArgs.add(param + "]");
       }
 
-      System.out.println(command + " --" + c.toString() + " " + exampleArgs.toString());
+      System.out.println(command + " --" + c + " " + exampleArgs);
     }
     Utils.exit("printUsageAndExit");
   }

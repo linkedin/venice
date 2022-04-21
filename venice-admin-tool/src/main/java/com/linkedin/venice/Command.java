@@ -261,20 +261,20 @@ public enum Command {
       sj.add(". ");
     }
 
-    StringJoiner requiredArgs = new StringJoiner("\n");
+    StringJoiner requiredArgs = new StringJoiner(" ");
     for (Arg arg : getRequiredArgs()){
       requiredArgs.add("--" + arg.toString());
     }
 
-    sj.add("Requires: \n" + requiredArgs);
+    sj.add("\nRequires: " + requiredArgs);
 
-    StringJoiner optionalArgs = new StringJoiner("\n");
+    StringJoiner optionalArgs = new StringJoiner(" ");
     for (Arg arg : getOptionalArgs()) {
       optionalArgs.add("--" + arg.toString());
     }
 
     if (getOptionalArgs().length > 0) {
-      sj.add("\nOptional args: \n" + optionalArgs.toString());
+      sj.add("\nOptional args: " + optionalArgs.toString());
     }
 
     return sj.toString();
