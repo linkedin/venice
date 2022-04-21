@@ -6,9 +6,11 @@ import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.AclResponse;
 import com.linkedin.venice.controllerapi.AdminTopicMetadataResponse;
+import com.linkedin.venice.controllerapi.ChildAwareResponse;
 import com.linkedin.venice.controllerapi.ClusterStaleDataAuditResponse;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
+import com.linkedin.venice.controllerapi.D2ControllerClient;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.MigrationPushStrategyResponse;
@@ -1252,8 +1254,8 @@ public class AdminTool {
     ControllerClient srcControllerClient = new ControllerClient(srcClusterName, veniceUrl, sslFactory);
     ControllerClient destControllerClient = new ControllerClient(destClusterName, veniceUrl, sslFactory);
 
-    Map<String, String> childClusterMap = srcControllerClient.listChildControllers(srcClusterName).getChildClusterMap();
-    if (childClusterMap == null) {
+    ChildAwareResponse response = srcControllerClient.listChildControllers(srcClusterName);
+    if (response.getChildDataCenterControllerUrlMap() == null && response.getChildDataCenterControllerD2Map() == null) {
       // This is a controller in single datacenter setup
       printMigrationStatus(srcControllerClient, storeName);
       printMigrationStatus(destControllerClient, storeName);
@@ -1263,14 +1265,13 @@ public class AdminTool {
       printMigrationStatus(srcControllerClient, storeName);
       printMigrationStatus(destControllerClient, storeName);
 
-      List<String> childControllerUrls = new ArrayList<>(childClusterMap.values());
-      ControllerClient[] srcChildControllerClients = createControllerClients(srcClusterName, childControllerUrls);
-      ControllerClient[] destChildControllerClients = createControllerClients(destClusterName, childControllerUrls);
+      Map<String, ControllerClient> srcChildControllerClientMap = getControllerClientMap(srcClusterName, response);
+      Map<String, ControllerClient> destChildControllerClientMap = getControllerClientMap(destClusterName, response);
 
-      for (int i = 0; i < childControllerUrls.size(); i++) {
-        System.err.println("\n\n=================== Child Datacenter " + i + " ====================");
-        printMigrationStatus(srcChildControllerClients[i], storeName);
-        printMigrationStatus(destChildControllerClients[i], storeName);
+      for (Map.Entry<String, ControllerClient> entry : srcChildControllerClientMap.entrySet()) {
+        System.err.println("\n\n=================== Child Datacenter " + entry.getKey() + " ====================");
+        printMigrationStatus(entry.getValue(), storeName);
+        printMigrationStatus(destChildControllerClientMap.get(entry.getKey()), storeName);
       }
     }
   }
@@ -1286,8 +1287,8 @@ public class AdminTool {
     ControllerClient destControllerClient = new ControllerClient(destClusterName, veniceUrl, sslFactory);
     checkPreconditionForStoreMigration(srcControllerClient, destControllerClient);
 
-    Map<String, String> childClusterMap = destControllerClient.listChildControllers(destClusterName).getChildClusterMap();
-    if (childClusterMap == null) {
+    ChildAwareResponse response = destControllerClient.listChildControllers(destClusterName);
+    if (response.getChildDataCenterControllerUrlMap() == null && response.getChildDataCenterControllerD2Map() == null) {
       // This is a controller in single datacenter setup
       System.out.println("WARN: fabric option is ignored on child controller.");
       if (isClonedStoreOnline(srcControllerClient, destControllerClient, storeName)) {
@@ -1298,13 +1299,13 @@ public class AdminTool {
       }
     } else {
       // This is a parent controller
-      if (!childClusterMap.containsKey(fabric)) {
-        System.err.println("ERROR: " + fabric + " is not one of valid fabrics " + childClusterMap.keySet());
+      Map<String, ControllerClient> destChildControllerClientMap = getControllerClientMap(destClusterName, response);
+      if (!destChildControllerClientMap.containsKey(fabric)) {
+        System.err.println("ERROR: parent controller does not know the controller url or d2 of" + fabric);
         return;
       }
-      String childControllerUrl = childClusterMap.get(fabric);
-      ControllerClient srcChildController = new ControllerClient(srcClusterName, childControllerUrl, sslFactory);
-      ControllerClient destChildController = new ControllerClient(destClusterName, childControllerUrl, sslFactory);
+      ControllerClient destChildController = destChildControllerClientMap.get(fabric);
+      ControllerClient srcChildController = getControllerClientMap(srcClusterName, response).get(fabric);
 
       if (destChildController.discoverCluster(storeName).getCluster().equals(destClusterName)) {
         System.out.println("WARN: " + storeName + " already belongs to dest cluster " + destClusterName + " in fabric " + fabric);
@@ -1319,11 +1320,8 @@ public class AdminTool {
       }
 
       // Update parent cluster discovery info if all child clusters are online.
-      for (String url : childClusterMap.values()) {
-        if (!url.equals(childControllerUrl)) {
-          destChildController = new ControllerClient(destClusterName, url, sslFactory);
-        }
-        if (!destChildController.discoverCluster(storeName).getCluster().equals(destClusterName)) {
+      for (ControllerClient controllerClient : destChildControllerClientMap.values()) {
+        if (!controllerClient.discoverCluster(storeName).getCluster().equals(destClusterName)) {
           // No need to update cluster discovery in parent if one child is not ready.
           return;
         }
@@ -1383,14 +1381,13 @@ public class AdminTool {
     return (destLatestOnlineVersion >= srcLatestOnlineVersion) && destMetaStoreOnline && destDaVinciPushStatusStoreOnline;
   }
 
-  private static ControllerClient[] createControllerClients(String clusterName, List<String> controllerUrls) {
-    int numChildDatacenters = controllerUrls.size();
-    ControllerClient[] controllerClients = new ControllerClient[numChildDatacenters];
-    for (int i = 0; i < numChildDatacenters; i++) {
-      String controllerUrl = controllerUrls.get(i);
-      controllerClients[i] = new ControllerClient(clusterName, controllerUrl, sslFactory);
-    }
-    return controllerClients;
+  private static Map<String, ControllerClient> getControllerClientMap(String clusterName, ChildAwareResponse response) {
+    Map<String, ControllerClient> controllerClientMap = new HashMap<>();
+    response.getChildDataCenterControllerUrlMap().forEach((key, value) -> controllerClientMap.put(key,
+        new ControllerClient(clusterName, value, sslFactory)));
+    response.getChildDataCenterControllerD2Map().forEach((key, value) -> controllerClientMap.put(key,
+        new D2ControllerClient(response.getD2ServiceName(), clusterName, value, sslFactory)));
+    return controllerClientMap;
   }
 
   private static int getLatestOnlineVersionNum(List<Version> versions) {
@@ -1566,14 +1563,12 @@ public class AdminTool {
     }
 
     // If this is a parent controller, verify that original store is deleted in all child fabrics
-    Map<String, String> childClusterMap = srcControllerClient.listChildControllers(srcClusterName).getChildClusterMap();
-    if (childClusterMap != null) {
-      for (Map.Entry<String, String> entry : childClusterMap.entrySet()) {
-        ControllerClient srcChildControllerClient = new ControllerClient(srcClusterName, entry.getValue(), sslFactory);
-        if (null != srcChildControllerClient.getStore(storeName).getStore()) {
-          System.err.println("ERROR: store " + storeName + " still exists in source cluster " + srcClusterName
-              + " in fabric " + entry.getKey() + ". Please try again later.");
-        }
+    ChildAwareResponse response = srcControllerClient.listChildControllers(srcClusterName);
+    Map<String, ControllerClient> srcChildControllerClientMap = getControllerClientMap(srcClusterName, response);
+    for (Map.Entry<String, ControllerClient> entry : srcChildControllerClientMap.entrySet()) {
+      if (null != entry.getValue().getStore(storeName).getStore()) {
+        System.err.println("ERROR: store " + storeName + " still exists in source cluster " + srcClusterName
+            + " in fabric " + entry.getKey() + ". Please try again later.");
       }
     }
 
@@ -2136,9 +2131,9 @@ public class AdminTool {
 
     try {
       latestStep = "constructing child controller clients";
-      Map<String, String> map = getAndCheckChildControllerUrlMap(clusterName, Optional.of(srcFabric), Optional.of(destFabric));
-      ControllerClient srcFabricChildControllerClient = new ControllerClient(clusterName, map.get(srcFabric), sslFactory);
-      ControllerClient destFabricChildControllerClient = new ControllerClient(clusterName, map.get(destFabric), sslFactory);
+      Map<String, ControllerClient> map = getAndCheckChildControllerClientMap(clusterName, srcFabric, destFabric);
+      ControllerClient srcFabricChildControllerClient = map.get(srcFabric);
+      ControllerClient destFabricChildControllerClient = map.get(destFabric);
 
       latestStep = "step1: disallowing store migration from/to cluster " + clusterName;
       System.out.println(latestStep);
@@ -2237,8 +2232,8 @@ public class AdminTool {
     String srcFabric = getRequiredArgument(cmd, Arg.SOURCE_FABRIC);
     String destFabric = getRequiredArgument(cmd, Arg.DEST_FABRIC);
 
-    Map<String, String> map = getAndCheckChildControllerUrlMap(clusterName, Optional.of(srcFabric), Optional.empty());
-    ControllerClient srcFabricChildControllerClient = new ControllerClient(clusterName, map.get(srcFabric), sslFactory);
+    Map<String, ControllerClient> map = getAndCheckChildControllerClientMap(clusterName, srcFabric, null);
+    ControllerClient srcFabricChildControllerClient = map.get(srcFabric);
 
     MultiStoreResponse multiStoreResponse = checkControllerResponse(srcFabricChildControllerClient.queryStoreList(false));
     double numberOfStores = multiStoreResponse.getStores().length;
@@ -2283,7 +2278,10 @@ public class AdminTool {
   private static void endFabricBuildout(CommandLine cmd) {
     String clusterName = getRequiredArgument(cmd, Arg.CLUSTER);
     try {
-      getAndCheckChildControllerUrlMap(clusterName, Optional.empty(), Optional.empty());
+      ChildAwareResponse response = checkControllerResponse(controllerClient.listChildControllers(clusterName));
+      if (response.getChildDataCenterControllerUrlMap() == null && response.getChildDataCenterControllerD2Map() == null) {
+        throw new VeniceException("ERROR: Child controller could not run fabric buildout commands");
+      }
       System.out.println("Enabling store migration from/to cluster " + clusterName);
       checkControllerResponse(controllerClient.updateClusterConfig(new UpdateClusterConfigQueryParams()
           .setStoreMigrationAllowed(true)));
@@ -2293,22 +2291,20 @@ public class AdminTool {
     }
   }
 
-  private static Map<String, String> getAndCheckChildControllerUrlMap(String clusterName, Optional<String> srcFabric,
-      Optional<String> destFabric) {
-    Map<String, String> childControllerUrlMap = checkControllerResponse(
-        controllerClient.listChildControllers(clusterName)).getChildClusterMap();
-    if (childControllerUrlMap == null) {
+  private static Map<String, ControllerClient> getAndCheckChildControllerClientMap(String clusterName, String srcFabric,
+      String destFabric) {
+    ChildAwareResponse response = checkControllerResponse(controllerClient.listChildControllers(clusterName));
+    if (response.getChildDataCenterControllerUrlMap() == null && response.getChildDataCenterControllerD2Map() == null) {
       throw new VeniceException("ERROR: Child controller could not run fabric buildout commands");
     }
-    if (srcFabric.isPresent() && !childControllerUrlMap.containsKey(srcFabric.get())) {
-      throw new VeniceException("ERROR: Parent controller does not know the src fabric controller url "
-          + childControllerUrlMap);
+    Map<String, ControllerClient> childControllerClientMap = getControllerClientMap(clusterName, response);
+    if (srcFabric != null && !childControllerClientMap.containsKey(srcFabric)) {
+      throw new VeniceException("ERROR: Parent controller does not know the src fabric controller url or d2 zk host");
     }
-    if (destFabric.isPresent() && !childControllerUrlMap.containsKey(destFabric.get())) {
-      throw new VeniceException("ERROR: Parent controller does not know the dest fabric controller url "
-          + childControllerUrlMap);
+    if (destFabric != null && !childControllerClientMap.containsKey(destFabric)) {
+      throw new VeniceException("ERROR: Parent controller does not know the dest fabric controller url or d2 zk host");
     }
-    return childControllerUrlMap;
+    return childControllerClientMap;
   }
 
   private static <T extends ControllerResponse> T checkControllerResponse(T controllerResponse) {

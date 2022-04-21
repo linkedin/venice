@@ -5917,6 +5917,16 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
     @Override
+    public Map<String, String> getChildDataCenterControllerD2Map(String clusterName) {
+        return multiClusterConfigs.getControllerConfig(clusterName).getChildDataCenterControllerD2Map();
+    }
+
+    @Override
+    public  String getChildControllerD2ServiceName(String clusterName) {
+        return multiClusterConfigs.getControllerConfig(clusterName).getD2ServiceName();
+    }
+
+    @Override
     public HelixReadOnlyZKSharedSystemStoreRepository getReadOnlyZKSharedSystemStoreRepository() {
         return zkSharedSystemStoreRepository;
     }
