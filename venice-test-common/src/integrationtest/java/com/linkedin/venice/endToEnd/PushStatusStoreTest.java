@@ -427,17 +427,19 @@ public class PushStatusStoreTest {
       final int systemStoreCurrVersionBeforeBeingDeleted = daVinciPushStatusSystemStore.getLargestUsedVersionNumber();
       assertEquals(systemStoreCurrVersionBeforeBeingDeleted, 1 + emptyPushAttempt);
 
-      parentControllerClient.disableAndDeleteStore(userStoreName);
+      TestUtils.assertCommand(parentControllerClient.disableAndDeleteStore(userStoreName));
       // Both the system store and user store should be gone at this point
       assertNull(parentController.getVeniceAdmin().getStore(cluster.getClusterName(), userStoreName));
       assertNull(parentController.getVeniceAdmin().getStore(cluster.getClusterName(), daVinciPushStatusSystemStoreName));
 
       // Create the same regular store again
-      newStoreResponse = parentControllerClient.createNewStore(userStoreName, "venice-test", DEFAULT_KEY_SCHEMA, "\"string\"");
-      assertFalse(newStoreResponse.isError(), "Unexpected new store creation failure: " + newStoreResponse);
+      TestUtils.assertCommand(
+          parentControllerClient.createNewStore(userStoreName, "venice-test", DEFAULT_KEY_SCHEMA, "\"string\""),
+          "Unexpected new store creation failure");
 
       // The re-created/materialized per-user store system store should contain a continued version from its last life
       daVinciPushStatusSystemStore = parentController.getVeniceAdmin().getStore(cluster.getClusterName(), daVinciPushStatusSystemStoreName);
+      // TODO: Fix non-deterministic bug where (very rarely) the below assertion fails with "expected [4] but found [1]"
       assertEquals(daVinciPushStatusSystemStore.getLargestUsedVersionNumber(), systemStoreCurrVersionBeforeBeingDeleted + 1);
 
       TestUtils.waitForNonDeterministicPushCompletion(Version.composeKafkaTopic(daVinciPushStatusSystemStoreName, systemStoreCurrVersionBeforeBeingDeleted + 1),

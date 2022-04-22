@@ -639,6 +639,10 @@ public class StoreIngestionTaskTest {
       doReturn(false).when(diskUsage).isDiskFull(anyLong());
     }
 
+    // Recreate the map so that immutable maps that get passed in can be mutated...
+    extraServerProperties = new HashMap<>(extraServerProperties);
+    // TODO: Refactor this unit test class so that it is compatible with the shared consumer mode
+    extraServerProperties.put(SERVER_SHARED_CONSUMER_POOL_ENABLED, false);
     veniceServerConfig = buildVeniceServerConfig(extraServerProperties);
 
     AggKafkaConsumerService aggKafkaConsumerService = mock(AggKafkaConsumerService.class);

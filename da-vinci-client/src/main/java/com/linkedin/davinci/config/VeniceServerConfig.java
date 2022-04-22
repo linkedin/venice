@@ -364,7 +364,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     kafkaReadOnlyClass = serverProperties.getString(KAFKA_READ_ONLY_ADMIN_CLASS, kafkaAdminClass);
     // Disable it by default, and when router connection warming is enabled, we need to adjust this config.
     routerConnectionWarmingDelayMs = serverProperties.getLong(SERVER_ROUTER_CONNECTION_WARMING_DELAY_MS, 0);
-    sharedConsumerPoolEnabled = serverProperties.getBoolean(SERVER_SHARED_CONSUMER_POOL_ENABLED, false);
+    sharedConsumerPoolEnabled = serverProperties.getBoolean(SERVER_SHARED_CONSUMER_POOL_ENABLED, true);
     String sharedConsumerAssignmentStrategyStr = serverProperties.getString(SERVER_SHARED_CONSUMER_ASSIGNMENT_STRATEGY,
         KafkaConsumerService.ConsumerAssignmentStrategy.TOPIC_WISE_SHARED_CONSUMER_ASSIGNMENT_STRATEGY.name());
     try {

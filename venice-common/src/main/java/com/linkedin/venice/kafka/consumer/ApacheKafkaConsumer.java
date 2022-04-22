@@ -240,7 +240,11 @@ public class ApacheKafkaConsumer implements KafkaConsumerWrapper {
   public void close() {
     topicPartitionsOffsetsTracker.ifPresent(offsetsTracker -> offsetsTracker.clearAllOffsetState());
     if (kafkaConsumer != null) {
-      kafkaConsumer.close();
+      try {
+        kafkaConsumer.close(Duration.ZERO);
+      } catch (Exception e) {
+        logger.warn(kafkaConsumer.getClass().getSimpleName() + " threw an exception while closing.", e);
+      }
     }
   }
 
