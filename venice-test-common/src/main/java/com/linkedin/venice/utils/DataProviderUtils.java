@@ -2,6 +2,7 @@ package com.linkedin.venice.utils;
 
 import com.linkedin.davinci.client.DaVinciConfig;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheConfig;
+import com.linkedin.venice.meta.IngestionMode;
 import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
@@ -91,6 +92,13 @@ public class DataProviderUtils {
     }
 
     return resultingArray.toArray(new Object[resultingArray.size()][]);
+  }
+
+  @DataProvider(name = "Isolated-Ingestion")
+  public static Object[][] isolatedIngestion() {
+    return new Object[][] {
+        {IngestionMode.BUILT_IN}, {IngestionMode.ISOLATED}
+    };
   }
 
   /**

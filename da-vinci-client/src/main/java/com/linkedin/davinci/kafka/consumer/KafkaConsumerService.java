@@ -9,6 +9,7 @@ import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.DaemonThreadFactory;
+import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Utils;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
@@ -136,8 +137,28 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
   @Override
   public void stopInner() throws Exception {
     stopped = true;
-    consumerExecutor.shutdownNow();
-    consumerExecutor.awaitTermination(30, TimeUnit.SECONDS);
+
+    int timeOutInSeconds = 1;
+    long gracefulShutdownBeginningTime = System.currentTimeMillis();
+    boolean gracefulShutdownSuccess = consumerExecutor.awaitTermination(timeOutInSeconds, TimeUnit.SECONDS);
+    long gracefulShutdownDuration = System.currentTimeMillis() - gracefulShutdownBeginningTime;
+    if (gracefulShutdownSuccess) {
+      logger.info("consumerExecutor terminated gracefully in {} ms.", gracefulShutdownDuration);
+    } else {
+      logger.warn("consumerExecutor timed out after {} ms while awaiting graceful termination. Will force shutdown.",
+          gracefulShutdownDuration);
+      long forcefulShutdownBeginningTime = System.currentTimeMillis();
+      consumerExecutor.shutdownNow();
+      boolean forcefulShutdownSuccess = consumerExecutor.awaitTermination(timeOutInSeconds, TimeUnit.SECONDS);
+      long forcefulShutdownDuration = System.currentTimeMillis() - forcefulShutdownBeginningTime;
+      if (forcefulShutdownSuccess) {
+        logger.info("consumerExecutor terminated forcefully in {} ms.", forcefulShutdownDuration);
+      } else {
+        logger.warn("consumerExecutor timed out after {} ms while awaiting forceful termination.",
+            forcefulShutdownDuration);
+      }
+    }
+
     readOnlyConsumersList.forEach( consumer -> consumer.close());
   }
 
@@ -223,6 +244,29 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
                     topicPartition,
                     kafkaUrl);
               } catch (Exception e) {
+                if (ExceptionUtils.recursiveClassEquals(e, InterruptedException.class)) {
+                  // We sometimes wrap InterruptedExceptions, so not taking any chances...
+                  if (ingestionTask.isRunning()) {
+                    /**
+                     * Based on the order of operations in {@link KafkaStoreIngestionService#stopInner()} the ingestion
+                     * tasks should all be closed (and therefore not running) prior to this service here being stopped.
+                     * Hence, the state detected here where we get interrupted while the ingestion task is still running
+                     * should never happen. It's unknown whether this happens or not, and if it does, whether it carries
+                     * any significant consequences. For now we will only log it if it does happen, but will not take
+                     * any special action. Some action which we might consider taking in the future would be to call
+                     * {@link StoreIngestionTask#close()} here, but in the interest of keeping the shutdown flow
+                     * simpler, we will avoid doing this for now.
+                     */
+                    logger.warn("Unexpected: got interrupted prior to the {} getting closed.",
+                        ingestionTask.getClass().getSimpleName());
+                  }
+                  /**
+                   * We want to rethrow the interrupted exception in order to skip the quota-related code below and
+                   * break the run loop. We avoid calling {@link StoreIngestionTask#setLastConsumerException(Exception)}
+                   * as we do for other exceptions as this carries side-effects that may be undesirable.
+                   */
+                  throw e;
+                }
                 LOGGER.error("Received exception when StoreIngestionTask is processing the polled consumer record for topic: " + topicPartition, e);
                 ingestionTask.setLastConsumerException(e);
               }
@@ -242,10 +286,13 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
             // No result came back, here will add some delay
             addSomeDelay = true;
           }
-        } catch (InterruptedException e) {
-          LOGGER.error("Received InterruptedException, will exit");
-          break;
         } catch (Exception e) {
+          if (ExceptionUtils.recursiveClassEquals(e, InterruptedException.class)) {
+            // We sometimes wrap InterruptedExceptions, so not taking any chances...
+            LOGGER.error("Received InterruptedException, will exit");
+            break;
+          }
+
           LOGGER.error("Received exception while polling, will retry", e);
           addSomeDelay = true;
           stats.recordPollError();

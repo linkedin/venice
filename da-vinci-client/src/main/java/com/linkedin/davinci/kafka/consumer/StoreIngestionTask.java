@@ -508,8 +508,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         serverConfig.isHybridQuotaEnabled(),
         serverConfig.isServerCalculateQuotaUsageBasedOnPartitionsAssignmentEnabled(),
         reportStatusAdapter,
-        (topic, partition) -> getConsumers().forEach(consumer -> consumer.pause(topic, partition)),
-        (topic, partition) -> getConsumers().forEach(consumer -> consumer.resume(topic, partition))
+        // N.B. quota enforcement has a race condition when the consumer is not in shared mode, and therefore we leave
+        //      the enfocement functions disabled. TODO: Clean this up after the non-shared consumer code is deleted
+        serverConfig.isSharedConsumerPoolEnabled()
+            ? (topic, partition) -> getConsumers().forEach(consumer -> consumer.pause(topic, partition))
+            : (topic, partition) -> {},
+        serverConfig.isSharedConsumerPoolEnabled()
+            ? (topic, partition) -> getConsumers().forEach(consumer -> consumer.resume(topic, partition))
+            : (topic, partition) -> {}
     );
     this.storeRepository.registerStoreDataChangedListener(this.storageUtilizationManager);
   }
@@ -2893,8 +2899,18 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     KafkaConsumerWrapper consumer = kafkaUrlToConsumerMap.computeIfAbsent(kafkaURL, source -> {
 
       if (serverConfig.isSharedConsumerPoolEnabled()) {
-        // Note that if shared consumer is enabled, there is no new consumer nor consumer service created here.
-        Optional<KafkaConsumerWrapper> existingKafkaConsumer = aggKafkaConsumerService.getAssignedConsumerFor(kafkaURL, getVersionTopic());
+        /**
+         * In theory, it should be possible to call {@link AggKafkaConsumerService#getAssignedConsumerFor(String, String)}
+         * rather than {@link AggKafkaConsumerService#assignConsumerFor(String, StoreIngestionTask)} here. This works,
+         * but unfortunately makes shared consumer significantly slower. Some tests take as much as an extra 1m30
+         * to complete when there is no pro-active assignment happening in this path.
+         *
+         * TODO: Discover which callers of the current function actually rely on the assignment side-effect in order
+         *       to proceed, and which others may be possible to transition to the other, side-effect free, API. Or
+         *       alternatively, get rid of {@link AggKafkaConsumerService#getAssignedConsumerFor(String, String)}
+         *       since it is currently unused.
+         */
+        Optional<KafkaConsumerWrapper> existingKafkaConsumer = aggKafkaConsumerService.assignConsumerFor(kafkaURL, this);
         return existingKafkaConsumer.orElse(null);
 
       } else {

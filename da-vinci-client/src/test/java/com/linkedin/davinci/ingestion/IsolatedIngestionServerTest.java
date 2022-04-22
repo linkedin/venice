@@ -25,6 +25,7 @@ import static com.linkedin.venice.VeniceConstants.*;
 
 
 public class IsolatedIngestionServerTest {
+  private static final int TIMEOUT_MS = 1 * Time.MS_PER_MINUTE;
   private ZkServerWrapper zkServerWrapper;
 
   @BeforeClass
@@ -37,7 +38,7 @@ public class IsolatedIngestionServerTest {
     Utils.closeQuietlyWithErrorLogged(zkServerWrapper);
   }
 
-  @Test(timeOut = 60 * Time.MS_PER_SECOND)
+  @Test(timeOut = TIMEOUT_MS)
   public void testShutdownAfterHeartbeatTimeout() {
     int servicePort = Utils.getFreePort();
     VeniceConfigLoader configLoader = getConfigLoader(servicePort);
@@ -52,7 +53,7 @@ public class IsolatedIngestionServerTest {
     }
   }
 
-  @Test(timeOut = 60 * Time.MS_PER_SECOND)
+  @Test(timeOut = TIMEOUT_MS)
   public void testReleaseTargetPortBinding() {
     int servicePort = Utils.getFreePort();
     VeniceConfigLoader configLoader = getConfigLoader(servicePort);
@@ -108,6 +109,7 @@ public class IsolatedIngestionServerTest {
         .put(SERVER_INGESTION_ISOLATION_HEARTBEAT_TIMEOUT_MS, 10 * Time.MS_PER_SECOND)
         .put(INGESTION_ISOLATION_CONFIG_PREFIX + "." + SERVER_PARTITION_GRACEFUL_DROP_DELAY_IN_SECONDS, 10)
         .put(SERVER_INGESTION_ISOLATION_SERVICE_PORT, servicePort)
+        .put(SERVER_SHARED_CONSUMER_POOL_ENABLED, false)
         .build();
     return new VeniceConfigLoader(properties, properties);
   }

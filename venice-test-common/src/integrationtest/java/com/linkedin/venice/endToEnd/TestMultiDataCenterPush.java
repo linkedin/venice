@@ -439,8 +439,11 @@ public class TestMultiDataCenterPush {
           parentController.getVeniceAdmin().getVeniceWriterFactory(), incPushToVTVersion);
       final String versionTopicName = incPushToVTWriter.getTopicName();
       TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
-        Assert.assertEquals(parentControllerClient.getOngoingIncrementalPushVersions(versionTopicName)
-            .getIncrementalPushVersions().iterator().next(), incPushToVTVersion);
+        Set<String> ongoingIncrementalPushVersions =
+            parentControllerClient.getOngoingIncrementalPushVersions(versionTopicName).getIncrementalPushVersions();
+        Assert.assertFalse(ongoingIncrementalPushVersions.isEmpty(),
+            "There should be at least one ongoing incremental push version!");
+        Assert.assertEquals(ongoingIncrementalPushVersions.iterator().next(), incPushToVTVersion);
       });
       // Re-push should fail now since there is an ongoing incremental push with incompatible incremental push policy.
       props.setProperty(SOURCE_KAFKA, "true");
