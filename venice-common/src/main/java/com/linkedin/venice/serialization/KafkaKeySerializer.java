@@ -2,9 +2,11 @@ package com.linkedin.venice.serialization;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.message.KafkaKey;
-
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.Map;
+
 
 /**
  * {@link VeniceKafkaSerializer} to encode/decode {@link KafkaKey} for Venice customized kafka message
@@ -20,6 +22,10 @@ public class KafkaKeySerializer implements VeniceKafkaSerializer<KafkaKey> {
   private static final int KEY_HEADER_OFFSET = 0;
   private static final int KEY_HEADER_SIZE = 1;
   private static final int KEY_PAYLOAD_OFFSET = KEY_HEADER_OFFSET + KEY_HEADER_SIZE;
+  private static class ReusableObjects {
+    final ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
+  }
+  private static final ThreadLocal<ReusableObjects> threadLocalReusableObjects = ThreadLocal.withInitial(ReusableObjects::new);
 
   public KafkaKeySerializer() {
     /* This constructor is not used, but is required for compilation */
@@ -45,11 +51,17 @@ public class KafkaKeySerializer implements VeniceKafkaSerializer<KafkaKey> {
    * @return Converted byte[]
    * */
   public byte[] serialize(String topic, KafkaKey kafkaKey) {
-    // If single-threaded, ByteBuffer can be re-used. TODO: explore GC tuning later.
-    ByteBuffer byteBuffer = ByteBuffer.allocate(KEY_HEADER_SIZE + kafkaKey.getKey().length);
-    byteBuffer.put(kafkaKey.getKeyHeaderByte());
-    byteBuffer.put(kafkaKey.getKey());
-    return byteBuffer.array();
+    ReusableObjects reusableObjects = threadLocalReusableObjects.get();
+    ByteArrayOutputStream byteArrayOutputStream = reusableObjects.byteArrayOutputStream;
+    byteArrayOutputStream.reset();
+
+    try {
+      byteArrayOutputStream.write(kafkaKey.getKeyHeaderByte());
+      byteArrayOutputStream.write(kafkaKey.getKey());
+    } catch (IOException e) {
+      throw new VeniceException("Failed to serialize message: " + kafkaKey, e);
+    }
+    return byteArrayOutputStream.toByteArray();
   }
 
   @Override
