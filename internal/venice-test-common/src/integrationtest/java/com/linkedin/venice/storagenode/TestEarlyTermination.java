@@ -134,7 +134,7 @@ public class TestEarlyTermination {
     AvroGenericStoreClient<String, Object> storeClient = ClientFactory.getAndStartGenericAvroClient(
         ClientConfig.defaultGenericClientConfig(storeName)
             .setVeniceURL(routerAddr)
-            .setSslEngineComponentFactory(SslUtils.getLocalSslFactory()));
+            .setSslFactory(SslUtils.getVeniceLocalSslFactory()));
     // Run multiple rounds, and no need to verify the result since we know the requests will fail.
     int rounds = 100;
     int cur = 0;

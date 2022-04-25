@@ -17,13 +17,13 @@ import com.linkedin.ddsstorage.netty4.pool.ChannelPoolManagerImpl;
 import com.linkedin.ddsstorage.netty4.pool.ChannelPoolResolver;
 import com.linkedin.ddsstorage.netty4.pool.Http2AwareChannelPoolFactory;
 import com.linkedin.ddsstorage.router.api.RouterException;
-import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.router.VeniceRouterConfig;
 import com.linkedin.venice.router.api.path.VenicePath;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
 import com.linkedin.venice.router.stats.RouterStats;
+import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.netty.bootstrap.Bootstrap;
@@ -101,7 +101,7 @@ public class NettyStorageNodeClient implements StorageNodeClient {
 
   public NettyStorageNodeClient(
       VeniceRouterConfig config,
-      Optional<SSLEngineComponentFactory> sslFactoryForRequests,
+      Optional<SSLFactory> sslFactoryForRequests,
       RouterStats<AggRouterHttpRequestStats> routerStats,
       MultithreadEventLoopGroup workerEventLoopGroup,
       Class<? extends Channel> channelClass) {

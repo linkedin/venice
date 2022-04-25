@@ -4,6 +4,7 @@ import com.linkedin.venice.acl.StaticAccessController;
 import com.linkedin.venice.acl.VeniceComponent;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.NettyUtils;
+import com.linkedin.venice.utils.SslUtils;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
@@ -60,7 +61,8 @@ public class ServerAclHandler extends SimpleChannelInboundHandler<HttpRequest> {
       throw new VeniceException("Failed to extract ssl handler from the incoming request");
     }
 
-    X509Certificate clientCert = (X509Certificate) sslHandler.get().engine().getSession().getPeerCertificates()[0];
+    X509Certificate clientCert =
+        SslUtils.getX509Certificate(sslHandler.get().engine().getSession().getPeerCertificates()[0]);
     String method = req.method().name();
 
     boolean accessApproved = accessController.hasAccess(clientCert, VeniceComponent.SERVER, method);

@@ -7,6 +7,7 @@ import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.utils.NettyUtils;
+import com.linkedin.venice.utils.SslUtils;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
@@ -54,7 +55,7 @@ public class StoreAclHandler extends SimpleChannelInboundHandler<HttpRequest> {
        */
       sslHandler = ctx.channel().parent().pipeline().get(SslHandler.class);
     }
-    return (X509Certificate) sslHandler.engine().getSession().getPeerCertificates()[0];
+    return SslUtils.getX509Certificate(sslHandler.engine().getSession().getPeerCertificates()[0]);
   }
 
   /**

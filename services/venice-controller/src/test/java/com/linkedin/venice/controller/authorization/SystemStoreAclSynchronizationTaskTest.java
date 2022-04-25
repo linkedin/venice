@@ -76,8 +76,8 @@ public class SystemStoreAclSynchronizationTaskTest {
     when(veniceParentHelixAdmin.getStore(defaultCluster, storeName2)).thenReturn(store2);
     allStores.add(store2);
 
-    Principal p1 = new Principal("urn:li:corpuser:user1");
-    Principal p2 = new Principal("urn:li:corpuser:user2");
+    Principal p1 = new Principal("user:user1");
+    Principal p2 = new Principal("user:user2");
     Resource r1 = new Resource(storeName1);
     AclBinding aclBinding1 = new AclBinding(r1);
     aclBinding1.addAceEntry(new AceEntry(p1, Method.Read, Permission.ALLOW));

@@ -33,7 +33,7 @@ public class TestSslTransportClient {
         MockVeniceRouterWrapper router =
             ServiceFactory.getMockVeniceRouter(zkServer.getAddress(), true, new Properties())) {
       String routerSslUrl = "https://" + router.getHost() + ":" + router.getSslPort();
-      try (HttpsTransportClient client = new HttpsTransportClient(routerSslUrl, SslUtils.getLocalSslFactory())) {
+      try (HttpsTransportClient client = new HttpsTransportClient(routerSslUrl, SslUtils.getVeniceLocalSslFactory())) {
 
         TransportClientResponse transportClientResponse = client.get(leaderControllerPath).get();
         byte[] response = transportClientResponse.getBody();

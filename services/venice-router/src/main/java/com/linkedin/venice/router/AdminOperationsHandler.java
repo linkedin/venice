@@ -14,6 +14,7 @@ import com.linkedin.venice.router.api.VenicePathParserHelper;
 import com.linkedin.venice.router.stats.AdminOperationsStats;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
+import com.linkedin.venice.utils.SslUtils;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
@@ -108,7 +109,9 @@ public class AdminOperationsHandler extends SimpleChannelInboundHandler<HttpRequ
         if (sslHandler == null) {
           throw new AclException("Non SSL Admin request received");
         }
-        X509Certificate clientCert = (X509Certificate) sslHandler.engine().getSession().getPeerCertificates()[0];
+
+        X509Certificate clientCert =
+            SslUtils.getX509Certificate(sslHandler.engine().getSession().getPeerCertificates()[0]);
         if (!accessController.hasAccessToAdminOperation(clientCert, adminTask)) {
           throw new AclException(
               accessController.getPrincipalId(clientCert) + " does not have access to admin operation: " + adminTask);

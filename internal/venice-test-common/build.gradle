@@ -43,18 +43,20 @@ dependencies {
 
   implementation libraries.avroUtilCompatHelper
   implementation libraries.avroUtilFastserde
+  implementation libraries.commonsCli
   implementation libraries.conscrypt
   implementation libraries.hadoopCommon
   implementation libraries.helix
+  implementation libraries.httpAsyncClient
   implementation libraries.javax
   implementation libraries.kafka
   implementation libraries.kafkaClients
   implementation libraries.kafkaClientsTest
   implementation libraries.mockito
-  implementation libraries.netty4Lnkd
+  implementation libraries.routerNetty4
   implementation libraries.rocksdbjni
   implementation libraries.routerApi
-  implementation libraries.routerLnkd
+  implementation libraries.routerBase
   implementation libraries.samzaApi
   implementation libraries.spark
   implementation libraries.testng

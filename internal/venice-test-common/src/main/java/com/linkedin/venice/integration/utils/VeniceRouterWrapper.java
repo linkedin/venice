@@ -3,7 +3,7 @@ package com.linkedin.venice.integration.utils;
 import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.VeniceConstants.*;
 
-import com.linkedin.d2.server.factory.D2Server;
+import com.linkedin.venice.d2.D2Server;
 import com.linkedin.venice.helix.HelixBaseRoutingRepository;
 import com.linkedin.venice.helix.ZkRoutersClusterManager;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
@@ -146,7 +146,8 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
   protected void newProcess() {
     List<D2Server> d2Servers =
         D2TestUtils.getD2Servers(zkAddress, "http://localhost:" + getPort(), "https://localhost:" + getSslPort());
-    service = new RouterServer(properties, d2Servers, Optional.empty(), Optional.of(SslUtils.getLocalSslFactory()));
+    service =
+        new RouterServer(properties, d2Servers, Optional.empty(), Optional.of(SslUtils.getVeniceLocalSslFactory()));
   }
 
   public HelixBaseRoutingRepository getRoutingDataRepository() {

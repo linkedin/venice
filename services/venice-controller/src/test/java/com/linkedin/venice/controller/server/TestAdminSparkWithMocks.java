@@ -91,7 +91,7 @@ public class TestAdminSparkWithMocks {
     // make request, parse response
     VersionCreationResponse responseObject;
     try (CloseableHttpAsyncClient httpClient =
-        HttpClientUtils.getMinimalHttpClient(1, 1, Optional.of(SslUtils.getLocalSslFactory()))) {
+        HttpClientUtils.getMinimalHttpClient(1, 1, Optional.of(SslUtils.getVeniceLocalSslFactory()))) {
       httpClient.start();
       HttpResponse response = httpClient.execute(post, null).get();
       String json = IOUtils.toString(response.getEntity().getContent());
@@ -150,7 +150,7 @@ public class TestAdminSparkWithMocks {
     // make request, parse response
     VersionCreationResponse responseObject;
     try (CloseableHttpAsyncClient httpClient =
-        HttpClientUtils.getMinimalHttpClient(1, 1, Optional.of(SslUtils.getLocalSslFactory()))) {
+        HttpClientUtils.getMinimalHttpClient(1, 1, Optional.of(SslUtils.getVeniceLocalSslFactory()))) {
       httpClient.start();
       HttpResponse response = httpClient.execute(post, null).get();
 
@@ -260,7 +260,7 @@ public class TestAdminSparkWithMocks {
     // make request, parse response
     VersionCreationResponse responseObject;
     try (CloseableHttpAsyncClient httpClient =
-        HttpClientUtils.getMinimalHttpClient(1, 1, Optional.of(SslUtils.getLocalSslFactory()))) {
+        HttpClientUtils.getMinimalHttpClient(1, 1, Optional.of(SslUtils.getVeniceLocalSslFactory()))) {
       httpClient.start();
       HttpResponse response = httpClient.execute(post, null).get();
       String json = IOUtils.toString(response.getEntity().getContent());
@@ -345,7 +345,7 @@ public class TestAdminSparkWithMocks {
     // make request, parse response
     VersionCreationResponse responseObject;
     try (CloseableHttpAsyncClient httpClient =
-        HttpClientUtils.getMinimalHttpClient(1, 1, Optional.of(SslUtils.getLocalSslFactory()))) {
+        HttpClientUtils.getMinimalHttpClient(1, 1, Optional.of(SslUtils.getVeniceLocalSslFactory()))) {
       httpClient.start();
       HttpResponse response = httpClient.execute(post, null).get();
       String json = IOUtils.toString(response.getEntity().getContent());

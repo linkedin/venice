@@ -10,9 +10,8 @@ import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.ingestion.isolated.IsolatedIngestionServer;
 import com.linkedin.davinci.ingestion.isolated.IsolatedIngestionServerAclHandler;
-import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
-import com.linkedin.security.ssl.access.control.SSLEngineComponentFactoryImpl;
-import com.linkedin.venice.SSLConfig;
+import com.linkedin.venice.authorization.DefaultIdentityParser;
+import com.linkedin.venice.authorization.IdentityParser;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.ingestion.protocol.IngestionMetricsReport;
 import com.linkedin.venice.ingestion.protocol.IngestionStorageMetadata;
@@ -23,12 +22,15 @@ import com.linkedin.venice.ingestion.protocol.enums.IngestionAction;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionReportType;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.security.DefaultSSLFactory;
+import com.linkedin.venice.security.SSLConfig;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.utils.ForkedJavaProcess;
 import com.linkedin.venice.utils.PropertyBuilder;
+import com.linkedin.venice.utils.ReflectUtils;
 import com.linkedin.venice.utils.RegionUtils;
+import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import io.netty.bootstrap.Bootstrap;
@@ -58,6 +60,7 @@ import java.security.KeyStore;
 import java.security.KeyStoreException;
 import java.security.NoSuchAlgorithmException;
 import java.security.cert.CertificateException;
+import java.security.cert.X509Certificate;
 import java.util.AbstractMap;
 import java.util.Collections;
 import java.util.Map;
@@ -436,7 +439,9 @@ public class IsolatedIngestionUtils {
         .clipAndFilterNamespace(INGESTION_ISOLATION_CONFIG_PREFIX)
         .toProperties()
         .forEach((key, value) -> propertyBuilder.put(key.toString(), value.toString()));
-    maybePopulateServerIngestionPrincipal(propertyBuilder, configLoader);
+    IdentityParser identityParser = getIdentityParser(configLoader);
+    propertyBuilder.put(IDENTITY_PARSER_CLASS, identityParser.getClass().getName());
+    maybePopulateServerIngestionPrincipal(propertyBuilder, configLoader, identityParser);
     // Populate region name to isolated ingestion process resolved from env/system property.
     propertyBuilder.put(LOCAL_REGION_NAME, RegionUtils.getLocalRegionName(configLoader.getCombinedProperties(), false));
     VeniceProperties veniceProperties = propertyBuilder.build();
@@ -499,7 +504,7 @@ public class IsolatedIngestionUtils {
     return loadVenicePropertiesFromFile(Paths.get(basePath, fileName).toAbsolutePath().toString());
   }
 
-  public static Optional<SSLEngineComponentFactory> getSSLEngineComponentFactory(VeniceConfigLoader configLoader) {
+  public static Optional<SSLFactory> getSSLFactory(VeniceConfigLoader configLoader) {
     try {
       if (isolatedIngestionServerSslEnabled(configLoader)) {
         // If SSL communication is enabled but SSL configs are missing, we should fail fast here.
@@ -507,15 +512,15 @@ public class IsolatedIngestionUtils {
           throw new VeniceException(
               "Ingestion isolation SSL is enabled for communication, but SSL configs are missing.");
         }
-        LOGGER.info("SSL is enabled, will create SSLEngineComponentFactory");
-        SSLConfig sslConfig = new SSLConfig(configLoader.getCombinedProperties());
-        return Optional.of(new SSLEngineComponentFactoryImpl(sslConfig.getSslEngineComponentConfig()));
+        LOGGER.info("SSL is enabled, will create SSLFactory");
+        SSLConfig sslConfig = SSLConfig.buildConfig(configLoader.getCombinedProperties().toProperties());
+        return Optional.of(new DefaultSSLFactory(sslConfig));
       } else {
         LOGGER.warn("SSL is not enabled");
         return Optional.empty();
       }
     } catch (Exception e) {
-      throw new VeniceException("Caught exception during SSLEngineComponentFactory creation", e);
+      throw new VeniceException("Caught exception during SSLFactory creation", e);
     }
   }
 
@@ -556,10 +561,18 @@ public class IsolatedIngestionUtils {
     }
   }
 
+  private static IdentityParser getIdentityParser(VeniceConfigLoader configLoader) {
+    final String identityParserClassName =
+        configLoader.getCombinedProperties().getString(IDENTITY_PARSER_CLASS, DefaultIdentityParser.class.getName());
+    Class<IdentityParser> identityParserClass = ReflectUtils.loadClass(identityParserClassName);
+    return ReflectUtils.callConstructor(identityParserClass, new Class[0], new Object[0]);
+  }
+
   public static Optional<IsolatedIngestionServerAclHandler> getAclHandler(VeniceConfigLoader configLoader) {
     if (isolatedIngestionServerSslEnabled(configLoader) && isolatedIngestionServerAclEnabled(configLoader)) {
       String allowedPrincipalName =
           configLoader.getCombinedProperties().getString(SERVER_INGESTION_ISOLATION_PRINCIPAL_NAME);
+      IdentityParser identityParser = getIdentityParser(configLoader);
       if (StringUtils.isEmpty(allowedPrincipalName)) {
         throw new VeniceException(
             "Ingestion isolation server SSL and ACL validation are enabled, but allowed principal name is missing in config.");
@@ -567,7 +580,7 @@ public class IsolatedIngestionUtils {
       LOGGER.info(
           "Isolated ingestion server request ACL validation is enabled. Creating ACL handler with allowed principal name: "
               + allowedPrincipalName);
-      return Optional.of(new IsolatedIngestionServerAclHandler(allowedPrincipalName));
+      return Optional.of(new IsolatedIngestionServerAclHandler(identityParser, allowedPrincipalName));
     } else {
       return Optional.empty();
     }
@@ -587,7 +600,8 @@ public class IsolatedIngestionUtils {
 
   private static void maybePopulateServerIngestionPrincipal(
       PropertyBuilder propertyBuilder,
-      VeniceConfigLoader configLoader) {
+      VeniceConfigLoader configLoader,
+      IdentityParser identityParser) {
     if (!isolatedIngestionServerSslEnabled(configLoader)) {
       LOGGER.info("Skip populating service principal name since ingestion server SSL is not enabled.");
       return;
@@ -604,7 +618,8 @@ public class IsolatedIngestionUtils {
       KeyStore keystore = KeyStore.getInstance(configLoader.getCombinedProperties().getString(SSL_KEYSTORE_TYPE));
       keystore.load(is, configLoader.getCombinedProperties().getString(SSL_KEY_PASSWORD).toCharArray());
       String keyStoreAlias = keystore.aliases().nextElement();
-      propertyBuilder.put(SERVER_INGESTION_ISOLATION_PRINCIPAL_NAME, keyStoreAlias);
+      X509Certificate cert = SslUtils.getX509Certificate(keystore.getCertificate(keyStoreAlias));
+      propertyBuilder.put(SERVER_INGESTION_ISOLATION_PRINCIPAL_NAME, identityParser.parseIdentityFromCert(cert));
     } catch (KeyStoreException | CertificateException | IOException | NoSuchAlgorithmException e) {
       throw new VeniceException(e);
     }

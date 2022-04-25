@@ -10,17 +10,22 @@ import javax.net.ssl.SSLParameters;
  */
 public interface SSLFactory {
   /**
+   * @return the configs used to create this {@link SSLFactory}
+   */
+  SSLConfig getSSLConfig();
+
+  /**
    * @return an instance of {@link SSLContext}
    */
-  public SSLContext getSSLContext();
+  SSLContext getSSLContext();
 
   /**
    * @return an instance of {@link SSLParameters}
    */
-  public SSLParameters getSSLParameters();
+  SSLParameters getSSLParameters();
 
   /**
    * @return whether SSL is enabled
    */
-  public boolean isSslEnabled();
+  boolean isSslEnabled();
 }

@@ -23,7 +23,7 @@ public class StorageNodeServiceTest {
     Utils.thisIsLocalhost();
     try (
         CloseableHttpAsyncClient client =
-            HttpClientUtils.getMinimalHttpClient(1, 1, Optional.of(SslUtils.getLocalSslFactory()));
+            HttpClientUtils.getMinimalHttpClient(1, 1, Optional.of(SslUtils.getVeniceLocalSslFactory()));
         VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster(1, 1, 0, 1, 100, true, false)) {
 
       client.start();

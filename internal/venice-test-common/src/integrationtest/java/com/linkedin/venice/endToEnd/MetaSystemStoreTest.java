@@ -135,7 +135,7 @@ public class MetaSystemStoreTest {
     AvroSpecificStoreClient<StoreMetaKey, StoreMetaValue> storeClient = ClientFactory.getAndStartSpecificAvroClient(
         ClientConfig.defaultSpecificClientConfig(metaSystemStoreName, StoreMetaValue.class)
             .setVeniceURL(venice.getRandomRouterURL())
-            .setSslEngineComponentFactory(SslUtils.getLocalSslFactory()));
+            .setSslFactory(SslUtils.getVeniceLocalSslFactory()));
     // Query store properties
     StoreMetaKey storePropertiesKey = MetaStoreDataType.STORE_PROPERTIES.getStoreMetaKey(new HashMap<String, String>() {
       {

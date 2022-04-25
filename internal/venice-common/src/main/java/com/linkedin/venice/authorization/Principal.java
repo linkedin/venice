@@ -1,7 +1,7 @@
 package com.linkedin.venice.authorization;
 
 /**
- * Represents a actor entry. For implementation purpose the name may be formatted as needed.
+ * Represents an actor entry. For implementation purpose the name may be formatted as needed.
  * This is an immutable class.
  */
 public class Principal {

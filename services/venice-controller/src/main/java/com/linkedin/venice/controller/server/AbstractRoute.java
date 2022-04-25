@@ -121,7 +121,7 @@ public class AbstractRoute {
         return USER_UNKNOWN;
       }
     } else {
-      return certificate.getSubjectDN().getName();
+      return certificate.getSubjectX500Principal().getName();
     }
   }
 

@@ -2,6 +2,7 @@ package com.linkedin.venice.controller.lingeringjob;
 
 import static com.linkedin.venice.status.BatchJobHeartbeatConfigs.*;
 
+import com.linkedin.venice.authorization.IdentityParser;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.meta.Store;
@@ -152,7 +153,7 @@ public class HeartbeatBasedLingeringStoreVersionChecker implements LingeringStor
       Admin controllerAdmin,
       Optional<X509Certificate> requesterCert,
       IdentityParser identityParser) {
-    if (!canRequesterAccessHeartbeatStore(controllerAdmin, requesterCert, identityParser)) {
+    if (!canRequesterAccessHeartbeatStore(controllerAdmin, requesterCert)) {
       String requestIdentity;
       if (requesterCert.isPresent()) {
         requestIdentity = identityParser.parseIdentityFromCert(requesterCert.get());
@@ -214,10 +215,7 @@ public class HeartbeatBasedLingeringStoreVersionChecker implements LingeringStor
     }
   }
 
-  private boolean canRequesterAccessHeartbeatStore(
-      Admin controllerAdmin,
-      Optional<X509Certificate> requesterCert,
-      IdentityParser identityParser) {
+  private boolean canRequesterAccessHeartbeatStore(Admin controllerAdmin, Optional<X509Certificate> requesterCert) {
     if (!requesterCert.isPresent()) {
       LOGGER.warn(
           "No requester cert is provided. Hence assume the requester has no write permission to the heartbeat store");
@@ -226,8 +224,7 @@ public class HeartbeatBasedLingeringStoreVersionChecker implements LingeringStor
     try {
       return controllerAdmin.hasWritePermissionToBatchJobHeartbeatStore(
           requesterCert.get(),
-          VeniceSystemStoreType.BATCH_JOB_HEARTBEAT_STORE.getPrefix(),
-          identityParser);
+          VeniceSystemStoreType.BATCH_JOB_HEARTBEAT_STORE.getPrefix());
     } catch (Exception e) {
       LOGGER.warn("Cannot check access permission. Assume no access permission.", e);
     }

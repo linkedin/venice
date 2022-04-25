@@ -1,9 +1,9 @@
 package com.linkedin.venice.client.store;
 
 import com.linkedin.d2.balancer.D2Client;
-import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
 import com.linkedin.venice.client.store.deserialization.BatchDeserializer;
 import com.linkedin.venice.client.store.deserialization.BatchDeserializerType;
+import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.serializer.AvroGenericDeserializer;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.utils.SystemTime;
@@ -50,7 +50,7 @@ public class ClientConfig<T extends SpecificRecord> {
 
   // Security settings
   private boolean isHttps = false;
-  private SSLEngineComponentFactory sslEngineComponentFactory = null;
+  private SSLFactory sslFactory = null;
 
   // Test settings
   private Time time = new SystemTime();
@@ -97,7 +97,7 @@ public class ClientConfig<T extends SpecificRecord> {
         .setReuseObjectsForSerialization(config.isReuseObjectsForSerialization())
         // Security settings
         .setHttps(config.isHttps())
-        .setSslEngineComponentFactory(config.getSslEngineComponentFactory())
+        .setSslFactory(config.getSslFactory())
 
         .setForceClusterDiscoveryAtStartTime(config.isForceClusterDiscoveryAtStartTime())
 
@@ -235,12 +235,12 @@ public class ClientConfig<T extends SpecificRecord> {
     return this;
   }
 
-  public SSLEngineComponentFactory getSslEngineComponentFactory() {
-    return sslEngineComponentFactory;
+  public SSLFactory getSslFactory() {
+    return sslFactory;
   }
 
-  public ClientConfig<T> setSslEngineComponentFactory(SSLEngineComponentFactory sslEngineComponentFactory) {
-    this.sslEngineComponentFactory = sslEngineComponentFactory;
+  public ClientConfig<T> setSslFactory(SSLFactory sslEngineComponentFactory) {
+    this.sslFactory = sslEngineComponentFactory;
     return this;
   }
 

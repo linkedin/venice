@@ -1,20 +1,19 @@
 package com.linkedin.venice.router;
 
-import com.linkedin.d2.server.factory.D2Server;
 import com.linkedin.ddsstorage.base.concurrency.AsyncFuture;
 import com.linkedin.ddsstorage.base.concurrency.TimeoutProcessor;
 import com.linkedin.ddsstorage.base.concurrency.impl.SuccessAsyncFuture;
 import com.linkedin.ddsstorage.base.registry.ResourceRegistry;
 import com.linkedin.ddsstorage.base.registry.ShutdownableExecutors;
+import com.linkedin.ddsstorage.netty4.ssl.SslInitializer;
 import com.linkedin.ddsstorage.router.api.LongTailRetrySupplier;
 import com.linkedin.ddsstorage.router.api.ScatterGatherHelper;
 import com.linkedin.ddsstorage.router.impl.Router;
-import com.linkedin.ddsstorage.router.lnkd.netty4.SSLInitializer;
-import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.acl.handler.StoreAclHandler;
 import com.linkedin.venice.compression.CompressorFactory;
+import com.linkedin.venice.d2.D2Server;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixBaseRoutingRepository;
@@ -72,6 +71,7 @@ import com.linkedin.venice.router.throttle.NoopRouterThrottler;
 import com.linkedin.venice.router.throttle.ReadRequestThrottler;
 import com.linkedin.venice.router.throttle.RouterThrottler;
 import com.linkedin.venice.router.utils.VeniceRouterUtils;
+import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.stats.VeniceJVMStats;
@@ -122,7 +122,7 @@ public class RouterServer extends AbstractVeniceService {
   // Immutable state
   private final List<D2Server> d2ServerList;
   private final MetricsRepository metricsRepository;
-  private final Optional<SSLEngineComponentFactory> sslFactory;
+  private final Optional<SSLFactory> sslFactory;
   private final Optional<DynamicAccessController> accessController;
 
   private final VeniceRouterConfig config;
@@ -208,7 +208,7 @@ public class RouterServer extends AbstractVeniceService {
     LOGGER.info("SSL Port: " + props.getInt(ConfigKeys.LISTENER_SSL_PORT));
     LOGGER.info("Thread count: " + ROUTER_THREAD_POOL_SIZE);
 
-    Optional<SSLEngineComponentFactory> sslFactory = Optional.of(SslUtils.getLocalSslFactory());
+    Optional<SSLFactory> sslFactory = Optional.of(SslUtils.getVeniceLocalSslFactory());
     RouterServer server = new RouterServer(props, new ArrayList<>(), Optional.empty(), sslFactory, null);
     server.start();
 
@@ -234,13 +234,8 @@ public class RouterServer extends AbstractVeniceService {
       VeniceProperties properties,
       List<D2Server> d2Servers,
       Optional<DynamicAccessController> accessController,
-      Optional<SSLEngineComponentFactory> sslEngineComponentFactory) {
-    this(
-        properties,
-        d2Servers,
-        accessController,
-        sslEngineComponentFactory,
-        TehutiUtils.getMetricsRepository(ROUTER_SERVICE_NAME));
+      Optional<SSLFactory> sslFactory) {
+    this(properties, d2Servers, accessController, sslFactory, TehutiUtils.getMetricsRepository(ROUTER_SERVICE_NAME));
   }
 
   // for test purpose
@@ -252,7 +247,7 @@ public class RouterServer extends AbstractVeniceService {
       VeniceProperties properties,
       List<D2Server> d2ServerList,
       Optional<DynamicAccessController> accessController,
-      Optional<SSLEngineComponentFactory> sslFactory,
+      Optional<SSLFactory> sslFactory,
       MetricsRepository metricsRepository) {
     this(properties, d2ServerList, accessController, sslFactory, metricsRepository, true);
 
@@ -312,7 +307,7 @@ public class RouterServer extends AbstractVeniceService {
       VeniceProperties properties,
       List<D2Server> d2ServerList,
       Optional<DynamicAccessController> accessController,
-      Optional<SSLEngineComponentFactory> sslFactory,
+      Optional<SSLFactory> sslFactory,
       MetricsRepository metricsRepository,
       boolean isCreateHelixManager) {
     config = new VeniceRouterConfig(properties);
@@ -350,7 +345,7 @@ public class RouterServer extends AbstractVeniceService {
       HelixReadOnlySchemaRepository schemaRepository,
       HelixReadOnlyStoreConfigRepository storeConfigRepository,
       List<D2Server> d2ServerList,
-      Optional<SSLEngineComponentFactory> sslFactory,
+      Optional<SSLFactory> sslFactory,
       HelixLiveInstanceMonitor liveInstanceMonitor) {
     this(properties, d2ServerList, Optional.empty(), sslFactory, new MetricsRepository(), false);
     this.routingDataRepository = routingDataRepository;
@@ -397,8 +392,7 @@ public class RouterServer extends AbstractVeniceService {
      */
     timeoutProcessor = new TimeoutProcessor(registry, true, 1);
 
-    Optional<SSLEngineComponentFactory> sslFactoryForRequests =
-        config.isSslToStorageNodes() ? sslFactory : Optional.empty();
+    Optional<SSLFactory> sslFactoryForRequests = config.isSslToStorageNodes() ? sslFactory : Optional.empty();
     VenicePartitionFinder partitionFinder = new VenicePartitionFinder(routingDataRepository, metadataRepository);
     Class<? extends Channel> channelClass;
     Class<? extends AbstractChannel> serverSocketChannelClass;
@@ -621,9 +615,9 @@ public class RouterServer extends AbstractVeniceService {
     RouterSslVerificationHandler routerSslVerificationHandler = new RouterSslVerificationHandler(securityStats);
     StoreAclHandler aclHandler =
         accessController.isPresent() ? new StoreAclHandler(accessController.get(), metadataRepository) : null;
-    final SSLInitializer sslInitializer;
+    final SslInitializer sslInitializer;
     if (sslFactory.isPresent()) {
-      sslInitializer = new SSLInitializer(sslFactory.get());
+      sslInitializer = new SslInitializer(SslUtils.toAlpiniSSLFactory(sslFactory.get()), false);
       if (config.isThrottleClientSslHandshakesEnabled()) {
         ExecutorService sslHandshakeExecutor = registry.factory(ShutdownableExecutors.class)
             .newFixedThreadPool(
@@ -968,8 +962,7 @@ public class RouterServer extends AbstractVeniceService {
 
   private void verifySslOk() {
     if (config.isSslToStorageNodes() && !sslFactory.isPresent()) {
-      throw new VeniceException(
-          "Must specify an SSLEngineComponentFactory in order to use SSL in requests to storage nodes");
+      throw new VeniceException("Must specify an SSLFactory in order to use SSL in requests to storage nodes");
     }
   }
 

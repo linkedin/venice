@@ -3,7 +3,6 @@ package com.linkedin.venice.router.api;
 import static com.linkedin.venice.HttpConstants.*;
 import static org.apache.http.HttpStatus.*;
 
-import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.CompressorFactory;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -19,6 +18,7 @@ import com.linkedin.venice.router.VeniceRouterConfig;
 import com.linkedin.venice.router.httpclient.PortableHttpResponse;
 import com.linkedin.venice.router.httpclient.StorageNodeClient;
 import com.linkedin.venice.router.httpclient.VeniceMetaDataRequest;
+import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -60,7 +60,7 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
   private static final Logger LOGGER = LogManager.getLogger(DictionaryRetrievalService.class);
   private static final int DEFAULT_DICTIONARY_DOWNLOAD_INTERVAL_IN_MS = 100;
   private final OnlineInstanceFinder onlineInstanceFinder;
-  private final Optional<SSLEngineComponentFactory> sslFactory;
+  private final Optional<SSLFactory> sslFactory;
   private final ReadOnlyStoreRepository metadataRepository;
   private final Thread dictionaryRetrieverThread;
   private final ScheduledExecutorService executor;
@@ -146,7 +146,7 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
   public DictionaryRetrievalService(
       OnlineInstanceFinder onlineInstanceFinder,
       VeniceRouterConfig routerConfig,
-      Optional<SSLEngineComponentFactory> sslFactory,
+      Optional<SSLFactory> sslFactory,
       ReadOnlyStoreRepository metadataRepository,
       StorageNodeClient storageNodeClient,
       CompressorFactory compressorFactory) {

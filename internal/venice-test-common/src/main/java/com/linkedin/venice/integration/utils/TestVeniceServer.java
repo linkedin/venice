@@ -6,7 +6,6 @@ import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.storage.DiskHealthCheckService;
 import com.linkedin.davinci.storage.MetadataRetriever;
 import com.linkedin.davinci.storage.StorageEngineRepository;
-import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.acl.StaticAccessController;
 import com.linkedin.venice.cleaner.ResourceReadUsageTracker;
@@ -17,6 +16,7 @@ import com.linkedin.venice.listener.StorageReadRequestsHandler;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.RoutingDataRepository;
+import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.server.VeniceServer;
 import io.netty.channel.ChannelHandlerContext;
 import io.tehuti.metrics.MetricsRepository;
@@ -40,7 +40,7 @@ public class TestVeniceServer extends VeniceServer {
   public TestVeniceServer(
       VeniceConfigLoader configLoader,
       MetricsRepository metricsRepository,
-      Optional<SSLEngineComponentFactory> sslFactory,
+      Optional<SSLFactory> sslFactory,
       Optional<StaticAccessController> accessController,
       Optional<ClientConfig> consumerClientConfig) {
     super(configLoader, metricsRepository, sslFactory, accessController, consumerClientConfig);
@@ -55,7 +55,7 @@ public class TestVeniceServer extends VeniceServer {
       MetadataRetriever metadataRetriever,
       VeniceServerConfig serverConfig,
       MetricsRepository metricsRepository,
-      Optional<SSLEngineComponentFactory> sslFactory,
+      Optional<SSLFactory> sslFactory,
       Optional<StaticAccessController> routerAccessController,
       Optional<DynamicAccessController> storeAccessController,
       DiskHealthCheckService diskHealthService,

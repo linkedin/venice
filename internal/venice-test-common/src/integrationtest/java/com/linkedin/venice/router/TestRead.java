@@ -646,7 +646,7 @@ public abstract class TestRead {
     try (AvroGenericStoreClient<String, GenericRecord> storeClient = ClientFactory.getAndStartGenericAvroClient(
         ClientConfig.defaultGenericClientConfig(readDisabledStoreName)
             .setVeniceURL(routerAddr)
-            .setSslEngineComponentFactory(SslUtils.getLocalSslFactory()))) {
+            .setSslFactory(SslUtils.getVeniceLocalSslFactory()))) {
       // Send request to a read-disabled store
       storeClient.get("test").get();
       fail("An exception should be thrown when accessing a read-disabled store");

@@ -89,7 +89,7 @@ public class ProduceWithSSL {
     AvroGenericStoreClient<String, CharSequence> storeClient = ClientFactory.getAndStartGenericAvroClient(
         ClientConfig.defaultGenericClientConfig(storeName)
             .setVeniceURL(cluster.getRandomRouterURL())
-            .setSslEngineComponentFactory(SslUtils.getLocalSslFactory()));
+            .setSslFactory(SslUtils.getVeniceLocalSslFactory()));
 
     Assert.assertEquals(storeClient.get(testKey).get().toString(), testVal);
     writer.close();

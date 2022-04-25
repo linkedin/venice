@@ -23,8 +23,7 @@ if (project.hasProperty('overrideBuildEnvironment')) {
 
 def avroVersion = '1.9.2'
 def avroUtilVersion = '0.2.108'
-def containerVersion = '38.4.466'
-def ddsStorageCoreVersion = '14.0.171'
+def ddsStorageCoreVersion = '15.0.0'
 def kafkaGroup = 'com.linkedin.kafka'
 def kafkaVersion = '2.3.0.43'
 def log4j2Version = '2.17.1'
@@ -44,11 +43,13 @@ ext.libraries = [
     classgraph: 'io.github.classgraph:classgraph:4.8.60',
     commonsCodec: 'commons-codec:commons-codec:1.4',
     commonsConfiguration: 'commons-configuration:commons-configuration:1.9',
-    commonsIo: 'commons-io:commons-io:2.11',
+    commonsIo: 'commons-io:commons-io:2.11.0',
+    commonsCli: 'commons-cli:commons-cli:1.5.0',
     commonsLang: 'commons-lang:commons-lang:2.6',
     conscrypt: 'org.conscrypt:conscrypt-openjdk-uber:2.4.0',
-    d2: 'com.linkedin.container:pegasus-d2-server-factory:' + containerVersion,
-    d2Client: 'com.linkedin.container:pegasus-d2-client-factory:' + containerVersion,
+    d2: 'com.linkedin.pegasus:d2:' + pegasusVersion,
+    restliCommon: 'com.linkedin.pegasus:restli-common:' + pegasusVersion,
+    r2: 'com.linkedin.pegasus:r2:' + pegasusVersion,
     ddsNettyBase: 'com.linkedin.dds-storage-core:dds-storage-netty4-base:' + ddsStorageCoreVersion,
     ddsStorageCommonBase: 'com.linkedin.dds-storage-core:dds-storage-common-base:' + ddsStorageCoreVersion,
     failsafe: 'net.jodah:failsafe:2.4.0',
@@ -77,15 +78,14 @@ ext.libraries = [
     mapreduceClientCore: 'org.apache.hadoop:hadoop-mapreduce-client-core:2.3.0',
     mapreduceClientJobClient: 'org.apache.hadoop:hadoop-mapreduce-client-jobclient:2.3.0',
     mockito: 'org.mockito:mockito-core:3.3.3',
-    netty4Lnkd: 'com.linkedin.dds-storage-core:dds-storage-netty4-lnkd:' + ddsStorageCoreVersion,
+    routerNetty4: 'com.linkedin.dds-storage-core:dds-storage-netty4-base:' + ddsStorageCoreVersion,
     netty: 'io.netty:netty-all:4.1.52.Final',
     oss: 'org.sonatype.oss:oss-parent:7',
     r2: 'com.linkedin.pegasus:r2:' + pegasusVersion,
-    r2Client: 'com.linkedin.container:pegasus-r2-client-factory:' + containerVersion,
     rocksdbjni: 'org.rocksdb:rocksdbjni:7.0.3',
     routerApi: 'com.linkedin.dds-storage-core:dds-storage-router-api:' + ddsStorageCoreVersion,
+    routerBase: 'com.linkedin.dds-storage-core:dds-storage-router-base:' + ddsStorageCoreVersion,
     routerImpl: 'com.linkedin.dds-storage-core:dds-storage-router-impl:' + ddsStorageCoreVersion,
-    routerLnkd: 'com.linkedin.dds-storage-core:dds-storage-router-lnkd:' + ddsStorageCoreVersion,
     samzaApi: 'org.apache.samza:samza-api:1.5.1',
     spark: 'com.sparkjava:spark-core:2.9.4',
     spotbugs: 'com.github.spotbugs:spotbugs:4.5.2',
@@ -116,7 +116,11 @@ subprojects {
       exclude group: 'backport-util-concurrent'
       exclude group: 'com.intellij.annotations'
       exclude group: 'com.linkedin.avro-schemas'
+      exclude group: 'com.linkedin.container'
       exclude group: 'com.linkedin.container-core'
+      exclude group: 'com.linkedin.security'
+      exclude group: 'com.linkedin.dds-storage-core', module: 'dds-storage-netty4-lnkd'
+      exclude group: 'com.linkedin.dds-storage-core', module: 'dds-storage-router-lnkd'
       exclude group: 'com.linkedin.linkedin-kafka-clients'
       exclude group: 'com.linkedin.util', module: 'util-sql'
       exclude group: 'org.slf4j', module: 'slf4j-log4j12'

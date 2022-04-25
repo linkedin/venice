@@ -5,7 +5,6 @@ import static com.linkedin.venice.SSLConfig.*;
 import static com.linkedin.venice.integration.utils.D2TestUtils.*;
 
 import com.linkedin.d2.balancer.D2Client;
-import com.linkedin.d2.server.factory.D2Server;
 import com.linkedin.venice.authorization.AuthorizerService;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.controller.Admin;
@@ -13,6 +12,7 @@ import com.linkedin.venice.controller.VeniceController;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.d2.D2Server;
 import com.linkedin.venice.kafka.admin.KafkaAdminClient;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.Version;

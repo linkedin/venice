@@ -11,13 +11,13 @@ import com.linkedin.d2.balancer.servers.ZooKeeperAnnouncer;
 import com.linkedin.d2.balancer.servers.ZooKeeperConnectionManager;
 import com.linkedin.d2.balancer.servers.ZooKeeperServer;
 import com.linkedin.d2.discovery.util.D2Config;
-import com.linkedin.d2.server.factory.D2Server;
-import com.linkedin.d2.spring.D2ServerManager;
 import com.linkedin.r2.transport.common.TransportClientFactory;
 import com.linkedin.r2.transport.http.client.HttpClientFactory;
 import com.linkedin.r2.transport.http.common.HttpProtocolVersion;
-import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
+import com.linkedin.venice.d2.D2Server;
+import com.linkedin.venice.d2.D2ServerManager;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.SslUtils;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -195,7 +195,7 @@ public class D2TestUtils {
         .setClientFactories(transportClients);
 
     if (https) {
-      SSLEngineComponentFactory sslFactory = SslUtils.getLocalSslFactory();
+      SSLFactory sslFactory = SslUtils.getVeniceLocalSslFactory();
       builder.setSSLContext(sslFactory.getSSLContext())
           .setSSLParameters(sslFactory.getSSLParameters())
           .setIsSSLEnabled(true);

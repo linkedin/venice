@@ -2,8 +2,8 @@ package com.linkedin.venice.httpclient;
 
 import static com.linkedin.venice.HttpConstants.*;
 
-import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.stats.HttpConnectionPoolStats;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
 import java.net.SocketAddress;
@@ -54,7 +54,7 @@ public class HttpClientUtils {
     }
   }
 
-  public static SSLIOSessionStrategy getSslStrategy(SSLEngineComponentFactory sslFactory) {
+  public static SSLIOSessionStrategy getSslStrategy(SSLFactory sslFactory) {
     SSLContext sslContext = sslFactory.getSSLContext();
     SSLIOSessionStrategy sslSessionStrategy = new SSLIOSessionStrategy(sslContext);
     return sslSessionStrategy;
@@ -66,7 +66,7 @@ public class HttpClientUtils {
       int maxConnTotal,
       int socketTimeout,
       int connectionTimeout,
-      Optional<SSLEngineComponentFactory> sslFactory,
+      Optional<SSLFactory> sslFactory,
       Optional<CachedDnsResolver> dnsResolver,
       Optional<HttpConnectionPoolStats> poolStats) {
     return getMinimalHttpClient(
@@ -88,7 +88,7 @@ public class HttpClientUtils {
       int maxConnTotal,
       int socketTimeout,
       int connectionTimeout,
-      Optional<SSLEngineComponentFactory> sslFactory,
+      Optional<SSLFactory> sslFactory,
       Optional<CachedDnsResolver> dnsResolver,
       Optional<HttpConnectionPoolStats> poolStats,
       boolean isIdleConnectionToServerCleanupEnabled,
@@ -129,7 +129,7 @@ public class HttpClientUtils {
       int maxConnTotal,
       int socketTimeout,
       int connectionTimeout,
-      Optional<SSLEngineComponentFactory> sslFactory,
+      Optional<SSLFactory> sslFactory,
       Optional<CachedDnsResolver> dnsResolver,
       Optional<HttpConnectionPoolStats> poolStats,
       boolean isIdleConnectionToServerCleanupEnabled,
@@ -238,7 +238,7 @@ public class HttpClientUtils {
       int total,
       int soTimeout,
       int connectionTimeout,
-      Optional<SSLEngineComponentFactory> sslFactory,
+      Optional<SSLFactory> sslFactory,
       Optional<CachedDnsResolver> dnsResolver,
       Optional<HttpConnectionPoolStats> poolStats) {
     IOReactorConfig ioReactorConfig = IOReactorConfig.custom()
@@ -285,7 +285,7 @@ public class HttpClientUtils {
   public static CloseableHttpAsyncClient getMinimalHttpClient(
       int maxConnPerRoute,
       int maxConnTotal,
-      Optional<SSLEngineComponentFactory> sslFactory) {
+      Optional<SSLFactory> sslFactory) {
     return getMinimalHttpClient(
         1,
         maxConnPerRoute,

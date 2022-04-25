@@ -1,9 +1,12 @@
 package com.linkedin.venice.client.store;
 
+import static com.linkedin.venice.CommonConfigKeys.*;
+import static com.linkedin.venice.VeniceConstants.*;
+
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
-import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
+import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.SslUtils;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
@@ -52,10 +55,11 @@ public class QueryTool {
       boolean isVsonStore,
       Optional<String> sslConfigFile) throws Exception {
 
-    SSLEngineComponentFactory factory = null;
+    SSLFactory factory = null;
     if (sslConfigFile.isPresent()) {
       Properties sslProperties = SslUtils.loadSSLConfig(sslConfigFile.get());
-      factory = SslUtils.getSSLEngineComponentFactory(sslProperties);
+      String sslFactoryClassName = sslProperties.getProperty(SSL_FACTORY_CLASS_NAME, DEFAULT_SSL_FACTORY_CLASS_NAME);
+      factory = SslUtils.getSSLFactory(sslProperties, sslFactoryClassName);
     }
 
     // Verify the ssl engine is set up correctly.
@@ -68,7 +72,7 @@ public class QueryTool {
         ClientConfig.defaultGenericClientConfig(store)
             .setVeniceURL(url)
             .setVsonClient(isVsonStore)
-            .setSslEngineComponentFactory(factory))) {
+            .setSslFactory(factory))) {
       AbstractAvroStoreClient<Object, Object> castClient =
           (AbstractAvroStoreClient<Object, Object>) ((StatTrackingStoreClient<Object, Object>) client)
               .getInnerStoreClient();

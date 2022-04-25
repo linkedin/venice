@@ -1,7 +1,6 @@
 package com.linkedin.venice.router.httpclient;
 
 import com.linkedin.ddsstorage.router.api.RouterException;
-import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.httpclient.CachedDnsResolver;
 import com.linkedin.venice.httpclient.HttpClientUtils;
@@ -11,6 +10,7 @@ import com.linkedin.venice.meta.LiveInstanceMonitor;
 import com.linkedin.venice.meta.QueryAction;
 import com.linkedin.venice.router.VeniceRouterConfig;
 import com.linkedin.venice.router.api.path.VenicePath;
+import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.stats.DnsLookupStats;
 import com.linkedin.venice.stats.HttpConnectionPoolStats;
@@ -72,7 +72,7 @@ public class ApacheHttpAsyncStorageNodeClient implements StorageNodeClient {
   private final boolean perNodeClientEnabled;
   private final int socketTimeout;
   private final int connectionTimeout;
-  private final Optional<SSLEngineComponentFactory> sslFactory;
+  private final Optional<SSLFactory> sslFactory;
 
   private int ioThreadNumPerClient;
   private int maxConnPerRoutePerClient;
@@ -82,7 +82,7 @@ public class ApacheHttpAsyncStorageNodeClient implements StorageNodeClient {
 
   public ApacheHttpAsyncStorageNodeClient(
       VeniceRouterConfig config,
-      Optional<SSLEngineComponentFactory> sslFactory,
+      Optional<SSLFactory> sslFactory,
       MetricsRepository metricsRepository,
       LiveInstanceMonitor monitor) {
 

@@ -52,8 +52,7 @@ public class MainIngestionStorageMetadataService extends AbstractVeniceService i
       InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer,
       MetadataUpdateStats metadataUpdateStats,
       VeniceConfigLoader configLoader) {
-    this.client =
-        new MainIngestionRequestClient(IsolatedIngestionUtils.getSSLEngineComponentFactory(configLoader), targetPort);
+    this.client = new MainIngestionRequestClient(IsolatedIngestionUtils.getSSLFactory(configLoader), targetPort);
     this.partitionStateSerializer = partitionStateSerializer;
     this.metadataUpdateStats = metadataUpdateStats;
     this.metadataUpdateWorker = new MetadataUpdateWorker();

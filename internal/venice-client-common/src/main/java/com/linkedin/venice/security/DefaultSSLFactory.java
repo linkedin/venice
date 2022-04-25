@@ -1,7 +1,5 @@
 package com.linkedin.venice.security;
 
-import static com.linkedin.venice.CommonConfigKeys.*;
-
 import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.IOException;
@@ -46,12 +44,14 @@ public class DefaultSSLFactory implements SSLFactory {
   @Deprecated
   private String _keyStoreData;
   private SSLParameters _parameters;
+  private SSLConfig _sslConfig;
 
   public DefaultSSLFactory(Properties sslProperties) throws Exception {
-    this(buildConfig(sslProperties));
+    this(SSLConfig.buildConfig(sslProperties));
   }
 
-  public DefaultSSLFactory(Config config) throws Exception {
+  public DefaultSSLFactory(SSLConfig config) throws Exception {
+    _sslConfig = config;
     _sslEnabled = config.getSslEnabled();
     if (_sslEnabled) {
       _keyStoreFilePath = config.getKeyStoreFilePath();
@@ -69,7 +69,7 @@ public class DefaultSSLFactory implements SSLFactory {
             new File(_trustStoreFilePath),
             config.getTrustStoreFilePassword()).getContext();
       } else {
-        throw new ConfigHelper.MissingConfigParameterException(
+        throw new SSLConfig.ConfigHelper.MissingConfigParameterException(
             "Either keyStoreData or (keyStoreFilePath and trustStoreFilePath) must be provided to operate in sslEnabled mode.");
       }
       String[] allowedCiphersuites =
@@ -107,6 +107,11 @@ public class DefaultSSLFactory implements SSLFactory {
   }
 
   @Override
+  public SSLConfig getSSLConfig() {
+    return _sslConfig;
+  }
+
+  @Override
   public SSLContext getSSLContext() {
     return _context;
   }
@@ -127,104 +132,6 @@ public class DefaultSSLFactory implements SSLFactory {
 
   public void setSslRequireClientCerts(boolean sslRequireClientCerts) {
     _sslRequireClientCerts = sslRequireClientCerts;
-  }
-
-  public static class Config {
-    private String _keyStoreData = "";
-    private String _keyStorePassword = "";
-    private String _keyStoreType = "jks";
-    private String _keyStoreFilePath = "";
-    private String _trustStoreFilePath = "";
-    private String _trustStoreFilePassword = "";
-    private boolean _sslEnabled = false;
-    private boolean _sslRequireClientCerts = true;
-    private boolean _requireClientCertOnLocalHost = false;
-
-    public void setKeyStoreData(String keyStoreData) {
-      _keyStoreData = keyStoreData;
-    }
-
-    public String getKeyStoreData() {
-      return _keyStoreData;
-    }
-
-    public void setKeyStoreFilePath(String keyStoreFilePath) {
-      _keyStoreFilePath = keyStoreFilePath;
-    }
-
-    public String getKeyStoreFilePath() {
-      return _keyStoreFilePath;
-    }
-
-    public void setKeyStorePassword(String keyStorePassword) {
-      _keyStorePassword = keyStorePassword;
-    }
-
-    public String getKeyStorePassword() {
-      return ConfigHelper.getRequired(_keyStorePassword);
-    }
-
-    public void setTrustStoreFilePath(String trustStoreFilePath) {
-      _trustStoreFilePath = trustStoreFilePath;
-    }
-
-    public String getTrustStoreFilePath() {
-      return _trustStoreFilePath;
-    }
-
-    public void setTrustStoreFilePassword(String trustStoreFilePassword) {
-      _trustStoreFilePassword = trustStoreFilePassword;
-    }
-
-    public String getTrustStoreFilePassword() {
-      return _trustStoreFilePassword;
-    }
-
-    public void setKeyStoreType(String keyStoreType) {
-      _keyStoreType = keyStoreType;
-    }
-
-    public String getKeyStoreType() {
-      return _keyStoreType;
-    }
-
-    public void setSslEnabled(boolean sslEnabled) {
-      _sslEnabled = sslEnabled;
-    }
-
-    public boolean getSslEnabled() {
-      return ConfigHelper.getRequired(_sslEnabled);
-    }
-
-    public boolean doesSslRequireClientCerts() {
-      return _sslRequireClientCerts;
-    }
-
-    public void setSslRequireClientCerts(boolean sslRequireClientCerts) {
-      _sslRequireClientCerts = sslRequireClientCerts;
-    }
-
-    public boolean isRequireClientCertOnLocalHost() {
-      return _requireClientCertOnLocalHost;
-    }
-
-    public void setRequireClientCertOnLocalHost(boolean requireClientCertOnLocalHost) {
-      _requireClientCertOnLocalHost = requireClientCertOnLocalHost;
-    }
-  }
-
-  /**
-   * Build a Config class from Properties that contains all SSL settings
-   */
-  private static Config buildConfig(Properties sslProperties) {
-    Config config = new Config();
-    config.setSslEnabled(Boolean.valueOf(sslProperties.getProperty(SSL_ENABLED)));
-    config.setKeyStoreType(sslProperties.getProperty(SSL_KEYSTORE_TYPE));
-    config.setKeyStoreFilePath(sslProperties.getProperty(SSL_KEYSTORE_LOCATION));
-    config.setTrustStoreFilePath(sslProperties.getProperty(SSL_TRUSTSTORE_LOCATION));
-    config.setKeyStorePassword(sslProperties.getProperty(SSL_KEYSTORE_PASSWORD));
-    config.setTrustStoreFilePassword(sslProperties.getProperty(SSL_TRUSTSTORE_PASSWORD));
-    return config;
   }
 
   /**
@@ -308,33 +215,6 @@ public class DefaultSSLFactory implements SSLFactory {
 
     SSLContext getContext() {
       return _secureContext;
-    }
-  }
-
-  private static class ConfigHelper {
-    private ConfigHelper() {
-    }
-
-    public static Object getRequiredObject(Object o) throws MissingConfigParameterException {
-      if (o == null) {
-        throw new MissingConfigParameterException("required Object has not been defined");
-      } else {
-        return o;
-      }
-    }
-
-    public static <T> T getRequired(T o) throws MissingConfigParameterException {
-      if (o == null) {
-        throw new MissingConfigParameterException("required Object has not been defined");
-      } else {
-        return o;
-      }
-    }
-
-    public static class MissingConfigParameterException extends IllegalArgumentException {
-      public MissingConfigParameterException(String msg) {
-        super(msg);
-      }
     }
   }
 }

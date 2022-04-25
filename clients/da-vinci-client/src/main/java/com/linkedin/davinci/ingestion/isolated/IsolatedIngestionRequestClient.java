@@ -1,10 +1,10 @@
 package com.linkedin.davinci.ingestion.isolated;
 
 import com.linkedin.davinci.ingestion.HttpClientTransport;
-import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
 import com.linkedin.venice.ingestion.protocol.IngestionTaskReport;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionAction;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionReportType;
+import com.linkedin.venice.security.SSLFactory;
 import java.io.Closeable;
 import java.util.Optional;
 import org.apache.logging.log4j.LogManager;
@@ -19,7 +19,7 @@ public class IsolatedIngestionRequestClient implements Closeable {
 
   private final HttpClientTransport httpClientTransport;
 
-  public IsolatedIngestionRequestClient(Optional<SSLEngineComponentFactory> sslFactory, int port) {
+  public IsolatedIngestionRequestClient(Optional<SSLFactory> sslFactory, int port) {
     httpClientTransport = new HttpClientTransport(sslFactory, port);
   }
 

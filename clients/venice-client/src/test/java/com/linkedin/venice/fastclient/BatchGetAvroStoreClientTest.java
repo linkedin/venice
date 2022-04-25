@@ -343,7 +343,7 @@ public class BatchGetAvroStoreClientTest {
             com.linkedin.venice.client.store.ClientConfig
                 .defaultSpecificClientConfig(metaSystemStoreName, StoreMetaValue.class)
                 .setVeniceURL(veniceCluster.getRandomRouterURL())
-                .setSslEngineComponentFactory(SslUtils.getLocalSslFactory()))) {
+                .setSslFactory(SslUtils.getVeniceLocalSslFactory()))) {
       StoreMetaKey replicaStatusKey =
           MetaStoreDataType.STORE_REPLICA_STATUSES.getStoreMetaKey(new HashMap<String, String>() {
             {
@@ -376,7 +376,7 @@ public class BatchGetAvroStoreClientTest {
         com.linkedin.venice.client.store.ClientFactory.getAndStartGenericAvroClient(
             com.linkedin.venice.client.store.ClientConfig.defaultGenericClientConfig(storeName)
                 .setVeniceURL(veniceCluster.getRandomRouterSslURL())
-                .setSslEngineComponentFactory(SslUtils.getLocalSslFactory()));
+                .setSslFactory(SslUtils.getVeniceLocalSslFactory()));
     clientConfigBuilder.setGenericThinClient(genericThinClient);
 
     CachingDaVinciClientFactory daVinciClientFactory =
@@ -410,7 +410,7 @@ public class BatchGetAvroStoreClientTest {
             com.linkedin.venice.client.store.ClientConfig.defaultGenericClientConfig(storeName)
                 .setSpecificValueClass(TestValueSchema.class)
                 .setVeniceURL(veniceCluster.getRandomRouterSslURL())
-                .setSslEngineComponentFactory(SslUtils.getLocalSslFactory()));
+                .setSslFactory(SslUtils.getVeniceLocalSslFactory()));
 
     clientConfigBuilder.setSpecificThinClient(specificThinClient);
 
