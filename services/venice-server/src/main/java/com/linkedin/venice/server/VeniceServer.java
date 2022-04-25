@@ -19,7 +19,6 @@ import com.linkedin.davinci.storage.StorageEngineMetadataService;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
-import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.acl.StaticAccessController;
 import com.linkedin.venice.cleaner.BackupVersionOptimizationService;
@@ -45,6 +44,7 @@ import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.StaticClusterInfoProvider;
 import com.linkedin.venice.schema.SchemaReader;
+import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.serialization.avro.SchemaPresenceChecker;
@@ -82,7 +82,7 @@ public class VeniceServer {
   private static final String SERVER_SERVICE_NAME = "venice-server";
 
   private final VeniceConfigLoader veniceConfigLoader;
-  private final Optional<SSLEngineComponentFactory> sslFactory;
+  private final Optional<SSLFactory> sslFactory;
   private final Optional<StaticAccessController> routerAccessController;
   private final Optional<DynamicAccessController> storeAccessController;
   private final Optional<ClientConfig> clientConfigForConsumer;
@@ -128,7 +128,7 @@ public class VeniceServer {
   public VeniceServer(
       VeniceConfigLoader veniceConfigLoader,
       MetricsRepository metricsRepository,
-      Optional<SSLEngineComponentFactory> sslFactory, // TODO: Clean this up. We shouldn't use proprietary abstractions.
+      Optional<SSLFactory> sslFactory,
       Optional<StaticAccessController> routerAccessController,
       Optional<ClientConfig> clientConfigForConsumer) {
     this(
@@ -157,7 +157,7 @@ public class VeniceServer {
   public VeniceServer(
       VeniceConfigLoader veniceConfigLoader,
       MetricsRepository metricsRepository,
-      Optional<SSLEngineComponentFactory> sslFactory, // TODO: Clean this up. We shouldn't use proprietary abstractions.
+      Optional<SSLFactory> sslFactory,
       Optional<StaticAccessController> routerAccessController,
       Optional<DynamicAccessController> storeAccessController,
       Optional<ClientConfig> clientConfigForConsumer,
@@ -634,7 +634,7 @@ public class VeniceServer {
       MetadataRetriever metadataRetriever,
       VeniceServerConfig serverConfig,
       MetricsRepository metricsRepository,
-      Optional<SSLEngineComponentFactory> sslFactory,
+      Optional<SSLFactory> sslFactory,
       Optional<StaticAccessController> routerAccessController,
       Optional<DynamicAccessController> storeAccessController,
       DiskHealthCheckService diskHealthService,

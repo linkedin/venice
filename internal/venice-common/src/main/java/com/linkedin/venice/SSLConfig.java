@@ -3,7 +3,6 @@ package com.linkedin.venice;
 import static com.linkedin.venice.CommonConfigKeys.*;
 import static com.linkedin.venice.ConfigKeys.*;
 
-import com.linkedin.security.ssl.access.control.SSLEngineComponentFactoryImpl;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Properties;
 import org.apache.kafka.common.config.SslConfigs;
@@ -76,8 +75,8 @@ public class SSLConfig {
     return sslProperties;
   }
 
-  public SSLEngineComponentFactoryImpl.Config getSslEngineComponentConfig() {
-    SSLEngineComponentFactoryImpl.Config config = new SSLEngineComponentFactoryImpl.Config();
+  public com.linkedin.venice.security.SSLConfig getSSLConfig() {
+    com.linkedin.venice.security.SSLConfig config = new com.linkedin.venice.security.SSLConfig();
     config.setSslEnabled(true);
     config.setKeyStoreFilePath(sslKeyStoreLocation);
     config.setKeyStorePassword(sslKeyStorePassword);

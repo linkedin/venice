@@ -171,7 +171,7 @@ public class AvroStoreClientEndToEndTest {
             com.linkedin.venice.client.store.ClientConfig
                 .defaultSpecificClientConfig(metaSystemStoreName, StoreMetaValue.class)
                 .setVeniceURL(veniceCluster.getRandomRouterURL())
-                .setSslEngineComponentFactory(SslUtils.getLocalSslFactory()))) {
+                .setSslFactory(SslUtils.getVeniceLocalSslFactory()))) {
       StoreMetaKey replicaStatusKey =
           MetaStoreDataType.STORE_REPLICA_STATUSES.getStoreMetaKey(new HashMap<String, String>() {
             {
@@ -441,7 +441,7 @@ public class AvroStoreClientEndToEndTest {
     return com.linkedin.venice.client.store.ClientFactory.getAndStartGenericAvroClient(
         com.linkedin.venice.client.store.ClientConfig.defaultGenericClientConfig(storeName)
             .setVeniceURL(veniceCluster.getRandomRouterSslURL())
-            .setSslEngineComponentFactory(SslUtils.getLocalSslFactory()));
+            .setSslFactory(SslUtils.getVeniceLocalSslFactory()));
   }
 
   private AvroSpecificStoreClient<String, TestValueSchema> getSpecificThinClient() {
@@ -449,6 +449,6 @@ public class AvroStoreClientEndToEndTest {
         com.linkedin.venice.client.store.ClientConfig.defaultGenericClientConfig(storeName)
             .setSpecificValueClass(TestValueSchema.class)
             .setVeniceURL(veniceCluster.getRandomRouterSslURL())
-            .setSslEngineComponentFactory(SslUtils.getLocalSslFactory()));
+            .setSslFactory(SslUtils.getVeniceLocalSslFactory()));
   }
 }

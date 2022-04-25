@@ -1,7 +1,6 @@
 package com.linkedin.venice.controller;
 
 import com.linkedin.d2.balancer.D2Client;
-import com.linkedin.d2.server.factory.D2Server;
 import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.authorization.AuthorizerService;
@@ -9,6 +8,7 @@ import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.controller.kafka.TopicCleanupService;
 import com.linkedin.venice.controller.kafka.TopicCleanupServiceForParentController;
 import com.linkedin.venice.controller.server.AdminSparkServer;
+import com.linkedin.venice.d2.D2Server;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.stats.KafkaClientStats;

@@ -15,8 +15,9 @@ dependencies {
   implementation project(':clients:venice-thin-client')
 
   implementation libraries.ddsStorageCommonBase
+  implementation libraries.fastUtil
+  implementation libraries.restliCommon
   implementation libraries.r2
-  implementation libraries.r2Client
   implementation libraries.routerApi
 
   testImplementation project(':internal:venice-common')

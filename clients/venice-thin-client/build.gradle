@@ -9,9 +9,11 @@ dependencies {
     exclude group: 'org.apapche.zookeeper'
   }
 
+  implementation libraries.bouncyCastle
   implementation libraries.httpAsyncClient
   implementation libraries.jacksonCore
   implementation libraries.jacksonDatabind
+  implementation libraries.log4j2api
   implementation libraries.zookeeper
 
   // Schema related dependencies

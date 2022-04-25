@@ -110,11 +110,11 @@ public class ClientFactory {
       }
       return generateTransportClient(clientConfig);
     } else if (clientConfig.isHttps()) {
-      if (clientConfig.getSslEngineComponentFactory() == null) {
+      if (clientConfig.getSslFactory() == null) {
         throw new VeniceClientException("Must use SSL factory method for client to communicate with https");
       }
 
-      return new HttpsTransportClient(bootstrapUrl, clientConfig.getSslEngineComponentFactory());
+      return new HttpsTransportClient(bootstrapUrl, clientConfig.getSslFactory());
     } else {
       return new HttpTransportClient(bootstrapUrl);
     }

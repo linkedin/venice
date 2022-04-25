@@ -29,7 +29,10 @@ dependencies {
   implementation project(':clients:venice-thin-client')
 
   implementation libraries.commonsIo
+  implementation libraries.fastUtil
+  implementation libraries.httpAsyncClient
   implementation libraries.kafka
+  implementation libraries.log4j2api
   implementation libraries.spark
   // It's necessary to pull in the most recent version of zkclient explicitly, otherwise Helix won't have it...
   implementation libraries.zkclient

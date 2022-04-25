@@ -431,7 +431,7 @@ public class TestPushUtils {
     return writeAvroFile(parentDir, fileName, STRING_STRING_SCHEMA_STRING, (recordSchema, writer) -> {
       for (int i = 1; i <= 100; ++i) {
         GenericRecord s2s = new GenericData.Record(recordSchema);
-        s2s.put("id", "urn:li:jobPosting:" + i);
+        s2s.put("id", "jobPosting:" + i);
         s2s.put("name", String.valueOf(i));
         writer.append(s2s);
       }

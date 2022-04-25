@@ -4,7 +4,6 @@ import com.linkedin.venice.acl.AclException;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.controller.kafka.consumer.ControllerKafkaClientFactory;
-import com.linkedin.venice.controller.lingeringjob.IdentityParser;
 import com.linkedin.venice.controllerapi.NodeReplicasReadinessState;
 import com.linkedin.venice.controllerapi.RepushInfo;
 import com.linkedin.venice.controllerapi.StoreComparisonInfo;
@@ -165,8 +164,7 @@ public interface Admin extends AutoCloseable, Closeable {
 
   default boolean hasWritePermissionToBatchJobHeartbeatStore(
       X509Certificate requesterCert,
-      String batchJobHeartbeatStoreName,
-      IdentityParser identityParser) throws AclException {
+      String batchJobHeartbeatStoreName) throws AclException {
     return false;
   }
 

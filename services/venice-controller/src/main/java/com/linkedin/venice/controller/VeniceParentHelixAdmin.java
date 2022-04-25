@@ -14,6 +14,7 @@ import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.authorization.AceEntry;
 import com.linkedin.venice.authorization.AclBinding;
 import com.linkedin.venice.authorization.AuthorizerService;
+import com.linkedin.venice.authorization.IdentityParser;
 import com.linkedin.venice.authorization.Method;
 import com.linkedin.venice.authorization.Permission;
 import com.linkedin.venice.authorization.Principal;
@@ -61,8 +62,6 @@ import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
 import com.linkedin.venice.controller.kafka.protocol.enums.SchemaType;
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
 import com.linkedin.venice.controller.lingeringjob.DefaultLingeringStoreVersionChecker;
-import com.linkedin.venice.controller.lingeringjob.IdentityParser;
-import com.linkedin.venice.controller.lingeringjob.IdentityParserImpl;
 import com.linkedin.venice.controller.lingeringjob.LingeringStoreVersionChecker;
 import com.linkedin.venice.controller.migration.MigrationPushStrategyZKAccessor;
 import com.linkedin.venice.controllerapi.AdminCommandExecution;
@@ -142,6 +141,7 @@ import com.linkedin.venice.utils.CollectionUtils;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.PartitionUtils;
+import com.linkedin.venice.utils.ReflectUtils;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
@@ -260,6 +260,8 @@ public class VeniceParentHelixAdmin implements Admin {
   private final ExecutorService systemStoreAclSynchronizationExecutor;
 
   private final LingeringStoreVersionChecker lingeringStoreVersionChecker;
+
+  private final IdentityParser identityParser;
 
   // New fabric controller client map per cluster per fabric
   private final Map<String, Map<String, ControllerClient>> newFabricControllerClinetMap =
@@ -380,6 +382,9 @@ public class VeniceParentHelixAdmin implements Admin {
     this.lingeringStoreVersionChecker = lingeringStoreVersionChecker;
     systemStoreLifeCycleHelper = new UserSystemStoreLifeCycleHelper(this, authorizerService, multiClusterConfigs);
     this.writeComputeSchemaConverter = writeComputeSchemaConverter;
+    Class<IdentityParser> identityParserClass =
+        ReflectUtils.loadClass(multiClusterConfigs.getCommonConfig().getIdentityParserClassName());
+    this.identityParser = ReflectUtils.callConstructor(identityParserClass, new Class[0], new Object[0]);
   }
 
   // For testing purpose.
@@ -1299,8 +1304,7 @@ public class VeniceParentHelixAdmin implements Admin {
   @Override
   public boolean hasWritePermissionToBatchJobHeartbeatStore(
       X509Certificate requesterCert,
-      String batchJobHeartbeatStoreName,
-      IdentityParser identityParser) throws AclException {
+      String batchJobHeartbeatStoreName) throws AclException {
     if (!accessController.isPresent()) {
       throw new VeniceException(
           String.format(
@@ -1424,7 +1428,7 @@ public class VeniceParentHelixAdmin implements Admin {
       boolean isIncomingPushJobARepush = Version.isPushIdRePush(pushJobId);
 
       if (getLingeringStoreVersionChecker()
-          .isStoreVersionLingering(store, version.get(), timer, this, requesterCert, new IdentityParserImpl())) {
+          .isStoreVersionLingering(store, version.get(), timer, this, requesterCert, identityParser)) {
         if (pushType.isIncremental()) {
           /**
            * Incremental push shouldn't kill the previous full push, there could be a transient issue that parents couldn't

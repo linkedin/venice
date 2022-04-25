@@ -4,6 +4,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 import com.linkedin.venice.authorization.AuthorizerService;
+import com.linkedin.venice.authorization.DefaultIdentityParser;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controller.kafka.AdminTopicUtils;
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
@@ -185,6 +186,7 @@ public class AbstractTestVeniceParentHelixAdmin {
     childClusterMap.put(coloName, "localhost");
     doReturn(childClusterMap).when(config).getChildDataCenterControllerUrlMap();
     doReturn(MAX_PARTITION_NUM).when(config).getMaxNumberOfPartition();
+    doReturn(DefaultIdentityParser.class.getName()).when(config).getIdentityParserClassName();
     return config;
   }
 

@@ -163,7 +163,7 @@ public abstract class TestRestartServerDuringIngestion {
       try (AvroGenericStoreClient<String, CharSequence> storeClient = ClientFactory.getAndStartGenericAvroClient(
           ClientConfig.defaultGenericClientConfig(storeName)
               .setVeniceURL(cluster.getRandomRouterURL())
-              .setSslEngineComponentFactory(SslUtils.getLocalSslFactory()))) {
+              .setSslFactory(SslUtils.getVeniceLocalSslFactory()))) {
 
         for (Map.Entry<byte[], byte[]> entry: sortedInputRecords.entrySet()) {
           String key = deserializer.deserialize(entry.getKey()).toString();

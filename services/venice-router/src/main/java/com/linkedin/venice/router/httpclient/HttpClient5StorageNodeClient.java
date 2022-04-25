@@ -1,12 +1,12 @@
 package com.linkedin.venice.router.httpclient;
 
 import com.linkedin.ddsstorage.router.api.RouterException;
-import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.httpclient5.HttpClient5Utils;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.router.VeniceRouterConfig;
 import com.linkedin.venice.router.api.path.VenicePath;
+import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.Utils;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
@@ -38,7 +38,7 @@ public class HttpClient5StorageNodeClient implements StorageNodeClient {
   private final Random random = new Random();
   private final List<CloseableHttpAsyncClient> clientList = new ArrayList<>();
 
-  public HttpClient5StorageNodeClient(Optional<SSLEngineComponentFactory> sslFactory, VeniceRouterConfig routerConfig) {
+  public HttpClient5StorageNodeClient(Optional<SSLFactory> sslFactory, VeniceRouterConfig routerConfig) {
     sslFactory.orElseThrow(
         () -> new VeniceException("Param 'sslFactory' must be present while using " + this.getClass().getSimpleName()));
     if (!routerConfig.isRouterHTTP2ClientEnabled()) {

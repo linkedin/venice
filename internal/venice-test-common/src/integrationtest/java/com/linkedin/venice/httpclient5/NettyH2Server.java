@@ -1,8 +1,9 @@
 package com.linkedin.venice.httpclient5;
 
-import com.linkedin.ddsstorage.router.lnkd.netty4.SSLInitializer;
-import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
+import com.linkedin.ddsstorage.netty4.ssl.SslInitializer;
 import com.linkedin.venice.integration.utils.H2SSLUtils;
+import com.linkedin.venice.security.SSLFactory;
+import com.linkedin.venice.utils.SslUtils;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
@@ -53,7 +54,7 @@ public class NettyH2Server {
     this.bossGroup = new NioEventLoopGroup(1);
     this.workerGroup = new NioEventLoopGroup(4);
     this.bootstrap = new ServerBootstrap();
-    SSLEngineComponentFactory sslFactory = H2SSLUtils.getLocalHttp2SslFactory();
+    SSLFactory sslFactory = H2SSLUtils.getLocalHttp2SslFactory();
     bootstrap.group(bossGroup, workerGroup)
         .channel(NioServerSocketChannel.class)
         .childHandler(new HttpChannelInitializer(sslFactory))
@@ -84,15 +85,15 @@ public class NettyH2Server {
   }
 
   private static class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
-    private final SSLEngineComponentFactory sslFactory;
+    private final SSLFactory sslFactory;
 
-    public HttpChannelInitializer(SSLEngineComponentFactory sslFactory) {
+    public HttpChannelInitializer(SSLFactory sslFactory) {
       this.sslFactory = sslFactory;
     }
 
     @Override
     protected void initChannel(SocketChannel ch) {
-      ch.pipeline().addLast(new SSLInitializer(sslFactory), getServerAPNHandler());
+      ch.pipeline().addLast(new SslInitializer(SslUtils.toAlpiniSSLFactory(sslFactory), false), getServerAPNHandler());
     }
 
     public static ApplicationProtocolNegotiationHandler getServerAPNHandler() {

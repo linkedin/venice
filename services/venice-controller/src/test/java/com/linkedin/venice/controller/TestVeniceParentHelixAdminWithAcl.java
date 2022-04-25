@@ -54,12 +54,12 @@ public class TestVeniceParentHelixAdminWithAcl extends AbstractTestVeniceParentH
   public void testStoreCreationWithAuthorization() {
     String storeName = "test-store-authorizer";
     String accessPerm =
-        "{\"AccessPermissions\":{\"Read\":[\"urn:li:corpuser:user1\",\"urn:li:corpGroup:group1\",\"urn:li:servicePrincipal:app1\"],\"Write\":[\"urn:li:corpuser:user1\",\"urn:li:corpGroup:group1\",\"urn:li:servicePrincipal:app1\"]}}";
+        "{\"AccessPermissions\":{\"Read\":[\"user:user1\",\"group:group1\",\"service:app1\"],\"Write\":[\"user:user1\",\"group:group1\",\"service:app1\"]}}";
 
     AclBinding expectedAB = new AclBinding(new Resource(storeName));
-    Principal userp = new Principal("urn:li:corpuser:user1");
-    Principal groupp = new Principal("urn:li:corpGroup:group1");
-    Principal servicep = new Principal("urn:li:servicePrincipal:app1");
+    Principal userp = new Principal("user:user1");
+    Principal groupp = new Principal("group:group1");
+    Principal servicep = new Principal("service:app1");
     for (Principal p: new Principal[] { userp, groupp, servicep }) {
       AceEntry race = new AceEntry(p, Method.Read, Permission.ALLOW);
       AceEntry wace = new AceEntry(p, Method.Write, Permission.ALLOW);
@@ -91,7 +91,7 @@ public class TestVeniceParentHelixAdminWithAcl extends AbstractTestVeniceParentH
     // send an invalid json, so that parsing this would generate an exception and thus failing the createStore api to
     // move forward.
     String accessPerm =
-        "{\"AccessPermissions\":{\"Read\":[\"urn:li:corpuser:user1\",\"urn:li:corpGroup:group1\",\"urn:li:servicePrincipal:app1\"],\"Write\":[\"urn:li:corpuser:user1\",\"urn:li:corpGroup:group1\",\"urn:li:servicePrincipal:app1\"],}}";
+        "{\"AccessPermissions\":{\"Read\":[\"user:user1\",\"group:group1\",\"service:app1\"],\"Write\":[\"user:user1\",\"group:group1\",\"service:app1\"],}}";
 
     doReturn(CompletableFuture.completedFuture(new RecordMetadata(topicPartition, 0, 1, -1, -1L, -1, -1)))
         .when(veniceWriter)
@@ -137,7 +137,7 @@ public class TestVeniceParentHelixAdminWithAcl extends AbstractTestVeniceParentH
   public void testUpdateAndGetAndDeleteAcl() {
     String storeName = "test-store-authorizer";
     String expectedPerm =
-        "{\"AccessPermissions\":{\"Read\":[\"urn:li:corpuser:user2\",\"urn:li:corpGroup:group2\",\"urn:li:servicePrincipal:app2\"],\"Write\":[\"urn:li:corpuser:user2\",\"urn:li:corpGroup:group2\",\"urn:li:servicePrincipal:app2\"]}}";
+        "{\"AccessPermissions\":{\"Read\":[\"user:user2\",\"group:group2\",\"service:app2\"],\"Write\":[\"user:user2\",\"group:group2\",\"service:app2\"]}}";
     initializeParentAdmin(Optional.of(authorizerService));
     parentAdmin.updateAclForStore(clusterName, storeName, expectedPerm);
     Assert.assertEquals(1, authorizerService.setAclsCounter);
@@ -145,9 +145,8 @@ public class TestVeniceParentHelixAdminWithAcl extends AbstractTestVeniceParentH
     Assert.assertEquals(expectedPerm, curPerm);
 
     // add a DENY ace, this will verify getAclForStore always returns ALLOW acls.
-    authorizerService.addAce(
-        new Resource(storeName),
-        new AceEntry(new Principal("urn:li:corpuser:denyuser1"), Method.Read, Permission.DENY));
+    authorizerService
+        .addAce(new Resource(storeName), new AceEntry(new Principal("user:denyuser1"), Method.Read, Permission.DENY));
     curPerm = parentAdmin.getAclForStore(clusterName, storeName);
     Assert.assertEquals(expectedPerm, curPerm);
     parentAdmin.deleteAclForStore(clusterName, storeName);
@@ -165,7 +164,7 @@ public class TestVeniceParentHelixAdminWithAcl extends AbstractTestVeniceParentH
   public void testUpdateAclException() {
     String storeName = "test-store-authorizer";
     String expectedPerm =
-        "{\"AccessPermissions\":{\"Read\":[\"urn:li:corpuser:user2\",\"urn:li:corpGroup:group2\",\"urn:li:servicePrincipal:app2\"],\"Write\":[\"urn:li:corpuser:user2\",\"urn:li:corpGroup:group2\",\"urn:li:servicePrincipal:app2\"]}}";
+        "{\"AccessPermissions\":{\"Read\":[\"user:user2\",\"group:group2\",\"service:app2\"],\"Write\":[\"user:user2\",\"group:group2\",\"service:app2\"]}}";
 
     doThrow(new VeniceNoStoreException(storeName)).when(internalAdmin)
         .checkPreConditionForAclOp(clusterName, storeName);

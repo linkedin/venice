@@ -4,6 +4,7 @@ import static com.linkedin.venice.status.BatchJobHeartbeatConfigs.*;
 import static org.mockito.Mockito.*;
 
 import com.linkedin.venice.acl.AclException;
+import com.linkedin.venice.authorization.IdentityParser;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -95,8 +96,7 @@ public class TestHeartbeatBasedLingeringStoreVersionChecker {
     when(
         admin.hasWritePermissionToBatchJobHeartbeatStore(
             cert,
-            VeniceSystemStoreType.BATCH_JOB_HEARTBEAT_STORE.getPrefix(),
-            (certificate) -> "Whatever identity")).thenReturn(false);
+            VeniceSystemStoreType.BATCH_JOB_HEARTBEAT_STORE.getPrefix())).thenReturn(false);
     Assert.assertFalse(
         checker.isStoreVersionLingering(
             store,
@@ -145,8 +145,7 @@ public class TestHeartbeatBasedLingeringStoreVersionChecker {
     when(
         admin.hasWritePermissionToBatchJobHeartbeatStore(
             cert,
-            VeniceSystemStoreType.BATCH_JOB_HEARTBEAT_STORE.getPrefix(),
-            (certificate) -> "Whatever identity")).thenReturn(true);
+            VeniceSystemStoreType.BATCH_JOB_HEARTBEAT_STORE.getPrefix())).thenReturn(true);
     when(admin.getPushJobDetails(any())).thenReturn(expectedReturnValue);
     Assert.assertFalse(
         checker.isStoreVersionLingering(
@@ -231,8 +230,7 @@ public class TestHeartbeatBasedLingeringStoreVersionChecker {
     when(
         admin.hasWritePermissionToBatchJobHeartbeatStore(
             DEFAULT_REQUEST_CERT,
-            VeniceSystemStoreType.BATCH_JOB_HEARTBEAT_STORE.getPrefix(),
-            DEFAULT_IDENTITY_PARSER)).thenReturn(true);
+            VeniceSystemStoreType.BATCH_JOB_HEARTBEAT_STORE.getPrefix())).thenReturn(true);
     PushJobDetails pushJobDetails = new PushJobDetails();
     pushJobDetails.pushJobConfigs = Collections.singletonMap(HEARTBEAT_ENABLED_CONFIG.getConfigName(), "true");
     when(admin.getPushJobDetails(any())).thenReturn(pushJobDetails);

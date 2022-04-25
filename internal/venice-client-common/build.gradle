@@ -8,7 +8,7 @@ dependencies {
     exclude group: 'org.slf4j'        // Avro pulls in slf4j 1.5 which is API incompatible with 1.6
   }
 
-  api (libraries.d2Client) {
+  api (libraries.d2) {
     exclude group: 'com.oracle', module: 'ojdbc14' /* unused transitive dependencies, doesn't exist in repo */
     exclude group: 'org.mockito', module: 'mockito-all'
     exclude group: 'xerces', module: 'xerces'
@@ -33,7 +33,10 @@ dependencies {
 
   implementation libraries.avroUtilFastserde
   implementation libraries.classgraph
+  implementation libraries.ddsStorageCommonBase
+  implementation libraries.ddsNettyBase
   implementation libraries.failsafe
+  implementation libraries.log4j2api
   implementation libraries.zstd
 
   testImplementation project(':internal:venice-test-common')

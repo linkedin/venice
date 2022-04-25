@@ -37,7 +37,7 @@ public class TestAdminSparkServerAcl extends AbstractTestAdminSparkServer {
     String keySchema = "\"string\"";
     String valueSchema = "\"long\"";
     String accessPerm =
-        "{\"AccessPermissions\":{\"Read\":[\"urn:li:corpuser:user1\",\"urn:li:corpGroup:group1\",\"urn:li:servicePrincipal:app1\"],\"Write\":[\"urn:li:corpuser:user1\",\"urn:li:corpGroup:group1\",\"urn:li:servicePrincipal:app1\"]}}";
+        "{\"AccessPermissions\":{\"Read\":[\"user:user1\",\"group:group1\",\"service:app1\"],\"Write\":[\"user:user1\",\"group:group1\",\"service:app1\"]}}";
 
     // create Store
     NewStoreResponse newStoreResponse =
@@ -49,7 +49,7 @@ public class TestAdminSparkServerAcl extends AbstractTestAdminSparkServer {
 
     // update acl
     String newAccessPerm =
-        "{\"AccessPermissions\":{\"Read\":[\"urn:li:corpuser:user2\",\"urn:li:corpGroup:group1\",\"urn:li:servicePrincipal:app1\"],\"Write\":[\"urn:li:corpuser:user2\",\"urn:li:corpGroup:group1\",\"urn:li:servicePrincipal:app1\"]}}";
+        "{\"AccessPermissions\":{\"Read\":[\"user:user2\",\"group:group1\",\"service:app1\"],\"Write\":[\"user:user2\",\"group:group1\",\"service:app1\"]}}";
     aclResponse = controllerClient.updateAclForStore(storeName, newAccessPerm);
     Assert.assertFalse(aclResponse.isError(), aclResponse.getError());
     aclResponse = controllerClient.getAclForStore(storeName);
@@ -75,7 +75,7 @@ public class TestAdminSparkServerAcl extends AbstractTestAdminSparkServer {
     Assert.assertTrue(aclResponse.isError(), "getAcl for store should fail as the store does not exist");
 
     String newAccessPerm =
-        "{\"AccessPermissions\":{\"Read\":[\"urn:li:corpuser:user2\",\"urn:li:corpGroup:group1\",\"urn:li:servicePrincipal:app1\"],\"Write\":[\"urn:li:corpuser:user2\",\"urn:li:corpGroup:group1\",\"urn:li:servicePrincipal:app1\"]}}";
+        "{\"AccessPermissions\":{\"Read\":[\"user:user2\",\"group:group1\",\"service:app1\"],\"Write\":[\"user:user2\",\"group:group1\",\"service:app1\"]}}";
 
     aclResponse = controllerClient.updateAclForStore(storeName, newAccessPerm);
     Assert.assertTrue(aclResponse.isError(), "updateAcl for store should fail as the store does not exist");

@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller.lingeringjob;
 
+import com.linkedin.venice.authorization.IdentityParser;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;

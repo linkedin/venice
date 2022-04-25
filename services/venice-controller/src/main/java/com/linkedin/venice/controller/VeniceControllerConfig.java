@@ -4,6 +4,7 @@ import static com.linkedin.venice.ConfigConstants.*;
 import static com.linkedin.venice.ConfigKeys.*;
 
 import com.linkedin.venice.ConfigKeys;
+import com.linkedin.venice.authorization.DefaultIdentityParser;
 import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.KafkaClientFactory;
@@ -160,9 +161,11 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   private final boolean controllerInAzureFabric;
 
-  private boolean usePushStatusStoreForIncrementalPush;
+  private final boolean usePushStatusStoreForIncrementalPush;
 
-  private boolean unregisterMetricForDeletedStoreEnabled;
+  private final boolean unregisterMetricForDeletedStoreEnabled;
+
+  private final String identityParserClassName;
 
   public VeniceControllerConfig(VeniceProperties props) {
     super(props);
@@ -352,6 +355,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     this.concurrentInitRoutinesEnabled = props.getBoolean(CONCURRENT_INIT_ROUTINES_ENABLED, false);
     this.controllerInAzureFabric = props.getBoolean(CONTROLLER_IN_AZURE_FABRIC, false);
     this.unregisterMetricForDeletedStoreEnabled = props.getBoolean(UNREGISTER_METRIC_FOR_DELETED_STORE_ENABLED, false);
+    this.identityParserClassName = props.getString(IDENTITY_PARSER_CLASS, DefaultIdentityParser.class.getName());
   }
 
   private void validateActiveActiveConfigs() {
@@ -706,6 +710,10 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   public boolean isUnregisterMetricForDeletedStoreEnabled() {
     return unregisterMetricForDeletedStoreEnabled;
+  }
+
+  public String getIdentityParserClassName() {
+    return identityParserClassName;
   }
 
   /**

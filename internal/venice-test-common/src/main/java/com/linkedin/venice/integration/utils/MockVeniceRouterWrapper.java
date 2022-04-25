@@ -4,8 +4,8 @@ import static com.linkedin.venice.ConfigKeys.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.doReturn;
 
-import com.linkedin.d2.server.factory.D2Server;
 import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.d2.D2Server;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.helix.HelixHybridStoreQuotaRepository;
 import com.linkedin.venice.helix.HelixLiveInstanceMonitor;
@@ -134,7 +134,7 @@ public class MockVeniceRouterWrapper extends ProcessWrapper {
           mockSchemaRepository,
           mockStoreConfigRepository,
           d2ServerList,
-          Optional.of(SslUtils.getLocalSslFactory()),
+          Optional.of(SslUtils.getVeniceLocalSslFactory()),
           mockLiveInstanceMonitor);
       return new MockVeniceRouterWrapper(serviceName, dataDirectory, router, clusterName, port, sslToStorageNodes);
     };

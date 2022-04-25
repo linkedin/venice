@@ -2,12 +2,12 @@ package com.linkedin.davinci.ingestion;
 
 import static com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils.*;
 
-import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.exceptions.VeniceTimeoutException;
 import com.linkedin.venice.httpclient.HttpClientUtils;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionAction;
+import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import java.util.Optional;
@@ -40,7 +40,7 @@ public class HttpClientTransport implements AutoCloseable {
   private final CloseableHttpAsyncClient httpClient;
   private final String forkedProcessRequestUrl;
 
-  public HttpClientTransport(Optional<SSLEngineComponentFactory> sslFactory, int port) {
+  public HttpClientTransport(Optional<SSLFactory> sslFactory, int port) {
     forkedProcessRequestUrl = (sslFactory.isPresent() ? HTTPS : HTTP) + "://" + Utils.getHostName() + ":" + port;
     httpClient =
         HttpClientUtils

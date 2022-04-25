@@ -10,10 +10,10 @@ import com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.stats.IsolatedIngestionProcessHeartbeatStats;
-import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -73,7 +73,7 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
   private final List<VeniceNotifier> onlineOfflineIngestionNotifierList = new ArrayList<>();
   private final List<VeniceNotifier> leaderFollowerIngestionNotifierList = new ArrayList<>();
   private final List<VeniceNotifier> pushStatusNotifierList = new ArrayList<>();
-  private final Optional<SSLEngineComponentFactory> sslFactory;
+  private final Optional<SSLFactory> sslFactory;
 
   private IsolatedIngestionProcessHeartbeatStats heartbeatStats;
   private ChannelFuture serverFuture;
@@ -89,7 +89,7 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
   public MainIngestionMonitorService(
       IsolatedIngestionBackend ingestionBackend,
       VeniceConfigLoader configLoader,
-      Optional<SSLEngineComponentFactory> sslFactory) {
+      Optional<SSLFactory> sslFactory) {
     this.configLoader = configLoader;
     this.servicePort = configLoader.getVeniceServerConfig().getIngestionServicePort();
     this.applicationPort = configLoader.getVeniceServerConfig().getIngestionApplicationPort();
@@ -104,9 +104,7 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
     bootstrap.group(bossGroup, workerGroup)
         .channel(serverSocketChannelClass)
         .childHandler(
-            new MainIngestionReportChannelInitializer(
-                this,
-                IsolatedIngestionUtils.getSSLEngineComponentFactory(configLoader)))
+            new MainIngestionReportChannelInitializer(this, IsolatedIngestionUtils.getSSLFactory(configLoader)))
         .option(ChannelOption.SO_BACKLOG, 1000)
         .childOption(ChannelOption.SO_KEEPALIVE, true)
         .option(ChannelOption.SO_REUSEADDR, true)

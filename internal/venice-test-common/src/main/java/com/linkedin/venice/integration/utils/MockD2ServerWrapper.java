@@ -1,6 +1,6 @@
 package com.linkedin.venice.integration.utils;
 
-import com.linkedin.d2.server.factory.D2Server;
+import com.linkedin.venice.d2.D2Server;
 import com.linkedin.venice.utils.Utils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;

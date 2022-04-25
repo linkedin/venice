@@ -1,10 +1,10 @@
 package com.linkedin.davinci.ingestion.isolated;
 
-import com.linkedin.security.datavault.common.principal.Principal;
-import com.linkedin.security.datavault.common.principal.PrincipalBuilder;
+import com.linkedin.venice.authorization.IdentityParser;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.listener.ServerHandlerUtils;
 import com.linkedin.venice.utils.NettyUtils;
+import com.linkedin.venice.utils.SslUtils;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
@@ -21,9 +21,11 @@ import org.apache.logging.log4j.Logger;
 @ChannelHandler.Sharable
 public class IsolatedIngestionServerAclHandler extends SimpleChannelInboundHandler<HttpRequest> {
   private static final Logger LOGGER = LogManager.getLogger(IsolatedIngestionServerAclHandler.class);
+  private final IdentityParser identityParser;
   private final String allowedPrincipalName;
 
-  public IsolatedIngestionServerAclHandler(String allowedPrincipalName) {
+  public IsolatedIngestionServerAclHandler(IdentityParser identityParser, String allowedPrincipalName) {
+    this.identityParser = identityParser;
     this.allowedPrincipalName = allowedPrincipalName;
   }
 
@@ -33,21 +35,23 @@ public class IsolatedIngestionServerAclHandler extends SimpleChannelInboundHandl
     if (!sslHandler.isPresent()) {
       throw new VeniceException("No SSL handler in the incoming request.");
     }
-
-    X509Certificate clientCert = (X509Certificate) sslHandler.get().engine().getSession().getPeerCertificates()[0];
-    Principal principal = PrincipalBuilder.builderForCertificate(clientCert).build();
-    String principalIdentityName = principal.getPrincipalId() + "-identity";
+    X509Certificate clientCert =
+        SslUtils.getX509Certificate(sslHandler.get().engine().getSession().getPeerCertificates()[0]);
+    String identity = identityParser.parseIdentityFromCert(clientCert);
     /**
      * Check if the principal identity name extracted from SSL session matches the allowed principal name.
      * We do not enforce SERVICE_PRINCIPAL type here since some testing environments are using PERSONAL_PRINCIPAL.
      */
-    if (principalIdentityName.equals(allowedPrincipalName)) {
+    if (identity.equals(allowedPrincipalName)) {
       ReferenceCountUtil.retain(req);
       ctx.fireChannelRead(req);
     } else {
       String clientAddress = ctx.channel().remoteAddress().toString();
-      String errLine = String.format("%s requested from %s with principal: %s", req.uri(), clientAddress, principal);
-      LOGGER.error("Unauthorized access rejected: " + errLine);
+      LOGGER.error(
+          "Unauthorized access rejected: {} requested from {} with identity {}",
+          req.uri(),
+          clientAddress,
+          identity);
       NettyUtils.setupResponseAndFlush(HttpResponseStatus.FORBIDDEN, new byte[0], false, ctx);
     }
   }

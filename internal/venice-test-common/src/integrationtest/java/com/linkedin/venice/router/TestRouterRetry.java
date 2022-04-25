@@ -133,7 +133,7 @@ public class TestRouterRetry {
     try (AvroGenericStoreClient<String, GenericRecord> storeClient = ClientFactory.getAndStartGenericAvroClient(
         ClientConfig.defaultGenericClientConfig(storeName)
             .setVeniceURL(routerAddr)
-            .setSslEngineComponentFactory(SslUtils.getLocalSslFactory()))) {
+            .setSslFactory(SslUtils.getVeniceLocalSslFactory()))) {
       int rounds = 100;
       for (int cnt = 0; cnt < rounds; ++cnt) {
         // Send request to a read-disabled store

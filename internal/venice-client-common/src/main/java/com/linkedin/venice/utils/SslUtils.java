@@ -2,16 +2,19 @@ package com.linkedin.venice.utils;
 
 import static com.linkedin.venice.CommonConfigKeys.*;
 
-import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
-import com.linkedin.security.ssl.access.control.SSLEngineComponentFactoryImpl;
+import com.linkedin.ddsstorage.base.ssl.SslFactory;
+import com.linkedin.ddsstorage.netty4.ssl.SSLEngineFactoryImpl;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.security.DefaultSSLFactory;
+import com.linkedin.venice.security.SSLConfig;
 import com.linkedin.venice.security.SSLFactory;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
+import java.security.cert.Certificate;
+import java.security.cert.X509Certificate;
 import java.util.Properties;
 import java.util.UUID;
 import org.apache.logging.log4j.LogManager;
@@ -33,31 +36,11 @@ public class SslUtils {
   /**
    * This function should be used in test cases only.
    *
-   * TODO: after Router and Server migrate to {@link SSLFactory} and get rid of {@link SSLEngineComponentFactory} in
-   * Venice project, we should remove this helper function.
-   *
-   * @return factory that corresponds to self-signed development certificate
+   * @return an instance of {@link SSLConfig} with local SSL config.
    */
-  public static SSLEngineComponentFactory getLocalSslFactory() {
-    SSLEngineComponentFactoryImpl.Config sslConfig = getLocalSslConfig();
-    try {
-      return new SSLEngineComponentFactoryImpl(sslConfig);
-    } catch (Exception e) {
-      throw new VeniceException("Failed to create local ssl factory with a self-signed cert", e);
-    }
-  }
-
-  /**
-   * This function should be used in test cases only.
-   *
-   * TODO: after Router and Server migrate to {@link SSLFactory} and get rid of {@link SSLEngineComponentFactory} in
-   * Venice project, we should remove this helper function.
-   *
-   * @return an instance of {@link SSLEngineComponentFactoryImpl.Config} with local SSL config.
-   */
-  public static SSLEngineComponentFactoryImpl.Config getLocalSslConfig() {
+  public static SSLConfig getLocalSslConfig() {
     String keyStorePath = getPathForResource(LOCAL_KEYSTORE_JKS);
-    SSLEngineComponentFactoryImpl.Config sslConfig = new SSLEngineComponentFactoryImpl.Config();
+    SSLConfig sslConfig = new SSLConfig();
     sslConfig.setKeyStoreFilePath(keyStorePath);
     sslConfig.setKeyStorePassword(LOCAL_PASSWORD);
     sslConfig.setKeyStoreType("JKS");
@@ -128,29 +111,24 @@ public class SslUtils {
     return file.getAbsolutePath();
   }
 
-  /**
-   * A helper function that returns an instance of {@link SSLEngineComponentFactory} with ssl properties.
-   *
-   * TODO: This function should be removed after Router and Server migrate to {@link SSLFactory}
-   */
-  public static SSLEngineComponentFactory getSSLEngineComponentFactory(Properties sslProperties) throws Exception {
-    SSLEngineComponentFactoryImpl.Config config = new SSLEngineComponentFactoryImpl.Config();
-    config.setSslEnabled(Boolean.valueOf(sslProperties.getProperty(SSL_ENABLED)));
-    config.setKeyStoreType(sslProperties.getProperty(SSL_KEYSTORE_TYPE));
-    /**
-     * There is no "setTrustStoreType" api in {@link SSLEngineComponentFactoryImpl.Config}
-     */
-    config.setKeyStoreFilePath(sslProperties.getProperty(SSL_KEYSTORE_LOCATION));
-    config.setTrustStoreFilePath(sslProperties.getProperty(SSL_TRUSTSTORE_LOCATION));
-    config.setKeyStorePassword(sslProperties.getProperty(SSL_KEYSTORE_PASSWORD));
-    config.setTrustStoreFilePassword(sslProperties.getProperty(SSL_TRUSTSTORE_PASSWORD));
-
+  public static SslFactory toAlpiniSSLFactory(SSLFactory sslFactory) {
     try {
-      return new SSLEngineComponentFactoryImpl(config);
+      return new SSLEngineFactoryImpl(toAlpiniSslConfig(sslFactory.getSSLConfig()));
     } catch (Exception e) {
-      LOGGER.error("Failed to build ssl engine component factory by config.", e);
-      throw e;
+      throw new VeniceException("Unable to create SSL factory", e);
     }
+  }
+
+  public static SSLEngineFactoryImpl.Config toAlpiniSslConfig(SSLConfig sslConfig) {
+    SSLEngineFactoryImpl.Config config = new SSLEngineFactoryImpl.Config();
+    config.setSslEnabled(sslConfig.getSslEnabled());
+    config.setKeyStoreType(sslConfig.getKeyStoreType());
+    config.setKeyStoreData(sslConfig.getKeyStoreData());
+    config.setKeyStorePassword(sslConfig.getKeyStorePassword());
+    config.setKeyStoreFilePath(sslConfig.getKeyStoreFilePath());
+    config.setTrustStoreFilePath(sslConfig.getTrustStoreFilePath());
+    config.setTrustStoreFilePassword(sslConfig.getTrustStoreFilePassword());
+    return config;
   }
 
   /**
@@ -186,5 +164,18 @@ public class SslUtils {
       throw e;
     }
     return props;
+  }
+
+  public static X509Certificate getX509Certificate(Certificate certificate) {
+    if (!(certificate instanceof X509Certificate)) {
+      String exceptionMessage = new StringBuilder().append("Only certificates of type ")
+          .append(X509Certificate.class.getName())
+          .append(" are supported. Received certificate of type ")
+          .append(certificate.getClass().getName())
+          .toString();
+      throw new IllegalArgumentException(exceptionMessage);
+    }
+
+    return (X509Certificate) certificate;
   }
 }

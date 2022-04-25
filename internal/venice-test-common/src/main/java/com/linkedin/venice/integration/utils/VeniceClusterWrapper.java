@@ -178,7 +178,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
         if (options.getNumberOfRouters() > 0) {
           ClientConfig clientConfig = new ClientConfig().setVeniceURL(zkAddress)
               .setD2ServiceName(D2TestUtils.getD2ServiceName(options.getClusterToD2(), options.getClusterName()))
-              .setSslEngineComponentFactory(SslUtils.getLocalSslFactory())
+              .setSslFactory(SslUtils.getVeniceLocalSslFactory())
               .setStoreName("dummy");
           options.getExtraProperties().put(CLIENT_CONFIG_FOR_CONSUMER, clientConfig);
         }
@@ -215,7 +215,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
         if (!veniceRouterWrappers.isEmpty()) {
           ClientConfig clientConfig = new ClientConfig().setVeniceURL(zkAddress)
               .setD2ServiceName(D2TestUtils.getD2ServiceName(options.getClusterToD2(), options.getClusterName()))
-              .setSslEngineComponentFactory(SslUtils.getLocalSslFactory());
+              .setSslFactory(SslUtils.getVeniceLocalSslFactory());
           featureProperties.put(CLIENT_CONFIG_FOR_CONSUMER, clientConfig);
         }
         featureProperties.setProperty(SERVER_ENABLE_KAFKA_OPENSSL, Boolean.toString(options.isKafkaOpenSSLEnabled()));

@@ -3,7 +3,6 @@ package com.linkedin.venice.router.api;
 import static com.linkedin.venice.HttpConstants.*;
 import static org.apache.http.HttpStatus.*;
 
-import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.LiveInstanceMonitor;
 import com.linkedin.venice.meta.QueryAction;
@@ -11,6 +10,7 @@ import com.linkedin.venice.router.VeniceRouterConfig;
 import com.linkedin.venice.router.httpclient.PortableHttpResponse;
 import com.linkedin.venice.router.httpclient.StorageNodeClient;
 import com.linkedin.venice.router.httpclient.VeniceMetaDataRequest;
+import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.LatencyUtils;
 import java.util.ArrayList;
@@ -42,7 +42,7 @@ public class RouterHeartbeat extends AbstractVeniceService {
       LiveInstanceMonitor monitor,
       VeniceHostHealth health,
       VeniceRouterConfig routerConfig,
-      Optional<SSLEngineComponentFactory> sslFactory,
+      Optional<SSLFactory> sslFactory,
       StorageNodeClient storageNodeClient) {
 
     // How long of a timeout we allow for a node to respond to a heartbeat request

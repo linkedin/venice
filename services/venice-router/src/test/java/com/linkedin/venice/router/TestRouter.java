@@ -127,7 +127,7 @@ public class TestRouter {
         MockVeniceRouterWrapper router =
             ServiceFactory.getMockVeniceRouter(zk.getAddress(), SSL_TO_STORAGE_NODES, new Properties())) {
 
-      SSLContext sslContext = SslUtils.getLocalSslFactory().getSSLContext();
+      SSLContext sslContext = SslUtils.getVeniceLocalSslFactory().getSSLContext();
       SSLIOSessionStrategy sslSessionStrategy = new SSLIOSessionStrategy(sslContext);
       try (CloseableHttpAsyncClient httpClient = HttpAsyncClients.custom().setSSLStrategy(sslSessionStrategy).build()) {
 
@@ -172,7 +172,7 @@ public class TestRouter {
         MockVeniceRouterWrapper router =
             ServiceFactory.getMockVeniceRouter(zk.getAddress(), SSL_TO_STORAGE_NODES, new Properties())) {
 
-      SSLContext sslContext = SslUtils.getLocalSslFactory().getSSLContext();
+      SSLContext sslContext = SslUtils.getVeniceLocalSslFactory().getSSLContext();
       SSLIOSessionStrategy sslSessionStrategy = new SSLIOSessionStrategy(sslContext);
       try (CloseableHttpAsyncClient httpClient = HttpAsyncClients.custom().setSSLStrategy(sslSessionStrategy).build()) {
 

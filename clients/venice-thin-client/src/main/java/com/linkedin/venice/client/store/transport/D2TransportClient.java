@@ -6,7 +6,7 @@ import com.linkedin.common.callback.Callback;
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.d2.balancer.D2ClientBuilder;
 import com.linkedin.data.ByteString;
-import com.linkedin.r2.R2Constants;
+import com.linkedin.r2.filter.R2Constants;
 import com.linkedin.r2.message.RequestContext;
 import com.linkedin.r2.message.rest.RestException;
 import com.linkedin.r2.message.rest.RestMethod;
@@ -21,7 +21,6 @@ import com.linkedin.r2.message.stream.entitystream.EntityStream;
 import com.linkedin.r2.message.stream.entitystream.EntityStreams;
 import com.linkedin.r2.message.stream.entitystream.ReadHandle;
 import com.linkedin.r2.message.stream.entitystream.Reader;
-import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
 import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
@@ -29,6 +28,7 @@ import com.linkedin.venice.client.exceptions.VeniceClientHttpException;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.schema.SchemaData;
+import com.linkedin.venice.security.SSLFactory;
 import java.net.URI;
 import java.util.Map;
 import java.util.Optional;
@@ -78,7 +78,7 @@ public class D2TransportClient extends TransportClient {
         .setLbWaitTimeout(clientConfig.getD2ZkTimeout(), TimeUnit.MILLISECONDS)
         .setBasePath(clientConfig.getD2BasePath());
 
-    SSLEngineComponentFactory sslFactory = clientConfig.getSslEngineComponentFactory();
+    SSLFactory sslFactory = clientConfig.getSslFactory();
     if (sslFactory != null) {
       builder.setIsSSLEnabled(sslFactory.isSslEnabled());
       builder.setSSLContext(sslFactory.getSSLContext());
@@ -101,7 +101,7 @@ public class D2TransportClient extends TransportClient {
     RestRequest request = getRestGetRequest(requestPath, headers);
     CompletableFuture<TransportClientResponse> valueFuture = new CompletableFuture<>();
     RequestContext requestContext = new RequestContext();
-    requestContext.putLocalAttr(R2Constants.R2_OPERATION, "get"); // required for d2 backup requests
+    requestContext.putLocalAttr(R2Constants.OPERATION, "get"); // required for d2 backup requests
     restRequest(request, requestContext, new D2TransportClientCallback(valueFuture));
     return valueFuture;
   }
@@ -121,7 +121,7 @@ public class D2TransportClient extends TransportClient {
   // TODO: we may want to differentiate 'compute' from 'batchget'
   private RequestContext getRequestContextForPost() {
     RequestContext requestContext = new RequestContext();
-    requestContext.putLocalAttr(R2Constants.R2_OPERATION, "batchget"); // required for d2 backup requests
+    requestContext.putLocalAttr(R2Constants.OPERATION, "batchget"); // required for d2 backup requests
 
     return requestContext;
   }

@@ -1848,4 +1848,9 @@ public class ConfigKeys {
    */
   public static final String UNREGISTER_METRIC_FOR_DELETED_STORE_ENABLED =
       "unregister.metric.for.deleted.store.enabled";
+
+  /**
+   * A config to specify the class to use to parse identities at runtime
+   */
+  public static final String IDENTITY_PARSER_CLASS = "identity.parser.class";
 }
