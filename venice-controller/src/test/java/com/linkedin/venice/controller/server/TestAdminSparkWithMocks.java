@@ -167,7 +167,7 @@ public class TestAdminSparkWithMocks {
     doReturn(1).when(admin).getReplicationFactor(anyString(), anyString());
     doReturn(1).when(admin).calculateNumberOfPartitions(anyString(), anyString(), anyLong());
     doReturn(corpRegionKafka.getFirst()).when(admin).getKafkaBootstrapServers(anyBoolean());
-    doReturn(true).when(admin).whetherEnableBatchPushFromAdmin();
+    doReturn(true).when(admin).whetherEnableBatchPushFromAdmin(anyString());
     doReturn(true).when(admin).isActiveActiveReplicationEnabledInAllRegion(clusterName, storeName, false);
     doReturn(storeName + "_rt").when(admin).getRealTimeTopic(anyString(), anyString());
     doReturn(corpRegionKafka).when(admin).getNativeReplicationKafkaBootstrapServerAndZkAddress(corpRegion);

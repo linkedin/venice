@@ -229,7 +229,7 @@ public class CreateVersion extends AbstractRoute {
           case BATCH:
           case INCREMENTAL:
           case STREAM_REPROCESSING:
-            if (!admin.whetherEnableBatchPushFromAdmin()) {
+            if (!admin.whetherEnableBatchPushFromAdmin(storeName)) {
               throw new VeniceUnsupportedOperationException(pushTypeString, "Please push data to Venice Parent Colo instead");
             }
             String dictionaryStr = request.queryParams(COMPRESSION_DICTIONARY);
@@ -555,16 +555,15 @@ public class CreateVersion extends AbstractRoute {
           responseObject.setError("Only admin users are allowed to run " + request.url());
           return AdminSparkServer.mapper.writeValueAsString(responseObject);
         }
-        if (!admin.whetherEnableBatchPushFromAdmin()) {
+        AdminSparkServer.validateParams(request, EMPTY_PUSH.getParams(), admin);
+
+        String storeName = request.queryParams(NAME);
+        if (!admin.whetherEnableBatchPushFromAdmin(storeName)) {
           throw new VeniceUnsupportedOperationException("EMPTY PUSH",
               "Please push data to Venice Parent Colo instead or use Aggregate mode if you are running Samza GF Job.");
         }
 
-        AdminSparkServer.validateParams(request, EMPTY_PUSH.getParams(), admin);
-
-        //Query params
         clusterName = request.queryParams(CLUSTER);
-        String storeName = request.queryParams(NAME);
         long storeSize = Utils.parseLongFromString(request.queryParams(STORE_SIZE), STORE_SIZE);
         String pushJobId = request.queryParams(PUSH_JOB_ID);
         int partitionNum = admin.calculateNumberOfPartitions(clusterName, storeName, storeSize);

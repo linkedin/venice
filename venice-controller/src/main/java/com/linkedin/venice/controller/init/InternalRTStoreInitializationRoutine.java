@@ -57,7 +57,7 @@ public class InternalRTStoreInitializationRoutine implements ClusterLeaderInitia
       LOGGER.info("Enabled hybrid for internal store " + storeName + " in cluster " + clusterName);
     }
 
-    if (store.getVersions().isEmpty()) {
+    if (store.getCurrentVersion() <= 0) {
       int partitionCount = multiClusterConfigs.getControllerConfig(clusterName).getNumberOfPartition();
       int replicationFactor = admin.getReplicationFactor(clusterName, storeName);
       Version version = admin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(),

@@ -168,7 +168,7 @@ public class CreateVersionTest {
     // Mock an Admin
     Admin admin = mock(Admin.class);
     doReturn(true).when(admin).isLeaderControllerFor(clusterName);
-    doReturn(true).when(admin).whetherEnableBatchPushFromAdmin();
+    doReturn(true).when(admin).whetherEnableBatchPushFromAdmin(storeName);
 
     // Mock a certificate
     X509Certificate certificate = mock(X509Certificate.class);
