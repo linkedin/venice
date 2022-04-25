@@ -976,8 +976,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
     @Override
-    public boolean whetherEnableBatchPushFromAdmin() {
-        return multiClusterConfigs.isEnableBatchPushFromAdminInChildController();
+    public boolean whetherEnableBatchPushFromAdmin(String storeName) {
+        // Allow (empty) push to participant system store from child controller directly since participant stores are
+        // independent in different fabrics (different data).
+        return VeniceSystemStoreUtils.isParticipantStore(storeName)
+            || multiClusterConfigs.isEnableBatchPushFromAdminInChildController();
     }
 
     @Override

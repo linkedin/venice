@@ -2887,7 +2887,7 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
-  public boolean whetherEnableBatchPushFromAdmin() {
+  public boolean whetherEnableBatchPushFromAdmin(String storeName) {
     /**
      * Batch push to Parent Cluster is always enabled.
      */

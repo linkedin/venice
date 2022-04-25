@@ -16,6 +16,13 @@ public class VeniceSystemStoreUtils {
     return String.format(PARTICIPANT_STORE_FORMAT, clusterName);
   }
 
+  public static boolean isParticipantStore(String storeName) {
+    if (storeName == null) {
+      return false;
+    }
+    return storeName.startsWith(PARTICIPANT_STORE_PREFIX);
+  }
+
   public static String getPushJobDetailsStoreName() {
     return PUSH_JOB_DETAILS_STORE_NAME;
   }
