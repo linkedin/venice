@@ -671,32 +671,34 @@ public class ProducerTracker {
         previousSequenceNumber = String.valueOf(segment.getSequenceNumber());
       }
       StringBuilder sb = new StringBuilder();
+      // during parsing the logs, you can pipe these lines to
+      // "tr ';' '\n' " and get the more readable presentation
       sb.append(name() + " data detected for producer GUID: ")
           .append(GuidUtils.getHexFromGuid(producerMetadata.producerGUID))
-          .append(",\nmessage type: " + messageTypeString)
-          .append(",\npartition: " + consumerRecord.partition());
+          .append("; message type: " + messageTypeString)
+          .append("; partition: " + consumerRecord.partition());
       if (null != segment) {
-        sb.append(",\nprevious successful offset (in same segment): " + segment.getLastSuccessfulOffset());
+        sb.append(",; previous successful offset (in same segment): " + segment.getLastSuccessfulOffset());
       }
-      sb.append(",\nincoming offset: " + consumerRecord.offset())
-          .append(",\nprevious segment: " + previousSegment)
-          .append(",\nincoming segment: " + producerMetadata.segmentNumber)
-          .append(",\nprevious sequence number: " + previousSequenceNumber)
-          .append(",\nincoming sequence number: " + producerMetadata.messageSequenceNumber)
-          .append(",\nconsumer record timestamp: " + consumerRecord.timestamp() + " (" + new Date(consumerRecord.timestamp()).toString() + ")")
-          .append(",\nproducer timestamp: " + producerMetadata.messageTimestamp + " (" + new Date(producerMetadata.messageTimestamp).toString() + ")");
+      sb.append("; incoming offset: " + consumerRecord.offset())
+          .append(";previous segment: " + previousSegment)
+          .append("; incoming segment: " + producerMetadata.segmentNumber)
+          .append("; previous sequence number: " + previousSequenceNumber)
+          .append("; incoming sequence number: " + producerMetadata.messageSequenceNumber)
+          .append("; consumer record timestamp: " + consumerRecord.timestamp() + " (" + new Date(consumerRecord.timestamp()).toString() + ")")
+          .append("; producer timestamp: " + producerMetadata.messageTimestamp + " (" + new Date(producerMetadata.messageTimestamp).toString() + ")");
       if (producerMetadata.upstreamOffset != -1) {
-        sb.append(",\nproducer metadata's upstream offset: " + producerMetadata.upstreamOffset);
+        sb.append("; producer metadata's upstream offset: " + producerMetadata.upstreamOffset);
       }
       if (null != consumerRecord.value().leaderMetadataFooter) {
-        sb.append(",\nleader metadata's upstream offset: " + consumerRecord.value().leaderMetadataFooter.upstreamOffset)
-            .append(",\nleader metadata's host name: " + consumerRecord.value().leaderMetadataFooter.hostName);
+        sb.append("; leader metadata's upstream offset: " + consumerRecord.value().leaderMetadataFooter.upstreamOffset)
+            .append("; leader metadata's host name: " + consumerRecord.value().leaderMetadataFooter.hostName);
       }
       if (segment != null) {
-        sb.append(",\naggregates: " + printMap(segment.getAggregates()))
-            .append(",\ndebugInfo: " + printMap(segment.getDebugInfo()));
+        sb.append("; aggregates: " + printMap(segment.getAggregates()))
+            .append("; debugInfo: " + printMap(segment.getDebugInfo()));
       }
-      sb.append(extraInfo.map(info -> ",\nextra info: " + info).orElse(""));
+      sb.append(extraInfo.map(info -> "; extra info: " + info).orElse(""));
 
       return exceptionSupplier.apply(sb.toString());
     }
