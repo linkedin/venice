@@ -24,6 +24,8 @@ import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiColoMultiClusterWrapper;
 import com.linkedin.venice.meta.DataReplicationPolicy;
+import com.linkedin.venice.meta.Instance;
+import com.linkedin.venice.meta.OnlineInstanceFinder;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
@@ -54,6 +56,9 @@ import java.util.Properties;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.IntStream;
+import org.apache.helix.HelixAdmin;
+import org.apache.helix.manager.zk.ZKHelixAdmin;
+import org.apache.helix.model.IdealState;
 import org.apache.http.HttpStatus;
 import org.apache.samza.config.MapConfig;
 import org.apache.samza.system.OutgoingMessageEnvelope;
@@ -90,6 +95,7 @@ public class ActiveActiveReplicationForHybridTest {
   protected VeniceTwoLayerMultiColoMultiClusterWrapper multiColoMultiClusterWrapper;
 
   private D2Client d2ClientForDC0Region;
+  private Properties serverProperties;
 
   public Map<String, String> getExtraServerProperties() {
     return Collections.emptyMap();
@@ -102,7 +108,7 @@ public class ActiveActiveReplicationForHybridTest {
      * Create a testing environment with 1 parent fabric and 3 child fabrics;
      * Set server and replication factor to 2 to ensure at least 1 leader replica and 1 follower replica;
      */
-    Properties serverProperties = new Properties();
+    serverProperties = new Properties();
     serverProperties.put(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 1L);
     serverProperties.put(SERVER_SHARED_CONSUMER_POOL_ENABLED, "true");
     serverProperties.setProperty(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, "false");
@@ -275,12 +281,6 @@ public class ActiveActiveReplicationForHybridTest {
     }
   }
 
-  /**
-   * This test case is going to fail with this error:
-   * java.lang.AssertionError: Servers in dc-0 haven't consumed real-time data from region dc-1
-   * Once servers are able to consume real-time messages from multiple regions, we can enable this test case
-   * to test the feature.
-   */
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testAAReplicationCanConsumeFromAllRegions(boolean isChunkingEnabled, boolean useTransientRecordCache)
       throws NoSuchFieldException, IllegalAccessException, InterruptedException, ExecutionException {
@@ -474,12 +474,6 @@ public class ActiveActiveReplicationForHybridTest {
     }
   }
 
-  /**
-   * This test case is going to fail with this error:
-   * java.lang.AssertionError: DCR is not working properly expected [value1] but found [value2]
-   * Once servers are able to support deterministic-conflict-resolution, we can enable this test case
-   * to test the feature.
-   */
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testAAReplicationCanResolveConflicts(boolean useLogicalTimestamp) {
     String clusterName = CLUSTER_NAMES[0];
@@ -715,6 +709,58 @@ public class ActiveActiveReplicationForHybridTest {
     }
   }
 
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testHelixReplicationFactorConfigChange() {
+    String clusterName = CLUSTER_NAMES[0];
+    String storeName = Utils.getUniqueString("test-store");
+    VeniceControllerWrapper parentController =
+        parentControllers.stream().filter(c -> c.isLeaderController(clusterName)).findAny().get();
+    VeniceClusterWrapper clusterForDC0Region = childDatacenters.get(0).getClusters().get(clusterName);
+    String kafkaTopic;
+
+    try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentController.getControllerUrl())) {
+      parentControllerClient.createNewStore(storeName, "owner", STRING_SCHEMA, STRING_SCHEMA);
+      updateStore(storeName, parentControllerClient, Optional.of(true), Optional.of(true), Optional.of(true));
+      // Empty push to create a version
+      VersionCreationResponse response = parentControllerClient.emptyPush(storeName, Utils.getUniqueString("empty-hybrid-push"), 1L);
+      kafkaTopic = response.getKafkaTopic();
+      // Verify that version 1 is already created in dc-0 region, and there are less than 3 ready-to-serve instances
+      try (ControllerClient childControllerClient =
+          new ControllerClient(clusterName, clusterForDC0Region.getLeaderVeniceController().getControllerUrl())) {
+        OnlineInstanceFinder onlineInstanceFinder = clusterForDC0Region.getRandomVeniceRouter().getOnlineInstanceFinder();
+        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+          StoreResponse storeResponse = TestUtils.assertCommand(childControllerClient.getStore(storeName));
+          Assert.assertEquals(storeResponse.getStore().getCurrentVersion(), 1);
+          List<Instance> instances = onlineInstanceFinder.getReadyToServeInstances(kafkaTopic, 0);
+          Assert.assertTrue(instances.size() < 3);
+        });
+      }
+    }
+
+    VeniceServerWrapper server = null;
+    HelixAdmin helixAdminForDC0Region = null;
+    try {
+      // Add the third server in dc-0 region. Update Helix RF config from 2 to 3
+      server = clusterForDC0Region.addVeniceServer(new Properties(), serverProperties);
+      helixAdminForDC0Region = new ZKHelixAdmin(clusterForDC0Region.getZk().getAddress());
+      IdealState idealState = helixAdminForDC0Region.getResourceIdealState(clusterName, kafkaTopic);
+      idealState.setReplicas("3");
+      helixAdminForDC0Region.setResourceIdealState(clusterName, kafkaTopic, idealState);
+      // Expect to have 3 ready-to-serve instances
+      OnlineInstanceFinder onlineInstanceFinder = clusterForDC0Region.getRandomVeniceRouter().getOnlineInstanceFinder();
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+        List<Instance> instances = onlineInstanceFinder.getReadyToServeInstances(kafkaTopic, 0);
+        Assert.assertEquals(instances.size(), 3);
+      });
+    } finally {
+      if (server != null) {
+        clusterForDC0Region.removeVeniceServer(server.getPort());
+      }
+      if (helixAdminForDC0Region != null) {
+        helixAdminForDC0Region.close();
+      }
+    }
+  }
 
   static ControllerResponse updateStore(
       String storeName,
