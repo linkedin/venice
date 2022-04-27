@@ -108,6 +108,13 @@ public class AggRouterHttpRequestStats extends AbstractVeniceAggStats<RouterHttp
     }
   }
 
+  public void recordBadRequestKeyCount(String storeName, int keyCount) {
+    totalStats.recordBadRequestKeyCount(keyCount);
+    if (storeName != null) {
+      getStoreStats(storeName).recordBadRequestKeyCount(keyCount);
+    }
+  }
+
   public void recordRequestThrottledByRouterCapacity(String storeName) {
     totalStats.recordRequestThrottledByRouterCapacity();
     if (storeName != null) {
