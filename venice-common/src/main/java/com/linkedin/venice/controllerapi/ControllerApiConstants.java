@@ -59,7 +59,7 @@ public class ControllerApiConstants {
   public static final String BATCH_GET_LIMIT = "batch_get_limit";
   public static final String LARGEST_USED_VERSION_NUMBER = "largest_used_version_number";
   public static final String NUM_VERSIONS_TO_PRESERVE = "num_versions_to_preserve";
-  public static final String META_SYSTEM_STORE_ENABLED = "meta_system_store_enabled";
+  public static final String DISABLE_META_STORE = "disable_meta_store";
   public static final String DISABLE_DAVINCI_PUSH_STATUS_STORE = "disable_davinci_push_status_store";
   public static final String MESSAGE = "message";
 

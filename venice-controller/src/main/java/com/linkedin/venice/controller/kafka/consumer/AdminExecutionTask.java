@@ -454,6 +454,10 @@ public class AdminExecutionTask implements Callable<Void> {
     params.setRegionsFilter(message.regionsFilter == null ? null : message.regionsFilter.toString());
     params.setApplyTargetVersionFilterForIncPush(message.applyTargetVersionFilterForIncPush);
 
+    if (message.disableMetaStore) {
+      params.setDisableMetaStore();
+    }
+
     if (message.disableDavinciPushStatusStore) {
       params.setDisableDavinciPushStatusStore();
     }

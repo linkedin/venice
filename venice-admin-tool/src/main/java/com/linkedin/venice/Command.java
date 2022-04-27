@@ -15,9 +15,9 @@ import static com.linkedin.venice.Arg.*;
  */
 public enum Command {
 
-  LIST_STORES("list-stores", "",
+  LIST_STORES("list-stores", "List all stores present in the given cluster",
       new Arg[] {URL, CLUSTER}, new Arg[] {INCLUDE_SYSTEM_STORES}),
-  DESCRIBE_STORE("describe-store", "",
+  DESCRIBE_STORE("describe-store", "Get store details",
       new Arg[] {URL, CLUSTER, STORE}),
   DESCRIBE_STORES("describe-stores", "",
       new Arg[] {URL, CLUSTER}, new Arg[] {INCLUDE_SYSTEM_STORES}),
@@ -99,8 +99,8 @@ public enum Command {
           INCREMENTAL_PUSH_ENABLED, BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOUR, HYBRID_STORE_DISK_QUOTA_ENABLED,
           REGULAR_VERSION_ETL_ENABLED, FUTURE_VERSION_ETL_ENABLED, ETLED_PROXY_USER_ACCOUNT, NATIVE_REPLICATION_ENABLED, PUSH_STREAM_SOURCE_ADDRESS,
           INCREMENTAL_PUSH_POLICY, BACKUP_VERSION_RETENTION_DAY, REPLICATION_FACTOR, NATIVE_REPLICATION_SOURCE_FABRIC, REPLICATE_ALL_CONFIGS,
-          ACTIVE_ACTIVE_REPLICATION_ENABLED, REGIONS_FILTER, APPLY_TARGET_VERSION_FILTER_FOR_INC_PUSH, META_SYSTEM_STORE_ENABLED,
-          DISABLE_DAVINCI_PUSH_STATUS_STORE}),
+          ACTIVE_ACTIVE_REPLICATION_ENABLED, REGIONS_FILTER, APPLY_TARGET_VERSION_FILTER_FOR_INC_PUSH,
+          DISABLE_META_STORE, DISABLE_DAVINCI_PUSH_STATUS_STORE}),
   UPDATE_CLUSTER_CONFIG("update-cluster-config", "Update live cluster configs",
       new Arg[] {URL, CLUSTER},
       new Arg[] {FABRIC, SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND, ALLOW_STORE_MIGRATION,
@@ -174,10 +174,6 @@ public enum Command {
       new Arg[] {URL, CLUSTER, STORE_TYPE}),
   DISABLE_LF_MODEL("disable-lf-model", "disable leader/follower model for certain stores based on the param",
       new Arg[] {URL, CLUSTER, STORE_TYPE}),
-  CREATE_DAVINCI_PUSH_STATUS_STORE("create-davinci-push-status-store", "Create a Da Vinci push status store for an existing Venice store",
-      new Arg[] {URL, CLUSTER, STORE}),
-  DELETE_DAVINCI_PUSH_STATUS_STORE("delete-davinci-push-status-store", "Delete the Da Vinci push status store for an existing Venice store",
-      new Arg[] {URL, CLUSTER, STORE}),
   NEW_STORE_ACL("new-store-acl", "Create a new store with ACL permissions set",
       new Arg[]{URL, CLUSTER, STORE, KEY_SCHEMA, VALUE_SCHEMA, ACL_PERMS},
       new Arg[]{OWNER, VSON_STORE}),
