@@ -4,6 +4,8 @@ import java.io.IOException;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+
+import org.apache.zookeeper.client.ZKClientConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -40,9 +42,9 @@ public class ClientCnxnSocketDelayedNIO extends ClientCnxnSocketNIO {
 
   private final long socketIoDelayUpperBoundMS;
 
-  ClientCnxnSocketDelayedNIO()
+  ClientCnxnSocketDelayedNIO(ZKClientConfig clientConfig)
       throws IOException {
-    super();
+    super(clientConfig);
     socketIoDelayLowerBoundMS = defaultSocketIoDelayLowerBoundMS;
     socketIoDelayUpperBoundMS = defaultSocketIoDelayUpperBoundMS;
   }
@@ -73,7 +75,7 @@ public class ClientCnxnSocketDelayedNIO extends ClientCnxnSocketNIO {
   }
 
   @Override
-  void doIO(List<ClientCnxn.Packet> pendingQueue, LinkedList<ClientCnxn.Packet> outgoingQueue, ClientCnxn cnxn)
+  void doIO(List<ClientCnxn.Packet> pendingQueue, ClientCnxn cnxn)
       throws InterruptedException, IOException {
     if (socketIoDelayUpperBoundMS > 0) {
       long socketIoDelay =
@@ -85,6 +87,6 @@ public class ClientCnxnSocketDelayedNIO extends ClientCnxnSocketNIO {
         logger.error("Delay is interrupted, io operation will continue to be executed.", e);
       }
     }
-    super.doIO(pendingQueue, outgoingQueue, cnxn);
+    super.doIO(pendingQueue, cnxn);
   }
 }
