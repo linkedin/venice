@@ -37,7 +37,7 @@ ext.libraries = [
     commonsCodec: 'commons-codec:commons-codec:1.4',
     commonsIo: 'commons-io:commons-io:2.11',
     fastUtil: 'it.unimi.dsi:fastutil:8.3.0',
-    helix: 'org.apache.helix:helix-core:1.0.1.24',
+    helix: 'org.apache.helix:helix-core:1.0.3.2',
     kafka: internalKafkaGroup + ':kafka_2.12:' + internalKafkaVersion,
     kafkaClients: internalKafkaGroup + ':kafka-clients:' + internalKafkaVersion,
     kafkaClientsTest: internalKafkaGroup + ':kafka-clients:' + internalKafkaVersion + ':test',

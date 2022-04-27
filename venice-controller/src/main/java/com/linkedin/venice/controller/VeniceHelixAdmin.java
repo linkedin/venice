@@ -185,15 +185,21 @@ import org.apache.avro.specific.SpecificRecord;
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.lang.Validate;
 import org.apache.helix.HelixAdmin;
+import org.apache.helix.HelixCloudProperty;
+import org.apache.helix.HelixManager;
 import org.apache.helix.HelixManagerFactory;
+import org.apache.helix.HelixManagerProperty;
+import org.apache.helix.HelixPropertyFactory;
 import org.apache.helix.InstanceType;
 import org.apache.helix.PropertyKey;
+import org.apache.helix.cloud.event.helix.CloudEventCallbackProperty;
 import org.apache.helix.controller.rebalancer.DelayedAutoRebalancer;
 import org.apache.helix.controller.rebalancer.strategy.AutoRebalanceStrategy;
 import org.apache.helix.controller.rebalancer.strategy.CrushRebalanceStrategy;
 import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.helix.manager.zk.ZKHelixManager;
 import org.apache.helix.manager.zk.ZNRecordSerializer;
+import org.apache.helix.model.CloudConfig;
 import org.apache.helix.model.ClusterConfig;
 import org.apache.helix.model.ExternalView;
 import org.apache.helix.model.HelixConfigScope;
@@ -202,6 +208,7 @@ import org.apache.helix.model.LeaderStandbySMD;
 import org.apache.helix.model.LiveInstance;
 import org.apache.helix.model.builder.HelixConfigScopeBuilder;
 import org.apache.helix.participant.StateMachineEngine;
+import org.apache.helix.zookeeper.datamodel.ZNRecord;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.http.HttpStatus;
 import org.apache.logging.log4j.LogManager;
@@ -531,9 +538,25 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           return;
         }
         InstanceType instanceType = isControllerClusterHAAS ? InstanceType.PARTICIPANT : InstanceType.CONTROLLER_PARTICIPANT;
-        SafeHelixManager tempManager = new SafeHelixManager(HelixManagerFactory
-            .getZKHelixManager(controllerClusterName, controllerName, instanceType,
-                multiClusterConfigs.getControllerClusterZkAddress()));
+        String zkAddress = multiClusterConfigs.getControllerClusterZkAddress();
+        HelixManagerProperty helixManagerProperty;
+        if (getControllerConfig().isControllerInAzureFabric()) {
+          HelixCloudProperty cloudProperty = new HelixCloudProperty(new CloudConfig(new ZNRecord(controllerClusterName)));
+          cloudProperty.setCloudEventCallbackEnabled(true);
+          // Cloud event callback property, if not custom callback implementation specified it will use
+          // org.apache.helix.cloud.event.helix.DefaultCloudEventCallbackImpl.class by default.
+          CloudEventCallbackProperty property = new CloudEventCallbackProperty(Collections.emptyMap());
+          // Enable the Helix operation to disable the instance upon receiving maintenance event notification.
+          property.setHelixOperationEnabled(CloudEventCallbackProperty.HelixOperation.ENABLE_DISABLE_INSTANCE, true);
+          cloudProperty.setCloudEventCallbackProperty(property);
+          HelixManagerProperty.Builder managerPropertyBuilder = new HelixManagerProperty.Builder();
+          managerPropertyBuilder.setHelixCloudProperty(cloudProperty);
+          helixManagerProperty = managerPropertyBuilder.build();
+        } else {
+          helixManagerProperty = HelixPropertyFactory.getInstance().getHelixManagerProperty(zkAddress, controllerClusterName);
+        }
+        SafeHelixManager tempManager = new SafeHelixManager(new ZKHelixManager(controllerClusterName, controllerName,
+            instanceType, zkAddress, null, helixManagerProperty));
         StateMachineEngine stateMachine = tempManager.getStateMachineEngine();
         stateMachine.registerStateModelFactory(LeaderStandbySMD.name, controllerStateModelFactory);
         try {
