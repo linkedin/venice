@@ -35,6 +35,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   private final Sensor compressedResponseSizeSensor;
   private final Sensor responseSizeSensor;
   private final Sensor badRequestSensor;
+  private final Sensor badRequestKeyCountSensor;
   private final Sensor requestThrottledByRouterCapacitySensor;
   private final Sensor decompressionTimeSensor;
   private final Sensor routerResponseWaitingTimeSensor;
@@ -89,6 +90,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
         new TehutiUtils.SimpleRatioStat(tardyRequestRate, requestRate));
     throttleSensor = registerSensor("throttled_request", new Count());
     badRequestSensor = registerSensor("bad_request", new Count());
+    badRequestKeyCountSensor = registerSensor("bad_request_key_count", new OccurrenceRate(), new Avg(), new Max());
     requestThrottledByRouterCapacitySensor = registerSensor("request_throttled_by_router_capacity", new Count());
     fanoutRequestCountSensor = registerSensor("fanout_request_count", new Avg(), new Max(0));
     latencySensor = registerSensorWithDetailedPercentiles("latency", new Avg(), new Max(0));
@@ -234,6 +236,10 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
 
   public void recordBadRequest() {
     badRequestSensor.record();
+  }
+
+  public void recordBadRequestKeyCount(int keyCount) {
+    badRequestKeyCountSensor.record(keyCount);
   }
 
   public void recordRequestThrottledByRouterCapacity() {

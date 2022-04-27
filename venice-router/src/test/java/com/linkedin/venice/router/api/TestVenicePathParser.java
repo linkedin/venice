@@ -2,24 +2,36 @@ package com.linkedin.venice.router.api;
 
 import com.linkedin.ddsstorage.netty4.misc.BasicFullHttpRequest;
 import com.linkedin.ddsstorage.router.api.RouterException;
+import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.CompressorFactory;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.router.VeniceRouterConfig;
 import com.linkedin.venice.router.api.path.VenicePath;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
 import com.linkedin.venice.router.stats.RouterStats;
 import com.linkedin.venice.router.stats.StaleVersionStats;
+import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
+import com.linkedin.venice.serializer.RecordSerializer;
+import com.linkedin.venice.serializer.SerializerDeserializerFactory;
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.Unpooled;
+import io.netty.handler.codec.http.DefaultHttpHeaders;
+import io.netty.handler.codec.http.EmptyHttpHeaders;
+import io.netty.handler.codec.http.HttpHeaders;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpVersion;
 import io.tehuti.metrics.MetricsRepository;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.UUID;
 import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
@@ -27,6 +39,7 @@ import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 import static org.mockito.Mockito.*;
+import static org.testng.FileAssert.*;
 
 
 /**
@@ -113,6 +126,47 @@ public class TestVenicePathParser {
     new VenicePathParser(getVersionFinder(), partitionFinder,getMockedStats(),
          mock(ReadOnlyStoreRepository.class), mockRouterConfig, compressorFactory)
         .parseResourceUri("/badAction/storeName/key");
+  }
+
+  @Test
+  public void parseRequestWithBatchSizeViolation() throws RouterException {
+    String storeName = "storeName";
+    String myUri = "/storage/" + storeName;
+    VenicePartitionFinder partitionFinder = mock(VenicePartitionFinder.class);
+    CompressorFactory compressorFactory = mock(CompressorFactory.class);
+    ReadAvroProtocolDefinition expectedProtocol = ReadAvroProtocolDefinition.MULTI_GET_CLIENT_REQUEST_V1;
+    RecordSerializer<ByteBuffer> serializer = SerializerDeserializerFactory.getAvroGenericSerializer(
+        expectedProtocol.getSchema());
+    int maxKeyCount = 10;
+    ArrayList<ByteBuffer> keys = new ArrayList<>();
+    for (int cur = 0; cur <= maxKeyCount; ++cur) {
+      keys.add(ByteBuffer.wrap(("key_prefix_" + cur).getBytes()));
+    }
+    ByteBuf content = Unpooled.wrappedBuffer(serializer.serializeObjects(keys));
+    HttpHeaders headers = new DefaultHttpHeaders()
+        .add(HttpConstants.VENICE_API_VERSION, expectedProtocol.getProtocolVersion());
+    BasicFullHttpRequest request = new BasicFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.POST, myUri, content,
+        headers, EmptyHttpHeaders.INSTANCE, UUID.randomUUID(), 0, 0);
+    ReadOnlyStoreRepository storeRepository = mock(ReadOnlyStoreRepository.class);
+    doReturn(maxKeyCount).when(storeRepository).getBatchGetLimit(anyString());
+    RouterStats mockRouterStats = mock(RouterStats.class);
+    AggRouterHttpRequestStats multiGetStats = mock(AggRouterHttpRequestStats.class);
+    AggRouterHttpRequestStats singleGetStats = mock(AggRouterHttpRequestStats.class);
+    when(mockRouterStats.getStatsByType(RequestType.MULTI_GET)).thenReturn(multiGetStats);
+    when(mockRouterStats.getStatsByType(RequestType.SINGLE_GET)).thenReturn(singleGetStats);
+
+    VenicePathParser pathParser = new VenicePathParser(getVersionFinder(), partitionFinder, mockRouterStats,
+        storeRepository, mockRouterConfig, compressorFactory);
+    try {
+      pathParser.parseResourceUri(myUri, request);
+      fail("A RouterException should be thrown here");
+    } catch (RouterException e) {
+      // expected and validate bad request metric
+      verify(multiGetStats, only()).recordBadRequestKeyCount(storeName, maxKeyCount + 1);
+    } catch (Throwable t) {
+      t.printStackTrace();
+      fail("Only RouterException is expected, but got: " + t.getClass());
+    }
   }
 
   @Test

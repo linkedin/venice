@@ -8,6 +8,7 @@ import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.router.api.RouterExceptionAndTrackingUtils;
 import com.linkedin.venice.router.api.RouterKey;
 import com.linkedin.venice.router.api.VenicePartitionFinder;
+import com.linkedin.venice.router.exception.VeniceKeyCountLimitException;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
 import com.linkedin.venice.router.stats.RouterStats;
 import io.netty.buffer.ByteBuf;
@@ -107,8 +108,7 @@ public abstract class VeniceMultiKeyPath<K> extends VenicePath {
 
     int keyCount = getPartitionKeys().size();
     if (keyCount > maxKeyCount) {
-      throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.of(getStoreName()), Optional.of(getRequestType()),
-          BAD_REQUEST, "Key count in multi-get request exceeds the threshold: " + maxKeyCount);
+      throw new VeniceKeyCountLimitException(getStoreName(), getRequestType(), keyCount, maxKeyCount);
     }
     if (0 == keyCount) {
       /**

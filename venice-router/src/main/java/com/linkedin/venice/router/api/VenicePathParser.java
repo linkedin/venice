@@ -18,6 +18,7 @@ import com.linkedin.venice.router.api.path.VeniceComputePath;
 import com.linkedin.venice.router.api.path.VeniceMultiGetPath;
 import com.linkedin.venice.router.api.path.VenicePath;
 import com.linkedin.venice.router.api.path.VeniceSingleGetPath;
+import com.linkedin.venice.router.exception.VeniceKeyCountLimitException;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
 import com.linkedin.venice.router.stats.RouterStats;
 import com.linkedin.venice.router.streaming.VeniceChunkedWriteHandler;
@@ -216,7 +217,14 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
         throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.of(storeName), Optional.empty(),
             MOVED_PERMANENTLY, e.getMessage());
       }
-      // log the store/version not exist error and add track it in the unhealthy request metric
+      if (e instanceof VeniceKeyCountLimitException) {
+        VeniceKeyCountLimitException keyCountLimitException = (VeniceKeyCountLimitException)e;
+        routerStats.getStatsByType(keyCountLimitException.getRequestType()).recordBadRequestKeyCount(
+            keyCountLimitException.getStoreName(), keyCountLimitException.getRequestKeyCount());
+      }
+      /**
+       * Tracking the bad requests in {@link RouterExceptionAndTrackingUtils} by logging and metrics.
+       */
       throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.of(storeName), Optional.empty(),
           BAD_REQUEST, e.getMessage());
     } finally {

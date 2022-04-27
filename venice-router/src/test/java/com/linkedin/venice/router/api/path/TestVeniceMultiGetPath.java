@@ -6,6 +6,7 @@ import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.router.RouterThrottleHandler;
 import com.linkedin.venice.router.api.RouterExceptionAndTrackingUtils;
 import com.linkedin.venice.router.api.VenicePartitionFinder;
+import com.linkedin.venice.router.exception.VeniceKeyCountLimitException;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
 import com.linkedin.venice.router.stats.RouterStats;
 import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
@@ -68,7 +69,7 @@ public class TestVeniceMultiGetPath {
     return request;
   }
 
-  @Test (expectedExceptions = RouterException.class, expectedExceptionsMessageRegExp = ".*exceeds the threshold.*")
+  @Test (expectedExceptions = VeniceKeyCountLimitException.class, expectedExceptionsMessageRegExp = ".*exceeds key count limit.*")
   public void testMultiGetReqWithTooManyKeys() throws RouterException {
     String resourceName = Utils.getUniqueString("test_store") + "_v1";
 
