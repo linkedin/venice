@@ -812,7 +812,6 @@ public class AdminTool {
     booleanParam(cmd, Arg.WRITEABILITY, p -> params.setEnableWrites(p), argSet);
     longParam(cmd, Arg.STORAGE_QUOTA, p -> params.setStorageQuotaInByte(p), argSet);
     booleanParam(cmd, Arg.HYBRID_STORE_OVERHEAD_BYPASS, p -> params.setHybridStoreOverheadBypass(p), argSet);
-    booleanParam(cmd, Arg.META_SYSTEM_STORE_ENABLED, p -> params.setStoreMetaSystemStoreEnabled(p), argSet);
     longParam(cmd, Arg.READ_QUOTA, p -> params.setReadQuotaInCU(p), argSet);
     longParam(cmd, Arg.HYBRID_REWIND_SECONDS, p -> params.setHybridRewindSeconds(p), argSet);
     longParam(cmd, Arg.HYBRID_OFFSET_LAG, p -> params.setHybridOffsetLagThreshold(p), argSet);
@@ -852,6 +851,9 @@ public class AdminTool {
     boolean replicateAllConfigs = cmd.hasOption(Arg.REPLICATE_ALL_CONFIGS.toString());
     params.setReplicateAllConfigs(replicateAllConfigs);
 
+    if (cmd.hasOption(Arg.DISABLE_META_STORE.toString())) {
+      params.setDisableMetaStore();
+    }
     if (cmd.hasOption(Arg.DISABLE_DAVINCI_PUSH_STATUS_STORE.toString())) {
       params.setDisableDavinciPushStatusStore();
     }

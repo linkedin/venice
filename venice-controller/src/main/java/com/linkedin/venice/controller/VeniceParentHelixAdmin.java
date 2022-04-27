@@ -1601,7 +1601,6 @@ public class VeniceParentHelixAdmin implements Admin {
       Optional<Boolean> activeActiveReplicationEnabled = params.getActiveActiveReplicationEnabled();
       Optional<String> regionsFilter = params.getRegionsFilter();
       Optional<Boolean> applyTargetStoreFilterForIncPush = params.applyTargetVersionFilterForIncPush();
-      Optional<Boolean> isMetaSystemStoreEnabled = params.isMetaSystemStoreEnabled();
 
       /**
        * Check whether parent controllers will only propagate the update configs to child controller, or all unchanged
@@ -1824,9 +1823,9 @@ public class VeniceParentHelixAdmin implements Admin {
           .map(addToUpdatedConfigList(updatedConfigsList, APPLY_TARGET_VERSION_FILTER_FOR_INC_PUSH))
           .orElseGet(currStore::isApplyTargetVersionFilterForIncPush);
 
-      setStore.metaSystemStoreEnabled = isMetaSystemStoreEnabled
-          .map(addToUpdatedConfigList(updatedConfigsList, META_SYSTEM_STORE_ENABLED))
-          .orElseGet(currStore::isStoreMetadataSystemStoreEnabled);
+      setStore.disableMetaStore = params.disableMetaStore()
+          .map(addToUpdatedConfigList(updatedConfigsList, DISABLE_META_STORE))
+          .orElse(false);
 
       setStore.disableDavinciPushStatusStore = params.disableDavinciPushStatusStore()
           .map(addToUpdatedConfigList(updatedConfigsList, DISABLE_DAVINCI_PUSH_STATUS_STORE))

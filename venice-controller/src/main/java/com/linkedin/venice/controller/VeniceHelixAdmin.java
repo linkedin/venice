@@ -3044,10 +3044,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         });
     }
 
-    public void setMetaSystemStoreEnabled(String clusterName, String storeName, boolean metaSystemStoreEnabled) {
+    public void disableMetaSystemStore(String clusterName, String storeName) {
+      logger.info("Disabling meta system store for store:{} of cluster:{}", storeName, clusterName);
       storeMetadataUpdate(clusterName, storeName, store -> {
-      store.setStoreMetadataSystemStoreEnabled(metaSystemStoreEnabled);
-      return store;
+        store.setStoreMetaSystemStoreEnabled(false);
+        store.setStoreMetadataSystemStoreEnabled(false);
+        return store;
       });
     }
 
@@ -3229,7 +3231,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         Optional<String> nativeReplicationSourceFabric = params.getNativeReplicationSourceFabric();
         Optional<Boolean> activeActiveReplicationEnabled = params.getActiveActiveReplicationEnabled();
         Optional<Boolean> applyTargetVersionFilterForIncPush = params.applyTargetVersionFilterForIncPush();
-        Optional<Boolean> isMetaSystemStoreEnabled = params.isMetaSystemStoreEnabled();
 
         final Optional<HybridStoreConfig> newHybridStoreConfig;
         if (hybridRewindSeconds.isPresent() || hybridOffsetLagThreshold.isPresent()
@@ -3519,8 +3520,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 setApplyTargetVersionFilterForIncPush(clusterName, storeName, applyTargetVersionFilterForIncPush.get());
             }
 
-            if (isMetaSystemStoreEnabled.isPresent()) {
-              setMetaSystemStoreEnabled(clusterName, storeName, isMetaSystemStoreEnabled.get());
+            if (params.disableMetaStore().isPresent() && params.disableMetaStore().get()) {
+              disableMetaSystemStore(clusterName, storeName);
             }
 
             if (params.disableDavinciPushStatusStore().isPresent() && params.disableDavinciPushStatusStore().get()) {

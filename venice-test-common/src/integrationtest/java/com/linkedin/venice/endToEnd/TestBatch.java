@@ -579,12 +579,12 @@ public abstract class TestBatch {
       Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir, false);
       return new Pair<>(recordSchema.getField("id").schema(),
           recordSchema.getField("name").schema());
-    }, properties -> {}, (avroClient, vsonClient, metricsRepository) -> {
+    },properties -> {}, (avroClient, vsonClient, metricsRepository) -> {
       //test single get
       for (int i = 1; i <= 100; i ++) {
         Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + i);
       }
-    }, new UpdateStoreQueryParams().setLeaderFollowerModel(true).setStoreMetaSystemStoreEnabled(true));
+    }, new UpdateStoreQueryParams().setLeaderFollowerModel(true), true);
 
     String metaStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName);
     //Query meta store
@@ -787,6 +787,11 @@ public abstract class TestBatch {
     return testBatchStore(inputFileWriter, extraProps, dataValidator, null, storeParms, false, false);
   }
 
+  private String testBatchStore(InputFileWriter inputFileWriter, Consumer<Properties> extraProps, H2VValidator dataValidator,
+      UpdateStoreQueryParams storeParms, boolean createMetaSystemStore) throws Exception {
+    return testBatchStore(inputFileWriter, extraProps, dataValidator, null, storeParms, false, false, createMetaSystemStore);
+  }
+
   private String testBatchStoreMultiVersionPush(InputFileWriter inputFileWriter, Consumer<Properties> extraProps, H2VValidator dataValidator,
       UpdateStoreQueryParams storeParms) throws Exception {
     return testBatchStore(inputFileWriter, extraProps, dataValidator, null, storeParms, true, false);
@@ -818,6 +823,11 @@ public abstract class TestBatch {
 
   private String testBatchStore(InputFileWriter inputFileWriter, Consumer<Properties> extraProps, H2VValidator dataValidator,
       String existingStore, UpdateStoreQueryParams storeParms, boolean multiPushJobs, boolean addDerivedSchema) throws Exception {
+    return testBatchStore(inputFileWriter, extraProps, dataValidator, existingStore, storeParms, multiPushJobs, addDerivedSchema, false);
+  }
+
+  private String testBatchStore(InputFileWriter inputFileWriter, Consumer<Properties> extraProps, H2VValidator dataValidator,
+      String existingStore, UpdateStoreQueryParams storeParms, boolean multiPushJobs, boolean addDerivedSchema,  boolean createMetaSystemStore) throws Exception {
     File inputDir = getTempDataDirectory();
     Pair<Schema, Schema> schemas = inputFileWriter.write(inputDir);
     String storeName = StringUtils.isEmpty(existingStore) ? Utils.getUniqueString("store") : existingStore;
@@ -831,7 +841,7 @@ public abstract class TestBatch {
           storeParms, addDerivedSchema).close();
     }
 
-    if (storeParms != null && storeParms.isMetaSystemStoreEnabled().orElse(false)) {
+    if (createMetaSystemStore) {
       try (ControllerClient controllerClient = new ControllerClient(veniceCluster.getClusterName(), veniceCluster.getRandomRouterURL())) {
         VersionCreationResponse versionCreationResponse = controllerClient.emptyPush(
             VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName), storeName, 10000);

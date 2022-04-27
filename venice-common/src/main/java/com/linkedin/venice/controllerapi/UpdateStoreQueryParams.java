@@ -72,7 +72,6 @@ public class UpdateStoreQueryParams extends QueryParams {
             .setReplicationFactor(srcStore.getReplicationFactor())
             .setAutoSchemaPushJobEnabled(srcStore.isSchemaAutoRegisterFromPushJobEnabled())
             .setStorageQuotaInByte(srcStore.getStorageQuotaInByte())
-            .setStoreMetaSystemStoreEnabled(srcStore.isStoreMetaSystemStoreEnabled())
             .setWriteComputationEnabled(srcStore.isWriteComputationEnabled());
 
     if (srcStore.getReplicationMetadataVersionId() != -1) {
@@ -183,16 +182,16 @@ public class UpdateStoreQueryParams extends QueryParams {
     return putBoolean(ENABLE_WRITES, enableWrites);
   }
 
-  public UpdateStoreQueryParams setStoreMetaSystemStoreEnabled(boolean enableMetaSystemStore) {
-    return putBoolean(META_SYSTEM_STORE_ENABLED, enableMetaSystemStore);
+  public UpdateStoreQueryParams setDisableMetaStore() {
+    return putBoolean(DISABLE_META_STORE, true);
   }
 
   public UpdateStoreQueryParams setDisableDavinciPushStatusStore() {
     return putBoolean(DISABLE_DAVINCI_PUSH_STATUS_STORE, true);
   }
 
-  public Optional<Boolean> isMetaSystemStoreEnabled() {
-    return getBoolean(META_SYSTEM_STORE_ENABLED);
+  public Optional<Boolean> disableMetaStore() {
+    return getBoolean(DISABLE_META_STORE);
   }
 
   public Optional<Boolean> disableDavinciPushStatusStore() {
