@@ -162,7 +162,7 @@ public class ZkServerWrapper extends ProcessWrapper {
         LOGGER.info("Starting ZK server");
         FileTxnSnapLog txnLog = null;
         try {
-          txnLog = new FileTxnSnapLog(new File(configuration.getDataLogDir()), new File(configuration.getDataDir()));
+          txnLog = new FileTxnSnapLog(configuration.getDataLogDir(), configuration.getDataDir());
           zkServer.setTxnLogFactory(txnLog);
           zkServer.setTickTime(configuration.getTickTime());
           zkServer.setMinSessionTimeout(configuration.getMinSessionTimeout());

@@ -61,7 +61,7 @@ import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 import static com.linkedin.venice.VeniceConstants.*;
-import static org.jboss.netty.handler.codec.http.HttpHeaders.Names.*;
+import static io.netty.handler.codec.http.HttpHeaderNames.*;
 
 public class TestMetaDataHandler {
   private static final String ZK_ADDRESS = "localhost:1234";
