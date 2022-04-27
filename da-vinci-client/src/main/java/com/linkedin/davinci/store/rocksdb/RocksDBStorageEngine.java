@@ -145,12 +145,19 @@ class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePartition
 
   @Override
   public long getRMDSizeInBytes() {
-    int partitionCount = (int) super.getNumberOfPartitions();
+    Set<Integer> partitionIds = super.getPartitionIds();
     long diskUsage = 0;
-    for (int i = 0; i < partitionCount; i++) {
-      AbstractStoragePartition partition = super.getPartitionOrThrow(i);
+    for (int i : partitionIds) {
+      AbstractStoragePartition partition;
+      try {
+        partition = super.getPartitionOrThrow(i);
+      } catch (VeniceException e) {
+        LOGGER.warn("Could not find partition " + i + " for store " + super.getStoreName());
+        continue;
+      }
       diskUsage += partition.getRmdByteUsage();
     }
+
     return diskUsage;
   }
 
