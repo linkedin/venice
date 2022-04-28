@@ -3154,7 +3154,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         if (metaStoreWriter != null && !VeniceSystemStoreType.META_STORE.isSystemStore(storeName)) {
           String metaStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName);
           String metaStoreRT = Version.composeRealTimeTopic(metaStoreName);
-          if (topicManagerRepository.getTopicManager(localKafkaServer).containsTopic(metaStoreRT)) {
+          if (getTopicManager(localKafkaServer).containsTopic(metaStoreRT)) {
             metaStoreWriter.writeInUseValueSchema(storeName, versionNumber, schemaId);
           }
         }
