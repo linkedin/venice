@@ -265,6 +265,9 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
   protected static double getNodeResponsibilityForQuota(PartitionAssignment partitionAssignment, String nodeId){
     double thisNodePartitionPortion = 0; // 1 means full responsibility for serving a partition.  0.33 means serving 1 of 3 replicas for a partition
     for (Partition p : partitionAssignment.getAllPartitions()) {
+      // TODO: getReadyToServeInstances is deprecated and no longer works with L/F.  We need to either
+      // undeprecate getReadyToServeInstances by refactoring it to work with L/F and customized view, or
+      // change the implementation below.
       long thisPartitionReplicaCount = p.getReadyToServeInstances().size();
       long thisNodeReplicaCount = 0;
       for (Instance instance : p.getReadyToServeInstances()){
