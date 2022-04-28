@@ -2678,12 +2678,16 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         throw fatalException;
       }
 
-      String errorMessage = String.format("Fatal data validation problem with topic %s partition %s offset %s, "
+      FatalDataValidationException warningException = fatalException;
+      String warningMessage = String.format("Data integrity validation problem with topic %s partition %s offset %s, "
           + "but consumption will continue since EOP is already received. ",
           consumerRecord.topic(), consumerRecord.partition(), consumerRecord.offset());
-      logger.warn(errorMessage + fatalException.getMessage());
+      // TODO: remove this condition check after fixing the bug that drainer in leaders is validating RT DIV info
+      if (consumerRecord.value().producerMetadata.messageSequenceNumber != 1) {
+        logger.warn(warningMessage + warningException.getMessage());
+      }
 
-      if (!(fatalException instanceof ImproperlyStartedSegmentException)) {
+      if (!(warningException instanceof ImproperlyStartedSegmentException)) {
         /**
          * Run a dummy validation to update DIV metadata.
          */
