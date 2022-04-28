@@ -995,12 +995,11 @@ public class ControllerClient implements Closeable {
             return transport.executeGet(url, routerPath, new QueryParams(), D2ServiceDiscoveryResponse.class);
           }
         } catch (Exception e) {
-          logger.warn("Unable to discover cluster for store " + storeName + " from " + url, e);
+          logger.warn("Unable to discover cluster for store " + storeName + " from " + url);
           lastException = e;
         }
       }
     }
-
     String message = "Unable to discover cluster for store " + storeName + " from " + this.controllerDiscoveryUrls;
     return makeErrorResponse(message, lastException, D2ServiceDiscoveryResponse.class);
   }
