@@ -197,6 +197,7 @@ public class VeniceParentHelixAdmin implements Admin {
   private static final String BATCH_JOB_HEARTBEAT_STORE_DESCRIPTOR = "batch job liveness heartbeat store: ";
   //Store version number to retain in Parent Controller to limit 'Store' ZNode size.
   protected static final int STORE_VERSION_RETENTION_COUNT = 5;
+  private static final StackTraceElement[] EMPTY_STACK_TRACE = new StackTraceElement[0];
 
   private static final long TOPIC_DELETION_DELAY_MS = 5 * Time.MS_PER_MINUTE;
 
@@ -1121,9 +1122,11 @@ public class VeniceParentHelixAdmin implements Admin {
             + "incremental push with push id: " + pushJobId + " with incremental push policy: " +
             INCREMENTAL_PUSH_SAME_AS_REAL_TIME + ". Letting the push continue for store " + storeName);
       } else {
-        throw new VeniceException("Unable to start the push with pushJobId " + pushJobId + " for store " + storeName
-            + ". An ongoing push with pushJobId " + existingPushJobId + " and topic " + currentPushTopic
+        VeniceException e = new VeniceException("Unable to start the push with pushJobId " + pushJobId + " for store " + storeName
+            + ". An ongoing push with pushJobId " + existingPushJobId + " and topic " + currentPushTopic.get()
             + " is found and it must be terminated before another push can be started.");
+        e.setStackTrace(EMPTY_STACK_TRACE);
+        throw e;
       }
     }
 

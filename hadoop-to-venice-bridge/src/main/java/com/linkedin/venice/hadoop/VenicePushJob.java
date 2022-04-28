@@ -2461,7 +2461,7 @@ public class VenicePushJob implements AutoCloseable {
         pushJobSetting.controllerRetries,
         c -> c.discoverCluster(storeName));
     if (clusterDiscoveryResponse.isError()) {
-      throw new VeniceException("Get error in clusterDiscoveryResponse:" + clusterDiscoveryResponse.getError());
+      throw new VeniceException("Failed to discover cluster, error :" + clusterDiscoveryResponse.getError());
     } else {
       return clusterDiscoveryResponse.getCluster();
     }
