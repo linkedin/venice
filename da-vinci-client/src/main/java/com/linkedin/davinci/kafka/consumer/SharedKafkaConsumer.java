@@ -345,7 +345,7 @@ abstract class SharedKafkaConsumer implements KafkaConsumerWrapper {
   protected abstract void sanitizeTopicsWithoutCorrespondingIngestionTask(ConsumerRecords<KafkaKey, KafkaMessageEnvelope> records);
 
   @Override
-  public synchronized boolean hasAnySubscription() {
+  public boolean hasAnySubscription() {
     return !this.currentAssignment.isEmpty();
   }
 
@@ -353,7 +353,7 @@ abstract class SharedKafkaConsumer implements KafkaConsumerWrapper {
    * This function will return true as long as any topic in the passed {@param topics} has been subscribed.
    */
   @Override
-  public synchronized boolean hasSubscribedAnyTopic(Set<String> topics) {
+  public boolean hasSubscribedAnyTopic(Set<String> topics) {
     for (TopicPartition subscribedTopicPartition : currentAssignment) {
       if (topics.contains(subscribedTopicPartition.topic())) {
         return true;
@@ -363,7 +363,7 @@ abstract class SharedKafkaConsumer implements KafkaConsumerWrapper {
   }
 
   @Override
-  public synchronized boolean hasSubscription(String topic, int partition) {
+  public boolean hasSubscription(String topic, int partition) {
     return currentAssignment.contains(new TopicPartition(topic, partition));
   }
 

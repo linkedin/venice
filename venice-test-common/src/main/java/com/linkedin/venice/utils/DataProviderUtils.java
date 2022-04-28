@@ -49,22 +49,10 @@ public class DataProviderUtils {
     return allPermutationGenerator(BOOLEAN, BOOLEAN, BOOLEAN, BOOLEAN, BOOLEAN);
   }
 
-  @DataProvider(name = "L/F-and-AmplificationFactor", parallel = false)
-  public static Object[][] testLeaderFollowerAndAmplificationFactor() {
-    return new Object[][]{
-        {false, false},
-        {true, true},
-        {true, false}
-    };
-  }
-
   @DataProvider(name = "L/F-A/A")
   public static Object[][] leaderFollowerActiveActive() {
-    return allPermutationGenerator((permutation) -> {
-      boolean isLeaderFollowerEnabled = (Boolean) permutation[0];
-      boolean isActiveActiveReplicationEnabled = (Boolean) permutation[1];
-      return isLeaderFollowerEnabled || !isActiveActiveReplicationEnabled;
-    }, BOOLEAN, BOOLEAN);
+    /** TODO: Switch this to {@link #trueAndFalseProvider()} after cleaning up the tech debt that relies on the first param */
+    return new Object[][] {{true, false}, {true, true}};
   }
 
   @DataProvider (name = "dv-client-config-provider")
@@ -77,10 +65,10 @@ public class DataProviderUtils {
     return new Object[][] {{defaultDaVinciConfig}, {cachingDaVinciConfig}};
   }
 
-  @DataProvider(name = "L/F-and-AmplificationFactor-and-ObjectCache", parallel = false)
-  public static Object[][] lFAndAmplificationFactorAndObjectCacheConfigProvider() {
+  @DataProvider(name = "AmplificationFactor-and-ObjectCache", parallel = false)
+  public static Object[][] amplificationFactorAndObjectCacheConfigProvider() {
     List<Object[]> ampFactorCases = Lists.newArrayList();
-    ampFactorCases.addAll(Arrays.asList(testLeaderFollowerAndAmplificationFactor()));
+    ampFactorCases.addAll(Arrays.asList(trueAndFalseProvider()));
     List<Object[]> configCases = Lists.newArrayList();
     configCases.addAll(Arrays.asList(daVinciConfigProvider()));
     List<Object[]> resultingArray = Lists.newArrayList();

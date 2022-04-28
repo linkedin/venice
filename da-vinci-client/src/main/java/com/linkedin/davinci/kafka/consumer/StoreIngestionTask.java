@@ -1243,16 +1243,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         if (!REDUNDANT_LOGGING_FILTER.isRedundantException(message)) {
           logger.info(message);
         }
-        if (usingSharedConsumer) {
-          /**
-           * The extended sleep is trying to reduce the contention since the consumer is shared and synchronized.
-           * This is not ideal to have those branches, and later we could clean them up once the shared consumer
-           * is adopted by default.
-           */
-          Thread.sleep(readCycleDelayMs * 20);
-        } else {
-          Thread.sleep(readCycleDelayMs);
-        }
+
+        Thread.sleep(readCycleDelayMs);
       } else {
         if (!hybridStoreConfig.isPresent() &&
             serverConfig.isUnsubscribeAfterBatchpushEnabled() && subscribedCount != 0 && subscribedCount == forceUnSubscribedCount) {
