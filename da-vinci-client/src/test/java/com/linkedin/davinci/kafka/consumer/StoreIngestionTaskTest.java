@@ -1545,8 +1545,8 @@ public class StoreIngestionTaskTest {
     return ByteBuffer.allocate(putValue.length + Integer.BYTES).put(putValue).putInt(number).array();
   }
 
-  @Test(dataProvider = "Three-True-and-False", invocationCount = 3, skipFailedInvocations = true, dataProviderClass = DataProviderUtils.class)
-  public void testDataValidationCheckPointing(boolean sortedInput, boolean isLeaderFollowerModelEnabled, boolean isActiveActiveReplicationEnabled) throws Exception {
+  @Test(dataProvider = "Two-True-and-False", invocationCount = 3, skipFailedInvocations = true, dataProviderClass = DataProviderUtils.class)
+  public void testDataValidationCheckPointing(boolean sortedInput, boolean isActiveActiveReplicationEnabled) throws Exception {
     final Map<Integer, Long> maxOffsetPerPartition = new HashMap<>();
     final Map<Pair<Integer, ByteArray>, ByteArray> pushedRecords = new HashMap<>();
     final int totalNumberOfMessages = 1000;
@@ -1647,7 +1647,7 @@ public class StoreIngestionTaskTest {
         PartitionConsumptionState pcs = storeIngestionTaskUnderTest.getPartitionConsumptionState(partition).get();
         Assert.assertTrue(pcs.getLatestProcessedUpstreamRTOffsetMap().isEmpty());
       });
-    }, isLeaderFollowerModelEnabled, isActiveActiveReplicationEnabled);
+    }, true, isActiveActiveReplicationEnabled);
   }
 
   @Test(dataProvider = "L/F-A/A", dataProviderClass = DataProviderUtils.class)

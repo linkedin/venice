@@ -10,6 +10,7 @@ import com.linkedin.davinci.client.NonLocalAccessException;
 import com.linkedin.davinci.client.NonLocalAccessPolicy;
 import com.linkedin.davinci.client.StorageClass;
 import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
+import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.ingestion.main.MainIngestionRequestClient;
 import com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils;
 import com.linkedin.venice.D2.D2ClientUtils;
@@ -102,9 +103,9 @@ import static org.testng.Assert.*;
 
 
 public class DaVinciClientTest {
-  @DataProvider(name = "LF-And-CompressionStrategy")
-  public static Object[][] lfAndCompressionStrategy() {
-    return DataProviderUtils.allPermutationGenerator(DataProviderUtils.BOOLEAN, DataProviderUtils.COMPRESSION_STRATEGIES);
+  @DataProvider(name = "CompressionStrategy")
+  public static Object[][] compressionStrategy() {
+    return DataProviderUtils.allPermutationGenerator(DataProviderUtils.COMPRESSION_STRATEGIES);
   }
 
   private static final int KEY_COUNT = 10;
@@ -472,11 +473,8 @@ public class DaVinciClientTest {
     }
   }
 
-  /**
-   * TODO: Figure out why this test takes so much longer with shared consumer enabled.
-   */
-  @Test(dataProvider = "L/F-and-AmplificationFactor", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT * 5)
-  public void testIngestionIsolation(boolean isLeaderFollowerModelEnabled, boolean isAmplificationFactorEnabled) throws Exception {
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT * 5)
+  public void testIngestionIsolation(boolean isAmplificationFactorEnabled) throws Exception {
     final int partitionCount = 3;
     final int dataPartition = 1;
     int emptyPartition1 = (dataPartition + 1) % partitionCount;
@@ -499,10 +497,8 @@ public class DaVinciClientTest {
     Map<String, Object> extraBackendConfigMap = new HashMap<>();
     extraBackendConfigMap.put(SERVER_INGESTION_MODE, ISOLATED);
     extraBackendConfigMap.put(DATA_BASE_PATH, baseDataPath);
-    if (isLeaderFollowerModelEnabled && isAmplificationFactorEnabled) {
-      // TODO: Figure out why this combination is broken.
-      extraBackendConfigMap.put(SERVER_SHARED_CONSUMER_POOL_ENABLED, false);
-    }
+    extraBackendConfigMap.put(SERVER_CONSUMER_POOL_SIZE_PER_KAFKA_CLUSTER, VeniceServerConfig.MINIMUM_CONSUMER_NUM_IN_CONSUMER_POOL_PER_KAFKA_CLUSTER);
+    extraBackendConfigMap.put(SERVER_SHARED_CONSUMER_POOL_ENABLED, false);
 
     DaVinciTestContext<Integer, Integer> daVinciTestContext =
         ServiceFactory.getGenericAvroDaVinciFactoryAndClientWithRetries(d2Client, metricsRepository, Optional.empty(),
@@ -574,8 +570,8 @@ public class DaVinciClientTest {
     }
   }
 
-  @Test(dataProvider = "L/F-and-AmplificationFactor-and-ObjectCache", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT)
-  public void testHybridStoreWithoutIngestionIsolation(boolean isLeaderFollowerModelEnabled, boolean isAmplificationFactorEnabled, DaVinciConfig daVinciConfig) throws Exception {
+  @Test(dataProvider = "AmplificationFactor-and-ObjectCache", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT)
+  public void testHybridStoreWithoutIngestionIsolation(boolean isAmplificationFactorEnabled, DaVinciConfig daVinciConfig) throws Exception {
     // Create store
     final int partition = 1;
     final int partitionCount = 2;
@@ -642,8 +638,8 @@ public class DaVinciClientTest {
     }
   }
 
-  @Test(dataProvider = "L/F-and-AmplificationFactor", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT)
-  public void testHybridStore(boolean isLeaderFollowerModelEnabled, boolean isAmplificationFactorEnabled) throws Exception {
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT)
+  public void testHybridStore(boolean isAmplificationFactorEnabled) throws Exception {
     final int partition = 1;
     final int partitionCount = 2;
     final int amplificationFactor = isAmplificationFactorEnabled ? 3 : 1;
@@ -1394,8 +1390,8 @@ public class DaVinciClientTest {
     }
   }
 
-  @Test(timeOut = TEST_TIMEOUT, dataProvider="LF-And-CompressionStrategy")
-  public void testReadCompressedData(boolean leaderFollowerEnabled, CompressionStrategy compressionStrategy) throws Exception {
+  @Test(timeOut = TEST_TIMEOUT, dataProvider="CompressionStrategy")
+  public void testReadCompressedData(CompressionStrategy compressionStrategy) throws Exception {
     String storeName = Utils.getUniqueString("batch-store");
     Consumer<UpdateStoreQueryParams> paramsConsumer =
         params -> params.setLeaderFollowerModel(true).setCompressionStrategy(compressionStrategy);

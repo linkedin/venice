@@ -65,8 +65,8 @@ public class ErrorPartitionResetTaskTest {
     errorPartitionResetExecutorService.shutdownNow();
   }
 
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testErrorPartitionReset(boolean isLeaderFollowerEnabled) {
+  @Test
+  public void testErrorPartitionReset() {
     String clusterName = Utils.getUniqueString("testCluster");
     // Setup a store where two of its partitions has exactly one error replica.
     Store store = getStoreWithCurrentVersion();
@@ -74,16 +74,12 @@ public class ErrorPartitionResetTaskTest {
     Map<String, List<Instance>> errorStateInstanceMap = new HashMap<>();
     Map<String, List<Instance>> healthyStateInstanceMap = new HashMap<>();
     errorStateInstanceMap.put(HelixState.ERROR_STATE, Arrays.asList(instances[0]));
-    if (isLeaderFollowerEnabled) {
-      // if a replica is error, then the left should be 1 leader and 1 standby.
-      errorStateInstanceMap.put(HelixState.LEADER_STATE, Arrays.asList(instances[1]));
-      errorStateInstanceMap.put(HelixState.STANDBY_STATE, Arrays.asList(instances[2]));
-      healthyStateInstanceMap.put(HelixState.LEADER_STATE, Arrays.asList(instances[0]));
-      healthyStateInstanceMap.put(HelixState.STANDBY_STATE, Arrays.asList(instances[1], instances[2]));
-    } else {
-      errorStateInstanceMap.put(HelixState.ONLINE_STATE, Arrays.asList(instances[1], instances[2]));
-      healthyStateInstanceMap.put(HelixState.ONLINE_STATE, Arrays.asList(instances[0], instances[1], instances[2]));
-    }
+    // if a replica is error, then the left should be 1 leader and 1 standby.
+    errorStateInstanceMap.put(HelixState.LEADER_STATE, Arrays.asList(instances[1]));
+    errorStateInstanceMap.put(HelixState.STANDBY_STATE, Arrays.asList(instances[2]));
+    healthyStateInstanceMap.put(HelixState.LEADER_STATE, Arrays.asList(instances[0]));
+    healthyStateInstanceMap.put(HelixState.STANDBY_STATE, Arrays.asList(instances[1], instances[2]));
+
     Partition errorPartition0 = new Partition(0, errorStateInstanceMap);
     Partition errorPartition1 = new Partition(1, errorStateInstanceMap);
     Partition healthyPartition2 = new Partition(2, healthyStateInstanceMap);

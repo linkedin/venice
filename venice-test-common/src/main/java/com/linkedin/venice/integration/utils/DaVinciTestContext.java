@@ -87,11 +87,11 @@ public class DaVinciTestContext<K, V> {
         daVinciClient.start();
         return new DaVinciTestContext<>(factory, daVinciClient);
       } catch (Exception e) {
-        Utils.closeQuietlyWithErrorLogged(daVinciClient);
-        Utils.closeQuietlyWithErrorLogged(factory);
         String errorMessage = "Got " + e.getClass().getSimpleName() + " while trying to start Da Vinci client. Attempt #"
             + attempt + "/" + maxAttempt + ".";
         logger.warn(errorMessage, e);
+        Utils.closeQuietlyWithErrorLogged(daVinciClient);
+        Utils.closeQuietlyWithErrorLogged(factory);
       }
     }
     throw new VeniceException("Failed to start Da Vinci client in " + maxAttempt + " attempts.");
