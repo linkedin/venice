@@ -43,10 +43,6 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
   private static String STAT_VENICE_CLIENT_NAME = "venice_client";
   private static String STAT_SCHEMA_READER = "schema_reader";
 
-  //TODO: do we want it to be configurable?
-  //TODO: we should use a different timeout for multi-get
-  private static final int TIMEOUT_IN_SECOND = 5;
-
   private final ClientStats singleGetStats;
   private final ClientStats multiGetStats;
   private final ClientStats multiGetStreamingStats;
@@ -270,13 +266,8 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
   }
 
   private static void emitRequestHealthyMetrics(ClientStats clientStats, double latency) {
-    if (latency > TIMEOUT_IN_SECOND * Time.MS_PER_SECOND) {
-      clientStats.recordUnhealthyRequest();
-      clientStats.recordUnhealthyLatency(latency);
-    } else {
-      clientStats.recordHealthyRequest();
-      clientStats.recordHealthyLatency(latency);
-    }
+    clientStats.recordHealthyRequest();
+    clientStats.recordHealthyLatency(latency);
   }
 
   public static <T> BiFunction<? super T, Throwable, ? extends T> getStatCallback(
