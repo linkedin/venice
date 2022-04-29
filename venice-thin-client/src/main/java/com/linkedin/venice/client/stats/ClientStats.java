@@ -121,13 +121,13 @@ public class ClientStats extends AbstractVeniceHttpStats {
     appTimedOutRequestResultRatioSensor = registerSensorWithDetailedPercentiles("app_timed_out_request_result_ratio",
         new Avg(), new Min(), new Max());
     clientFutureTimeoutSensor = registerSensor("client_future_timeout", new Avg(), new Min(), new Max());
+    /* Metrics relevant to track long tail retry efficacy for batch get*/
     Rate retryRequestKeyCount = new Rate();
     retryRequestKeyCountSensor = registerSensor("retry_request_key_count", retryRequestKeyCount, new Avg(), new Max());
     Rate retryRequestSuccessKeyCount = new Rate();
     retryRequestSuccessKeyCountSensor = registerSensor("retry_request_success_key_count", retryRequestKeyCount, new Avg(), new Max());
     retryKeySuccessRatioSensor = registerSensor("retry_key_success_ratio",
         new TehutiUtils.SimpleRatioStat(retryRequestSuccessKeyCount, successRequestKeyCount));
-    /** Metrics relevant to track long tail retry */
 
   }
 
@@ -226,4 +226,13 @@ public class ClientStats extends AbstractVeniceHttpStats {
   public void recordClientFutureTimeout(long clientFutureTimeout){
     clientFutureTimeoutSensor.record(clientFutureTimeout);
   }
+
+  public void recordRetryRequestKeyCount(int numberOfKeysSentInRetryRequest) {
+    retryRequestKeyCountSensor.record(numberOfKeysSentInRetryRequest);
+  }
+
+  public void recordRetryRequestSuccessKeyCount(int numberOfKeysCompletedInRetryRequest) {
+    retryRequestSuccessKeyCountSensor.record(numberOfKeysCompletedInRetryRequest);
+  }
+
 }
