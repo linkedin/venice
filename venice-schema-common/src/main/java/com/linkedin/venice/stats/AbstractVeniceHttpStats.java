@@ -7,7 +7,7 @@ import io.tehuti.metrics.Sensor;
 
 
 public abstract class AbstractVeniceHttpStats extends AbstractVeniceStats {
-  private RequestType requestType;
+  private final RequestType requestType;
 
   public AbstractVeniceHttpStats(MetricsRepository metricsRepository, String storeName, RequestType requestType) {
     super(metricsRepository, storeName);
@@ -41,9 +41,7 @@ public abstract class AbstractVeniceHttpStats extends AbstractVeniceStats {
    */
   protected Sensor registerSensorWithDetailedPercentiles(String sensorName, MeasurableStat... stats) {
     MeasurableStat[] newStats = new MeasurableStat[stats.length + 1];
-    for (int i = 0; i < stats.length; i++) {
-      newStats[i] = stats[i];
-    }
+    System.arraycopy(stats, 0, newStats, 0, stats.length);
     newStats[stats.length] = TehutiUtils.getPercentileStatForNetworkLatency(getName(), getFullMetricName(sensorName));
     return registerSensor(sensorName, newStats);
   }

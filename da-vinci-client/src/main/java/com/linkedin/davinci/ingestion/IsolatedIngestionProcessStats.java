@@ -32,27 +32,44 @@ public class IsolatedIngestionProcessStats extends AbstractVeniceStats {
     public void updateMetricMap(Map<CharSequence, Double> updateMetricValueMap) {
         Set<String> newMetricNameSet = new HashSet<>();
         updateMetricValueMap.forEach((name, value) -> {
-            /**
-             * Metric name from the isolated ingestion process may contain attribute name like METRIC_NAME.AVG
-             * And it will cause the reporter to parse the metric name wrongly and fail to add to reporter, thus
-             * here we replace the dot separator in metric name with underscore.
-             */
-            String correctedMetricName = name.toString().replace('.', '_');
-            if (!metricValueMap.containsKey(correctedMetricName)) {
+            String originalMetricName = name.toString();
+
+            if (!metricValueMap.containsKey(originalMetricName)) {
                 /**
-                 * Although different metrics is set up for different purpose (like AVG, MAX, COUNT), the calculation is
-                 * done in child process side, so we don't know how they are calculated and we don't need to know,
+                 * Although different metrics might contain different attributes (like AVG, MAX, COUNT), the calculation
+                 * is done in child process side, so we don't know how they are calculated, and we don't need to know as
                  * all we need here is just to add it to the value map for reporter retrieval, so a Gauge lambda expression
                  * is enough.
+                 * Here we split the sensor name and attribute name, so we can override the stat name in registerSensor()
+                 * method, so it won't show sensor_attribute.Gauge but instead sensor.attribute.
                  */
-                registerSensor(correctedMetricName, new Gauge(() -> this.metricValueMap.get(correctedMetricName)));
-                newMetricNameSet.add(correctedMetricName);
+                String[] sensorAndAttributeName = getSensorAndAttributeName(originalMetricName);
+                if (sensorAndAttributeName.length == 1) {
+                    registerSensor(sensorAndAttributeName[0], new Gauge(() -> this.metricValueMap.get(originalMetricName)));
+                } else if (sensorAndAttributeName.length == 2) {
+                    registerSensorWithAttributeOverride(sensorAndAttributeName[0], sensorAndAttributeName[1],
+                        new Gauge(() -> this.metricValueMap.get(originalMetricName)));
+                } else {
+                    /**
+                     * In theory due to Tehuti metric naming pattern this won't happen, but we add it as defensive
+                     * coding to avoid potential metric errors.
+                     */
+                    String correctedMetricName = name.toString().replace('.', '_');
+                    registerSensor(correctedMetricName, new Gauge(() -> this.metricValueMap.get(originalMetricName)));
+                }
+                newMetricNameSet.add(originalMetricName);
             }
-            metricValueMap.put(correctedMetricName, value);
+            metricValueMap.put(originalMetricName, value);
         });
         if (!newMetricNameSet.isEmpty()) {
             logger.info("Registered " + newMetricNameSet.size() + " new metrics.");
-            logger.debug("New metrics list: " + newMetricNameSet.toString());
+            logger.debug("New metrics list: " + newMetricNameSet);
         }
+    }
+
+    private String[] getSensorAndAttributeName(String originalMetricName) {
+        // Remove the leading dot to accommodate the Tehuti metric parsing rule.
+        String correctedMetricName = originalMetricName.startsWith(".") ? originalMetricName : originalMetricName.substring(1);
+        return correctedMetricName.split("\\.");
     }
 }
