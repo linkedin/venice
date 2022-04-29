@@ -18,11 +18,14 @@ import org.apache.helix.participant.statemachine.StateModel;
 import org.apache.helix.participant.statemachine.StateModelFactory;
 import org.apache.helix.participant.statemachine.StateModelInfo;
 import org.apache.helix.participant.statemachine.Transition;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.slf4j.impl.VersionUtil;
 
 
 public class MockTestStateModelFactory extends StateModelFactory<StateModel> {
   private boolean isBlock = false;
+  private static final Logger logger = LogManager.getLogger(MockTestStateModelFactory.class);
   private final VeniceOfflinePushMonitorAccessor offlinePushStatusAccessor;
 
 
@@ -140,7 +143,10 @@ public class MockTestStateModelFactory extends StateModelFactory<StateModel> {
         if (isDelay) {
           // mock the delay during becoming online.
           try {
-            latch.await(30, TimeUnit.SECONDS);
+            boolean latchClosedBeforeTimeout = latch.await(30, TimeUnit.SECONDS);
+            if(!latchClosedBeforeTimeout) {
+              logger.warn("StateTransition lock wait timed out!!");
+            }
           } catch (InterruptedException e) {
             // Do nothing
           }
