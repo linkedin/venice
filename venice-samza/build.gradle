@@ -3,9 +3,9 @@ apply plugin: 'java-library'
 task buildJar(type: Jar) {
   manifest {
     attributes 'Implementation-Title': 'Venice Samza',
-            'Implementation-Version': version
+            'Implementation-Version': archiveVersion
   }
-  baseName = project.name
+  archiveBaseName = project.name
   from { configurations.implementation.collect { it.isDirectory() ? it : zipTree(it) } }
   with jar
 }

@@ -3,9 +3,9 @@ apply plugin: 'java-library'
 task buildJar(type: Jar) {
     manifest {
         attributes 'Implementation-Title': 'Venice Schema Common',
-                'Implementation-Version': version
+                'Implementation-Version': archiveVersion
     }
-    baseName = project.name
+    archiveBaseName = project.name
     from { configurations.implementation
             .filter {!it.absolutePath.endsWith(".xml")}
             .collect { it.isDirectory() ? it : zipTree(it) }
@@ -16,7 +16,7 @@ task buildJar(type: Jar) {
 jar {
     manifest {
         attributes 'Implementation-Title': 'Venice Schema Common',
-                'Implementation-Version': version
+                'Implementation-Version': archiveVersion
     }
 }
 
