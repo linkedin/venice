@@ -58,7 +58,7 @@ dependencies {
 jar {
   manifest {
     attributes 'Implementation-Title': 'Venice Common',
-      'Implementation-Version': version
+      'Implementation-Version': archiveVersion
   }
 }
 
@@ -66,9 +66,9 @@ task buildJar(type: Jar) {
   zip64 true
   manifest {
     attributes 'Implementation-Title': 'Venice Common',
-      'Implementation-Version': version
+      'Implementation-Version': archiveVersion
   }
-  baseName = project.name
+  archiveBaseName = project.name
   from { configurations.compile
     .filter {!it.absolutePath.endsWith('.xml')}
     .collect { it.isDirectory() ? it : zipTree(it) }

@@ -3,9 +3,9 @@ apply plugin: 'java-library'
 task buildJar(type: Jar) {
   manifest {
     attributes 'Implementation-Title': 'Venice Client',
-        'Implementation-Version': version
+        'Implementation-Version': archiveVersion
   }
-  baseName = project.name
+  archiveBaseName = project.name
   from { configurations.implementation
       .filter {!it.absolutePath.endsWith(".xml")} // Resolves Could not expand ZIP '.../pegasus-d2-client-factory-cmpt-def-16.0.23.xml'.
       .collect { it.isDirectory() ? it : zipTree(it) } }
