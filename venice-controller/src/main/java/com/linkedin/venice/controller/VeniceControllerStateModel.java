@@ -184,13 +184,8 @@ public class VeniceControllerStateModel extends StateModel {
       String controllerName = message.getTgtName();
 
       logger.info(controllerName + " becoming standby from leader for " + clusterName);
-      // We have to create a snapshot of resources here, as the resources will be set to null during the reset. So this
-      // snapshot will let us unlock successfully.
-      HelixVeniceClusterResources snapshot = clusterResources;
-      // Lock to prevent the partial result of admin operation.
-      try (AutoCloseableLock ignore = snapshot.lockForShutdown()) {
-        reset();
-      }
+      // Reset acquires the cluster write lock to prevent the partial result of admin operation.
+      reset();
     });
   }
 
@@ -241,8 +236,12 @@ public class VeniceControllerStateModel extends StateModel {
 
   @Override
   public synchronized void reset() {
-    clearResources();
-    closeHelixManager();
+    if (clusterResources != null) {
+      try (AutoCloseableLock ignore = clusterResources.lockForShutdown()) {
+        clearResources();
+        closeHelixManager();
+      }
+    }
   }
 
   /** synchronized because concurrent calls could cause a NPE */
