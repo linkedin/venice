@@ -1125,11 +1125,11 @@ public class ControllerClient implements Closeable {
 
         if (attempt < maxAttempts) {
           logger.info("Retrying controller request" +
-                  ", attempt=" + attempt + "/" + maxAttempts +
-                  ", controller=" + this.leaderControllerUrl +
-                  ", route=" + route.getPath() +
-                  ", params=" + params.getNameValuePairs() +
-                  ", timeout=" + timeoutMs,
+                  ", attempt = " + attempt + "/" + maxAttempts +
+                  ", controller = " + this.leaderControllerUrl +
+                  ", route = " + route.getPath() +
+                  ", params = " + params.getNameValuePairs() +
+                  ", timeout = " + timeoutMs,
               lastException);
           Utils.sleep(5 * Time.MS_PER_SECOND);
         }
@@ -1138,11 +1138,11 @@ public class ControllerClient implements Closeable {
       lastException = e;
     }
 
-    String message = "Unable to make controller request" +
-        ", controller=" + this.leaderControllerUrl +
-        ", route=" + route.getPath() +
-        ", params=" + params.getAbbreviatedNameValuePairs() +
-        ", timeout=" + timeoutMs;
+    String message = "An error occurred during controller request." +
+        " controller = " + this.leaderControllerUrl +
+        ", route = " + route.getPath() +
+        ", params = " + params.getAbbreviatedNameValuePairs() +
+        ", timeout = " + timeoutMs;
     return makeErrorResponse(message, lastException, responseType);
   }
 
