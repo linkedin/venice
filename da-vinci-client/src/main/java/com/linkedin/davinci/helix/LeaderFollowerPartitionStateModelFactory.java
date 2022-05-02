@@ -5,7 +5,6 @@ import com.linkedin.davinci.ingestion.VeniceIngestionBackend;
 import com.linkedin.venice.helix.HelixPartitionStatusAccessor;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.utils.HelixUtils;
-import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 
@@ -39,5 +38,17 @@ public class LeaderFollowerPartitionStateModelFactory extends AbstractStateModel
         getConfigService().getStoreConfig(HelixUtils.getResourceName(partitionName)),
         HelixUtils.getPartitionId(partitionName), leaderFollowerStateModelNotifier, getStoreMetadataRepo(),
         partitionPushStatusAccessorFuture, instanceName);
+  }
+
+  /**
+   * The leader follower state thread pool strategy specifies how thread pools are allocated for Helix state transition.
+   * Today, two strategies are supported:
+   * 1. single pool strategy - a single thread pool for all store version Helix state transition.
+   * 2. dual pool strategy - system has two thread pools, one for current and backup versions and a second one for
+   *    future versions.
+   */
+  public enum LeaderFollowerThreadPoolStrategy {
+    SINGLE_POOL_STRATEGY,
+    DUAL_POOL_STRATEGY
   }
 }

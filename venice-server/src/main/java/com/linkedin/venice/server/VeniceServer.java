@@ -5,6 +5,7 @@ import com.linkedin.davinci.config.VeniceClusterConfig;
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.helix.HelixParticipationService;
+import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModelFactory;
 import com.linkedin.davinci.ingestion.main.MainIngestionStorageMetadataService;
 import com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
@@ -308,9 +309,9 @@ public class VeniceServer {
      * read requests if it claims to be available in Helix.
      */
     this.helixParticipationService =
-        new HelixParticipationService(kafkaStoreIngestionService, storageService, storageMetadataService, veniceConfigLoader, metadataRepo,
-            metricsRepository, clusterConfig.getZookeeperAddress(), clusterConfig.getClusterName(),
-            veniceConfigLoader.getVeniceServerConfig().getListenerPort(), managerFuture);
+        new HelixParticipationService(kafkaStoreIngestionService, storageService, storageMetadataService,
+            veniceConfigLoader, metadataRepo, metricsRepository, clusterConfig.getZookeeperAddress(),
+            clusterConfig.getClusterName(), veniceConfigLoader.getVeniceServerConfig().getListenerPort(), managerFuture);
     services.add(helixParticipationService);
 
     // Add kafka consumer service last so when shutdown the server, it will be stopped first to avoid the case
@@ -362,6 +363,14 @@ public class VeniceServer {
     } else {
       throw new VeniceException("Cannot get kafka store ingestion service if server is not started");
     }
+  }
+
+  // This is for testing purpose.
+  public HelixParticipationService getHelixParticipationService() {
+    if (isStarted()) {
+      return this.helixParticipationService;
+    }
+    throw new VeniceException("Cannot get helix participation service if server is not started");
   }
 
   /**

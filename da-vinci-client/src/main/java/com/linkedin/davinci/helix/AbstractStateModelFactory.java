@@ -8,6 +8,7 @@ import com.linkedin.venice.helix.HelixPartitionStatusAccessor;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.TimeUnit;
 import org.apache.helix.participant.statemachine.StateModel;
 import org.apache.helix.participant.statemachine.StateModelFactory;
 import org.apache.logging.log4j.LogManager;
@@ -23,11 +24,12 @@ public abstract class AbstractStateModelFactory extends StateModelFactory<StateM
   protected final Logger logger = LogManager.getLogger(getClass().getSimpleName());
   private final VeniceIngestionBackend ingestionBackend;
   private final VeniceConfigLoader configService;
-  private final ReadOnlyStoreRepository storeMetadataRepo;
+  protected final ReadOnlyStoreRepository storeMetadataRepo;
 
   //a dedicated thread pool for state transition execution that all state model created by the
   //same factory would share. If it's null, Helix would use a shared thread pool.
-  private final ExecutorService executorService;
+  protected final ExecutorService executorService;
+
   protected CompletableFuture<HelixPartitionStatusAccessor> partitionPushStatusAccessorFuture;
   protected final String instanceName;
 
@@ -85,5 +87,13 @@ public abstract class AbstractStateModelFactory extends StateModelFactory<StateM
 
   public static String getStateModelID(String resourceName, int partitionId) {
     return resourceName + "_" + partitionId;
+  }
+
+  public void shutDownExecutor() {
+    executorService.shutdown();
+  }
+
+  public void waitExecutorTermination(long timeout, TimeUnit unit) throws InterruptedException {
+    executorService.awaitTermination(timeout, unit);
   }
 }

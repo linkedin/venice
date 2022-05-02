@@ -805,6 +805,23 @@ public class Utils {
     }
   }
 
+  public static boolean isFutureVersion(String resourceName, ReadOnlyStoreRepository metadataRepo) {
+    try {
+      String storeName = Version.parseStoreFromKafkaTopicName(resourceName);
+      int version = Version.parseVersionFromKafkaTopicName(resourceName);
+
+      Store store = metadataRepo.getStore(storeName);
+      if (store == null) {
+        LOGGER.warn("Store " + storeName + " is not in store repository.");
+        // If a store doesn't exist, it is not a future version
+        return false;
+      }
+      return store.getCurrentVersion() < version;
+    } catch (VeniceException e) {
+      return false;
+    }
+  }
+
   /**
    * When Helix thinks some host is overloaded or a new host joins the cluster, it might move some replicas from
    * one host to another. The partition to be moved is usually in a healthy state, i.e. 3/3 running replicas.
