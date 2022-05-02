@@ -1,5 +1,6 @@
 package com.linkedin.davinci.config;
 
+import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModelFactory;
 import com.linkedin.davinci.kafka.consumer.KafkaConsumerService;
 import com.linkedin.davinci.kafka.consumer.RemoteIngestionRepairService;
 import com.linkedin.davinci.store.rocksdb.RocksDBServerConfig;
@@ -54,6 +55,12 @@ public class VeniceServerConfig extends VeniceClusterConfig {
    *  Maximum number of thread that the thread pool would keep to run the Helix leader follower state transition.
    */
   private final int maxLeaderFollowerStateTransitionThreadNumber;
+
+  // The maximum number of threads in thread pool for the future version Helix leader follower state transition.
+  private final int maxFutureVersionLeaderFollowerStateTransitionThreadNumber;
+
+  // Leader follower thread pool strategy configuration specifies how thread pools are allocated for Helix state transition.
+  private final LeaderFollowerPartitionStateModelFactory.LeaderFollowerThreadPoolStrategy leaderFollowerThreadPoolStrategy;
 
   /**
    * Thread number of store writers, which will process all the incoming records from all the topics.
@@ -287,6 +294,16 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     enableServerAllowList = serverProperties.getBooleanWithAlternative(ENABLE_SERVER_WHITE_LIST, ENABLE_SERVER_ALLOW_LIST, false);
     maxOnlineOfflineStateTransitionThreadNumber = serverProperties.getInt(MAX_ONLINE_OFFLINE_STATE_TRANSITION_THREAD_NUMBER, 100);
     maxLeaderFollowerStateTransitionThreadNumber = serverProperties.getInt(MAX_LEADER_FOLLOWER_STATE_TRANSITION_THREAD_NUMBER, 20);
+
+    String lfThreadPoolStrategyStr = serverProperties.getString(LEADER_FOLLOWER_STATE_TRANSITION_THREAD_POOL_STRATEGY,
+        LeaderFollowerPartitionStateModelFactory.LeaderFollowerThreadPoolStrategy.SINGLE_POOL_STRATEGY.name());
+    try {
+      leaderFollowerThreadPoolStrategy = LeaderFollowerPartitionStateModelFactory.LeaderFollowerThreadPoolStrategy.valueOf(lfThreadPoolStrategyStr);
+    } catch (IllegalArgumentException e) {
+      throw new VeniceException(String.format("Invalid leader follower thread pool strategy: %s", lfThreadPoolStrategyStr));
+    }
+    maxFutureVersionLeaderFollowerStateTransitionThreadNumber =
+        serverProperties.getInt(MAX_FUTURE_VERSION_LEADER_FOLLOWER_STATE_TRANSITION_THREAD_NUMBER, 10);
     storeWriterNumber = serverProperties.getInt(STORE_WRITER_NUMBER, 8);
     drainerPoolSizeSortedInput = serverProperties.getInt(SORTED_INPUT_DRAINER_SIZE, 8);
     drainerPoolSizeUnsortedInput = serverProperties.getInt(UNSORTED_INPUT_DRAINER_SIZE, 8);
@@ -472,6 +489,14 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public int getMaxLeaderFollowerStateTransitionThreadNumber() {
     return maxLeaderFollowerStateTransitionThreadNumber;
+  }
+
+  public int getMaxFutureVersionLeaderFollowerStateTransitionThreadNumber() {
+    return maxFutureVersionLeaderFollowerStateTransitionThreadNumber;
+  }
+
+  public LeaderFollowerPartitionStateModelFactory.LeaderFollowerThreadPoolStrategy getLeaderFollowerThreadPoolStrategy() {
+    return leaderFollowerThreadPoolStrategy;
   }
 
   public int getStoreWriterNumber() {

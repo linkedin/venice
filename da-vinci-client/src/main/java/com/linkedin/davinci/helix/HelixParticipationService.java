@@ -84,6 +84,12 @@ public class HelixParticipationService extends AbstractVeniceService implements 
   private AbstractStateModelFactory onlineOfflineParticipantModelFactory;
   private AbstractStateModelFactory leaderFollowerParticipantModelFactory;
   private HelixPartitionStatusAccessor partitionPushStatusAccessor;
+  private ThreadPoolExecutor leaderFollowerHelixStateTransitionThreadPool;
+
+  // This is ONLY for testing purpose.
+  public ThreadPoolExecutor getLeaderFollowerHelixStateTransitionThreadPool() {
+    return leaderFollowerHelixStateTransitionThreadPool;
+  }
 
   public HelixParticipationService(StoreIngestionService storeIngestionService, StorageService storageService,
       StorageMetadataService storageMetadataService, VeniceConfigLoader veniceConfigLoader,
@@ -146,15 +152,27 @@ public class HelixParticipationService extends AbstractVeniceService implements 
             "Venice_ST_thread_pool"),
         helixReadOnlyStoreRepository, partitionPushStatusAccessorFuture, instance.getNodeId());
 
-    leaderFollowerParticipantModelFactory = new LeaderFollowerPartitionStateModelFactory(
-        ingestionBackend,
-        veniceConfigLoader,
-        initHelixStateTransitionThreadPool(
-            veniceConfigLoader.getVeniceServerConfig().getMaxLeaderFollowerStateTransitionThreadNumber(),
-            "venice-L/F-state-transition",
-            metricsRepository,
-            "Venice_L/F_ST_thread_pool"),
-        helixReadOnlyStoreRepository, partitionPushStatusAccessorFuture, instance.getNodeId());
+    leaderFollowerHelixStateTransitionThreadPool = initHelixStateTransitionThreadPool(
+        veniceConfigLoader.getVeniceServerConfig().getMaxLeaderFollowerStateTransitionThreadNumber(),
+        "Venice-L/F-state-transition", metricsRepository,
+        "Venice_L/F_ST_thread_pool");
+
+    if (veniceConfigLoader.getVeniceServerConfig()
+        .getLeaderFollowerThreadPoolStrategy()
+        .equals(LeaderFollowerPartitionStateModelFactory.LeaderFollowerThreadPoolStrategy.DUAL_POOL_STRATEGY)) {
+      leaderFollowerParticipantModelFactory =
+          new LeaderFollowerPartitionStateModelDualPoolFactory(ingestionBackend, veniceConfigLoader,
+              leaderFollowerHelixStateTransitionThreadPool, initHelixStateTransitionThreadPool(
+              veniceConfigLoader.getVeniceServerConfig().getMaxFutureVersionLeaderFollowerStateTransitionThreadNumber(),
+              "venice-L/F-state-transition-future-version", metricsRepository,
+              "Venice_L/F_ST_thread_pool_future_version"), helixReadOnlyStoreRepository,
+              partitionPushStatusAccessorFuture, instance.getNodeId());
+    } else {
+      leaderFollowerParticipantModelFactory =
+          new LeaderFollowerPartitionStateModelFactory(ingestionBackend, veniceConfigLoader,
+              leaderFollowerHelixStateTransitionThreadPool, helixReadOnlyStoreRepository,
+              partitionPushStatusAccessorFuture, instance.getNodeId());
+    }
 
     helixManager.getStateMachineEngine().registerStateModelFactory(ONLINE_OFFLINE_MODEL_NAME, onlineOfflineParticipantModelFactory);
     helixManager.getStateMachineEngine().registerStateModelFactory(LeaderStandbySMD.name, leaderFollowerParticipantModelFactory);
@@ -195,11 +213,12 @@ public class HelixParticipationService extends AbstractVeniceService implements 
     }
     ingestionBackend.close();
     logger.info("Closed VeniceIngestionBackend.");
-    onlineOfflineParticipantModelFactory.getExecutorService().shutdownNow();
-    leaderFollowerParticipantModelFactory.getExecutorService().shutdownNow();
+    onlineOfflineParticipantModelFactory.shutDownExecutor();
+    leaderFollowerParticipantModelFactory.shutDownExecutor();
+
     try {
-      onlineOfflineParticipantModelFactory.getExecutorService().awaitTermination(30, TimeUnit.SECONDS);
-      leaderFollowerParticipantModelFactory.getExecutorService().awaitTermination(30, TimeUnit.SECONDS);
+      onlineOfflineParticipantModelFactory.waitExecutorTermination(30, TimeUnit.SECONDS);
+      leaderFollowerParticipantModelFactory.waitExecutorTermination(30, TimeUnit.SECONDS);
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
     }

@@ -337,6 +337,10 @@ public class ConfigKeys {
   public static final String ENABLE_SERVER_ALLOW_LIST = "enable.server.allowlist";
   public static final String MAX_ONLINE_OFFLINE_STATE_TRANSITION_THREAD_NUMBER = "max.state.transition.thread.number";
   public static final String MAX_LEADER_FOLLOWER_STATE_TRANSITION_THREAD_NUMBER = "max.leader.follower.state.transition.thread.number";
+  public static final String MAX_FUTURE_VERSION_LEADER_FOLLOWER_STATE_TRANSITION_THREAD_NUMBER =
+      "max.future.version.leader.follower.state.transition.thread.number";
+  public static final String LEADER_FOLLOWER_STATE_TRANSITION_THREAD_POOL_STRATEGY =
+      "leader.follower.state.transition.thread.pool.strategy";
   public static final String STORE_WRITER_NUMBER = "store.writer.number";
   public static final String SORTED_INPUT_DRAINER_SIZE = "sorted.input.drainer.size";
   public static final String UNSORTED_INPUT_DRAINER_SIZE = "unsorted.input.drainer.size";
