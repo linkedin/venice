@@ -121,7 +121,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
     if (!consumerService.isPresent()) {
       return Optional.empty();
     }
-    return  consumerService.get().getConsumerAssignedToVersionTopic(versionTopic);
+    return consumerService.get().getConsumerAssignedToVersionTopic(versionTopic);
   }
 
   public Optional<KafkaConsumerWrapper> assignConsumerFor(final String kafkaURL, StoreIngestionTask ingestionTask) {
