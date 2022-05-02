@@ -263,7 +263,7 @@ public class DaVinciClientTest {
     }
   }
 
-  @Test(timeOut = TEST_TIMEOUT * 2, dataProvider = "dv-client-config-provider", dataProviderClass = DataProviderUtils.class)
+  @Test(timeOut = TEST_TIMEOUT, dataProvider = "dv-client-config-provider", dataProviderClass = DataProviderUtils.class)
   public void testBatchStore(DaVinciConfig clientConfig) throws Exception {
     String storeName1 = cluster.createStore(KEY_COUNT);
     String storeName2 = cluster.createStore(KEY_COUNT);
@@ -789,7 +789,7 @@ public class DaVinciClientTest {
     }
   }
 
-  @Test(timeOut = TEST_TIMEOUT * 2, dataProvider = "dv-client-config-provider", dataProviderClass = DataProviderUtils.class)
+  @Test(timeOut = TEST_TIMEOUT , dataProvider = "dv-client-config-provider", dataProviderClass = DataProviderUtils.class)
   public void testNonLocalAccessPolicy(DaVinciConfig daVinciConfig) throws Exception {
     String storeName = cluster.createStore(KEY_COUNT);
     VeniceProperties backendConfig = new PropertyBuilder()
@@ -859,7 +859,7 @@ public class DaVinciClientTest {
     }
   }
 
-  @Test(timeOut = TEST_TIMEOUT * 2)
+  @Test(timeOut = TEST_TIMEOUT)
   public void testSubscribeAndUnsubscribe() throws Exception {
     // Verify DaVinci client doesn't hang in a deadlock when calling unsubscribe right after subscribing.
     // Enable ingestion isolation since it's more likely for the race condition to occur and make sure the future is
@@ -901,7 +901,7 @@ public class DaVinciClientTest {
     }
   }
 
-  @Test(dataProvider = "Isolated-Ingestion", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT * 3)
+  @Test(dataProvider = "Isolated-Ingestion", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT * 2)
   public void testLiveUpdateSuppression(IngestionMode ingestionMode) throws Exception {
     final String storeName = Utils.getUniqueString("store");
     cluster.useControllerClient(client -> {
@@ -1129,7 +1129,7 @@ public class DaVinciClientTest {
     }
   }
 
-  @Test(timeOut = TEST_TIMEOUT * 3)
+  @Test(timeOut = TEST_TIMEOUT * 2)
   public void testReadComputeMissingField() throws Exception {
     //Create DaVinci store
     final String storeName = Utils.getUniqueString( "store");

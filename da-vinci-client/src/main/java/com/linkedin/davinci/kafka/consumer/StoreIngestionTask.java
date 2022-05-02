@@ -2809,8 +2809,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         /**
          * Note that {@link KafkaConsumerService} creation only happens upon topic partition subscription. In other cases,
          * such as unsubscription, resetting topic partition consuming offset, etc, if a {@link KafkaConsumerService}/
-         * {@link KafkaConsumerWrapper} does not exist for this {@link StoreIngestionTask} and a Kafka URL, no {@link KafkaConsumerService}
-         * will get created.
+         * {@link KafkaConsumerWrapper} does not exist for this {@link StoreIngestionTask} and a Kafka URL, no
+         * {@link KafkaConsumerService} will get created.
          *
          * The rationale is that if a topic partition has never been subscribed, we should do nothing when we need to
          * unsubscribe it, or resetting its consuming offset, etc.
@@ -2818,10 +2818,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         aggKafkaConsumerService.createKafkaConsumerService(createKafkaConsumerProperties(kafkaProps, kafkaURL, consumeRemotely));
         consumer = aggKafkaConsumerService.assignConsumerFor(kafkaURL, this);
 
-        if (!consumer.isPresent()) {
+        if (consumer.isPresent()) {
+          kafkaUrlToConsumerMap.put(kafkaURL, consumer.get());
+        }
+        else {
           throw new VeniceException("Shared consumer must exist for version topic: " + getVersionTopic() + " in Kafka cluster: " + kafkaURL);
         }
-
       } else {
         throw new VeniceException("Dedicated consumer must exist for version topic: " + getVersionTopic() + " in Kafka cluster: " + kafkaURL);
       }
@@ -2891,18 +2893,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     KafkaConsumerWrapper consumer = kafkaUrlToConsumerMap.computeIfAbsent(kafkaURL, source -> {
 
       if (serverConfig.isSharedConsumerPoolEnabled()) {
-        /**
-         * In theory, it should be possible to call {@link AggKafkaConsumerService#getAssignedConsumerFor(String, String)}
-         * rather than {@link AggKafkaConsumerService#assignConsumerFor(String, StoreIngestionTask)} here. This works,
-         * but unfortunately makes shared consumer significantly slower. Some tests take as much as an extra 1m30
-         * to complete when there is no pro-active assignment happening in this path.
-         *
-         * TODO: Discover which callers of the current function actually rely on the assignment side-effect in order
-         *       to proceed, and which others may be possible to transition to the other, side-effect free, API. Or
-         *       alternatively, get rid of {@link AggKafkaConsumerService#getAssignedConsumerFor(String, String)}
-         *       since it is currently unused.
-         */
-        Optional<KafkaConsumerWrapper> existingKafkaConsumer = aggKafkaConsumerService.assignConsumerFor(kafkaURL, this);
+        Optional<KafkaConsumerWrapper> existingKafkaConsumer =
+            aggKafkaConsumerService.getAssignedConsumerFor(kafkaURL, getVersionTopic());
         return existingKafkaConsumer.orElse(null);
 
       } else {
