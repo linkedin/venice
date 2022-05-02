@@ -527,9 +527,9 @@ public class VenicePushJob implements AutoCloseable {
         ),
         props.getInt(CONTROLLER_REQUEST_RETRY_ATTEMPTS, 1));
     this.pushJobSetting = getPushJobSetting(veniceControllerUrl, props);
-    logger.info("Get Venice controller URL: " + veniceControllerUrl);
+    logger.info("Going to use controller URL: " + veniceControllerUrl + " to discover cluster.");
     this.clusterName = discoverCluster(props.getString(VENICE_STORE_NAME_PROP));
-    logger.info("Get Venice cluster name: " + clusterName);
+    logger.info("The store " + props.getString(VENICE_STORE_NAME_PROP) + " is discovered in Venice cluster " + clusterName);
     // Optional configs:
     this.pushJobDetails = new PushJobDetails();
     boolean jobLivenessHeartbeatEnabled;

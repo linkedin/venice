@@ -2404,7 +2404,7 @@ public class AdminTool {
 
   private static void printErrAndExit(String errorMessage, Map<String, String> customMessages) {
     printErr(errorMessage, customMessages);
-    Utils.exit("printErrAndExit");
+    Utils.exit("venice-admin-tool encountered and error, exiting now.");
   }
 
   private static void printErrAndThrow(Exception e, String errorMessage, Map<String, String> customMessages) throws Exception {

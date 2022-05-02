@@ -3096,7 +3096,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
      * hybrid store and compression strategy configs.
      *
      * @param store The store object whose configs are being updated
-     * @param newCompressionStrategy The new incremental push enabled config that will be set for the store
+     * @param newCompressionStrategy The new compression config that will be set for the store
      * @param newHybridStoreConfig The new hybrid store config that will be set for the store
      */
     protected void checkWhetherStoreWillHaveConflictConfigForCompressionAndHybrid(Store store,
