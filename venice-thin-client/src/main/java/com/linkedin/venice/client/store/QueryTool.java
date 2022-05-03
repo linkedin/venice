@@ -65,8 +65,7 @@ public class QueryTool {
         ClientConfig.defaultGenericClientConfig(store).setVeniceURL(url).setVsonClient(isVsonStore).setSslEngineComponentFactory(factory))) {
       AbstractAvroStoreClient<Object, Object> castClient =
           (AbstractAvroStoreClient<Object, Object>) ((StatTrackingStoreClient<Object, Object>) client).getInnerStoreClient();
-      SchemaReader schemaReader = castClient.getSchemaReader();
-      Schema keySchema = schemaReader.getKeySchema();
+      Schema keySchema = castClient.getKeySchema();
 
       Object key = null;
       // Transfer vson schema to avro schema.

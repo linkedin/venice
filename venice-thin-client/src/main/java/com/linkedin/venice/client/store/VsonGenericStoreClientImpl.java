@@ -32,7 +32,7 @@ public class VsonGenericStoreClientImpl<K, V> extends AvroGenericStoreClientImpl
   protected void initSerializer() {
     if (needSchemaReader) {
       if (getSchemaReader() != null) {
-        this.keySerializer = SerializerDeserializerFactory.getVsonSerializer(getSchemaReader().getKeySchema());
+        this.keySerializer = SerializerDeserializerFactory.getVsonSerializer(getKeySchema());
         this.multiGetRequestSerializer = SerializerDeserializerFactory.getVsonSerializer(ReadAvroProtocolDefinition.MULTI_GET_CLIENT_REQUEST_V1.getSchema());
       } else {
         throw new VeniceClientException("SchemaReader is null when initializing serializer");
