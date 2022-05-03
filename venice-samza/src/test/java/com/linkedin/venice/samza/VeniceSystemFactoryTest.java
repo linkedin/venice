@@ -54,7 +54,7 @@ public class VeniceSystemFactoryTest {
   /**
    * Write a record using the Samza SystemProducer for Venice, then verify we can read that record.
    */
-  @Test(timeOut = TEST_TIMEOUT)
+  @Test(timeOut = TEST_TIMEOUT * 2)
   public void testGetProducer() throws Exception {
     String keySchema = "\"string\"";
     String valueSchema =

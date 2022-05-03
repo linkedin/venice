@@ -20,6 +20,8 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
+import java.util.function.Supplier;
+
 import org.apache.avro.Schema;
 import org.apache.commons.io.IOUtils;
 import org.apache.logging.log4j.LogManager;
@@ -49,17 +51,15 @@ public class RouterBackedSchemaReader implements SchemaReader {
   private final String storeName;
   private AbstractAvroStoreClient storeClient;
 
-  public RouterBackedSchemaReader(AbstractAvroStoreClient client) throws VeniceClientException {
-    this(client, Optional.empty());
+  public RouterBackedSchemaReader(Supplier<AbstractAvroStoreClient> clientSupplier) throws VeniceClientException {
+    this(clientSupplier, Optional.empty());
   }
 
-  public RouterBackedSchemaReader(AbstractAvroStoreClient client, Optional<Schema> readerSchema) {
-    this.storeName = client.getStoreName();
+  public RouterBackedSchemaReader(Supplier<AbstractAvroStoreClient> clientSupplier, Optional<Schema> readerSchema) {
+    this.storeClient = clientSupplier.get();
+    this.storeName = this.storeClient.getStoreName();
     this.readerSchema = readerSchema;
-    if (readerSchema.isPresent()) {
-      AvroSchemaUtils.validateAvroSchemaStr(readerSchema.get());
-    }
-    this.storeClient = client;
+    readerSchema.ifPresent(AvroSchemaUtils::validateAvroSchemaStr);
   }
 
   @Override

@@ -74,10 +74,6 @@ public class ClientFactory {
   }
 
   public static SchemaReader getSchemaReader(ClientConfig clientConfig) {
-    AvroGenericStoreClientImpl client =
-        new AvroGenericStoreClientImpl<>(getTransportClient(clientConfig), false, clientConfig);
-    client.start();
-
     /**
      * N.B.: instead of returning a new {@link SchemaReader}, we could instead return
      * {@link AbstractAvroStoreClient#getSchemaReader()}, but then the calling code would
@@ -88,7 +84,7 @@ public class ClientFactory {
      *
      * Closing this {@link SchemaReader} instance will also close the underlying client.
      */
-    return new RouterBackedSchemaReader(client, Optional.empty());
+    return new RouterBackedSchemaReader(() -> new AvroGenericStoreClientImpl<>(getTransportClient(clientConfig), false, clientConfig));
   }
 
   private static D2TransportClient generateTransportClient(ClientConfig clientConfig){

@@ -127,11 +127,11 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
   private final CompletableFuture<Map<K, V>> COMPLETABLE_FUTURE_FOR_EMPTY_KEY_IN_BATCH_GET = CompletableFuture.completedFuture(new HashMap<>());
   private final CompletableFuture<Map<K, GenericRecord>> COMPLETABLE_FUTURE_FOR_EMPTY_KEY_IN_COMPUTE = CompletableFuture.completedFuture(new HashMap<>());
 
-  protected final Boolean needSchemaReader;
+  protected final boolean needSchemaReader;
   /** Used to communicate with Venice backend to retrieve necessary store schemas */
   private SchemaReader schemaReader;
   // Key serializer
-  protected RecordSerializer<K> keySerializer = null;
+  protected RecordSerializer<K> keySerializer;
   // Multi-get request serializer
   protected RecordSerializer<ByteBuffer> multiGetRequestSerializer;
   protected RecordSerializer<ByteBuffer> computeRequestClientKeySerializer;
@@ -139,22 +139,20 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
   private RecordDeserializer<StreamingFooterRecordV1> streamingFooterRecordDeserializer;
 
   private TransportClient transportClient;
-  private String storeName;
-  private D2ServiceDiscovery d2ServiceDiscovery = new D2ServiceDiscovery();
+  private final String storeName;
   private final Executor deserializationExecutor;
   private final BatchDeserializer<MultiGetResponseRecordV1, K, V> batchGetDeserializer;
   private final BatchDeserializer<ComputeResponseRecordV1, K, GenericRecord> computeDeserializer;
 
-  private CompressorFactory compressorFactory;
+  private final CompressorFactory compressorFactory;
 
   private final boolean useFastAvro;
 
-  private final boolean useBlackHoleDeserializer;
   private final boolean reuseObjectsForSerialization;
 
   private final boolean forceClusterDiscoveryAtStartTime;
 
-  private volatile boolean isServiceDiscovered = false;
+  private volatile boolean isServiceDiscovered;
 
   /**
    * Here is the details about the deadlock issue if deserialization logic is executed in the same R2 callback thread:
@@ -174,7 +172,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
    * Also, we don't want to use the default thread pool: CompletableFuture#useCommonPool since it is being shared,
    * and the deserialization could be blocked by the logic not belonging to Venice Client.
    **/
-  private static Executor DESERIALIZATION_EXECUTOR = null;
+  private static Executor DESERIALIZATION_EXECUTOR;
 
   public static synchronized Executor getDefaultDeserializationExecutor() {
     if (DESERIALIZATION_EXECUTOR == null) {
@@ -197,7 +195,6 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
     this.batchGetDeserializer = clientConfig.getBatchGetDeserializer(this.deserializationExecutor);
     this.computeDeserializer = clientConfig.getBatchGetDeserializer(this.deserializationExecutor);
     this.useFastAvro = clientConfig.isUseFastAvro();
-    this.useBlackHoleDeserializer = clientConfig.isUseBlackHoleDeserializer();
     this.reuseObjectsForSerialization = clientConfig.isReuseObjectsForSerialization();
     this.forceClusterDiscoveryAtStartTime = clientConfig.isForceClusterDiscoveryAtStartTime();
     this.compressorFactory = new CompressorFactory();
@@ -255,43 +252,51 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
     if (null != keySerializer) {
       return keySerializer;
     }
-    Exception lastException = null;
+
     // Delay the dynamic d2 service discovery and key schema retrieval until it is necessary
     synchronized (this) {
       if (null != keySerializer) {
         return keySerializer;
       }
-      int retryTimes = retryOnServiceDiscoveryFailure ? 10 : 1;
-      int retryCnt = 0;
-      for (;retryCnt < retryTimes; ++retryCnt) {
-        if (retryCnt > 0) {
+
+      Throwable lastException = null;
+      int retryLimit = retryOnServiceDiscoveryFailure ? 10 : 1;
+      for (int retryCount = 0; retryCount < retryLimit; ++retryCount) {
+        if (retryCount > 0) {
           try {
-            // Short sleep interval should be good enough and we assume the next retry could hit a different Router.
+            // Short sleep interval should be good enough, and we assume the next retry could hit a different Router.
             Thread.sleep(retryIntervalInMs);
           } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
             throw new VeniceException("Initialization of Venice client is interrupted");
           }
         }
         try {
           init();
-          break;
+          return keySerializer;
         } catch (ServiceDiscoveryException e) {
           if (e.getCause() instanceof VeniceNoStoreException) {
             // No store error is not retriable
             throw e;
           }
+          lastException = e.getCause();
         } catch (Exception e) {
           // Retry on other types of exceptions
           lastException = e;
         }
       }
-
-      if (retryCnt == retryTimes) {
-        throw new VeniceException("Failed to initializing Venice Client for store: " + storeName, lastException);
-      }
-
-      return keySerializer;
+      throw new VeniceException("Failed to initializing Venice Client for store: " + storeName, lastException);
     }
+  }
+
+  /**
+   * During the initialization, we do the cluster discovery at first to find the real end point this client need to talk
+   * to, before initializing the serializer.
+   * So if sub-implementation need to have its own serializer, please override the initSerializer method.
+   */
+  protected void init() {
+    discoverD2Service(false);
+    initSerializer();
   }
 
   private void discoverD2Service(boolean retryOnFailure) {
@@ -304,20 +309,10 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
       }
       if (transportClient instanceof D2TransportClient) {
         D2TransportClient client = (D2TransportClient) transportClient;
-        client.setServiceName(d2ServiceDiscovery.find(client, storeName, retryOnFailure).getD2Service());
+        client.setServiceName(new D2ServiceDiscovery().find(client, storeName, retryOnFailure).getD2Service());
       }
       isServiceDiscovered = true;
     }
-  }
-
-  /**
-   * During the initialization, we do the cluster discovery at first to find the real end point this client need to talk
-   * to, before initializing the serializer.
-   * So if sub-implementation need to have its own serializer, please override the initSerializer method.
-   */
-  protected void init() {
-    discoverD2Service(false);
-    initSerializer();
   }
 
   protected void initSerializer() {
@@ -734,17 +729,9 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
   @Override
   public void start() throws VeniceClientException {
     if (needSchemaReader) {
-      //TODO: remove the 'instanceof' statement once HttpClient got refactored.
-      if (transportClient instanceof D2TransportClient) {
-        this.schemaReader = new RouterBackedSchemaReader(this, this.getReaderSchema());
-      } else {
-        this.schemaReader = new RouterBackedSchemaReader(this.getStoreClientForSchemaReader(), this.getReaderSchema());
-      }
-    } else {
-      this.schemaReader = null;
+      this.schemaReader = new RouterBackedSchemaReader(this::getStoreClientForSchemaReader, this.getReaderSchema());
     }
-
-     warmUpVeniceClient();
+    warmUpVeniceClient();
   }
 
   @Override
@@ -841,20 +828,14 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
         ", transportClient: " + transportClient.toString() + ")";
   }
 
-  // For testing usage.
-  protected void setD2ServiceDiscovery(D2ServiceDiscovery d2ServiceDiscovery){
-    this.d2ServiceDiscovery = d2ServiceDiscovery;
-  }
-
-
   @Override
   public Schema getKeySchema() {
-    return schemaReader.getKeySchema();
+    return getSchemaReader().getKeySchema();
   }
 
   @Override
   public Schema getLatestValueSchema() {
-    return schemaReader.getLatestValueSchema();
+    return getSchemaReader().getLatestValueSchema();
   }
 
   private ByteBuffer decompressRecord(CompressionStrategy compressionStrategy, ByteBuffer data) {
