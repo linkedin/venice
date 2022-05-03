@@ -45,11 +45,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final RocksDBServerConfig rocksDBServerConfig;
   private final boolean enableServerAllowList;
   private final boolean autoCreateDataPath; // default true
-  /**
-   * Maximum number of thread that the thread pool would keep to run the Helix online offline state transition.
-   * The thread pool would create a thread for a state transition until the number of thread equals to this number.
-   */
-  private final int maxOnlineOfflineStateTransitionThreadNumber;
 
   /**
    *  Maximum number of thread that the thread pool would keep to run the Helix leader follower state transition.
@@ -297,7 +292,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     autoCreateDataPath = Boolean.parseBoolean(serverProperties.getString(AUTOCREATE_DATA_PATH, "true"));
     rocksDBServerConfig = new RocksDBServerConfig(serverProperties);
     enableServerAllowList = serverProperties.getBooleanWithAlternative(ENABLE_SERVER_WHITE_LIST, ENABLE_SERVER_ALLOW_LIST, false);
-    maxOnlineOfflineStateTransitionThreadNumber = serverProperties.getInt(MAX_ONLINE_OFFLINE_STATE_TRANSITION_THREAD_NUMBER, 100);
     maxLeaderFollowerStateTransitionThreadNumber = serverProperties.getInt(MAX_LEADER_FOLLOWER_STATE_TRANSITION_THREAD_NUMBER, 20);
 
     String lfThreadPoolStrategyStr = serverProperties.getString(LEADER_FOLLOWER_STATE_TRANSITION_THREAD_POOL_STRATEGY,
@@ -502,10 +496,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public boolean isServerAllowlistEnabled() {
     return enableServerAllowList;
-  }
-
-  public int getMaxOnlineOfflineStateTransitionThreadNumber() {
-    return maxOnlineOfflineStateTransitionThreadNumber;
   }
 
   public int getMaxLeaderFollowerStateTransitionThreadNumber() {

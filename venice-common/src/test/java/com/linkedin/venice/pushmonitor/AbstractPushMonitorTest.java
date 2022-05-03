@@ -39,6 +39,7 @@ import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
+import static com.linkedin.venice.pushmonitor.AbstractPushMonitor.*;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
@@ -145,7 +146,7 @@ public abstract class AbstractPushMonitorTest {
   @Test
   public void testStopMonitorErrorOfflinePush() {
     String store = getStoreName();
-    for (int i = 0; i < HelixEVBasedPushMonitor.MAX_PUSH_TO_KEEP; i++) {
+    for (int i = 0; i < MAX_PUSH_TO_KEEP; i++) {
       String topic = Version.composeKafkaTopic(store, i);
       monitor.startMonitorOfflinePush(topic, numberOfPartition, replicationFactor,
           OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
@@ -154,11 +155,11 @@ public abstract class AbstractPushMonitorTest {
       monitor.stopMonitorOfflinePush(topic, true, false);
     }
     // We should keep MAX_ERROR_PUSH_TO_KEEP error push for debug.
-    for (int i = 0; i < HelixEVBasedPushMonitor.MAX_PUSH_TO_KEEP; i++) {
+    for (int i = 0; i < MAX_PUSH_TO_KEEP; i++) {
       Assert.assertNotNull(monitor.getOfflinePushOrThrow(Version.composeKafkaTopic(store, i)));
     }
     // Add a new error push, the oldest one should be collected.
-    String topic = Version.composeKafkaTopic(store, HelixEVBasedPushMonitor.MAX_PUSH_TO_KEEP + 1);
+    String topic = Version.composeKafkaTopic(store, MAX_PUSH_TO_KEEP + 1);
     monitor.startMonitorOfflinePush(topic, numberOfPartition, replicationFactor,
         OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
     OfflinePushStatus pushStatus = monitor.getOfflinePushOrThrow(topic);
@@ -205,7 +206,7 @@ public abstract class AbstractPushMonitorTest {
   @Test
   public void testClearOldErrorVersion() {
     //creating MAX_PUSH_TO_KEEP * 2 pushes. The first is successful and the rest of them are failed.
-    int statusCount = HelixEVBasedPushMonitor.MAX_PUSH_TO_KEEP * 2;
+    int statusCount = MAX_PUSH_TO_KEEP * 2;
     List<OfflinePushStatus> statusList = new ArrayList<>(statusCount);
     for (int i = 0; i < statusCount; i++) {
       OfflinePushStatus pushStatus =
@@ -235,14 +236,14 @@ public abstract class AbstractPushMonitorTest {
 
     monitor.loadAllPushes();
     // Make sure we delete old error pushes from accessor.
-    verify(mockAccessor, times(statusCount - HelixEVBasedPushMonitor.MAX_PUSH_TO_KEEP))
+    verify(mockAccessor, times(statusCount - MAX_PUSH_TO_KEEP))
         .deleteOfflinePushStatusAndItsPartitionStatuses(any());
 
     //the first push should be persisted since it succeeded. But the next 5 pushes should be purged.
     int i = 0;
     Assert.assertEquals(monitor.getPushStatus("testLoadAllPushes_v" + i), ExecutionStatus.COMPLETED);
 
-    for (i = 1; i <= HelixEVBasedPushMonitor.MAX_PUSH_TO_KEEP; i++) {
+    for (i = 1; i <= MAX_PUSH_TO_KEEP; i++) {
       try {
         monitor.getOfflinePushOrThrow("testLoadAllPushes_v" + i);
         Assert.fail("Old error pushes should be collected after loading.");

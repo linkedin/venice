@@ -5,7 +5,6 @@ import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.helix.LeaderFollowerIngestionProgressNotifier;
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
-import com.linkedin.davinci.helix.OnlineOfflineIngestionProgressNotifier;
 import com.linkedin.davinci.notifier.LogNotifier;
 import com.linkedin.davinci.notifier.PartitionPushStatusNotifier;
 import com.linkedin.davinci.notifier.VeniceNotifier;
@@ -187,7 +186,7 @@ public class StoreIngestionTaskTest {
   private VeniceWriterFactory mockWriterFactory;
   private VeniceWriter localVeniceWriter;
   private StorageEngineRepository mockStorageEngineRepository;
-  private VeniceNotifier mockLogNotifier, mockPartitionStatusNotifier, mockLeaderFollowerStateModelNotifier, mockOnlineOfflineStateModelNotifier;
+  private VeniceNotifier mockLogNotifier, mockPartitionStatusNotifier, mockLeaderFollowerStateModelNotifier;
   private List<Object[]> mockNotifierProgress;
   private List<Object[]> mockNotifierEOPReceived;
   private List<Object[]> mockNotifierCompleted;
@@ -344,7 +343,6 @@ public class StoreIngestionTaskTest {
 
     mockPartitionStatusNotifier = mock(PartitionPushStatusNotifier.class);
     mockLeaderFollowerStateModelNotifier = mock(LeaderFollowerIngestionProgressNotifier.class);
-    mockOnlineOfflineStateModelNotifier = mock(OnlineOfflineIngestionProgressNotifier.class);
 
     mockAbstractStorageEngine = mock(AbstractStorageEngine.class);
     mockStorageMetadataService = mock(StorageMetadataService.class);
@@ -611,7 +609,7 @@ public class StoreIngestionTaskTest {
     }
     offsetManager = new DeepCopyStorageMetadataService(mockStorageMetadataService);
     Queue<VeniceNotifier> onlineOfflineNotifiers = new ConcurrentLinkedQueue<>(Arrays.asList(mockLogNotifier,
-        mockPartitionStatusNotifier, mockOnlineOfflineStateModelNotifier));
+        mockPartitionStatusNotifier));
     Queue<VeniceNotifier> leaderFollowerNotifiers = new ConcurrentLinkedQueue<>(Arrays.asList(mockLogNotifier,
         mockPartitionStatusNotifier, mockLeaderFollowerStateModelNotifier));
     DiskUsage diskUsage;
@@ -1057,8 +1055,6 @@ public class StoreIngestionTaskTest {
           fooLastOffset + 1);
       verify(mockLeaderFollowerStateModelNotifier, timeout(TEST_TIMEOUT_MS).atLeastOnce()).completed(topic, PARTITION_BAR,
           barLastOffset  + 1);
-      verify(mockOnlineOfflineStateModelNotifier, never()).completed(topic, PARTITION_FOO, fooLastOffset + 1);
-      verify(mockOnlineOfflineStateModelNotifier, never()).completed(topic, PARTITION_BAR, barLastOffset  + 1);
 
       /**
        * It seems Mockito will mess up the verification if there are two functions with the same name:

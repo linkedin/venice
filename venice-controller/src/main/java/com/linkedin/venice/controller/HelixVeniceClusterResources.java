@@ -76,16 +76,9 @@ public class HelixVeniceClusterResources implements VeniceResource {
   private final Optional<MetaStoreWriter> metaStoreWriter;
   private final VeniceAdminStats veniceAdminStats;
 
-  public HelixVeniceClusterResources(String clusterName,
-      ZkClient zkClient,
-      HelixAdapterSerializer adapterSerializer,
-      SafeHelixManager helixManager,
-      VeniceControllerConfig config,
-      VeniceHelixAdmin admin,
-      MetricsRepository metricsRepository,
-      Optional<TopicReplicator> onlineOfflineTopicReplicator,
-      Optional<TopicReplicator> leaderFollowerTopicReplicator,
-      Optional<DynamicAccessController> accessController,
+  public HelixVeniceClusterResources(String clusterName, ZkClient zkClient, HelixAdapterSerializer adapterSerializer,
+      SafeHelixManager helixManager, VeniceControllerConfig config, VeniceHelixAdmin admin,
+      MetricsRepository metricsRepository, Optional<TopicReplicator> leaderFollowerTopicReplicator, Optional<DynamicAccessController> accessController,
       HelixAdminClient helixAdminClient) {
     this.clusterName = clusterName;
     this.config = config;
@@ -134,7 +127,7 @@ public class HelixVeniceClusterResources implements VeniceResource {
 
     this.pushMonitor = new PushMonitorDelegator(config.getPushMonitorType(), clusterName, routingDataRepository,
         offlinePushMonitorAccessor, admin, storeMetadataRepository, new AggPushHealthStats(clusterName, metricsRepository),
-        onlineOfflineTopicReplicator, leaderFollowerTopicReplicator, clusterLockManager, aggregateRealTimeSourceKafkaUrl,
+        leaderFollowerTopicReplicator, clusterLockManager, aggregateRealTimeSourceKafkaUrl,
         getActiveActiveRealTimeSourceKafkaURLs(config));
 
     this.leakedPushStatusCleanUpService = new LeakedPushStatusCleanUpService(clusterName, offlinePushMonitorAccessor, storeMetadataRepository,

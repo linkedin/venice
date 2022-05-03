@@ -43,7 +43,6 @@ import org.apache.logging.log4j.Logger;
  *
  * Currently, we support 2 kinds of participant model.
  * 1. PartitionOnlineOfflineModel. Check out {@literal VeniceStateModel} for model definition
- * and {@link OnlineOfflinePartitionStateModel} for behavior registry.
  * 2. LeaderStandbyModel. Check out {@link LeaderStandbySMD} for model definition and
  * {@link LeaderFollowerPartitionStateModel} for behavior registry.
  */

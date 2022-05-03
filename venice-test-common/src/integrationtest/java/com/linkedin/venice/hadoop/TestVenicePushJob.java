@@ -484,34 +484,6 @@ public class TestVenicePushJob {
 
   }
 
-  /**
-   * Testing write compute enabled job where the store does not have LeaderFollower enabled
-   * @throws Exception
-   */
-  @Test(timeOut = TEST_TIMEOUT, expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Leader follower mode needs to be enabled for write compute.*")
-  public void testWCJobWithNoLF() throws Exception {
-    File inputDir = getTempDataDirectory();
-    String storeName = Utils.getUniqueString("store");
-    String routerUrl = veniceCluster.getRandomRouterURL();
-    ControllerClient controllerClient = new ControllerClient(veniceCluster.getClusterName(), routerUrl);
-
-    UpdateStoreQueryParams params = new UpdateStoreQueryParams();
-    params.setWriteComputationEnabled(true);
-    params.setLeaderFollowerModel(false);     //disable LeaderFollower in store
-    params.setIncrementalPushEnabled(true);
-
-    controllerClient.createNewStoreWithParameters(storeName, "owner", "\"string\"", "\"string\"", params);
-
-    String inputDirPath = "file://" + inputDir.getAbsolutePath();
-    Properties props = defaultH2VProps(veniceCluster, inputDirPath, storeName);
-
-    //enable write compute param
-    props.put(ENABLE_WRITE_COMPUTE, true);
-    props.put(INCREMENTAL_PUSH, true);
-
-    TestPushUtils.runPushJob("Test push job", props);
-  }
-
   @Test(timeOut = TEST_TIMEOUT,
       expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Exception or error caught during Hadoop to Venice Bridge.*")
   public void testRunJobWithBuggySprayingMapReduceShufflePartitioner() throws Exception {
