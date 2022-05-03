@@ -53,7 +53,7 @@ public class TestVeniceHelixResources {
     doReturn(mock(HelixReadOnlyZKSharedSystemStoreRepository.class)).when(veniceHelixAdmin).getReadOnlyZKSharedSystemStoreRepository();
     doReturn(mock(HelixReadOnlyZKSharedSchemaRepository.class)).when(veniceHelixAdmin).getReadOnlyZKSharedSchemaRepository();
     return new HelixVeniceClusterResources(cluster, zkClient, new HelixAdapterSerializer(), new SafeHelixManager(controller),
-        mock(VeniceControllerConfig.class), veniceHelixAdmin, metricsRepository, Optional.empty(), Optional.empty(),
+        mock(VeniceControllerConfig.class), veniceHelixAdmin, metricsRepository, Optional.empty(),
         Optional.empty(), mock(HelixAdminClient.class));
   }
 

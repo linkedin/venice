@@ -45,7 +45,6 @@ public class VeniceControllerStateModel extends StateModel {
   private final Optional<DynamicAccessController> accessController;
   private final String clusterName;
   private final HelixAdminClient helixAdminClient;
-  private final Optional<TopicReplicator> onlineOfflineTopicReplicator;
   private final Optional<TopicReplicator> leaderFollowerTopicReplicator;
 
   private VeniceControllerConfig clusterConfig;
@@ -54,10 +53,9 @@ public class VeniceControllerStateModel extends StateModel {
 
 
   public VeniceControllerStateModel(String clusterName, ZkClient zkClient, HelixAdapterSerializer adapterSerializer,
-                                    VeniceControllerMultiClusterConfig multiClusterConfigs, VeniceHelixAdmin admin, MetricsRepository metricsRepository,
-                                    ClusterLeaderInitializationRoutine controllerInitialization, Optional<TopicReplicator> onlineOfflineTopicReplicator,
-                                    Optional<TopicReplicator> leaderFollowerTopicReplicator, Optional<DynamicAccessController> accessController,
-                                    HelixAdminClient helixAdminClient) {
+      VeniceControllerMultiClusterConfig multiClusterConfigs, VeniceHelixAdmin admin, MetricsRepository metricsRepository,
+      ClusterLeaderInitializationRoutine controllerInitialization, Optional<TopicReplicator> leaderFollowerTopicReplicator,
+      Optional<DynamicAccessController> accessController, HelixAdminClient helixAdminClient) {
     this._currentState = new StateModelParser().getInitialState(VeniceControllerStateModel.class);
     this.clusterName = clusterName;
     this.zkClient = zkClient;
@@ -66,7 +64,6 @@ public class VeniceControllerStateModel extends StateModel {
     this.admin = admin;
     this.metricsRepository = metricsRepository;
     this.controllerInitialization = controllerInitialization;
-    this.onlineOfflineTopicReplicator = onlineOfflineTopicReplicator;
     this.leaderFollowerTopicReplicator = leaderFollowerTopicReplicator;
     this.accessController = accessController;
     this.helixAdminClient = helixAdminClient;
@@ -167,9 +164,7 @@ public class VeniceControllerStateModel extends StateModel {
         helixManager,
         clusterConfig,
         admin,
-        metricsRepository,
-        onlineOfflineTopicReplicator,
-        leaderFollowerTopicReplicator,
+        metricsRepository, leaderFollowerTopicReplicator,
         accessController,
         helixAdminClient
     );

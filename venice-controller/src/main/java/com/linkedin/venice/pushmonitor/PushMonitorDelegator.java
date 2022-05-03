@@ -42,26 +42,20 @@ public class PushMonitorDelegator implements PushMonitor {
   private final String clusterName;
   private final ClusterLockManager clusterLockManager;
 
-  private final HelixEVBasedPushMonitor helixEVPushMonitor;
   private final PartitionStatusBasedPushMonitor partitionStatusBasedPushStatusMonitor;
 
   //Cache the relationship between kafka topic and push monitor here.
   private final Map<String, AbstractPushMonitor> topicToPushMonitorMap;
 
   public PushMonitorDelegator(PushMonitorType pushMonitorType, String clusterName,
-      RoutingDataRepository routingDataRepository, OfflinePushAccessor offlinePushAccessor,
-      StoreCleaner storeCleaner, ReadWriteStoreRepository metadataRepository,
-      AggPushHealthStats aggPushHealthStats, Optional<TopicReplicator> onlineOfflineTopicReplicator,
-      Optional<TopicReplicator> leaderFollowerTopicReplicator, ClusterLockManager clusterLockManager,
-      String aggregateRealTimeSourceKafkaUrl, List<String> activeActiveRealTimeSourceKafkaURLs) {
+      RoutingDataRepository routingDataRepository, OfflinePushAccessor offlinePushAccessor, StoreCleaner storeCleaner,
+      ReadWriteStoreRepository metadataRepository, AggPushHealthStats aggPushHealthStats, Optional<TopicReplicator> leaderFollowerTopicReplicator,
+      ClusterLockManager clusterLockManager, String aggregateRealTimeSourceKafkaUrl, List<String> activeActiveRealTimeSourceKafkaURLs) {
     this.clusterName = clusterName;
     this.pushMonitorType = pushMonitorType;
     this.metadataRepository = metadataRepository;
     this.offlinePushAccessor = offlinePushAccessor;
 
-    this.helixEVPushMonitor = new HelixEVBasedPushMonitor(clusterName, routingDataRepository, offlinePushAccessor,
-        storeCleaner, metadataRepository, aggPushHealthStats, onlineOfflineTopicReplicator, clusterLockManager,
-        aggregateRealTimeSourceKafkaUrl, activeActiveRealTimeSourceKafkaURLs);
     this.partitionStatusBasedPushStatusMonitor = new PartitionStatusBasedPushMonitor(clusterName, offlinePushAccessor,
         storeCleaner, metadataRepository, routingDataRepository, aggPushHealthStats, leaderFollowerTopicReplicator,
         clusterLockManager, aggregateRealTimeSourceKafkaUrl, activeActiveRealTimeSourceKafkaURLs);
@@ -80,33 +74,7 @@ public class PushMonitorDelegator implements PushMonitor {
             Optional.of("Cannot find store metadata when tyring to allocate push status to push monitor."
                 + "It's likely that the store has been deleted. topic: " + topicName));
       }
-
-      //if the store is set to use L/F model, we would always use partition status based push status monitor
-      Optional<Version> version = store.getVersion(Version.parseVersionFromKafkaTopicName(kafkaTopic));
-      if (version.isPresent()) {
-        if (version.get().isLeaderFollowerModelEnabled()) {
-          return partitionStatusBasedPushStatusMonitor;
-        }
-      } else {
-        logger.info("PushMonitorDelegator cannot get version metadata since the version isn't existing. "
-            + "Kafka topic: " + kafkaTopic);
-
-        //when version is not found, check the store metadata instead
-        if (store.isLeaderFollowerModelEnabled()) {
-          return partitionStatusBasedPushStatusMonitor;
-        }
-      }
-
-      switch (pushMonitorType) {
-        case WRITE_COMPUTE_STORE:
-          return store.isWriteComputationEnabled() ? partitionStatusBasedPushStatusMonitor : helixEVPushMonitor;
-        case HYBRID_STORE:
-          return store.isHybrid() ? partitionStatusBasedPushStatusMonitor : helixEVPushMonitor;
-        case PARTITION_STATUS_BASED:
-          return partitionStatusBasedPushStatusMonitor;
-        default:
-          throw new VeniceException("Unknown push status monitor type.");
-      }
+      return partitionStatusBasedPushStatusMonitor;
     });
   }
 
@@ -114,7 +82,6 @@ public class PushMonitorDelegator implements PushMonitor {
   public void loadAllPushes() {
     logger.info("Load all pushes started for cluster " + clusterName + "'s " + getClass().getSimpleName());
     try (AutoCloseableLock ignore = clusterLockManager.createClusterWriteLock()) {
-      List<OfflinePushStatus> offlinePushMonitorStatuses = new ArrayList<>();
       List<OfflinePushStatus> partitionStatusBasedPushMonitorStatuses = new ArrayList<>();
 
       //This is for cleaning up legacy push statuses due to resource leaking. Ideally,
@@ -122,18 +89,13 @@ public class PushMonitorDelegator implements PushMonitor {
       List<OfflinePushStatus> legacyPushStatuses = new ArrayList<>();
       offlinePushAccessor.loadOfflinePushStatusesAndPartitionStatuses().forEach(status -> {
         try {
-          if (getPushMonitor(status.getKafkaTopic()).equals(helixEVPushMonitor)) {
-            offlinePushMonitorStatuses.add(status);
-          } else {
-            partitionStatusBasedPushMonitorStatuses.add(status);
-          }
+          partitionStatusBasedPushMonitorStatuses.add(status);
         } catch (VeniceNoStoreException e) {
           logger.info("Found a legacy push status. topic: " + status.getKafkaTopic());
           legacyPushStatuses.add(status);
         }
       });
 
-      helixEVPushMonitor.loadAllPushes(offlinePushMonitorStatuses);
       partitionStatusBasedPushStatusMonitor.loadAllPushes(partitionStatusBasedPushMonitorStatuses);
 
       legacyPushStatuses.forEach(pushStatus -> offlinePushAccessor.deleteOfflinePushStatusAndItsPartitionStatuses(pushStatus.getKafkaTopic()));
@@ -156,7 +118,6 @@ public class PushMonitorDelegator implements PushMonitor {
     logger.info("Stopping all monitoring for cluster " + clusterName + "'s " + getClass().getSimpleName());
     try (AutoCloseableLock ignore = clusterLockManager.createClusterWriteLock()) {
       partitionStatusBasedPushStatusMonitor.stopAllMonitoring();
-      helixEVPushMonitor.stopAllMonitoring();
       logger.info("Successfully stopped all monitoring for cluster " + clusterName + "'s " + getClass().getSimpleName());
     } catch (Exception e) {
       logger.error("Error when stopping all monitoring for cluster " + clusterName + "'s " + getClass().getSimpleName());
@@ -165,7 +126,6 @@ public class PushMonitorDelegator implements PushMonitor {
 
   @Override
   public void cleanupStoreStatus(String storeName) {
-    helixEVPushMonitor.cleanupStoreStatus(storeName);
     partitionStatusBasedPushStatusMonitor.cleanupStoreStatus(storeName);
   }
 
@@ -206,8 +166,7 @@ public class PushMonitorDelegator implements PushMonitor {
 
   @Override
   public List<String> getTopicsOfOngoingOfflinePushes() {
-    return Stream.concat(helixEVPushMonitor.getTopicsOfOngoingOfflinePushes().stream(),
-        partitionStatusBasedPushStatusMonitor.getTopicsOfOngoingOfflinePushes().stream()).collect(Collectors.toList());
+    return partitionStatusBasedPushStatusMonitor.getTopicsOfOngoingOfflinePushes();
   }
 
   @Override

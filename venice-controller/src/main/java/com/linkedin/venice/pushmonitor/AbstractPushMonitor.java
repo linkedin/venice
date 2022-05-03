@@ -73,8 +73,8 @@ public abstract class AbstractPushMonitor
     this.metadataRepository = metadataRepository;
     this.routingDataRepository = routingDataRepository;
     this.aggPushHealthStats = aggPushHealthStats;
-    this.topicReplicator = topicReplicator;
     this.clusterLockManager = clusterLockManager;
+    this.topicReplicator = topicReplicator;
     this.aggregateRealTimeSourceKafkaUrl = aggregateRealTimeSourceKafkaUrl;
     this.activeActiveRealTimeSourceKafkaURLs = activeActiveRealTimeSourceKafkaURLs;
   }

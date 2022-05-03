@@ -522,7 +522,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       }
       controllerStateModelFactory = new VeniceDistClusterControllerStateModelFactory(
           zkClient, adapterSerializer, this, multiClusterConfigs, metricsRepository, controllerInitialization,
-          onlineOfflineTopicReplicator, leaderFollowerTopicReplicator, accessController, helixAdminClient);
+          leaderFollowerTopicReplicator, accessController, helixAdminClient);
     }
 
     private void checkAndCreateVeniceControllerCluster(boolean isControllerInAzure) {

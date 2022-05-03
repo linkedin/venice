@@ -136,7 +136,7 @@ public class TestVeniceVersionFinder {
   }
 
   @Test
-  public void onlySwapsVersionWhenAllPartitionsAreOnline() throws RouterException {
+  public void testSwapsVersionWhenAllPartitionsAreOnline() {
     ReadOnlyStoreRepository storeRepository = mock(ReadOnlyStoreRepository.class);
     String storeName = Utils.getUniqueString("version-finder-test-store");
     int firstVersion = 1;
@@ -146,6 +146,7 @@ public class TestVeniceVersionFinder {
     int fifthVersion = 5;
     Store store = TestUtils.createTestStore(storeName, "unittest", System.currentTimeMillis());
     store.setPartitionCount(3);
+    store.setLeaderFollowerModelEnabled(true);
     store.addVersion(new VersionImpl(storeName, firstVersion));
     store.setCurrentVersion(firstVersion);
     store.updateVersionStatus(firstVersion, VersionStatus.ONLINE);
@@ -160,6 +161,7 @@ public class TestVeniceVersionFinder {
 
     PartitionStatusOnlineInstanceFinder partitionStatusOnlineInstanceFinder = mock(PartitionStatusOnlineInstanceFinder.class);
     doReturn(instances).when(partitionStatusOnlineInstanceFinder).getReadyToServeInstances(anyString(), anyInt());
+    doReturn(3).when(partitionStatusOnlineInstanceFinder).getNumberOfPartitions(anyString());
 
     StaleVersionStats stats = mock(StaleVersionStats.class);
     HelixReadOnlyStoreConfigRepository storeConfigRepo = mock(HelixReadOnlyStoreConfigRepository.class);

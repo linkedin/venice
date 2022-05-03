@@ -9,7 +9,6 @@ import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionService;
 import com.linkedin.davinci.notifier.PartitionPushStatusNotifier;
 import com.linkedin.davinci.notifier.PushMonitorNotifier;
-import com.linkedin.davinci.stats.ParticipantStateStats;
 import com.linkedin.davinci.stats.ThreadPoolStats;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
@@ -61,8 +60,6 @@ public class HelixParticipationService extends AbstractVeniceService implements 
 
   private static final Logger logger = LogManager.getLogger(HelixParticipationService.class);
 
-  private static final String ONLINE_OFFLINE_MODEL_NAME = "PartitionOnlineOfflineModel";
-
   private static final int MAX_RETRY = 30;
   private static final int RETRY_INTERVAL_SEC = 1;
 
@@ -81,7 +78,6 @@ public class HelixParticipationService extends AbstractVeniceService implements 
 
   private ZkClient zkClient;
   private SafeHelixManager helixManager;
-  private AbstractStateModelFactory onlineOfflineParticipantModelFactory;
   private AbstractStateModelFactory leaderFollowerParticipantModelFactory;
   private HelixPartitionStatusAccessor partitionPushStatusAccessor;
   private ThreadPoolExecutor leaderFollowerHelixStateTransitionThreadPool;
@@ -115,7 +111,6 @@ public class HelixParticipationService extends AbstractVeniceService implements 
     } else {
       this.ingestionBackend = new DefaultIngestionBackend(storageMetadataService, (KafkaStoreIngestionService) storeIngestionService, storageService);
     }
-    new ParticipantStateStats(metricsRepository, "venice_O/O_partition_state");
   }
 
   //Set corePoolSize and maxPoolSize as the same value, but enable allowCoreThreadTimeOut. So the expected
@@ -139,19 +134,6 @@ public class HelixParticipationService extends AbstractVeniceService implements 
     helixManager = new SafeHelixManager(
         HelixManagerFactory.getZKHelixManager(clusterName, this.participantName, InstanceType.PARTICIPANT, zkAddress));
 
-    //create 2 dedicated thread pools for executing incoming state transitions (1 for online offline (O/O) model and the
-    //other for leader follower (L/F) model) Since L/F transition is not blocked by ingestion, it should run much faster
-    //than O/O's. Thus, the size is supposed to be smaller.
-    onlineOfflineParticipantModelFactory = new OnlineOfflinePartitionStateModelFactory(
-        ingestionBackend,
-        veniceConfigLoader,
-        initHelixStateTransitionThreadPool(
-            veniceConfigLoader.getVeniceServerConfig().getMaxOnlineOfflineStateTransitionThreadNumber(),
-            "venice-O/O-state-transition",
-            metricsRepository,
-            "Venice_ST_thread_pool"),
-        helixReadOnlyStoreRepository, partitionPushStatusAccessorFuture, instance.getNodeId());
-
     leaderFollowerHelixStateTransitionThreadPool = initHelixStateTransitionThreadPool(
         veniceConfigLoader.getVeniceServerConfig().getMaxLeaderFollowerStateTransitionThreadNumber(),
         "Venice-L/F-state-transition", metricsRepository,
@@ -174,7 +156,6 @@ public class HelixParticipationService extends AbstractVeniceService implements 
               partitionPushStatusAccessorFuture, instance.getNodeId());
     }
 
-    helixManager.getStateMachineEngine().registerStateModelFactory(ONLINE_OFFLINE_MODEL_NAME, onlineOfflineParticipantModelFactory);
     helixManager.getStateMachineEngine().registerStateModelFactory(LeaderStandbySMD.name, leaderFollowerParticipantModelFactory);
     //TODO Now Helix instance config only support host and port. After talking to Helix team, they will add
     // customize k-v data support soon. Then we don't need LiveInstanceInfoProvider here. Use the instance config
@@ -213,11 +194,9 @@ public class HelixParticipationService extends AbstractVeniceService implements 
     }
     ingestionBackend.close();
     logger.info("Closed VeniceIngestionBackend.");
-    onlineOfflineParticipantModelFactory.shutDownExecutor();
     leaderFollowerParticipantModelFactory.shutDownExecutor();
 
     try {
-      onlineOfflineParticipantModelFactory.waitExecutorTermination(30, TimeUnit.SECONDS);
       leaderFollowerParticipantModelFactory.waitExecutorTermination(30, TimeUnit.SECONDS);
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();

@@ -11,6 +11,7 @@ import com.linkedin.davinci.stats.RocksDBMemoryStats;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.TopicManagerRepository;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
@@ -77,16 +78,7 @@ public class StoreIngestionTaskFactory {
           cacheBackend,
           compressorFactory);
     } else {
-      return new OnlineOfflineStoreIngestionTask(
-          builder,
-          store,
-          version,
-          kafkaConsumerProperties,
-          isCurrentVersion,
-          storeConfig,
-          partitionId,
-          isIsolatedIngestion,
-          cacheBackend);
+      throw new VeniceException("State transition model not defined.");
     }
   }
 

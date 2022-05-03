@@ -11,7 +11,6 @@ import java.util.concurrent.ExecutorService;
 
 /**
  * State Transition Handler factory for handling Leader/Follower resources in the storage node.
- * For Online/Offline resources, please refer to {@link OnlineOfflinePartitionStateModelFactory}
  */
 
 public class LeaderFollowerPartitionStateModelFactory extends AbstractStateModelFactory {

@@ -98,6 +98,7 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
     if (hybridStoreConfig != null) {
       this.storeProperties.hybridConfig = hybridStoreConfig.dataModel();
     }
+    this.storeProperties.leaderFollowerModelEnabled = true;
     // This makes sure when deserializing existing stores from ZK, we will use default partitioner setting.
     if (partitionerConfig == null) {
       partitionerConfig = new PartitionerConfigImpl();
