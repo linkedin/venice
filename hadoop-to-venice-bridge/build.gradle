@@ -35,10 +35,10 @@ dependencies {
 
     implementation libraries.zstd
 
-    runtimeOnly libraries.commonsConfiguration
-    runtimeOnly libraries.commonsLang
-    runtimeOnly libraries.httpCore
-    runtimeOnly libraries.httpClient
+    runtime libraries.commonsConfiguration
+    runtime libraries.commonsLang
+    runtime libraries.httpCore
+    runtime libraries.httpClient
 }
 
 configurations {

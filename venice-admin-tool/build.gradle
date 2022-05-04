@@ -4,10 +4,10 @@ jar {
     zip64 true
     manifest {
         attributes 'Implementation-Title': 'Venice Admin Tool',
-            'Implementation-Version': archiveVersion,
+            'Implementation-Version': version,
             'Main-Class': 'com.linkedin.venice.AdminTool'
     }
-    archiveBaseName = project.name
+    baseName = project.name
     from { configurations.compile
         .filter {!it.absolutePath.endsWith(".xml")} // Resolves Could not expand ZIP '.../pegasus-d2-client-factory-cmpt-def-16.0.23.xml'.
         .filter {!it.absolutePath.endsWith(".ivy")} // Exclude the ivy file which is introduced by new helix version.
@@ -22,10 +22,10 @@ task fatJar(type: Jar) {
     zip64 true
     manifest {
         attributes 'Implementation-Title': 'Venice Admin Tool',
-            'Implementation-Version': archiveVersion,
+            'Implementation-Version': version,
             'Main-Class': 'com.linkedin.venice.AdminTool'
     }
-    archiveBaseName = project.name
+    baseName = project.name
     from { configurations.runtimeClasspath
         .filter {!it.absolutePath.endsWith(".xml")} // Resolves Could not expand ZIP '.../pegasus-d2-client-factory-cmpt-def-16.0.23.xml'.
         .filter {!it.absolutePath.endsWith(".ivy")} // Exclude the ivy file which is introduced by new helix version.
