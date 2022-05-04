@@ -127,6 +127,7 @@ public class AdminTool {
 
   private static ControllerClient controllerClient;
   private static Optional<SSLFactory> sslFactory = Optional.empty();
+  private static final Map<String, Map<String, ControllerClient>> clusterControllerClientPerColoMap = new HashMap<>();
 
   public static void main(String args[])
       throws Exception {
@@ -464,6 +465,7 @@ public class AdminTool {
           }
           throw new VeniceException("Must supply one of the following commands: " + availableCommands.toString());
       }
+      clusterControllerClientPerColoMap.forEach((key, map) -> map.values().forEach(Utils::closeQuietlyWithErrorLogged));
     } catch (Exception e){
       printErrAndThrow(e, e.getMessage(), null);
     }
@@ -1394,12 +1396,19 @@ public class AdminTool {
   }
 
   private static Map<String, ControllerClient> getControllerClientMap(String clusterName, ChildAwareResponse response) {
-    Map<String, ControllerClient> controllerClientMap = new HashMap<>();
-    response.getChildDataCenterControllerUrlMap().forEach((key, value) -> controllerClientMap.put(key,
-        new ControllerClient(clusterName, value, sslFactory)));
-    response.getChildDataCenterControllerD2Map().forEach((key, value) -> controllerClientMap.put(key,
-        new D2ControllerClient(response.getD2ServiceName(), clusterName, value, sslFactory)));
-    return controllerClientMap;
+    return clusterControllerClientPerColoMap.computeIfAbsent(clusterName, cn -> {
+      Map<String, ControllerClient> controllerClientMap = new HashMap<>();
+      if (response.getChildDataCenterControllerUrlMap() != null) {
+        response.getChildDataCenterControllerUrlMap().forEach((key, value) -> controllerClientMap.put(key,
+            new ControllerClient(clusterName, value, sslFactory)));
+      }
+      if (response.getChildDataCenterControllerD2Map() != null) {
+        // TODO: disable logs from d2 dependencies
+        response.getChildDataCenterControllerD2Map().forEach((key, value) -> controllerClientMap.put(key,
+            new D2ControllerClient(response.getD2ServiceName(), clusterName, value, sslFactory)));
+      }
+      return controllerClientMap;
+    });
   }
 
   private static int getLatestOnlineVersionNum(List<Version> versions) {

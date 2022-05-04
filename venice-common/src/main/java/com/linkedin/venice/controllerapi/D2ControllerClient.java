@@ -143,6 +143,11 @@ public class D2ControllerClient extends ControllerClient{
   }
 
   @Override
+  public D2ServiceDiscoveryResponse discoverCluster(String storeName) {
+    return discoverCluster(d2Client, d2ServiceName, storeName);
+  }
+
+  @Override
   public void close() {
     super.close();
     if (!this.externalD2Client) {
