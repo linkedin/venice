@@ -1926,14 +1926,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           }
 
           String sourceKafkaURL = getSourceKafkaUrlForOffsetLagMeasurement(pcs);
-          KafkaConsumerWrapper kafkaConsumer = kafkaUrlToConsumerMap.get(sourceKafkaURL);
-          // Consumer might not existed in the map after the consumption state is created, but before attaching the
-          // corresponding consumer in consumerMap.
-          if (kafkaConsumer != null) {
-            Optional<Long> offsetLagOptional = kafkaConsumer.getOffsetLag(currentLeaderTopic, pcs.getPartition());
-            if (offsetLagOptional.isPresent()) {
-              return offsetLagOptional.get();
-            }
+          // Consumer might not existed after the consumption state is created, but before attaching the corresponding consumer.
+          Optional<Long> offsetLagOptional = getPartitionOffsetLag(sourceKafkaURL, currentLeaderTopic, pcs.getUserPartition());
+          if (offsetLagOptional.isPresent()) {
+            return offsetLagOptional.get();
           }
           // Fall back to use the old way
           return (cachedKafkaMetadataGetter.getOffset(getTopicManager(nativeReplicationSourceVersionTopicKafkaURL), currentLeaderTopic, pcs.getPartition()) - 1)
@@ -1941,6 +1937,21 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         }).sum();
 
     return minZeroLag(replicationLag);
+  }
+
+  protected Optional<Long> getPartitionOffsetLag(String kafkaSourceAddress, String topic, int partition) {
+    if (serverConfig.isSharedConsumerPoolEnabled()) {
+      Optional<Long> offsetLagOptional = aggKafkaConsumerService.getOffsetLagFor(kafkaSourceAddress,
+            kafkaVersionTopic, topic, partition);
+      return offsetLagOptional;
+    } else {
+      KafkaConsumerWrapper kafkaConsumer = kafkaUrlToDedicatedConsumerMap.get(localKafkaServer);
+      if (kafkaConsumer != null) {
+        Optional<Long> offsetLagOptional = kafkaConsumer.getOffsetLag(kafkaVersionTopic, partition);
+        return offsetLagOptional;
+      }
+    }
+    return Optional.empty();
   }
 
   @Override
@@ -1982,15 +1993,12 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           if (currentLeaderTopic == null || currentLeaderTopic.isEmpty()) {
             currentLeaderTopic = kafkaVersionTopic;
           }
+
           final String kafkaSourceAddress = getSourceKafkaUrlForOffsetLagMeasurement(pcs);
-          KafkaConsumerWrapper kafkaConsumer = kafkaUrlToConsumerMap.get(kafkaSourceAddress);
-          // Consumer might not existed in the map after the consumption state is created, but before attaching the
-          // corresponding consumer in consumerMap.
-          if (kafkaConsumer != null) {
-            Optional<Long> offsetLagOptional = kafkaConsumer.getOffsetLag(currentLeaderTopic, pcs.getPartition());
-            if (offsetLagOptional.isPresent()) {
-              return offsetLagOptional.get();
-            }
+          // Consumer might not existed after the consumption state is created, but before attaching the corresponding consumer.
+          Optional<Long> offsetLagOptional = getPartitionOffsetLag(kafkaSourceAddress, currentLeaderTopic, pcs.getPartition());
+          if (offsetLagOptional.isPresent()) {
+            return offsetLagOptional.get();
           }
 
           // Fall back to calculate offset lag in the original approach
@@ -2053,14 +2061,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         .filter(partitionConsumptionStateFilter)
         //the lag is (latest VT offset - consumed VT offset)
         .mapToLong((pcs) -> {
-          KafkaConsumerWrapper kafkaConsumer = kafkaUrlToConsumerMap.get(localKafkaServer);
-          // Consumer might not existed in the map after the consumption state is created, but before attaching the
-          // corresponding consumer in consumerMap.
-          if (kafkaConsumer != null) {
-            Optional<Long> offsetLagOptional = kafkaConsumer.getOffsetLag(kafkaVersionTopic, pcs.getPartition());
-            if (offsetLagOptional.isPresent()) {
-              return offsetLagOptional.get();
-            }
+          // Consumer might not existed after the consumption state is created, but before attaching the corresponding consumer.
+          Optional<Long> offsetLagOptional = getPartitionOffsetLag(localKafkaServer, kafkaVersionTopic, pcs.getPartition());
+          if (offsetLagOptional.isPresent()) {
+            return offsetLagOptional.get();
           }
           // Fall back to calculate offset lag in the old way
           return (cachedKafkaMetadataGetter.getOffset(getTopicManager(localKafkaServer), kafkaVersionTopic, pcs.getPartition()) - 1)
@@ -2134,16 +2138,23 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    */
   @Override
   public void consumerUnSubscribeAllTopics(PartitionConsumptionState partitionConsumptionState) {
-    Map<String, KafkaConsumerWrapper> consumerByKafkaURL = getConsumerByKafkaURL(partitionConsumptionState);
     String leaderTopic = partitionConsumptionState.getOffsetRecord().getLeaderTopic();
+    Map<String, KafkaConsumerWrapper> kafkaUrlToConsumerMap;
 
-    consumerByKafkaURL.values().forEach(consumer -> {
+    // TODO: Rely on aggKafkaConsumerService to unsubscribe the consumer.
+    if (serverConfig.isSharedConsumerPoolEnabled()) {
+      kafkaUrlToConsumerMap = kafkaUrlToSharedConsumerMap;
+    } else {
+      kafkaUrlToConsumerMap = kafkaUrlToDedicatedConsumerMap;
+    }
+    kafkaUrlToConsumerMap.values().forEach(consumer -> {
       if (partitionConsumptionState.getLeaderFollowerState().equals(LEADER) && leaderTopic != null) {
         consumer.unSubscribe(leaderTopic, partitionConsumptionState.getPartition());
       } else {
         consumer.unSubscribe(kafkaVersionTopic, partitionConsumptionState.getPartition());
       }
     });
+
     /**
      * Leader of the user partition should close all subPartitions it is producing to.
      */

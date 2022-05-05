@@ -240,8 +240,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   // use this checker to check whether ingestion completion can be reported for a partition
   protected final ReadyToServeCheck defaultReadyToServeChecker;
 
-  // Kafka bootstrap url to consumer
-  protected Map<String, KafkaConsumerWrapper> kafkaUrlToConsumerMap;
+  protected Map<String, KafkaConsumerWrapper> kafkaUrlToDedicatedConsumerMap;
+  protected Map<String, KafkaConsumerWrapper> kafkaUrlToSharedConsumerMap;
 
   private final KafkaClusterBasedRecordThrottler kafkaClusterBasedRecordThrottler;
 
@@ -255,7 +255,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   private final StorageUtilizationManager storageUtilizationManager;
 
-  private final AggKafkaConsumerService aggKafkaConsumerService;
+  protected final AggKafkaConsumerService aggKafkaConsumerService;
   /**
    * This topic set is used to track all the topics, which have ever been subscribed.
    * It may not reflect the current subscriptions.
@@ -394,7 +394,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.availableSchemaIds = new IntOpenHashSet();
     this.deserializedSchemaIds = new IntOpenHashSet();
     this.consumerActionsQueue = new PriorityBlockingQueue<>(CONSUMER_ACTION_QUEUE_INIT_CAPACITY);
-    this.kafkaUrlToConsumerMap = new VeniceConcurrentHashMap<>();
+
     this.kafkaClusterBasedRecordThrottler = builder.getKafkaClusterBasedRecordThrottler();
 
     // partitionConsumptionStateMap could be accessed by multiple threads: consumption thread and the thread handling kill message
@@ -437,6 +437,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.defaultReadyToServeChecker = getDefaultReadyToServeChecker();
 
     this.aggKafkaConsumerService = builder.getAggKafkaConsumerService();
+
+    if (serverConfig.isSharedConsumerPoolEnabled()) {
+      this.kafkaUrlToSharedConsumerMap = new VeniceConcurrentHashMap<>();
+    } else {
+      this.kafkaUrlToDedicatedConsumerMap = new VeniceConcurrentHashMap<>();
+    }
 
     this.errorPartitionId = errorPartitionId;
     this.cacheWarmingThreadPool = builder.getCacheWarmingThreadPool();
@@ -518,6 +524,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             : (topic, partition) -> {}
     );
     this.storeRepository.registerStoreDataChangedListener(this.storageUtilizationManager);
+
+    if (serverConfig.isSharedConsumerPoolEnabled() && aggKafkaConsumerService == null) {
+      throw new IllegalArgumentException(AggKafkaConsumerService.class.getSimpleName()
+          + " instance does not exist for shared consumer mode.");
+    }
   }
 
   public boolean isFutureVersion() {
@@ -1237,7 +1248,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      * Check whether current consumer has any subscription or not since 'poll' function will throw
      * {@link IllegalStateException} with empty subscription.
      */
-    if (!consumerHasSubscription()) {
+    if (!consumerHasAnySubscription()) {
       if (++idleCounter <= MAX_IDLE_COUNTER) {
         String message = consumerTaskId + " Not subscribed to any partitions";
         if (!REDUNDANT_LOGGING_FILTER.isRedundantException(message)) {
@@ -1557,15 +1568,17 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         }
       }
 
-      if (kafkaUrlToConsumerMap == null || kafkaUrlToConsumerMap.size() == 0) {
-        // Consumer constructor error-ed out, nothing can be cleaned up.
-        logger.warn("Error in consumer creation, skipping close for topic " + kafkaVersionTopic);
-      } else {
-        kafkaUrlToConsumerMap.values().forEach(consumer -> consumer.close(everSubscribedTopics));
-      }
-      if (aggKafkaConsumerService != null) {
+      if (serverConfig.isSharedConsumerPoolEnabled()) {
         aggKafkaConsumerService.unsubscribeAll(getVersionTopic());
+      } else {
+        if (kafkaUrlToDedicatedConsumerMap == null || kafkaUrlToDedicatedConsumerMap.size() == 0) {
+          // Consumer constructor error-ed out, nothing can be cleaned up.
+          logger.warn("Error in consumer creation, skipping close for topic " + kafkaVersionTopic);
+        } else {
+          kafkaUrlToDedicatedConsumerMap.values().forEach(consumer -> consumer.close(everSubscribedTopics));
+        }
       }
+
       closeProducers();
     } catch (Exception e) {
       logger.error("Caught exception while trying to close the current ingestion task", e);
@@ -2749,91 +2762,98 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   /**
-   * All the subscriptions belonging to the same {@link StoreIngestionTask} SHOULD use this function instead of
-   * {@link KafkaConsumerWrapper#subscribe} directly since we need to let {@link KafkaConsumerService} knows which
-   * {@link StoreIngestionTask} to use when receiving result for any specific topic.
+   * All the dedicated consumer subscriptions belonging to the same {@link StoreIngestionTask} SHOULD use this function
+   * instead of {@link KafkaConsumerWrapper#subscribe} directly since we need to let {@link KafkaConsumerService} knows
+   * which {@link StoreIngestionTask} to use when receiving result for any specific topic.
    * @param topic
    * @param partition
    */
-  protected synchronized void subscribe(KafkaConsumerWrapper consumer, String topic, int partition, long offset) {
-    if (serverConfig.isSharedConsumerPoolEnabled() && consumer instanceof SharedKafkaConsumer) {
-      /**
-       * We need to let {@link KafkaConsumerService} know that the messages from this topic will be handled by the
-       * current {@link StoreIngestionTask}.
-       */
-      ((SharedKafkaConsumer) consumer).getKafkaConsumerService().attach(consumer, topic, this);
-    }
+  protected synchronized void dedicatedConsumerSubscribe(KafkaConsumerWrapper consumer, String topic, int partition, long offset) {
     consumer.subscribe(topic, partition, offset);
-    everSubscribedTopics.add(topic);
   }
 
-  public boolean consumerHasSubscription() {
-    return kafkaUrlToConsumerMap.values().stream().anyMatch(consumer -> consumer.hasSubscribedAnyTopic(everSubscribedTopics));
+  public boolean consumerHasAnySubscription() {
+    if (serverConfig.isSharedConsumerPoolEnabled()) {
+      return aggKafkaConsumerService.hasAnyConsumerAssignedFor(getVersionTopic(), everSubscribedTopics);
+    } else {
+      return kafkaUrlToDedicatedConsumerMap.values().stream().anyMatch(consumer -> consumer.hasSubscribedAnyTopic(everSubscribedTopics));
+    }
   }
 
   public boolean consumerHasSubscription(String topic, PartitionConsumptionState partitionConsumptionState) {
-    Map<String, KafkaConsumerWrapper> consumerByKafkaURL = getConsumerByKafkaURL(partitionConsumptionState);
-    for (KafkaConsumerWrapper consumer : consumerByKafkaURL.values()) {
-      if (consumer.hasSubscription(topic, partitionConsumptionState.getSourceTopicPartition(topic))) {
-        return true;
+
+    int partitionId = partitionConsumptionState.getSourceTopicPartition(topic);
+
+    if (serverConfig.isSharedConsumerPoolEnabled()) {
+      return aggKafkaConsumerService.hasConsumerAssignedFor(getVersionTopic(), topic, partitionId);
+    } else {
+      for (KafkaConsumerWrapper consumer : kafkaUrlToDedicatedConsumerMap.values()) {
+        if (consumer.hasSubscription(topic, partitionId)) {
+          return true;
+        }
       }
     }
+
     return false;
   }
 
   public void consumerUnSubscribe(String topic, PartitionConsumptionState partitionConsumptionState) {
-    Map<String, KafkaConsumerWrapper> consumerByKafkaURL = getConsumerByKafkaURL(partitionConsumptionState);
-    consumerByKafkaURL.forEach((kafkaURL, consumer) -> {
+
+    int partitionId = partitionConsumptionState.getPartition();
+
+    if (serverConfig.isSharedConsumerPoolEnabled()) {
+      aggKafkaConsumerService.unsubscribeConsumerFor(getVersionTopic(), topic, partitionId);
+    } else {
       Instant startTime = Instant.now();
-      consumer.unSubscribe(topic, partitionConsumptionState.getSourceTopicPartition(topic));
-      logger.info(String.format("Consumer unsubscribed topic %s partition %d at %s. Took %d ms",
-              topic, partitionConsumptionState.getPartition(), kafkaURL, Instant.now().toEpochMilli() - startTime.toEpochMilli()));
-    });
+      kafkaUrlToDedicatedConsumerMap.forEach((kafkaURL, consumer) -> {
+        consumer.unSubscribe(topic, partitionConsumptionState.getSourceTopicPartition(topic));
+        logger.info(String.format("Consumer unsubscribed topic %s partition %d at %s. Took %d ms",
+            topic, partitionId, kafkaURL, Instant.now().toEpochMilli() - startTime.toEpochMilli()));
+      });
+    }
   }
 
   public void consumerBatchUnsubscribe(Set<TopicPartition> topicPartitionSet) {
     Instant startTime = Instant.now();
-    kafkaUrlToConsumerMap.values().forEach(consumer -> consumer.batchUnsubscribe(topicPartitionSet));
-    logger.info(String.format("Consumer unsubscribed %d partitions. Took %d ms",
-        topicPartitionSet.size(), Instant.now().toEpochMilli() - startTime.toEpochMilli()));
+    if (serverConfig.isSharedConsumerPoolEnabled()) {
+      aggKafkaConsumerService.batchUnsubscribeConsumerFor(getVersionTopic(), topicPartitionSet);
+    } else {
+      kafkaUrlToDedicatedConsumerMap.values().forEach(consumer -> consumer.batchUnsubscribe(topicPartitionSet));
+    }
+    logger.info(String.format("Consumer unsubscribed %d partitions. Took %d ms", topicPartitionSet.size(),
+        Instant.now().toEpochMilli() - startTime.toEpochMilli()));
   }
 
   public abstract void consumerUnSubscribeAllTopics(PartitionConsumptionState partitionConsumptionState);
 
   public void consumerSubscribe(String topic, int partition, long startOffset, String kafkaURL) {
+
     final boolean consumeRemotely = !Objects.equals(kafkaURL, localKafkaServer);
-    Optional<KafkaConsumerWrapper> consumer = getConsumer(kafkaURL, consumeRemotely);
-
-    if (!consumer.isPresent()) {
-      if (serverConfig.isSharedConsumerPoolEnabled()) {
-        /**
-         * Note that {@link KafkaConsumerService} creation only happens upon topic partition subscription. In other cases,
-         * such as unsubscription, resetting topic partition consuming offset, etc, if a {@link KafkaConsumerService}/
-         * {@link KafkaConsumerWrapper} does not exist for this {@link StoreIngestionTask} and a Kafka URL, no
-         * {@link KafkaConsumerService} will get created.
-         *
-         * The rationale is that if a topic partition has never been subscribed, we should do nothing when we need to
-         * unsubscribe it, or resetting its consuming offset, etc.
-         */
-        aggKafkaConsumerService.createKafkaConsumerService(createKafkaConsumerProperties(kafkaProps, kafkaURL, consumeRemotely));
-        consumer = aggKafkaConsumerService.assignConsumerFor(kafkaURL, this);
-
-        if (consumer.isPresent()) {
-          kafkaUrlToConsumerMap.put(kafkaURL, consumer.get());
-        }
-        else {
-          throw new VeniceException("Shared consumer must exist for version topic: " + getVersionTopic() + " in Kafka cluster: " + kafkaURL);
-        }
+    if (serverConfig.isSharedConsumerPoolEnabled()) {
+      // TODO: Move remote KafkaConsumerService creating operations into the aggKafkaConsumerService.
+      aggKafkaConsumerService.createKafkaConsumerService(createKafkaConsumerProperties(kafkaProps, kafkaURL, consumeRemotely));
+      Optional<KafkaConsumerWrapper> sharedConsumer = aggKafkaConsumerService.subscribeConsumerFor(kafkaURL, this,
+          topic, partition, startOffset);
+      if (sharedConsumer.isPresent()) {
+        // TODO: Get rid of this kafka url mapping after cleaning all shared consumer path consumer calling.
+        kafkaUrlToSharedConsumerMap.put(kafkaURL, sharedConsumer.get());
       } else {
-        throw new VeniceException("Dedicated consumer must exist for version topic: " + getVersionTopic() + " in Kafka cluster: " + kafkaURL);
+        throw new VeniceException("Shared consumer must exist for version topic: " + getVersionTopic() + " in Kafka cluster: " + kafkaURL);
       }
+    } else {
+      dedicatedConsumerSubscribe(getDedicatedConsumer(kafkaURL, consumeRemotely), topic, partition, startOffset);
     }
-    subscribe(consumer.get(), topic, partition, startOffset);
+
+    everSubscribedTopics.add(topic);
   }
 
   public void consumerResetOffset(String topic, PartitionConsumptionState partitionConsumptionState) {
-    Map<String, KafkaConsumerWrapper> consumerByKafkaURL = getConsumerByKafkaURL(partitionConsumptionState);
-    consumerByKafkaURL.values().forEach(consumer -> consumer.resetOffset(topic, partitionConsumptionState.getSourceTopicPartition(topic)));
+    int partitionId = partitionConsumptionState.getSourceTopicPartition(topic);
+    if (serverConfig.isSharedConsumerPoolEnabled()) {
+      aggKafkaConsumerService.resetOffsetFor(getVersionTopic(), topic, partitionId);
+    } else {
+      kafkaUrlToDedicatedConsumerMap.values().forEach(consumer -> consumer.resetOffset(topic, partitionId));
+    }
   }
 
   /**
@@ -2853,8 +2873,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      * creating a map with a size of the key set size of consumerMap is more memory efficient.
      */
     final Map<String, ConsumerRecords<KafkaKey, KafkaMessageEnvelope>> recordsByKafkaURLs = new HashMap<>(
-        kafkaUrlToConsumerMap.keySet().size());
-    kafkaUrlToConsumerMap.forEach((kafkaURL, consumer) -> {
+        kafkaUrlToDedicatedConsumerMap.keySet().size());
+    kafkaUrlToDedicatedConsumerMap.forEach((kafkaURL, consumer) -> {
       if (consumer.hasAnySubscription()) {
         ConsumerRecords<KafkaKey, KafkaMessageEnvelope> consumerRecords;
 
@@ -2872,38 +2892,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return recordsByKafkaURLs;
   }
 
-  public Map<String, KafkaConsumerWrapper> getConsumerByKafkaURL(PartitionConsumptionState partitionConsumptionState) {
-    final Set<String> sourceKafkaURLs = getConsumptionSourceKafkaAddress(partitionConsumptionState);
-    if (sourceKafkaURLs.isEmpty()) {
-      throw new VeniceException("Expect at least one source Kafka URL for " + partitionConsumptionState);
-    }
-    Map<String, KafkaConsumerWrapper> consumerByKafkaURL = new HashMap<>(sourceKafkaURLs.size());
-    sourceKafkaURLs.forEach(sourceKafkaURL -> {
-      Optional<KafkaConsumerWrapper> consumer = getConsumer(sourceKafkaURL, partitionConsumptionState.consumeRemotely());
-      if (consumer.isPresent()) {
-        consumerByKafkaURL.put(sourceKafkaURL, consumer.get());
-      } else {
-        logger.warn("No consumer found for version topic: " + getVersionTopic() + " in Kafka cluster: " + sourceKafkaURL);
-      }
+  private KafkaConsumerWrapper getDedicatedConsumer(String kafkaURL, boolean consumeRemotely) {
+    KafkaConsumerWrapper consumer = kafkaUrlToDedicatedConsumerMap.computeIfAbsent(kafkaURL, source -> {
+      Properties consumerProps = createKafkaConsumerProperties(kafkaProps, kafkaURL, consumeRemotely);
+      return kafkaClientFactory.getConsumer(consumerProps);
     });
-    return consumerByKafkaURL;
-  }
-
-  private Optional<KafkaConsumerWrapper> getConsumer(String kafkaURL, boolean consumeRemotely) {
-    KafkaConsumerWrapper consumer = kafkaUrlToConsumerMap.computeIfAbsent(kafkaURL, source -> {
-
-      if (serverConfig.isSharedConsumerPoolEnabled()) {
-        Optional<KafkaConsumerWrapper> existingKafkaConsumer =
-            aggKafkaConsumerService.getAssignedConsumerFor(kafkaURL, getVersionTopic());
-        return existingKafkaConsumer.orElse(null);
-
-      } else {
-        Properties consumerProps = createKafkaConsumerProperties(kafkaProps, kafkaURL, consumeRemotely);
-        return kafkaClientFactory.getConsumer(consumerProps);
-      }
-    });
-
-    return Optional.ofNullable(consumer);
+    return consumer;
   }
 
   /**
@@ -3214,7 +3208,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   Collection<KafkaConsumerWrapper> getConsumers() {
-    return kafkaUrlToConsumerMap.values();
+    if (serverConfig.isSharedConsumerPoolEnabled()) {
+      // TODO: Clean this consumers fetching and let aggKafkaConsumerService did the job of consumer interactions.
+      return kafkaUrlToSharedConsumerMap.values();
+    } else {
+      return kafkaUrlToDedicatedConsumerMap.values();
+    }
   }
 
   public boolean isMetricsEmissionEnabled() {
