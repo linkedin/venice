@@ -17,7 +17,6 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceMessageException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.kafka.TopicManager;
-import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.Delete;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
@@ -33,8 +32,8 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.LatencyUtils;
-import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.writer.DeleteMetadata;
 import com.linkedin.venice.writer.PutMetadata;
 import java.nio.ByteBuffer;
@@ -935,15 +934,12 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           if (kafkaSourceAddress == null) {
             return 0;
           }
-          KafkaConsumerWrapper kafkaConsumer = kafkaUrlToConsumerMap.get(kafkaSourceAddress);
-          // Consumer might not existed in the map after the consumption state is created, but before attaching the
-          // corresponding consumer in consumerMap.
-          if (kafkaConsumer != null) {
-            Optional<Long> offsetLagOptional = kafkaConsumer.getOffsetLag(currentLeaderTopic, pcs.getUserPartition());
-            if (offsetLagOptional.isPresent()) {
-              return offsetLagOptional.get();
-            }
+          // Consumer might not existed after the consumption state is created, but before attaching the corresponding consumer.
+          Optional<Long> offsetLagOptional = getPartitionOffsetLag(kafkaSourceAddress, currentLeaderTopic, pcs.getUserPartition());
+          if (offsetLagOptional.isPresent()) {
+            return offsetLagOptional.get();
           }
+
           // Fall back to calculate offset lag in the old way
           return (cachedKafkaMetadataGetter.getOffset(getTopicManager(kafkaSourceAddress), currentLeaderTopic, pcs.getUserPartition()) - 1)
               - pcs.getLeaderConsumedUpstreamRTOffset(kafkaSourceAddress);

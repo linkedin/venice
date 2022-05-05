@@ -12,7 +12,9 @@ import io.tehuti.metrics.MetricsRepository;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.Set;
 import org.apache.kafka.clients.CommonClientConfigs;
+import org.apache.kafka.common.TopicPartition;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -116,14 +118,6 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
     }
   }
 
-  public Optional<KafkaConsumerWrapper> getAssignedConsumerFor(final String kafkaURL, String versionTopic) {
-    Optional<KafkaConsumerService> consumerService = getKafkaConsumerService(kafkaURL);
-    if (!consumerService.isPresent()) {
-      return Optional.empty();
-    }
-    return consumerService.get().getConsumerAssignedToVersionTopic(versionTopic);
-  }
-
   public Optional<KafkaConsumerWrapper> assignConsumerFor(final String kafkaURL, StoreIngestionTask ingestionTask) {
     Optional<KafkaConsumerService> consumerService = getKafkaConsumerService(kafkaURL);
     if (!consumerService.isPresent()) {
@@ -132,6 +126,96 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
     KafkaConsumerWrapper selectedConsumer = consumerService.get().assignConsumerFor(ingestionTask);
     consumerService.get().attach(selectedConsumer, ingestionTask.getVersionTopic(), ingestionTask);
     return Optional.of(selectedConsumer);
+  }
+
+  public boolean hasConsumerAssignedFor(String versionTopic, String topic, int partition) {
+    for (KafkaConsumerService consumerService : kafkaServerToConsumerServiceMap.values()) {
+      Optional<KafkaConsumerWrapper> consumer = consumerService.getConsumerAssignedToVersionTopic(versionTopic);
+      if (consumer.isPresent()) {
+        if (consumer.get().hasSubscription(topic, partition)) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  public boolean hasAnyConsumerAssignedFor(String versionTopic, Set<String> topics) {
+    for (KafkaConsumerService consumerService : kafkaServerToConsumerServiceMap.values()) {
+      Optional<KafkaConsumerWrapper> consumer = consumerService.getConsumerAssignedToVersionTopic(versionTopic);
+      if (consumer.isPresent()) {
+        if (consumer.get().hasSubscribedAnyTopic(topics)) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  public void resetOffsetFor(String versionTopic, String topic, int partition) {
+    for (KafkaConsumerService consumerService : kafkaServerToConsumerServiceMap.values()) {
+      Optional<KafkaConsumerWrapper> consumer = consumerService.getConsumerAssignedToVersionTopic(versionTopic);
+      if (consumer.isPresent()) {
+        consumer.get().resetOffset(topic, partition);
+      }
+    }
+  }
+
+  public void unsubscribeConsumerFor(String versionTopic, String topic, int partition) {
+    for (KafkaConsumerService consumerService : kafkaServerToConsumerServiceMap.values()) {
+      Optional<KafkaConsumerWrapper> consumer = consumerService.getConsumerAssignedToVersionTopic(versionTopic);
+      if (consumer.isPresent()) {
+        consumer.get().unSubscribe(topic, partition);
+      }
+    }
+  }
+
+  public void batchUnsubscribeConsumerFor(String versionTopic, Set<TopicPartition> topicPartitionSet) {
+    for (KafkaConsumerService consumerService : kafkaServerToConsumerServiceMap.values()) {
+      Optional<KafkaConsumerWrapper> consumer = consumerService.getConsumerAssignedToVersionTopic(versionTopic);
+      if (consumer.isPresent()) {
+        consumer.get().batchUnsubscribe(topicPartitionSet);
+      }
+    }
+  }
+
+  // TODO: Do not return consumer after cleaning up all consumer references for shared consumer code path.
+  public Optional<KafkaConsumerWrapper> subscribeConsumerFor(final String kafkaURL, StoreIngestionTask storeIngestionTask,
+      String topic, int partition, long lastOffset) {
+    String versionTopic = storeIngestionTask.getVersionTopic();
+    Optional<KafkaConsumerService> consumerService = getKafkaConsumerService(kafkaURL);
+    if (!consumerService.isPresent()) {
+      return Optional.empty();
+    }
+
+    Optional<KafkaConsumerWrapper> consumer = consumerService.get().getConsumerAssignedToVersionTopic(versionTopic);
+    if (!consumer.isPresent()) {
+      consumer = this.assignConsumerFor(kafkaURL, storeIngestionTask);
+    }
+
+    /**
+     * If consumer still does not exist, we will rely on {@link StoreIngestionTask#consumerSubscribe(String, int, long, String)}
+     * to throw exception for failed fetching consumer.
+     */
+    if (consumer.isPresent()) {
+      consumerService.get().attach(consumer.get(), topic, storeIngestionTask);
+      consumer.get().subscribe(topic, partition, lastOffset);
+    }
+
+    return consumer;
+  }
+
+  public Optional<Long> getOffsetLagFor(final String kafkaURL, String versionTopic, String topic, int partition) {
+    Optional<KafkaConsumerService> consumerService = getKafkaConsumerService(kafkaURL);
+    if (!consumerService.isPresent()) {
+      return Optional.empty();
+    }
+
+    Optional<KafkaConsumerWrapper> consumer = consumerService.get().getConsumerAssignedToVersionTopic(versionTopic);
+    if (!consumer.isPresent()) {
+      return Optional.empty();
+    }
+    return consumer.get().getOffsetLag(topic, partition);
   }
 
   /**
