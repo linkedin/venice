@@ -49,13 +49,13 @@ if (project.hasProperty('overrideBuildEnvironment')) {
   }
 }
 
+def avroUtilVersion = '0.2.90'
 def containerVersion = '38.4.415'
 def ddsStorageCoreVersion = '13.0.16'
 def internalKafkaGroup = 'com.linkedin.kafka'
 def internalKafkaVersion = '2.3.0.32'
 def log4j2Version = '2.17.1'
 def pegasusVersion = '29.29.0'
-def avroUtilVersion = '0.2.84'
 
 ext.libraries = [
     avro: 'org.apache.avro:avro:1.9.2',
