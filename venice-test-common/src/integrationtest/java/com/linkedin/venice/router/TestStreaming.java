@@ -72,6 +72,7 @@ public class TestStreaming {
   private static final Logger LOGGER = Logger.getLogger(TestStreaming.class);
 
   private static final int MAX_KEY_LIMIT = 1000;
+  private static final int LAST_KEY_INDEX_WITH_NON_NULL_VALUE = 500;
   private static final String NON_EXISTING_KEY1 = "a_unknown_key";
   private static final String NON_EXISTING_KEY2 = "z_unknown_key";
   private static final int NON_EXISTING_KEY_NUM = 2;
@@ -87,9 +88,11 @@ public class TestStreaming {
 
   private static final String keyPrefix = "key_";
   private static final String KEY_SCHEMA = "\"string\"";
-  private static final String VALUE_SCHEMA = "{\n" + "\"type\": \"record\",\n" + "\"name\": \"test_value_schema\",\n"
-      + "\"fields\": [\n" + "  {\"name\": \"int_field\", \"type\": \"int\"},\n"
-      + "  {\"name\": \"float_field\", \"type\": \"float\"}\n" + "]\n" + "}";
+  private static final String VALUE_SCHEMA = "{\n" + "  \"type\": \"record\",\n"
+      + "  \"name\": \"test_value_schema\",\n" + "  \"fields\": [\n"
+      + "   {\"name\": \"int_field\", \"type\": \"int\"},\n" + "   {\"name\": \"float_field\", \"type\": \"float\"},\n"
+      + "   {\"name\": \"nullable_string_field\", \"type\": [\"null\", \"string\"], \"default\": null}\n" + "  ]\n"
+      + "}";
   private static final Schema VALUE_SCHEMA_OBJECT = Schema.parse(VALUE_SCHEMA);
 
 
@@ -146,6 +149,9 @@ public class TestStreaming {
       GenericRecord valueRecord = new GenericData.Record(VALUE_SCHEMA_OBJECT);
       valueRecord.put("int_field", i);
       valueRecord.put("float_field", i + 100.0f);
+      if (i <= LAST_KEY_INDEX_WITH_NON_NULL_VALUE) {
+        valueRecord.put("nullable_string_field", "nullable_string_field" + i);
+      }
 
       byte[] value = compressor.compress(valueSerializer.serialize("", valueRecord));
       veniceWriter.put(keyPrefix + i, value, valueSchemaId).get();
@@ -271,7 +277,7 @@ public class TestStreaming {
         Map<String, GenericRecord> finalComputeResultMap = new VeniceConcurrentHashMap<>();
         CountDownLatch computeLatch = new CountDownLatch(1);
         ComputeRequestBuilder<String>
-            computeRequestBuilder = trackingStoreClient.compute().project("int_field");
+            computeRequestBuilder = trackingStoreClient.compute().project("int_field", "nullable_string_field");
         computeRequestBuilder.streamingExecute(keySet, new StreamingCallback<String, GenericRecord>() {
           @Override
           public void onRecordReceived(String key, GenericRecord value) {
@@ -360,6 +366,11 @@ public class TestStreaming {
       GenericRecord record = resultMap.get(key);
       Assert.assertEquals(record.get("int_field"), i);
       Assert.assertNull(record.get("float_field"));
+      if (i <= LAST_KEY_INDEX_WITH_NON_NULL_VALUE) {
+        Assert.assertTrue((record.get("nullable_string_field").toString().equals("nullable_string_field" + i)));
+      } else {
+        Assert.assertNull(record.get("nullable_string_field"), "Field: 'nullable_string_field' should be 'null' for key: " + key);
+      }
     }
   }
 
