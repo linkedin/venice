@@ -1461,8 +1461,8 @@ public class StoreIngestionTaskTest {
       // verify subscribe has not been processed. Because consumption task should process kill action at first
       verify(mockStorageMetadataService, after(TEST_TIMEOUT_MS).never()).getLastOffset(topic, PARTITION_FOO);
       waitForNonDeterministicCompletion(TEST_TIMEOUT_MS, TimeUnit.MILLISECONDS,
-          () -> storeIngestionTaskUnderTest.getConsumers() != null);
-      Collection<KafkaConsumerWrapper> consumers = (storeIngestionTaskUnderTest.getConsumers());
+          () -> storeIngestionTaskUnderTest.getDedicatedConsumers() != null);
+      Collection<KafkaConsumerWrapper> consumers = (storeIngestionTaskUnderTest.getDedicatedConsumers());
       /**
        * Consumers are constructed lazily; if the store ingestion task is killed before it tries to subscribe to any
        * topics, there is no consumer.

@@ -517,10 +517,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         // N.B. quota enforcement has a race condition when the consumer is not in shared mode, and therefore we leave
         //      the enfocement functions disabled. TODO: Clean this up after the non-shared consumer code is deleted
         serverConfig.isSharedConsumerPoolEnabled()
-            ? (topic, partition) -> getConsumers().forEach(consumer -> consumer.pause(topic, partition))
+            ? (topic, partition) -> pauseConsumption(topic, partition)
             : (topic, partition) -> {},
         serverConfig.isSharedConsumerPoolEnabled()
-            ? (topic, partition) -> getConsumers().forEach(consumer -> consumer.resume(topic, partition))
+            ? (topic, partition) -> resumeConsumption(topic, partition)
             : (topic, partition) -> {}
     );
     this.storeRepository.registerStoreDataChangedListener(this.storageUtilizationManager);
@@ -1058,12 +1058,20 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
                * In theory, there should be only one consumer for Samza Reprocessing topic.
                */
               String consumingTopic = record.topic();
-              Collection<KafkaConsumerWrapper> consumers = getConsumers();
-              if (consumers.size() != 1) {
-                throw new VeniceException("Only one consumer is expected before processing EOP for topic: " +
-                    kafkaVersionTopic + ", partition: " + consumingPartition);
+              if (serverConfig.isSharedConsumerPoolEnabled()) {
+                Set<String> kafkaUrls = aggKafkaConsumerService.getKafkaUrlsFor(kafkaVersionTopic);
+                if (kafkaUrls.size() != 1) {
+                  throw new VeniceException("Expect to consume for: " + kafkaVersionTopic + ", partition: " + consumingPartition
+                      + ", in only one Kafka cluster before processing EOP. But consuming from multiple kafka clusters: " + kafkaUrls);
+                }
+              } else {
+                Collection<KafkaConsumerWrapper> dedicatedConsumers = getDedicatedConsumers();
+                if (dedicatedConsumers.size() != 1) {
+                  throw new VeniceException("Only one consumer is expected before processing EOP for topic: " +
+                      kafkaVersionTopic + ", partition: " + consumingPartition);
+                }
               }
-              getConsumers().forEach(consumer -> consumer.pause(consumingTopic, consumingPartition));
+              pauseConsumption(consumingTopic, consumingPartition);
               logger.info("Paused consumption to topic: " + consumingTopic + ", partition: " + consumingPartition +
                   " because of one-time db compaction");
               PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(consumingPartition);
@@ -1511,33 +1519,52 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         } else {
           logger.info("One-time compaction is done for store: " + kafkaVersionTopic + ", partition: " + partition +
               ", will resume the consumption");
-          // Resume the consumption
-          Collection<KafkaConsumerWrapper> consumers = getConsumers();
-          if (consumers.size() != 1) {
-            throw new VeniceException("Only one consumer is expected for store: " + kafkaVersionTopic +
-                " when manual compaction is running");
-          }
+
           ConsumerRecord<KafkaKey, KafkaMessageEnvelope> eopControlMessage = eopControlMessageMap.get(partition);
           if (null == eopControlMessage) {
             throw new VeniceException("EOP control message wasn't persisted before the manual compaction for store: " +
                 kafkaVersionTopic + ", partition: " + partition);
           }
-          consumers.forEach(consumer -> {
-            String consumingTopic = eopControlMessage.topic();
-            if (consumer.hasSubscription(consumingTopic, partition)) {
-              /**
-               * We need to re-subscribe the topic partition from the EOP control message
-               */
-              consumer.unSubscribe(consumingTopic, partition);
-              long resumedOffset = eopControlMessage.offset() - 1;
-              consumer.subscribe(consumingTopic, partition, resumedOffset);
-              logger.info("Current consumer has resumed consumption to topic: " + consumingTopic + ", partition: " +
-                  partition + " with offset: " + resumedOffset);
-            } else {
-              logger.info("Current consumer isn't subscribing to topic: " + consumingTopic + ", partition: " +
-                  partition + ", so we won't resume the consumption");
+
+          String consumingTopic = eopControlMessage.topic();
+          long resumedOffset = eopControlMessage.offset() - 1;
+          if (serverConfig.isSharedConsumerPoolEnabled()) {
+            Set<String> kafkaUrls = aggKafkaConsumerService.getKafkaUrlsFor(kafkaVersionTopic);
+            if (kafkaUrls.size() != 1) {
+              throw new VeniceException("Only one kafka cluster is expected for store version to consume: "
+                  + kafkaVersionTopic + " when manual compaction is running, but we have: " + kafkaUrls);
             }
-          });
+            kafkaUrls.forEach(kafkaUrl -> {
+              if (aggKafkaConsumerService.hasConsumerAssignedFor(kafkaUrl, kafkaVersionTopic, consumingTopic, partition)) {
+                aggKafkaConsumerService.unsubscribeConsumerFor(kafkaUrl, kafkaVersionTopic, consumingTopic, partition);
+                aggKafkaConsumerService.subscribeConsumerFor(kafkaUrl, this, consumingTopic,
+                    partition, resumedOffset);
+                logger.info("Consumer service for " + kafkaUrl + " has resumed consumption to topic: " + consumingTopic
+                    + ", partition: " + partition + " from offset: " + resumedOffset);
+              } else {
+                logger.info("Consumer service for " + kafkaUrl + " does not have consumer subscribing to topic: "
+                    + consumingTopic + ", partition: " + partition + ", so we won't resume the consumption");
+              }
+            });
+          } else {
+            Collection<KafkaConsumerWrapper> dedicatedConsumers = getDedicatedConsumers();
+            if (dedicatedConsumers.size() != 1) {
+              throw new VeniceException("Only one dedicated consumer is expected for store version: " + kafkaVersionTopic
+                  + " when manual compaction is running, but we have: " + kafkaUrlToDedicatedConsumerMap.keySet());
+            }
+            dedicatedConsumers.forEach(consumer -> {
+              if (consumer.hasSubscription(consumingTopic, partition)) {
+                consumer.unSubscribe(consumingTopic, partition);
+                consumer.subscribe(consumingTopic, partition, resumedOffset);
+                logger.info("Current dedicated consumer has resumed consumption to topic: " + consumingTopic + ", partition: "
+                    + partition + " with offset: " + resumedOffset);
+              } else {
+                logger.info("Current dedicated consumer isn't subscribing to topic: " + consumingTopic + ", partition: "
+                    + partition + ", so we won't resume the consumption");
+              }
+            });
+          }
+
         }
       }
     }
@@ -2822,7 +2849,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     if (serverConfig.isSharedConsumerPoolEnabled()) {
       aggKafkaConsumerService.batchUnsubscribeConsumerFor(getVersionTopic(), topicPartitionSet);
     } else {
-      kafkaUrlToDedicatedConsumerMap.values().forEach(consumer -> consumer.batchUnsubscribe(topicPartitionSet));
+      getDedicatedConsumers().forEach(consumer -> consumer.batchUnsubscribe(topicPartitionSet));
     }
     logger.info(String.format("Consumer unsubscribed %d partitions. Took %d ms", topicPartitionSet.size(),
         Instant.now().toEpochMilli() - startTime.toEpochMilli()));
@@ -2836,14 +2863,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     if (serverConfig.isSharedConsumerPoolEnabled()) {
       // TODO: Move remote KafkaConsumerService creating operations into the aggKafkaConsumerService.
       aggKafkaConsumerService.createKafkaConsumerService(createKafkaConsumerProperties(kafkaProps, kafkaURL, consumeRemotely));
-      Optional<KafkaConsumerWrapper> sharedConsumer = aggKafkaConsumerService.subscribeConsumerFor(kafkaURL, this,
-          topic, partition, startOffset);
-      if (sharedConsumer.isPresent()) {
-        // TODO: Get rid of this kafka url mapping after cleaning all shared consumer path consumer calling.
-        kafkaUrlToSharedConsumerMap.put(kafkaURL, sharedConsumer.get());
-      } else {
-        throw new VeniceException("Shared consumer must exist for version topic: " + getVersionTopic() + " in Kafka cluster: " + kafkaURL);
-      }
+      aggKafkaConsumerService.subscribeConsumerFor(kafkaURL, this, topic, partition, startOffset);
     } else {
       dedicatedConsumerSubscribe(getDedicatedConsumer(kafkaURL, consumeRemotely), topic, partition, startOffset);
     }
@@ -2856,9 +2876,26 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     if (serverConfig.isSharedConsumerPoolEnabled()) {
       aggKafkaConsumerService.resetOffsetFor(getVersionTopic(), topic, partitionId);
     } else {
-      kafkaUrlToDedicatedConsumerMap.values().forEach(consumer -> consumer.resetOffset(topic, partitionId));
+      getDedicatedConsumers().forEach(consumer -> consumer.resetOffset(topic, partitionId));
     }
   }
+
+  public void pauseConsumption(String topic, int  partitionId) {
+    if (serverConfig.isSharedConsumerPoolEnabled()) {
+      aggKafkaConsumerService.pauseConsumerFor(getVersionTopic(), topic, partitionId);
+    } else {
+      getDedicatedConsumers().forEach(consumer -> consumer.pause(topic, partitionId));
+    }
+  }
+
+  public void resumeConsumption(String topic, int  partitionId) {
+    if (serverConfig.isSharedConsumerPoolEnabled()) {
+      aggKafkaConsumerService.resumeConsumerFor(getVersionTopic(), topic, partitionId);
+    } else {
+      getDedicatedConsumers().forEach(consumer -> consumer.resume(topic, partitionId));
+    }
+  }
+
 
   /**
    * Poll dedicated consumer(s) to get a map from Kafka URLs to consumed records from that Kafka URL.
@@ -3211,12 +3248,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return kafkaVersionTopic;
   }
 
-  Collection<KafkaConsumerWrapper> getConsumers() {
+  protected Collection<KafkaConsumerWrapper> getDedicatedConsumers() {
     if (serverConfig.isSharedConsumerPoolEnabled()) {
-      // TODO: Clean this consumers fetching and let aggKafkaConsumerService did the job of consumer interactions.
-      return kafkaUrlToSharedConsumerMap.values();
+      throw new IllegalStateException("Shared consumer code path should not call getDedicatedConsumers().");
     } else {
-      return kafkaUrlToDedicatedConsumerMap.values();
+      return Collections.unmodifiableList(new ArrayList<>(kafkaUrlToDedicatedConsumerMap.values()));
     }
   }
 

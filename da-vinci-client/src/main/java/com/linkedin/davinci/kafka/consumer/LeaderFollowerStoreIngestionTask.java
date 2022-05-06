@@ -1945,9 +1945,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             kafkaVersionTopic, topic, partition);
       return offsetLagOptional;
     } else {
-      KafkaConsumerWrapper kafkaConsumer = kafkaUrlToDedicatedConsumerMap.get(localKafkaServer);
-      if (kafkaConsumer != null) {
-        Optional<Long> offsetLagOptional = kafkaConsumer.getOffsetLag(kafkaVersionTopic, partition);
+      KafkaConsumerWrapper dedicatedKafkaConsumer = kafkaUrlToDedicatedConsumerMap.get(localKafkaServer);
+      if (dedicatedKafkaConsumer != null) {
+        Optional<Long> offsetLagOptional = dedicatedKafkaConsumer.getOffsetLag(kafkaVersionTopic, partition);
         return offsetLagOptional;
       }
     }
@@ -2139,21 +2139,22 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   @Override
   public void consumerUnSubscribeAllTopics(PartitionConsumptionState partitionConsumptionState) {
     String leaderTopic = partitionConsumptionState.getOffsetRecord().getLeaderTopic();
-    Map<String, KafkaConsumerWrapper> kafkaUrlToConsumerMap;
 
-    // TODO: Rely on aggKafkaConsumerService to unsubscribe the consumer.
     if (serverConfig.isSharedConsumerPoolEnabled()) {
-      kafkaUrlToConsumerMap = kafkaUrlToSharedConsumerMap;
-    } else {
-      kafkaUrlToConsumerMap = kafkaUrlToDedicatedConsumerMap;
-    }
-    kafkaUrlToConsumerMap.values().forEach(consumer -> {
       if (partitionConsumptionState.getLeaderFollowerState().equals(LEADER) && leaderTopic != null) {
-        consumer.unSubscribe(leaderTopic, partitionConsumptionState.getPartition());
+        aggKafkaConsumerService.unsubscribeConsumerFor(kafkaVersionTopic, leaderTopic, partitionConsumptionState.getPartition());
       } else {
-        consumer.unSubscribe(kafkaVersionTopic, partitionConsumptionState.getPartition());
+        aggKafkaConsumerService.unsubscribeConsumerFor(kafkaVersionTopic, kafkaVersionTopic, partitionConsumptionState.getPartition());
       }
-    });
+    } else {
+      getDedicatedConsumers().forEach(dedicatedConsumer -> {
+        if (partitionConsumptionState.getLeaderFollowerState().equals(LEADER) && leaderTopic != null) {
+          dedicatedConsumer.unSubscribe(leaderTopic, partitionConsumptionState.getPartition());
+        } else {
+          dedicatedConsumer.unSubscribe(kafkaVersionTopic, partitionConsumptionState.getPartition());
+        }
+      });
+    }
 
     /**
      * Leader of the user partition should close all subPartitions it is producing to.
