@@ -1465,9 +1465,11 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
         long lastOffset = partitionConsumptionState.getLatestProcessedLocalVersionTopicOffset();
         if (lastOffset >= record.offset()) {
-          logger.info(
-              consumerTaskId + " Current L/F state:" + partitionConsumptionState.getLeaderFollowerState()
-                  + "; The record was already processed Partition" + subPartition + " LastKnown " + lastOffset + " Current " + record.offset());
+          String message = consumerTaskId + " Current L/F state:" + partitionConsumptionState.getLeaderFollowerState()
+              + "; The record was already processed partition " + subPartition;
+          if (!REDUNDANT_LOGGING_FILTER.isRedundantException(message)) {
+            logger.info(message + " LastKnown " + lastOffset + " Current " + record.offset());
+          }
           return false;
         }
         break;
