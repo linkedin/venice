@@ -51,7 +51,7 @@ public class RocksDBMemoryEnforcement implements StoreDataChangedListener {
     }
     for (int partition : task.partitionConsumptionStateMap.keySet()) {
       // Making calls on the consumer like this is probably unsafe in dedicated consumer mode. TODO: Fix thread-safety
-      task.getConsumers().forEach(consumer -> consumer.pause(getConsumingTopic(partition), partition));
+      task.pauseConsumption(getConsumingTopic(partition), partition);
     }
     ingestionPaused = true;
   }
@@ -62,7 +62,7 @@ public class RocksDBMemoryEnforcement implements StoreDataChangedListener {
     }
     for (int partition : task.partitionConsumptionStateMap.keySet()) {
       // Making calls on the consumer like this is probably unsafe in dedicated consumer mode. TODO: Fix thread-safety
-      task.getConsumers().forEach(consumer -> consumer.resume(getConsumingTopic(partition), partition));
+      task.resumeConsumption(getConsumingTopic(partition), partition);
     }
     ingestionPaused = false;
   }

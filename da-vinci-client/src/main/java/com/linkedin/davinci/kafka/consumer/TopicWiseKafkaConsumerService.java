@@ -49,7 +49,7 @@ public class TopicWiseKafkaConsumerService extends KafkaConsumerService {
   }
 
   @Override
-  public synchronized Optional<KafkaConsumerWrapper> getConsumerAssignedToVersionTopic(String versionTopic) {
+  public Optional<KafkaConsumerWrapper> getConsumerAssignedToVersionTopic(String versionTopic) {
     return Optional.ofNullable(versionTopicToConsumerMap.get(versionTopic));
   }
 
