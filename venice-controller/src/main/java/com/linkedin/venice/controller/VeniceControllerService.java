@@ -11,6 +11,7 @@ import com.linkedin.venice.controller.lingeringjob.DefaultLingeringStoreVersionC
 import com.linkedin.venice.controller.lingeringjob.HeartbeatBasedCheckerStats;
 import com.linkedin.venice.controller.lingeringjob.HeartbeatBasedLingeringStoreVersionChecker;
 import com.linkedin.venice.controller.lingeringjob.LingeringStoreVersionChecker;
+import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.service.ICProvider;
@@ -34,18 +35,32 @@ public class VeniceControllerService extends AbstractVeniceService {
   private final VeniceControllerMultiClusterConfig multiClusterConfigs;
   private final Map<String, AdminConsumerService> consumerServicesByClusters;
 
-  public VeniceControllerService(VeniceControllerMultiClusterConfig multiClusterConfigs,
-      MetricsRepository metricsRepository, boolean sslEnabled, Optional<SSLConfig> sslConfig,
-      Optional<DynamicAccessController> accessController, Optional<AuthorizerService> authorizerService, D2Client d2Client,
-      Optional<ClientConfig> routerClientConfig, Optional<ICProvider> icProvider) {
-
+  public VeniceControllerService(
+      VeniceControllerMultiClusterConfig multiClusterConfigs,
+      MetricsRepository metricsRepository,
+      boolean sslEnabled,
+      Optional<SSLConfig> sslConfig,
+      Optional<DynamicAccessController> accessController,
+      Optional<AuthorizerService> authorizerService,
+      D2Client d2Client,
+      Optional<ClientConfig> routerClientConfig,
+      Optional<ICProvider> icProvider
+  ) {
     this.multiClusterConfigs = multiClusterConfigs;
     VeniceHelixAdmin internalAdmin = new VeniceHelixAdmin(multiClusterConfigs, metricsRepository, sslEnabled, d2Client,
         sslConfig, accessController, icProvider);
 
     if (multiClusterConfigs.isParent()) {
-      this.admin = new VeniceParentHelixAdmin(internalAdmin, multiClusterConfigs, sslEnabled, sslConfig, accessController,
-          authorizerService, createLingeringStoreVersionChecker(multiClusterConfigs, metricsRepository));
+      this.admin = new VeniceParentHelixAdmin(
+          internalAdmin,
+          multiClusterConfigs,
+          sslEnabled,
+          sslConfig,
+          accessController,
+          authorizerService,
+          createLingeringStoreVersionChecker(multiClusterConfigs, metricsRepository),
+          WriteComputeSchemaConverter.getInstance()
+      );
       logger.info("Controller works as a parent controller.");
     } else {
       this.admin = internalAdmin;

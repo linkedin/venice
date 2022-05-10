@@ -64,7 +64,7 @@ public class WriteComputeHandlerV2 extends WriteComputeHandlerV1 {
 
     final GenericRecord timestampRecord = (GenericRecord) timestampObject;
     if (writeComputeSchema.getType() == Schema.Type.UNION) {
-      if (WriteComputeSchemaConverter.isDeleteRecordOp(writeComputeRecord)) {
+      if (WriteComputeOperation.isDeleteRecordOp(writeComputeRecord)) {
         // Full delete
         UpdateResultStatus recordDeleteResultStatus = mergeRecordHelper.deleteRecord(
             currRecordAndRmd.getValue(),
@@ -95,7 +95,7 @@ public class WriteComputeHandlerV2 extends WriteComputeHandlerV1 {
       }
 
       Object writeComputeFieldValue = writeComputeRecord.get(writeComputeFieldName);
-      WriteComputeOperation operationType = WriteComputeSchemaConverter.getFieldOperationType(writeComputeFieldValue);
+      WriteComputeOperation operationType = WriteComputeOperation.getFieldOperationType(writeComputeFieldValue);
       switch (operationType) {
         case NO_OP_ON_FIELD:
           break; // Do nothing

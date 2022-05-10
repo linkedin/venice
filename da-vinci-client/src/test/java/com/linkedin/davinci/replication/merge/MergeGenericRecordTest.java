@@ -202,7 +202,7 @@ public class MergeGenericRecordTest {
     ValueAndReplicationMetadata<GenericRecord>
         valueAndReplicationMetadata = new ValueAndReplicationMetadata<>(Lazy.of(() -> valueRecord), timeStampRecord);
 
-    Schema recordWriteComputeSchema = WriteComputeSchemaConverter.convertFromValueRecordSchema(schema);
+    Schema recordWriteComputeSchema = WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(schema);
 
     //construct write compute operation record
     Schema noOpSchema = recordWriteComputeSchema.getTypes().get(0).getField("name").schema().getTypes().get(0);
@@ -267,7 +267,7 @@ public class MergeGenericRecordTest {
     schema = AvroCompatibilityHelper.parse(ARRAY_SCHEMA_STR);
     Schema innerArraySchema = schema.getField("hits").schema();
     GenericData.Record collectionUpdateRecord =
-        new GenericData.Record(WriteComputeSchemaConverter.convert(innerArraySchema).getTypes().get(0));
+        new GenericData.Record(WriteComputeSchemaConverter.getInstance().convert(innerArraySchema).getTypes().get(0));
     collectionUpdateRecord.put(SET_UNION, Collections.singletonList(timeStampRecord));
     collectionUpdateRecord.put(SET_DIFF, Collections.emptyList());
     wcRecord.put("name", collectionUpdateRecord);

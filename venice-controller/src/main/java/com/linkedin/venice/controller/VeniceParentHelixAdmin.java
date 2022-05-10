@@ -119,6 +119,7 @@ import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
 import com.linkedin.venice.schema.rmd.ReplicationMetadataSchemaEntry;
 import com.linkedin.venice.schema.rmd.ReplicationMetadataSchemaGenerator;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
+import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.status.protocol.BatchJobHeartbeatKey;
@@ -168,7 +169,6 @@ import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Function;
 import java.util.stream.Collectors;
-import javax.annotation.Nonnull;
 import org.apache.avro.Schema;
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.lang.Validate;
@@ -222,6 +222,8 @@ public class VeniceParentHelixAdmin implements Admin {
   private final TerminalStateTopicCheckerForParentController terminalStateTopicChecker;
   private final SystemStoreAclSynchronizationTask systemStoreAclSynchronizationTask;
   private final UserSystemStoreLifeCycleHelper systemStoreLifeCycleHelper;
+  private final WriteComputeSchemaConverter writeComputeSchemaConverter;
+
   private Time timer = new SystemTime();
   private Optional<SSLFactory> sslFactory = Optional.empty();
 
@@ -264,13 +266,51 @@ public class VeniceParentHelixAdmin implements Admin {
 
   public VeniceParentHelixAdmin(VeniceHelixAdmin veniceHelixAdmin, VeniceControllerMultiClusterConfig multiClusterConfigs,
       boolean sslEnabled, Optional<SSLConfig> sslConfig, Optional<AuthorizerService> authorizerService) {
-    this(veniceHelixAdmin, multiClusterConfigs, sslEnabled, sslConfig, Optional.empty(), authorizerService, new DefaultLingeringStoreVersionChecker());
+    this(
+        veniceHelixAdmin,
+        multiClusterConfigs,
+        sslEnabled,
+        sslConfig,
+        Optional.empty(),
+        authorizerService,
+        new DefaultLingeringStoreVersionChecker()
+    );
   }
 
-  public VeniceParentHelixAdmin(VeniceHelixAdmin veniceHelixAdmin, VeniceControllerMultiClusterConfig multiClusterConfigs,
-      boolean sslEnabled, Optional<SSLConfig> sslConfig, Optional<DynamicAccessController> accessController,
-      Optional<AuthorizerService> authorizerService, @Nonnull LingeringStoreVersionChecker lingeringStoreVersionChecker) {
+  public VeniceParentHelixAdmin(
+      VeniceHelixAdmin veniceHelixAdmin,
+      VeniceControllerMultiClusterConfig multiClusterConfigs,
+      boolean sslEnabled,
+      Optional<SSLConfig> sslConfig,
+      Optional<DynamicAccessController> accessController,
+      Optional<AuthorizerService> authorizerService,
+      LingeringStoreVersionChecker lingeringStoreVersionChecker
+  ) {
+    this(
+        veniceHelixAdmin,
+        multiClusterConfigs,
+        sslEnabled,
+        sslConfig,
+        accessController,
+        authorizerService,
+        lingeringStoreVersionChecker,
+        WriteComputeSchemaConverter.getInstance() // TODO: make it an input param
+    );
+  }
+
+
+  public VeniceParentHelixAdmin(
+      VeniceHelixAdmin veniceHelixAdmin,
+      VeniceControllerMultiClusterConfig multiClusterConfigs,
+      boolean sslEnabled,
+      Optional<SSLConfig> sslConfig,
+      Optional<DynamicAccessController> accessController,
+      Optional<AuthorizerService> authorizerService,
+      LingeringStoreVersionChecker lingeringStoreVersionChecker,
+      WriteComputeSchemaConverter writeComputeSchemaConverter
+  ) {
     Validate.notNull(lingeringStoreVersionChecker);
+    Validate.notNull(writeComputeSchemaConverter);
     this.veniceHelixAdmin = veniceHelixAdmin;
     this.multiClusterConfigs = multiClusterConfigs;
     this.waitingTimeForConsumptionMs = getMultiClusterConfigs().getParentControllerWaitingTimeForConsumptionMs();
@@ -318,6 +358,7 @@ public class VeniceParentHelixAdmin implements Admin {
     }
     this.lingeringStoreVersionChecker = lingeringStoreVersionChecker;
     systemStoreLifeCycleHelper = new UserSystemStoreLifeCycleHelper(this, authorizerService, multiClusterConfigs);
+    this.writeComputeSchemaConverter = writeComputeSchemaConverter;
   }
 
   // For testing purpose
@@ -1964,15 +2005,25 @@ public class VeniceParentHelixAdmin implements Admin {
        */
       setStore.regionsFilter = regionsFilter.orElse(null);
 
+      final boolean writeComputeJustEnabled = writeComputationEnabled.orElse(false) && !currStore.isWriteComputationEnabled();
+      if (writeComputeJustEnabled) {
+        // Dry-run generating Write Compute schemas before sending admin messages to enable Write Compute because Write
+        // Compute schema generation may fail due to some reasons. If that happens, abort the store update process.
+        addWriteComputeSchemaForStore(clusterName, storeName, true);
+      }
+
       AdminOperation message = new AdminOperation();
       message.operationType = AdminMessageType.UPDATE_STORE.getValue();
       message.payloadUnion = setStore;
       sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
 
       final boolean readComputeJustEnabled = readComputationEnabled.orElse(false) && !currStore.isReadComputationEnabled();
-      final boolean writeComputeJustEnabled = writeComputationEnabled.orElse(false) && !currStore.isWriteComputationEnabled();
-      if (readComputeJustEnabled || writeComputeJustEnabled) {
+      if ((!currStore.isSystemStore()) && (readComputeJustEnabled || writeComputeJustEnabled)) {
         addSupersetSchemaForStore(clusterName, storeName, currStore.isActiveActiveReplicationEnabled());
+      }
+      if (writeComputeJustEnabled) {
+        logger.info("Enabling write compute for the first time on store {} in cluster {}", storeName, clusterName);
+        addWriteComputeSchemaForStore(clusterName, storeName, false);
       }
 
       /**
@@ -1998,6 +2049,22 @@ public class VeniceParentHelixAdmin implements Admin {
 
     if (activeActiveReplicationEnabled) {
       updateReplicationMetadataSchema(clusterName, storeName, supersetSchema, supersetSchemaID);
+    }
+  }
+
+  private void addWriteComputeSchemaForStore(String clusterName, String storeName, boolean dryRun) {
+    Collection<SchemaEntry> valueSchemaEntries = getValueSchemas(clusterName, storeName);
+    List<SchemaEntry> writeComputeSchemaEntries = new ArrayList<>(valueSchemaEntries.size());
+    for (SchemaEntry valueSchemaEntry : valueSchemaEntries) {
+      Schema writeComputeSchema = writeComputeSchemaConverter.convertFromValueRecordSchema(valueSchemaEntry.getSchema());
+      writeComputeSchemaEntries.add(new SchemaEntry(valueSchemaEntry.getId(), writeComputeSchema));
+    }
+    // Start adding write compute schemas only after all write compute schema generation is successful.
+    if (dryRun) {
+      return;
+    }
+    for (SchemaEntry writeComputeSchemaEntry : writeComputeSchemaEntries) {
+      addDerivedSchema(clusterName, storeName, writeComputeSchemaEntry.getId(), writeComputeSchemaEntry.getSchemaStr());
     }
   }
 
@@ -2113,6 +2180,16 @@ public class VeniceParentHelixAdmin implements Admin {
         } else if (AvroSchemaUtils.compareSchemaIgnoreFieldOrder(newSuperSetSchema, existingValueSchema)) {
           doUpdateSupersetSchemaID = false;
 
+        } else if (store.isSystemStore()) {
+          /**
+           * Do not register superset schema for system store for now. Because some system stores specify the schema ID
+           * explicitly, which may conflict with the superset schema generated internally, the new value schema registration
+           * could fail.
+           *
+           * TODO: Design a long-term plan.
+           */
+          doUpdateSupersetSchemaID = false;
+
         } else {
           // Register superset schema only if it does not match with existing or new schema.
 
@@ -2128,14 +2205,15 @@ public class VeniceParentHelixAdmin implements Admin {
               clusterName,
               storeName,
               new SchemaEntry(newValueSchemaId, newValueSchema),
-              new SchemaEntry(supersetSchemaId, newSuperSetSchema)
+              new SchemaEntry(supersetSchemaId, newSuperSetSchema),
+              store.isWriteComputationEnabled()
           );
         }
       } else {
         doUpdateSupersetSchemaID = false;
       }
 
-      SchemaEntry schemaEntry = addValueSchemaEntry(clusterName, storeName, newValueSchemaStr, newValueSchemaId, doUpdateSupersetSchemaID);
+      SchemaEntry addedSchemaEntry = addValueSchemaEntry(clusterName, storeName, newValueSchemaStr, newValueSchemaId, doUpdateSupersetSchemaID);
 
       /**
        * if active-active replication is enabled for the store then generate and register the new Replication metadata schema
@@ -2146,8 +2224,12 @@ public class VeniceParentHelixAdmin implements Admin {
         final int valueSchemaId = getValueSchemaId(clusterName, storeName, latestValueSchema.toString());
         updateReplicationMetadataSchema(clusterName, storeName, latestValueSchema, valueSchemaId);
       }
+      if (store.isWriteComputationEnabled()) {
+        Schema newWriteComputeSchema = writeComputeSchemaConverter.convertFromValueRecordSchema(addedSchemaEntry.getSchema());
+        addDerivedSchema(clusterName, storeName, addedSchemaEntry.getId(), newWriteComputeSchema.toString());
+      }
 
-      return schemaEntry;
+      return addedSchemaEntry;
     } finally {
       releaseAdminMessageLock(clusterName, storeName);
     }
@@ -2157,7 +2239,8 @@ public class VeniceParentHelixAdmin implements Admin {
       String clusterName,
       String storeName,
       SchemaEntry newValueSchemaEntry,
-      SchemaEntry newSupersetSchemaEntry
+      SchemaEntry newSupersetSchemaEntry,
+      final boolean isWriteComputationEnabled
   ) {
     validateNewSupersetAndValueSchemaEntries(storeName, clusterName, newValueSchemaEntry, newSupersetSchemaEntry);
     logger.info("Adding value schema {} and superset schema {} to store: {} in cluster: {}",
@@ -2187,6 +2270,12 @@ public class VeniceParentHelixAdmin implements Admin {
     // Need to add RMD schemas for both new value schema and new superset schema.
     updateReplicationMetadataSchema(clusterName, storeName, newValueSchemaEntry.getSchema(), newValueSchemaEntry.getId());
     updateReplicationMetadataSchema(clusterName, storeName, newSupersetSchemaEntry.getSchema(), newSupersetSchemaEntry.getId());
+    if (isWriteComputationEnabled) {
+      Schema newValueWriteComputeSchema = writeComputeSchemaConverter.convertFromValueRecordSchema(newValueSchemaEntry.getSchema());
+      Schema newSuperSetWriteComputeSchema = writeComputeSchemaConverter.convertFromValueRecordSchema(newSupersetSchemaEntry.getSchema());
+      addDerivedSchema(storeName, clusterName, newValueSchemaEntry.getId(), newValueWriteComputeSchema.toString());
+      addDerivedSchema(storeName, clusterName, newSupersetSchemaEntry.getId(), newSuperSetWriteComputeSchema.toString());
+    }
     return newValueSchemaEntry;
   }
 

@@ -40,11 +40,9 @@ import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.KillOfflinePushMessage;
 import com.linkedin.venice.pushmonitor.PushMonitor;
-import com.linkedin.venice.routerapi.ReplicaState;
 import com.linkedin.venice.schema.rmd.ReplicationMetadataSchemaGenerator;
 import com.linkedin.venice.schema.rmd.ReplicationMetadataSchemaEntry;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
-import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.MockTestStateModelFactory;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.PropertyBuilder;
@@ -1274,7 +1272,7 @@ TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVeniceHelixAdmin {
   public void testAddAndRemoveDerivedSchema() {
     String storeName = Utils.getUniqueString("write_compute_store");
     String recordSchemaStr = TestPushUtils.USER_SCHEMA_STRING_WITH_DEFAULT;
-    Schema derivedSchema = WriteComputeSchemaConverter.convertFromValueRecordSchema(recordSchemaStr);
+    Schema derivedSchema = WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchemaStr(recordSchemaStr);
 
     veniceAdmin.createStore(clusterName, storeName, storeOwner, KEY_SCHEMA, recordSchemaStr);
     veniceAdmin.addDerivedSchema(clusterName, storeName, 1, derivedSchema.toString());

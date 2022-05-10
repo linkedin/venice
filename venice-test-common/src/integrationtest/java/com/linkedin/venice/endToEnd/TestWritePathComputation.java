@@ -2,6 +2,7 @@ package com.linkedin.venice.endToEnd;
 
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
@@ -71,14 +72,25 @@ public class TestWritePathComputation {
       // Set flag
       String parentControllerUrl = parentController.getControllerUrl();
       try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerUrl)) {
-        parentControllerClient.updateStore(storeName, new UpdateStoreQueryParams().setWriteComputationEnabled(true));
+        ControllerResponse response = parentControllerClient.updateStore(storeName, new UpdateStoreQueryParams().setWriteComputationEnabled(true));
+        Assert.assertTrue(response.isError());
+        Assert.assertTrue(
+            response.getError().contains("Cannot generate write-compute schema from non-Record value schema")
+        );
         TestUtils.waitForNonDeterministicAssertion(15, TimeUnit.SECONDS, () -> {
-          Assert.assertTrue(parentAdmin.getStore(clusterName, storeName).isWriteComputationEnabled());
-          Assert.assertTrue(childAdmin.getStore(clusterName, storeName).isWriteComputationEnabled());
+          Assert.assertFalse(
+              parentAdmin.getStore(clusterName, storeName).isWriteComputationEnabled(),
+              "Write Compute should not be enabled before the value schema is not a Record."
+          );
+          Assert.assertFalse(
+              childAdmin.getStore(clusterName, storeName).isWriteComputationEnabled(),
+              "Write Compute should not be enabled before the value schema is not a Record."
+          );
         });
 
         // Reset flag
-        parentControllerClient.updateStore(storeName, new UpdateStoreQueryParams().setWriteComputationEnabled(false));
+        response = parentControllerClient.updateStore(storeName, new UpdateStoreQueryParams().setWriteComputationEnabled(false));
+        Assert.assertFalse(response.isError(), "No error is expected to disable Write Compute (that was not enabled)");
         TestUtils.waitForNonDeterministicAssertion(15, TimeUnit.SECONDS, () -> {
           Assert.assertFalse(parentAdmin.getStore(clusterName, storeName).isWriteComputationEnabled());
           Assert.assertFalse(childAdmin.getStore(clusterName, storeName).isWriteComputationEnabled());

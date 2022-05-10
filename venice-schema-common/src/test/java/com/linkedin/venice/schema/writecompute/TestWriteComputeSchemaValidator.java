@@ -25,10 +25,12 @@ public class TestWriteComputeSchemaValidator {
       "  } ]\n" +
       "}";
 
+  private final WriteComputeSchemaConverter writeComputeSchemaConverter = WriteComputeSchemaConverter.getInstance();
+
   @Test
   public void testCanValidateNullableUnionField() {
     Schema originalSchema = Schema.parse(TestAvroSchemaStrConstants.recordOfNullableArrayStr);
-    Schema writeComputeSchema = WriteComputeSchemaConverter.convert(originalSchema);
+    Schema writeComputeSchema = writeComputeSchemaConverter.convert(originalSchema);
 
     validate(originalSchema, writeComputeSchema);
   }
@@ -36,7 +38,7 @@ public class TestWriteComputeSchemaValidator {
   @Test
   public void testCanValidateNestedRecord() {
     Schema originalSchema = Schema.parse(nestedRecordStr);
-    Schema writeComputeSchema = WriteComputeSchemaConverter.convert(originalSchema);
+    Schema writeComputeSchema = writeComputeSchemaConverter.convert(originalSchema);
 
     validate(originalSchema, writeComputeSchema);
   }

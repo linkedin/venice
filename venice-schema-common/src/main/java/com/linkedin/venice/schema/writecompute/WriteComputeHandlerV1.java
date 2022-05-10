@@ -34,7 +34,7 @@ public class WriteComputeHandlerV1 implements WriteComputeHandler {
     // Question: maybe we do not need to check if writeComputeSchema is an UNION at all here??
     if (originalSchema.getType() == Schema.Type.RECORD && writeComputeSchema.getType() == Schema.Type.UNION) {
       //if DEL_OP is in writeComputeRecord, return empty record
-      if (WriteComputeSchemaConverter.isDeleteRecordOp(writeComputeRecord)) {
+      if (WriteComputeOperation.isDeleteRecordOp(writeComputeRecord)) {
         return null;
       } else {
         return updateRecord(
