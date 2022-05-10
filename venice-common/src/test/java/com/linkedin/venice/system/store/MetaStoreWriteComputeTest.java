@@ -11,7 +11,7 @@ import org.testng.annotations.Test;
 public class MetaStoreWriteComputeTest {
   @Test
   void validateWriteComputeSchema() {
-    Schema derivedComputeSchema = WriteComputeSchemaConverter.convertFromValueRecordSchema(
+    Schema derivedComputeSchema = WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(
         AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.getCurrentProtocolVersionSchema());
 
     int unionBranchForTheWriteOp = 0;

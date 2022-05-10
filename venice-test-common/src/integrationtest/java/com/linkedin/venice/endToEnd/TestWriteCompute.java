@@ -104,7 +104,7 @@ public class TestWriteCompute {
         SchemaResponse schemaResponse = controllerClient.addValueSchema(storeName, NESTED_SCHEMA_STRING_V2);
 
         // Add derived schema associated to v2
-        Schema writeComputeSchema = WriteComputeSchemaConverter.convert(NESTED_SCHEMA_STRING_V2).getTypes().get(0);
+        Schema writeComputeSchema = WriteComputeSchemaConverter.getInstance().convert(NESTED_SCHEMA_STRING_V2).getTypes().get(0);
         controllerClient.addDerivedSchema(storeName, schemaResponse.getId(), writeComputeSchema.toString());
 
         // H2V push

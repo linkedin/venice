@@ -1,10 +1,13 @@
 package com.linkedin.venice.schema.writecompute;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
+import io.tehuti.utils.Utils;
 import java.util.Collections;
 import java.util.Optional;
 import java.util.function.Function;
 import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericRecord;
+import org.apache.avro.generic.IndexedRecord;
 
 import static com.linkedin.venice.schema.writecompute.WriteComputeConstants.*;
 
@@ -82,5 +85,31 @@ public enum WriteComputeOperation {
     }
 
     return name.substring(0, 1).toUpperCase() + name.substring(1);
+  }
+
+  public static WriteComputeOperation getFieldOperationType(Object writeComputeFieldValue) {
+    Utils.notNull(writeComputeFieldValue);
+
+    if (writeComputeFieldValue instanceof IndexedRecord) {
+      IndexedRecord writeComputeFieldRecord = (IndexedRecord) writeComputeFieldValue;
+      String writeComputeFieldSchemaName = writeComputeFieldRecord.getSchema().getName();
+
+      if (writeComputeFieldSchemaName.equals(NO_OP_ON_FIELD.name)) {
+        return NO_OP_ON_FIELD;
+      }
+
+      if (writeComputeFieldSchemaName.endsWith(LIST_OPS.name)) {
+        return LIST_OPS;
+      }
+
+      if (writeComputeFieldSchemaName.endsWith(MAP_OPS.name)) {
+        return MAP_OPS;
+      }
+    }
+    return PUT_NEW_FIELD;
+  }
+
+  public static boolean isDeleteRecordOp(GenericRecord writeComputeRecord) {
+    return writeComputeRecord.getSchema().getName().equals(DEL_RECORD_OP.name);
   }
 }

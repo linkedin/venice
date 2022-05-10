@@ -999,7 +999,7 @@ public class TestPushUtils {
 
     if (addDerivedSchemaToStore) {
       // Generate write compute schema
-      Schema writeComputeSchema = WriteComputeSchemaConverter.convert(valueSchemaStr);
+      Schema writeComputeSchema = WriteComputeSchemaConverter.getInstance().convert(valueSchemaStr);
       SchemaResponse derivedValueSchemaResponse = controllerClient.retryableRequest(5,
           c -> c.addDerivedSchema(props.getProperty(VENICE_STORE_NAME_PROP), +1,
               writeComputeSchema.toString()));

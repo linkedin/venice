@@ -90,7 +90,8 @@ public class VeniceControllerWrapper extends ProcessWrapper {
       String clusterToD2,
       boolean sslToKafka,
       boolean d2Enabled,
-      Optional<AuthorizerService> authorizerService) {
+      Optional<AuthorizerService> authorizerService
+  ) {
 
     return (serviceName, dataDirectory) -> {
       int adminPort = Utils.getFreePort();
@@ -247,8 +248,16 @@ public class VeniceControllerWrapper extends ProcessWrapper {
       if (clientConfig != null && clientConfig instanceof ClientConfig) {
         consumerClientConfig = Optional.of((ClientConfig) clientConfig);
       }
-
-      VeniceController veniceController = new VeniceController(propertiesList, metricsRepository, d2ServerList, Optional.empty(), authorizerService, d2Client, consumerClientConfig);
+      VeniceController veniceController = new VeniceController(
+          propertiesList,
+          metricsRepository,
+          d2ServerList,
+          Optional.empty(),
+          authorizerService,
+          d2Client,
+          consumerClientConfig,
+          Optional.empty()
+      );
       return new VeniceControllerWrapper(serviceName, dataDirectory, veniceController, adminPort, adminSecurePort, propertiesList, d2ServerList, zkAddress, metricsRepository);
     };
   }

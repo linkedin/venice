@@ -69,7 +69,8 @@ public class VeniceController {
 
   public VeniceController(List<VeniceProperties> propertiesList, MetricsRepository metricsRepository, List<D2Server> d2ServerList,
       Optional<DynamicAccessController> accessController, Optional<AuthorizerService> authorizerService, D2Client d2Client,
-      Optional<ClientConfig> routerClientConfig, Optional<ICProvider> icProvider) {
+      Optional<ClientConfig> routerClientConfig, Optional<ICProvider> icProvider
+  ) {
     this.multiClusterConfigs = new VeniceControllerMultiClusterConfig(propertiesList);
     this.metricsRepository = metricsRepository;
     this.d2ServerList = d2ServerList;
@@ -80,14 +81,23 @@ public class VeniceController {
     this.d2Client = d2Client;
     this.routerClientConfig = routerClientConfig;
     this.icProvider = icProvider;
-
     createServices();
     KafkaClientStats.registerKafkaClientStats(metricsRepository, "KafkaClientStats", Optional.empty());
   }
 
   private void createServices() {
-    controllerService = new VeniceControllerService(multiClusterConfigs, metricsRepository, sslEnabled,
-        multiClusterConfigs.getSslConfig(), accessController, authorizerService, d2Client, routerClientConfig, icProvider);
+    controllerService = new VeniceControllerService(
+        multiClusterConfigs,
+        metricsRepository,
+        sslEnabled,
+        multiClusterConfigs.getSslConfig(),
+        accessController,
+        authorizerService,
+        d2Client,
+        routerClientConfig,
+        icProvider
+    );
+
     adminServer = new AdminSparkServer(
         multiClusterConfigs.getAdminPort(),
         controllerService.getVeniceHelixAdmin(),

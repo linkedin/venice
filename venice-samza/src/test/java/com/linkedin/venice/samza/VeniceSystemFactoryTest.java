@@ -79,7 +79,7 @@ public class VeniceSystemFactoryTest {
         "}";
 
     String storeName = Utils.getUniqueString("store");
-    Schema writeComputeSchema = WriteComputeSchemaConverter.convertFromValueRecordSchema(valueSchema);
+    Schema writeComputeSchema = WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchemaStr(valueSchema);
 
     cluster.useControllerClient(controllerClient -> {
       TestUtils.assertCommand(controllerClient.createNewStore(storeName, "owner", keySchema, valueSchema));

@@ -216,8 +216,10 @@ public class ServiceFactory {
       String zkAddress,
       KafkaBrokerWrapper kafkaBrokerWrapper,
       VeniceControllerWrapper[] childControllers,
-      boolean sslToKafka) {
-    return getVeniceParentController(clusterName, zkAddress, kafkaBrokerWrapper, childControllers, EMPTY_VENICE_PROPS, sslToKafka);
+      boolean sslToKafka
+  ) {
+    return getVeniceParentController(clusterName, zkAddress, kafkaBrokerWrapper, childControllers,
+        EMPTY_VENICE_PROPS, sslToKafka);
   }
 
   public static VeniceControllerWrapper getVeniceParentController(
@@ -243,7 +245,8 @@ public class ServiceFactory {
       boolean sslToKafka,
       int replicationFactor,
       VeniceProperties properties,
-      Optional<AuthorizerService> authorizerService) {
+      Optional<AuthorizerService> authorizerService
+  ) {
     /**
      * Add parent fabric name into the controller config.
      */

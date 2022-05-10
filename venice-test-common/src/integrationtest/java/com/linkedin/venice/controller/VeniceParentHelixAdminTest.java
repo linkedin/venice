@@ -18,12 +18,18 @@ import com.linkedin.venice.meta.ETLStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.schema.AvroSchemaParseUtils;
+import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.List;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
@@ -36,6 +42,7 @@ import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.controller.SchemaConstants.*;
 import static org.testng.Assert.*;
 
 public class VeniceParentHelixAdminTest {
@@ -305,14 +312,22 @@ public class VeniceParentHelixAdminTest {
     // This cluster setup don't have server, we cannot perform push here.
     properties.setProperty(CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE, String.valueOf(false));
     properties.setProperty(CONTROLLER_AUTO_MATERIALIZE_DAVINCI_PUSH_STATUS_SYSTEM_STORE, String.valueOf(false));
+
     try (ZkServerWrapper zkServer = ServiceFactory.getZkServer();
         KafkaBrokerWrapper kafkaBrokerWrapper = ServiceFactory.getKafkaBroker(zkServer);
         VeniceControllerWrapper childControllerWrapper =
             ServiceFactory.getVeniceController(clusterName, kafkaBrokerWrapper, isControllerSslEnabled);
         ZkServerWrapper parentZk = ServiceFactory.getZkServer();
         VeniceControllerWrapper parentControllerWrapper =
-            ServiceFactory.getVeniceParentController(clusterName, parentZk.getAddress(), kafkaBrokerWrapper,
-                new VeniceControllerWrapper[]{childControllerWrapper}, new VeniceProperties(properties), isControllerSslEnabled)) {
+            ServiceFactory.getVeniceParentController(
+                clusterName,
+                parentZk.getAddress(),
+                kafkaBrokerWrapper,
+                new VeniceControllerWrapper[]{childControllerWrapper},
+                new VeniceProperties(properties),
+                isControllerSslEnabled
+            )
+    ) {
       String childControllerUrl =
           isControllerSslEnabled ? childControllerWrapper.getSecureControllerUrl() : childControllerWrapper.getControllerUrl();
       String parentControllerUrl =
@@ -327,6 +342,8 @@ public class VeniceParentHelixAdminTest {
         testSuperSetSchemaGenWithSameUpcomingSchema(parentControllerClient);
         testAddValueSchemaDocUpdate(parentControllerClient);
         testAddBadValueSchema(parentControllerClient);
+        testWriteComputeSchemaAutoGeneration(parentControllerClient);
+        testWriteComputeSchemaAutoGenerationFailure(parentControllerClient);
       }
     }
   }
@@ -467,6 +484,113 @@ public class VeniceParentHelixAdminTest {
     parentControllerClient.addValueSchema(storeName, valueSchema.toString());
     SchemaResponse schemaResponse = parentControllerClient.addValueSchema(storeName, valueSchema.toString());
     Assert.assertTrue(schemaResponse.isError());
+  }
+
+  private void testWriteComputeSchemaAutoGenerationFailure(ControllerClient parentControllerClient) {
+    String storeName = Utils.getUniqueString("test_store");
+    String owner = "test_owner";
+    String keySchemaStr = "\"long\"";
+    Schema valueSchema = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(VALUE_SCHEMA_FOR_WRITE_COMPUTE_V4);
+
+    // Step 1. Create a store
+    parentControllerClient.createNewStore(storeName, owner, keySchemaStr, valueSchema.toString());
+    MultiSchemaResponse valueAndWriteComputeSchemaResponse = parentControllerClient.getAllValueAndDerivedSchema(storeName);
+    MultiSchemaResponse.Schema[] registeredSchemas = valueAndWriteComputeSchemaResponse.getSchemas();
+    Assert.assertEquals(registeredSchemas.length, 1);
+    MultiSchemaResponse.Schema registeredSchema = registeredSchemas[0];
+    Assert.assertEquals(registeredSchema.getSchemaStr(), valueSchema.toString());
+    Assert.assertFalse(registeredSchema.isDerivedSchema()); // No write compute schema yet.
+
+    // Step 2. Update this store to enable write compute and expect it to fail.
+    validateEnablingWriteComputeFailed(storeName, parentControllerClient);
+
+    // Step 3. Add a value schema which has a new field with default value. Expect enabling Write Compute to still fail.
+    SchemaResponse schemaResponse = parentControllerClient.addValueSchema(storeName, VALUE_SCHEMA_FOR_WRITE_COMPUTE_V5);
+    Assert.assertFalse(schemaResponse.isError(), "Users should be able to continue to add value schemas");
+    validateEnablingWriteComputeFailed(storeName, parentControllerClient); // Still cannot enable Write Compute.
+  }
+
+  private void validateEnablingWriteComputeFailed(String storeName, ControllerClient parentControllerClient) {
+    UpdateStoreQueryParams updateStoreQueryParams = new UpdateStoreQueryParams();
+    updateStoreQueryParams.setWriteComputationEnabled(true);
+    ControllerResponse response = parentControllerClient.updateStore(storeName, updateStoreQueryParams);
+    Assert.assertTrue(
+        response.isError(),
+        "Enabling Write Compute should fail because the value schema has a field that does not have default value."
+    );
+    final String expectedErrorMsg =
+        "Cannot generate write-compute schema from a value Record schema that does not have default values for all its fields";
+    Assert.assertTrue(response.getError().contains(expectedErrorMsg));
+  }
+
+  private void testWriteComputeSchemaAutoGeneration(ControllerClient parentControllerClient) {
+    String storeName = Utils.getUniqueString("test_store");
+    String owner = "test_owner";
+    String keySchemaStr = "\"long\"";
+    Schema valueSchema = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(VALUE_SCHEMA_FOR_WRITE_COMPUTE_V1);
+
+    // Step 1. Create a store
+    parentControllerClient.createNewStore(storeName, owner, keySchemaStr, valueSchema.toString());
+    MultiSchemaResponse valueAndWriteComputeSchemaResponse = parentControllerClient.getAllValueAndDerivedSchema(storeName);
+    MultiSchemaResponse.Schema[] registeredSchemas = valueAndWriteComputeSchemaResponse.getSchemas();
+    Assert.assertEquals(registeredSchemas.length, 1);
+    MultiSchemaResponse.Schema registeredSchema = registeredSchemas[0];
+    Assert.assertEquals(registeredSchema.getSchemaStr(), valueSchema.toString());
+    Assert.assertFalse(registeredSchema.isDerivedSchema()); // No write compute schema yet.
+
+    // Step 2. Update this store to enable write compute.
+    UpdateStoreQueryParams updateStoreQueryParams = new UpdateStoreQueryParams();
+    updateStoreQueryParams.setWriteComputationEnabled(true);
+    parentControllerClient.updateStore(storeName, updateStoreQueryParams);
+
+    // Step 3. Get value schema and write compute schema generated by the controller.
+    registeredSchemas = parentControllerClient.getAllValueAndDerivedSchema(storeName).getSchemas();
+    Assert.assertEquals(registeredSchemas.length, 2);
+    List<MultiSchemaResponse.Schema> registeredWriteComputeSchema = getWriteComputeSchemaStrs(registeredSchemas);
+    Assert.assertEquals(registeredWriteComputeSchema.size(), 1);
+    Assert.assertEquals(registeredWriteComputeSchema.get(0).getId(), 1);
+
+    // Note that currently there is only one WriteComputeSchemaConverter implementation so that we know the Venice controller
+    // must have used this WriteComputeSchemaConverter impl to generate and register Write Compute schema.
+    final WriteComputeSchemaConverter writeComputeSchemaConverter = WriteComputeSchemaConverter.getInstance();
+    Schema expectedWriteComputeSchema = writeComputeSchemaConverter.convertFromValueRecordSchema(valueSchema);
+    // Validate that the controller generates the correct schema.
+    Assert.assertEquals(registeredWriteComputeSchema.get(0).getSchemaStr(), expectedWriteComputeSchema.toString());
+
+    // Step 4. Add more value schemas and expect to get their corresponding write compute schemas.
+    parentControllerClient.addValueSchema(storeName, VALUE_SCHEMA_FOR_WRITE_COMPUTE_V2);
+    parentControllerClient.addValueSchema(storeName, VALUE_SCHEMA_FOR_WRITE_COMPUTE_V3);
+    registeredSchemas = parentControllerClient.getAllValueAndDerivedSchema(storeName).getSchemas();
+    Assert.assertEquals(registeredSchemas.length, 6);
+
+    registeredWriteComputeSchema = getWriteComputeSchemaStrs(registeredSchemas);
+    Assert.assertEquals(registeredWriteComputeSchema.size(), 3);
+    // Sort registered write compute schemas by their value schema IDs.
+    registeredWriteComputeSchema.sort(Comparator.comparingInt(MultiSchemaResponse.Schema::getId));
+    // Validate all registered write compute schemas are generated as expected.
+    expectedWriteComputeSchema = writeComputeSchemaConverter.convertFromValueRecordSchemaStr(VALUE_SCHEMA_FOR_WRITE_COMPUTE_V1);
+    Assert.assertEquals(registeredWriteComputeSchema.get(0).getSchemaStr(), expectedWriteComputeSchema.toString());
+    expectedWriteComputeSchema = writeComputeSchemaConverter.convertFromValueRecordSchemaStr(VALUE_SCHEMA_FOR_WRITE_COMPUTE_V2);
+    Assert.assertEquals(registeredWriteComputeSchema.get(1).getSchemaStr(), expectedWriteComputeSchema.toString());
+    expectedWriteComputeSchema = writeComputeSchemaConverter.convertFromValueRecordSchemaStr(VALUE_SCHEMA_FOR_WRITE_COMPUTE_V3);
+    Assert.assertEquals(registeredWriteComputeSchema.get(2).getSchemaStr(), expectedWriteComputeSchema.toString());
+
+    for (MultiSchemaResponse.Schema writeComputeSchema : registeredWriteComputeSchema) {
+      Assert.assertEquals(writeComputeSchema.getDerivedSchemaId(), 1);
+    }
+  }
+
+
+
+
+  private List<MultiSchemaResponse.Schema> getWriteComputeSchemaStrs(MultiSchemaResponse.Schema[] registeredSchemas) {
+    List<MultiSchemaResponse.Schema> writeComputeSchemaStrs = new ArrayList<>();
+    for (MultiSchemaResponse.Schema schema : registeredSchemas) {
+      if (schema.isDerivedSchema()) {
+        writeComputeSchemaStrs.add(schema);
+      }
+    }
+    return writeComputeSchemaStrs;
   }
 
   private Schema generateSchema(boolean addFieldWithDefaultValue) {

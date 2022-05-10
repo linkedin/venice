@@ -68,8 +68,9 @@ public class TestMetaDataHandler {
   private static final String ZK_ADDRESS = "localhost:1234";
   private static final String KAFKA_ZK_ADDRESS = "localhost:1234";
   private static final String KAFKA_BOOTSTRAP_SERVERS = "localhost:1234";
-  private static ObjectMapper mapper = ObjectMapperFactory.getInstance();
-  private HelixHybridStoreQuotaRepository hybridStoreQuotaRepository = Mockito.mock(HelixHybridStoreQuotaRepository.class);
+  private static final ObjectMapper mapper = ObjectMapperFactory.getInstance();
+  private final HelixHybridStoreQuotaRepository hybridStoreQuotaRepository = Mockito.mock(HelixHybridStoreQuotaRepository.class);
+
   public FullHttpResponse passRequestToMetadataHandler(String requestUri, RoutingDataRepository routing, ReadOnlySchemaRepository schemaRepo)
       throws IOException {
     return passRequestToMetadataHandler(requestUri, routing, schemaRepo,

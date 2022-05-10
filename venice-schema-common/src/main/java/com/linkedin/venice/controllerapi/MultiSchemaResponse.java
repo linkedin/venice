@@ -1,5 +1,8 @@
 package com.linkedin.venice.controllerapi;
 
+import org.codehaus.jackson.annotate.JsonIgnore;
+
+
 public class MultiSchemaResponse extends ControllerResponse { /* Uses Json Reflective Serializer, get without set may break things */
   /**
    * If this is set it should be used to replace latestValueSchema to deserialize during read.
@@ -33,6 +36,11 @@ public class MultiSchemaResponse extends ControllerResponse { /* Uses Json Refle
 
     public int getDerivedSchemaId() {
       return derivedSchemaId;
+    }
+
+    @JsonIgnore
+    public boolean isDerivedSchema() {
+      return derivedSchemaId != -1;
     }
 
     public void setDerivedSchemaId(int derivedSchemaId) {
