@@ -120,7 +120,8 @@ public enum Arg {
   KAFKA_TOPIC_RETENTION_IN_MS("kafka-topic-retention-in-ms", "ktrim", true, "Kafka topic retention time in milliseconds"),
   CHILD_CONTROLLER_ADMIN_TOPIC_CONSUMPTION_ENABLED(ConfigKeys.CHILD_CONTROLLER_ADMIN_TOPIC_CONSUMPTION_ENABLED, "atc", true, "whether child controller consumes admin topic"),
   SYSTEM_STORE_TYPE("system-store-type", "sst", true, "Type of system store to backfill. Supported types are davinci_push_status_store and meta_store"),
-  RETRY("retry", "r", false, "Retry this operation");
+  RETRY("retry", "r", false, "Retry this operation"),
+  DISABLE_LOG("disable-log", "dl", false, "Disable logs from internal classes. Only print command output on console");
 
   private final String argName;
   private final String first;

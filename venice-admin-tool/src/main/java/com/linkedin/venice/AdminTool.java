@@ -147,6 +147,10 @@ public class AdminTool {
       MultiStoreResponse storeResponse;
       ControllerResponse response;
 
+      if (cmd.hasOption(Arg.DISABLE_LOG.toString())) {
+        LogConfigurator.disableLog();
+      }
+
       if (Arrays.asList(foundCommand.getRequiredArgs()).contains(Arg.URL) &&
           Arrays.asList(foundCommand.getRequiredArgs()).contains(Arg.CLUSTER)) {
         veniceUrl = getRequiredArgument(cmd, Arg.URL);
@@ -1403,7 +1407,6 @@ public class AdminTool {
             new ControllerClient(clusterName, value, sslFactory)));
       }
       if (response.getChildDataCenterControllerD2Map() != null) {
-        // TODO: disable logs from d2 dependencies
         response.getChildDataCenterControllerD2Map().forEach((key, value) -> controllerClientMap.put(key,
             new D2ControllerClient(response.getD2ServiceName(), clusterName, value, sslFactory)));
       }
