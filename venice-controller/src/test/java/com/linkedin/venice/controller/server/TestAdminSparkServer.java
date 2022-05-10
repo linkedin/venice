@@ -156,7 +156,6 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
       CloseableHttpAsyncClient httpClient = HttpClientUtils.getMinimalHttpClient(1, 1, Optional.empty());
       httpClient.start();
       List<NameValuePair> params = new ArrayList<>();
-      params.add(new BasicNameValuePair(ControllerApiConstants.HOSTNAME, Utils.getHostName()));
       params.add(new BasicNameValuePair(ControllerApiConstants.CLUSTER, cluster.getClusterName()));
       params.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeToCreate));
       params.add(new BasicNameValuePair(ControllerApiConstants.OWNER, "owner"));

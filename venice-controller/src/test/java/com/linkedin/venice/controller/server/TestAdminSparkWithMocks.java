@@ -1,10 +1,10 @@
 package com.linkedin.venice.controller.server;
 
-import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controllerapi.ControllerApiConstants;
 import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
+import com.linkedin.venice.httpclient.HttpClientUtils;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.DataReplicationPolicy;
@@ -18,8 +18,8 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.ZKStore;
-import com.linkedin.venice.httpclient.HttpClientUtils;
 import com.linkedin.venice.utils.DataProviderUtils;
+import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.SslUtils;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -35,11 +35,10 @@ import org.apache.http.impl.nio.client.CloseableHttpAsyncClient;
 import org.apache.http.message.BasicNameValuePair;
 import org.codehaus.jackson.map.ObjectMapper;
 import org.mockito.Mockito;
-
-import static org.mockito.Mockito.*;
-
 import org.testng.Assert;
 import org.testng.annotations.Test;
+
+import static org.mockito.Mockito.*;
 
 
 /**
@@ -69,7 +68,6 @@ public class TestAdminSparkWithMocks {
     //build request
     List<NameValuePair> params = new ArrayList<>();
     params.add(new BasicNameValuePair(ControllerApiConstants.CLUSTER, "clustername"));
-    params.add(new BasicNameValuePair(ControllerApiConstants.HOSTNAME, "localhost"));
     params.add(new BasicNameValuePair(ControllerApiConstants.NAME, "storename"));
     params.add(new BasicNameValuePair(ControllerApiConstants.STORE_SIZE, Long.toString(1L)));
     params.add(new BasicNameValuePair(ControllerApiConstants.PUSH_JOB_ID, "pushJobId-1234"));
@@ -113,7 +111,6 @@ public class TestAdminSparkWithMocks {
     //build request
     List<NameValuePair> params = new ArrayList<>();
     params.add(new BasicNameValuePair(ControllerApiConstants.CLUSTER, "clustername"));
-    params.add(new BasicNameValuePair(ControllerApiConstants.HOSTNAME, "localhost"));
     params.add(new BasicNameValuePair(ControllerApiConstants.NAME, "storename"));
     params.add(new BasicNameValuePair(ControllerApiConstants.STORE_SIZE, Long.toString(1L)));
     params.add(new BasicNameValuePair(ControllerApiConstants.PUSH_JOB_ID, "pushJobId-1234"));
@@ -186,7 +183,6 @@ public class TestAdminSparkWithMocks {
     //build request
     List<NameValuePair> params = new ArrayList<>();
     params.add(new BasicNameValuePair(ControllerApiConstants.CLUSTER, clusterName));
-    params.add(new BasicNameValuePair(ControllerApiConstants.HOSTNAME, hostname));
     params.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
     params.add(new BasicNameValuePair(ControllerApiConstants.STORE_SIZE, Long.toString(1L)));
     params.add(new BasicNameValuePair(ControllerApiConstants.PUSH_JOB_ID, pushJobId1));
@@ -262,7 +258,6 @@ public class TestAdminSparkWithMocks {
     //build request
     List<NameValuePair> params = new ArrayList<>();
     params.add(new BasicNameValuePair(ControllerApiConstants.CLUSTER, "clustername"));
-    params.add(new BasicNameValuePair(ControllerApiConstants.HOSTNAME, "localhost"));
     params.add(new BasicNameValuePair(ControllerApiConstants.NAME, "storename"));
     params.add(new BasicNameValuePair(ControllerApiConstants.STORE_SIZE, Long.toString(1L)));
     params.add(new BasicNameValuePair(ControllerApiConstants.PUSH_JOB_ID, "pushJobId-1234"));

@@ -49,7 +49,6 @@ public class ControllerClient implements Closeable {
   private static final int DEFAULT_REQUEST_TIMEOUT_MS = 600 * Time.MS_PER_SECOND;
   private final Optional<SSLFactory> sslFactory;
   private final String clusterName;
-  private final String localHostName;
   private final VeniceJsonSerializer<Version> versionVeniceJsonSerializer = new VeniceJsonSerializer<>(Version.class);
   private String leaderControllerUrl;
   private final List<String> controllerDiscoveryUrls;
@@ -93,12 +92,10 @@ public class ControllerClient implements Closeable {
 
     this.sslFactory = sslFactory;
     this.clusterName = clusterName;
-    this.localHostName = Utils.getHostName();
     this.controllerDiscoveryUrls = Arrays.stream(discoveryUrls.split(",")).map(String::trim).collect(Collectors.toList());
     if (this.controllerDiscoveryUrls.isEmpty()) {
       throw new VeniceException("Controller discovery url list is empty");
     }
-    logger.debug("Parsed hostname as: " + this.localHostName);
   }
 
   public static ControllerClient discoverAndConstructControllerClient(
@@ -912,7 +909,6 @@ public class ControllerClient implements Closeable {
         // Cluster name is not required for cluster discovery request. But could not null otherwise an exception will be
         // thrown on server side.
         .add(CLUSTER, "*")
-        .add(HOSTNAME, Utils.getHostName())
         .add(NAME, storeName);
   }
 
@@ -1086,7 +1082,6 @@ public class ControllerClient implements Closeable {
 
   private QueryParams addCommonParams(QueryParams params) {
     return params
-        .add(HOSTNAME, this.localHostName)
         .add(CLUSTER, this.clusterName);
   }
 

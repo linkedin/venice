@@ -1,11 +1,9 @@
 package com.linkedin.venice.controllerapi;
 
 import com.linkedin.venice.HttpMethod;
-
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
-import java.util.Arrays;
-import org.apache.commons.collections.ListUtils;
 
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
 
@@ -145,13 +143,8 @@ public enum ControllerRoute {
   ControllerRoute(String path, HttpMethod httpMethod, List<String> params, String... optionalParams) {
     this.path = path;
     this.httpMethod = httpMethod;
-    this.params = ListUtils.union(params, getCommonParams());
+    this.params = params;
     this.optionalParams = Arrays.asList(optionalParams);
-  }
-
-  private static List<String> getCommonParams() {
-    // This will work together with AdminSparkServer#validateParams
-    return Arrays.asList(HOSTNAME);
   }
 
   public String getPath(){

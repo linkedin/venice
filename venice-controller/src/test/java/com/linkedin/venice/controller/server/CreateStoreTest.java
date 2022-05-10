@@ -1,13 +1,9 @@
 package com.linkedin.venice.controller.server;
 
-import static org.mockito.Mockito.*;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
-import static com.linkedin.venice.controllerapi.ControllerRoute.*;
-
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.utils.Utils;
-
+import java.util.HashMap;
 import java.util.Optional;
 import org.apache.commons.httpclient.HttpStatus;
 import org.testng.annotations.Test;
@@ -16,7 +12,9 @@ import spark.Request;
 import spark.Response;
 import spark.Route;
 
-import java.util.HashMap;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
+import static com.linkedin.venice.controllerapi.ControllerRoute.*;
+import static org.mockito.Mockito.*;
 
 public class CreateStoreTest {
   private static String clusterName = Utils.getUniqueString("test-cluster");
@@ -45,8 +43,6 @@ public class CreateStoreTest {
 
     doReturn(clusterName).when(request)
         .queryParams(CLUSTER);
-    doReturn("fake-hostname").when(request)
-        .queryParams(HOSTNAME);
     doReturn("test-store").when(request)
         .queryParams(NAME);
     doReturn("fake-owner").when(request)
@@ -86,8 +82,6 @@ public class CreateStoreTest {
 
     doReturn(clusterName).when(request)
         .queryParams(CLUSTER);
-    doReturn("fake-hostname").when(request)
-        .queryParams(HOSTNAME);
     doReturn("test-store").when(request)
         .queryParams(NAME);
     doReturn("fake-owner").when(request)
@@ -147,8 +141,6 @@ public class CreateStoreTest {
 
     doReturn(clusterName).when(request)
         .queryParams(CLUSTER);
-    doReturn("fake-hostname").when(request)
-        .queryParams(HOSTNAME);
     doReturn("test-store").when(request)
         .queryParams(NAME);
     doReturn("fake-owner").when(request)

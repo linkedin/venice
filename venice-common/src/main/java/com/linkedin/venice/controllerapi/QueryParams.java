@@ -2,6 +2,7 @@ package com.linkedin.venice.controllerapi;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.exceptions.VeniceException;
 import java.io.IOException;
 import java.util.HashMap;
@@ -12,6 +13,9 @@ import java.util.stream.Collectors;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.http.NameValuePair;
 import org.apache.http.message.BasicNameValuePair;
+
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
+
 
 /**
  * A simple container with builder functions to sugar-coat the code a bit.
@@ -26,6 +30,8 @@ public class QueryParams {
 
   public QueryParams() {
     this.params = new HashMap<>();
+    // TODO: Once controllers are upgraded we can remove this line
+    this.params.put(HOSTNAME, HttpConstants.LOCALHOST);
   }
 
   public QueryParams add(String name, Integer value) {
