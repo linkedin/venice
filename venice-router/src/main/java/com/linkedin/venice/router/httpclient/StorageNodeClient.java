@@ -39,6 +39,11 @@ public interface StorageNodeClient extends Closeable {
       BooleanSupplier cancelledCallBack,
       long queryStartTimeInNS) throws RouterException;
 
+  /**
+   * This function is used to notify the heartbeat to a certain instance times out.
+   */
+  default void heartbeatTimeoutToInstance(Instance instance) {}
+
   default boolean isInstanceReadyToServe(String instanceId)  {
     return true;
   }

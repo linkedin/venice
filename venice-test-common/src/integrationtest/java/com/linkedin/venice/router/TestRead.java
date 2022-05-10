@@ -245,6 +245,7 @@ public abstract class TestRead {
       int currentVersion = ControllerClient.getStore(controllerUrl, veniceCluster.getClusterName(), storeName).getStore().getCurrentVersion();
       return currentVersion == pushVersion;
     });
+    veniceCluster.refreshAllRouterMetaData();
 
     double maxInflightRequestCount = getAggregateRouterMetricValue(".total--in_flight_request_count.Max");
     Assert.assertEquals(maxInflightRequestCount, 0.0, "There should be no in-flight requests yet!");

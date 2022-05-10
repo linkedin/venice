@@ -1614,6 +1614,23 @@ public class ConfigKeys {
   public static final String ROUTER_HTTP_CLIENT5_SKIP_CIPHER_CHECK_ENABLED = "router.http.client5.skip.cipher.check.enabled";
 
   /**
+   * Whether to enable HttpClient5 repair service since httpclient5 couldn't handle Server crash properly in Router.
+   */
+  public static final String ROUTER_HTTP_CLIENT5_REPAIR_SERVICE_ENABLED = "router.http.client5.repair.service.enabled";
+
+  /**
+   * Repair check interval for HttpClient5 based client.
+   */
+  public static final String ROUTER_HTTP_CLIENT5_REPAIR_SERVICE_CHECK_INTERVAL_IN_MIN = "router.http.client5.repair.service.check.interval.in.min";
+
+  /**
+   * The HttpClient5 repair service relies on the heartbeat to detect the healthiness of the HttpClient5 based client, and
+   * the following config defines the threshold of heartbeat timeout event count to trigger the repair.
+   */
+  public static final String ROUTER_HTTP_CLIENT5_REPAIR_SERVICE_REPAIR_THRESHOLD_OF_HEART_BEAT_TIMEOUT_EVENT =
+      "router.http.client5.repair.service.repair.threshold.of.heart.beat.timeout.event";
+
+  /**
    * Number of IO threads used for AHAC client.
    */
   public static final String ROUTER_HTTPASYNCCLIENT_CLIENT_POOL_THREAD_COUNT = "router.httpasyncclient.client.pool.io.thread.count";

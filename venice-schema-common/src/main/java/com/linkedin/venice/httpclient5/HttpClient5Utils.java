@@ -89,6 +89,7 @@ public class HttpClient5Utils {
               .setSslContext(sslContext)
               .setTlsVersions(TLS.V_1_3, TLS.V_1_2)
               .build();
+
       final PoolingAsyncClientConnectionManager connectionManager = PoolingAsyncClientConnectionManagerBuilder.create()
           .setTlsStrategy(tlsStrategy)
           .setMaxConnTotal(maxTotalConnection)
@@ -99,6 +100,7 @@ public class HttpClient5Utils {
           Http1Config.DEFAULT, ioReactorConfig, connectionManager);
 
       client.start();
+
       return client;
     }
   }
