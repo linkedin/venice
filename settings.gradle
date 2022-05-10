@@ -1,6 +1,6 @@
 pluginManagement {
   repositories {
-    ivy { // TODO: remove this before opensourcing
+    ivy { // TODO: remove this before open-sourcing
       url 'http://artifactory.corp.linkedin.com:8081/artifactory/release/'
       patternLayout {
         ivy '[organisation]/[module]/[revision]/[module]-[revision].ivy'
@@ -8,20 +8,24 @@ pluginManagement {
         m2compatible = true
       }
     }
-    mavenCentral() // when build fails, move this to first and then build, then move it back and build should work
+    maven {
+      url 'https://plugins.gradle.org/m2/'
+    }
+    mavenCentral()
   }
 }
-include 'venice-common'
-include 'venice-thin-client'
-include 'venice-server'
-include 'venice-controller'
-include 'hadoop-to-venice-bridge'
-include 'venice-router'
-include 'venice-schema-common'
-include 'venice-admin-tool'
-include 'venice-test-common'
-include 'venice-samza'
-include 'venice-consumer'
+
 include 'da-vinci-client'
+include 'hadoop-to-venice-bridge'
+include 'venice-admin-tool'
 include 'venice-client'
+include 'venice-common'
 include 'venice-compatibility-test'
+include 'venice-consumer'
+include 'venice-controller'
+include 'venice-router'
+include 'venice-samza'
+include 'venice-schema-common'
+include 'venice-server'
+include 'venice-test-common'
+include 'venice-thin-client'
