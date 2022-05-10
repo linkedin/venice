@@ -63,7 +63,6 @@ public class TestAdminSparkServerGetLeader {
     try (CloseableHttpClient client = HttpClients.createDefault()) {
       List<NameValuePair> queryParams = new ArrayList<>();
       queryParams.add(new BasicNameValuePair(ControllerApiConstants.CLUSTER, cluster));
-      queryParams.add(new BasicNameValuePair(ControllerApiConstants.HOSTNAME, "some-hostname"));
       String queryString = URLEncodedUtils.format(queryParams, StandardCharsets.UTF_8);
 
       TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
