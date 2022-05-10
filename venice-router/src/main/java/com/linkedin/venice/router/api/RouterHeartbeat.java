@@ -96,6 +96,7 @@ public class RouterHeartbeat extends AbstractVeniceService {
               health.setHostAsUnhealthy(instance);
             } catch (TimeoutException e) {
               logger.warn("Heartbeat timeout for " + instanceUrl);
+              storageNodeClient.heartbeatTimeoutToInstance(instance);
               health.setHostAsUnhealthy(instance);
             }
           }

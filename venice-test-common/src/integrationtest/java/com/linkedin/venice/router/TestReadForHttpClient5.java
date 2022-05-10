@@ -5,12 +5,14 @@ import com.linkedin.venice.integration.utils.H2SSLUtils;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.meta.Instance;
+import com.linkedin.venice.meta.LiveInstanceMonitor;
 import com.linkedin.venice.meta.QueryAction;
 import com.linkedin.venice.router.httpclient.HttpClient5StorageNodeClient;
 import com.linkedin.venice.router.httpclient.PortableHttpResponse;
 import com.linkedin.venice.router.httpclient.StorageNodeClientType;
 import com.linkedin.venice.router.httpclient.VeniceMetaDataRequest;
 import com.linkedin.venice.utils.Utils;
+import io.tehuti.metrics.MetricsRepository;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
@@ -65,7 +67,8 @@ public class TestReadForHttpClient5 extends TestRead {
     doReturn(1).when(config).getHttpClient5PoolSize();
     doReturn(true).when(config).isHttpClient5SkipCipherCheck();
     doReturn(1000).when(config).getSocketTimeout();
-    try (HttpClient5StorageNodeClient client = new HttpClient5StorageNodeClient(sslFactory, config)) {
+    try (HttpClient5StorageNodeClient client = new HttpClient5StorageNodeClient(sslFactory, config, mock(
+        LiveInstanceMonitor.class), new MetricsRepository())) {
       CompletableFuture<PortableHttpResponse> responseFuture = new CompletableFuture<>();
       client.sendRequest(request, responseFuture);
       responseFuture.get(3, TimeUnit.SECONDS);

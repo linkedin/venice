@@ -120,6 +120,9 @@ public class VeniceRouterConfig {
   private int httpClient5PoolSize;
   private int httpClient5TotalIOThreadCount;
   private boolean httpClient5SkipCipherCheck;
+  private boolean httpClient5RepairEnabled;
+  private int httpClient5RepairCheckIntervalInMin;
+  private int httpClient5RepairThresholdOfHeartbeatTimeout;
   private int routerMultiGetDecompressionThreads;
   private int routerMultiGetDecompressionBatchSize;
   private boolean http2InboundEnabled;
@@ -285,6 +288,9 @@ public class VeniceRouterConfig {
     httpClient5PoolSize = props.getInt(ROUTER_HTTP_CLIENT5_POOL_SIZE, 1);
     httpClient5TotalIOThreadCount = props.getInt(ROUTER_HTTP_CLIENT5_TOTAL_IO_THREAD_COUNT, Runtime.getRuntime().availableProcessors());
     httpClient5SkipCipherCheck = props.getBoolean(ROUTER_HTTP_CLIENT5_SKIP_CIPHER_CHECK_ENABLED, false);
+    httpClient5RepairEnabled = props.getBoolean(ROUTER_HTTP_CLIENT5_REPAIR_SERVICE_ENABLED, true);
+    httpClient5RepairCheckIntervalInMin = props.getInt(ROUTER_HTTP_CLIENT5_REPAIR_SERVICE_CHECK_INTERVAL_IN_MIN, 5);
+    httpClient5RepairThresholdOfHeartbeatTimeout = props.getInt(ROUTER_HTTP_CLIENT5_REPAIR_SERVICE_REPAIR_THRESHOLD_OF_HEART_BEAT_TIMEOUT_EVENT, 3);
     /**
      * If the legacy config enables http2, Router will use it.
      */
@@ -742,6 +748,18 @@ public class VeniceRouterConfig {
 
   public boolean isHttpClient5SkipCipherCheck() {
     return httpClient5SkipCipherCheck;
+  }
+
+  public boolean isHttpClient5RepairEnabled() {
+    return httpClient5RepairEnabled;
+  }
+
+  public int getHttpClient5RepairCheckIntervalInMin() {
+    return httpClient5RepairCheckIntervalInMin;
+  }
+
+  public int getHttpClient5RepairThresholdOfHeartbeatTimeout() {
+    return httpClient5RepairThresholdOfHeartbeatTimeout;
   }
 
   public int getRouterMultiGetDecompressionThreads() {
