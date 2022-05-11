@@ -1716,10 +1716,8 @@ public class VenicePushJob implements AutoCloseable {
       }
       // Skip quota check
       storeSetting.storeStorageQuota = Store.UNLIMITED_STORAGE_QUOTA;
-      /**
-       * Chunking should be disabled since Kafka Input is meant to do pass-through.
-       */
-      storeSetting.isChunkingEnabled = false;
+      
+      storeSetting.isChunkingEnabled = sourceVersion.get().isChunkingEnabled();
 
       /**
        * If the source topic is using compression algorithm, we will keep the compression in the new topic. There are two cases:
