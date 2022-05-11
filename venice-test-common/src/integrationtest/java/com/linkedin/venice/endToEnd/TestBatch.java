@@ -16,18 +16,18 @@ import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.IncrementalPushPolicy;
-import com.linkedin.venice.meta.VeniceUserStoreType;
+import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.system.store.MetaStoreDataType;
 import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
+import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.TestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
-import com.linkedin.venice.writer.VeniceWriter;
 import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
@@ -827,7 +827,7 @@ public abstract class TestBatch {
   }
 
   private String testBatchStore(InputFileWriter inputFileWriter, Consumer<Properties> extraProps, H2VValidator dataValidator,
-      String existingStore, UpdateStoreQueryParams storeParms, boolean multiPushJobs, boolean addDerivedSchema,  boolean createMetaSystemStore) throws Exception {
+      String existingStore, UpdateStoreQueryParams storeParams, boolean multiPushJobs, boolean addDerivedSchema,  boolean createMetaSystemStore) throws Exception {
     File inputDir = getTempDataDirectory();
     Pair<Schema, Schema> schemas = inputFileWriter.write(inputDir);
     String storeName = StringUtils.isEmpty(existingStore) ? Utils.getUniqueString("store") : existingStore;
@@ -838,7 +838,9 @@ public abstract class TestBatch {
 
     if (StringUtils.isEmpty(existingStore)) {
       createStoreForJob(veniceCluster.getClusterName(), schemas.getFirst().toString(), schemas.getSecond().toString(), props,
-          storeParms, addDerivedSchema).close();
+          storeParams, addDerivedSchema).close();
+    } else if (storeParams != null){
+      updateStore(veniceCluster.getClusterName(), props, storeParams);
     }
 
     if (createMetaSystemStore) {
@@ -893,30 +895,26 @@ public abstract class TestBatch {
     testStoreWithLargeValues(true);
   }
 
-  @Test(timeOut = TEST_TIMEOUT * 3)
-  public void testKafkaInputBatchJobWithLargeValues() throws Exception {
+  @Test(timeOut = TEST_TIMEOUT * 3, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testKafkaInputBatchJobWithLargeValues(boolean sendDirectControlMessage) throws Exception {
     String storeName = testStoreWithLargeValues(true);
     try {
-      testKafkaInputBatchJobWithLargeValues(false, storeName);
+      testKafkaInputBatchJobWithLargeValues(false, storeName, sendDirectControlMessage);
       Assert.fail("Re-pushing large values with chunking disabled should fail.");
     } catch (VeniceException e) {
       // Re-push is expected to fail
     }
-    testKafkaInputBatchJobWithLargeValues(true, storeName);
+    testKafkaInputBatchJobWithLargeValues(true, storeName, sendDirectControlMessage);
   }
 
-  private void testKafkaInputBatchJobWithLargeValues(boolean enableChunkingOnPushJob, String storeName) throws Exception {
-    testStoreWithLargeValues(true,
+  private void testKafkaInputBatchJobWithLargeValues(boolean enableChunkingOnPushJob, String storeName, Boolean sendDirectControlMessage) throws Exception {
+    testStoreWithLargeValues(enableChunkingOnPushJob,
         properties -> {
           properties.setProperty(SOURCE_KAFKA, "true");
-          properties.setProperty(KAFKA_INPUT_TOPIC, Version.composeKafkaTopic(storeName, 1));
+          properties.setProperty(VENICE_STORE_NAME_PROP, storeName);
           properties.setProperty(KAFKA_INPUT_BROKER_URL, veniceCluster.getKafka().getAddress());
           properties.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
-          if (enableChunkingOnPushJob) {
-            properties.setProperty(VeniceWriter.ENABLE_CHUNKING, "true");
-          } else {
-            properties.setProperty(VeniceWriter.ENABLE_CHUNKING, "false");
-          }
+          properties.setProperty(SEND_CONTROL_MESSAGES_DIRECTLY, sendDirectControlMessage.toString());
         }, storeName);
   }
 
