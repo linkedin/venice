@@ -25,7 +25,7 @@ def run_command(command):
 
 def get_queued_build(build_url, params):
   while True:
-    response = run_command("curl -kfs '{0}api/json' -u $(whoami):{apiToken}"
+    response = run_command("curl --http1.1 -fs '{0}api/json' -u $(whoami):{apiToken}"
       .format(build_url, **params))
     build = json.loads(response)
     if ("executable" in build) or build["blocked"] or build["buildable"]:
@@ -61,7 +61,7 @@ if __name__ == "__main__":
 
   if args.patch:
     response = run_command(
-      "curl -kfv '{url}/job/{job}/buildWithParameters?baseline={baseline}' -u $(whoami):{apiToken} -F 'patch.diff=@{patch}'"
+      "curl --http1.1 -fv '{url}/job/{job}/buildWithParameters?baseline={baseline}' -u $(whoami):{apiToken} -F 'patch.diff=@{patch}'"
         .format(**params))
   else:
     changes = run_command("git diff --find-renames --compact-summary {baseline}".format(**params))
@@ -71,7 +71,7 @@ if __name__ == "__main__":
     revision = '#' + run_command("git rev-parse --short HEAD")
     response = run_command(
         "git diff --patch --find-renames --compact-summary {baseline} |"
-        "curl -kfv '{url}/job/{job}/buildWithParameters?baseline={baseline}' -u $(whoami):{apiToken} -F 'patch.diff=@-;filename={name}'"
+        "curl --http1.1 -fv '{url}/job/{job}/buildWithParameters?baseline={baseline}' -u $(whoami):{apiToken} -F 'patch.diff=@-;filename={name}'"
           .format(**params, name=revision))
 
     print("Submitted working copy {name} for testing:".format(name=revision))
