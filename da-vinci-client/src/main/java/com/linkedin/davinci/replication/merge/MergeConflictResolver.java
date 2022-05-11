@@ -63,7 +63,7 @@ public class MergeConflictResolver {
 
   /**
    * Perform conflict resolution when the incoming operation is a PUT operation.
-   * @param oldValueBytesProvider A Lazy supplier of currently persisted value.
+   * @param oldValueBytesProvider A Lazy supplier of currently persisted value bytes.
    * @param rmdWithValueSchemaIdOptional The replication metadata of the currently persisted value and the value schema ID.
    * @param newValueBytes The value in the incoming record.
    * @param putOperationTimestamp The logical timestamp of the incoming record.
@@ -103,19 +103,19 @@ public class MergeConflictResolver {
 
     switch (rmdTimestampType) {
       case VALUE_LEVEL_TIMESTAMP:
-        ValueAndReplicationMetadata<ByteBuffer> valueAndRmd = new ValueAndReplicationMetadata<>(oldValueBytesProvider, oldRmdRecord);
-        valueAndRmd = mergeByteBuffer.put(
-            valueAndRmd,
+        ValueAndReplicationMetadata<ByteBuffer> mergedByteValueAndRmd = new ValueAndReplicationMetadata<>(oldValueBytesProvider, oldRmdRecord);
+        mergedByteValueAndRmd = mergeByteBuffer.put(
+            mergedByteValueAndRmd,
             newValueBytes,
             putOperationTimestamp,
             newValueColoID,
             newValueSourceOffset,
             newValueSourceBrokerID
         );
-        if (valueAndRmd.isUpdateIgnored()) {
+        if (mergedByteValueAndRmd.isUpdateIgnored()) {
           return MergeConflictResult.getIgnoredResult();
         } else {
-          return new MergeConflictResult(Optional.ofNullable(valueAndRmd.getValue()), newValueSchemaID, true, valueAndRmd.getReplicationMetadata());
+          return new MergeConflictResult(Optional.ofNullable(mergedByteValueAndRmd.getValue()), newValueSchemaID, true, mergedByteValueAndRmd.getReplicationMetadata());
         }
 
       case PER_FIELD_TIMESTAMP:
@@ -131,10 +131,14 @@ public class MergeConflictResolver {
         final SchemaEntry mergeResultValueSchemaEntry = mergeResultValueSchemaResolver.getMergeResultValueSchema(oldValueSchemaID, newValueSchemaID);
         final Schema mergeResultValueSchema = mergeResultValueSchemaEntry.getSchema();
 
-        // RMD record should have the mergeResultRmdSchema.
+        // RMD record should use the RMD schema of the mergeResultValueSchema.
         GenericRecord expandedOldRmdRecord = mayConvertRmdToUseMergeResultSchema(mergeResultValueSchemaEntry.getId(), oldValueSchemaID, oldRmdRecord);
         final Schema newValueWriterSchema = getValueSchema(newValueSchemaID);
-        // New value record and old value record should both have the mergedValueSchema
+        /**
+         * Note that it is important that the new value record should NOT use {@link mergeResultValueSchema}.
+         * {@link newValueWriterSchema} is either the same as {@link mergeResultValueSchema} or it is a subset of
+         * {@link mergeResultValueSchema}.
+         */
         GenericRecord newValueRecord = deserializeValue(newValueBytes, newValueWriterSchema, newValueWriterSchema);
         Lazy<GenericRecord> oldValueRecordProvider = Lazy.of(() -> {
           ByteBuffer oldValueBytes = oldValueBytesProvider.get();
@@ -158,6 +162,9 @@ public class MergeConflictResolver {
             newValueSourceBrokerID
         );
 
+        // TODO: avoid serializing the merged value result here and instead serializing it before persisting it. The goal
+        // is to avoid back-and-forth ser/de. Because when the merged result is read before it is persisted, we may need
+        // to deserialize it.
         ByteBuffer mergedValueBytes = ByteBuffer.wrap(
             MapOrderingPreservingSerDeFactory.getSerializer(mergeResultValueSchema).serialize(mergedValueAndRmd.getValue())
         );
