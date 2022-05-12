@@ -1,7 +1,10 @@
-apply plugin: 'application'
+plugins {
+  id 'application'
+}
 
-mainClassName = 'com.linkedin.venice.controller.VeniceController'
-
+application {
+  mainClass = 'com.linkedin.venice.controller.VeniceController'
+}
 installDist.dependsOn test
 
 //the mortbay jetty will introduce servlet 2.5 which will cause the NoSuchMethodException while admin spark server is trying to read head from request.
@@ -9,28 +12,9 @@ configurations.implementation {
   exclude group: 'org.mortbay.jetty', module: 'servlet-api'
 }
 
-task buildJar(type: Jar) {
-  zip64 true
-  manifest {
-    attributes 'Main-Class': 'com.linkedin.venice.controller.VeniceController',
-        'Implementation-Title': 'Venice Controller',
-        'Implementation-Version': version
-  }
-  baseName = project.name
-  from { configurations.implementation.collect { it.isDirectory() ? it : zipTree(it) } }
-  with jar
-}
-
-jar {
-  manifest {
-    attributes 'Main-Class': 'com.linkedin.venice.controller.VeniceController',
-        'Implementation-Title': 'Venice Controller',
-        'Implementation-Version': version
-  }
-}
-
 dependencies {
-  implementation libraries.zkclient // It's necessary to pull in the most recent version of zkclient explicitly, otherwise Helix won't have it...
+  // It's necessary to pull in the most recent version of zkclient explicitly, otherwise Helix won't have it...
+  implementation libraries.zkclient
   implementation libraries.kafka
 
   implementation project(':venice-thin-client')
@@ -40,7 +24,7 @@ dependencies {
   implementation libraries.spark
 
   implementation (libraries.d2) {
-    exclude group: 'com.oracle', module: 'ojdbc14' // unused transitive dependencies, doesnt exist in repo
+    exclude group: 'com.oracle', module: 'ojdbc14' // unused transitive dependencies, doesn't exist in repo
     exclude group: 'org.mockito', module: 'mockito-all' // this will introduce another different mockito-all version
   }
 
@@ -54,4 +38,14 @@ dependencies {
   testImplementation project(':venice-router')
   testImplementation libraries.avroUtilFastserde
   testImplementation libraries.kafkaClientsTest // TODO: Get rid of Kafka dependency in venice-common (used by TopicCreator)
+}
+
+jar {
+  manifest {
+    attributes = [
+        'Implementation-Title': 'Venice Controller',
+        'Implementation-Version': project.version,
+        'Main-Class': application.mainClass.get()
+    ]
+  }
 }

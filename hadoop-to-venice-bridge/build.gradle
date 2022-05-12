@@ -1,134 +1,63 @@
+plugins {
+  id 'com.github.johnrengelman.shadow'
+}
+
 dependencies {
-    implementation (project(':venice-common')) {
-      exclude group: 'com.linkedin.dds-storage-core'
-    }
-    implementation project(':venice-thin-client') // Needed by the Post Bulkload Analysis Job
-
-    implementation libraries.commonsIo
-    implementation libraries.kafkaClients
-    implementation libraries.kafka
-    implementation (libraries.avro) {
-      exclude group: 'org.mortbay.jetty' // jetty 6 conflicts with spark-java used in controller api
-    }
-    implementation (libraries.avroMapred) {
-      exclude group: 'org.mortbay.jetty'
-    }
-
-    implementation (libraries.mapreduceClientCore) {
-        exclude group: 'org.apache.avro'
-        exclude group: 'javax.servlet'
-    }
-
-    implementation libraries.log4j2api
-    implementation libraries.log4j2core
-    implementation (libraries.hadoopCommon) {
-      // Exclude transitive dependency
-      exclude group: 'org.apache.avro'
-      exclude group: 'javax.servlet'
-    }
-    implementation libraries.joptSimple
-    implementation libraries.jdom
-    implementation libraries.jacksonCore
-
-    implementation libraries.xerces
-    implementation libraries.xalan
-
-    implementation libraries.zstd
-
-    runtime libraries.commonsConfiguration
-    runtime libraries.commonsLang
-    runtime libraries.httpCore
-    runtime libraries.httpClient
-}
-
-configurations {
-    jarRuntime {
-        description = 'this configuration will include all the dependencies to generate the fat jar'
-        extendsFrom runtime
-    }
-    // filtering all the container related classes since they could conflict with customers' job dependencies
-    jarRuntime.exclude group: 'com.linkedin.container'
-}
-
-configurations.all {
-  resolutionStrategy {
-    // Kafka expects 1.6.2 dependency, but via avro it ends up with 1.5 version which has an API that kafka uses removed.
-    // Dependency tree does not show dependency on slf4j-simple 1.5, but slf4j is looking at the jar contents
-    // and arrives at the conclusion that it needs 1.5
-    // https://docs.gradle.org/current/dsl/org.gradle.api.artifacts.ResolutionStrategy.html#org.gradle.api.artifacts.ResolutionStrategy:force(java.lang.Object[])
-
-    force 'org.slf4j:slf4j-log4j12:1.6.2'
+  implementation (project(':venice-common')) {
+    exclude group: 'com.linkedin.dds-storage-core'
   }
-}
+  implementation project(':venice-thin-client') // Needed by the Post Bulk-load Analysis Job
+  implementation libraries.commonsIo
+  implementation libraries.kafkaClients
+  implementation libraries.kafka
+  implementation (libraries.avro) {
+    exclude group: 'org.mortbay.jetty' // jetty 6 conflicts with spark-java used in controller api
+  }
+  implementation (libraries.avroMapred) {
+    exclude group: 'org.mortbay.jetty'
+  }
+  implementation (libraries.mapreduceClientCore) {
+    exclude group: 'org.apache.avro'
+    exclude group: 'javax.servlet'
+  }
+  implementation libraries.log4j2api
+  implementation libraries.log4j2core
+  implementation (libraries.hadoopCommon) {
+    // Exclude transitive dependency
+    exclude group: 'org.apache.avro'
+    exclude group: 'javax.servlet'
+  }
+  implementation libraries.joptSimple
+  implementation libraries.jdom
+  implementation libraries.jacksonCore
+  implementation libraries.xerces
+  implementation libraries.xalan
+  implementation libraries.zstd
 
-jar {
-  // including all jar runtime dependency jars (fat jar)
-  // from configurations.jarRuntime.collect {
-  from configurations.jarRuntime
-  // from configurations.implementation
-      .filter {!it.absolutePath.endsWith('.xml')}
-      .filter {!it.absolutePath.endsWith('.ivy')} // Exclude the ivy file which is introduced by new helix version.
-      .collect {
-        // filtering hadoop core jars and configs as it clashes with Azkaban
-        it.isDirectory() ? it : zipTree(it).matching {
-          // exclude('**/*-default.xml')
-          // exclude('**/*.xml')
-          exclude('**/org/apache/commons/**')
-          exclude('**/org/apache/hadoop/**')
-          exclude('**/com/linkedin/azkaban**')
-          exclude('**/com/linkedin/hadoop**')
-          exclude('**/org/apache/xerces/**')
-          // exclude('*.xml')
-          // exclude('hdfs*.xml')
-          // exclude('mapred*.xml')
-          // exclude('core*.xml')
-          exclude('**/org.apache.hadoop*')
-        }
-      }
-  // override log4j properties for hadoop job
-  from 'log4j.properties'
-  exclude 'META-INF/*.RSA', 'META-INF/*.SF', 'META-INF/*.DSA'
-}
-
-task fatJar(type: Jar) {
-  classifier 'fatJar'
-
-  zip64 true
-  // including all jar runtime dependency jars (fat jar)
-  from configurations.runtimeClasspath
-      .filter {!it.absolutePath.endsWith('.xml')}
-      .filter {!it.absolutePath.endsWith('.ivy')} // Exclude the ivy file which is introduced by new helix version.
-      .collect {
-        // filtering hadoop core jars and configs as it clashes with Azkaban
-        it.isDirectory() ? it : zipTree(it).matching {
-          exclude('**/org/apache/commons/**')
-          exclude('**/org/apache/hadoop/**')
-          exclude('**/com/linkedin/azkaban**')
-          exclude('**/com/linkedin/hadoop**')
-          exclude('**/org/apache/xerces/**')
-          exclude('**/org.apache.hadoop*')
-        }
-      }
-
-  // override log4j properties for hadoop job
-  from 'log4j.properties'
-  exclude 'META-INF/*.RSA', 'META-INF/*.SF', 'META-INF/*.DSA'
-
-  dependsOn ':venice-common:jar'
-  dependsOn ':venice-thin-client:jar'
-  dependsOn ':venice-schema-common:jar'
-  with jar
+  runtimeOnly libraries.commonsConfiguration
+  runtimeOnly libraries.commonsLang
+  runtimeOnly libraries.httpCore
+  runtimeOnly libraries.httpClient
 }
 
 artifacts {
-  archives fatJar
+  archives shadowJar
+}
+
+shadowJar {
+  include '**'
+  exclude '**/com/linkedin/azkaban**'
+  exclude '**/com/linkedin/hadoop**'
+  exclude '**/org.apache.hadoop*'
+  exclude '**/org/apache/commons/**'
+  exclude '**/org/apache/hadoop/**'
+  exclude '**/org/apache/xerces/**'
 }
 
 task zipAzkabanDev(type: Zip, dependsOn: jar) {
   classifier = 'azkaban-dev'
 
-  from 'azkaban-dev-pack/'
-  include '*'
+  from 'azkaban-dev-pack/' include '*'
 
   from (tasks.jar.archivePath) {
     into 'libs'

@@ -1,7 +1,7 @@
 import io.netifi.flatbuffers.plugin.tasks.FlatBuffers
 
 plugins {
-  id 'io.netifi.flatbuffers' version '1.0.6'
+  id 'io.netifi.flatbuffers'
 }
 
 configurations {

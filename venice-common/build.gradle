@@ -1,8 +1,4 @@
-apply plugin: 'java-library'
-
 dependencies {
-  // Let's try to keep it clean! (i.e.: alphabetical)
-
   implementation (libraries.avro) {
     exclude group: 'org.jboss.netty' // older version of netty3 causes transitive conflicts with the router
     exclude group: 'org.mortbay.jetty' // jetty 6 conflicts with spark-java used in controller api
@@ -10,11 +6,10 @@ dependencies {
   }
   implementation libraries.avroUtilCompatibilityHelper
   implementation libraries.asyncHttpClient
-
   implementation libraries.bouncyCastle
-
-  implementation libraries.commonsIo // IntelliJ gets confused when running tests unless we explicitly depend on a recent version of commons-io
+  implementation libraries.classgraph
   implementation libraries.commonsCodec
+  implementation libraries.commonsIo // IntelliJ gets confused when running tests unless we explicitly depend on a recent version of commons-io
   implementation libraries.commonsLang
 
   implementation (libraries.helix) { // TODO: Get rid of Helix dependency in venice-common
@@ -24,56 +19,31 @@ dependencies {
     exclude module: 'zookeeper'
   }
 
-  implementation libraries.jacksonMapper
-
-  implementation libraries.kafkaClients // TODO: Get rid of Kafka dependency in venice-common
-  implementation libraries.kafka // TODO: Get rid of Kafka dependency in venice-common (used by TopicCreator)
   implementation libraries.conscrypt
-
+  implementation libraries.jacksonMapper
+  implementation libraries.kafka // TODO: Get rid of Kafka dependency in venice-common (used by TopicCreator)
+  implementation libraries.kafkaClients // TODO: Get rid of Kafka dependency in venice-common
   implementation libraries.oss
 
   implementation (libraries.routerLnkd) { // for SSL Initializer
-    exclude group: 'com.oracle', module: 'ojdbc14' // unused transitive dependency, doesnt exist in repo
+    exclude group: 'com.oracle', module: 'ojdbc14' // unused transitive dependency, doesn't exist in repo
     exclude group: 'xerces', module: 'xerces' // resolve conflicting transitive dependency
     exclude group: 'com.fasterxml.jackson.core', module: 'jackson-core'// resolve conflicting transitive dependency
-    exclude group: 'com.google.guava', module: 'guava' // Keepin' it clean.
-    exclude group: 'com.github.rholder', module: 'guava-retrying' // Keepin' it clean.
-    exclude group: 'com.linkedin.container', module: 'container-eventbus-factory' // Keepin' it clean.
+    exclude group: 'com.google.guava', module: 'guava' // Keeping' it clean.
+    exclude group: 'com.github.rholder', module: 'guava-retrying' // Keeping' it clean.
+    exclude group: 'com.linkedin.container', module: 'container-eventbus-factory' // Keeping' it clean.
   }
 
   implementation libraries.tehuti
-  implementation libraries.zkclient // It's necessary to pull in the most recent version of zkclient explicitly, otherwise Helix won't have it...
+  // It's necessary to pull in the most recent version of zkclient explicitly, otherwise Helix won't have it...
+  implementation libraries.zkclient
   implementation libraries.zookeeper // TODO: Get rid of ZK dependency in venice-common
 
   api project(':venice-schema-common')
   implementation project(':venice-thin-client')
-
-  implementation libraries.classgraph
 
   // Test dependencies are allowed to be bulkier.
   testImplementation libraries.kafkaClientsTest // TODO: Get rid of Kafka dependency in venice-common (used by TopicCreator)
   testImplementation project(':venice-controller')
 }
 
-jar {
-  manifest {
-    attributes 'Implementation-Title': 'Venice Common',
-      'Implementation-Version': version
-  }
-}
-
-task buildJar(type: Jar) {
-  zip64 true
-  manifest {
-    attributes 'Implementation-Title': 'Venice Common',
-      'Implementation-Version': version
-  }
-  baseName = project.name
-  from { configurations.compile
-    .filter {!it.absolutePath.endsWith('.xml')}
-    .collect { it.isDirectory() ? it : zipTree(it) }
-  }
-  exclude 'META-INF/*.RSA', 'META-INF/*.SF','META-INF/*.DSA' // Necessary, otherwise Bouncy Castle introduces DSA files that mess with our build
-  with jar
-}
-assemble.dependsOn(buildJar)

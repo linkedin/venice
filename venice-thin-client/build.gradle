@@ -1,17 +1,3 @@
-task buildJar(type: Jar) {
-  manifest {
-    attributes 'Implementation-Title': 'Venice Thin Client',
-            'Implementation-Version': version,
-            'Main-Class': 'com.linkedin.venice.client.store.QueryTool'
-  }
-  baseName = project.name
-  from { configurations.implementation
-    .filter {!it.absolutePath.endsWith(".xml")} // Resolves Could not expand ZIP '.../pegasus-d2-client-factory-cmpt-def-16.0.23.xml'.
-    .collect { it.isDirectory() ? it : zipTree(it) } }
-  exclude 'META-INF/*.RSA', 'META-INF/*.SF','META-INF/*.DSA'
-  with jar
-}
-
 dependencies {
   api (libraries.avro) {
     exclude group: 'org.jboss.netty' // older version of netty3 causes transitive conflicts with the router

@@ -1,36 +1,22 @@
-apply plugin: 'application'
+plugins {
+  id 'application'
+}
 
-mainClassName = "com.linkedin.venice.server.VeniceServer"
-
+application {
+  mainClass = 'com.linkedin.venice.server.VeniceServer'
+}
 installDist.dependsOn test
-
-task buildJar(type: Jar) {
-  zip64 true
-  manifest {
-    attributes 'Main-Class': 'com.linkedin.venice.server.VeniceServer',
-        'Implementation-Title': 'Venice Server',
-        'Implementation-Version': version
-  }
-  baseName = project.name
-  from { configurations.implementation.collect { it.isDirectory() ? it : zipTree(it) } }
-  with jar
-}
-
-jar {
-  manifest {
-    attributes 'Main-Class': 'com.linkedin.venice.server.VeniceServer',
-        'Implementation-Title': 'Venice Server',
-        'Implementation-Version': version
-  }
-}
 
 dependencies {
   implementation (libraries.routerLnkd) { // for SSL Initializer
-    exclude group: 'com.oracle', module: 'ojdbc14' // unused transitive dependency, doesnt exist in repo
+    exclude group: 'com.oracle', module: 'ojdbc14' // unused transitive dependency, doesn't exist in repo
     exclude group: 'xerces', module: 'xerces' // resolve conflicting transitive dependency
     exclude group: 'com.fasterxml.jackson.core', module: 'jackson-core'// resolve conflicting transitive dependency
   }
-  implementation libraries.zkclient // It's necessary to pull in the most recent version of zkclient explicitly, otherwise Helix won't have it...
+
+  // It's necessary to pull in the most recent version of zkclient explicitly, otherwise Helix won't have it...
+  implementation libraries.zkclient
+
   implementation libraries.helix
   implementation libraries.kafkaClients
   implementation libraries.conscrypt
@@ -53,4 +39,14 @@ dependencies {
   implementation libraries.ddsNettyBase
 
   testImplementation project(':venice-router')
+}
+
+jar {
+  manifest {
+    attributes = [
+        'Implementation-Title': 'Venice Server',
+        'Implementation-Version': project.version,
+        'Main-Class': application.mainClass.get()
+    ]
+  }
 }

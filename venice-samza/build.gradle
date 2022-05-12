@@ -1,16 +1,7 @@
-apply plugin: 'java-library'
-
-task buildJar(type: Jar) {
-  manifest {
-    attributes 'Implementation-Title': 'Venice Samza',
-            'Implementation-Version': version
-  }
-  baseName = project.name
-  from { configurations.implementation.collect { it.isDirectory() ? it : zipTree(it) } }
-  with jar
+configurations.implementation {
+  // jetty 6 conflicts with spark-java used in controller api
+  exclude group: 'org.mortbay.jetty'
 }
-
-configurations.implementation.exclude group: 'org.mortbay.jetty' // jetty 6 conflicts with spark-java used in controller api
 
 dependencies {
   implementation libraries.samzaApi
