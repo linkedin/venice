@@ -10,8 +10,7 @@ import javax.annotation.Nonnull;
 
 
 /**
- * Wrapper class to hold a pair of {@link GenericRecord}, including a value and its corresponding
- * replication metadata.
+ * This class holds a value of type {@param T} and its corresponding replication metadata.
  */
 public class ValueAndReplicationMetadata<T> {
   private Lazy<T> value;

@@ -1,14 +1,19 @@
 package com.linkedin.davinci.replication.merge;
 
+import com.linkedin.davinci.serialization.avro.MapOrderingPreservingSerDeFactory;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.schema.AvroSchemaParseUtils;
 import com.linkedin.venice.schema.SchemaEntry;
+import com.linkedin.venice.schema.rmd.ReplicationMetadataConstants;
 import com.linkedin.venice.schema.rmd.ReplicationMetadataSchemaEntry;
 import com.linkedin.venice.schema.rmd.ReplicationMetadataSchemaGenerator;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
+import java.util.ArrayList;
+import java.util.Map;
 import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 import org.testng.annotations.BeforeClass;
 
@@ -49,5 +54,25 @@ public class TestMergeConflictResolver {
 
     SchemaEntry valueSchemaEntry = new SchemaEntry(1, valueRecordSchemaV1);
     doReturn(valueSchemaEntry).when(schemaRepository).getLatestValueSchema(anyString());
+  }
+
+  protected GenericRecord createRmd(Schema rmdSchema, Map<String, Long> fieldNameToTimestampMap) {
+    final GenericRecord rmdRecord = new GenericData.Record(rmdSchema);
+    final Schema rmdTimestampSchema = rmdSchema.getFields().get(0).schema().getTypes().get(1);
+    GenericRecord fieldTimestampsRecord = new GenericData.Record(rmdTimestampSchema);
+    fieldNameToTimestampMap.forEach((fieldName, fieldTimestamp) -> {
+      fieldTimestampsRecord.put(fieldName, fieldTimestamp);
+    });
+    rmdRecord.put(ReplicationMetadataConstants.TIMESTAMP_FIELD_NAME, fieldTimestampsRecord);
+    rmdRecord.put(ReplicationMetadataConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD, new ArrayList<>());
+    return rmdRecord;
+  }
+
+  protected RecordSerializer<GenericRecord> getSerializer(Schema writerSchema) {
+    return MapOrderingPreservingSerDeFactory.getSerializer(writerSchema);
+  }
+
+  protected RecordDeserializer<GenericRecord> getDeserializer(Schema writerSchema, Schema readerSchema) {
+    return MapOrderingPreservingSerDeFactory.getDeserializer(writerSchema, readerSchema);
   }
 }

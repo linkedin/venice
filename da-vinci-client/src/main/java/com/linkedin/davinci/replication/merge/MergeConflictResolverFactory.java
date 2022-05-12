@@ -9,7 +9,11 @@ import org.apache.avro.generic.GenericData;
 
 public class MergeConflictResolverFactory {
 
-  public static MergeConflictResolverFactory INSTANCE = new MergeConflictResolverFactory();
+  private static final MergeConflictResolverFactory INSTANCE = new MergeConflictResolverFactory();
+
+  public static MergeConflictResolverFactory getInstance() {
+    return INSTANCE;
+  }
 
   private MergeConflictResolverFactory() {
     // Singleton class
