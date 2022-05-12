@@ -188,6 +188,9 @@ public class ApacheKafkaConsumer implements KafkaConsumerWrapper {
     return kafkaConsumer.assignment().contains(tp);
   }
 
+  /**
+   * If the partitions were not previously subscribed, this method is a no-op.
+   */
   @Override
   public void pause(String topic, int partition) {
     TopicPartition tp = new TopicPartition(topic, partition);
@@ -197,12 +200,14 @@ public class ApacheKafkaConsumer implements KafkaConsumerWrapper {
   }
 
   /**
-   * If the partitions were not previously paused, this method is a no-op.
+   * If the partitions were not previously paused or if they were not subscribed at all, this method is a no-op.
    */
   @Override
   public void resume(String topic, int partition) {
     TopicPartition tp = new TopicPartition(topic, partition);
-    kafkaConsumer.resume(Collections.singletonList(tp));
+    if (kafkaConsumer.assignment().contains(tp)) {
+      kafkaConsumer.resume(Collections.singletonList(tp));
+    }
   }
 
   @Override
