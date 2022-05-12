@@ -104,6 +104,7 @@ public class ThinClientMetaStoreBasedRepository extends NativeMetadataRepository
           .setSpecificValueClass(StoreMetaValue.class)
           .setRetryOnAllErrors(true)
           .setRetryCount(THIN_CLIENT_RETRY_COUNT)
+          .setForceClusterDiscoveryAtStartTime(true)
           .setRetryBackOffInMs(THIN_CLIENT_RETRY_BACKOFF_MS);
       return ClientFactory.getAndStartSpecificAvroClient(clonedClientConfig);
     });
