@@ -6,14 +6,13 @@ import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 
-import kafka.Kafka;
+import com.linkedin.venice.utils.Utils;
 
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.Properties;
 import java.util.Set;
 
-import org.apache.commons.io.IOUtils;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.common.TopicPartition;
@@ -41,8 +40,9 @@ public class ApacheKafkaConsumerTest {
 
   @AfterMethod
   public void cleanUp() {
-    IOUtils.closeQuietly(kafkaBroker);
-    IOUtils.closeQuietly(zkServer);
+    Utils.closeQuietlyWithErrorLogged(kafkaBroker);
+    Utils.closeQuietlyWithErrorLogged(zkServer);
+    Utils.closeQuietlyWithErrorLogged(consumer);
   }
 
   @Test
@@ -57,10 +57,38 @@ public class ApacheKafkaConsumerTest {
     topicPartitions.add(new TopicPartition(existingTopic1, 2));
 
     consumer.batchUnsubscribe(topicPartitions);
-    Assert.assertEquals(consumer.getAssignment().size(), 1);
+    assertConsumerHasSpecificNumberOfAssignmedPartitions(consumer, 1);
     topicPartitions.clear();
     topicPartitions.add(new TopicPartition(existingTopic1, 3));
     consumer.batchUnsubscribe(Collections.singleton(new TopicPartition(existingTopic1, 3)));
-    Assert.assertEquals(consumer.getAssignment().size(), 0);
+    assertConsumerHasNoAssignment(consumer);
+  }
+
+  @Test
+  public void testPauseAndResume() {
+    // Calling pause and resume on an unsubbed partition on a raw Kafka consumer fails,
+    // but our wrapper is expected to treat these functions as no-ops in those cases.
+    assertConsumerHasNoAssignment(consumer);
+    consumer.resume("some_topic_the_consumer_was_never_subscribed_to", 0);
+    assertConsumerHasNoAssignment(consumer);
+    consumer.pause("some_topic_the_consumer_was_never_subscribed_to", 0);
+    assertConsumerHasNoAssignment(consumer);
+
+    String topic = "topic";
+    int partition = 1;
+    consumer.assign(Collections.singletonList(new TopicPartition(topic, partition)));
+    assertConsumerHasSpecificNumberOfAssignmedPartitions(consumer, 1);
+    consumer.pause(topic, partition);
+    assertConsumerHasSpecificNumberOfAssignmedPartitions(consumer, 1);
+    consumer.resume(topic, partition);
+    assertConsumerHasSpecificNumberOfAssignmedPartitions(consumer, 1);
+  }
+
+  private void assertConsumerHasNoAssignment(ApacheKafkaConsumer c) {
+    Assert.assertEquals(c.getAssignment().size(), 0, "Consumer should have no assignment!");
+  }
+
+  private void assertConsumerHasSpecificNumberOfAssignmedPartitions(ApacheKafkaConsumer c, int expected) {
+    Assert.assertEquals(c.getAssignment().size(), expected, "Consumer should have exactly " + expected + " assignments!");
   }
 }
