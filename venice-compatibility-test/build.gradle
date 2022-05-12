@@ -30,7 +30,6 @@ dependencies {
   // ClassPathSupplierForVeniceCluster requires this one to be present in the Gradle cache.
   testImplementation (AVRO_1_9) {
     exclude group: 'org.slf4j'
-    force = true
   }
 
   avro1_4 (AVRO_1_4) {
@@ -40,32 +39,24 @@ dependencies {
     exclude group: 'org.jboss.netty'
     exclude group: 'com.thoughtworks.paranamer', module: 'paranamer-ant'
     exclude group: 'org.slf4j'
-    force = true
   }
-
   avro1_5 (AVRO_1_5) {
     exclude group: 'org.slf4j'
-    force = true
   }
   avro1_6 (AVRO_1_6) {
     exclude group: 'org.slf4j'
-    force = true
   }
   avro1_7 (AVRO_1_7) {
     exclude group: 'org.slf4j'
-    force = true
   }
   avro1_8 (AVRO_1_8) {
     exclude group: 'org.slf4j'
-    force = true
   }
   avro1_9 (AVRO_1_9) {
     exclude group: 'org.slf4j'
-    force = true
   }
   avro1_10 (AVRO_1_10) {
     exclude group: 'org.slf4j'
-    force = true
   }
 }
 
@@ -74,7 +65,7 @@ for (version in ['1_4', '1_5', '1_6', '1_7', '1_8', '1_9', '1_10']) {
     classpath = project.sourceSets.test.runtimeClasspath
         .filter { !it.name.contains('avro-1.') }
         .plus(configurations."avro${version}")
-    systemProperty 'clientAvroVersion', "AVRO_$version"
+    systemProperty 'clientAvroVersion', "AVRO_${version}"
   }
 }
 

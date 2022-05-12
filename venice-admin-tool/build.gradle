@@ -1,62 +1,37 @@
-apply plugin: 'java-library'
-
-jar {
-    zip64 true
-    manifest {
-        attributes 'Implementation-Title': 'Venice Admin Tool',
-            'Implementation-Version': version,
-            'Main-Class': 'com.linkedin.venice.AdminTool'
-    }
-    baseName = project.name
-    from { configurations.compile
-        .filter {!it.absolutePath.endsWith(".xml")} // Resolves Could not expand ZIP '.../pegasus-d2-client-factory-cmpt-def-16.0.23.xml'.
-        .filter {!it.absolutePath.endsWith(".ivy")} // Exclude the ivy file which is introduced by new helix version.
-        .collect { it.isDirectory() ? it : zipTree(it) }
-    }
-    exclude 'META-INF/*.RSA', 'META-INF/*.SF','META-INF/*.DSA'
-}
-
-task fatJar(type: Jar) {
-    classifier 'fat'
-
-    zip64 true
-    manifest {
-        attributes 'Implementation-Title': 'Venice Admin Tool',
-            'Implementation-Version': version,
-            'Main-Class': 'com.linkedin.venice.AdminTool'
-    }
-    baseName = project.name
-    from { configurations.runtimeClasspath
-        .filter {!it.absolutePath.endsWith(".xml")} // Resolves Could not expand ZIP '.../pegasus-d2-client-factory-cmpt-def-16.0.23.xml'.
-        .filter {!it.absolutePath.endsWith(".ivy")} // Exclude the ivy file which is introduced by new helix version.
-        .collect { it.isDirectory() ? it : zipTree(it) }
-    }
-    exclude 'META-INF/*.RSA', 'META-INF/*.SF','META-INF/*.DSA'
-
-    dependsOn ':venice-common:jar'
-    dependsOn ':venice-thin-client:jar'
-    dependsOn ':venice-controller:jar'
-    dependsOn ':venice-schema-common:jar'
-    dependsOn ':venice-test-common:jar'
-    with jar
-}
-
-artifacts {
-    archives fatJar
+plugins {
+  id 'com.github.johnrengelman.shadow'
 }
 
 dependencies {
-    implementation (libraries.avro) {
-      exclude group: 'org.mortbay.jetty' // jetty 6 conflicts with spark-java used in controller api
-    }
-    implementation libraries.kafka
+  implementation (libraries.avro) {
+    exclude group: 'org.mortbay.jetty' // jetty 6 conflicts with spark-java used in controller api
+  }
+  implementation libraries.kafka
 
-    implementation project(':venice-common')
-    implementation (project(':venice-test-common')) {
-      // Used by the command that spins up a MirrorMaker
-      transitive = false
-    }
+  implementation project(':venice-common')
+  implementation project(':venice-controller')
+  implementation (project(':venice-test-common')) {
+    // Used by the command that spins up a MirrorMaker
+    transitive = false
+  }
+  implementation project(':venice-thin-client')
+}
 
-    implementation project(':venice-thin-client')
-    implementation project(':venice-controller')
+artifacts {
+  archives shadowJar
+}
+
+jar {
+  manifest {
+    attributes = [
+        'Implementation-Title': 'Venice Admin Tool',
+        'Implementation-Version': project.version,
+        'Main-Class': 'com.linkedin.venice.AdminTool'
+    ]
+  }
+}
+
+shadowJar {
+  minimize()
+  duplicatesStrategy = DuplicatesStrategy.INCLUDE
 }

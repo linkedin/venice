@@ -2,49 +2,22 @@ import groovy.io.FileType
 import com.github.spotbugs.snom.SpotBugsTask
 import org.apache.tools.ant.taskdefs.condition.Os
 
-buildscript {
-  dependencies {
-    classpath 'com.github.spotbugs.snom:spotbugs-gradle-plugin:4.8.0'
-    classpath 'com.gradle:gradle-enterprise-gradle-plugin:3.5.2'
-    classpath 'gradle.plugin.com.dorongold.plugins:task-tree:1.5'
-    classpath 'org.gradle:test-retry-gradle-plugin:1.3.2'
-  }
-}
-
 plugins {
-  id 'java'
   id 'idea'
+  id 'java'
+  id 'com.dorongold.task-tree' version '2.1.0'
+  id 'com.github.johnrengelman.shadow' version '6.1.0' apply false
+  id 'com.github.spotbugs' version '4.8.0' apply false
+  id 'io.netifi.flatbuffers' version '1.0.6' apply false
+  id 'org.gradle.test-retry' version '1.4.0' apply false
 }
 
-try {
-  apply plugin: 'com.gradle.build-scan'
-  gradleEnterprise {
-    server = System.getProperty('buildScanServer', 'Set systemProp.buildScanServer in ~/.gradle/gradle.properties')
-    buildScan {
-      def commitId = 'git rev-parse --verify HEAD'.execute().text.trim()
-      value 'CommitId', commitId
-    }
-  }
-} catch (e) {
-  println e
-}
-
-try {
-  apply plugin: 'com.dorongold.task-tree'
-  taskTree {
-    noRepeat = true
-  }
-} catch (e) {
-  println e
-}
-
+// TODO: remove this before open-sourcing
 if (project.hasProperty('overrideBuildEnvironment')) {
-  if (project.overrideBuildEnvironment) {
-    apply from: file(project.overrideBuildEnvironment)
-    product {
-      codeQuality {
-        ignoreFailures = true
-      }
+  apply from: file(project.overrideBuildEnvironment)
+  product {
+    codeQuality {
+      ignoreFailures = true
     }
   }
 }
@@ -77,7 +50,7 @@ ext.libraries = [
     d2: 'com.linkedin.container:pegasus-d2-server-factory:' + containerVersion,
     d2Client: 'com.linkedin.container:pegasus-d2-client-factory:' + containerVersion,
     r2Client: 'com.linkedin.container:pegasus-r2-client-factory:' + containerVersion,
-    r2: "com.linkedin.pegasus:r2:" + pegasusVersion,
+    r2: 'com.linkedin.pegasus:r2:' + pegasusVersion,
     routerApi: 'com.linkedin.dds-storage-core:dds-storage-router-api:' + ddsStorageCoreVersion,
     routerImpl: 'com.linkedin.dds-storage-core:dds-storage-router-impl:' + ddsStorageCoreVersion,
     ddsNettyBase: 'com.linkedin.dds-storage-core:dds-storage-netty4-base:' + ddsStorageCoreVersion,
@@ -148,33 +121,22 @@ ext.libraries = [
     // TODO: switch to avro-util once it's able to generate version agnostic code.
     avroSchemasBuilder: 'com.linkedin.avro-schemas:avro-schemas-builder:63.1.428',
 
-    "httpClient5": "org.apache.httpcomponents.client5:httpclient5:5.1.2"
+    httpClient5: 'org.apache.httpcomponents.client5:httpclient5:5.1.2'
 ]
 
 subprojects {
   apply {
-    plugin 'java-library'
     plugin 'idea'
     plugin 'jacoco'
+    plugin 'java-library'
     plugin 'com.github.spotbugs'
     plugin 'org.gradle.test-retry'
   }
 
   sourceCompatibility = 1.8
+  // TODO: remove this before open-sourcing
   if (!project.hasProperty('overrideBuildEnvironment') || !project.overrideBuildEnvironment) {
      version = '0.1'
-  }
-
-  repositories {
-    ivy { // TODO: remove this before opensourcing
-      url 'http://artifactory.corp.linkedin.com:8081/artifactory/release/'
-      patternLayout {
-        ivy '[organisation]/[module]/[revision]/[module]-[revision].ivy'
-        artifact '[organisation]/[module]/[revision]/[artifact]-[revision](-[classifier]).[ext]'
-        m2compatible = true
-      }
-    }
-    mavenCentral() // when build fails, move this to first and then build, then move it back and build should work
   }
 
   configurations {
@@ -183,13 +145,11 @@ subprojects {
       exclude group: 'backport-util-concurrent'
       exclude group: 'com.intellij.annotations'
       exclude group: 'com.linkedin.avro-schemas'
-      // exclude group: 'com.linkedin.container'
       exclude group: 'com.linkedin.container-core'
       exclude group: 'com.linkedin.linkedin-kafka-clients'
       exclude group: 'com.linkedin.util', module: 'util-sql'
       exclude module: 'kafka_2.10' // This ends up getting pulled in by a few dependencies, unfortunately :/ ...
       exclude module: 'kafka_2.11'
-      // exclude group: 'org.eclipse.jetty'
       exclude module: 'clojure'
     }
     compileOnly {
@@ -251,6 +211,13 @@ subprojects {
     inputs.files(configurations.avroCompiler).withNormalizer(ClasspathNormalizer)
     inputs.dir(inputDir)
     outputs.dir(outputDir)
+    classpath = configurations.avroCompiler
+    main = 'com.linkedin.avro.Builder'
+    args = [
+        '--input', temporaryDir,
+        '--output', outputDir,
+        '--includeClasspath', 'true'
+    ]
 
     doFirst {
       def schemas = [:]
@@ -289,15 +256,7 @@ subprojects {
           copySchemas(latestVersionDir)
         }
       }
-
       println "Compiling avro schemas ${temporaryDir.list().toSorted()}"
-      classpath = configurations.avroCompiler
-      main = 'com.linkedin.avro.Builder'
-      args = [
-        '--input', temporaryDir,
-        '--output', outputDir,
-        '--includeClasspath', 'true'
-      ]
     }
   }
   sourceSets.main.java.srcDir(compileAvro)
@@ -350,7 +309,7 @@ subprojects {
       } else if (Os.isFamily(Os.FAMILY_UNIX)) {
         jvmArgs = ['-Xbootclasspath/p:/export/apps/jdkboot/1_8_0_172/alpn-boot-8.1.12.v20180117.jar']
       } else {
-        String osName = System.getProperty('os.name').toLowerCase(Locale.ENGLISH);
+        def osName = System.getProperty('os.name').toLowerCase(Locale.ENGLISH)
         throw new GradleException("$osName is not supported since ALPN only works for either Mac or Linux right now.")
       }
     }
@@ -390,6 +349,12 @@ subprojects {
     useTestNG() {
       includeGroups 'flaky'
     }
+  }
+
+  tasks.withType(Jar) {
+    zip64 = true
+    duplicatesStrategy = DuplicatesStrategy.FAIL
+    exclude('**/*.xml')
   }
 }
 
