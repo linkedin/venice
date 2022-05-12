@@ -33,6 +33,7 @@ import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import com.linkedin.venice.writer.CompletableFutureCallback;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.io.ByteArrayOutputStream;
@@ -439,7 +440,7 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
 
     byte[] key = serializeObject(topicName, keyObject);
     final CompletableFuture<Void> completableFuture = new CompletableFuture<>();
-    final Callback callback = new VeniceWriter.CompletableFutureCallback(
+    final Callback callback = new CompletableFutureCallback(
         completableFuture);
 
     long logicalTimestamp = -1;

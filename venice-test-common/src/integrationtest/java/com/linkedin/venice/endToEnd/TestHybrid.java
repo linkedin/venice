@@ -56,6 +56,7 @@ import com.linkedin.venice.utils.TestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.writer.CompletableFutureCallback;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.io.File;
 import java.io.IOException;
@@ -1098,25 +1099,25 @@ public class TestHybrid {
           // Send <key1, value1, seq: 1>
           Pair<KafkaKey, KafkaMessageEnvelope> record = getKafkaKeyAndValueEnvelope(stringSerializer.serialize(key1),
               stringSerializer.serialize(value1), 1, realTimeTopicWriter.getProducerGUID(), 100, 1, -1);
-          realTimeTopicWriter.put(record.getFirst(), record.getSecond(), new VeniceWriter.CompletableFutureCallback(
+          realTimeTopicWriter.put(record.getFirst(), record.getSecond(), new CompletableFutureCallback(
               new CompletableFuture<>()), 0, VeniceWriter.DEFAULT_LEADER_METADATA_WRAPPER);
 
           // Send <key1, value2, seq: 2>
           record = getKafkaKeyAndValueEnvelope(stringSerializer.serialize(key1),
               stringSerializer.serialize(value2), 1, realTimeTopicWriter.getProducerGUID(), 100, 2, -1);
-          realTimeTopicWriter.put(record.getFirst(), record.getSecond(), new VeniceWriter.CompletableFutureCallback(
+          realTimeTopicWriter.put(record.getFirst(), record.getSecond(), new CompletableFutureCallback(
               new CompletableFuture<>()), 0, VeniceWriter.DEFAULT_LEADER_METADATA_WRAPPER);
 
           // Send <key1, value1, seq: 1 (Duplicated message)>
           record = getKafkaKeyAndValueEnvelope(stringSerializer.serialize(key1),
               stringSerializer.serialize(value1), 1, realTimeTopicWriter.getProducerGUID(), 100, 1, -1);
-          realTimeTopicWriter.put(record.getFirst(), record.getSecond(), new VeniceWriter.CompletableFutureCallback(
+          realTimeTopicWriter.put(record.getFirst(), record.getSecond(), new CompletableFutureCallback(
               new CompletableFuture<>()), 0, VeniceWriter.DEFAULT_LEADER_METADATA_WRAPPER);
 
           // Send <key2, value1, seq: 3>
           record = getKafkaKeyAndValueEnvelope(stringSerializer.serialize(key2),
               stringSerializer.serialize(value1), 1, realTimeTopicWriter.getProducerGUID(), 100, 3, -1);
-          realTimeTopicWriter.put(record.getFirst(), record.getSecond(), new VeniceWriter.CompletableFutureCallback(
+          realTimeTopicWriter.put(record.getFirst(), record.getSecond(), new CompletableFutureCallback(
               new CompletableFuture<>()), 0, VeniceWriter.DEFAULT_LEADER_METADATA_WRAPPER);
         }
 

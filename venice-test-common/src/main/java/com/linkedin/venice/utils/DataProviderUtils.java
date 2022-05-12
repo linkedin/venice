@@ -49,12 +49,6 @@ public class DataProviderUtils {
     return allPermutationGenerator(BOOLEAN, BOOLEAN, BOOLEAN, BOOLEAN, BOOLEAN);
   }
 
-  @DataProvider(name = "L/F-A/A")
-  public static Object[][] leaderFollowerActiveActive() {
-    /** TODO: Switch this to {@link #trueAndFalseProvider()} after cleaning up the tech debt that relies on the first param */
-    return new Object[][] {{true, false}, {true, true}};
-  }
-
   @DataProvider (name = "dv-client-config-provider")
   public static Object[][] daVinciConfigProvider() {
     DaVinciConfig defaultDaVinciConfig = new DaVinciConfig();

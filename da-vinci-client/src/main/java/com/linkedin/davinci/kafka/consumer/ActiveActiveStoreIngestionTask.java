@@ -36,6 +36,7 @@ import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.writer.DeleteMetadata;
 import com.linkedin.venice.writer.PutMetadata;
+import com.linkedin.venice.writer.VeniceWriter;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -482,7 +483,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
             valueSchemaId,
             newCallback,
             sourceTopicOffset,
-            new PutMetadata(rmdProtocolVersionID, updatedReplicationMetadataBytes)
+            VeniceWriter.APP_DEFAULT_LOGICAL_TS,
+            Optional.ofNullable(new PutMetadata(rmdProtocolVersionID, updatedReplicationMetadataBytes))
         );
       };
 
