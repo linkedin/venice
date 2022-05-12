@@ -16,7 +16,6 @@ import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.LeaderMetadata;
 import com.linkedin.venice.kafka.protocol.ProducerMetadata;
 import com.linkedin.venice.kafka.protocol.Put;
-import com.linkedin.venice.kafka.protocol.StartOfBufferReplay;
 import com.linkedin.venice.kafka.protocol.StartOfIncrementalPush;
 import com.linkedin.venice.kafka.protocol.StartOfPush;
 import com.linkedin.venice.kafka.protocol.StartOfSegment;
@@ -48,7 +47,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
@@ -508,12 +506,12 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    */
   @Override
   public Future<RecordMetadata> put(K key, V value, int valueSchemaId, Callback callback) {
-    return put(key, value, valueSchemaId, callback, DEFAULT_LEADER_METADATA_WRAPPER);
+    return put(key, value, valueSchemaId, callback, DEFAULT_LEADER_METADATA_WRAPPER, APP_DEFAULT_LOGICAL_TS, Optional.empty());
   }
 
   @Override
   public Future<RecordMetadata> put(K key, V value, int valueSchemaId, Callback callback, PutMetadata putMetadata) {
-    return put(key, value, valueSchemaId, callback, DEFAULT_LEADER_METADATA_WRAPPER, putMetadata);
+    return put(key, value, valueSchemaId, callback, DEFAULT_LEADER_METADATA_WRAPPER, APP_DEFAULT_LOGICAL_TS, Optional.ofNullable(putMetadata));
   }
 
   /**
@@ -559,55 +557,20 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    *         sending the message in H2V plugin to the version topic;
    *    >=0: Leader replica consumes a put message from real-time topic, VeniceWriter in leader
    *         is sending this message to version topic with extra info: offset in the real-time topic.
-   * @param logicalTs - An optional timestamp field to indicate when this record was produced from apps view.
-   * @return a java.util.concurrent.Future Future for the RecordMetadata that will be assigned to this
-   * record. Invoking java.util.concurrent.Future's get() on this future will block until the associated request
-   * completes and then return the metadata for the record or throw any exception that occurred while sending the record.
-   */
-  public Future<RecordMetadata> put(K key, V value, int valueSchemaId, Callback callback, LeaderMetadataWrapper leaderMetadataWrapper, long logicalTs) {
-    return put(key, value, valueSchemaId, callback, leaderMetadataWrapper, logicalTs, Optional.empty());
-  }
-
-  /**
-   * Execute a standard "put" on the key.
-   *
-   * VeniceReducer and VeniceSystemProducer should call this API.
-   *
-   * @param key   - The key to put in storage.
-   * @param value - The value to be associated with the given key
-   * @param valueSchemaId - value schema id for the given value
-   * @param callback - Callback function invoked by Kafka producer after sending the message
-   * @param leaderMetadataWrapper - The leader Metadata of this message in the source topic:
-   *    -1:  VeniceWriter is sending this message in a Samza app to the real-time topic; or it's
-   *         sending the message in H2V plugin to the version topic;
-   *    >=0: Leader replica consumes a put message from real-time topic, VeniceWriter in leader
-   *         is sending this message to version topic with extra info: offset in the real-time topic.
-   * @param putMetadata - A PutMetadata containing replication metadata related fields.
-   * @return a java.util.concurrent.Future Future for the RecordMetadata that will be assigned to this
-   * record. Invoking java.util.concurrent.Future's get() on this future will block until the associated request
-   * completes and then return the metadata for the record or throw any exception that occurred while sending the record.
-   */
-  public Future<RecordMetadata> put(K key, V value, int valueSchemaId, Callback callback, LeaderMetadataWrapper leaderMetadataWrapper, PutMetadata putMetadata) {
-    return put(key, value, valueSchemaId, callback, leaderMetadataWrapper, APP_DEFAULT_LOGICAL_TS, Optional.ofNullable(putMetadata));
-  }
-
-  /**
-   * Execute a standard "put" on the key.
-   *
-   * VeniceReducer and VeniceSystemProducer should call this API.
-   *
-   * @param key   - The key to put in storage.
-   * @param value - The value to be associated with the given key
-   * @param valueSchemaId - value schema id for the given value
-   * @param callback - Callback function invoked by Kafka producer after sending the message
    * @param logicalTs - An timestamp field to indicate when this record was produced from apps view.
    * @param putMetadata - an optional PutMetadata containing replication metadata related fields.
    * @return a java.util.concurrent.Future Future for the RecordMetadata that will be assigned to this
    * record. Invoking java.util.concurrent.Future's get() on this future will block until the associated request
    * completes and then return the metadata for the record or throw any exception that occurred while sending the record.
    */
-  private Future<RecordMetadata> put(K key, V value, int valueSchemaId, Callback callback, LeaderMetadataWrapper leaderMetadataWrapper,
-      long logicalTs, Optional<PutMetadata> putMetadata) {
+  public Future<RecordMetadata> put(
+      K key,
+      V value,
+      int valueSchemaId,
+      Callback callback,
+      LeaderMetadataWrapper leaderMetadataWrapper,
+      long logicalTs,
+      Optional<PutMetadata> putMetadata) {
     byte[] serializedKey = keySerializer.serialize(topicName, key);
     byte[] serializedValue = valueSerializer.serialize(topicName, value);
     int partition = getPartition(serializedKey);
@@ -665,22 +628,28 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
 
     byte[] serializedKey = kafkaKey.getKey();
 
-    LeaderMetadata leaderMetadata = new LeaderMetadata();
-    leaderMetadata.upstreamOffset = leaderMetadataWrapper.getUpstreamOffset();
-    leaderMetadata.upstreamKafkaClusterId = leaderMetadataWrapper.getUpstreamKafkaClusterId();
-    leaderMetadata.hostName = writerId;
-
-    KafkaMessageEnvelopeProvider kafkaMessageEnvelopeProvider = () -> {
-      kafkaMessageEnvelope.leaderMetadataFooter = leaderMetadata;
-      kafkaMessageEnvelope.producerMetadata.upstreamOffset = -1; // This field has been deprecated
-      return kafkaMessageEnvelope;
-    };
+    KafkaMessageEnvelopeProvider kafkaMessageEnvelopeProvider = getKafkaMessageEnvelopeProvider(kafkaMessageEnvelope, leaderMetadataWrapper);
 
     if (callback instanceof ChunkAwareCallback) {
       ((ChunkAwareCallback) callback).setChunkingInfo(serializedKey, null, null);
     }
 
     return sendMessage(producerMetadata -> kafkaKey, kafkaMessageEnvelopeProvider, upstreamPartition, callback, false);
+  }
+
+  private KafkaMessageEnvelopeProvider getKafkaMessageEnvelopeProvider(
+      KafkaMessageEnvelope kafkaMessageEnvelope,
+      LeaderMetadataWrapper leaderMetadataWrapper) {
+    LeaderMetadata leaderMetadata = new LeaderMetadata();
+    leaderMetadata.upstreamOffset = leaderMetadataWrapper.getUpstreamOffset();
+    leaderMetadata.upstreamKafkaClusterId = leaderMetadataWrapper.getUpstreamKafkaClusterId();
+    leaderMetadata.hostName = writerId;
+
+    return () -> {
+      kafkaMessageEnvelope.leaderMetadataFooter = leaderMetadata;
+      kafkaMessageEnvelope.producerMetadata.upstreamOffset = -1; // This field has been deprecated
+      return kafkaMessageEnvelope;
+    };
   }
 
   /**
@@ -691,16 +660,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     // Self-adjust the chunking setting in pass-through mode
     verifyChunkingSetting(kafkaMessageEnvelope);
 
-    LeaderMetadata leaderMetadata = new LeaderMetadata();
-    leaderMetadata.upstreamOffset = leaderMetadataWrapper.getUpstreamOffset();
-    leaderMetadata.upstreamKafkaClusterId = leaderMetadataWrapper.getUpstreamKafkaClusterId();
-    leaderMetadata.hostName = writerId;
-
-    KafkaMessageEnvelopeProvider kafkaMessageEnvelopeProvider = () -> {
-      kafkaMessageEnvelope.leaderMetadataFooter = leaderMetadata;
-      kafkaMessageEnvelope.producerMetadata.upstreamOffset = -1; // This field has been deprecated
-      return kafkaMessageEnvelope;
-    };
+    KafkaMessageEnvelopeProvider kafkaMessageEnvelopeProvider = getKafkaMessageEnvelopeProvider(kafkaMessageEnvelope, leaderMetadataWrapper);
 
     if (callback instanceof ChunkAwareCallback) {
       byte[] serializedKey = kafkaKey.getKey();
@@ -820,28 +780,6 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   public void broadcastEndOfPush(Map<String, String> debugInfo) {
     broadcastControlMessage(getEmptyControlMessage(ControlMessageType.END_OF_PUSH), debugInfo);
     endAllSegments(true);
-  }
-
-  /**
-   * @param debugInfo arbitrary key/value pairs of information that will be propagated alongside the control message.
-   */
-  public void broadcastStartOfBufferReplay(
-      @Nonnull List<Long> sourceOffsets,
-      @Nonnull String sourceKafkaCluster,
-      @Nonnull String sourceTopicName,
-      Map<String, String> debugInfo) {
-    Validate.notNull(sourceOffsets);
-    Validate.notEmpty(sourceKafkaCluster);
-    Validate.notEmpty(sourceTopicName);
-    ControlMessage controlMessage = getEmptyControlMessage(ControlMessageType.START_OF_BUFFER_REPLAY);
-    StartOfBufferReplay startOfBufferReplay = new StartOfBufferReplay();
-    startOfBufferReplay.sourceOffsets = sourceOffsets;
-    startOfBufferReplay.sourceKafkaCluster = sourceKafkaCluster;
-    startOfBufferReplay.sourceTopicName = sourceTopicName;
-    controlMessage.controlMessageUnion = startOfBufferReplay;
-    broadcastControlMessage(controlMessage, debugInfo);
-    // Flush start of push message to avoid data message arrives before it.
-    producer.flush();
   }
 
   public void broadcastTopicSwitch(
@@ -986,11 +924,11 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       }
       Callback messageCallback = callback;
       if (null == callback) {
-        messageCallback = new KafkaMessageCallback(key, kafkaValue, logger);
+        messageCallback = new KafkaMessageCallback(kafkaValue, logger);
       } else if (callback instanceof CompletableFutureCallback) {
         CompletableFutureCallback completableFutureCallBack = (CompletableFutureCallback)callback;
-        if (completableFutureCallBack.callback == null) {
-          completableFutureCallBack.callback = new KafkaMessageCallback(key, kafkaValue, logger);
+        if (completableFutureCallBack.getCallback() == null) {
+          completableFutureCallBack.setCallback(new KafkaMessageCallback(kafkaValue, logger));
         }
       }
 
@@ -1516,54 +1454,6 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
             finalSegment // TODO: This will not always be true, once we support streaming, or more than one segment per mapper in batch
         );
         currentSegment.end(finalSegment);
-      }
-    }
-  }
-
-  private static class KafkaMessageCallback implements Callback {
-    private final KafkaKey key;
-    private final KafkaMessageEnvelope value;
-    private final Logger logger;
-    public KafkaMessageCallback(KafkaKey key, KafkaMessageEnvelope value, Logger logger) {
-      this.key = key;
-      this.value = value;
-      this.logger = logger;
-    }
-    @Override
-    public void onCompletion(RecordMetadata recordMetadata, Exception e) {
-      if (e != null) {
-        logger.error("Failed to send out message to Kafka producer: [value.messageType: " + value.messageType
-            + ", value.producerMetadata: " + value.producerMetadata + "]", e);
-      }
-    }
-  }
-
-  /**
-   * Compose a CompletableFuture and Callback together to be a {@code CompletableFutureCallback} type.
-   * When the {@code CompletableFutureCallback} is called, the {@code CompletableFuture} internal state will be
-   * changed and the callback will be called. The caller can pass a {@code CompletableFutureCallback} to a function
-   * accepting a {@code Callback} parameter to get a {@code CompletableFuture} after the function returns.
-   */
-  public static class CompletableFutureCallback implements Callback {
-    private final CompletableFuture<Void> completableFuture;
-    private Callback callback;
-
-    public CompletableFutureCallback(CompletableFuture<Void> completableFuture) {
-      this(completableFuture, null);
-    }
-
-    public CompletableFutureCallback(CompletableFuture<Void> completableFuture, Callback callback) {
-      this.completableFuture = completableFuture;
-      this.callback = callback;
-    }
-
-    @Override
-    public void onCompletion(RecordMetadata recordMetadata, Exception e) {
-      callback.onCompletion(recordMetadata, e);
-      if (e == null) {
-        completableFuture.complete(null);
-      } else {
-        completableFuture.completeExceptionally(e);
       }
     }
   }
