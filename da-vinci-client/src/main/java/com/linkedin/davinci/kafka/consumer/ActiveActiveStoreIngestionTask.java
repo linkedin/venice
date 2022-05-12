@@ -107,7 +107,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     this.keyLevelLocksManager = Lazy.of(() -> new KeyLevelLocksManager(getVersionTopic(), initialPoolSize, maxKeyLevelLocksPoolSize));
     this.replicationMetadataSerDe = new ReplicationMetadataSerDe(builder.getSchemaRepo(), storeName,
         rmdProtocolVersionID);
-    this.mergeConflictResolver = MergeConflictResolverFactory.INSTANCE.createMergeConflictResolver(builder.getSchemaRepo(), replicationMetadataSerDe, getStoreName());
+    this.mergeConflictResolver = MergeConflictResolverFactory.getInstance().createMergeConflictResolver(builder.getSchemaRepo(), replicationMetadataSerDe, getStoreName());
     this.remoteIngestionRepairService = builder.getRemoteIngestionRepairService();
   }
 
@@ -243,7 +243,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         throw new VeniceMessageException(consumerTaskId + " : Invalid/Unrecognized operation type submitted: " + kafkaValue.messageType);
     }
 
-    Lazy<ByteBuffer> lazyOldValue = Lazy.of(() ->
+    Lazy<ByteBuffer> oldValueProvider = Lazy.of(() ->
         getValueBytesForKey(partitionConsumptionState, keyBytes, consumerRecord.topic(), consumerRecord.partition(), isChunkedTopic));
 
     final Optional<ReplicationMetadataWithValueSchemaId> rmdWithValueSchemaID = getReplicationMetadataAndSchemaId(
@@ -271,7 +271,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     switch (msgType) {
       case PUT:
         mergeConflictResult = mergeConflictResolver.put(
-            lazyOldValue,
+            oldValueProvider,
             rmdWithValueSchemaID,
             ((Put) kafkaValue.payloadUnion).putValue,
             writeTimestamp,
@@ -285,6 +285,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         break;
       case DELETE:
         mergeConflictResult = mergeConflictResolver.delete(
+            oldValueProvider,
             rmdWithValueSchemaID,
             writeTimestamp,
             sourceOffset,

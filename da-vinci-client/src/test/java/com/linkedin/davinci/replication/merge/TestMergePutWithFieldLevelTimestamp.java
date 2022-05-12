@@ -1,18 +1,14 @@
 package com.linkedin.davinci.replication.merge;
 
 import com.linkedin.davinci.replication.ReplicationMetadataWithValueSchemaId;
-import com.linkedin.davinci.serialization.avro.MapOrderingPreservingSerDeFactory;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.schema.AvroSchemaParseUtils;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.rmd.ReplicationMetadataSchemaEntry;
 import com.linkedin.venice.schema.rmd.ReplicationMetadataSchemaGenerator;
-import com.linkedin.venice.serializer.RecordDeserializer;
-import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.utils.AvroSupersetSchemaUtils;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.nio.ByteBuffer;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -27,9 +23,7 @@ import static com.linkedin.venice.schema.rmd.ReplicationMetadataConstants.*;
 import static org.mockito.Mockito.*;
 
 
-public class TestMergeConflictWithFieldLevelTimestamp extends TestMergeConflictResolver {
-
-  private static final int RMD_VERSION_ID = 1;
+public class TestMergePutWithFieldLevelTimestamp extends TestMergeConflictResolver {
 
   @Test
   public void testNewPutIgnored() {
@@ -37,7 +31,7 @@ public class TestMergeConflictWithFieldLevelTimestamp extends TestMergeConflictR
     doReturn(new SchemaEntry(1, valueRecordSchemaV1)).when(schemaRepository).getValueSchema(storeName, 1);
     doReturn(new SchemaEntry(2, valueRecordSchemaV2)).when(schemaRepository).getValueSchema(storeName, 2);
 
-    MergeConflictResolver mergeConflictResolver = MergeConflictResolverFactory.INSTANCE.createMergeConflictResolver(
+    MergeConflictResolver mergeConflictResolver = MergeConflictResolverFactory.getInstance().createMergeConflictResolver(
         schemaRepository,
         new ReplicationMetadataSerDe(schemaRepository, storeName, RMD_VERSION_ID),
         storeName
@@ -50,7 +44,6 @@ public class TestMergeConflictWithFieldLevelTimestamp extends TestMergeConflictR
     GenericRecord rmdRecord = createRmd(rmdSchemaV1, fieldNameToTimestampMap);
     final int oldValueSchemaID = 1;
 
-    // Case 1: A new Put with timestamp that is strictly smaller than all existing fields' timestamps.
     MergeConflictResult mergeResult = mergeConflictResolver.put(
         Lazy.of(() -> null),
         Optional.of(new ReplicationMetadataWithValueSchemaId(oldValueSchemaID, RMD_VERSION_ID, rmdRecord)),
@@ -136,7 +129,7 @@ public class TestMergeConflictWithFieldLevelTimestamp extends TestMergeConflictR
     newValueRecord.put("name", "Lebron");
     ByteBuffer newValueBytes = ByteBuffer.wrap(getSerializer(userSchemaV3).serialize(newValueRecord));
 
-    MergeConflictResolver mergeConflictResolver = MergeConflictResolverFactory.INSTANCE.createMergeConflictResolver(
+    MergeConflictResolver mergeConflictResolver = MergeConflictResolverFactory.getInstance().createMergeConflictResolver(
         schemaRepository,
         new ReplicationMetadataSerDe(schemaRepository, storeName, RMD_VERSION_ID),
         storeName
@@ -188,7 +181,7 @@ public class TestMergeConflictWithFieldLevelTimestamp extends TestMergeConflictR
     newValueRecord.put("weight", 250.0f);
     ByteBuffer newValueBytes = ByteBuffer.wrap(getSerializer(userSchemaV4).serialize(newValueRecord));
 
-    MergeConflictResolver mergeConflictResolver = MergeConflictResolverFactory.INSTANCE.createMergeConflictResolver(
+    MergeConflictResolver mergeConflictResolver = MergeConflictResolverFactory.getInstance().createMergeConflictResolver(
         schemaRepository,
         new ReplicationMetadataSerDe(schemaRepository, storeName, RMD_VERSION_ID),
         storeName
@@ -242,7 +235,7 @@ public class TestMergeConflictWithFieldLevelTimestamp extends TestMergeConflictR
     newValueRecord.put("weight", 250.0f); // New field
     ByteBuffer newValueBytes = ByteBuffer.wrap(getSerializer(userSchemaV5).serialize(newValueRecord));
 
-    MergeConflictResolver mergeConflictResolver = MergeConflictResolverFactory.INSTANCE.createMergeConflictResolver(
+    MergeConflictResolver mergeConflictResolver = MergeConflictResolverFactory.getInstance().createMergeConflictResolver(
         schemaRepository,
         new ReplicationMetadataSerDe(schemaRepository, storeName, RMD_VERSION_ID),
         storeName
@@ -297,7 +290,7 @@ public class TestMergeConflictWithFieldLevelTimestamp extends TestMergeConflictR
     newValueRecord.put("weight", 230.0f); // Different field value
     ByteBuffer newValueBytes = ByteBuffer.wrap(getSerializer(userSchemaV4).serialize(newValueRecord));
 
-    MergeConflictResolver mergeConflictResolver = MergeConflictResolverFactory.INSTANCE.createMergeConflictResolver(
+    MergeConflictResolver mergeConflictResolver = MergeConflictResolverFactory.getInstance().createMergeConflictResolver(
         schemaRepository,
         new ReplicationMetadataSerDe(schemaRepository, storeName, RMD_VERSION_ID),
         storeName
@@ -327,25 +320,5 @@ public class TestMergeConflictWithFieldLevelTimestamp extends TestMergeConflictR
     Assert.assertEquals(newValueRecord.get("id").toString(), "123");     // Not updated
     Assert.assertEquals(newValueRecord.get("name").toString(), "Lebron"); // Updated
     Assert.assertEquals(newValueRecord.get("weight").toString(), "250.1"); // Updated and it is a new field.
-  }
-
-  private GenericRecord createRmd(Schema rmdSchema, Map<String, Long> fieldNameToTimestampMap) {
-    final GenericRecord rmdRecord = new GenericData.Record(rmdSchema);
-    final Schema rmdTimestampSchema = rmdSchema.getFields().get(0).schema().getTypes().get(1);
-    GenericRecord fieldTimestampsRecord = new GenericData.Record(rmdTimestampSchema);
-    fieldNameToTimestampMap.forEach((fieldName, fieldTimestamp) -> {
-      fieldTimestampsRecord.put(fieldName, fieldTimestamp);
-    });
-    rmdRecord.put(TIMESTAMP_FIELD_NAME, fieldTimestampsRecord);
-    rmdRecord.put(REPLICATION_CHECKPOINT_VECTOR_FIELD, new ArrayList<>());
-    return rmdRecord;
-  }
-
-  private RecordSerializer<GenericRecord> getSerializer(Schema writerSchema) {
-    return MapOrderingPreservingSerDeFactory.getSerializer(writerSchema);
-  }
-
-  private RecordDeserializer<GenericRecord> getDeserializer(Schema writerSchema, Schema readerSchema) {
-    return MapOrderingPreservingSerDeFactory.getDeserializer(writerSchema, readerSchema);
   }
 }

@@ -20,31 +20,31 @@ import org.testng.annotations.Test;
 import static com.linkedin.venice.schema.rmd.ReplicationMetadataConstants.*;
 
 
-public class TestMergeConflictWithValueLevelTimestamp extends TestMergeConflictResolver {
+public class TestMergeWithValueLevelTimestamp extends TestMergeConflictResolver {
 
   @Test
   public void testPut() {
-    GenericRecord valueRecord = new GenericData.Record(valueRecordSchemaV1);
-    valueRecord.put("id", "id1");
-    valueRecord.put("name", "name1");
-    valueRecord.put("age", 10);
-    GenericRecord rmdRecord = new GenericData.Record(rmdSchemaV1);
+    GenericRecord oldValueRecord = new GenericData.Record(valueRecordSchemaV1);
+    oldValueRecord.put("id", "id1");
+    oldValueRecord.put("name", "name1");
+    oldValueRecord.put("age", 10);
 
+    GenericRecord rmdRecord = new GenericData.Record(rmdSchemaV1);
     rmdRecord.put(TIMESTAMP_FIELD_NAME, 20L);
     rmdRecord.put(REPLICATION_CHECKPOINT_VECTOR_FIELD, Collections.emptyList());
 
-    GenericRecord newValue = new GenericData.Record(valueRecordSchemaV1);
-    newValue.put("id", "id10");
-    newValue.put("name", "name10");
-    newValue.put("age", 20);
-    MergeConflictResolver mergeConflictResolver = MergeConflictResolverFactory.INSTANCE.createMergeConflictResolver(
+    GenericRecord newValueRecord = new GenericData.Record(valueRecordSchemaV1);
+    newValueRecord.put("id", "id10");
+    newValueRecord.put("name", "name10");
+    newValueRecord.put("age", 20);
+    MergeConflictResolver mergeConflictResolver = MergeConflictResolverFactory.getInstance().createMergeConflictResolver(
         schemaRepository,
         new ReplicationMetadataSerDe(schemaRepository, storeName, RMD_VERSION_ID),
         storeName
     );
     // new MergeConflictResolver(schemaRepository, storeName, valueSchemaID -> new GenericData.Record(rmdSchemaV1));
-    ByteBuffer oldBB = getByteBufferOfRecord(valueRecord);
-    ByteBuffer newBB = getByteBufferOfRecord(newValue);
+    ByteBuffer oldBB = serialize(oldValueRecord);
+    ByteBuffer newBB = serialize(newValueRecord);
     MergeConflictResult mergeConflictResult  = mergeConflictResolver.put(
         Lazy.of(() -> oldBB),
         Optional.of(new ReplicationMetadataWithValueSchemaId(1, RMD_VERSION_ID, GenericData.get().deepCopy(rmdSchemaV1, rmdRecord))),
@@ -58,7 +58,7 @@ public class TestMergeConflictWithValueLevelTimestamp extends TestMergeConflictR
 
     // verify id and name fields are from new record
     GenericRecord result = deserializer.deserialize(mergeConflictResult.getNewValue().orElse(null));
-    Assert.assertEquals(GenericData.get().compare(result, newValue, valueRecordSchemaV1), 0);
+    Assert.assertEquals(GenericData.get().compare(result, newValueRecord, valueRecordSchemaV1), 0);
 
     // verify update ignored.
     mergeConflictResult  = mergeConflictResolver.put(
@@ -128,7 +128,7 @@ public class TestMergeConflictWithValueLevelTimestamp extends TestMergeConflictR
         0
     );
     result = deserializer.deserialize(mergeConflictResult.getNewValue().orElse(null));
-    Assert.assertEquals(GenericData.get().compare(result, newValue, valueRecordSchemaV1), 0);
+    Assert.assertEquals(GenericData.get().compare(result, newValueRecord, valueRecordSchemaV1), 0);
 
     // validate null old value BUT with an existing timestamp telling us that this was a deleted record, deletes should win on a tie, meaning
     // this should get an ignore result
@@ -156,19 +156,6 @@ public class TestMergeConflictWithValueLevelTimestamp extends TestMergeConflictR
         0
     );
     Assert.assertEquals(mergeConflictResult.getNewValue().orElse(null), newBB);
-
-//    // validate error on per field TS record
-//    timestampRecord.put(0,  ts);
-//    Assert.assertThrows(VeniceException.class,() -> mergeConflictResolver.put(
-//        Lazy.of(() -> oldBB),
-//        Optional.of(new ReplicationMetadataWithValueSchemaId(1, timestampRecord)),
-//        newBB,
-//        10,
-//        1,
-//        1,
-//        0,
-//        0
-//    ));
   }
 
   @Test
@@ -186,7 +173,7 @@ public class TestMergeConflictWithValueLevelTimestamp extends TestMergeConflictR
     timestampRecord.put(0, 20L);
     timestampRecord.put(1, new ArrayList<Long>());
 
-    MergeConflictResolver mergeConflictResolver = MergeConflictResolverFactory.INSTANCE.createMergeConflictResolver(
+    MergeConflictResolver mergeConflictResolver = MergeConflictResolverFactory.getInstance().createMergeConflictResolver(
         schemaRepository,
         new ReplicationMetadataSerDe(schemaRepository, storeName, RMD_VERSION_ID),
         storeName
@@ -194,6 +181,7 @@ public class TestMergeConflictWithValueLevelTimestamp extends TestMergeConflictR
     // new MergeConflictResolver(schemaRepository, storeName, valueSchemaID -> new GenericData.Record(rmdSchemaV1));
 
     MergeConflictResult mergeConflictResult  = mergeConflictResolver.delete(
+        Lazy.of(() -> null),
         Optional.of(new ReplicationMetadataWithValueSchemaId(1, RMD_VERSION_ID, timestampRecord)),
         30L,
         1L,
@@ -206,6 +194,7 @@ public class TestMergeConflictWithValueLevelTimestamp extends TestMergeConflictR
 
     // verify update ignored.
     mergeConflictResult  = mergeConflictResolver.delete(
+        Lazy.of(() -> null),
         Optional.of(new ReplicationMetadataWithValueSchemaId(1, RMD_VERSION_ID, timestampRecord)),
         10L,
         1L,
@@ -216,6 +205,7 @@ public class TestMergeConflictWithValueLevelTimestamp extends TestMergeConflictR
 
     // verify same timestamp case
     mergeConflictResult  = mergeConflictResolver.delete(
+        Lazy.of(() -> null),
         Optional.of(new ReplicationMetadataWithValueSchemaId(1, RMD_VERSION_ID, timestampRecord)),
         30L,
         1L,
@@ -225,17 +215,18 @@ public class TestMergeConflictWithValueLevelTimestamp extends TestMergeConflictR
     Assert.assertFalse(mergeConflictResult.getNewValue().isPresent());
 
     // Validate null RMD for existing old value
-    mergeConflictResult  = mergeConflictResolver.delete(Optional.empty(), 30,1, 0, 0);
+    mergeConflictResult  = mergeConflictResolver.delete(Lazy.of(() -> null), Optional.empty(), 30,1, 0, 0);
     Assert.assertFalse(mergeConflictResult.isUpdateIgnored());
     Assert.assertFalse(mergeConflictResult.getNewValue().isPresent());
 
     // Validate null RMD for invalid schema id
-    mergeConflictResult  = mergeConflictResolver.delete(Optional.empty(), 30,1, 0, 0);
+    mergeConflictResult  = mergeConflictResolver.delete(Lazy.of(() -> null), Optional.empty(), 30,1, 0, 0);
     Assert.assertFalse(mergeConflictResult.isUpdateIgnored());
     Assert.assertEquals(mergeConflictResult.getValueSchemaId(), 1);
 
     // Validate delete wins on same timestamp
     mergeConflictResult  = mergeConflictResolver.delete(
+        Lazy.of(() -> null),
         Optional.of(new ReplicationMetadataWithValueSchemaId(1, RMD_VERSION_ID, timestampRecord)),
         30L,
         1L,
@@ -247,25 +238,13 @@ public class TestMergeConflictWithValueLevelTimestamp extends TestMergeConflictR
 
     // verify invalid schema id for existing old value
     Assert.assertThrows(VeniceException.class, () -> mergeConflictResolver.delete(
+        Lazy.of(() -> null),
         Optional.of(new ReplicationMetadataWithValueSchemaId(-1, RMD_VERSION_ID, timestampRecord)),
         30L,
         1L,
         0,
         0
     ));
-
-    // validate error on per field TS record
-    timestampRecord.put(0,  ts);
-    Assert.assertThrows(
-        VeniceException.class,
-        () -> mergeConflictResolver.delete(
-            Optional.of(new ReplicationMetadataWithValueSchemaId(1, RMD_VERSION_ID, timestampRecord)),
-            10,
-            1,
-            0,
-            0
-        )
-    );
   }
 
   @Test
@@ -292,17 +271,17 @@ public class TestMergeConflictWithValueLevelTimestamp extends TestMergeConflictR
       writeTs.add((long) (i + 15));
     }
 
-    MergeConflictResolver mergeConflictResolver = MergeConflictResolverFactory.INSTANCE.createMergeConflictResolver(
+    MergeConflictResolver mergeConflictResolver = MergeConflictResolverFactory.getInstance().createMergeConflictResolver(
         schemaRepository,
         new ReplicationMetadataSerDe(schemaRepository, storeName, RMD_VERSION_ID),
         storeName
     );
     // new MergeConflictResolver(schemaRepository, storeName, null);
     MergeConflictResult mergeConflictResult = null;
-    ByteBuffer oldBB = getByteBufferOfRecord(origRecord);
+    ByteBuffer oldBB = serialize(origRecord);
 
     for (int i = 0; i < 100; i++) {
-      ByteBuffer newBB = getByteBufferOfRecord(payload.get(i));
+      ByteBuffer newBB = serialize(payload.get(i));
       for (int j = 0; j < 100; j++) {
         GenericRecord rmd = GenericData.get().deepCopy(rmdSchemaV1, tsRecord.get(j));
         mergeConflictResult =  mergeConflictResolver.put(
@@ -324,7 +303,7 @@ public class TestMergeConflictWithValueLevelTimestamp extends TestMergeConflictR
 
     for (int i = 0; i < 100; i++) {
       for (int j = 0; j < 100; j++) {
-        ByteBuffer newBB = getByteBufferOfRecord(payload.get(j));
+        ByteBuffer newBB = serialize(payload.get(j));
         GenericRecord rmd = GenericData.get().deepCopy(rmdSchemaV1, tsRecord.get(j));
         mergeConflictResult =  mergeConflictResolver.put(
             Lazy.of(() -> oldBB),
@@ -381,7 +360,7 @@ public class TestMergeConflictWithValueLevelTimestamp extends TestMergeConflictR
     Assert.assertEquals(MergeUtils.sumOffsetVector(newVector), 15L);
   }
 
-  private ByteBuffer getByteBufferOfRecord(GenericRecord record) {
+  private ByteBuffer serialize(GenericRecord record) {
     return ByteBuffer.wrap(serializer.serialize(record));
   }
 }

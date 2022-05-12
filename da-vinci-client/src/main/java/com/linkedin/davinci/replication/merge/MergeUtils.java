@@ -25,8 +25,10 @@ public class MergeUtils {
   public static RmdTimestampType getReplicationMetadataType(Object tsObject) {
     if (tsObject instanceof Long) {
       return RmdTimestampType.VALUE_LEVEL_TIMESTAMP;
-    } else {
+    } else if (tsObject instanceof GenericRecord) {
       return RmdTimestampType.PER_FIELD_TIMESTAMP;
+    } else {
+      throw new IllegalStateException("Unexpected type of timestamp object. Got timestamp object: " + tsObject);
     }
   }
 
