@@ -482,8 +482,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       if (multiClusterConfigs.isZkSharedMetaSystemSchemaStoreAutoCreationEnabled()) {
           // Add routine to create zk shared metadata system store
           UpdateStoreQueryParams metadataSystemStoreUpdate = new UpdateStoreQueryParams().setHybridRewindSeconds(TimeUnit.DAYS.toSeconds(1)) // 1 day rewind
-              .setHybridOffsetLagThreshold(1).setHybridTimeLagThreshold(TimeUnit.MINUTES.toSeconds(1)) // 1 mins
-              .setLeaderFollowerModel(true).setWriteComputationEnabled(true)
+              .setHybridOffsetLagThreshold(1)
+              .setHybridTimeLagThreshold(-1) // Explicitly disable hybrid time lag measurement on system store
+              .setLeaderFollowerModel(true)
+              .setWriteComputationEnabled(true)
               .setPartitionCount(1);
           initRoutines.add(new SystemSchemaInitializationRoutine(AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE,
               multiClusterConfigs, this, Optional.of(AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE_KEY.getCurrentProtocolVersionSchema()),
@@ -492,8 +494,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       if (multiClusterConfigs.isZkSharedDaVinciPushStatusSystemSchemaStoreAutoCreationEnabled()) {
           // Add routine to create zk shared da vinci push status system store
           UpdateStoreQueryParams daVinciPushStatusSystemStoreUpdate = new UpdateStoreQueryParams().setHybridRewindSeconds(TimeUnit.DAYS.toSeconds(1)) // 1 day rewind
-              .setHybridOffsetLagThreshold(1).setHybridTimeLagThreshold(TimeUnit.MINUTES.toSeconds(1)) // 1 mins
-              .setLeaderFollowerModel(true).setWriteComputationEnabled(true)
+              .setHybridOffsetLagThreshold(1)
+              .setHybridTimeLagThreshold(-1) // Explicitly disable hybrid time lag measurement on system store
+              .setLeaderFollowerModel(true)
+              .setWriteComputationEnabled(true)
               .setPartitionCount(1);
           initRoutines.add(new SystemSchemaInitializationRoutine(AvroProtocolDefinition.PUSH_STATUS_SYSTEM_SCHEMA_STORE,
               multiClusterConfigs, this, Optional.of(AvroProtocolDefinition.PUSH_STATUS_SYSTEM_SCHEMA_STORE_KEY.getCurrentProtocolVersionSchema()),
