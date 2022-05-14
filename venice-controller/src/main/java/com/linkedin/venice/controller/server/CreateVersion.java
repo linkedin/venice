@@ -338,27 +338,6 @@ public class CreateVersion extends AbstractRoute {
               }
               LOGGER.info("Incremental Push to RT Policy job final source region address is: " + responseObject.getKafkaBootstrapServers());
             }
-
-            /*
-              The conditions for topic switching to a real time topic are only
-              when write compute is enabled and the push type is incremental. If
-              the incremental push policy is INCREMENTAL_PUSH_SAME_AS_REAL_TIME, then
-              no topic switch is needed because the leader storage node is already
-              consuming from a real time topic.
-             */
-            if (isWriteComputeEnabled && pushType.isIncremental() &&
-               !version.getIncrementalPushPolicy().equals(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME)) {
-
-              String realTimeTopic = Version.composeRealTimeTopic(storeName);
-
-              VeniceWriter veniceWriter = admin.getVeniceWriterFactory()
-                  .createVeniceWriter(responseObject.getKafkaTopic(), responseObject.getKafkaBootstrapServers());
-              veniceWriter.broadcastTopicSwitch(Arrays.asList(responseObject.getKafkaBootstrapServers()),
-                  realTimeTopic, -1L, new HashMap<>());
-
-              veniceWriter.close();
-              responseObject.setKafkaTopic(realTimeTopic);
-            }
             break;
           case STREAM:
 

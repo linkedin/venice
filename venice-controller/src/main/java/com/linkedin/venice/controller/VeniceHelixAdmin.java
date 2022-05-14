@@ -186,8 +186,6 @@ import org.apache.commons.lang.StringUtils;
 import org.apache.commons.lang.Validate;
 import org.apache.helix.HelixAdmin;
 import org.apache.helix.HelixCloudProperty;
-import org.apache.helix.HelixManager;
-import org.apache.helix.HelixManagerFactory;
 import org.apache.helix.HelixManagerProperty;
 import org.apache.helix.HelixPropertyFactory;
 import org.apache.helix.InstanceType;
@@ -972,27 +970,24 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             }
         }
 
-        Optional<Version> version = store.getVersion(versionNumber);
-        if (!version.isPresent()){
-            throw new VeniceHttpException(HttpStatus.SC_NOT_FOUND, "Version " + versionNumber + " was not found for Store " + storeName
-                + ".  Cannot end push for version that does not exist");
-        }
+        Version version = store.getVersion(versionNumber).orElseThrow(() ->
+            new VeniceHttpException(HttpStatus.SC_NOT_FOUND, "Version " + versionNumber + " was not found for Store "
+                + storeName + ".  Cannot end push for version that does not exist"));
 
-        String topicToReceiveEndOfPush = version.get().getPushType().isStreamReprocessing() ?
+        String topicToReceiveEndOfPush = version.getPushType().isStreamReprocessing() ?
             Version.composeStreamReprocessingTopic(storeName, versionNumber) :
             Version.composeKafkaTopic(storeName, versionNumber);
         //write EOP message
-        getVeniceWriterFactory().useVeniceWriter(
-            () -> (multiClusterConfigs.isParent() && version.get().isNativeReplicationEnabled())
-                ? getVeniceWriterFactory().createVeniceWriter(topicToReceiveEndOfPush, version.get().getPushStreamSourceAddress())
-                : getVeniceWriterFactory().createVeniceWriter(topicToReceiveEndOfPush),
-            veniceWriter -> {
-                if (alsoWriteStartOfPush) {
-                    veniceWriter.broadcastStartOfPush(false, version.get().isChunkingEnabled(), version.get().getCompressionStrategy(), new HashMap<>());
-                }
-                veniceWriter.broadcastEndOfPush(new HashMap<>());
+        VeniceWriterFactory factory = getVeniceWriterFactory();
+        int partitionCount = version.getPartitionCount() * version.getPartitionerConfig().getAmplificationFactor();
+        try (VeniceWriter veniceWriter = (multiClusterConfigs.isParent() && version.isNativeReplicationEnabled())
+            ? factory.createVeniceWriter(topicToReceiveEndOfPush, version.getPushStreamSourceAddress(), partitionCount)
+            : factory.createVeniceWriter(topicToReceiveEndOfPush, partitionCount)) {
+            if (alsoWriteStartOfPush) {
+                veniceWriter.broadcastStartOfPush(false, version.isChunkingEnabled(), version.getCompressionStrategy(), new HashMap<>());
             }
-            );
+            veniceWriter.broadcastEndOfPush(new HashMap<>());
+        }
     }
 
     @Override
@@ -1588,26 +1583,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             VeniceControllerClusterConfig clusterConfig = getHelixVeniceClusterResources(clusterName).getConfig();
             int amplificationFactor = version.getPartitionerConfig().getAmplificationFactor();
             topicToCreationTime.computeIfAbsent(version.kafkaTopicName(), topic -> System.currentTimeMillis());
-            getTopicManager().createTopic(
-                version.kafkaTopicName(),
+            createBatchTopics(
+                version,
+                version.getPushType(),
+                getTopicManager(),
                 version.getPartitionCount() * amplificationFactor,
-                clusterConfig.getKafkaReplicationFactor(),
-                true,
-                false,
-                clusterConfig.getMinIsr(),
-                false
-            );
-            if (version.getPushType().isStreamReprocessing()) {
-                getTopicManager().createTopic(
-                    Version.composeStreamReprocessingTopic(storeName, version.getNumber()),
-                    version.getPartitionCount() * amplificationFactor,
-                    clusterConfig.getKafkaReplicationFactor(),
-                    true,
-                    false,
-                    clusterConfig.getMinIsr(),
-                    false
-                );
-            }
+                clusterConfig,
+                false);
         } finally {
             topicToCreationTime.remove(version.kafkaTopicName());
         }
@@ -1627,6 +1609,28 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             startMonitorOfflinePush(clusterName, version.kafkaTopicName(), version.getPartitionCount(),
                 store.getReplicationFactor(), store.getOffLinePushStrategy());
         }
+    }
+
+    private void createBatchTopics(
+        Version version,
+        PushType pushType,
+        TopicManager topicManager,
+        int subPartitionCount,
+        VeniceControllerClusterConfig clusterConfig,
+        boolean useFastKafkaOperationTimeout) {
+      List<String> topicNamesToCreate = new ArrayList<>(2);
+      topicNamesToCreate.add(version.kafkaTopicName());
+      if (pushType.isStreamReprocessing()) {
+        topicNamesToCreate.add(Version.composeStreamReprocessingTopic(version.getStoreName(), version.getNumber()));
+      }
+      topicNamesToCreate.forEach(topicNameToCreate -> topicManager.createTopic(
+          topicNameToCreate,
+          subPartitionCount,
+          clusterConfig.getKafkaReplicationFactor(),
+          true,
+          false,
+          clusterConfig.getMinIsr(),
+          useFastKafkaOperationTimeout));
     }
 
     /**
@@ -1694,6 +1698,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                     }
                     backupStrategy = store.getBackupStrategy();
                     int amplificationFactor = store.getPartitionerConfig().getAmplificationFactor();
+                    int subPartitionCount = numberOfPartitions * amplificationFactor;
                     if (versionNumber == VERSION_ID_UNSET) {
                         // No version supplied, generate a new version. This could happen either in the parent
                         // controller or local Samza jobs.
@@ -1706,28 +1711,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                     }
 
                     topicToCreationTime.computeIfAbsent(version.kafkaTopicName(), topic -> System.currentTimeMillis());
-
-                    // Topic created by Venice Controller is always without Kafka compaction.
-                    getTopicManager().createTopic(
-                        version.kafkaTopicName(),
-                        numberOfPartitions * amplificationFactor,
-                        clusterConfig.getKafkaReplicationFactor(),
-                        true,
-                        false,
-                        clusterConfig.getMinIsr(),
-                        useFastKafkaOperationTimeout
-                    );
-                    if (pushType.isStreamReprocessing()) {
-                        getTopicManager().createTopic(
-                            Version.composeStreamReprocessingTopic(storeName, version.getNumber()),
-                            numberOfPartitions * amplificationFactor,
-                            clusterConfig.getKafkaReplicationFactor(),
-                            true,
-                            false,
-                            clusterConfig.getMinIsr(),
-                            useFastKafkaOperationTimeout
-                        );
-                    }
+                    createBatchTopics(
+                        version,
+                        pushType,
+                        getTopicManager(),
+                        subPartitionCount,
+                        clusterConfig,
+                        useFastKafkaOperationTimeout);
 
                     ByteBuffer compressionDictionaryBuffer = null;
                     if (compressionDictionary != null) {
@@ -1847,26 +1837,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                                 + "and source Kafka ZK address for store: " + storeName + " and version: " + version.getNumber()
                                 + " in cluster: " + clusterName);
                         }
-                        getTopicManager(sourceKafkaBootstrapServersAndZk).createTopic(
-                            version.kafkaTopicName(),
-                            numberOfPartitions * amplificationFactor,
-                            clusterConfig.getKafkaReplicationFactor(),
-                            true,
-                            false,
-                            clusterConfig.getMinIsr(),
-                            useFastKafkaOperationTimeout
-                        );
-                        if (pushType.isStreamReprocessing()) {
-                            getTopicManager(sourceKafkaBootstrapServersAndZk).createTopic(
-                                Version.composeStreamReprocessingTopic(storeName, version.getNumber()),
-                                numberOfPartitions,
-                                clusterConfig.getKafkaReplicationFactor(),
-                                true,
-                                false,
-                                clusterConfig.getMinIsr(),
-                                useFastKafkaOperationTimeout
-                            );
-                        }
+                        createBatchTopics(
+                            version,
+                            pushType,
+                            getTopicManager(sourceKafkaBootstrapServersAndZk),
+                            subPartitionCount,
+                            clusterConfig,
+                            useFastKafkaOperationTimeout);
                     }
 
                     if (sendStartOfPush) {
@@ -1877,10 +1854,14 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                                 /**
                                  * Produce directly into one of the child fabric
                                  */
-                                veniceWriter = getVeniceWriterFactory().createVeniceWriter(finalVersion.kafkaTopicName(),
-                                    finalVersion.getPushStreamSourceAddress());
+                                veniceWriter = getVeniceWriterFactory().createVeniceWriter(
+                                    finalVersion.kafkaTopicName(),
+                                    finalVersion.getPushStreamSourceAddress(),
+                                    subPartitionCount);
                             } else {
-                                veniceWriter = getVeniceWriterFactory().createVeniceWriter(finalVersion.kafkaTopicName());
+                                veniceWriter = getVeniceWriterFactory().createVeniceWriter(
+                                    finalVersion.kafkaTopicName(),
+                                    subPartitionCount);
                             }
                             veniceWriter.broadcastStartOfPush(
                                 sorted,
@@ -4702,11 +4683,16 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     @Override
     public int calculateNumberOfPartitions(String clusterName, String storeName, long storeSize) {
         checkControllerLeadershipFor(clusterName);
-        VeniceControllerClusterConfig config = getHelixVeniceClusterResources(clusterName).getConfig();
-        return PartitionUtils.calculatePartitionCount(storeName, storeSize,
-            getHelixVeniceClusterResources(clusterName).getStoreMetadataRepository(),
-            getHelixVeniceClusterResources(clusterName).getRoutingDataRepository(), config.getPartitionSize(),
-            config.getNumberOfPartition(), config.getMaxNumberOfPartition());
+        HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
+        Store store = resources.getStoreMetadataRepository().getStoreOrThrow(storeName);
+        VeniceControllerClusterConfig config = resources.getConfig();
+        return PartitionUtils.calculatePartitionCount(
+            storeName,
+            storeSize,
+            store.getPartitionCount(),
+            config.getPartitionSize(),
+            config.getNumberOfPartition(),
+            config.getMaxNumberOfPartition());
   }
 
     @Override

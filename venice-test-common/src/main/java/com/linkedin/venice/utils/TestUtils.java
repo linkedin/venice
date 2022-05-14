@@ -69,11 +69,13 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
 import java.util.stream.Stream;
@@ -217,7 +219,7 @@ public class TestUtils {
 
   public static VersionCreationResponse createVersionWithBatchData(ControllerClient controllerClient, String storeName,
       String keySchema, String valueSchema, Stream<Map.Entry> batchData, int valueSchemaId) throws Exception {
-    VersionCreationResponse response = controllerClient.requestTopicForWrites(
+    VersionCreationResponse response = TestUtils.assertCommand(controllerClient.requestTopicForWrites(
         storeName,
         1024,
         Version.PushType.BATCH,
@@ -229,8 +231,7 @@ public class TestUtils {
         Optional.empty(),
         Optional.empty(),
         false,
-        -1);
-    assertFalse(response.isError());
+        -1));
     writeBatchData(response, keySchema, valueSchema, batchData, valueSchemaId);
     return response;
   }
@@ -244,21 +245,25 @@ public class TestUtils {
     props.setProperty(AMPLIFICATION_FACTOR, String.valueOf(response.getAmplificationFactor()));
     VeniceWriterFactory writerFactory = TestUtils.getVeniceWriterFactory(props);
 
-    String kafkaTopic = response.getKafkaTopic();
     Properties partitionerProperties = new Properties();
     partitionerProperties.putAll(response.getPartitionerParams());
     VenicePartitioner venicePartitioner = PartitionUtils.getVenicePartitioner(
         response.getPartitionerClass(),
         response.getAmplificationFactor(),
         new VeniceProperties(partitionerProperties));
-    try (
-        VeniceKafkaSerializer keySerializer = new VeniceAvroKafkaSerializer(keySchema);
-        VeniceKafkaSerializer valueSerializer = new VeniceAvroKafkaSerializer(valueSchema);
-        VeniceWriter<Object, Object, byte[]> writer = writerFactory.createVeniceWriter(kafkaTopic, keySerializer, valueSerializer, venicePartitioner)) {
-
+    try (VeniceWriter<Object, Object, byte[]> writer = writerFactory.createVeniceWriter(
+        response.getKafkaTopic(),
+        new VeniceAvroKafkaSerializer(keySchema),
+        new VeniceAvroKafkaSerializer(valueSchema),
+        response.getPartitions() * response.getAmplificationFactor(),
+        venicePartitioner)) {
       writer.broadcastStartOfPush(Collections.emptyMap());
+      LinkedList<Future> putFutures = new LinkedList<>();
       for (Map.Entry e : (Iterable<Map.Entry>) batchData::iterator) {
-        writer.put(e.getKey(), e.getValue(), valueSchemaId).get();
+        putFutures.add(writer.put(e.getKey(), e.getValue(), valueSchemaId));
+      }
+      for (Future future: putFutures) {
+        future.get();
       }
       writer.broadcastEndOfPush(Collections.emptyMap());
     }

@@ -101,13 +101,8 @@ public abstract class TopicReplicator {
     if (!getTopicManager().containsTopicAndAllPartitionsAreOnline(destinationTopic)){
       throw new TopicDoesNotExistException(errorPrefix + " topic " + destinationTopic + " does not exist.");
     }
-    int sourcePartitionCount = getTopicManager().partitionsFor(sourceTopic).size();
     int destinationPartitionCount = getTopicManager().partitionsFor(destinationTopic).size();
-    if (sourcePartitionCount != destinationPartitionCount){
-      LOGGER.info("Topic " + sourceTopic + " has " + sourcePartitionCount + " partitions"
-          + " and topic " + destinationTopic + " has " + destinationPartitionCount + " partitions."  );
-    }
-    beginReplicationInternal(sourceTopic, destinationTopic, sourcePartitionCount, rewindStartTimestamp, remoteKafkaUrls);
+    beginReplicationInternal(sourceTopic, destinationTopic, destinationPartitionCount, rewindStartTimestamp, remoteKafkaUrls);
     LOGGER.info("Successfully started topic replication from: " + sourceTopic + " to " + destinationTopic);
   }
 
@@ -191,7 +186,7 @@ public abstract class TopicReplicator {
 
   abstract public void prepareAndStartReplication(String srcTopicName, String destTopicName, Store store,
       String aggregateRealTimeSourceRegion, List<String> activeActiveRealTimeSourceKafkaURLs);
-  abstract void beginReplicationInternal(String sourceTopic, String destinationTopic, int partitionCount,
+  abstract void beginReplicationInternal(String sourceTopic, String destinationTopic, int destinationPartitionCount,
       long rewindStartTimestamp, List<String> remoteKafkaUrls);
   abstract void terminateReplicationInternal(String sourceTopic, String destinationTopic);
 

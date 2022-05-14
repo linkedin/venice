@@ -7,6 +7,7 @@ import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
+import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
@@ -67,7 +68,8 @@ public class LeaderStorageNodeReplicatorTest {
     doReturn(true).when(mockTopicManager).containsTopicAndAllPartitionsAreOnline(destTopic);
     doReturn(partitionInfos).when(mockTopicManager).partitionsFor(srcTopic);
     doReturn(partitionInfos).when(mockTopicManager).partitionsFor(destTopic);
-    doReturn(mockVeniceWriter).when(mockVeniceWriterFactory).createBasicVeniceWriter(anyString(), any(Time.class));
+    doReturn(mockVeniceWriter).when(mockVeniceWriterFactory)
+        .createBasicVeniceWriter(anyString(), any(Time.class), any(VenicePartitioner.class), anyInt());
 
 
     leaderStorageNodeReplicator.prepareAndStartReplication(srcTopic, destTopic, mockStore, aggregateRealTimeSourceKafkaUrl, Collections.emptyList());
@@ -96,7 +98,8 @@ public class LeaderStorageNodeReplicatorTest {
     doReturn(true).when(mockTopicManager).containsTopicAndAllPartitionsAreOnline(destTopic);
     doReturn(partitionInfos).when(mockTopicManager).partitionsFor(srcTopic);
     doReturn(partitionInfos).when(mockTopicManager).partitionsFor(destTopic);
-    doReturn(mockVeniceWriter).when(mockVeniceWriterFactory).createBasicVeniceWriter(anyString(), any(Time.class));
+    doReturn(mockVeniceWriter).when(mockVeniceWriterFactory)
+        .createBasicVeniceWriter(anyString(), any(Time.class), any(VenicePartitioner.class), anyInt());
 
     leaderStorageNodeReplicator.prepareAndStartReplication(srcTopic, destTopic, mockStore, aggregateRealTimeSourceKafkaUrl, Collections.emptyList());
 

@@ -111,7 +111,7 @@ public class TestHybrid {
   private static final long MIN_COMPACTION_LAG = 24 * Time.MS_PER_HOUR;
 
   /**
-   * IMPORTANT NOTE: if you use this sharedVenice cluster, please do not close it. The {@link #tearDown()} function
+   * IMPORTANT NOTE: if you use this sharedVenice cluster, please do not close it. The {@link #cleanUp()} function
    *                 will take care of it. Besides, if any backend component of the shared cluster is stopped in
    *                 the middle of the test, please restart them at the end of your test.
    */

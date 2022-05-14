@@ -12,7 +12,6 @@ import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
-import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
@@ -40,6 +39,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
@@ -602,29 +602,6 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     restartVeniceComponent(veniceServerWrappers, port);
   }
 
-  /**
-   * Find the venice servers which has been assigned to the given resource and partition.
-   * After getting these servers, you can fail some of them to simulate the server failure. Otherwise you might not
-   * know which server you should fail.
-   */
-  public synchronized List<VeniceServerWrapper> findVeniceServer(String resourceName, int partition, HelixState state) {
-    Admin admin = getLeaderVeniceController().getVeniceAdmin();
-
-    List<Replica> replicas = admin.getReplicas(clusterName, resourceName);
-    List<VeniceServerWrapper> result = new ArrayList<>();
-    for (Replica replica : replicas) {
-      if (replica.getPartitionId() == partition && replica.getStatus().equals(state.toString())) {
-        int port = replica.getInstance().getPort();
-        if (veniceServerWrappers.containsKey(port)) {
-          result.add(veniceServerWrappers.get(port));
-        } else {
-          throw new VeniceException("Can not find a venice server on port:" + port);
-        }
-      }
-    }
-    return result;
-  }
-
   private <T extends ProcessWrapper> void stopVeniceComponent(Map<Integer, T> components, int port) {
     if (components.containsKey(port)) {
       T component = components.get(port);
@@ -651,12 +628,21 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     }
   }
 
-  private synchronized <T extends ProcessWrapper> T getRandomRunningVeniceComponent(Map<Integer, T> components) {
+  private <T extends ProcessWrapper> T getRandomRunningVeniceComponent(Map<Integer, T> components) {
+    Objects.requireNonNull(components, "components map cannot be null");
+    if (components.isEmpty()) {
+      throw new IllegalArgumentException("components map cannot be empty");
+    }
     List<Integer> runningComponentPorts = components.values()
         .stream()
-        .filter(component -> component.isRunning())
+        .filter(ProcessWrapper::isRunning)
         .map(T::getPort)
         .collect(Collectors.toList());
+    if (runningComponentPorts.isEmpty()) {
+      String componentName = components.values().iterator().next().getClass().getSimpleName();
+      throw new IllegalArgumentException("components map contains no running " + componentName + " out of the "
+          + components.size() + " provided.");
+    }
     int selectedPort = runningComponentPorts.get((int) (Math.random() * runningComponentPorts.size()));
     return components.get(selectedPort);
   }

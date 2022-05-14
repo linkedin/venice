@@ -285,7 +285,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       //Also avoiding a metadata call to kafka here as the partitionsFor() call sometimes may get blocked indefinitely if the
       //kafka broker is overloaded and does not respond in timely manner.
       if (topicPartitionCount.isPresent()) {
-       this.numberOfPartitions = topicPartitionCount.get();
+        this.numberOfPartitions = topicPartitionCount.get();
       } else {
         this.numberOfPartitions = producer.getNumberOfPartitions(topicName, 30, TimeUnit.SECONDS);
       }

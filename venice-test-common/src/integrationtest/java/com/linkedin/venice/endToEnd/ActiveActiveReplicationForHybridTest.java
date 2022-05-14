@@ -655,7 +655,7 @@ public class ActiveActiveReplicationForHybridTest {
       VersionCreationResponse response = TestUtils.createVersionWithBatchData(parentControllerClient, storeName,
           STRING_SCHEMA, STRING_SCHEMA, IntStream.range(0, batchDataRangeEnd)
               .mapToObj(i -> new AbstractMap.SimpleEntry<>(String.valueOf(i), String.valueOf(i))), 1);
-      TestUtils.waitForNonDeterministicPushCompletion(response.getKafkaTopic(), parentControllerClient, 30,
+      TestUtils.waitForNonDeterministicPushCompletion(response.getKafkaTopic(), parentControllerClient, 60,
           TimeUnit.SECONDS, Optional.empty());
       Map<String, String> samzaConfig = new HashMap<>();
       String configPrefix = SYSTEMS_PREFIX + "venice" + DOT;

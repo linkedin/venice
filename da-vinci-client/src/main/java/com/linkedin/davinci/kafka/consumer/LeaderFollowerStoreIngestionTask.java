@@ -211,12 +211,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     this.compressorFactory = compressorFactory;
 
     this.veniceWriterFactory = builder.getVeniceWriterFactory();
-    this.veniceWriter = Lazy.of(() -> {
-      Optional<StoreVersionState> storeVersionState = storageMetadataService.getStoreVersionState(kafkaVersionTopic);
-      if (storeVersionState.isPresent()) {
-        return veniceWriterFactory.createBasicVeniceWriter(kafkaVersionTopic, storeVersionState.get().chunked, venicePartitioner,
-            Optional.of(storeVersionPartitionCount * amplificationFactor));
-      } else {
+    this.veniceWriter = Lazy.of(() -> veniceWriterFactory.createBasicVeniceWriter(
+        kafkaVersionTopic,
         /**
          * In general, a partition in version topic follows this pattern:
          * {Start_of_Segment, Start_of_Push, End_of_Segment, Start_of_Segment, data..., End_of_Segment, Start_of_Segment, End_of_Push, End_of_Segment}
@@ -226,9 +222,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
          * Notice that the pattern is different in stream reprocessing which contains a lot more segments and is also
          * different in some test cases which reuse the same VeniceWriter.
          */
-        return veniceWriterFactory.createBasicVeniceWriter(kafkaVersionTopic, venicePartitioner, Optional.of(storeVersionPartitionCount * amplificationFactor));
-      }
-    });
+        storageMetadataService.getStoreVersionState(kafkaVersionTopic).map(svs -> svs.chunked),
+        venicePartitioner,
+        storeVersionPartitionCount * amplificationFactor));
 
     this.kafkaClusterIdToUrlMap = serverConfig.getKafkaClusterIdToUrlMap();
     this.kafkaClusterUrlToIdMap = serverConfig.getKafkaClusterUrlToIdMap();

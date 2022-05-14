@@ -135,7 +135,10 @@ public class DefaultPushJobHeartbeatSenderFactory implements PushJobHeartbeatSen
         versionCreationResponse.getAmplificationFactor(),
         new VeniceProperties(partitionerProperties)
     );
-    return new VeniceWriterFactory(veniceWriterProperties).
-            createBasicVeniceWriter(versionCreationResponse.getKafkaTopic(), new SystemTime(), venicePartitioner);
+    return new VeniceWriterFactory(veniceWriterProperties).createBasicVeniceWriter(
+        versionCreationResponse.getKafkaTopic(),
+        new SystemTime(),
+        venicePartitioner,
+        versionCreationResponse.getPartitions());
   }
 }
