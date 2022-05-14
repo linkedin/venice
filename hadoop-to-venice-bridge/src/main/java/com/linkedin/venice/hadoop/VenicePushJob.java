@@ -1716,7 +1716,7 @@ public class VenicePushJob implements AutoCloseable {
       }
       // Skip quota check
       storeSetting.storeStorageQuota = Store.UNLIMITED_STORAGE_QUOTA;
-      
+
       storeSetting.isChunkingEnabled = sourceVersion.get().isChunkingEnabled();
 
       /**
@@ -1905,9 +1905,15 @@ public class VenicePushJob implements AutoCloseable {
               versionTopicInfo.partitionerClass,
               versionTopicInfo.amplificationFactor,
               new VeniceProperties(partitionerProperties));
-      VeniceWriter<KafkaKey, byte[], byte[]> newVeniceWriter =
-          veniceWriterFactory.createVeniceWriter(versionTopicInfo.topic, venicePartitioner,
-              (kafkaTopicInfo.targetStoreVersionForIncPush > 0) ? Optional.of(kafkaTopicInfo.targetStoreVersionForIncPush) : Optional.empty());
+      VeniceWriter<KafkaKey, byte[], byte[]> newVeniceWriter = veniceWriterFactory.createVeniceWriter(
+          versionTopicInfo.topic,
+          venicePartitioner,
+          (kafkaTopicInfo.targetStoreVersionForIncPush > 0)
+              ? Optional.of(kafkaTopicInfo.targetStoreVersionForIncPush)
+              : Optional.empty(),
+          Version.isVersionTopic(versionTopicInfo.topic)
+              ? versionTopicInfo.partitionCount * versionTopicInfo.amplificationFactor
+              : versionTopicInfo.partitionCount);
       logger.info("Created VeniceWriter: " + newVeniceWriter.toString());
       veniceWriter = newVeniceWriter;
     }

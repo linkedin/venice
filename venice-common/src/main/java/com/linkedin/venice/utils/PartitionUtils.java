@@ -5,18 +5,13 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.PartitionerConfigImpl;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
-import com.linkedin.venice.meta.RoutingDataRepository;
-import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.UserPartitionAwarePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.ints.IntList;
-import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Collections;
-import java.util.List;
 import java.util.Optional;
 import java.util.Properties;
 import org.apache.avro.Schema;
@@ -32,15 +27,16 @@ public class PartitionUtils {
    * calculate the number by given store size and partition size. Otherwise use the number from the current active
    * version.
    */
-  // TODO. As there are a lot of parameters, we could transfer a configuration and keep some state instead of a utility static method.
-  public static int calculatePartitionCount(String storeName, long storeSizeBytes,
-                                            ReadOnlyStoreRepository storeRepository, RoutingDataRepository routingDataRepository, long partitionSize,
-                                            int minPartitionCount, int maxPartitionCount) {
+  public static int calculatePartitionCount(
+      String storeName,
+      long storeSizeBytes,
+      int previousPartitionCount,
+      long partitionSize,
+      int minPartitionCount,
+      int maxPartitionCount) {
     if (storeSizeBytes <= 0) {
-      throw new VeniceException("Store size:" + storeSizeBytes + "is invalid.");
+      throw new VeniceException("Store size: " + storeSizeBytes + " is invalid.");
     }
-    Store store = storeRepository.getStoreOrThrow(storeName);
-    int previousPartitionCount = store.getPartitionCount();
     if (previousPartitionCount == 0) {
       // First Version, calculate partition count
       long partitionCount = storeSizeBytes / partitionSize;
@@ -49,13 +45,13 @@ public class PartitionUtils {
       } else if (partitionCount < minPartitionCount) {
         partitionCount = minPartitionCount;
       }
-      logger.info("Assign partition count:" + partitionCount + " by given size:" + storeSizeBytes
-          + " for the first version of store:" + storeName);
+      logger.info("Assign partition count: {} by given size: {} for the first version of store: {}",
+          partitionCount, storeSizeBytes, storeName);
       return (int)partitionCount;
     } else {
       // Active version exists, use the partition count calculated before.
-      logger.info("Assign partition count:" + previousPartitionCount +
-          "  , which come from previous version, for store:" + storeName);
+      logger.info("Assign partition count: {}, which come from previous version, for store: {}",
+          previousPartitionCount, storeName);
       return previousPartitionCount;
     }
   }

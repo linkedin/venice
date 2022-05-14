@@ -736,7 +736,7 @@ public class StoreIngestionTaskTest {
             () -> {
       vtWriter.broadcastStartOfPush(new HashMap<>());
       vtWriter.broadcastEndOfPush(new HashMap<>());
-      doReturn(vtWriter).when(mockWriterFactory).createBasicVeniceWriter(anyString(), anyBoolean(), any(), any());
+      doReturn(vtWriter).when(mockWriterFactory).createBasicVeniceWriter(anyString(), any(Optional.class), any(VenicePartitioner.class), anyInt());
 
       verify(mockLogNotifier, never()).completed(anyString(), anyInt(), anyLong());
       vtWriter.broadcastTopicSwitch(Collections.singletonList(inMemoryLocalKafkaBroker.getKafkaBootstrapServer()),

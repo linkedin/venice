@@ -73,15 +73,16 @@ public class VeniceWriterTest {
       int numberOfThreads, java.util.function.Consumer<VeniceWriter<KafkaKey, byte[], byte[]>> veniceWriterTask)
       throws ExecutionException, InterruptedException {
     String topicName = Utils.getUniqueString("topic-for-vw-thread-safety");
-    topicManager.createTopic(topicName, 1, 1, true);
+    int partitionCount = 1;
+    topicManager.createTopic(topicName, partitionCount, 1, true);
     Properties properties = new Properties();
     properties.put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, kafka.getAddress());
     properties.put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, kafka.getAddress());
     properties.put(ConfigKeys.PARTITIONER_CLASS, DefaultVenicePartitioner.class.getName());
 
     ExecutorService executorService = null;
-    try (VeniceWriter<KafkaKey, byte[], byte[]> veniceWriter = TestUtils.getVeniceWriterFactory(properties)
-        .createVeniceWriter(topicName)) {
+    try (VeniceWriter<KafkaKey, byte[], byte[]> veniceWriter =
+        TestUtils.getVeniceWriterFactory(properties).createVeniceWriter(topicName, partitionCount)) {
       executorService = Executors.newFixedThreadPool(numberOfThreads);
       Future[] vwFutures = new Future[numberOfThreads];
       for (int i = 0; i < numberOfThreads; i++) {

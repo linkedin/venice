@@ -7,7 +7,9 @@ import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -17,6 +19,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 
+/** TODO: Move this whole package and accompanying tests to the controller module. It doesn't belong in common. */
 public class LeaderStorageNodeReplicator extends TopicReplicator {
 
   private static final Logger logger = LogManager.getLogger(LeaderStorageNodeReplicator.class);
@@ -68,7 +71,7 @@ public class LeaderStorageNodeReplicator extends TopicReplicator {
   }
 
   @Override
-  void beginReplicationInternal(String sourceTopic, String destinationTopic, int partitionCount,
+  void beginReplicationInternal(String sourceTopic, String destinationTopic, int destinationPartitionCount,
       long rewindStartTimestamp, List<String> remoteKafkaUrls) {
     List<CharSequence> sourceClusters = new ArrayList<>();
     if (!remoteKafkaUrls.isEmpty()) {
@@ -76,10 +79,10 @@ public class LeaderStorageNodeReplicator extends TopicReplicator {
     } else {
       sourceClusters.add(destKafkaBootstrapServers);
     }
-    VeniceWriterFactory.useVeniceWriter(
-        () -> getVeniceWriterFactory().createBasicVeniceWriter(destinationTopic, getTimer()),
-        veniceWriter -> veniceWriter.broadcastTopicSwitch(sourceClusters, sourceTopic, rewindStartTimestamp, Collections.emptyMap())
-    );
+    try (VeniceWriter veniceWriter = getVeniceWriterFactory().createBasicVeniceWriter(
+        destinationTopic, getTimer(), new DefaultVenicePartitioner(), destinationPartitionCount)) {
+      veniceWriter.broadcastTopicSwitch(sourceClusters, sourceTopic, rewindStartTimestamp, Collections.emptyMap());
+    }
   }
 
   @Override

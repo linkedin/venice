@@ -348,17 +348,19 @@ public class MetaStoreWriter implements Closeable {
   }
 
   private VeniceWriter prepareToWrite(String metaStoreName) {
-    String rtTopic = Version.composeRealTimeTopic(metaStoreName);
-    if (!topicManager.containsTopicAndAllPartitionsAreOnline(rtTopic)) {
-      throw new VeniceException("Realtime topic: " + rtTopic + " doesn't exist or some partitions are not online");
-    }
+    return metaStoreWriterMap.computeIfAbsent(metaStoreName, k -> {
+      String rtTopic = Version.composeRealTimeTopic(metaStoreName);
+      if (!topicManager.containsTopicAndAllPartitionsAreOnline(rtTopic)) {
+        throw new VeniceException("Realtime topic: " + rtTopic + " doesn't exist or some partitions are not online");
+      }
 
-    return metaStoreWriterMap.computeIfAbsent(metaStoreName, k -> writerFactory.createVeniceWriter(rtTopic,
-        new VeniceAvroKafkaSerializer(
-            AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE_KEY.getCurrentProtocolVersionSchema()),
-        new VeniceAvroKafkaSerializer(
-            AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.getCurrentProtocolVersionSchema()),
-        new VeniceAvroKafkaSerializer(derivedComputeSchema), Optional.empty(), new SystemTime()));
+      return writerFactory.createVeniceWriter(rtTopic,
+          new VeniceAvroKafkaSerializer(
+              AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE_KEY.getCurrentProtocolVersionSchema()),
+          new VeniceAvroKafkaSerializer(
+              AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.getCurrentProtocolVersionSchema()),
+          new VeniceAvroKafkaSerializer(derivedComputeSchema), Optional.empty(), new SystemTime());
+    });
   }
 
   private Map<CharSequence, CharSequence> buildSchemaMap(Collection<SchemaEntry> schemas) {

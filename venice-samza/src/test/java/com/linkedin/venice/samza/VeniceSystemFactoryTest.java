@@ -14,6 +14,7 @@ import com.linkedin.venice.utils.TestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 
 import com.linkedin.venice.utils.Utils;
+import java.util.AbstractMap;
 import java.util.Map;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
@@ -54,7 +55,7 @@ public class VeniceSystemFactoryTest {
   /**
    * Write a record using the Samza SystemProducer for Venice, then verify we can read that record.
    */
-  @Test(timeOut = TEST_TIMEOUT * 2)
+  @Test //(timeOut = TEST_TIMEOUT * 2)
   public void testGetProducer() throws Exception {
     String keySchema = "\"string\"";
     String valueSchema =
@@ -80,50 +81,56 @@ public class VeniceSystemFactoryTest {
     String storeName = Utils.getUniqueString("store");
     Schema writeComputeSchema = WriteComputeSchemaConverter.convertFromValueRecordSchema(valueSchema);
 
-    try (ControllerClient client = cluster.getControllerClient()) {
-      client.createNewStore(storeName, "owner", keySchema, valueSchema);
+    cluster.useControllerClient(controllerClient -> {
+      TestUtils.assertCommand(controllerClient.createNewStore(storeName, "owner", keySchema, valueSchema));
       // Enable hybrid and write-compute
-      client.updateStore(storeName, new UpdateStoreQueryParams()
+      TestUtils.assertCommand(controllerClient.updateStore(storeName, new UpdateStoreQueryParams()
           .setHybridRewindSeconds(10)
-          .setHybridOffsetLagThreshold(10));
+          .setHybridOffsetLagThreshold(10)));
 
       // Generate write compute schema
-      client.addDerivedSchema(storeName, 1, writeComputeSchema.toString());
-    }
+      TestUtils.assertCommand(controllerClient.addDerivedSchema(storeName, 1, writeComputeSchema.toString()));
+    });
+    String key = "keystring";
 
-    cluster.createVersion(storeName, keySchema, valueSchema, Stream.of());
-
-    // Create an AVRO record
     Schema valueRecordSchema = Schema.parse(valueSchema);
     Schema intArraySchema = valueRecordSchema.getField("intArray").schema();
+    GenericRecord batchValue = new GenericData.Record(Schema.parse(valueSchema));
+    batchValue.put("string", null);
+    batchValue.put("number", 0.0);
+    batchValue.put("intArray", Collections.emptyList());
+
+    cluster.createVersion(storeName, keySchema, valueSchema, Stream.of(new AbstractMap.SimpleEntry(key, batchValue)));
 
     ClientConfig config = ClientConfig
         .defaultGenericClientConfig(storeName)
         .setVeniceURL(cluster.getRandomRouterURL());
 
-    SystemProducer producer = TestPushUtils.getSamzaProducer(cluster, storeName, Version.PushType.STREAM);
+    SystemProducer producer = null;
 
     try (AvroGenericStoreClient<String, GenericRecord> client = ClientFactory.getAndStartGenericAvroClient(config)) {
+      producer = TestPushUtils.getSamzaProducer(cluster, storeName, Version.PushType.STREAM);
+
       // Send the record to Venice using the SystemProducer
       GenericRecord record = new GenericData.Record(Schema.parse(valueSchema));
       record.put("string", "somestring");
       record.put("number", 3.14);
       record.put("intArray", new GenericData.Array<>(intArraySchema, Collections.singletonList(1)));
 
-      TestPushUtils.sendStreamingRecord(producer, storeName, "keystring", record);
+      TestPushUtils.sendStreamingRecord(producer, storeName, key, record);
 
       // Verify we got the right record
-      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
         GenericRecord recordFromVenice;
         try {
-          recordFromVenice = client.get("keystring").get();
+          recordFromVenice = client.get(key).get();
         } catch (Exception e) {
           throw new RuntimeException(e);
         }
-        assertNotNull(recordFromVenice, "Value for key: 'keystring' should not be null");
+        assertNotNull(recordFromVenice, "Value for key: '" + key + "' should not be null. This means not even the batch data made it in!");
 
         Object stringField = recordFromVenice.get("string");
-        assertNotNull(stringField, "'string' field should not be null");
+        assertNotNull(stringField, "'string' field should not be null. This means the RT data did not make it in.");
         assertEquals(stringField.toString(), "somestring");
 
         Object numberField = recordFromVenice.get("number");
@@ -135,13 +142,13 @@ public class VeniceSystemFactoryTest {
       });
 
       // Delete the record
-      TestPushUtils.sendStreamingRecord(producer, storeName, "keystring", null);
+      TestPushUtils.sendStreamingRecord(producer, storeName, key, null);
 
       // Verify the delete
       TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
         GenericRecord deletedRecord = null;
         try {
-          deletedRecord = client.get("keystring").get();
+          deletedRecord = client.get(key).get();
         } catch (Exception e) {
           throw new RuntimeException(e);
         }
@@ -149,7 +156,9 @@ public class VeniceSystemFactoryTest {
       });
 
     } finally {
-      producer.stop();
+      if (producer != null) {
+        producer.stop();
+      }
     }
   }
 

@@ -61,6 +61,10 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
       return this == STREAM_REPROCESSING;
     }
 
+    public boolean isBatchOrStreamReprocessing() {
+      return isBatch() || isStreamReprocessing();
+    }
+
     public static PushType valueOf(int value) {
       Optional<PushType> pushType = Arrays.stream(values()).filter(p -> p.value == value).findFirst();
       if (!pushType.isPresent()) {

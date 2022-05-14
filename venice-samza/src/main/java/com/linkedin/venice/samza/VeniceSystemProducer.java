@@ -186,16 +186,22 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
   protected VeniceWriter<byte[], byte[], byte[]> getVeniceWriter(VersionCreationResponse store) {
     Properties veniceWriterProperties = new Properties();
     veniceWriterProperties.put(KAFKA_BOOTSTRAP_SERVERS, store.getKafkaBootstrapServers());
-    return getVeniceWriter(store, veniceWriterProperties);
-  }
-
-  protected VeniceWriter<byte[], byte[],byte[]> getVeniceWriter(VersionCreationResponse store, Properties veniceWriterProperties) {
     int amplificationFactor = store.getAmplificationFactor();
+    Optional<Integer> partitionCount = pushType.isBatchOrStreamReprocessing()
+        ? Optional.of(store.getPartitions() * amplificationFactor)
+        /**
+         * N.B. There is an issue in the controller where the partition count inside a {@link VersionCreationResponse}
+         *      for a non-batch topic is invalid, so in that case we don't rely on it, and let the {@link VeniceWriter}
+         *      figure it out by doing a metadata call to Kafka. It would be great to fix the controller bug and then
+         *      always pass in the partition count here, so we can skip this MD call.
+         */
+        : Optional.empty();
     Properties partitionerProperties = new Properties();
     partitionerProperties.putAll(store.getPartitionerParams());
     VenicePartitioner
         venicePartitioner = PartitionUtils.getVenicePartitioner(store.getPartitionerClass(), amplificationFactor, new VeniceProperties(partitionerProperties));
-    return new VeniceWriterFactory(veniceWriterProperties).createBasicVeniceWriter(store.getKafkaTopic(), time, venicePartitioner, isChunkingEnabled);
+    return new VeniceWriterFactory(veniceWriterProperties).createBasicVeniceWriter(store.getKafkaTopic(), time,
+        isChunkingEnabled, venicePartitioner, partitionCount);
   }
 
   @Override
@@ -292,7 +298,7 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
       pushMonitor.get().start();
     }
 
-    if (pushType.equals(Version.PushType.BATCH) || pushType.equals(Version.PushType.STREAM_REPROCESSING)) {
+    if (pushType.isBatchOrStreamReprocessing()) {
       int versionNumber = versionCreationResponse.getVersion();
       Version version = storeResponse.getStore().getVersion(versionNumber)
           .orElseThrow(() -> new VeniceException("Version info for version " + versionNumber + " not available in store response"));

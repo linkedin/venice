@@ -303,45 +303,6 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
   }
 
   @Test
-  public void testEnableSSLForPush() throws IOException {
-    veniceAdmin.stop(clusterName);
-    veniceAdmin.close();
-    String storeName1 = "testEnableSSLForPush1";
-    String storeName2 = "testEnableSSLForPush2";
-    String storeName3 = "testEnableSSLForPush3";
-    Properties properties = getControllerProperties(clusterName);
-    properties.put(ConfigKeys.SSL_TO_KAFKA, true);
-    properties.put(ConfigKeys.SSL_KAFKA_BOOTSTRAP_SERVERS, kafkaBrokerWrapper.getSSLAddress());
-    properties.put(ConfigKeys.ENABLE_OFFLINE_PUSH_SSL_ALLOWLIST, true);
-    properties.put(ConfigKeys.ENABLE_HYBRID_PUSH_SSL_ALLOWLIST,  false);
-    properties.put(ConfigKeys.PUSH_SSL_ALLOWLIST, storeName1);
-
-    veniceAdmin = new VeniceHelixAdmin(
-        TestUtils.getMultiClusterConfigFromOneCluster(new VeniceControllerConfig(new VeniceProperties(properties))),
-        new MetricsRepository(),
-        D2TestUtils.getAndStartD2Client(zkAddress)
-    );
-
-    veniceAdmin.initStorageCluster(clusterName);
-
-    TestUtils.waitForNonDeterministicCompletion(5, TimeUnit.SECONDS, ()->veniceAdmin.isLeaderControllerFor(clusterName));
-    veniceAdmin.createStore(clusterName, storeName1, "test", KEY_SCHEMA, VALUE_SCHEMA);
-    veniceAdmin.createStore(clusterName, storeName2, "test", KEY_SCHEMA, VALUE_SCHEMA);
-    veniceAdmin.createStore(clusterName, storeName3, "test", KEY_SCHEMA, VALUE_SCHEMA);
-    //store3 is hybrid store.
-    veniceAdmin.updateStore(clusterName, storeName3, new UpdateStoreQueryParams()
-        .setHybridRewindSeconds(1000L)
-        .setHybridOffsetLagThreshold(1000L));
-
-    Assert.assertTrue(veniceAdmin.isSSLEnabledForPush(clusterName, storeName1),
-        "Store1 is in the allowlist, ssl should be enabled.");
-    Assert.assertFalse(veniceAdmin.isSSLEnabledForPush(clusterName, storeName2),
-        "Store2 is not in the allowlist, ssl should be disabled.");
-    Assert.assertTrue(veniceAdmin.isSSLEnabledForPush(clusterName, storeName3),
-        "Store3 is hybrid store, and ssl for nearline push is disabled, so by default ssl should be enabled because we turned on the cluster level ssl switcher.");
-  }
-
-  @Test
   public void testEnableLeaderFollower() throws IOException {
     veniceAdmin.stop(clusterName);
     veniceAdmin.close();
