@@ -46,6 +46,8 @@ import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
+import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.*;
+
 
 @Test(singleThreaded = true)
 public abstract class TestRestartServerDuringIngestion {
@@ -62,6 +64,7 @@ public abstract class TestRestartServerDuringIngestion {
   private Properties getVeniceServerProperties() {
     Properties properties = new Properties();
     properties.put(ConfigKeys.PERSISTENCE_TYPE, getPersistenceType());
+    properties.put(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, false);
     properties.put(ConfigKeys.SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE, 100);
     properties.put(ConfigKeys.SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_TRANSACTIONAL_MODE, 100);
 
@@ -102,7 +105,7 @@ public abstract class TestRestartServerDuringIngestion {
     cluster.close();
   }
 
-  @Test(timeOut = 90 * Time.MS_PER_SECOND)
+  @Test(timeOut = 900 * Time.MS_PER_SECOND)
   public void ingestionRecovery() throws ExecutionException, InterruptedException {
     // Create a store
     String stringSchemaStr = "\"string\"";
@@ -115,8 +118,8 @@ public abstract class TestRestartServerDuringIngestion {
     properties.put(VenicePushJob.VENICE_URL_PROP, veniceUrl);
     properties.put(VenicePushJob.VENICE_STORE_NAME_PROP, storeName);
     TestPushUtils.createStoreForJob(cluster, stringSchemaStr, stringSchemaStr, properties).close();
-    TestPushUtils.makeStoreLF(cluster, storeName);
     TestPushUtils.makeStoreHybrid(cluster, storeName, 3600, 10);
+    TestPushUtils.makeStoreAA(cluster, storeName);
 
     // Create a new version
     VersionCreationResponse versionCreationResponse = null;
