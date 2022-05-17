@@ -21,7 +21,6 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
-
 import org.apache.commons.lang.StringUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -151,8 +150,6 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   private final boolean allowClusterWipe;
 
-  private final boolean useKafkaMirrorMaker;
-
   private final boolean autoCloseIdleConsumersEnabled;
 
   private final boolean childControllerAdminTopicConsumptionEnabled;
@@ -198,7 +195,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
       String parentFabricList = props.getString(PARENT_KAFKA_CLUSTER_FABRIC_LIST, "");
       this.parentFabrics = Utils.parseCommaSeparatedStringToSet(parentFabricList);
       String nativeReplicationSourceFabricAllowlist = props.getStringWithAlternative(NATIVE_REPLICATION_FABRIC_ALLOWLIST,
-          // go/inclusivecode deferred(will be rewoved once all configs have migrated)
+          // go/inclusivecode deferred(will be removed once all configs have migrated)
           NATIVE_REPLICATION_FABRIC_WHITELIST, dataCenterAllowlist);
       this.childDataCenterKafkaUrlMap = parseChildDataCenterKafkaUrl(props, nativeReplicationSourceFabricAllowlist);
       this.childDataCenterKafkaZkMap = parseChildDataCenterKafkaZk(props, nativeReplicationSourceFabricAllowlist);
@@ -311,7 +308,6 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     this.usePushStatusStoreForIncrementalPush = props.getBoolean(USE_PUSH_STATUS_STORE_FOR_INCREMENTAL_PUSH, false);
     this.emergencySourceRegion = props.getString(EMERGENCY_SOURCE_REGION, "");
     this.allowClusterWipe = props.getBoolean(ALLOW_CLUSTER_WIPE, false);
-    this.useKafkaMirrorMaker = props.getBoolean(USE_KAFKA_MIRROR_MAKER, true);
     this.autoCloseIdleConsumersEnabled = props.getBoolean(AUTO_CLOSE_IDLE_CONSUMERS_ENABLED, KafkaClientFactory.DEFAULT_AUTO_CLOSE_IDLE_CONSUMERS_ENABLED);
     this.childControllerAdminTopicConsumptionEnabled = props.getBoolean(CHILD_CONTROLLER_ADMIN_TOPIC_CONSUMPTION_ENABLED, true);
     this.concurrentInitRoutinesEnabled = props.getBoolean(CONCURRENT_INIT_ROUTINES_ENABLED, false);
@@ -616,10 +612,6 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   public boolean isClusterWipeAllowed() {
     return allowClusterWipe;
-  }
-
-  public boolean isUsingKMM() {
-    return useKafkaMirrorMaker;
   }
 
   public boolean isAutoCloseIdleConsumersEnabled() {

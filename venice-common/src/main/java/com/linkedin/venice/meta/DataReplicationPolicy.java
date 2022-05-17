@@ -10,14 +10,12 @@ import java.util.Map;
  */
 public enum DataReplicationPolicy {
   /**
-   * Default value. Samza job per colo pushes to local real-time topic. Leader SNs replicate data to local version
-   * topic.
+   * Default value. Samza job per colo pushes to local real-time topic. Leader SNs replicate data to local version topic.
    */
   NON_AGGREGATE(0),
   /**
-   * Single Samza job or Samza job per colo pushes to corp-lva1 real-time topic. KMMs replicate data to local real-time
-   * topic and Leader SNs replicate data to local version topic. Or under native replication, leader SNs directly
-   * replicate data from corp-lva1 real-time to local version topic.
+   * Single Samza job or Samza job per colo pushes to real-time topic in parent colo. Leader SNs in each colo replicate
+   * data from remote real-time topic to local version topic.
    */
   AGGREGATE(1),
 
@@ -29,7 +27,7 @@ public enum DataReplicationPolicy {
   NONE(2),
 
   /**
-   * Samza job per colo pushes to local real-time topic. Leader SNs replicate data from all colos real-time topic to
+   * Samza job per colo pushes to local real-time topic. Leader SNs replicate data from real-time topic in all colos to
    * local version topic.
    */
   ACTIVE_ACTIVE(3);

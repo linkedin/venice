@@ -5,7 +5,6 @@ import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
-import com.linkedin.venice.integration.utils.MirrorMakerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
@@ -22,6 +21,7 @@ import java.io.File;
 import java.util.List;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import org.apache.avro.Schema;
 import org.apache.commons.io.IOUtils;
@@ -55,9 +55,7 @@ public class TestActiveActiveReplicationForIncPush {
   private List<VeniceControllerWrapper> parentControllers;
   private VeniceTwoLayerMultiColoMultiClusterWrapper multiColoMultiClusterWrapper;
 
-  private ZkServerWrapper zkServer;
-  KafkaBrokerWrapper corpVeniceNativeKafka;
-  KafkaBrokerWrapper corpDefaultParentKafka;
+  KafkaBrokerWrapper veniceParentDefaultKafka;
 
   @DataProvider(name = "storeSize")
   public static Object[][] storeSize() {
@@ -66,15 +64,10 @@ public class TestActiveActiveReplicationForIncPush {
 
   @BeforeClass(alwaysRun = true)
   public void setUp() {
-    //create a kafka for new corp-venice-native cluster
-    zkServer = ServiceFactory.getZkServer();
-    corpVeniceNativeKafka = ServiceFactory.getKafkaBroker(zkServer);
-
     /**
      * Reduce leader promotion delay to 3 seconds;
      * Create a testing environment with 1 parent fabric and 3 child fabrics;
      * Set server and replication factor to 2 to ensure at least 1 leader replica and 1 follower replica;
-     * KMM allowlist config allows replicating all topics.
      */
     Properties serverProperties = new Properties();
     serverProperties.put(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 1L);
@@ -87,15 +80,8 @@ public class TestActiveActiveReplicationForIncPush {
 
     Properties controllerProps = new Properties();
     controllerProps.put(DEFAULT_MAX_NUMBER_OF_PARTITIONS, 1000);
-    controllerProps.put(NATIVE_REPLICATION_SOURCE_FABRIC, "corp-venice-native");
-    controllerProps.put(PARENT_KAFKA_CLUSTER_FABRIC_LIST, "corp-venice-native");
-    controllerProps.put(CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + "corp-venice-native", corpVeniceNativeKafka.getAddress());
-    controllerProps.put(CHILD_DATA_CENTER_KAFKA_ZK_PREFIX + "." + "corp-venice-native", corpVeniceNativeKafka.getZkAddress());
     controllerProps.put(LF_MODEL_DEPENDENCY_CHECK_DISABLED, "true");
-    controllerProps.put(AGGREGATE_REAL_TIME_SOURCE_REGION, DEFAULT_PARENT_DATA_CENTER_REGION_NAME);
-    controllerProps.put(NATIVE_REPLICATION_FABRIC_ALLOWLIST, DEFAULT_PARENT_DATA_CENTER_REGION_NAME);
     int parentKafkaPort = Utils.getFreePort();
-    controllerProps.put(CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + DEFAULT_PARENT_DATA_CENTER_REGION_NAME, "localhost:" + parentKafkaPort);
 
     multiColoMultiClusterWrapper =
         ServiceFactory.getVeniceTwoLayerMultiColoMultiClusterWrapper(
@@ -110,52 +96,48 @@ public class TestActiveActiveReplicationForIncPush {
             Optional.of(controllerProps),
             Optional.of(new VeniceProperties(serverProperties)),
             false,
-            MirrorMakerWrapper.DEFAULT_TOPIC_ALLOWLIST,
             false,
             Optional.of(parentKafkaPort));
     childDatacenters = multiColoMultiClusterWrapper.getClusters();
     parentControllers = multiColoMultiClusterWrapper.getParentControllers();
 
-    corpDefaultParentKafka = multiColoMultiClusterWrapper.getParentKafkaBrokerWrapper();
+    veniceParentDefaultKafka = multiColoMultiClusterWrapper.getParentKafkaBrokerWrapper();
   }
 
   @AfterClass(alwaysRun = true)
   public void cleanUp() {
     multiColoMultiClusterWrapper.close();
-    IOUtils.closeQuietly(corpVeniceNativeKafka);
-    IOUtils.closeQuietly(zkServer);
   }
 
   /**
    * The purpose of this test is to verify that incremental push with RT policy succeeds when A/A is enabled in all colos.
    * And also incremental push can push to the closes kafka cluster from the grid using the SOURCE_GRID_CONFIG.
    */
-  @Test(timeOut = TEST_TIMEOUT, enabled = true)
+  @Test(timeOut = TEST_TIMEOUT)
   public void testAAReplicationForIncrementalPushToRT() throws Exception {
     String clusterName = CLUSTER_NAMES[0];
     File inputDirBatch = getTempDataDirectory();
     File inputDirInc1 = getTempDataDirectory();
     File inputDirInc2 = getTempDataDirectory();
 
-    VeniceControllerWrapper parentController =
-        parentControllers.stream().filter(c -> c.isLeaderController(clusterName)).findAny().get();
+    String parentControllerUrls = parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(
+        Collectors.joining(","));
     String inputDirPathBatch = "file:" + inputDirBatch.getAbsolutePath();
     String inputDirPathInc1 = "file:" + inputDirInc1.getAbsolutePath();
     String inputDirPathInc2 = "file:" + inputDirInc2.getAbsolutePath();
 
-
-    ControllerClient parentControllerClient = new ControllerClient(clusterName, parentController.getControllerUrl());
+    ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerUrls);
     ControllerClient dc0ControllerClient = new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
     ControllerClient dc1ControllerClient = new ControllerClient(clusterName, childDatacenters.get(1).getControllerConnectString());
     ControllerClient dc2ControllerClient = new ControllerClient(clusterName, childDatacenters.get(2).getControllerConnectString());
     String storeName = Utils.getUniqueString("store");
 
     try {
-      Properties propsBatch = defaultH2VProps(parentController.getControllerUrl(), inputDirPathBatch, storeName);
+      Properties propsBatch = defaultH2VProps(parentControllerUrls, inputDirPathBatch, storeName);
       propsBatch.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
-      Properties propsInc1 = defaultH2VProps(parentController.getControllerUrl(), inputDirPathInc1, storeName);
+      Properties propsInc1 = defaultH2VProps(parentControllerUrls, inputDirPathInc1, storeName);
       propsInc1.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
-      Properties propsInc2 = defaultH2VProps(parentController.getControllerUrl(), inputDirPathInc2, storeName);
+      Properties propsInc2 = defaultH2VProps(parentControllerUrls, inputDirPathInc2, storeName);
       propsInc2.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
 
       Schema recordSchema = TestPushUtils.writeSimpleAvroFileWithUserSchema(inputDirBatch, true, 100);
@@ -189,34 +171,30 @@ public class TestActiveActiveReplicationForIncPush {
       UpdateStoreQueryParams disableAARepl =
           new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(false);
 
-      //Print all the kafka cluster URL's
+      //Print all the kafka cluster URLs
       LOGGER.info("KafkaURL dc-0:" + childDatacenters.get(0).getKafkaBrokerWrapper().getAddress());
       LOGGER.info("KafkaURL dc-1:" + childDatacenters.get(1).getKafkaBrokerWrapper().getAddress());
       LOGGER.info("KafkaURL dc-2:" + childDatacenters.get(2).getKafkaBrokerWrapper().getAddress());
-      LOGGER.info("KafkaURL Parent Corp:" + corpDefaultParentKafka.getAddress());
+      LOGGER.info("KafkaURL dc-parent-0:" + veniceParentDefaultKafka.getAddress());
 
-      // Turn on A/A in parent to trigger auto replication schema registration
+      // Turn on A/A in parent to trigger auto replication metadata schema registration
       TestPushUtils.updateStore(clusterName, storeName, parentControllerClient, enableAARepl);
-      TestPushUtils.updateStore(clusterName, storeName, parentControllerClient, disableAARepl);
 
-      //Phase 1 rollout of A/A
       //verify store configs
-      enableAARepl.setRegionsFilter("dc-0");
-      TestPushUtils.updateStore(clusterName, storeName, parentControllerClient, enableAARepl);
-      TestUtils.verifyDCConfigNativeAndActiveRepl(parentControllerClient, storeName, true, false);
+      TestUtils.verifyDCConfigNativeAndActiveRepl(parentControllerClient, storeName, true, true);
       TestUtils.verifyDCConfigNativeAndActiveRepl(dc0ControllerClient, storeName, true, true);
-      TestUtils.verifyDCConfigNativeAndActiveRepl(dc1ControllerClient, storeName, true, false);
-      TestUtils.verifyDCConfigNativeAndActiveRepl(dc2ControllerClient, storeName, true, false);
+      TestUtils.verifyDCConfigNativeAndActiveRepl(dc1ControllerClient, storeName, true, true);
+      TestUtils.verifyDCConfigNativeAndActiveRepl(dc2ControllerClient, storeName, true, true);
 
       //Run a batch push first
-      try (VenicePushJob job = new VenicePushJob("Test push job batch with NR + A/A first fabric", propsBatch)) {
+      try (VenicePushJob job = new VenicePushJob("Test push job batch with NR + A/A all fabrics", propsBatch)) {
         job.run();
         Assert.assertEquals(job.getKafkaUrl(), childDatacenters.get(2).getKafkaBrokerWrapper().getAddress());
       }
-      //Run inc push with source fabric preference not taking effect.
-      try (VenicePushJob job = new VenicePushJob("Test push job incremental with NR + A/A", propsInc1)) {
+      //Run inc push with source fabric preference taking effect.
+      try (VenicePushJob job = new VenicePushJob("Test push job incremental with NR + A/A from dc-2", propsInc1)) {
         job.run();
-        Assert.assertEquals(job.getKafkaUrl(), corpDefaultParentKafka.getAddress());
+        Assert.assertEquals(job.getKafkaUrl(), childDatacenters.get(2).getKafkaBrokerWrapper().getAddress());
       }
 
       //Verify
@@ -224,31 +202,6 @@ public class TestActiveActiveReplicationForIncPush {
         //Verify the current version should be 1.
         Optional<Version> version =
             childDataCenter.getRandomController().getVeniceAdmin().getStore(clusterName, storeName).getVersion(1);
-      }
-      NativeReplicationTestUtils.verifyIncrementalPushData(childDatacenters, clusterName, storeName, 150, 2);
-
-
-      //Phase 2 and Phase 3 rollout of A/A combined together.
-      TestPushUtils.updateStore(clusterName, storeName, parentControllerClient, new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true));
-      TestUtils.verifyDCConfigNativeAndActiveRepl(parentControllerClient, storeName, true, true);
-      TestUtils.verifyDCConfigNativeAndActiveRepl(dc0ControllerClient, storeName, true, true);
-      TestUtils.verifyDCConfigNativeAndActiveRepl(dc1ControllerClient, storeName, true, true);
-      TestUtils.verifyDCConfigNativeAndActiveRepl(dc2ControllerClient, storeName, true, true);
-      //Run a batch push first to create a new version.
-      try (VenicePushJob job = new VenicePushJob("Test push job batch with NR + A/A other fabrics", propsBatch)) {
-        job.run();
-        Assert.assertEquals(job.getKafkaUrl(), childDatacenters.get(2).getKafkaBrokerWrapper().getAddress());
-      }
-      //Run the 2nd inc push with source fabric preference taking effect.
-      try (VenicePushJob job = new VenicePushJob("Test push job incremental with NR + A/A from dc-2", propsInc1)) {
-        job.run();
-        Assert.assertEquals(job.getKafkaUrl(), childDatacenters.get(2).getKafkaBrokerWrapper().getAddress());
-      }
-      //verify
-      for (VeniceMultiClusterWrapper childDataCenter : childDatacenters) {
-        //Verify the current version should be 2.
-        Optional<Version> version =
-            childDataCenter.getRandomController().getVeniceAdmin().getStore(clusterName, storeName).getVersion(2);
       }
       NativeReplicationTestUtils.verifyIncrementalPushData(childDatacenters, clusterName, storeName, 150, 2);
 
@@ -268,5 +221,4 @@ public class TestActiveActiveReplicationForIncPush {
       IOUtils.closeQuietly(dc2ControllerClient);
     }
   }
-
 }

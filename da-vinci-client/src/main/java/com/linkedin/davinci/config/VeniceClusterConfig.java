@@ -40,9 +40,6 @@ public class VeniceClusterConfig {
   private long kafkaFetchQuotaRecordPerSecond;
   private long kafkaFetchQuotaUnorderedBytesPerSecond;
   private long kafkaFetchQuotaUnorderedRecordPerSecond;
-  private int statusMessageRetryCount;
-  private long statusMessageRetryDurationMs ;
-  private int offsetManagerLogFileMaxBytes;
   private int refreshAttemptsForZkReconnect;
   private long refreshIntervalForZkReconnectInMs;
   private long kafkaReadCycleDelayMs;
@@ -118,9 +115,7 @@ public class VeniceClusterConfig {
 
   protected void checkProperties(VeniceProperties clusterProps, Optional<Map<String, Map<String, String>>> kafkaClusterMap) throws ConfigurationException {
     clusterName = clusterProps.getString(CLUSTER_NAME);
-
     zookeeperAddress = clusterProps.getString(ZOOKEEPER_ADDRESS);
-    offsetManagerLogFileMaxBytes = clusterProps.getInt(OFFSET_MANAGER_LOG_FILE_MAX_BYTES, 10 * 1024 * 1024); // 10 MB
 
     try {
       persistenceType = PersistenceType.valueOf(clusterProps.getString(PERSISTENCE_TYPE,
@@ -140,9 +135,6 @@ public class VeniceClusterConfig {
     kafkaFetchQuotaRecordPerSecond = clusterProps.getLong(KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND, -1);
     kafkaFetchQuotaUnorderedBytesPerSecond = clusterProps.getSizeInBytes(KAFKA_FETCH_QUOTA_UNORDERED_BYTES_PER_SECOND, -1);
     kafkaFetchQuotaUnorderedRecordPerSecond = clusterProps.getLong(KAFKA_FETCH_QUOTA_UNORDERED_RECORDS_PER_SECOND, -1);
-
-    statusMessageRetryCount = clusterProps.getInt(STATUS_MESSAGE_RETRY_COUNT, 5);
-    statusMessageRetryDurationMs = clusterProps.getLong(STATUS_MESSAGE_RETRY_DURATION_MS, 1000L);
 
     kafkaSecurityProtocol = clusterProps.getString(KAFKA_SECURITY_PROTOCOL, SecurityProtocol.PLAINTEXT.name());
     if (!KafkaSSLUtils.isKafkaProtocolValid(kafkaSecurityProtocol)) {
@@ -196,14 +188,6 @@ public class VeniceClusterConfig {
         ", kafkaClusterIdToAliasMap: " + kafkaClusterIdToAliasMap +  ", kafkaClusterAliasToIdMap: " + kafkaClusterAliasToIdMap);
   }
 
-  public int getStatusMessageRetryCount() {
-    return statusMessageRetryCount;
-  }
-
-  public long getStatusMessageRetryDurationMs() {
-    return statusMessageRetryDurationMs;
-  }
-
   public String getClusterName() {
     return clusterName;
   }
@@ -222,10 +206,6 @@ public class VeniceClusterConfig {
 
   public String getKafkaZkAddress() {
     return kafkaZkAddress;
-  }
-
-  public int getOffsetManagerLogFileMaxBytes() {
-    return offsetManagerLogFileMaxBytes;
   }
 
   public String getKafkaSecurityProtocol() {

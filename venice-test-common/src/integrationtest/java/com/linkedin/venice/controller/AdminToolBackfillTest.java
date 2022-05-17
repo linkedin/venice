@@ -25,7 +25,6 @@ import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 import static com.linkedin.venice.ConfigKeys.*;
-import static com.linkedin.venice.integration.utils.MirrorMakerWrapper.*;
 import static org.testng.Assert.*;
 
 public class AdminToolBackfillTest {
@@ -58,9 +57,7 @@ public class AdminToolBackfillTest {
         Optional.of(new VeniceProperties(parentControllerProperties)),
         Optional.empty(),
         Optional.empty(),
-        false,
-        DEFAULT_TOPIC_ALLOWLIST
-        );
+        false);
     childDatacenters = multiColoMultiClusterWrapper.getClusters();
     parentControllers = multiColoMultiClusterWrapper.getParentControllers();
   }

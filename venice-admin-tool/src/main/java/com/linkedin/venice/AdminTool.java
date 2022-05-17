@@ -49,8 +49,6 @@ import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.controllerapi.VersionResponse;
 import com.linkedin.venice.controllerapi.routes.AdminCommandExecutionResponse;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.integration.utils.MirrorMakerWrapper;
-import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.VeniceOperationAgainstKafkaTimedOut;
@@ -351,9 +349,6 @@ public class AdminTool {
           break;
         case DELETE_KAFKA_TOPIC:
           deleteKafkaTopic(cmd);
-          break;
-        case START_MIRROR_MAKER:
-          startMirrorMaker(cmd);
           break;
         case DUMP_ADMIN_MESSAGES:
           dumpAdminMessages(cmd);
@@ -1094,23 +1089,6 @@ public class AdminTool {
     } catch (ExecutionException e) {
       printErrAndThrow(e, "Topic deletion failed due to ExecutionException", null);
     }
-  }
-
-  private static void startMirrorMaker(CommandLine cmd) {
-    MirrorMakerWrapper mirrorMaker = ServiceFactory.getKafkaMirrorMaker(
-        getRequiredArgument(cmd, Arg.KAFKA_BOOTSTRAP_SERVERS),
-        getRequiredArgument(cmd, Arg.KAFKA_BOOTSTRAP_SERVERS_DESTINATION),
-        getRequiredArgument(cmd, Arg.KAFKA_ZOOKEEPER_CONNECTION_URL_DESTINATION),
-        getRequiredArgument(cmd, Arg.KAFKA_TOPIC_ALLOWLIST),
-        loadProperties(cmd, Arg.KAFKA_CONSUMER_CONFIG_FILE),
-        loadProperties(cmd, Arg.KAFKA_PRODUCER_CONFIG_FILE));
-
-    while (mirrorMaker.isRunning()) {
-      Utils.sleep(1000);
-    }
-
-    mirrorMaker.close();
-    System.out.println("Closed MM.");
   }
 
   private static void dumpAdminMessages(CommandLine cmd) {

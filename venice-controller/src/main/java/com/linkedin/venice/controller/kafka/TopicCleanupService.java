@@ -203,7 +203,7 @@ public class TopicCleanupService extends AbstractVeniceService {
         topicRetentions.remove(realTimeTopic);
       }
       List<String> oldTopicsToDelete = extractVersionTopicsToCleanup(admin, topicRetentions,
-          minNumberOfUnusedKafkaTopicsToPreserve, multiClusterConfigs.isUsingKMM());
+          minNumberOfUnusedKafkaTopicsToPreserve);
       if (!oldTopicsToDelete.isEmpty()) {
         topics.addAll(oldTopicsToDelete);
       }
@@ -233,14 +233,8 @@ public class TopicCleanupService extends AbstractVeniceService {
     return allStoreTopics;
   }
 
-  // TODO Remove the parameter preserveTopicsForDeletedStore once we move away from KMM. This parameter controls whether
-  // to respect the minNumberOfUnusedKafkaTopicsToPreserve when store is deleted. We'd like to get ALL topics for a
-  // deleted store regardless of minNumberOfUnusedKafkaTopicsToPreserve when queried from the controller endpoint by a
-  // SRE/DEV but not when TopicCleanupService is fetching them for auto delete. This is because topic deletion is async
-  // and we can/might crash the KMM if the topic in child fabric is deleted before the parent fabric while KMM is
-  // performing copying messages.
   public static List<String> extractVersionTopicsToCleanup(Admin admin, Map<String, Long> topicRetentions,
-      int minNumberOfUnusedKafkaTopicsToPreserve, boolean preserveTopicsForDeletedStore) {
+      int minNumberOfUnusedKafkaTopicsToPreserve) {
     if (topicRetentions.isEmpty()) {
       return Collections.emptyList();
     }
@@ -254,8 +248,7 @@ public class TopicCleanupService extends AbstractVeniceService {
     String storeName = Version.parseStoreFromKafkaTopicName(veniceTopics.iterator().next());
     VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(storeName);
     boolean isStoreZkShared = systemStoreType != null && systemStoreType.isStoreZkShared();
-    boolean isStoreDeleted = !preserveTopicsForDeletedStore && !isStoreZkShared && !admin.getStoreConfigRepo()
-        .getStoreConfig(storeName).isPresent();
+    boolean isStoreDeleted = !isStoreZkShared && !admin.getStoreConfigRepo().getStoreConfig(storeName).isPresent();
     // Do not preserve any VT for deleted user stores or zk shared system stores.
     // TODO revisit the behavior if we'd like to support rollback for zk shared system stores.
     final long maxVersionNumberToDelete = isStoreDeleted || isStoreZkShared ?

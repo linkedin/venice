@@ -315,11 +315,6 @@ public class ConfigKeys {
   public static final String ALLOW_CLUSTER_WIPE = "allow.cluster.wipe";
 
   /**
-   * Whether a cluster is still using Kafka Mirror Maker (KMM) to replicate store topics. Default is true.
-   */
-  public static final String USE_KAFKA_MIRROR_MAKER = "use.kafka.mirror.maker";
-
-  /**
    * Whether the controller is in Azure fabric. Default is false.
    */
   public static final String CONTROLLER_IN_AZURE_FABRIC = "controller.in.azure.fabric";
@@ -1064,7 +1059,7 @@ public class ConfigKeys {
    * All other topics (i.e.: those with smaller version numbers) which Venice does not otherwise know about
    * from its metadata will be considered leaked resources and thus be eligible for clean up.
    *
-   * A value greater than zero is recommended for Mirror Maker stability.
+   * A value greater than zero is recommended for Storage Node to not run into UNKNOWN_TOPIC_OR_PARTITION issues
    *
    * N.B.: A known limitation of this preservation setting is that during store deletion, if a topic has been
    * leaked recently due to an aborted push, then there is an edge case where that topic may leak forever.

@@ -280,11 +280,11 @@ public class VeniceSystemFactoryTest {
       assertEquals(((VeniceSystemProducer)producer3).getRunningFabric(), "dc-0");
     }
 
-    //set runningFabric to corp.
-    samzaConfig.put("com.linkedin.app.env", "corp-lva1");
+    //set runningFabric to parent fabric.
+    samzaConfig.put("com.linkedin.app.env", "dc-parent");
     SystemProducer producer4 = factory.getProducer("venice", new MapConfig(samzaConfig), null);
     if (producer4 instanceof VeniceSystemProducer) {
-      assertEquals(((VeniceSystemProducer)producer4).getRunningFabric(), VeniceConstants.NATIVE_REPLICATION_DEFAULT_SOURCE_FABRIC);
+      assertEquals(((VeniceSystemProducer)producer4).getRunningFabric(), "dc-parent");
     }
   }
 }

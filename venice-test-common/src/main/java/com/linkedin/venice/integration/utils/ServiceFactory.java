@@ -38,6 +38,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.*;
 
 
 /**
@@ -141,32 +142,6 @@ public class ServiceFactory {
     return getStatefulService(KafkaBrokerWrapper.SERVICE_NAME, KafkaBrokerWrapper.generateService(zkServerWrapper, Optional.empty(), port));
   }
 
-  public static MirrorMakerWrapper getKafkaMirrorMaker(KafkaBrokerWrapper sourceKafka, KafkaBrokerWrapper targetKafka) {
-    return getService(MirrorMakerWrapper.SERVICE_NAME, MirrorMakerWrapper.generateService(sourceKafka, targetKafka));
-  }
-
-  public static MirrorMakerWrapper getKafkaMirrorMaker(KafkaBrokerWrapper sourceKafka, KafkaBrokerWrapper targetKafka, String allowlistForKMM) {
-    return getService(MirrorMakerWrapper.SERVICE_NAME, MirrorMakerWrapper.generateService(sourceKafka, targetKafka, allowlistForKMM));
-  }
-
-  public static MirrorMakerWrapper getKafkaMirrorMaker(
-      String sourceKafkaAddress,
-      String targetKafkaAddress,
-      String targetZkAddress,
-      String topicAllowlist,
-      Properties consumerProperties,
-      Properties producerProperties) {
-    return getService(
-        MirrorMakerWrapper.SERVICE_NAME,
-        MirrorMakerWrapper.generateService(
-            sourceKafkaAddress,
-            targetKafkaAddress,
-            targetZkAddress,
-            topicAllowlist,
-            consumerProperties,
-            producerProperties));
-  }
-
   /**
    * @return an instance of {@link com.linkedin.venice.controller.VeniceControllerService} with all default settings
    */
@@ -243,7 +218,7 @@ public class ServiceFactory {
      * Add parent fabric name into the controller config.
      */
     Properties props = properties.toProperties();
-    props.setProperty(LOCAL_REGION_NAME, "parent");
+    props.setProperty(LOCAL_REGION_NAME, DEFAULT_PARENT_DATA_CENTER_REGION_NAME);
 
     if (!props.containsKey(CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE)) {
       props.setProperty(CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE, "true");
@@ -542,32 +517,32 @@ public class ServiceFactory {
   public static VeniceTwoLayerMultiColoMultiClusterWrapper getVeniceTwoLayerMultiColoMultiClusterWrapper(int numberOfColos,
       int numberOfClustersInEachColo, int numberOfParentControllers, int numberOfControllers, int numberOfServers, int numberOfRouters,
       int replicationFactor, Optional<VeniceProperties> parentControllerProps,
-      Optional<Properties> childControllerProperties, Optional<VeniceProperties> serverProps, boolean multiD2, String allowlistForKMM) {
+      Optional<Properties> childControllerProperties, Optional<VeniceProperties> serverProps, boolean multiD2) {
     return getService(VeniceTwoLayerMultiColoMultiClusterWrapper.SERVICE_NAME,
         VeniceTwoLayerMultiColoMultiClusterWrapper.generateService(numberOfColos, numberOfClustersInEachColo, numberOfParentControllers,
             numberOfControllers, numberOfServers, numberOfRouters, replicationFactor, parentControllerProps,
-            childControllerProperties, serverProps, multiD2, allowlistForKMM, false, Optional.empty()));
+            childControllerProperties, serverProps, multiD2, false, Optional.empty()));
   }
 
   public static VeniceTwoLayerMultiColoMultiClusterWrapper getVeniceTwoLayerMultiColoMultiClusterWrapper(int numberOfColos,
       int numberOfClustersInEachColo, int numberOfParentControllers, int numberOfControllers, int numberOfServers, int numberOfRouters,
       int replicationFactor, Optional<VeniceProperties> parentControllerProps, Optional<Properties> childControllerProperties,
-      Optional<VeniceProperties> serverProps, boolean multiD2, String allowlistForKMM, boolean forkServer) {
+      Optional<VeniceProperties> serverProps, boolean multiD2, boolean forkServer) {
     return getService(VeniceTwoLayerMultiColoMultiClusterWrapper.SERVICE_NAME,
         VeniceTwoLayerMultiColoMultiClusterWrapper.generateService(numberOfColos, numberOfClustersInEachColo, numberOfParentControllers,
             numberOfControllers, numberOfServers, numberOfRouters, replicationFactor, parentControllerProps,
-            childControllerProperties, serverProps, multiD2, allowlistForKMM, forkServer, Optional.empty()));
+            childControllerProperties, serverProps, multiD2, forkServer, Optional.empty()));
   }
 
   public static VeniceTwoLayerMultiColoMultiClusterWrapper getVeniceTwoLayerMultiColoMultiClusterWrapper(int numberOfColos,
       int numberOfClustersInEachColo, int numberOfParentControllers, int numberOfControllers, int numberOfServers, int numberOfRouters,
       int replicationFactor, Optional<VeniceProperties> parentControllerProps,
-      Optional<Properties> childControllerProperties, Optional<VeniceProperties> serverProps, boolean multiD2, String allowlistForKMM,
+      Optional<Properties> childControllerProperties, Optional<VeniceProperties> serverProps, boolean multiD2,
       boolean forkServer, Optional<Integer> parentKafkaPort) {
     return getService(VeniceTwoLayerMultiColoMultiClusterWrapper.SERVICE_NAME,
         VeniceTwoLayerMultiColoMultiClusterWrapper.generateService(numberOfColos, numberOfClustersInEachColo, numberOfParentControllers,
             numberOfControllers, numberOfServers, numberOfRouters, replicationFactor, parentControllerProps,
-            childControllerProperties, serverProps, multiD2, allowlistForKMM, forkServer, parentKafkaPort));
+            childControllerProperties, serverProps, multiD2, forkServer, parentKafkaPort));
   }
 
   public static HelixAsAServiceWrapper getHelixController(String zkAddress) {

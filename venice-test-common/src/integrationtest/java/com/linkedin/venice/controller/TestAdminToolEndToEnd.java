@@ -42,7 +42,6 @@ public class TestAdminToolEndToEnd {
     Properties properties = new Properties();
     properties.setProperty(LOCAL_REGION_NAME, "dc-0");
     properties.setProperty(ALLOW_CLUSTER_WIPE, "true");
-    properties.setProperty(USE_KAFKA_MIRROR_MAKER, "false");
     venice = ServiceFactory.getVeniceCluster(1, 1, 1, 1, 100000, false, false, properties);
     clusterName = venice.getClusterName();
   }
