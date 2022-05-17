@@ -30,8 +30,3 @@ jar {
     ]
   }
 }
-
-shadowJar {
-  minimize()
-  duplicatesStrategy = DuplicatesStrategy.INCLUDE
-}
