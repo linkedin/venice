@@ -706,7 +706,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     String storeName = Utils.getUniqueString("test_store");
     String pushJobId = Utils.getUniqueString("push_job_id");
     doReturn(new Pair<>(true, new VersionImpl(storeName, 1, pushJobId))).when(internalAdmin)
-        .addVersionAndTopicOnly(clusterName, storeName, pushJobId, VERSION_ID_UNSET, 1, 1, true,
+        .addVersionAndTopicOnly(clusterName, storeName, pushJobId, VERSION_ID_UNSET, 1, 1, false,
             false, Version.PushType.BATCH, null, null, Optional.empty(), -1, 1, Optional.empty(), false);
     try (PartialMockVeniceParentHelixAdmin partialMockParentAdmin = new PartialMockVeniceParentHelixAdmin(internalAdmin, config)) {
       VeniceWriter veniceWriter = mock(VeniceWriter.class);
@@ -718,7 +718,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
           .thenReturn(null)
           .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, -1, 1));
       partialMockParentAdmin.incrementVersionIdempotent(clusterName, storeName, pushJobId, 1, 1);
-      verify(internalAdmin).addVersionAndTopicOnly(clusterName, storeName, pushJobId, VERSION_ID_UNSET, 1, 1, true,
+      verify(internalAdmin).addVersionAndTopicOnly(clusterName, storeName, pushJobId, VERSION_ID_UNSET, 1, 1, false,
           false, Version.PushType.BATCH, null, null, Optional.empty(), -1, 1, Optional.empty(), false);
     }
   }
@@ -1894,11 +1894,11 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
     doReturn(new Pair<>(true, storeAVersion))
         .when(internalAdmin)
-        .addVersionAndTopicOnly(clusterName, storeA, "", VERSION_ID_UNSET, 3, 3, true,
+        .addVersionAndTopicOnly(clusterName, storeA, "", VERSION_ID_UNSET, 3, 3, false,
             false, Version.PushType.BATCH, null, null, Optional.empty(), -1, 1, Optional.empty(), false);
     doReturn(new Pair<>(true, storeBVersion))
         .when(internalAdmin)
-        .addVersionAndTopicOnly(clusterName, storeB, "", VERSION_ID_UNSET, 3, 3, true,
+        .addVersionAndTopicOnly(clusterName, storeB, "", VERSION_ID_UNSET, 3, 3, false,
             false, Version.PushType.BATCH, null, null, Optional.empty(), -1, 1, Optional.empty(), false);
     doReturn(new Exception("test"))
         .when(internalAdmin)

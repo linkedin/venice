@@ -422,11 +422,11 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
   public void testExternalViewDataChangeDeadLock() throws InterruptedException {
     ExecutorService asyncExecutor = Executors.newSingleThreadExecutor();
     try {
-      String storeName = Utils.getUniqueString("test_store");
+      String storeName = Utils.getUniqueString("testExternalViewDataChangeDeadLock");
       veniceAdmin.createStore(clusterName, storeName, storeOwner, KEY_SCHEMA, VALUE_SCHEMA);
       asyncExecutor.submit(() -> {
         // Add version. Hold store write lock and release it before polling EV status.
-        Version version = veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1);
+        veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1);
       });
       Thread.sleep(500);
 
@@ -442,7 +442,8 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
         }
       }
       // If there is a deadlock and then version cannot become online
-      TestUtils.waitForNonDeterministicCompletion(10, TimeUnit.SECONDS, () -> veniceAdmin.getFutureVersion(clusterName, storeName) == 1);
+      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () ->
+          Assert.assertEquals(veniceAdmin.getCurrentVersion(clusterName, storeName), 1));
     } finally {
       // Kill the running thread so remove the deadlock so that the controller can shut down properly for clean up.
       asyncExecutor.shutdownNow();
