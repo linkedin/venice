@@ -63,10 +63,10 @@ import com.linkedin.venice.helix.ResourceAssignment;
 import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.helix.StoragePersonaRepository;
 import com.linkedin.venice.helix.VeniceOfflinePushMonitorAccessor;
+import com.linkedin.venice.helix.ZkAllowlistAccessor;
 import com.linkedin.venice.helix.ZkClientFactory;
 import com.linkedin.venice.helix.ZkRoutersClusterManager;
 import com.linkedin.venice.helix.ZkStoreConfigAccessor;
-import com.linkedin.venice.helix.ZkAllowlistAccessor;
 import com.linkedin.venice.ingestion.control.RealTimeTopicSwitcher;
 import com.linkedin.venice.kafka.KafkaClientFactory.MetricsParameters;
 import com.linkedin.venice.kafka.TopicDoesNotExistException;
@@ -1232,6 +1232,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
      *   store doesn't exist.
      *   d. The store creation admin message of the host Venice store will be blocked in Child Controller because of
      *   lingering resource check (RT topic of its system store already exists, which is created by KMM).
+     *
+     * TODO: Evaluate if this code needs to change now that KMM has been deprecated.
      *
      * In the future, once Venice gets rid of KMM, the topic won't be automatically created by KMM, and this race condition
      * will be addressed.
@@ -5794,10 +5796,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         return getHelixVeniceClusterResources(clusterName).getStoreMetadataRepository();
     }
 
-    protected boolean isUsingKMM(String clusterName) {
-        return multiClusterConfigs.getControllerConfig(clusterName).isUsingKMM();
-    }
-
     protected void checkResourceCleanupBeforeStoreCreation(String clusterName, String storeName, boolean checkHelixResource) {
         checkControllerLeadershipFor(clusterName);
         ZkStoreConfigAccessor storeConfigAccess = getStoreConfigAccessor(clusterName);
@@ -5818,9 +5816,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         // Check all the topics belonging to this store.
         Set<String> topics = getTopicManager().listTopics();
         /**
-         * So far, there is still a policy for Venice Store to keep the latest couple of topics to avoid KMM crash, so
-         * this function will skip the Version Topic check for now.
-         * Once Venice gets rid of KMM, we could consider to remove all the deprecated version topics.
+         * All store version topics from before deletion will not be used since we will create a new version number
+         * that has not been used previously. We let TopicCleanupService take care of the cleanups.
+         *
+         * The version check skip was introduced when Venice was running with Kafka MirrorMaker to avoid a KMM crash.
+         * TODO: Evaluate if this code needs to change now that KMM logic has been deprecated.
+         *
          * So for topic check, we will ensure the RT topic for the Venice store will be deleted, and all other system
          * store topics.
          */

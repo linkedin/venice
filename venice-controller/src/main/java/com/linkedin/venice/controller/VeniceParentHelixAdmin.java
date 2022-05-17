@@ -1070,12 +1070,8 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   /**
-   * Only keep {@link #maxErroredTopicNumToKeep} non-truncated topics ordered by version
-   * N.B. This method was originally introduced to debug KMM issues. But now it works
-   * as a general method for cleaning up leaking topics. ({@link #maxErroredTopicNumToKeep}
-   * is always 0.)
-   *
-   * TODO: rename the method once we remove the rest of KMM debugging logic.
+   * Only keep {@link #maxErroredTopicNumToKeep} non-truncated topics ordered by version. It works as a general method
+   * for cleaning up leaking topics. ({@link #maxErroredTopicNumToKeep} is always 0.)
    */
   protected void truncateTopicsBasedOnMaxErroredTopicNumToKeep(List<String> topics, boolean isRepush, Map<String, Integer> currentVersionsMap) {
     // Based on current logic, only 'errored' topics were not truncated.

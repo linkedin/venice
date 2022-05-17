@@ -21,7 +21,6 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.DaVinciTestContext;
-import com.linkedin.venice.integration.utils.MirrorMakerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
@@ -118,8 +117,7 @@ public class TestStoreMigration {
         Optional.of(new VeniceProperties(parentControllerProperties)),
         Optional.of(childControllerProperties),
         Optional.of(new VeniceProperties(serverProperties)),
-        true,
-        MirrorMakerWrapper.DEFAULT_TOPIC_ALLOWLIST);
+        true);
 
     multiClusterWrapper = twoLayerMultiColoMultiClusterWrapper.getClusters().get(0);
     String[] clusterNames = multiClusterWrapper.getClusterNames();

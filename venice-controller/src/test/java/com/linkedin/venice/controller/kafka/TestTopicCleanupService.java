@@ -41,6 +41,8 @@ public class TestTopicCleanupService {
     admin = mock(Admin.class);
     storeConfigRepository = mock(HelixReadOnlyStoreConfigRepository.class);
     doReturn(storeConfigRepository).when(admin).getStoreConfigRepo();
+    StoreConfig mockExistentStoreConfig = mock(StoreConfig.class);
+    doReturn(Optional.of(mockExistentStoreConfig)).when(storeConfigRepository).getStoreConfig("existent_store");
     topicManager = mock(TopicManager.class);
     doReturn(topicManager).when(admin).getTopicManager();
     VeniceControllerMultiClusterConfig config = mock(VeniceControllerMultiClusterConfig.class);
@@ -76,16 +78,10 @@ public class TestTopicCleanupService {
 
   @Test
   public void testExtractVeniceTopicsToCleanup() {
-    // minNumberOfUnusedKafkaTopicsToPreserve = 1
     final long LOW_RETENTION_POLICY = 1000L;
     final long HIGH_RETENTION_POLICY = Long.MAX_VALUE;
     doReturn(true).when(admin).isTopicTruncatedBasedOnRetention(LOW_RETENTION_POLICY);
     doReturn(false).when(admin).isTopicTruncatedBasedOnRetention(HIGH_RETENTION_POLICY);
-    List<String> topics = Arrays.asList(
-        "store1_v1",
-        "store1_v2",
-        "store1_v3",
-        "store1_v4");
     Map<String, Long> topicRetentions1 = new HashMap<>();
     topicRetentions1.put("store1_v1", LOW_RETENTION_POLICY);
     topicRetentions1.put("store1_v2", LOW_RETENTION_POLICY);
@@ -93,7 +89,7 @@ public class TestTopicCleanupService {
     topicRetentions1.put("store1_v4", HIGH_RETENTION_POLICY);
     List<String> expectedResult1 = Arrays.asList("store1_v1", "store1_v2");
     List<String> actualResult1 = TopicCleanupService.extractVersionTopicsToCleanup(admin, topicRetentions1,
-        admin.getMinNumberOfUnusedKafkaTopicsToPreserve(), true);
+        admin.getMinNumberOfUnusedKafkaTopicsToPreserve());
     actualResult1.sort(String::compareTo);
     Assert.assertEquals(actualResult1, expectedResult1);
 
@@ -102,9 +98,9 @@ public class TestTopicCleanupService {
     topicRetentions2.put("store1_v2", HIGH_RETENTION_POLICY);
     topicRetentions2.put("store1_v3", LOW_RETENTION_POLICY);
     topicRetentions2.put("store1_v4", LOW_RETENTION_POLICY);
-    List<String> expectedResult2 = Collections.singletonList("store1_v3");
+    List<String> expectedResult2 = Arrays.asList("store1_v3", "store1_v4");
     List<String> actualResult2 = TopicCleanupService.extractVersionTopicsToCleanup(admin, topicRetentions2,
-        admin.getMinNumberOfUnusedKafkaTopicsToPreserve(), true);
+        admin.getMinNumberOfUnusedKafkaTopicsToPreserve());
     actualResult2.sort(String::compareTo);
     Assert.assertEquals(actualResult2, expectedResult2);
 
@@ -115,19 +111,19 @@ public class TestTopicCleanupService {
     topicRetentions3.put("store1_v4", HIGH_RETENTION_POLICY);
     List<String> expectedResult3 = Arrays.asList("store1_v1", "store1_v3");
     List<String> actualResult3 = TopicCleanupService.extractVersionTopicsToCleanup(admin, topicRetentions3,
-        admin.getMinNumberOfUnusedKafkaTopicsToPreserve(), true);
+        admin.getMinNumberOfUnusedKafkaTopicsToPreserve());
     actualResult3.sort(String::compareTo);
     Assert.assertEquals(actualResult3, expectedResult3);
 
     // Test minNumberOfUnusedKafkaTopicsToPreserve = 1 for regular store topics and zk shared system store topics
     Map<String, Long> topicRetentions4 = new HashMap<>();
-    topicRetentions4.put("store1_v1", LOW_RETENTION_POLICY);
-    topicRetentions4.put("store1_v2", LOW_RETENTION_POLICY);
-    topicRetentions4.put("store1_v3", LOW_RETENTION_POLICY);
-    topicRetentions4.put("store1_v4", LOW_RETENTION_POLICY);
-    List<String> expectedResult4 = Arrays.asList("store1_v1", "store1_v2", "store1_v3");
+    topicRetentions4.put("existent_store_v1", LOW_RETENTION_POLICY);
+    topicRetentions4.put("existent_store_v2", LOW_RETENTION_POLICY);
+    topicRetentions4.put("existent_store_v3", LOW_RETENTION_POLICY);
+    topicRetentions4.put("existent_store_v4", LOW_RETENTION_POLICY);
+    List<String> expectedResult4 = Arrays.asList("existent_store_v1", "existent_store_v2", "existent_store_v3");
     List<String> actualResult4 = TopicCleanupService.extractVersionTopicsToCleanup(admin, topicRetentions4,
-        admin.getMinNumberOfUnusedKafkaTopicsToPreserve(), true);
+        admin.getMinNumberOfUnusedKafkaTopicsToPreserve());
     actualResult4.sort(String::compareTo);
     Assert.assertEquals(actualResult4, expectedResult4);
   }
@@ -362,7 +358,7 @@ public class TestTopicCleanupService {
     doReturn(true).when(admin).isTopicTruncatedBasedOnRetention(1000);
     doReturn(false).when(admin).isResourceStillAlive(anyString());
 
-    List<String> deletableTopics = TopicCleanupService.extractVersionTopicsToCleanup(admin, topicRetentions, 2, false);
+    List<String> deletableTopics = TopicCleanupService.extractVersionTopicsToCleanup(admin, topicRetentions, 2);
     assertEquals(deletableTopics.size(), 1, "There should only be one deletable topic");
     assertTrue(deletableTopics.contains(Version.composeKafkaTopic(storeName, 1)));
   }

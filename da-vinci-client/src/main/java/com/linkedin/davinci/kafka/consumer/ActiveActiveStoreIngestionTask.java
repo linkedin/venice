@@ -788,31 +788,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
             -> Version.isRealTimeTopic(upstreamTopicName)
                ? offsetRecord.getUpstreamOffset(sourceKafkaUrl)
                : offsetRecord.getCheckpointUpstreamVersionTopicOffset(),
-        () -> {
-          final String upstreamKafkaURL;
-          if (isLeader(partitionConsumptionState)) {
-            upstreamKafkaURL = kafkaUrl; // Wherever leader consumes from is considered as "upstream"
-          } else {
-            KafkaMessageEnvelope kafkaValue = consumerRecord.value();
-            if (kafkaValue.leaderMetadataFooter == null) {
-              /**
-               * This "leaderMetadataFooter" field do not get populated in 2 cases:
-               *
-               * 1. The source fabric is the same as the local fabric since the VT source will be one of the prod fabric after
-               *    batch NR is fully ramped.
-               *
-               * 2. Leader/Follower stores that have not ramped to NR yet. KMM mirrors data to local VT.
-               *
-               * In both 2 above cases, the leader replica consumes from local Kafka URL. Hence, from a follower's perspective,
-               * the upstream Kafka cluster which the leader consumes from should be the local Kafka URL.
-               */
-              upstreamKafkaURL = localKafkaServer;
-            } else {
-              upstreamKafkaURL = getUpstreamKafkaUrlFromKafkaValue(kafkaValue);
-            }
-          }
-          return upstreamKafkaURL;
-        });
+        () -> getUpstreamKafkaUrl(partitionConsumptionState, consumerRecord, kafkaUrl));
   }
 
   @Override
@@ -837,32 +813,42 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
             -> Version.isRealTimeTopic(upstreamTopicName)
                ? partitionConsumptionState.getLatestProcessedUpstreamRTOffset(sourceKafkaUrl)
                : partitionConsumptionState.getLatestProcessedUpstreamVersionTopicOffset(),
-        () -> {
-          final String upstreamKafkaURL;
-          if (isLeader(partitionConsumptionState)) {
-            // Wherever leader consumes from is considered as "upstream"
-            upstreamKafkaURL = kafkaUrl;
-          } else {
-            KafkaMessageEnvelope kafkaValue = consumerRecord.value();
-            if (kafkaValue.leaderMetadataFooter == null) {
-              /**
-               * This "leaderMetadataFooter" field do not get populated in 2 cases:
-               *
-               * 1. The source fabric is the same as the local fabric since the VT source will be one of the prod fabric after
-               *    batch NR is fully ramped.
-               *
-               * 2. Leader/Follower stores that have not ramped to NR yet. KMM mirrors data to local VT.
-               *
-               * In both 2 above cases, the leader replica consumes from local Kafka URL. Hence, from a follower's perspective,
-               * the upstream Kafka cluster which the leader consumes from should be the local Kafka URL.
-               */
-              upstreamKafkaURL = localKafkaServer;
-            } else {
-              upstreamKafkaURL = getUpstreamKafkaUrlFromKafkaValue(kafkaValue);
-            }
-          }
-          return upstreamKafkaURL;
-        });
+        () -> getUpstreamKafkaUrl(partitionConsumptionState, consumerRecord, kafkaUrl));
+  }
+
+  /**
+   * Get upstream kafka url for record.
+   *   1. For leaders, it is the source where the record was consumed from
+   *   2. For Followers, it is either
+   *       a. The upstream kafka url populated by the leader in the record, or
+   *       b. The local kafka address
+   *
+   * @param partitionConsumptionState The current {@link PartitionConsumptionState} for the partition
+   * @param consumerRecord The record for which the upstream Kafka url needs to be computed
+   * @param recordSourceKafkaUrl The Kafka URL from where the record was consumed
+   * @return The computed upstream Kafka URL for the record
+   */
+  private String getUpstreamKafkaUrl(PartitionConsumptionState partitionConsumptionState,
+      ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord, String recordSourceKafkaUrl) {
+    final String upstreamKafkaURL;
+    if (isLeader(partitionConsumptionState)) {
+      // Wherever leader consumes from is considered as "upstream"
+      upstreamKafkaURL = recordSourceKafkaUrl;
+    } else {
+      KafkaMessageEnvelope kafkaValue = consumerRecord.value();
+      if (kafkaValue.leaderMetadataFooter == null) {
+        /**
+         * This "leaderMetadataFooter" field do not get populated in case the source fabric is the same as the
+         * local fabric since the VT source will be one of the prod fabric after batch NR is fully ramped. The
+         * leader replica consumes from local Kafka URL. Hence, from a follower's perspective, the upstream Kafka
+         * cluster which the leader consumes from should be the local Kafka URL.
+         */
+        upstreamKafkaURL = localKafkaServer;
+      } else {
+        upstreamKafkaURL = getUpstreamKafkaUrlFromKafkaValue(kafkaValue);
+      }
+    }
+    return upstreamKafkaURL;
   }
 
   @Override

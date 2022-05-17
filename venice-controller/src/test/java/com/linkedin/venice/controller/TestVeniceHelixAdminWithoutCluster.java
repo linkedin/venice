@@ -131,7 +131,7 @@ public class TestVeniceHelixAdminWithoutCluster {
 
   /**
    * Right now, version topic check is ignored since today, Venice is still keeping a couple of latest deprecated
-   * version topics to avoid KMM crash.
+   * version topics to avoid SNs failure due to UNKNOWN_TOPIC_OR_PARTITION errors.
    */
   @Test
   public void testCheckResourceCleanupBeforeStoreCreationWhenSomeVersionTopicStillExists() {
@@ -230,8 +230,6 @@ public class TestVeniceHelixAdminWithoutCluster {
     ReadWriteStoreRepository storeRepository = mock(ReadWriteStoreRepository.class);
     doReturn(store.isPresent() ? store.get() : null).when(storeRepository).getStore(storeName);
     doReturn(storeRepository).when(admin).getMetadataRepository(clusterName);
-
-    doReturn(true).when(admin).isUsingKMM(clusterName);
 
     TopicManager topicManager = mock(TopicManager.class);
     doReturn(topics).when(topicManager).listTopics();

@@ -13,7 +13,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
-import java.util.StringJoiner;
 import java.util.concurrent.TimeUnit;
 import org.apache.commons.io.IOUtils;
 
@@ -24,19 +23,17 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
   public static final String SERVICE_NAME = "VeniceTwoLayerMultiCluster";
   private final List<VeniceMultiClusterWrapper> clusters;
   private final List<VeniceControllerWrapper> parentControllers;
-  private final List<MirrorMakerWrapper> mirrorMakers;
   private final ZkServerWrapper zkServerWrapper;
   private final KafkaBrokerWrapper parentKafkaBrokerWrapper;
 
   VeniceTwoLayerMultiColoMultiClusterWrapper(File dataDirectory, ZkServerWrapper zkServerWrapper,
       KafkaBrokerWrapper parentKafkaBrokerWrapper, List<VeniceMultiClusterWrapper> clusters,
-      List<VeniceControllerWrapper> parentControllers, List<MirrorMakerWrapper> mirrorMakers) {
+      List<VeniceControllerWrapper> parentControllers) {
     super(SERVICE_NAME, dataDirectory);
     this.zkServerWrapper = zkServerWrapper;
     this.parentKafkaBrokerWrapper = parentKafkaBrokerWrapper;
     this.parentControllers = parentControllers;
     this.clusters = clusters;
-    this.mirrorMakers = mirrorMakers;
   }
 
   static ServiceProvider<VeniceTwoLayerMultiColoMultiClusterWrapper> generateService(int numberOfColos,
@@ -45,26 +42,24 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
       Optional<VeniceProperties> serverProperties) {
     return generateService(numberOfColos, numberOfClustersInEachColo, numberOfParentControllers, numberOfControllers,
         numberOfServers, numberOfRouters, replicationFactor, parentControllerProperties, Optional.empty(),
-        serverProperties, false, MirrorMakerWrapper.DEFAULT_TOPIC_ALLOWLIST, false, Optional.empty());
+        serverProperties, false, false, Optional.empty());
   }
 
   static ServiceProvider<VeniceTwoLayerMultiColoMultiClusterWrapper> generateService(int numberOfColos,
       int numberOfClustersInEachColo, int numberOfParentControllers, int numberOfControllers, int numberOfServers,
-      int numberOfRouters, int replicationFactor, Optional<VeniceProperties> parentControllerProperties,
-      Optional<Properties> childControllerProperties, Optional<VeniceProperties> serverProperties, boolean multiD2, String allowlistConfigForKMM,
+      int numberOfRouters, int replicationFactor, Optional<VeniceProperties> parentControllerPropertiesOverride,
+      Optional<Properties> childControllerPropertiesOverride, Optional<VeniceProperties> serverProperties, boolean multiD2,
       boolean forkServer, Optional<Integer> parentKafkaPort) {
-
+    String parentColoName = VeniceControllerWrapper.DEFAULT_PARENT_DATA_CENTER_REGION_NAME;
     final List<VeniceControllerWrapper> parentControllers = new ArrayList<>(numberOfParentControllers);
     final List<VeniceMultiClusterWrapper> multiClusters = new ArrayList<>(numberOfColos);
-    final List<MirrorMakerWrapper> mirrorMakers = new ArrayList<>(numberOfColos);
 
     /**
      * Enable participant system store by default in a two-layer multi-colo set-up
      */
-    Properties parentControllerProps = parentControllerProperties.isPresent()
-        ? parentControllerProperties.get().getPropertiesCopy() : new Properties();
-    parentControllerProps.setProperty(PARTICIPANT_MESSAGE_STORE_ENABLED, "true");
-    parentControllerProperties = Optional.of(new VeniceProperties(parentControllerProps));
+    Properties defaultParentControllerProps = new Properties();
+    defaultParentControllerProps.setProperty(PARTICIPANT_MESSAGE_STORE_ENABLED, "true");
+    defaultParentControllerProps.setProperty(ADMIN_TOPIC_REMOTE_CONSUMPTION_ENABLED, "false");
 
     ZkServerWrapper zkServer = null;
     KafkaBrokerWrapper parentKafka = null;
@@ -88,50 +83,72 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
         }
       }
       clusterToD2 = clusterToD2.substring(0, clusterToD2.length() - 1);
-      List<String> allColoNames = new ArrayList<>(numberOfColos);
+      List<String> childColoNames = new ArrayList<>(numberOfColos);
 
       for (int i = 0; i < numberOfColos; i++) {
-        allColoNames.add("dc-" + i);
+        childColoNames.add("dc-" + i);
       }
-      Properties activeActiveRequiredChildControllerProps = new Properties();
-      StringJoiner commonSeparatedStringJoiner = new StringJoiner(",");
+
+      String childColoList = String.join(",", childColoNames);
+
       /**
        * Need to build Zk servers and Kafka brokers first since they are building blocks of a Venice cluster. In other
-       * words, building the remaining part of a Venice cluster sometiems requires knowledge of all Kafka brokers/clusters
+       * words, building the remaining part of a Venice cluster sometimes requires knowledge of all Kafka brokers/clusters
        * and or Zookeeper servers.
        */
-      Map<String, ZkServerWrapper> zkServerByColoName = new HashMap<>(allColoNames.size());
-      Map<String, KafkaBrokerWrapper> kafkaBrokerByColoName = new HashMap<>(allColoNames.size());
+      Map<String, ZkServerWrapper> zkServerByColoName = new HashMap<>(childColoNames.size());
+      Map<String, KafkaBrokerWrapper> kafkaBrokerByColoName = new HashMap<>(childColoNames.size());
 
-      for (String coloName : allColoNames) {
+      defaultParentControllerProps.put(ENABLE_NATIVE_REPLICATION_FOR_BATCH_ONLY, true);
+      defaultParentControllerProps.put(ENABLE_NATIVE_REPLICATION_AS_DEFAULT_FOR_BATCH_ONLY, true);
+      defaultParentControllerProps.put(ENABLE_NATIVE_REPLICATION_FOR_INCREMENTAL_PUSH, true);
+      defaultParentControllerProps.put(ENABLE_NATIVE_REPLICATION_AS_DEFAULT_FOR_INCREMENTAL_PUSH, true);
+      defaultParentControllerProps.put(ENABLE_NATIVE_REPLICATION_FOR_HYBRID, true);
+      defaultParentControllerProps.put(ENABLE_NATIVE_REPLICATION_AS_DEFAULT_FOR_HYBRID, true);
+      defaultParentControllerProps.put(NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_BATCH_ONLY_STORES, childColoNames.get(0));
+      defaultParentControllerProps.put(NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_HYBRID_STORES, childColoNames.get(0));
+      defaultParentControllerProps.put(NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_INCREMENTAL_PUSH_STORES, childColoNames.get(0));
+      defaultParentControllerProps.put(AGGREGATE_REAL_TIME_SOURCE_REGION, parentColoName);
+      defaultParentControllerProps.put(NATIVE_REPLICATION_FABRIC_ALLOWLIST, childColoList + "," + parentColoName);
+
+      final Properties finalParentControllerProperties = new Properties();
+      finalParentControllerProperties.putAll(defaultParentControllerProps);
+      parentControllerPropertiesOverride.ifPresent(p -> finalParentControllerProperties.putAll(p.getPropertiesCopy()));
+
+      Properties nativeReplicationRequiredChildControllerProps = new Properties();
+      nativeReplicationRequiredChildControllerProps.put(ADMIN_TOPIC_SOURCE_REGION, parentColoName);
+      nativeReplicationRequiredChildControllerProps.put(PARENT_KAFKA_CLUSTER_FABRIC_LIST, parentColoName);
+      nativeReplicationRequiredChildControllerProps.put(CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + parentColoName, parentKafka.getAddress());
+      nativeReplicationRequiredChildControllerProps.put(CHILD_DATA_CENTER_KAFKA_ZK_PREFIX + "." + parentColoName, parentKafka.getZkAddress());
+      for (String coloName : childColoNames) {
         ZkServerWrapper zkServerWrapper = ServiceFactory.getZkServer();
         KafkaBrokerWrapper kafkaBrokerWrapper = ServiceFactory.getKafkaBroker(zkServerWrapper);
         allKafkaBrokers.add(kafkaBrokerWrapper);
         zkServerByColoName.put(coloName, zkServerWrapper);
         kafkaBrokerByColoName.put(coloName, kafkaBrokerWrapper);
-        commonSeparatedStringJoiner.add(coloName);
-        activeActiveRequiredChildControllerProps.put(CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + coloName, kafkaBrokerWrapper.getAddress());
+        nativeReplicationRequiredChildControllerProps.put(CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + coloName, kafkaBrokerWrapper.getAddress());
+        nativeReplicationRequiredChildControllerProps.put(CHILD_DATA_CENTER_KAFKA_ZK_PREFIX + "." + coloName, kafkaBrokerWrapper.getZkAddress());
       }
-      String childColoList = commonSeparatedStringJoiner.toString();
+      Properties activeActiveRequiredChildControllerProps = new Properties();
       activeActiveRequiredChildControllerProps.put(ACTIVE_ACTIVE_REAL_TIME_SOURCE_FABRIC_LIST, childColoList);
-      activeActiveRequiredChildControllerProps.put(NATIVE_REPLICATION_FABRIC_ALLOWLIST, childColoList + "," + VeniceControllerWrapper.DEFAULT_PARENT_DATA_CENTER_REGION_NAME);
 
-      if (childControllerProperties.isPresent()) {
-        childControllerProperties.get().putAll(parentControllerProperties.orElse(new VeniceProperties()).toProperties());
-        childControllerProperties.get().putAll(activeActiveRequiredChildControllerProps);
-        childControllerProperties.get().setProperty(PARTICIPANT_MESSAGE_STORE_ENABLED, "true");
-      } else {
-        Properties tempProps = new Properties(parentControllerProperties.orElse(new VeniceProperties()).toProperties());
-        tempProps.putAll(activeActiveRequiredChildControllerProps);
-        tempProps.setProperty(PARTICIPANT_MESSAGE_STORE_ENABLED, "true");
-        childControllerProperties = Optional.of(tempProps);
-      }
-      // Child controllers never turn on LF_MODEL_DEPENDENCY_CHECK_DISABLED
-      childControllerProperties.get().setProperty(LF_MODEL_DEPENDENCY_CHECK_DISABLED, "false");
+      Properties defaultChildControllerProps = new Properties();
+      defaultChildControllerProps.putAll(finalParentControllerProperties);
+      defaultChildControllerProps.putAll(nativeReplicationRequiredChildControllerProps);
+      defaultChildControllerProps.putAll(activeActiveRequiredChildControllerProps);
+      defaultChildControllerProps.setProperty(PARTICIPANT_MESSAGE_STORE_ENABLED, "true");
+      defaultChildControllerProps.setProperty(ADMIN_TOPIC_REMOTE_CONSUMPTION_ENABLED, "true");
+      defaultChildControllerProps.setProperty(LF_MODEL_DEPENDENCY_CHECK_DISABLED, "false");
 
-      // Create multiclusters
+      final Properties finalChildControllerProperties = new Properties();
+      finalChildControllerProperties.putAll(defaultChildControllerProps);
+      childControllerPropertiesOverride.ifPresent(finalChildControllerProperties::putAll);
+
+      Optional<Map<String, Map<String, String>>> kafkaClusterMap = addKafkaClusterIDMappingToServerConfigs(serverProperties, parentColoName, childColoNames, allKafkaBrokers);
+
+      // Create multi-clusters
       for (int i = 0; i < numberOfColos; i++) {
-        String coloName = allColoNames.get(i);
+        String coloName = childColoNames.get(i);
         VeniceMultiClusterWrapper multiClusterWrapper =
             ServiceFactory.getVeniceMultiClusterWrapper(
                     coloName,
@@ -145,10 +162,10 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
                     false,
                     true,
                     multiD2,
-                    childControllerProperties,
+                    Optional.of(finalChildControllerProperties),
                     serverProperties,
                     forkServer,
-                    addKafkaClusterIDMappingToServerConfigs(serverProperties, allColoNames, allKafkaBrokers)
+                    kafkaClusterMap
             );
         multiClusters.add(multiClusterWrapper);
       }
@@ -160,26 +177,19 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
       D2TestUtils.setupD2Config(parentKafka.getZkAddress(), false, D2TestUtils.CONTROLLER_CLUSTER_NAME, VeniceSystemFactory.VENICE_PARENT_D2_SERVICE, false);
       // Create parentControllers for multi-cluster
       for (int i = 0; i < numberOfParentControllers; i++) {
-        // random controller from each multicluster, in reality this should include all controllers, not just one
+        // random controller from each multi-cluster, in reality this should include all controllers, not just one
         VeniceControllerWrapper parentController = ServiceFactory.getVeniceParentController(
             clusterNames, parentKafka.getZkAddress(), parentKafka, childControllers, clusterToD2, false,
-            replicationFactor, parentControllerProperties.orElseGet(() -> new VeniceProperties()), Optional.empty());
+            replicationFactor, new VeniceProperties(finalParentControllerProperties), Optional.empty());
         parentControllers.add(parentController);
-      }
-
-      // Create MirrorMakers
-      for (VeniceMultiClusterWrapper multiCluster : multiClusters) {
-        MirrorMakerWrapper mirrorMakerWrapper = ServiceFactory.getKafkaMirrorMaker(parentKafka, multiCluster.getKafkaBrokerWrapper(), allowlistConfigForKMM);
-        mirrorMakers.add(mirrorMakerWrapper);
       }
 
       final ZkServerWrapper finalZkServer = zkServer;
       final KafkaBrokerWrapper finalParentKafka = parentKafka;
 
       return (serviceName) -> new VeniceTwoLayerMultiColoMultiClusterWrapper(
-          null, finalZkServer, finalParentKafka, multiClusters, parentControllers, mirrorMakers);
+          null, finalZkServer, finalParentKafka, multiClusters, parentControllers);
     } catch (Exception e) {
-      mirrorMakers.forEach(IOUtils::closeQuietly);
       parentControllers.forEach(IOUtils::closeQuietly);
       multiClusters.forEach(IOUtils::closeQuietly);
       IOUtils.closeQuietly(parentKafka);
@@ -190,6 +200,7 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
 
   private static Optional<Map<String, Map<String, String>>> addKafkaClusterIDMappingToServerConfigs(
           Optional<VeniceProperties> serverProperties,
+          String parentColoName,
           List<String> coloNames,
           List<KafkaBrokerWrapper> kafkaBrokers
   ) {
@@ -197,7 +208,7 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
       Map<String, Map<String, String>> kafkaClusterMap = new HashMap<>();
 
       Map<String, String> mapping = new HashMap<>();
-      mapping.put(KAFKA_CLUSTER_MAP_KEY_NAME, "parent");
+      mapping.put(KAFKA_CLUSTER_MAP_KEY_NAME, parentColoName);
       mapping.put(KAFKA_CLUSTER_MAP_KEY_URL, kafkaBrokers.get(0).getAddress());
       kafkaClusterMap.put(String.valueOf(0), mapping);
       for (int i = 1; i <= coloNames.size(); i++) {
@@ -229,7 +240,6 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
 
   @Override
   protected void internalStop() throws Exception {
-    mirrorMakers.forEach(IOUtils::closeQuietly);
     parentControllers.forEach(IOUtils::closeQuietly);
     clusters.forEach(IOUtils::closeQuietly);
     IOUtils.closeQuietly(parentKafkaBrokerWrapper);
@@ -272,20 +282,5 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
       Utils.sleep(Time.MS_PER_SECOND);
     }
     throw new VeniceException("Leader controller does not exist, cluster=" + clusterName);
-  }
-
-  public void addMirrorMakerBetween(VeniceMultiClusterWrapper srcColo, VeniceMultiClusterWrapper dstColo,
-      String allowlistConfigForKMM) {
-    MirrorMakerWrapper mirrorMakerWrapper =
-        ServiceFactory.getKafkaMirrorMaker(srcColo.getKafkaBrokerWrapper(), dstColo.getKafkaBrokerWrapper(),
-            allowlistConfigForKMM);
-    mirrorMakers.add(mirrorMakerWrapper);
-  }
-
-  public void addMirrorMakerBetween(KafkaBrokerWrapper srcKafka, KafkaBrokerWrapper dstKafka,
-      String allowlistConfigForKMM) {
-    MirrorMakerWrapper mirrorMakerWrapper =
-        ServiceFactory.getKafkaMirrorMaker(srcKafka, dstKafka, allowlistConfigForKMM);
-    mirrorMakers.add(mirrorMakerWrapper);
   }
 }

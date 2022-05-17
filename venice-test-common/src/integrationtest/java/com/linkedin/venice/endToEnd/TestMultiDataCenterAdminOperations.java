@@ -11,7 +11,6 @@ import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSe
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
-import com.linkedin.venice.integration.utils.MirrorMakerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
@@ -63,8 +62,7 @@ public class TestMultiDataCenterAdminOperations {
     serverProperties.setProperty(ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1));
     multiColoMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiColoMultiClusterWrapper(
         NUMBER_OF_CHILD_DATACENTERS, NUMBER_OF_CLUSTERS, 1, 1, 1, 1,
-        1, Optional.empty(), Optional.empty(), Optional.of(new VeniceProperties(serverProperties)), false,
-        MirrorMakerWrapper.DEFAULT_TOPIC_ALLOWLIST);
+        1, Optional.empty(), Optional.empty(), Optional.of(new VeniceProperties(serverProperties)), false);
 
     childClusters = multiColoMultiClusterWrapper.getClusters();
     childControllers = childClusters.stream()
@@ -95,7 +93,7 @@ public class TestMultiDataCenterAdminOperations {
   public void testHybridConfigPartitionerConfigConflict() {
     String clusterName = CLUSTER_NAMES[0];
     String storeName = Utils.getUniqueString("store");
-    String parentControllerUrl = parentControllers.get(0).getControllerUrl();
+    String parentControllerUrl = parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(Collectors.joining(","));
 
     // Create store first
     ControllerClient controllerClient = new ControllerClient(clusterName, parentControllerUrl);
@@ -143,33 +141,30 @@ public class TestMultiDataCenterAdminOperations {
             adminOperationSerializer),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
 
+    List<VeniceControllerWrapper> controllersToTest = new ArrayList<>();
+    controllersToTest.add(parentController);
+    childControllers.forEach(controllerList -> controllersToTest.add(controllerList.get(0)));
+
+    // Check if all colos received the bad admin message
     TestUtils.waitForNonDeterministicCompletion(60, TimeUnit.SECONDS, () -> {
-      boolean allDataCenterReceivedFailedAdminMessage = true;
-      for (List<VeniceControllerWrapper> controllers : childControllers) {
-        AdminConsumerService adminConsumerService = controllers.get(0).getAdminConsumerServiceByCluster(clusterName);
-        Map<String, ? extends Metric> metrics = adminConsumerService.getMetricsRepository().metrics();
-        if (metrics.containsKey("." + clusterName + "-admin_consumption_task--failed_admin_messages.Count")) {
-          allDataCenterReceivedFailedAdminMessage &=
-              (metrics.get("." + clusterName + "-admin_consumption_task--failed_admin_messages.Count").value() >= 1.0);
-          long failingOffset = adminConsumerService.getFailingOffset();
-          if (failingOffset >= 0) {
-            // Cleanup the failing admin message to reduce unneeded logging.
-            adminConsumerService.setOffsetToSkip(clusterName, failingOffset, false);
-          }
-        } else {
+      for (VeniceControllerWrapper controller : controllersToTest) {
+        AdminConsumerService adminConsumerService = controller.getAdminConsumerServiceByCluster(clusterName);
+        if (adminConsumerService.getFailingOffset() < 0) {
           return false;
         }
       }
-      return allDataCenterReceivedFailedAdminMessage;
+      return true;
     });
 
-    // Currently, store level isolation is not fully implemented for parent controllers yet.
-    // Skipping the problematic admin message is required to proceed with the other tests while child controllers can
-    // still function with the blocking admin message.
-    AdminConsumerService adminConsumerService = parentController.getAdminConsumerServiceByCluster(clusterName);
-    adminConsumerService.setOffsetToSkip(clusterName, adminConsumerService.getFailingOffset(), false);
-    TestUtils.waitForNonDeterministicCompletion(5, TimeUnit.SECONDS, () -> {
-      boolean allFailedMessagesSkipped = adminConsumerService.getFailingOffset() == -1;
+    // Cleanup the failing admin message
+    for (VeniceControllerWrapper controller : controllersToTest) {
+      AdminConsumerService adminConsumerService = controller.getAdminConsumerServiceByCluster(clusterName);
+      adminConsumerService.setOffsetToSkip(clusterName, adminConsumerService.getFailingOffset(), false);
+    }
+
+    AdminConsumerService parentAdminConsumerService = parentController.getAdminConsumerServiceByCluster(clusterName);
+    TestUtils.waitForNonDeterministicCompletion(30, TimeUnit.SECONDS, () -> {
+      boolean allFailedMessagesSkipped = parentAdminConsumerService.getFailingOffset() == -1;
       for (List<VeniceControllerWrapper> controllerWrappers : childControllers) {
         AdminConsumerService childAdminConsumerService =
             controllerWrappers.get(0).getAdminConsumerServiceByCluster(clusterName);

@@ -7,11 +7,6 @@ dependencies {
     exclude group: 'org.mortbay.jetty' // jetty 6 conflicts with spark-java used in controller api
   }
 
-  implementation (project(':venice-test-common')) {
-    // Used by the command that spins up a MirrorMaker
-    transitive = false
-  }
-
   implementation project(':venice-common')
   implementation project(':venice-controller')
   implementation project(':venice-thin-client')

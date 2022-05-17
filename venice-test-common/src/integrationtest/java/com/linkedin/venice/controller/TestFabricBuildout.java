@@ -9,7 +9,6 @@ import com.linkedin.venice.controllerapi.StoreComparisonResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
-import com.linkedin.venice.integration.utils.MirrorMakerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
@@ -48,7 +47,6 @@ public class TestFabricBuildout {
     Properties childControllerProperties = new Properties();
     childControllerProperties.setProperty(CONTROLLER_ENABLE_BATCH_PUSH_FROM_ADMIN_IN_CHILD, "true");
     childControllerProperties.setProperty(ALLOW_CLUSTER_WIPE, "true");
-    childControllerProperties.setProperty(USE_KAFKA_MIRROR_MAKER, "false");
     childControllerProperties.setProperty(ENABLE_LEADER_FOLLOWER_AS_DEFAULT_FOR_ALL_STORES, "true");
     childControllerProperties.setProperty(ENABLE_NATIVE_REPLICATION_AS_DEFAULT_FOR_BATCH_ONLY, "true");
     Properties serverProperties = new Properties();
@@ -64,8 +62,7 @@ public class TestFabricBuildout {
         Optional.empty(),
         Optional.of(childControllerProperties),
         Optional.of(new VeniceProperties(serverProperties)),
-        false,
-        MirrorMakerWrapper.DEFAULT_TOPIC_ALLOWLIST);
+        false);
 
     childDatacenters = multiColoMultiClusterWrapper.getClusters();
     parentControllers = multiColoMultiClusterWrapper.getParentControllers();
@@ -81,7 +78,7 @@ public class TestFabricBuildout {
     String clusterName = CLUSTER_NAMES[0];
     String storeName = Utils.getUniqueString("store");
 
-    // Test the admin channel with the regular KMM pipeline
+    // Test the admin channel
     VeniceControllerWrapper parentController =
         parentControllers.stream().filter(c -> c.isLeaderController(clusterName)).findAny().get();
     ControllerClient parentControllerClient = ControllerClient.constructClusterControllerClient(clusterName, parentController.getControllerUrl());

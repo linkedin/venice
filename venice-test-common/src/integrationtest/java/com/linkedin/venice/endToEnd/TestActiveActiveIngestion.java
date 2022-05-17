@@ -78,12 +78,10 @@ public class TestActiveActiveIngestion {
     serverProperties.setProperty(ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1));
     serverProperties.put(LF_MODEL_DEPENDENCY_CHECK_DISABLED, "true");
     serverProperties.put(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, false);
-    serverProperties.put(AGGREGATE_REAL_TIME_SOURCE_REGION, DEFAULT_PARENT_DATA_CENTER_REGION_NAME);
-    serverProperties.put(NATIVE_REPLICATION_FABRIC_WHITELIST, DEFAULT_PARENT_DATA_CENTER_REGION_NAME + ",dc-0");
     serverProperties.put(CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + DEFAULT_PARENT_DATA_CENTER_REGION_NAME, "localhost:" + Utils.getFreePort());
     multiColoMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiColoMultiClusterWrapper(
         1, 1, 1, 1, 1, 1,
-        1, Optional.empty(), Optional.empty(), Optional.of(new VeniceProperties(serverProperties)), false, ".*");
+        1, Optional.empty(), Optional.empty(), Optional.of(new VeniceProperties(serverProperties)), false);
 
     childDatacenters = multiColoMultiClusterWrapper.getClusters();
     parentControllers = multiColoMultiClusterWrapper.getParentControllers();
