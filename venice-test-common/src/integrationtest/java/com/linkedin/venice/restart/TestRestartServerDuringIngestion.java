@@ -19,7 +19,6 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.serializer.AvroGenericDeserializer;
 import com.linkedin.venice.serializer.AvroSerializer;
-import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
@@ -27,26 +26,21 @@ import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
-import java.nio.ByteBuffer;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
-import java.util.TreeMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
-import java.util.Optional;
 import org.apache.avro.Schema;
-import org.rocksdb.ComparatorOptions;
-import org.rocksdb.util.BytewiseComparator;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
-import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.*;
+import static com.linkedin.venice.utils.TestUtils.*;
 
 
 @Test(singleThreaded = true)
@@ -64,30 +58,11 @@ public abstract class TestRestartServerDuringIngestion {
   private Properties getVeniceServerProperties() {
     Properties properties = new Properties();
     properties.put(ConfigKeys.PERSISTENCE_TYPE, getPersistenceType());
-    properties.put(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, false);
     properties.put(ConfigKeys.SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE, 100);
     properties.put(ConfigKeys.SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_TRANSACTIONAL_MODE, 100);
 
     properties.putAll(getExtraProperties());
     return properties;
-  }
-
-  private Map<byte[], byte[]> generateInput(int recordCnt, boolean sorted, int startId, AvroSerializer serializer) {
-    Map<byte[], byte[]> records;
-    if (sorted) {
-      BytewiseComparator comparator = new BytewiseComparator(new ComparatorOptions());
-      records = new TreeMap<>((o1, o2) -> {
-        ByteBuffer b1 = ByteBuffer.wrap(o1);
-        ByteBuffer b2 = ByteBuffer.wrap(o2);
-        return comparator.compare(b1, b2);
-      });
-    } else {
-      records = new HashMap<>();
-    }
-    for (int i = startId; i < recordCnt + startId; ++i) {
-      records.put(serializer.serialize(keyPrefix + i), serializer.serialize(valuePrefix + i));
-    }
-    return records;
   }
 
   @BeforeClass(alwaysRun = true)
@@ -105,7 +80,7 @@ public abstract class TestRestartServerDuringIngestion {
     cluster.close();
   }
 
-  @Test(timeOut = 900 * Time.MS_PER_SECOND)
+  @Test(timeOut = 90 * Time.MS_PER_SECOND)
   public void ingestionRecovery() throws ExecutionException, InterruptedException {
     // Create a store
     String stringSchemaStr = "\"string\"";
@@ -118,8 +93,8 @@ public abstract class TestRestartServerDuringIngestion {
     properties.put(VenicePushJob.VENICE_URL_PROP, veniceUrl);
     properties.put(VenicePushJob.VENICE_STORE_NAME_PROP, storeName);
     TestPushUtils.createStoreForJob(cluster, stringSchemaStr, stringSchemaStr, properties).close();
+    TestPushUtils.makeStoreLF(cluster, storeName);
     TestPushUtils.makeStoreHybrid(cluster, storeName, 3600, 10);
-    TestPushUtils.makeStoreAA(cluster, storeName);
 
     // Create a new version
     VersionCreationResponse versionCreationResponse = null;

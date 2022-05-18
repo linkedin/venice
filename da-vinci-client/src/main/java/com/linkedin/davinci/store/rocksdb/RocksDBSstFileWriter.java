@@ -58,6 +58,7 @@ public class RocksDBSstFileWriter {
    * With this way, we could achieve exact-once ingestion, which is required by {@link SstFileWriter}.
    */
   protected static final String ROCKSDB_LAST_FINISHED_SST_FILE_NO = "rocksdb_last_finished_sst_file_no";
+  protected static final String ROCKSDB_LAST_FINISHED_RMD_SST_FILE_NO = "rocksdb_last_finished_rmd_sst_file_no";
   protected static final int REPLICATION_METADATA_COLUMN_FAMILY_INDEX = 1;
   private int lastFinishedSSTFileNo = -1;
   /**
@@ -74,17 +75,17 @@ public class RocksDBSstFileWriter {
   private final Options options;
   private final boolean isRMD;
   private final RocksDBServerConfig rocksDBServerConfig;
+  private final String lastCheckPointedSSTFileNum;
 
   public RocksDBSstFileWriter(String storeName, int partitionId, String dbDir, EnvOptions envOptions, Options options,
       String fullPathForTempSSTFileDir, boolean isRMD, RocksDBServerConfig rocksDBServerConfig) {
     this.storeName = storeName;
     this.partitionId = partitionId;
-    this.fullPathForTempSSTFileDir = isRMD ? RocksDBUtils.composeTempRMDSSTFileDir(dbDir, storeName, partitionId) :
-        RocksDBUtils.composeTempSSTFileDir(dbDir, storeName, partitionId);
     this.envOptions = envOptions;
     this.options = options;
     this.fullPathForTempSSTFileDir = fullPathForTempSSTFileDir;
     this.isRMD = isRMD;
+    this.lastCheckPointedSSTFileNum = isRMD ? ROCKSDB_LAST_FINISHED_RMD_SST_FILE_NO : ROCKSDB_LAST_FINISHED_SST_FILE_NO;
     this.rocksDBServerConfig = rocksDBServerConfig;
   }
 
@@ -122,12 +123,12 @@ public class RocksDBSstFileWriter {
     if (!tempSSTFileDir.exists()) {
       tempSSTFileDir.mkdirs();
     }
-    if (!checkpointedInfo.containsKey(ROCKSDB_LAST_FINISHED_SST_FILE_NO)) {
+    if (!checkpointedInfo.containsKey(lastCheckPointedSSTFileNum)) {
       LOGGER.info("No checkpointed info for store: {}, partition id: {} so RocksDB will start building sst file from beginning", storeName, partitionId);
       lastFinishedSSTFileNo = -1;
       currentSSTFileNo = 0;
     } else {
-      lastFinishedSSTFileNo = Integer.parseInt(checkpointedInfo.get(ROCKSDB_LAST_FINISHED_SST_FILE_NO));
+      lastFinishedSSTFileNo = Integer.parseInt(checkpointedInfo.get(lastCheckPointedSSTFileNum));
       LOGGER.info("Received last finished sst file no: {} for store: {}, partition id: {}", lastFinishedSSTFileNo, storeName, partitionId);
       if (lastFinishedSSTFileNo < 0) {
         throw new VeniceException("Last finished sst file no: " + lastFinishedSSTFileNo + " shouldn't be negative");
@@ -193,7 +194,7 @@ public class RocksDBSstFileWriter {
      */
     Map<String, String> checkpointingInfo = new HashMap<>();
     if (lastFinishedSSTFileNo >= 0) {
-      checkpointingInfo.put(ROCKSDB_LAST_FINISHED_SST_FILE_NO, Integer.toString(lastFinishedSSTFileNo));
+      checkpointingInfo.put(lastCheckPointedSSTFileNum, Integer.toString(lastFinishedSSTFileNo));
     }
     return checkpointingInfo;
   }
