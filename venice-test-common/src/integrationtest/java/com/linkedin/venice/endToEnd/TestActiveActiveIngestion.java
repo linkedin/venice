@@ -1,35 +1,43 @@
 package com.linkedin.venice.endToEnd;
 
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
+import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.hadoop.VenicePushJob;
-import com.linkedin.venice.integration.utils.MirrorMakerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiColoMultiClusterWrapper;
 import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.samza.VeniceSystemFactory;
 import com.linkedin.venice.samza.VeniceSystemProducer;
+import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.utils.TestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.writer.VeniceWriter;
+import com.linkedin.venice.writer.VeniceWriterFactory;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
-import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -40,15 +48,17 @@ import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
+import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.*;
 import static com.linkedin.venice.CommonConfigKeys.*;
 import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.hadoop.VenicePushJob.*;
 import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.*;
 import static com.linkedin.venice.samza.VeniceSystemFactory.*;
 import static com.linkedin.venice.utils.TestPushUtils.*;
+import static com.linkedin.venice.utils.TestUtils.*;
 
 
-public class TestKIFRepush {
+public class TestActiveActiveIngestion {
   private static final int TEST_TIMEOUT = 360 * Time.MS_PER_SECOND;
   private static final String[] CLUSTER_NAMES =
       IntStream.range(0, 1).mapToObj(i -> "venice-cluster" + i).toArray(String[]::new);
@@ -56,12 +66,18 @@ public class TestKIFRepush {
   private List<VeniceMultiClusterWrapper> childDatacenters;
   private List<VeniceControllerWrapper> parentControllers;
   private VeniceTwoLayerMultiColoMultiClusterWrapper multiColoMultiClusterWrapper;
-
+  private String clusterName;
+  private VeniceClusterWrapper clusterWrapper;
+  private VeniceServerWrapper serverWrapper;
+  private AvroSerializer serializer;
   @BeforeClass
   public void setUp() {
+    String stringSchemaStr = "\"string\"";
+    serializer = new AvroSerializer(AvroCompatibilityHelper.parse(stringSchemaStr));
     Properties serverProperties = new Properties();
     serverProperties.setProperty(ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1));
     serverProperties.put(LF_MODEL_DEPENDENCY_CHECK_DISABLED, "true");
+    serverProperties.put(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, false);
     serverProperties.put(AGGREGATE_REAL_TIME_SOURCE_REGION, DEFAULT_PARENT_DATA_CENTER_REGION_NAME);
     serverProperties.put(NATIVE_REPLICATION_FABRIC_WHITELIST, DEFAULT_PARENT_DATA_CENTER_REGION_NAME + ",dc-0");
     serverProperties.put(CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + DEFAULT_PARENT_DATA_CENTER_REGION_NAME, "localhost:" + Utils.getFreePort());
@@ -72,6 +88,8 @@ public class TestKIFRepush {
 
     childDatacenters = multiColoMultiClusterWrapper.getClusters();
     parentControllers = multiColoMultiClusterWrapper.getParentControllers();
+    clusterName = CLUSTER_NAMES[0];
+    clusterWrapper = childDatacenters.get(0).getClusters().get(clusterName);
   }
 
   @AfterClass
@@ -81,8 +99,6 @@ public class TestKIFRepush {
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testKIFRepushActiveActiveStore() throws Exception{
-    String clusterName = CLUSTER_NAMES[0];
-    VeniceClusterWrapper clusterWrapper = childDatacenters.get(0).getClusters().get(clusterName);
     String parentControllerURLs =
         parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(Collectors.joining(","));
     ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerURLs);
@@ -138,6 +154,69 @@ public class TestKIFRepush {
         Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + i);
       }
     }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testActiveActiveStoreRestart() throws Exception{
+    String parentControllerURLs =
+        parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(Collectors.joining(","));
+    ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerURLs);
+    TestUtils.assertCommand(parentControllerClient.configureActiveActiveReplicationForCluster(
+        true, VeniceUserStoreType.BATCH_ONLY.toString(), Optional.empty()));
+    // create a active-active enabled store and run batch push job
+    File inputDir = getTempDataDirectory();
+    Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir);
+    String inputDirPath = "file:" + inputDir.getAbsolutePath();
+    String storeName = Utils.getUniqueString("store");
+    Properties props = defaultH2VProps(parentControllers.get(0).getControllerUrl(), inputDirPath, storeName);
+    String keySchemaStr = recordSchema.getField(props.getProperty(VenicePushJob.KEY_FIELD_PROP)).schema().toString();
+    String valueSchemaStr = recordSchema.getField(props.getProperty(VenicePushJob.VALUE_FIELD_PROP)).schema().toString();
+    UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams()
+        .setActiveActiveReplicationEnabled(true)
+        .setHybridRewindSeconds(5)
+        .setHybridOffsetLagThreshold(2)
+        .setNativeReplicationEnabled(true);
+    createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props,storeParms ).close();
+    // Create a new version
+    VersionCreationResponse versionCreationResponse;
+    versionCreationResponse = TestUtils.assertCommand(
+        parentControllerClient.requestTopicForWrites(storeName, 1024 * 1024, Version.PushType.BATCH,
+            Version.guidBasedDummyPushId(), true, true, false, Optional.empty(),
+            Optional.empty(), Optional.empty(), false, -1));
+
+    String topic = versionCreationResponse.getKafkaTopic();
+    String kafkaUrl = versionCreationResponse.getKafkaBootstrapServers();
+    VeniceWriterFactory veniceWriterFactory = TestUtils.getVeniceWriterFactory(kafkaUrl);
+    try (VeniceWriter<byte[], byte[], byte[]> veniceWriter = veniceWriterFactory.createBasicVeniceWriter(topic)) {
+      veniceWriter.broadcastStartOfPush(true, Collections.emptyMap());
+
+      /**
+       * Restart storage node during batch ingestion.
+       */
+      Map<byte[], byte[]> sortedInputRecords = generateInput(1000, true, 0, serializer);
+      Set<Integer> restartPointSetForSortedInput = new HashSet();
+      restartPointSetForSortedInput.add(346);
+      restartPointSetForSortedInput.add(543);
+      serverWrapper = clusterWrapper.getVeniceServers().get(0);
+      int cur = 0;
+      for (Map.Entry<byte[], byte[]> entry : sortedInputRecords.entrySet()) {
+        if (restartPointSetForSortedInput.contains(++cur)) {
+          // Restart server
+          clusterWrapper.stopVeniceServer(serverWrapper.getPort());
+          clusterWrapper.restartVeniceServer(serverWrapper.getPort());
+        }
+        veniceWriter.put(entry.getKey(), entry.getValue(), 1, null);
+      }
+      veniceWriter.broadcastEndOfPush(Collections.emptyMap());
+    }
+
+    // Wait push completed.
+    TestUtils.waitForNonDeterministicCompletion(20, TimeUnit.SECONDS,
+        () -> clusterWrapper.getLeaderVeniceController()
+            .getVeniceAdmin()
+            .getOffLinePushStatus(clusterWrapper.getClusterName(), topic)
+            .getExecutionStatus()
+            .equals(ExecutionStatus.COMPLETED));
   }
 
   private void runSamzaStreamJob(String storeName) {

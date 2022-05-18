@@ -1,5 +1,6 @@
 package com.linkedin.venice.utils;
 
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.kafka.consumer.AggKafkaConsumerService;
 import com.linkedin.davinci.kafka.consumer.KafkaClusterBasedRecordThrottler;
@@ -54,6 +55,7 @@ import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
+import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.writer.ApacheKafkaProducer;
 import com.linkedin.venice.writer.KafkaProducerWrapper;
@@ -63,6 +65,7 @@ import com.linkedin.venice.writer.VeniceWriterFactory;
 
 import io.tehuti.metrics.MetricsRepository;
 
+import java.nio.ByteBuffer;
 import java.security.Permission;
 import java.util.ArrayDeque;
 import java.util.Arrays;
@@ -74,6 +77,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.TreeMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
@@ -88,6 +92,8 @@ import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.rocksdb.ComparatorOptions;
+import org.rocksdb.util.BytewiseComparator;
 import org.testng.Assert;
 
 import static com.linkedin.venice.ConfigKeys.*;
@@ -624,5 +630,23 @@ public class TestUtils {
         .setCacheWarmingThreadPool(mock(ExecutorService.class))
         .setPartitionStateSerializer(mock(InternalAvroSpecificSerializer.class))
         .setIsDaVinciClient(false);
+  }
+
+  public static Map<byte[], byte[]> generateInput(int recordCnt, boolean sorted, int startId, AvroSerializer serializer) {
+    Map<byte[], byte[]> records;
+    if (sorted) {
+      BytewiseComparator comparator = new BytewiseComparator(new ComparatorOptions());
+      records = new TreeMap<>((o1, o2) -> {
+        ByteBuffer b1 = ByteBuffer.wrap(o1);
+        ByteBuffer b2 = ByteBuffer.wrap(o2);
+        return comparator.compare(b1, b2);
+      });
+    } else {
+      records = new HashMap<>();
+    }
+    for (int i = startId; i < recordCnt + startId; ++i) {
+      records.put(serializer.serialize("key" + i), serializer.serialize("value" + i));
+    }
+    return records;
   }
 }

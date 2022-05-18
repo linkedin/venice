@@ -153,7 +153,7 @@ public class ReplicationMetadataRocksDBStoragePartition extends RocksDBStoragePa
     Map<String, String> checkpointingInfo = super.sync();
     // if deferredWrite is false, super.sync will flush both the column families
     if (deferredWrite) {
-      rocksDBSstFileWriter.sync();
+      checkpointingInfo.putAll(rocksDBSstFileWriter.sync());
     }
     return checkpointingInfo;
   }
