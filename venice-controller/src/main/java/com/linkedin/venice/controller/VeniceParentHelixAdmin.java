@@ -14,7 +14,6 @@ import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controller.authorization.SystemStoreAclSynchronizationTask;
-import com.linkedin.venice.controller.datarecovery.DataRecoveryManager;
 import com.linkedin.venice.controller.kafka.AdminTopicUtils;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumptionTask;
@@ -59,6 +58,7 @@ import com.linkedin.venice.controller.migration.MigrationPushStrategyZKAccessor;
 import com.linkedin.venice.controllerapi.AdminCommandExecution;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
+import com.linkedin.venice.controllerapi.D2ControllerClient;
 import com.linkedin.venice.controllerapi.IncrementalPushVersionsResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
@@ -251,6 +251,9 @@ public class VeniceParentHelixAdmin implements Admin {
   private final ExecutorService systemStoreAclSynchronizationExecutor;
 
   private final LingeringStoreVersionChecker lingeringStoreVersionChecker;
+
+  // New fabric controller client map per cluster per fabric
+  private final Map<String, Map<String, ControllerClient>> newFabricControllerClinetMap = new VeniceConcurrentHashMap<>();
 
   // Visible for testing
   public VeniceParentHelixAdmin(VeniceHelixAdmin veniceHelixAdmin, VeniceControllerMultiClusterConfig multiClusterConfigs) {
@@ -2589,16 +2592,15 @@ public class VeniceParentHelixAdmin implements Admin {
   @Override
   public void initiateDataRecovery(String clusterName, String storeName, int version, String sourceFabric,
       String destinationFabric, boolean copyAllVersionConfigs, Optional<Version> ignored) {
-    Map<String, ControllerClient> childControllerClientMap = veniceHelixAdmin.getControllerClientMap(clusterName);
-    DataRecoveryManager.validateSourceAndDestinationFabrics(childControllerClientMap, sourceFabric, destinationFabric);
-    StoreInfo storeInfo = childControllerClientMap.get(sourceFabric).getStore(storeName).getStore();
+    ControllerClient srcFabricChildControllerClient = getFabricBuildoutControllerClient(clusterName, sourceFabric);
+    ControllerClient destFabricChildControllerClient = getFabricBuildoutControllerClient(clusterName, destinationFabric);
+    StoreInfo storeInfo = srcFabricChildControllerClient.getStore(storeName).getStore();
     Optional<Version> sourceVersion = storeInfo.getVersion(version);
     if (!sourceVersion.isPresent()) {
       throw new VeniceException("Version: " + version + " does not exist in the given source fabric: " + sourceFabric);
     }
-    ControllerResponse destinationFabricResponse = childControllerClientMap.get(destinationFabric)
-        .dataRecovery(sourceFabric, destinationFabric, storeName, version, true, copyAllVersionConfigs,
-            sourceVersion);
+    ControllerResponse destinationFabricResponse = destFabricChildControllerClient.dataRecovery(sourceFabric,
+        destinationFabric, storeName, version, true, copyAllVersionConfigs, sourceVersion);
     if (destinationFabricResponse.isError()) {
       throw new VeniceException("Failed to initiate data recovery in destination fabric, error: "
           + destinationFabricResponse.getError());
@@ -2608,12 +2610,12 @@ public class VeniceParentHelixAdmin implements Admin {
   @Override
   public void prepareDataRecovery(String clusterName, String storeName, int version, String sourceFabric,
       String destinationFabric, Optional<Integer> ignored) {
-    Map<String, ControllerClient> childControllerClientMap = veniceHelixAdmin.getControllerClientMap(clusterName);
-    DataRecoveryManager.validateSourceAndDestinationFabrics(childControllerClientMap, sourceFabric, destinationFabric);
-    StoreInfo sourceStoreInfo = childControllerClientMap.get(sourceFabric).getStore(storeName).getStore();
+    ControllerClient srcFabricChildControllerClient = getFabricBuildoutControllerClient(clusterName, sourceFabric);
+    ControllerClient destFabricChildControllerClient = getFabricBuildoutControllerClient(clusterName, destinationFabric);
+    StoreInfo sourceStoreInfo = srcFabricChildControllerClient.getStore(storeName).getStore();
     int amplificationFactor = sourceStoreInfo.getPartitionerConfig().getAmplificationFactor();
-    ControllerResponse destinationFabricResponse = childControllerClientMap.get(destinationFabric)
-        .prepareDataRecovery(sourceFabric, destinationFabric, storeName, version, Optional.of(amplificationFactor));
+    ControllerResponse destinationFabricResponse = destFabricChildControllerClient.prepareDataRecovery(sourceFabric,
+        destinationFabric, storeName, version, Optional.of(amplificationFactor));
     if (destinationFabricResponse.isError()) {
       throw new VeniceException("Failed to prepare for data recovery in destination fabric, error: "
           + destinationFabricResponse.getError());
@@ -2623,14 +2625,14 @@ public class VeniceParentHelixAdmin implements Admin {
   @Override
   public Pair<Boolean, String> isStoreVersionReadyForDataRecovery(String clusterName, String storeName, int version,
       String sourceFabric, String destinationFabric, Optional<Integer> ignored) {
-    Map<String, ControllerClient> childControllerClientMap = veniceHelixAdmin.getControllerClientMap(clusterName);
     try {
-      DataRecoveryManager.validateSourceAndDestinationFabrics(childControllerClientMap, sourceFabric, destinationFabric);
-      StoreInfo sourceStoreInfo = childControllerClientMap.get(sourceFabric).getStore(storeName).getStore();
+      ControllerClient srcFabricChildControllerClient = getFabricBuildoutControllerClient(clusterName, sourceFabric);
+      ControllerClient destFabricChildControllerClient = getFabricBuildoutControllerClient(clusterName, destinationFabric);
+      StoreInfo sourceStoreInfo = srcFabricChildControllerClient.getStore(storeName).getStore();
       int amplificationFactor = sourceStoreInfo.getPartitionerConfig().getAmplificationFactor();
-      ReadyForDataRecoveryResponse destinationFabricResponse = childControllerClientMap
-          .get(destinationFabric).isStoreVersionReadyForDataRecovery(sourceFabric, destinationFabric, storeName,
-              version, Optional.of(amplificationFactor));
+      ReadyForDataRecoveryResponse destinationFabricResponse = destFabricChildControllerClient
+          .isStoreVersionReadyForDataRecovery(sourceFabric, destinationFabric, storeName, version,
+              Optional.of(amplificationFactor));
       return new Pair<>(destinationFabricResponse.isReady(), destinationFabricResponse.getReason());
     } catch (Exception e) {
       return new Pair<>(false, e.getMessage());
@@ -2831,6 +2833,8 @@ public class VeniceParentHelixAdmin implements Admin {
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
     }
+    newFabricControllerClinetMap.forEach((clusterName, controllerClientMap) -> controllerClientMap.values()
+        .forEach(Utils::closeQuietlyWithErrorLogged));
   }
 
   @Override
@@ -3434,12 +3438,7 @@ public class VeniceParentHelixAdmin implements Admin {
 
   @Override
   public void wipeCluster(String clusterName, String fabric, Optional<String> storeName, Optional<Integer> versionNum) {
-    String childControllerUrl = multiClusterConfigs.getControllerConfig(clusterName).getChildControllerUrl(fabric);
-    if (StringUtils.isEmpty(childControllerUrl)) {
-      throw new VeniceException("child.cluster.url." + fabric + " is missing in parent controller.");
-    }
-    ControllerClient childControllerClient = ControllerClient.constructClusterControllerClient(clusterName,
-        childControllerUrl, sslFactory);
+    ControllerClient childControllerClient = getFabricBuildoutControllerClient(clusterName, fabric);
     ControllerResponse response = childControllerClient.wipeCluster(fabric, storeName, versionNum);
     if (response.isError()) {
       throw new VeniceException("Could not wipe cluster " + clusterName + " in colo: " + fabric + ". " + response.getError());
@@ -3449,18 +3448,8 @@ public class VeniceParentHelixAdmin implements Admin {
   @Override
   public StoreComparisonInfo compareStore(String clusterName, String storeName, String fabricA, String fabricB)
       throws IOException {
-    String childControllerUrlA = multiClusterConfigs.getControllerConfig(clusterName).getChildControllerUrl(fabricA);
-    if (StringUtils.isEmpty(childControllerUrlA)) {
-      throw new VeniceException("child.cluster.url." + fabricA + " is missing in parent controller.");
-    }
-    String childControllerUrlB = multiClusterConfigs.getControllerConfig(clusterName).getChildControllerUrl(fabricB);
-    if (StringUtils.isEmpty(childControllerUrlB)) {
-      throw new VeniceException("child.cluster.url." + fabricB + " is missing in parent controller.");
-    }
-    ControllerClient controllerClientA = ControllerClient.constructClusterControllerClient(clusterName,
-        childControllerUrlA, sslFactory);
-    ControllerClient controllerClientB = ControllerClient.constructClusterControllerClient(clusterName,
-        childControllerUrlB, sslFactory);
+    ControllerClient controllerClientA = getFabricBuildoutControllerClient(clusterName, fabricA);
+    ControllerClient controllerClientB = getFabricBuildoutControllerClient(clusterName, fabricB);
 
     StoreComparisonInfo result = new StoreComparisonInfo();
     compareStoreProperties(storeName, fabricA, fabricB, controllerClientA, controllerClientB, result);
@@ -3574,21 +3563,9 @@ public class VeniceParentHelixAdmin implements Admin {
 
   @Override
   public StoreInfo copyOverStoreSchemasAndConfigs(String clusterName, String srcFabric, String destFabric, String storeName) {
-    String srcFabricChildControllerUrl = multiClusterConfigs.getControllerConfig(clusterName).getChildControllerUrl(srcFabric);
-    if (StringUtils.isEmpty(srcFabricChildControllerUrl)) {
-      throw new VeniceException("child.cluster.url." + srcFabric + " is missing in parent controller.");
-    }
-    String destFabricChildControllerUrl = multiClusterConfigs.getControllerConfig(clusterName).getChildControllerUrl(destFabric);
-    if (StringUtils.isEmpty(destFabricChildControllerUrl)) {
-      throw new VeniceException("child.cluster.url." + destFabric + " is missing in parent controller.");
-    }
-
     try {
-      ControllerClient srcFabricChildControllerClient =
-          ControllerClient.constructClusterControllerClient(clusterName, srcFabricChildControllerUrl, sslFactory);
-      ControllerClient destFabricChildControllerClient =
-          ControllerClient.constructClusterControllerClient(clusterName, destFabricChildControllerUrl, sslFactory);
-
+      ControllerClient srcFabricChildControllerClient = getFabricBuildoutControllerClient(clusterName, srcFabric);
+      ControllerClient destFabricChildControllerClient = getFabricBuildoutControllerClient(clusterName, destFabric);
       long storeExecutionId;
       StoreInfo storeInfo;
       String keySchema;
@@ -3661,5 +3638,34 @@ public class VeniceParentHelixAdmin implements Admin {
 
   protected UserSystemStoreLifeCycleHelper getSystemStoreLifeCycleHelper() {
     return systemStoreLifeCycleHelper;
+  }
+
+  private ControllerClient getFabricBuildoutControllerClient(String clusterName, String fabric) {
+    Map<String, ControllerClient> controllerClients = getVeniceHelixAdmin().getControllerClientMap(clusterName);
+    if (controllerClients.containsKey(fabric)) {
+      return controllerClients.get(fabric);
+    }
+
+    // For fabrics not in allowlist, build controller clients using child cluster configs and cache them in another map
+    ControllerClient value = newFabricControllerClinetMap.computeIfAbsent(clusterName, cn ->
+        new VeniceConcurrentHashMap<>()).computeIfAbsent(fabric, f -> {
+          VeniceControllerConfig controllerConfig = multiClusterConfigs.getControllerConfig(clusterName);
+          String d2ZkHost = controllerConfig.getChildControllerD2ZkHost(fabric);
+          String d2ServiceName = controllerConfig.getD2ServiceName();
+          if (StringUtils.isNotBlank(d2ZkHost) && StringUtils.isNotBlank(d2ServiceName)) {
+            return new D2ControllerClient(d2ServiceName, clusterName, d2ZkHost, sslFactory);
+          }
+          String url = controllerConfig.getChildControllerUrl(fabric);
+          if (StringUtils.isNotBlank(url)) {
+            return ControllerClient.constructClusterControllerClient(clusterName, url, sslFactory);
+          }
+          return null;
+        });
+
+    if (value == null) {
+      throw new VeniceException("Could not construct child controller client for cluster " + clusterName + " fabric "
+          + fabric + ". child.cluster.d2 or child.cluster.url value is missing in parent controller");
+    }
+    return value;
   }
 }

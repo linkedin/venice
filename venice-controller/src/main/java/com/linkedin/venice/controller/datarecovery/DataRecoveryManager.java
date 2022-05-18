@@ -6,7 +6,6 @@ import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
-import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
@@ -23,7 +22,6 @@ import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.Closeable;
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.TimeUnit;
 
 
 /**
@@ -35,23 +33,11 @@ import java.util.concurrent.TimeUnit;
  *   3. Initiate the data recovery by recreating the version, kafka topic and Helix resources accordingly.
  */
 public class DataRecoveryManager implements Closeable {
-  private static final long READY_TO_START_DATA_RECOVERY_CHECK_DELAY = TimeUnit.SECONDS.toMillis(10);
-
   private final VeniceHelixAdmin veniceAdmin;
   private final D2Client d2Client;
   private final Optional<ICProvider> icProvider;
   private final Map<String, AvroSpecificStoreClient<ParticipantMessageKey, ParticipantMessageValue>> clientMap =
       new VeniceConcurrentHashMap<>();
-
-  public static void validateSourceAndDestinationFabrics(Map<String, ControllerClient> childControllerClientMap,
-      String sourceFabric, String destinationFabric) {
-    if (!childControllerClientMap.containsKey(sourceFabric)) {
-      throw new VeniceException("Source fabric: " + sourceFabric + " does not exist");
-    }
-    if (!childControllerClientMap.containsKey(destinationFabric)) {
-      throw new VeniceException("Destination fabric: " + destinationFabric + " does not exist");
-    }
-  }
 
   public DataRecoveryManager(VeniceHelixAdmin veniceAdmin, D2Client d2Client, Optional<ICProvider> icProvider) {
     this.veniceAdmin = veniceAdmin;
