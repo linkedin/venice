@@ -17,7 +17,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
@@ -617,6 +616,10 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   public String getChildControllerUrl(String fabric) {
     return getProps().getString(CHILD_CLUSTER_URL_PREFIX + "." + fabric, "");
+  }
+
+  public String getChildControllerD2ZkHost(String fabric) {
+    return getProps().getString(CHILD_CLUSTER_D2_PREFIX + "." + fabric, "");
   }
 
   public boolean isClusterWipeAllowed() {

@@ -323,7 +323,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     private int pushJobDetailsSchemaId = -1;
 
     private static final String PUSH_JOB_DETAILS_WRITER = "PUSH_JOB_DETAILS_WRITER";
-    private static final String SYSTEM_STORE_PUSH_JOB_ID = "system_store_push_job";
     private final Map<String, VeniceWriter> jobTrackingVeniceWriterMap = new VeniceConcurrentHashMap<>();
 
     // This map stores the time when topics were created. It only contains topics whose information has not yet been persisted to Zk.
