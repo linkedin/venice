@@ -219,7 +219,7 @@ public class AvroSchemaUtils {
    */
   @Nullable
   public static Object getFieldDefault(Schema.Field field) {
-    return AvroCompatibilityHelper.fieldHasDefault(field) ? AvroCompatibilityHelper.getGenericDefaultValue(field) : null;
+    return AvroCompatibilityHelper.fieldHasDefault(field) ? AvroCompatibilityHelper.getNullableGenericDefaultValue(field) : null;
   }
 
   private static boolean compareFields(Schema s1, Schema s2) {
