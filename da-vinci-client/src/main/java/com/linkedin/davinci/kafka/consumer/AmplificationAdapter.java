@@ -75,7 +75,7 @@ class AmplificationAdapter {
     if (partitionConsumptionStateMap.containsKey(leaderSubPartition)) {
       return partitionConsumptionStateMap.get(leaderSubPartition).getLeaderFollowerState();
     }
-    // By default L/F state is STANDBY
+    // By default, L/F state is STANDBY
     return LeaderFollowerStateType.STANDBY;
   }
 

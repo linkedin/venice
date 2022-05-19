@@ -472,7 +472,7 @@ public class DaVinciClientTest {
     }
   }
 
-  @Test(dataProvider = "AmplificationFactor-and-ObjectCache", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT)
+  @Test(dataProvider = "AmplificationFactor-and-ObjectCache", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT * 2)
   public void testHybridStoreWithoutIngestionIsolation(boolean isAmplificationFactorEnabled, DaVinciConfig daVinciConfig) throws Exception {
     // Create store
     final int partition = 1;

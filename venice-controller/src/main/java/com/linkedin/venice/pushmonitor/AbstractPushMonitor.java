@@ -639,12 +639,12 @@ public abstract class AbstractPushMonitor
                 activeActiveRealTimeSourceKafkaURLs);
             newStatusDetails = "kicked off buffer replay";
             updatePushStatus(offlinePushStatus, ExecutionStatus.END_OF_PUSH_RECEIVED, Optional.of(newStatusDetails));
-            logger.info("Successfully " + newStatusDetails + " for offlinePushStatus: " + offlinePushStatus.toString());
+            logger.info("Successfully " + newStatusDetails + " for offlinePushStatus: " + offlinePushStatus);
           } catch (Exception e) {
             // TODO: Figure out a better error handling...
             String newStatusDetails = "Failed to kick off the buffer replay";
             handleOfflinePushUpdate(offlinePushStatus, ExecutionStatus.ERROR, Optional.of(newStatusDetails));
-            logger.error(newStatusDetails + " for offlinePushStatus: " + offlinePushStatus.toString(), e);
+            logger.error(newStatusDetails + " for offlinePushStatus: " + offlinePushStatus, e);
           }
         } else {
           String newStatusDetails = "The TopicReplicator was not properly initialized!";

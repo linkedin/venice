@@ -684,6 +684,27 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   @Override
   protected void processTopicSwitch(ControlMessage controlMessage, int partition, long offset,
       PartitionConsumptionState partitionConsumptionState) {
+    /**
+     * During batch push, all subPartitions in LEADER will consume from leader topic (either local or remote VT)
+     * Once we switch into RT topic consumption, only leaderSubPartition should be acting as LEADER role.
+     * Hence, before processing TopicSwitch message, we need to force downgrade other subPartitions into FOLLOWER.
+     */
+    if (isLeader(partitionConsumptionState) && !amplificationAdapter.isLeaderSubPartition(partition)) {
+      logger.info("SubPartition: " + partitionConsumptionState.getPartition() + " is demoted from LEADER to STANDBY.");
+      String currentLeaderTopic = partitionConsumptionState.getOffsetRecord().getLeaderTopic();
+      consumerUnSubscribe(currentLeaderTopic, partitionConsumptionState);
+
+      waitForLastLeaderPersistFuture(
+          partitionConsumptionState,
+          String.format(
+              "Leader failed to produce the last message to version topic before switching feed topic from %s to %s on partition %s",
+              currentLeaderTopic, kafkaVersionTopic, partition)
+      );
+      partitionConsumptionState.setConsumeRemotely(false);
+      partitionConsumptionState.setLeaderFollowerState(STANDBY);
+      consumerSubscribe(kafkaVersionTopic, partitionConsumptionState.getSourceTopicPartition(kafkaVersionTopic),
+          partitionConsumptionState.getLatestProcessedLocalVersionTopicOffset(), localKafkaServer);
+    }
 
     TopicSwitch topicSwitch = (TopicSwitch) controlMessage.controlMessageUnion;
     reportStatusAdapter.reportTopicSwitchReceived(partitionConsumptionState);
@@ -695,7 +716,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       final int newSourceTopicPartition = partitionConsumptionState.getSourceTopicPartition(newSourceTopicName);
       AtomicInteger numberOfContactedBrokers = new AtomicInteger(0);
       topicSwitch.sourceKafkaServers.forEach(sourceKafkaURL -> {
-        long rewindStartTimestamp = 0;
+        long rewindStartTimestamp;
         //calculate the rewind start time here if controller asked to do so by using this sentinel value.
         if (topicSwitch.rewindStartTimestamp == REWIND_TIME_DECIDED_BY_SERVER) {
           rewindStartTimestamp = calculateRewindStartTime(partitionConsumptionState);
@@ -725,7 +746,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         }
       });
 
-      if(numberOfContactedBrokers.get() == 0) {
+      if (numberOfContactedBrokers.get() == 0) {
         throw new VeniceException("Failed to query any broker for rewind!  Aborting topic switch processing!");
       }
 

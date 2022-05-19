@@ -1049,7 +1049,7 @@ public class TestHybrid {
     }
   }
 
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = 180 * Time.MS_PER_SECOND)
+  @Test(timeOut = 180 * Time.MS_PER_SECOND, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testDuplicatedMessagesWontBePersisted(boolean isIngestionIsolationEnabled) throws Exception {
     Properties extraProperties = new Properties();
     extraProperties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(3L));
@@ -1322,7 +1322,7 @@ public class TestHybrid {
     }
   }
 
-  @Test(dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = 120 * Time.MS_PER_SECOND)
+  @Test(timeOut = 120 * Time.MS_PER_SECOND, dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testHybridWithAmplificationFactor(boolean useCustomizedView, boolean useIngestionIsolation) throws Exception {
     final Properties extraProperties = new Properties();
     extraProperties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1L));
@@ -1413,13 +1413,11 @@ public class TestHybrid {
             TestPushUtils.sendCustomSizeStreamingRecord(producer, storeName, i, STREAMING_RECORD_SIZE);
           }
           producer.stop();
-
           TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, true, () -> {
             for (int i = 0; i < keyCount; i++) {
               checkLargeRecord(client, i);
             }
           });
-
           params = new UpdateStoreQueryParams().setAmplificationFactor(5);
           TestUtils.assertCommand(controllerClient.updateStore(storeName, params));
           // Create a new version with updated amplification factor
