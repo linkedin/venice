@@ -5,13 +5,16 @@ import com.linkedin.venice.kafka.TopicDoesNotExistException;
 import com.linkedin.venice.utils.RetryUtils;
 import java.io.Closeable;
 import java.time.Duration;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 import org.apache.kafka.clients.admin.TopicDescription;
 import org.apache.kafka.common.KafkaFuture;
+import org.apache.kafka.common.errors.TimeoutException;
 
 
 /**
@@ -61,6 +64,10 @@ public interface KafkaAdminWrapper extends Closeable {
     );
   }
 
+  List<Class<? extends Throwable>> RETRIABLE_EXCEPTIONS = Collections.unmodifiableList(Arrays.asList(
+      VeniceRetriableException.class,
+      TimeoutException.class));
+
   default boolean containsTopicWithExpectationAndRetry(
       String topic,
       int maxAttempts,
@@ -87,7 +94,7 @@ public interface KafkaAdminWrapper extends Closeable {
           initialBackoff,
           maxBackoff,
           maxDuration,
-          Collections.singletonList(VeniceRetriableException.class)
+          RETRIABLE_EXCEPTIONS
       );
     } catch (VeniceRetriableException e) {
       return !expectedResult; // Eventually still not get the expected result
