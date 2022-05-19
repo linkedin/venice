@@ -50,7 +50,7 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
 
   enum RetryType {
     LONG_TAIL_RETRY,
-    ERROR_RETRY;
+    ERROR_RETRY
   }
 
   class RetryRunnable implements Runnable {
@@ -208,7 +208,7 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
     finalRequestCompletion.whenComplete((ignore, finalException) -> {
        if (!scheduledRetryTask.isDone()) {
           scheduledRetryTask.cancel();
-      };
+      }
       if (finalException == null) {
         callback.onCompletion(Optional.empty());
       } else {

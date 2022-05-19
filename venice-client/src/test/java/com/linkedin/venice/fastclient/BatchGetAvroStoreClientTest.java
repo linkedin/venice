@@ -1,6 +1,9 @@
 package com.linkedin.venice.fastclient;
 
 import com.linkedin.d2.balancer.D2Client;
+import com.linkedin.davinci.client.DaVinciClient;
+import com.linkedin.davinci.client.DaVinciConfig;
+import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
 import com.linkedin.r2.transport.common.Client;
 import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
@@ -26,9 +29,11 @@ import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.system.store.MetaStoreDataType;
 import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
 import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
+import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
 import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
@@ -51,14 +56,16 @@ import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.specific.SpecificRecord;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Ignore;
 import org.testng.annotations.Test;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
+
 import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.meta.PersistenceType.*;
 import static com.linkedin.venice.system.store.MetaStoreWriter.*;
 import static org.testng.Assert.*;
 
@@ -75,26 +82,26 @@ public class BatchGetAvroStoreClientTest {
   // Every test will print all stats if set to true. Should only be used locally
   private static boolean PRINT_STATS = false;
   private static final Logger LOGGER = LogManager.getLogger(BatchGetAvroStoreClientTest.class);
-  private final String keyPrefix = "key_";
-  private final int recordCnt = 100;
-  private VeniceClusterWrapper veniceCluster;
-  private String storeVersionName;
-  private int valueSchemaId;
-  private String storeName;
-  private VeniceKafkaSerializer keySerializer;
-  private VeniceKafkaSerializer valueSerializer;
+  protected final String keyPrefix = "key_";
+  protected final int recordCnt = 100;
+  protected VeniceClusterWrapper veniceCluster;
+  protected String storeVersionName;
+  protected int valueSchemaId;
+  protected String storeName;
+  protected VeniceKafkaSerializer keySerializer;
+  protected VeniceKafkaSerializer valueSerializer;
   private VeniceWriter<Object, Object, Object> veniceWriter;
   private Client r2Client;
   private D2Client d2Client;
   private static final long TIME_OUT_IN_SECONDS = 60;
-  private static final String KEY_SCHEMA_STR = "\"string\"";
-  private static final String VALUE_FIELD_NAME = "int_field";
-  private static final String VALUE_SCHEMA_STR = "{\n" + "\"type\": \"record\",\n" + "\"name\": \"TestValueSchema\",\n"
+  protected static final String KEY_SCHEMA_STR = "\"string\"";
+  protected static final String VALUE_FIELD_NAME = "int_field";
+  protected static final String VALUE_SCHEMA_STR = "{\n" + "\"type\": \"record\",\n" + "\"name\": \"TestValueSchema\",\n"
       + "\"namespace\": \"com.linkedin.venice.fastclient.schema\",\n" + "\"fields\": [\n" + "  {\"name\": \""
       + VALUE_FIELD_NAME + "\", \"type\": \"int\"}]\n" + "}";
-  private static final Schema VALUE_SCHEMA = new Schema.Parser().parse(VALUE_SCHEMA_STR);
+  protected static final Schema VALUE_SCHEMA = new Schema.Parser().parse(VALUE_SCHEMA_STR);
   private ClientConfig clientConfig;
-
+  private VeniceProperties daVinciBackendConfig;
   @BeforeClass(alwaysRun = true)
   public void setUp() throws Exception {
     Utils.thisIsLocalhost();
@@ -259,7 +266,7 @@ public class BatchGetAvroStoreClientTest {
   }
 
   /// Helper methods
-  private void prepareData() throws Exception {
+  protected void prepareData() throws Exception {
     // Create test store
     VersionCreationResponse creationResponse = veniceCluster.getNewStoreVersion(KEY_SCHEMA_STR, VALUE_SCHEMA_STR);
     storeVersionName = creationResponse.getKafkaTopic();
@@ -303,6 +310,12 @@ public class BatchGetAvroStoreClientTest {
               + metaSystemStoreVersionCreationResponse.getError());
       TestUtils.waitForNonDeterministicPushCompletion(metaSystemStoreVersionCreationResponse.getKafkaTopic(),
           controllerClient, 30, TimeUnit.SECONDS, Optional.empty());
+      daVinciBackendConfig = new PropertyBuilder()
+          .put(DATA_BASE_PATH, Utils.getTempDataDirectory().getAbsolutePath())
+          .put(PERSISTENCE_TYPE, ROCKS_DB)
+          .put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
+          .put(CLIENT_USE_DA_VINCI_BASED_SYSTEM_STORE_REPOSITORY, true)
+          .build();
     });
 
     // Verify meta system store received the snapshot writes.
@@ -345,12 +358,16 @@ public class BatchGetAvroStoreClientTest {
                 .setSslEngineComponentFactory(SslUtils.getLocalSslFactory()));
     clientConfigBuilder.setGenericThinClient(genericThinClient);
 
+    CachingDaVinciClientFactory daVinciClientFactory = new CachingDaVinciClientFactory(d2Client,
+          new MetricsRepository(), daVinciBackendConfig);
+    DaVinciClient<StoreMetaKey, StoreMetaValue> daVinciClientForMetaStore = daVinciClientFactory.getAndStartSpecificAvroClient(
+          VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName),
+          new DaVinciConfig(),
+          StoreMetaValue.class);
+    clientConfigBuilder.setDaVinciClientForMetaStore(daVinciClientForMetaStore);
     clientConfig = clientConfigBuilder.build();
-    RouterBasedStoreMetadata storeMetadata =
-        new RouterBasedStoreMetadata(routerWrapper.getMetaDataRepository(), routerWrapper.getSchemaRepository(),
-            routerWrapper.getOnlineInstanceFinder(), storeName, clientConfig);
 
-    return ClientFactory.getAndStartGenericStoreClient(storeMetadata, clientConfig);
+    return ClientFactory.getAndStartGenericStoreClient(clientConfig);
   }
 
   private AvroSpecificStoreClient<String, TestValueSchema> getSpecificFastClient() {

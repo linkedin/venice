@@ -1,6 +1,9 @@
 package com.linkedin.venice.fastclient.utils;
 
 import com.linkedin.venice.client.exceptions.VeniceClientException;
+import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.compression.CompressorFactory;
+import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.fastclient.ClientConfig;
 import com.linkedin.venice.fastclient.meta.AbstractStoreMetadata;
 import com.linkedin.venice.meta.Instance;
@@ -63,6 +66,11 @@ public class RouterBasedStoreMetadata extends AbstractStoreMetadata {
     String resource = Version.composeKafkaTopic(storeName, version);
     List<Instance> instances = onlineInstanceFinder.getReadyToServeInstances(resource, partitionId);
     return instances.stream().map(instance -> instance.getUrl(true)).collect(Collectors.toList());
+  }
+
+  @Override
+  public VeniceCompressor getCompressor(CompressionStrategy compressionStrategy, int version) {
+    return new CompressorFactory().getCompressor(compressionStrategy);
   }
 
   @Override

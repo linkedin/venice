@@ -18,7 +18,6 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 import org.apache.avro.specific.SpecificRecord;
 
-
 public class ClientConfig<K, V, T extends SpecificRecord> {
   private final Client r2Client;
   private final String statsPrefix;
@@ -26,7 +25,6 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
   private final Class<T> specificValueClass;
   private final String storeName;
   private final Map<RequestType, ClientStats> clientStatsMap = new VeniceConcurrentHashMap<>();
-  private final ClusterStats clusterStats;
   private final Executor deserializationExecutor;
   private final ClientRoutingStrategy clientRoutingStrategy;
   /**
@@ -53,14 +51,13 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
    * But to temporarily unblock the first customer, we will only allow at most two keys in a batch-get request.
    */
   private final int maxAllowedKeyCntInBatchGetReq;
-
   private final DaVinciClient<StoreMetaKey, StoreMetaValue> daVinciClientForMetaStore;
   private final long metadataRefreshInvervalInSeconds;
-
   private final boolean longTailRetryEnabledForSingleGet;
   private final boolean longTailRetryEnabledForBatchGet;
   private final int longTailRetryThresholdForSingletGetInMicroSeconds;
   private final int longTailRetryThresholdForBatchGetInMicroSeconds;
+  private final ClusterStats clusterStats;
   private ClientConfig(String storeName,
       Client r2Client,
       MetricsRepository metricsRepository,
@@ -163,10 +160,6 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     return clientStatsMap.get(requestType);
   }
 
-  public ClusterStats getClusterStats() {
-    return clusterStats;
-  }
-
   public boolean isSpeculativeQueryEnabled() {
     return speculativeQueryEnabled;
   }
@@ -241,6 +234,10 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
 
   public ClientRoutingStrategy getClientRoutingStrategy() {
     return clientRoutingStrategy;
+  }
+
+  public ClusterStats getClusterStats() {
+    return this.clusterStats;
   }
 
   public static class ClientConfigBuilder<K, V, T extends SpecificRecord> {
