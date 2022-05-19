@@ -67,7 +67,7 @@ public class LogNotifier implements VeniceNotifier {
   }
 
   private String logMessage(String header, String kafkaTopic, int partitionId, Long offset, String message) {
-    return String.format("%s for store %s partitionId %d%s%s", header, kafkaTopic, partitionId,
+    return String.format("%s for store %s user partitionId %d%s%s", header, kafkaTopic, partitionId,
         offset == null ? "" : " offset " + offset,
         (message == null || message.isEmpty())? "" : " message " + message);
   }

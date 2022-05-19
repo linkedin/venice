@@ -428,6 +428,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             restoreProducerStatesForLeaderConsumption(partition);
 
             if (!amplificationAdapter.isLeaderSubPartition(partition) && partitionConsumptionState.isEndOfPushReceived()) {
+              logger.info("Stop promoting non-leaderSubPartition: " + partition + " of store: " + storeName + " to leader.");
               partitionConsumptionState.setLeaderFollowerState(STANDBY);
               consumerSubscribe(kafkaVersionTopic, partitionConsumptionState.getSourceTopicPartition(kafkaVersionTopic),
                   partitionConsumptionState.getLatestProcessedLocalVersionTopicOffset(), localKafkaServer);
@@ -490,7 +491,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             consumerUnSubscribe(currentLeaderTopic, partitionConsumptionState);
             partitionConsumptionState.setConsumeRemotely(false);
             partitionConsumptionState.setLeaderFollowerState(STANDBY);
-            consumerSubscribe(kafkaVersionTopic, partitionConsumptionState.getSourceTopicPartition(kafkaVersionTopic), partitionConsumptionState.getLatestProcessedLocalVersionTopicOffset(), localKafkaServer);
+            consumerSubscribe(kafkaVersionTopic, partitionConsumptionState.getSourceTopicPartition(kafkaVersionTopic),
+                partitionConsumptionState.getLatestProcessedLocalVersionTopicOffset(), localKafkaServer);
             break;
           }
 
@@ -576,13 +578,14 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
     partitionConsumptionState.setLeaderFollowerState(LEADER);
     final String leaderTopic = offsetRecord.getLeaderTopic();
+    int leaderTopicPartition = partitionConsumptionState.getSourceTopicPartition(leaderTopic);
     final long leaderStartOffset = partitionConsumptionState.getLeaderOffset(OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY);
 
     // subscribe to the new upstream
     String leaderSourceKafkaURL = leaderSourceKafkaURLs.iterator().next();
     logger.info(String.format("%s is promoted to leader for partition %d and it is going to start consuming from " +
-            "topic %s at offset %d; source Kafka url: %s; remote consumption flag: %s",
-        consumerTaskId, partition, leaderTopic, leaderStartOffset, leaderSourceKafkaURL, partitionConsumptionState.consumeRemotely()));
+            "topic %s partition %d at offset %d; source Kafka url: %s; remote consumption flag: %s",
+        consumerTaskId, partition, leaderTopic, leaderTopicPartition, leaderStartOffset, leaderSourceKafkaURL, partitionConsumptionState.consumeRemotely()));
     consumerSubscribe(
         leaderTopic,
         partitionConsumptionState.getSourceTopicPartition(leaderTopic),
@@ -593,7 +596,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     syncConsumedUpstreamRTOffsetMapIfNeeded(partitionConsumptionState, Collections.singletonMap(leaderSourceKafkaURL, leaderStartOffset));
 
     logger.info(String.format("%s, as a leader, started consuming from topic %s partition %d at offset %d",
-        consumerTaskId, offsetRecord.getLeaderTopic(), partition, leaderStartOffset));
+        consumerTaskId, offsetRecord.getLeaderTopic(), leaderTopicPartition, leaderStartOffset));
   }
 
   private boolean switchAwayFromStreamReprocessingTopic(String currentLeaderTopic, TopicSwitch topicSwitch) {
@@ -882,6 +885,27 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   @Override
   protected void processTopicSwitch(ControlMessage controlMessage, int partition, long offset,
       PartitionConsumptionState partitionConsumptionState) {
+    /**
+     * During batch push, all subPartitions in LEADER will consume from leader topic (either local or remote VT)
+     * Once we switch into RT topic consumption, only leaderSubPartition should be acting as LEADER role.
+     * Hence, before processing TopicSwitch message, we need to force downgrade other subPartitions into FOLLOWER.
+     */
+    if (isLeader(partitionConsumptionState) && !amplificationAdapter.isLeaderSubPartition(partition)) {
+      logger.info("SubPartition: " + partitionConsumptionState.getPartition() + " is demoted from LEADER to STANDBY.");
+      String currentLeaderTopic = partitionConsumptionState.getOffsetRecord().getLeaderTopic();
+      consumerUnSubscribe(currentLeaderTopic, partitionConsumptionState);
+      waitForLastLeaderPersistFuture(
+          partitionConsumptionState,
+          String.format(
+              "Leader failed to produce the last message to version topic before switching feed topic from %s to %s on partition %s",
+              currentLeaderTopic, kafkaVersionTopic, partition)
+      );
+      partitionConsumptionState.setConsumeRemotely(false);
+      partitionConsumptionState.setLeaderFollowerState(STANDBY);
+      consumerSubscribe(kafkaVersionTopic, partitionConsumptionState.getSourceTopicPartition(kafkaVersionTopic),
+          partitionConsumptionState.getLatestProcessedLocalVersionTopicOffset(), localKafkaServer);
+    }
+
     TopicSwitch topicSwitch = (TopicSwitch) controlMessage.controlMessageUnion;
     /**
      * Currently just check whether the sourceKafkaServers list inside TopicSwitch control message only contains

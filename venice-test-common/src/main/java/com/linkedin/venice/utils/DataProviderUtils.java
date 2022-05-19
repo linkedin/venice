@@ -83,6 +83,13 @@ public class DataProviderUtils {
     };
   }
 
+  @DataProvider(name = "Amplification-Factor")
+  public static Object[][] amplificationFactor() {
+    return new Object[][] {
+        {1}, {3}
+    };
+  }
+
   /**
    * Generate permutations to be fed to a DataProvider.
    * For two boolean's we'd pass in allPermutationGenerator(BOOLEAN, BOOLEAN)

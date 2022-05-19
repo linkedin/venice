@@ -250,7 +250,7 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
       /**
        * If the version is already online but the completion has not been reported, we directly
        * report online for this replica.
-       * Otherwise it could induce error replicas during rebalance for online version.
+       * Otherwise, it could induce error replicas during rebalance for online version.
        */
       if (isVersionOnline() && !pcs.isCompletionReported()) {
         reportStatusAdapter.reportCompleted(pcs);

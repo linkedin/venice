@@ -20,8 +20,6 @@ import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.IntStream;
 import org.apache.avro.Schema;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -33,7 +31,6 @@ import static com.linkedin.venice.utils.TestPushUtils.*;
 
 
 public class TestPushJobVersionCleanup {
-  private static final Logger logger = LogManager.getLogger(TestPushJobWithNativeReplication.class);
   private static final int TEST_TIMEOUT = 120_000; // ms
 
   private static final int NUMBER_OF_CHILD_DATACENTERS = 1;
@@ -91,43 +88,22 @@ public class TestPushJobVersionCleanup {
     VeniceServer server = childDataCenter.getClusters().get(clusterName).getVeniceServers().get(0).getVeniceServer();
 
     /**
-     * Run 3 push jobs sequentially and at the end verify the first version is cleaned up properly without any ingestion_failure metrics being reported.
+     * Run 3 push jobs sequentially and at the end verify the first version is cleaned up properly without any
+     * ingestion_failure metrics being reported.
      */
-    try (VenicePushJob job = new VenicePushJob("Test push job 1", props)) {
-      job.run();
-    }
-    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-      // Current version should become 1
-      for (int version : parentController.getVeniceAdmin()
-          .getCurrentVersionsForMultiColos(clusterName, storeName)
-          .values()) {
-        Assert.assertEquals(version, 1);
+    for (int i = 1; i <= 3; i++) {
+      int expectedVersionNumber = i;
+      try (VenicePushJob job = new VenicePushJob("Test push job " + expectedVersionNumber, props)) {
+        job.run();
       }
-    });
-
-    try (VenicePushJob job = new VenicePushJob("Test push job 2", props)) {
-      job.run();
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+        for (int version : parentController.getVeniceAdmin()
+            .getCurrentVersionsForMultiColos(clusterName, storeName)
+            .values()) {
+          Assert.assertEquals(version, expectedVersionNumber);
+        }
+      });
     }
-    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-      // Current version should become 2
-      for (int version : parentController.getVeniceAdmin()
-          .getCurrentVersionsForMultiColos(clusterName, storeName)
-          .values()) {
-        Assert.assertEquals(version, 2);
-      }
-    });
-
-    try (VenicePushJob job = new VenicePushJob("Test push job 3", props)) {
-      job.run();
-    }
-    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-      // Current version should become 3
-      for (int version : parentController.getVeniceAdmin()
-          .getCurrentVersionsForMultiColos(clusterName, storeName)
-          .values()) {
-        Assert.assertEquals(version, 3);
-      }
-    });
 
     //There should not be any ingestion_failure.
     Assert.assertEquals(server.getMetricsRepository().getMetric("." + storeName + "--ingestion_failure.Count").value(),
