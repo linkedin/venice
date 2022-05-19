@@ -1,6 +1,8 @@
 package com.linkedin.venice.integration.utils;
 
+import com.github.luben.zstd.ZstdDictTrainer;
 import com.linkedin.venice.client.store.ClientConfig;
+import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.init.ClusterLeaderInitializationRoutine;
 import com.linkedin.venice.controllerapi.ControllerClient;
@@ -33,6 +35,8 @@ import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.io.File;
 import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.util.AbstractMap;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -46,6 +50,7 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
@@ -58,6 +63,7 @@ import org.testng.Assert;
 
 import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.integration.utils.VeniceServerWrapper.*;
+import static com.linkedin.venice.utils.ByteUtils.*;
 import static com.linkedin.venice.utils.TestPushUtils.*;
 
 
@@ -801,17 +807,39 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     return createStore(IntStream.range(0, keyCount).mapToObj(i -> new AbstractMap.SimpleEntry<>(i, nextVersionId)));
   }
 
+  // Pass the dictionary and the training samples as well
+  public String createStoreWithZstdDictionary(int keyCount) throws Exception {
+
+    return createStore(DEFAULT_KEY_SCHEMA, "\"string\"",
+        IntStream.range(0, keyCount).mapToObj(i -> new AbstractMap.SimpleEntry<>(i, i + "val")),
+        CompressionStrategy.ZSTD_WITH_DICT,
+        topic -> {
+          ZstdDictTrainer trainer = new ZstdDictTrainer(1 * BYTES_PER_MB, 10 * BYTES_PER_KB);
+          for ( int i = 0; i < 100000; i++ ) {
+            trainer.addSample((i + "val").getBytes(StandardCharsets.UTF_8));
+          }
+          byte[] compressionDictionaryBytes = trainer.trainSamples();
+          return ByteBuffer.wrap(compressionDictionaryBytes);
+        }
+        );
+  }
+
   public String createStore(Stream<Map.Entry> batchData) throws Exception {
-    return createStore(DEFAULT_KEY_SCHEMA, DEFAULT_VALUE_SCHEMA, batchData);
+
+    return createStore(DEFAULT_KEY_SCHEMA, DEFAULT_VALUE_SCHEMA, batchData, CompressionStrategy.NO_OP, null);
   }
 
   public String createStore(int keyCount, GenericRecord record) throws Exception {
     return createStore(DEFAULT_KEY_SCHEMA, record.getSchema().toString(),
-        IntStream.range(0, keyCount).mapToObj(i -> new AbstractMap.SimpleEntry<>(i, record))
-    );
+        IntStream.range(0, keyCount).mapToObj(i -> new AbstractMap.SimpleEntry<>(i, record)), CompressionStrategy.NO_OP, null);
   }
 
-  public String createStore(String keySchema, String valueSchema, Stream<Map.Entry> batchData) throws Exception {
+  public String createStore(String keySchema, String valueSchema, Stream<Map.Entry> batchData) throws Exception{
+    return createStore(keySchema, valueSchema, batchData, CompressionStrategy.NO_OP, null);
+  }
+
+  public String createStore(String keySchema, String valueSchema, Stream<Map.Entry> batchData,
+      CompressionStrategy compressionStrategy, Function<String,ByteBuffer> compressionDictionaryGenerator) throws Exception {
     try (ControllerClient client = getControllerClient()) {
       String storeName = Utils.getUniqueString("store");
       TestUtils.assertCommand(client.createNewStore(
@@ -819,8 +847,12 @@ public class VeniceClusterWrapper extends ProcessWrapper {
           getClass().getName(),
           keySchema,
           valueSchema));
-
-      createVersion(storeName, keySchema, valueSchema, batchData);
+      if (compressionStrategy == CompressionStrategy.ZSTD_WITH_DICT && compressionDictionaryGenerator != null) {
+        updateStore(storeName,new UpdateStoreQueryParams().setCompressionStrategy(CompressionStrategy.ZSTD_WITH_DICT));
+      } else if (compressionStrategy == CompressionStrategy.GZIP){
+        updateStore(storeName, new UpdateStoreQueryParams().setCompressionStrategy(CompressionStrategy.GZIP));
+      }
+      createVersion(storeName, keySchema, valueSchema, batchData, compressionStrategy, compressionDictionaryGenerator);
       return storeName;
     }
   }
@@ -840,14 +872,20 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     return createVersion(storeName, DEFAULT_KEY_SCHEMA, DEFAULT_VALUE_SCHEMA, batchData);
   }
 
-  public int createVersion(String storeName, String keySchema, String valueSchema, Stream<Map.Entry> batchData) throws Exception {
+  public int createVersion(String storeName, String keySchema, String valueSchema, Stream<Map.Entry> batchData)
+      throws Exception {
+    return createVersion(storeName, keySchema, valueSchema, batchData, CompressionStrategy.NO_OP, null);
+  }
+
+  public int createVersion(String storeName, String keySchema, String valueSchema, Stream<Map.Entry> batchData,
+      CompressionStrategy compressionStrategy, Function<String,ByteBuffer> compressionDictionaryGenerator) throws Exception {
     try (ControllerClient client = getControllerClient()) {
       VersionCreationResponse response = TestUtils.assertCommand(client.requestTopicForWrites(
           storeName,
           1024, // estimate of the version size in bytes
           Version.PushType.BATCH,
           Version.guidBasedDummyPushId(),
-          true,
+          compressionStrategy == CompressionStrategy.NO_OP,
           false,
           false,
           Optional.empty(),
@@ -855,7 +893,9 @@ public class VeniceClusterWrapper extends ProcessWrapper {
           Optional.empty(),
           false,
           -1));
-      TestUtils.writeBatchData(response, keySchema, valueSchema, batchData, HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID);
+
+      TestUtils.writeBatchData(response, keySchema, valueSchema, batchData, HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID,
+          compressionStrategy, compressionDictionaryGenerator);
 
       int versionId = response.getVersion();
       waitVersion(storeName, versionId, client);

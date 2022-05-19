@@ -2,11 +2,10 @@ package com.linkedin.venice.fastclient.transport;
 
 import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.compression.CompressionStrategy;
-import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 
 
 public class TransportClientResponseForRoute extends TransportClientResponse {
-  private String routeId;
+  private final String routeId;
 
   public TransportClientResponseForRoute(String routeId, int schemaId, CompressionStrategy compressionStrategy,
       byte[] body) {

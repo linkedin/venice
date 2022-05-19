@@ -12,6 +12,9 @@ import com.linkedin.r2.message.rest.RestResponse;
 import com.linkedin.r2.message.rest.RestResponseBuilder;
 import com.linkedin.r2.transport.common.Client;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
+import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.compression.CompressorFactory;
+import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.fastclient.ClientConfig;
 import com.linkedin.venice.fastclient.factory.ClientFactory;
 import com.linkedin.venice.fastclient.meta.AbstractStoreMetadata;
@@ -467,6 +470,11 @@ public class TestClientSimulator implements Client {
               .filter(r -> routeToPartitions.get(r).contains(partitionId))
               .collect(Collectors.toList());
         }
+      }
+
+      @Override
+      public VeniceCompressor getCompressor(CompressionStrategy compressionStrategy, int version) {
+        return new CompressorFactory().getCompressor(compressionStrategy);
       }
 
       @Override

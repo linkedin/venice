@@ -12,7 +12,7 @@ import com.linkedin.venice.client.store.streaming.VeniceResponseMapImpl;
 import com.linkedin.venice.client.store.transport.TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.compression.CompressionStrategy;
-import com.linkedin.venice.compression.CompressorFactory;
+import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.fastclient.meta.StoreMetadata;
 import com.linkedin.venice.fastclient.transport.R2TransportClient;
 import com.linkedin.venice.fastclient.transport.TransportClientResponseForRoute;
@@ -25,9 +25,7 @@ import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.utils.EncodingUtils;
 import com.linkedin.venice.utils.LatencyUtils;
-import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
-import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -45,10 +43,9 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiConsumer;
 import org.apache.avro.Schema;
+import org.apache.avro.io.ByteBufferOptimizedBinaryDecoder;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-
-import org.apache.avro.io.ByteBufferOptimizedBinaryDecoder;
 
 
 /**
@@ -65,7 +62,6 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
   private final ClientConfig config;
   private final TransportClient transportClient;
   private final Executor deserializationExecutor;
-  private final CompressorFactory compressorFactory;
 
   // Key serializer
   private RecordSerializer<K> keySerializer;
@@ -75,7 +71,6 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
     this.metadata = metadata;
     this.config = config;
     this.transportClient = new R2TransportClient(config.getR2Client());
-    this.compressorFactory = new CompressorFactory();
 
     if (config.isSpeculativeQueryEnabled()) {
       this.requiredReplicaCount = 2;
@@ -99,31 +94,24 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
     requestContext.requestSerializationTime = getLatencyInNS(beforeSerializationTimeStamp);
     int partitionId = metadata.getPartitionId(currentVersion, keyBytes);
     String b64EncodedKeyBytes = EncodingUtils.base64EncodeToString(keyBytes);
-    StringBuilder sb = new StringBuilder();
-    sb.append(URI_SEPARATOR)
-        .append(AbstractAvroStoreClient.TYPE_STORAGE).append(URI_SEPARATOR)
-        .append(resourceName).append(URI_SEPARATOR)
-        .append(partitionId).append(URI_SEPARATOR)
-        .append(b64EncodedKeyBytes)
-        .append(AbstractAvroStoreClient.B64_FORMAT);
 
     requestContext.currentVersion = currentVersion;
     requestContext.partitionId = partitionId;
 
-    return sb.toString();
+    String sb = URI_SEPARATOR + AbstractAvroStoreClient.TYPE_STORAGE + URI_SEPARATOR + resourceName + URI_SEPARATOR
+        + partitionId + URI_SEPARATOR + b64EncodedKeyBytes + AbstractAvroStoreClient.B64_FORMAT;
+    return sb;
   }
 
   private String composeURIForBatchGetRequest( BatchGetRequestContext<K,V> requestContext) {
     int currentVersion = getCurrentVersion();
     String resourceName = getResourceName(currentVersion);
 
+    requestContext.currentVersion = currentVersion;
     StringBuilder sb = new StringBuilder();
     sb.append(URI_SEPARATOR)
         .append(AbstractAvroStoreClient.TYPE_STORAGE).append(URI_SEPARATOR)
         .append(resourceName);
-
-    requestContext.currentVersion = currentVersion;
-
     return sb.toString();
   }
 
@@ -197,7 +185,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
                 requestContext.requestSubmissionToResponseHandlingTime = LatencyUtils.getLatencyInMS(timestampBeforeSendingRequest);
                 CompressionStrategy compressionStrategy = response.getCompressionStrategy();
                 long timestampBeforeDecompression = System.nanoTime();
-                ByteBuffer data = decompressRecord(compressionStrategy, ByteBuffer.wrap(response.getBody()));
+                ByteBuffer data = decompressRecord(compressionStrategy, ByteBuffer.wrap(response.getBody()), requestContext.currentVersion);
                 requestContext.decompressionTime = LatencyUtils.getLatencyInMS(timestampBeforeDecompression);
                 long timestampBeforeDeserialization = System.nanoTime();
                 RecordDeserializer<V> deserializer = getDataRecordDeserializer(response.getSchemaId());
@@ -414,19 +402,12 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
       requestContext.markCompleteExceptionally(transportClientResponse, exception);
       return;
     }
-    // handle response
-    long timestampBeforeDecompression = System.nanoTime();
-    ByteBuffer data = decompressMultiGetResponse(transportClientResponse.getCompressionStrategy(),
-        ByteBuffer.wrap(transportClientResponse.getBody()));
-    requestContext.recordDecompressionTime(transportClientResponse.getRouteId(),
-        getLatencyInNS(timestampBeforeDecompression));
-
     // deserialize records and find the status
     RecordDeserializer<MultiGetResponseRecordV1> deserializer =
         getMultiGetResponseRecordDeserializer(transportClientResponse.getSchemaId());
     long timestampBeforeRequestDeserialization = System.nanoTime();
     Iterable<MultiGetResponseRecordV1> records =
-        deserializer.deserializeObjects(new ByteBufferOptimizedBinaryDecoder(data.array()));
+        deserializer.deserializeObjects(new ByteBufferOptimizedBinaryDecoder(transportClientResponse.getBody()));
     requestContext.recordRequestDeserializationTime(transportClientResponse.getRouteId(),
         getLatencyInNS(timestampBeforeRequestDeserialization));
     RecordDeserializer<V> dataRecordDeserializer = getDataRecordDeserializer(transportClientResponse.getSchemaId());
@@ -436,16 +417,22 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
     Set<Integer> keysSeen = new HashSet<>();
 
     LOGGER.debug("Response received for route {} -> {} ", transportClientResponse.getRouteId(), records);
-
+    long totalDecompressionTimeForResponse = 0;
     for (MultiGetResponseRecordV1 r : records) {
-      long tsBeforeDeser = System.nanoTime();
-      V deserializedValue = dataRecordDeserializer.deserialize(r.value);
+      long timeStampBeforeDecompression = System.nanoTime();
+      ByteBuffer decompressRecord = decompressRecord(transportClientResponse.getCompressionStrategy(), r.value,
+          requestContext.currentVersion);
+      totalDecompressionTimeForResponse += System.nanoTime() - timeStampBeforeDecompression;
+
+      long timeStampBeforeDeserialization = System.nanoTime();
+      V deserializedValue = dataRecordDeserializer.deserialize(decompressRecord);
       requestContext.recordRecordDeserializationTime(transportClientResponse.getRouteId(),
-          getLatencyInNS(tsBeforeDeser));
+          getLatencyInNS(timeStampBeforeDeserialization));
       BatchGetRequestContext.KeyInfo<K> k = keyInfos.get(r.keyIndex);
       keysSeen.add(r.keyIndex);
       callback.onRecordReceived(k.getKey(), deserializedValue);
     }
+    requestContext.recordDecompressionTime(transportClientResponse.getRouteId(), totalDecompressionTimeForResponse);
     for (int i = 0; i < keyInfos.size(); i++) {
       if (!keysSeen.contains(i)) {
         callback.onRecordReceived(keyInfos.get(i).getKey(), null);
@@ -480,15 +467,21 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
         keySerializer, metadata, LOGGER);
   }
 
-  // TODO: zstd decompression support
-  private ByteBuffer decompressRecord(CompressionStrategy compressionStrategy, ByteBuffer data) {
+  private ByteBuffer decompressRecord(CompressionStrategy compressionStrategy, ByteBuffer data, int version) {
     try {
-      return compressorFactory.getCompressor(compressionStrategy).decompress(data);
-    } catch (IOException e) {
-      throw new VeniceClientException(
-          String.format("Unable to decompress the record, compressionStrategy=%d", compressionStrategy.getValue()), e);
+      VeniceCompressor compressor = metadata.getCompressor(compressionStrategy, version);
+      if ( compressor == null) {
+        throw new VeniceClientException(String.format("Expected to find compressor in metadata but found null, compressionStrategy:%s, store:%s, version:%d",
+            compressionStrategy, getStoreName(), version));
+      }
+      return compressor.decompress(data);
+    } catch (Exception e) {
+        throw new VeniceClientException(
+          String.format("Unable to decompress the record, compressionStrategy:%s store:%s version:%d",
+              compressionStrategy, getStoreName(), version), e);
     }
   }
+
 
   /* Short utility methods */
 
@@ -514,15 +507,6 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
     return System.nanoTime() - startTimeStamp;
   }
 
-  private ByteBuffer decompressMultiGetResponse(CompressionStrategy compressionStrategy, ByteBuffer data) {
-    try {
-      return compressorFactory.getCompressor(compressionStrategy).decompress(data);
-    } catch (IOException e) {
-      throw new VeniceClientException(
-          String.format("Unable to decompress the record, compressionStrategy=%d", compressionStrategy.getValue()), e);
-    }
-  }
-
   @Override
   public void start() throws VeniceClientException {
     metadata.start();
@@ -539,7 +523,6 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
     } catch (Exception e) {
       throw new VeniceClientException("Failed to close store metadata", e);
     }
-    Utils.closeQuietlyWithErrorLogged(compressorFactory);
   }
 
   @Override

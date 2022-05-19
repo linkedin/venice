@@ -12,6 +12,7 @@ import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.fastclient.factory.ClientFactory;
+import com.linkedin.venice.fastclient.meta.StoreMetadata;
 import com.linkedin.venice.fastclient.schema.TestValueSchema;
 import com.linkedin.venice.fastclient.utils.RouterBasedStoreMetadata;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
@@ -57,24 +58,24 @@ import static org.testng.Assert.*;
 
 
 public class AvroStoreClientEndToEndTest {
-  private VeniceClusterWrapper veniceCluster;
-  private String storeVersionName;
-  private int valueSchemaId;
-  private String storeName;
+  protected VeniceClusterWrapper veniceCluster;
+  protected String storeVersionName;
+  protected int valueSchemaId;
+  protected String storeName;
 
-  private VeniceKafkaSerializer keySerializer;
-  private VeniceKafkaSerializer valueSerializer;
+  protected VeniceKafkaSerializer keySerializer;
+  protected VeniceKafkaSerializer valueSerializer;
   private VeniceWriter<Object, Object, Object> veniceWriter;
   private Client r2Client;
   private VeniceProperties daVinciBackendConfig;
   private D2Client d2Client;
 
   private static final long TIME_OUT = 60 * Time.MS_PER_SECOND;
-  private static final String KEY_SCHEMA_STR = "\"string\"";
-  private static final String VALUE_FIELD_NAME = "int_field";
-  private static final String VALUE_SCHEMA_STR = "{\n" + "\"type\": \"record\",\n" + "\"name\": \"TestValueSchema\",\n" + "\"namespace\": \"com.linkedin.venice.fastclient.schema\",\n"
+  protected static final String KEY_SCHEMA_STR = "\"string\"";
+  protected static final String VALUE_FIELD_NAME = "int_field";
+  protected static final String VALUE_SCHEMA_STR = "{\n" + "\"type\": \"record\",\n" + "\"name\": \"TestValueSchema\",\n" + "\"namespace\": \"com.linkedin.venice.fastclient.schema\",\n"
       + "\"fields\": [\n" + "  {\"name\": \"" + VALUE_FIELD_NAME + "\", \"type\": \"int\"}]\n" + "}";
-  private static final Schema VALUE_SCHEMA = new Schema.Parser().parse(VALUE_SCHEMA_STR);
+  protected static final Schema VALUE_SCHEMA = new Schema.Parser().parse(VALUE_SCHEMA_STR);
 
   @DataProvider(name = "useDualRead")
   public static Object[][] useDualRead() {
@@ -86,8 +87,8 @@ public class AvroStoreClientEndToEndTest {
     return new Object[][]{{false}, {true}};
   }
 
-  private final String keyPrefix = "key_";
-  private final int recordCnt = 100;
+  protected final String keyPrefix = "key_";
+  protected final int recordCnt = 100;
 
   @BeforeClass(alwaysRun = true)
   public void setUp() throws Exception {
@@ -104,7 +105,7 @@ public class AvroStoreClientEndToEndTest {
     prepareMetaSystemStore();
   }
 
-  private void prepareData() throws Exception {
+  protected void prepareData() throws Exception {
     // Create test store
     VersionCreationResponse creationResponse = veniceCluster.getNewStoreVersion(KEY_SCHEMA_STR, VALUE_SCHEMA_STR);
     storeVersionName = creationResponse.getKafkaTopic();
@@ -184,13 +185,13 @@ public class AvroStoreClientEndToEndTest {
     Utils.closeQuietlyWithErrorLogged(veniceWriter);
   }
 
-  private void runTest(ClientConfig.ClientConfigBuilder clientConfigBuilder, Optional<RouterBasedStoreMetadata> metadata,
+  private void runTest(ClientConfig.ClientConfigBuilder clientConfigBuilder, Optional<StoreMetadata> metadata,
       boolean useDaVinciClientBasedMetadata, boolean batchGet) throws Exception {
     runTest(clientConfigBuilder, metadata, useDaVinciClientBasedMetadata, batchGet, (metricsRepository) ->{});
   }
 
   // Only RouterBasedStoreMetadata can be reused. Other StoreMetadata implementation cannot be used after close() is called.
-  private void runTest(ClientConfig.ClientConfigBuilder clientConfigBuilder, Optional<RouterBasedStoreMetadata> metadata,
+  private void runTest(ClientConfig.ClientConfigBuilder clientConfigBuilder, Optional<StoreMetadata> metadata,
       boolean useDaVinciClientBasedMetadata, boolean batchGet, Consumer<MetricsRepository> statsValidation) throws Exception {
     DaVinciClient<StoreMetaKey, StoreMetaValue> daVinciClientForMetaStore = null;
     CachingDaVinciClientFactory daVinciClientFactory = null;
@@ -244,11 +245,11 @@ public class AvroStoreClientEndToEndTest {
         .setSpecificValueClass(TestValueSchema.class)
         .setMetricsRepository(metricsRepositoryForSpecificClient); // To avoid metric registration conflict.
     AvroSpecificStoreClient<String, TestValueSchema> specificFastClient = null;
-    if (metadata.isPresent()) {
-      specificFastClient = ClientFactory.getAndStartSpecificStoreClient(metadata.get(), specificClientConfigBuilder.build());
-    } else if (useDaVinciClientBasedMetadata){
+    if (useDaVinciClientBasedMetadata){
       clientConfigBuilder.setDaVinciClientForMetaStore(daVinciClientForMetaStore);
       specificFastClient = ClientFactory.getAndStartSpecificStoreClient(specificClientConfigBuilder.build());
+    } else if (metadata.isPresent()) {
+      specificFastClient = ClientFactory.getAndStartSpecificStoreClient(metadata.get(), specificClientConfigBuilder.build());
     } else {
       fail("No valid StoreMetadata implementation provided");
     }
@@ -300,7 +301,7 @@ public class AvroStoreClientEndToEndTest {
         clientConfig
     );
 
-    runTest(clientConfigBuilder, Optional.of(storeMetadata), false, false);
+    runTest(clientConfigBuilder, Optional.of(storeMetadata), true, false);
   }
 
   @Test
@@ -324,7 +325,7 @@ public class AvroStoreClientEndToEndTest {
         clientConfig
     );
 
-    runTest(clientConfigBuilder, Optional.of(storeMetadata), false, false,
+    runTest(clientConfigBuilder, Optional.of(storeMetadata), true, false,
         metricsRepository -> {
       // Validate long-tail retry related metrics
           metricsRepository.metrics().forEach((mName, metric) -> {
@@ -397,7 +398,7 @@ public class AvroStoreClientEndToEndTest {
     ClientConfig clientConfig = clientConfigBuilder.build();
     RouterBasedStoreMetadata storeMetadata = new RouterBasedStoreMetadata(routerWrapper.getMetaDataRepository(), routerWrapper.getSchemaRepository(),
         routerWrapper.getOnlineInstanceFinder(), storeName, clientConfig);
-    runTest(clientConfigBuilder, Optional.of(storeMetadata), false, true);
+    runTest(clientConfigBuilder, Optional.of(storeMetadata), true, true);
 
     genericThinClient.close();
     specificThinClient.close();

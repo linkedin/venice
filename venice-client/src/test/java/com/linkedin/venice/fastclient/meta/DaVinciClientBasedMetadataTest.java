@@ -49,28 +49,30 @@ import static org.testng.Assert.*;
 
 
 public class DaVinciClientBasedMetadataTest {
-  private static final int KEY_COUNT = 100;
-  private static final long TIME_OUT = 60 * Time.MS_PER_SECOND;
+  protected static final int KEY_COUNT = 100;
+  protected static final long TIME_OUT = 60 * Time.MS_PER_SECOND;
 
   private final VenicePartitioner defaultPartitioner = new DefaultVenicePartitioner();
 
-  private VeniceClusterWrapper veniceCluster;
-  private String storeName;
+  protected VeniceClusterWrapper veniceCluster;
+  protected String storeName;
   private VeniceProperties daVinciBackendConfig;
-  private DaVinciClientBasedMetadata daVinciClientBasedMetadata;
+  protected DaVinciClientBasedMetadata daVinciClientBasedMetadata;
   private RecordSerializer<Object> keySerializer;
   private Client r2Client;
   private D2Client d2Client;
   private CachingDaVinciClientFactory daVinciClientFactory;
   private DaVinciClient<StoreMetaKey, StoreMetaValue> daVinciClientForMetaStore;
+  protected ClientConfig clientConfig;
 
   @BeforeClass
   public void setUp() throws Exception {
     veniceCluster = ServiceFactory.getVeniceCluster(1, 2, 1, 2, 100, true, false);
     r2Client = ClientTestUtils.getR2Client();
     d2Client = D2TestUtils.getAndStartD2Client(veniceCluster.getZk().getAddress());
-    storeName = veniceCluster.createStore(KEY_COUNT);
+    createStore();
     String metaSystemStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName);
+
     veniceCluster.useControllerClient(controllerClient -> {
       VersionCreationResponse metaSystemStoreVersionCreationResponse = controllerClient.emptyPush(metaSystemStoreName,
           "test_bootstrap_meta_system_store", 10000);
@@ -102,8 +104,13 @@ public class DaVinciClientBasedMetadataTest {
     clientConfigBuilder.setSpeculativeQueryEnabled(true);
     clientConfigBuilder.setDaVinciClientForMetaStore(daVinciClientForMetaStore);
     clientConfigBuilder.setMetadataRefreshIntervalInSeconds(1); // Faster refreshes for faster tests
-    daVinciClientBasedMetadata = new DaVinciClientBasedMetadata(clientConfigBuilder.build());
+    clientConfig = clientConfigBuilder.build();
+    daVinciClientBasedMetadata = new DaVinciClientBasedMetadata(clientConfig);
     daVinciClientBasedMetadata.start();
+  }
+
+  protected void createStore() throws Exception {
+    storeName = veniceCluster.createStore(KEY_COUNT);
   }
 
   @Test(timeOut = TIME_OUT)
@@ -157,6 +164,8 @@ public class DaVinciClientBasedMetadataTest {
       }
     });
   }
+
+
 
   @AfterClass
   public void cleanUp() {

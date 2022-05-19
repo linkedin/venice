@@ -1,6 +1,8 @@
 package com.linkedin.venice.fastclient.meta;
 
 import com.linkedin.restli.common.HttpStatus;
+import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.schema.SchemaReader;
 import java.nio.ByteBuffer;
 import java.util.Collections;
@@ -41,6 +43,8 @@ public interface StoreMetadata extends SchemaReader {
   CompletableFuture<HttpStatus> sendRequestToInstance(String instance, int version, int partitionId);
 
   InstanceHealthMonitor getInstanceHealthMonitor();
+
+  VeniceCompressor getCompressor(CompressionStrategy compressionStrategy, int version);
 
   void start();
 }

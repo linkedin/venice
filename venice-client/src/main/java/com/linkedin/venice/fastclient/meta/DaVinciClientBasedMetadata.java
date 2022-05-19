@@ -2,8 +2,16 @@ package com.linkedin.venice.fastclient.meta;
 
 import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
+import com.linkedin.venice.client.store.transport.TransportClient;
+import com.linkedin.venice.client.store.transport.TransportClientResponse;
+import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.compression.CompressorFactory;
+import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.exceptions.MissingKeyInStoreMetadataException;
 import com.linkedin.venice.fastclient.ClientConfig;
+import com.linkedin.venice.fastclient.stats.ClusterStats;
+import com.linkedin.venice.fastclient.transport.R2TransportClient;
+import com.linkedin.venice.meta.QueryAction;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.pushmonitor.PushStatusDecider;
 import com.linkedin.venice.schema.SchemaData;
@@ -16,20 +24,25 @@ import com.linkedin.venice.systemstore.schemas.StoreProperties;
 import com.linkedin.venice.systemstore.schemas.StoreVersion;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.PartitionUtils;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import it.unimi.dsi.fastutil.ints.IntArrayList;
+import it.unimi.dsi.fastutil.ints.IntList;
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.apache.avro.Schema;
@@ -52,6 +65,7 @@ public class DaVinciClientBasedMetadata extends AbstractStoreMetadata {
   private static final String STORE_KEY_SCHEMAS_KEY = "store_key_schemas";
   private static final String STORE_VALUE_SCHEMAS_KEY = "store_value_schemas";
   private static final String VERSION_PARTITION_SEPARATOR = "_";
+  private static final long ZSTD_DICT_FETCH_TIMEOUT = 10;
   private static final long DEFAULT_REFRESH_INTERVAL_IN_SECONDS = 60;
   private static final long INITIAL_UPDATE_CACHE_TIMEOUT_IN_SECONDS = 30;
   private static final long RETRY_WAIT_TIME_IN_MS = 1000;
@@ -71,8 +85,11 @@ public class DaVinciClientBasedMetadata extends AbstractStoreMetadata {
   private final DaVinciClient<StoreMetaKey, StoreMetaValue> daVinciClient;
   // Only used in updateCache for evicting purposes.
   private Map<Integer, Integer> versionPartitionCountMap = new HashMap<>();
-
+  private final Map<Integer,ByteBuffer> versionZstdDictionaryMap = new VeniceConcurrentHashMap<>();
+  private final CompressorFactory compressorFactory;
   private String clusterName;
+  private final TransportClient transportClient;
+  private ClusterStats clusterStats;
 
   public DaVinciClientBasedMetadata(ClientConfig clientConfig) {
     super(clientConfig);
@@ -92,6 +109,9 @@ public class DaVinciClientBasedMetadata extends AbstractStoreMetadata {
         MetaStoreDataType.STORE_VALUE_SCHEMAS.getStoreMetaKey(new HashMap<String, String>() {{
           put(KEY_STRING_STORE_NAME, storeName);
         }}));
+    this.transportClient = new R2TransportClient(clientConfig.getR2Client());
+    this.compressorFactory = new CompressorFactory();
+    this.clusterStats = clientConfig.getClusterStats();
   }
 
   @Override
@@ -202,6 +222,7 @@ public class DaVinciClientBasedMetadata extends AbstractStoreMetadata {
     StoreProperties storeProperties = getStoreMetaValue(storeMetaKeyMap.get(STORE_PROPERTIES_KEY)).storeProperties;
     Map<Integer, Integer> newVersionPartitionCountMap = new HashMap<>();
     // Update partitioner pair map
+    IntList zstdDictionaryFetchVersions = new IntArrayList();
     for (StoreVersion v : storeProperties.versions) {
       newVersionPartitionCountMap.put(v.number, v.partitionCount);
       versionPartitionerMap.computeIfAbsent(v.number, k -> {
@@ -213,6 +234,11 @@ public class DaVinciClientBasedMetadata extends AbstractStoreMetadata {
                 partitionerConfig.amplificationFactor, new VeniceProperties(params));
         return new Pair<>(partitioner, v.partitionCount);
       });
+
+      if (CompressionStrategy.valueOf(v.compressionStrategy).equals(CompressionStrategy.ZSTD_WITH_DICT) &&
+          !versionZstdDictionaryMap.containsKey(v.number)) {
+        zstdDictionaryFetchVersions.add(v.number); // versions with no dictionary available
+      }
     }
     // Update readyToServeInstanceMap
     for (Map.Entry<Integer, Integer> entry : newVersionPartitionCountMap.entrySet()) {
@@ -250,20 +276,42 @@ public class DaVinciClientBasedMetadata extends AbstractStoreMetadata {
       }
     }
     schemas.set(schemaData);
-    // Update current version
-    currentVersion.set(storeProperties.currentVersion);
-    latestSuperSetValueSchemaId.set(storeProperties.latestSuperSetValueSchemaId);
+
+    CompletableFuture<TransportClientResponse>[] dictionaryFetchFutures = new CompletableFuture[zstdDictionaryFetchVersions.size()];
+    for (int i = 0; i < zstdDictionaryFetchVersions.size(); i++) {
+      dictionaryFetchFutures[i] = fetchCompressionDictionary(zstdDictionaryFetchVersions.getInt(i));
+    }
 
     // Evict old entries
     for (Map.Entry<Integer, Integer> oldEntry : versionPartitionCountMap.entrySet()) {
       if (!newVersionPartitionCountMap.containsKey(oldEntry.getKey())) {
         versionPartitionerMap.remove(oldEntry.getKey());
+        versionZstdDictionaryMap.remove(oldEntry.getKey());
         for (int i = 0; i < oldEntry.getValue(); i++) {
           readyToServeInstancesMap.remove(getVersionPartitionMapKey(oldEntry.getKey(), i));
         }
       }
     }
     versionPartitionCountMap = newVersionPartitionCountMap;
+
+    /** Wait for all dictionary fetches to complete before we finish the refresh. Its possible that the fetch
+     jobs return error or we get a timeout. In which case the next refresh will start another job so
+     we don't really need to retry again */
+    try {
+      if ( dictionaryFetchFutures.length > 0 ) {
+        CompletableFuture.allOf(dictionaryFetchFutures).get(ZSTD_DICT_FETCH_TIMEOUT, TimeUnit.SECONDS);
+      }
+      currentVersion.set(storeProperties.currentVersion);
+      clusterStats.updateCurrentVersion(currentVersion.get());
+      latestSuperSetValueSchemaId.set(storeProperties.latestSuperSetValueSchemaId);
+    } catch (InterruptedException interruptedException) {
+      Thread.currentThread().interrupt();
+      throw new VeniceClientException("Dictionary fetch operation was interrupted");
+    } catch (ExecutionException| TimeoutException e) {
+      logger.warn("Dictionary fetch operation could not complete in time for some of the versions. "
+          + "Will be retried on next refresh", e);
+      clusterStats.recordVersionUpdateFailure();
+    }
   }
 
   private String getVersionPartitionMapKey(int version, int partition) {
@@ -304,5 +352,63 @@ public class DaVinciClientBasedMetadata extends AbstractStoreMetadata {
     readyToServeInstancesMap.clear();
     versionPartitionerMap.clear();
     versionPartitionCountMap.clear();
+    Utils.closeQuietlyWithErrorLogged(compressorFactory);
+  }
+
+  // Fetch the zstd dictionary for this version
+  private CompletableFuture<TransportClientResponse> fetchCompressionDictionary(int version) {
+    CompletableFuture<TransportClientResponse> compressionDictionaryFuture = new CompletableFuture<>();
+    // Assumption: Every version has partition 0 and available in the map.
+    String versionPartitionMapKey = getVersionPartitionMapKey(version, 0);
+    if ( !readyToServeInstancesMap.containsKey(versionPartitionMapKey)) {
+      compressionDictionaryFuture.completeExceptionally(
+          new IllegalStateException(String.format("Attempt to fetch compression dictionary for unknown version %d", version)));
+    }
+    List<String> routes = readyToServeInstancesMap.get(versionPartitionMapKey);
+    if ( routes.size() == 0 ) {
+      compressionDictionaryFuture.completeExceptionally(
+          new IllegalStateException(String.format("No route found for store:%s version:%d partition:%d", storeName, version, 0)));
+    }
+
+    // Fetch from a random route from the available routes to hedge against a route being slow
+    String route = routes.get(ThreadLocalRandom.current().nextInt(routes.size()));
+    String url = route + "/" + QueryAction.DICTIONARY.toString().toLowerCase() + "/" + storeName + "/" + version;
+
+    logger.info("Fetching compression dictionary for version {} from URL {} ", version, url);
+          transportClient.get(url).whenComplete((response, throwable) -> {
+            if (throwable != null) {
+              String message = String.format("Problem fetching zstd compression dictionary from URL:%s for store:%s , version:%d", url, storeName, version);
+              logger.warn(message, throwable);
+              compressionDictionaryFuture.completeExceptionally(throwable);
+            } else {
+              byte[] dictionary = response.getBody();
+              versionZstdDictionaryMap.put(version, ByteBuffer.wrap(dictionary));
+              compressionDictionaryFuture.complete(response);
+            }
+          });
+    return compressionDictionaryFuture;
+  }
+
+  public VeniceCompressor getCompressor(CompressionStrategy compressionStrategy, int version) {
+    if (compressionStrategy == CompressionStrategy.ZSTD_WITH_DICT){
+      String resourceName = getResourceName(version);
+      if (!compressorFactory.versionSpecificCompressorExists(resourceName)) {
+        ByteBuffer dictionary = versionZstdDictionaryMap.get(version);
+        if (dictionary == null) {
+          throw new VeniceClientException(
+              String.format("No dictionary available for decompressing zstd payload for store %s version %d ", storeName,
+                  version));
+        } else {
+          compressorFactory.createVersionSpecificCompressorIfNotExist(compressionStrategy, resourceName, dictionary.array(), 0);
+        }
+      }
+      return compressorFactory.getVersionSpecificCompressor(resourceName);
+    } else {
+      return compressorFactory.getCompressor(compressionStrategy);
+    }
+  }
+
+  private String getResourceName(int version) {
+    return storeName + "_v" + version;
   }
 }
