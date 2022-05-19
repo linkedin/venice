@@ -1114,11 +1114,10 @@ public class VeniceParentHelixAdmin implements Admin {
         logger.info("Found running repush job with push id: " + existingPushJobId + " and incoming push is a batch "
             + "job or stream reprocessing job with push id: " + pushJobId + ". Killing the repush job for store " + storeName);
         killOfflinePush(clusterName, currentPushTopic.get(), true);
-      } else if (isExistingPushJobARepush && pushType.isIncremental()
+      } else if (pushType.isIncremental()
           && INCREMENTAL_PUSH_SAME_AS_REAL_TIME.equals(version.get().getIncrementalPushPolicy())) {
-        // No op. Allow push to continue if existing push is a repush, incoming push is an inc push with inc push policy
-        // as INCREMENTAL_PUSH_SAME_AS_REAL_TIME.
-        logger.info("Found running repush job with push id: " + existingPushJobId + " and incoming push is an "
+        // No op. Allow concurrent inc push to RT to continue when there is an ongoing batch push
+        logger.info("Found running batch push job with push id: " + existingPushJobId + " and incoming push is an "
             + "incremental push with push id: " + pushJobId + " with incremental push policy: " +
             INCREMENTAL_PUSH_SAME_AS_REAL_TIME + ". Letting the push continue for store " + storeName);
       } else {
