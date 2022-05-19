@@ -286,4 +286,33 @@ public class TestAvroSchemaUtils {
         " } ";
     AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(str);
   }
+
+  @Test
+  void testAvroCompareDefaults() {
+    String str1 = "{" +
+        "  \"namespace\" : \"example.avro\",  " +
+        "  \"type\": \"record\",   " +
+        "  \"name\": \"User\",     " +
+        "  \"fields\": [           " +
+        "       { \"name\": \"id\", \"type\": \"string\", \"default\": \"id\"},  " +
+        "       { \"name\": \"name\", \"type\": \"string\", \"default\": \"venice\"},  " +
+        "       { \"name\": \"weight\", \"type\": \"float\", \"default\": 0},  " +
+        "       { \"name\": \"age\", \"type\": \"float\", \"default\": 0.0 }" +
+        "  ] " +
+        " } ";
+    String str2 = "{" +
+        "  \"namespace\" : \"example.avro\",  " +
+        "  \"type\": \"record\",   " +
+        "  \"name\": \"User\",     " +
+        "  \"fields\": [           " +
+        "       { \"name\": \"id\", \"type\": \"string\", \"default\": \"id\"},  " +
+        "       { \"name\": \"name\", \"type\": \"string\", \"default\": \"venice\"},  " +
+        "       { \"name\": \"weight\", \"type\": \"float\", \"default\": 0},  " +
+        "       { \"name\": \"age\", \"type\": \"float\", \"default\": 0.0 }" +
+        "  ] " +
+        " } ";
+    Schema s1 = AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation(str1);
+    Schema s2 = AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation(str2);
+    Assert.assertTrue(AvroSchemaUtils.compareSchemaIgnoreFieldOrder(s1,s2));
+  }
 }
