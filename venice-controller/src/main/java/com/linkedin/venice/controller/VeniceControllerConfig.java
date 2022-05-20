@@ -45,7 +45,6 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   private final String controllerClusterName;
   private final String controllerClusterZkAddress;
   private final boolean parent;
-  private final boolean enableTopicReplicator;
   private final Map<String, String> childDataCenterControllerUrlMap;
   private final String d2ServiceName;
   private final Map<String, String> childDataCenterControllerD2Map;
@@ -64,7 +63,6 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   private final long topicCleanupSleepIntervalBetweenTopicListFetchMs;
   private final int topicCleanupDelayFactor;
   private final int topicManagerKafkaOperationTimeOutMs;
-  private final boolean enableTopicReplicatorSSL;
   private final int minNumberOfUnusedKafkaTopicsToPreserve;
   private final int minNumberOfStoreVersionsToPreserve;
   private final int parentControllerMaxErroredTopicNumToKeep;
@@ -239,9 +237,6 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     this.adminConsumptionTimeoutMinute = props.getLong(ADMIN_CONSUMPTION_TIMEOUT_MINUTES, TimeUnit.DAYS.toMinutes(5));
     this.adminConsumptionCycleTimeoutMs = props.getLong(ConfigKeys.ADMIN_CONSUMPTION_CYCLE_TIMEOUT_MS, TimeUnit.MINUTES.toMillis(30));
     this.adminConsumptionMaxWorkerThreadPoolSize = props.getInt(ConfigKeys.ADMIN_CONSUMPTION_MAX_WORKER_THREAD_POOL_SIZE, 1);
-
-    this.enableTopicReplicator = props.getBoolean(ENABLE_TOPIC_REPLICATOR, true);
-    this.enableTopicReplicatorSSL = props.getBoolean(ENABLE_TOPIC_REPLICATOR_SSL, false);
     this.storageEngineOverheadRatio = props.getDouble(STORAGE_ENGINE_OVERHEAD_RATIO, 0.85d);
 
     // The default retention will allow Kafka remove as much data as possible.
@@ -454,10 +449,6 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   public long getAdminConsumptionCycleTimeoutMs() { return adminConsumptionCycleTimeoutMs; }
 
   public int getAdminConsumptionMaxWorkerThreadPoolSize() { return adminConsumptionMaxWorkerThreadPoolSize; }
-
-  public boolean isEnableTopicReplicator() {
-    return enableTopicReplicator;
-  }
 
   public static Map<String, String> parseClusterMap(VeniceProperties clusterPros, String datacenterAllowlist) {
     return parseClusterMap(clusterPros, datacenterAllowlist, false);

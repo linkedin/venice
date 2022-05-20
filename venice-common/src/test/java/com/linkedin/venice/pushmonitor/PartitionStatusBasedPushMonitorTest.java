@@ -1,11 +1,11 @@
 package com.linkedin.venice.pushmonitor;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.ingestion.control.RealTimeTopicSwitcher;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreCleaner;
-import com.linkedin.venice.replication.TopicReplicator;
 import com.linkedin.venice.utils.Pair;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -22,14 +22,14 @@ public class PartitionStatusBasedPushMonitorTest extends AbstractPushMonitorTest
   protected AbstractPushMonitor getPushMonitor(StoreCleaner storeCleaner) {
     return new PartitionStatusBasedPushMonitor(getClusterName(), getMockAccessor(),
         storeCleaner, getMockStoreRepo(), getMockRoutingDataRepo(), getMockPushHealthStats(),
-        Optional.of(mock(TopicReplicator.class)), getClusterLockManager(), getAggregateRealTimeSourceKafkaUrl(), Collections.emptyList());
+        mock(RealTimeTopicSwitcher.class), getClusterLockManager(), getAggregateRealTimeSourceKafkaUrl(), Collections.emptyList());
   }
 
   @Override
-  protected AbstractPushMonitor getPushMonitor(TopicReplicator mockReplicator) {
+  protected AbstractPushMonitor getPushMonitor(RealTimeTopicSwitcher mockRealTimeTopicSwitcher) {
     return new PartitionStatusBasedPushMonitor(getClusterName(), getMockAccessor(),
         getMockStoreCleaner(), getMockStoreRepo(), getMockRoutingDataRepo(), getMockPushHealthStats(),
-        Optional.of(mockReplicator), getClusterLockManager(), getAggregateRealTimeSourceKafkaUrl(), Collections.emptyList());
+        mockRealTimeTopicSwitcher, getClusterLockManager(), getAggregateRealTimeSourceKafkaUrl(), Collections.emptyList());
   }
 
   @Test

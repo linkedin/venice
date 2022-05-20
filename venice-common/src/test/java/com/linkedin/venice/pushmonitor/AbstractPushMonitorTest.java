@@ -3,6 +3,7 @@ package com.linkedin.venice.pushmonitor;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.helix.HelixState;
+import com.linkedin.venice.ingestion.control.RealTimeTopicSwitcher;
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
@@ -18,7 +19,6 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
-import com.linkedin.venice.replication.TopicReplicator;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -30,7 +30,6 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -64,12 +63,12 @@ public abstract class AbstractPushMonitorTest {
   private int replicationFactor = 3;
 
   protected AbstractPushMonitor getPushMonitor() {
-    return getPushMonitor(mock(TopicReplicator.class));
+    return getPushMonitor(mock(RealTimeTopicSwitcher.class));
   }
 
   protected abstract AbstractPushMonitor getPushMonitor(StoreCleaner storeCleaner);
 
-  protected abstract AbstractPushMonitor getPushMonitor(TopicReplicator mockReplicator);
+  protected abstract AbstractPushMonitor getPushMonitor(RealTimeTopicSwitcher mockRealTimeTopicSwitcher);
 
   @BeforeMethod
   public void setUp() {
@@ -504,8 +503,9 @@ public abstract class AbstractPushMonitorTest {
     store.setHybridStoreConfig(new HybridStoreConfigImpl(100, 100, HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD,
         DataReplicationPolicy.NON_AGGREGATE, BufferReplayPolicy.REWIND_FROM_EOP));
     // Prepare a mock topic replicator
-    TopicReplicator mockReplicator = mock(TopicReplicator.class);
-    monitor.setTopicReplicator(Optional.of(mockReplicator));
+    RealTimeTopicSwitcher
+        realTimeTopicSwitcher = mock(RealTimeTopicSwitcher.class);
+    monitor.setRealTimeTopicSwitcher(realTimeTopicSwitcher);
     // Start a push
     monitor.startMonitorOfflinePush(topic, numberOfPartition, replicationFactor,
         OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
@@ -525,25 +525,25 @@ public abstract class AbstractPushMonitorTest {
     // Check hybrid push status
     monitor.onPartitionStatusChange(topic, partitionStatus);
     // Not ready to send SOBR
-    verify(mockReplicator, never()).prepareAndStartReplication(any(), any(), any(), any(), anyList());
+    verify(realTimeTopicSwitcher, never()).switchToRealTimeTopic(any(), any(), any(), any(), anyList());
     Assert.assertEquals(monitor.getOfflinePushOrThrow(topic).getCurrentStatus(), ExecutionStatus.STARTED,
         "Hybrid push is not ready to send SOBR.");
 
     // One replica received end of push
     replicaStatuses.get(0).updateStatus(ExecutionStatus.END_OF_PUSH_RECEIVED);
     monitor.onPartitionStatusChange(topic, partitionStatus);
-    verify(mockReplicator,times(1))
-        .prepareAndStartReplication(eq(Version.composeRealTimeTopic(store.getName())), eq(topic), eq(store), eq(aggregateRealTimeSourceKafkaUrl), anyList());
+    verify(realTimeTopicSwitcher,times(1))
+        .switchToRealTimeTopic(eq(Version.composeRealTimeTopic(store.getName())), eq(topic), eq(store), eq(aggregateRealTimeSourceKafkaUrl), anyList());
     Assert.assertEquals(monitor.getOfflinePushOrThrow(topic).getCurrentStatus(), ExecutionStatus.END_OF_PUSH_RECEIVED,
         "At least one replica already received end_of_push, so we send SOBR and update push status to END_OF_PUSH_RECEIVED");
 
     // Another replica received end of push
     replicaStatuses.get(1).updateStatus(ExecutionStatus.END_OF_PUSH_RECEIVED);
-    mockReplicator = mock(TopicReplicator.class);
-    monitor.setTopicReplicator(Optional.of(mockReplicator));
+    realTimeTopicSwitcher = mock(RealTimeTopicSwitcher.class);
+    monitor.setRealTimeTopicSwitcher(realTimeTopicSwitcher);
     monitor.onPartitionStatusChange(topic, partitionStatus);
     // Should not send SOBR again
-    verify(mockReplicator, never()).prepareAndStartReplication(any(), any(), any(), any(), anyList());
+    verify(realTimeTopicSwitcher, never()).switchToRealTimeTopic(any(), any(), any(), any(), anyList());
   }
 
   @Test
@@ -555,8 +555,9 @@ public abstract class AbstractPushMonitorTest {
     store.setHybridStoreConfig(new HybridStoreConfigImpl(100, 100, HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD,
         DataReplicationPolicy.NON_AGGREGATE, BufferReplayPolicy.REWIND_FROM_EOP));
     // Prepare a mock topic replicator
-    TopicReplicator mockReplicator = mock(TopicReplicator.class);
-    monitor.setTopicReplicator(Optional.of(mockReplicator));
+    RealTimeTopicSwitcher
+        realTimeTopicSwitcher = mock(RealTimeTopicSwitcher.class);
+    monitor.setRealTimeTopicSwitcher(realTimeTopicSwitcher);
     // Start a push
     monitor.startMonitorOfflinePush(topic, numberOfPartition, replicationFactor,
         OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
@@ -587,8 +588,8 @@ public abstract class AbstractPushMonitorTest {
       threads[i].join();
     }
     // Only send one SOBR
-    verify(mockReplicator, only())
-        .prepareAndStartReplication(eq(Version.composeRealTimeTopic(store.getName())), eq(topic), eq(store), eq(aggregateRealTimeSourceKafkaUrl), anyList());
+    verify(realTimeTopicSwitcher, only())
+        .switchToRealTimeTopic(eq(Version.composeRealTimeTopic(store.getName())), eq(topic), eq(store), eq(aggregateRealTimeSourceKafkaUrl), anyList());
     Assert.assertEquals(monitor.getOfflinePushOrThrow(topic).getCurrentStatus(), ExecutionStatus.END_OF_PUSH_RECEIVED,
         "At least one replica already received end_of_push, so we send SOBR and update push status to END_OF_PUSH_RECEIVED");
   }

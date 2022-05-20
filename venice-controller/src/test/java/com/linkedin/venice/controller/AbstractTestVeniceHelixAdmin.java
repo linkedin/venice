@@ -164,7 +164,6 @@ class AbstractTestVeniceHelixAdmin {
 
   Properties getControllerProperties(String clusterName) throws IOException {
     Properties properties = TestUtils.getPropertiesForControllerConfig();
-    properties.put(ENABLE_TOPIC_REPLICATOR, false);
     properties.put(KAFKA_ZK_ADDRESS, kafkaZkAddress);
     properties.put(ZOOKEEPER_ADDRESS, zkAddress);
     properties.put(CLUSTER_NAME, clusterName);

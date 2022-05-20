@@ -3,7 +3,7 @@ package com.linkedin.venice.controller;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.init.ClusterLeaderInitializationRoutine;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
-import com.linkedin.venice.replication.TopicReplicator;
+import com.linkedin.venice.ingestion.control.RealTimeTopicSwitcher;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Collection;
 import java.util.Optional;
@@ -26,21 +26,27 @@ public class VeniceDistClusterControllerStateModelFactory extends StateModelFact
   private final VeniceHelixAdmin admin;
   private final MetricsRepository metricsRepository;
   private final ClusterLeaderInitializationRoutine controllerInitialization;
-  private final Optional<TopicReplicator> leaderFollowerTopicReplicator;
+  private final RealTimeTopicSwitcher realTimeTopicSwitcher;
   private final Optional<DynamicAccessController> accessController;
   private final HelixAdminClient helixAdminClient;
 
-  public VeniceDistClusterControllerStateModelFactory(ZkClient zkClient, HelixAdapterSerializer adapterSerializer,
-      VeniceHelixAdmin admin, VeniceControllerMultiClusterConfig clusterConfigs, MetricsRepository metricsRepository,
-      ClusterLeaderInitializationRoutine controllerInitialization, Optional<TopicReplicator> leaderFollowerTopicReplicator,
-      Optional<DynamicAccessController> accessController, HelixAdminClient helixAdminClient) {
+  public VeniceDistClusterControllerStateModelFactory(
+      ZkClient zkClient,
+      HelixAdapterSerializer adapterSerializer,
+      VeniceHelixAdmin admin,
+      VeniceControllerMultiClusterConfig clusterConfigs,
+      MetricsRepository metricsRepository,
+      ClusterLeaderInitializationRoutine controllerInitialization,
+      RealTimeTopicSwitcher realTimeTopicSwitcher,
+      Optional<DynamicAccessController> accessController,
+      HelixAdminClient helixAdminClient) {
     this.zkClient = zkClient;
     this.adapterSerializer = adapterSerializer;
     this.clusterConfigs = clusterConfigs;
     this.admin = admin;
     this.metricsRepository = metricsRepository;
     this.controllerInitialization = controllerInitialization;
-    this.leaderFollowerTopicReplicator = leaderFollowerTopicReplicator;
+    this.realTimeTopicSwitcher = realTimeTopicSwitcher;
     this.accessController = accessController;
     this.helixAdminClient = helixAdminClient;
   }
@@ -49,9 +55,17 @@ public class VeniceDistClusterControllerStateModelFactory extends StateModelFact
   public VeniceControllerStateModel createNewStateModel(String resourceName, String partitionName) {
     String veniceClusterName =
         VeniceControllerStateModel.getVeniceClusterNameFromPartitionName(partitionName);
-    VeniceControllerStateModel model =
-        new VeniceControllerStateModel(veniceClusterName, zkClient, adapterSerializer, clusterConfigs, admin, metricsRepository,
-            controllerInitialization, leaderFollowerTopicReplicator, accessController, helixAdminClient);
+    VeniceControllerStateModel model = new VeniceControllerStateModel(
+        veniceClusterName,
+        zkClient,
+        adapterSerializer,
+        clusterConfigs,
+        admin,
+        metricsRepository,
+        controllerInitialization,
+        realTimeTopicSwitcher,
+        accessController,
+        helixAdminClient);
     clusterToStateModelsMap.put(veniceClusterName, model);
     return model;
   }

@@ -1,4 +1,4 @@
-package com.linkedin.venice.replication;
+package com.linkedin.venice.ingestion.control;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.TopicException;
@@ -26,8 +26,8 @@ import org.testng.annotations.Test;
 import static org.mockito.Mockito.*;
 import static org.testng.Assert.*;
 
-public class TopicReplicatorTest {
-  private TopicReplicator topicReplicator;
+public class RealTimeTopicSwitcherRewindTest {
+  private RealTimeTopicSwitcher topicReplicator;
   private MockTime mockTime;
 
   @BeforeTest
@@ -41,7 +41,7 @@ public class TopicReplicatorTest {
 
     TopicManager topicManager = mock(TopicManager.class);
     VeniceWriter<byte[], byte[], byte[]> veniceWriter = mock(VeniceWriter.class);
-    topicReplicator = mock(TopicReplicator.class);
+    topicReplicator = mock(RealTimeTopicSwitcher.class);
     VeniceWriterFactory veniceWriterFactory = mock(VeniceWriterFactory.class);
     mockTime = new MockTime();
 
@@ -56,9 +56,9 @@ public class TopicReplicatorTest {
         .thenReturn(veniceWriter);
 
     // Methods under test
-    doCallRealMethod().when(topicReplicator).checkPreconditions(anyString(), anyString(), any(), any());
+    doCallRealMethod().when(topicReplicator).ensurePreconditions(anyString(), anyString(), any(), any());
     doCallRealMethod().when(topicReplicator).getRewindStartTime(any(), any(), anyLong());
-    doCallRealMethod().when(topicReplicator).beginReplication(anyString(), anyString(), anyLong(), anyList());
+    doCallRealMethod().when(topicReplicator).sendTopicSwitch(anyString(), anyString(), anyLong(), anyList());
   }
 
   @Test
@@ -72,16 +72,16 @@ public class TopicReplicatorTest {
     final String sourceTopicName = "source topic name";
     final String destinationTopicName = "destination topic name";
 
-    topicReplicator.checkPreconditions(sourceTopicName, destinationTopicName, store, hybridStoreConfig);
+    topicReplicator.ensurePreconditions(sourceTopicName, destinationTopicName, store, hybridStoreConfig);
     long rewindStartTime = topicReplicator.getRewindStartTime(mock(Version.class), hybridStoreConfig, VERSION_CREATION_TIME_MS);
     assertEquals(rewindStartTime, mockTime.getMilliseconds() - Time.MS_PER_SECOND * REWIND_TIME_IN_SECONDS,
         "Rewind start timestamp is not calculated properly");
-    topicReplicator.beginReplication(sourceTopicName, destinationTopicName, rewindStartTime, null);
+    topicReplicator.sendTopicSwitch(sourceTopicName, destinationTopicName, rewindStartTime, null);
 
-    verify(topicReplicator).beginReplication(sourceTopicName, destinationTopicName, rewindStartTime, null);
+    verify(topicReplicator).sendTopicSwitch(sourceTopicName, destinationTopicName, rewindStartTime, null);
 
     try {
-      topicReplicator.checkPreconditions(sourceTopicName, destinationTopicName, store, Optional.empty());
+      topicReplicator.ensurePreconditions(sourceTopicName, destinationTopicName, store, Optional.empty());
       fail("topicReplicator.startBufferReplay should fail (FOR NOW) for non-Hybrid stores.");
     } catch (VeniceException e) {
       // expected
@@ -99,15 +99,15 @@ public class TopicReplicatorTest {
     final String sourceTopicName = "source topic name";
     final String destinationTopicName = "destination topic name";
 
-    topicReplicator.checkPreconditions(sourceTopicName, destinationTopicName, store, hybridStoreConfig);
+    topicReplicator.ensurePreconditions(sourceTopicName, destinationTopicName, store, hybridStoreConfig);
     long rewindStartTime = topicReplicator.getRewindStartTime(mock(Version.class), hybridStoreConfig, VERSION_CREATION_TIME_MS);
     assertEquals(rewindStartTime, VERSION_CREATION_TIME_MS - Time.MS_PER_SECOND * REWIND_TIME_IN_SECONDS, "Rewind start timestamp is not calculated properly");
-    topicReplicator.beginReplication(sourceTopicName, destinationTopicName, rewindStartTime, null);
+    topicReplicator.sendTopicSwitch(sourceTopicName, destinationTopicName, rewindStartTime, null);
 
-    verify(topicReplicator).beginReplication(sourceTopicName, destinationTopicName, rewindStartTime, null);
+    verify(topicReplicator).sendTopicSwitch(sourceTopicName, destinationTopicName, rewindStartTime, null);
 
     try {
-      topicReplicator.checkPreconditions(sourceTopicName, destinationTopicName, store, Optional.empty());
+      topicReplicator.ensurePreconditions(sourceTopicName, destinationTopicName, store, Optional.empty());
       fail("topicReplicator.startBufferReplay should fail (FOR NOW) for non-Hybrid stores.");
     } catch (VeniceException e) {
       // expected

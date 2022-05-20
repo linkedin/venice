@@ -3,12 +3,15 @@ package com.linkedin.venice.kafka;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.exceptions.VeniceRetriableException;
 import com.linkedin.venice.kafka.KafkaClientFactory.MetricsParameters;
 import com.linkedin.venice.kafka.admin.KafkaAdminWrapper;
 import com.linkedin.venice.kafka.partitionoffset.PartitionOffsetFetcher;
 import com.linkedin.venice.kafka.partitionoffset.PartitionOffsetFetcherFactory;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.utils.ExceptionUtils;
+import com.linkedin.venice.utils.RetryUtils;
 import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -17,6 +20,7 @@ import java.io.Closeable;
 import java.io.IOException;
 import java.time.Duration;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -73,6 +77,10 @@ public class TopicManager implements Closeable {
    * aren't necessarily compromised with potentially new bad behavior.
    */
   public static final boolean CONCURRENT_TOPIC_DELETION_REQUEST_POLICY = false;
+
+  private static final List<Class<? extends Throwable>> CREATE_TOPIC_RETRIABLE_EXCEPTIONS = Collections.unmodifiableList(Arrays.asList(
+      InvalidReplicationFactorException.class,
+      org.apache.kafka.common.errors.TimeoutException.class));
 
   // Immutable state
   private final Logger logger;
@@ -250,47 +258,46 @@ public class TopicManager implements Closeable {
     long deadlineMs = startTime + (useFastKafkaOperationTimeout ? FAST_KAFKA_OPERATION_TIMEOUT_MS : kafkaOperationTimeoutMs);
 
     logger.info("Creating topic: " + topicName + " partitions: " + numPartitions + " replication: " + replication);
-    try {
-      Properties topicProperties = new Properties();
-      topicProperties.put(TopicConfig.RETENTION_MS_CONFIG, Long.toString(retentionTimeMs));
-      if (logCompaction) {
-        topicProperties.put(TopicConfig.CLEANUP_POLICY_CONFIG, TopicConfig.CLEANUP_POLICY_COMPACT);
-        topicProperties.put(TopicConfig.MIN_COMPACTION_LAG_MS_CONFIG, Long.toString(topicMinLogCompactionLagMs));
-      } else {
-        topicProperties.put(TopicConfig.CLEANUP_POLICY_CONFIG, TopicConfig.CLEANUP_POLICY_DELETE);
-      }
-
-      // If not set, Kafka cluster defaults will apply
-      minIsr.ifPresent(minIsrConfig -> topicProperties.put(TopicConfig.MIN_IN_SYNC_REPLICAS_CONFIG, minIsrConfig));
-
-      // Just in case the Kafka cluster isn't configured as expected.
-      topicProperties.put(TopicConfig.MESSAGE_TIMESTAMP_TYPE_CONFIG, "LogAppendTime");
-
-      boolean asyncCreateOperationSucceeded = false;
-      while (!asyncCreateOperationSucceeded) {
-        try {
-          kafkaWriteOnlyAdmin.get().createTopic(topicName, numPartitions, replication, topicProperties);
-          asyncCreateOperationSucceeded = true;
-        } catch (InvalidReplicationFactorException e) {
-          if (System.currentTimeMillis() > deadlineMs) {
-            throw new VeniceOperationAgainstKafkaTimedOut("Timeout while creating topic: " + topicName + ". Topic still does not exist after " + (deadlineMs - startTime) + "ms.", e);
-          } else {
-            logger.info("Kafka failed to kick off topic creation because it appears to be under-replicated... Will treat it as a transient error and attempt to ride over it.", e);
-            Utils.sleep(200);
-          }
-        }
-      }
-
-      waitUntilTopicCreated(topicName, numPartitions, deadlineMs);
-      boolean eternal = retentionTimeMs == ETERNAL_TOPIC_RETENTION_POLICY_MS;
-      logger.info("Successfully created " + (eternal ? "eternal " : "") + "topic: " + topicName);
-
-    } catch (TopicExistsException e) {
-      logger.info("Topic: " + topicName + " already exists, will update retention policy.");
-      waitUntilTopicCreated(topicName, numPartitions, deadlineMs);
-      updateTopicRetention(topicName, retentionTimeMs);
-      logger.info("Updated retention policy to be " + retentionTimeMs + "ms for topic: " + topicName);
+    Properties topicProperties = new Properties();
+    topicProperties.put(TopicConfig.RETENTION_MS_CONFIG, Long.toString(retentionTimeMs));
+    if (logCompaction) {
+      topicProperties.put(TopicConfig.CLEANUP_POLICY_CONFIG, TopicConfig.CLEANUP_POLICY_COMPACT);
+      topicProperties.put(TopicConfig.MIN_COMPACTION_LAG_MS_CONFIG, Long.toString(topicMinLogCompactionLagMs));
+    } else {
+      topicProperties.put(TopicConfig.CLEANUP_POLICY_CONFIG, TopicConfig.CLEANUP_POLICY_DELETE);
     }
+
+    // If not set, Kafka cluster defaults will apply
+    minIsr.ifPresent(minIsrConfig -> topicProperties.put(TopicConfig.MIN_IN_SYNC_REPLICAS_CONFIG, minIsrConfig));
+
+    // Just in case the Kafka cluster isn't configured as expected.
+    topicProperties.put(TopicConfig.MESSAGE_TIMESTAMP_TYPE_CONFIG, "LogAppendTime");
+
+    try {
+      RetryUtils.executeWithMaxAttemptAndExponentialBackoff(
+          () -> kafkaWriteOnlyAdmin.get().createTopic(topicName, numPartitions, replication, topicProperties),
+          10,
+          Duration.ofMillis(200),
+          Duration.ofSeconds(1),
+          Duration.ofMillis(useFastKafkaOperationTimeout
+              ? FAST_KAFKA_OPERATION_TIMEOUT_MS
+              : kafkaOperationTimeoutMs),
+          CREATE_TOPIC_RETRIABLE_EXCEPTIONS
+      );
+    } catch (Exception e) {
+      if (ExceptionUtils.recursiveClassEquals(e, TopicExistsException.class)) {
+        logger.info("Topic: " + topicName + " already exists, will update retention policy.");
+        waitUntilTopicCreated(topicName, numPartitions, deadlineMs);
+        updateTopicRetention(topicName, retentionTimeMs);
+        logger.info("Updated retention policy to be " + retentionTimeMs + "ms for topic: " + topicName);
+        return;
+      } else {
+        throw new VeniceOperationAgainstKafkaTimedOut("Timeout while creating topic: " + topicName + ". Topic still does not exist after " + (deadlineMs - startTime) + "ms.", e);
+      }
+    }
+    waitUntilTopicCreated(topicName, numPartitions, deadlineMs);
+    boolean eternal = retentionTimeMs == ETERNAL_TOPIC_RETENTION_POLICY_MS;
+    logger.info("Successfully created " + (eternal ? "eternal " : "") + "topic: " + topicName);
   }
 
   protected void waitUntilTopicCreated(String topicName, int partitionCount, long deadlineMs) {

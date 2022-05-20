@@ -137,7 +137,7 @@ public class ApacheKafkaConsumer implements KafkaConsumerWrapper {
     // TODO: we may want to wrap this call in our own thread to enforce the timeout...
     int attemptCount = 1;
     ConsumerRecords<KafkaKey, KafkaMessageEnvelope> records = ConsumerRecords.empty();
-    while (attemptCount <= consumerPollRetryTimes) {
+    while (attemptCount <= consumerPollRetryTimes && !Thread.currentThread().isInterrupted()) {
       try {
         records = kafkaConsumer.poll(Duration.ofMillis(timeoutMs));
         break;
