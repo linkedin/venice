@@ -195,6 +195,8 @@ public class TestHAASController {
 
   @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testConcurrentClusterInitialization() throws InterruptedException, ExecutionException {
+    ExecutorService executorService = new ThreadPoolExecutor(3, 3, 60, TimeUnit.SECONDS, new LinkedBlockingQueue<>(),
+        new DaemonThreadFactory("test-concurrent-cluster-init"));
     try (VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster(0, 0, 0, 1);
         HelixAsAServiceWrapper helixAsAServiceWrapper = startAndWaitForHAASToBeAvailable(venice.getZk().getAddress())) {
       VeniceControllerMultiClusterConfig controllerMultiClusterConfig = mock(VeniceControllerMultiClusterConfig.class);
@@ -202,8 +204,6 @@ public class TestHAASController {
       doReturn(HelixAsAServiceWrapper.HELIX_SUPER_CLUSTER_NAME).when(controllerMultiClusterConfig).getControllerHAASSuperClusterName();
       doReturn("venice-controllers").when(controllerMultiClusterConfig).getControllerClusterName();
       doReturn(3).when(controllerMultiClusterConfig).getControllerClusterReplica();
-      ExecutorService
-          executorService = new ThreadPoolExecutor(3, 3, 60, TimeUnit.SECONDS, new LinkedBlockingQueue<>(), new DaemonThreadFactory("test-concurrent-cluster-init"));
       List<Callable<Void>> tasks = new ArrayList<>();
       for (int i = 0; i < 3; i++) {
         tasks.add(new InitTask(new ZkHelixAdminClient(controllerMultiClusterConfig, new MetricsRepository())));
@@ -212,6 +212,8 @@ public class TestHAASController {
       for (Future<Void> result : results) {
         result.get();
       }
+    } finally {
+      executorService.shutdownNow();
     }
   }
 
