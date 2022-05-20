@@ -64,7 +64,7 @@ dependencies {
   implementation libraries.spark
   implementation libraries.testng
 
-  compileOnly libraries.flatbuffersJava // FlatBuffersPlugin implicitly adds output to main source set
+  compileOnly libraries.flatBuffersJava // FlatBuffersPlugin implicitly adds output to main source set
 
   testImplementation (libraries.mapreduceClientJobClient) {
     exclude group: 'org.apache.avro'
@@ -74,13 +74,14 @@ dependencies {
 
   jmhAnnotationProcessor libraries.jmhGenerator
   jmhImplementation libraries.jmhCore
-  jmhImplementation libraries.flatbuffersJava
+  jmhImplementation libraries.flatBuffersJava
 }
 
 task compileJmhFlatBuffers(type: FlatBuffers) {
   language = 'java'
   inputDir = file('src/jmh/flatbuffers')
   outputDir = file("$buildDir/generated/sources/flatbuffers/java/jmh")
+  outputs.cacheIf { true }
 }
 sourceSets.jmh.java.srcDir(compileJmhFlatBuffers)
 

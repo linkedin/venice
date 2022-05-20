@@ -5,7 +5,6 @@ import org.apache.tools.ant.taskdefs.condition.Os
 plugins {
   id 'idea'
   id 'java'
-  id 'com.dorongold.task-tree' version '2.1.0'
   id 'com.github.johnrengelman.shadow' version '6.1.0' apply false
   id 'com.github.spotbugs' version '4.8.0' apply false
   id 'io.netifi.flatbuffers' version '1.0.6' apply false
@@ -22,106 +21,82 @@ if (project.hasProperty('overrideBuildEnvironment')) {
   }
 }
 
+def avroVersion = '1.9.2'
 def avroUtilVersion = '0.2.96'
 def containerVersion = '38.4.466'
 def ddsStorageCoreVersion = '13.0.16'
-def internalKafkaGroup = 'com.linkedin.kafka'
-def internalKafkaVersion = '2.3.0.32'
+def kafkaGroup = 'com.linkedin.kafka'
+def kafkaVersion = '2.3.0.32'
 def log4j2Version = '2.17.1'
 def pegasusVersion = '29.31.0'
 
 ext.libraries = [
-    avro: 'org.apache.avro:avro:1.9.2',
-    avroMapred: 'org.apache.avro:avro-mapred:1.9.2',
+    avro: 'org.apache.avro:avro:' + avroVersion,
+    avroMapred: 'org.apache.avro:avro-mapred:' + avroVersion,
+    asyncHttpClient: 'org.apache.httpcomponents:httpasyncclient:4.1.2',
+    // TODO: switch to avro-util once it's able to generate version agnostic code.
+    avroSchemasBuilder: 'com.linkedin.avro-schemas:avro-schemas-builder:64.0.4',
     avroUtilCompatibilityHelper: 'com.linkedin.avroutil1:helper-all:' + avroUtilVersion,
     avroUtilFastserde: 'com.linkedin.avroutil1:avro-fastserde:' + avroUtilVersion,
+    avroUtilSpotbugsPlugin: 'com.linkedin.avroutil1:spotbugs-plugin:0.2.69',
     bouncyCastle: 'org.bouncycastle:bcprov-jdk15on:1.55',
     caffeine: 'com.github.ben-manes.caffeine:caffeine:2.8.5',
+    classgraph: 'io.github.classgraph:classgraph:4.8.60',
     commonsCodec: 'commons-codec:commons-codec:1.4',
+    commonsConfiguration: 'commons-configuration:commons-configuration:1.9',
     commonsIo: 'commons-io:commons-io:2.11',
-    fastUtil: 'it.unimi.dsi:fastutil:8.3.0',
-    helix: 'org.apache.helix:helix-core:1.0.3.2',
-    kafka: internalKafkaGroup + ':kafka_2.12:' + internalKafkaVersion,
-    kafkaClients: internalKafkaGroup + ':kafka-clients:' + internalKafkaVersion,
-    kafkaClientsTest: internalKafkaGroup + ':kafka-clients:' + internalKafkaVersion + ':test',
-    mockito: 'org.mockito:mockito-core:3.3.3',
-    netty: 'io.netty:netty-all:4.1.52.Final',
-    zkclient: 'com.101tec:zkclient:0.7', // For Kafka AdminUtils
+    commonsLang: 'commons-lang:commons-lang:2.6',
+    conscrypt: 'org.conscrypt:conscrypt-openjdk-uber:2.4.0',
     d2: 'com.linkedin.container:pegasus-d2-server-factory:' + containerVersion,
     d2Client: 'com.linkedin.container:pegasus-d2-client-factory:' + containerVersion,
-    r2Client: 'com.linkedin.container:pegasus-r2-client-factory:' + containerVersion,
-    r2: 'com.linkedin.pegasus:r2:' + pegasusVersion,
-    routerApi: 'com.linkedin.dds-storage-core:dds-storage-router-api:' + ddsStorageCoreVersion,
-    routerImpl: 'com.linkedin.dds-storage-core:dds-storage-router-impl:' + ddsStorageCoreVersion,
     ddsNettyBase: 'com.linkedin.dds-storage-core:dds-storage-netty4-base:' + ddsStorageCoreVersion,
-    routerLnkd: 'com.linkedin.dds-storage-core:dds-storage-router-lnkd:' + ddsStorageCoreVersion,
-    netty4Lnkd: 'com.linkedin.dds-storage-core:dds-storage-netty4-lnkd:' + ddsStorageCoreVersion,
     ddsStorageCommonBase: 'com.linkedin.dds-storage-core:dds-storage-common-base:' + ddsStorageCoreVersion,
-    oss: 'org.sonatype.oss:oss-parent:7',
-    asyncHttpClient: 'org.apache.httpcomponents:httpasyncclient:4.1.2',
-    zookeeper: 'org.apache.zookeeper:zookeeper:3.5.9',
-    zstd: 'com.github.luben:zstd-jni:1.4.4-7',
-
-    // Hadoop to Venice Bridge dependencies
-    mapreduceClientCore: 'org.apache.hadoop:hadoop-mapreduce-client-core:2.3.0',
-    commonsConfiguration: 'commons-configuration:commons-configuration:1.9',
-    commonsLang: 'commons-lang:commons-lang:2.6',
+    failsafe: 'net.jodah:failsafe:2.4.0',
+    fastUtil: 'it.unimi.dsi:fastutil:8.3.0',
+    flatBuffersJava: 'com.google.flatbuffers:flatbuffers-java:1.11.0',
     hadoopCommon: 'org.apache.hadoop:hadoop-common:2.3.0',
+    helix: 'org.apache.helix:helix-core:1.0.3.2',
+    httpClient5: 'org.apache.httpcomponents.client5:httpclient5:5.1.2',
     httpClient: 'org.apache.httpcomponents:httpclient:4.5.2',
     httpCore: 'org.apache.httpcomponents:httpcore:4.4.5',
     jacksonCore: 'org.codehaus.jackson:jackson-core-asl:1.9.6',
     jacksonMapper: 'org.codehaus.jackson:jackson-mapper-asl:1.9.6',
     javax: 'javax.servlet:javax.servlet-api:3.1.0',
     jdom: 'org.jdom:jdom:1.1',
+    jmhCore: 'org.openjdk.jmh:jmh-core:1.28',
+    jmhGenerator: 'org.openjdk.jmh:jmh-generator-annprocess:1.28',
     joptSimple: 'net.sf.jopt-simple:jopt-simple:3.2',
+    kafka: kafkaGroup + ':kafka_2.12:' + kafkaVersion,
+    kafkaClients: kafkaGroup + ':kafka-clients:' + kafkaVersion,
+    kafkaClientsTest: kafkaGroup + ':kafka-clients:' + kafkaVersion + ':test',
     log4j2api: 'org.apache.logging.log4j:log4j-api:' + log4j2Version,
     log4j2core: 'org.apache.logging.log4j:log4j-core:' + log4j2Version,
+    mapreduceClientCore: 'org.apache.hadoop:hadoop-mapreduce-client-core:2.3.0',
+    mapreduceClientJobClient: 'org.apache.hadoop:hadoop-mapreduce-client-jobclient:2.3.0',
+    mockito: 'org.mockito:mockito-core:3.3.3',
+    netty4Lnkd: 'com.linkedin.dds-storage-core:dds-storage-netty4-lnkd:' + ddsStorageCoreVersion,
+    netty: 'io.netty:netty-all:4.1.52.Final',
+    oss: 'org.sonatype.oss:oss-parent:7',
+    r2: 'com.linkedin.pegasus:r2:' + pegasusVersion,
+    r2Client: 'com.linkedin.container:pegasus-r2-client-factory:' + containerVersion,
+    rocksdbjni: 'org.rocksdb:rocksdbjni:7.0.3',
+    routerApi: 'com.linkedin.dds-storage-core:dds-storage-router-api:' + ddsStorageCoreVersion,
+    routerImpl: 'com.linkedin.dds-storage-core:dds-storage-router-impl:' + ddsStorageCoreVersion,
+    routerLnkd: 'com.linkedin.dds-storage-core:dds-storage-router-lnkd:' + ddsStorageCoreVersion,
+    samzaApi: 'com.linkedin.samza-li:samza-api:311.1050.0.66', // Equivalent to Samza-1.5
     slf4j: 'org.apache.logging.log4j:log4j-to-slf4j:' + log4j2Version,
-    snappy: 'org.xerial.snappy:snappy-java:1.0.4.1',
     // TODO: move back to open source sparkjava once they fix Jetty SSL.
     // spark: 'com.sparkjava:spark-core:2.9.1',
     spark: 'com.linkedin.li-sparkjava:li-sparkjava-impl:0.0.2',
-    testng: 'org.testng:testng:6.14.3',
+    spotbugs: 'com.github.spotbugs:spotbugs:4.5.2',
     tehuti: 'io.tehuti:tehuti:0.8.8',
+    testng: 'org.testng:testng:6.14.3',
     // Resolves java.lang.UnsupportedOperationException:  setXIncludeAware is not supported on this JAXP implementation or earlier: class org.apache.xerces.jaxp.DocumentBuilderFactoryImpl
     xalan: 'xalan:xalan:2.7.1',
     xerces: 'xerces:xercesImpl:2.9.1',
-
-    // Hadoop to Venice Bridge test dependencies
-    mapreduceClientJobClient: 'org.apache.hadoop:hadoop-mapreduce-client-jobclient:2.3.0',
-
-    // Samza dependencies
-    samzaApi: 'com.linkedin.samza-li:samza-api:311.1050.0.66', // Equivalent to Samza-1.5
-
-    // Added during dds-storage-core v2 => v3
-    // Transitive dependency, to replace implicit version 11.0.17 which caused 4 test cases to fail:
-    // 1. TestAdminSparkServer.controllerClientCanDeleteStore
-    // 2. TestAdminSparkServer.controllerClientCanDeleteOldVersion
-    // 3. TestAdminSparkServer.controllerClientCanDeleteAllVersion
-    // 4. TestBrooklin.canReplicateKafkaWithBrooklinTopicReplicator
-    restliDocgen: 'com.linkedin.pegasus:restli-docgen:' + pegasusVersion,
-
-    // RocksDB
-    rocksdbjni: 'org.rocksdb:rocksdbjni:7.0.3',
-
-    // Flatbuffers lib, currently for benchmark only
-    flatbuffersJava: 'com.google.flatbuffers:flatbuffers-java:1.11.0',
-
-    // open source conscrypt from google
-    conscrypt: 'org.conscrypt:conscrypt-openjdk-uber:2.4.0',
-    classgraph: 'io.github.classgraph:classgraph:4.8.60',
-
-    jmhCore: 'org.openjdk.jmh:jmh-core:1.28',
-    jmhGenerator: 'org.openjdk.jmh:jmh-generator-annprocess:1.28',
-    failsafe: 'net.jodah:failsafe:2.4.0',
-
-    spotbugs: 'com.github.spotbugs:spotbugs:4.5.2',
-    spotbugsAvroPlugin: 'com.linkedin.avroutil1:spotbugs-plugin:0.2.69',
-
-    // TODO: switch to avro-util once it's able to generate version agnostic code.
-    avroSchemasBuilder: 'com.linkedin.avro-schemas:avro-schemas-builder:63.1.428',
-
-    httpClient5: 'org.apache.httpcomponents.client5:httpclient5:5.1.2'
+    zkclient: 'com.101tec:zkclient:0.7', // For Kafka AdminUtils
+    zookeeper: 'org.apache.zookeeper:zookeeper:3.5.9',
+    zstd: 'com.github.luben:zstd-jni:1.5.2-3'
 ]
 
 subprojects {
@@ -134,10 +109,6 @@ subprojects {
   }
 
   sourceCompatibility = 1.8
-  // TODO: remove this before open-sourcing
-  if (!project.hasProperty('overrideBuildEnvironment') || !project.overrideBuildEnvironment) {
-     version = '0.1'
-  }
 
   configurations {
     implementation {
@@ -174,7 +145,7 @@ subprojects {
     testImplementation project(':venice-test-common')
 
     spotbugs libraries.spotbugs
-    spotbugsPlugins libraries.spotbugsAvroPlugin
+    spotbugsPlugins libraries.avroUtilSpotbugsPlugin
 
     avroCompiler libraries.avroSchemasBuilder
     avroCompiler 'org.slf4j:slf4j-simple:1.7.32'
@@ -187,64 +158,24 @@ subprojects {
     }
   }
 
-  task sourceSets {
-    doLast {
-      sourceSets.each {
-        println "[$it.name]"
-        println "Sources: $it.allJava.srcDirs"
-        println "Output Sources: $it.output.generatedSourcesDirs.files"
-        println "Output Classes: $it.output.classesDirs.files"
-        println ""
-      }
-    }
-  }
-
-  task compileAvro(type: JavaExec) {
-    def inputDir = file('src/main/resources/avro')
+  task compileAvro(type: SourceTask) {
+    def sourceDir = file('src/main/resources/avro')
     def outputDir = file("$buildDir/generated/sources/avro/java/main")
 
-    def versionOverrides = [
-//      'venice-common/src/main/resources/avro/StoreVersionState/v5'
-    ]
-
-    onlyIf { inputDir.exists() }
+    source sourceDir
     inputs.files(configurations.avroCompiler).withNormalizer(ClasspathNormalizer)
-    inputs.dir(inputDir)
     outputs.dir(outputDir)
-    classpath = configurations.avroCompiler
-    main = 'com.linkedin.avro.Builder'
-    args = [
-        '--input', temporaryDir,
-        '--output', outputDir,
-        '--includeClasspath', 'true'
-    ]
+    outputs.cacheIf { true }
 
     doFirst {
-      def schemas = [:]
-      def copySchemas = { dir ->
-        println "Copying avro schemas from ${project.relativePath(dir)}"
-        dir.eachFileMatch(FileType.FILES, ~/.*\.avsc/) { schema ->
-          def original = schemas.put(schema.name, schema)
-          if (original) {
-            throw new GradleException("Duplicate avro schemas: \n $original\n $schema")
-          }
-          copy { from schema into temporaryDir }
-        }
-      }
+      def versionOverrides = [
+//        project(':venice-common').file('src/main/resources/avro/StoreVersionState/v5', PathValidation.DIRECTORY)
+      ]
 
-      // Copy not versioned schemas from the avro root
-      copySchemas(inputDir)
-
-      // Copy latest versioned schemas from sub-folders
-      inputDir.eachDir { typeDir ->
+      def schemaDirs = [sourceDir]
+      sourceDir.eachDir { typeDir ->
         def parseVersionId = { dir ->
-          if (!dir) {
-            null
-          } else if (rootProject.relativePath(dir) in versionOverrides) {
-            Integer.MAX_VALUE
-          } else {
-            dir.name.substring(1).toInteger()
-          }
+          (dir in versionOverrides) ? Integer.MAX_VALUE : dir?.name?.substring(1)?.toInteger()
         }
         def latestVersionDir = null
         typeDir.eachDirMatch(~/v-?\d+/) { versionDir ->
@@ -253,10 +184,29 @@ subprojects {
           }
         }
         if (latestVersionDir) {
-          copySchemas(latestVersionDir)
+          schemaDirs += [latestVersionDir]
         }
       }
-      println "Compiling avro schemas ${temporaryDir.list().toSorted()}"
+
+      copy {
+        from (schemaDirs) {
+          include '*.avsc'
+        }
+        into temporaryDir
+        duplicatesStrategy = DuplicatesStrategy.FAIL
+        eachFile {
+          println "Copying avro schema ${relativePath(it.file)} ${it.file.parentFile in versionOverrides ? '(OVERRIDE)' : ''}"
+        }
+      }
+
+      javaexec {
+        classpath = configurations.avroCompiler
+        main = 'com.linkedin.avro.Builder'
+        args = [
+            '--input', temporaryDir,
+            '--output', outputDir
+        ]
+      }
     }
   }
   sourceSets.main.java.srcDir(compileAvro)
@@ -326,10 +276,9 @@ subprojects {
       println "maxHeapSize=$maxHeapSize"
     }
 
-    useTestNG() {
+    useTestNG {
       excludeGroups 'flaky'
-      Set<String> suiteListeners = ['com.linkedin.venice.testng.VeniceSuiteListener']
-      setListeners(suiteListeners)
+      listeners = ['com.linkedin.venice.testng.VeniceSuiteListener']
     }
 
     retry {
@@ -346,7 +295,7 @@ subprojects {
   }
 
   task flakyTest(type: Test) {
-    useTestNG() {
+    useTestNG {
       includeGroups 'flaky'
     }
   }
@@ -355,6 +304,10 @@ subprojects {
     zip64 = true
     duplicatesStrategy = DuplicatesStrategy.FAIL
     exclude('**/*.xml')
+  }
+
+  plugins.withType(DistributionPlugin) {
+    tasks.distZip.enabled = false
   }
 }
 
