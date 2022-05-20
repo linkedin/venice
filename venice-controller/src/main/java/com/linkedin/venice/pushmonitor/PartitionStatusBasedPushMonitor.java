@@ -1,11 +1,11 @@
 package com.linkedin.venice.pushmonitor;
 
+import com.linkedin.venice.ingestion.control.RealTimeTopicSwitcher;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.StoreCleaner;
-import com.linkedin.venice.replication.TopicReplicator;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.locks.ClusterLockManager;
 import java.util.List;
@@ -19,10 +19,10 @@ import java.util.Optional;
 public class PartitionStatusBasedPushMonitor extends AbstractPushMonitor {
   public PartitionStatusBasedPushMonitor(String clusterName, OfflinePushAccessor offlinePushAccessor,
       StoreCleaner storeCleaner, ReadWriteStoreRepository metadataRepository, RoutingDataRepository routingDataRepository,
-      AggPushHealthStats aggPushHealthStats, Optional<TopicReplicator> topicReplicator, ClusterLockManager clusterLockManager,
+      AggPushHealthStats aggPushHealthStats, RealTimeTopicSwitcher realTimeTopicSwitcher, ClusterLockManager clusterLockManager,
       String aggregateRealTimeSourceKafkaUrl, List<String> childDataCenterKafkaUrls) {
     super(clusterName, offlinePushAccessor, storeCleaner, metadataRepository, routingDataRepository, aggPushHealthStats,
-        topicReplicator, clusterLockManager, aggregateRealTimeSourceKafkaUrl,
+        realTimeTopicSwitcher, clusterLockManager, aggregateRealTimeSourceKafkaUrl,
         childDataCenterKafkaUrls);
   }
 

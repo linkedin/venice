@@ -19,6 +19,7 @@ import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.helix.VeniceOfflinePushMonitorAccessor;
 import com.linkedin.venice.helix.ZkRoutersClusterManager;
 import com.linkedin.venice.helix.ZkStoreConfigAccessor;
+import com.linkedin.venice.ingestion.control.RealTimeTopicSwitcher;
 import com.linkedin.venice.meta.ReadWriteSchemaRepository;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.Store;
@@ -26,7 +27,6 @@ import com.linkedin.venice.pushmonitor.AggPushHealthStats;
 import com.linkedin.venice.pushmonitor.AggPushStatusCleanUpStats;
 import com.linkedin.venice.pushmonitor.LeakedPushStatusCleanUpService;
 import com.linkedin.venice.pushmonitor.PushMonitorDelegator;
-import com.linkedin.venice.replication.TopicReplicator;
 import com.linkedin.venice.stats.HelixMessageChannelStats;
 import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
@@ -76,9 +76,15 @@ public class HelixVeniceClusterResources implements VeniceResource {
   private final Optional<MetaStoreWriter> metaStoreWriter;
   private final VeniceAdminStats veniceAdminStats;
 
-  public HelixVeniceClusterResources(String clusterName, ZkClient zkClient, HelixAdapterSerializer adapterSerializer,
-      SafeHelixManager helixManager, VeniceControllerConfig config, VeniceHelixAdmin admin,
-      MetricsRepository metricsRepository, Optional<TopicReplicator> leaderFollowerTopicReplicator, Optional<DynamicAccessController> accessController,
+  public HelixVeniceClusterResources(String clusterName,
+      ZkClient zkClient,
+      HelixAdapterSerializer adapterSerializer,
+      SafeHelixManager helixManager,
+      VeniceControllerConfig config,
+      VeniceHelixAdmin admin,
+      MetricsRepository metricsRepository,
+      RealTimeTopicSwitcher realTimeTopicSwitcher,
+      Optional<DynamicAccessController> accessController,
       HelixAdminClient helixAdminClient) {
     this.clusterName = clusterName;
     this.config = config;
@@ -125,9 +131,16 @@ public class HelixVeniceClusterResources implements VeniceResource {
         adapterSerializer, config.getRefreshAttemptsForZkReconnect(), config.getRefreshIntervalForZkReconnectInMs());
     String aggregateRealTimeSourceKafkaUrl = config.getChildDataCenterKafkaUrlMap().get(config.getAggregateRealTimeSourceRegion());
 
-    this.pushMonitor = new PushMonitorDelegator(config.getPushMonitorType(), clusterName, routingDataRepository,
-        offlinePushMonitorAccessor, admin, storeMetadataRepository, new AggPushHealthStats(clusterName, metricsRepository),
-        leaderFollowerTopicReplicator, clusterLockManager, aggregateRealTimeSourceKafkaUrl,
+    this.pushMonitor = new PushMonitorDelegator(
+        clusterName,
+        routingDataRepository,
+        offlinePushMonitorAccessor,
+        admin,
+        storeMetadataRepository,
+        new AggPushHealthStats(clusterName, metricsRepository),
+        realTimeTopicSwitcher,
+        clusterLockManager,
+        aggregateRealTimeSourceKafkaUrl,
         getActiveActiveRealTimeSourceKafkaURLs(config));
 
     this.leakedPushStatusCleanUpService = new LeakedPushStatusCleanUpService(clusterName, offlinePushMonitorAccessor, storeMetadataRepository,

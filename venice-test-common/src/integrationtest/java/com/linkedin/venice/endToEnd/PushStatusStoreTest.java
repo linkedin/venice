@@ -259,14 +259,24 @@ public class PushStatusStoreTest {
 
         // after deleting the the inc push status belonging to just one partition we should expect
         // SOIP from the controller since other partition has replicas with EOIP status
-        statusStoreDeleter.deletePartitionIncrementalPushStatus(storeName, 1, incPushVersion.get(), 1);
-        response = controllerClient.queryJobStatus(job.getTopicToMonitor(), job.getIncrementalPushVersion());
-        assertEquals(response.getStatus(), ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED.name());
+        statusStoreDeleter.deletePartitionIncrementalPushStatus(storeName, 1, incPushVersion.get(), 1)
+            .get();
+        TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
+          // N.B.: Even though we block on the deleter's future, that only means the delete message is persisted into
+          // Kafka, but querying the system store may still yield a stale result, hence the need for retrying.
+          JobStatusQueryResponse jobStatusQueryResponse =
+              controllerClient.queryJobStatus(job.getTopicToMonitor(), job.getIncrementalPushVersion());
+          assertEquals(jobStatusQueryResponse.getStatus(), ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED.name());
+        });
 
         // expect NOT_CREATED when statuses of all partitions are not available in the push status store
-        statusStoreDeleter.deletePartitionIncrementalPushStatus(storeName, 1, incPushVersion.get(), 0);
-        response = controllerClient.queryJobStatus(job.getTopicToMonitor(), job.getIncrementalPushVersion());
-        assertEquals(response.getStatus(), ExecutionStatus.NOT_CREATED.name());
+        statusStoreDeleter.deletePartitionIncrementalPushStatus(storeName, 1, incPushVersion.get(), 0)
+            .get();
+        TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
+          JobStatusQueryResponse jobStatusQueryResponse =
+              controllerClient.queryJobStatus(job.getTopicToMonitor(), job.getIncrementalPushVersion());
+          assertEquals(jobStatusQueryResponse.getStatus(), ExecutionStatus.NOT_CREATED.name());
+        });
       }
     }
   }

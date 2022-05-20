@@ -3,6 +3,7 @@ package com.linkedin.venice.pushmonitor;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
+import com.linkedin.venice.ingestion.control.RealTimeTopicSwitcher;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PartitionAssignment;
@@ -13,7 +14,6 @@ import com.linkedin.venice.meta.StoreCleaner;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
-import com.linkedin.venice.replication.TopicReplicator;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -58,14 +58,15 @@ public abstract class AbstractPushMonitor
   private final StoreCleaner storeCleaner;
   private final AggPushHealthStats aggPushHealthStats;
   private final Map<String, OfflinePushStatus> topicToPushMap = new VeniceConcurrentHashMap<>();
-  private Optional<TopicReplicator> topicReplicator;
+  private RealTimeTopicSwitcher realTimeTopicSwitcher;
   private final ClusterLockManager clusterLockManager;
   private final String aggregateRealTimeSourceKafkaUrl;
   private final List<String> activeActiveRealTimeSourceKafkaURLs;
 
   public AbstractPushMonitor(String clusterName, OfflinePushAccessor offlinePushAccessor, StoreCleaner storeCleaner,
       ReadWriteStoreRepository metadataRepository, RoutingDataRepository routingDataRepository,
-      AggPushHealthStats aggPushHealthStats, Optional<TopicReplicator> topicReplicator, ClusterLockManager clusterLockManager, String aggregateRealTimeSourceKafkaUrl,
+      AggPushHealthStats aggPushHealthStats, RealTimeTopicSwitcher realTimeTopicSwitcher,
+      ClusterLockManager clusterLockManager, String aggregateRealTimeSourceKafkaUrl,
       List<String> activeActiveRealTimeSourceKafkaURLs) {
     this.clusterName = clusterName;
     this.offlinePushAccessor = offlinePushAccessor;
@@ -73,8 +74,8 @@ public abstract class AbstractPushMonitor
     this.metadataRepository = metadataRepository;
     this.routingDataRepository = routingDataRepository;
     this.aggPushHealthStats = aggPushHealthStats;
+    this.realTimeTopicSwitcher = realTimeTopicSwitcher;
     this.clusterLockManager = clusterLockManager;
-    this.topicReplicator = topicReplicator;
     this.aggregateRealTimeSourceKafkaUrl = aggregateRealTimeSourceKafkaUrl;
     this.activeActiveRealTimeSourceKafkaURLs = activeActiveRealTimeSourceKafkaURLs;
   }
@@ -627,29 +628,23 @@ public abstract class AbstractPushMonitor
       boolean isDataRecovery = version.isPresent() && version.get().getDataRecoveryVersionConfig() != null;
       if (offlinePushStatus.isReadyToStartBufferReplay(isDataRecovery)) {
         logger.info(offlinePushStatus.getKafkaTopic()+" is ready to start buffer replay.");
-        Optional<TopicReplicator> topicReplicatorOptional = getTopicReplicator();
-        if (topicReplicatorOptional.isPresent()) {
-          try {
-            String newStatusDetails;
-            topicReplicatorOptional.get().prepareAndStartReplication(
-                Version.composeRealTimeTopic(storeName),
-                offlinePushStatus.getKafkaTopic(),
-                store,
-                aggregateRealTimeSourceKafkaUrl,
-                activeActiveRealTimeSourceKafkaURLs);
-            newStatusDetails = "kicked off buffer replay";
-            updatePushStatus(offlinePushStatus, ExecutionStatus.END_OF_PUSH_RECEIVED, Optional.of(newStatusDetails));
-            logger.info("Successfully " + newStatusDetails + " for offlinePushStatus: " + offlinePushStatus);
-          } catch (Exception e) {
-            // TODO: Figure out a better error handling...
-            String newStatusDetails = "Failed to kick off the buffer replay";
-            handleOfflinePushUpdate(offlinePushStatus, ExecutionStatus.ERROR, Optional.of(newStatusDetails));
-            logger.error(newStatusDetails + " for offlinePushStatus: " + offlinePushStatus, e);
-          }
-        } else {
-          String newStatusDetails = "The TopicReplicator was not properly initialized!";
+        RealTimeTopicSwitcher realTimeTopicSwitcher = getRealTimeTopicSwitcher();
+        try {
+          String newStatusDetails;
+          realTimeTopicSwitcher.switchToRealTimeTopic(
+              Version.composeRealTimeTopic(storeName),
+              offlinePushStatus.getKafkaTopic(),
+              store,
+              aggregateRealTimeSourceKafkaUrl,
+              activeActiveRealTimeSourceKafkaURLs);
+          newStatusDetails = "kicked off buffer replay";
+          updatePushStatus(offlinePushStatus, ExecutionStatus.END_OF_PUSH_RECEIVED, Optional.of(newStatusDetails));
+          logger.info("Successfully " + newStatusDetails + " for offlinePushStatus: " + offlinePushStatus);
+        } catch (Exception e) {
+          // TODO: Figure out a better error handling...
+          String newStatusDetails = "Failed to kick off the buffer replay";
           handleOfflinePushUpdate(offlinePushStatus, ExecutionStatus.ERROR, Optional.of(newStatusDetails));
-          logger.error(newStatusDetails);
+          logger.error(newStatusDetails + " for offlinePushStatus: " + offlinePushStatus, e);
         }
       } else if (!offlinePushStatus.getCurrentStatus().isTerminal()) {
         logger.info(offlinePushStatus.getKafkaTopic() + " is not ready to start buffer replay. Current state: "
@@ -782,11 +777,11 @@ public abstract class AbstractPushMonitor
   /**
    * For testing only; in order to override the topicReplicator with mocked Replicator.
    */
-  public void setTopicReplicator(Optional<TopicReplicator> topicReplicator) {
-    this.topicReplicator = topicReplicator;
+  public void setRealTimeTopicSwitcher(RealTimeTopicSwitcher realTimeTopicSwitcher) {
+    this.realTimeTopicSwitcher = realTimeTopicSwitcher;
   }
 
-  public Optional<TopicReplicator> getTopicReplicator() {
-    return topicReplicator;
+  public RealTimeTopicSwitcher getRealTimeTopicSwitcher() {
+    return realTimeTopicSwitcher;
   }
 }

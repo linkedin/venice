@@ -6,6 +6,8 @@ import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.util.Optional;
+import java.util.concurrent.Future;
+import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -30,18 +32,15 @@ public class PushStatusStoreRecordDeleter implements AutoCloseable {
     }
   }
 
-  public void deleteServerIncrementalPushStatus(String storeName, int version, String incrementalPushVersion, int partitionCount) {
-    logger.info("Deleting pushStatus of storeName: " + storeName + " , version: " + version);
-    for (int partitionId = 0; partitionId < partitionCount; partitionId++) {
-      deletePartitionIncrementalPushStatus(storeName, version, incrementalPushVersion, partitionId);
-    }
-  }
-
-  public void deletePartitionIncrementalPushStatus(String storeName, int version, String incrementalPushVersion, int partitionId) {
+  /**
+   * N.B.: Currently used by tests only.
+   * @return
+   */
+  public Future<RecordMetadata> deletePartitionIncrementalPushStatus(String storeName, int version, String incrementalPushVersion, int partitionId) {
     PushStatusKey pushStatusKey = PushStatusStoreUtils.getPushKey(version, partitionId,
         Optional.ofNullable(incrementalPushVersion), Optional.of(PushStatusStoreUtils.SERVER_INCREMENTAL_PUSH_PREFIX));
     logger.info("Deleting incremental push status belonging to a partition:{}. pushStatusKey:{}", partitionId, pushStatusKey);
-    veniceWriterCache.prepareVeniceWriter(storeName).delete(pushStatusKey, null);
+    return veniceWriterCache.prepareVeniceWriter(storeName).delete(pushStatusKey, null);
   }
 
   public void removePushStatusStoreVeniceWriter(String storeName) {
@@ -50,10 +49,6 @@ public class PushStatusStoreRecordDeleter implements AutoCloseable {
     veniceWriterCache.removeVeniceWriter(storeName);
     logger.info("Removed push status store writer for store " + storeName + " in "
         + LatencyUtils.getLatencyInMS(veniceWriterRemovingStartTimeInNs) + "ms.");
-  }
-
-  public VeniceWriter getPushStatusStoreVeniceWriter(String storeName) {
-    return veniceWriterCache.getVeniceWriterFromMap(storeName);
   }
 
   @Override

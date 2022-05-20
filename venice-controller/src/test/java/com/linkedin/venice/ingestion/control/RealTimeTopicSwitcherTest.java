@@ -1,4 +1,4 @@
-package com.linkedin.venice.replication;
+package com.linkedin.venice.ingestion.control;
 
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.kafka.TopicManager;
@@ -25,8 +25,8 @@ import static com.linkedin.venice.meta.BufferReplayPolicy.*;
 import static org.mockito.Mockito.*;
 import static org.testng.Assert.*;
 
-public class LeaderStorageNodeReplicatorTest {
-  private TopicReplicator leaderStorageNodeReplicator;
+public class RealTimeTopicSwitcherTest {
+  private RealTimeTopicSwitcher leaderStorageNodeReplicator;
   private TopicManager mockTopicManager;
   private VeniceWriterFactory mockVeniceWriterFactory;
   private String aggregateRealTimeSourceKafkaUrl = "aggregate-real-time-source-kafka-url";
@@ -36,17 +36,10 @@ public class LeaderStorageNodeReplicatorTest {
     mockTopicManager = mock(TopicManager.class);
     mockVeniceWriterFactory = mock(VeniceWriterFactory.class);
     Properties properties = new Properties();
-    properties.put(ConfigKeys.ENABLE_TOPIC_REPLICATOR, true);
+    properties.put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, "dummy");
     // filler bootstrap servers
-    properties.put(ConfigKeys.ENABLE_TOPIC_REPLICATOR_SSL, true);
-    properties.put(TopicReplicator.TOPIC_REPLICATOR_SOURCE_SSL_KAFKA_CLUSTER, "test-replicator-source-kafka-cluster");
-    Optional<TopicReplicator> replicator =
-        TopicReplicator.getTopicReplicator(LeaderStorageNodeReplicator.class.getName(), mockTopicManager,
-            new VeniceProperties(properties), mockVeniceWriterFactory);
-    if (!replicator.isPresent()) {
-      fail("Failed to construct a " + LeaderStorageNodeReplicator.class.getName());
-    }
-    leaderStorageNodeReplicator = replicator.get();
+    leaderStorageNodeReplicator = new RealTimeTopicSwitcher(
+        mockTopicManager, mockVeniceWriterFactory, new VeniceProperties(properties));
   }
 
   @Test
@@ -72,7 +65,7 @@ public class LeaderStorageNodeReplicatorTest {
         .createBasicVeniceWriter(anyString(), any(Time.class), any(VenicePartitioner.class), anyInt());
 
 
-    leaderStorageNodeReplicator.prepareAndStartReplication(srcTopic, destTopic, mockStore, aggregateRealTimeSourceKafkaUrl, Collections.emptyList());
+    leaderStorageNodeReplicator.switchToRealTimeTopic(srcTopic, destTopic, mockStore, aggregateRealTimeSourceKafkaUrl, Collections.emptyList());
 
     verify(mockVeniceWriter).broadcastTopicSwitch(any(), anyString(), anyLong(), any());
   }
@@ -101,7 +94,7 @@ public class LeaderStorageNodeReplicatorTest {
     doReturn(mockVeniceWriter).when(mockVeniceWriterFactory)
         .createBasicVeniceWriter(anyString(), any(Time.class), any(VenicePartitioner.class), anyInt());
 
-    leaderStorageNodeReplicator.prepareAndStartReplication(srcTopic, destTopic, mockStore, aggregateRealTimeSourceKafkaUrl, Collections.emptyList());
+    leaderStorageNodeReplicator.switchToRealTimeTopic(srcTopic, destTopic, mockStore, aggregateRealTimeSourceKafkaUrl, Collections.emptyList());
 
     List<CharSequence> expectedSourceClusters = new ArrayList<>();
     expectedSourceClusters.add(aggregateRealTimeSourceKafkaUrl);

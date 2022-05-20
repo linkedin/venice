@@ -4,15 +4,12 @@ import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.davinci.client.AvroGenericDaVinciClient;
 import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.davinci.client.DaVinciConfig;
-import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.authorization.AuthorizerService;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.server.AdminSparkServer;
 import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.replication.LeaderStorageNodeReplicator;
-import com.linkedin.venice.replication.TopicReplicator;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.MockTime;
 import com.linkedin.venice.utils.PropertyBuilder;
@@ -198,11 +195,6 @@ public class ServiceFactory {
       KafkaBrokerWrapper kafkaBrokerWrapper, int replicationFactor, int partitionSize, long delayToRebalanceMS,
       int minActiveReplica, String clusterToD2, boolean sslToKafka, boolean d2Enabled,
       Properties properties) {
-
-    properties.put(ConfigKeys.ENABLE_TOPIC_REPLICATOR, "true");
-    properties.put(TopicReplicator.TOPIC_REPLICATOR_CLASS_NAME, LeaderStorageNodeReplicator.class.getName());
-    properties.put(TopicReplicator.TOPIC_REPLICATOR_SOURCE_KAFKA_CLUSTER, kafkaBrokerWrapper.getAddress());
-
     return getStatefulService(VeniceControllerWrapper.SERVICE_NAME,
         VeniceControllerWrapper.generateService(clusterNames, kafkaBrokerWrapper.getZkAddress(), kafkaBrokerWrapper, false, replicationFactor, partitionSize,
             delayToRebalanceMS, minActiveReplica, null, properties, clusterToD2, sslToKafka, d2Enabled));

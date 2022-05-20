@@ -12,7 +12,6 @@ import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.kafka.admin.KafkaAdminClient;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.replication.LeaderStorageNodeReplicator;
 import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.utils.KafkaSSLUtils;
 import com.linkedin.venice.utils.PropertyBuilder;
@@ -33,7 +32,6 @@ import org.apache.logging.log4j.Logger;
 
 import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.integration.utils.D2TestUtils.*;
-import static com.linkedin.venice.replication.TopicReplicator.*;
 
 
 /**
@@ -157,16 +155,12 @@ public class VeniceControllerWrapper extends ProcessWrapper {
           builder.put(KafkaSSLUtils.getLocalCommonKafkaSSLConfig());
         }
 
-        if (!extraProps.containsKey(ENABLE_TOPIC_REPLICATOR)) {
-          builder.put(TOPIC_REPLICATOR_CLASS_NAME, LeaderStorageNodeReplicator.class.getName());
-          builder.put(ENABLE_TOPIC_REPLICATOR, true);
-        }
-
         String fabricAllowList = "";
-        // go/inclusivecode deferred(Reference will be removed when clients have migrated)
-        if (extraProps.containsKey(CHILD_CLUSTER_WHITELIST) || extraProps.containsKey(CHILD_CLUSTER_ALLOWLIST)) {
+        if (isParent) {
+          // Parent controller needs config to route per-cluster requests such as job status
+          // This dummy parent controller wont support such requests until we make this config configurable.
           // go/inclusivecode deferred(Reference will be removed when clients have migrated)
-          fabricAllowList = extraProps.getStringWithAlternative(CHILD_CLUSTER_ALLOWLIST, CHILD_CLUSTER_WHITELIST);
+          fabricAllowList = extraProps.getStringWithAlternative(CHILD_CLUSTER_ALLOWLIST, CHILD_CLUSTER_WHITELIST, "");
         }
 
         if (isParent && (childControllers == null || childControllers.length == 0)) {

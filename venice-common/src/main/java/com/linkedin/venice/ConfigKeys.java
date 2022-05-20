@@ -257,9 +257,6 @@ public class ConfigKeys {
   public static final String TOPIC_CLEANUP_DELAY_FACTOR = "topic.cleanup.delay.factor";
   public static final String TOPIC_CLEANUP_SEND_CONCURRENT_DELETES_REQUESTS = "topic.cleanup.send.concurrent.delete.requests.enabled";
 
-  public static final String ENABLE_TOPIC_REPLICATOR = "controller.enable.topic.replicator";
-  public static final String ENABLE_TOPIC_REPLICATOR_SSL = "controller.enable.topic.replicator.ssl";
-
   /**
    * Sleep interval for polling topic deletion status from ZK.
    */

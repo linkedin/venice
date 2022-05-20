@@ -66,6 +66,7 @@ import com.linkedin.venice.helix.ZkClientFactory;
 import com.linkedin.venice.helix.ZkRoutersClusterManager;
 import com.linkedin.venice.helix.ZkStoreConfigAccessor;
 import com.linkedin.venice.helix.ZkAllowlistAccessor;
+import com.linkedin.venice.ingestion.control.RealTimeTopicSwitcher;
 import com.linkedin.venice.kafka.KafkaClientFactory.MetricsParameters;
 import com.linkedin.venice.kafka.TopicDoesNotExistException;
 import com.linkedin.venice.kafka.TopicManager;
@@ -119,8 +120,6 @@ import com.linkedin.venice.pushmonitor.StatusSnapshot;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreRecordDeleter;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreWriter;
-import com.linkedin.venice.replication.LeaderStorageNodeReplicator;
-import com.linkedin.venice.replication.TopicReplicator;
 import com.linkedin.venice.schema.AvroSchemaParseUtils;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
@@ -186,7 +185,6 @@ import org.apache.avro.specific.SpecificRecord;
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.lang.Validate;
 import org.apache.helix.HelixAdmin;
-import org.apache.helix.HelixCloudProperty;
 import org.apache.helix.HelixManagerProperty;
 import org.apache.helix.HelixPropertyFactory;
 import org.apache.helix.InstanceType;
@@ -197,7 +195,6 @@ import org.apache.helix.controller.rebalancer.strategy.CrushRebalanceStrategy;
 import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.helix.manager.zk.ZKHelixManager;
 import org.apache.helix.manager.zk.ZNRecordSerializer;
-import org.apache.helix.model.CloudConfig;
 import org.apache.helix.model.ClusterConfig;
 import org.apache.helix.model.ExternalView;
 import org.apache.helix.model.HelixConfigScope;
@@ -206,7 +203,6 @@ import org.apache.helix.model.LeaderStandbySMD;
 import org.apache.helix.model.LiveInstance;
 import org.apache.helix.model.builder.HelixConfigScopeBuilder;
 import org.apache.helix.participant.StateMachineEngine;
-import org.apache.helix.zookeeper.datamodel.ZNRecord;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.http.HttpStatus;
 import org.apache.logging.log4j.LogManager;
@@ -283,8 +279,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     private final HelixAdapterSerializer adapterSerializer;
     private final ZkAllowlistAccessor allowlistAccessor;
     private final ExecutionIdAccessor executionIdAccessor;
-    private final Optional<TopicReplicator> onlineOfflineTopicReplicator;
-    private final Optional<TopicReplicator> leaderFollowerTopicReplicator;
+    private final RealTimeTopicSwitcher realTimeTopicSwitcher;
     private final long deprecatedJobTopicRetentionMs;
     private final long deprecatedJobTopicMaxRetentionMs;
     private final HelixReadOnlyStoreConfigRepository storeConfigRepo;
@@ -434,10 +429,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       storeConfigRepo.refresh();
       this.storeGraveyard = new HelixStoreGraveyard(zkClient, adapterSerializer, multiClusterConfigs.getClusters());
       veniceWriterFactory = new VeniceWriterFactory(commonConfig.getProps().toProperties());
-      this.onlineOfflineTopicReplicator =
-          TopicReplicator.getTopicReplicator(topicManagerRepository.getTopicManager(), commonConfig.getProps(), veniceWriterFactory);
-      this.leaderFollowerTopicReplicator = TopicReplicator.getTopicReplicator(
-          LeaderStorageNodeReplicator.class.getName(), topicManagerRepository.getTopicManager(), commonConfig.getProps(), veniceWriterFactory);
+      this.realTimeTopicSwitcher = new RealTimeTopicSwitcher(
+          topicManagerRepository.getTopicManager(), veniceWriterFactory, commonConfig.getProps());
       this.participantMessageStoreRTTMap = new VeniceConcurrentHashMap<>();
       this.participantMessageWriterMap = new VeniceConcurrentHashMap<>();
       isControllerClusterHAAS = commonConfig.isControllerClusterLeaderHAAS();
@@ -521,8 +514,14 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           createControllerClusterIfRequired();
       }
       controllerStateModelFactory = new VeniceDistClusterControllerStateModelFactory(
-          zkClient, adapterSerializer, this, multiClusterConfigs, metricsRepository, controllerInitialization,
-          leaderFollowerTopicReplicator, accessController, helixAdminClient);
+          zkClient,
+          adapterSerializer,
+          this, multiClusterConfigs,
+          metricsRepository,
+          controllerInitialization,
+          realTimeTopicSwitcher,
+          accessController,
+          helixAdminClient);
     }
 
     private void checkAndCreateVeniceControllerCluster(boolean isControllerInAzure) {
@@ -2281,16 +2280,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             deleteHelixResource(clusterName, resourceName);
             logger.info("Killing offline push for:" + resourceName + " in cluster:" + clusterName);
             killOfflinePush(clusterName, resourceName, true);
-
-            if (!versionToBeDeleted.get().isLeaderFollowerModelEnabled() && onlineOfflineTopicReplicator.isPresent()) {
-                // Do not delete topic replicator during store migration
-                // In such case, the topic replicator will be deleted after store migration, triggered by a new push job
-                if (!store.isMigrating()) {
-                    String realTimeTopic = Version.composeRealTimeTopic(storeName);
-                    onlineOfflineTopicReplicator.get().terminateReplication(realTimeTopic, resourceName);
-                }
-            }
-
             stopMonitorOfflinePush(clusterName, resourceName, true, isForcedDelete);
             Optional<Version> deletedVersion = deleteVersionFromStoreRepository(clusterName, storeName, versionNumber);
             if (deletedVersion.isPresent()) {
@@ -3306,15 +3295,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                          * still consuming the RT topic.
                          */
                         store.setHybridStoreConfig(null);
-                        String realTimeTopic = Version.composeRealTimeTopic(storeName);
-                        // Also remove the Brooklin replication streams
-                        if (onlineOfflineTopicReplicator.isPresent()) {
-                            store.getVersions().stream().forEach(version -> {
-                                if (!version.isLeaderFollowerModelEnabled()) {
-                                    onlineOfflineTopicReplicator.get().terminateReplication(realTimeTopic, version.kafkaTopicName());
-                                }
-                            });
-                        }
                         if (store.isLeaderFollowerModelEnabled() || clusterConfig.isLfModelDependencyCheckDisabled()) {
                             // Disabling hybrid configs for a L/F store
                             if (!store.isIncrementalPushEnabled()) {

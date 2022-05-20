@@ -1,8 +1,8 @@
 package com.linkedin.venice.pushmonitor;
 
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
+import com.linkedin.venice.ingestion.control.RealTimeTopicSwitcher;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PartitionAssignment;
@@ -12,31 +12,25 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreCleaner;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
-import com.linkedin.venice.replication.TopicReplicator;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import com.linkedin.venice.utils.locks.ClusterLockManager;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 
 /**
- * This is a wrapper on top of 2 push status monitors. It determines which
- * monitor shall be used when new pushes arrive. The selecting logic is
- * configurable in controller's configs.
+ * This class maintains the mapping of Kafka topic to each {@link PushMonitor} instance and delegates calls to the
+ * correct instance.
  */
 public class PushMonitorDelegator implements PushMonitor {
   private static final Logger logger = LogManager.getLogger(PushMonitorDelegator.class);
 
-  private final PushMonitorType pushMonitorType;
   private final ReadWriteStoreRepository metadataRepository;
   private final OfflinePushAccessor offlinePushAccessor;
   private final String clusterName;
@@ -47,12 +41,18 @@ public class PushMonitorDelegator implements PushMonitor {
   //Cache the relationship between kafka topic and push monitor here.
   private final Map<String, AbstractPushMonitor> topicToPushMonitorMap;
 
-  public PushMonitorDelegator(PushMonitorType pushMonitorType, String clusterName,
-      RoutingDataRepository routingDataRepository, OfflinePushAccessor offlinePushAccessor, StoreCleaner storeCleaner,
-      ReadWriteStoreRepository metadataRepository, AggPushHealthStats aggPushHealthStats, Optional<TopicReplicator> leaderFollowerTopicReplicator,
-      ClusterLockManager clusterLockManager, String aggregateRealTimeSourceKafkaUrl, List<String> activeActiveRealTimeSourceKafkaURLs) {
+  public PushMonitorDelegator(
+      String clusterName,
+      RoutingDataRepository routingDataRepository,
+      OfflinePushAccessor offlinePushAccessor,
+      StoreCleaner storeCleaner,
+      ReadWriteStoreRepository metadataRepository,
+      AggPushHealthStats aggPushHealthStats,
+      RealTimeTopicSwitcher leaderFollowerTopicReplicator,
+      ClusterLockManager clusterLockManager,
+      String aggregateRealTimeSourceKafkaUrl,
+      List<String> activeActiveRealTimeSourceKafkaURLs) {
     this.clusterName = clusterName;
-    this.pushMonitorType = pushMonitorType;
     this.metadataRepository = metadataRepository;
     this.offlinePushAccessor = offlinePushAccessor;
 
@@ -82,23 +82,7 @@ public class PushMonitorDelegator implements PushMonitor {
   public void loadAllPushes() {
     logger.info("Load all pushes started for cluster " + clusterName + "'s " + getClass().getSimpleName());
     try (AutoCloseableLock ignore = clusterLockManager.createClusterWriteLock()) {
-      List<OfflinePushStatus> partitionStatusBasedPushMonitorStatuses = new ArrayList<>();
-
-      //This is for cleaning up legacy push statuses due to resource leaking. Ideally,
-      //we won't need it anymore once resource leaking is fixed.
-      List<OfflinePushStatus> legacyPushStatuses = new ArrayList<>();
-      offlinePushAccessor.loadOfflinePushStatusesAndPartitionStatuses().forEach(status -> {
-        try {
-          partitionStatusBasedPushMonitorStatuses.add(status);
-        } catch (VeniceNoStoreException e) {
-          logger.info("Found a legacy push status. topic: " + status.getKafkaTopic());
-          legacyPushStatuses.add(status);
-        }
-      });
-
-      partitionStatusBasedPushStatusMonitor.loadAllPushes(partitionStatusBasedPushMonitorStatuses);
-
-      legacyPushStatuses.forEach(pushStatus -> offlinePushAccessor.deleteOfflinePushStatusAndItsPartitionStatuses(pushStatus.getKafkaTopic()));
+      partitionStatusBasedPushStatusMonitor.loadAllPushes();
       logger.info("Load all pushes finished for cluster " + clusterName + "'s " + getClass().getSimpleName());
     }
   }

@@ -5,6 +5,7 @@ import com.linkedin.venice.helix.HelixReadOnlyZKSharedSchemaRepository;
 import com.linkedin.venice.helix.HelixReadOnlyZKSharedSystemStoreRepository;
 import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.helix.ZkClientFactory;
+import com.linkedin.venice.ingestion.control.RealTimeTopicSwitcher;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.system.store.MetaStoreWriter;
@@ -53,7 +54,7 @@ public class TestVeniceHelixResources {
     doReturn(mock(HelixReadOnlyZKSharedSystemStoreRepository.class)).when(veniceHelixAdmin).getReadOnlyZKSharedSystemStoreRepository();
     doReturn(mock(HelixReadOnlyZKSharedSchemaRepository.class)).when(veniceHelixAdmin).getReadOnlyZKSharedSchemaRepository();
     return new HelixVeniceClusterResources(cluster, zkClient, new HelixAdapterSerializer(), new SafeHelixManager(controller),
-        mock(VeniceControllerConfig.class), veniceHelixAdmin, metricsRepository, Optional.empty(),
+        mock(VeniceControllerConfig.class), veniceHelixAdmin, metricsRepository, mock(RealTimeTopicSwitcher.class),
         Optional.empty(), mock(HelixAdminClient.class));
   }
 

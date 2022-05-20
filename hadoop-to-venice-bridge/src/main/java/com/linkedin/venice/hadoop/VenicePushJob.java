@@ -279,8 +279,7 @@ public class VenicePushJob implements AutoCloseable {
   public static final String REDUCER_SPECULATIVE_EXECUTION_ENABLE = "reducer.speculative.execution.enable";
 
   /**
-   * The interval of number of messages upon which some telemetry code is executed, including logging certain info
-   * in the reducer logs, as well as updating the counters specified in {@value KAFKA_METRICS_TO_REPORT_AS_MR_COUNTERS}.
+   * The interval of number of messages upon which certain info is printed in the reducer logs.
    */
   public static final String TELEMETRY_MESSAGE_INTERVAL = "telemetry.message.interval";
 

@@ -1,6 +1,5 @@
 package com.linkedin.venice.controller;
 
-import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoClusterException;
@@ -23,11 +22,9 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import io.tehuti.metrics.MetricsRepository;
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.Properties;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -300,62 +297,6 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
     //The cluster should be leaderless now
     Assert.assertFalse(veniceAdmin.isLeaderControllerFor(clusterName));
     Assert.assertFalse(newLeaderAdmin.isLeaderControllerFor(clusterName));
-  }
-
-  @Test
-  public void testEnableLeaderFollower() throws IOException {
-    veniceAdmin.stop(clusterName);
-    veniceAdmin.close();
-    String storeName1 = "testEnableLeaderFollowerForHybridStores";
-    String storeName2 = "testEnableLeaderFollowerForIncrementalPushStores";
-
-    Properties properties = getControllerProperties(clusterName);
-    properties.put(ConfigKeys.ENABLE_LEADER_FOLLOWER_AS_DEFAULT_FOR_HYBRID_STORES, true);
-    properties.put(ConfigKeys.ENABLE_LEADER_FOLLOWER_AS_DEFAULT_FOR_INCREMENTAL_PUSH_STORES, true);
-
-    veniceAdmin = new VeniceHelixAdmin(
-        TestUtils.getMultiClusterConfigFromOneCluster(
-            new VeniceControllerConfig(new VeniceProperties(properties))),
-            new MetricsRepository(),
-            D2TestUtils.getAndStartD2Client(zkAddress)
-    );
-    veniceAdmin.initStorageCluster(clusterName);
-    TestUtils.waitForNonDeterministicCompletion(5, TimeUnit.SECONDS, ()->veniceAdmin.isLeaderControllerFor(clusterName));
-    veniceAdmin.createStore(clusterName, storeName1, "test", KEY_SCHEMA, VALUE_SCHEMA);
-    veniceAdmin.createStore(clusterName, storeName2, "test", KEY_SCHEMA, VALUE_SCHEMA);
-    // Store1 is a hybrid store.
-    veniceAdmin.updateStore(clusterName, storeName1, new UpdateStoreQueryParams()
-            .setHybridRewindSeconds(1000L)
-            .setHybridOffsetLagThreshold(1000L));
-    // Store2 is an incremental push store.
-    veniceAdmin.updateStore(clusterName, storeName2, new UpdateStoreQueryParams()
-            .setIncrementalPushEnabled(true).setHybridRewindSeconds(1L).setHybridOffsetLagThreshold(10));
-
-    Assert.assertTrue(veniceAdmin.getStore(clusterName, storeName1).isLeaderFollowerModelEnabled(),
-            "Store1 is a hybrid store and L/F for hybrid stores config is true. L/F should be enabled.");
-    Assert.assertTrue(veniceAdmin.getStore(clusterName, storeName2).isLeaderFollowerModelEnabled(),
-            "Store2 is an incremental push store and L/F for incremental push stores config is true. L/F should be enabled.");
-
-    veniceAdmin.stop(clusterName);
-    veniceAdmin.close();
-    String storeName3 = "testEnableLeaderFollowerForAllStores";
-
-    properties = getControllerProperties(clusterName);
-    properties.put(ConfigKeys.ENABLE_LEADER_FOLLOWER_AS_DEFAULT_FOR_ALL_STORES, true);
-
-    veniceAdmin = new VeniceHelixAdmin(
-        TestUtils.getMultiClusterConfigFromOneCluster(new VeniceControllerConfig(new VeniceProperties(properties))),
-        new MetricsRepository(),
-        D2TestUtils.getAndStartD2Client(zkAddress)
-    );
-    veniceAdmin.initStorageCluster(clusterName);
-
-    TestUtils.waitForNonDeterministicCompletion(5, TimeUnit.SECONDS, ()->veniceAdmin.isLeaderControllerFor(clusterName));
-    // Store3 is a batch store
-    veniceAdmin.createStore(clusterName, storeName3, "test", KEY_SCHEMA, VALUE_SCHEMA);
-
-    Assert.assertTrue(veniceAdmin.getStore(clusterName, storeName3).isLeaderFollowerModelEnabled(),
-            "Store3 is a batch store and L/F for all stores config is true. L/F should be enabled.");
   }
 
   @Test(timeOut = TOTAL_TIMEOUT_FOR_SHORT_TEST_MS)

@@ -79,31 +79,50 @@ public class TestBackupVersionDatabaseOptimization {
       //Do an H2V push
       runH2V(h2vProperties, 1, controllerClient);
 
-      TestUtils.NonDeterministicAssertion validation = () -> {
-        try {
-          for (int i = 1; i < 100; i++) {
-            String key = Integer.toString(i);
-            Object value = client.get(key).get();
-            assertNotNull(value, "Key " + i + " should not be missing!");
-            assertEquals(value.toString(), "test_name_" + key);
-          }
-        } catch (Exception e) {
-          throw new VeniceException(e);
+      class ResultValidator implements TestUtils.NonDeterministicAssertion {
+        private final int recordCount;
+        public ResultValidator(int recordCount) {
+          this.recordCount = recordCount;
         }
-      };
 
-      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, validation);
+        @Override
+        public void execute() {
+          try {
+            for (int i = 1; i < recordCount; i++) {
+              String key = Integer.toString(i);
+              Object value = client.get(key).get();
+              assertNotNull(value, "Key " + i + " should not be missing!");
+              assertEquals(value.toString(), "test_name_" + key);
+            }
+          } catch (Exception e) {
+            throw new VeniceException(e);
+          }
+        }
+      }
 
-      // Do another H2V push
-      runH2V(h2vProperties, 2, controllerClient);
+      TestUtils.waitForNonDeterministicAssertion(
+          10, TimeUnit.SECONDS, true, new ResultValidator(DEFAULT_USER_DATA_RECORD_COUNT));
 
-      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, validation);
+      // Do another H2V push, with more records, otherwise the two datasets are indistinguishable
+      int recordCountOf2ndRun = DEFAULT_USER_DATA_RECORD_COUNT * 2;
+      File inputDir2 = getTempDataDirectory();
+      String inputDirPath2 = "file://" + inputDir2.getAbsolutePath();
+      writeSimpleAvroFileWithUserSchema(inputDir2, true, recordCountOf2ndRun);
+      Properties h2vProperties2 = defaultH2VProps(venice, inputDirPath2, storeName);
+      runH2V(h2vProperties2, 2, controllerClient);
+
+      TestUtils.waitForNonDeterministicAssertion(
+          10, TimeUnit.SECONDS, true, new ResultValidator(recordCountOf2ndRun));
 
       // Verify whether the backup version database optimization happens or not.
       VeniceServerWrapper serverWrapper = venice.getVeniceServers().get(0);
       MetricsRepository metricsRepository = serverWrapper.getMetricsRepository();
       Metric optimizationMetric = metricsRepository.getMetric(".BackupVersionOptimizationService--backup_version_database_optimization.OccurrenceRate");
-      assertTrue(optimizationMetric.value() > 0, "Backup version database optimization should happen");
+      // N.B.: The optimization is performed by a periodic background task, so it cannot be expected to have already
+      // completed as soon as we get here.
+      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () ->
+        assertTrue(optimizationMetric.value() > 0, "Backup version database optimization should happen")
+      );
     }
   }
 
