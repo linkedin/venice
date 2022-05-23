@@ -397,7 +397,7 @@ public class RouterServer extends AbstractVeniceService {
         break;
       case HTTP_CLIENT_5_CLIENT:
         logger.info("Router will use HTTP CLIENT5");
-        storageNodeClient = new HttpClient5StorageNodeClient(sslFactoryForRequests, config, liveInstanceMonitor, metricsRepository);
+        storageNodeClient = new HttpClient5StorageNodeClient(sslFactoryForRequests, config);
         break;
       default:
         throw new VeniceException("Router client type " + config.getStorageNodeClientType().toString() + " is not supported!");
