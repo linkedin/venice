@@ -1,4 +1,3 @@
-import groovy.io.FileType
 import com.github.spotbugs.snom.SpotBugsTask
 import org.apache.tools.ant.taskdefs.condition.Os
 
@@ -304,10 +303,6 @@ subprojects {
     zip64 = true
     duplicatesStrategy = DuplicatesStrategy.FAIL
     exclude('**/*.xml')
-  }
-
-  plugins.withType(DistributionPlugin) {
-    tasks.distZip.enabled = false
   }
 }
 
