@@ -468,7 +468,9 @@ public class VeniceServer {
       }
       for (AbstractVeniceService service : CollectionUtils.reversed(services.get())) {
         try {
+          logger.info("Stopping service: " + service.getName());
           service.stop();
+          logger.info("Service: " + service.getName() + " stopped.");
         } catch (Exception e) {
           exceptions.add(e);
           logger.error("Exception in stopping service: " + service.getName(), e);
