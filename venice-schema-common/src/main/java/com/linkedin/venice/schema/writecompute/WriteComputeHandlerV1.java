@@ -40,7 +40,7 @@ public class WriteComputeHandlerV1 implements WriteComputeHandler {
         return updateRecord(
             originalSchema,
             writeComputeSchema.getTypes().get(0),
-            originalRecord == null ? SchemaUtils.constructGenericRecord(originalSchema) : originalRecord,
+            originalRecord == null ? SchemaUtils.createGenericRecord(originalSchema) : originalRecord,
             writeComputeRecord,
             false
         );
@@ -48,7 +48,7 @@ public class WriteComputeHandlerV1 implements WriteComputeHandler {
     }
 
     if (originalRecord == null) {
-      originalRecord = SchemaUtils.constructGenericRecord(originalSchema);
+      originalRecord = SchemaUtils.createGenericRecord(originalSchema);
     }
     for (Schema.Field originalField : originalSchema.getFields()) {
       final String originalFieldName = originalField.name();

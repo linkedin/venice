@@ -80,4 +80,43 @@ class TestMergeConflictSchemaConstants {
       "       { \"name\": \"weight\", \"type\": \"float\", \"default\": 0.0}" +
       "  ] " +
       " } ";
+
+  static final String PERSON_SCHEMA_STR_V1 = "{" +
+      "  \"name\": \"Person\"," +
+      "  \"type\": \"record\"," +
+      "  \"fields\": [" +
+      "       { \"name\": \"age\", \"type\": \"int\", \"default\": -1},  " +
+      "       { \"name\": \"name\", \"type\": \"string\", \"default\": \"default_name\"},  " +
+      "       { \"name\": \"intArray\", \"type\": {\"type\": \"array\", \"items\": \"int\"}, \"default\": [] }," +
+      "       { \"name\": \"stringMap\", \"type\": {\"type\": \"map\", \"values\": \"string\" }, \"default\": {}}" +
+      "   ]"
+      + "}";
+
+  // Person V2 schema mismatches with person V1 schema in a way that it has two additional fields "favoritePet" and "stringArray"
+  // and it drops the "stringMap" field.
+  static final String PERSON_SCHEMA_STR_V2 = "{" +
+      "  \"name\": \"Person\"," +
+      "  \"type\": \"record\"," +
+      "  \"fields\": [" +
+      "       { \"name\": \"age\", \"type\": \"int\", \"default\": -1},  " +
+      "       { \"name\": \"favoritePet\", \"type\": \"string\", \"default\": \"Pancake!\"},  " +
+      "       { \"name\": \"name\", \"type\": \"string\", \"default\": \"default_name\"},  " +
+      "       { \"name\": \"intArray\", \"type\": {\"type\": \"array\", \"items\": \"int\"}, \"default\": [] }, " +
+      "       { \"name\": \"stringArray\", \"type\": {\"type\": \"array\", \"items\": \"string\"}, \"default\": [] }" +
+      "   ]"
+      + "}";
+
+  // Person V3 schema should be a superset schema of Person V1 and Person V2 schemas.
+  static final String PERSON_SCHEMA_STR_V3 = "{" +
+      "  \"name\": \"Person\"," +
+      "  \"type\": \"record\"," +
+      "  \"fields\": [" +
+      "       { \"name\": \"age\", \"type\": \"int\", \"default\": -1},  " +
+      "       { \"name\": \"favoritePet\", \"type\": \"string\", \"default\": \"Pancake!\"},  " +
+      "       { \"name\": \"name\", \"type\": \"string\", \"default\": \"default_name\"},  " +
+      "       { \"name\": \"intArray\", \"type\": {\"type\": \"array\", \"items\": \"int\"}, \"default\": [] }, " +
+      "       { \"name\": \"stringArray\", \"type\": {\"type\": \"array\", \"items\": \"string\"}, \"default\": [] }, " +
+      "       { \"name\": \"stringMap\", \"type\": {\"type\": \"map\", \"values\": \"string\" }, \"default\": {}}" +
+      "   ]"
+      + "}";
 }

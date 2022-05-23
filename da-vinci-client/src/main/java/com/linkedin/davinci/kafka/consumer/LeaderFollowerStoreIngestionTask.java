@@ -2417,12 +2417,12 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           }
         }
 
-        //compute.
+        // Apply Write Compute.
         final byte[] updatedValueBytes;
         try {
           long writeComputeStartTimeInNS = System.nanoTime();
           // Leader nodes are the only ones which process UPDATES, so it's valid to always compress and not call 'maybeCompress'.
-          updatedValueBytes = compressor.get().compress(ingestionTaskWriteComputeHandler.getUpdatedValueBytes(originalValue,
+          updatedValueBytes = compressor.get().compress(ingestionTaskWriteComputeHandler.applyWriteCompute(originalValue,
               update.updateValue, valueSchemaId, writeComputeSchemaId));
           storeIngestionStats.recordWriteComputeUpdateLatency(storeName, LatencyUtils.getLatencyInMS(writeComputeStartTimeInNS));
         } catch (Exception e) {

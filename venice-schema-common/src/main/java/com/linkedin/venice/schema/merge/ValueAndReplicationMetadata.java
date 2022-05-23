@@ -1,8 +1,6 @@
 package com.linkedin.venice.schema.merge;
 
 import com.linkedin.venice.utils.lazy.Lazy;
-import com.linkedin.venice.utils.lazy.LazyImpl;
-import java.util.function.Supplier;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.commons.lang.Validate;
 
@@ -16,12 +14,13 @@ public class ValueAndReplicationMetadata<T> {
   private Lazy<T> value;
   private GenericRecord replicationMetadata;
   private boolean updateIgnored; // Whether we should skip the incoming message since it could be a stale message.
-  private int resolvedSchemaID;
+  private int valueSchemaID;
 
   public ValueAndReplicationMetadata(Lazy<T> value, @Nonnull GenericRecord replicationMetadata) {
     Validate.notNull(replicationMetadata);
     this.value = value;
     this.replicationMetadata = replicationMetadata;
+    this.valueSchemaID = -1;
   }
 
   public T getValue() {
@@ -48,11 +47,11 @@ public class ValueAndReplicationMetadata<T> {
     return updateIgnored;
   }
 
-  public void setResolvedSchemaID(int schemaID) {
-    this.resolvedSchemaID = schemaID;
+  public void setValueSchemaID(int valueSchemaID) {
+    this.valueSchemaID = valueSchemaID;
   }
 
-  public int getResolvedSchemaID() {
-    return this.resolvedSchemaID;
+  public int getValueSchemaID() {
+    return this.valueSchemaID;
   }
 }

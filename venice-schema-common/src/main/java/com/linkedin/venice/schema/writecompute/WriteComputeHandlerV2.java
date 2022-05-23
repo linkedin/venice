@@ -36,19 +36,17 @@ public class WriteComputeHandlerV2 extends WriteComputeHandlerV1 {
 
   public ValueAndReplicationMetadata<GenericRecord> updateRecord(
       @Nonnull Schema currValueSchema,
-      @Nonnull Schema writeComputeSchema,
       @Nonnull ValueAndReplicationMetadata<GenericRecord> currRecordAndRmd,
       @Nonnull GenericRecord writeComputeRecord,
       final long updateOperationTimestamp,
-      int coloID
+      final int coloID
   ) {
-
     // For now we always create a record if the current one is null. But there could be a case where the created record
     // does not get updated as a result of this update method. In this case, the current record should stay being null instead
     // of being all record with all fields having their default value. TODO: handle this case.
     GenericRecord currValueRecord = currRecordAndRmd.getValue();
     if (currValueRecord == null) {
-      currRecordAndRmd.setValue(SchemaUtils.constructGenericRecord(currValueSchema));
+      currRecordAndRmd.setValue(SchemaUtils.createGenericRecord(currValueSchema));
     }
 
     // TODO: RMD could be null or not have per-field timestamp. Caller of this method will handle these cases and ensure
@@ -63,29 +61,24 @@ public class WriteComputeHandlerV2 extends WriteComputeHandlerV1 {
     }
 
     final GenericRecord timestampRecord = (GenericRecord) timestampObject;
-    if (writeComputeSchema.getType() == Schema.Type.UNION) {
-      if (WriteComputeOperation.isDeleteRecordOp(writeComputeRecord)) {
-        // Full delete
-        UpdateResultStatus recordDeleteResultStatus = mergeRecordHelper.deleteRecord(
-            currRecordAndRmd.getValue(),
-            timestampRecord,
-            updateOperationTimestamp,
-            coloID
-        );
-        if (recordDeleteResultStatus == UpdateResultStatus.COMPLETELY_UPDATED) {
-          // All fields are deleted.
-          currRecordAndRmd.setValue(null);
-        } else if (recordDeleteResultStatus == UpdateResultStatus.NOT_UPDATED_AT_ALL) {
-          currRecordAndRmd.setUpdateIgnored(true);
-        }
-        return currRecordAndRmd;
-
-      } else {
-        // The first one in union schema list should be the value schema.
-        writeComputeSchema = writeComputeSchema.getTypes().get(0);
+    if (WriteComputeSchemaConverter.isDeleteRecordOp(writeComputeRecord)) {
+      // Full delete
+      UpdateResultStatus recordDeleteResultStatus = mergeRecordHelper.deleteRecord(
+          currRecordAndRmd.getValue(),
+          timestampRecord,
+          updateOperationTimestamp,
+          coloID
+      );
+      if (recordDeleteResultStatus == UpdateResultStatus.COMPLETELY_UPDATED) {
+        // All fields are deleted.
+        currRecordAndRmd.setValue(null);
+      } else if (recordDeleteResultStatus == UpdateResultStatus.NOT_UPDATED_AT_ALL) {
+        currRecordAndRmd.setUpdateIgnored(true);
       }
+      return currRecordAndRmd;
     }
 
+    final Schema writeComputeSchema = writeComputeRecord.getSchema();
     for (Schema.Field writeComputeField : writeComputeSchema.getFields()) {
       final String writeComputeFieldName = writeComputeField.name();
       if (currRecordAndRmd.getValue().getSchema().getField(writeComputeFieldName) == null) {
@@ -98,7 +91,7 @@ public class WriteComputeHandlerV2 extends WriteComputeHandlerV1 {
       WriteComputeOperation operationType = WriteComputeOperation.getFieldOperationType(writeComputeFieldValue);
       switch (operationType) {
         case NO_OP_ON_FIELD:
-          break; // Do nothing
+          continue; // Do nothing
 
         case PUT_NEW_FIELD:
           mergeRecordHelper.putOnField(
@@ -109,7 +102,7 @@ public class WriteComputeHandlerV2 extends WriteComputeHandlerV1 {
               updateOperationTimestamp,
               coloID
           );
-          break;
+          continue;
 
         case LIST_OPS:
         case MAP_OPS:
@@ -120,7 +113,7 @@ public class WriteComputeHandlerV2 extends WriteComputeHandlerV1 {
               currRecordAndRmd.getValue(),
               writeComputeFieldName
           );
-          break;
+          continue;
         default:
           throw new IllegalStateException("Unexpected write-compute operation: " + operationType);
       }

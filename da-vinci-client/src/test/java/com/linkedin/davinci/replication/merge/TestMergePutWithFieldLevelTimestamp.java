@@ -41,7 +41,7 @@ public class TestMergePutWithFieldLevelTimestamp extends TestMergeConflictResolv
     fieldNameToTimestampMap.put("id", 10L);
     fieldNameToTimestampMap.put("name", 20L);
     fieldNameToTimestampMap.put("age", 30L);
-    GenericRecord rmdRecord = createRmd(rmdSchemaV1, fieldNameToTimestampMap);
+    GenericRecord rmdRecord = createRmdWithFieldLevelTimestamp(rmdSchemaV1, fieldNameToTimestampMap);
     final int oldValueSchemaID = 1;
 
     MergeConflictResult mergeResult = mergeConflictResolver.put(
@@ -117,7 +117,7 @@ public class TestMergePutWithFieldLevelTimestamp extends TestMergeConflictResolv
     Map<String, Long> fieldNameToTimestampMap = new HashMap<>();
     fieldNameToTimestampMap.put("id", 10L);
     fieldNameToTimestampMap.put("name", 20L);
-    GenericRecord oldRmdRecord = createRmd(rmdSchemaV3, fieldNameToTimestampMap); // Existing RMD.
+    GenericRecord oldRmdRecord = createRmdWithFieldLevelTimestamp(rmdSchemaV3, fieldNameToTimestampMap); // Existing RMD.
     ReplicationMetadataWithValueSchemaId oldRmdWithValueSchemaID = new ReplicationMetadataWithValueSchemaId(3, RMD_VERSION_ID, oldRmdRecord);
     GenericRecord oldValueRecord = new GenericData.Record(userSchemaV3);
     oldValueRecord.put("id", "123");
@@ -169,7 +169,7 @@ public class TestMergePutWithFieldLevelTimestamp extends TestMergeConflictResolv
     Map<String, Long> fieldNameToTimestampMap = new HashMap<>();
     fieldNameToTimestampMap.put("id", 10L);
     fieldNameToTimestampMap.put("name", 20L);
-    GenericRecord oldRmdRecord = createRmd(rmdSchemaV3, fieldNameToTimestampMap); // Existing RMD.
+    GenericRecord oldRmdRecord = createRmdWithFieldLevelTimestamp(rmdSchemaV3, fieldNameToTimestampMap); // Existing RMD.
     ReplicationMetadataWithValueSchemaId oldRmdWithValueSchemaID = new ReplicationMetadataWithValueSchemaId(3, RMD_VERSION_ID, oldRmdRecord);
     GenericRecord oldValueRecord = new GenericData.Record(userSchemaV3);
     oldValueRecord.put("id", "123");
@@ -222,7 +222,7 @@ public class TestMergePutWithFieldLevelTimestamp extends TestMergeConflictResolv
     Map<String, Long> fieldNameToTimestampMap = new HashMap<>();
     fieldNameToTimestampMap.put("id", 10L);
     fieldNameToTimestampMap.put("name", 20L);
-    GenericRecord oldRmdRecord = createRmd(rmdSchemaV3, fieldNameToTimestampMap); // Existing RMD
+    GenericRecord oldRmdRecord = createRmdWithFieldLevelTimestamp(rmdSchemaV3, fieldNameToTimestampMap); // Existing RMD
     ReplicationMetadataWithValueSchemaId oldRmdWithValueSchemaID = new ReplicationMetadataWithValueSchemaId(3, RMD_VERSION_ID, oldRmdRecord);
     GenericRecord oldValueRecord = new GenericData.Record(userSchemaV3);
     oldValueRecord.put("id", "123");
@@ -277,7 +277,7 @@ public class TestMergePutWithFieldLevelTimestamp extends TestMergeConflictResolv
     fieldNameToTimestampMap.put("id", 10L);
     fieldNameToTimestampMap.put("name", 20L);
     fieldNameToTimestampMap.put("weight", 30L);
-    GenericRecord oldRmdRecord = createRmd(rmdSchemaV5, fieldNameToTimestampMap); // Existing RMD
+    GenericRecord oldRmdRecord = createRmdWithFieldLevelTimestamp(rmdSchemaV5, fieldNameToTimestampMap); // Existing RMD
     ReplicationMetadataWithValueSchemaId oldRmdWithValueSchemaID = new ReplicationMetadataWithValueSchemaId(5, RMD_VERSION_ID, oldRmdRecord);
     GenericRecord oldValueRecord = new GenericData.Record(userSchemaV5);
     oldValueRecord.put("id", "123");

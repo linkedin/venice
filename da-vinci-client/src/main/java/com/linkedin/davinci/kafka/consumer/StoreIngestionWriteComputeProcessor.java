@@ -27,9 +27,9 @@ public class StoreIngestionWriteComputeProcessor {
   private final String storeName;
   private final ReadOnlySchemaRepository schemaRepo;
   private final WriteComputeProcessor writeComputeProcessor;
-  private Map<SchemaIds, ValueAndWriteComputeSchemas> schemaIdsToSchemasMap;
-  private Map<SchemaIds, AvroGenericDeserializer<GenericRecord>> idToWriteComputeSchemaDeserializerMap;
-  private Map<Schema, AvroSerializer> valueSchemaSerializerMap;
+  private final Map<SchemaIds, ValueAndWriteComputeSchemas> schemaIdsToSchemasMap;
+  private final Map<SchemaIds, AvroGenericDeserializer<GenericRecord>> idToWriteComputeSchemaDeserializerMap;
+  private final Map<Schema, AvroSerializer<GenericRecord>> valueSchemaSerializerMap;
 
   public StoreIngestionWriteComputeProcessor(@Nonnull String storeName, @Nonnull ReadOnlySchemaRepository schemaRepo, MergeRecordHelper mergeRecordHelper) {
     Validate.notEmpty(storeName);
@@ -43,25 +43,25 @@ public class StoreIngestionWriteComputeProcessor {
   }
 
   /**
-   * Apply write-compute operation on top of original value. A few of different schemas are used here
-   * and should be handled carefully.
+   * Apply write-compute operation on old/current value.
    *
-   * @param originalValue value schema associated within UPDATE message. Notice that this can be different
+   * @param oldValue value schema associated within UPDATE message. Notice that this can be different
    *                      from which original schema was serialized.
    * @param writeComputeBytes serialized write-compute operation.
    * @param valueSchemaId value schema id that this write-compute operation is associated with.
    *                      It's read from Kafka record.
    * @param writeComputeSchemaId schema id that this write-compute operation is associated with.
-   *                             It's read from Kafka record
+   *                             It's read from Kafka record.
+   *
+   * @return Serialized bytes from the write-compute-updated original value.
    */
-  public byte[] getUpdatedValueBytes(GenericRecord originalValue, ByteBuffer writeComputeBytes, int valueSchemaId,
-      int writeComputeSchemaId) {
+  public byte[] applyWriteCompute(GenericRecord oldValue, ByteBuffer writeComputeBytes, int valueSchemaId, int writeComputeSchemaId) {
     GenericRecord writeComputeRecord = deserializeWriteComputeRecord(writeComputeBytes, valueSchemaId, writeComputeSchemaId);
     ValueAndWriteComputeSchemas valueAndWriteComputeSchemas = getValueAndWriteComputeSchemas(valueSchemaId, writeComputeSchemaId);
     GenericRecord updatedValue = writeComputeProcessor.updateRecord(
         valueAndWriteComputeSchemas.getValueSchema(),
         valueAndWriteComputeSchemas.getWriteComputeSchema(),
-        originalValue,
+        oldValue,
         writeComputeRecord
     );
 
@@ -100,9 +100,8 @@ public class StoreIngestionWriteComputeProcessor {
         });
   }
 
-  private AvroSerializer getValueSerializer(Schema schema) {
-    return valueSchemaSerializerMap.computeIfAbsent(schema,
-        id -> new AvroSerializer(schema));
+  private AvroSerializer<GenericRecord> getValueSerializer(Schema schema) {
+    return valueSchemaSerializerMap.computeIfAbsent(schema, id -> new AvroSerializer<>(schema));
   }
 
   private Schema getValueSchema(int valueSchemaId) {

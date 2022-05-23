@@ -31,7 +31,7 @@ public class TestMergeDeleteWithFieldLevelTimestamp extends TestMergeConflictRes
     fieldNameToTimestampMap.put("id", 10L);
     fieldNameToTimestampMap.put("name", 20L);
     fieldNameToTimestampMap.put("age", 30L);
-    GenericRecord rmdRecord = createRmd(rmdSchemaV1, fieldNameToTimestampMap);
+    GenericRecord rmdRecord = createRmdWithFieldLevelTimestamp(rmdSchemaV1, fieldNameToTimestampMap);
     final int oldValueSchemaID = 1;
     final long deleteOperationTimestamp = 9L; // Strictly smaller than all fields' RMD timestamps.
 
@@ -53,7 +53,7 @@ public class TestMergeDeleteWithFieldLevelTimestamp extends TestMergeConflictRes
     fieldNameToTimestampMap.put("id", 10L);
     fieldNameToTimestampMap.put("name", 20L);
     fieldNameToTimestampMap.put("age", 30L);
-    GenericRecord oldRmdRecord = createRmd(rmdSchemaV1, fieldNameToTimestampMap);
+    GenericRecord oldRmdRecord = createRmdWithFieldLevelTimestamp(rmdSchemaV1, fieldNameToTimestampMap);
     ReplicationMetadataWithValueSchemaId oldRmdWithValueSchemaID =
         new ReplicationMetadataWithValueSchemaId(valueSchemaID, RMD_VERSION_ID, oldRmdRecord);
     GenericRecord oldValueRecord = new GenericData.Record(valueRecordSchemaV1);

@@ -128,9 +128,12 @@ public class MergeGenericRecordTest {
     ValueAndReplicationMetadata<GenericRecord> deletedValueAndReplicationMetadata3 = genericRecordMerge.delete(valueAndReplicationMetadata, 5, -1, 1, 0);
 
     Assert.assertEquals(deletedValueAndReplicationMetadata3.getValue(), valueAndReplicationMetadata.getValue());
-    Assert.assertEquals((List<Long>) deletedValueAndReplicationMetadata3.getReplicationMetadata().get(REPLICATION_CHECKPOINT_VECTOR_FIELD), Arrays.asList(1L));
+    Assert.assertEquals(
+        (List<Long>) deletedValueAndReplicationMetadata3.getReplicationMetadata().get(REPLICATION_CHECKPOINT_VECTOR_FIELD),
+        Collections.singletonList(1L)
+    );
     // Verify that the same object is returned
-    Assert.assertTrue(deletedValueAndReplicationMetadata3 == valueAndReplicationMetadata);
+    Assert.assertSame(deletedValueAndReplicationMetadata3, valueAndReplicationMetadata);
   }
 
   @Test
@@ -217,7 +220,6 @@ public class MergeGenericRecordTest {
         valueAndReplicationMetadata,
         Lazy.of(() -> wcRecord),
         wcRecord.getSchema(),
-        recordWriteComputeSchema,
         30,
         -1,
         1,
@@ -239,7 +241,6 @@ public class MergeGenericRecordTest {
             valueAndReplicationMetadata,
         Lazy.of(() -> wcRecord),
         wcRecord.getSchema(),
-        recordWriteComputeSchema,
         10,
         -1,
         1,
@@ -252,7 +253,6 @@ public class MergeGenericRecordTest {
     valueAndReplicationMetadata = genericRecordMerge.update(
         valueAndReplicationMetadata, Lazy.of(() -> wcRecord),
         wcRecord.getSchema(),
-        recordWriteComputeSchema,
         30,
         -1,
         1,
@@ -276,7 +276,6 @@ public class MergeGenericRecordTest {
         finalValueAndReplicationMetadata,
         Lazy.of(() ->wcRecord),
         wcRecord.getSchema(),
-        recordWriteComputeSchema,
         10,
         -1,
         1,

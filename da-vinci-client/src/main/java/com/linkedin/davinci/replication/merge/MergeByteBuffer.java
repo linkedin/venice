@@ -71,7 +71,6 @@ public class MergeByteBuffer extends AbstractMerge<ByteBuffer> {
       ValueAndReplicationMetadata<ByteBuffer> oldValueAndReplicationMetadata,
       Lazy<GenericRecord> writeOperation,
       Schema currValueSchema,
-      Schema writeComputeSchema,
       long updateOperationTimestamp,
       int updateOperationColoID,
       long newValueSourceOffset,

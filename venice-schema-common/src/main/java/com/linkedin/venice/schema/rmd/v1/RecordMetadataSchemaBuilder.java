@@ -63,7 +63,7 @@ class RecordMetadataSchemaBuilder {
     if (fieldMetadataSchema == LONG_TYPE_TIMESTAMP_SCHEMA) {
       defaultValue = 0;
     } else if (fieldMetadataSchema.getType() == RECORD) {
-      defaultValue = SchemaUtils.constructGenericRecord(fieldMetadataSchema);
+      defaultValue = SchemaUtils.createGenericRecord(fieldMetadataSchema);
     } else {
       throw new IllegalStateException("Generated field metadata schema is expected to be either of a type Long or of a "
           + "type Record. But got schema: " + fieldMetadataSchema);

@@ -201,7 +201,6 @@ public class MergeGenericRecord extends AbstractMerge<GenericRecord> {
       ValueAndReplicationMetadata<GenericRecord> oldValueAndReplicationMetadata,
       Lazy<GenericRecord> writeComputeRecord,
       Schema currValueSchema, // Schema of the current value that is to-be-updated here.
-      Schema writeComputeSchema,
       long updateOperationTimestamp,
       int updateOperationColoID,
       long newValueSourceOffset,
@@ -210,7 +209,6 @@ public class MergeGenericRecord extends AbstractMerge<GenericRecord> {
     updateReplicationCheckpointVector(oldValueAndReplicationMetadata.getReplicationMetadata(), newValueSourceOffset, newValueSourceBrokerID);
     return writeComputeProcessor.updateRecordWithRmd(
         currValueSchema,
-        writeComputeSchema,
         oldValueAndReplicationMetadata,
         writeComputeRecord.get(),
         updateOperationTimestamp,
