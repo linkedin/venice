@@ -12,6 +12,7 @@ import com.linkedin.davinci.stats.RocksDBMemoryStats;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.venice.ConfigKeys;
+import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controller.VeniceControllerConfig;
 import com.linkedin.venice.controller.VeniceControllerMultiClusterConfig;
 import com.linkedin.venice.controllerapi.ControllerClient;
@@ -518,6 +519,18 @@ public class TestUtils {
     TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
       for (ControllerClient client : controllerClientList) {
         Assert.assertFalse(client.getStore(storeName).isError());
+      }
+    });
+  }
+
+  public static void verifySystemStoreInAllRegions(String regularStoreName, VeniceSystemStoreType systemStoreType,
+      ControllerClient parentControllerClient, List<ControllerClient> controllerClientList) {
+    String systemStoreName = systemStoreType.getSystemStoreName(regularStoreName);
+    TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
+      for (ControllerClient client : controllerClientList) {
+        StoreResponse response = client.getStore(systemStoreName);
+        Assert.assertFalse(response.isError());
+        Assert.assertTrue(response.getStore().getCurrentVersion() > 0);
       }
     });
   }

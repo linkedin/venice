@@ -3710,7 +3710,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
       ResourceAssignment resourceAssignment = routingDataRepository.getResourceAssignment();
       notReadyReason = statusDecider.hasEnoughNodesToStartPush(topic, replicationFactor, resourceAssignment, notReadyReason);
-
       if (!notReadyReason.isPresent()) {
         logger.info("After waiting for " + elapsedTime + "ms, resource allocation is completed for " + topic + ".");
         pushMonitor.refreshAndUpdatePushStatus(topic, ExecutionStatus.STARTED, Optional.of("Helix assignment complete"));
@@ -5339,7 +5338,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
     @Override
-    public void  updateAclForStore(String clusterName, String storeName, String accessPermissions) {
+    public void updateAclForStore(String clusterName, String storeName, String accessPermissions) {
         throw new VeniceUnsupportedOperationException("updateAclForStore is not supported in child controller!");
     }
 
@@ -5595,6 +5594,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             // Filter out aggregate mode store explicitly.
             storesToBeConfigured = storesToBeConfigured.stream()
                 .filter(store -> !(store.isHybrid() && store.getHybridStoreConfig().getDataReplicationPolicy().equals(DataReplicationPolicy.AGGREGATE)))
+                .filter(store -> !((VeniceSystemStoreType.getSystemStoreType(store.getName()) != null) && (VeniceSystemStoreType.getSystemStoreType(store.getName()).isStoreZkShared())))
                 .collect(Collectors.toList());
             storesToBeConfigured.forEach(store -> {
                 if (enableActiveActiveReplicationForCluster && !(store.isLeaderFollowerModelEnabled() || clusterConfig.isLfModelDependencyCheckDisabled())) {
@@ -5612,7 +5612,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     public ArrayList<StoreInfo> getClusterStores(String clusterName) {
       //Return all stores at this step in the process
       return (ArrayList<StoreInfo>) getAllStores(clusterName).stream()
-          .map(store -> StoreInfo.fromStore(store)).collect(Collectors.toList());
+          .map(StoreInfo::fromStore).collect(Collectors.toList());
     }
 
     @Override

@@ -14,6 +14,8 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 
+import static com.linkedin.venice.ConfigKeys.*;
+
 
 /**
  * A common base class to provide setup and teardown routines to be used in venice AdminSparkServer related test cases.
@@ -32,6 +34,9 @@ public class AbstractTestAdminSparkServer {
     cluster = ServiceFactory.getVeniceCluster(1, STORAGE_NODE_COUNT, 0, 1, 100, false, false, extraProperties);
 
     parentZk = ServiceFactory.getZkServer();
+    // The cluster does not have router setup
+    extraProperties.setProperty(CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE, "false");
+    extraProperties.setProperty(CONTROLLER_AUTO_MATERIALIZE_DAVINCI_PUSH_STATUS_SYSTEM_STORE, "false");
     parentController =
         ServiceFactory.getVeniceParentController(new String[]{cluster.getClusterName()}, parentZk.getAddress(),
             cluster.getKafka(), new VeniceControllerWrapper[]{cluster.getLeaderVeniceController()}, null, false, 1,
