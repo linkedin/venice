@@ -250,6 +250,14 @@ public class ServiceFactory {
      */
     Properties props = properties.toProperties();
     props.setProperty(LOCAL_REGION_NAME, "parent");
+
+    if (!props.containsKey(CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE)) {
+      props.setProperty(CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE, "true");
+    }
+
+    if (!props.containsKey(CONTROLLER_AUTO_MATERIALIZE_DAVINCI_PUSH_STATUS_SYSTEM_STORE)) {
+      props.setProperty(CONTROLLER_AUTO_MATERIALIZE_DAVINCI_PUSH_STATUS_SYSTEM_STORE, "true");
+    }
     return getStatefulService(
         VeniceControllerWrapper.SERVICE_NAME,
         VeniceControllerWrapper.generateService(clusterNames, zkAddress, kafkaBrokerWrapper, true, replicationFactor,
