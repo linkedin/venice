@@ -301,7 +301,7 @@ public class ByteUtils {
 
   /**
    * Extract an integer header from the ByteBuffer provided. The header is extracted from the bytes immediately
-   * preceding the current position are extracted.
+   * preceding the current position.
    * @param originalBuffer The buffer which contains the header.
    * @return The integer header that is extracted from the ByteBuffer provided.
    */

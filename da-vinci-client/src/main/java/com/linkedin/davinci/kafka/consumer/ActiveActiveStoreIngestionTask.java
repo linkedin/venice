@@ -230,15 +230,21 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     MessageType msgType = MessageType.valueOf(kafkaValue.messageType);
     boolean isChunkedTopic = storageMetadataService.isStoreVersionChunked(kafkaVersionTopic);
     final int incomingValueSchemaId;
+    final int incomingWriteComputeSchemaId;
+
     switch (msgType) {
       case PUT:
         incomingValueSchemaId = ((Put) kafkaValue.payloadUnion).schemaId;
+        incomingWriteComputeSchemaId = -1;
         break;
       case UPDATE:
-        incomingValueSchemaId = ((Update) kafkaValue.payloadUnion).schemaId;
+        Update incomingUpdate = (Update) kafkaValue.payloadUnion;
+        incomingValueSchemaId = incomingUpdate.schemaId;
+        incomingWriteComputeSchemaId = incomingUpdate.updateSchemaId;
         break;
       case DELETE:
         incomingValueSchemaId = -1; // Ignored since we don't need the schema id for DELETE operations.
+        incomingWriteComputeSchemaId = -1;
         break;
       default:
         throw new VeniceMessageException(consumerTaskId + " : Invalid/Unrecognized operation type submitted: " + kafkaValue.messageType);
@@ -284,6 +290,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
                                  // config to represent the mapping from Kafka server URLs to colo ID.
         );
         break;
+
       case DELETE:
         mergeConflictResult = mergeConflictResolver.delete(
             oldValueProvider,
@@ -294,14 +301,20 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
             sourceKafkaClusterId
         );
         break;
+
       case UPDATE:
-        throw new VeniceUnsupportedOperationException("Update operation not yet supported in Active/Active.");
-//        mergeConflictResult = mergeConflictResolver.update(lazyOriginalValue, Lazy.of(() -> {
-//          Update update = (Update) kafkaValue.payloadUnion;
-//          return ingestionTaskWriteComputeAdapter.deserializeWriteComputeRecord(update.updateValue,
-//              update.schemaId, update.updateSchemaId);
-//        }), writeTimestamp);
-//        break;
+        mergeConflictResult = mergeConflictResolver.update(
+            oldValueProvider,
+            rmdWithValueSchemaID,
+            ((Update) kafkaValue.payloadUnion).updateValue,
+            incomingValueSchemaId,
+            incomingWriteComputeSchemaId,
+            writeTimestamp,
+            sourceOffset,
+            sourceKafkaClusterId,
+            sourceKafkaClusterId
+        );
+        break;
       default:
         throw new VeniceMessageException(consumerTaskId + " : Invalid/Unrecognized operation type submitted: " + kafkaValue.messageType);
     }
@@ -455,11 +468,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       partitionConsumptionState.setTransientRecord(kafkaUrl, consumerRecord.offset(), key, updatedValueBytes.array(), updatedValueBytes.position(),
           valueLen, valueSchemaId, replicationMetadataRecord);
 
-      boolean doesResultReuseInput = mergeConflictResult.doesResultReuseInput();
-      final int previousHeaderForPutValue = doesResultReuseInput ? ByteUtils.getIntHeaderFromByteBuffer(updatedValueBytes) : -1;
-
       Put updatedPut = new Put();
-      updatedPut.putValue = ByteUtils.prependIntHeaderToByteBuffer(updatedValueBytes, valueSchemaId, doesResultReuseInput);
+      updatedPut.putValue = ByteUtils.prependIntHeaderToByteBuffer(updatedValueBytes, valueSchemaId, mergeConflictResult.doesResultReuseInput());
       updatedPut.schemaId = valueSchemaId;
       updatedPut.replicationMetadataVersionId = rmdProtocolVersionID;
       updatedPut.replicationMetadataPayload = updatedReplicationMetadataBytes;
@@ -472,10 +482,10 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       }
       ProduceToTopic produceToTopicFunction = (callback, sourceTopicOffset) -> {
         final Callback newCallback = (recordMetadata, exception) -> {
-          if (doesResultReuseInput) {
+          if (mergeConflictResult.doesResultReuseInput()) {
             // Restore the original header so this function is eventually idempotent as the original KME ByteBuffer
-            //will be recovered after producing the message to Kafka or if the production failing.
-            ByteUtils.prependIntHeaderToByteBuffer(updatedValueBytes, previousHeaderForPutValue, true);
+            // will be recovered after producing the message to Kafka or if the production failing.
+            ByteUtils.prependIntHeaderToByteBuffer(updatedValueBytes, ByteUtils.getIntHeaderFromByteBuffer(updatedValueBytes), true);
           }
           callback.onCompletion(recordMetadata, exception);
         };

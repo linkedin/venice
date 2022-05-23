@@ -98,7 +98,7 @@ public class CollectionTimestampBuilder {
       }
     }
 
-    GenericRecord itemFieldTimestampRecord = SchemaUtils.constructGenericRecord(collectionTimestampSchema);
+    GenericRecord itemFieldTimestampRecord = SchemaUtils.createGenericRecord(collectionTimestampSchema);
     itemFieldTimestampRecord.put(COLLECTION_TOP_LEVEL_TS_FIELD_NAME, topLevelFieldTimestamp);
     itemFieldTimestampRecord.put(COLLECTION_TOP_LEVEL_COLO_ID_FIELD_NAME, topLevelColoID);
     itemFieldTimestampRecord.put(COLLECTION_PUT_ONLY_PART_LENGTH_FIELD_NAME, putOnlyPartLength);

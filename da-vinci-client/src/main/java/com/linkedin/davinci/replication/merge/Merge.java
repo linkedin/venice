@@ -106,7 +106,6 @@ public interface Merge<T> {
       ValueAndReplicationMetadata<T> oldValueAndReplicationMetadata,
       Lazy<GenericRecord> writeOperation,
       Schema currValueSchema,
-      Schema writeComputeSchema,
       long updateOperationTimestamp,
       int updateOperationColoID,
       long newValueSourceOffset,

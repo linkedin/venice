@@ -12,6 +12,11 @@ import static org.apache.avro.Schema.Type.*;
 
 
 public class SchemaUtils {
+
+  private SchemaUtils() {
+    // Utility class
+  }
+
   /**
    * Utility function that checks to make sure that given a union schema, there only exists 1 collection type amongst the
    * provided types.  Multiple collections will make the result of the flattened write compute schema lead to ambiguous behavior
@@ -73,9 +78,12 @@ public class SchemaUtils {
     return Schema.createUnion(flattenedSchemaList);
   }
 
-  public static GenericRecord constructGenericRecord(Schema originalSchema) {
+  /**
+   * Create a {@link GenericRecord} from a given schema. The created record has default values set on all fields. Note
+   * that all fields in the given schema must have default values. Otherwise, an exception is thrown.
+   */
+  public static GenericRecord createGenericRecord(Schema originalSchema) {
     final GenericData.Record newRecord = new GenericData.Record(originalSchema);
-
     for (Schema.Field originalField : originalSchema.getFields()) {
       if (AvroCompatibilityHelper.fieldHasDefault(originalField)) {
         //make a deep copy here since genericData caches each default value internally. If we

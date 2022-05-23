@@ -68,7 +68,6 @@ public class WriteComputeProcessor {
 
   public ValueAndReplicationMetadata<GenericRecord> updateRecordWithRmd(
       Schema currValueSchema,
-      Schema writeComputeSchema,
       ValueAndReplicationMetadata<GenericRecord> oldRecordAndReplicationMetadata,
       GenericRecord writeComputeRecord,
       long updateOperationTimestamp,
@@ -76,7 +75,6 @@ public class WriteComputeProcessor {
   ) {
     return writeComputeHandlerV2.updateRecord(
         Utils.notNull(currValueSchema),
-        Utils.notNull(writeComputeSchema),
         Utils.notNull(oldRecordAndReplicationMetadata),
         Utils.notNull(writeComputeRecord),
         updateOperationTimestamp,

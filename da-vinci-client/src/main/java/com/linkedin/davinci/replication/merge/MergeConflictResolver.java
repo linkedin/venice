@@ -7,16 +7,19 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.schema.SchemaEntry;
+import com.linkedin.venice.schema.SchemaUtils;
 import com.linkedin.venice.schema.merge.ValueAndReplicationMetadata;
+import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
-import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.commons.lang3.Validate;
 
@@ -203,7 +206,7 @@ public class MergeConflictResolver {
         newValueSourceBrokerID
     );
     ByteBuffer mergedValueBytes = serializeMergedValueRecord(mergeResultValueSchema, mergedValueAndRmd.getValue());
-    return new MergeConflictResult(Optional.of(mergedValueBytes), newValueSchemaID, true, mergedValueAndRmd.getReplicationMetadata());
+    return new MergeConflictResult(Optional.of(mergedValueBytes), newValueSchemaID, false, mergedValueAndRmd.getReplicationMetadata());
   }
 
   /**
@@ -211,8 +214,9 @@ public class MergeConflictResolver {
    * It takes into account the writer schema and reader schema. If the writer schema is different from the reader schema,
    * the replication metadata record will be converted to use the RMD schema generated from the reader schema.
    *
-   * @param readerValueSchemaEntry reader schema and its ID
-   * @param oldValueWriterSchemaID writer schema ID of the old value
+   * @param readerValueSchema reader schema.
+   * @param readerValueSchemaID reader schema ID.
+   * @param oldValueWriterSchemaID writer schema ID of the old value.
    * @param oldValueBytesProvider provides old value bytes.
    * @param oldRmdRecord Replication metadata record that has the RMD schema generated from the writer value schema.
    * @return a pair of deserialized value of type {@link GenericRecord} and its corresponding replication metadata.
@@ -224,20 +228,25 @@ public class MergeConflictResolver {
       Lazy<ByteBuffer> oldValueBytesProvider,
       GenericRecord oldRmdRecord
   ) {
-    Lazy<GenericRecord> oldValueRecordProvider = Lazy.of(() -> {
-      ByteBuffer oldValueBytes = oldValueBytesProvider.get();
-      if (oldValueBytes == null) {
-        return new GenericData.Record(readerValueSchema);
-      }
-      final Schema oldValueWriterSchema = getValueSchema(oldValueWriterSchemaID);
-      return deserializeValue(oldValueBytes, oldValueWriterSchema, readerValueSchema);
-    });
-    // RMD record should use the RMD schema generated from mergeResultValueSchema.
-    GenericRecord expandedOldRmdRecord = mayConvertRmdToUseReaderValueSchema(readerValueSchemaID, oldValueWriterSchemaID, oldRmdRecord);
-    return new ValueAndReplicationMetadata<>(
-        oldValueRecordProvider,
-        expandedOldRmdRecord
+    final GenericRecord oldValueRecord = createOldValueRecord(readerValueSchema, oldValueWriterSchemaID, oldValueBytesProvider.get());
+
+    // RMD record should contain a per-field timestamp and it should use the RMD schema generated from mergeResultValueSchema.
+    oldRmdRecord = maybeConvertToPerFieldTimestampRecord(oldRmdRecord, oldValueRecord);
+    oldRmdRecord = mayConvertRmdToUseReaderValueSchema(readerValueSchemaID, oldValueWriterSchemaID, oldRmdRecord);
+    ValueAndReplicationMetadata<GenericRecord> createdOldValueAndRmd = new ValueAndReplicationMetadata<>(
+        Lazy.of(() -> oldValueRecord),
+        oldRmdRecord
     );
+    createdOldValueAndRmd.setValueSchemaID(readerValueSchemaID);
+    return createdOldValueAndRmd;
+  }
+
+  private GenericRecord createOldValueRecord(Schema readerValueSchema, int oldValueWriterSchemaID, ByteBuffer oldValueBytes) {
+    if (oldValueBytes == null) {
+      return SchemaUtils.createGenericRecord(readerValueSchema);
+    }
+    final Schema oldValueWriterSchema = getValueSchema(oldValueWriterSchemaID);
+    return deserializeValue(oldValueBytes, oldValueWriterSchema, readerValueSchema);
   }
 
   private GenericRecord mayConvertRmdToUseReaderValueSchema(final int readerValueSchemaID, final int writerValueSchemaID, GenericRecord oldRmdRecord) {
@@ -264,7 +273,7 @@ public class MergeConflictResolver {
 
     if (oldValueSchemaID == newValueSchemaID) {
       for (Schema.Field field : oldValueFields) {
-        if (isRmdFieldTimestampSmallerOrEqual(oldValueFieldTimestampsRecord, field.name(), putOperationTimestamp)) {
+        if (isRmdFieldTimestampSmaller(oldValueFieldTimestampsRecord, field.name(), putOperationTimestamp, false)) {
           return false;
         }
       }
@@ -279,7 +288,7 @@ public class MergeConflictResolver {
       if (oldFieldNames.containsAll(newFieldNames)) {
         // New value fields set is a subset of existing/old value fields set.
         for (String newFieldName : newFieldNames) {
-          if (isRmdFieldTimestampSmallerOrEqual(oldValueFieldTimestampsRecord, newFieldName, putOperationTimestamp)) {
+          if (isRmdFieldTimestampSmaller(oldValueFieldTimestampsRecord, newFieldName, putOperationTimestamp, false)) {
             return false;
           }
         }
@@ -298,7 +307,7 @@ public class MergeConflictResolver {
       final long deleteOperationTimestamp
   ) {
     for (Schema.Field field : oldValueFieldTimestampsRecord.getSchema().getFields()) {
-      if (isRmdFieldTimestampSmallerOrEqual(oldValueFieldTimestampsRecord, field.name(), deleteOperationTimestamp)) {
+      if (isRmdFieldTimestampSmaller(oldValueFieldTimestampsRecord, field.name(), deleteOperationTimestamp, false)) {
         return false;
       }
     }
@@ -309,10 +318,15 @@ public class MergeConflictResolver {
     return schemaRepository.getValueSchema(storeName, valueSchemaID).getSchema();
   }
 
-  private boolean isRmdFieldTimestampSmallerOrEqual(
+  private Schema getWriteComputeSchema(final int valueSchemaID, final int writeComputeSchemaID) {
+    return schemaRepository.getDerivedSchema(storeName, valueSchemaID, writeComputeSchemaID).getSchema();
+  }
+
+  private boolean isRmdFieldTimestampSmaller(
       GenericRecord oldValueFieldTimestampsRecord,
       String fieldName,
-      final long newTimestamp
+      final long newTimestamp,
+      final boolean strictlySmaller
   ) {
     final Object fieldTimestampObj = oldValueFieldTimestampsRecord.get(fieldName);
     final long oldFieldTimestamp;
@@ -324,7 +338,7 @@ public class MergeConflictResolver {
       throw new VeniceException("Replication metadata field timestamp is expected to be either a long or a GenericRecord. "
           + "Got: " + fieldTimestampObj);
     }
-    return oldFieldTimestamp <= newTimestamp;
+    return strictlySmaller ? (oldFieldTimestamp < newTimestamp) : (oldFieldTimestamp <= newTimestamp);
   }
 
   private MergeConflictResult putWithoutReplicationMetadata(
@@ -499,8 +513,223 @@ public class MergeConflictResolver {
     return new MergeConflictResult(mergedValueBytes, oldValueSchemaID, true, mergedValueAndRmd.getReplicationMetadata());
   }
 
-  public MergeConflictResult update() {
-    throw new VeniceUnsupportedOperationException("TODO: Implement DCR for write-compute");
+  public MergeConflictResult update(
+      Lazy<ByteBuffer> oldValueBytesProvider,
+      Optional<ReplicationMetadataWithValueSchemaId> rmdWithValueSchemaIdOptional,
+      ByteBuffer updateBytes,
+      final int incomingValueSchemaId,
+      final int incomingWriteComputeSchemaId,
+      final long updateOperationTimestamp,
+      final long newValueSourceOffset,
+      final int newValueSourceBrokerID,
+      final int newValueColoID
+  ) {
+    if (true) {
+      // We need more testing and validation before actually enabling this method. For now, we throw an exception to
+      // preserve the previous behavior.
+      throw new VeniceUnsupportedOperationException("TODO: add more unit and integration tests first and then remove this exception.");
+    }
+    GenericRecord writeComputeRecord = deserializeWriteComputeBytes(incomingValueSchemaId, incomingWriteComputeSchemaId, updateBytes);
+    if (ignoreNewUpdate(updateOperationTimestamp, writeComputeRecord, rmdWithValueSchemaIdOptional)) {
+      return MergeConflictResult.getIgnoredResult();
+    }
+    ValueAndReplicationMetadata<GenericRecord> oldValueAndRmd = prepareValueAndRmdForUpdate(
+        Optional.ofNullable(oldValueBytesProvider.get()),
+        rmdWithValueSchemaIdOptional,
+        incomingValueSchemaId
+    );
+
+    int oldValueSchemaID = oldValueAndRmd.getValueSchemaID();
+    Schema oldValueSchema = getValueSchema(oldValueAndRmd.getValueSchemaID());
+    ValueAndReplicationMetadata<GenericRecord> updatedValueAndRmd = mergeGenericRecord.update(
+        oldValueAndRmd,
+        Lazy.of(() -> writeComputeRecord),
+        oldValueSchema,
+        updateOperationTimestamp,
+        newValueColoID,
+        newValueSourceOffset,
+        newValueSourceBrokerID
+    );
+    final Optional<ByteBuffer> updatedValueBytes;
+    if (updatedValueAndRmd.getValue() == null) {
+      updatedValueBytes = Optional.empty();
+    } else {
+      updatedValueBytes = Optional.of(serializeMergedValueRecord(oldValueSchema, updatedValueAndRmd.getValue()));
+    }
+    return new MergeConflictResult(updatedValueBytes, oldValueSchemaID, false, updatedValueAndRmd.getReplicationMetadata());
+  }
+
+  private GenericRecord deserializeWriteComputeBytes(int incomingValueSchemaId, int incomingWriteComputeSchemaId, ByteBuffer updateBytes) {
+    Schema writeComputeSchema = getWriteComputeSchema(incomingValueSchemaId, incomingWriteComputeSchemaId);
+    return deserializeValue(updateBytes, writeComputeSchema, writeComputeSchema);
+  }
+
+  private ValueAndReplicationMetadata<GenericRecord> prepareValueAndRmdForUpdate(
+      Optional<ByteBuffer> oldValueOptional,
+      Optional<ReplicationMetadataWithValueSchemaId> rmdWithValueSchemaIdOptional,
+      final int incomingValueSchemaId
+  ) {
+    if (oldValueOptional.isPresent() && (!rmdWithValueSchemaIdOptional.isPresent())) {
+      throw new IllegalArgumentException("If old value bytes present, value schema ID must present too.");
+    }
+    ByteBuffer oldValueBytes = oldValueOptional.orElse(null);
+    ReplicationMetadataWithValueSchemaId rmdWithValueSchemaId = rmdWithValueSchemaIdOptional.orElse(null);
+    if (oldValueBytes == null && rmdWithValueSchemaId == null) {
+      // Value never existed
+      Schema valueSchema = getValueSchema(incomingValueSchemaId);
+      GenericRecord newValue = SchemaUtils.createGenericRecord(valueSchema);
+      GenericRecord newRmd = newRmdCreator.apply(incomingValueSchemaId);
+      newRmd.put(TIMESTAMP_FIELD_NAME, createPerFieldTimestampRecord(newRmd.getSchema(), 0L, newValue));
+      newRmd.put(REPLICATION_CHECKPOINT_VECTOR_FIELD, new ArrayList<Long>());
+      return new ValueAndReplicationMetadata<>(Lazy.of(() -> newValue), newRmd);
+    }
+
+    int oldValueWriterSchemaId = rmdWithValueSchemaId.getValueSchemaId();
+    int oldValueReaderSchemaId = oldValueWriterSchemaId;
+
+    if (oldValueWriterSchemaId != incomingValueSchemaId) {
+      // Schema mismatch and convert old value and its RMD both to use the superset schema.
+      SchemaEntry supersetSchemaEntry = schemaRepository.getSupersetSchema(storeName).orElse(null);
+      if (supersetSchemaEntry == null) {
+        throw new IllegalStateException("Expect superset schema to exist for store: " + storeName);
+      }
+      oldValueReaderSchemaId = supersetSchemaEntry.getId();
+    }
+    return createOldValueAndRmd(
+        getValueSchema(oldValueReaderSchemaId),
+        oldValueReaderSchemaId,
+        oldValueWriterSchemaId,
+        Lazy.of(() -> oldValueBytes),
+        rmdWithValueSchemaId.getReplicationMetadataRecord()
+    );
+  }
+
+  private GenericRecord maybeConvertToPerFieldTimestampRecord(GenericRecord rmd, GenericRecord oldValueRecord) {
+    Object timestampObject = rmd.get(TIMESTAMP_FIELD_NAME);
+    RmdTimestampType timestampType = MergeUtils.getReplicationMetadataType(timestampObject);
+    switch (timestampType) {
+      case PER_FIELD_TIMESTAMP:
+        return rmd;
+
+      case VALUE_LEVEL_TIMESTAMP:
+        GenericRecord perFieldTimestampRecord = createPerFieldTimestampRecord(
+            rmd.getSchema(),
+            (long) timestampObject,
+            oldValueRecord
+        );
+        rmd.put(TIMESTAMP_FIELD_NAME, perFieldTimestampRecord);
+        return rmd;
+
+      default:
+        throw new VeniceUnsupportedOperationException("Not supported replication metadata type: " + timestampType);
+    }
+  }
+
+  private GenericRecord createPerFieldTimestampRecord(Schema rmdSchema, long fieldTimestamp, GenericRecord oldValueRecord) {
+    Schema perFieldTimestampRecordSchema = rmdSchema.getField(TIMESTAMP_FIELD_NAME).schema().getTypes().get(1);
+    // Per-field timestamp record schema should have default timestamp values.
+    GenericRecord perFieldTimestampRecord = SchemaUtils.createGenericRecord(perFieldTimestampRecordSchema);
+    for (Schema.Field field : perFieldTimestampRecordSchema.getFields()) {
+      Schema.Type timestampFieldType = field.schema().getType();
+      switch (timestampFieldType) {
+        case LONG:
+          perFieldTimestampRecord.put(field.name(), fieldTimestamp);
+          continue;
+
+        case RECORD:
+          GenericRecord collectionFieldTimestampRecord = SchemaUtils.createGenericRecord(field.schema());
+          // Only need to set the top-level field timestamp on collection timestamp record.
+          collectionFieldTimestampRecord.put(COLLECTION_TOP_LEVEL_TS_FIELD_NAME, fieldTimestamp);
+          // When a collection field metadata is created, its top-level colo ID is always -1.
+          collectionFieldTimestampRecord.put(COLLECTION_TOP_LEVEL_COLO_ID_FIELD_NAME, -1);
+          collectionFieldTimestampRecord.put(
+              COLLECTION_PUT_ONLY_PART_LENGTH_FIELD_NAME,
+              getCollectionFieldLen(oldValueRecord, field.name())
+          );
+          perFieldTimestampRecord.put(field.name(), collectionFieldTimestampRecord);
+          continue;
+
+        default:
+          throw new VeniceException("Unsupported timestamp field type: " + timestampFieldType +
+              ", timestamp record schema: " + perFieldTimestampRecordSchema);
+      }
+    }
+    return perFieldTimestampRecord;
+  }
+
+  private int getCollectionFieldLen(GenericRecord valueRecord, String collectionFieldName) {
+    Object collectionFieldValue = valueRecord.get(collectionFieldName);
+    if (collectionFieldValue == null) {
+      return 0;
+    }
+    if (collectionFieldValue instanceof List) {
+      return ((List<?>) collectionFieldValue).size();
+
+    } else if (collectionFieldValue instanceof Map) {
+      return ((Map<?, ?>) collectionFieldValue).size();
+
+    } else {
+      throw new IllegalStateException("Expect field " + collectionFieldName + " to be a collection field. But got: " + collectionFieldValue.getClass());
+    }
+  }
+
+  private boolean ignoreNewUpdate(
+      final long updateOperationTimestamp,
+      GenericRecord writeComputeRecord,
+      Optional<ReplicationMetadataWithValueSchemaId> rmdWithValueSchemaIdOptional
+  ) {
+    ReplicationMetadataWithValueSchemaId rmdWithValueSchemaId = rmdWithValueSchemaIdOptional.orElse(null);
+    if (rmdWithValueSchemaId == null) {
+      return false;
+    }
+    final boolean isDeleteValue = WriteComputeSchemaConverter.isDeleteRecordOp(writeComputeRecord);
+    Object oldTimestampObject = rmdWithValueSchemaId.getReplicationMetadataRecord().get(TIMESTAMP_FIELD_NAME);
+    Schema oldValueSchema = getValueSchema(rmdWithValueSchemaId.getValueSchemaId());
+    RmdTimestampType rmdTimestampType = MergeUtils.getReplicationMetadataType(oldTimestampObject);
+    Set<String> toUpdateFieldNames;
+    switch (rmdTimestampType) {
+      case VALUE_LEVEL_TIMESTAMP:
+        final long valueLevelTimestamp = (long) oldTimestampObject;
+        if (updateOperationTimestamp > valueLevelTimestamp) {
+          return false;
+        }
+        if (isDeleteValue) {
+          return updateOperationTimestamp < valueLevelTimestamp;
+        }
+        toUpdateFieldNames = WriteComputeSchemaConverter.getNamesOfFieldsToBeUpdated(writeComputeRecord);
+        for (String toUpdateFieldName : toUpdateFieldNames) {
+          if (oldValueSchema.getField(toUpdateFieldName) == null) {
+            return false; // Write Compute tries to update a non-existing field in the old value (schema).
+          }
+        }
+        return true; // Write Compute does not try to update any non-existing fields in the old value (schema).
+
+      case PER_FIELD_TIMESTAMP:
+        GenericRecord timestampRecord = (GenericRecord) oldTimestampObject;
+        if (isDeleteValue) {
+          for (Schema.Field timestampField : timestampRecord.getSchema().getFields()) {
+            if (isRmdFieldTimestampSmaller(timestampRecord, timestampField.name(), updateOperationTimestamp, false)) {
+              return false; // One existing field must be deleted.
+            }
+          }
+          return true; // No field gets deleted because all existing fields have strictly greater timestamps.
+
+        } else {
+          toUpdateFieldNames = WriteComputeSchemaConverter.getNamesOfFieldsToBeUpdated(writeComputeRecord);
+          for (String toUpdateFieldName : toUpdateFieldNames) {
+            if (timestampRecord.get(toUpdateFieldName) == null) {
+              return false; // Write Compute tries to update a non-existing field.
+            }
+            if (isRmdFieldTimestampSmaller(timestampRecord, toUpdateFieldName, updateOperationTimestamp, false)) {
+              return false; // One existing field must be updated.
+            }
+          }
+          return true;
+        }
+
+      default:
+        throw new VeniceUnsupportedOperationException("Not supported replication metadata type: " + rmdTimestampType);
+    }
   }
 
   private ByteBuffer serializeMergedValueRecord(Schema mergedValueSchema, GenericRecord mergedValue) {
