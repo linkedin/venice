@@ -9,7 +9,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import org.apache.avro.Schema;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
@@ -19,7 +20,7 @@ import static org.apache.avro.Schema.Type.*;
 
 
 public class TestReplicationMetadataSchemaGenerator {
-  private static final Logger logger = Logger.getLogger(TestReplicationMetadataSchemaGenerator.class);
+  private static final Logger logger = LogManager.getLogger(TestReplicationMetadataSchemaGenerator.class);
   private static final Schema EMPTY_RECORD_SCHEMA;
   static {
     EMPTY_RECORD_SCHEMA = Schema.createRecord("EmptyRecord", "", "", false);

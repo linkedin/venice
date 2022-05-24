@@ -9,6 +9,9 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+
+import com.linkedin.venice.utils.TestUtils;
+import org.testng.annotations.AfterClass;
 import org.testng.annotations.Test;
 
 import static org.mockito.Mockito.*;
@@ -19,6 +22,11 @@ public class DualReadAvroGenericStoreClientTest {
   private final ScheduledExecutorService scheduledExecutor = Executors.newSingleThreadScheduledExecutor();
   private final String fastClientResponse = "fast_client_response";
   private final String thinClientResponse = "thin_client_response";
+
+  @AfterClass
+  public void tearDown() throws InterruptedException {
+    TestUtils.shutdownExecutor(scheduledExecutor);
+  }
 
   private DualReadAvroGenericStoreClient<String, String> prepareClients(boolean fastClientThrowExceptionWhenSending,
       boolean fastClientSucceed, long fastClientDelayMS, boolean thinClientThrowExceptionWhenSending,

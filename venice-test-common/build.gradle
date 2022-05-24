@@ -58,9 +58,9 @@ dependencies {
   implementation libraries.kafkaClientsTest
   implementation libraries.mockito
   implementation libraries.netty4Lnkd
-  implementation libraries.routerLnkd
   implementation libraries.rocksdbjni
   implementation libraries.routerApi
+  implementation libraries.routerLnkd
   implementation libraries.samzaApi
   implementation libraries.spark
   implementation libraries.testng

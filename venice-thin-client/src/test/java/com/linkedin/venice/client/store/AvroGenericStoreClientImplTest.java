@@ -36,7 +36,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.codehaus.jackson.map.ObjectMapper;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
@@ -47,7 +48,7 @@ import org.testng.annotations.Test;
 
 @Test(singleThreaded = true)
 public class AvroGenericStoreClientImplTest {
-  private static final Logger LOGGER = Logger.getLogger(AvroGenericStoreClientImplTest.class);
+  private static final Logger LOGGER = LogManager.getLogger(AvroGenericStoreClientImplTest.class);
 
   private final ObjectMapper mapper = new ObjectMapper();
   private final String storeName = "test_store";

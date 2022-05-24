@@ -4,7 +4,6 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.helix.VeniceOfflinePushMonitorAccessor;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
-import com.linkedin.venice.pushmonitor.OfflinePushStatus;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -20,8 +19,6 @@ import org.apache.helix.participant.statemachine.StateModelInfo;
 import org.apache.helix.participant.statemachine.Transition;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.slf4j.impl.VersionUtil;
-
 
 public class MockTestStateModelFactory extends StateModelFactory<StateModel> {
   private boolean isBlock = false;
@@ -37,8 +34,8 @@ public class MockTestStateModelFactory extends StateModelFactory<StateModel> {
   }
 
   public void stopAllStateModelThreads() {
-    for(List<OnlineOfflineStateModel> onlineOfflineStateModels : modelToModelListMap.values()) {
-      for(OnlineOfflineStateModel onlineOfflineStateModel : onlineOfflineStateModels) {
+    for (List<OnlineOfflineStateModel> onlineOfflineStateModels : modelToModelListMap.values()) {
+      for (OnlineOfflineStateModel onlineOfflineStateModel : onlineOfflineStateModels) {
         onlineOfflineStateModel.killThreads();
       }
     }
@@ -97,8 +94,12 @@ public class MockTestStateModelFactory extends StateModelFactory<StateModel> {
     }
 
     public void killThreads() {
-      for(Thread thread : runningThreads) {
-        thread.interrupt();
+      for (Thread thread : runningThreads) {
+        try {
+          TestUtils.shutdownThread(thread);
+        } catch (InterruptedException e) {
+          Thread.currentThread().interrupt();
+        }
         runningThreads.remove(thread);
       }
     }

@@ -24,6 +24,7 @@ import com.linkedin.venice.meta.ServerAdminAction;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.utils.TestUtils;
 import io.netty.buffer.UnpooledByteBufAllocator;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.http.DefaultFullHttpRequest;
@@ -95,23 +96,26 @@ public class StorageReadRequestsHandlerTest {
     ThreadPoolExecutor threadPoolExecutor = new ThreadPoolExecutor(1, 1, 0L, TimeUnit.MILLISECONDS,
         new LinkedBlockingQueue<>(2));
 
-    //Actual test
-    StorageReadRequestsHandler
-        testHandler = new StorageReadRequestsHandler(threadPoolExecutor, threadPoolExecutor, testRepository, metadataRepo, schemaRepo,
-        mockMetadataRetriever, null, false, false, 10, serverConfig,
-        mock(StorageEngineBackedCompressorFactory.class));
-    testHandler.channelRead(mockCtx, testRequest);
+    try {
+      StorageReadRequestsHandler
+          testHandler = new StorageReadRequestsHandler(threadPoolExecutor, threadPoolExecutor, testRepository, metadataRepo, schemaRepo,
+          mockMetadataRetriever, null, false, false, 10, serverConfig,
+          mock(StorageEngineBackedCompressorFactory.class));
+      testHandler.channelRead(mockCtx, testRequest);
 
-    waitUntilStorageExecutionHandlerRespond(outputArray);
+      waitUntilStorageExecutionHandlerRespond(outputArray);
 
-    //parsing of response
-    Assert.assertEquals(outputArray.size(), 1);
-    StorageResponseObject obj = (StorageResponseObject) outputArray.get(0);
-    byte[] response = obj.getValueRecord().getDataInBytes();
+      //parsing of response
+      Assert.assertEquals(outputArray.size(), 1);
+      StorageResponseObject obj = (StorageResponseObject) outputArray.get(0);
+      byte[] response = obj.getValueRecord().getDataInBytes();
 
-    //Verification
-    Assert.assertEquals(response, valueString.getBytes());
-    Assert.assertEquals(obj.getValueRecord().getSchemaId(), schemaId);
+      //Verification
+      Assert.assertEquals(response, valueString.getBytes());
+      Assert.assertEquals(obj.getValueRecord().getSchemaId(), schemaId);
+    } finally {
+      TestUtils.shutdownExecutor(threadPoolExecutor);
+    }
   }
 
   @Test
@@ -121,34 +125,38 @@ public class StorageReadRequestsHandlerTest {
 
     ThreadPoolExecutor threadPoolExecutor = new ThreadPoolExecutor(1, 1, 0L, TimeUnit.MILLISECONDS,
         new LinkedBlockingQueue<>(2));
-    StorageEngineRepository testRepository = mock(StorageEngineRepository.class);
-    ReadOnlyStoreRepository metadataRepo = mock(ReadOnlyStoreRepository.class);
-    ReadOnlySchemaRepository schemaRepo = mock(ReadOnlySchemaRepository.class);
-    MetadataRetriever mockMetadataRetriever = mock(MetadataRetriever.class);
-    VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
-    RocksDBServerConfig dbServerConfig = mock(RocksDBServerConfig.class);
-    doReturn(dbServerConfig).when(serverConfig).getRocksDBServerConfig();
+    try {
+      StorageEngineRepository testRepository = mock(StorageEngineRepository.class);
+      ReadOnlyStoreRepository metadataRepo = mock(ReadOnlyStoreRepository.class);
+      ReadOnlySchemaRepository schemaRepo = mock(ReadOnlySchemaRepository.class);
+      MetadataRetriever mockMetadataRetriever = mock(MetadataRetriever.class);
+      VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
+      RocksDBServerConfig dbServerConfig = mock(RocksDBServerConfig.class);
+      doReturn(dbServerConfig).when(serverConfig).getRocksDBServerConfig();
 
-    StorageReadRequestsHandler
-        testHandler = new StorageReadRequestsHandler(threadPoolExecutor, threadPoolExecutor, testRepository, metadataRepo, schemaRepo,
-        mockMetadataRetriever, healthCheckService, false, false, 10, serverConfig,
-        mock(StorageEngineBackedCompressorFactory.class));
+      StorageReadRequestsHandler
+          testHandler = new StorageReadRequestsHandler(threadPoolExecutor, threadPoolExecutor, testRepository, metadataRepo, schemaRepo,
+          mockMetadataRetriever, healthCheckService, false, false, 10, serverConfig,
+          mock(StorageEngineBackedCompressorFactory.class));
 
-    ChannelHandlerContext mockCtx = mock(ChannelHandlerContext.class);
-    doReturn(new UnpooledByteBufAllocator(true)).when(mockCtx).alloc();
-    List<Object> outputs = new ArrayList<Object>();
-    when(mockCtx.writeAndFlush(any())).then(i -> {
-      outputs.add(i.getArguments()[0]);
-      return null;
-    });
-    HealthCheckRequest healthCheckRequest = new HealthCheckRequest();
+      ChannelHandlerContext mockCtx = mock(ChannelHandlerContext.class);
+      doReturn(new UnpooledByteBufAllocator(true)).when(mockCtx).alloc();
+      List<Object> outputs = new ArrayList<Object>();
+      when(mockCtx.writeAndFlush(any())).then(i -> {
+        outputs.add(i.getArguments()[0]);
+        return null;
+      });
+      HealthCheckRequest healthCheckRequest = new HealthCheckRequest();
 
-    testHandler.channelRead(mockCtx, healthCheckRequest);
-    waitUntilStorageExecutionHandlerRespond(outputs);
+      testHandler.channelRead(mockCtx, healthCheckRequest);
+      waitUntilStorageExecutionHandlerRespond(outputs);
 
-    Assert.assertTrue(outputs.get(0) instanceof HttpShortcutResponse);
-    HttpShortcutResponse healthCheckResponse = (HttpShortcutResponse) outputs.get(0);
-    Assert.assertEquals(healthCheckResponse.getStatus(), HttpResponseStatus.OK);
+      Assert.assertTrue(outputs.get(0) instanceof HttpShortcutResponse);
+      HttpShortcutResponse healthCheckResponse = (HttpShortcutResponse) outputs.get(0);
+      Assert.assertEquals(healthCheckResponse.getStatus(), HttpResponseStatus.OK);
+    } finally {
+      TestUtils.shutdownExecutor(threadPoolExecutor);
+    }
   }
 
   private static void waitUntilStorageExecutionHandlerRespond(List<Object> outputs) throws Exception {
@@ -208,39 +216,41 @@ public class StorageReadRequestsHandlerTest {
 
     ThreadPoolExecutor threadPoolExecutor = new ThreadPoolExecutor(1, 1, 0L, TimeUnit.MILLISECONDS,
         new LinkedBlockingQueue<>(2));
+    try {
+      AtomicInteger errorLogCount = new AtomicInteger();
+      // Adding a custom appender to track the count of error logs we are interested in
+      ErrorCountAppender errorCountAppender = new ErrorCountAppender.Builder()
+          .setErrorMessageCounter(errorLogCount)
+          .setExceptionMessage(exceptionMessage)
+          .build();
+      errorCountAppender.start();
+
+      LoggerContext ctx = ((LoggerContext) LogManager.getContext(false));
+      Configuration config = ctx.getConfiguration();
+      config.addLoggerAppender((org.apache.logging.log4j.core.Logger) LogManager.getLogger(StorageReadRequestsHandler.class), errorCountAppender);
+
+      //Actual test
+      StorageReadRequestsHandler
+          testHandler = new StorageReadRequestsHandler(threadPoolExecutor, threadPoolExecutor, testRepository, metadataRepo, schemaRepo,
+          mockMetadataRetriever, null, false, false, 10, serverConfig, mock(StorageEngineBackedCompressorFactory.class));
+      testHandler.channelRead(mockCtx, testRequest);
+
+      waitUntilStorageExecutionHandlerRespond(outputArray);
+
+      //parsing of response
+      Assert.assertEquals(outputArray.size(), 1);
+      HttpShortcutResponse obj = (HttpShortcutResponse) outputArray.get(0);
 
 
-    AtomicInteger errorLogCount = new AtomicInteger();
-    // Adding a custom appender to track the count of error logs we are interested in
-    ErrorCountAppender errorCountAppender = new ErrorCountAppender.Builder()
-        .setErrorMessageCounter(errorLogCount)
-        .setExceptionMessage(exceptionMessage)
-        .build();
-    errorCountAppender.start();
+      //Verification
+      Assert.assertEquals(obj.getStatus(), HttpResponseStatus.INTERNAL_SERVER_ERROR);
+      Assert.assertEquals(obj.getMessage(), exceptionMessage);
 
-    LoggerContext ctx = ((LoggerContext)LogManager.getContext(false));
-    Configuration config = ctx.getConfiguration();
-    config.addLoggerAppender((org.apache.logging.log4j.core.Logger) LogManager.getLogger(StorageReadRequestsHandler.class), errorCountAppender);
-
-    //Actual test
-    StorageReadRequestsHandler
-        testHandler = new StorageReadRequestsHandler(threadPoolExecutor, threadPoolExecutor, testRepository, metadataRepo, schemaRepo,
-        mockMetadataRetriever, null, false, false, 10, serverConfig, mock(StorageEngineBackedCompressorFactory.class));
-    testHandler.channelRead(mockCtx, testRequest);
-
-    waitUntilStorageExecutionHandlerRespond(outputArray);
-
-    //parsing of response
-    Assert.assertEquals(outputArray.size(), 1);
-    HttpShortcutResponse obj = (HttpShortcutResponse) outputArray.get(0);
-
-
-    //Verification
-    Assert.assertEquals(obj.getStatus(), HttpResponseStatus.INTERNAL_SERVER_ERROR);
-    Assert.assertEquals(obj.getMessage(), exceptionMessage);
-
-    // Asserting that the exception got logged
-    Assert.assertTrue(errorLogCount.get() > 0);
+      // Asserting that the exception got logged
+      Assert.assertTrue(errorLogCount.get() > 0);
+    } finally {
+      TestUtils.shutdownExecutor(threadPoolExecutor);
+    }
   }
 
   @Test
@@ -275,27 +285,30 @@ public class StorageReadRequestsHandlerTest {
 
     ThreadPoolExecutor threadPoolExecutor = new ThreadPoolExecutor(1, 1, 0L, TimeUnit.MILLISECONDS,
         new LinkedBlockingQueue<>(2));
+    try {
+      VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
+      RocksDBServerConfig dbServerConfig = mock(RocksDBServerConfig.class);
+      doReturn(dbServerConfig).when(serverConfig).getRocksDBServerConfig();
 
-    VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
-    RocksDBServerConfig dbServerConfig = mock(RocksDBServerConfig.class);
-    doReturn(dbServerConfig).when(serverConfig).getRocksDBServerConfig();
+      //Actual test
+      StorageReadRequestsHandler testHandler = new StorageReadRequestsHandler(threadPoolExecutor, threadPoolExecutor, mock(StorageEngineRepository.class),
+          mock(ReadOnlyStoreRepository.class), mock(ReadOnlySchemaRepository.class), mockMetadataRetriever, null, false, false,
+          10, serverConfig, mock(StorageEngineBackedCompressorFactory.class));
+      testHandler.channelRead(mockCtx, testRequest);
 
-    //Actual test
-    StorageReadRequestsHandler testHandler = new StorageReadRequestsHandler(threadPoolExecutor, threadPoolExecutor, mock(StorageEngineRepository.class),
-        mock(ReadOnlyStoreRepository.class), mock(ReadOnlySchemaRepository.class), mockMetadataRetriever, null, false, false,
-        10, serverConfig, mock(StorageEngineBackedCompressorFactory.class));
-    testHandler.channelRead(mockCtx, testRequest);
+      waitUntilStorageExecutionHandlerRespond(outputArray);
 
-    waitUntilStorageExecutionHandlerRespond(outputArray);
+      //parsing of response
+      Assert.assertEquals(outputArray.size(), 1);
+      Assert.assertTrue(outputArray.get(0) instanceof AdminResponse);
+      AdminResponse obj = (AdminResponse) outputArray.get(0);
 
-    //parsing of response
-    Assert.assertEquals(outputArray.size(), 1);
-    Assert.assertTrue(outputArray.get(0) instanceof AdminResponse);
-    AdminResponse obj = (AdminResponse) outputArray.get(0);
-
-    //Verification
-    Assert.assertEquals(obj.getResponseRecord().partitionConsumptionStates.size(), 1);
-    Assert.assertEquals(obj.getResponseRecord().partitionConsumptionStates.get(0).partitionId, expectedPartitionId);
-    Assert.assertEquals(obj.getResponseSchemaIdHeader(), AvroProtocolDefinition.SERVER_ADMIN_RESPONSE_V1.getCurrentProtocolVersion());
+      //Verification
+      Assert.assertEquals(obj.getResponseRecord().partitionConsumptionStates.size(), 1);
+      Assert.assertEquals(obj.getResponseRecord().partitionConsumptionStates.get(0).partitionId, expectedPartitionId);
+      Assert.assertEquals(obj.getResponseSchemaIdHeader(), AvroProtocolDefinition.SERVER_ADMIN_RESPONSE_V1.getCurrentProtocolVersion());
+    } finally {
+      TestUtils.shutdownExecutor(threadPoolExecutor);
+    }
   }
 }

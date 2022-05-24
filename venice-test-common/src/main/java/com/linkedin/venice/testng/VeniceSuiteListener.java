@@ -6,7 +6,6 @@ import org.testng.ISuiteListener;
 
 
 public class VeniceSuiteListener implements ISuiteListener {
-
   @Override
   public void onStart(ISuite suite) {
     System.out.println("Start suite " + suite.getName());

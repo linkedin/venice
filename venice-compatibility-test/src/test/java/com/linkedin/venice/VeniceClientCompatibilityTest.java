@@ -16,7 +16,8 @@ import com.linkedin.davinci.client.DaVinciClient;
 
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.util.Utf8;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -46,7 +47,7 @@ import static com.linkedin.venice.VeniceClusterInitializer.*;
  *    exercising all different APIs.
  */
 public class VeniceClientCompatibilityTest {
-  private static final Logger LOGGER = Logger.getLogger(VeniceClientCompatibilityTest.class);
+  private static final Logger LOGGER = LogManager.getLogger(VeniceClientCompatibilityTest.class);
 
   private ForkedJavaProcess clusterProcess;
   private AvroGenericStoreClient<String, GenericRecord> veniceClient;

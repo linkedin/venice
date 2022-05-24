@@ -361,22 +361,26 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
   @Test(timeOut = TOTAL_TIMEOUT_FOR_SHORT_TEST_MS)
   public void testGetFutureVersionsNotBlocked() throws InterruptedException {
     ExecutorService asyncExecutor = Executors.newSingleThreadExecutor();
-    String storeName = Utils.getUniqueString("test_store");
-    asyncExecutor.submit(() -> {
-      // A time-consuming store operation that holds cluster-level read lock and store-level write lock.
-      HelixVeniceClusterResources resources = veniceAdmin.getHelixVeniceClusterResources(clusterName);
-      try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
-        try {
-          Thread.sleep(TOTAL_TIMEOUT_FOR_SHORT_TEST_MS);
-        } catch (InterruptedException e) {
-          e.printStackTrace();
+    try {
+      String storeName = Utils.getUniqueString("test_store");
+      asyncExecutor.submit(() -> {
+        // A time-consuming store operation that holds cluster-level read lock and store-level write lock.
+        HelixVeniceClusterResources resources = veniceAdmin.getHelixVeniceClusterResources(clusterName);
+        try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
+          try {
+            Thread.sleep(TOTAL_TIMEOUT_FOR_SHORT_TEST_MS);
+          } catch (InterruptedException e) {
+            e.printStackTrace();
+          }
         }
-      }
-    });
-    // Give some time for above thread to take cluster level read lock.
-    Thread.sleep(1000);
-    // Should not be blocked even though another thread is holding cluster-level read lock.
-    veniceAdmin.getFutureVersion(clusterName, storeName);
+      });
+      // Give some time for above thread to take cluster level read lock.
+      Thread.sleep(1000);
+      // Should not be blocked even though another thread is holding cluster-level read lock.
+      veniceAdmin.getFutureVersion(clusterName, storeName);
+    } finally {
+      TestUtils.shutdownExecutor(asyncExecutor);
+    }
   }
 
   @Test
@@ -407,7 +411,7 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
           Assert.assertEquals(veniceAdmin.getCurrentVersion(clusterName, storeName), 1));
     } finally {
       // Kill the running thread so remove the deadlock so that the controller can shut down properly for clean up.
-      asyncExecutor.shutdownNow();
+      TestUtils.shutdownExecutor(asyncExecutor);
     }
   }
 

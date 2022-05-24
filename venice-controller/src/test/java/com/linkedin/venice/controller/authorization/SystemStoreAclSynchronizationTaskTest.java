@@ -16,6 +16,8 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+
+import com.linkedin.venice.utils.TestUtils;
 import org.mockito.ArgumentCaptor;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
@@ -56,8 +58,8 @@ public class SystemStoreAclSynchronizationTaskTest {
   }
 
   @AfterClass
-  public void cleanUp() {
-    executorService.shutdownNow();
+  public void cleanUp() throws InterruptedException {
+    TestUtils.shutdownExecutor(executorService);
   }
 
   @Test

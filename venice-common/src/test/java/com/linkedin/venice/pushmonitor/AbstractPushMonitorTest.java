@@ -630,81 +630,87 @@ public abstract class AbstractPushMonitorTest {
   @Test(timeOut = 30 * Time.MS_PER_SECOND)
   public void testOnExternalViewChangeDeadlock() throws InterruptedException {
     ExecutorService asyncExecutor = Executors.newSingleThreadExecutor();
-    final StoreCleaner mockStoreCleanerWithLock = new MockStoreCleaner(clusterLockManager);
-    final AbstractPushMonitor pushMonitor = getPushMonitor(mockStoreCleanerWithLock);
-    final String topic = "test-lock_v1";
-    final String instanceId = "test_instance";
-    prepareMockStore(topic);
-    Map<String, List<Instance>> onlineInstanceMap = new HashMap<>();
-    onlineInstanceMap.put(HelixState.ONLINE_STATE, Collections.singletonList(new Instance(instanceId, "a", 1)));
-    // Craft a PartitionAssignment that will trigger the StoreCleaner methods as part of handleCompletedPush.
-    PartitionAssignment completedPartitionAssignment = new PartitionAssignment(topic, 1);
-    completedPartitionAssignment.addPartition(new Partition(0, onlineInstanceMap));
-    ReplicaStatus status = new ReplicaStatus(instanceId);
-    status.updateStatus(ExecutionStatus.COMPLETED);
-    ReadOnlyPartitionStatus completedPartitionStatus = new ReadOnlyPartitionStatus(0, Collections.singletonList(status));
-    pushMonitor.startMonitorOfflinePush(topic, 1, 1, OfflinePushStrategy.WAIT_ALL_REPLICAS);
-    pushMonitor.onPartitionStatusChange(topic, completedPartitionStatus);
+    try {
+      final StoreCleaner mockStoreCleanerWithLock = new MockStoreCleaner(clusterLockManager);
+      final AbstractPushMonitor pushMonitor = getPushMonitor(mockStoreCleanerWithLock);
+      final String topic = "test-lock_v1";
+      final String instanceId = "test_instance";
+      prepareMockStore(topic);
+      Map<String, List<Instance>> onlineInstanceMap = new HashMap<>();
+      onlineInstanceMap.put(HelixState.ONLINE_STATE, Collections.singletonList(new Instance(instanceId, "a", 1)));
+      // Craft a PartitionAssignment that will trigger the StoreCleaner methods as part of handleCompletedPush.
+      PartitionAssignment completedPartitionAssignment = new PartitionAssignment(topic, 1);
+      completedPartitionAssignment.addPartition(new Partition(0, onlineInstanceMap));
+      ReplicaStatus status = new ReplicaStatus(instanceId);
+      status.updateStatus(ExecutionStatus.COMPLETED);
+      ReadOnlyPartitionStatus completedPartitionStatus = new ReadOnlyPartitionStatus(0, Collections.singletonList(status));
+      pushMonitor.startMonitorOfflinePush(topic, 1, 1, OfflinePushStrategy.WAIT_ALL_REPLICAS);
+      pushMonitor.onPartitionStatusChange(topic, completedPartitionStatus);
 
-    asyncExecutor.submit(() -> {
-      // LEADER -> STANDBY transition thread: onBecomeStandbyFromLeader->stopAllMonitoring
-      System.out.println("T1 will acquire cluster level write lock");
-      try (AutoCloseableLock ignore = clusterLockManager.createClusterWriteLock()) {
-        try {
-          Thread.sleep(5000);
-        } catch (InterruptedException e) {
-          e.printStackTrace();
+      asyncExecutor.submit(() -> {
+        // LEADER -> STANDBY transition thread: onBecomeStandbyFromLeader->stopAllMonitoring
+        System.out.println("T1 will acquire cluster level write lock");
+        try (AutoCloseableLock ignore = clusterLockManager.createClusterWriteLock()) {
+          try {
+            Thread.sleep(5000);
+          } catch (InterruptedException e) {
+            e.printStackTrace();
+          }
+          pushMonitor.stopAllMonitoring();
         }
-        pushMonitor.stopAllMonitoring();
-      }
-      System.out.println("T1 released cluster level write lock");
-    });
-    // Give some time for the other thread to take cluster level write lock.
-    Thread.sleep(1000);
-    // Controller thread: onExternalViewChange
-    // If there is a deadlock then it should hang here
-    System.out.println("T2 will acquire cluster level read lock and store level write lock");
-    pushMonitor.onExternalViewChange(completedPartitionAssignment);
-    System.out.println("T2 released cluster level read lock and store level write lock");
-    asyncExecutor.shutdownNow();
+        System.out.println("T1 released cluster level write lock");
+      });
+      // Give some time for the other thread to take cluster level write lock.
+      Thread.sleep(1000);
+      // Controller thread: onExternalViewChange
+      // If there is a deadlock then it should hang here
+      System.out.println("T2 will acquire cluster level read lock and store level write lock");
+      pushMonitor.onExternalViewChange(completedPartitionAssignment);
+      System.out.println("T2 released cluster level read lock and store level write lock");
+    } finally {
+      TestUtils.shutdownExecutor(asyncExecutor);
+    }
   }
 
   @Test(timeOut = 30 * Time.MS_PER_SECOND)
   public void testOnPartitionStatusChangeDeadLock() throws InterruptedException {
     final ExecutorService asyncExecutor = Executors.newSingleThreadExecutor();
-    final StoreCleaner mockStoreCleanerWithLock = new MockStoreCleaner(clusterLockManager);
-    final AbstractPushMonitor pushMonitor = getPushMonitor(mockStoreCleanerWithLock);
-    final String topic = "test-lock_v1";
-    final String instanceId = "test_instance";
+    try {
+      final StoreCleaner mockStoreCleanerWithLock = new MockStoreCleaner(clusterLockManager);
+      final AbstractPushMonitor pushMonitor = getPushMonitor(mockStoreCleanerWithLock);
+      final String topic = "test-lock_v1";
+      final String instanceId = "test_instance";
 
-    prepareMockStore(topic);
-    Map<String, List<Instance>> onlineInstanceMap = new HashMap<>();
-    onlineInstanceMap.put(HelixState.ONLINE_STATE, Collections.singletonList(new Instance(instanceId, "a", 1)));
-    PartitionAssignment completedPartitionAssignment = new PartitionAssignment(topic, 1);
-    completedPartitionAssignment.addPartition(new Partition(0, onlineInstanceMap));
-    doReturn(true).when(mockRoutingDataRepo).containsKafkaTopic(topic);
-    doReturn(completedPartitionAssignment).when(mockRoutingDataRepo).getPartitionAssignments(topic);
+      prepareMockStore(topic);
+      Map<String, List<Instance>> onlineInstanceMap = new HashMap<>();
+      onlineInstanceMap.put(HelixState.ONLINE_STATE, Collections.singletonList(new Instance(instanceId, "a", 1)));
+      PartitionAssignment completedPartitionAssignment = new PartitionAssignment(topic, 1);
+      completedPartitionAssignment.addPartition(new Partition(0, onlineInstanceMap));
+      doReturn(true).when(mockRoutingDataRepo).containsKafkaTopic(topic);
+      doReturn(completedPartitionAssignment).when(mockRoutingDataRepo).getPartitionAssignments(topic);
 
-    ReplicaStatus status = new ReplicaStatus(instanceId);
-    status.updateStatus(ExecutionStatus.COMPLETED);
-    ReadOnlyPartitionStatus completedPartitionStatus = new ReadOnlyPartitionStatus(0, Collections.singletonList(status));
-    pushMonitor.startMonitorOfflinePush(topic, 1, 1, OfflinePushStrategy.WAIT_ALL_REPLICAS);
+      ReplicaStatus status = new ReplicaStatus(instanceId);
+      status.updateStatus(ExecutionStatus.COMPLETED);
+      ReadOnlyPartitionStatus completedPartitionStatus = new ReadOnlyPartitionStatus(0, Collections.singletonList(status));
+      pushMonitor.startMonitorOfflinePush(topic, 1, 1, OfflinePushStrategy.WAIT_ALL_REPLICAS);
 
-    asyncExecutor.submit(() -> {
-      // Controller thread: onPartitionStatusChange->updatePushStatusByPartitionStatus->handleCompletedPush->retireOldStoreVersions
-      System.out.println("T1 will acquire cluster level read lock and store level write lock");
-      pushMonitor.onPartitionStatusChange(topic, completedPartitionStatus);
-      System.out.println("T1 released cluster level read lock and store level write lock");
-    });
-    // Give some time for controller thread
-    Thread.sleep(1000);
-    // LEADER -> STANDBY transition thread: onBecomeStandbyFromLeader->stopAllMonitoring
-    System.out.println("T2 will acquire cluster level write lock");
-    try (AutoCloseableLock ignore = clusterLockManager.createClusterWriteLock()) {
-      pushMonitor.stopAllMonitoring();
+      asyncExecutor.submit(() -> {
+        // Controller thread: onPartitionStatusChange->updatePushStatusByPartitionStatus->handleCompletedPush->retireOldStoreVersions
+        System.out.println("T1 will acquire cluster level read lock and store level write lock");
+        pushMonitor.onPartitionStatusChange(topic, completedPartitionStatus);
+        System.out.println("T1 released cluster level read lock and store level write lock");
+      });
+      // Give some time for controller thread
+      Thread.sleep(1000);
+      // LEADER -> STANDBY transition thread: onBecomeStandbyFromLeader->stopAllMonitoring
+      System.out.println("T2 will acquire cluster level write lock");
+      try (AutoCloseableLock ignore = clusterLockManager.createClusterWriteLock()) {
+        pushMonitor.stopAllMonitoring();
+      }
+      System.out.println("T2 released cluster level write lock");
+    } finally {
+      TestUtils.shutdownExecutor(asyncExecutor);
     }
-    System.out.println("T2 released cluster level write lock");
-    asyncExecutor.shutdownNow();
   }
 
   protected Store prepareMockStore(String topic) {

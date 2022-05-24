@@ -28,8 +28,8 @@ package com.linkedin.venice.schema.avro;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import org.apache.avro.AvroRuntimeException;
 import org.apache.avro.Schema;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -45,7 +45,7 @@ import java.util.Set;
  * schema can be successfully decoded using the specified reader schema.
  */
 public class SchemaCompatibility {
-  private static final Logger LOG = LoggerFactory.getLogger(SchemaCompatibility.class);
+  private static final Logger LOG = LogManager.getLogger(SchemaCompatibility.class);
 
   /** Utility class cannot be instantiated. */
   private SchemaCompatibility() {
@@ -537,4 +537,3 @@ public class SchemaCompatibility {
     return (obj1 == obj2) || ((obj1 != null) && obj1.equals(obj2));
   }
 }
-

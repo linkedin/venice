@@ -17,7 +17,8 @@ import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ExecutionException;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.AfterTest;
@@ -26,7 +27,7 @@ import org.testng.annotations.BeforeTest;
 import org.testng.annotations.Test;
 
 public class AvroSpecificStoreClientImplTest {
-  private static Logger logger = Logger.getLogger(AvroSpecificStoreClientImplTest.class);
+  private static Logger logger = LogManager.getLogger(AvroSpecificStoreClientImplTest.class);
   private MockD2ServerWrapper routerServer;
   private String routerHost;
   private int port;

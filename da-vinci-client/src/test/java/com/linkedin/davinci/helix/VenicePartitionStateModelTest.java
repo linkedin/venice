@@ -3,6 +3,8 @@ package com.linkedin.davinci.helix;
 import com.linkedin.venice.meta.Store;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
+
+import com.linkedin.venice.utils.Utils;
 import org.apache.helix.participant.statemachine.StateTransitionError;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -59,7 +61,7 @@ public class VenicePartitionStateModelTest
    * Test a state model transit from offline to bootstrap then from bootstrap to online.
    */
   @Test
-  public void testOfflineToBootstrapToOnline() {
+  public void testOfflineToBootstrapToOnline() throws Exception {
     OnlineOfflineIngestionProgressNotifier notifier = new OnlineOfflineIngestionProgressNotifier();
     testStateModel =
         new OnlineOfflinePartitionStateModel(mockIngestionBackend, mockStoreConfig, testPartition,
@@ -67,19 +69,14 @@ public class VenicePartitionStateModelTest
     testStateModel.onBecomeBootstrapFromOffline(mockMessage, mockContext);
     CountDownLatch latch = notifier.getIngestionCompleteFlag(mockMessage.getResourceName(), testPartition);
     Assert.assertEquals(latch.getCount(), 1);
-    new Thread(() -> {
-      try {
-        Thread.sleep(1000L);
-        // Notify that consumption is completed.
-        notifier.completed(mockMessage.getResourceName(), testPartition, 0);
-      } catch (InterruptedException e) {
-        Assert.fail(e.getMessage());
-      }
-    }).run();
-
+    CompletableFuture completeFuture = CompletableFuture.runAsync(() -> {
+      Utils.sleep(1000);
+      // Notify that consumption is completed.
+      notifier.completed(mockMessage.getResourceName(), testPartition, 0);
+    });
     testStateModel.onBecomeOnlineFromBootstrap(mockMessage, mockContext);
-    latch = notifier.getIngestionCompleteFlag(mockMessage.getResourceName(), testPartition);
-    Assert.assertNull(latch);
+    Assert.assertTrue(completeFuture.isDone());
+    Assert.assertNull(notifier.getIngestionCompleteFlag(mockMessage.getResourceName(), testPartition));
   }
 
   /**

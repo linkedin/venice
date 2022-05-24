@@ -10,7 +10,8 @@ import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiColoMultiCluster
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -18,7 +19,7 @@ import java.util.concurrent.TimeUnit;
 
 
 public class TestWritePathComputation {
-  private static final Logger logger = Logger.getLogger(TestWritePathComputation.class);
+  private static final Logger logger = LogManager.getLogger(TestWritePathComputation.class);
   private static final long GET_LEADER_CONTROLLER_TIMEOUT = 20 * Time.MS_PER_SECOND;
 
   @Test(timeOut = 60 * Time.MS_PER_SECOND)

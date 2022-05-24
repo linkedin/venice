@@ -1,6 +1,5 @@
 package com.linkedin.venice.utils;
 
-import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.kafka.consumer.AggKafkaConsumerService;
 import com.linkedin.davinci.kafka.consumer.KafkaClusterBasedRecordThrottler;
@@ -51,14 +50,12 @@ import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
-import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.writer.ApacheKafkaProducer;
-import com.linkedin.venice.writer.KafkaProducerWrapper;
 import com.linkedin.venice.writer.SharedKafkaProducerService;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
@@ -411,15 +408,9 @@ public class TestUtils {
     factoryProperties.put(KAFKA_REQUEST_TIMEOUT_MS, 5000);
     factoryProperties.put(KAFKA_DELIVERY_TIMEOUT_MS, 5000);
     factoryProperties.putAll(properties);
-    SharedKafkaProducerService sharedKafkaProducerService =
-        new SharedKafkaProducerService(factoryProperties, 1, new SharedKafkaProducerService.KafkaProducerSupplier() {
-          @Override
-          public KafkaProducerWrapper getNewProducer(VeniceProperties props) {
-            return new ApacheKafkaProducer(props);
-          }
-        }, new MetricsRepository(), new HashSet<>(Arrays.asList("outgoing-byte-rate",
-            "record-send-rate","batch-size-max","batch-size-avg","buffer-available-bytes","buffer-exhausted-rate")));
-    return sharedKafkaProducerService;
+    return new SharedKafkaProducerService(factoryProperties, 1,
+        ApacheKafkaProducer::new, new MetricsRepository(),
+        new HashSet<>(Arrays.asList("outgoing-byte-rate", "record-send-rate", "batch-size-max", "batch-size-avg", "buffer-available-bytes", "buffer-exhausted-rate")));
   }
 
   public static VeniceWriterFactory getVeniceWriterFactoryWithSharedProducer(Properties properties,
@@ -648,5 +639,31 @@ public class TestUtils {
       records.put(serializer.serialize("key" + i), serializer.serialize("value" + i));
     }
     return records;
+  }
+
+  public static void shutdownThread(Thread thread) throws InterruptedException {
+    shutdownThread(thread, 5, TimeUnit.SECONDS);
+  }
+
+  public static void shutdownThread(Thread thread, long timeout, TimeUnit unit) throws InterruptedException {
+    if (thread == null) {
+      return;
+    }
+    thread.interrupt();
+    thread.join(unit.toMillis(timeout));
+    Assert.assertFalse(thread.isAlive());
+  }
+
+  public static void shutdownExecutor(ExecutorService executor) throws InterruptedException {
+    shutdownExecutor(executor, 5, TimeUnit.SECONDS);
+  }
+
+  public static void shutdownExecutor(ExecutorService executor, long timeout, TimeUnit unit) throws InterruptedException {
+    if (executor == null) {
+      return;
+    }
+    executor.shutdown();
+    executor.shutdownNow();
+    Assert.assertTrue(executor.awaitTermination(timeout, unit));
   }
 }

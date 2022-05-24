@@ -28,7 +28,8 @@ import com.linkedin.avroutil1.compatibility.AvroVersion;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
 
 import java.util.ArrayList;
@@ -46,7 +47,7 @@ import java.util.concurrent.TimeUnit;
  * This class initializes a cluster and pushes some synthetic data into a store.
  */
 public class VeniceClusterInitializer implements AutoCloseable {
-  public static final Logger LOGGER = Logger.getLogger(VeniceClusterInitializer.class);
+  public static final Logger LOGGER = LogManager.getLogger(VeniceClusterInitializer.class);
 
   public static final String VALUE_SCHEMA_STR = "{" +
       "  \"namespace\": \"example.compute\",    " +

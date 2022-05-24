@@ -20,7 +20,8 @@ import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.IntStream;
 import org.apache.avro.Schema;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -32,7 +33,7 @@ import static com.linkedin.venice.utils.TestPushUtils.*;
 
 
 public class TestPushJobVersionCleanup {
-  private static final Logger logger = Logger.getLogger(TestPushJobWithNativeReplication.class);
+  private static final Logger logger = LogManager.getLogger(TestPushJobWithNativeReplication.class);
   private static final int TEST_TIMEOUT = 120_000; // ms
 
   private static final int NUMBER_OF_CHILD_DATACENTERS = 1;

@@ -19,7 +19,8 @@ import io.netty.handler.codec.http.HttpVersion;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericDatumWriter;
 import org.apache.avro.io.Encoder;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.codehaus.jackson.map.ObjectMapper;
 
 import java.io.ByteArrayOutputStream;
@@ -27,7 +28,7 @@ import java.io.IOException;
 import java.util.Map;
 
 public class StoreClientTestUtils {
-  private static Logger LOGGER = Logger.getLogger(StoreClientTestUtils.class);
+  private static Logger LOGGER = LogManager.getLogger(StoreClientTestUtils.class);
 
   public static FullHttpResponse constructHttpSchemaResponse(String storeName, int schemaId, String schemaStr)
   throws IOException {

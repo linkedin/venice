@@ -28,7 +28,8 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import org.apache.commons.io.IOUtils;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -39,7 +40,7 @@ import static com.linkedin.venice.meta.PersistenceType.*;
 
 public class TestEarlyTermination {
   private static final int MAX_KEY_LIMIT = 20;
-  private static final Logger logger = Logger.getLogger(TestEarlyTermination.class);
+  private static final Logger logger = LogManager.getLogger(TestEarlyTermination.class);
   private VeniceClusterWrapper veniceCluster;
   private ControllerClient controllerClient;
   private String storeVersionName;

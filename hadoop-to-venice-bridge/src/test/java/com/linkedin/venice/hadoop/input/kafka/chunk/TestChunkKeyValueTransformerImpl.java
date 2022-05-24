@@ -51,8 +51,6 @@ public class TestChunkKeyValueTransformerImpl {
         byte[] compositeKey = combineParts(serialize(firstParts.get(i)), serialize(secondParts.get(j)));
         RawKeyBytesAndChunkedKeySuffix bytesAndChunkedKeySuffix
             = chunkKeyValueTransformer.splitChunkedKey(compositeKey, ChunkKeyValueTransformer.KeyType.WITH_VALUE_CHUNK);
-        System.out.println(bytesAndChunkedKeySuffix);
-
         byte[] resultsBytes = combineParts(bytesAndChunkedKeySuffix.getRawKeyBytes(), bytesAndChunkedKeySuffix.getChunkedKeySuffixBytes());
         Assert.assertEquals(resultsBytes, compositeKey); // Same as the original composite key bytes
       }

@@ -137,7 +137,8 @@ import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.TopicPartition;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 import org.testng.Assert;
@@ -162,7 +163,7 @@ import static org.testng.Assert.*;
  */
 @Test(singleThreaded = true)
 public class StoreIngestionTaskTest {
-  private static final Logger logger = Logger.getLogger(StoreIngestionTaskTest.class);
+  private static final Logger logger = LogManager.getLogger(StoreIngestionTaskTest.class);
 
   private static final long TEST_TIMEOUT_MS;
   private static final int RUN_TEST_FUNCTION_TIMEOUT_SECONDS = 10;
@@ -281,7 +282,7 @@ public class StoreIngestionTaskTest {
 
   @AfterClass(alwaysRun = true)
   public void cleanUp() throws Exception {
-    taskPollingService.shutdownNow();
+    TestUtils.shutdownExecutor(taskPollingService);
     storeBufferService.stop();
   }
 
@@ -1414,37 +1415,39 @@ public class StoreIngestionTaskTest {
       while (true) {
         localVeniceWriter.put(putKeyFoo, putValue, SCHEMA_ID);
         localVeniceWriter.put(putKeyBar, putValue, SCHEMA_ID);
-        try {
-          TimeUnit.MILLISECONDS.sleep(READ_CYCLE_DELAY_MS);
-        } catch (InterruptedException e) {
+        if (Utils.sleep(READ_CYCLE_DELAY_MS)) {
           break;
         }
       }
     });
 
     try {
-      runTest(Utils.setOf(PARTITION_FOO, PARTITION_BAR), () -> {
-        localVeniceWriter.broadcastStartOfPush(new HashMap<>());
-        writingThread.start();
-      }, () -> {
-        verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS)).started(topic, PARTITION_FOO);
-        verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS)).started(topic, PARTITION_BAR);
+      runTest(
+          Utils.setOf(PARTITION_FOO, PARTITION_BAR),
+          () -> {
+            localVeniceWriter.broadcastStartOfPush(new HashMap<>());
+            writingThread.start();
+            },
+          () -> {
+            verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS)).started(topic, PARTITION_FOO);
+            verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS)).started(topic, PARTITION_BAR);
 
-        //Start of push has already been consumed. Stop consumption
-        storeIngestionTaskUnderTest.kill();
-        // task should report an error to notifier that it's killed.
-        verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS)).error(
-            eq(topic), eq(PARTITION_FOO), argThat(new NonEmptyStringMatcher()),
-            argThat(new ExceptionClassMatcher(VeniceIngestionTaskKilledException.class)));
-        verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS)).error(
-            eq(topic), eq(PARTITION_BAR), argThat(new NonEmptyStringMatcher()),
-            argThat(new ExceptionClassMatcher(VeniceIngestionTaskKilledException.class)));
+            //Start of push has already been consumed. Stop consumption
+            storeIngestionTaskUnderTest.kill();
+            // task should report an error to notifier that it's killed.
+            verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS)).error(
+                eq(topic), eq(PARTITION_FOO), argThat(new NonEmptyStringMatcher()),
+                argThat(new ExceptionClassMatcher(VeniceIngestionTaskKilledException.class)));
+            verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS)).error(
+                eq(topic), eq(PARTITION_BAR), argThat(new NonEmptyStringMatcher()),
+                argThat(new ExceptionClassMatcher(VeniceIngestionTaskKilledException.class)));
 
-        waitForNonDeterministicCompletion(TEST_TIMEOUT_MS, TimeUnit.MILLISECONDS,
-            () -> storeIngestionTaskUnderTest.isRunning() == false);
-      }, isActiveActiveReplicationEnabled);
+            waitForNonDeterministicCompletion(TEST_TIMEOUT_MS, TimeUnit.MILLISECONDS,
+                () -> storeIngestionTaskUnderTest.isRunning() == false);
+          },
+          isActiveActiveReplicationEnabled);
     } finally {
-      writingThread.interrupt();
+      TestUtils.shutdownThread(writingThread);
     }
   }
 

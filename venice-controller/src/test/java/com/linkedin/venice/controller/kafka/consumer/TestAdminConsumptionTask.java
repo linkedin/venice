@@ -149,8 +149,8 @@ public class TestAdminConsumptionTask {
   }
 
   @AfterMethod
-  public void cleanUp() {
-    executor.shutdownNow();
+  public void cleanUp() throws InterruptedException {
+    TestUtils.shutdownExecutor(executor);
     veniceWriter.close();
   }
 

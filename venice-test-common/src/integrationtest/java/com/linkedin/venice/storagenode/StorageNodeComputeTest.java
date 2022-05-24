@@ -45,7 +45,8 @@ import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.util.Utf8;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -57,7 +58,7 @@ import static com.linkedin.venice.utils.ByteUtils.*;
 
 @Test(singleThreaded = true)
 public class StorageNodeComputeTest {
-  private static final Logger LOGGER = Logger.getLogger(StorageNodeComputeTest.class);
+  private static final Logger LOGGER = LogManager.getLogger(StorageNodeComputeTest.class);
 
   enum AvroImpl {
     VANILLA_AVRO(false),

@@ -15,7 +15,8 @@ import com.linkedin.venice.utils.Utils;
 
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.http.HttpResponseStatus;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -35,7 +36,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
 public class ReplicaFailoverTest {
-  private static final Logger logger = Logger.getLogger(ReplicaFailoverTest.class);
+  private static final Logger logger = LogManager.getLogger(ReplicaFailoverTest.class);
 
   private static final int KEY_COUNT = 1000;
   private static final int TEST_TIMEOUT = 15000; // ms

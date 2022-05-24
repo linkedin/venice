@@ -41,7 +41,8 @@ import org.apache.http.client.config.RequestConfig;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.impl.nio.client.CloseableHttpAsyncClient;
 import org.apache.http.impl.nio.client.HttpAsyncClients;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.codehaus.jackson.map.ObjectMapper;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
@@ -53,7 +54,7 @@ import static com.linkedin.venice.router.api.VenicePathParser.*;
 
 @Test
 public class TestHelixCustomizedView {
-  private static final Logger logger = Logger.getLogger(TestHelixCustomizedView.class);
+  private static final Logger logger = LogManager.getLogger(TestHelixCustomizedView.class);
   private VeniceClusterWrapper veniceCluster;
   private HelixAdmin admin;
   private ControllerClient controllerClient;

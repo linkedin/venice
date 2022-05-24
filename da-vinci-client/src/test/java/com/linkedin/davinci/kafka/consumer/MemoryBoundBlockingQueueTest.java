@@ -24,19 +24,22 @@ public class MemoryBoundBlockingQueueTest {
     MemoryBoundBlockingQueue<MeasurableObject> queue = new MemoryBoundBlockingQueue<>(memoryCap, 1000);
     int objectCntAtMost = memoryCap / (MemoryBoundBlockingQueue.LINKED_QUEUE_NODE_OVERHEAD_IN_BYTE + MeasurableObject.size);
     Thread t = new Thread(() -> {
-        while (true) {
-          try {
-            queue.put(new MeasurableObject());
-          } catch (InterruptedException e) {
-            e.printStackTrace();
-          }
+      while (true) {
+        try {
+          queue.put(new MeasurableObject());
+        } catch (InterruptedException e) {
+          break;
         }
+      }
     });
     t.start();
-    Thread.sleep(50);
-    Assert.assertTrue(t.isAlive());
-    Assert.assertEquals(queue.size(), objectCntAtMost);
-    t.interrupt();
+    try {
+      Thread.sleep(50);
+      Assert.assertTrue(t.isAlive());
+      Assert.assertEquals(queue.size(), objectCntAtMost);
+    } finally {
+      TestUtils.shutdownThread(t);
+    }
   }
 
   @Test
@@ -54,16 +57,20 @@ public class MemoryBoundBlockingQueueTest {
           queue.take();
           objectTakenNum.addAndGet(1);
         } catch (InterruptedException e) {
-          e.printStackTrace();
+          break;
         }
       }
     });
     t.start();
-    Thread.sleep(50);
-    Assert.assertTrue(t.isAlive());
-    Assert.assertEquals(objectTakenNum.get(), objectCntAtMost);
-    Assert.assertEquals(queue.size(), 0);
-    t.interrupt();
+
+    try {
+      Thread.sleep(50);
+      Assert.assertTrue(t.isAlive());
+      Assert.assertEquals(objectTakenNum.get(), objectCntAtMost);
+      Assert.assertEquals(queue.size(), 0);
+    } finally {
+      TestUtils.shutdownThread(t);
+    }
   }
 
   @Test
@@ -77,30 +84,33 @@ public class MemoryBoundBlockingQueueTest {
         try {
           queue.put(new MeasurableObject());
         } catch (InterruptedException e) {
-          e.printStackTrace();
+          break;
         }
       }
     });
     t.start();
-    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+
+    try {
+      TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+        Assert.assertTrue(t.isAlive());
+        Assert.assertEquals(queue.size(), objectCntAtMost);
+      });
+
+      int previousQueueSize = queue.size();
+      // Here we need to take out some objects to allow more put
+      double objectCntTakenAtLeast = Math.ceil((double) notifyDelta / (MemoryBoundBlockingQueue.LINKED_QUEUE_NODE_OVERHEAD_IN_BYTE + MeasurableObject.size));
+      for (int i = 1; i < objectCntTakenAtLeast; ++i) {
+        queue.take();
+        Assert.assertEquals(queue.size(), previousQueueSize - 1);
+        --previousQueueSize;
+      }
+      // This will trigger a notification, which will allow more puts
+      queue.take();
+      Thread.sleep(50);
       Assert.assertTrue(t.isAlive());
       Assert.assertEquals(queue.size(), objectCntAtMost);
-    });
-
-    int previousQueueSize = queue.size();
-    // Here we need to take out some objects to allow more put
-    double objectCntTakenAtLeast = Math.ceil((double)notifyDelta / (MemoryBoundBlockingQueue.LINKED_QUEUE_NODE_OVERHEAD_IN_BYTE + MeasurableObject.size));
-    for (int i = 1; i < objectCntTakenAtLeast; ++i) {
-      queue.take();
-      Assert.assertEquals(queue.size(), previousQueueSize - 1);
-      --previousQueueSize;
+    } finally {
+      TestUtils.shutdownThread(t);
     }
-    // This will trigger a notification, which will allow more puts
-    queue.take();
-    Thread.sleep(50);
-    Assert.assertTrue(t.isAlive());
-    Assert.assertEquals(queue.size(), objectCntAtMost);
-
-    t.interrupt();
   }
 }

@@ -5,6 +5,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+
+import com.linkedin.venice.utils.TestUtils;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -17,20 +19,24 @@ public class FastSerializerDeserializerFactoryTest {
     AtomicInteger fastClassGenCountForGeneric = new AtomicInteger(0);
     AtomicInteger fastClassGenCountForSpecific = new AtomicInteger(0);
     ExecutorService executor = Executors.newFixedThreadPool(concurrentNum);
-    for (int i = 0; i < concurrentNum; ++i) {
-      executor.submit(() -> {
-        if (FastSerializerDeserializerFactory.verifyWhetherFastSpecificDeserializerWorks(
-            StreamingFooterRecordV1.class)) {
-          fastClassGenCountForSpecific.getAndIncrement();
-        }
-        if (FastSerializerDeserializerFactory.verifyWhetherFastGenericDeserializerWorks()) {
-          fastClassGenCountForGeneric.getAndIncrement();
-        }
-      });
+    try {
+      for (int i = 0; i < concurrentNum; ++i) {
+        executor.submit(() -> {
+          if (FastSerializerDeserializerFactory.verifyWhetherFastSpecificDeserializerWorks(
+              StreamingFooterRecordV1.class)) {
+            fastClassGenCountForSpecific.getAndIncrement();
+          }
+          if (FastSerializerDeserializerFactory.verifyWhetherFastGenericDeserializerWorks()) {
+            fastClassGenCountForGeneric.getAndIncrement();
+          }
+        });
+      }
+      executor.shutdown();
+      executor.awaitTermination(300000, TimeUnit.MILLISECONDS);
+      Assert.assertEquals(fastClassGenCountForGeneric.get(), 1);
+      Assert.assertEquals(fastClassGenCountForSpecific.get(), 1);
+    } finally {
+      TestUtils.shutdownExecutor(executor);
     }
-    executor.shutdown();
-    executor.awaitTermination(300000, TimeUnit.MILLISECONDS);
-    Assert.assertEquals(fastClassGenCountForGeneric.get(), 1);
-    Assert.assertEquals(fastClassGenCountForSpecific.get(), 1);
   }
 }

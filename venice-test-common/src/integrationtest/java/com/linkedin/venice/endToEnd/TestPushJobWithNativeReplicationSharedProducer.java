@@ -26,7 +26,8 @@ import java.util.stream.IntStream;
 import org.apache.avro.Schema;
 import org.apache.commons.io.FileUtils;
 import org.apache.kafka.clients.producer.ProducerConfig;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -47,7 +48,7 @@ import static com.linkedin.venice.writer.SharedKafkaProducerService.*;
  *
  */
 public class TestPushJobWithNativeReplicationSharedProducer {
-  private static final Logger logger = Logger.getLogger(TestPushJobWithNativeReplicationSharedProducer.class);
+  private static final Logger logger = LogManager.getLogger(TestPushJobWithNativeReplicationSharedProducer.class);
   private static final int TEST_TIMEOUT = 140_000; // ms
 
   private static final int NUMBER_OF_CHILD_DATACENTERS = 2;
@@ -154,9 +155,7 @@ public class TestPushJobWithNativeReplicationSharedProducer {
       logger.info("NRSP: Finished setting up stores");
       for (int i = 0; i < storeCount; i++) {
         int id = i;
-        Thread pushJobThread = new Thread(() -> {
-          TestPushUtils.runPushJob("Test push job " + id, storeProps[id]);
-        }, "PushJob-" + i);
+        Thread pushJobThread = new Thread(() -> TestPushUtils.runPushJob("Test push job " + id, storeProps[id]), "PushJob-" + i);
         threads[i] = pushJobThread;
       }
 
@@ -202,6 +201,10 @@ public class TestPushJobWithNativeReplicationSharedProducer {
         });
       }
     } finally {
+      for (int i = 0; i < storeCount; i++) {
+        TestUtils.shutdownThread(threads[i]);
+      }
+
       ControllerResponse[] deleteStoreResponses = new ControllerResponse[parentControllerClients.length];
       for (int i = 0; i < storeCount; i++) {
         if (null != parentControllerClients[i]) {

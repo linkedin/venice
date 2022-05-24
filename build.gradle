@@ -118,28 +118,29 @@ subprojects {
       exclude group: 'com.linkedin.container-core'
       exclude group: 'com.linkedin.linkedin-kafka-clients'
       exclude group: 'com.linkedin.util', module: 'util-sql'
+      exclude group: 'org.slf4j', module: 'slf4j-log4j12'
+      exclude module: 'clojure'
       exclude module: 'kafka_2.10' // This ends up getting pulled in by a few dependencies, unfortunately :/ ...
       exclude module: 'kafka_2.11'
-      exclude module: 'clojure'
     }
     compileOnly {
       // These dependencies are transitively used at runtime, so we cannot exclude them further than compileOnly
-      exclude group: 'com.google.guava', module: 'guava' // Used by Brooklin at runtime
-      exclude group: 'log4j', module: 'log4j'
+      exclude group: 'com.google.guava'
       exclude group: 'com.typesafe.scala-logging'
+      exclude group: 'log4j'
+      exclude group: 'org.slf4j'
     }
     all {
       resolutionStrategy.force libraries.zookeeper
     }
-    avroCompiler.extendsFrom compileOnly
+    avroCompiler {
+    }
   }
 
   dependencies {
-    implementation 'javax.validation:validation-api:2.0.1.Final'
-
-    testImplementation libraries.testng
-    testImplementation libraries.mockito
     testImplementation libraries.log4j2api
+    testImplementation libraries.mockito
+    testImplementation libraries.testng
     // Test utils and framework for all unit tests and integration tests.
     testImplementation project(':venice-test-common')
 
