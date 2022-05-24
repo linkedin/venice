@@ -7,6 +7,7 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.TestVeniceServer;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
+import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import java.lang.reflect.Field;
@@ -88,27 +89,26 @@ public class VeniceServerTest {
   }
 
   @Test
-  public void testCheckBeforeJointClusterBeforeHelixInitializingCluster() {
+  public void testCheckBeforeJointClusterBeforeHelixInitializingCluster() throws Exception {
+    Thread serverAddingThread = null;
     try (VeniceClusterWrapper cluster = ServiceFactory.getVeniceCluster(0, 0, 0)) {
-      Thread t = new Thread(() -> {
+      serverAddingThread = new Thread(() -> {
         Properties featureProperties = new Properties();
         featureProperties.setProperty(SERVER_ENABLE_SERVER_ALLOW_LIST, Boolean.toString(false));
         featureProperties.setProperty(SERVER_IS_AUTO_JOIN, Boolean.toString(true));
         cluster.addVeniceServer(featureProperties, new Properties());
       });
-      t.start();
+      serverAddingThread.start();
 
       Utils.sleep(Time.MS_PER_SECOND);
       Assert.assertTrue(cluster.getVeniceServers().isEmpty() || !cluster.getVeniceServers().get(0).getVeniceServer().isStarted());
       cluster.addVeniceController(new Properties());
 
-      t.join(30 * Time.MS_PER_SECOND);
-      Assert.assertTrue(!t.isAlive(), "Server should be added by now");
+      serverAddingThread.join(30 * Time.MS_PER_SECOND);
+      Assert.assertTrue(!serverAddingThread.isAlive(), "Server should be added by now");
       Assert.assertTrue(cluster.getVeniceServers().get(0).getVeniceServer().isStarted());
-
-    } catch (InterruptedException e) {
-      Thread.currentThread().interrupt();
-      Assert.fail("Test is interrupted");
+    } finally {
+      TestUtils.shutdownThread(serverAddingThread);
     }
   }
 }

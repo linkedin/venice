@@ -32,7 +32,8 @@ import java.util.Properties;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
 
 import static com.linkedin.venice.ConfigKeys.*;
@@ -50,7 +51,7 @@ class AbstractTestVeniceHelixAdmin {
   static String NODE_ID = "localhost_9985";
   static int SERVER_LISTENING_PORT = 9985;
 
-  final Logger logger = Logger.getLogger(getClass().getSimpleName());
+  final Logger logger = LogManager.getLogger(getClass().getSimpleName());
 
   VeniceHelixAdmin veniceAdmin;
   String clusterName;

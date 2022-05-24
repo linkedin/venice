@@ -17,7 +17,8 @@ import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import java.util.concurrent.TimeUnit;
 import org.apache.avro.util.Utf8;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.apache.samza.system.SystemProducer;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
@@ -31,7 +32,7 @@ import static org.testng.Assert.*;
 
 public class TestDeleteStoreDeletesRealtimeTopic {
 
-  private static final Logger LOGGER = Logger.getLogger(TestDeleteStoreDeletesRealtimeTopic.class);
+  private static final Logger LOGGER = LogManager.getLogger(TestDeleteStoreDeletesRealtimeTopic.class);
 
   private VeniceClusterWrapper venice = null;
   private AvroGenericStoreClient client = null;

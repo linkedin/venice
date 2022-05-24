@@ -120,9 +120,7 @@ public class LazyTest {
             "The identity of the returned objects should all be the same.");
       }
     } finally {
-      if (executor != null) {
-        executor.shutdownNow();
-      }
+      TestUtils.shutdownExecutor(executor);
     }
   }
 

@@ -64,9 +64,7 @@ public class VeniceWriterTest {
 
   @AfterClass
   public void cleanUp() throws IOException {
-    kafka.close();
-    topicManager.close();
-    zkServer.close();
+    Utils.closeQuietlyWithErrorLogged(topicManager, kafka, zkServer);
   }
 
   private void testThreadSafety(
@@ -92,9 +90,7 @@ public class VeniceWriterTest {
         vwFutures[i].get();
       }
     } finally {
-      if (executorService != null) {
-        executorService.shutdownNow();
-      }
+      TestUtils.shutdownExecutor(executorService);
     }
 
     try (Consumer<KafkaKey, KafkaMessageEnvelope> consumer = kafkaClientFactory.getRecordKafkaConsumer()) {

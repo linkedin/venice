@@ -18,7 +18,8 @@ import java.util.Properties;
 import java.util.TreeMap;
 import java.util.function.Supplier;
 import org.apache.commons.lang.RandomStringUtils;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.rocksdb.ComparatorOptions;
 import org.rocksdb.Options;
 import org.rocksdb.util.BytewiseComparator;
@@ -31,7 +32,7 @@ import static com.linkedin.venice.ConfigKeys.*;
 
 
 public class RocksDBStoragePartitionTest {
-  private static final Logger logger = Logger.getLogger(RocksDBStoragePartitionTest.class);
+  private static final Logger logger = LogManager.getLogger(RocksDBStoragePartitionTest.class);
   private static final String DATA_BASE_DIR = Utils.getUniqueTempPath();
   private static final String keyPrefix = "key_";
   private static final String valuePrefix = "value_";

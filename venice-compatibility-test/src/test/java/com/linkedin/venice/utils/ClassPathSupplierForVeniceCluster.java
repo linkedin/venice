@@ -12,7 +12,8 @@ import java.util.Set;
 import java.util.function.Supplier;
 import nonapi.io.github.classgraph.utils.JarUtils;
 import org.apache.commons.io.FileUtils;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -20,7 +21,7 @@ import org.apache.log4j.Logger;
  * is always using avro-1.7.
  */
 public class ClassPathSupplierForVeniceCluster implements Supplier<String> {
-  private static final Logger LOGGER = Logger.getLogger(ClassPathSupplierForVeniceCluster.class);
+  private static final Logger LOGGER = LogManager.getLogger(ClassPathSupplierForVeniceCluster.class);
 
   private static final String AVRO_192_JAR_FILE = "avro-1.9.2.jar";
 

@@ -8,14 +8,15 @@ import java.util.List;
 import java.util.Properties;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 public class TestFileDescriptorLeak {
-  private static final Logger LOGGER = Logger.getLogger(TestFileDescriptorLeak.class);
+  private static final Logger LOGGER = LogManager.getLogger(TestFileDescriptorLeak.class);
 
   private static final boolean FORCE_GC = false;
 

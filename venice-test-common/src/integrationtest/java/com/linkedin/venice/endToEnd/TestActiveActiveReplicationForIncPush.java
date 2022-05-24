@@ -25,7 +25,8 @@ import java.util.Properties;
 import java.util.stream.IntStream;
 import org.apache.avro.Schema;
 import org.apache.commons.io.IOUtils;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -40,7 +41,7 @@ import static com.linkedin.venice.utils.TestPushUtils.*;
 
 
 public class TestActiveActiveReplicationForIncPush {
-  public static final Logger LOGGER = Logger.getLogger(TestActiveActiveReplicationForIncPush.class);
+  public static final Logger LOGGER = LogManager.getLogger(TestActiveActiveReplicationForIncPush.class);
 
   private static final int TEST_TIMEOUT = 90_000; // ms
 

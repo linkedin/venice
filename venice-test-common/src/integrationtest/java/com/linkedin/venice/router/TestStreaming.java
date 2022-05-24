@@ -42,7 +42,8 @@ import io.tehuti.metrics.MetricsRepository;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -69,7 +70,7 @@ import static org.testng.Assert.*;
 
 
 public class TestStreaming {
-  private static final Logger LOGGER = Logger.getLogger(TestStreaming.class);
+  private static final Logger LOGGER = LogManager.getLogger(TestStreaming.class);
 
   private static final int MAX_KEY_LIMIT = 1000;
   private static final int LAST_KEY_INDEX_WITH_NON_NULL_VALUE = 500;

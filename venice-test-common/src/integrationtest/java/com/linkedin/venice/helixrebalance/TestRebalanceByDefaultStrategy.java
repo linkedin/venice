@@ -17,14 +17,15 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 @Test(singleThreaded = true)
 public class TestRebalanceByDefaultStrategy {
-  private static final Logger logger = Logger.getLogger(TestRebalanceByDefaultStrategy.class);
+  private static final Logger logger = LogManager.getLogger(TestRebalanceByDefaultStrategy.class);
   private static final long TIMEOUT_MS = 30000l;
   private static final long UPGRADE_TIME_MS = 1000l;
   private static final long RETRY_TIME_MS = 500l;

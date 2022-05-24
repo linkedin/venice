@@ -2,7 +2,8 @@ package com.linkedin.venice.guid;
 
 import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.utils.ByteArray;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
@@ -15,7 +16,7 @@ import java.util.function.Function;
 /**
  */
 public class GuidUtilsTest {
-  private static final Logger LOGGER = Logger.getLogger(GuidUtilsTest.class);
+  private static final Logger LOGGER = LogManager.getLogger(GuidUtilsTest.class);
 
   private static ByteArray[] getByteArray(Function<Integer, Integer> valueGenerator) {
     ByteBuffer byteBuffer = ByteBuffer.allocate(GuidUtils.GUID_SIZE_IN_BYTES);

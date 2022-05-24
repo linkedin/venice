@@ -2,16 +2,17 @@ package com.linkedin.venice.helix;
 
 import com.linkedin.venice.status.StatusMessageHandler;
 import com.linkedin.venice.status.StoreStatusMessage;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import org.apache.log4j.Logger;
-
 
 /**
  * Handler in controller side used to deal with status update message from storage node.
  */
 public class StoreStatusMessageHandler implements StatusMessageHandler<StoreStatusMessage> {
-  private static final Logger logger = Logger.getLogger(StatusMessageHandler.class);
+  private static final Logger logger = LogManager.getLogger(StatusMessageHandler.class);
   //TODO will process the status in the further. Maybe here will become Map<KafkaTopic,Map<Partition,Map<Instance,Status>>>.
   private Map<String, StoreStatusMessage> statusMap;
 

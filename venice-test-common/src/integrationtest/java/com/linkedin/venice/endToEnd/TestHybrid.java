@@ -85,7 +85,8 @@ import org.apache.http.HttpResponse;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.impl.nio.client.CloseableHttpAsyncClient;
 import org.apache.http.impl.nio.client.HttpAsyncClients;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.apache.samza.config.MapConfig;
 import org.apache.samza.system.SystemProducer;
 import org.mockito.Mockito;
@@ -106,7 +107,7 @@ import static com.linkedin.venice.utils.TestPushUtils.*;
 import static org.testng.Assert.*;
 
 public class TestHybrid {
-  private static final Logger logger = Logger.getLogger(TestHybrid.class);
+  private static final Logger logger = LogManager.getLogger(TestHybrid.class);
   public static final int STREAMING_RECORD_SIZE = 1024;
   private static final long MIN_COMPACTION_LAG = 24 * Time.MS_PER_HOUR;
 

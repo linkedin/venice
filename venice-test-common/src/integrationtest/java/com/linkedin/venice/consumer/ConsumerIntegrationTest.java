@@ -61,7 +61,6 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 
-@Test(timeOut = 60 * Time.MS_PER_SECOND)
 public class ConsumerIntegrationTest {
   private static final String TEST_KEY = "key1";
 
@@ -204,17 +203,17 @@ public class ConsumerIntegrationTest {
                                     AvroGenericStoreClient client,
                                     String testValue) throws ExecutionException, InterruptedException {
     veniceWriter.put(TEST_KEY, testValue, 1).get();
-    TestUtils.waitForNonDeterministicAssertion(15, TimeUnit.SECONDS, true, () -> {
-      String value = null;
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
       try {
-        value = client.get(TEST_KEY).get().toString();
-      } catch (Exception e) {
+        Object value = client.get(TEST_KEY).get();
+        Assert.assertNotNull(value,
+            "The key written by the " + veniceWriter.getClass().getSimpleName() + " is not in the store yet.");
+        Assert.assertEquals(value.toString(), testValue,
+            "The key written by the " + veniceWriter.getClass().getSimpleName() + " is not valid.");
+      } catch (ExecutionException e) {
         Assert.fail("Caught exception: " + e.getMessage());
       }
-      Assert.assertNotNull(value,
-          "The key written by the " + veniceWriter.getClass().getSimpleName() + " is not in the store yet.");
-      Assert.assertEquals(value, testValue,
-          "The key written by the " + veniceWriter.getClass().getSimpleName() + " is not valid.");
+
     });
   }
 

@@ -180,7 +180,7 @@ public class TestHAASController {
     }
 
     @Override
-    public Void call() throws Exception {
+    public Void call() {
       client.createVeniceControllerCluster(false);
       client.addClusterToGrandCluster("venice-controllers");
       for (int i = 0; i < 10; i++) {
@@ -213,7 +213,7 @@ public class TestHAASController {
         result.get();
       }
     } finally {
-      executorService.shutdownNow();
+      TestUtils.shutdownExecutor(executorService);
     }
   }
 

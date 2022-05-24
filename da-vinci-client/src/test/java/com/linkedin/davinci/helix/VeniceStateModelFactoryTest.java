@@ -20,6 +20,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
+
+import com.linkedin.venice.utils.Utils;
 import org.apache.helix.NotificationContext;
 import org.apache.helix.model.Message;
 import org.mockito.Mockito;
@@ -54,8 +56,8 @@ public class VeniceStateModelFactoryTest {
   }
 
   @AfterClass
-  void cleanUp() {
-    executorService.shutdownNow();
+  void cleanUp() throws InterruptedException {
+    TestUtils.shutdownExecutor(executorService);
   }
 
   @BeforeMethod
@@ -97,83 +99,70 @@ public class VeniceStateModelFactoryTest {
   @Test(timeOut = 3000)
   public void testConsumptionComplete() {
     stateModel.onBecomeBootstrapFromOffline(mockMessage, mockContext);
-    Thread consumeThread = new Thread(new Runnable() {
-      @Override
-      public void run() {
-        //Mock consume delay.
-        try {
-          Thread.sleep(1000);
-          factory.getNotifier().completed(resourceName, testPartition, 0);
-        } catch (InterruptedException e) {
-          Assert.fail("Test if interrupted.");
-        }
-      }
+    CompletableFuture completeFuture = CompletableFuture.runAsync(() -> {
+      Utils.sleep(1000);
+      factory.getNotifier().completed(resourceName, testPartition, 0);
     });
-    consumeThread.start();
     stateModel.onBecomeOnlineFromBootstrap(mockMessage, mockContext);
+    Assert.assertTrue(completeFuture.isDone());
     Assert.assertNull(factory.getNotifier().getIngestionCompleteFlag(resourceName, testPartition));
   }
 
   @Test(timeOut = 3000, expectedExceptions = VeniceException.class)
   public void testConsumptionFail() {
     stateModel.onBecomeBootstrapFromOffline(mockMessage, mockContext);
-    Thread consumeThread = new Thread(new Runnable() {
-      @Override
-      public void run() {
-        //Mock consume delay.
-        try {
-          Thread.sleep(1000);
-          factory.getNotifier().error(resourceName, testPartition, "error", new Exception());
-        } catch (InterruptedException e) {
-          Assert.fail("Test if interrupted.");
-        }
-      }
+    CompletableFuture completeFuture = CompletableFuture.runAsync(() -> {
+      Utils.sleep(1000);
+      factory.getNotifier().error(resourceName, testPartition, "error", new Exception());
     });
-    consumeThread.start();
     stateModel.onBecomeOnlineFromBootstrap(mockMessage, mockContext);
+    Assert.assertTrue(completeFuture.isDone());
   }
 
   @Test
   public void testWrongWaiting() {
     stateModel.onBecomeBootstrapFromOffline(mockMessage, mockContext);
     factory.getNotifier().removeIngestionCompleteFlag(resourceName, testPartition);
-    try {
-      stateModel.onBecomeOnlineFromBootstrap(mockMessage, mockContext);
-      Assert.fail("Latch was deleted, should throw exception before becoming online.");
-    } catch (VeniceException e) {
-      //expected
-    }
+    Assert.assertThrows(VeniceException.class, () -> stateModel.onBecomeOnlineFromBootstrap(mockMessage, mockContext));
   }
 
   @Test
-  public void testNumberOfStateTransitionsExceedThreadPoolSize() {
-    int threadPoolSize = 1;
-    LinkedBlockingQueue<Runnable> queue = new LinkedBlockingQueue<>();
-    ThreadPoolExecutor executor = new ThreadPoolExecutor(threadPoolSize, threadPoolSize, 2L, TimeUnit.SECONDS, queue,
-        new DaemonThreadFactory("venice-state-transition"));
-    executor.allowCoreThreadTimeOut(true);
-    factory = new OnlineOfflinePartitionStateModelFactory(mockIngestionBackend, mockConfigLoader, executor,
-        mockReadOnlyStoreRepository, CompletableFuture.completedFuture(mockPushStatusAccessor), null);
-    ExecutorService testExecutor = factory.getExecutorService("");
-    Assert.assertEquals(testExecutor, executor);
+  public void testNumberOfStateTransitionsExceedThreadPoolSize() throws InterruptedException {
+    ThreadPoolExecutor executor = null;
+    ExecutorService testExecutor = null;
+    try {
+      int threadPoolSize = 1;
+      LinkedBlockingQueue<Runnable> queue = new LinkedBlockingQueue<>();
+      executor = new ThreadPoolExecutor(threadPoolSize, threadPoolSize, 2L, TimeUnit.SECONDS, queue,
+          new DaemonThreadFactory("venice-state-transition"));
+      executor.allowCoreThreadTimeOut(true);
+      factory = new OnlineOfflinePartitionStateModelFactory(mockIngestionBackend, mockConfigLoader, executor,
+          mockReadOnlyStoreRepository, CompletableFuture.completedFuture(mockPushStatusAccessor), null);
+      testExecutor = factory.getExecutorService("");
+      Assert.assertEquals(testExecutor, executor);
 
-    BlockTask blockedTask = new BlockTask();
-    testExecutor.submit(blockedTask);
-    int taskCount = 10;
-    for (int i = 0; i < taskCount; i++) {
-      testExecutor.submit(() -> {});
+      BlockTask blockedTask = new BlockTask();
+      testExecutor.submit(blockedTask);
+      int taskCount = 10;
+      for (int i = 0; i < taskCount; i++) {
+        testExecutor.submit(() -> {});
+      }
+      Assert.assertEquals(queue.size(), taskCount);
+      // Test could fail due to the signal() is executed before await()
+      TestUtils.waitForNonDeterministicCompletion(1, TimeUnit.SECONDS, () -> blockedTask.isWaiting);
+      blockedTask.resume();
+
+      // After resume the blocking task, it's executed and return true.
+      TestUtils.waitForNonDeterministicCompletion(1, TimeUnit.SECONDS, () -> blockedTask.result);
+      // eventually, the queue would be empty because all task had been executed.
+      TestUtils.waitForNonDeterministicCompletion(1, TimeUnit.SECONDS, queue::isEmpty);
+      // Make sure the idle thread will be collected eventually.
+      ThreadPoolExecutor finalExecutor = executor;
+      TestUtils.waitForNonDeterministicCompletion(3, TimeUnit.SECONDS, () -> finalExecutor.getPoolSize() == 0);
+    } finally {
+      TestUtils.shutdownExecutor(executor);
+      TestUtils.shutdownExecutor(testExecutor);
     }
-    Assert.assertEquals(queue.size(), taskCount);
-    // Test could fail due to the signal() is executed before await()
-    TestUtils.waitForNonDeterministicCompletion(1, TimeUnit.SECONDS, () -> blockedTask.isWaiting);
-    blockedTask.resume();
-
-    // After resume the blocking task, it's executed and return true.
-    TestUtils.waitForNonDeterministicCompletion(1, TimeUnit.SECONDS, () -> blockedTask.result);
-    // eventually, the queue would be empty because all of task had been executed.
-    TestUtils.waitForNonDeterministicCompletion(1, TimeUnit.SECONDS, () -> queue.isEmpty());
-    // Make sure the idle thread will be collected eventually.
-    TestUtils.waitForNonDeterministicCompletion(3, TimeUnit.SECONDS, () -> executor.getPoolSize() == 0);
   }
 
   private class BlockTask implements Runnable {

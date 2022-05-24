@@ -11,6 +11,9 @@ import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Optional;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+
 import org.apache.helix.InstanceType;
 import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.helix.manager.zk.ZKHelixManager;
@@ -57,19 +60,25 @@ public class TestVeniceHelixResources {
   @Test
   public void testShutdownLock() throws Exception {
     final HelixVeniceClusterResources rs = getVeniceHelixResources("test");
-    int[] test = new int[]{0};
-    try (AutoCloseableLock ignore1 = rs.getClusterLockManager().createStoreWriteLock("store")) {
-      test[0] = 1;
-      new Thread(() -> {
-        try (AutoCloseableLock ignore2 = rs.lockForShutdown()) {
-          test[0] = 2;
-        }
-      }).start();
+    int[] value = new int[]{0};
 
+    CountDownLatch thread2StartedLatch = new CountDownLatch(1);
+    Thread thread2 = new Thread(() -> {
+      thread2StartedLatch.countDown();
+      try (AutoCloseableLock ignore2 = rs.lockForShutdown()) {
+        value[0] = 2;
+      }
+    });
+
+    try (AutoCloseableLock ignore1 = rs.getClusterLockManager().createStoreWriteLock("store")) {
+      value[0] = 1;
+      thread2.start();
+      Assert.assertTrue(thread2StartedLatch.await(1, TimeUnit.SECONDS));
       Thread.sleep(500);
-      Assert.assertEquals(test[0], 1 , "The lock is acquired by metadata operation, could not be updated by shutdown process.");
+      Assert.assertEquals(value[0], 1 , "The lock is acquired by metadata operation, could not be updated by shutdown process.");
+    } finally {
+      thread2.join();
     }
-    Thread.sleep(500);
-    Assert.assertEquals(test[0], 2 , "Shutdown process should already acquire the lock and modify tne value.");
+    Assert.assertEquals(value[0], 2 , "Shutdown process should already acquire the lock and modify tne value.");
   }
 }

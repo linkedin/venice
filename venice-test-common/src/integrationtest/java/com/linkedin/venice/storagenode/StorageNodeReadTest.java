@@ -54,14 +54,14 @@ import org.apache.avro.io.Encoder;
 import org.apache.commons.httpclient.HttpStatus;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.IOUtils;
-import org.apache.http.Header;
 import org.apache.http.HttpResponse;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.methods.HttpPost;
 import org.apache.http.entity.BasicHttpEntity;
 import org.apache.http.impl.nio.client.CloseableHttpAsyncClient;
 import org.apache.http.impl.nio.client.HttpAsyncClients;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -73,7 +73,7 @@ import static com.linkedin.venice.router.api.VenicePathParser.*;
 
 @Test(singleThreaded = true)
 public class StorageNodeReadTest {
-  private static final Logger LOGGER = Logger.getLogger(StorageNodeReadTest.class);
+  private static final Logger LOGGER = LogManager.getLogger(StorageNodeReadTest.class);
 
   private VeniceClusterWrapper veniceCluster;
   private String storeVersionName;

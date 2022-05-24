@@ -57,7 +57,8 @@ import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.methods.HttpOptions;
 import org.apache.http.impl.nio.client.CloseableHttpAsyncClient;
 import org.apache.http.impl.nio.client.HttpAsyncClients;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.codehaus.jackson.map.ObjectMapper;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
@@ -73,7 +74,7 @@ import static org.testng.Assert.*;
 @Test(singleThreaded = true)
 public abstract class TestRead {
   private static final int MAX_KEY_LIMIT = 20;
-  private static final Logger logger = Logger.getLogger(TestRead.class);
+  private static final Logger logger = LogManager.getLogger(TestRead.class);
   private VeniceClusterWrapper veniceCluster;
   private ControllerClient controllerClient;
   private D2Client d2Client;

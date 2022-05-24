@@ -295,33 +295,37 @@ public class TestAdminSparkServerWithMultiServers {
       for (int i = 0; i < 5; i++) { // number of attempts
         String pushId = Utils.getUniqueString("pushId");
         final List<VersionCreationResponse> responses = new ArrayList<>();
-        List<Thread> threads = new ArrayList<>();
+
         int threadCount = 3; // number of concurrent requests
         CountDownLatch latch = new CountDownLatch(threadCount);
-        for (int j = 0; j < threadCount; j++) {
-          Thread t = requestTopicThread(pushId, storeName, responses, latch, errString);
-          threads.add(t);
-          t.setUncaughtExceptionHandler((t1, e) -> e.printStackTrace());
-        }
-        for (Thread t : threads) {
-          t.start();
-        }
-        Assert.assertTrue(latch.await(10, TimeUnit.SECONDS));
-        for (int j = 0; j < threadCount; j++) {
-          if (responses.get(j).isError()) {
-            Assert.fail(responses.get(j).getError());
+        List<Thread> threads = new ArrayList<>();
+        try {
+          for (int j = 0; j < threadCount; j++) {
+            Thread t = requestTopicThread(pushId, storeName, responses, latch, errString);
+            threads.add(t);
+            t.setUncaughtExceptionHandler((t1, e) -> e.printStackTrace());
+          }
+          for (Thread t : threads) {
+            t.start();
+          }
+          Assert.assertTrue(latch.await(10, TimeUnit.SECONDS));
+          for (int j = 0; j < threadCount; j++) {
+            if (responses.get(j).isError()) {
+              Assert.fail(responses.get(j).getError());
+            }
+          }
+          for (int j = 1; j < threadCount; j++) {
+            Assert.assertEquals(responses.get(0).getKafkaTopic(), responses.get(j).getKafkaTopic(),
+                "Idempotent topic requests failed under concurrency on attempt " + i + ".  If this test ever fails, investigate! Don't just run it again and hope it passes");
+          }
+          //close the new version so the next iteration gets a new version.
+          controllerClient.writeEndOfPush(storeName, responses.get(0).getVersion());
+          while (controllerClient.getStore(storeName).getStore().getCurrentVersion() < responses.get(0).getVersion() && Utils.sleep(200)) {}
+        } finally {
+          for (Thread t : threads) {
+            TestUtils.shutdownThread(t);
           }
         }
-        for (int j = 1; j < threadCount; j++) {
-          Assert.assertEquals(responses.get(0).getKafkaTopic(), responses.get(j).getKafkaTopic(),
-              "Idempotent topic requests failed under concurrency on attempt " + i + ".  If this test ever fails, investigate! Don't just run it again and hope it passes");
-        }
-        //close the new version so the next iteration gets a new version.
-        controllerClient.writeEndOfPush(storeName, responses.get(0).getVersion());
-        while (controllerClient.getStore(storeName).getStore().getCurrentVersion() < responses.get(0).getVersion()) {
-          Utils.sleep(200);
-        }
-
       }
     } catch (Exception e) {
       e.printStackTrace();

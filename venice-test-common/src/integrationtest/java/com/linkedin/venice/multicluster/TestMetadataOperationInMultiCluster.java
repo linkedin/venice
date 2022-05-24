@@ -22,7 +22,8 @@ import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import java.util.Optional;
 import org.apache.avro.Schema;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -31,7 +32,7 @@ import static com.linkedin.venice.utils.TestPushUtils.*;
 
 
 public class TestMetadataOperationInMultiCluster {
-  private static Logger logger = Logger.getLogger(TestMetadataOperationInMultiCluster.class);
+  private static Logger logger = LogManager.getLogger(TestMetadataOperationInMultiCluster.class);
 
   @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testCreateStoreAndVersionForMultiCluster() {

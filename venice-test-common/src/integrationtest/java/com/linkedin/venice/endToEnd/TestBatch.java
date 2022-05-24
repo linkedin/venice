@@ -52,7 +52,8 @@ import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.generic.IndexedRecord;
 import org.apache.avro.util.Utf8;
 import org.apache.commons.lang.StringUtils;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -67,7 +68,7 @@ import static com.linkedin.venice.utils.TestPushUtils.*;
 
 @Test(singleThreaded = true)
 public abstract class TestBatch {
-  private static final Logger LOGGER = Logger.getLogger(TestBatch.class);
+  private static final Logger LOGGER = LogManager.getLogger(TestBatch.class);
   protected static final int TEST_TIMEOUT = 60 * Time.MS_PER_SECOND;
   private static final int MAX_RETRY_ATTEMPTS = 3;
   private static final String STRING_SCHEMA = "\"string\"";

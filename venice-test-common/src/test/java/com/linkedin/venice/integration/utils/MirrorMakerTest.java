@@ -30,7 +30,8 @@ import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.producer.ProducerConfig;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -40,7 +41,7 @@ import static com.linkedin.venice.kafka.TopicManager.*;
 
 
 public class MirrorMakerTest {
-  private static final Logger LOGGER = Logger.getLogger(MirrorMakerTest.class);
+  private static final Logger LOGGER = LogManager.getLogger(MirrorMakerTest.class);
 
   KafkaBrokerWrapper sourceKafka = null;
   KafkaBrokerWrapper destinationKafka = null;

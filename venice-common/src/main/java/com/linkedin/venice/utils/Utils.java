@@ -1,7 +1,6 @@
 package com.linkedin.venice.utils;
 
 import com.linkedin.venice.controllerapi.ControllerResponse;
-import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.ExceptionType;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -20,7 +19,6 @@ import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import java.time.Duration;
 import org.apache.avro.Schema;
-import org.apache.avro.generic.IndexedRecord;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang.StringUtils;
@@ -760,10 +758,14 @@ public class Utils {
     return time.getMilliseconds() - startTimeMs;
   }
 
-  public static void closeQuietlyWithErrorLogged(final Closeable closeables) {
-    IOUtils.closeQuietly(closeables, LOGGER::error);
+  public static void closeQuietlyWithErrorLogged(Closeable... closeables) {
+    if (closeables == null) {
+      return;
+    }
+    for (Closeable closeable : closeables) {
+      IOUtils.closeQuietly(closeable, LOGGER::error);
+    }
   }
-
 
   public static List<Replica> getReplicasForInstance(RoutingDataRepository routingDataRepo, String instanceId) {
     ResourceAssignment resourceAssignment = routingDataRepo.getResourceAssignment();

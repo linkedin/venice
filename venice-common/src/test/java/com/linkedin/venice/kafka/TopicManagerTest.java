@@ -40,6 +40,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -56,7 +57,8 @@ import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.PartitionInfo;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.errors.TimeoutException;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
@@ -69,7 +71,7 @@ import static org.mockito.Mockito.*;
 
 public class TopicManagerTest {
 
-  private static final Logger logger = Logger.getLogger(TopicManagerTest.class);
+  private static final Logger logger = LogManager.getLogger(TopicManagerTest.class);
 
   /** Wait time for {@link #topicManager} operations, in seconds */
   private static final int WAIT_TIME_IN_SECONDS = 10;
@@ -543,7 +545,7 @@ public class TopicManagerTest {
     final long delayedTopicCreationInSeconds = 1;
     CountDownLatch delayedTopicCreationStartedSignal = new CountDownLatch(1);
 
-    Thread delayedTopicCreationThread = new Thread(() -> {
+    CompletableFuture delayedTopicCreationFuture = CompletableFuture.runAsync(() -> {
       delayedTopicCreationStartedSignal.countDown();
       logger.info(String.format("Thread started and it will create topic %s in %s second(s)", initiallyNotExistTopic, delayedTopicCreationInSeconds));
       try {
@@ -554,14 +556,12 @@ public class TopicManagerTest {
       topicManager.createTopic(initiallyNotExistTopic, 1, 1, false);
       logger.info("Created this initially-not-exist topic: " + initiallyNotExistTopic);
     });
-    delayedTopicCreationThread.setDaemon(true);
-    delayedTopicCreationThread.start();
-    // Just because start() is called does not mean thread is actually started running. Wait for a significant amount of time
     Assert.assertTrue(delayedTopicCreationStartedSignal.await(5, TimeUnit.SECONDS));
 
     Duration initialBackoff = Duration.ofSeconds(delayedTopicCreationInSeconds + 2);
     Duration maxBackoff = Duration.ofSeconds(initialBackoff.getSeconds() + 1);
     Duration maxDuration = Duration.ofSeconds(3 * maxBackoff.getSeconds());
+    Assert.assertFalse(delayedTopicCreationFuture.isDone());
     Assert.assertTrue(topicManager.containsTopicWithExpectationAndRetry(
         initiallyNotExistTopic,
         3,
@@ -570,6 +570,7 @@ public class TopicManagerTest {
         maxBackoff,
         maxDuration
     ));
+    Assert.assertTrue(delayedTopicCreationFuture.isDone());
   }
 
   @Test

@@ -24,7 +24,8 @@ import org.apache.helix.HelixAdmin;
 import org.apache.helix.HelixManagerFactory;
 import org.apache.helix.InstanceType;
 import org.apache.helix.manager.zk.ZKHelixAdmin;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.apache.samza.system.SystemProducer;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
@@ -39,7 +40,7 @@ import static org.testng.Assert.*;
 
 
 public class TestHybridQuota {
-  private static final Logger logger = Logger.getLogger(TestHybrid.class);
+  private static final Logger logger = LogManager.getLogger(TestHybrid.class);
 
   private VeniceClusterWrapper sharedVenice;
 

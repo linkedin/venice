@@ -21,6 +21,7 @@ import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
+import com.linkedin.venice.utils.TestUtils;
 import io.tehuti.metrics.MetricsRepository;
 import java.net.URI;
 import java.nio.ByteBuffer;
@@ -88,14 +89,12 @@ public class TestClientSimulator implements Client {
   private Map<Integer,List<String>> partitionToReplicas = new HashMap<>();
   private boolean longTailRetryEnabledForBatchGet = false;
   private int longTailRetryThresholdForBatchGetInMicroseconds = 0;
-  private final TimeoutProcessor timeoutProcessor;
 
   public TestClientSimulator() {
     this.keySerializer = FastSerializerDeserializerFactory.getAvroGenericSerializer(KEY_VALUE_SCHEMA);
     this.keyDeserializer = FastSerializerDeserializerFactory.getAvroGenericDeserializer(KEY_VALUE_SCHEMA,KEY_VALUE_SCHEMA);
     this.multiGetRequestDeserializer = FastSerializerDeserializerFactory.getFastAvroSpecificDeserializer(MultiGetRouterRequestKeyV1.SCHEMA$,MultiGetRouterRequestKeyV1.class);
     this.multiGetResponseSerializer = FastSerializerDeserializerFactory.getFastAvroGenericSerializer(MultiGetResponseRecordV1.SCHEMA$);
-    timeoutProcessor = new TimeoutProcessor(null, true, 1);
   }
 
   /**
@@ -351,6 +350,13 @@ public class TestClientSimulator implements Client {
      }
      executor = Executors.newScheduledThreadPool(4);
      executor.schedule(() -> executeTimedEvents(0), timeIntervalBetweenEventsInMs, TimeUnit.MILLISECONDS);
+     getSimulatorComplete().whenComplete((v, t) -> {
+       try {
+         TestUtils.shutdownExecutor(executor);
+       } catch (InterruptedException e) {
+         Assert.fail("Executor shutdown interrupted", e);
+       }
+     });
    }
 
   public synchronized void executeTimedEvents(int time) {

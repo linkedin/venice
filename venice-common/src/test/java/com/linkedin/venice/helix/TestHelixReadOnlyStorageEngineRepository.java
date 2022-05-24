@@ -11,7 +11,8 @@ import com.linkedin.venice.utils.locks.ClusterLockManager;
 
 import java.util.Optional;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.apache.zookeeper.CreateMode;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
@@ -25,7 +26,7 @@ import static com.linkedin.venice.utils.TestUtils.*;
 
 
 public class TestHelixReadOnlyStorageEngineRepository {
-  private static Logger logger = Logger.getLogger(TestHelixReadOnlyStorageEngineRepository.class);
+  private static Logger logger = LogManager.getLogger(TestHelixReadOnlyStorageEngineRepository.class);
 
   private String zkAddress;
   private ZkClient zkClient;

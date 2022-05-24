@@ -47,7 +47,8 @@ import java.util.function.Function;
 import java.util.stream.IntStream;
 import org.apache.avro.Schema;
 import org.apache.commons.io.FileUtils;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.apache.samza.config.MapConfig;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
@@ -66,7 +67,7 @@ import static com.linkedin.venice.utils.TestPushUtils.*;
 
 
 public class  TestPushJobWithNativeReplication {
-  private static final Logger logger = Logger.getLogger(TestPushJobWithNativeReplication.class);
+  private static final Logger logger = LogManager.getLogger(TestPushJobWithNativeReplication.class);
   private static final int TEST_TIMEOUT = 120_000; // ms
 
   private static final int NUMBER_OF_CHILD_DATACENTERS = 2;
@@ -191,52 +192,52 @@ public class  TestPushJobWithNativeReplication {
         updateStoreQueryParams -> updateStoreQueryParams.setPartitionCount(1).setAmplificationFactor(2),
         recordCount,
         (parentController, clusterName, storeName, props, inputDir) -> {
-          Thread pushJobThread = new Thread(() -> {
-            TestPushUtils.runPushJob("Test push job", props);
-          });
+          Thread pushJobThread = new Thread(() -> TestPushUtils.runPushJob("Test push job", props));
           pushJobThread.start();
+          try {
+            /**
+             * Restart leader SN (server1) to trigger leadership handover during batch consumption.
+             * When server1 stops, sever2 will be promoted to leader. When server1 starts, due to full-auto rebalance, server2:
+             * 1) Will be demoted to follower. Leader->standby transition during remote consumption will be tested.
+             * 2) Or remain as leader. In this case, Leader->standby transition during remote consumption won't be tested.
+             * TODO: Use semi-auto rebalance and assign a server as the leader to make sure leader->standby always happen.
+             */
+            TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, () -> {
+              VeniceClusterWrapper veniceClusterWrapper =
+                  childDatacenters.get(NUMBER_OF_CHILD_DATACENTERS - 1).getClusters().get(clusterName);
+              String topic = Version.composeKafkaTopic(storeName, 1);
+              HelixBaseRoutingRepository routingDataRepo =
+                  veniceClusterWrapper.getRandomVeniceRouter().getRoutingDataRepository();
+              Assert.assertTrue(routingDataRepo.containsKafkaTopic(topic));
 
-          /**
-           * Restart leader SN (server1) to trigger leadership handover during batch consumption.
-           * When server1 stops, sever2 will be promoted to leader. When server1 starts, due to full-auto rebalance, server2:
-           * 1) Will be demoted to follower. Leader->standby transition during remote consumption will be tested.
-           * 2) Or remain as leader. In this case, Leader->standby transition during remote consumption won't be tested.
-           * TODO: Use semi-auto rebalance and assign a server as the leader to make sure leader->standby always happen.
-           */
-          TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, () -> {
-            VeniceClusterWrapper veniceClusterWrapper =
-                childDatacenters.get(NUMBER_OF_CHILD_DATACENTERS - 1).getClusters().get(clusterName);
-            String topic = Version.composeKafkaTopic(storeName, 1);
-            HelixBaseRoutingRepository routingDataRepo =
-                veniceClusterWrapper.getRandomVeniceRouter().getRoutingDataRepository();
-            Assert.assertTrue(routingDataRepo.containsKafkaTopic(topic));
+              Instance leaderNode = routingDataRepo.getLeaderInstance(topic, 0);
+              Assert.assertNotNull(leaderNode);
+              logger.info("Restart server port " + leaderNode.getPort());
+              veniceClusterWrapper.stopAndRestartVeniceServer(leaderNode.getPort());
+            });
 
-            Instance leaderNode = routingDataRepo.getLeaderInstance(topic, 0);
-            Assert.assertNotNull(leaderNode);
-            logger.info("Restart server port " + leaderNode.getPort());
-            veniceClusterWrapper.stopAndRestartVeniceServer(leaderNode.getPort());
-          });
-
-          TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
-            for (int version : parentController.getVeniceAdmin()
-                .getCurrentVersionsForMultiColos(clusterName, storeName)
-                .values()) {
-              Assert.assertEquals(version, 1, "Current version should become 1!");
-            }
-
-            // Verify the data in the second child fabric which consumes remotely
-            VeniceMultiClusterWrapper childDataCenter = childDatacenters.get(NUMBER_OF_CHILD_DATACENTERS - 1);
-            String routerUrl = childDataCenter.getClusters().get(clusterName).getRandomRouterURL();
-            try (AvroGenericStoreClient<String, Object> client = ClientFactory.getAndStartGenericAvroClient(
-                ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerUrl))) {
-              for (int i = 1; i <= recordCount; ++i) {
-                String expected = "test_name_" + i;
-                String actual = client.get(Integer.toString(i)).get().toString();
-                Assert.assertEquals(actual, expected);
+            TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
+              for (int version : parentController.getVeniceAdmin()
+                  .getCurrentVersionsForMultiColos(clusterName, storeName)
+                  .values()) {
+                Assert.assertEquals(version, 1, "Current version should become 1!");
               }
-            }
-          });
-          pushJobThread.join();
+
+              // Verify the data in the second child fabric which consumes remotely
+              VeniceMultiClusterWrapper childDataCenter = childDatacenters.get(NUMBER_OF_CHILD_DATACENTERS - 1);
+              String routerUrl = childDataCenter.getClusters().get(clusterName).getRandomRouterURL();
+              try (AvroGenericStoreClient<String, Object> client = ClientFactory.getAndStartGenericAvroClient(
+                  ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerUrl))) {
+                for (int i = 1; i <= recordCount; ++i) {
+                  String expected = "test_name_" + i;
+                  String actual = client.get(Integer.toString(i)).get().toString();
+                  Assert.assertEquals(actual, expected);
+                }
+              }
+            });
+          } finally {
+            TestUtils.shutdownThread(pushJobThread);
+          }
         });
   }
 
