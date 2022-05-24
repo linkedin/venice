@@ -239,9 +239,7 @@ public class OffsetRecord {
     if (partitionState.upstreamOffsetMap != null && !partitionState.upstreamOffsetMap.isEmpty()) {
       Validate.notNull(checkpointUpstreamOffsetMapReceiver);
       checkpointUpstreamOffsetMapReceiver.clear();
-      for (Map.Entry<CharSequence, Long> entry : partitionState.upstreamOffsetMap.entrySet()) {
-        checkpointUpstreamOffsetMapReceiver.put(entry.getKey().toString(), entry.getValue());
-      }
+      checkpointUpstreamOffsetMapReceiver.putAll(partitionState.upstreamOffsetMap);
     }
   }
 

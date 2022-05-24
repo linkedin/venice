@@ -58,7 +58,7 @@ public class TestAvroSchema {
     ps.databaseInfo = Collections.emptyMap();
     ps.leaderOffset = 0;
     // Populate a fake map
-    Map<CharSequence, Long> upstreamOffsetMap = new HashMap<>();
+    Map<String, Long> upstreamOffsetMap = new HashMap<>();
     upstreamOffsetMap.put("fake_kafak_url", 100L);
     ps.upstreamOffsetMap = upstreamOffsetMap;
     ps.producerStates = Collections.emptyMap();
@@ -70,7 +70,7 @@ public class TestAvroSchema {
     AvroSpecificDeserializer<PartitionState> specificDeserializer = new AvroSpecificDeserializer<>(ps.getSchema(), PartitionState.class);
     PartitionState specificDeserializedObject = specificDeserializer.deserialize(serializedBytes);
     Assert.assertTrue(specificDeserializedObject.upstreamOffsetMap instanceof Map);
-    for (Map.Entry<CharSequence, Long> entry : specificDeserializedObject.upstreamOffsetMap.entrySet()) {
+    for (Map.Entry<String, Long> entry : specificDeserializedObject.upstreamOffsetMap.entrySet()) {
       Assert.assertTrue(entry.getKey() instanceof String, "The key object type should be 'String', but got " + entry.getKey().getClass());
     }
     /* Test the generic deserializer */
