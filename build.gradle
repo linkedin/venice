@@ -21,7 +21,7 @@ if (project.hasProperty('overrideBuildEnvironment')) {
 }
 
 def avroVersion = '1.9.2'
-def avroUtilVersion = '0.2.96'
+def avroUtilVersion = '0.2.98'
 def containerVersion = '38.4.466'
 def ddsStorageCoreVersion = '13.0.16'
 def kafkaGroup = 'com.linkedin.kafka'
@@ -33,8 +33,7 @@ ext.libraries = [
     avro: 'org.apache.avro:avro:' + avroVersion,
     avroMapred: 'org.apache.avro:avro-mapred:' + avroVersion,
     asyncHttpClient: 'org.apache.httpcomponents:httpasyncclient:4.1.2',
-    // TODO: switch to avro-util once it's able to generate version agnostic code.
-    avroSchemasBuilder: 'com.linkedin.avro-schemas:avro-schemas-builder:64.0.4',
+    avroSchemasBuilder: 'com.linkedin.avroutil1:avro-builder-all:' + avroUtilVersion,
     avroUtilCompatibilityHelper: 'com.linkedin.avroutil1:helper-all:' + avroUtilVersion,
     avroUtilFastserde: 'com.linkedin.avroutil1:avro-fastserde:' + avroUtilVersion,
     avroUtilSpotbugsPlugin: 'com.linkedin.avroutil1:spotbugs-plugin:0.2.69',
@@ -148,6 +147,7 @@ subprojects {
     spotbugsPlugins libraries.avroUtilSpotbugsPlugin
 
     avroCompiler libraries.avroSchemasBuilder
+    avroCompiler 'org.apache.avro:avro-compiler:' + avroVersion
     avroCompiler 'org.slf4j:slf4j-simple:1.7.32'
   }
 
@@ -201,7 +201,7 @@ subprojects {
 
       javaexec {
         classpath = configurations.avroCompiler
-        main = 'com.linkedin.avro.Builder'
+        main = 'com.linkedin.avroutil1.builder.SchemaBuilder'
         args = [
             '--input', temporaryDir,
             '--output', outputDir
