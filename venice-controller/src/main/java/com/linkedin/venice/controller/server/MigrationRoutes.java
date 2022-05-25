@@ -18,17 +18,14 @@ public class MigrationRoutes extends AbstractRoute {
     super(accessController);
   }
 
+  /**
+   * No ACL check; any user is allowed to check migration strategy.
+   */
   public Route getAllMigrationPushStrategies(Admin admin) {
     return (request, response) -> {
       MigrationPushStrategyResponse strategyResponse = new MigrationPushStrategyResponse();
       response.type(HttpConstants.JSON);
       try {
-        // Only allow allowlist users to run this command
-        if (!isAllowListUser(request)) {
-          response.status(HttpStatus.SC_FORBIDDEN);
-          strategyResponse.setError("Only admin users are allowed to run " + request.url());
-          return AdminSparkServer.mapper.writeValueAsString(strategyResponse);
-        }
         strategyResponse.setStrategies(admin.getAllStorePushStrategyForMigration());
       } catch (Throwable e) {
         strategyResponse.setError(e.getMessage());

@@ -16,16 +16,14 @@ public class VersionRoute extends AbstractRoute {
     super(accessController);
   }
 
+  /**
+   * No ACL check; any user is allowed to check bootstrapping versions.
+   */
   public Route listBootstrappingVersions(Admin admin) {
     return new VeniceRouteHandler<MultiVersionStatusResponse>(MultiVersionStatusResponse.class) {
 
       @Override
       public void internalHandle(Request request, MultiVersionStatusResponse veniceResponse) {
-        // Only allow allowlist users to run this command
-        if (!isAllowListUser(request)) {
-          veniceResponse.setError("Only admin users are allowed to run " + request.url());
-          return;
-        }
         AdminSparkServer.validateParams(request, LIST_BOOTSTRAPPING_VERSIONS.getParams(), admin);
         String cluster = request.queryParams(CLUSTER);
         veniceResponse.setCluster(cluster);

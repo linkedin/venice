@@ -41,17 +41,14 @@ public class NodesAndReplicas extends AbstractRoute {
     super(accessController);
   }
 
+  /**
+   * No ACL check; any user is allowed to list all nodes.
+   */
   public Route listAllNodes(Admin admin) {
     return (request, response) -> {
       MultiNodeResponse responseObject = new MultiNodeResponse();
       response.type(HttpConstants.JSON);
       try {
-        // Only allow allowlist users to run this command
-        if (!isAllowListUser(request)) {
-          response.status(HttpStatus.SC_FORBIDDEN);
-          responseObject.setError("Only admin users are allowed to run " + request.url());
-          return AdminSparkServer.mapper.writeValueAsString(responseObject);
-        }
         AdminSparkServer.validateParams(request, LIST_NODES.getParams(), admin);
         responseObject.setCluster(request.queryParams(CLUSTER));
         List<String> nodeList = admin.getStorageNodes(responseObject.getCluster());
@@ -68,17 +65,14 @@ public class NodesAndReplicas extends AbstractRoute {
     };
   }
 
+  /**
+   * No ACL check; any user is allowed to list all node status.
+   */
   public Route listAllNodesStatus(Admin admin) {
     return (request, response) -> {
       MultiNodesStatusResponse responseObject = new MultiNodesStatusResponse();
       response.type(HttpConstants.JSON);
       try {
-        // Only allow allowlist users to run this command
-        if (!isAllowListUser(request)) {
-          response.status(HttpStatus.SC_FORBIDDEN);
-          responseObject.setError("Only admin users are allowed to run " + request.url());
-          return AdminSparkServer.mapper.writeValueAsString(responseObject);
-        }
         AdminSparkServer.validateParams(request, ClUSTER_HEALTH_INSTANCES.getParams(), admin);
         responseObject.setCluster(request.queryParams(CLUSTER));
         Map<String, String> nodesStatusesMap = admin.getStorageNodesStatus(responseObject.getCluster());
@@ -91,17 +85,14 @@ public class NodesAndReplicas extends AbstractRoute {
     };
   }
 
+  /**
+   * No ACL check; any user is allowed to list replicas for a store.
+   */
   public Route listReplicasForStore(Admin admin) {
     return (request, response) -> {
       MultiReplicaResponse responseObject = new MultiReplicaResponse();
       response.type(HttpConstants.JSON);
       try {
-        // Only allow allowlist users to run this command
-        if (!isAllowListUser(request)) {
-          response.status(HttpStatus.SC_FORBIDDEN);
-          responseObject.setError("Only admin users are allowed to run " + request.url());
-          return AdminSparkServer.mapper.writeValueAsString(responseObject);
-        }
         AdminSparkServer.validateParams(request, LIST_REPLICAS.getParams(), admin);
         responseObject.setCluster(request.queryParams(CLUSTER));
         responseObject.setName(request.queryParams(NAME));
@@ -120,17 +111,14 @@ public class NodesAndReplicas extends AbstractRoute {
     };
   }
 
+  /**
+   * No ACL check; any user is allowed to list replicas in a node.
+   */
   public Route listReplicasForStorageNode(Admin admin){
     return (request, response) -> {
       MultiReplicaResponse responseObject = new MultiReplicaResponse();
       response.type(HttpConstants.JSON);
       try {
-        // Only allow allowlist users to run this command
-        if (!isAllowListUser(request)) {
-          response.status(HttpStatus.SC_FORBIDDEN);
-          responseObject.setError("Only admin users are allowed to run " + request.url());
-          return AdminSparkServer.mapper.writeValueAsString(responseObject);
-        }
         AdminSparkServer.validateParams(request, NODE_REPLICAS.getParams(), admin);
         responseObject.setCluster(request.queryParams(CLUSTER));
         String nodeId = request.queryParams(STORAGE_NODE_ID);
@@ -148,17 +136,14 @@ public class NodesAndReplicas extends AbstractRoute {
     };
   }
 
+  /**
+   * No ACL check; any user is allowed to check whether a node is removable.
+   */
   public Route isNodeRemovable(Admin admin){
     return (request, response) -> {
       NodeStatusResponse responseObject = new NodeStatusResponse();
       response.type(HttpConstants.JSON);
       try {
-        // Only allow allowlist users to run this command
-        if (!isAllowListUser(request)) {
-          response.status(HttpStatus.SC_FORBIDDEN);
-          responseObject.setError("Only admin users are allowed to run " + request.url());
-          return AdminSparkServer.mapper.writeValueAsString(responseObject);
-        }
         AdminSparkServer.validateParams(request, NODE_REMOVABLE.getParams(), admin);
         responseObject.setCluster(request.queryParams(CLUSTER));
         String nodeId = request.queryParams(STORAGE_NODE_ID);
@@ -270,18 +255,14 @@ public class NodesAndReplicas extends AbstractRoute {
     };
   }
 
+  /**
+   * No ACL check; any user is allowed to check replicas readiness.
+   */
   public Route nodeReplicasReadiness(Admin admin) {
     return (request, response) -> {
       NodeReplicasReadinessResponse responseObj = new NodeReplicasReadinessResponse();
       response.type(HttpConstants.JSON);
       try {
-        // Only allow allowlist users to run this command
-        if (!isAllowListUser(request)) {
-          response.status(HttpStatus.SC_FORBIDDEN);
-          responseObj.setError("Only admin users are allowed to run " + request.url());
-          return AdminSparkServer.mapper.writeValueAsString(responseObj);
-        }
-
         AdminSparkServer.validateParams(request, NODE_REPLICAS_READINESS.getParams(), admin);
         responseObj.setCluster(request.queryParams(CLUSTER));
         String nodeId = request.queryParams(STORAGE_NODE_ID);

@@ -17,7 +17,7 @@ public class SkipAdminRoute extends AbstractRoute {
     super(accessController);
   }
 
-  public Route getRoute(Admin admin) {
+  public Route skipAdminMessage(Admin admin) {
     return (request, response) -> {
       ControllerResponse responseObject = new ControllerResponse();
       response.type(HttpConstants.JSON);
