@@ -13,16 +13,6 @@ configurations.implementation {
 }
 
 dependencies {
-  // It's necessary to pull in the most recent version of zkclient explicitly, otherwise Helix won't have it...
-  implementation libraries.zkclient
-  implementation libraries.kafka
-
-  implementation project(':venice-thin-client')
-  implementation project(':venice-common')
-
-  implementation libraries.commonsIo
-  implementation libraries.spark
-
   implementation (libraries.d2) {
     exclude group: 'com.oracle', module: 'ojdbc14' // unused transitive dependencies, doesn't exist in repo
     exclude group: 'org.mockito', module: 'mockito-all' // this will introduce another different mockito-all version
@@ -34,6 +24,15 @@ dependencies {
     // Helix use zk 3.6.9, which introduce netty 3.10 and will fail our test.
     exclude module: 'zookeeper'
   }
+
+  implementation project(':venice-common')
+  implementation project(':venice-thin-client')
+
+  implementation libraries.commonsIo
+  implementation libraries.kafka
+  implementation libraries.spark
+  // It's necessary to pull in the most recent version of zkclient explicitly, otherwise Helix won't have it...
+  implementation libraries.zkclient
 
   testImplementation project(':venice-router')
   testImplementation libraries.avroUtilFastserde

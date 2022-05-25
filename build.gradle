@@ -31,10 +31,10 @@ def pegasusVersion = '29.31.0'
 
 ext.libraries = [
     avro: 'org.apache.avro:avro:' + avroVersion,
+    avroCompiler: 'org.apache.avro:avro-compiler:' + avroVersion,
     avroMapred: 'org.apache.avro:avro-mapred:' + avroVersion,
-    asyncHttpClient: 'org.apache.httpcomponents:httpasyncclient:4.1.2',
-    avroSchemasBuilder: 'com.linkedin.avroutil1:avro-builder-all:' + avroUtilVersion,
-    avroUtilCompatibilityHelper: 'com.linkedin.avroutil1:helper-all:' + avroUtilVersion,
+    avroUtilBuilder: 'com.linkedin.avroutil1:avro-builder-all:' + avroUtilVersion,
+    avroUtilCompatHelper: 'com.linkedin.avroutil1:helper-all:' + avroUtilVersion,
     avroUtilFastserde: 'com.linkedin.avroutil1:avro-fastserde:' + avroUtilVersion,
     avroUtilSpotbugsPlugin: 'com.linkedin.avroutil1:spotbugs-plugin:0.2.69',
     bouncyCastle: 'org.bouncycastle:bcprov-jdk15on:1.55',
@@ -54,6 +54,7 @@ ext.libraries = [
     flatBuffersJava: 'com.google.flatbuffers:flatbuffers-java:1.11.0',
     hadoopCommon: 'org.apache.hadoop:hadoop-common:2.3.0',
     helix: 'org.apache.helix:helix-core:1.0.3.2',
+    httpAsyncClient: 'org.apache.httpcomponents:httpasyncclient:4.1.2',
     httpClient5: 'org.apache.httpcomponents.client5:httpclient5:5.1.2',
     httpClient: 'org.apache.httpcomponents:httpclient:4.5.2',
     httpCore: 'org.apache.httpcomponents:httpcore:4.4.5',
@@ -82,7 +83,6 @@ ext.libraries = [
     routerImpl: 'com.linkedin.dds-storage-core:dds-storage-router-impl:' + ddsStorageCoreVersion,
     routerLnkd: 'com.linkedin.dds-storage-core:dds-storage-router-lnkd:' + ddsStorageCoreVersion,
     samzaApi: 'com.linkedin.samza-li:samza-api:311.1050.0.66', // Equivalent to Samza-1.5
-    slf4j: 'org.apache.logging.log4j:log4j-to-slf4j:' + log4j2Version,
     // TODO: move back to open source sparkjava once they fix Jetty SSL.
     // spark: 'com.sparkjava:spark-core:2.9.1',
     spark: 'com.linkedin.li-sparkjava:li-sparkjava-impl:0.0.2',
@@ -146,8 +146,8 @@ subprojects {
     spotbugs libraries.spotbugs
     spotbugsPlugins libraries.avroUtilSpotbugsPlugin
 
-    avroCompiler libraries.avroSchemasBuilder
-    avroCompiler 'org.apache.avro:avro-compiler:' + avroVersion
+    avroCompiler libraries.avroCompiler
+    avroCompiler libraries.avroUtilBuilder
     avroCompiler 'org.slf4j:slf4j-simple:1.7.32'
   }
 
@@ -184,7 +184,7 @@ subprojects {
           }
         }
         if (latestVersionDir) {
-          schemaDirs += [latestVersionDir]
+          schemaDirs << latestVersionDir
         }
       }
 
@@ -255,9 +255,9 @@ subprojects {
     // The ALPN version should match the JVM version
     if (JavaVersion.current() < JavaVersion.VERSION_11) {
       if (Os.isFamily(Os.FAMILY_MAC)) {
-        jvmArgs = ['-Xbootclasspath/p:/Library/Java/Boot/1_8_0_172/alpn-boot-8.1.12.v20180117.jar']
+        jvmArgs '-Xbootclasspath/p:/Library/Java/Boot/1_8_0_172/alpn-boot-8.1.12.v20180117.jar'
       } else if (Os.isFamily(Os.FAMILY_UNIX)) {
-        jvmArgs = ['-Xbootclasspath/p:/export/apps/jdkboot/1_8_0_172/alpn-boot-8.1.12.v20180117.jar']
+        jvmArgs '-Xbootclasspath/p:/export/apps/jdkboot/1_8_0_172/alpn-boot-8.1.12.v20180117.jar'
       } else {
         def osName = System.getProperty('os.name').toLowerCase(Locale.ENGLISH)
         throw new GradleException("$osName is not supported since ALPN only works for either Mac or Linux right now.")
@@ -268,12 +268,12 @@ subprojects {
     maxParallelForks = Integer.valueOf(System.getProperty('maxParallelForks', '4'))
     minHeapSize = System.getProperty('minHeapSize', '1g')
     maxHeapSize = System.getProperty('maxHeapSize', '4g')
+    System.getProperty('jvmArgs')?.eachMatch(/(?:[^\s'"]+|'[^']*'|"[^"]*")+/) { jvmArgs it }
 
     doFirst {
       println "forkEvery=$forkEvery"
       println "maxParallelForks=$maxParallelForks"
-      println "minHeapSize=$minHeapSize"
-      println "maxHeapSize=$maxHeapSize"
+      println "jvmArgs=$allJvmArgs"
     }
 
     useTestNG {

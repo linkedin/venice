@@ -6,32 +6,38 @@ dependencies {
   implementation (project(':venice-common')) {
     exclude group: 'com.linkedin.dds-storage-core'
   }
-  implementation project(':venice-thin-client') // Needed by the Post Bulk-load Analysis Job
-  implementation libraries.commonsIo
-  implementation libraries.kafkaClients
-  implementation libraries.kafka
+
   implementation (libraries.avro) {
     exclude group: 'org.mortbay.jetty' // jetty 6 conflicts with spark-java used in controller api
   }
+
   implementation (libraries.avroMapred) {
     exclude group: 'org.mortbay.jetty'
   }
+
   implementation (libraries.mapreduceClientCore) {
     exclude group: 'org.apache.avro'
     exclude group: 'javax.servlet'
   }
-  implementation libraries.log4j2api
-  implementation libraries.log4j2core
+
   implementation (libraries.hadoopCommon) {
     // Exclude transitive dependency
     exclude group: 'org.apache.avro'
     exclude group: 'javax.servlet'
   }
-  implementation libraries.joptSimple
-  implementation libraries.jdom
+
+  implementation project(':venice-thin-client') // Needed by the Post Bulk-load Analysis Job
+
+  implementation libraries.commonsIo
   implementation libraries.jacksonCore
-  implementation libraries.xerces
+  implementation libraries.jdom
+  implementation libraries.joptSimple
+  implementation libraries.kafka
+  implementation libraries.kafkaClients
+  implementation libraries.log4j2api
+  implementation libraries.log4j2core
   implementation libraries.xalan
+  implementation libraries.xerces
   implementation libraries.zstd
 
   runtimeOnly libraries.commonsConfiguration
