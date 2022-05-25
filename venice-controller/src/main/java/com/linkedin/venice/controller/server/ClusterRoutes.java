@@ -45,15 +45,13 @@ public class ClusterRoutes  extends AbstractRoute {
     };
   }
 
+  /**
+   * No ACL check; any user is allowed to check whether store migration is allowed for a specific cluster.
+   */
   public Route isStoreMigrationAllowed(Admin admin) {
     return new VeniceRouteHandler<StoreMigrationResponse>(StoreMigrationResponse.class) {
       @Override
       public void internalHandle(Request request, StoreMigrationResponse veniceResponse) {
-        // Only allow allowlist users to run this command
-        if (!isAllowListUser(request)) {
-          veniceResponse.setError("Only admin users are allowed to run " + request.url());
-          return;
-        }
         AdminSparkServer.validateParams(request, STORE_MIGRATION_ALLOWED.getParams(), admin);
         String clusterName = request.queryParams(CLUSTER);
         veniceResponse.setCluster(clusterName);

@@ -21,16 +21,13 @@ public class AdminCommandExecutionRoutes extends AbstractRoute {
     super(accessController);
   }
 
+  /**
+   * No ACL check; any user is allowed to check admin command execution status
+   */
   public Route getExecution(Admin admin) {
     return (request, response) -> {
       AdminCommandExecutionResponse responseObject = new AdminCommandExecutionResponse();
       response.type(HttpConstants.JSON);
-      // Only allow allowlist users to run this command
-      if (!isAllowListUser(request)) {
-        response.status(HttpStatus.SC_FORBIDDEN);
-        responseObject.setError("Only admin users are allowed to run " + request.url());
-        return AdminSparkServer.mapper.writeValueAsString(responseObject);
-      }
       // This request should only hit the parent controller. If a PROD controller get this kind of request, a empty
       // response would be return.
       AdminSparkServer.validateParams(request, EXECUTION.getParams(), admin);
@@ -54,16 +51,13 @@ public class AdminCommandExecutionRoutes extends AbstractRoute {
     };
   }
 
+  /**
+   * No ACL check; any user is allowed to check last succeeded execution Id.
+   */
   public Route getLastSucceedExecutionId(Admin admin) {
     return (request, response) -> {
       LastSucceedExecutionIdResponse responseObject = new LastSucceedExecutionIdResponse();
       response.type(HttpConstants.JSON);
-      // Only allow allowlist users to run this command
-      if (!isAllowListUser(request)) {
-        response.status(HttpStatus.SC_FORBIDDEN);
-        responseObject.setError("Only admin users are allowed to run " + request.url());
-        return AdminSparkServer.mapper.writeValueAsString(responseObject);
-      }
       AdminSparkServer.validateParams(request, LAST_SUCCEED_EXECUTION_ID.getParams(), admin);
       String cluster = request.queryParams(CLUSTER);
       responseObject.setCluster(cluster);

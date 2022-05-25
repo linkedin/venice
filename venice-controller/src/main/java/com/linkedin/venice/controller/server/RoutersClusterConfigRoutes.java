@@ -77,15 +77,13 @@ public class RoutersClusterConfigRoutes extends AbstractRoute {
     };
   }
 
+  /**
+   * No ACL check; any user is allowed to check router cluster configs.
+   */
   public Route getRoutersClusterConfig(Admin admin) {
     return new VeniceRouteHandler<RoutersClusterConfigResponse>(RoutersClusterConfigResponse.class) {
       @Override
       public void internalHandle(Request request, RoutersClusterConfigResponse veniceResponse) {
-        // Only allow allowlist users to run this command
-        if (!isAllowListUser(request)) {
-          veniceResponse.setError("Only admin users are allowed to run " + request.url());
-          return;
-        }
         AdminSparkServer.validateParams(request, GET_ROUTERS_CLUSTER_CONFIG.getParams(), admin);
         String clusterName = request.queryParams(CLUSTER);
         veniceResponse.setCluster(clusterName);
