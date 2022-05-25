@@ -1,16 +1,11 @@
 dependencies {
+  api project(':venice-schema-common')
+
   implementation (libraries.avro) {
     exclude group: 'org.jboss.netty' // older version of netty3 causes transitive conflicts with the router
     exclude group: 'org.mortbay.jetty' // jetty 6 conflicts with spark-java used in controller api
     exclude group: 'org.slf4j'        // Avro pulls in slf4j 1.5 which is API incompatible with 1.6
   }
-  implementation libraries.avroUtilCompatibilityHelper
-  implementation libraries.asyncHttpClient
-  implementation libraries.bouncyCastle
-  implementation libraries.classgraph
-  implementation libraries.commonsCodec
-  implementation libraries.commonsIo // IntelliJ gets confused when running tests unless we explicitly depend on a recent version of commons-io
-  implementation libraries.commonsLang
 
   implementation (libraries.helix) { // TODO: Get rid of Helix dependency in venice-common
     // Helix pulls in an ancient version of the zkclient, which lacks some APIs and clashes with Kafka's dependency
@@ -18,12 +13,6 @@ dependencies {
     // Helix use zk 3.6.9, which introduce netty 3.10 and will fail our test.
     exclude module: 'zookeeper'
   }
-
-  implementation libraries.conscrypt
-  implementation libraries.jacksonMapper
-  implementation libraries.kafka // TODO: Get rid of Kafka dependency in venice-common (used by TopicCreator)
-  implementation libraries.kafkaClients // TODO: Get rid of Kafka dependency in venice-common
-  implementation libraries.oss
 
   implementation (libraries.routerLnkd) { // for SSL Initializer
     exclude group: 'com.oracle', module: 'ojdbc14' // unused transitive dependency, doesn't exist in repo
@@ -34,13 +23,24 @@ dependencies {
     exclude group: 'com.linkedin.container', module: 'container-eventbus-factory' // Keeping' it clean.
   }
 
+  implementation project(':venice-thin-client')
+
+  implementation libraries.avroUtilCompatHelper
+  implementation libraries.bouncyCastle
+  implementation libraries.classgraph
+  implementation libraries.commonsCodec
+  implementation libraries.commonsIo // IntelliJ gets confused when running tests unless we explicitly depend on a recent version of commons-io
+  implementation libraries.commonsLang
+  implementation libraries.conscrypt
+  implementation libraries.httpAsyncClient
+  implementation libraries.jacksonMapper
+  implementation libraries.kafka // TODO: Get rid of Kafka dependency in venice-common (used by TopicCreator)
+  implementation libraries.kafkaClients // TODO: Get rid of Kafka dependency in venice-common
+  implementation libraries.oss
   implementation libraries.tehuti
   // It's necessary to pull in the most recent version of zkclient explicitly, otherwise Helix won't have it...
   implementation libraries.zkclient
   implementation libraries.zookeeper // TODO: Get rid of ZK dependency in venice-common
-
-  api project(':venice-schema-common')
-  implementation project(':venice-thin-client')
 
   // Test dependencies are allowed to be bulkier.
   testImplementation libraries.kafkaClientsTest // TODO: Get rid of Kafka dependency in venice-common (used by TopicCreator)

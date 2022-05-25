@@ -8,10 +8,6 @@ dependencies {
     exclude group: 'org.slf4j'        // Avro pulls in slf4j 1.5 which is API incompatible with 1.6
   }
 
-  api libraries.avroUtilCompatibilityHelper
-  api libraries.commonsIo
-  api libraries.commonsLang
-
   api (libraries.d2Client) {
     exclude group: 'com.oracle', module: 'ojdbc14' /* unused transitive dependencies, doesn't exist in repo */
     exclude group: 'org.mockito', module: 'mockito-all'
@@ -22,19 +18,20 @@ dependencies {
     exclude group: 'kafka'
   }
 
-  api libraries.jacksonMapper
+  api libraries.avroUtilCompatHelper
+  api libraries.commonsIo
+  api libraries.commonsLang
   api libraries.httpClient //d2Client brings in an old version of httpClient
+  api libraries.httpClient5
   api libraries.httpCore  //d2Client brings in an old version of httpCore
+  api libraries.jacksonMapper
   api libraries.tehuti
   api libraries.xerces // d2Client brings in an old version of xerces
-  api libraries.httpClient5
 
   implementation libraries.avroUtilFastserde
-
-  implementation libraries.zstd
-
   implementation libraries.classgraph
   implementation libraries.failsafe
+  implementation libraries.zstd
 
   testImplementation project(':venice-test-common')
   testImplementation project(':venice-thin-client')

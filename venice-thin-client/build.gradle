@@ -4,13 +4,15 @@ dependencies {
     exclude group: 'org.mortbay.jetty' // jetty 6 conflicts with spark-java used in controller api
     exclude group: 'org.slf4j'        // Avro pulls in slf4j 1.5 which is API incompatible with 1.6
   }
-  implementation libraries.asyncHttpClient
-  implementation libraries.zookeeper
+
   implementation (libraries.commonsIo) {
     exclude group: 'org.apapche.zookeeper'
   }
+
+  implementation libraries.httpAsyncClient
   implementation libraries.jacksonCore
   implementation libraries.jacksonMapper
+  implementation libraries.zookeeper
 
   // Schema related dependencies
   implementation project(':venice-schema-common')

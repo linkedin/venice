@@ -21,11 +21,11 @@ dependencies {
   testImplementation project(':venice-thin-client')
   testImplementation project(':venice-common')
 
-  testImplementation libraries.testng
-  testImplementation libraries.avroUtilCompatibilityHelper
+  testImplementation libraries.avroUtilCompatHelper
   testImplementation libraries.classgraph
-  testImplementation libraries.kafkaClients
   testImplementation libraries.commonsIo
+  testImplementation libraries.kafkaClients
+  testImplementation libraries.testng
 
   // ClassPathSupplierForVeniceCluster requires this one to be present in the Gradle cache.
   testImplementation (AVRO_1_9) {

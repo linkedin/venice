@@ -1,8 +1,4 @@
 dependencies {
-  implementation project(':venice-schema-common')
-  implementation project(':venice-thin-client')
-  implementation project(':da-vinci-client')
-
   // For helix-based metadata impl, and this will be removed before onboarding any customers.
   implementation project(':venice-common')
 
@@ -12,13 +8,16 @@ dependencies {
     // Helix use zk 3.6.9, which introduce netty 3.10 and will fail our test.
     exclude module: 'zookeeper'
   }
-  implementation project(':venice-router')
-  implementation libraries.routerApi
 
-  implementation libraries.r2Client
-  implementation libraries.r2
+  implementation project(':da-vinci-client')
+  implementation project(':venice-router')
+  implementation project(':venice-schema-common')
+  implementation project(':venice-thin-client')
 
   implementation libraries.ddsStorageCommonBase
+  implementation libraries.r2
+  implementation libraries.r2Client
+  implementation libraries.routerApi
 
   testImplementation project(':venice-common')
   testImplementation project(':venice-test-common')

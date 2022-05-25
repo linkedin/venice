@@ -5,17 +5,6 @@ dependencies {
     exclude group: 'org.conscrypt'
     exclude group: 'org.scala-lang'
   }
-  implementation project(':venice-consumer')
-  implementation project(':venice-thin-client')
-
-  implementation libraries.avroUtilFastserde
-  implementation libraries.caffeine
-  implementation libraries.fastUtil
-  implementation libraries.helix
-  implementation libraries.kafka
-  implementation libraries.kafkaClients
-  implementation libraries.rocksdbjni
-  implementation libraries.zkclient // It's necessary to pull in the most recent version of zkclient explicitly, otherwise Helix won't have it...
 
   implementation (libraries.routerLnkd) { // for SSL Initializer
     exclude group: 'com.oracle', module: 'ojdbc14' // unused transitive dependency, doesn't exist in repo
@@ -27,6 +16,18 @@ dependencies {
     exclude group: 'javax.servlet'
     exclude group: 'org.mockito', module: 'mockito-all'
   }
+
+  implementation project(':venice-consumer')
+  implementation project(':venice-thin-client')
+
+  implementation libraries.avroUtilFastserde
+  implementation libraries.caffeine
+  implementation libraries.fastUtil
+  implementation libraries.helix
+  implementation libraries.kafka
+  implementation libraries.kafkaClients
+  implementation libraries.rocksdbjni
+  implementation libraries.zkclient // It's necessary to pull in the most recent version of zkclient explicitly, otherwise Helix won't have it...
 
   testImplementation project(':venice-test-common')
   testImplementation libraries.kafkaClientsTest

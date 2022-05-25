@@ -4,15 +4,16 @@ configurations.implementation {
 }
 
 dependencies {
-  implementation libraries.samzaApi
-  implementation libraries.kafka
-
   // Schema related dependencies
   implementation (project(':venice-common')) {
     //TODO, pull venice writer out of venice common so this is a smaller dependency
     exclude module: 'kafka_2.10'
     exclude group: 'org.scala-lang'
   }
+
   implementation project(':venice-schema-common')
   implementation project(':venice-thin-client')
+
+  implementation libraries.kafka
+  implementation libraries.samzaApi
 }

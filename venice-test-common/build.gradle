@@ -31,6 +31,12 @@ sourceSets {
 }
 
 dependencies {
+  implementation (libraries.d2) {
+    exclude group: 'com.oracle', module: 'ojdbc14' // unused transitive dependencies, doesn't exist in repo
+    // this will introduce another different mockito-all version
+    exclude group: 'org.mockito', module: 'mockito-all'
+  }
+
   implementation project(':da-vinci-client')
   implementation project(':hadoop-to-venice-bridge')
   implementation project(':venice-common')
@@ -41,13 +47,7 @@ dependencies {
   implementation project(':venice-server')
   implementation project(':venice-thin-client')
 
-  implementation (libraries.d2) {
-    exclude group: 'com.oracle', module: 'ojdbc14' // unused transitive dependencies, doesn't exist in repo
-    // this will introduce another different mockito-all version
-    exclude group: 'org.mockito', module: 'mockito-all'
-  }
-
-  implementation libraries.avroUtilCompatibilityHelper
+  implementation libraries.avroUtilCompatHelper
   implementation libraries.avroUtilFastserde
   implementation libraries.conscrypt
   implementation libraries.hadoopCommon

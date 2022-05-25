@@ -17,20 +17,19 @@ configurations.all {
 }
 
 dependencies {
-  implementation libraries.routerApi
-  implementation libraries.routerImpl
-  implementation libraries.ddsNettyBase
+  implementation project(':venice-common')
+
   implementation (libraries.netty4Lnkd) {
     exclude group: 'javax.servlet'
     exclude group: 'org.mockito', module: 'mockito-all'
   }
+
   implementation (libraries.routerLnkd) { // for SSL Initializer
     exclude group: 'com.oracle', module: 'ojdbc14' // unused transitive dependency, doesn't exist in repo
     exclude group: 'xerces', module: 'xerces' // resolve conflicting transitive dependency
     exclude group: 'com.fasterxml.jackson.core', module: 'jackson-core'// resolve conflicting transitive dependency
   }
-  implementation libraries.asyncHttpClient
-  implementation project(':venice-common')
+
   implementation (libraries.d2) {
     exclude group: 'com.oracle', module: 'ojdbc14' // unused transitive dependencies, doesn't exist in repo
     exclude group: 'org.mockito', module: 'mockito-all' // this will introduce another different mockito-all version
@@ -42,6 +41,11 @@ dependencies {
     // Helix use zk 3.6.9, which introduce netty 3.10 and will fail our test.
     exclude module: 'zookeeper'
   }
+
+  implementation libraries.ddsNettyBase
+  implementation libraries.httpAsyncClient
+  implementation libraries.routerApi
+  implementation libraries.routerImpl
 
   testImplementation project(':venice-thin-client')
   testImplementation libraries.kafkaClientsTest // TODO: Get rid of Kafka dependency in venice-common (used by TopicCreator)
