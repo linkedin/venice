@@ -1,5 +1,6 @@
 package com.linkedin.venice.utils;
 
+import com.github.luben.zstd.Zstd;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.kafka.consumer.AggKafkaConsumerService;
 import com.linkedin.davinci.kafka.consumer.KafkaClusterBasedRecordThrottler;
@@ -13,6 +14,9 @@ import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.common.VeniceSystemStoreType;
+import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.compression.CompressorFactory;
+import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.controller.VeniceControllerConfig;
 import com.linkedin.venice.controller.VeniceControllerMultiClusterConfig;
 import com.linkedin.venice.controllerapi.ControllerClient;
@@ -27,6 +31,8 @@ import com.linkedin.venice.helix.VeniceOfflinePushMonitorAccessor;
 import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.TopicManagerRepository;
 import com.linkedin.venice.kafka.admin.KafkaAdminClient;
@@ -39,6 +45,7 @@ import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.PartitionerConfigImpl;
 import com.linkedin.venice.meta.PersistenceType;
+import com.linkedin.venice.meta.QueryAction;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.ReadStrategy;
@@ -64,6 +71,8 @@ import com.linkedin.venice.writer.VeniceWriterFactory;
 import io.tehuti.metrics.MetricsRepository;
 
 import java.nio.ByteBuffer;
+import java.io.IOException;
+import java.io.InputStream;
 import java.security.Permission;
 import java.util.ArrayDeque;
 import java.util.Arrays;
@@ -76,17 +85,23 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.TreeMap;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
 import java.util.stream.Stream;
 
+import org.apache.commons.io.IOUtils;
 import org.apache.helix.HelixManagerFactory;
 import org.apache.helix.InstanceType;
 import org.apache.helix.participant.statemachine.StateModel;
 import org.apache.helix.participant.statemachine.StateModelFactory;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
+import org.apache.http.HttpResponse;
+import org.apache.http.client.methods.HttpGet;
+import org.apache.http.impl.nio.client.CloseableHttpAsyncClient;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -542,6 +557,33 @@ public class TestUtils {
       Assert.assertEquals(storeResponse.getStore().isNativeReplicationEnabled(), enabledNR, "The native replication config does not match.");
       Assert.assertEquals(storeResponse.getStore().isActiveActiveReplicationEnabled(), enabledAA, "The active active replication config does not match.");
     });
+  }
+
+  public static VeniceCompressor getVeniceCompressor(CompressionStrategy compressionStrategy, String storeName, int storeVersion,
+      VeniceClusterWrapper venice, CloseableHttpAsyncClient storageNodeClient)
+      throws IOException, ExecutionException, InterruptedException {
+    CompressorFactory compressorFactory = new CompressorFactory();
+    if (compressionStrategy.equals(CompressionStrategy.ZSTD_WITH_DICT)) {
+      // query the dictionary
+      VeniceServerWrapper serverWrapper = venice.getVeniceServers().get(0);
+      StringBuilder sb = new StringBuilder().append("http://")
+          .append(serverWrapper.getAddress())
+          .append("/")
+          .append(QueryAction.DICTIONARY.toString().toLowerCase())
+          .append("/")
+          .append(storeName)
+          .append("/")
+          .append(storeVersion);
+      HttpGet getReq = new HttpGet(sb.toString());
+      try (InputStream bodyStream = storageNodeClient.execute(getReq, null).get().getEntity().getContent()) {
+        byte[] dictionary = IOUtils.toByteArray(bodyStream);
+        return compressorFactory.createCompressorWithDictionary(compressionStrategy, dictionary, Zstd.maxCompressionLevel());
+      } catch (InterruptedException|ExecutionException e) {
+        throw e;
+      }
+    } else {
+      return compressorFactory.getCompressor(compressionStrategy);
+    }
   }
 
   public static StoreIngestionTaskFactory.Builder getStoreIngestionTaskBuilder(String storeName, int versionNumber) {

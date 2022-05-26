@@ -71,16 +71,21 @@ public abstract class AbstractAvroChunkingAdapter<T> implements ChunkingAdapter<
       int bytesLength,
       boolean fastAvroEnabled,
       ReadOnlySchemaRepository schemaRepo,
-      String storeName) {
-    return byteArrayDecoderValueOnly.decode(
-        null,
-        valueOnlyBytes,
-        offset,
-        bytesLength,
-        null,
-        null,
-        getDeserializer(storeName, writerSchemaId, readerSchemaId, schemaRepo, fastAvroEnabled),
-        null);
+      String storeName,
+      VeniceCompressor veniceCompressor) {
+    try {
+      return byteArrayDecompressingDecoderValueOnly.decode(
+          null,
+          valueOnlyBytes,
+          offset,
+          bytesLength,
+          null,
+          veniceCompressor,
+          getDeserializer(storeName, writerSchemaId, readerSchemaId, schemaRepo, fastAvroEnabled),
+          null);
+    } catch (IOException e) {
+      throw new RuntimeException(e);
+    }
   }
 
   @Override
@@ -234,18 +239,16 @@ public abstract class AbstractAvroChunkingAdapter<T> implements ChunkingAdapter<
     }
   }
 
-  /**
-   * This api does not expect the value to be compressed.
-   */
-  private final DecoderWrapperValueOnly<byte[], T> byteArrayDecoderValueOnly =
-      (reusedDecoder, bytes, offset, inputBytesLength, reusedValue, compressionStrategy, deserializer, readResponse) ->
+  private final DecompressingDecoderWrapperValueOnly<byte[], T> byteArrayDecompressingDecoderValueOnly =
+      (reusedDecoder, bytes, offset, inputBytesLength, reusedValue, veniceCompressor, deserializer, readResponse) ->
           deserializer.deserialize(
               reusedValue,
-              ByteBuffer.wrap(
+              veniceCompressor.decompress(ByteBuffer.wrap(
                   bytes,
                   offset,
-                  inputBytesLength),
+                  inputBytesLength)),
               reusedDecoder);
+
 
   private final DecoderWrapper<byte[], T> byteArrayDecoder =
       (reusedDecoder, bytes, inputBytesLength, reusedValue, compressionStrategy, deserializer, readResponse, compressorFactory, versionTopic) ->
@@ -331,6 +334,18 @@ public abstract class AbstractAvroChunkingAdapter<T> implements ChunkingAdapter<
         CompressionStrategy compressionStrategy,
         RecordDeserializer<OUTPUT> deserializer,
         ReadResponse response);
+  }
+
+  private interface DecompressingDecoderWrapperValueOnly<INPUT, OUTPUT> {
+    OUTPUT decode(
+        BinaryDecoder reusedDecoder,
+        INPUT input,
+        int offset,
+        int inputBytesLength,
+        OUTPUT reusedValue,
+        VeniceCompressor compressor,
+        RecordDeserializer<OUTPUT> deserializer,
+        ReadResponse response) throws IOException;
   }
 
   private class InstrumentedDecoderWrapper<INPUT, OUTPUT> implements DecoderWrapper<INPUT, OUTPUT> {
