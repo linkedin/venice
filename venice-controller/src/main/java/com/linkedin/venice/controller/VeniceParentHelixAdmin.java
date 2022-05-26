@@ -2256,8 +2256,9 @@ public class VeniceParentHelixAdmin implements Admin {
 
       sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
 
-      // Be defensive and check that RMD schema has been added indeed.
-      final Schema expectedRmdSchema = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(replicationMetadataSchemaStr);
+      // Be defensive and check that RMD schema has been added indeed. Do a loose validation parsing as stores can have
+      // older schemas considered wrong with respect to the current avro version
+      final Schema expectedRmdSchema = AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation(replicationMetadataSchemaStr);
       validateRmdSchemaIsAddedAsExpected(clusterName, storeName, valueSchemaId, replicationMetadataVersionId, expectedRmdSchema);
       return new ReplicationMetadataSchemaEntry(valueSchemaId, replicationMetadataVersionId, replicationMetadataSchemaStr);
 
