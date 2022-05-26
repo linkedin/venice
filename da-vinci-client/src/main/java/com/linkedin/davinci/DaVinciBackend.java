@@ -326,8 +326,8 @@ public class DaVinciBackend implements Closeable {
 
     ingestionReportExecutor.shutdown();
     try {
-      if (!executor.awaitTermination(1, TimeUnit.SECONDS)) {
-        executor.shutdownNow();
+      if (!ingestionReportExecutor.awaitTermination(60, TimeUnit.SECONDS)) {
+        ingestionReportExecutor.shutdownNow();
       }
     } catch (InterruptedException e) {
       currentThread().interrupt();
