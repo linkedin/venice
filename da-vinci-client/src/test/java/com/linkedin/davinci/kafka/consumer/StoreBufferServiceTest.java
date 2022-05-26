@@ -24,14 +24,16 @@ public class StoreBufferServiceTest {
     int partition1 = 1;
     int partition2 = 2;
     String kafkaUrl = "blah";
-    ConsumerRecord<KafkaKey, KafkaMessageEnvelope> cr1 = new ConsumerRecord<>(topic, partition1, -1, null, null);
-    ConsumerRecord<KafkaKey, KafkaMessageEnvelope> cr2 = new ConsumerRecord<>(topic, partition2, -1, null, null);
-    bufferService.putConsumerRecord(cr1, mockTask, null, partition1, kafkaUrl);
-    bufferService.putConsumerRecord(cr2, mockTask, null, partition2, kafkaUrl);
+    ConsumerRecord<KafkaKey, KafkaMessageEnvelope>
+        cr1 = new ConsumerRecord<>(topic, partition1, -1, null, null);
+    ConsumerRecord<KafkaKey, KafkaMessageEnvelope>
+        cr2 = new ConsumerRecord<>(topic, partition2, -1, null, null);
+    bufferService.putConsumerRecord(cr1, mockTask, null, partition1, kafkaUrl, 0L);
+    bufferService.putConsumerRecord(cr2, mockTask, null, partition2, kafkaUrl, 0L);
 
     bufferService.start();
-    verify(mockTask, timeout(TIMEOUT_IN_MS)).processConsumerRecord(cr1, null, kafkaUrl);
-    verify(mockTask, timeout(TIMEOUT_IN_MS)).processConsumerRecord(cr2, null, kafkaUrl);
+    verify(mockTask, timeout(TIMEOUT_IN_MS)).processConsumerRecord(cr1, null, kafkaUrl, 0L);
+    verify(mockTask, timeout(TIMEOUT_IN_MS)).processConsumerRecord(cr2, null, kafkaUrl, 0L);
 
     bufferService.stop();
     Assert.assertThrows(
@@ -50,14 +52,16 @@ public class StoreBufferServiceTest {
     ConsumerRecord<KafkaKey, KafkaMessageEnvelope> cr1 = new ConsumerRecord<>(topic, partition1, -1, null, null);
     ConsumerRecord<KafkaKey, KafkaMessageEnvelope> cr2 = new ConsumerRecord<>(topic, partition2, -1, null, null);
     Exception e = new VeniceException("test_exception");
-    doThrow(e).when(mockTask).processConsumerRecord(cr1, null, kafkaUrl);
 
-    bufferService.putConsumerRecord(cr1, mockTask, null, partition1, kafkaUrl);
-    bufferService.putConsumerRecord(cr2, mockTask, null, partition2, kafkaUrl);
+    doThrow(e).when(mockTask)
+        .processConsumerRecord(cr1, null, kafkaUrl, 0L);
+
+    bufferService.putConsumerRecord(cr1, mockTask, null, partition1, kafkaUrl, 0L);
+    bufferService.putConsumerRecord(cr2, mockTask, null, partition2, kafkaUrl, 0L);
 
     bufferService.start();
-    verify(mockTask, timeout(TIMEOUT_IN_MS)).processConsumerRecord(cr1, null, kafkaUrl);
-    verify(mockTask, timeout(TIMEOUT_IN_MS)).processConsumerRecord(cr2, null, kafkaUrl);
+    verify(mockTask, timeout(TIMEOUT_IN_MS)).processConsumerRecord(cr1, null, kafkaUrl, 0L);
+    verify(mockTask, timeout(TIMEOUT_IN_MS)).processConsumerRecord(cr2, null, kafkaUrl, 0L);
     verify(mockTask).offerDrainerException(e, partition1);
     bufferService.stop();
   }
@@ -71,7 +75,7 @@ public class StoreBufferServiceTest {
     String kafkaUrl = "blah";
     ConsumerRecord<KafkaKey, KafkaMessageEnvelope> cr = new ConsumerRecord<>(topic, partition, -1, null, null);
     bufferService.start();
-    bufferService.putConsumerRecord(cr, mockTask, null, partition, kafkaUrl);
+    bufferService.putConsumerRecord(cr, mockTask, null, partition, kafkaUrl, 0L);
     int nonExistingPartition = 2;
     bufferService.internalDrainBufferedRecordsFromTopicPartition(topic, nonExistingPartition, 3, 50);
     bufferService.stop();
@@ -86,7 +90,7 @@ public class StoreBufferServiceTest {
     String kafkaUrl = "blah";
     ConsumerRecord<KafkaKey, KafkaMessageEnvelope> cr = new ConsumerRecord<>(topic, partition, 100, null, null);
     bufferService.start();
-    bufferService.putConsumerRecord(cr, mockTask, null, partition, kafkaUrl);
+    bufferService.putConsumerRecord(cr, mockTask, null, partition, kafkaUrl, 0L);
     bufferService.internalDrainBufferedRecordsFromTopicPartition(topic, partition, 3, 50);
     bufferService.stop();
   }
@@ -161,14 +165,15 @@ public class StoreBufferServiceTest {
     ConsumerRecord<KafkaKey, KafkaMessageEnvelope> cr1 = new ConsumerRecord<>(topic, partition1, -1, null, null);
     ConsumerRecord<KafkaKey, KafkaMessageEnvelope> cr2 = new ConsumerRecord<>(topic, partition2, -1, null, null);
     Exception e = new VeniceChecksumException("test_exception");
-    doThrow(e).when(mockTask).processConsumerRecord(cr1, null, kafkaUrl);
+    doThrow(e).when(mockTask)
+        .processConsumerRecord(cr1, null, kafkaUrl, 0L);
 
-    bufferService.putConsumerRecord(cr1, mockTask, null, partition1, kafkaUrl);
-    bufferService.putConsumerRecord(cr2, mockTask, null, partition2, kafkaUrl);
+    bufferService.putConsumerRecord(cr1, mockTask, null, partition1, kafkaUrl, 0L);
+    bufferService.putConsumerRecord(cr2, mockTask, null, partition2, kafkaUrl, 0L);
 
     bufferService.start();
-    verify(mockTask, timeout(TIMEOUT_IN_MS)).processConsumerRecord(cr1, null, kafkaUrl);
-    verify(mockTask, timeout(TIMEOUT_IN_MS)).processConsumerRecord(cr2, null, kafkaUrl);
+    verify(mockTask, timeout(TIMEOUT_IN_MS)).processConsumerRecord(cr1, null, kafkaUrl, 0L);
+    verify(mockTask, timeout(TIMEOUT_IN_MS)).processConsumerRecord(cr2, null, kafkaUrl, 0L);
     bufferService.getMaxMemoryUsagePerDrainer();
     for (int i = 0; i < 1; ++i) {
       // Verify map the cleared out

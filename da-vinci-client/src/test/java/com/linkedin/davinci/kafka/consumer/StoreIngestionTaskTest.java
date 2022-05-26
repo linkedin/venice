@@ -1,13 +1,5 @@
 package com.linkedin.davinci.kafka.consumer;
 
-import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.*;
-import static com.linkedin.venice.ConfigKeys.*;
-import static com.linkedin.venice.schema.rmd.RmdConstants.*;
-import static com.linkedin.venice.utils.TestUtils.*;
-import static com.linkedin.venice.utils.Time.*;
-import static org.mockito.Mockito.*;
-import static org.testng.Assert.*;
-
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
@@ -156,6 +148,14 @@ import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
+
+import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.*;
+import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.schema.rmd.RmdConstants.*;
+import static com.linkedin.venice.utils.TestUtils.*;
+import static com.linkedin.venice.utils.Time.*;
+import static org.mockito.Mockito.*;
+import static org.testng.Assert.*;
 
 
 /**
@@ -953,7 +953,11 @@ public class StoreIngestionTaskTest {
       OffsetRecord expectedOffsetRecordForDeleteMessage = getOffsetRecord(deleteMetadata.offset());
       verify(mockStorageMetadataService, timeout(TEST_TIMEOUT_MS))
           .put(topic, PARTITION_FOO, expectedOffsetRecordForDeleteMessage);
+
+      verify(mockVersionedStorageIngestionStats, timeout(TEST_TIMEOUT_MS).atLeast(3))
+          .recordConsumedRecordEndToEndProcessingLatency(any(), eq(1), anyDouble());
     }, isActiveActiveReplicationEnabled);
+
   }
 
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)

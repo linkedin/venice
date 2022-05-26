@@ -1,9 +1,5 @@
 package com.linkedin.davinci.kafka.consumer;
 
-import static java.util.Collections.reverseOrder;
-import static java.util.Comparator.*;
-import static java.util.stream.Collectors.*;
-
 import com.linkedin.venice.common.Measurable;
 import com.linkedin.venice.exceptions.VeniceChecksumException;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -26,6 +22,10 @@ import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+
+import static java.util.Collections.reverseOrder;
+import static java.util.Comparator.*;
+import static java.util.stream.Collectors.*;
 
 
 /**
@@ -59,18 +59,21 @@ public class StoreBufferService extends AbstractStoreBufferService {
     private final LeaderProducedRecordContext leaderProducedRecordContext;
     private final Optional<CompletableFuture<Void>> queuedRecordPersistedFuture;
     private final String kafkaUrl;
+    private final long beforeProcessingRecordTimestamp;
 
     public QueueNode(
         ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
         StoreIngestionTask ingestionTask,
         LeaderProducedRecordContext leaderProducedRecordContext,
         Optional<CompletableFuture<Void>> queuedRecordPersistedFuture,
-        String kafkaUrl) {
+        String kafkaUrl,
+        long beforeProcessingRecordTimestamp) {
       this.consumerRecord = consumerRecord;
       this.ingestionTask = ingestionTask;
       this.leaderProducedRecordContext = leaderProducedRecordContext;
       this.queuedRecordPersistedFuture = queuedRecordPersistedFuture;
       this.kafkaUrl = kafkaUrl;
+      this.beforeProcessingRecordTimestamp = beforeProcessingRecordTimestamp;
     }
 
     public ConsumerRecord<KafkaKey, KafkaMessageEnvelope> getConsumerRecord() {
@@ -93,6 +96,9 @@ public class StoreBufferService extends AbstractStoreBufferService {
       return this.kafkaUrl;
     }
 
+    public long getBeforeProcessingRecordTimestamp() {
+      return this.beforeProcessingRecordTimestamp;
+    }
     /**
      * This function is being used by {@link BlockingQueue#contains(Object)}.
      * The goal is to find out whether the buffered queue still has any records belonging to the specified topic+partition.
@@ -129,7 +135,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
   };
 
   /**
-   * Worker thread, which will invoke {@link StoreIngestionTask#processConsumerRecord(ConsumerRecord, LeaderProducedRecordContext, String)} to process
+   * Worker thread, which will invoke {@link StoreIngestionTask#processConsumerRecord(ConsumerRecord, LeaderProducedRecordContext, String, long)} to process
    * each {@link ConsumerRecord} buffered in {@link BlockingQueue}.
    */
   private static class StoreBufferDrainer implements Runnable {
@@ -156,6 +162,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
       LeaderProducedRecordContext leaderProducedRecordContext = null;
       StoreIngestionTask ingestionTask = null;
       Optional<CompletableFuture<Void>> recordPersistedFuture = null;
+      long beforeProcessingRecordTimestamp = -1L;
       while (isRunning.get()) {
         try {
           node = blockingQueue.take();
@@ -164,10 +171,12 @@ public class StoreBufferService extends AbstractStoreBufferService {
           leaderProducedRecordContext = node.getLeaderProducedRecordContext();
           ingestionTask = node.getIngestionTask();
           recordPersistedFuture = node.getQueuedRecordPersistedFuture();
+          beforeProcessingRecordTimestamp = node.getBeforeProcessingRecordTimestamp();
+
 
           long startTime = System.currentTimeMillis();
 
-          ingestionTask.processConsumerRecord(consumerRecord, leaderProducedRecordContext, node.getKafkaUrl());
+          ingestionTask.processConsumerRecord(consumerRecord, leaderProducedRecordContext, node.getKafkaUrl(), beforeProcessingRecordTimestamp);
 
           // complete the leaderProducedRecordContext future as processing for this leaderProducedRecordContext is done
           // here.
@@ -269,7 +278,8 @@ public class StoreBufferService extends AbstractStoreBufferService {
       StoreIngestionTask ingestionTask,
       LeaderProducedRecordContext leaderProducedRecordContext,
       int subPartition,
-      String kafkaUrl) throws InterruptedException {
+      String kafkaUrl,
+      long beforeProcessingRecordTimestamp) throws InterruptedException {
     int drainerIndex = getDrainerIndexForConsumerRecord(consumerRecord, subPartition);
     Optional<CompletableFuture<Void>> recordFuture = Optional.empty();
     if (leaderProducedRecordContext == null) {
@@ -282,7 +292,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
     }
 
     blockingQueueArr.get(drainerIndex)
-        .put(new QueueNode(consumerRecord, ingestionTask, leaderProducedRecordContext, recordFuture, kafkaUrl));
+        .put(new QueueNode(consumerRecord, ingestionTask, leaderProducedRecordContext, recordFuture, kafkaUrl, beforeProcessingRecordTimestamp));
     // Setup the last queued record's future
     Optional<PartitionConsumptionState> partitionConsumptionState =
         ingestionTask.getPartitionConsumptionState(consumerRecord.partition());
@@ -318,7 +328,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
           "Drainer thread " + workerIndex + " has stopped running, cannot drain the topic " + topic);
     }
 
-    QueueNode fakeNode = new QueueNode(fakeRecord, null, null, Optional.empty(), "dummyKafkaUrl");
+    QueueNode fakeNode = new QueueNode(fakeRecord, null, null, Optional.empty(), "dummyKafkaUrl", 0);
 
     int cur = 0;
     while (cur++ < retryNum) {

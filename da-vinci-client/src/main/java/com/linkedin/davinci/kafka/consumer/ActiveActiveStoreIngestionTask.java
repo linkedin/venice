@@ -118,12 +118,13 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
       int subPartition,
       String kafkaUrl,
-      int kafkaClusterId) {
+      int kafkaClusterId,
+      long beforeProcessingRecordTimestamp) {
     if (!Version.isRealTimeTopic(consumerRecord.topic())) {
       /**
        * We don't need to lock the partition here because during VT consumption there is only one consumption source.
        */
-      return super.delegateConsumerRecord(consumerRecord, subPartition, kafkaUrl, kafkaClusterId);
+      return super.delegateConsumerRecord(consumerRecord, subPartition, kafkaUrl, kafkaClusterId, beforeProcessingRecordTimestamp);
     } else {
       /**
        * The below flow must be executed in a critical session for the same key:
@@ -141,7 +142,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       ReentrantLock keyLevelLock = this.keyLevelLocksManager.get().acquireLockByKey(byteArrayKey);
       keyLevelLock.lock();
       try {
-        return super.delegateConsumerRecord(consumerRecord, subPartition, kafkaUrl, kafkaClusterId);
+        return super.delegateConsumerRecord(consumerRecord, subPartition, kafkaUrl, kafkaClusterId, beforeProcessingRecordTimestamp);
       } finally {
         keyLevelLock.unlock();
         this.keyLevelLocksManager.get().releaseLock(byteArrayKey);
@@ -256,7 +257,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       PartitionConsumptionState partitionConsumptionState,
       int subPartition,
       String kafkaUrl,
-      int kafkaClusterId) {
+      int kafkaClusterId,
+      long beforeProcessingRecordTimestamp) {
     /**
      * With {@link com.linkedin.davinci.replication.BatchConflictResolutionPolicy.BATCH_WRITE_LOSES} there is no need
      * to perform DCR before EOP and L/F DIV passthrough mode should be used. If the version is going through data
@@ -270,7 +272,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           partitionConsumptionState,
           subPartition,
           kafkaUrl,
-          kafkaClusterId);
+          kafkaClusterId,
+          beforeProcessingRecordTimestamp);
       return;
     }
     KafkaKey kafkaKey = consumerRecord.key();
@@ -370,6 +373,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     if (mergeConflictResult.isUpdateIgnored()) {
       storeIngestionStats.recordUpdateIgnoredDCR();
       aggVersionedStorageIngestionStats.recordUpdateIgnoredDCR(storeName, versionNumber);
+      aggVersionedStorageIngestionStats.recordConsumedRecordEndToEndProcessingLatency(storeName, versionNumber,
+          LatencyUtils.getLatencyInMS(beforeProcessingRecordTimestamp));
     } else {
       validatePostOperationResultsAndRecord(mergeConflictResult, offsetSumPreOperation, recordTimestampsPreOperation);
       // This function may modify the original record in KME and it is unsafe to use the payload from KME directly after
@@ -382,7 +387,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           consumerRecord,
           subPartition,
           kafkaUrl,
-          kafkaClusterId);
+          kafkaClusterId,
+          beforeProcessingRecordTimestamp);
     }
   }
 
@@ -502,7 +508,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
       int subPartition,
       String kafkaUrl,
-      int kafkaClusterId) {
+      int kafkaClusterId,
+      long beforeProcessingRecordTimestamp) {
 
     final ByteBuffer updatedValueBytes = maybeCompressData(
         consumerRecord.partition(),
@@ -540,7 +547,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           produceToTopicFunction,
           subPartition,
           kafkaUrl,
-          kafkaClusterId);
+          kafkaClusterId,
+          beforeProcessingRecordTimestamp);
     } else {
       int valueLen = updatedValueBytes.remaining();
       partitionConsumptionState.setTransientRecord(
@@ -597,7 +605,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           produceToTopicFunction,
           subPartition,
           kafkaUrl,
-          kafkaClusterId);
+          kafkaClusterId,
+          beforeProcessingRecordTimestamp);
     }
   }
 
