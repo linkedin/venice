@@ -11,6 +11,7 @@ import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.common.VeniceSystemStoreType;
+import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
@@ -256,13 +257,13 @@ public class ActiveActiveReplicationForHybridTest {
       parentControllerClient.createNewStore(storeName, "owner", STRING_SCHEMA, STRING_SCHEMA);
 
       // Expect the request to fail since AA cannot be enabled without enabling NR
-      ControllerResponse controllerResponse = updateStore(storeName, parentControllerClient, Optional.of(false), Optional.of(true), Optional.of(false));
+      ControllerResponse controllerResponse = updateStore(storeName, parentControllerClient, Optional.of(false), Optional.of(true), Optional.of(false), CompressionStrategy.NO_OP);
       Assert.assertTrue(controllerResponse.isError());
       Assert.assertTrue(controllerResponse.getError().contains("Http Status " + HttpStatus.SC_BAD_REQUEST)); // Must contain the correct HTTP status code
 
       // Expect the request to succeed
       TestUtils.assertCommand(
-          updateStore(storeName, parentControllerClient, Optional.of(true), Optional.of(true), Optional.of(false)));
+          updateStore(storeName, parentControllerClient, Optional.of(true), Optional.of(true), Optional.of(false), CompressionStrategy.NO_OP));
 
       // Create a new store
       String anotherStoreName = Utils.getUniqueString("test-store");
@@ -270,30 +271,31 @@ public class ActiveActiveReplicationForHybridTest {
 
       // Enable NR
       TestUtils.assertCommand(
-          updateStore(storeName, parentControllerClient, Optional.of(true), Optional.of(false), Optional.of(false)));
+          updateStore(storeName, parentControllerClient, Optional.of(true), Optional.of(false), Optional.of(false), CompressionStrategy.NO_OP));
 
       // Enable AA after NR is enabled (expect to succeed)
       TestUtils.assertCommand(
-          updateStore(storeName, parentControllerClient, Optional.empty(), Optional.of(true), Optional.of(false)));
+          updateStore(storeName, parentControllerClient, Optional.empty(), Optional.of(true), Optional.of(false), CompressionStrategy.NO_OP));
 
       // Disable NR and enable AA (expect to fail)
-      controllerResponse = updateStore(storeName, parentControllerClient, Optional.of(false), Optional.of(true), Optional.of(false));
+      controllerResponse = updateStore(storeName, parentControllerClient, Optional.of(false), Optional.of(true), Optional.of(false), CompressionStrategy.NO_OP);
       Assert.assertTrue(controllerResponse.isError());
       Assert.assertTrue(controllerResponse.getError().contains("Http Status " + HttpStatus.SC_BAD_REQUEST)); // Must contain the correct HTTP status code
     }
   }
 
-  @Test(timeOut = TEST_TIMEOUT, dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testAAReplicationCanConsumeFromAllRegions(boolean isChunkingEnabled, boolean useTransientRecordCache)
+  @Test(timeOut = TEST_TIMEOUT, dataProvider = "Boolean-Boolean-Compression", dataProviderClass = DataProviderUtils.class)
+  public void testAAReplicationCanConsumeFromAllRegions(boolean isChunkingEnabled, boolean useTransientRecordCache, CompressionStrategy compressionStrategy)
       throws NoSuchFieldException, IllegalAccessException, InterruptedException, ExecutionException {
     String clusterName = CLUSTER_NAMES[0];
     String storeName = Utils.getUniqueString("test-store");
     VeniceControllerWrapper parentController =
         parentControllers.stream().filter(c -> c.isLeaderController(clusterName)).findAny().get();
+    String pzkAddress = parentController.getZkAddress();
 
     try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentController.getControllerUrl())) {
       parentControllerClient.createNewStore(storeName, "owner", STRING_SCHEMA, STRING_SCHEMA);
-      updateStore(storeName, parentControllerClient, Optional.of(true), Optional.of(true), Optional.of(isChunkingEnabled));
+      updateStore(storeName, parentControllerClient, Optional.of(true), Optional.of(true), Optional.of(isChunkingEnabled), compressionStrategy);
 
       // Empty push to create a version
       VersionCreationResponse versionCreationResponse = parentControllerClient.emptyPush(storeName, Utils.getUniqueString("empty-hybrid-push"), 1L);
@@ -324,6 +326,7 @@ public class ActiveActiveReplicationForHybridTest {
           // Send messages to RT in the corresponding region
           String keyPrefix = "dc-" + dataCenterIndex + "_key_";
           VeniceMultiClusterWrapper childDataCenter = childDatacenters.get(dataCenterIndex);
+          String zkAddress = childDataCenter.getZkServerWrapper().getAddress();
 
           try (ControllerClient childControllerClient = new ControllerClient(clusterName,
               childDataCenter.getLeaderController(clusterName).getControllerUrl())) {
@@ -465,7 +468,7 @@ public class ActiveActiveReplicationForHybridTest {
         parentControllers.stream().filter(c -> c.isLeaderController(clusterName)).findAny().get();
     try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentController.getControllerUrl())) {
       parentControllerClient.createNewStore(storeName, "owner", STRING_SCHEMA, STRING_SCHEMA);
-      updateStore(storeName, parentControllerClient, Optional.of(true), Optional.of(true), Optional.of(false));
+      updateStore(storeName, parentControllerClient, Optional.of(true), Optional.of(true), Optional.of(false), CompressionStrategy.NO_OP);
 
       // Empty push to create a version
       parentControllerClient.emptyPush(storeName, Utils.getUniqueString("empty-hybrid-push"), 1L);
@@ -476,15 +479,15 @@ public class ActiveActiveReplicationForHybridTest {
     }
   }
 
-  @Test(timeOut = TEST_TIMEOUT, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testAAReplicationCanResolveConflicts(boolean useLogicalTimestamp) {
+  @Test(timeOut = TEST_TIMEOUT, dataProvider = "Boolean-Compression", dataProviderClass = DataProviderUtils.class)
+  public void testAAReplicationCanResolveConflicts(boolean useLogicalTimestamp, CompressionStrategy compressionStrategy) {
     String clusterName = CLUSTER_NAMES[0];
     String storeName = Utils.getUniqueString("test-store");
     VeniceControllerWrapper parentController =
         parentControllers.stream().filter(c -> c.isLeaderController(clusterName)).findAny().get();
     try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentController.getControllerUrl())) {
       parentControllerClient.createNewStore(storeName, "owner", STRING_SCHEMA, STRING_SCHEMA);
-      updateStore(storeName, parentControllerClient, Optional.of(true), Optional.of(true), Optional.of(false));
+      updateStore(storeName, parentControllerClient, Optional.of(true), Optional.of(true), Optional.of(false), compressionStrategy);
 
       // Empty push to create a version
       parentControllerClient.emptyPush(storeName, Utils.getUniqueString("empty-hybrid-push"), 1L);
@@ -647,7 +650,7 @@ public class ActiveActiveReplicationForHybridTest {
           .setHybridOffsetLagThreshold(2)
           .setHybridDataReplicationPolicy(DataReplicationPolicy.AGGREGATE)));
       TestUtils.assertCommand(
-          updateStore(storeName, parentControllerClient, Optional.of(true), Optional.of(false), Optional.of(false)));
+          updateStore(storeName, parentControllerClient, Optional.of(true), Optional.of(false), Optional.of(false), CompressionStrategy.NO_OP));
       // Enable A/A in just one of the data center
       TestUtils.assertCommand(parentControllerClient.updateStore(storeName, new UpdateStoreQueryParams()
           .setActiveActiveReplicationEnabled(true)
@@ -724,7 +727,7 @@ public class ActiveActiveReplicationForHybridTest {
 
     try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentController.getControllerUrl())) {
       parentControllerClient.createNewStore(storeName, "owner", STRING_SCHEMA, STRING_SCHEMA);
-      updateStore(storeName, parentControllerClient, Optional.of(true), Optional.of(true), Optional.of(true));
+      updateStore(storeName, parentControllerClient, Optional.of(true), Optional.of(true), Optional.of(true), CompressionStrategy.NO_OP);
       // Empty push to create a version
       VersionCreationResponse response = parentControllerClient.emptyPush(storeName, Utils.getUniqueString("empty-hybrid-push"), 1L);
       kafkaTopic = response.getKafkaTopic();
@@ -771,11 +774,13 @@ public class ActiveActiveReplicationForHybridTest {
       ControllerClient parentControllerClient,
       Optional<Boolean> enableNativeReplication,
       Optional<Boolean> enableActiveActiveReplication,
-      Optional<Boolean> enableChunking
+      Optional<Boolean> enableChunking,
+      CompressionStrategy compressionStrategy
   ) {
     UpdateStoreQueryParams params = new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
         .setHybridRewindSeconds(25L)
         .setHybridOffsetLagThreshold(1L)
+        .setCompressionStrategy(compressionStrategy)
         .setLeaderFollowerModel(true);
 
     enableNativeReplication.ifPresent(params::setNativeReplicationEnabled);

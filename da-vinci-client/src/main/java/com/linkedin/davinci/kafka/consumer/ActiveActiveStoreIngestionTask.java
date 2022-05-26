@@ -410,7 +410,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       int subPartition,
       String kafkaUrl) {
 
-    final ByteBuffer updatedValueBytes = mergeConflictResult.getNewValue().orElse(null);
+    final ByteBuffer updatedValueBytes = maybeCompressData(consumerRecord.partition(), mergeConflictResult.getNewValue().orElse(null));
     final int valueSchemaId = mergeConflictResult.getValueSchemaId();
 
     GenericRecord replicationMetadataRecord = mergeConflictResult.getReplicationMetadataRecord();
