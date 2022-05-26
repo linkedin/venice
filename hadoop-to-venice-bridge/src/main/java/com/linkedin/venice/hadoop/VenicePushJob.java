@@ -1877,7 +1877,8 @@ public class VenicePushJob implements AutoCloseable {
             + " source version: " + sourceVersion.getNumber() + " is using: " + sourceVersion.isChunkingEnabled()
             + ", new version: " + newVersion.getNumber() + " is using: " + newVersion.isChunkingEnabled());
       }
-      if (sourceVersion.getReplicationMetadataVersionId() != newVersion.getReplicationMetadataVersionId()) {
+      if (sourceVersion.isActiveActiveReplicationEnabled() && newVersion.isActiveActiveReplicationEnabled()
+          && sourceVersion.getReplicationMetadataVersionId() != newVersion.getReplicationMetadataVersionId()) {
         throw new VeniceException("Replication Metadata Version Id config mismatch between the source version and the new version is "
             + "not supported by Kafka Input Format, "
             + " source version: " + sourceVersion.getNumber() + " is using RMD ID: " + sourceVersion.getReplicationMetadataVersionId()
