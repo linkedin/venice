@@ -44,12 +44,17 @@ public class AggVersionedStorageIngestionStats extends
   private static final String STALE_PARTITIONS_WITHOUT_INGESTION_TASK_METRIC_NAME =
       "stale_partitions_without_ingestion_task";
   private static final String SUBSCRIBE_ACTION_PREP_LATENCY = "subscribe_action_prep_latency";
+
+  private static final String SUBSCRIBE_ACTION_GET_CONSUMER_LATENCY = "subscribe_action_get_consumer_latency";
+  private static final String SUBSCRIBE_SUBSCRIBE_ACTION_CONSUMER_SUBSCRIBE_LATENCY = "subscribe_action_consumer_subscribe_latency";
+  private static final String CONSUMED_RECORD_END_TO_END_PROCESSING_LATENCY = "consumed_record_end_to_end_processing_latency";
   private static final String UPDATE_IGNORED_DCR = "update_ignored_dcr";
   private static final String TOTAL_DCR = "total_dcr";
   private static final String TIMESTAMP_REGRESSION_DCR_ERROR = "timestamp_regression_dcr_error";
   private static final String OFFSET_REGRESSION_DCR_ERROR = "offset_regression_dcr_error";
   private static final String TOMBSTONE_CREATION_DCR = "tombstone_creation_dcr";
   private static final String READY_TO_SERVE_WITH_RT_LAG_METRIC_NAME = "ready_to_serve_with_rt_lag";
+
 
   private static final String MAX = "_max";
   private static final String AVG = "_avg";
@@ -166,6 +171,11 @@ public class AggVersionedStorageIngestionStats extends
     recordVersionedAndTotalStat(storeName, version, stat -> stat.recordSubscribePrepLatency(value));
   }
 
+  public void recordConsumedRecordEndToEndProcessingLatency(String storeName, int version, double value) {
+    recordVersionedAndTotalStat(storeName, version, stat -> stat.recordConsumedRecordEndToEndProcessingLatency(value));
+  }
+
+
   static class StorageIngestionStats {
     private static final MetricConfig METRIC_CONFIG = new MetricConfig();
 
@@ -190,7 +200,11 @@ public class AggVersionedStorageIngestionStats extends
     private final Int2ObjectMap<Rate> regionIdToHybridRecordsConsumedRateMap;
     private final Int2ObjectMap<Avg> regionIdToHybridAvgConsumedOffsetMap;
     private final Count stalePartitionsWithoutIngestionTaskCount;
+
+    private final Avg consumedRecordEndToEndProcessingLatencyAvg;
     private final Avg subscribePrepLatencyAvg;
+
+    private final Max consumedRecordEndToEndProcessingLatencyMax;
     private final Max subscribePrepLatencyMax;
 
     private final Sensor recordsConsumedSensor;
@@ -206,6 +220,7 @@ public class AggVersionedStorageIngestionStats extends
     private final Int2ObjectMap<Sensor> regionIdToHybridAvgConsumedOffsetSensorMap;
     private final Sensor stalePartitionsWithoutIngestionTaskSensor;
     private final Sensor subscribePrepLatencySensor;
+    private final Sensor consumedRecordEndToEndProcessingLatencySensor;
     /**
      * Measure the count of ignored updates due to conflict resolution
      */
@@ -323,6 +338,15 @@ public class AggVersionedStorageIngestionStats extends
       subscribePrepLatencySensor.add(
           SUBSCRIBE_ACTION_PREP_LATENCY + subscribePrepLatencyAvg.getClass().getSimpleName(),
           subscribePrepLatencyAvg);
+
+
+      consumedRecordEndToEndProcessingLatencyAvg = new Avg();
+      consumedRecordEndToEndProcessingLatencyMax = new Max();
+      consumedRecordEndToEndProcessingLatencySensor = localMetricRepository.sensor(CONSUMED_RECORD_END_TO_END_PROCESSING_LATENCY);
+      consumedRecordEndToEndProcessingLatencySensor.add(CONSUMED_RECORD_END_TO_END_PROCESSING_LATENCY
+          + consumedRecordEndToEndProcessingLatencyMax.getClass().getSimpleName(), consumedRecordEndToEndProcessingLatencyMax);
+      consumedRecordEndToEndProcessingLatencySensor.add(CONSUMED_RECORD_END_TO_END_PROCESSING_LATENCY
+          + consumedRecordEndToEndProcessingLatencyAvg.getClass().getSimpleName(), consumedRecordEndToEndProcessingLatencyAvg);
 
       updatedIgnoredDCRRate = new Rate();
       conflictResolutionUpdateIgnoredSensor = localMetricRepository.sensor(UPDATE_IGNORED_DCR);
@@ -483,6 +507,10 @@ public class AggVersionedStorageIngestionStats extends
 
     public void recordSubscribePrepLatency(double value) {
       subscribePrepLatencySensor.record(value);
+    }
+
+    public void recordConsumedRecordEndToEndProcessingLatency(double value) {
+      consumedRecordEndToEndProcessingLatencySensor.record(value);
     }
 
     public double getRecordsConsumed() {

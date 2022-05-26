@@ -47,10 +47,9 @@ public class SeparatedStoreBufferService extends AbstractStoreBufferService {
       StoreIngestionTask ingestionTask,
       LeaderProducedRecordContext leaderProducedRecordContext,
       int subPartition,
-      String kafkaUrl) throws InterruptedException {
-    Optional<PartitionConsumptionState> partitionConsumptionState =
-        ingestionTask.getPartitionConsumptionState(subPartition);
-
+      String kafkaUrl,
+      long beforeProcessingRecordTimestamp) throws InterruptedException {
+    Optional<PartitionConsumptionState> partitionConsumptionState = ingestionTask.getPartitionConsumptionState(subPartition);
     boolean sortedInput = false;
     if (partitionConsumptionState.isPresent()) {
       boolean currentState;
@@ -77,11 +76,11 @@ public class SeparatedStoreBufferService extends AbstractStoreBufferService {
       }
     }
     if (sortedInput) {
-      sortedServiceDelegate
-          .putConsumerRecord(consumerRecord, ingestionTask, leaderProducedRecordContext, subPartition, kafkaUrl);
+      sortedServiceDelegate.putConsumerRecord(consumerRecord, ingestionTask, leaderProducedRecordContext, subPartition,
+          kafkaUrl, beforeProcessingRecordTimestamp);
     } else {
-      unsortedServiceDelegate
-          .putConsumerRecord(consumerRecord, ingestionTask, leaderProducedRecordContext, subPartition, kafkaUrl);
+      unsortedServiceDelegate.putConsumerRecord(consumerRecord, ingestionTask, leaderProducedRecordContext,
+          subPartition, kafkaUrl, beforeProcessingRecordTimestamp);
     }
   }
 

@@ -1392,7 +1392,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       ProduceToTopic produceFunction,
       int subPartition,
       String kafkaUrl,
-      int kafkaClusterId) {
+      int kafkaClusterId,
+      long beforeProcessingRecordTimestamp) {
     int partition = consumerRecord.partition();
     String leaderTopic = consumerRecord.topic();
     long sourceTopicOffset = consumerRecord.offset();
@@ -1410,7 +1411,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         leaderProducedRecordContext,
         versionedStorageIngestionStats,
         storeIngestionStats,
-        System.nanoTime());
+        System.nanoTime(),
+        beforeProcessingRecordTimestamp
+    );
     partitionConsumptionState.setLastLeaderPersistFuture(leaderProducedRecordContext.getPersistedToDBFuture());
     produceFunction.apply(callback, leaderMetadataWrapper);
   }
@@ -1778,7 +1781,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
       int subPartition,
       String kafkaUrl,
-      int kafkaClusterId) {
+      int kafkaClusterId,
+      long beforeProcessingRecordTimestamp) {
     boolean produceToLocalKafka = false;
     try {
       KafkaKey kafkaKey = consumerRecord.key();
@@ -1901,7 +1905,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                         leaderMetadataWrapper),
                 subPartition,
                 kafkaUrl,
-                kafkaClusterId);
+                kafkaClusterId,
+                beforeProcessingRecordTimestamp);
             break;
           case START_OF_SEGMENT:
           case END_OF_SEGMENT:
@@ -1932,7 +1937,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                           leaderMetadataWrapper),
                   subPartition,
                   kafkaUrl,
-                  kafkaClusterId);
+                  kafkaClusterId,
+                  beforeProcessingRecordTimestamp);
             } else {
               /**
                * Based on current design handling this case (specially EOS) is tricky as we don't produce the SOS/EOS
@@ -1986,7 +1992,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                         leaderMetadataWrapper),
                 subPartition,
                 kafkaUrl,
-                kafkaClusterId);
+                kafkaClusterId,
+                beforeProcessingRecordTimestamp);
             break;
           case TOPIC_SWITCH:
             /**
@@ -2014,7 +2021,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                         DEFAULT_LEADER_METADATA_WRAPPER),
                 subPartition,
                 kafkaUrl,
-                kafkaClusterId);
+                kafkaClusterId,
+                beforeProcessingRecordTimestamp);
             break;
         }
         if (!isSegmentControlMsg(controlMessageType)) {
@@ -2042,7 +2050,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             partitionConsumptionState,
             subPartition,
             kafkaUrl,
-            kafkaClusterId);
+            kafkaClusterId,
+            beforeProcessingRecordTimestamp);
       }
       return DelegateConsumerRecordResult.PRODUCED_TO_KAFKA;
     } catch (Exception e) {
@@ -2551,7 +2560,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       PartitionConsumptionState partitionConsumptionState,
       int subPartition,
       String kafkaUrl,
-      int kafkaClusterId) {
+      int kafkaClusterId,
+      long beforeProcessingRecordTimestamp) {
     KafkaKey kafkaKey = consumerRecord.key();
     KafkaMessageEnvelope kafkaValue = consumerRecord.value();
     byte[] keyBytes = kafkaKey.getKey();
@@ -2619,7 +2629,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             },
             subPartition,
             kafkaUrl,
-            kafkaClusterId);
+            kafkaClusterId,
+            beforeProcessingRecordTimestamp);
         break;
 
       case UPDATE:
@@ -2630,8 +2641,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             isChunkedTopic,
             kafkaUrl,
             kafkaClusterId,
-            partitionConsumptionState);
-
+            partitionConsumptionState,
+            beforeProcessingRecordTimestamp);
         break;
 
       case DELETE:
@@ -2659,7 +2670,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             },
             subPartition,
             kafkaUrl,
-            kafkaClusterId);
+            kafkaClusterId,
+            beforeProcessingRecordTimestamp);
         break;
 
       default:
@@ -2692,7 +2704,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       boolean isChunkedTopic,
       String kafkaUrl,
       int kafkaClusterId,
-      PartitionConsumptionState partitionConsumptionState) {
+      PartitionConsumptionState partitionConsumptionState,
+      long beforeProcessingRecordTimestamp
+      ) {
 
     final int subPartition = partitionConsumptionState.getPartition();
     final int readerValueSchemaId;
@@ -2786,7 +2800,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           produce,
           subPartition,
           kafkaUrl,
-          kafkaClusterId);
+          kafkaClusterId,
+          beforeProcessingRecordTimestamp);
     }
   }
 

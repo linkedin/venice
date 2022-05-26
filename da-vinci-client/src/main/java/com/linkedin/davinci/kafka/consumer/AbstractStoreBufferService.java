@@ -10,12 +10,14 @@ import org.apache.kafka.clients.consumer.ConsumerRecord;
  * Abstract class capturing the responsibilities of drainers threads doing store ingestion.
  */
 public abstract class AbstractStoreBufferService extends AbstractVeniceService {
+
   public abstract void putConsumerRecord(
       ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
       StoreIngestionTask ingestionTask,
       LeaderProducedRecordContext leaderProducedRecordContext,
       int subPartition,
-      String kafkaUrl) throws InterruptedException;
+      String kafkaUrl,
+      long beforeProcessingRecordTimestamp) throws InterruptedException;
 
   /**
    * This method will wait for all the messages to be processed (persisted to disk) that are already

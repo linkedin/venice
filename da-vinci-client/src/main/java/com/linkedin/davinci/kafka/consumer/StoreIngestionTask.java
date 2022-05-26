@@ -996,10 +996,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumedRecord,
       LeaderProducedRecordContext leaderProducedRecordContext,
       int subPartition,
-      String kafkaUrl) throws InterruptedException {
+      String kafkaUrl, long beforeProcessingRecordTimestamp) throws InterruptedException {
     long queuePutStartTimeInNS = System.nanoTime();
-    storeBufferService.putConsumerRecord(consumedRecord, this, leaderProducedRecordContext, subPartition, kafkaUrl); // blocking
-                                                                                                                     // call
+    storeBufferService.putConsumerRecord(
+        consumedRecord, this, leaderProducedRecordContext, subPartition, kafkaUrl, beforeProcessingRecordTimestamp); // blocking call
+
     storeIngestionStats.recordProduceToDrainQueueRecordNum(1);
     if (emitMetrics.get()) {
       storeIngestionStats.recordConsumerRecordsQueuePutLatency(LatencyUtils.getLatencyInMS(queuePutStartTimeInNS));
@@ -1037,6 +1038,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     int subPartition =
         PartitionUtils.getSubPartition(topicPartition.topic(), topicPartition.partition(), amplificationFactor);
     for (ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record: records) {
+      long beforeProcessingRecordTimestamp = System.nanoTime();
       if (!shouldProcessRecord(record, subPartition)) {
         continue;
       }
@@ -1201,13 +1203,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       long kafkaProduceStartTimeInNS = System.nanoTime();
       // This function may modify the original record in KME and it is unsafe to use the payload from KME directly after
       // this call.
-
-      DelegateConsumerRecordResult delegateConsumerRecordResult =
-          delegateConsumerRecord(record, subPartition, kafkaUrl, kafkaClusterId);
+      DelegateConsumerRecordResult delegateConsumerRecordResult = delegateConsumerRecord(record, subPartition, kafkaUrl,
+          kafkaClusterId, beforeProcessingRecordTimestamp);
       switch (delegateConsumerRecordResult) {
         case QUEUED_TO_DRAINER:
           long queuePutStartTimeInNS = System.nanoTime();
-          storeBufferService.putConsumerRecord(record, this, null, subPartition, kafkaUrl); // blocking call
+          storeBufferService.putConsumerRecord(record, this, null, subPartition,
+              kafkaUrl, beforeProcessingRecordTimestamp); // blocking call
           elapsedTimeForPuttingIntoQueue += LatencyUtils.getLatencyInMS(queuePutStartTimeInNS);
           ++recordQueuedToDrainer;
           break;
@@ -2228,7 +2230,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   public void processConsumerRecord(
       ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record,
       LeaderProducedRecordContext leaderProducedRecordContext,
-      String kafkaUrl) throws InterruptedException {
+      String kafkaUrl,
+      long beforeProcessingRecordTimestamp) throws InterruptedException {
     int subPartition = PartitionUtils.getSubPartition(record.topic(), record.partition(), amplificationFactor);
     // The partitionConsumptionStateMap can be modified by other threads during consumption (for example when
     // unsubscribing)
@@ -2247,7 +2250,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           partitionConsumptionState,
           leaderProducedRecordContext,
           subPartition,
-          kafkaUrl);
+          kafkaUrl,
+          beforeProcessingRecordTimestamp);
     } catch (FatalDataValidationException e) {
       int faultyPartition = record.partition();
       String errorMessage;
@@ -2739,7 +2743,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       PartitionConsumptionState partitionConsumptionState,
       LeaderProducedRecordContext leaderProducedRecordContext,
       int subPartition,
-      String kafkaUrl) {
+      String kafkaUrl,
+      long beforeProcessingRecordTimestamp) {
     // De-serialize payload into Venice Message format
     KafkaKey kafkaKey = consumerRecord.key();
     KafkaMessageEnvelope kafkaValue = consumerRecord.value();
@@ -2796,6 +2801,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         sizeOfPersistedData =
             processKafkaDataMessage(consumerRecord, partitionConsumptionState, leaderProducedRecordContext);
       }
+      versionedStorageIngestionStats.recordConsumedRecordEndToEndProcessingLatency(storeName, versionNumber,
+          LatencyUtils.getLatencyInMS(beforeProcessingRecordTimestamp));
     } catch (DuplicateDataException e) {
       divErrorMetricCallback.execute(e);
       if (logger.isDebugEnabled()) {
@@ -3780,12 +3787,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecordWrapper,
       int subPartition,
       String kafkaUrl,
-      int kafkaClusterId) {
+      int kafkaClusterId,
+      long beforeProcessingRecordTimestamp) {
     return DelegateConsumerRecordResult.QUEUED_TO_DRAINER;
   }
 
   /**
-   * This enum represents all potential results after calling {@link #delegateConsumerRecord(ConsumerRecord, int, String, int)}.
+   * This enum represents all potential results after calling {@link #delegateConsumerRecord(ConsumerRecord, int, String, int, long)}.
    */
   protected enum DelegateConsumerRecordResult {
     /**
