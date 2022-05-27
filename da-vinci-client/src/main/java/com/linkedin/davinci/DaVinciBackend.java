@@ -101,99 +101,104 @@ public class DaVinciBackend implements Closeable {
       ICProvider icProvider,
       Optional<ObjectCacheConfig> cacheConfig) {
     logger.info("Creating Da Vinci backend");
-    VeniceServerConfig backendConfig = configLoader.getVeniceServerConfig();
-    this.configLoader = configLoader;
-    metricsRepository = Optional.ofNullable(clientConfig.getMetricsRepository())
-                            .orElse(TehutiUtils.getMetricsRepository("davinci-client"));
-    VeniceMetadataRepositoryBuilder veniceMetadataRepositoryBuilder =
-        new VeniceMetadataRepositoryBuilder(configLoader, clientConfig, metricsRepository, icProvider, false);
-    ClusterInfoProvider clusterInfoProvider = veniceMetadataRepositoryBuilder.getClusterInfoProvider();
-    ReadOnlyStoreRepository readOnlyStoreRepository = veniceMetadataRepositoryBuilder.getStoreRepo();
-    if (!(readOnlyStoreRepository instanceof SubscriptionBasedReadOnlyStoreRepository)) {
-      throw new VeniceException("Da Vinci backend expects " + SubscriptionBasedReadOnlyStoreRepository.class.getName() + " for store repository!");
+    try {
+      VeniceServerConfig backendConfig = configLoader.getVeniceServerConfig();
+      this.configLoader = configLoader;
+      metricsRepository = Optional.ofNullable(clientConfig.getMetricsRepository())
+          .orElse(TehutiUtils.getMetricsRepository("davinci-client"));
+      VeniceMetadataRepositoryBuilder veniceMetadataRepositoryBuilder =
+          new VeniceMetadataRepositoryBuilder(configLoader, clientConfig, metricsRepository, icProvider, false);
+      ClusterInfoProvider clusterInfoProvider = veniceMetadataRepositoryBuilder.getClusterInfoProvider();
+      ReadOnlyStoreRepository readOnlyStoreRepository = veniceMetadataRepositoryBuilder.getStoreRepo();
+      if (!(readOnlyStoreRepository instanceof SubscriptionBasedReadOnlyStoreRepository)) {
+        throw new VeniceException("Da Vinci backend expects " + SubscriptionBasedReadOnlyStoreRepository.class.getName() + " for store repository!");
+      }
+      storeRepository = (SubscriptionBasedReadOnlyStoreRepository) readOnlyStoreRepository;
+      schemaRepository = veniceMetadataRepositoryBuilder.getSchemaRepo();
+      zkClient = veniceMetadataRepositoryBuilder.getZkClient();
+
+      VeniceProperties backendProps = backendConfig.getClusterProperties();
+
+      SchemaReader partitionStateSchemaReader = ClientFactory.getSchemaReader(
+          ClientConfig.cloneConfig(clientConfig)
+              .setStoreName(AvroProtocolDefinition.PARTITION_STATE.getSystemStoreName()));
+      InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer = AvroProtocolDefinition.PARTITION_STATE.getSerializer();
+      partitionStateSerializer.setSchemaReader(partitionStateSchemaReader);
+
+      SchemaReader versionStateSchemaReader = ClientFactory.getSchemaReader(
+          ClientConfig.cloneConfig(clientConfig)
+              .setStoreName(AvroProtocolDefinition.STORE_VERSION_STATE.getSystemStoreName()));
+      InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer = AvroProtocolDefinition.STORE_VERSION_STATE.getSerializer();
+      storeVersionStateSerializer.setSchemaReader(versionStateSchemaReader);
+
+      AggVersionedStorageEngineStats storageEngineStats = new AggVersionedStorageEngineStats(metricsRepository, storeRepository);
+      rocksDBMemoryStats = backendConfig.isDatabaseMemoryStatsEnabled() ?
+          new RocksDBMemoryStats(metricsRepository, "RocksDBMemoryStats", backendConfig.getRocksDBServerConfig().isRocksDBPlainTableFormatEnabled()) : null;
+
+      // Add extra safeguards here to ensure we have released RocksDB database locks before we initialize storage services.
+      IsolatedIngestionUtils.destroyLingeringIsolatedIngestionProcess(configLoader);
+      storageService = new StorageService(configLoader, storageEngineStats, rocksDBMemoryStats, storeVersionStateSerializer, partitionStateSerializer, storeRepository);
+      storageService.start();
+
+      VeniceWriterFactory writerFactory = new VeniceWriterFactory(backendProps.toProperties());
+      String instanceName = Utils.getHostName() + "_" + Utils.getPid();
+      int derivedSchemaID = backendProps.getInt(PUSH_STATUS_STORE_DERIVED_SCHEMA_ID, 1);
+      pushStatusStoreWriter = new PushStatusStoreWriter(writerFactory, instanceName, derivedSchemaID);
+
+      SchemaReader kafkaMessageEnvelopeSchemaReader = ClientFactory.getSchemaReader(
+          ClientConfig.cloneConfig(clientConfig)
+              .setStoreName(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getSystemStoreName()));
+
+      storageMetadataService = backendConfig.getIngestionMode().equals(IngestionMode.ISOLATED)
+          ? new MainIngestionStorageMetadataService(backendConfig.getIngestionServicePort(), partitionStateSerializer, new MetadataUpdateStats(metricsRepository), configLoader)
+          : new StorageEngineMetadataService(storageService.getStorageEngineRepository(), partitionStateSerializer);
+      // Start storage metadata service
+      ((AbstractVeniceService) storageMetadataService).start();
+      compressorFactory = new StorageEngineBackedCompressorFactory(storageMetadataService);
+
+      cacheBackend = cacheConfig.map(objectCacheConfig -> new ObjectCacheBackend(clientConfig, objectCacheConfig, schemaRepository));
+      ingestionService = new KafkaStoreIngestionService(
+          storageService.getStorageEngineRepository(),
+          configLoader,
+          storageMetadataService,
+          clusterInfoProvider,
+          storeRepository,
+          schemaRepository,
+          null,
+          metricsRepository,
+          rocksDBMemoryStats,
+          Optional.of(kafkaMessageEnvelopeSchemaReader),
+          Optional.empty(),
+          partitionStateSerializer,
+          Optional.empty(),
+          null,
+          false,
+          compressorFactory,
+          cacheBackend,
+          true,
+          // TODO: consider how/if a repair task would be valid for Davinci users?
+          null);
+
+      ingestionService.start();
+      ingestionService.addCommonNotifier(ingestionListener);
+
+      if (isIsolatedIngestion() && cacheConfig.isPresent()) {
+        // TODO: There are 'some' cases where this mix might be ok, (like a batch only store, or with certain TTL settings),
+        // could add further validation.  If the process isn't ingesting data, then it can't maintain the object cache with
+        // a correct view of the data.
+        throw new IllegalArgumentException("Ingestion isolated and Cache are incompatible configs!!  Aborting start up!");
+      }
+
+      bootstrap(managedClients);
+
+      storeRepository.registerStoreDataChangedListener(storeChangeListener);
+      cacheBackend.ifPresent(objectCacheBackend -> storeRepository.registerStoreDataChangedListener(objectCacheBackend.getCacheInvalidatingStoreChangeListener()));
+      logger.info("Da Vinci backend created successfully");
+    } catch (Throwable e) {
+      String msg = "Unable to create Da Vinci backend";
+      logger.error(msg, e);
+      throw new VeniceException(msg, e);
     }
-    storeRepository = (SubscriptionBasedReadOnlyStoreRepository) readOnlyStoreRepository;
-    schemaRepository = veniceMetadataRepositoryBuilder.getSchemaRepo();
-    zkClient = veniceMetadataRepositoryBuilder.getZkClient();
-
-    VeniceProperties backendProps = backendConfig.getClusterProperties();
-
-    SchemaReader partitionStateSchemaReader = ClientFactory.getSchemaReader(
-        ClientConfig.cloneConfig(clientConfig)
-            .setStoreName(AvroProtocolDefinition.PARTITION_STATE.getSystemStoreName()));
-    InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer = AvroProtocolDefinition.PARTITION_STATE.getSerializer();
-    partitionStateSerializer.setSchemaReader(partitionStateSchemaReader);
-
-    SchemaReader versionStateSchemaReader = ClientFactory.getSchemaReader(
-        ClientConfig.cloneConfig(clientConfig)
-            .setStoreName(AvroProtocolDefinition.STORE_VERSION_STATE.getSystemStoreName()));
-    InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer = AvroProtocolDefinition.STORE_VERSION_STATE.getSerializer();
-    storeVersionStateSerializer.setSchemaReader(versionStateSchemaReader);
-
-    AggVersionedStorageEngineStats storageEngineStats = new AggVersionedStorageEngineStats(metricsRepository, storeRepository);
-    rocksDBMemoryStats = backendConfig.isDatabaseMemoryStatsEnabled() ?
-        new RocksDBMemoryStats(metricsRepository, "RocksDBMemoryStats", backendConfig.getRocksDBServerConfig().isRocksDBPlainTableFormatEnabled()) : null;
-
-    // Add extra safeguards here to ensure we have released RocksDB database locks before we initialize storage services.
-    IsolatedIngestionUtils.destroyLingeringIsolatedIngestionProcess(configLoader);
-    storageService = new StorageService(configLoader, storageEngineStats, rocksDBMemoryStats, storeVersionStateSerializer, partitionStateSerializer, storeRepository);
-    storageService.start();
-
-    VeniceWriterFactory writerFactory = new VeniceWriterFactory(backendProps.toProperties());
-    String instanceName = Utils.getHostName() + "_" + Utils.getPid();
-    int derivedSchemaID = backendProps.getInt(PUSH_STATUS_STORE_DERIVED_SCHEMA_ID, 1);
-    pushStatusStoreWriter = new PushStatusStoreWriter(writerFactory, instanceName, derivedSchemaID);
-
-    SchemaReader kafkaMessageEnvelopeSchemaReader = ClientFactory.getSchemaReader(
-        ClientConfig.cloneConfig(clientConfig)
-            .setStoreName(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getSystemStoreName()));
-
-    storageMetadataService = backendConfig.getIngestionMode().equals(IngestionMode.ISOLATED)
-        ? new MainIngestionStorageMetadataService(backendConfig.getIngestionServicePort(), partitionStateSerializer, new MetadataUpdateStats(metricsRepository), configLoader)
-        : new StorageEngineMetadataService(storageService.getStorageEngineRepository(), partitionStateSerializer);
-    // Start storage metadata service
-    ((AbstractVeniceService)storageMetadataService).start();
-    compressorFactory = new StorageEngineBackedCompressorFactory(storageMetadataService);
-
-    cacheBackend = cacheConfig.map(objectCacheConfig -> new ObjectCacheBackend(clientConfig, objectCacheConfig, schemaRepository));
-    ingestionService = new KafkaStoreIngestionService(
-        storageService.getStorageEngineRepository(),
-        configLoader,
-        storageMetadataService,
-        clusterInfoProvider,
-        storeRepository,
-        schemaRepository,
-        null,
-        metricsRepository,
-        rocksDBMemoryStats,
-        Optional.of(kafkaMessageEnvelopeSchemaReader),
-        Optional.empty(),
-        partitionStateSerializer,
-        Optional.empty(),
-        null,
-        false,
-        compressorFactory,
-        cacheBackend,
-        true,
-        // TODO: consider how/if a repair task would be valid for Davinci users?
-        null);
-
-    ingestionService.start();
-    ingestionService.addCommonNotifier(ingestionListener);
-
-    if (isIsolatedIngestion() && cacheConfig.isPresent()) {
-      // TODO: There are 'some' cases where this mix might be ok, (like a batch only store, or with certain TTL settings),
-      // could add further validation.  If the process isn't ingesting data, then it can't maintain the object cache with
-      // a correct view of the data.
-      throw new IllegalArgumentException("Ingestion isolated and Cache are incompatible configs!!  Aborting start up!");
-    }
-
-    bootstrap(managedClients);
-
-    storeRepository.registerStoreDataChangedListener(storeChangeListener);
-    cacheBackend.ifPresent(objectCacheBackend -> storeRepository.registerStoreDataChangedListener(objectCacheBackend.getCacheInvalidatingStoreChangeListener()));
-
-    logger.info("Finished initialization of Da Vinci backend");
   }
 
   protected synchronized void bootstrap(Optional<Set<String>> managedClients) {
@@ -305,7 +310,7 @@ public class DaVinciBackend implements Closeable {
 
   @Override
   public synchronized void close() {
-    logger.info("Shutting down DaVinciBackend, called from: " + Arrays.toString(currentThread().getStackTrace()));
+    logger.info("Closing Da Vinci backend");
     storeRepository.unregisterStoreDataChangedListener(storeChangeListener);
     cacheBackend.ifPresent(objectCacheBackend -> storeRepository.unregisterStoreDataChangedListener(objectCacheBackend.getCacheInvalidatingStoreChangeListener()));
     for (StoreBackend storeBackend : storeByNameMap.values()) {
@@ -336,19 +341,19 @@ public class DaVinciBackend implements Closeable {
     try {
       ingestionBackend.close();
       ingestionService.stop();
-      logger.info("KafkaStoreIngestionService has been closed.");
       storageService.stop();
-      logger.info("StorageService has been closed.");
       if (zkClient != null) {
         zkClient.close();
-        logger.info("ZooKeeper Client has been closed.");
       }
       metricsRepository.close();
       storeRepository.clear();
       schemaRepository.clear();
       pushStatusStoreWriter.close();
+      logger.info("Da Vinci backend is closed successfully");
     } catch (Throwable e) {
-      throw new VeniceException("Unable to stop Da Vinci backend", e);
+      String msg = "Unable to stop Da Vinci backend";
+      logger.error(msg, e);
+      throw new VeniceException(msg, e);
     }
   }
 
