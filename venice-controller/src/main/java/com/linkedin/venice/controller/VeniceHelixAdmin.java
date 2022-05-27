@@ -4266,7 +4266,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         ExecutionStatus executionStatus = statusAndDetails.getFirst();
         Optional<String> details = statusAndDetails.getSecond();
         if (executionStatus.equals(ExecutionStatus.NOT_CREATED)) {
-            StringBuilder moreDetailsBuilder = new StringBuilder(details.isPresent() ? details.get() + " and " : "");
+            StringBuilder moreDetailsBuilder = new StringBuilder(details.map(s -> s + " and ").orElse(""));
             // Check whether cluster is in maintenance mode or not
             if (isClusterInMaintenanceMode(clusterName)) {
                 moreDetailsBuilder.append("Cluster: ")
@@ -4283,22 +4283,25 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         // Retrieve Da Vinci push status
         // Da Vinci can only subscribe to an existing version, so skip 1st push
         if (store.isDaVinciPushStatusStoreEnabled() && (versionNumber > 1 || incrementalPushVersion.isPresent())) {
-            Version version = store.getVersion(versionNumber)
-                .orElseThrow(() -> new VeniceException("Version " + versionNumber + " of " + store.getName() + " does not exist."));
-            Pair<ExecutionStatus, Optional<String>> daVinciStatusAndDetails = getDaVinciPushStatusAndDetails(version,
-                incrementalPushVersion);
-            ExecutionStatus daVinciStatus = daVinciStatusAndDetails.getFirst();
-            Optional<String> daVinciDetails = daVinciStatusAndDetails.getSecond();
-            executionStatus = getOverallPushStatus(executionStatus, daVinciStatus);
-            if (details.isPresent() || daVinciDetails.isPresent()) {
+            if (store.getVersion(versionNumber).isPresent()) {
+              Version version = store.getVersion(versionNumber).get();
+              Pair<ExecutionStatus, Optional<String>> daVinciStatusAndDetails = getDaVinciPushStatusAndDetails(version,
+                  incrementalPushVersion);
+              ExecutionStatus daVinciStatus = daVinciStatusAndDetails.getFirst();
+              Optional<String> daVinciDetails = daVinciStatusAndDetails.getSecond();
+              executionStatus = getOverallPushStatus(executionStatus, daVinciStatus);
+              if (details.isPresent() || daVinciDetails.isPresent()) {
                 String overallDetails = "";
                 if (details.isPresent()) {
-                    overallDetails += details.get();
+                  overallDetails += details.get();
                 }
                 if (daVinciDetails.isPresent()) {
-                    overallDetails += (overallDetails.isEmpty() ? "" : " ") + daVinciDetails.get();
+                  overallDetails += (overallDetails.isEmpty() ? "" : " ") + daVinciDetails.get();
                 }
                 details = Optional.of(overallDetails);
+              }
+            } else {
+              logger.info("Version " + versionNumber + " of " + store.getName() + " does not exist, will not check push status store");
             }
         }
         return new OfflinePushStatusInfo(executionStatus, details);
