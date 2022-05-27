@@ -40,7 +40,6 @@ import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.ByteArrayOutputStream;
 import java.nio.ByteBuffer;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -694,9 +693,10 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
       ready.set(true);
       logger.info("Client is started successfully, storeName=" + getStoreName());
     } catch (Throwable e) {
-      logger.info("Failed to initialize Da Vinci Backend, releasing it now. ", e);
+      String msg = "Unable to start Da Vinci client, storeName=" + getStoreName();
+      logger.error(msg, e);
       daVinciBackend.release();
-      throw new VeniceClientException("Unable to start Da Vinci client, storeName=" + getStoreName(), e);
+      throw new VeniceClientException(msg, e);
     }
   }
 
@@ -712,12 +712,12 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
       if (cacheBackend != null) {
         cacheBackend.close();
       }
-      logger.info("Releasing Da Vinci backend reference, called from: " +
-                      Arrays.toString(Thread.currentThread().getStackTrace()));
       daVinciBackend.release();
       logger.info("Client is closed successfully, storeName=" + getStoreName());
     } catch (Throwable e) {
-      throw new VeniceClientException("Unable to close Da Vinci client, storeName=" + getStoreName(), e);
+      String msg = "Unable to close Da Vinci client, storeName=" + getStoreName();
+      logger.error(msg, e);
+      throw new VeniceClientException(msg, e);
     }
   }
 }
