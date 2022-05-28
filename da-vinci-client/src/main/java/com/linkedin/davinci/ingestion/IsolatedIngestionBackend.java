@@ -149,6 +149,7 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend implements
       } else {
         /**
          * LeaderSessionIdChecker logic for ingestion isolation is included in {@link IsolatedIngestionServer}.
+         * TODO: Separate exception and command rejection for ingestion report in the next RB.
          */
         messageCompleted = mainIngestionRequestClient.promoteToLeader(storeConfig.getStoreVersionName(), partition);
       }
