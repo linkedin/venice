@@ -3,7 +3,6 @@ package com.linkedin.venice.endToEnd;
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.davinci.client.DaVinciConfig;
-import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
@@ -20,11 +19,11 @@ import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.integration.utils.D2TestUtils;
+import com.linkedin.venice.integration.utils.DaVinciTestContext;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
-import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
@@ -119,6 +118,7 @@ public class PushStatusStoreTest {
     String owner = "test";
     // set up push status store
     TestUtils.assertCommand(controllerClient.createNewStore(storeName, owner, DEFAULT_KEY_SCHEMA, "\"string\""));
+    TestUtils.createMetaSystemStore(controllerClient, storeName, Optional.of(logger));
     TestUtils.assertCommand(controllerClient.updateStore(storeName, new UpdateStoreQueryParams()
         .setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
         .setLeaderFollowerModel(true)
@@ -143,7 +143,7 @@ public class PushStatusStoreTest {
 
     Map<String, Object> extraBackendConfigMap = new HashMap<>();
     extraBackendConfigMap.put(SERVER_INGESTION_MODE, isIsolated ? ISOLATED : BUILT_IN);
-    extraBackendConfigMap.put(CLIENT_USE_META_SYSTEM_STORE_REPOSITORY, true);
+    extraBackendConfigMap.put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true);
     extraBackendConfigMap.put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 10);
     extraBackendConfigMap.put(PUSH_STATUS_STORE_ENABLED, true);
 
@@ -351,12 +351,7 @@ public class PushStatusStoreTest {
   }
 
   private PropertyBuilder getBackendConfigBuilder() {
-    return new PropertyBuilder()
-        .put(ConfigKeys.DATA_BASE_PATH, Utils.getTempDataDirectory().getAbsolutePath())
-        .put(ConfigKeys.PERSISTENCE_TYPE, PersistenceType.ROCKS_DB)
-        .put(CLIENT_USE_META_SYSTEM_STORE_REPOSITORY, true)
-        .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 10)
-        .put(ConfigKeys.SERVER_ROCKSDB_STORAGE_CONFIG_CHECK_ENABLED, true)
+    return DaVinciTestContext.getDaVinciPropertyBuilder(cluster.getZk().getAddress())
         .put(PUSH_STATUS_STORE_ENABLED, true);
   }
 

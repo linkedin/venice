@@ -12,6 +12,7 @@ import com.linkedin.davinci.stats.RocksDBMemoryStats;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.venice.ConfigKeys;
+import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controller.VeniceControllerConfig;
 import com.linkedin.venice.controller.VeniceControllerMultiClusterConfig;
 import com.linkedin.venice.controllerapi.ControllerClient;
@@ -59,9 +60,7 @@ import com.linkedin.venice.writer.ApacheKafkaProducer;
 import com.linkedin.venice.writer.SharedKafkaProducerService;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
-
 import io.tehuti.metrics.MetricsRepository;
-
 import java.nio.ByteBuffer;
 import java.security.Permission;
 import java.util.ArrayDeque;
@@ -80,7 +79,6 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
 import java.util.stream.Stream;
-
 import org.apache.helix.HelixManagerFactory;
 import org.apache.helix.InstanceType;
 import org.apache.helix.participant.statemachine.StateModel;
@@ -666,4 +664,13 @@ public class TestUtils {
     executor.shutdownNow();
     Assert.assertTrue(executor.awaitTermination(timeout, unit));
   }
+
+  public static void createMetaSystemStore(ControllerClient controllerClient, String storeName, Optional<Logger> logger) {
+    String metaSystemStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName);
+    VersionCreationResponse response = controllerClient.emptyPush(metaSystemStoreName, "testEmptyPush", 1234321);
+    Assert.assertFalse(response.isError());
+    TestUtils.waitForNonDeterministicPushCompletion(response.getKafkaTopic(), controllerClient, 1, TimeUnit.MINUTES, logger);
+    logger.ifPresent(value -> value.info("System store " + metaSystemStoreName + " is created."));
+  }
+
 }

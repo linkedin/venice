@@ -11,7 +11,6 @@ import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.server.AdminSparkServer;
 import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.replication.LeaderStorageNodeReplicator;
 import com.linkedin.venice.replication.TopicReplicator;
 import com.linkedin.venice.utils.ExceptionUtils;
@@ -637,38 +636,36 @@ public class ServiceFactory {
   }
 
   public static <K, V> DaVinciClient<K, V> getGenericAvroDaVinciClient(String storeName, VeniceClusterWrapper cluster, String dataBasePath, DaVinciConfig daVinciConfig) {
-    VeniceProperties backendConfig = new PropertyBuilder()
-        .put(ConfigKeys.DATA_BASE_PATH, dataBasePath)
-        .put(ConfigKeys.PERSISTENCE_TYPE, PersistenceType.ROCKS_DB)
-        .put(ConfigKeys.SERVER_ROCKSDB_STORAGE_CONFIG_CHECK_ENABLED, true)
+    VeniceProperties backendConfig = DaVinciTestContext.getDaVinciPropertyBuilder(cluster.getZk().getAddress())
+        .put(DATA_BASE_PATH, dataBasePath)
         .build();
     return getGenericAvroDaVinciClient(storeName, cluster, daVinciConfig, backendConfig);
   }
 
   public static <K, V> DaVinciClient<K, V> getGenericAvroDaVinciClient(String storeName, VeniceClusterWrapper cluster, DaVinciConfig daVinciConfig, VeniceProperties backendConfig) {
-    ClientConfig clientConfig = ClientConfig
-        .defaultGenericClientConfig(storeName)
-        .setD2ServiceName(ClientConfig.DEFAULT_D2_SERVICE_NAME)
-        .setVeniceURL(cluster.getZk().getAddress());
-    DaVinciClient<K, V> client = new AvroGenericDaVinciClient<>(daVinciConfig, clientConfig, backendConfig, Optional.empty());
-    client.start();
-    return client;
+    return getGenericAvroDaVinciClient(storeName, cluster.getZk().getAddress(), daVinciConfig, backendConfig);
   }
 
-  public static <K, V> DaVinciClient<K, V> getGenericAvroDaVinciClient(String storeName, String zkAddress, String dataBasePath) {
-    VeniceProperties backendConfig = new PropertyBuilder()
-        .put(ConfigKeys.DATA_BASE_PATH, dataBasePath)
-        .put(ConfigKeys.PERSISTENCE_TYPE, PersistenceType.ROCKS_DB)
-        .build();
-
+  public static <K, V> DaVinciClient<K, V> getGenericAvroDaVinciClient(String storeName, String zkAddress, DaVinciConfig daVinciConfig, VeniceProperties backendConfig) {
     ClientConfig clientConfig = ClientConfig
         .defaultGenericClientConfig(storeName)
         .setD2ServiceName(ClientConfig.DEFAULT_D2_SERVICE_NAME)
         .setVeniceURL(zkAddress);
+    PropertyBuilder daVinciPropertyBuilder = DaVinciTestContext.getDaVinciPropertyBuilder(zkAddress);
+    backendConfig.getPropertiesCopy().forEach((key, value) -> {
+      daVinciPropertyBuilder.put(key.toString(), value);
+    });
 
-    DaVinciClient<K, V> client = new AvroGenericDaVinciClient<>(new DaVinciConfig(), clientConfig, backendConfig, Optional.empty());
+    DaVinciClient<K, V> client = new AvroGenericDaVinciClient<>(daVinciConfig, clientConfig, daVinciPropertyBuilder.build(), Optional.empty());
     client.start();
     return client;
+  }
+
+  public static <K, V> DaVinciClient<K, V> getGenericAvroDaVinciClientWithoutMetaSystemStoreRepo(String storeName, String zkAddress, String dataBasePath) {
+    Properties extraBackendConfig = new Properties();
+    extraBackendConfig.setProperty(DATA_BASE_PATH, dataBasePath);
+    extraBackendConfig.setProperty(CLIENT_USE_SYSTEM_STORE_REPOSITORY, String.valueOf(false));
+    return getGenericAvroDaVinciClient(storeName, zkAddress, new DaVinciConfig(), new VeniceProperties(extraBackendConfig));
   }
 
   public static <K, V> DaVinciClient<K, V> getGenericAvroDaVinciClientWithRetries(String storeName, String zkAddress,

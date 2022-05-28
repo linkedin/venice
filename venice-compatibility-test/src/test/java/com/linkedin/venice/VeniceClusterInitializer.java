@@ -77,15 +77,15 @@ public class VeniceClusterInitializer implements AutoCloseable {
   private final int pushVersion;
   private final ControllerClient controllerClient;
 
-  private String storeName;
-  private String routerAddr;
+  private final String storeName;
   private final VeniceKafkaSerializer keySerializer;
   private final VeniceKafkaSerializer valueSerializer;
 
   public VeniceClusterInitializer(String storeName, int routerPort) {
     Properties clusterConfig = new Properties();
     clusterConfig.put(ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 1L);
-    this.veniceCluster = ServiceFactory.getVeniceCluster(1, 1, 1, 2, 100, false, false, clusterConfig);
+    this.veniceCluster = ServiceFactory.getVeniceCluster(1, 1, 1,
+        2, 100, false, false, clusterConfig);
     Properties serverProperties = new Properties();
     serverProperties.put(ConfigKeys.SERVER_COMPUTE_FAST_AVRO_ENABLED, true);
     this.veniceCluster.addVeniceServer(new Properties(), serverProperties);
@@ -97,8 +97,8 @@ public class VeniceClusterInitializer implements AutoCloseable {
     routerProperties.put(ConfigKeys.ROUTER_SMART_LONG_TAIL_RETRY_ENABLED, false);
     routerProperties.put(ConfigKeys.LISTENER_PORT, Integer.toString(routerPort));
     this.veniceCluster.addVeniceRouter(routerProperties);
-    this.routerAddr = "http://" + veniceCluster.getVeniceRouters().get(0).getAddress();
-    LOGGER.info("Router address: " + this.routerAddr);
+    String routerAddr = "http://" + veniceCluster.getVeniceRouters().get(0).getAddress();
+    LOGGER.info("Router address: " + routerAddr);
 
     this.storeName = storeName;
     // Create test store
@@ -107,6 +107,7 @@ public class VeniceClusterInitializer implements AutoCloseable {
     if (newStoreResponse.isError()) {
       throw new VeniceException("Failed to create the store: " + storeName + ", and the error: " + newStoreResponse.getError());
     }
+    TestUtils.createMetaSystemStore(controllerClient, storeName, Optional.of(LOGGER));
     // Enable read compute
     UpdateStoreQueryParams params = new UpdateStoreQueryParams();
     params.setReadComputationEnabled(true);
@@ -245,6 +246,6 @@ public class VeniceClusterInitializer implements AutoCloseable {
     int routerPort = Integer.parseInt(args[1]);
     VeniceClusterInitializer clusterInitializer = new VeniceClusterInitializer(storeName, routerPort);
 
-    Runtime.getRuntime().addShutdownHook(new Thread(() -> clusterInitializer.close()));
+    Runtime.getRuntime().addShutdownHook(new Thread(clusterInitializer::close));
   }
 }
