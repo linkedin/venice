@@ -1,5 +1,8 @@
 package com.linkedin.venice;
 
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
+import com.linkedin.avroutil1.compatibility.AvroVersion;
+import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
@@ -9,21 +12,6 @@ import com.linkedin.venice.utils.ClassPathSupplierForVeniceCluster;
 import com.linkedin.venice.utils.ForkedJavaProcess;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
-
-import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
-import com.linkedin.avroutil1.compatibility.AvroVersion;
-import com.linkedin.davinci.client.DaVinciClient;
-
-import org.apache.avro.generic.GenericRecord;
-import org.apache.avro.util.Utf8;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.testng.Assert;
-import org.testng.annotations.AfterClass;
-import org.testng.annotations.BeforeClass;
-import org.testng.annotations.DataProvider;
-import org.testng.annotations.Test;
-
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -34,6 +22,15 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import org.apache.avro.generic.GenericRecord;
+import org.apache.avro.util.Utf8;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+import org.testng.Assert;
+import org.testng.annotations.AfterClass;
+import org.testng.annotations.BeforeClass;
+import org.testng.annotations.DataProvider;
+import org.testng.annotations.Test;
 
 import static com.linkedin.venice.VeniceClusterInitializer.*;
 
@@ -110,7 +107,7 @@ public class VeniceClientCompatibilityTest {
     Assert.assertNotNull(zkAddress[0]);
     LOGGER.info("Zookeeper address in unit test: " + zkAddress[0]);
 
-    daVinciClient = ServiceFactory.getGenericAvroDaVinciClient(
+    daVinciClient = ServiceFactory.getGenericAvroDaVinciClientWithoutMetaSystemStoreRepo(
         storeName, zkAddress[0], Utils.getTempDataDirectory().getAbsolutePath());
     daVinciClient.subscribeAll().get(30, TimeUnit.SECONDS);
   }

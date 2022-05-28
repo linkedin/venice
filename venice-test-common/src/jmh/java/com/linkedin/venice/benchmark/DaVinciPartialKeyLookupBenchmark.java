@@ -182,8 +182,9 @@ public class DaVinciPartialKeyLookupBenchmark {
             "   ]" +
             "}";
     Schema valueSchema = new Schema.Parser().parse(valueSchemaString);
+    String storeName = cluster.createStore(keySchemaString, valueSchemaString, generateBatchDataStream(KEY_COUNT, keySchema, valueSchema));
 
-    return cluster.createStore(keySchemaString, valueSchemaString, generateBatchDataStream(KEY_COUNT, keySchema, valueSchema));
+    return storeName;
   }
 
   private Stream<Map.Entry> generateBatchDataStream(int keyCount, Schema keySchema, Schema valueSchema){

@@ -155,9 +155,7 @@ public class ControllerClient implements Closeable {
 
   public RepushInfoResponse getRepushInfo(String storeName, Optional<String> fabircName) {
     QueryParams params = newParams().add(NAME, storeName);
-    if (fabircName.isPresent()) {
-      params.add(FABRIC, fabircName.get());
-    }
+    fabircName.ifPresent(s -> params.add(FABRIC, s));
     return request(ControllerRoute.GET_REPUSH_INFO, params, RepushInfoResponse.class);
   }
 

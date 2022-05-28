@@ -251,10 +251,12 @@ public class  TestPushJobWithNativeReplication {
         (parentController, clusterName, storeName, props, inputDir) -> {
           try (VenicePushJob job = new VenicePushJob("Test push job", props)) {
             job.run();
-
-            //Verify the kafka URL being returned to the push job is the same as dc-0 kafka url.
+            // Verify the kafka URL being returned to the push job is the same as dc-0 kafka url.
             Assert.assertEquals(job.getKafkaUrl(), childDatacenters.get(0).getKafkaBrokerWrapper().getAddress());
           }
+          // Setup meta system store for Da Vinci usage.
+          ControllerClient controllerClient = new ControllerClient(clusterName, parentController.getControllerUrl());
+          TestUtils.createMetaSystemStore(controllerClient, storeName, Optional.of(logger));
 
           //Test Da-vinci client is able to consume from NR colo which is consuming remotely
           VeniceMultiClusterWrapper childDataCenter = childDatacenters.get(1);

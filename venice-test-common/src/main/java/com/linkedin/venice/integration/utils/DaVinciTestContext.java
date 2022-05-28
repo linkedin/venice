@@ -59,10 +59,10 @@ public class DaVinciTestContext<K, V> {
         daVinciClient.start();
         return daVinciClient;
       } catch (Exception e) {
-        Utils.closeQuietlyWithErrorLogged(daVinciClient);
         String errorMessage = "Got " + e.getClass().getSimpleName() + " while trying to start Da Vinci client. Attempt #"
             + attempt + "/" + maxAttempt + ".";
         logger.warn(errorMessage, e);
+        Utils.closeQuietlyWithErrorLogged(daVinciClient);
       }
     }
     throw new VeniceException("Failed to start Da Vinci client in " + maxAttempt + " attempts.");
@@ -97,13 +97,15 @@ public class DaVinciTestContext<K, V> {
     throw new VeniceException("Failed to start Da Vinci client in " + maxAttempt + " attempts.");
   }
 
-  private static PropertyBuilder getDaVinciPropertyBuilder(String zkAddress) {
+  public static PropertyBuilder getDaVinciPropertyBuilder(String zkAddress) {
     return new PropertyBuilder()
         .put(DATA_BASE_PATH, Utils.getTempDataDirectory().getAbsolutePath())
         .put(PERSISTENCE_TYPE, PersistenceType.ROCKS_DB)
         .put(SERVER_INGESTION_ISOLATION_APPLICATION_PORT, Utils.getFreePort())
         .put(SERVER_INGESTION_ISOLATION_SERVICE_PORT, Utils.getFreePort())
-        .put(ConfigKeys.SERVER_ROCKSDB_STORAGE_CONFIG_CHECK_ENABLED, true)
+        .put(SERVER_ROCKSDB_STORAGE_CONFIG_CHECK_ENABLED, true)
+        .put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
+        .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
         .put(D2_CLIENT_ZK_HOSTS_ADDRESS, zkAddress);
   }
 }

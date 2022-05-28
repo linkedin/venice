@@ -297,7 +297,6 @@ public class MetaSystemStoreTest {
       ClientConfig<StoreMetaValue> clientConfig = getClientConfig(regularVeniceStoreName, d2Client);
       // Not providing a CLIENT_META_SYSTEM_STORE_VERSION_MAP, should use the default value of 1 for system store current version.
       VeniceProperties backendConfig = new PropertyBuilder().put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
-          .put(CLIENT_USE_META_SYSTEM_STORE_REPOSITORY, true)
           .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
           .build();
       nativeMetadataRepository = NativeMetadataRepository.getInstance(clientConfig, backendConfig);
@@ -426,7 +425,6 @@ public class MetaSystemStoreTest {
       ClientConfig<StoreMetaValue> clientConfig = getClientConfig(regularVeniceStoreName, d2Client);
       // Not providing a CLIENT_META_SYSTEM_STORE_VERSION_MAP, should use the default value of 1 for system store current version.
       VeniceProperties backendConfig = new PropertyBuilder().put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
-          .put(CLIENT_USE_META_SYSTEM_STORE_REPOSITORY, true)
           .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
           .build();
       nativeMetadataRepository = NativeMetadataRepository.getInstance(clientConfig, backendConfig);

@@ -4,7 +4,6 @@ import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.davinci.client.DaVinciConfig;
 import com.linkedin.venice.AdminTool;
-import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.client.store.AbstractAvroStoreClient;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
@@ -21,12 +20,12 @@ import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.integration.utils.D2TestUtils;
+import com.linkedin.venice.integration.utils.DaVinciTestContext;
 import com.linkedin.venice.integration.utils.MirrorMakerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiColoMultiClusterWrapper;
-import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
@@ -34,7 +33,6 @@ import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
 import com.linkedin.venice.system.store.MetaStoreDataType;
 import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
 import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
-import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.TestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
@@ -49,6 +47,8 @@ import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.apache.samza.system.SystemProducer;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
@@ -75,6 +75,7 @@ public class TestStoreMigration {
   private static final String NEW_OWNER = "newtest@linkedin.com";
   private static final String FABRIC0 = "dc-0";
   private static final boolean[] ABORT_MIGRATION_PROMPTS_OVERRIDE = {false, true, true};
+  private static final Logger logger = LogManager.getLogger(TestStoreMigration.class);
 
   private VeniceTwoLayerMultiColoMultiClusterWrapper twoLayerMultiColoMultiClusterWrapper;
   private VeniceMultiClusterWrapper multiClusterWrapper;
@@ -290,20 +291,16 @@ public class TestStoreMigration {
       VersionCreationResponse versionCreationResponseForDaVinciPushStatusSystemStore =
           srcParentControllerClient.emptyPush(daVinciPushStatusSystemStoreName,"test_davinci_push_status_system_store_push_1", 10000);
       assertFalse(versionCreationResponseForDaVinciPushStatusSystemStore.isError(),
-          "New version creation for da vinci push statuus system store: " + daVinciPushStatusSystemStoreName
+          "New version creation for da vinci push status system store: " + daVinciPushStatusSystemStoreName
               + " should success, but got error: " + versionCreationResponseForDaVinciPushStatusSystemStore.getError());
       TestUtils.waitForNonDeterministicPushCompletion(versionCreationResponseForDaVinciPushStatusSystemStore.getKafkaTopic(),
           srcParentControllerClient, 30, TimeUnit.SECONDS, Optional.empty());
     }
 
-    VeniceProperties backendConfig = new PropertyBuilder()
-        .put(ConfigKeys.DATA_BASE_PATH, Utils.getTempDataDirectory().getAbsolutePath())
-        .put(ConfigKeys.PERSISTENCE_TYPE, PersistenceType.ROCKS_DB)
-        .put(CLIENT_USE_META_SYSTEM_STORE_REPOSITORY, true)
-        .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 10)
-        .put(ConfigKeys.SERVER_ROCKSDB_STORAGE_CONFIG_CHECK_ENABLED, true)
-        .put(PUSH_STATUS_STORE_ENABLED, true)
+    VeniceProperties backendConfig = DaVinciTestContext.getDaVinciPropertyBuilder(multiClusterWrapper.getZkServerWrapper()
+        .getAddress()).put(PUSH_STATUS_STORE_ENABLED, true)
         .build();
+
     D2Client srcD2Client = D2TestUtils.getAndStartD2Client(multiClusterWrapper.getClusters().get(srcClusterName).getZk().getAddress());
     PushStatusStoreReader srcReader = new PushStatusStoreReader(srcD2Client, TimeUnit.MINUTES.toSeconds(10));
     try (DaVinciClient daVinciClient = ServiceFactory.getGenericAvroDaVinciClient(storeName, multiClusterWrapper.getClusters().get(srcClusterName), new DaVinciConfig(), backendConfig)) {
@@ -358,6 +355,9 @@ public class TestStoreMigration {
         .setHybridRewindSeconds(TEST_TIMEOUT)
         .setHybridOffsetLagThreshold(2L);
     TestPushUtils.createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, updateStoreQueryParams).close();
+    try (ControllerClient client = new ControllerClient(clusterName, controllerUrl)) {
+     TestUtils.createMetaSystemStore(client, storeName, Optional.of(logger));
+    }
 
     // L/F is enabled in dc-0 and disabled in parent.
     try (ControllerClient childControllerClient0 = new ControllerClient(clusterName, childControllerUrl0)) {

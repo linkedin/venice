@@ -24,7 +24,6 @@ import com.linkedin.venice.meta.systemstore.schemas.StoreVersionState;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.rmd.ReplicationMetadataSchemaEntry;
-import com.linkedin.venice.schema.rmd.ReplicationMetadataVersionId;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.system.store.MetaStoreDataType;

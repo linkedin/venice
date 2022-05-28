@@ -116,9 +116,6 @@ import static org.apache.kafka.clients.consumer.ConsumerConfig.*;
 
 
 public class AdminTool {
-
-  // TODO: static state means this can only be used by command line,
-  // if we want to use this class programmatically it should get refactored.
   private static ObjectWriter jsonWriter = new ObjectMapper().writerWithDefaultPrettyPrinter();
   private static List<String> fieldsToDisplay = new ArrayList<>();
   private static final String STATUS = "status";
@@ -1351,7 +1348,8 @@ public class AdminTool {
 
   private static boolean isClonedStoreOnline(ControllerClient srcControllerClient, ControllerClient destControllerClient,
       String storeName) {
-    StoreInfo srcStore = srcControllerClient.getStore(storeName).getStore();
+    StoreResponse storeResponse = srcControllerClient.getStore(storeName);
+    StoreInfo srcStore = storeResponse.getStore();
     if (null == srcStore) {
       throw new VeniceException("Store " + storeName + " does not exist in the original cluster!");
     }
