@@ -39,7 +39,7 @@ public class MainIngestionRequestClient implements Closeable {
   private static final Logger logger = LogManager.getLogger(MainIngestionRequestClient.class);
   private static final int REQUEST_MAX_ATTEMPT = 10;
   private static final int HEARTBEAT_REQUEST_TIMEOUT_MS = 10 * Time.MS_PER_SECOND;
-  private final HttpClientTransport httpClientTransport;
+  private HttpClientTransport httpClientTransport;
 
   public MainIngestionRequestClient(Optional<SSLEngineComponentFactory> sslFactory, int port) {
     httpClientTransport = new HttpClientTransport(sslFactory, port);
@@ -103,17 +103,11 @@ public class MainIngestionRequestClient implements Closeable {
   }
 
   public void startConsumption(String topicName, int partitionId) {
-    // Send ingestion request to ingestion service.
     IngestionTaskCommand ingestionTaskCommand = new IngestionTaskCommand();
     ingestionTaskCommand.commandType = START_CONSUMPTION.getValue();
     ingestionTaskCommand.topicName = topicName;
     ingestionTaskCommand.partitionId = partitionId;
-    logger.info("Sending request: " + START_CONSUMPTION + " to forked process for topic: " + topicName + ", partition: " + partitionId);
-    try {
-      httpClientTransport.sendRequestWithRetry(IngestionAction.COMMAND, ingestionTaskCommand, REQUEST_MAX_ATTEMPT);
-    } catch (Exception e) {
-      throw new VeniceException("Exception caught during startConsumption of topic: " + topicName + ", partition: " + partitionId, e);
-    }
+    sendIngestionCommandWithRetry(ingestionTaskCommand, topicName, Optional.of(partitionId), REQUEST_MAX_ATTEMPT, true);
   }
 
   public void stopConsumption(String topicName, int partitionId) {
@@ -121,49 +115,30 @@ public class MainIngestionRequestClient implements Closeable {
     ingestionTaskCommand.commandType = IngestionCommandType.STOP_CONSUMPTION.getValue();
     ingestionTaskCommand.topicName = topicName;
     ingestionTaskCommand.partitionId = partitionId;
-    logger.info("Sending request: " + STOP_CONSUMPTION + " to forked process for topic: " + topicName + ", partition: " + partitionId);
-    try {
-      httpClientTransport.sendRequestWithRetry(IngestionAction.COMMAND, ingestionTaskCommand, REQUEST_MAX_ATTEMPT);
-    } catch (Exception e) {
-      throw new VeniceException("Exception caught during stopConsumption of topic: " + topicName + ", partition: " + partitionId, e);
-    }
+    sendIngestionCommandWithRetry(ingestionTaskCommand, topicName, Optional.of(partitionId), REQUEST_MAX_ATTEMPT, true);
   }
 
   public void killConsumptionTask(String topicName) {
     IngestionTaskCommand ingestionTaskCommand = new IngestionTaskCommand();
     ingestionTaskCommand.commandType = IngestionCommandType.KILL_CONSUMPTION.getValue();
     ingestionTaskCommand.topicName = topicName;
-    logger.info("Sending request: " + KILL_CONSUMPTION + " to forked process for topic: " + topicName);
-    try {
-      // We do not need retry here. Retry will slow down DaVinciBackend's shutdown speed severely.
-      httpClientTransport.sendRequest(IngestionAction.COMMAND, ingestionTaskCommand);
-    } catch (Exception e) {
-      throw new VeniceException("Exception caught during killConsumptionTask of topic: " + topicName, e);
-    }
+
+    // We do not need to retry here. Retry will slow down DaVinciBackend's shutdown speed severely.
+    sendIngestionCommandWithRetry(ingestionTaskCommand, topicName, Optional.empty(), 1, true);
   }
 
   public void removeStorageEngine(String topicName) {
     IngestionTaskCommand ingestionTaskCommand = new IngestionTaskCommand();
     ingestionTaskCommand.commandType = IngestionCommandType.REMOVE_STORAGE_ENGINE.getValue();
     ingestionTaskCommand.topicName = topicName;
-    logger.info("Sending request: " + REMOVE_STORAGE_ENGINE + " to forked process for topic: " + topicName);
-    try {
-      httpClientTransport.sendRequestWithRetry(IngestionAction.COMMAND, ingestionTaskCommand, REQUEST_MAX_ATTEMPT);
-    } catch (Exception e) {
-      throw new VeniceException("Encounter exception during removeStorageEngine of topic: " + topicName, e);
-    }
+    sendIngestionCommandWithRetry(ingestionTaskCommand, topicName, Optional.empty(), REQUEST_MAX_ATTEMPT, true);
   }
 
   public void openStorageEngine(String topicName) {
     IngestionTaskCommand ingestionTaskCommand = new IngestionTaskCommand();
     ingestionTaskCommand.commandType = IngestionCommandType.OPEN_STORAGE_ENGINE.getValue();
     ingestionTaskCommand.topicName = topicName;
-    logger.info("Sending request: " + START_CONSUMPTION + " to forked process for topic: " + topicName);
-    try {
-      httpClientTransport.sendRequestWithRetry(IngestionAction.COMMAND, ingestionTaskCommand, REQUEST_MAX_ATTEMPT);
-    } catch (Exception e) {
-      throw new VeniceException("Encounter exception during openStorageEngine of topic: " + topicName, e);
-    }
+    sendIngestionCommandWithRetry(ingestionTaskCommand, topicName, Optional.empty(), REQUEST_MAX_ATTEMPT, true);
   }
 
   public void unsubscribeTopicPartition(String topicName, int partitionId) {
@@ -171,12 +146,23 @@ public class MainIngestionRequestClient implements Closeable {
     ingestionTaskCommand.commandType = IngestionCommandType.REMOVE_PARTITION.getValue();
     ingestionTaskCommand.topicName = topicName;
     ingestionTaskCommand.partitionId = partitionId;
-    logger.info("Sending request: " + REMOVE_PARTITION + " to forked process for topic: " + topicName + ", partition: " + partitionId);
-    try {
-      httpClientTransport.sendRequestWithRetry(IngestionAction.COMMAND, ingestionTaskCommand, REQUEST_MAX_ATTEMPT);
-    } catch (Exception e) {
-      throw new VeniceException("Encounter exception during unsubscribeTopicPartition of topic: " + topicName + ", partition: " + partitionId, e);
-    }
+    sendIngestionCommandWithRetry(ingestionTaskCommand, topicName, Optional.empty(), REQUEST_MAX_ATTEMPT, true);
+  }
+
+  public boolean promoteToLeader(String topicName, int partition) {
+    IngestionTaskCommand ingestionTaskCommand = new IngestionTaskCommand();
+    ingestionTaskCommand.commandType = IngestionCommandType.PROMOTE_TO_LEADER.getValue();
+    ingestionTaskCommand.topicName = topicName;
+    ingestionTaskCommand.partitionId = partition;
+    return sendIngestionCommandWithRetry(ingestionTaskCommand, topicName, Optional.of(partition), REQUEST_MAX_ATTEMPT, false);
+  }
+
+  public boolean demoteToStandby(String topicName, int partition) {
+    IngestionTaskCommand ingestionTaskCommand = new IngestionTaskCommand();
+    ingestionTaskCommand.commandType = IngestionCommandType.DEMOTE_TO_STANDBY.getValue();
+    ingestionTaskCommand.topicName = topicName;
+    ingestionTaskCommand.partitionId = partition;
+    return sendIngestionCommandWithRetry(ingestionTaskCommand, topicName, Optional.of(partition), REQUEST_MAX_ATTEMPT, false);
   }
 
   public boolean updateMetadata(IngestionStorageMetadata ingestionStorageMetadata) {
@@ -189,7 +175,7 @@ public class MainIngestionRequestClient implements Closeable {
     } catch (Exception e) {
       /**
        * We only log the exception when failing to persist metadata updates into child process.
-       * Child process might crashed, but it will be respawned and will be able to receive future updates.
+       * Child process might crash, but it will be respawned and will be able to receive future updates.
        */
       logger.warn("Encounter exception when sending metadata updates to child process for topic: "
           + ingestionStorageMetadata.topicName + ", partition: " + ingestionStorageMetadata.partitionId);
@@ -206,34 +192,6 @@ public class MainIngestionRequestClient implements Closeable {
       httpClientTransport.sendRequest(IngestionAction.SHUTDOWN_COMPONENT, processShutdownCommand);
     } catch (Exception e) {
       logger.warn("Encounter exception when shutting down component: " + ingestionComponentType.name());
-    }
-  }
-
-  public boolean promoteToLeader(String topicName, int partition) {
-    IngestionTaskCommand ingestionTaskCommand = new IngestionTaskCommand();
-    ingestionTaskCommand.commandType = IngestionCommandType.PROMOTE_TO_LEADER.getValue();
-    ingestionTaskCommand.topicName = topicName;
-    ingestionTaskCommand.partitionId = partition;
-    logger.info("Sending request: " + PROMOTE_TO_LEADER + " to forked process for topic: " + topicName);
-    try {
-      IngestionTaskReport report = httpClientTransport.sendRequestWithRetry(IngestionAction.COMMAND, ingestionTaskCommand, REQUEST_MAX_ATTEMPT);
-      return report.isPositive;
-    } catch (Exception e) {
-      throw new VeniceException("Exception caught during promoteToLeader of topic: " + topicName, e);
-    }
-  }
-
-  public boolean demoteToStandby(String topicName, int partition) {
-    IngestionTaskCommand ingestionTaskCommand = new IngestionTaskCommand();
-    ingestionTaskCommand.commandType = IngestionCommandType.DEMOTE_TO_STANDBY.getValue();
-    ingestionTaskCommand.topicName = topicName;
-    ingestionTaskCommand.partitionId = partition;
-    logger.info("Sending request: " + DEMOTE_TO_STANDBY + " to forked process for topic: " + topicName);
-    try {
-      IngestionTaskReport report = httpClientTransport.sendRequestWithRetry(IngestionAction.COMMAND, ingestionTaskCommand, REQUEST_MAX_ATTEMPT);
-      return report.isPositive;
-    } catch (Exception e) {
-      throw new VeniceException("Exception caught during demoteToStandby of topic: " + topicName, e);
     }
   }
 
@@ -266,6 +224,29 @@ public class MainIngestionRequestClient implements Closeable {
   @Override
   public void close() {
     httpClientTransport.close();
+  }
+
+  // Visible for testing
+  protected void setHttpClientTransport(HttpClientTransport clientTransport) {
+    this.httpClientTransport = clientTransport;
+  }
+
+  private boolean sendIngestionCommandWithRetry(IngestionTaskCommand command, String topicName,
+      Optional<Integer> partitionId, int requestMaxAttempt, boolean throwExceptionOnFailure) {
+    String commandType = IngestionCommandType.valueOf(command.commandType).toString();
+    String commandInfo = " for topic: " + topicName + (partitionId.map(integer -> (", partition: " + integer)).orElse(""));
+    logger.info("Sending request: " + commandType + " to forked process" + commandInfo);
+    IngestionTaskReport report;
+    try {
+      report = httpClientTransport.sendRequestWithRetry(IngestionAction.COMMAND, command, requestMaxAttempt);
+    } catch (Exception e) {
+      throw new VeniceException("Caught exception when sending command: " + commandType + commandInfo, e);
+    }
+    if (report != null && !report.isPositive && throwExceptionOnFailure) {
+      String errorMessage = (report.message != null) ? report.message.toString() : "";
+      throw new VeniceException("Caught exception in forked ingestion process: " + errorMessage);
+    }
+    return report != null && report.isPositive;
   }
 
   private void waitHealthCheck() {

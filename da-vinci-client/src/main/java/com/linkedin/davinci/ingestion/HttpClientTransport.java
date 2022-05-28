@@ -105,7 +105,7 @@ public class HttpClientTransport implements AutoCloseable {
   }
 
   public <T extends SpecificRecordBase, S extends SpecificRecordBase> T sendRequest(IngestionAction action, S param) {
-    return sendRequest(action, param, DEFAULT_REQUEST_TIMEOUT_MS);
+    return sendRequestWithRetry(action, param, DEFAULT_REQUEST_TIMEOUT_MS, 1);
   }
 
   public <T extends SpecificRecordBase, S extends SpecificRecordBase> T sendRequestWithRetry(IngestionAction action, S param, int timeoutMs, int maxAttempt) {
@@ -113,7 +113,7 @@ public class HttpClientTransport implements AutoCloseable {
     if (maxAttempt <= 0) {
       throw new IllegalArgumentException("maxAttempt must be a positive integer");
     }
-    T result = null;
+    T result;
     int retryCount = 0;
     final long startTimeIsMs = System.currentTimeMillis();
     while (true) {
@@ -126,7 +126,7 @@ public class HttpClientTransport implements AutoCloseable {
           logger.warn("Encounter exception when sending request, will retry for " + retryCount + "/" + maxAttempt + " time.");
         } else {
           long totalTimeInMs = System.currentTimeMillis() - startTimeIsMs;
-          throw new VeniceException("Failed to send request to remote forked process after " + maxAttempt + " attempts, total time spent in millis: " + totalTimeInMs , e);
+          throw new VeniceException("Failed to send request to remote forked process after " + maxAttempt + " attempts, total time spent in millis: " + totalTimeInMs, e);
         }
       }
       try {
