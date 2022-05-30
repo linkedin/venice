@@ -27,6 +27,7 @@ import com.linkedin.venice.systemstore.schemas.storeReplicaStatusesMapOps;
 import com.linkedin.venice.systemstore.schemas.storeValueSchemaIdsWrittenPerStoreVersionListOps;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.SystemTime;
+import com.linkedin.venice.utils.Timer;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
@@ -45,8 +46,6 @@ import org.apache.avro.Schema;
 import org.apache.avro.specific.SpecificRecord;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-
-import static com.linkedin.venice.schema.writecompute.WriteComputeConstants.*;
 
 
 /**
@@ -400,6 +399,13 @@ public class MetaStoreWriter implements Closeable {
 
   @Override
   public void close() throws IOException {
-    metaStoreWriterMap.forEach((metaStoreName, veniceWriter) -> closeVeniceWriter(metaStoreName, veniceWriter, false));
+    // Close VeniceWrites in parallel to reduce the time to shut down the server.
+    try (Timer ignore = Timer.run(
+        elapsedTimeInMs -> LOGGER.info("MetaStoreWriter takes {} ms to close {} VeniceWriters in parallel",
+            elapsedTimeInMs, metaStoreWriterMap.size()))) {
+      metaStoreWriterMap.entrySet()
+          .parallelStream()
+          .forEach(entry -> closeVeniceWriter(entry.getKey(), entry.getValue(), false));
+    }
   }
 }
