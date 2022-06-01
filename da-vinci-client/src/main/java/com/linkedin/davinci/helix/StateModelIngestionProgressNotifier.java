@@ -60,6 +60,12 @@ public abstract class StateModelIngestionProgressNotifier implements VeniceNotif
     }
   }
 
+  void stopConsumption(String resourceName, int partitionId) {
+    final String stateModelID = getStateModelID(resourceName, partitionId);
+    stateModelToIngestionCompleteFlagMap.remove(stateModelID);
+    stateModelToSuccessMap.remove(stateModelID);
+  }
+
   CountDownLatch getIngestionCompleteFlag(String resourceName, int partitionId) {
     return stateModelToIngestionCompleteFlagMap.get(getStateModelID(resourceName, partitionId));
   }

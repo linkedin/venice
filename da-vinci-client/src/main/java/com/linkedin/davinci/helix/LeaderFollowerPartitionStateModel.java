@@ -63,19 +63,33 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
   @Transition(to = HelixState.STANDBY_STATE, from = HelixState.OFFLINE_STATE)
   public void onBecomeStandbyFromOffline(Message message, NotificationContext context) {
     executeStateTransition(message, context, () -> {
-      long startTimeForSettingUpNewStorePartitionInNs = System.nanoTime();
-      setupNewStorePartition();
-      logger.info("Completed setting up new store partition for " + message.getResourceName() + " partition " + getPartition()
-          + ". Total elapsed time: " + LatencyUtils.getLatencyInMS(startTimeForSettingUpNewStorePartitionInNs) + " ms");
       String resourceName = message.getResourceName();
       String storeName = Version.parseStoreFromKafkaTopicName(resourceName);
       int version = Version.parseVersionFromKafkaTopicName(resourceName);
+      boolean isRegularStoreCurrentVersion = getStoreRepo().getStoreOrThrow(storeName).getCurrentVersion() == version
+          && !VeniceSystemStoreUtils.isSystemStore(storeName);
 
-      // Placing a latch in the transition if this is the current version
-      if (getStoreRepo().getStoreOrThrow(storeName).getCurrentVersion() == version
-          && !VeniceSystemStoreUtils.isSystemStore(storeName)) {
-        //startConsumption is called in order to create the latch
+      /**
+       * For regular store current version, firstly create a latch, then start ingestion and wait for ingestion
+       * completion. Otherwise, if we start ingestion first, ingestion completion might be reported before latch
+       * creation, and latch will never be released until timeout, resulting in error replica.
+       */
+      if (isRegularStoreCurrentVersion) {
         notifier.startConsumption(resourceName, getPartition());
+      }
+      try {
+        long startTimeForSettingUpNewStorePartitionInNs = System.nanoTime();
+        setupNewStorePartition();
+        logger.info("Completed setting up new store partition for {} partition {}. Total elapsed time: {} ms",
+            resourceName, getPartition(), LatencyUtils.getLatencyInMS(startTimeForSettingUpNewStorePartitionInNs));
+      } catch (Exception e) {
+        logger.error("Failed to set up new store partition for {} partition {}", resourceName, getPartition(), e);
+        if (isRegularStoreCurrentVersion) {
+          notifier.stopConsumption(resourceName, getPartition());
+        }
+        throw e;
+      }
+      if (isRegularStoreCurrentVersion) {
         waitConsumptionCompleted(resourceName, notifier);
       }
     });
