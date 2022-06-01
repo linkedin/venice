@@ -202,7 +202,7 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
       path.setResponseDecompressor(responseDecompressor);
 
       AggRouterHttpRequestStats stats = routerStats.getStatsByType(requestType);
-      if (!request.equals(SINGLE_GET)) {
+      if (!requestType.equals(SINGLE_GET)) {
         /**
          * Here we only track key num for non single-get request, since single-get request will be always 1.
          */
@@ -213,19 +213,21 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
       stats.recordRequest(storeName);
       stats.recordRequestSize(storeName, path.getRequestSize());
     } catch (VeniceException e) {
+      Optional<RequestType> requestTypeOptional = path == null ? Optional.empty() : Optional.of(path.getRequestType());
       if (e instanceof VeniceStoreIsMigratedException) {
         throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.of(storeName), Optional.empty(),
             MOVED_PERMANENTLY, e.getMessage());
       }
       if (e instanceof VeniceKeyCountLimitException) {
         VeniceKeyCountLimitException keyCountLimitException = (VeniceKeyCountLimitException)e;
+        requestTypeOptional = Optional.of(keyCountLimitException.getRequestType());
         routerStats.getStatsByType(keyCountLimitException.getRequestType()).recordBadRequestKeyCount(
             keyCountLimitException.getStoreName(), keyCountLimitException.getRequestKeyCount());
       }
       /**
        * Tracking the bad requests in {@link RouterExceptionAndTrackingUtils} by logging and metrics.
        */
-      throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.of(storeName), Optional.empty(),
+      throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.of(storeName), requestTypeOptional,
           BAD_REQUEST, e.getMessage());
     } finally {
       // Always record request usage in the single get stats, so we could compare it with the quota easily.

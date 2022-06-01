@@ -162,7 +162,7 @@ public class TestVenicePathParser {
       fail("A RouterException should be thrown here");
     } catch (RouterException e) {
       // expected and validate bad request metric
-      verify(multiGetStats, only()).recordBadRequestKeyCount(storeName, maxKeyCount + 1);
+      verify(multiGetStats, times(1)).recordBadRequestKeyCount(storeName, maxKeyCount + 1);
     } catch (Throwable t) {
       t.printStackTrace();
       fail("Only RouterException is expected, but got: " + t.getClass());

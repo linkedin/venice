@@ -84,6 +84,7 @@ import com.linkedin.venice.helix.HelixReadOnlyZKSharedSchemaRepository;
 import com.linkedin.venice.helix.HelixReadOnlyZKSharedSystemStoreRepository;
 import com.linkedin.venice.helix.ParentHelixOfflinePushAccessor;
 import com.linkedin.venice.helix.Replica;
+import com.linkedin.venice.helix.ZkStoreConfigAccessor;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.BufferReplayPolicy;
@@ -97,6 +98,7 @@ import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.RegionPushDetails;
 import com.linkedin.venice.meta.RoutersClusterConfig;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.StoreDataAudit;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.VeniceUserStoreType;
@@ -616,9 +618,27 @@ public class VeniceParentHelixAdmin implements Admin {
       // Provisioning ACL needs to be the first step in store creation process.
       provisionAclsForStore(storeName, accessPermissions, Collections.emptyList());
       sendStoreCreationAdminMessage(clusterName, storeName, owner, keySchema, valueSchema);
-      // For each user store level system store, we will send admin message to validate the creation is successful.
-      for (VeniceSystemStoreType systemStoreType : getSystemStoreLifeCycleHelper().maybeMaterializeSystemStoresForUserStore(clusterName, storeName)) {
-        sendUserSystemStoreCreationValidationAdminMessage(clusterName, storeName, systemStoreType);
+      /**
+       * If the newly created store operation is triggered by store migration, Parent Controller will skip the system store
+       * auto-materialization since the system stores will be taken care by store migration logic.
+       * Otherwise, for each user store level system store, we will send admin message to validate the creation is successful.
+       */
+      boolean isStoreMigrating = false;
+      ZkStoreConfigAccessor storeConfigAccessor = getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName).getStoreConfigAccessor();
+      if (storeConfigAccessor.containsConfig(storeName)) {
+        StoreConfig storeConfig = storeConfigAccessor.getStoreConfig(storeName);
+        isStoreMigrating = !storeConfig.isDeleting() && clusterName.equals(storeConfig.getMigrationDestCluster());
+        if (isStoreMigrating) {
+          logger.info("Store: {} is migrating to cluster: {}, will skip system store auto-materialization", storeName,
+              clusterName);
+        }
+      }
+      if (!isStoreMigrating) {
+        for (VeniceSystemStoreType systemStoreType : getSystemStoreLifeCycleHelper().maybeMaterializeSystemStoresForUserStore(
+            clusterName, storeName)) {
+          logger.info("Materializing system store: {} in cluster: {}", systemStoreType, clusterName);
+          sendUserSystemStoreCreationValidationAdminMessage(clusterName, storeName, systemStoreType);
+        }
       }
       if (VeniceSystemStoreType.BATCH_JOB_HEARTBEAT_STORE.getPrefix().equals(storeName)) {
         setupResourceForBatchJobHeartbeatStore(storeName);

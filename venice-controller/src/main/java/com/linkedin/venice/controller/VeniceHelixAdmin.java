@@ -1078,9 +1078,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         Consumer<String> versionMigrationConsumer = migratingStoreName -> {
             Store migratingStore = this.getStore(srcClusterName, migratingStoreName);
             List<Version> versionsToMigrate = getVersionsToMigrate(srcStoresInChildColos, migratingStore);
-            logger.info("Adding versions: "
-                + versionsToMigrate.stream().map(Version::getNumber).map(String::valueOf).collect(Collectors.joining(","))
-                + " to the dest cluster " + destClusterName);
+            logger.info("Adding versions: {} to store: {} in the dest cluster: {}",
+                 versionsToMigrate.stream().map(Version::getNumber).map(String::valueOf).collect(Collectors.joining(",")),
+                migratingStoreName, destClusterName);
             for (Version version : versionsToMigrate) {
                 try {
                     destControllerClient.addVersionAndStartIngestion(
@@ -4101,6 +4101,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         if (filteredVersionList.isEmpty() || filteredVersionList.get(0).getStatus().equals(ERROR)) {
           // Latest push failed, we should issue a local empty push to create a new version.
           String pushJobId = AUTO_META_SYSTEM_STORE_PUSH_ID_PREFIX + System.currentTimeMillis();
+          logger.info("Empty push is triggered to store: {} in cluster: {}", storeName, clusterName);
           Version version = incrementVersionIdempotent(clusterName, systemStoreName, pushJobId,
               calculateNumberOfPartitions(clusterName, systemStoreName, DEFAULT_META_SYSTEM_STORE_SIZE),
               getReplicationFactor(clusterName, systemStoreName));

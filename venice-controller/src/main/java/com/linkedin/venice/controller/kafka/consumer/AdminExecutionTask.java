@@ -630,7 +630,6 @@ public class AdminExecutionTask implements Callable<Void> {
     String clusterName = message.clusterName.toString();
     String storeName = message.storeName.toString();
     admin.validateAndMaybeRetrySystemStoreAutoCreation(clusterName, storeName, VeniceSystemStoreType.META_STORE);
-    logger.info("DEBUGGING2: " + message + " added.");
   }
 
   private void handlePushStatusSystemStoreCreationValidation(PushStatusSystemStoreAutoCreationValidation message) {
