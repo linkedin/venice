@@ -22,8 +22,7 @@ public class NewClusterBuildOutRoutes extends AbstractRoute {
       @Override
       public void internalHandle(Request request, StoreResponse veniceResponse) {
         // Only allow allowlist users to run this command
-        if (!isAllowListUser(request)) {
-          veniceResponse.setError("Only admin users are allowed to run " + request.url());
+        if (!checkIsAllowListUser(request, veniceResponse, () -> isAllowListUser(request))) {
           return;
         }
         AdminSparkServer.validateParams(request, REPLICATE_META_DATA.getParams(), admin);

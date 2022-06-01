@@ -24,8 +24,7 @@ public class CreateStore extends AbstractRoute {
       @Override
       public void internalHandle(Request request, NewStoreResponse veniceResponse) {
         // Only allow allowlist users to run this command
-        if (!isAllowListUser(request)) {
-          veniceResponse.setError("Only admin users are allowed to run " + request.url());
+        if (!checkIsAllowListUser(request, veniceResponse, () -> isAllowListUser(request))) {
           return;
         }
         AdminSparkServer.validateParams(request, NEW_STORE.getParams(), admin);

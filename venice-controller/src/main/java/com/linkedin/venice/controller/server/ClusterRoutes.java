@@ -25,8 +25,7 @@ public class ClusterRoutes  extends AbstractRoute {
       @Override
       public void internalHandle(Request request, ControllerResponse veniceResponse) {
         // Only allow allowlist users to run this command
-        if (!isAllowListUser(request)) {
-          veniceResponse.setError("Only admin users are allowed to run " + request.url());
+        if (!checkIsAllowListUser(request, veniceResponse, () -> isAllowListUser(request))) {
           return;
         }
         AdminSparkServer.validateParams(request, UPDATE_CLUSTER_CONFIG.getParams(), admin);
@@ -65,8 +64,7 @@ public class ClusterRoutes  extends AbstractRoute {
       @Override
       public void internalHandle(Request request, ControllerResponse veniceResponse) {
         // Only allow allowlist users to run this command
-        if (!isAllowListUser(request)) {
-          veniceResponse.setError("Only admin users are allowed to run " + request.url());
+        if (!checkIsAllowListUser(request, veniceResponse, () -> isAllowListUser(request))) {
           return;
         }
         AdminSparkServer.validateParams(request, WIPE_CLUSTER.getParams(), admin);
