@@ -23,8 +23,7 @@ public class RoutersClusterConfigRoutes extends AbstractRoute {
       @Override
       public void internalHandle(Request request, ControllerResponse veniceResponse) {
         // Only allow allowlist users to run this command
-        if (!isAllowListUser(request)) {
-          veniceResponse.setError("Only admin users are allowed to run " + request.url());
+        if (!checkIsAllowListUser(request, veniceResponse, () -> isAllowListUser(request))) {
           return;
         }
         AdminSparkServer.validateParams(request, ENABLE_THROTTLING.getParams(), admin);
@@ -42,8 +41,7 @@ public class RoutersClusterConfigRoutes extends AbstractRoute {
       @Override
       public void internalHandle(Request request, ControllerResponse veniceResponse) {
         // Only allow allowlist users to run this command
-        if (!isAllowListUser(request)) {
-          veniceResponse.setError("Only admin users are allowed to run " + request.url());
+        if (!checkIsAllowListUser(request, veniceResponse, () -> isAllowListUser(request))) {
           return;
         }
         AdminSparkServer.validateParams(request, ENABLE_MAX_CAPACITY_PROTECTION.getParams(), admin);
@@ -61,8 +59,7 @@ public class RoutersClusterConfigRoutes extends AbstractRoute {
       @Override
       public void internalHandle(Request request, ControllerResponse veniceResponse) {
         // Only allow allowlist users to run this command
-        if (!isAllowListUser(request)) {
-          veniceResponse.setError("Only admin users are allowed to run " + request.url());
+        if (!checkIsAllowListUser(request, veniceResponse, () -> isAllowListUser(request))) {
           return;
         }
         AdminSparkServer.validateParams(request, ENABLE_QUOTA_REBALANCED.getParams(), admin);

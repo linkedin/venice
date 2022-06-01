@@ -14,8 +14,8 @@ import com.linkedin.venice.controllerapi.MultiVersionResponse;
 import com.linkedin.venice.controllerapi.OwnerResponse;
 import com.linkedin.venice.controllerapi.PartitionResponse;
 import com.linkedin.venice.controllerapi.RegionPushDetailsResponse;
-import com.linkedin.venice.controllerapi.RepushInfoResponse;
 import com.linkedin.venice.controllerapi.RepushInfo;
+import com.linkedin.venice.controllerapi.RepushInfoResponse;
 import com.linkedin.venice.controllerapi.StorageEngineOverheadRatioResponse;
 import com.linkedin.venice.controllerapi.StoreComparisonInfo;
 import com.linkedin.venice.controllerapi.StoreComparisonResponse;
@@ -30,17 +30,16 @@ import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.kafka.TopicDoesNotExistException;
 import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.RegionPushDetails;
-import com.linkedin.venice.meta.StoreDataAudit;
-import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.StoreDataAudit;
 import com.linkedin.venice.meta.StoreInfo;
+import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.systemstore.schemas.StoreProperties;
 import com.linkedin.venice.utils.Utils;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -261,8 +260,7 @@ public class StoresRoutes extends AbstractRoute {
       @Override
       public void internalHandle(Request request, StoreMigrationResponse veniceResponse) {
         // Only allow allowlist users to run this command
-        if (!isAllowListUser(request)) {
-          veniceResponse.setError("Only admin users are allowed to run " + request.url());
+        if (!checkIsAllowListUser(request, veniceResponse, () -> isAllowListUser(request))) {
           return;
         }
         AdminSparkServer.validateParams(request, MIGRATE_STORE.getParams(), admin);
@@ -297,8 +295,7 @@ public class StoresRoutes extends AbstractRoute {
       @Override
       public void internalHandle(Request request, StoreMigrationResponse veniceResponse) {
         // Only allow allowlist users to run this command
-        if (!isAllowListUser(request)) {
-          veniceResponse.setError("Only admin users are allowed to run " + request.url());
+        if (!checkIsAllowListUser(request, veniceResponse, () -> isAllowListUser(request))) {
           return;
         }
         AdminSparkServer.validateParams(request, COMPLETE_MIGRATION.getParams(), admin);
@@ -334,8 +331,7 @@ public class StoresRoutes extends AbstractRoute {
       public void internalHandle(Request request, StoreMigrationResponse veniceResponse) {
         try {
           // Only allow allowlist users to run this command
-          if (!isAllowListUser(request)) {
-            veniceResponse.setError("Only admin users are allowed to run " + request.url());
+          if (!checkIsAllowListUser(request, veniceResponse, () -> isAllowListUser(request))) {
             return;
           }
           AdminSparkServer.validateParams(request, ABORT_MIGRATION.getParams(), admin);
@@ -364,8 +360,7 @@ public class StoresRoutes extends AbstractRoute {
       @Override
       public void internalHandle(Request request, TrackableControllerResponse veniceResponse) {
         // Only allow allowlist users to run this command
-        if (!isAllowListUser(request)) {
-          veniceResponse.setError("Only admin users are allowed to run " + request.url());
+        if (!checkIsAllowListUser(request, veniceResponse, () -> isAllowListUser(request))) {
           return;
         }
         AdminSparkServer.validateParams(request, DELETE_STORE.getParams(), admin);
@@ -395,8 +390,7 @@ public class StoresRoutes extends AbstractRoute {
       @Override
       public void internalHandle(Request request, ControllerResponse veniceResponse) {
         // Only allow allowlist users to run this command
-        if (!isAllowListUser(request)) {
-          veniceResponse.setError("Only admin users are allowed to run " + request.url());
+        if (!checkIsAllowListUser(request, veniceResponse, () -> isAllowListUser(request))) {
           return;
         }
         AdminSparkServer.validateParams(request, UPDATE_STORE.getParams(), admin);
@@ -454,8 +448,7 @@ public class StoresRoutes extends AbstractRoute {
       @Override
       public void internalHandle(Request request, VersionResponse veniceResponse) {
         // Only allow allowlist users to run this command
-        if (!isAllowListUser(request)) {
-          veniceResponse.setError("Only admin users are allowed to run " + request.url());
+        if (!checkIsAllowListUser(request, veniceResponse, () -> isAllowListUser(request))) {
           return;
         }
         AdminSparkServer.validateParams(request, SET_VERSION.getParams(), admin); //throws venice exception
@@ -479,8 +472,7 @@ public class StoresRoutes extends AbstractRoute {
       @Override
       public void internalHandle(Request request, ControllerResponse veniceResponse) {
         // Only allow allowlist users to run this command
-        if (!isAllowListUser(request)) {
-          veniceResponse.setError("Only admin users are allowed to run " + request.url());
+        if (!checkIsAllowListUser(request, veniceResponse, () -> isAllowListUser(request))) {
           return;
         }
         AdminSparkServer.validateParams(request, ENABLE_STORE.getParams(), admin);
@@ -510,8 +502,7 @@ public class StoresRoutes extends AbstractRoute {
       @Override
       public void internalHandle(Request request, MultiVersionResponse veniceResponse) {
         // Only allow allowlist users to run this command
-        if (!isAllowListUser(request)) {
-          veniceResponse.setError("Only admin users are allowed to run " + request.url());
+        if (!checkIsAllowListUser(request, veniceResponse, () -> isAllowListUser(request))) {
           return;
         }
         AdminSparkServer.validateParams(request, DELETE_ALL_VERSIONS.getParams(), admin);
@@ -546,8 +537,7 @@ public class StoresRoutes extends AbstractRoute {
       @Override
       public void internalHandle(Request request, VersionResponse veniceResponse) {
         // Only allow allowlist users to run this command
-        if (!isAllowListUser(request)) {
-          veniceResponse.setError("Only admin users are allowed to run " + request.url());
+        if (!checkIsAllowListUser(request, veniceResponse, () -> isAllowListUser(request))) {
           return;
         }
         AdminSparkServer.validateParams(request, DELETE_ALL_VERSIONS.getParams(), admin);
@@ -604,8 +594,7 @@ public class StoresRoutes extends AbstractRoute {
       @Override
       public void internalHandle(Request request, MultiStoreResponse veniceResponse) {
         // Only allow allowlist users to run this command
-        if (!isAllowListUser(request)) {
-          veniceResponse.setError("Only admin users are allowed to run " + request.url());
+        if (!checkIsAllowListUser(request, veniceResponse, () -> isAllowListUser(request))) {
           return;
         }
 
@@ -664,8 +653,7 @@ public class StoresRoutes extends AbstractRoute {
       @Override
       public void internalHandle(Request request, ControllerResponse veniceResponse) {
         // Only allow allowlist users to run this command
-        if (!isAllowListUser(request)) {
-          veniceResponse.setError("Only admin users are allowed to run " + request.url());
+        if (!checkIsAllowListUser(request, veniceResponse, () -> isAllowListUser(request))) {
           return;
         }
 
@@ -695,8 +683,7 @@ public class StoresRoutes extends AbstractRoute {
       @Override
       public void internalHandle(Request request, ControllerResponse veniceResponse) {
         // Only allow allowlist users to run this command
-        if (!isAllowListUser(request)) {
-          veniceResponse.setError("Only admin users are allowed to run " + request.url());
+        if (!checkIsAllowListUser(request, veniceResponse, () -> isAllowListUser(request))) {
           return;
         }
 
@@ -724,8 +711,7 @@ public class StoresRoutes extends AbstractRoute {
       @Override
       public void internalHandle(Request request, ControllerResponse veniceResponse) {
         // Only allow allowlist users to run this command
-        if (!isAllowListUser(request)) {
-          veniceResponse.setError("Only admin users are allowed to run " + request.url());
+        if (!checkIsAllowListUser(request, veniceResponse, () -> isAllowListUser(request))) {
           return;
         }
 
