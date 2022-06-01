@@ -92,6 +92,10 @@ public class TestStoreMigration {
     parentControllerProperties.setProperty(PARTICIPANT_MESSAGE_STORE_ENABLED, "true");
     parentControllerProperties.setProperty(CONTROLLER_ZK_SHARED_DAVINCI_PUSH_STATUS_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED, String.valueOf(true));
 
+    // Enable system store auto-materialization
+    parentControllerProperties.setProperty(CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE, "true");
+    parentControllerProperties.setProperty(CONTROLLER_AUTO_MATERIALIZE_DAVINCI_PUSH_STATUS_SYSTEM_STORE, "true");
+
     Properties childControllerProperties = new Properties();
     // Required by metadata system store
     childControllerProperties.setProperty(PARTICIPANT_MESSAGE_STORE_ENABLED, "true");

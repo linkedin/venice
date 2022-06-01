@@ -37,6 +37,7 @@ import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.serializer.VeniceSerializationException;
+import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.EncodingUtils;
 import com.linkedin.venice.utils.LatencyUtils;
@@ -1019,7 +1020,12 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
                   completedException = Optional.of(exception.get());
                 } else if (streamingFooterRecord.isPresent()) {
                   // Exception thrown by Venice backend
-                  completedException = Optional.of(new VeniceClientHttpException(streamingFooterRecord.get().detail.toString(), streamingFooterRecord.get().status));
+                  completedException = Optional.of(
+                      new VeniceClientHttpException(
+                          new String(ByteUtils.extractByteArray(streamingFooterRecord.get().detail)),
+                          streamingFooterRecord.get().status
+                      )
+                  );
                 } else if (throwable != null) {
                   if (throwable instanceof Exception) {
                     completedException = Optional.of((Exception)throwable);
