@@ -1586,6 +1586,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     // Only reset Offset Messages are important, subscribe/unSubscribe will be handled
     // on the restart by Helix Controller notifications on the new StoreIngestionTask.
     try {
+      this.storeRepository.unregisterStoreDataChangedListener(this.storageUtilizationManager);
       for (ConsumerAction message : consumerActionsQueue) {
         ConsumerActionType opType = message.getType();
         if (opType == ConsumerActionType.RESET_OFFSET) {

@@ -2,7 +2,6 @@ package com.linkedin.davinci.kafka.consumer;
 
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.utils.StoragePartitionDiskUsage;
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.meta.Version;
@@ -60,6 +59,7 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
   private final Function<Integer, StoragePartitionDiskUsage> storagePartitionDiskUsageFunctionConstructor;
   private final String versionTopic;
   private final String storeName;
+  private final int storeVersion;
   private final int subPartitionCount;
   private final Map<Integer, StoragePartitionDiskUsage> partitionConsumptionSizeMap;
   private final Set<Integer> pausedPartitions;
@@ -111,7 +111,7 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
     this.subPartitionCount = subPartitionCount;
     this.partitionConsumptionSizeMap = new VeniceConcurrentHashMap<>();
     this.pausedPartitions = VeniceConcurrentHashMap.newKeySet();
-    int storeVersion = Version.parseVersionFromKafkaTopicName(versionTopic);
+    this.storeVersion = Version.parseVersionFromKafkaTopicName(versionTopic);
     this.isHybridQuotaEnabledInServer = isHybridQuotaEnabledInServer;
     this.isServerCalculateQuotaUsageBasedOnPartitionsAssignmentEnabled = isServerCalculateQuotaUsageBasedOnPartitionsAssignmentEnabled;
     this.reportStatusAdapter = reportStatusAdapter;
@@ -119,7 +119,7 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
     this.resumePartition = resumePartition;
     setStoreQuota(store);
     Optional<Version> version = store.getVersion(storeVersion);
-    versionIsOnline = isVersionOnline(version) || versionIsOnline;
+    versionIsOnline = version.isPresent() && isVersionOnline(version.get());
   }
 
   @Override
@@ -161,9 +161,13 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
     if (!store.getName().equals(storeName)) {
       return;
     }
-    int storeVersion = Version.parseVersionFromKafkaTopicName(versionTopic);
     Optional<Version> version = store.getVersion(storeVersion);
-    versionIsOnline = isVersionOnline(version) || versionIsOnline;
+    if (!version.isPresent()) {
+      logger.debug("Version: {}  doesn't exist in the store: {}", Version.parseVersionFromKafkaTopicName(versionTopic),
+          storeName);
+      return;
+    }
+    versionIsOnline = isVersionOnline(version.get());
     if (this.storeQuotaInBytes != store.getStorageQuotaInByte() || !store.isHybridStoreDiskQuotaEnabled()) {
       logger.info("Store: " + this.storeName + " changed, updated quota from " + this.storeQuotaInBytes
           + " to " + store.getStorageQuotaInByte() + " and store quota is " + (store.isHybridStoreDiskQuotaEnabled() ? "": "not ")
@@ -315,15 +319,8 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
     });
   }
 
-  private boolean isVersionOnline(Optional<Version> version) {
-    if (version.isPresent() && version.get().getStatus().equals(VersionStatus.ONLINE)) {
-      return true;
-    }
-    if (!version.isPresent()) {
-      logger.debug("Version: {}  doesn't exist in the store: {}", Version.parseVersionFromKafkaTopicName(versionTopic),
-          storeName);
-    }
-    return false;
+  private boolean isVersionOnline(Version version) {
+    return version.getStatus().equals(VersionStatus.ONLINE);
   }
 
   /**
