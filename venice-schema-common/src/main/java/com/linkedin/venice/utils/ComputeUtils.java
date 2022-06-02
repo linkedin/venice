@@ -16,12 +16,16 @@ import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.apache.avro.Schema;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 public class ComputeUtils {
+  private static final Logger LOGGER = LogManager.getLogger(ComputeUtils.class);
   public static final Pattern VALID_AVRO_NAME_PATTERN = Pattern.compile("\\A[A-Za-z_][A-Za-z0-9_]*\\z");
   public static final String ILLEGAL_AVRO_CHARACTER = "[^A-Za-z0-9_]";
   public static final String ILLEGAL_AVRO_CHARACTER_REPLACEMENT = "_";
+  private static final RedundantExceptionFilter REDUNDANT_EXCEPTION_FILTER = RedundantExceptionFilter.getRedundantExceptionFilter();
 
   public static void checkResultSchema(Schema resultSchema, Schema valueSchema, int version, List<ComputeOperation> operations) {
     if (resultSchema.getType() != Schema.Type.RECORD || valueSchema.getType() != Schema.Type.RECORD) {
@@ -84,6 +88,10 @@ public class ComputeUtils {
       }
       Pair<String, Schema.Type> resultFieldPair = new Pair<>(resultField.name(), resultField.schema().getType());
       if (!operationResultFields.contains(resultFieldPair)) {
+        String msg = "The result field " + resultField.name() + " with schema " + resultField.schema() + " for value schema code " + valueSchema.hashCode();
+        if (!REDUNDANT_EXCEPTION_FILTER.isRedundantException(msg)) {
+          LOGGER.error(msg + " is not a field in value schema or an operation result schema." + " Value schema " + valueSchema);
+        }
         throw new VeniceException("The result field " + resultField.name() +
             " is not a field in value schema or an operation result schema.");
       }
