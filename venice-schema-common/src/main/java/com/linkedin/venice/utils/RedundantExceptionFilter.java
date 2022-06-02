@@ -1,6 +1,5 @@
 package com.linkedin.venice.utils;
 
-import com.linkedin.ddsstorage.router.api.RouterException;
 import com.linkedin.venice.exceptions.VeniceException;
 import java.util.BitSet;
 import java.util.concurrent.Executors;
@@ -56,14 +55,18 @@ public class RedundantExceptionFilter {
   public boolean isRedundantException(String storeName, Throwable e) {
     // By default use exception's class as the type. For VeniceException and RouterException use http status code instead.
     String exceptionType = e.getClass().getName();
-    if (e instanceof RouterException) {
-      exceptionType = String.valueOf(((RouterException) e).code());
-    } else if (e instanceof VeniceException) {
+    if (e instanceof VeniceException) {
       exceptionType = String.valueOf(((VeniceException) e).getHttpStatusCode());
     }
     int index = getIndex(storeName + exceptionType);
     return isRedundant(index);
   }
+
+  public boolean isRedundantException(String storeName, String exceptionType) {
+    int index = getIndex(storeName + exceptionType);
+    return isRedundant(index);
+  }
+
 
   public void clearBitSet() {
     synchronized (this) {

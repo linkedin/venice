@@ -52,7 +52,7 @@ public class RouterExceptionAndTrackingUtils {
       e.setStackTrace(emptyStackTrace);
     }
     String name = storeName.isPresent() ? storeName.get() : "";
-    if (!filter.isRedundantException(name, e)) {
+    if (!filter.isRedundantException(name, String.valueOf(e.code()))) {
       if (responseStatus == BAD_REQUEST) {
         logger.debug(BAD_REQUEST + " for store: " + name, e);
       } else if (failureType == FailureType.RESOURCE_NOT_FOUND) {
