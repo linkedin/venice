@@ -443,8 +443,7 @@ public class TestVenicePushJob {
     params.setLeaderFollowerModel(true);
     params.setIncrementalPushEnabled(true);
 
-    controllerClient.createNewStoreWithParameters(storeName, "owner", "\"string\"", "\"string\"", params, "random_id",
-        10000);
+    controllerClient.createNewStoreWithParameters(storeName, "owner", "\"string\"", "\"string\"", params);
 
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
     Properties props = defaultH2VProps(veniceCluster, inputDirPath, storeName);
@@ -472,8 +471,7 @@ public class TestVenicePushJob {
     params.setLeaderFollowerModel(true);
     params.setIncrementalPushEnabled(false);
 
-    controllerClient.createNewStoreWithParameters(storeName, "owner", "\"string\"", "\"string\"", params, "random_id",
-        10000);
+    controllerClient.createNewStoreWithParameters(storeName, "owner", "\"string\"", "\"string\"", params);
 
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
     Properties props = defaultH2VProps(veniceCluster, inputDirPath, storeName);
@@ -502,8 +500,7 @@ public class TestVenicePushJob {
     params.setLeaderFollowerModel(false);     //disable LeaderFollower in store
     params.setIncrementalPushEnabled(true);
 
-    controllerClient.createNewStoreWithParameters(storeName, "owner", "\"string\"", "\"string\"", params, "random_id",
-        10000);
+    controllerClient.createNewStoreWithParameters(storeName, "owner", "\"string\"", "\"string\"", params);
 
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
     Properties props = defaultH2VProps(veniceCluster, inputDirPath, storeName);
