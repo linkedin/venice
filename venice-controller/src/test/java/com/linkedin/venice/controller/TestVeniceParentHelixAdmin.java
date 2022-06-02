@@ -276,6 +276,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     for(String cluster : configMap.keySet()) {
       ControllerClient mockControllerClient = mock(ControllerClient.class);
       doReturn(new ControllerResponse()).when(mockControllerClient).checkResourceCleanupForStoreCreation(anyString());
+      doReturn(internalAdmin.getHelixVeniceClusterResources(clusterName)).when(internalAdmin).getHelixVeniceClusterResources(cluster);
 
       parentAdmin.getAdminCommandExecutionTracker(cluster).get().getFabricToControllerClientsMap()
           .put("test-fabric", mockControllerClient);

@@ -13,6 +13,7 @@ import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
 import com.linkedin.venice.helix.HelixReadWriteStoreRepository;
 import com.linkedin.venice.helix.ParentHelixOfflinePushAccessor;
 import com.linkedin.venice.helix.ZkRoutersClusterManager;
+import com.linkedin.venice.helix.ZkStoreConfigAccessor;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.Store;
@@ -115,6 +116,10 @@ public class AbstractTestVeniceParentHelixAdmin {
     doReturn(storeRepository).when(resources).getStoreMetadataRepository();
     ZkRoutersClusterManager manager = mock(ZkRoutersClusterManager.class);
     doReturn(manager).when(resources).getRoutersClusterManager();
+    ZkStoreConfigAccessor storeConfigAccessor = mock(ZkStoreConfigAccessor.class);
+    doReturn(false).when(storeConfigAccessor).containsConfig(anyString());
+    doReturn(storeConfigAccessor).when(resources).getStoreConfigAccessor();
+
     doReturn(10).when(manager).getLiveRoutersCount();
     clusterLockManager = mock(ClusterLockManager.class);
     doReturn(clusterLockManager).when(resources).getClusterLockManager();
