@@ -47,7 +47,6 @@ import io.tehuti.Metric;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Optional;
-import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import org.apache.avro.Schema;
@@ -427,53 +426,23 @@ public class TestMultiDataCenterPush {
     VeniceWriter<String, String, byte[]> incPushToRTWriter = null;
     try (ControllerClient parentControllerClient =
         new ControllerClient(clusterName, parentController.getControllerUrl())) {
-      // Enable incremental push with PUSH_TO_VERSION_TOPIC policy in preparation for later tests.
-      Assert.assertFalse(parentControllerClient.updateStore(storeName,
-          new UpdateStoreQueryParams()
-              .setIncrementalPushEnabled(true)
-              .setIncrementalPushPolicy(IncrementalPushPolicy.PUSH_TO_VERSION_TOPIC)).isError());
       try (VenicePushJob initialPushJob = new VenicePushJob("Test re-push job initial push", props)) {
         initialPushJob.run();
-      }
-      String incPushToVTVersion = System.currentTimeMillis() + "_test_inc_push_to_vt";
-      incPushToVTWriter = startIncrementalPush(parentControllerClient, storeName,
-          parentController.getVeniceAdmin().getVeniceWriterFactory(), incPushToVTVersion);
-      final String versionTopicName = incPushToVTWriter.getTopicName();
-      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
-        Set<String> ongoingIncrementalPushVersions =
-            parentControllerClient.getOngoingIncrementalPushVersions(versionTopicName).getIncrementalPushVersions();
-        Assert.assertFalse(ongoingIncrementalPushVersions.isEmpty(),
-            "There should be at least one ongoing incremental push version!");
-        Assert.assertEquals(ongoingIncrementalPushVersions.iterator().next(), incPushToVTVersion);
-      });
-      // Re-push should fail now since there is an ongoing incremental push with incompatible incremental push policy.
-      props.setProperty(SOURCE_KAFKA, "true");
-      props.setProperty(KAFKA_INPUT_TOPIC, versionTopicName);
-      props.setProperty(KAFKA_INPUT_BROKER_URL, multiColoMultiClusterWrapper.getParentKafkaBrokerWrapper().getAddress());
-      props.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
-      props.setProperty(VeniceWriter.ENABLE_CHUNKING, "false");
-      props.setProperty(ALLOW_KIF_REPUSH_FOR_INC_PUSH_FROM_VT_TO_VT, "true");
-      try (VenicePushJob rePushJob = new VenicePushJob("Test re-push job re-push", props)) {
-        rePushJob.run();
-        Assert.fail("Re-push with an incompatible ongoing incremental push should fail");
-      } catch (Exception e) {
-        Assert.assertTrue(e.getMessage().contains("due to ongoing incremental push version"));
-      }
-      // Complete the incremental push and re-push should be unblocked.
-      incPushToVTWriter.broadcastEndOfIncrementalPush(incPushToVTVersion, new HashMap<>());
-      TestUtils.waitForNonDeterministicIncrementalPushCompletion(versionTopicName, incPushToVTVersion,
-          parentControllerClient, 10, TimeUnit.SECONDS, Optional.empty());
-      try (VenicePushJob rePushJob = new VenicePushJob("Test re-push job re-push", props)) {
-        rePushJob.run();
       }
       // Update the store to L/F hybrid and enable INCREMENTAL_PUSH_SAME_AS_REAL_TIME.
       Assert.assertFalse(parentControllerClient.updateStore(storeName,
           new UpdateStoreQueryParams()
+              .setIncrementalPushEnabled(true)
               .setIncrementalPushPolicy(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME)
               .setLeaderFollowerModel(true)
               .setHybridOffsetLagThreshold(1)
               .setHybridRewindSeconds(userSetHybridRewindInSeconds)).isError());
-      props.setProperty(KAFKA_INPUT_TOPIC, Version.composeKafkaTopic(storeName, 2));
+      props.setProperty(SOURCE_KAFKA, "true");
+      props.setProperty(KAFKA_INPUT_BROKER_URL, multiColoMultiClusterWrapper.getParentKafkaBrokerWrapper().getAddress());
+      props.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
+      props.setProperty(VeniceWriter.ENABLE_CHUNKING, "false");
+      props.setProperty(ALLOW_KIF_REPUSH_FOR_INC_PUSH_FROM_VT_TO_VT, "true");
+      props.setProperty(KAFKA_INPUT_TOPIC, Version.composeKafkaTopic(storeName, 1));
       try (VenicePushJob rePushJob = new VenicePushJob("Test re-push job re-push", props)) {
         rePushJob.run();
       }
@@ -482,12 +451,6 @@ public class TestMultiDataCenterPush {
           parentController.getVeniceAdmin().getVeniceWriterFactory(), incPushToRTVersion);
       final String newVersionTopic = Version.composeKafkaTopic(storeName, parentControllerClient.getStore(storeName)
           .getStore().getLargestUsedVersionNumber());
-      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
-        Set<String> ongoingIncrementalVersions =
-            parentControllerClient.getOngoingIncrementalPushVersions(newVersionTopic).getIncrementalPushVersions();
-        Assert.assertFalse(ongoingIncrementalVersions.isEmpty());
-        Assert.assertEquals(ongoingIncrementalVersions.iterator().next(), incPushToRTVersion);
-      });
       // Incremental push shouldn't be blocked and we will complete it once the new re-push is started.
       String incValuePrefix = "inc_test_";
       int newRePushVersion = Version.parseVersionFromKafkaTopicName(newVersionTopic) + 1;
@@ -512,7 +475,7 @@ public class TestMultiDataCenterPush {
           parentControllerClient.getStore(storeName).getStore().getVersion(newRePushVersion);
       Assert.assertTrue(latestVersion.isPresent());
       Assert.assertEquals(latestVersion.get().getHybridStoreConfig().getRewindTimeInSeconds(),
-          VenicePushJob.RE_PUSH_REWIND_OVERRIDE_WITH_INCREMENTAL_PUSH_TO_RT_IN_SECONDS);
+          VenicePushJob.DEFAULT_RE_PUSH_REWIND_IN_SECONDS_OVERRIDE);
       for (int dataCenterIndex = 0; dataCenterIndex < NUMBER_OF_CHILD_DATACENTERS; dataCenterIndex++) {
         String routerUrl = childClusters.get(dataCenterIndex).getClusters().get(clusterName).getRandomRouterURL();
         verifyVeniceStoreData(storeName, routerUrl, incValuePrefix, 10);

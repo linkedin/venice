@@ -168,6 +168,7 @@ public class JobRoutes extends AbstractRoute {
     });
   }
 
+  // TODO: remove the below API after the same version of codes is released to Venice Push Job.
   public Route getOngoingIncrementalPushVersions(Admin admin) {
     return ((request, response) -> {
       IncrementalPushVersionsResponse incrementalPushVersionsResponse = new IncrementalPushVersionsResponse();
@@ -178,8 +179,7 @@ public class JobRoutes extends AbstractRoute {
         String versionTopic = request.queryParams(TOPIC);
         incrementalPushVersionsResponse.setCluster(clusterName);
         incrementalPushVersionsResponse.setName(Version.parseStoreFromKafkaTopicName(versionTopic));
-        incrementalPushVersionsResponse.setIncrementalPushVersions(
-            admin.getOngoingIncrementalPushVersions(clusterName, versionTopic));
+        incrementalPushVersionsResponse.setIncrementalPushVersions(Collections.emptySet());
       } catch (Throwable e) {
         incrementalPushVersionsResponse.setError(e.getMessage());
         AdminSparkServer.handleError(e, request, response);

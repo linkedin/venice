@@ -4376,34 +4376,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         return monitor.getOfflinePushProgress(kafkaTopic);
     }
 
-    @Override
-    public Set<String> getOngoingIncrementalPushVersions(String clusterName, String kafkaTopic) {
-      checkControllerLeadershipFor(clusterName);
-      PushMonitor pushMonitor = getHelixVeniceClusterResources(clusterName).getPushMonitor();
-      Set<String> supposedlyOngoingIncrementalPushVersions;
-      if (usePushStatusStoreToReadServerIncrementalPushStatus) {
-        if (!pushStatusStoreReader.isPresent()) {
-          logger.error("Failed to get ongoing incremental push versions. PushStatusStoreReader cannot be empty.");
-          throw new VeniceException("Failed to get ongoing incremental push versions.");
-        }
-        supposedlyOngoingIncrementalPushVersions = pushMonitor.getOngoingIncrementalPushVersions(kafkaTopic, pushStatusStoreReader.get());
-      } else {
-        supposedlyOngoingIncrementalPushVersions = pushMonitor.getOngoingIncrementalPushVersions(kafkaTopic);
-      }
-
-      Set<String> ongoingIncrementalPushVersions = new HashSet<>();
-      // Incremental push is ongoing only if its current status is START_OF_INCREMENTAL_PUSH_RECEIVED.
-      for (String incPushVersion : supposedlyOngoingIncrementalPushVersions) {
-        ExecutionStatus status = getOffLinePushStatus(clusterName, kafkaTopic, Optional.of(incPushVersion)).getExecutionStatus();
-        if (status == ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED) {
-          ongoingIncrementalPushVersions.add(incPushVersion);
-        }
-      }
-      logger.debug("Ongoing incremental push versions in cluster:{} on store:{} - {}",
-          clusterName, Version.parseStoreFromKafkaTopicName(kafkaTopic), ongoingIncrementalPushVersions);
-      return ongoingIncrementalPushVersions;
-    }
-
   // TODO remove this method once we are fully on HaaS
     // Create the controller cluster for venice cluster assignment if required.
     private void createControllerClusterIfRequired() {
