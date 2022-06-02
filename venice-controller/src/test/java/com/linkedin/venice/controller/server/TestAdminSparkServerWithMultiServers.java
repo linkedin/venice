@@ -188,8 +188,7 @@ public class TestAdminSparkServerWithMultiServers {
           .setHybridStoreOverheadBypass(true)
           .setEnableWrites(true)
           .setOwner("Napolean");
-      ControllerResponse response = controllerClient.createNewStoreWithParameters(storeName, "The_Doge", "\"string\"", "\"string\"",
-          updateStore, "coolPushId", 10000);
+      ControllerResponse response = controllerClient.createNewStoreWithParameters(storeName, "The_Doge", "\"string\"", "\"string\"", updateStore);
       Assert.assertFalse(response.isError(), "Received error response on store creation:" + response.getError());
       StoreInfo store = controllerClient.getStore(storeName).getStore();
       Assert.assertEquals(store.getOwner(), "Napolean");
@@ -210,8 +209,7 @@ public class TestAdminSparkServerWithMultiServers {
               .setHybridStoreOverheadBypass(true)
               .setEnableWrites(true)
               .setOwner("Napolean");
-      ControllerResponse response = controllerClient.createNewStoreWithParameters(storeName, "The_Doge", "\"string\"", "\"string\"",
-              updateStore, "coolPushId", 10000);
+      ControllerResponse response = controllerClient.createNewStoreWithParameters(storeName, "The_Doge", "\"string\"", "\"string\"", updateStore);
       Assert.assertFalse(response.isError(), "Received error response on store creation:" + response.getError());
       StoreInfo store = controllerClient.getStore(storeName).getStore();
       Assert.assertEquals(store.getOwner(), "Napolean");
@@ -224,8 +222,7 @@ public class TestAdminSparkServerWithMultiServers {
               .setHybridStoreOverheadBypass(true)
               .setEnableWrites(true)
               .setOwner("Napolean");
-      response = controllerClient.createNewStoreWithParameters(storeName, "The_Doge", "\"string\"", "\"string\"",
-              updateStore, "coolPushId", 10000);
+      response = controllerClient.createNewStoreWithParameters(storeName, "The_Doge", "\"string\"", "\"string\"", updateStore);
       Assert.assertTrue(response.isError(), "No Error Received!!!!!");
       store = controllerClient.getStore(storeName).getStore();
       Assert.assertNotNull(store, "Store unreadable!!  It may no longer exist!");

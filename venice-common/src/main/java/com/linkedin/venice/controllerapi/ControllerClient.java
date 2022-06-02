@@ -324,49 +324,33 @@ public class ControllerClient implements Closeable {
   //TODO: Refactor this to work in the controller once system store has become available.
 
   /**
-   * Simplified API that wraps together the store create/update/and empty push functionalities with some clean up functionality
+   * Simplified API that wraps together the store create and update functionalities with some clean up functionality
    *
-   * @param storeName the store name for which the empty push is for
+   * @param storeName the store name to create and update
    * @param owner the owner of this store to be created
    * @param keySchema Schema of the key for row retrieval for this store
    * @param valueSchema Schema of the value for rows in this new store
    * @param updateStoreQueryParams What parameters should be applied to this store after it's creation
-   * @param pushJobId the push job id for the push
-   * @param storeSize the size of the store (currently unused)
-   * @return Either the response from the store creation, OR, the response from the first failed operation for store creation, modification, and push
+   * @return The response from the first failed operation of store creation or modification
    */
-  public ControllerResponse createNewStoreWithParameters(String storeName, String owner, String keySchema, String valueSchema, UpdateStoreQueryParams updateStoreQueryParams, String pushJobId, long storeSize) {
-    return createNewStoreWithParameters(storeName, owner, keySchema, valueSchema, updateStoreQueryParams, pushJobId, storeSize, 60000l);
-  }
+  public ControllerResponse createNewStoreWithParameters(String storeName, String owner, String keySchema, String valueSchema, UpdateStoreQueryParams updateStoreQueryParams) {
+    NewStoreResponse creationResponse = this.createNewStore(storeName, owner, keySchema, valueSchema);
+    if(creationResponse.isError()) {
+      // Return the error
+      return creationResponse;
+    }
 
-
-  public ControllerResponse createNewStoreWithParameters(String storeName, String owner, String keySchema, String valueSchema, UpdateStoreQueryParams updateStoreQueryParams, String pushJobId, long storeSize, long timeoutInMillis) {
-    NewStoreResponse creationResponse = null;
     ControllerResponse updateResponse = null;
-    ControllerResponse pushResponse = null;
-
-      creationResponse = this.createNewStore(storeName, owner, keySchema, valueSchema);
-      if(creationResponse.isError()) {
-        // Return the error
-        return creationResponse;
-      }
-
     try {
-
       updateResponse = updateStore(storeName, updateStoreQueryParams);
       if(updateResponse.isError()) {
-        // update failed.  Lets clean up and return the error
+        // update failed. Let's clean up and return the error
         if(!this.getStore(storeName).isError()) {
           return updateResponse;
         }
       }
-
-      pushResponse = this.emptyPush(storeName, pushJobId, storeSize);
-      if(pushResponse.isError()) {
-        return pushResponse;
-      }
     } finally {
-      if(creationResponse == null || updateResponse == null || pushResponse == null || pushResponse.isError()) {
+      if(creationResponse == null || updateResponse == null) {
         // If any step in this process failed (that is, the store was created in some inconsistent state, clean up.
         if(!this.getStore(storeName).isError()) {
           this.disableAndDeleteStore(storeName);
