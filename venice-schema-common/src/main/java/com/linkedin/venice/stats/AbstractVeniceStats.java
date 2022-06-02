@@ -5,6 +5,7 @@ import io.tehuti.metrics.MeasurableStat;
 import io.tehuti.metrics.MetricConfig;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
+import io.tehuti.metrics.TehutiMetric;
 import io.tehuti.metrics.stats.Percentiles;
 import java.util.Map;
 import java.util.Optional;
@@ -52,14 +53,36 @@ public class AbstractVeniceStats {
     return registerSensor(sensorFullName, Optional.empty(), config, parents, stats);
   }
 
+  @SuppressWarnings("SynchronizationOnLocalVariableOrMethodParameter")
   protected Sensor registerSensor(String sensorFullName, Optional<String> attributeName, MetricConfig config, Sensor[] parents, MeasurableStat... stats) {
     return sensors.computeIfAbsent(sensorFullName, key -> {
+      /**
+       * The sensors concurrentmap will not prevent other objects working on the same metrics repository to execute
+       * this block. So it is possible for multiple threads to get here .
+       * The metricsRepository.sensor method below will call {@link MetricsRepository#sensor(String, MetricConfig, Sensor...)}
+       * which is synchronized and so it is guaranteed that only one thread will be able to create the sensor .
+       * The sensor.add method will call {@link MetricsRepository#registerMetric(TehutiMetric)}  which is also synchronized but will throw
+       * an error in case the metric already exists. The only way to avoid the error would be to atomically check
+       * and add the metric. We lock on the sensor object . Since we are not expecting the same sensor to be registered
+       * multiple times the contention will be minimal
+       */
       Sensor sensor = metricsRepository.sensor(sensorFullName, parents);
-      for (MeasurableStat stat : stats) {
-        if (stat instanceof Percentiles) {
-          sensor.add((Percentiles) stat, config);
-        } else {
-          sensor.add(sensorFullName + "." + attributeName.orElse(stat.getClass().getSimpleName()), stat, config);
+      synchronized (sensor){
+        for (MeasurableStat stat : stats) {
+          if (stat instanceof Percentiles) {
+            Percentiles percentilesStat = (Percentiles) stat;
+            if (percentilesStat.stats().size() > 0 ) { // Only checking one is enough to determine if we have already added this set
+              String metricName = percentilesStat.stats().get(0).name();
+              if (metricsRepository.getMetric(metricName) == null) {
+                sensor.add(percentilesStat, config);
+              }
+            }
+          } else {
+            String metricName = sensorFullName + "." + attributeName.orElse(stat.getClass().getSimpleName());
+            if (metricsRepository.getMetric(metricName) == null) {
+              sensor.add(metricName, stat, config);
+            }
+          }
         }
       }
       return sensor;
