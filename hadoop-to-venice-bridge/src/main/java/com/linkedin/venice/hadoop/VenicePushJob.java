@@ -6,7 +6,6 @@ import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
-import com.linkedin.venice.controllerapi.IncrementalPushVersionsResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.RepushInfoResponse;
@@ -148,7 +147,6 @@ public class VenicePushJob implements AutoCloseable {
   public final static String ETL_VALUE_SCHEMA_TRANSFORMATION = "etl.value.schema.transformation";
   public final static String TARGET_VERSION_FOR_INCREMENTAL_PUSH = "target.version.for.incremental.push";
   public final static String ALLOW_KIF_REPUSH_FOR_INC_PUSH_FROM_VT_TO_VT = "allow.kif.repush.for.inc.push.from.vt.to.vt";
-  public final static String SKIP_KIF_SAFETY_CHECKS_AND_TREAT_REPUSH_AS_REGULAR_PUSH = "skip.kif.safety.checks.and.treat.repush.as.regular.push";
 
   /**
    * Configs used to enable Kafka Input.
@@ -310,9 +308,11 @@ public class VenicePushJob implements AutoCloseable {
   public static final int DEFAULT_BATCH_BYTES_SIZE = 1000000;
   public static final boolean SORTED = true;
   /**
-   * The rewind override when performing re-push with an ongoing incremental push to RT to prevent data loss.
+   * The rewind override when performing re-push to prevent data loss; if the store has higher rewind config setting than
+   * 1 days, adopt the store config instead; otherwise, override the rewind config to 1 day if push job config doesn't
+   * try to override it.
    */
-  public static final long RE_PUSH_REWIND_OVERRIDE_WITH_INCREMENTAL_PUSH_TO_RT_IN_SECONDS = 7 * Time.SECONDS_PER_DAY;
+  public static final long DEFAULT_RE_PUSH_REWIND_IN_SECONDS_OVERRIDE = Time.SECONDS_PER_DAY;
   private static final Logger logger = LogManager.getLogger(VenicePushJob.class);
 
   /**
@@ -417,7 +417,6 @@ public class VenicePushJob implements AutoCloseable {
     long reducerInactiveTimeoutInMs;
     boolean allowKifRepushForIncPushFromVTToVT;
     boolean kafkaInputCombinerEnabled;
-    boolean skipKifSafetyChecks;
     BufferReplayPolicy validateRemoteReplayPolicy;
     boolean suppressEndOfPushMessage;
     boolean deferVersionSwap;
@@ -640,8 +639,6 @@ public class VenicePushJob implements AutoCloseable {
     pushJobSettingToReturn.isSourceETL = props.getBoolean(SOURCE_ETL, false);
     pushJobSettingToReturn.isSourceKafka = props.getBoolean(SOURCE_KAFKA, false);
     pushJobSettingToReturn.allowKifRepushForIncPushFromVTToVT = props.getBoolean(ALLOW_KIF_REPUSH_FOR_INC_PUSH_FROM_VT_TO_VT, false);
-    pushJobSettingToReturn.skipKifSafetyChecks = props.getBoolean(
-        SKIP_KIF_SAFETY_CHECKS_AND_TREAT_REPUSH_AS_REGULAR_PUSH, false);
     pushJobSettingToReturn.kafkaInputCombinerEnabled = props.getBoolean(KAFKA_INPUT_COMBINER_ENABLED, false);
     pushJobSettingToReturn.suppressEndOfPushMessage = props.getBoolean(SUPPRESS_END_OF_PUSH_MESSAGE, false);
     pushJobSettingToReturn.deferVersionSwap = props.getBoolean(DEFER_VERSION_SWAP, false);
@@ -930,9 +927,12 @@ public class VenicePushJob implements AutoCloseable {
         Optional<ByteBuffer> optionalCompressionDictionary = getCompressionDictionary();
         long pushStartTimeMs = System.currentTimeMillis();
         String pushId = pushStartTimeMs + "_" + props.getString(JOB_EXEC_URL, "failed_to_obtain_execution_url");
-        if (pushJobSetting.isSourceKafka && !pushJobSetting.skipKifSafetyChecks) {
+        if (pushJobSetting.isSourceKafka) {
           pushId = Version.generateRePushId(pushId);
-          checkConflictWithIncrementalPush(pushJobSetting.kafkaInputTopic, storeSetting.sourceKafkaInputVersionInfo);
+          if (storeSetting.sourceKafkaInputVersionInfo.getHybridStoreConfig() != null && pushJobSetting.rewindTimeInSecondsOverride == -1) {
+            pushJobSetting.rewindTimeInSecondsOverride = DEFAULT_RE_PUSH_REWIND_IN_SECONDS_OVERRIDE;
+            logger.info("Overriding re-push rewind time in seconds to: " + DEFAULT_RE_PUSH_REWIND_IN_SECONDS_OVERRIDE);
+          }
         }
         // Create new store version, topic and fetch Kafka url from backend
         createNewStoreVersion(pushJobSetting, inputFileDataSize, controllerClient, pushId, props, optionalCompressionDictionary);
@@ -1745,29 +1745,6 @@ public class VenicePushJob implements AutoCloseable {
 
   private Version.PushType getPushType(PushJobSetting pushJobSetting) {
     return pushJobSetting.isIncrementalPush ? Version.PushType.INCREMENTAL : Version.PushType.BATCH;
-  }
-
-  private void checkConflictWithIncrementalPush(String sourceKafkaTopic, Version sourceVersion) {
-    if (sourceVersion.isIncrementalPushEnabled()) {
-      IncrementalPushVersionsResponse incrementalPushVersionsResponse =
-          ControllerClient.retryableRequest(controllerClient, pushJobSetting.controllerRetries,
-              c -> c.getOngoingIncrementalPushVersions(sourceKafkaTopic));
-      Set<String> ongoingIncrementalPushVersions = incrementalPushVersionsResponse.getIncrementalPushVersions();
-      if (!ongoingIncrementalPushVersions.isEmpty()) {
-        if (sourceVersion.getIncrementalPushPolicy() == IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME) {
-          pushJobSetting.rewindTimeInSecondsOverride = RE_PUSH_REWIND_OVERRIDE_WITH_INCREMENTAL_PUSH_TO_RT_IN_SECONDS;
-          logger.info("Overriding re-push rewind time in seconds to: "
-              + RE_PUSH_REWIND_OVERRIDE_WITH_INCREMENTAL_PUSH_TO_RT_IN_SECONDS
-              + " due to ongoing incremental push to source topic: " + sourceKafkaTopic
-              + " with incremental push versions: " + String.join(",", ongoingIncrementalPushVersions));
-        } else {
-          throw new VeniceException("Cannot perform re-push with source topic: " + sourceKafkaTopic
-              + " with incremental push policy: " + sourceVersion.getIncrementalPushPolicy().toString()
-              + " due to ongoing incremental push version(s): "
-              + String.join(",", ongoingIncrementalPushVersions));
-        }
-      }
-    }
   }
 
   /**

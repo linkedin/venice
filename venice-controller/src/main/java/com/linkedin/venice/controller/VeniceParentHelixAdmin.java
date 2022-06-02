@@ -2492,18 +2492,6 @@ public class VeniceParentHelixAdmin implements Admin {
     return getOfflineJobProgress(clusterName, kafkaTopic, controllerClients);
   }
 
-  @Override
-  public Set<String> getOngoingIncrementalPushVersions(String clusterName, String kafkaTopic) {
-    getVeniceHelixAdmin().checkControllerLeadershipFor(clusterName);
-    Set<String> result = new HashSet<>();
-    for (ControllerClient controllerClient : getVeniceHelixAdmin().getControllerClientMap(clusterName).values()) {
-      IncrementalPushVersionsResponse response = controllerClient.getOngoingIncrementalPushVersions(kafkaTopic);
-      // return any ongoing incremental push version we find in any of the child data centers.
-      result.addAll(response.getIncrementalPushVersions());
-    }
-    return result;
-  }
-
   protected static Map<String, Long> getOfflineJobProgress(String clusterName, String kafkaTopic, Map<String, ControllerClient> controllerClients){
     Map<String, Long> aggregateProgress = new HashMap<>();
     for (Map.Entry<String, ControllerClient> clientEntry : controllerClients.entrySet()){
