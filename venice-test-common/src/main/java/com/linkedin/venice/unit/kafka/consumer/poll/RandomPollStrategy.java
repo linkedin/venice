@@ -1,6 +1,5 @@
 package com.linkedin.venice.unit.kafka.consumer.poll;
 
-import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.Utils;
 import java.util.Arrays;

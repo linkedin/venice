@@ -964,7 +964,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      */
     IntSet compactingPartitions = new IntOpenHashSet();
     int subPartition = PartitionUtils.getSubPartition(topicPartition.topic(), topicPartition.partition(), amplificationFactor);
-
     for (ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record: records) {
       if (!shouldProcessRecord(record, subPartition)) {
         continue;
@@ -1394,7 +1393,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   public void run() {
     try {
       // Update thread name to include topic to make it easy debugging
-      Thread.currentThread().setName("venice-consumer-" + kafkaVersionTopic);
+      Thread.currentThread().setName("venice-SIT-" + kafkaVersionTopic);
       logger.info("Running " + consumerTaskId);
       versionedStorageIngestionStats.resetIngestionTaskPushTimeoutGauge(storeName, versionNumber);
 
@@ -1538,6 +1537,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
                   + kafkaVersionTopic + " when manual compaction is running, but we have: " + kafkaUrls);
             }
             kafkaUrls.forEach(kafkaUrl -> {
+
               if (aggKafkaConsumerService.hasConsumerAssignedFor(kafkaUrl, kafkaVersionTopic, consumingTopic, partition)) {
                 aggKafkaConsumerService.unsubscribeConsumerFor(kafkaUrl, kafkaVersionTopic, consumingTopic, partition);
                 aggKafkaConsumerService.subscribeConsumerFor(kafkaUrl, this, consumingTopic,
@@ -2591,7 +2591,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       recordWriterStats(kafkaValue.producerMetadata.messageTimestamp, consumerRecord.timestamp(),
           System.currentTimeMillis(), partitionConsumptionState);
       boolean endOfPushReceived = partitionConsumptionState.isEndOfPushReceived();
-
       /**
        * DIV check will happen for every single message in drainer queues.
        * Leader replicas will run DIV check twice for every single message (one in leader consumption thread before
