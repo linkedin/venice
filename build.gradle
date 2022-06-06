@@ -53,7 +53,7 @@ ext.libraries = [
     fastUtil: 'it.unimi.dsi:fastutil:8.3.0',
     flatBuffersJava: 'com.google.flatbuffers:flatbuffers-java:1.11.0',
     hadoopCommon: 'org.apache.hadoop:hadoop-common:2.3.0',
-    helix: 'org.apache.helix:helix-core:1.0.3.2',
+    helix: 'org.apache.helix:helix-core:1.0.1.24',
     httpAsyncClient: 'org.apache.httpcomponents:httpasyncclient:4.1.2',
     httpClient5: 'org.apache.httpcomponents.client5:httpclient5:5.1.2',
     httpClient: 'org.apache.httpcomponents:httpclient:4.5.2',
