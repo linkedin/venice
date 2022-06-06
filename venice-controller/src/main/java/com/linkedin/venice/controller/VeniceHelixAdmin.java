@@ -190,7 +190,6 @@ import org.apache.helix.HelixManagerProperty;
 import org.apache.helix.HelixPropertyFactory;
 import org.apache.helix.InstanceType;
 import org.apache.helix.PropertyKey;
-import org.apache.helix.cloud.event.helix.CloudEventCallbackProperty;
 import org.apache.helix.controller.rebalancer.DelayedAutoRebalancer;
 import org.apache.helix.controller.rebalancer.strategy.AutoRebalanceStrategy;
 import org.apache.helix.controller.rebalancer.strategy.CrushRebalanceStrategy;
@@ -541,22 +540,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         }
         InstanceType instanceType = isControllerClusterHAAS ? InstanceType.PARTICIPANT : InstanceType.CONTROLLER_PARTICIPANT;
         String zkAddress = multiClusterConfigs.getControllerClusterZkAddress();
-        HelixManagerProperty helixManagerProperty;
-        if (getControllerConfig().isControllerInAzureFabric()) {
-          HelixCloudProperty cloudProperty = new HelixCloudProperty(new CloudConfig(new ZNRecord(controllerClusterName)));
-          cloudProperty.setCloudEventCallbackEnabled(true);
-          // Cloud event callback property, if not custom callback implementation specified it will use
-          // org.apache.helix.cloud.event.helix.DefaultCloudEventCallbackImpl.class by default.
-          CloudEventCallbackProperty property = new CloudEventCallbackProperty(Collections.emptyMap());
-          // Enable the Helix operation to disable the instance upon receiving maintenance event notification.
-          property.setHelixOperationEnabled(CloudEventCallbackProperty.HelixOperation.ENABLE_DISABLE_INSTANCE, true);
-          cloudProperty.setCloudEventCallbackProperty(property);
-          HelixManagerProperty.Builder managerPropertyBuilder = new HelixManagerProperty.Builder();
-          managerPropertyBuilder.setHelixCloudProperty(cloudProperty);
-          helixManagerProperty = managerPropertyBuilder.build();
-        } else {
-          helixManagerProperty = HelixPropertyFactory.getInstance().getHelixManagerProperty(zkAddress, controllerClusterName);
-        }
+        HelixManagerProperty helixManagerProperty
+            = HelixPropertyFactory.getInstance().getHelixManagerProperty(zkAddress, controllerClusterName);
         SafeHelixManager tempManager = new SafeHelixManager(new ZKHelixManager(controllerClusterName, controllerName,
             instanceType, zkAddress, null, helixManagerProperty));
         StateMachineEngine stateMachine = tempManager.getStateMachineEngine();
