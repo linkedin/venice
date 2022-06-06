@@ -1,6 +1,5 @@
 package com.linkedin.venice.unit.kafka.consumer.poll;
 
-import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.unit.kafka.InMemoryKafkaBroker;
 import java.util.Map;
 import org.apache.kafka.clients.consumer.ConsumerRecords;

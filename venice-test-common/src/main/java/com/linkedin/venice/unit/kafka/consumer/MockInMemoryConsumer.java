@@ -5,9 +5,9 @@ import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.unit.kafka.InMemoryKafkaBroker;
 import com.linkedin.venice.unit.kafka.consumer.poll.PollStrategy;
-
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -19,12 +19,20 @@ import org.apache.kafka.common.TopicPartition;
  *
  * Used in unit tests as a lightweight alternative to a full-fledged integration test. Can be configured
  * with various {@link PollStrategy} implementations in order to tweak the consuming behavior.
+ *
+ * When {@link MockInMemoryConsumer} is used to simulate the shared consumer behavior, there might be 2 different threads calling the methods
+ * from this class. For example, consumer task thread from {@link com.linkedin.davinci.kafka.consumer.KafkaConsumerService} will
+ * periodically call {@link MockInMemoryConsumer#poll(long)} and {@link com.linkedin.davinci.kafka.consumer.StoreIngestionTask} thread
+ * is calling {@link MockInMemoryConsumer#resetOffset(String, int)}, which may cause test failure.
+ *
+ * TODO: Remove synchronized keyword in this class when consumer operations in consumption task is event-driven.
  */
 public class MockInMemoryConsumer implements KafkaConsumerWrapper {
   private final InMemoryKafkaBroker broker;
   private final Map<TopicPartition, Long> offsets = new HashMap<>();
   private final PollStrategy pollStrategy;
   private final KafkaConsumerWrapper delegate;
+  private final Set<TopicPartition> pausedTopicPartitions = new HashSet<>();
 
   /**
    * @param delegate Can be used to pass a mock, in order to verify calls. Note: functions that return
@@ -38,27 +46,32 @@ public class MockInMemoryConsumer implements KafkaConsumerWrapper {
   }
 
   @Override
-  public void subscribe(String topic, int partition, long lastReadOffset) {
+  public synchronized void subscribe(String topic, int partition, long lastReadOffset) {
+    TopicPartition topicPartition = new TopicPartition(topic, partition);
+    pausedTopicPartitions.remove(topicPartition);
     delegate.subscribe(topic, partition, lastReadOffset);
-    offsets.put(new TopicPartition(topic, partition), lastReadOffset);
+    offsets.put(topicPartition, lastReadOffset);
   }
 
   @Override
-  public void unSubscribe(String topic, int partition) {
+  public synchronized void unSubscribe(String topic, int partition) {
     delegate.unSubscribe(topic, partition);
-    offsets.remove(new TopicPartition(topic, partition));
+    TopicPartition topicPartition = new TopicPartition(topic, partition);
+    offsets.remove(topicPartition);
+    pausedTopicPartitions.remove(topicPartition);
   }
 
   @Override
   public void batchUnsubscribe(Set<TopicPartition> topicPartitionSet) {
     delegate.batchUnsubscribe(topicPartitionSet);
-    for (TopicPartition partition : topicPartitionSet) {
-      offsets.remove(partition);
+    for (TopicPartition topicPartition : topicPartitionSet) {
+      offsets.remove(topicPartition);
+      pausedTopicPartitions.remove(topicPartition);
     }
   }
 
   @Override
-  public void resetOffset(String topic, int partition) {
+  public synchronized void resetOffset(String topic, int partition) {
     if (!hasSubscription(topic, partition)) {
       throw new UnsubscribedTopicPartitionException(topic, partition);
     }
@@ -69,16 +82,35 @@ public class MockInMemoryConsumer implements KafkaConsumerWrapper {
   @Override
   public void close() {
     delegate.close();
-    // No-op
+    pausedTopicPartitions.clear();
+    offsets.clear();
   }
 
   @Override
-  public ConsumerRecords poll(long timeout) {
+  public synchronized ConsumerRecords poll(long timeout) {
     if (null != delegate.poll(timeout)) {
       throw new IllegalArgumentException(
           "The MockInMemoryConsumer's delegate can only be used to verify calls, not to return arbitrary instances.");
     }
-    return pollStrategy.poll(broker, offsets, timeout);
+
+    Map<TopicPartition, Long> offsetsToPoll = new HashMap<>();
+    for (Map.Entry<TopicPartition, Long> entry : offsets.entrySet()) {
+      TopicPartition topicPartition = entry.getKey();
+      Long offset = entry.getValue();
+      if (!pausedTopicPartitions.contains(entry.getKey())) {
+        offsetsToPoll.put(topicPartition, offset);
+      }
+    }
+
+    ConsumerRecords consumerRecords = pollStrategy.poll(broker, offsetsToPoll, timeout);
+    for (Map.Entry<TopicPartition, Long> entry : offsetsToPoll.entrySet()) {
+      TopicPartition topicPartition = entry.getKey();
+      Long offsetToPoll = entry.getValue();
+      if (offsets.containsKey(topicPartition)) {
+        offsets.put(topicPartition, offsetToPoll);
+      }
+    }
+    return consumerRecords;
   }
 
   @Override
@@ -126,12 +158,17 @@ public class MockInMemoryConsumer implements KafkaConsumerWrapper {
   }
 
   @Override
-  public void pause(String topic, int partition) {
+  public synchronized void pause(String topic, int partition) {
+    pausedTopicPartitions.add(new TopicPartition(topic, partition));
     delegate.pause(topic, partition);
   }
 
   @Override
-  public void resume(String topic, int partition) {
+  public synchronized void resume(String topic, int partition) {
+    TopicPartition topicPartitionToResume = new TopicPartition(topic, partition);
+    if (pausedTopicPartitions.contains(topicPartitionToResume)) {
+      pausedTopicPartitions.remove(topicPartitionToResume);
+    }
     delegate.resume(topic, partition);
   }
 
@@ -142,6 +179,6 @@ public class MockInMemoryConsumer implements KafkaConsumerWrapper {
 
   @Override
   public Set<TopicPartition> getAssignment() {
-    return delegate.getAssignment();
+    return offsets.keySet();
   }
 }

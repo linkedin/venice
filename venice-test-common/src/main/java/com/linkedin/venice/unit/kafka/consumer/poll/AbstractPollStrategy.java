@@ -11,11 +11,9 @@ import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.Pair;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.common.TopicPartition;
@@ -29,7 +27,6 @@ public abstract class AbstractPollStrategy implements PollStrategy {
   private static final int DEFAULT_MAX_MESSAGES_PER_POLL = 3; // We can make this configurable later on if need be...
   private final int maxMessagePerPoll;
   protected final boolean keepPollingWhenEmpty;
-  protected final Set<TopicPartition> drainedPartitions = new HashSet<>();
 
   public AbstractPollStrategy(boolean keepPollingWhenEmpty) {
     this(keepPollingWhenEmpty, DEFAULT_MAX_MESSAGES_PER_POLL);
@@ -43,7 +40,6 @@ public abstract class AbstractPollStrategy implements PollStrategy {
   protected abstract Pair<TopicPartition, Long> getNextPoll(Map<TopicPartition, Long> offsets);
 
   public synchronized ConsumerRecords poll(InMemoryKafkaBroker broker, Map<TopicPartition, Long> offsets, long timeout) {
-    drainedPartitions.stream().forEach(topicPartition -> offsets.remove(topicPartition));
 
     Map<TopicPartition, List<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>>> records = new HashMap<>();
 
@@ -107,7 +103,6 @@ public abstract class AbstractPollStrategy implements PollStrategy {
       } else if (keepPollingWhenEmpty) {
         continue;
       } else {
-        drainedPartitions.add(topicPartition);
         offsets.remove(topicPartition);
         continue;
       }

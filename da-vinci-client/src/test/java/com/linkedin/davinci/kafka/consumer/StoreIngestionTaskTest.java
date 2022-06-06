@@ -12,6 +12,7 @@ import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.stats.AggStoreIngestionStats;
 import com.linkedin.davinci.stats.AggVersionedDIVStats;
 import com.linkedin.davinci.stats.AggVersionedStorageIngestionStats;
+import com.linkedin.davinci.stats.KafkaConsumerServiceStats;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.store.AbstractStorageEngine;
@@ -59,9 +60,9 @@ import com.linkedin.venice.offsets.InMemoryStorageMetadataService;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.partitioner.UserPartitionAwarePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
-import com.linkedin.venice.schema.rmd.ReplicationMetadataSchemaGenerator;
-import com.linkedin.venice.schema.rmd.ReplicationMetadataSchemaEntry;
 import com.linkedin.venice.schema.SchemaEntry;
+import com.linkedin.venice.schema.rmd.ReplicationMetadataSchemaEntry;
+import com.linkedin.venice.schema.rmd.ReplicationMetadataSchemaGenerator;
 import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -107,7 +108,6 @@ import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -143,6 +143,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
+import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -180,6 +181,8 @@ public class StoreIngestionTaskTest {
 
   private InMemoryKafkaBroker inMemoryLocalKafkaBroker;
   private InMemoryKafkaBroker inMemoryRemoteKafkaBroker;
+  private MockInMemoryConsumer inMemoryLocalKafkaConsumer;
+  private MockInMemoryConsumer inMemoryRemoteKafkaConsumer;
   private String localAndRemoteKafkaBootstrapServers;
   private VeniceWriterFactory mockWriterFactory;
   private VeniceWriter localVeniceWriter;
@@ -208,12 +211,15 @@ public class StoreIngestionTaskTest {
   private StoreIngestionTask storeIngestionTaskUnderTest;
   private ExecutorService taskPollingService;
   private StoreBufferService storeBufferService;
+  private AggKafkaConsumerService aggKafkaConsumerService;
   private BooleanSupplier isCurrentVersion;
   private Optional<HybridStoreConfig> hybridStoreConfig;
   private VeniceServerConfig veniceServerConfig;
   private RocksDBServerConfig rocksDBServerConfig;
   private long databaseSyncBytesIntervalForTransactionalMode = 1;
   private long databaseSyncBytesIntervalForDeferredWriteMode = 2;
+  private KafkaConsumerService localKafkaConsumerService;
+  private KafkaConsumerService remoteKafkaConsumerService;
 
   private static String storeNameWithoutVersionInfo;
   private static String topic;
@@ -249,6 +255,8 @@ public class StoreIngestionTaskTest {
   private static final byte[] deleteKeyFooReplicationMetadataWithValueSchemaIdBytes = createReplicationMetadataWithValueSchemaId(deleteKeyFooTimestamp, deleteKeyFooOffset, EXISTING_SCHEMA_ID);
 
   private boolean databaseChecksumVerificationEnabled = false;
+  private KafkaConsumerServiceStats kafkaConsumerServiceStats = mock(KafkaConsumerServiceStats.class);
+  private KafkaClientFactory mockFactory = mock(KafkaClientFactory.class);
 
   private Supplier<Optional<StoreVersionState>> storeVersionStateSupplier = (Optional::empty);
 
@@ -286,8 +294,15 @@ public class StoreIngestionTaskTest {
     storeBufferService.stop();
   }
 
+  @AfterMethod(alwaysRun = true)
+  public void methodCleanUp() throws Exception {
+    localKafkaConsumerService.stopInner();
+    remoteKafkaConsumerService.stopInner();
+  }
+
   @BeforeMethod(alwaysRun = true)
-  public void methodSetUp() throws Exception {
+  public void methodSetUp() {
+    aggKafkaConsumerService = mock(AggKafkaConsumerService.class);
     storeNameWithoutVersionInfo = Utils.getUniqueString("TestTopic");
     topic = Version.composeKafkaTopic(storeNameWithoutVersionInfo, 1);
 
@@ -460,7 +475,8 @@ public class StoreIngestionTaskTest {
     Version version = storeAndVersionConfigs.version;
     VeniceStoreVersionConfig storeConfig = storeAndVersionConfigs.storeVersionConfig;
 
-    StoreIngestionTaskFactory ingestionTaskFactory = getIngestionTaskFactoryBuilder(pollStrategy, partitions, hybridStoreConfig, diskUsageForTest, amplificationFactor, extraServerProperties).build();
+    StoreIngestionTaskFactory ingestionTaskFactory = getIngestionTaskFactoryBuilder(pollStrategy, partitions,
+        hybridStoreConfig, diskUsageForTest, amplificationFactor, extraServerProperties, false).build();
 
     Properties kafkaProps = new Properties();
     kafkaProps.put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, inMemoryLocalKafkaBroker.getKafkaBootstrapServer());
@@ -481,7 +497,6 @@ public class StoreIngestionTaskTest {
 
       // MockKafkaConsumer is prepared. Schedule for polling.
       testSubscribeTaskFuture = taskPollingService.submit(storeIngestionTaskUnderTest);
-
       assertions.run();
 
     } finally {
@@ -563,11 +578,12 @@ public class StoreIngestionTaskTest {
       Optional<HybridStoreConfig> hybridStoreConfig,
       Optional<DiskUsage> diskUsageForTest,
       int amplificationFactor,
-      Map<String, Object> extraServerProperties) {
-    KafkaClientFactory mockFactory = mock(KafkaClientFactory.class);
+      Map<String, Object> extraServerProperties,
+      Boolean isLiveConfigEnabled) {
 
-    MockInMemoryConsumer inMemoryLocalKafkaConsumer = new MockInMemoryConsumer(inMemoryLocalKafkaBroker, pollStrategy, mockLocalKafkaConsumer);
-    MockInMemoryConsumer inMemoryRemoteKafkaConsumer = new MockInMemoryConsumer(inMemoryRemoteKafkaBroker, pollStrategy, mockRemoteKafkaConsumer);
+
+    inMemoryLocalKafkaConsumer = new MockInMemoryConsumer(inMemoryLocalKafkaBroker, pollStrategy, mockLocalKafkaConsumer);
+    inMemoryRemoteKafkaConsumer = new MockInMemoryConsumer(inMemoryRemoteKafkaBroker, pollStrategy, mockRemoteKafkaConsumer);
 
     doAnswer(invocation -> {
       Properties consumerProps = invocation.getArgument(0, Properties.class);
@@ -575,7 +591,6 @@ public class StoreIngestionTaskTest {
       if (kafkaUrl.equals(inMemoryRemoteKafkaBroker.getKafkaBootstrapServer())) {
         return inMemoryRemoteKafkaConsumer;
       }
-
       return inMemoryLocalKafkaConsumer;
     }).when(mockFactory).getConsumer(any());
 
@@ -609,20 +624,24 @@ public class StoreIngestionTaskTest {
 
     // Recreate the map so that immutable maps that get passed in can be mutated...
     extraServerProperties = new HashMap<>(extraServerProperties);
-    // TODO: Refactor this unit test class so that it is compatible with the shared consumer mode
-    extraServerProperties.put(SERVER_SHARED_CONSUMER_POOL_ENABLED, false);
+    // TODO: Change putIfAbsent to put so that all unit tests are in shared consumer mode.
+    extraServerProperties.putIfAbsent(SERVER_SHARED_CONSUMER_POOL_ENABLED, true);
     veniceServerConfig = buildVeniceServerConfig(extraServerProperties);
 
-    AggKafkaConsumerService aggKafkaConsumerService = mock(AggKafkaConsumerService.class);
+    Properties localKafkaProps = new Properties();
+    localKafkaProps.put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, inMemoryLocalKafkaBroker.getKafkaBootstrapServer());
+    localKafkaConsumerService = new TopicWiseKafkaConsumerService(mockFactory, localKafkaProps, 10, 1,
+        mockBandwidthThrottler, mockRecordsThrottler, kafkaClusterBasedRecordThrottler, kafkaConsumerServiceStats,
+        1000, mock(TopicExistenceChecker.class), isLiveConfigEnabled);
 
-    doAnswer(invocation -> {
-      String kafkaUrl = invocation.getArgument(0, String.class);
-      if (kafkaUrl.equals(inMemoryRemoteKafkaBroker.getKafkaBootstrapServer())) {
-        return Optional.of(inMemoryRemoteKafkaConsumer);
-      }
+    Properties remoteKafkaProps = new Properties();
+    remoteKafkaProps.put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, inMemoryRemoteKafkaBroker.getKafkaBootstrapServer());
+    remoteKafkaConsumerService = new TopicWiseKafkaConsumerService(mockFactory, remoteKafkaProps, 10, 1,
+        mockBandwidthThrottler, mockRecordsThrottler, kafkaClusterBasedRecordThrottler, kafkaConsumerServiceStats,
+        1000, mock(TopicExistenceChecker.class), isLiveConfigEnabled);
 
-      return Optional.of(inMemoryLocalKafkaConsumer);
-    }).when(aggKafkaConsumerService).assignConsumerFor(any(), any());
+    doReturn(100L).when(mockBandwidthThrottler).getMaxRatePerSecond();
+    prepareAggKafkaConsumerServiceMock();
 
     EventThrottler mockUnorderedBandwidthThrottler = mock(EventThrottler.class);
     EventThrottler mockUnorderedRecordsThrottler = mock(EventThrottler.class);
@@ -650,6 +669,121 @@ public class StoreIngestionTaskTest {
         .setAggKafkaConsumerService(aggKafkaConsumerService)
         .setCacheWarmingThreadPool(Executors.newFixedThreadPool(1))
         .setPartitionStateSerializer(partitionStateSerializer);
+  }
+
+  private void prepareAggKafkaConsumerServiceMock() {
+    doAnswer(invocation -> {
+      String kafkaUrl = invocation.getArgument(0, String.class);
+      if (kafkaUrl.equals(inMemoryRemoteKafkaBroker.getKafkaBootstrapServer())) {
+        return Optional.of(inMemoryRemoteKafkaConsumer);
+      }
+      return Optional.of(inMemoryLocalKafkaConsumer);
+    }).when(aggKafkaConsumerService).assignConsumerFor(any(), any());
+
+    doAnswer(invocation -> {
+      String kafkaUrl = invocation.getArgument(0, String.class);
+      StoreIngestionTask storeIngestionTask = invocation.getArgument(1, StoreIngestionTask.class);
+      String topic = invocation.getArgument(2, String.class);
+      int partition = invocation.getArgument(3, Integer.class);
+      long offset = invocation.getArgument(4, Long.class);
+      if (kafkaUrl.equals(inMemoryLocalKafkaBroker.getKafkaBootstrapServer())) {
+        KafkaConsumerWrapper topicWiseKafkaConsumer = localKafkaConsumerService.assignConsumerFor(storeIngestionTask);
+        localKafkaConsumerService.attach(topicWiseKafkaConsumer, topic, storeIngestionTask);
+        topicWiseKafkaConsumer.subscribe(topic, partition, offset);
+      } else if (kafkaUrl.equals(inMemoryRemoteKafkaBroker.getKafkaBootstrapServer())) {
+        KafkaConsumerWrapper topicWiseKafkaConsumer = remoteKafkaConsumerService.assignConsumerFor(storeIngestionTask);
+        remoteKafkaConsumerService.attach(topicWiseKafkaConsumer, topic, storeIngestionTask);
+        topicWiseKafkaConsumer.subscribe(topic, partition, offset);
+      }
+      return null;
+    }).when(aggKafkaConsumerService).subscribeConsumerFor(any(), any(),any(), anyInt(), anyLong());
+
+    doAnswer(invocation -> {
+      Set<String> topics = invocation.getArgument(1, Set.class);
+      return inMemoryLocalKafkaConsumer.hasSubscribedAnyTopic(topics) ||
+          inMemoryRemoteKafkaConsumer.hasSubscribedAnyTopic(topics);
+    }).when(aggKafkaConsumerService).hasAnyConsumerAssignedFor(anyString(), anySet());
+
+    doAnswer(invocation -> {
+      String topic = invocation.getArgument(1, String.class);
+      int partition = invocation.getArgument(2, Integer.class);
+      return inMemoryLocalKafkaConsumer.hasSubscription(topic, partition) ||
+          inMemoryRemoteKafkaConsumer.hasSubscription(topic, partition);
+    }).when(aggKafkaConsumerService).hasConsumerAssignedFor(anyString(), anyString(), anyInt());
+
+    doAnswer(invocation -> {
+      String kafkaUrl = invocation.getArgument(0, String.class);
+      String topic = invocation.getArgument(2, String.class);
+      int partition = invocation.getArgument(3, Integer.class);
+      if (kafkaUrl.equals(inMemoryLocalKafkaBroker.getKafkaBootstrapServer())) {
+        return inMemoryLocalKafkaConsumer.hasSubscription(topic, partition);
+      }
+      return inMemoryRemoteKafkaConsumer.hasSubscription(topic, partition);
+    }).when(aggKafkaConsumerService).hasConsumerAssignedFor(anyString(), anyString(), anyString(), anyInt());
+
+    doAnswer(invocation -> {
+      Set<TopicPartition> topicPartitions = invocation.getArgument(1, Set.class);
+      inMemoryLocalKafkaConsumer.batchUnsubscribe(topicPartitions);
+      inMemoryRemoteKafkaConsumer.batchUnsubscribe(topicPartitions);
+      return null;
+    }).when(aggKafkaConsumerService).batchUnsubscribeConsumerFor(anyString(), anySet());
+
+    doAnswer(invocation -> {
+      String topic = invocation.getArgument(1, String.class);
+      int partition = invocation.getArgument(2, Integer.class);
+      if (inMemoryLocalKafkaConsumer.hasSubscription(topic, partition)) {
+        inMemoryLocalKafkaConsumer.unSubscribe(topic, partition);
+      }
+      if (inMemoryRemoteKafkaConsumer.hasSubscription(topic, partition)) {
+        inMemoryRemoteKafkaConsumer.unSubscribe(topic, partition);
+      }
+      return null;
+    }).when(aggKafkaConsumerService).unsubscribeConsumerFor(anyString(), anyString(), anyInt());
+
+    doAnswer(invocation -> {
+      String topic = invocation.getArgument(1, String.class);
+      int partition = invocation.getArgument(2, Integer.class);
+      if (inMemoryLocalKafkaConsumer.hasSubscription(topic, partition)) {
+        inMemoryLocalKafkaConsumer.resetOffset(topic, partition);
+      }
+      if (inMemoryRemoteKafkaConsumer.hasSubscription(topic, partition)) {
+        inMemoryRemoteKafkaConsumer.resetOffset(topic, partition);
+      }
+      return null;
+    }).when(aggKafkaConsumerService).resetOffsetFor(anyString(), anyString(), anyInt());
+
+    doAnswer(invocation -> {
+      String topic = invocation.getArgument(1, String.class);
+      int partition = invocation.getArgument(2, Integer.class);
+      if (inMemoryLocalKafkaConsumer.hasSubscription(topic, partition)) {
+        inMemoryLocalKafkaConsumer.pause(topic, partition);
+      }
+      if (inMemoryRemoteKafkaConsumer.hasSubscription(topic, partition)) {
+        inMemoryRemoteKafkaConsumer.pause(topic, partition);
+      }
+      return null;
+    }).when(aggKafkaConsumerService).pauseConsumerFor(anyString(), anyString(), anyInt());
+
+    doAnswer(invocation -> {
+      String versionTopic = invocation.getArgument(0, String.class);
+      Optional<KafkaConsumerWrapper> localConsumer = localKafkaConsumerService.getConsumerAssignedToVersionTopic(versionTopic);
+      if (localConsumer.isPresent()) {
+        return Collections.singleton(inMemoryLocalKafkaBroker.getKafkaBootstrapServer());
+      }
+      return Collections.emptySet();
+    }).when(aggKafkaConsumerService).getKafkaUrlsFor(anyString());
+
+    doAnswer(invocation -> {
+      String topic = invocation.getArgument(1, String.class);
+      int partition = invocation.getArgument(2, Integer.class);
+      if (inMemoryLocalKafkaConsumer.hasSubscription(topic, partition)) {
+        inMemoryLocalKafkaConsumer.resume(topic, partition);
+      }
+      if (inMemoryRemoteKafkaConsumer.hasSubscription(topic, partition)) {
+        inMemoryRemoteKafkaConsumer.resume(topic, partition);
+      }
+      return null;
+    }).when(aggKafkaConsumerService).resumeConsumerFor(anyString(), anyString(), anyInt());
   }
 
   Supplier<Optional<StoreVersionState>> getStoreVersionStateSupplierDefault() {
@@ -696,9 +830,7 @@ public class StoreIngestionTaskTest {
     runTest(pollStrategy, Utils.setOf(PARTITION_FOO), () -> {}, () -> {
       // Verify it retrieves the offset from the OffSet Manager
       verify(mockStorageMetadataService, timeout(TEST_TIMEOUT_MS)).getLastOffset(topic, PARTITION_FOO);
-
       verifyPutAndDelete(1, isActiveActiveReplicationEnabled, true);
-
       // Verify it commits the offset to Offset Manager
       OffsetRecord expectedOffsetRecordForDeleteMessage = getOffsetRecord(deleteMetadata.offset());
       verify(mockStorageMetadataService, timeout(TEST_TIMEOUT_MS))
@@ -738,7 +870,6 @@ public class StoreIngestionTaskTest {
       vtWriter.broadcastStartOfPush(new HashMap<>());
       vtWriter.broadcastEndOfPush(new HashMap<>());
       doReturn(vtWriter).when(mockWriterFactory).createBasicVeniceWriter(anyString(), any(Optional.class), any(VenicePartitioner.class), anyInt());
-
       verify(mockLogNotifier, never()).completed(anyString(), anyInt(), anyLong());
       vtWriter.broadcastTopicSwitch(Collections.singletonList(inMemoryLocalKafkaBroker.getKafkaBootstrapServer()),
               Version.composeRealTimeTopic(storeNameWithoutVersionInfo),
@@ -1114,8 +1245,8 @@ public class StoreIngestionTaskTest {
 
     runTest(new RandomPollStrategy(1), Utils.setOf(PARTITION_FOO), () -> {}, () -> {
       // START_OF_SEGMENT, START_OF_PUSH, PUT, DELETE
-      verify(mockBandwidthThrottler, timeout(TEST_TIMEOUT_MS).times(4)).maybeThrottle(anyDouble());
       verify(mockRecordsThrottler, timeout(TEST_TIMEOUT_MS).times(4)).maybeThrottle(1);
+      verify(mockBandwidthThrottler, timeout(TEST_TIMEOUT_MS).times(4)).maybeThrottle(anyDouble());
     }, isActiveActiveReplicationEnabled);
   }
 
@@ -1178,13 +1309,7 @@ public class StoreIngestionTaskTest {
     localVeniceWriter.put(putKeyBar, putValue, SCHEMA_ID);
 
     runTest(Utils.setOf(PARTITION_FOO, PARTITION_BAR), () -> {
-      verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS)).error(
-          eq(topic), eq(PARTITION_FOO), argThat(new NonEmptyStringMatcher()),
-          argThat(new ExceptionClassMatcher(VeniceException.class)));
-
-      verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS)).error(
-          eq(topic), eq(PARTITION_BAR), argThat(new NonEmptyStringMatcher()),
-          argThat(new ExceptionClassMatcher(VeniceException.class)));
+      verify(kafkaConsumerServiceStats, timeout(TEST_TIMEOUT_MS).atLeastOnce()).recordPollError();
     }, isActiveActiveReplicationEnabled);
   }
 
@@ -1354,20 +1479,21 @@ public class StoreIngestionTaskTest {
     final int offset = 100;
     localVeniceWriter.broadcastStartOfPush(new HashMap<>());
     Map<String, Object> extraServerProperties = new HashMap<>();
-    extraServerProperties.put(SERVER_SHARED_CONSUMER_POOL_ENABLED, true);
     extraServerProperties.put(SERVER_UNSUB_AFTER_BATCHPUSH, true);
 
     runTest(new RandomPollStrategy(), Utils.setOf(PARTITION_FOO),
         () -> {
-          doReturn(true).when(mockLocalKafkaConsumer).hasSubscribedAnyTopic(anySet());
           Store mockStore = mock(Store.class);
           doReturn(1).when(mockStore).getCurrentVersion();
           doReturn(Optional.of(new VersionImpl("storeName", 1, Version.numberBasedDummyPushId(1)))).when(mockStore).getVersion(1);
           doReturn(mockStore).when(mockMetadataRepo).getStoreOrThrow(storeNameWithoutVersionInfo);
           doReturn(getOffsetRecord(offset, true)).when(mockStorageMetadataService).getLastOffset(topic, PARTITION_FOO);
         }, () -> {
+          TopicPartition topicPartition = new TopicPartition(topic, PARTITION_FOO);
           verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS)).completed(topic, PARTITION_FOO, offset);
-          verify(mockLocalKafkaConsumer).batchUnsubscribe(Collections.singleton(new TopicPartition(topic, PARTITION_FOO)));
+          verify(aggKafkaConsumerService, timeout(TEST_TIMEOUT_MS)).batchUnsubscribeConsumerFor(topic, Collections.singleton(topicPartition));
+          verify(aggKafkaConsumerService, never()).unsubscribeConsumerFor(topic, topic, PARTITION_BAR);
+          verify(mockLocalKafkaConsumer).batchUnsubscribe(Collections.singleton(topicPartition));
           verify(mockLocalKafkaConsumer, never()).unSubscribe(topic, PARTITION_BAR);
         }, this.hybridStoreConfig, false, Optional.empty(), isActiveActiveReplicationEnabled,
         1, extraServerProperties);
@@ -1463,16 +1589,12 @@ public class StoreIngestionTaskTest {
     }, () -> {
       // verify subscribe has not been processed. Because consumption task should process kill action at first
       verify(mockStorageMetadataService, after(TEST_TIMEOUT_MS).never()).getLastOffset(topic, PARTITION_FOO);
-      waitForNonDeterministicCompletion(TEST_TIMEOUT_MS, TimeUnit.MILLISECONDS,
-          () -> storeIngestionTaskUnderTest.getDedicatedConsumers() != null);
-      Collection<KafkaConsumerWrapper> consumers = (storeIngestionTaskUnderTest.getDedicatedConsumers());
       /**
-       * Consumers are constructed lazily; if the store ingestion task is killed before it tries to subscribe to any
-       * topics, there is no consumer.
+       * Consumers are subscribed lazily; if the store ingestion task is killed before it tries to subscribe to any
+       * topics, there is no consumer subscription.
        */
-      assertEquals(consumers.size(), 0,
-          "subscribe should not be processed in this consumer.");
-
+      waitForNonDeterministicCompletion(TEST_TIMEOUT_MS, TimeUnit.MILLISECONDS,
+          () -> !storeIngestionTaskUnderTest.consumerHasAnySubscription());
       // Verify offset has not been processed. Because consumption task should process kill action at first.
       // offSetManager.clearOffset should only be invoked one time during clean up after killing this task.
       verify(mockStorageMetadataService, timeout(TEST_TIMEOUT_MS)).clearOffset(topic, PARTITION_FOO);
@@ -1517,7 +1639,6 @@ public class StoreIngestionTaskTest {
 
     // This doesn't really need to be atomic, but it does need to be final, and int/Integer cannot be mutated.
     final AtomicInteger messagesConsumedSoFar = new AtomicInteger(0);
-
     PollStrategy pollStrategy = new BlockingObserverPollStrategy(
         new RandomPollStrategy(false),
         topicPartitionOffsetRecordPair -> {
@@ -2045,7 +2166,6 @@ public class StoreIngestionTaskTest {
     }
   }
 
-  @Test
   public void testRecordsCanBeThrottledPerRegion() throws ExecutionException, InterruptedException {
     int partitionCount = 2;
     int amplificationFactor = 1;
@@ -2070,9 +2190,10 @@ public class StoreIngestionTaskTest {
 
     Map<String, Object> extraServerProperties = new HashMap<>();
     extraServerProperties.put(SERVER_ENABLE_LIVE_CONFIG_BASED_KAFKA_THROTTLING, true);
+    extraServerProperties.put(SERVER_SHARED_CONSUMER_POOL_ENABLED, false);
 
     StoreIngestionTaskFactory ingestionTaskFactory = getIngestionTaskFactoryBuilder(new RandomPollStrategy(),
-        Utils.setOf(PARTITION_FOO), Optional.of(hybridStoreConfig), Optional.empty(), 1, extraServerProperties).build();
+        Utils.setOf(PARTITION_FOO), Optional.of(hybridStoreConfig), Optional.empty(), 1, extraServerProperties, false).build();
 
     Properties kafkaProps = new Properties();
     kafkaProps.put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, inMemoryLocalKafkaBroker.getKafkaBootstrapServer());
@@ -2183,7 +2304,7 @@ public class StoreIngestionTaskTest {
     Map<String, Object> extraServerProperties = new HashMap<>();
 
     StoreIngestionTaskFactory ingestionTaskFactory = getIngestionTaskFactoryBuilder(new RandomPollStrategy(),
-        Utils.setOf(PARTITION_FOO), Optional.of(hybridStoreConfig), Optional.empty(), 1, extraServerProperties)
+        Utils.setOf(PARTITION_FOO), Optional.of(hybridStoreConfig), Optional.empty(), 1, extraServerProperties, false)
         .setIsDaVinciClient(isDaVinciClient)
         .setTopicManagerRepositoryJavaBased(mockTopicManagerRepository)
         .build();
@@ -2312,7 +2433,7 @@ public class StoreIngestionTaskTest {
     VeniceStoreVersionConfig storeConfig = storeAndVersionConfigs.storeVersionConfig;
 
     StoreIngestionTaskFactory ingestionTaskFactory = getIngestionTaskFactoryBuilder(new RandomPollStrategy(),
-        Utils.setOf(PARTITION_FOO), Optional.of(hybridStoreConfig), Optional.empty(), 1, new HashMap<>())
+        Utils.setOf(PARTITION_FOO), Optional.of(hybridStoreConfig), Optional.empty(), 1, new HashMap<>(), false)
         .setIsDaVinciClient(isDaVinciClient)
         .setTopicManagerRepositoryJavaBased(mockTopicManagerRepository)
         .build();
@@ -2376,7 +2497,7 @@ public class StoreIngestionTaskTest {
     Version version = storeAndVersionConfigs.version;
     VeniceStoreVersionConfig storeConfig = storeAndVersionConfigs.storeVersionConfig;
     StoreIngestionTaskFactory ingestionTaskFactory = getIngestionTaskFactoryBuilder(new RandomPollStrategy(),
-        Utils.setOf(PARTITION_FOO), Optional.of(hybridStoreConfig), Optional.empty(), amplificationFactor, new HashMap<>())
+        Utils.setOf(PARTITION_FOO), Optional.of(hybridStoreConfig), Optional.empty(), amplificationFactor, new HashMap<>(), false)
         .setIsDaVinciClient(isDaVinciClient)
         .setTopicManagerRepositoryJavaBased(mockTopicManagerRepository)
         .build();
