@@ -5,6 +5,7 @@ import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.MigrationPushStrategyResponse;
+import com.linkedin.venice.exceptions.ErrorType;
 import java.util.Optional;
 import org.apache.http.HttpStatus;
 import spark.Route;
@@ -28,7 +29,7 @@ public class MigrationRoutes extends AbstractRoute {
       try {
         strategyResponse.setStrategies(admin.getAllStorePushStrategyForMigration());
       } catch (Throwable e) {
-        strategyResponse.setError(e.getMessage());
+        strategyResponse.setError(e);
       }
       return AdminSparkServer.mapper.writeValueAsString(strategyResponse);
     };
@@ -43,6 +44,7 @@ public class MigrationRoutes extends AbstractRoute {
         if (!isAllowListUser(request)) {
           response.status(HttpStatus.SC_FORBIDDEN);
           updateResponse.setError("Only admin users are allowed to run " + request.url());
+          updateResponse.setErrorType(ErrorType.BAD_REQUEST);
           return AdminSparkServer.mapper.writeValueAsString(updateResponse);
         }
         AdminSparkServer.validateParams(request, SET_MIGRATION_PUSH_STRATEGY.getParams(), admin);
@@ -50,7 +52,7 @@ public class MigrationRoutes extends AbstractRoute {
         String pushStrategy = request.queryParams(PUSH_STRATEGY);
         admin.setStorePushStrategyForMigration(voldemortStoreName, pushStrategy);
       } catch (Throwable e) {
-        updateResponse.setError(e.getMessage());
+        updateResponse.setError(e);
       }
       response.type(HttpConstants.JSON);
       return AdminSparkServer.mapper.writeValueAsString(updateResponse);

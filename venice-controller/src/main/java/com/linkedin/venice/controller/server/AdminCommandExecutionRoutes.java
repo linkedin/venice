@@ -7,6 +7,7 @@ import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.AdminCommandExecutionTracker;
 import com.linkedin.venice.controllerapi.AdminCommandExecution;
 import com.linkedin.venice.controllerapi.routes.AdminCommandExecutionResponse;
+import com.linkedin.venice.exceptions.ExceptionType;
 import java.util.Optional;
 import org.apache.http.HttpStatus;
 import spark.Route;

@@ -248,6 +248,7 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
       // Add incompatible schema
       SchemaResponse sr5 = controllerClient.addValueSchema(storeToCreate, incompatibleSchema);
       Assert.assertTrue(sr5.isError());
+      Assert.assertEquals(sr5.getErrorType(), ExceptionType.INVALID_SCHEMA);
       Assert.assertEquals(sr5.getExceptionType(), ExceptionType.INVALID_SCHEMA);
 
       // Formatted schema string
