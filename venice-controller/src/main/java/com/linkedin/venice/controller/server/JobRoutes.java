@@ -51,7 +51,7 @@ public class JobRoutes extends AbstractRoute {
         responseObject = populateJobStatus(cluster, store, versionNumber, admin,
             incrementalPushVersion == null ? Optional.empty() : Optional.of(incrementalPushVersion));
       } catch (Throwable e) {
-        responseObject.setError(e.getMessage());
+        responseObject.setError(e);
         AdminSparkServer.handleError(e, request, response);
       }
       return AdminSparkServer.mapper.writeValueAsString(responseObject);
@@ -113,7 +113,7 @@ public class JobRoutes extends AbstractRoute {
 
         admin.killOfflinePush(cluster, topic, false);
       } catch (Throwable e) {
-        responseObject.setError(e.getMessage());
+        responseObject.setError(e);
         AdminSparkServer.handleError(e, request, response);
       }
       return AdminSparkServer.mapper.writeValueAsString(responseObject);
@@ -161,7 +161,7 @@ public class JobRoutes extends AbstractRoute {
         }
 
       } catch (Throwable e) {
-        controllerResponse.setError(e.getMessage());
+        controllerResponse.setError(e);
         AdminSparkServer.handleError(e, request, response);
       }
       return AdminSparkServer.mapper.writeValueAsString(controllerResponse);
@@ -181,7 +181,7 @@ public class JobRoutes extends AbstractRoute {
         incrementalPushVersionsResponse.setName(Version.parseStoreFromKafkaTopicName(versionTopic));
         incrementalPushVersionsResponse.setIncrementalPushVersions(Collections.emptySet());
       } catch (Throwable e) {
-        incrementalPushVersionsResponse.setError(e.getMessage());
+        incrementalPushVersionsResponse.setError(e);
         AdminSparkServer.handleError(e, request, response);
       }
       return AdminSparkServer.mapper.writeValueAsString(incrementalPushVersionsResponse);
