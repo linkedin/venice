@@ -1,6 +1,6 @@
 package com.linkedin.venice.controllerapi;
 
-import org.codehaus.jackson.annotate.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 
 public class SchemaResponse extends ControllerResponse { /* Uses Json Reflective Serializer, get without set may break things */
   private int id;

@@ -5,6 +5,7 @@ import com.linkedin.venice.acl.AccessController;
 import com.linkedin.venice.acl.AclException;
 import com.linkedin.venice.router.stats.AdminOperationsStats;
 import com.linkedin.venice.utils.DataProviderUtils;
+import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.TestUtils;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
@@ -50,7 +51,7 @@ public class TestAdminOperationsHandler {
   private static final String INCORRECT_ADMIN_TASK = String.join("/", BASE_ADMIN_URI, "incorrect");
   private static final String READ_QUOTA_THROTTLE_INCORRECT_ACTION_URI = String.join("/", READ_QUOTA_THROTTLE_URI, "incorrect");
 
-  private static final ObjectMapper objectMapper = new ObjectMapper();
+  private static final ObjectMapper objectMapper = ObjectMapperFactory.getInstance();
 
   private final ConfigFake fake = new ConfigFake();
 

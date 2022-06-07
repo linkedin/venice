@@ -1,5 +1,6 @@
 package com.linkedin.venice.router;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.r2.transport.http.common.HttpProtocolVersion;
 import com.linkedin.venice.ConfigKeys;
@@ -17,18 +18,19 @@ import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.integration.utils.D2TestUtils;
-import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
-import com.linkedin.venice.routerapi.ResourceStateResponse;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.router.api.VenicePathParser;
 import com.linkedin.venice.router.httpclient.StorageNodeClientType;
+import com.linkedin.venice.routerapi.ResourceStateResponse;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.stats.StatsErrorCode;
 import com.linkedin.venice.tehuti.MetricsUtils;
+import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
@@ -59,7 +61,6 @@ import org.apache.http.impl.nio.client.CloseableHttpAsyncClient;
 import org.apache.http.impl.nio.client.HttpAsyncClients;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.codehaus.jackson.map.ObjectMapper;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -496,7 +497,7 @@ public abstract class TestRead {
       Assert.assertEquals(response.getStatusLine().getStatusCode(), HttpStatus.SC_OK,
           "Could not get d2 service correctly. Response:" + responseBody);
 
-      ObjectMapper mapper = new ObjectMapper();
+      ObjectMapper mapper = ObjectMapperFactory.getInstance();
       D2ServiceDiscoveryResponse d2ServiceDiscoveryResponse =
           mapper.readValue(responseBody.getBytes(), D2ServiceDiscoveryResponse.class);
       Assert.assertFalse(d2ServiceDiscoveryResponse.isError());
@@ -550,7 +551,7 @@ public abstract class TestRead {
       }
       Assert.assertEquals(response.getStatusLine().getStatusCode(), HttpStatus.SC_OK,
           "Failed to get resource state for " + storeVersionName + ". Response: " + responseBody);
-      ObjectMapper mapper = new ObjectMapper();
+      ObjectMapper mapper = ObjectMapperFactory.getInstance();
       ResourceStateResponse resourceStateResponse = mapper.readValue(responseBody.getBytes(), ResourceStateResponse.class);
       Assert.assertEquals(resourceStateResponse.getName(), storeVersionName);
       logger.info(responseBody);

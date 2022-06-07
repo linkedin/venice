@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller.server;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.acl.DynamicAccessController;
@@ -11,6 +12,7 @@ import com.linkedin.venice.exceptions.ExceptionType;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.service.AbstractVeniceService;
+import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
@@ -20,12 +22,10 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
-
 import org.apache.commons.lang.StringUtils;
 import org.apache.http.HttpStatus;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.codehaus.jackson.map.ObjectMapper;
 import spark.Request;
 import spark.Response;
 import spark.Service;
@@ -51,7 +51,7 @@ public class AdminSparkServer extends AbstractVeniceService {
   private final Optional<SSLConfig> sslConfig;
   private final Optional<DynamicAccessController> accessController;
 
-  protected static final ObjectMapper mapper = new ObjectMapper();
+  protected static final ObjectMapper mapper = ObjectMapperFactory.getInstance();
   final private Map<String, SparkServerStats> statsMap;
   final private SparkServerStats nonclusterSpecificStats;
 

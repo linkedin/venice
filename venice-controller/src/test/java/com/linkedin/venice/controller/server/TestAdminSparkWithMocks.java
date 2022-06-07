@@ -19,6 +19,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.utils.DataProviderUtils;
+import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.SslUtils;
 import java.util.ArrayList;
@@ -33,7 +34,6 @@ import org.apache.http.client.entity.UrlEncodedFormEntity;
 import org.apache.http.client.methods.HttpPost;
 import org.apache.http.impl.nio.client.CloseableHttpAsyncClient;
 import org.apache.http.message.BasicNameValuePair;
-import org.codehaus.jackson.map.ObjectMapper;
 import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -81,7 +81,7 @@ public class TestAdminSparkWithMocks {
       httpClient.start();
       HttpResponse response = httpClient.execute(post, null).get();
       String json = IOUtils.toString(response.getEntity().getContent());
-      responseObject = new ObjectMapper().readValue(json, VersionCreationResponse.class);
+      responseObject = ObjectMapperFactory.getInstance().readValue(json, VersionCreationResponse.class);
     }
 
     //verify response, note we expect same topic, "store_rt"
@@ -208,7 +208,7 @@ public class TestAdminSparkWithMocks {
       httpClient.start();
       HttpResponse response = httpClient.execute(post, null).get();
       String json = IOUtils.toString(response.getEntity().getContent());
-      responseObject = new ObjectMapper().readValue(json, VersionCreationResponse.class);
+      responseObject = ObjectMapperFactory.getInstance().readValue(json, VersionCreationResponse.class);
     }
 
     //verify response, the kafka bootstrap server should be set correctly depending on inputs.
@@ -271,7 +271,7 @@ public class TestAdminSparkWithMocks {
       httpClient.start();
       HttpResponse response = httpClient.execute(post, null).get();
       String json = IOUtils.toString(response.getEntity().getContent());
-      responseObject = new ObjectMapper().readValue(json, VersionCreationResponse.class);
+      responseObject = ObjectMapperFactory.getInstance().readValue(json, VersionCreationResponse.class);
     }
 
     //verify response, note we expect same topic, "store_rt"

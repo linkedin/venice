@@ -1,5 +1,6 @@
 package com.linkedin.venice.pushmonitor;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.client.store.transport.D2TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -7,6 +8,7 @@ import com.linkedin.venice.routerapi.PushStatusResponse;
 import com.linkedin.venice.samza.SamzaExitMode;
 import com.linkedin.venice.samza.VeniceSystemFactory;
 import com.linkedin.venice.utils.DaemonThreadFactory;
+import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.Utils;
 import java.io.Closeable;
 import java.util.concurrent.CompletableFuture;
@@ -17,8 +19,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.samza.system.SystemProducer;
-import org.codehaus.jackson.map.DeserializationConfig;
-import org.codehaus.jackson.map.ObjectMapper;
 
 import static com.linkedin.venice.VeniceConstants.*;
 
@@ -67,7 +67,7 @@ public class RouterBasedPushMonitor implements Closeable {
   }
 
   private static class PushMonitorTask implements Runnable, Closeable {
-    private static ObjectMapper mapper = new ObjectMapper().disable(DeserializationConfig.Feature.FAIL_ON_UNKNOWN_PROPERTIES);
+    private static ObjectMapper mapper = ObjectMapperFactory.getInstance();
 
     private final AtomicBoolean isRunning;
     private final String topicName;

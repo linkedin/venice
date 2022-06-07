@@ -1,10 +1,10 @@
 package com.linkedin.venice.controllerapi;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import java.util.Collections;
 import java.util.Map;
-import org.codehaus.jackson.annotate.JsonIgnore;
 
 public class VersionCreationResponse extends VersionResponse {
   /* Uses Json Reflective Serializer, get without set may break things */

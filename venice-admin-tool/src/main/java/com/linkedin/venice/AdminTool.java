@@ -1,5 +1,12 @@
 package com.linkedin.venice;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.ObjectWriter;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.linkedin.venice.client.store.QueryTool;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
@@ -60,6 +67,7 @@ import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
+import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.RetryUtils;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.Time;
@@ -102,13 +110,6 @@ import org.apache.commons.cli.Options;
 import org.apache.commons.cli.ParseException;
 import org.apache.commons.lang.StringUtils;
 import org.apache.kafka.clients.CommonClientConfigs;
-import org.codehaus.jackson.JsonNode;
-import org.codehaus.jackson.map.ObjectMapper;
-import org.codehaus.jackson.map.ObjectWriter;
-import org.codehaus.jackson.node.ArrayNode;
-import org.codehaus.jackson.node.JsonNodeFactory;
-import org.codehaus.jackson.node.ObjectNode;
-import org.codehaus.jackson.type.TypeReference;
 
 import static com.linkedin.venice.CommonConfigKeys.*;
 import static com.linkedin.venice.VeniceConstants.*;
@@ -116,7 +117,7 @@ import static org.apache.kafka.clients.consumer.ConsumerConfig.*;
 
 
 public class AdminTool {
-  private static ObjectWriter jsonWriter = new ObjectMapper().writerWithDefaultPrettyPrinter();
+  private static ObjectWriter jsonWriter = ObjectMapperFactory.getInstance().writerWithDefaultPrettyPrinter();
   private static List<String> fieldsToDisplay = new ArrayList<>();
   private static final String STATUS = "status";
   private static final String ERROR = "error";
@@ -169,7 +170,7 @@ public class AdminTool {
       }
 
       if (cmd.hasOption(Arg.FLAT_JSON.toString())){
-        jsonWriter = new ObjectMapper().writer();
+        jsonWriter = ObjectMapperFactory.getInstance().writer();
       }
       if (cmd.hasOption(Arg.FILTER_JSON.toString())) {
         fieldsToDisplay = Arrays.asList(cmd.getOptionValue(Arg.FILTER_JSON.first()).split(","));
@@ -1861,15 +1862,15 @@ public class AdminTool {
 
       Iterator<JsonNode> readPermissions = null;
       Iterator<JsonNode> writePermissions = null;
-      ObjectMapper mapper = new ObjectMapper();
+      ObjectMapper mapper = ObjectMapperFactory.getInstance();
       try {
         JsonNode root = mapper.readTree(oldAcls);
         JsonNode perms = root.path("AccessPermissions");
         if (perms.has("Read")) {
-          readPermissions = perms.path("Read").getElements();
+          readPermissions = perms.path("Read").elements();
         }
         if (perms.has("Write")) {
-          writePermissions = perms.path("Write").getElements();
+          writePermissions = perms.path("Write").elements();
         }
       } catch (Exception e) {
         printErrAndThrow(e,"ACLProvisioning: invalid accessPermission schema for store:" + store, null);
@@ -1877,7 +1878,7 @@ public class AdminTool {
 
       if (readPermissions != null) {
         while (readPermissions.hasNext()) {
-          String existingPrincipal = readPermissions.next().getTextValue();
+          String existingPrincipal = readPermissions.next().textValue();
           if (existingPrincipal.equals(principal)) {
             addReadPermissions = false;
           }
@@ -1887,7 +1888,7 @@ public class AdminTool {
 
       if (writePermissions != null) {
         while (writePermissions.hasNext()) {
-          String existingPrincipal = writePermissions.next().getTextValue();
+          String existingPrincipal = writePermissions.next().textValue();
           if (existingPrincipal.equals(principal)) {
             addWritePermissions = false;
           }
@@ -1945,15 +1946,15 @@ public class AdminTool {
 
       Iterator<JsonNode> readPermissions = null;
       Iterator<JsonNode> writePermissions = null;
-      ObjectMapper mapper = new ObjectMapper();
+      ObjectMapper mapper = ObjectMapperFactory.getInstance();
       try {
         JsonNode root = mapper.readTree(oldAcls);
         JsonNode perms = root.path("AccessPermissions");
         if (perms.has("Read")) {
-          readPermissions = perms.path("Read").getElements();
+          readPermissions = perms.path("Read").elements();
         }
         if (perms.has("Write")) {
-          writePermissions = perms.path("Write").getElements();
+          writePermissions = perms.path("Write").elements();
         }
       } catch (Exception e) {
         printErrAndThrow(e,"ACLProvisioning: invalid accessPermission schema for store:" + store, null);
@@ -1962,7 +1963,7 @@ public class AdminTool {
       boolean changed = false;
       if (readPermissions != null) {
         while (readPermissions.hasNext()) {
-          String existingPrincipal = readPermissions.next().getTextValue();
+          String existingPrincipal = readPermissions.next().textValue();
           if (removeReadPermissions && existingPrincipal.equals(principal)) {
             changed = true;
             continue;
@@ -1973,7 +1974,7 @@ public class AdminTool {
 
       if (writePermissions != null) {
         while (writePermissions.hasNext()) {
-          String existingPrincipal = writePermissions.next().getTextValue();
+          String existingPrincipal = writePermissions.next().textValue();
           if (removeWritePermissions && existingPrincipal.equals(principal)) {
             changed = true;
             continue;
@@ -2381,7 +2382,7 @@ public class AdminTool {
   }
   protected static void printObject(Object response, Consumer<String> printFunction){
     try {
-      ObjectMapper mapper = new ObjectMapper();
+      ObjectMapper mapper = ObjectMapperFactory.getInstance();
       ObjectWriter plainJsonWriter = mapper.writer();
       String jsonString = plainJsonWriter.writeValueAsString(response);
       Map<String, Object> printMap = mapper.readValue(jsonString, new TypeReference<Map<String, Object>>() {});

@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.utils.ObjectMapperFactory;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.List;
@@ -22,7 +23,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
  */
 public class QueryParams {
   protected final Map<String, String> params;
-  private final ObjectMapper mapper = new ObjectMapper();
+  private static final ObjectMapper mapper = ObjectMapperFactory.getInstance();
 
   public QueryParams(Map<String, String> initialParams) {
     this.params = initialParams;

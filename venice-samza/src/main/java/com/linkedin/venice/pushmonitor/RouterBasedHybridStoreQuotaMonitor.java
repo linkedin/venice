@@ -1,11 +1,13 @@
 package com.linkedin.venice.pushmonitor;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.client.store.transport.D2TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.routerapi.HybridStoreQuotaStatusResponse;
 import com.linkedin.venice.utils.DaemonThreadFactory;
+import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.Utils;
 import java.io.Closeable;
 import java.util.concurrent.CompletableFuture;
@@ -15,8 +17,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.codehaus.jackson.map.DeserializationConfig;
-import org.codehaus.jackson.map.ObjectMapper;
 
 import static com.linkedin.venice.VeniceConstants.*;
 
@@ -74,7 +74,7 @@ public class RouterBasedHybridStoreQuotaMonitor implements Closeable {
   }
 
   private static class HybridQuotaMonitorTask implements Runnable, Closeable {
-    private static ObjectMapper mapper = new ObjectMapper().disable(DeserializationConfig.Feature.FAIL_ON_UNKNOWN_PROPERTIES);
+    private static ObjectMapper mapper = ObjectMapperFactory.getInstance();
 
     private final AtomicBoolean isRunning;
     private final String storeName;

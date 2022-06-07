@@ -28,6 +28,7 @@ def kafkaGroup = 'com.linkedin.kafka'
 def kafkaVersion = '2.3.0.32'
 def log4j2Version = '2.17.1'
 def pegasusVersion = '29.31.0'
+def jacksonVersion = '2.13.3'
 
 ext.libraries = [
     avro: 'org.apache.avro:avro:' + avroVersion,
@@ -58,8 +59,9 @@ ext.libraries = [
     httpClient5: 'org.apache.httpcomponents.client5:httpclient5:5.1.2',
     httpClient: 'org.apache.httpcomponents:httpclient:4.5.2',
     httpCore: 'org.apache.httpcomponents:httpcore:4.4.5',
-    jacksonCore: 'org.codehaus.jackson:jackson-core-asl:1.9.6',
-    jacksonMapper: 'org.codehaus.jackson:jackson-mapper-asl:1.9.6',
+    jacksonCore: 'com.fasterxml.jackson.core:jackson-core:' + jacksonVersion,
+    jacksonAnnotations: 'com.fasterxml.jackson.core:jackson-annotations:' + jacksonVersion,
+    jacksonDatabind: 'com.fasterxml.jackson.core:jackson-databind:' + jacksonVersion,
     javax: 'javax.servlet:javax.servlet-api:3.1.0',
     jdom: 'org.jdom:jdom:1.1',
     jmhCore: 'org.openjdk.jmh:jmh-core:1.28',

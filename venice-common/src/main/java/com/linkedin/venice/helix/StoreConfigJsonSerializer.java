@@ -1,14 +1,14 @@
 package com.linkedin.venice.helix;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.linkedin.venice.meta.StoreConfig;
-import org.codehaus.jackson.annotate.JsonCreator;
-import org.codehaus.jackson.annotate.JsonProperty;
 
 
 public class StoreConfigJsonSerializer extends VeniceJsonSerializer<StoreConfig> {
   public StoreConfigJsonSerializer() {
     super(StoreConfig.class);
-    mapper.getDeserializationConfig().addMixInAnnotations(StoreConfig.class, StoreConfigSerializerMixin.class);
+    mapper.addMixIn(StoreConfig.class, StoreConfigSerializerMixin.class);
   }
 
   public static class StoreConfigSerializerMixin {

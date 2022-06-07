@@ -7,7 +7,6 @@ import java.nio.charset.CharsetEncoder;
 import java.nio.charset.StandardCharsets;
 import org.apache.avro.Schema;
 import org.apache.avro.io.parsing.Symbol;
-import org.codehaus.jackson.JsonGenerator;
 
 
 /**

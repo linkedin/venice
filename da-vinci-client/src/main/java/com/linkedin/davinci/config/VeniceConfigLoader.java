@@ -3,6 +3,7 @@ package com.linkedin.davinci.config;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.meta.PersistenceType;
+import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -167,7 +168,7 @@ public class VeniceConfigLoader {
 
     try (BufferedReader reader = new BufferedReader(new FileReader(mapFile))) {
       String flatMapString = reader.readLine();
-      ObjectMapper mapper = new ObjectMapper();
+      ObjectMapper mapper = ObjectMapperFactory.getInstance();
 
       Map<String, String> flatMap = mapper.readValue(flatMapString, Map.class);
       Map<String, Map<String, String>> kafkaClusterMap = new HashMap<>();
@@ -188,7 +189,7 @@ public class VeniceConfigLoader {
       return;
     }
 
-    ObjectMapper mapper = new ObjectMapper();
+    ObjectMapper mapper = ObjectMapperFactory.getInstance();
     Map<String, String> flatMap = new HashMap<>();
     for (Map.Entry<String, Map<String, String>> entry : kafkaClusterMap.get().entrySet()) {
       flatMap.put(entry.getKey(), mapper.writeValueAsString(entry.getValue()));

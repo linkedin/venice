@@ -1,5 +1,6 @@
 package com.linkedin.venice.router;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import com.linkedin.venice.controllerapi.LeaderControllerResponse;
@@ -38,6 +39,7 @@ import com.linkedin.venice.routerapi.ReplicaState;
 import com.linkedin.venice.routerapi.ResourceStateResponse;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import io.netty.channel.ChannelHandlerContext;
@@ -53,7 +55,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
-import org.codehaus.jackson.map.ObjectMapper;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 import org.testng.Assert;
@@ -67,7 +68,7 @@ public class TestMetaDataHandler {
   private static final String ZK_ADDRESS = "localhost:1234";
   private static final String KAFKA_ZK_ADDRESS = "localhost:1234";
   private static final String KAFKA_BOOTSTRAP_SERVERS = "localhost:1234";
-  private static ObjectMapper mapper = new ObjectMapper();
+  private static ObjectMapper mapper = ObjectMapperFactory.getInstance();
   private HelixHybridStoreQuotaRepository hybridStoreQuotaRepository = Mockito.mock(HelixHybridStoreQuotaRepository.class);
   public FullHttpResponse passRequestToMetadataHandler(String requestUri, RoutingDataRepository routing, ReadOnlySchemaRepository schemaRepo)
       throws IOException {

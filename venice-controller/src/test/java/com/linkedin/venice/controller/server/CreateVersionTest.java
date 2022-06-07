@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller.server;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
@@ -19,13 +20,13 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.utils.DataProviderUtils;
+import com.linkedin.venice.utils.ObjectMapperFactory;
 import java.security.cert.X509Certificate;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import javax.security.auth.x500.X500Principal;
 import javax.servlet.http.HttpServletRequest;
-import org.codehaus.jackson.map.ObjectMapper;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 import spark.QueryParamsMap;
@@ -41,7 +42,7 @@ import static org.mockito.Mockito.*;
 
 
 public class CreateVersionTest {
-  private static ObjectMapper mapper = new ObjectMapper();
+  private static ObjectMapper mapper = ObjectMapperFactory.getInstance();
 
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testCreateVersionWithACL(boolean checkReadMethod) {

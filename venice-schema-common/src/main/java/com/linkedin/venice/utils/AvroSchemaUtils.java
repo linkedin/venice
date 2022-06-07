@@ -12,11 +12,9 @@ import com.linkedin.venice.schema.SchemaEntry;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 import org.apache.avro.Schema;
@@ -162,7 +160,7 @@ public class AvroSchemaUtils {
    * @return a new {@link Schema} with the specified namespace.
    */
   public static Schema generateSchemaWithNamespace(String schemaStr, String namespace) throws IOException {
-    ObjectMapper mapper = new ObjectMapper();
+    ObjectMapper mapper = ObjectMapperFactory.getInstance();
     ObjectNode schemaOb = mapper.readValue(schemaStr, ObjectNode.class);
     schemaOb.put(NAMESPACE_FIELD, namespace);
     return Schema.parse(schemaOb.toString());

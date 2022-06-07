@@ -16,6 +16,7 @@ import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.MockVeniceRouterWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
+import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.SslUtils;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
@@ -30,7 +31,6 @@ import org.apache.http.client.methods.HttpGet;
 import org.apache.http.impl.nio.client.CloseableHttpAsyncClient;
 import org.apache.http.impl.nio.client.HttpAsyncClients;
 import org.apache.http.nio.conn.ssl.SSLIOSessionStrategy;
-import org.codehaus.jackson.map.ObjectMapper;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -127,7 +127,7 @@ public class TestRouter {
         HttpResponse response = httpClient.execute(request, null).get();
         String jsonContent = IOUtils.toString(response.getEntity().getContent());
         LeaderControllerResponse
-            controllerResponse = new ObjectMapper().readValue(jsonContent, LeaderControllerResponse.class);
+            controllerResponse = ObjectMapperFactory.getInstance().readValue(jsonContent, LeaderControllerResponse.class);
         Assert.assertEquals(controllerResponse.getCluster(), router.getClusterName());
       }
 

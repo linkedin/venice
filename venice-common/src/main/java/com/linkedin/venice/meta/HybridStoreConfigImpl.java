@@ -1,32 +1,31 @@
 package com.linkedin.venice.meta;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.linkedin.venice.systemstore.schemas.StoreHybridConfig;
 import com.linkedin.venice.utils.AvroCompatibilityUtils;
 import com.linkedin.venice.utils.Time;
 import java.util.Objects;
-import org.codehaus.jackson.annotate.JsonProperty;
 
 
 /**
  * A container of Hybrid Store related configurations.
  */
-//TODO, converge on fasterxml or codehouse
-@com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)
-@org.codehaus.jackson.annotate.JsonIgnoreProperties(ignoreUnknown = true)
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class HybridStoreConfigImpl implements HybridStoreConfig {
   public static final long DEFAULT_REWIND_TIME_IN_SECONDS = Time.SECONDS_PER_DAY;
   public static final long DEFAULT_HYBRID_TIME_LAG_THRESHOLD = -1L;
   public static final long DEFAULT_HYBRID_OFFSET_LAG_THRESHOLD = 1000L;
-  public static final long DEFAULT_BUFFER_REPLAY_REFERENCE_TIMESTAMP_MS = -1L;
 
   private final StoreHybridConfig hybridConfig;
 
   public HybridStoreConfigImpl(
-      @JsonProperty("rewindTimeInSeconds") @com.fasterxml.jackson.annotation.JsonProperty("rewindTimeInSeconds") long rewindTimeInSeconds,
-      @JsonProperty("offsetLagThresholdToGoOnline") @com.fasterxml.jackson.annotation.JsonProperty("offsetLagThresholdToGoOnline") long offsetLagThresholdToGoOnline,
-      @JsonProperty("producerTimestampLagThresholdToGoOnlineInSeconds") @com.fasterxml.jackson.annotation.JsonProperty("producerTimestampLagThresholdToGoOnlineInSeconds") long producerTimestampLagThresholdToGoOnlineInSeconds,
-      @JsonProperty("dataReplicationPolicy")@com.fasterxml.jackson.annotation.JsonProperty("dataReplicationPolicy") DataReplicationPolicy dataReplicationPolicy,
-      @JsonProperty("bufferReplayPolicy")@com.fasterxml.jackson.annotation.JsonProperty("bufferReplayPolicy") BufferReplayPolicy bufferReplayPolicy
+      @JsonProperty("rewindTimeInSeconds") long rewindTimeInSeconds,
+      @JsonProperty("offsetLagThresholdToGoOnline") long offsetLagThresholdToGoOnline,
+      @JsonProperty("producerTimestampLagThresholdToGoOnlineInSeconds") long producerTimestampLagThresholdToGoOnlineInSeconds,
+      @JsonProperty("dataReplicationPolicy") DataReplicationPolicy dataReplicationPolicy,
+      @JsonProperty("bufferReplayPolicy") BufferReplayPolicy bufferReplayPolicy
   ) {
     this.hybridConfig = new StoreHybridConfig();
     this.hybridConfig.rewindTimeInSeconds = rewindTimeInSeconds;
@@ -100,8 +99,7 @@ public class HybridStoreConfigImpl implements HybridStoreConfig {
     return Objects.hash(hybridConfig);
   }
 
-  @com.fasterxml.jackson.annotation.JsonIgnore
-  @org.codehaus.jackson.annotate.JsonIgnore
+  @JsonIgnore
   public HybridStoreConfig clone(){
     return new HybridStoreConfigImpl(
         getRewindTimeInSeconds(),

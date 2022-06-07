@@ -1,10 +1,12 @@
 package com.linkedin.venice.controllerapi;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.HttpMethod;
 import com.linkedin.venice.exceptions.ExceptionType;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.security.SSLFactory;
+import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import java.nio.charset.StandardCharsets;
@@ -29,8 +31,6 @@ import org.apache.http.nio.conn.ssl.SSLIOSessionStrategy;
 import org.apache.http.util.EntityUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.codehaus.jackson.map.DeserializationConfig;
-import org.codehaus.jackson.map.ObjectMapper;
 
 
 public class ControllerTransport implements AutoCloseable {
@@ -38,14 +38,11 @@ public class ControllerTransport implements AutoCloseable {
   private static final int CONNECTION_TIMEOUT_MS = 30 * Time.MS_PER_SECOND;
   private static final int DEFAULT_REQUEST_TIMEOUT_MS = 60 * Time.MS_PER_SECOND;
 
-  private static final ObjectMapper objectMapper;
-  private static final RequestConfig requestConfig;
+  private static final ObjectMapper objectMapper = ObjectMapperFactory.getInstance();
+  private static final RequestConfig requestConfig = getDefaultRequestConfig();
 
-  static {
-    objectMapper = new ObjectMapper()
-        .disable(DeserializationConfig.Feature.FAIL_ON_UNKNOWN_PROPERTIES);
-
-    requestConfig = RequestConfig.custom()
+  private static RequestConfig getDefaultRequestConfig() {
+    return RequestConfig.custom()
         .setConnectTimeout(CONNECTION_TIMEOUT_MS)
         .setConnectionRequestTimeout(CONNECTION_TIMEOUT_MS)
         .build();

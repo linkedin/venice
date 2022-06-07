@@ -1,7 +1,8 @@
 package com.linkedin.venice.controllerapi;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.linkedin.venice.utils.ObjectMapperFactory;
 import java.io.IOException;
-import org.codehaus.jackson.map.ObjectMapper;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -16,7 +17,7 @@ public class TestStoreCreationResponse {
   static final String TOPIC = "mystore_v3";
   static final int CURRENT_VERSION = 1;
 
-  static final ObjectMapper mapper = new ObjectMapper();
+  static final ObjectMapper mapper = ObjectMapperFactory.getInstance();
 
   @Test
   public void creationResponseCanBeSerialized()

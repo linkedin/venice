@@ -33,7 +33,8 @@ dependencies {
   implementation libraries.commonsLang
   implementation libraries.conscrypt
   implementation libraries.httpAsyncClient
-  implementation libraries.jacksonMapper
+  implementation libraries.jacksonDatabind
+  implementation libraries.jacksonAnnotations
   implementation libraries.kafka // TODO: Get rid of Kafka dependency in venice-common (used by TopicCreator)
   implementation libraries.kafkaClients // TODO: Get rid of Kafka dependency in venice-common
   implementation libraries.oss

@@ -1,13 +1,13 @@
 package com.linkedin.venice.client.utils;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
-import com.linkedin.venice.client.store.transport.TransportClientCallback;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
-
+import com.linkedin.venice.utils.ObjectMapperFactory;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.handler.codec.http.DefaultFullHttpResponse;
@@ -15,17 +15,14 @@ import io.netty.handler.codec.http.FullHttpResponse;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpVersion;
-
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.util.Map;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericDatumWriter;
 import org.apache.avro.io.Encoder;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.codehaus.jackson.map.ObjectMapper;
-
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
-import java.util.Map;
 
 public class StoreClientTestUtils {
   private static Logger LOGGER = LogManager.getLogger(StoreClientTestUtils.class);
@@ -48,7 +45,7 @@ public class StoreClientTestUtils {
     responseObject.setCluster(clusterName);
     responseObject.setName(storeName);
     responseObject.setD2Service(d2Service);
-    ObjectMapper mapper = new ObjectMapper();
+    ObjectMapper mapper = ObjectMapperFactory.getInstance();
     byte[] bytes = mapper.writeValueAsBytes(responseObject);
     ByteBuf body = Unpooled.wrappedBuffer(bytes);
     FullHttpResponse response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK, body);
@@ -67,7 +64,7 @@ public class StoreClientTestUtils {
     responseObject.setName(storeName);
     responseObject.setId(schemaId);
     responseObject.setSchemaStr(schemaStr);
-    ObjectMapper mapper = new ObjectMapper();
+    ObjectMapper mapper = ObjectMapperFactory.getInstance();
     return mapper.writeValueAsBytes(responseObject);
   }
 
@@ -98,7 +95,7 @@ public class StoreClientTestUtils {
       ++cur;
     }
     responseObject.setSchemas(schemas);
-    ObjectMapper mapper = new ObjectMapper();
+    ObjectMapper mapper = ObjectMapperFactory.getInstance();
 
     return mapper.writeValueAsBytes(responseObject);
   }

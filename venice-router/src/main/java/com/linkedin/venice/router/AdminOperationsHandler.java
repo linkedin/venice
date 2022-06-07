@@ -7,6 +7,7 @@ import com.linkedin.venice.acl.AccessController;
 import com.linkedin.venice.acl.AclException;
 import com.linkedin.venice.router.api.VenicePathParserHelper;
 import com.linkedin.venice.router.stats.AdminOperationsStats;
+import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
@@ -25,7 +26,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
-
 import org.apache.commons.lang.StringUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -41,7 +41,7 @@ public class AdminOperationsHandler extends SimpleChannelInboundHandler<HttpRequ
   private static final Logger logger = LogManager.getLogger(AdminOperationsHandler.class);
   private static final byte[] EMPTY_BYTES = new byte[0];
   private static final RedundantExceptionFilter filter = RedundantExceptionFilter.getRedundantExceptionFilter();
-  private static final ObjectMapper mapper = new ObjectMapper();
+  private static final ObjectMapper mapper = ObjectMapperFactory.getInstance();
 
   public static final String READ_THROTTLING_ENABLED = "readThrottlingEnabled";
   public static final String EARLY_THROTTLE_ENABLED = "earlyThrottleEnabled";

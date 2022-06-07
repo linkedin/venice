@@ -1,12 +1,11 @@
 package com.linkedin.venice.meta;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.systemstore.schemas.StoreVersion;
 import com.linkedin.venice.utils.AvroCompatibilityUtils;
-
-import org.codehaus.jackson.annotate.JsonIgnore;
-import org.codehaus.jackson.annotate.JsonProperty;
-
 import java.time.Duration;
 import java.util.Objects;
 
@@ -14,8 +13,7 @@ import java.util.Objects;
 /**
  * Class defines the version of Venice store.
  */
-@com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)
-@org.codehaus.jackson.annotate.JsonIgnoreProperties(ignoreUnknown = true)
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class VersionImpl implements Version {
   @JsonIgnore
   private final String kafkaTopicName;
@@ -40,13 +38,13 @@ public class VersionImpl implements Version {
   }
 
   public VersionImpl(
-      @JsonProperty("storeName") @com.fasterxml.jackson.annotation.JsonProperty("storeName") String storeName,
-      @JsonProperty("number") @com.fasterxml.jackson.annotation.JsonProperty("number") int number,
-      @JsonProperty("createdTime")  @com.fasterxml.jackson.annotation.JsonProperty("createdTime") long createdTime,
-      @JsonProperty("pushJobId") @com.fasterxml.jackson.annotation.JsonProperty("pushJobId") String pushJobId,
-      @JsonProperty("partitionCount") @com.fasterxml.jackson.annotation.JsonProperty("partitionCount") int partitionCount,
-      @JsonProperty("partitionerConfig") @com.fasterxml.jackson.annotation.JsonProperty("partitionerConfig") PartitionerConfig partitionerConfig,
-      @JsonProperty("dataRecoveryConfig") @com.fasterxml.jackson.annotation.JsonProperty("dataRecoveryConfig") DataRecoveryVersionConfig dataRecoveryVersionConfig) {
+      @JsonProperty("storeName") String storeName,
+      @JsonProperty("number") int number,
+      @JsonProperty("createdTime") long createdTime,
+      @JsonProperty("pushJobId") String pushJobId,
+      @JsonProperty("partitionCount") int partitionCount,
+      @JsonProperty("partitionerConfig") PartitionerConfig partitionerConfig,
+      @JsonProperty("dataRecoveryConfig") DataRecoveryVersionConfig dataRecoveryVersionConfig) {
     this.storeVersion = Store.prefillAvroRecordWithDefaultValue(new StoreVersion());
     this.storeVersion.storeName = storeName;
     this.storeVersion.number = number;
@@ -415,7 +413,7 @@ public class VersionImpl implements Version {
    * Kafka topic name is composed by store name and version.
    * <p>
    * The Json deserializer will think it should be a field called kafkaTopicName if we use "getKafkaTopicName" here. So
-   * use "kafkaTopicName" directly here to avoid error when deserialize.
+   * use "kafkaTopicName" directly here to avoid error when deserializing.
    *
    * @return kafka topic name.
    */

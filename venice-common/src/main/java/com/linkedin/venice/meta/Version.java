@@ -1,5 +1,7 @@
 package com.linkedin.venice.meta;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.guid.GuidUtils;
@@ -7,8 +9,6 @@ import com.linkedin.venice.systemstore.schemas.StoreVersion;
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.Optional;
-import org.codehaus.jackson.annotate.JsonIgnore;
-import org.codehaus.jackson.map.annotate.JsonDeserialize;
 
 import static java.lang.Character.*;
 
@@ -18,7 +18,6 @@ import static java.lang.Character.*;
  * some new fields, this interface needs to be changed accordingly.
  */
 @JsonDeserialize(as = VersionImpl.class)
-@com.fasterxml.jackson.databind.annotation.JsonDeserialize(as = VersionImpl.class)
 public interface Version extends Comparable<Version>, DataModelBackedStructure<StoreVersion> {
   String VERSION_SEPARATOR = "_v";
   String REAL_TIME_TOPIC_SUFFIX = "_rt";

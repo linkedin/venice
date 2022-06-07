@@ -1,24 +1,22 @@
 package com.linkedin.venice.client.store;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.client.exceptions.ServiceDiscoveryException;
 import com.linkedin.venice.client.store.transport.D2TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponseV2;
 import com.linkedin.venice.exceptions.VeniceException;
-
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
+import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
-import java.util.concurrent.TimeoutException;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.codehaus.jackson.map.DeserializationConfig;
-import org.codehaus.jackson.map.ObjectMapper;
-
 import java.util.Collections;
 import java.util.Map;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import static com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponseV2.*;
 
@@ -40,8 +38,7 @@ public class D2ServiceDiscovery {
     this.time = time;
   }
 
-  private static final ObjectMapper OBJECT_MAPPER =
-      new ObjectMapper().disable(DeserializationConfig.Feature.FAIL_ON_UNKNOWN_PROPERTIES);
+  private static final ObjectMapper OBJECT_MAPPER = ObjectMapperFactory.getInstance();
 
   public static final String TYPE_D2_SERVICE_DISCOVERY = "discover_cluster";
 

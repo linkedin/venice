@@ -1,5 +1,6 @@
 package com.linkedin.venice.client.store;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.HttpConstants;
@@ -17,6 +18,7 @@ import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
+import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import io.netty.handler.codec.http.FullHttpResponse;
@@ -38,7 +40,6 @@ import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.codehaus.jackson.map.ObjectMapper;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.AfterTest;
@@ -50,7 +51,7 @@ import org.testng.annotations.Test;
 public class AvroGenericStoreClientImplTest {
   private static final Logger LOGGER = LogManager.getLogger(AvroGenericStoreClientImplTest.class);
 
-  private final ObjectMapper mapper = new ObjectMapper();
+  private static final ObjectMapper mapper = ObjectMapperFactory.getInstance();
   private final String storeName = "test_store";
   private final String defaultKeySchemaStr = "\"string\"";
   private final Map<String, AvroGenericStoreClient<String, Object>> storeClients = new HashMap<>();
