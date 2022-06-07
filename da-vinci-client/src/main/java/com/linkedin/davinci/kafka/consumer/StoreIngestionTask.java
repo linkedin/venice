@@ -1139,7 +1139,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       }
       totalBytesRead += Math.max(0, record.serializedKeySize()) + Math.max(0, record.serializedValueSize());
       // Update the latest message consumption time
-      partitionConsumptionStateMap.get(subPartition).setLatestMessageConsumptionTimestampInMs(System.currentTimeMillis());
+      PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(subPartition);
+      if (partitionConsumptionState != null) {
+        partitionConsumptionState.setLatestMessageConsumptionTimestampInMs(System.currentTimeMillis());
+      }
     }
     storeIngestionStats.recordProduceToDrainQueueRecordNum(storeName, recordQueuedToDrainer);
     if (recordProducedToKafka > 0) {
