@@ -1,7 +1,7 @@
 package com.linkedin.venice.meta;
 
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.linkedin.venice.systemstore.schemas.DataRecoveryConfig;
-import org.codehaus.jackson.map.annotate.JsonDeserialize;
 
 
 /**
@@ -9,7 +9,6 @@ import org.codehaus.jackson.map.annotate.JsonDeserialize;
  * some new fields, this interface needs to be changed accordingly.
  */
 @JsonDeserialize(as = DataRecoveryVersionConfigImpl.class)
-@com.fasterxml.jackson.databind.annotation.JsonDeserialize(as = DataRecoveryVersionConfigImpl.class)
 public interface DataRecoveryVersionConfig extends DataModelBackedStructure<DataRecoveryConfig> {
 
   String getDataRecoverySourceFabric();

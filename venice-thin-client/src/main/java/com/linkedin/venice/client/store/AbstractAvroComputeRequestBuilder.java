@@ -227,7 +227,7 @@ public abstract class AbstractAvroComputeRequestBuilder<K> implements ComputeReq
        * 1. For Avro-1.8 or below, this method will guarantee the cloned field will be exactly same as the existing field.
        * 2. For Avro-1.9 or above, this method couldn't guarantee the cloned field will be exactly same as the existing field
        *    since the way to extract the default value from the existing field changes and we could only extract the default
-       *    value in Java format, but the {@link Schema.Field#equals} will compare the underlying {@link org.codehaus.jackson.JsonNode}
+       *    value in Java format, but the {@link Schema.Field#equals} will compare the underlying {@link com.fasterxml.jackson.databind.JsonNode}
        *    format of the default value.
        */
       resultSchemaFields.add(AvroCompatibilityHelper.newField(existingField).setDoc("").build());

@@ -1,6 +1,6 @@
 package com.linkedin.venice.controllerapi;
 
-import org.codehaus.jackson.annotate.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 
 public class D2ServiceDiscoveryResponseV2 extends D2ServiceDiscoveryResponse {
   public static final String D2_SERVICE_DISCOVERY_RESPONSE_V2_ENABLED = "d2.service.discovery.response.v2.enabled";

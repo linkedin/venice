@@ -1,12 +1,12 @@
 package com.linkedin.venice.client.store;
 
 import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.client.store.transport.HttpsTransportClient;
+import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.integration.utils.MockVeniceRouterWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
+import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.SslUtils;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -38,7 +38,7 @@ public class TestSslTransportClient {
         byte[] response = transportClientResponse.getBody();
 
         String responseJson = new String(response, StandardCharsets.UTF_8);
-        Map<String, String> responseMap = new ObjectMapper().readValue(responseJson, new TypeReference<HashMap<String, String>>() {
+        Map<String, String> responseMap = ObjectMapperFactory.getInstance().readValue(responseJson, new TypeReference<HashMap<String, String>>() {
         });
         Assert.assertEquals(responseMap.get("cluster"), router.getClusterName());
         Assert.assertEquals(responseMap.get("url"), "http://localhost:1234");

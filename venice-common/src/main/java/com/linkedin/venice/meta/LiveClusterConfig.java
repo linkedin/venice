@@ -1,11 +1,11 @@
 package com.linkedin.venice.meta;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.utils.Utils;
 import java.util.HashMap;
 import java.util.Map;
-import org.codehaus.jackson.annotate.JsonIgnore;
-import org.codehaus.jackson.annotate.JsonProperty;
 
 
 public class LiveClusterConfig {

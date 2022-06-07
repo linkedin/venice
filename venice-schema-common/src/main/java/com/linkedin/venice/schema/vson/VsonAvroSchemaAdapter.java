@@ -1,16 +1,12 @@
 package com.linkedin.venice.schema.vson;
 
-import com.linkedin.venice.serializer.VsonSerializationException;
-
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
-
-import org.apache.avro.Schema;
-import org.codehaus.jackson.JsonNode;
-
+import com.linkedin.venice.serializer.VsonSerializationException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import org.apache.avro.Schema;
 
 
 /**

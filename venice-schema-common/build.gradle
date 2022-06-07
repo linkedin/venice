@@ -12,7 +12,7 @@ dependencies {
     exclude group: 'com.oracle', module: 'ojdbc14' /* unused transitive dependencies, doesn't exist in repo */
     exclude group: 'org.mockito', module: 'mockito-all'
     exclude group: 'xerces', module: 'xerces'
-    exclude group: 'org.codehaus.jackson'
+    exclude group: 'com.fasterxml.jackson'
     exclude module: 'httpcore'
     exclude module: 'httpclient'
     exclude group: 'kafka'
@@ -24,7 +24,8 @@ dependencies {
   api libraries.httpClient //d2Client brings in an old version of httpClient
   api libraries.httpClient5
   api libraries.httpCore  //d2Client brings in an old version of httpCore
-  api libraries.jacksonMapper
+  api libraries.jacksonDatabind
+  api libraries.jacksonAnnotations
   api libraries.tehuti
   api libraries.xerces // d2Client brings in an old version of xerces
 

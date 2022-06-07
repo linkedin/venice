@@ -1,9 +1,10 @@
 package com.linkedin.venice.helix;
 
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.meta.VeniceSerializer;
+import com.linkedin.venice.utils.ObjectMapperFactory;
 import java.io.IOException;
-import org.codehaus.jackson.map.DeserializationConfig;
-import org.codehaus.jackson.map.ObjectMapper;
 
 
 public class VeniceJsonSerializer<T> implements VeniceSerializer<T> {
@@ -12,17 +13,13 @@ public class VeniceJsonSerializer<T> implements VeniceSerializer<T> {
    * will throw exception if the serialized map exceeds this limit.
    */
   private final int serializedMapSizeLimit = 0xfffff;
-  protected final ObjectMapper mapper = new ObjectMapper();
+  protected static final ObjectMapper mapper = ObjectMapperFactory.getInstance();
   private Class<T> type;
 
   public VeniceJsonSerializer(Class<T> type) {
     // Ignore unknown properties
-    mapper.configure(DeserializationConfig.Feature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+    mapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
     this.type = type;
-  }
-
-  public ObjectMapper getMapper() {
-    return mapper;
   }
 
   @Override

@@ -1,15 +1,11 @@
 package com.linkedin.venice.helix;
 
-import com.linkedin.venice.pushmonitor.ExecutionStatus;
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.linkedin.venice.meta.OfflinePushStrategy;
-import com.linkedin.venice.meta.VeniceSerializer;
+import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.OfflinePushStatus;
 import com.linkedin.venice.pushmonitor.StatusSnapshot;
-import java.io.IOException;
-import org.codehaus.jackson.annotate.JsonCreator;
-import org.codehaus.jackson.annotate.JsonProperty;
-import org.codehaus.jackson.map.DeserializationConfig;
-import org.codehaus.jackson.map.ObjectMapper;
 
 
 /**
@@ -19,9 +15,8 @@ public class OfflinePushStatusJSONSerializer extends VeniceJsonSerializer<Offlin
 
   public OfflinePushStatusJSONSerializer() {
     super(OfflinePushStatus.class);
-    mapper.getDeserializationConfig()
-        .addMixInAnnotations(OfflinePushStatus.class, OfflinePushStatusSerializerMixin.class);
-    mapper.getDeserializationConfig().addMixInAnnotations(StatusSnapshot.class, StatusSnapshotSerializerMixin.class);
+    mapper.addMixIn(OfflinePushStatus.class, OfflinePushStatusSerializerMixin.class);
+    mapper.addMixIn(StatusSnapshot.class, StatusSnapshotSerializerMixin.class);
   }
 
   public static class OfflinePushStatusSerializerMixin {

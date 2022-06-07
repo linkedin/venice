@@ -1,9 +1,9 @@
 package com.linkedin.venice.helix;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.linkedin.venice.meta.Instance;
 import java.util.StringJoiner;
-import org.codehaus.jackson.annotate.JsonIgnore;
-import org.codehaus.jackson.annotate.JsonProperty;
 
 
 /**

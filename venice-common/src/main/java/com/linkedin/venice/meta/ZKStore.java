@@ -1,5 +1,6 @@
 package com.linkedin.venice.meta;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.StoreDisabledException;
@@ -16,7 +17,6 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.stream.Collectors;
 import org.apache.avro.util.Utf8;
-import org.codehaus.jackson.annotate.JsonProperty;
 
 
 /**
@@ -42,7 +42,7 @@ import org.codehaus.jackson.annotate.JsonProperty;
  * When you want to add a simple field to Store metadata, you just need to create getter/setter for the new field.
  * When you try to add a method starting with 'get', the default json serialization will do serialization by this
  * method, which could produce some unexpected serialization result, so if it is not for serialization purpose, please
- * specify {@link org.codehaus.jackson.annotate.JsonIgnore} to ignore the method, whose name is starting with 'get'.
+ * specify {@link com.fasterxml.jackson.annotation.JsonIgnore} to ignore the method, whose name is starting with 'get'.
  *
  * TODO: we need to refactor this class to separate Store operations from Store POJO, which is being used by JSON
  * TODO: Since metadata keeps increasing, maybe we would like to refactor it to builder pattern.

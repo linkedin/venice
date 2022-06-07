@@ -11,7 +11,7 @@ dependencies {
 
   implementation libraries.httpAsyncClient
   implementation libraries.jacksonCore
-  implementation libraries.jacksonMapper
+  implementation libraries.jacksonDatabind
   implementation libraries.zookeeper
 
   // Schema related dependencies

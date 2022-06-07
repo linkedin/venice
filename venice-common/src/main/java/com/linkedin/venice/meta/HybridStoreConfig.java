@@ -1,7 +1,7 @@
 package com.linkedin.venice.meta;
 
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.linkedin.venice.systemstore.schemas.StoreHybridConfig;
-import org.codehaus.jackson.map.annotate.JsonDeserialize;
 
 
 /**
@@ -9,7 +9,6 @@ import org.codehaus.jackson.map.annotate.JsonDeserialize;
  * some new fields, this interface needs to be changed accordingly.
  */
 @JsonDeserialize(as = HybridStoreConfigImpl.class)
-@com.fasterxml.jackson.databind.annotation.JsonDeserialize(as = HybridStoreConfigImpl.class)
 public interface HybridStoreConfig extends DataModelBackedStructure<StoreHybridConfig> {
 
   long getRewindTimeInSeconds();

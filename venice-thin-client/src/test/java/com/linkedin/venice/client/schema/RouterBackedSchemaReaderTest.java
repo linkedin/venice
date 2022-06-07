@@ -1,22 +1,23 @@
 package com.linkedin.venice.client.schema;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.AbstractAvroStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.schema.SchemaReader;
+import com.linkedin.venice.utils.ObjectMapperFactory;
 import java.io.IOException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import org.apache.avro.Schema;
-import org.codehaus.jackson.map.ObjectMapper;
 import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
 public class RouterBackedSchemaReaderTest {
-  private ObjectMapper mapper = new ObjectMapper();
+  private static ObjectMapper mapper = ObjectMapperFactory.getInstance();
   private final int TIMEOUT = 3;
 
   @Test

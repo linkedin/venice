@@ -1,5 +1,7 @@
 package com.linkedin.venice.helix;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.meta.ETLStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfig;
@@ -8,8 +10,6 @@ import com.linkedin.venice.meta.SerializableSystemStore;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.ZKStore;
 import java.io.IOException;
-import org.codehaus.jackson.annotate.JsonCreator;
-import org.codehaus.jackson.annotate.JsonProperty;
 
 
 public class SystemStoreJSONSerializer extends VeniceJsonSerializer<SerializableSystemStore> {
@@ -34,7 +34,7 @@ public class SystemStoreJSONSerializer extends VeniceJsonSerializer<Serializable
   }
 
   private void addMixin(Class veniceClass, Class serializerClass) {
-    mapper.getDeserializationConfig().addMixInAnnotations(veniceClass, serializerClass);
+    mapper.addMixIn(veniceClass, serializerClass);
   }
 
   @Override

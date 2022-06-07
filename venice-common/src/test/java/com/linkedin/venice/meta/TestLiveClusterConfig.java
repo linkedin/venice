@@ -1,8 +1,9 @@
 package com.linkedin.venice.meta;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.ConfigKeys;
+import com.linkedin.venice.utils.ObjectMapperFactory;
 import java.io.IOException;
-import org.codehaus.jackson.map.ObjectMapper;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -11,7 +12,7 @@ public class TestLiveClusterConfig {
   private static final String CONFIGURED_REGION = "ConfiguredRegion";
   private static final String NON_CONFIGURED_REGION = "NonConfiguredRegion";
 
-  private static final ObjectMapper objectMapper = new ObjectMapper();
+  private static final ObjectMapper objectMapper = ObjectMapperFactory.getInstance();
   static final String serialized = String.format("{\"%s\":{\"%s\": 1500},\"%s\":true,\"%s\":true}", ConfigKeys.SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND,
       CONFIGURED_REGION, ConfigKeys.ALLOW_STORE_MIGRATION, ConfigKeys.CHILD_CONTROLLER_ADMIN_TOPIC_CONSUMPTION_ENABLED);
 

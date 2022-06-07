@@ -1,5 +1,10 @@
 package com.linkedin.venice.controller;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.acl.AclException;
 import com.linkedin.venice.acl.DynamicAccessController;
@@ -123,6 +128,7 @@ import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.utils.AvroSchemaUtils;
 import com.linkedin.venice.utils.AvroSupersetSchemaUtils;
 import com.linkedin.venice.utils.CollectionUtils;
+import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.SslUtils;
@@ -169,14 +175,8 @@ import org.apache.http.HttpStatus;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.codehaus.jackson.JsonNode;
-import org.codehaus.jackson.map.ObjectMapper;
-import org.codehaus.jackson.node.ArrayNode;
-import org.codehaus.jackson.node.JsonNodeFactory;
-import org.codehaus.jackson.node.ObjectNode;
 
 import static com.linkedin.venice.controller.VeniceHelixAdmin.*;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
 import static com.linkedin.venice.meta.IncrementalPushPolicy.*;
 
@@ -2762,7 +2762,7 @@ public class VeniceParentHelixAdmin implements Admin {
 
   @Override
   public void updateRoutersClusterConfig(String clusterName, Optional<Boolean> isThrottlingEnable,
-      Optional<Boolean> isQuotaRebalancedEnable, Optional<Boolean> isMaxCapaictyProtectionEnabled,
+      Optional<Boolean> isQuotaRebalancedEnable, Optional<Boolean> isMaxCapacityProtectionEnabled,
       Optional<Integer> expectedRouterCount) {
     throw new VeniceUnsupportedOperationException("updateRoutersClusterConfig");
   }
@@ -3006,15 +3006,15 @@ public class VeniceParentHelixAdmin implements Admin {
       Resource resource = new Resource(storeName);
       Iterator<JsonNode> readPermissions = null;
       Iterator<JsonNode> writePermissions = null;
-      ObjectMapper mapper = new ObjectMapper();
+      ObjectMapper mapper = ObjectMapperFactory.getInstance();
       try {
         JsonNode root = mapper.readTree(accessPermissions.get());
         JsonNode perms = root.path("AccessPermissions");
         if (perms.has("Read")) {
-          readPermissions = perms.path("Read").getElements();
+          readPermissions = perms.path("Read").elements();
         }
         if (perms.has("Write")) {
-          writePermissions = perms.path("Write").getElements();
+          writePermissions = perms.path("Write").elements();
         }
       } catch (Exception e) {
         logger.error("ACLProvisioning: invalid accessPermission schema for store:" + storeName, e);
@@ -3025,7 +3025,7 @@ public class VeniceParentHelixAdmin implements Admin {
         AclBinding aclBinding = new AclBinding(resource);
         if (readPermissions != null) {
           while (readPermissions.hasNext()) {
-            String readPerm = readPermissions.next().getTextValue();
+            String readPerm = readPermissions.next().textValue();
             Principal principal = new Principal(readPerm);
             AceEntry readAceEntry = new AceEntry(principal, Method.Read, Permission.ALLOW);
             aclBinding.addAceEntry(readAceEntry);
@@ -3033,7 +3033,7 @@ public class VeniceParentHelixAdmin implements Admin {
         }
         if (writePermissions != null) {
           while (writePermissions.hasNext()) {
-            String writePerm = writePermissions.next().getTextValue();
+            String writePerm = writePermissions.next().textValue();
             Principal principal = new Principal(writePerm);
             AceEntry writeAceEntry = new AceEntry(principal, Method.Write, Permission.ALLOW);
             aclBinding.addAceEntry(writeAceEntry);
@@ -3079,7 +3079,7 @@ public class VeniceParentHelixAdmin implements Admin {
       }
 
       JsonNodeFactory factory = JsonNodeFactory.instance;
-      ObjectMapper mapper = new ObjectMapper();
+      ObjectMapper mapper = ObjectMapperFactory.getInstance();
       ObjectNode root = factory.objectNode();
       ObjectNode perms = factory.objectNode();
       ArrayNode readP = factory.arrayNode();
@@ -3094,9 +3094,9 @@ public class VeniceParentHelixAdmin implements Admin {
           writeP.add(aceEntry.getPrincipal().getName());
         }
       }
-      perms.put("Read", readP);
-      perms.put("Write", writeP);
-      root.put("AccessPermissions", perms);
+      perms.replace("Read", readP);
+      perms.replace("Write", writeP);
+      root.replace("AccessPermissions", perms);
       result = mapper.writeValueAsString(root);
       return result;
     } catch (Exception e) {
@@ -3464,7 +3464,7 @@ public class VeniceParentHelixAdmin implements Admin {
       ControllerClient controllerClientA, ControllerClient controllerClientB, StoreComparisonInfo result) {
     StoreInfo storeA = checkControllerResponse(controllerClientA.getStore(storeName), fabricA).getStore();
     StoreInfo storeB = checkControllerResponse(controllerClientB.getStore(storeName), fabricB).getStore();
-    ObjectMapper mapper = new ObjectMapper();
+    ObjectMapper mapper = ObjectMapperFactory.getInstance();
     Map<String, Object> storePropertiesA = mapper.convertValue(storeA, Map.class);
     Map<String, Object> storePropertiesB = mapper.convertValue(storeB, Map.class);
 

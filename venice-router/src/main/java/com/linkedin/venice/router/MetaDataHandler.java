@@ -1,5 +1,6 @@
 package com.linkedin.venice.router;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponseV2;
 import com.linkedin.venice.controllerapi.LeaderControllerResponse;
@@ -30,6 +31,7 @@ import com.linkedin.venice.routerapi.ReplicaState;
 import com.linkedin.venice.routerapi.ResourceStateResponse;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.utils.ExceptionUtils;
+import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
@@ -47,11 +49,9 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-
 import org.apache.commons.lang.StringUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.codehaus.jackson.map.ObjectMapper;
 
 import static com.linkedin.venice.VeniceConstants.*;
 import static com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponseV2.*;
@@ -76,7 +76,7 @@ import static io.netty.handler.codec.http.HttpResponseStatus.*;
 @ChannelHandler.Sharable
 public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
   private static final Logger logger = LogManager.getLogger(MetaDataHandler.class);
-  private static final ObjectMapper mapper = new ObjectMapper();
+  private static final ObjectMapper mapper = ObjectMapperFactory.getInstance();
   private static final StoreJSONSerializer storeSerializer = new StoreJSONSerializer();
   private static final SystemStoreJSONSerializer systemStoreSerializer = new SystemStoreJSONSerializer();
   private static final RedundantExceptionFilter filter = RedundantExceptionFilter.getRedundantExceptionFilter();

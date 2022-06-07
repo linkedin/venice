@@ -12,6 +12,7 @@ import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.StoreInfo;
+import com.linkedin.venice.utils.ObjectMapperFactory;
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
@@ -33,7 +34,7 @@ public class UpdateStoreQueryParams extends QueryParams {
     setReplicateAllConfigs(false);
   }
 
-  private ObjectMapper mapper = new ObjectMapper();
+  private static final ObjectMapper mapper = ObjectMapperFactory.getInstance();
 
   /**
    * This method must be updated everytime a new store property is introduced

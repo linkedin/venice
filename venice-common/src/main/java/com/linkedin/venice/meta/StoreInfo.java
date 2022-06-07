@@ -1,5 +1,6 @@
 package com.linkedin.venice.meta;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.linkedin.venice.compression.CompressionStrategy;
 import java.util.List;
 import java.util.Map;
@@ -11,8 +12,7 @@ import static com.linkedin.venice.meta.Store.*;
 /**
  * Json-serializable class for sending store information to the controller client
  */
-@com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)
-@org.codehaus.jackson.annotate.JsonIgnoreProperties(ignoreUnknown = true)
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class StoreInfo {
   public static StoreInfo fromStore(Store store){
     StoreInfo storeInfo = new StoreInfo();

@@ -1,6 +1,6 @@
 package com.linkedin.venice.routerapi;
 
-import org.codehaus.jackson.annotate.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 
 
 public class ReplicaState {

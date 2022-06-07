@@ -1,8 +1,8 @@
 package com.linkedin.venice.controllerapi;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.meta.Version;
-import org.codehaus.jackson.annotate.JsonIgnore;
 
 
 public class MultiReplicaResponse extends ControllerResponse { /* Uses Json Reflective Serializer, get without set may break things */

@@ -37,6 +37,7 @@ import com.linkedin.venice.meta.StoreStatus;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.EncodingUtils;
+import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import java.io.IOException;
@@ -57,7 +58,6 @@ import org.apache.http.client.entity.UrlEncodedFormEntity;
 import org.apache.http.client.methods.HttpPost;
 import org.apache.http.impl.nio.client.CloseableHttpAsyncClient;
 import org.apache.http.message.BasicNameValuePair;
-import org.codehaus.jackson.map.ObjectMapper;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -751,13 +751,13 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
         controllerClient.requestTopicForWrites(storeNameDoesNotExist, 1L, Version.PushType.BATCH, pushId,
             true, true, false, Optional.empty(), Optional.empty(), Optional.empty(), false, -1);
     Assert.assertTrue(vcr.isError(),
-        "Request topic for store that has not been created must return error, instead it returns: " + new ObjectMapper()
+        "Request topic for store that has not been created must return error, instead it returns: " + ObjectMapperFactory.getInstance()
             .writeValueAsString(vcr));
 
     vcr = controllerClient.requestTopicForWrites(storeNameDoesNotExist, 1L, Version.PushType.STREAM, pushId,
         true, false, false, Optional.empty(), Optional.empty(), Optional.empty(), false, -1);
     Assert.assertTrue(vcr.isError(),
-        "Request topic for store that has not been created must return error, instead it returns: " + new ObjectMapper()
+        "Request topic for store that has not been created must return error, instead it returns: " + ObjectMapperFactory.getInstance()
             .writeValueAsString(vcr));
   }
 
@@ -824,7 +824,7 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
         controllerClient.requestTopicForWrites(storeName, 1L, Version.PushType.BATCH, pushId, false, true, false,
             Optional.empty(), Optional.of(largeDictionary), Optional.empty(), false, -1);
     Assert.assertFalse(vcr.isError(),
-        "Controller should allow large payload: " + new ObjectMapper().writeValueAsString(vcr));
+        "Controller should allow large payload: " + ObjectMapperFactory.getInstance().writeValueAsString(vcr));
   }
 
   @Test(timeOut = TEST_TIMEOUT)

@@ -1,5 +1,7 @@
 package com.linkedin.venice.meta;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.linkedin.venice.utils.ObjectMapperFactory;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
@@ -8,7 +10,7 @@ import org.testng.annotations.Test;
 
 
 public class TestPartitionerConfig {
-  static org.codehaus.jackson.map.ObjectMapper codehouseMapper = new org.codehaus.jackson.map.ObjectMapper();
+  static ObjectMapper objectMapper = ObjectMapperFactory.getInstance();
   static final String serialized = "{\"partitionerParams\":{\"majorField\" : \"jobId\"}, \"partitionerClass\": \"com.linkedin.venice.partitioner.DefaultVenicePartitioner\", \"amplificationFactor\":10}";
 
   /**
@@ -22,10 +24,10 @@ public class TestPartitionerConfig {
     Map<String, String> testPartitionParams = new HashMap<>();
     testPartitionParams.put("majorField", "jobId");
 
-    PartitionerConfig codehouse = codehouseMapper.readValue(serialized, PartitionerConfig.class);
-    Assert.assertEquals(codehouse.getPartitionerParams(), testPartitionParams);
-    Assert.assertEquals(codehouse.getPartitionerClass(), "com.linkedin.venice.partitioner.DefaultVenicePartitioner");
-    Assert.assertEquals(codehouse.getAmplificationFactor(), 10);
+    PartitionerConfig partitionerConfig = objectMapper.readValue(serialized, PartitionerConfig.class);
+    Assert.assertEquals(partitionerConfig.getPartitionerParams(), testPartitionParams);
+    Assert.assertEquals(partitionerConfig.getPartitionerClass(), "com.linkedin.venice.partitioner.DefaultVenicePartitioner");
+    Assert.assertEquals(partitionerConfig.getAmplificationFactor(), 10);
   }
 }
 

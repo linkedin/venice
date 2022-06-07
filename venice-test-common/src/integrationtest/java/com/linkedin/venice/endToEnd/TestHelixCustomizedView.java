@@ -1,5 +1,6 @@
 package com.linkedin.venice.endToEnd;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.controllerapi.ControllerClient;
@@ -17,6 +18,7 @@ import com.linkedin.venice.routerapi.ResourceStateResponse;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.utils.HelixUtils;
+import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -43,7 +45,6 @@ import org.apache.http.impl.nio.client.CloseableHttpAsyncClient;
 import org.apache.http.impl.nio.client.HttpAsyncClients;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.codehaus.jackson.map.ObjectMapper;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -170,7 +171,7 @@ public class TestHelixCustomizedView {
       }
       Assert.assertEquals(response.getStatusLine().getStatusCode(), HttpStatus.SC_OK,
           "Failed to get resource state for " + storeVersionName + ". Response: " + responseBody);
-      ObjectMapper mapper = new ObjectMapper();
+      ObjectMapper mapper = ObjectMapperFactory.getInstance();
       return mapper.readValue(responseBody.getBytes(), ResourceStateResponse.class);
     }
   }

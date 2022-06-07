@@ -1,5 +1,8 @@
 package com.linkedin.venice.meta;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.systemstore.schemas.StorePartitionerConfig;
 import com.linkedin.venice.utils.AvroCompatibilityUtils;
@@ -7,9 +10,6 @@ import com.linkedin.venice.utils.CollectionUtils;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
-import org.codehaus.jackson.annotate.JsonIgnore;
-import org.codehaus.jackson.annotate.JsonIgnoreProperties;
-import org.codehaus.jackson.annotate.JsonProperty;
 
 
 @JsonIgnoreProperties(ignoreUnknown = true)

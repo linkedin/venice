@@ -2,7 +2,6 @@ package com.linkedin.venice.routerapi;
 
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import java.util.List;
-import org.codehaus.jackson.annotate.JsonIgnore;
 
 
 public class ResourceStateResponse extends ControllerResponse {

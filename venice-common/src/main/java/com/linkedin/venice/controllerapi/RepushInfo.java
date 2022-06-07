@@ -1,10 +1,10 @@
 package com.linkedin.venice.controllerapi;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.linkedin.venice.meta.Version;
 
 
-@com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)
-@org.codehaus.jackson.annotate.JsonIgnoreProperties(ignoreUnknown = true)
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class RepushInfo {
   private String kafkaBrokerUrl;
   private Version version;

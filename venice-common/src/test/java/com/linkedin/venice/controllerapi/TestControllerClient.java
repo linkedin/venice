@@ -1,13 +1,14 @@
 package com.linkedin.venice.controllerapi;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.d2.balancer.D2ClientBuilder;
 import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.integration.utils.MockD2ServerWrapper;
 import com.linkedin.venice.integration.utils.MockHttpServerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.Utils;
-
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.handler.codec.http.DefaultFullHttpResponse;
@@ -15,13 +16,10 @@ import io.netty.handler.codec.http.FullHttpResponse;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpVersion;
+import java.io.IOException;
 import java.util.Optional;
-
-import org.codehaus.jackson.map.ObjectMapper;
 import org.testng.Assert;
 import org.testng.annotations.Test;
-
-import java.io.IOException;
 
 public class TestControllerClient {
   @Test
@@ -66,7 +64,7 @@ public class TestControllerClient {
       LeaderControllerResponse controllerResponse = new LeaderControllerResponse();
       controllerResponse.setCluster(clusterName);
       controllerResponse.setUrl(fakeLeaderControllerUrl);
-      ObjectMapper objectMapper = new ObjectMapper();
+      ObjectMapper objectMapper = ObjectMapperFactory.getInstance();
       ByteBuf body = Unpooled.wrappedBuffer(objectMapper.writeValueAsBytes(controllerResponse));
       FullHttpResponse response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK, body);
       response.headers().set(HttpHeaderNames.CONTENT_TYPE, "application/json");
@@ -131,7 +129,7 @@ public class TestControllerClient {
     response.setCluster(clusterName);
     response.setUrl(url);
 
-    ByteBuf body = Unpooled.wrappedBuffer(new ObjectMapper().writeValueAsBytes(response));
+    ByteBuf body = Unpooled.wrappedBuffer(ObjectMapperFactory.getInstance().writeValueAsBytes(response));
     FullHttpResponse httpResponse = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK, body);
     httpResponse.headers().set(HttpHeaderNames.CONTENT_LENGTH, httpResponse.content().readableBytes());
 

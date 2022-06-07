@@ -1,8 +1,9 @@
 package com.linkedin.venice.meta;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.Utils;
-
 import java.io.IOException;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -12,9 +13,7 @@ import org.testng.annotations.Test;
  * Created by mwise on 5/9/16.
  */
 public class TestVersion {
-  //TODO, converge on fasterxml or codehouse
-  static com.fasterxml.jackson.databind.ObjectMapper fasterXmlMapper = new com.fasterxml.jackson.databind.ObjectMapper();
-  static org.codehaus.jackson.map.ObjectMapper codehouseMapper = new org.codehaus.jackson.map.ObjectMapper();
+  static ObjectMapper objectMapper = ObjectMapperFactory.getInstance();
 
   static final String oldSerialized = "{\"storeName\":\"store-1492637190910-78714331\",\"number\":17,\"createdTime\":1492637190912,\"status\":\"STARTED\"}";
   static final String extraFieldSerialized = "{\"storeName\":\"store-1492637190910-12345678\",\"number\":17,\"createdTime\":1492637190912,\"status\":\"STARTED\",\"extraField\":\"12345\"}";
@@ -37,7 +36,7 @@ public class TestVersion {
     String storeName = Utils.getUniqueString("store");
     int versionNumber = 17;
     Version version = new VersionImpl(storeName, versionNumber);
-    String serialized = codehouseMapper.writeValueAsString(version);
+    String serialized = objectMapper.writeValueAsString(version);
     Assert.assertTrue(serialized.contains(storeName));
   }
 
@@ -47,27 +46,14 @@ public class TestVersion {
    * @throws IOException
    */
   @Test
-  public void deserializeWithWrongFieldsAndCodehouse() throws IOException {
-    Version oldParsedVersion = codehouseMapper.readValue(oldSerialized, Version.class);
+  public void deserializeWithWrongFields() throws IOException {
+    Version oldParsedVersion = objectMapper.readValue(oldSerialized, Version.class);
     Assert.assertEquals(oldParsedVersion.getStoreName(), "store-1492637190910-78714331");
 
-    Version newParsedVersion = codehouseMapper.readValue(extraFieldSerialized, Version.class);
+    Version newParsedVersion = objectMapper.readValue(extraFieldSerialized, Version.class);
     Assert.assertEquals(newParsedVersion.getStoreName(), "store-1492637190910-12345678");
 
-    Version legacyParsedVersion = codehouseMapper.readValue(missingFieldSerialized, Version.class);
-    Assert.assertEquals(legacyParsedVersion.getStoreName(), "store-missing");
-    Assert.assertNotNull(legacyParsedVersion.getPushJobId()); // missing final field can still deserialize, just gets arbitrary value from constructor
-  }
-
-  @Test
-  public void deserializeWithWrongFieldsAndFasterXml() throws IOException {
-    Version oldParsedVersion = fasterXmlMapper.readValue(oldSerialized, Version.class);
-    Assert.assertEquals(oldParsedVersion.getStoreName(), "store-1492637190910-78714331");
-
-    Version newParsedVersion = fasterXmlMapper.readValue(extraFieldSerialized, Version.class);
-    Assert.assertEquals(newParsedVersion.getStoreName(), "store-1492637190910-12345678");
-
-    Version legacyParsedVersion = fasterXmlMapper.readValue(missingFieldSerialized, Version.class);
+    Version legacyParsedVersion = objectMapper.readValue(missingFieldSerialized, Version.class);
     Assert.assertEquals(legacyParsedVersion.getStoreName(), "store-missing");
     Assert.assertNotNull(legacyParsedVersion.getPushJobId()); // missing final field can still deserialize, just gets arbitrary value from constructor
   }

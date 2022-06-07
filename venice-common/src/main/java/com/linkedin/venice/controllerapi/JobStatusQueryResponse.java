@@ -1,9 +1,9 @@
 package com.linkedin.venice.controllerapi;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import java.util.Map;
 import java.util.Optional;
-import org.codehaus.jackson.annotate.JsonIgnore;
 
 
 /**

@@ -1,9 +1,9 @@
 package com.linkedin.venice.controller.kafka.consumer;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.linkedin.venice.helix.VeniceJsonSerializer;
 import java.io.IOException;
 import java.util.Map;
-import org.codehaus.jackson.type.TypeReference;
 
 
 public class StringToLongMapJSONSerializer extends VeniceJsonSerializer<Map> {
