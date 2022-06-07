@@ -539,12 +539,20 @@ public class AdminConsumptionTask implements Runnable, Closeable {
       return true;
     }
     // Check it again if it is false
-    topicExists = admin.getTopicManager().containsTopicAndAllPartitionsAreOnline(topicName);
+    if (remoteConsumptionEnabled) {
+      topicExists = sourceKafkaClusterTopicManager.containsTopicAndAllPartitionsAreOnline(topicName);
+    } else {
+      topicExists = admin.getTopicManager().containsTopicAndAllPartitionsAreOnline(topicName);
+    }
     return topicExists;
   }
 
   private void makeSureAdminTopicUsingInfiniteRetentionPolicy(String topicName) {
-    admin.getTopicManager().updateTopicRetention(topicName, Long.MAX_VALUE);
+    if (remoteConsumptionEnabled) {
+      sourceKafkaClusterTopicManager.updateTopicRetention(topicName, Long.MAX_VALUE);
+    } else {
+      admin.getTopicManager().updateTopicRetention(topicName, Long.MAX_VALUE);
+    }
     logger.info("Admin topic: " + topic + " has been updated to use infinite retention policy");
   }
 
