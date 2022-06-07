@@ -71,7 +71,6 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
-import java.util.concurrent.TimeUnit;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.mapred.AvroInputFormat;
@@ -279,27 +278,10 @@ public class VenicePushJob implements AutoCloseable {
   public static final String REDUCER_SPECULATIVE_EXECUTION_ENABLE = "reducer.speculative.execution.enable";
 
   /**
-   * Config that controls the minimum logging interval for the reducers to log their status such as internal states,
-   * metrics and progress.
-   */
-  public static final String REDUCER_MINIMUM_LOGGING_INTERVAL_MS = "reducer.minimum.logging.interval.ms";
-
-  /**
    * The interval of number of messages upon which some telemetry code is executed, including logging certain info
    * in the reducer logs, as well as updating the counters specified in {@value KAFKA_METRICS_TO_REPORT_AS_MR_COUNTERS}.
    */
   public static final String TELEMETRY_MESSAGE_INTERVAL = "telemetry.message.interval";
-
-  /**
-   * The Kafka producer metric names included in this list will be reported as MapReduce counters by grouping
-   * them according to which broker they interacted with. This means the semantic of these counters may not be
-   * the same as that of the metrics they stem from. For example, the average queue time representing how log a
-   * record stays stuck in the Kafka producer's buffer would not represent the average queue time anymore, since
-   * the counter will sum up that value multiple times.
-   *
-   * The point of having these per-broker aggregates is to identify whether Kafka brokers are performing unevenly.
-   */
-  public static final String KAFKA_METRICS_TO_REPORT_AS_MR_COUNTERS = "kafka.metrics.to.report.as.mr.counters";
 
   /**
    * Config to control the Compression Level for ZSTD Dictionary Compression.
@@ -400,7 +382,6 @@ public class VenicePushJob implements AutoCloseable {
     boolean isDuplicateKeyAllowed;
     boolean enablePushJobStatusUpload;
     boolean enableReducerSpeculativeExecution;
-    long minimumReducerLoggingIntervalInMs;
     int controllerRetries;
     int controllerStatusPollRetries;
     long pollJobStatusIntervalMs;
@@ -629,7 +610,6 @@ public class VenicePushJob implements AutoCloseable {
     pushJobSettingToReturn.isDuplicateKeyAllowed = props.getBoolean(ALLOW_DUPLICATE_KEY, false);
     pushJobSettingToReturn.enablePushJobStatusUpload = props.getBoolean(PUSH_JOB_STATUS_UPLOAD_ENABLE, false);
     pushJobSettingToReturn.enableReducerSpeculativeExecution = props.getBoolean(REDUCER_SPECULATIVE_EXECUTION_ENABLE, false);
-    pushJobSettingToReturn.minimumReducerLoggingIntervalInMs = props.getLong(REDUCER_MINIMUM_LOGGING_INTERVAL_MS, TimeUnit.MINUTES.toMillis(1));
     pushJobSettingToReturn.controllerRetries = props.getInt(CONTROLLER_REQUEST_RETRY_ATTEMPTS, 1);
     pushJobSettingToReturn.controllerStatusPollRetries = props.getInt(POLL_STATUS_RETRY_ATTEMPTS, 15);
     pushJobSettingToReturn.pollJobStatusIntervalMs = props.getLong(POLL_JOB_STATUS_INTERVAL_MS, DEFAULT_POLL_STATUS_INTERVAL_MS);
@@ -1429,7 +1409,7 @@ public class VenicePushJob implements AutoCloseable {
     final long writeAclFailureCount = MRJobCounterHelper.getWriteAclAuthorizationFailureCount(runningJob.getCounters());
     if (writeAclFailureCount > 0) {
       updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.WRITE_ACL_FAILED);
-      String errorMessage = String.format("Insufficient ACLs to write to the store");
+      String errorMessage = "Insufficient ACLs to write to the store";
       return Optional.of(new ErrorMessage(errorMessage));
     }
     // Duplicate keys
@@ -1598,7 +1578,7 @@ public class VenicePushJob implements AutoCloseable {
     SchemaResponse keySchemaResponse =
         ControllerClient.retryableRequest(controllerClient, retries, c -> c.getKeySchema(storeName));
     if (keySchemaResponse.isError()) {
-      throw new VeniceException("Got an error in keySchemaResponse: " + keySchemaResponse.toString());
+      throw new VeniceException("Got an error in keySchemaResponse: " + keySchemaResponse);
     } else if (null == keySchemaResponse.getSchemaStr()) {
       // TODO: Fix the server-side request handling. This should not happen. We should get a 404 instead.
       throw new VeniceException("Got a null schema in keySchemaResponse: " + keySchemaResponse);
@@ -1796,7 +1776,7 @@ public class VenicePushJob implements AutoCloseable {
           + ", error: " + versionCreationResponse.getError());
     } else if (versionCreationResponse.getVersion() == 0) {
       // TODO: Fix the server-side request handling. This should not happen. We should get a 404 instead.
-      throw new VeniceException("Got version 0 from: " + versionCreationResponse.toString());
+      throw new VeniceException("Got version 0 from: " + versionCreationResponse);
     } else {
       logger.info(versionCreationResponse.toString());
     }
@@ -1941,9 +1921,8 @@ public class VenicePushJob implements AutoCloseable {
     // SSL_ENABLED is needed in SSLFactory
     newSslProperties.setProperty(SSL_ENABLED, "true");
     newSslProperties.setProperty(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, KAFKA_SECURITY_PROTOCOL);
-    allProperties.keySet().stream().filter(key -> key.toLowerCase().startsWith(SSL_PREFIX)).forEach(key -> {
-      newSslProperties.setProperty(key, allProperties.getString(key));
-    });
+    allProperties.keySet().stream().filter(key -> key.toLowerCase().startsWith(SSL_PREFIX)).forEach(key ->
+        newSslProperties.setProperty(key, allProperties.getString(key)));
     SSLConfigurator sslConfigurator = SSLConfigurator.getSSLConfigurator(
         allProperties.getString(SSL_CONFIGURATOR_CLASS_CONFIG, TempFileSSLConfigurator.class.getName()));
 
@@ -1984,7 +1963,7 @@ public class VenicePushJob implements AutoCloseable {
      * The start time when some data centers enter unknown state;
      * if 0, it means no data center is in unknown state.
      *
-     * Once enter unknown state, it's allowed to stayed in unknown state for
+     * Once enter unknown state, it's allowed to stay in unknown state for
      * no more than {@link DEFAULT_JOB_STATUS_IN_UNKNOWN_STATE_TIMEOUT_MS}.
      */
     long unknownStateStartTimeMs = 0;
@@ -2127,10 +2106,9 @@ public class VenicePushJob implements AutoCloseable {
     conf.set(KAFKA_BOOTSTRAP_SERVERS, versionTopicInfo.kafkaUrl);
     conf.set(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, versionTopicInfo.kafkaUrl);
     conf.set(COMPRESSION_STRATEGY, versionTopicInfo.compressionStrategy.toString());
-    conf.set(REDUCER_MINIMUM_LOGGING_INTERVAL_MS, Long.toString(pushJobSetting.minimumReducerLoggingIntervalInMs));
     conf.set(PARTITIONER_CLASS, versionTopicInfo.partitionerClass);
     // flatten partitionerParams since JobConf class does not support set an object
-    versionTopicInfo.partitionerParams.forEach((key, value) -> conf.set(key, value));
+    versionTopicInfo.partitionerParams.forEach(conf::set);
     conf.setInt(AMPLIFICATION_FACTOR, versionTopicInfo.amplificationFactor);
     if( versionTopicInfo.sslToKafka ){
       conf.set(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, KAFKA_SECURITY_PROTOCOL);
@@ -2238,8 +2216,6 @@ public class VenicePushJob implements AutoCloseable {
     }
 
     conf.set(TELEMETRY_MESSAGE_INTERVAL, props.getString(TELEMETRY_MESSAGE_INTERVAL, "10000"));
-    conf.set(KAFKA_METRICS_TO_REPORT_AS_MR_COUNTERS, props.getString(KAFKA_METRICS_TO_REPORT_AS_MR_COUNTERS,
-        "record-queue-time-avg,request-latency-avg,record-send-rate,byte-rate"));
 
     conf.set(ZSTD_COMPRESSION_LEVEL, props.getString(ZSTD_COMPRESSION_LEVEL, String.valueOf(Zstd.maxCompressionLevel())));
     conf.set(ETL_VALUE_SCHEMA_TRANSFORMATION, pushJobSetting.etlValueSchemaTransformation.name());

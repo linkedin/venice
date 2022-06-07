@@ -17,7 +17,6 @@ import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
-import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.writer.AbstractVeniceWriter;
 import com.linkedin.venice.writer.DeleteMetadata;
 import com.linkedin.venice.writer.PutMetadata;
@@ -26,16 +25,13 @@ import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.io.ByteArrayOutputStream;
 import java.io.Closeable;
 import java.io.IOException;
-import java.io.PrintWriter;
-import java.io.StringWriter;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -143,7 +139,6 @@ public class VeniceReducer
 
   public static final String MAP_REDUCE_JOB_ID_PROP = "mapred.job.id";
   private static final Logger LOGGER = LogManager.getLogger(VeniceReducer.class);
-  private static final String NON_INITIALIZED_LEADER = "N/A";
 
   private long lastTimeThroughputWasLoggedInNS = System.nanoTime();
   private long lastMessageCompletedCount = 0;
@@ -155,11 +150,8 @@ public class VeniceReducer
 
   private VeniceProperties props;
   private JobID mapReduceJobId;
-  private long nextLoggingTime = 0;
-  private long minimumLoggingIntervalInMS;
   private long telemetryMessageInterval;
-  private List<String> kafkaMetricsToReportAsMrCounters;
-  private final Map<Integer, String> partitionLeaderMap = new VeniceConcurrentHashMap<>();
+  private final Set<Integer> partitionSet = ConcurrentHashMap.newKeySet();
   private DuplicateKeyPrinter duplicateKeyPrinter;
   private Exception sendException = null;
 
@@ -196,7 +188,7 @@ public class VeniceReducer
   private final ScheduledExecutorService reducerProgressHeartbeatScheduler = Executors.newScheduledThreadPool(1);
 
   /**
-   * For incremental push to RT jobs, current version of the store will be embedded into every messages from inc push.
+   * For incremental push to RT jobs, current version of the store will be embedded into every message from inc push.
    */
   private Optional<Integer> targetStoreVersionForIncPush = Optional.empty();
 
@@ -406,11 +398,6 @@ public class VeniceReducer
       lastTimeThroughputWasLoggedInNS = System.nanoTime();
       lastMessageCompletedCount = newMessageCompletedCount;
     }
-
-    if (nextLoggingTime < System.currentTimeMillis()) {
-      LOGGER.info("Internal producer metrics (triggered by minimum time interval): " + getProducerMetricsPrettyPrint());
-      nextLoggingTime = System.currentTimeMillis() + minimumLoggingIntervalInMS;
-    }
   }
 
   @Override
@@ -457,10 +444,8 @@ public class VeniceReducer
     this.valueSchemaId = props.getInt(VALUE_SCHEMA_ID_PROP);
     this.derivedValueSchemaId = (props.containsKey(DERIVED_SCHEMA_ID_PROP)) ? props.getInt(DERIVED_SCHEMA_ID_PROP) : -1;
     this.enableWriteCompute = (props.containsKey(ENABLE_WRITE_COMPUTE)) && props.getBoolean(ENABLE_WRITE_COMPUTE);
-    this.minimumLoggingIntervalInMS = props.getLong(REDUCER_MINIMUM_LOGGING_INTERVAL_MS);
     this.duplicateKeyPrinter = initDuplicateKeyPrinter(job);
     this.telemetryMessageInterval = props.getInt(TELEMETRY_MESSAGE_INTERVAL, 10000);
-    this.kafkaMetricsToReportAsMrCounters = props.getList(KAFKA_METRICS_TO_REPORT_AS_MR_COUNTERS, Collections.emptyList());
     this.targetStoreVersionForIncPush = props.containsKey(TARGET_VERSION_FOR_INCREMENTAL_PUSH)
         ? Optional.of(props.getInt(TARGET_VERSION_FOR_INCREMENTAL_PUSH)) : Optional.empty();
     initStorageQuotaFields(props, job);
@@ -524,38 +509,9 @@ public class VeniceReducer
     }
   }
 
-  private void printKafkaProducerMetrics(Map<String, Double> producerMetrics) {
-    LOGGER.info("Internal producer metrics: " + getProducerMetricsPrettyPrint(producerMetrics));
-    nextLoggingTime = System.currentTimeMillis() + minimumLoggingIntervalInMS;
-  }
-
-  private String getProducerMetricsPrettyPrint() {
-    if (this.veniceWriter == null) {
-      LOGGER.info("Unable to get internal producer metrics because writer is uninitialized");
-      return "";
-    }
-    return getProducerMetricsPrettyPrint(veniceWriter.getMeasurableProducerMetrics());
-  }
-
-  private String getProducerMetricsPrettyPrint(Map<String, Double> producerMetrics) {
-    try (StringWriter prettyPrintWriter = new StringWriter();
-        PrintWriter writer = new PrintWriter(prettyPrintWriter, true)) {
-      writer.println();
-      for (Map.Entry<String, Double> entry : producerMetrics.entrySet()) {
-        writer.println(entry.getKey() + ": " + entry.getValue());
-      }
-      return prettyPrintWriter.toString();
-    } catch (IOException e) {
-      LOGGER.info("Failed to get internal producer metrics because of unexpected exception", e);
-      return "";
-    }
-  }
-
   private void maybePropagateCallbackException() {
     if (null != sendException) {
-      throw new VeniceException(
-          "VenicePushJob failed with exception. Internal producer metrics: " + getProducerMetricsPrettyPrint(),
-          sendException);
+      throw new VeniceException(sendException);
     }
   }
 
@@ -591,24 +547,18 @@ public class VeniceReducer
       if (null != e) {
         messageErrored.incrementAndGet();
         LOGGER.error("Exception thrown in send message callback. ", e);
-        LOGGER.info("Internal producer metrics when exception is encountered: " + getProducerMetricsPrettyPrint());
         sendException = e;
       } else {
         long messageCount = messageCompleted.incrementAndGet();
         int partition = recordMetadata.partition();
-        partitionLeaderMap.putIfAbsent(partition, NON_INITIALIZED_LEADER);
+        partitionSet.add(partition);
         if (partition != getTaskId()) {
           // Reducer input and output are not aligned!
           messageErrored.incrementAndGet();
           sendException = new VeniceException(String.format(
-              "The reducer is not writing to the Kafka partition that maps to its task. This could mean that MR "
-                  + "shuffling is buggy or that the configured %s (%s) is non-deterministic. Active partitions: %s",
-              VenicePartitioner.class.getSimpleName(),
-              props.getString(ConfigKeys.PARTITIONER_CLASS),
-              partitionLeaderMap.keySet().toString()));
-        }
-        if (messageCount % telemetryMessageInterval == 0) {
-          kafkaTelemetry(reporter);
+              "The reducer is not writing to the Kafka partition that maps to its task (taskId = %d, partition = %d). "
+                  + "This could mean that MR shuffling is buggy or that the configured %s (%s) is non-deterministic.",
+              getTaskId(), partition, VenicePartitioner.class.getSimpleName(), props.getString(ConfigKeys.PARTITIONER_CLASS)));
         }
       }
       // Report progress so map-reduce framework won't kill current reducer when it finishes
@@ -619,75 +569,6 @@ public class VeniceReducer
     protected Progressable getProgressable() {
       return reporter;
     }
-  }
-
-  private void kafkaTelemetry(Reporter reporter) {
-    if (partitionLeaderMap.size() != 1) {
-      /**
-       * History lesson: it used to be possible to the push job in map-only mode, where each mapper would write
-       * directly to Kafka, with no shuffling stage and no reducers. In that mode, mappers could write to more
-       * than one partition, in which case the per-broker counters didn't make much sense, since the metrics
-       * they are based on are per-producer and therefore co-mingle numbers relating to any broker.
-       *
-       * Nowadays, the map-only mode doesn't exist anymore, but it still wouldn't make sense to measure this
-       * telemetry in case of interacting with many partitions. At this point, this check is just defensive
-       * coding.
-       */
-      return;
-    }
-
-    Map<String, Double> producerMetrics = veniceWriter.getMeasurableProducerMetrics();
-
-    // We already checked that we're dealing with only one partition, so this is safe
-    Map.Entry<Integer, String> entry = partitionLeaderMap.entrySet().iterator().next();
-    int partition = entry.getKey();
-    String oldLeader = entry.getValue();
-
-    String newLeader;
-    try {
-      newLeader = veniceWriter.getBrokerLeaderHostname(props.getString(TOPIC_PROP), partition);
-    } catch (VeniceException e) {
-      LOGGER.warn("Got an exception while determining the broker leader for partition " + partition
-          + ". Will skip this round of Kafka telemetry.", e);
-      return;
-    }
-
-    // Partition leadership info
-    if (!oldLeader.equals(newLeader)) {
-      partitionLeaderMap.put(partition, newLeader);
-      if (oldLeader.equals(NON_INITIALIZED_LEADER)) {
-        incrementKafkaBrokerCounter(reporter, "initial partition ownership", newLeader, 1);
-      } else {
-        incrementKafkaBrokerCounter(reporter, "observed partition leadership loss", oldLeader, 1);
-        incrementKafkaBrokerCounter(reporter, "observed partition leadership gain", newLeader, 1);
-      }
-    }
-
-    // Other producer metrics, as configured
-    kafkaMetricsToReportAsMrCounters.forEach(metricName -> {
-      if (producerMetrics.containsKey(metricName)) {
-        try {
-          Double value = producerMetrics.get(metricName);
-          long longValue = Math.round(value);
-          incrementKafkaBrokerCounter(reporter, metricName, newLeader, longValue);
-          incrementKafkaBrokerCounter(reporter, metricName, "all brokers", longValue);
-        } catch (Exception e) {
-          LOGGER.warn("Failed to report kafka metric: " + metricName + " as MR counters because of exception: "
-              + e.getMessage());
-        }
-      }
-    });
-
-    // So that we also have a log for each time we incremented a MR counter
-    printKafkaProducerMetrics(producerMetrics);
-  }
-
-  private void incrementKafkaBrokerCounter(Reporter reporter, String metric, String broker, long incrementAmount) {
-    reporter.incrCounter(
-        MRJobCounterHelper.COUNTER_GROUP_KAFKA_BROKER,
-        MRJobCounterHelper.getKafkaProducerMetricForBrokerCounterName(metric, broker),
-        incrementAmount
-    );
   }
 
   /**

@@ -701,16 +701,6 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     return sendMessage(producerMetadata -> kafkaKey, MessageType.UPDATE, updatePayLoad, partition, callback, DEFAULT_LEADER_METADATA_WRAPPER, Optional.of(logicalTs));
   }
 
-  @Override
-  public Map<String, Double> getMeasurableProducerMetrics() {
-    return producer.getMeasurableProducerMetrics();
-  }
-
-  @Override
-  public String getBrokerLeaderHostname(String topic, int partition) {
-    return producer.getBrokerLeaderHostname(topic, partition);
-  }
-
   /**
    * @param debugInfo arbitrary key/value pairs of information that will be propagated alongside the control message.
    */

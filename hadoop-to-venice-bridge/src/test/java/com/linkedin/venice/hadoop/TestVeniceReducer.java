@@ -427,7 +427,7 @@ public class TestVeniceReducer extends AbstractTestVeniceMR {
     Assert.assertEquals(callbackCaptor.getValue().getProgressable(), newMockReporter);
   }
 
-  @Test (expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = "VenicePushJob failed with exception.*")
+  @Test
   public void testReduceWithWriterException() {
     AbstractVeniceWriter exceptionWriter = new AbstractVeniceWriter(TOPIC_NAME) {
       @Override
@@ -484,10 +484,10 @@ public class TestVeniceReducer extends AbstractTestVeniceMR {
 
     reducer.reduce(keyWritable, values.iterator(), mockCollector, mockReporter);
     // The following 'reduce' operation will throw exception
-    reducer.reduce(keyWritable, values.iterator(), mockCollector, mockReporter);
+    Assert.assertThrows(VeniceException.class, () -> reducer.reduce(keyWritable, values.iterator(), mockCollector, mockReporter));
   }
 
-  @Test (expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = "VenicePushJob failed with exception.*")
+  @Test
   public void testClosingReducerWithWriterException() throws IOException {
     AbstractVeniceWriter exceptionWriter = new AbstractVeniceWriter(TOPIC_NAME) {
       @Override
@@ -540,7 +540,7 @@ public class TestVeniceReducer extends AbstractTestVeniceMR {
     values.add(valueWritable);
     OutputCollector mockCollector = mock(OutputCollector.class);
     reducer.reduce(keyWritable, values.iterator(), mockCollector, createZeroCountReporterMock());
-    reducer.close();
+    Assert.assertThrows(VeniceException.class, () -> reducer.close());
   }
 
   private Reporter createZeroCountReporterMock() {

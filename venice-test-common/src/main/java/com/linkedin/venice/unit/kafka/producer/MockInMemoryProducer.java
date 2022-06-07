@@ -88,9 +88,4 @@ public class MockInMemoryProducer implements KafkaProducerWrapper {
   public Map<String, Double> getMeasurableProducerMetrics() {
     return Collections.emptyMap();
   }
-
-  @Override
-  public String getBrokerLeaderHostname(String topic, int partition) {
-    throw new VeniceException("Not implemented");
-  }
 }

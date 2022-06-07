@@ -38,5 +38,4 @@ public interface KafkaProducerWrapper {
   default void close(int closeTimeOutMs, boolean doFlush) {close(closeTimeOutMs);}
   default void close(String topic, int closeTimeOutMs) { close(closeTimeOutMs); }
   Map<String, Double> getMeasurableProducerMetrics();
-  String getBrokerLeaderHostname(String topic, int partition);
 }

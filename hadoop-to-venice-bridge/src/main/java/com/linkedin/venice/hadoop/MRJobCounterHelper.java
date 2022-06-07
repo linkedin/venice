@@ -28,9 +28,6 @@ public class MRJobCounterHelper {
   private static final String REDUCER_JOB_CLOSED_COUNT = "Reducer job closed count";
   private static final String MAPPER_SPRAY_ALL_PARTITIONS_TRIGGERED_COUNT = "Mapper spray all partitions triggered count";
 
-  private static final String KAFKA_PRODUCER_METRIC_FOR_BROKER = "%s for %s";
-  static final String COUNTER_GROUP_KAFKA_BROKER = "Kafka metrics aggregated per broker";
-
   private static final String COUNTER_GROUP_KAFKA_INPUT_FORMAT = "KafkaInputFormat";
   private static final String COUNTER_PUT_OR_DELETE_RECORDS = "put or delete records";
 
@@ -206,10 +203,6 @@ public class MRJobCounterHelper {
       return;
     }
     reporter.incrCounter(groupAndCounterNames.getGroupName(), groupAndCounterNames.getCounterName(), amount);
-  }
-
-  public static String getKafkaProducerMetricForBrokerCounterName(String metric, String broker) {
-    return String.format(KAFKA_PRODUCER_METRIC_FOR_BROKER, metric, broker);
   }
 
   /**

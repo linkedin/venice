@@ -110,11 +110,6 @@ public class SharedKafkaProducer implements KafkaProducerWrapper  {
     return kafkaProducerWrapper.getMeasurableProducerMetrics();
   }
 
-  @Override
-  public String getBrokerLeaderHostname(String topic, int partition) {
-    return kafkaProducerWrapper.getBrokerLeaderHostname(topic, partition);
-  }
-
   public int getId() {
     return id;
   }

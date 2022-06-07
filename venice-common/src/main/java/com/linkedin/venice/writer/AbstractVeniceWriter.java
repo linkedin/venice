@@ -1,12 +1,8 @@
 package com.linkedin.venice.writer;
 
-import com.linkedin.venice.exceptions.VeniceException;
 import java.io.Closeable;
 import java.io.IOException;
-import java.util.Collections;
-import java.util.Map;
 import java.util.concurrent.Future;
-
 import org.apache.kafka.clients.producer.Callback;
 import org.apache.kafka.clients.producer.RecordMetadata;
 
@@ -43,12 +39,4 @@ public abstract class AbstractVeniceWriter <K, V, U> implements Closeable {
   public abstract Future<RecordMetadata> update(K key, U update, int valueSchemaId, int derivedSchemaId, Callback callback);
 
   public abstract void flush();
-
-  public Map<String, Double> getMeasurableProducerMetrics() {
-    return Collections.emptyMap();
-  }
-
-  public String getBrokerLeaderHostname(String topic, int partition) {
-    throw new VeniceException("Not implemented");
-  };
 }
