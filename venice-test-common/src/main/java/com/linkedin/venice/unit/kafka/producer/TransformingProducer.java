@@ -57,11 +57,6 @@ public class TransformingProducer implements KafkaProducerWrapper {
     return baseProducer.getMeasurableProducerMetrics();
   }
 
-  @Override
-  public String getBrokerLeaderHostname(String topic, int partition) {
-    return baseProducer.getBrokerLeaderHostname(topic, partition);
-  }
-
   public static class SendMessageParameters {
     public final String topic;
     public final KafkaKey key;

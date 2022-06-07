@@ -13,13 +13,8 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
-import java.util.concurrent.Callable;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import org.apache.kafka.clients.producer.Callback;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerConfig;
@@ -27,7 +22,6 @@ import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.Metric;
 import org.apache.kafka.common.MetricName;
-import org.apache.kafka.common.Node;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -240,21 +234,6 @@ public class ApacheKafkaProducer implements KafkaProducerWrapper {
       }
     }
     return extractedMetrics;
-  }
-
-  /**
-   * @return the leader for the specified {@param topic} and {@param partition}, if any
-   * @throws VeniceException if there is no leader
-   */
-  @Override
-  public String getBrokerLeaderHostname(String topic, int partition) {
-    ensureProducerIsNotClosed();
-    Node leader = producer.partitionsFor(topic).get(partition).leader();
-    if (leader != null) {
-      return leader.host() + "/" + leader.id();
-    } else {
-      throw new VeniceException("No broker leader for topic '" + topic + ", partition: " + partition);
-    }
   }
 
   /**

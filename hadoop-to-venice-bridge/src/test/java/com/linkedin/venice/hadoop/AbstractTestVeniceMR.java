@@ -66,7 +66,6 @@ public class AbstractTestVeniceMR {
     config.set(SSL_KEY_STORE_PROPERTY_NAME, "ssl.identity");
     config.set(SSL_TRUST_STORE_PROPERTY_NAME, "ssl.truststore");
     config.set(VeniceReducer.MAP_REDUCE_JOB_ID_PROP, "job_200707121733_0003");
-    config.set(REDUCER_MINIMUM_LOGGING_INTERVAL_MS, "180000");
     config.set(VeniceWriter.ENABLE_CHUNKING, "false");
     return new JobConf(config);
   }
