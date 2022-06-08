@@ -182,13 +182,14 @@ public class CollectionReplicationMetadata<DELETED_ELEMENT_TYPE> {
     collectionRmdRecord.put(COLLECTION_ACTIVE_ELEM_TS_FIELD_NAME, collectionActiveTimestamps);
   }
 
-  public void setDeletedElements(List<DELETED_ELEMENT_TYPE> deletedElements) {
+  public void setDeletedElementsAndTimestamps(List<DELETED_ELEMENT_TYPE> deletedElements, List<Long> deletedTimestamps) {
+    if (deletedElements.size() != deletedTimestamps.size()) {
+      throw new IllegalArgumentException("There must be the same number of deleted elements as deleted timestamps. "
+          + "Got: " + deletedElements.size() + " deleted element(s) and deleted timestamps are: " + Arrays.toString(deletedElements.toArray()));
+    }
+    collectionRmdRecord.put(COLLECTION_DELETED_ELEM_TS_FIELD_NAME, deletedTimestamps);
     collectionRmdRecord.put(COLLECTION_DELETED_ELEM_FIELD_NAME, deletedElements);
     populateDeletedElementSet();
-  }
-
-  public void setDeletedTimestamps(List<Long> deletedTimestamps) {
-    collectionRmdRecord.put(COLLECTION_DELETED_ELEM_TS_FIELD_NAME, deletedTimestamps);
   }
 
   @Override
@@ -199,7 +200,7 @@ public class CollectionReplicationMetadata<DELETED_ELEMENT_TYPE> {
     if (!(o instanceof CollectionReplicationMetadata)) {
       return false;
     }
-    CollectionReplicationMetadata that = (CollectionReplicationMetadata) o;
+    CollectionReplicationMetadata<DELETED_ELEMENT_TYPE> that = (CollectionReplicationMetadata<DELETED_ELEMENT_TYPE>) o;
     Schema thatCollectionRmdSchema = that.collectionRmdRecord.getSchema();
     if (!thatCollectionRmdSchema.equals(collectionRmdRecord.getSchema())) {
       return false;
