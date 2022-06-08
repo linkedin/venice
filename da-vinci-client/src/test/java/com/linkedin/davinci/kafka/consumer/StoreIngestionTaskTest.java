@@ -2482,6 +2482,72 @@ public class StoreIngestionTaskTest {
         eq(OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY), eq(1000L));
   }
 
+  @Test
+  public void testLeaderShouldSubscribeToCorrectVTOffset() {
+    StoreIngestionTaskFactory.Builder builder = mock(StoreIngestionTaskFactory.Builder.class);
+    doReturn(mock(StorageEngineRepository.class)).when(builder).getStorageEngineRepository();
+    VeniceServerConfig veniceServerConfig = mock(VeniceServerConfig.class);
+    doReturn(new VeniceProperties()).when(veniceServerConfig).getKafkaConsumerConfigsForLocalConsumption();
+    doReturn(new VeniceProperties()).when(veniceServerConfig).getKafkaConsumerConfigsForRemoteConsumption();
+    doReturn(true).when(veniceServerConfig).isSharedConsumerPoolEnabled();
+    doReturn(veniceServerConfig).when(builder).getServerConfig();
+    doReturn(mock(ReadOnlyStoreRepository.class)).when(builder).getMetadataRepo();
+    doReturn(mock(ReadOnlySchemaRepository.class)).when(builder).getSchemaRepo();
+    doReturn(mock(AggKafkaConsumerService.class)).when(builder).getAggKafkaConsumerService();
+
+    Version version = mock(Version.class);
+    doReturn(1).when(version).getPartitionCount();
+    doReturn(null).when(version).getPartitionerConfig();
+    doReturn(VersionStatus.ONLINE).when(version).getStatus();
+    doReturn(true).when(version).isNativeReplicationEnabled();
+    doReturn("localhost").when(version).getPushStreamSourceAddress();
+
+    Store store = mock(Store.class);
+    doReturn(Optional.of(version)).when(store).getVersion(eq(1));
+
+    VeniceStoreVersionConfig storeConfig = mock(VeniceStoreVersionConfig.class);
+    doReturn("testStore_v1").when(storeConfig).getStoreVersionName();
+    LeaderFollowerStoreIngestionTask leaderFollowerStoreIngestionTask = spy(
+        new LeaderFollowerStoreIngestionTask(
+            builder,
+            store,
+            version,
+            mock(Properties.class),
+            mock(BooleanSupplier.class),
+            storeConfig,
+            -1,
+            false,
+            Optional.empty(),
+            mock(StorageEngineBackedCompressorFactory.class)));
+
+    OffsetRecord offsetRecord = mock(OffsetRecord.class);
+    doReturn("testStore_v1").when(offsetRecord).getLeaderTopic();
+    PartitionConsumptionState partitionConsumptionState = new PartitionConsumptionState(0, 1, offsetRecord, false,
+    false, IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME);
+
+    long localVersionTopicOffset = 100L;
+    long remoteVersionTopicOffset = 200L;
+    partitionConsumptionState.updateLatestProcessedLocalVersionTopicOffset(localVersionTopicOffset);
+    partitionConsumptionState.updateLatestProcessedUpstreamVersionTopicOffset(remoteVersionTopicOffset);
+
+    // Run the actual codes inside function "startConsumingAsLeader"
+    doCallRealMethod().when(leaderFollowerStoreIngestionTask).startConsumingAsLeader(any());
+    doReturn(false).when(leaderFollowerStoreIngestionTask).shouldNewLeaderSwitchToRemoteConsumption(any());
+    Set<String> kafkaServerSet = new HashSet<>();
+    kafkaServerSet.add("localhost");
+    doReturn(kafkaServerSet).when(leaderFollowerStoreIngestionTask).getConsumptionSourceKafkaAddress(any());
+
+    // Test 1: if leader is not consuming remotely, leader must subscribe to the local VT offset
+    partitionConsumptionState.setConsumeRemotely(false);
+    leaderFollowerStoreIngestionTask.startConsumingAsLeader(partitionConsumptionState);
+    verify(leaderFollowerStoreIngestionTask, times(1)).consumerSubscribe(anyString(), anyInt(), eq(localVersionTopicOffset), anyString());
+
+    // Test 2: if leader is consuming remotely, leader must subscribe to the remote VT offset
+    partitionConsumptionState.setConsumeRemotely(true);
+    leaderFollowerStoreIngestionTask.startConsumingAsLeader(partitionConsumptionState);
+    verify(leaderFollowerStoreIngestionTask, times(1)).consumerSubscribe(anyString(), anyInt(), eq(remoteVersionTopicOffset), anyString());
+  }
+
   private static class MockStoreVersionConfigs {
     Store store;
     Version version;

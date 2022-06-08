@@ -569,17 +569,16 @@ public class PartitionConsumptionState {
   }
 
   /**
-   * The caller of this API should be interested in which offset currently leader is actually on.
-   * If leader is consuming from a remote Kafka cluster, or RT/SR topic locally, upstream offset will be updated;
-   * therefore, if the upstream offset is positive, or leader topic is pointing to any topic other than version topic,
-   * upstream offset should be returned to reflect the current consumption state of leader; otherwise,
-   * return local version topic checkpoint offset, since leader has been consuming from the local version topic.
+   * The caller of this API should be interested in which offset currently leader should consume from now.
+   * 1. If currently leader should consume from real-time topic, return upstream RT offset;
+   * 2. if currently leader should consume from version topic, return either remote VT offset or local VT offset, depending
+   *    on whether the remote consumption flag is on.
    */
   public long getLeaderOffset(String kafkaURL) {
     if (offsetRecord.getLeaderTopic() != null && !Version.isVersionTopic(offsetRecord.getLeaderTopic())) {
       return getLatestProcessedUpstreamRTOffset(kafkaURL);
     } else {
-      return latestProcessedUpstreamVersionTopicOffset >= 0 ? latestProcessedUpstreamVersionTopicOffset : latestProcessedLocalVersionTopicOffset;
+      return consumeRemotely() ? getLatestProcessedUpstreamVersionTopicOffset() : getLatestProcessedLocalVersionTopicOffset();
     }
   }
 
