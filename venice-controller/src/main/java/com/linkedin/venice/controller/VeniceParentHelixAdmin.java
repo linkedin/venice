@@ -1751,8 +1751,8 @@ public class VeniceParentHelixAdmin implements Admin {
         setStore.hybridStoreConfig = hybridStoreConfigRecord;
       }
 
-      getVeniceHelixAdmin().checkWhetherStoreWillHaveConflictConfigForIncrementalAndHybrid(currStore, incrementalPushEnabled, incrementalPushPolicy, Optional.ofNullable(hybridStoreConfig));
-      getVeniceHelixAdmin().checkWhetherStoreWillHaveConflictConfigForCompressionAndHybrid(currStore, compressionStrategy, Optional.ofNullable(hybridStoreConfig));
+      getVeniceHelixAdmin().checkWhetherStoreWillHaveConflictConfigForIncrementalAndHybrid(currStore,
+          incrementalPushEnabled, incrementalPushPolicy, Optional.ofNullable(hybridStoreConfig));
 
       /**
        * Set storage quota according to store properties. For hybrid stores, rocksDB has the overhead ratio as we
