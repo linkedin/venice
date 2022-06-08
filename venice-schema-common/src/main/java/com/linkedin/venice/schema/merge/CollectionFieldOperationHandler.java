@@ -14,11 +14,11 @@ import org.apache.commons.lang.Validate;
  */
 @ThreadSafe
 public abstract class CollectionFieldOperationHandler {
-  protected final AvroCollectionElementComparator elementComparator;
+  protected final AvroCollectionElementComparator avroElementComparator;
 
-  public CollectionFieldOperationHandler(AvroCollectionElementComparator elementComparator) {
-   Validate.notNull(elementComparator);
-   this.elementComparator = elementComparator;
+  public CollectionFieldOperationHandler(AvroCollectionElementComparator avroElementComparator) {
+   Validate.notNull(avroElementComparator);
+   this.avroElementComparator = avroElementComparator;
   }
 
   public abstract UpdateResultStatus handlePutList(
