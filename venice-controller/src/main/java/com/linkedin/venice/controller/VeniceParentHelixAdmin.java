@@ -2262,8 +2262,7 @@ public class VeniceParentHelixAdmin implements Admin {
       logger.info("Adding Replication metadata schema: for store:" + storeName + " in cluster:" + clusterName + " metadataSchema:" + replicationMetadataSchemaStr
           + " replicationMetadataVersionId:" + replicationMetadataVersionId + " valueSchemaId:" + valueSchemaId);
 
-      MetadataSchemaCreation replicationMetadataSchemaCreation = (MetadataSchemaCreation) AdminMessageType.REPLICATION_METADATA_SCHEMA_CREATION
-          .getNewInstance();
+      MetadataSchemaCreation replicationMetadataSchemaCreation = (MetadataSchemaCreation) AdminMessageType.REPLICATION_METADATA_SCHEMA_CREATION.getNewInstance();
       replicationMetadataSchemaCreation.clusterName = clusterName;
       replicationMetadataSchemaCreation.storeName = storeName;
       replicationMetadataSchemaCreation.valueSchemaId = valueSchemaId;
@@ -2284,7 +2283,9 @@ public class VeniceParentHelixAdmin implements Admin {
       final Schema expectedRmdSchema = AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation(replicationMetadataSchemaStr);
       validateRmdSchemaIsAddedAsExpected(clusterName, storeName, valueSchemaId, replicationMetadataVersionId, expectedRmdSchema);
       return new ReplicationMetadataSchemaEntry(valueSchemaId, replicationMetadataVersionId, replicationMetadataSchemaStr);
-
+    } catch (Exception e) {
+      logger.error("Error when adding replication metadata schema for " + storeName + ", value schema id " + valueSchemaId, e);
+      throw e;
     } finally {
       releaseAdminMessageLock(clusterName);
     }
