@@ -81,6 +81,7 @@ public class TestActiveActiveIngestion {
     serverProperties.put(AGGREGATE_REAL_TIME_SOURCE_REGION, DEFAULT_PARENT_DATA_CENTER_REGION_NAME);
     serverProperties.put(NATIVE_REPLICATION_FABRIC_WHITELIST, DEFAULT_PARENT_DATA_CENTER_REGION_NAME + ",dc-0");
     serverProperties.put(CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + DEFAULT_PARENT_DATA_CENTER_REGION_NAME, "localhost:" + Utils.getFreePort());
+
     multiColoMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiColoMultiClusterWrapper(
         1, 1, 1, 1, 1, 1,
         1, Optional.empty(), Optional.empty(), Optional.of(new VeniceProperties(serverProperties)), false, ".*");
@@ -193,7 +194,7 @@ public class TestActiveActiveIngestion {
        * Restart storage node during batch ingestion.
        */
       Map<byte[], byte[]> sortedInputRecords = generateInput(1000, true, 0, serializer);
-      Set<Integer> restartPointSetForSortedInput = new HashSet<>();
+      Set<Integer> restartPointSetForSortedInput = new HashSet();
       restartPointSetForSortedInput.add(346);
       restartPointSetForSortedInput.add(543);
       serverWrapper = clusterWrapper.getVeniceServers().get(0);
@@ -211,17 +212,11 @@ public class TestActiveActiveIngestion {
 
     // Wait push completed.
     TestUtils.waitForNonDeterministicCompletion(20, TimeUnit.SECONDS,
-        () -> {
-          try {
-            return clusterWrapper.getLeaderVeniceController()
-                .getVeniceAdmin()
-                .getOffLinePushStatus(clusterWrapper.getClusterName(), topic)
-                .getExecutionStatus()
-                .equals(ExecutionStatus.COMPLETED);
-          } catch (Exception e) {
-            return false;
-          }
-        });
+        () -> clusterWrapper.getLeaderVeniceController()
+            .getVeniceAdmin()
+            .getOffLinePushStatus(clusterWrapper.getClusterName(), topic)
+            .getExecutionStatus()
+            .equals(ExecutionStatus.COMPLETED));
   }
 
   private void runSamzaStreamJob(String storeName) {
