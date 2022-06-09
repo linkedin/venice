@@ -26,6 +26,9 @@ import com.linkedin.venice.router.utils.VeniceRouterUtils;
 import com.linkedin.venice.streaming.StreamingUtils;
 import com.linkedin.venice.utils.NamedThreadFactory;
 import io.netty.channel.ChannelHandlerContext;
+
+import org.apache.commons.lang.StringUtils;
+
 import java.util.Collection;
 import java.util.Objects;
 import java.util.Optional;
@@ -33,7 +36,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import org.apache.commons.lang.StringUtils;
 
 import static com.linkedin.venice.read.RequestType.*;
 import static com.linkedin.venice.router.api.VenicePathParserHelper.*;
@@ -211,7 +213,7 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
       stats.recordRequest(storeName);
       stats.recordRequestSize(storeName, path.getRequestSize());
     } catch (VeniceException e) {
-      Optional<RequestType> requestTypeOptional = (path == null) ? Optional.empty() : Optional.of(path.getRequestType());
+      Optional<RequestType> requestTypeOptional = path == null ? Optional.empty() : Optional.of(path.getRequestType());
       if (e instanceof VeniceStoreIsMigratedException) {
         throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.of(storeName), Optional.empty(),
             MOVED_PERMANENTLY, e.getMessage());

@@ -12,23 +12,18 @@ import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiColoMultiClusterWrapper;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
-import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Optional;
-import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
-import static com.linkedin.venice.ConfigKeys.*;
-import static com.linkedin.venice.integration.utils.MirrorMakerWrapper.*;
 import static org.testng.Assert.*;
 
-public class AdminToolBackfillTest {
+public class TestAdminToolInMultiDatacenterSetting {
 
   private static final int TEST_TIMEOUT = 300_000; // empty push on push status store takes a long time to finish
 
@@ -42,25 +37,13 @@ public class AdminToolBackfillTest {
 
   @BeforeClass
   public void setUp() {
-    // Disable auto materialization here as we need to test the back-fill command.
-    Properties parentControllerProperties = new Properties();
-    parentControllerProperties.setProperty(CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE, "false");
-    parentControllerProperties.setProperty(CONTROLLER_AUTO_MATERIALIZE_DAVINCI_PUSH_STATUS_SYSTEM_STORE, "false");
-
     multiColoMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiColoMultiClusterWrapper(
         NUMBER_OF_CHILD_DATACENTERS,
         NUMBER_OF_CLUSTERS,
         2,
         2,
         2,
-        2,
-        1,
-        Optional.of(new VeniceProperties(parentControllerProperties)),
-        Optional.empty(),
-        Optional.empty(),
-        false,
-        DEFAULT_TOPIC_ALLOWLIST
-        );
+        2);
     childDatacenters = multiColoMultiClusterWrapper.getClusters();
     parentControllers = multiColoMultiClusterWrapper.getParentControllers();
   }

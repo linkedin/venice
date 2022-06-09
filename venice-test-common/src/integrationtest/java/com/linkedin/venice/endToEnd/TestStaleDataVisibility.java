@@ -2,8 +2,8 @@ package com.linkedin.venice.endToEnd;
 
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.controllerapi.ClusterStaleDataAuditResponse;
-import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.StoreHealthAuditResponse;
+import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.integration.utils.MirrorMakerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
@@ -14,15 +14,8 @@ import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
-import java.io.File;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
+
 import java.util.Optional;
-import java.util.Properties;
-import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 import org.apache.avro.Schema;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -30,6 +23,13 @@ import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
+
+import java.io.File;
+import java.util.List;
+import java.util.Map;
+import java.util.Properties;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 import static com.linkedin.venice.utils.TestPushUtils.*;
 
@@ -60,12 +60,15 @@ public class TestStaleDataVisibility {
 
     childClusters = multiColoMultiClusterWrapper.getClusters();
     childControllers = childClusters.stream()
-      .map(veniceClusterWrapper -> new ArrayList<>(veniceClusterWrapper.getControllers().values()))
+      .map(veniceClusterWrapper -> veniceClusterWrapper.getControllers()
+      .values()
+          .stream()
+          .collect(Collectors.toList()))
       .collect(Collectors.toList());
     parentControllers = multiColoMultiClusterWrapper.getParentControllers();
 
     LOGGER.info("parentControllers: " + parentControllers.stream()
-        .map(VeniceControllerWrapper::getControllerUrl)
+        .map(c -> c.getControllerUrl())
       .collect(Collectors.joining(", ")));
 
     int i = 0;
@@ -73,7 +76,7 @@ public class TestStaleDataVisibility {
       LOGGER.info("childCluster" + i++ + " controllers: " + multiClusterWrapper.getControllers()
         .values()
         .stream()
-        .map(VeniceControllerWrapper::getControllerUrl)
+        .map(c -> c.getControllerUrl())
         .collect(Collectors.joining(", ")));
     }
   }
@@ -115,15 +118,15 @@ public class TestStaleDataVisibility {
 
       // store should now appear as stale
       ClusterStaleDataAuditResponse response = controllerClient.getClusterStaleStores(clusterName, parentController.getControllerUrl());
-      Assert.assertEquals(response.getAuditMap().get(storeName).getStaleRegions().size(), 1);
-      Assert.assertEquals(response.getAuditMap().get(storeName).getHealthyRegions().size(), 1);
+      Assert.assertTrue(response.getAuditMap().get(storeName).getStaleRegions().size() == 1);
+      Assert.assertTrue(response.getAuditMap().get(storeName).getHealthyRegions().size() == 1);
 
       //test store health check
       StoreHealthAuditResponse healthResponse = controllerClient.listStorePushInfo(clusterName, parentController.getControllerUrl(), storeName);
       Assert.assertTrue(response.getAuditMap().containsKey(healthResponse.getStoreName()));
       Map<String, StoreInfo> auditMapEntry = response.getAuditMap().get(healthResponse.getStoreName()).getStaleRegions();
       for (Map.Entry<String, StoreInfo> entry : auditMapEntry.entrySet())
-        if (Objects.equals(entry.getValue().getName(), storeName))
+        if (entry.getValue().getName() == storeName)
           Assert.assertTrue(healthResponse.getRegionsWithStaleData().contains(entry.getKey())); // verify that the same regions are stale across both responses for the same store
     }
   }

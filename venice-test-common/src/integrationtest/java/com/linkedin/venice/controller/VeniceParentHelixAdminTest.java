@@ -166,10 +166,6 @@ public class VeniceParentHelixAdminTest {
     Properties properties = new Properties();
     properties.setProperty(TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS, String.valueOf(Long.MAX_VALUE));
     properties.setProperty(TERMINAL_STATE_TOPIC_CHECK_DELAY_MS, String.valueOf(1000L));
-    // Recreation of the same store will fail due to lingering system store resources
-    // TODO: Will come up with a solution to make sure system store creation is blocked until previous resources are cleaned up.
-    properties.setProperty(CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE, String.valueOf(false));
-    properties.setProperty(CONTROLLER_AUTO_MATERIALIZE_DAVINCI_PUSH_STATUS_SYSTEM_STORE, String.valueOf(false));
     try (VeniceControllerWrapper parentController = ServiceFactory.getVeniceParentController(venice.getClusterName(),
         zkServerWrapper.getAddress(), venice.getKafka(), new VeniceControllerWrapper[]{venice.getLeaderVeniceController()},
         new VeniceProperties(properties), false);
@@ -183,13 +179,11 @@ public class VeniceParentHelixAdminTest {
       // Empty push without checking its push status
       VersionCreationResponse response = parentControllerClient.emptyPush(storeName, "test-push", 1000);
       assertFalse(response.isError(), "Failed to perform empty push on test store");
-
       // The empty push should eventually complete and have its version topic truncated by job status polling invoked by
       // the TerminalStateTopicCheckerForParentController.
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true,
           () -> assertTrue(parentController.getVeniceAdmin().isTopicTruncated(response.getKafkaTopic())));
       assertFalse(parentControllerClient.disableAndDeleteStore(storeName).isError(), "Delete store shouldn't fail");
-
       ControllerResponse controllerResponse = parentControllerClient.createNewStore(storeName,"test", "\"string\"", "\"string\"");
       assertFalse(controllerResponse.isError(), "Trying to re-create the store with lingering version topics should succeed");
 
@@ -301,10 +295,6 @@ public class VeniceParentHelixAdminTest {
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = DEFAULT_TEST_TIMEOUT*10)
   public void testStoreMetaDataUpdateFromParentToChildController(boolean isControllerSslEnabled) {
     String clusterName = Utils.getUniqueString("testStoreMetadataUpdate");
-    Properties properties = new Properties();
-    // This cluster setup don't have server, we cannot perform push here.
-    properties.setProperty(CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE, String.valueOf(false));
-    properties.setProperty(CONTROLLER_AUTO_MATERIALIZE_DAVINCI_PUSH_STATUS_SYSTEM_STORE, String.valueOf(false));
     try (ZkServerWrapper zkServer = ServiceFactory.getZkServer();
         KafkaBrokerWrapper kafkaBrokerWrapper = ServiceFactory.getKafkaBroker(zkServer);
         VeniceControllerWrapper childControllerWrapper =
@@ -312,7 +302,7 @@ public class VeniceParentHelixAdminTest {
         ZkServerWrapper parentZk = ServiceFactory.getZkServer();
         VeniceControllerWrapper parentControllerWrapper =
             ServiceFactory.getVeniceParentController(clusterName, parentZk.getAddress(), kafkaBrokerWrapper,
-                new VeniceControllerWrapper[]{childControllerWrapper}, new VeniceProperties(properties), isControllerSslEnabled)) {
+                new VeniceControllerWrapper[]{childControllerWrapper}, isControllerSslEnabled)) {
       String childControllerUrl =
           isControllerSslEnabled ? childControllerWrapper.getSecureControllerUrl() : childControllerWrapper.getControllerUrl();
       String parentControllerUrl =
