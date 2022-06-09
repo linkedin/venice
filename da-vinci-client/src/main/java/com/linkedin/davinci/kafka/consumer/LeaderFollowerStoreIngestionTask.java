@@ -1454,9 +1454,16 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       default:
         String recordTopic = record.topic();
         if (!kafkaVersionTopic.equals(recordTopic)) {
-          throw new VeniceMessageException(
-              consumerTaskId + " Current L/F state:" + partitionConsumptionState.getLeaderFollowerState() + "; partition: " + subPartition
-                  + "; Message retrieved from different topic. Expected " + this.kafkaVersionTopic + " Actual " + recordTopic);
+         String errorMsg = consumerTaskId + " Current L/F state:" + partitionConsumptionState.getLeaderFollowerState()
+              + "; partition: " + subPartition + "; Message retrieved from non version topic " + recordTopic;
+          if (consumerHasSubscription(recordTopic, partitionConsumptionState)) {
+            throw new VeniceMessageException(errorMsg + ". Throwing exception as the node still subscribes to "
+                + recordTopic);
+          }
+          if (!REDUNDANT_LOGGING_FILTER.isRedundantException(errorMsg)) {
+            logger.error(errorMsg + ". Skipping the message as the node does not subscribe to " + recordTopic);
+          }
+          return false;
         }
 
         long lastOffset = partitionConsumptionState.getLatestProcessedLocalVersionTopicOffset();
