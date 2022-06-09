@@ -25,7 +25,9 @@ import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.ConfigurationException;
+import com.linkedin.venice.exceptions.ExceptionType;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.exceptions.VeniceStoreAlreadyExistsException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
@@ -45,6 +47,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.partitioner.InvalidKeySchemaPartitioner;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -68,6 +71,7 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import org.apache.http.HttpStatus;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.TopicPartition;
 import org.mockito.ArgumentCaptor;
@@ -1502,6 +1506,17 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     updateStore = (UpdateStore) adminMessage.payloadUnion;
     Assert.assertTrue(updateStore.nativeReplicationEnabled,
         "Native replication was not set to true after updating the store!");
+    // Test exception thrown for unsuccessful partitioner instance creation inside store update.
+    try {
+      parentAdmin.updateStore(clusterName, storeName,
+          new UpdateStoreQueryParams().setPartitionerClass(InvalidKeySchemaPartitioner.class.getName()));
+      Assert.fail("The partitioner creation should not be successful");
+    } catch (Exception e) {
+      Assert.assertTrue(e.getClass().isAssignableFrom(VeniceHttpException.class));
+      VeniceHttpException veniceHttpException = (VeniceHttpException) e;
+      Assert.assertEquals(veniceHttpException.getHttpStatusCode(), HttpStatus.SC_BAD_REQUEST);
+      Assert.assertEquals(veniceHttpException.getExceptionType(), ExceptionType.INVALID_SCHEMA);
+    }
   }
 
   @Test

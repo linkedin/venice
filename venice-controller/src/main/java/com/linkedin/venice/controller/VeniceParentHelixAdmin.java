@@ -64,7 +64,6 @@ import com.linkedin.venice.controllerapi.AdminCommandExecution;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
-import com.linkedin.venice.controllerapi.IncrementalPushVersionsResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.MultiStoreInfoResponse;
@@ -80,6 +79,7 @@ import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionResponse;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.ExceptionType;
+import com.linkedin.venice.exceptions.PartitionerSchemaMismatchException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
@@ -1634,10 +1634,13 @@ public class VeniceParentHelixAdmin implements Admin {
       Optional<Boolean> replicateAll = params.getReplicateAllConfigs();
       boolean replicateAllConfigs = replicateAll.isPresent() && replicateAll.get();
       List<CharSequence> updatedConfigsList = new LinkedList<>();
+      String errorMessagePrefix = "Store update error for " + storeName + " in cluster: " + clusterName + ": ";
 
       Store currStore = getVeniceHelixAdmin().getStore(clusterName, storeName);
       if (null == currStore) {
-        throw new VeniceException("The store '" + storeName + "' in cluster '" + clusterName + "' does not exist, and thus cannot be updated.");
+        String errorMessage = "store does not exist, and thus cannot be updated.";
+        logger.error(errorMessagePrefix + errorMessage);
+        throw new VeniceException(errorMessagePrefix + errorMessage);
       }
       UpdateStore setStore = (UpdateStore) AdminMessageType.UPDATE_STORE.getNewInstance();
       setStore.clusterName = clusterName;
@@ -1649,10 +1652,14 @@ public class VeniceParentHelixAdmin implements Admin {
         // Update-store message copied to the other cluster during store migration also has partitionCount.
         // Allow updating store if the partitionCount is equal to the existing value.
         if (partitionCount.isPresent() && partitionCount.get() != currStore.getPartitionCount()){
-          throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, "Cannot change partition count for hybrid stores", ExceptionType.BAD_REQUEST);
+          String errorMessage = errorMessagePrefix + "Cannot change partition count for hybrid stores";
+          logger.error(errorMessage);
+          throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, errorMessage, ExceptionType.BAD_REQUEST);
         }
         if (partitionerClass.isPresent() || partitionerParams.isPresent()) {
-          throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, "Cannot change partitioner class and parameters for hybrid stores", ExceptionType.BAD_REQUEST);
+          String errorMessage = errorMessagePrefix + "Cannot change partitioner class and parameters for hybrid stores";
+          logger.error(errorMessage);
+          throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, errorMessage, ExceptionType.BAD_REQUEST);
         }
       }
 
@@ -1660,10 +1667,14 @@ public class VeniceParentHelixAdmin implements Admin {
         setStore.partitionNum = partitionCount.get();
         int maxPartitionNum = getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName).getConfig().getMaxNumberOfPartition();
         if (setStore.partitionNum > maxPartitionNum) {
-          throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, "Partition count: "
-              + partitionCount + " should be less than max: " + maxPartitionNum, ExceptionType.INVALID_CONFIG);
+          String errorMessage = errorMessagePrefix + "Partition count: " + partitionCount + " should be less than max: "
+              + maxPartitionNum;
+          logger.error(errorMessage);
+          throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, errorMessage, ExceptionType.INVALID_CONFIG);
         }
         if (setStore.partitionNum < 0) {
+          String errorMessage = errorMessagePrefix + "Partition count: " + partitionCount + " should NOT be negative";
+          logger.error(errorMessage);
           throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, "Partition count: "
               + partitionCount + " should NOT be negative", ExceptionType.INVALID_CONFIG);
         }
@@ -1710,8 +1721,15 @@ public class VeniceParentHelixAdmin implements Admin {
               new VeniceProperties(partitionerConfigRecord.partitionerParams),
               getKeySchema(clusterName, storeName).getSchema()
           );
+        } catch (PartitionerSchemaMismatchException e) {
+          String errorMessage = errorMessagePrefix + e.getMessage();
+          logger.error(errorMessage);
+          throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, errorMessage, ExceptionType.INVALID_SCHEMA);
         } catch (Exception e) {
-          throw new VeniceException("Partitioner Configs invalid, please verify that partitioner configs like classpath and parameters are correct!", e);
+          String errorMessage = errorMessagePrefix + "Partitioner Configs invalid, please verify that partitioner "
+              + "configs like classpath and parameters are correct!";
+          logger.error(errorMessage);
+          throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, errorMessage, ExceptionType.INVALID_CONFIG);
         }
         setStore.partitionerConfig = partitionerConfigRecord;
       }
