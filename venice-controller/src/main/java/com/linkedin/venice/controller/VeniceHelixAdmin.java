@@ -3073,6 +3073,29 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
     /**
+     * This function will check whether the store update will cause the case that a store can not have the specified
+     * hybrid store and compression strategy configs.
+     *
+     * @param store The store object whose configs are being updated
+     * @param newCompressionStrategy The new compression config that will be set for the store
+     * @param newHybridStoreConfig The new hybrid store config that will be set for the store
+     */
+    protected void checkWhetherStoreWillHaveConflictConfigForCompressionAndHybrid(Store store,
+        Optional<CompressionStrategy> newCompressionStrategy,
+        Optional<HybridStoreConfig> newHybridStoreConfig) {
+        String storeName = store.getName();
+
+        final CompressionStrategy finalCompressionStrategy = newCompressionStrategy.orElse(store.getCompressionStrategy());
+        final HybridStoreConfig currentHybridStoreConfig = store.getVersion(store.getCurrentVersion())
+                .filter(Version::isUseVersionLevelHybridConfig)
+                .map(Version::getHybridStoreConfig)
+                .orElse(store.getHybridStoreConfig());
+
+        final HybridStoreConfig finalHybridStoreConfig = newHybridStoreConfig.orElse(currentHybridStoreConfig);
+        boolean finalHybridEnabled = isHybrid(finalHybridStoreConfig);
+    }
+
+    /**
      * TODO: some logics are in parent controller {@link VeniceParentHelixAdmin} #updateStore and
      *       some are in the child controller here. Need to unify them in the future.
      */
@@ -3195,6 +3218,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         }
 
         checkWhetherStoreWillHaveConflictConfigForIncrementalAndHybrid(originalStore, incrementalPushEnabled, incrementalPushPolicy, newHybridStoreConfig);
+        checkWhetherStoreWillHaveConflictConfigForCompressionAndHybrid(originalStore, compressionStrategy, newHybridStoreConfig);
 
         try {
             if (owner.isPresent()) {
