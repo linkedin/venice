@@ -141,8 +141,7 @@ public class PushStatusStoreTest {
     // setup initial version
     runH2V(h2vProperties, 1, cluster);
 
-    Map<String, Object> extraBackendConfigMap = new HashMap<>();
-    extraBackendConfigMap.put(SERVER_INGESTION_MODE, isIsolated ? ISOLATED : BUILT_IN);
+    Map<String, Object> extraBackendConfigMap = isIsolated ? TestUtils.getIngestionIsolationPropertyMap() : new HashMap<>();
     extraBackendConfigMap.put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true);
     extraBackendConfigMap.put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 10);
     extraBackendConfigMap.put(PUSH_STATUS_STORE_ENABLED, true);

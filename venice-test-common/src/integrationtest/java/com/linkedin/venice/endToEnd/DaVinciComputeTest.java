@@ -67,12 +67,7 @@ import static org.testng.Assert.*;
 
 
 public class DaVinciComputeTest {
-  private static final int KEY_COUNT = 10;
   private static final int TEST_TIMEOUT = 120_000; // ms
-
-  private static final String TEST_RECORD_VALUE_SCHEMA = "{\"type\":\"record\", \"name\":\"ValueRecord\", \"fields\": [{\"name\":\"number\", "
-      + "\"type\":\"int\"}]}";
-
 
   private VeniceClusterWrapper cluster;
   private D2Client d2Client;
@@ -215,7 +210,7 @@ public class DaVinciComputeTest {
 
     DaVinciTestContext<Integer, Integer> daVinciTestContext =
         ServiceFactory.getGenericAvroDaVinciFactoryAndClientWithRetries(d2Client, new MetricsRepository(), Optional.empty(),
-            cluster.getZk().getAddress(), storeName, new DaVinciConfig(), Collections.singletonMap(SERVER_INGESTION_MODE, ISOLATED));
+            cluster.getZk().getAddress(), storeName, new DaVinciConfig(), TestUtils.getIngestionIsolationPropertyMap());
     try (
         VeniceWriter<Object, Object, byte[]> veniceWriter = vwFactory.createVeniceWriter(topic, keySerializer, valueSerializer, false);
         CachingDaVinciClientFactory ignored = daVinciTestContext.getDaVinciClientFactory();
@@ -301,7 +296,7 @@ public class DaVinciComputeTest {
 
     DaVinciTestContext<Integer, Integer> daVinciTestContext =
         ServiceFactory.getGenericAvroDaVinciFactoryAndClientWithRetries(d2Client, new MetricsRepository(), Optional.empty(),
-            cluster.getZk().getAddress(), storeName, new DaVinciConfig(), Collections.singletonMap(SERVER_INGESTION_MODE, ISOLATED));
+            cluster.getZk().getAddress(), storeName, new DaVinciConfig(), TestUtils.getIngestionIsolationPropertyMap());
     try (
         VeniceWriter<Object, Object, byte[]> writer = vwFactory.createVeniceWriter(topic, keySerializer, valueSerializer, false);
         CachingDaVinciClientFactory ignored = daVinciTestContext.getDaVinciClientFactory();
@@ -345,7 +340,7 @@ public class DaVinciComputeTest {
 
     DaVinciTestContext<Integer, Integer> daVinciTestContext2 =
         ServiceFactory.getGenericAvroDaVinciFactoryAndClientWithRetries(d2Client, new MetricsRepository(),
-            Optional.empty(), cluster.getZk().getAddress(), storeName, new DaVinciConfig(), Collections.singletonMap(SERVER_INGESTION_MODE, ISOLATED));
+            Optional.empty(), cluster.getZk().getAddress(), storeName, new DaVinciConfig(), TestUtils.getIngestionIsolationPropertyMap());
 
     try (VeniceWriter<Object, Object, byte[]> writerForMissingField =
         vwFactory.createVeniceWriter(topicForMissingField, keySerializer, valueSerializerMissingField, false);
@@ -404,7 +399,7 @@ public class DaVinciComputeTest {
 
     DaVinciTestContext<Integer, Integer> daVinciTestContext =
         ServiceFactory.getGenericAvroDaVinciFactoryAndClientWithRetries(d2Client, new MetricsRepository(), Optional.empty(),
-            cluster.getZk().getAddress(), storeName, new DaVinciConfig(), Collections.singletonMap(SERVER_INGESTION_MODE, ISOLATED));
+            cluster.getZk().getAddress(), storeName, new DaVinciConfig(), TestUtils.getIngestionIsolationPropertyMap());
     try (
         VeniceWriter<Object, Object, byte[]> writer = vwFactory.createVeniceWriter(topic, keySerializer, valueSerializer, false);
         CachingDaVinciClientFactory factory = daVinciTestContext.getDaVinciClientFactory();
@@ -437,9 +432,10 @@ public class DaVinciComputeTest {
     VersionCreationResponse newVersionMissingField = cluster.getNewVersion(storeName, 1024);
     String topicForMissingField = newVersionMissingField.getKafkaTopic();
 
+
     DaVinciTestContext<Integer, Integer> daVinciTestContext2 =
         ServiceFactory.getGenericAvroDaVinciFactoryAndClientWithRetries(d2Client, new MetricsRepository(), Optional.empty(),
-            cluster.getZk().getAddress(), storeName, new DaVinciConfig(), Collections.singletonMap(SERVER_INGESTION_MODE, ISOLATED));
+            cluster.getZk().getAddress(), storeName, new DaVinciConfig(), TestUtils.getIngestionIsolationPropertyMap());
     try(
         VeniceWriter<Object, Object, byte[]> writer2 = vwFactory.createVeniceWriter(topicForMissingField, keySerializer, valueSerializerSwapped, false);
         CachingDaVinciClientFactory factory2 = daVinciTestContext2.getDaVinciClientFactory();
@@ -497,7 +493,7 @@ public class DaVinciComputeTest {
 
     DaVinciTestContext<String, Integer> daVinciTestContext =
         ServiceFactory.getGenericAvroDaVinciFactoryAndClientWithRetries(d2Client, new MetricsRepository(), Optional.empty(),
-            cluster.getZk().getAddress(), storeName, config, Collections.singletonMap(SERVER_INGESTION_MODE, ISOLATED));
+            cluster.getZk().getAddress(), storeName, config, TestUtils.getIngestionIsolationPropertyMap());
     try (
         VeniceWriter<Object, Object, byte[]> writer = vwFactory.createVeniceWriter(topic, keySerializer, valueSerializer, false);
         DaVinciClient<String, Integer> client = daVinciTestContext.getDaVinciClient()) {

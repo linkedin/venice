@@ -14,7 +14,6 @@ import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.ingestion.main.MainIngestionRequestClient;
 import com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils;
 import com.linkedin.venice.D2.D2ClientUtils;
-import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
@@ -327,9 +326,9 @@ public class DaVinciClientTest {
     VeniceKafkaSerializer keySerializer = new VeniceAvroKafkaSerializer(DEFAULT_KEY_SCHEMA);
     VeniceKafkaSerializer valueSerializer = new VeniceAvroKafkaSerializer(DEFAULT_VALUE_SCHEMA);
 
-    Map<String, Object> extraBackendConfigMap = new HashMap<>();
+
+    Map<String, Object> extraBackendConfigMap = TestUtils.getIngestionIsolationPropertyMap();
     extraBackendConfigMap.put(SERVER_INGESTION_ISOLATION_HEARTBEAT_TIMEOUT_MS, 5 * Time.MS_PER_SECOND);
-    extraBackendConfigMap.put(SERVER_INGESTION_MODE, ISOLATED);
 
     DaVinciTestContext<Integer, Integer> daVinciTestContext =
         ServiceFactory.getGenericAvroDaVinciFactoryAndClientWithRetries(d2Client, new MetricsRepository(), Optional.empty(),
@@ -396,10 +395,9 @@ public class DaVinciClientTest {
 
     MetricsRepository metricsRepository = new MetricsRepository();
     String baseDataPath = Utils.getTempDataDirectory().getAbsolutePath();
-    Map<String, Object> extraBackendConfigMap = new HashMap<>();
+    Map<String, Object> extraBackendConfigMap = TestUtils.getIngestionIsolationPropertyMap();
     extraBackendConfigMap.put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true);
     extraBackendConfigMap.put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1);
-    extraBackendConfigMap.put(SERVER_INGESTION_MODE, ISOLATED);
     extraBackendConfigMap.put(DATA_BASE_PATH, baseDataPath);
     extraBackendConfigMap.put(SERVER_CONSUMER_POOL_SIZE_PER_KAFKA_CLUSTER, VeniceServerConfig.MINIMUM_CONSUMER_NUM_IN_CONSUMER_POOL_PER_KAFKA_CLUSTER);
     extraBackendConfigMap.put(SERVER_SHARED_CONSUMER_POOL_ENABLED, false);
@@ -775,9 +773,10 @@ public class DaVinciClientTest {
     DaVinciConfig daVinciConfig = new DaVinciConfig();
     daVinciConfig.setMemoryLimit(1024 * 1024 * 1024); // 1GB
 
+    Map<String, Object> extraConfigMap = TestUtils.getIngestionIsolationPropertyMap();
     DaVinciTestContext<String, GenericRecord> daVinciTestContext =
         ServiceFactory.getGenericAvroDaVinciFactoryAndClientWithRetries(d2Client, new MetricsRepository(), Optional.empty(),
-            cluster.getZk().getAddress(), storeName, daVinciConfig, Collections.singletonMap(SERVER_INGESTION_MODE, ISOLATED));
+            cluster.getZk().getAddress(), storeName, daVinciConfig, extraConfigMap);
 
     try (CachingDaVinciClientFactory ignored = daVinciTestContext.getDaVinciClientFactory()) {
       DaVinciClient<String, GenericRecord> client = daVinciTestContext.getDaVinciClient();
@@ -789,17 +788,18 @@ public class DaVinciClientTest {
   @Test(timeOut = TEST_TIMEOUT)
   public void testUnsubscribeBeforeFutureGet() throws Exception {
     // Verify DaVinci client doesn't hang in a deadlock when calling unsubscribe right after subscribing and before the
-    // the future is complete. The future should also return exceptionally.
+    // future is complete. The future should also return exceptionally.
     String storeName = createStoreWithMetaSystemStore(10000); // A large amount of keys to give window for potential race conditions
     DaVinciConfig daVinciConfig = new DaVinciConfig();
     daVinciConfig.setMemoryLimit(1024 * 1024 * 1024); // 1GB
+    Map<String, Object> extraConfigMap = TestUtils.getIngestionIsolationPropertyMap();
     DaVinciTestContext<String, GenericRecord> daVinciTestContext =
         ServiceFactory.getGenericAvroDaVinciFactoryAndClientWithRetries(d2Client, new MetricsRepository(), Optional.empty(),
-            cluster.getZk().getAddress(), storeName, daVinciConfig, Collections.singletonMap(SERVER_INGESTION_MODE, ISOLATED));
+            cluster.getZk().getAddress(), storeName, daVinciConfig, extraConfigMap);
 
     try (CachingDaVinciClientFactory ignored = daVinciTestContext.getDaVinciClientFactory()) {
       DaVinciClient<String, GenericRecord> client = daVinciTestContext.getDaVinciClient();
-      CompletableFuture future = client.subscribeAll();
+      CompletableFuture<Void> future = client.subscribeAll();
       client.unsubscribeAll();
       future.get(); // Expecting exception here if we unsubscribed before subscribe was completed.
     } catch (ExecutionException e) {

@@ -4,6 +4,7 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.meta.IngestionMode;
 import com.linkedin.venice.meta.PersistenceType;
+import com.linkedin.venice.utils.TestUtils;
 import java.util.Properties;
 import org.testng.annotations.Test;
 
@@ -25,8 +26,7 @@ public class TestBatchForIngestionIsolation extends TestBatch {
     serverProperties.setProperty(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, "false");
     serverProperties.setProperty(SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED, "true");
     serverProperties.setProperty(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE, "300");
-    serverProperties.setProperty(SERVER_INGESTION_MODE, IngestionMode.ISOLATED.toString());
-
+    TestUtils.addIngestionIsolationToProperties(serverProperties);
     serverProperties.setProperty(DATA_BASE_PATH, baseDataPath1);
     veniceClusterWrapper.addVeniceServer(new Properties(), serverProperties);
     serverProperties.setProperty(DATA_BASE_PATH, baseDataPath2);

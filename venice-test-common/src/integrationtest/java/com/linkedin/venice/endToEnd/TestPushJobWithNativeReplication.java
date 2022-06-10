@@ -269,7 +269,7 @@ public class  TestPushJobWithNativeReplication {
 
           try (DaVinciClient<String, Object> daVinciClient = ServiceFactory.getGenericAvroDaVinciClientWithRetries(
               storeName, childDataCenter.getClusters().get(clusterName).getZk().getAddress(), new DaVinciConfig(),
-              Collections.singletonMap(SERVER_INGESTION_MODE, ISOLATED))) {
+              TestUtils.getIngestionIsolationPropertyMap())) {
             daVinciClient.subscribeAll().get();
             for (int i = 1; i <= recordCount; ++i) {
               String expected = "test_name_" + i;
