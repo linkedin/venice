@@ -108,8 +108,7 @@ public class DaVinciLiveUpdateSuppressionTest {
     VeniceKafkaSerializer valueSerializer = new VeniceAvroKafkaSerializer(DEFAULT_VALUE_SCHEMA);
 
     // Enable live update suppression
-    Map<String, Object> extraBackendConfigMap = new HashMap<>();
-    extraBackendConfigMap.put(SERVER_INGESTION_MODE, ingestionMode);
+    Map<String, Object> extraBackendConfigMap = (ingestionMode.equals(IngestionMode.ISOLATED)) ? TestUtils.getIngestionIsolationPropertyMap() : new HashMap<>();
     extraBackendConfigMap.put(FREEZE_INGESTION_IF_READY_TO_SERVE_OR_LOCAL_DATA_EXISTS, true);
 
     Future[] writerFutures = new Future[KEY_COUNT];

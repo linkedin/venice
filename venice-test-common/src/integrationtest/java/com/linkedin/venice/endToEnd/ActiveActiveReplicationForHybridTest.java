@@ -97,7 +97,7 @@ public class ActiveActiveReplicationForHybridTest {
   private D2Client d2ClientForDC0Region;
   private Properties serverProperties;
 
-  public Map<String, String> getExtraServerProperties() {
+  public Map<String, Object> getExtraServerProperties() {
     return Collections.emptyMap();
   }
 
@@ -110,20 +110,20 @@ public class ActiveActiveReplicationForHybridTest {
      */
     serverProperties = new Properties();
     serverProperties.put(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 1L);
-    serverProperties.put(SERVER_SHARED_CONSUMER_POOL_ENABLED, "true");
-    serverProperties.setProperty(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, "false");
-    serverProperties.setProperty(SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED, "true");
-    serverProperties.setProperty(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE, "300");
-    serverProperties.put(SERVER_SHARED_KAFKA_PRODUCER_ENABLED, "true");
+    serverProperties.put(SERVER_SHARED_CONSUMER_POOL_ENABLED, true);
+    serverProperties.put(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, false);
+    serverProperties.put(SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED, true);
+    serverProperties.put(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE, "300");
+    serverProperties.put(SERVER_SHARED_KAFKA_PRODUCER_ENABLED, true);
     serverProperties.put(SERVER_KAFKA_PRODUCER_POOL_SIZE_PER_KAFKA_CLUSTER, "2");
-    getExtraServerProperties().forEach(serverProperties::put);
+    serverProperties.putAll(getExtraServerProperties());
 
     Properties controllerProps = new Properties();
     controllerProps.put(DEFAULT_MAX_NUMBER_OF_PARTITIONS, 1000);
     controllerProps.put(NATIVE_REPLICATION_SOURCE_FABRIC, "dc-0");
     controllerProps.put(PARENT_KAFKA_CLUSTER_FABRIC_LIST, DEFAULT_PARENT_DATA_CENTER_REGION_NAME);
 
-    controllerProps.put(LF_MODEL_DEPENDENCY_CHECK_DISABLED, "true");
+    controllerProps.put(LF_MODEL_DEPENDENCY_CHECK_DISABLED, true);
     controllerProps.put(AGGREGATE_REAL_TIME_SOURCE_REGION, DEFAULT_PARENT_DATA_CENTER_REGION_NAME);
     controllerProps.put(NATIVE_REPLICATION_FABRIC_ALLOWLIST, DEFAULT_PARENT_DATA_CENTER_REGION_NAME + ",dc-0");
     int parentKafkaPort = Utils.getFreePort();

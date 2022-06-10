@@ -1339,7 +1339,7 @@ public class TestHybrid {
         Properties serverProperties = new Properties();
         serverProperties.put(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1L));
         if (useIngestionIsolation) {
-          serverProperties.put(SERVER_INGESTION_MODE, IngestionMode.ISOLATED.toString());
+          TestUtils.addIngestionIsolationToProperties(serverProperties);
         }
         // add two servers for enough SNs
         cluster.addVeniceServer(new Properties(), serverProperties);
@@ -1571,7 +1571,7 @@ public class TestHybrid {
   /**
    * Blocking, waits for new version to go online
    */
-  public static void runH2V(Properties h2vProperties, int expectedVersionNumber, ControllerClient controllerClient) throws Exception {
+  public static void runH2V(Properties h2vProperties, int expectedVersionNumber, ControllerClient controllerClient) {
     long h2vStart = System.currentTimeMillis();
     String jobName = Utils.getUniqueString("hybrid-job-" + expectedVersionNumber);
     try (VenicePushJob job = new VenicePushJob(jobName, h2vProperties)) {
@@ -1591,7 +1591,7 @@ public class TestHybrid {
     extraProperties.setProperty(SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED, "true");
     extraProperties.setProperty(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE, "300");
     if (enabledIngestionIsolation) {
-      extraProperties.setProperty(SERVER_INGESTION_MODE, IngestionMode.ISOLATED.toString());
+      TestUtils.addIngestionIsolationToProperties(extraProperties);
     }
     if (enablePartitionWiseSharedConsumer) {
       extraProperties.setProperty(DEFAULT_MAX_NUMBER_OF_PARTITIONS, "4");

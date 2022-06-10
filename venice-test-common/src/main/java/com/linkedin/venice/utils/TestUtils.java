@@ -34,6 +34,7 @@ import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
 import com.linkedin.venice.kafka.protocol.state.IncrementalPush;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.meta.IncrementalPushPolicy;
+import com.linkedin.venice.meta.IngestionMode;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PartitionerConfig;
@@ -673,4 +674,14 @@ public class TestUtils {
     logger.ifPresent(value -> value.info("System store " + metaSystemStoreName + " is created."));
   }
 
+  public static void addIngestionIsolationToProperties(Properties properties) {
+    properties.putAll(getIngestionIsolationPropertyMap());
+  }
+
+  public static Map<String, Object> getIngestionIsolationPropertyMap() {
+    Map<String, Object> propertyMap = new HashMap<>();
+    propertyMap.put(SERVER_INGESTION_MODE, IngestionMode.ISOLATED);
+    propertyMap.put(SERVER_FORKED_PROCESS_JVM_ARGUMENT_LIST, "-Xms256M;-Xmx1G");
+    return propertyMap;
+  }
 }
