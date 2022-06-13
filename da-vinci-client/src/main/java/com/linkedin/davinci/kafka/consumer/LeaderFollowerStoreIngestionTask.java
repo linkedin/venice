@@ -284,25 +284,30 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
            * it indicates that Helix has already assigned a new role to this replica (can be leader or follower),
            * so quickly skip this state transition and go straight to the final transition.
            */
-          logger.info("State transition from STANDBY to LEADER is skipped for topic " + topic + " partition " + partition
-              + ", because Helix has assigned another role to this replica.");
+          logger.info("State transition from STANDBY to LEADER is skipped for topic {} partition {}, because Helix has assigned another role to this replica.",
+              topic, partition);
           return;
         }
 
         PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(partition);
+        if (partitionConsumptionState == null) {
+          logger.info("State transition from STANDBY to LEADER is skipped for topic {} partition {}, because partition consumption state is null and the partition may have been unsubscribed.",
+              topic, partition);
+          return;
+        }
+
         if (partitionConsumptionState.getLeaderFollowerState().equals(LEADER)) {
-          logger.info("State transition from STANDBY to LEADER is skipped for topic " + topic + " partition " + partition
-              + ", because this replica is the leader already.");
+          logger.info("State transition from STANDBY to LEADER is skipped for topic {} partition {}, because this replica is the leader already.", topic, partition);
           return;
         }
         if (store.isMigrationDuplicateStore()) {
           partitionConsumptionState.setLeaderFollowerState(PAUSE_TRANSITION_FROM_STANDBY_TO_LEADER);
-          logger.info(consumerTaskId + " for partition " + partition + " is paused transition from STANDBY to LEADER");
+          logger.info("{} for partition {} is paused transition from STANDBY to LEADER", consumerTaskId, partition);
         } else {
           // Mark this partition in the middle of STANDBY to LEADER transition
           partitionConsumptionState.setLeaderFollowerState(IN_TRANSITION_FROM_STANDBY_TO_LEADER);
 
-          logger.info(consumerTaskId + " for partition " + partition + " is in transition from STANDBY to LEADER");
+          logger.info("{} for partition {} is in transition from STANDBY to LEADER", consumerTaskId, partition);
         }
         break;
       case LEADER_TO_STANDBY:
@@ -313,15 +318,21 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
            * it indicates that Helix has already assigned a new role to this replica (can be leader or follower),
            * so quickly skip this state transition and go straight to the final transition.
            */
-          logger.info("State transition from LEADER to STANDBY is skipped for topic " + topic + " partition " + partition
-              + ", because Helix has assigned another role to this replica.");
+          logger.info("State transition from LEADER to STANDBY is skipped for topic {} partition {}, because Helix has assigned another role to this replica.",
+              topic, partition);
           return;
         }
 
         partitionConsumptionState = partitionConsumptionStateMap.get(partition);
+        if (partitionConsumptionState == null) {
+          logger.info("State transition from LEADER to STANDBY is skipped for topic {} partition {}, because partition consumption state is null and the partition may have been unsubscribed.",
+              topic, partition);
+          return;
+        }
+
         if (partitionConsumptionState.getLeaderFollowerState().equals(STANDBY)) {
-          logger.info("State transition from LEADER to STANDBY is skipped for topic " + topic + " partition " + partition
-              + ", because this replica is a follower already.");
+          logger.info("State transition from LEADER to STANDBY is skipped for topic {} partition {}, because this replica is a follower already.",
+              topic, partition);
           return;
         }
 
@@ -340,7 +351,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           waitForAllMessageToBeProcessedFromTopicPartition(leaderTopic, partition, partitionConsumptionState);
 
           partitionConsumptionState.setConsumeRemotely(false);
-          logger.info(consumerTaskId + " disabled remote consumption from topic " + leaderTopic + " partition " + partition);
+          logger.info("{} disabled remote consumption from topic {} partition {}", consumerTaskId, leaderTopic, partition);
           // Followers always consume local VT and should not skip kafka message
           partitionConsumptionState.setSkipKafkaMessage(false);
           partitionConsumptionState.setLeaderFollowerState(STANDBY);
@@ -349,7 +360,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           consumerSubscribe(topic, partitionConsumptionState.getSourceTopicPartition(topic),
               partitionConsumptionState.getLatestProcessedLocalVersionTopicOffset(), localKafkaServer);
 
-          logger.info(consumerTaskId + " demoted to standby for partition " + partition);
+          logger.info("{} demoted to standby for partition {}", consumerTaskId, partition);
         } else {
           partitionConsumptionState.setLeaderFollowerState(STANDBY);
           updateLeaderTopicOnFollower(partitionConsumptionState);
