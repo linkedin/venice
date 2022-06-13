@@ -1489,67 +1489,6 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
   }
 
   @Test
-  public void testCheckWhetherStoreWillHaveConflictConfigForCompressionAndHybrid() {
-    String regularStoreName = Utils.getUniqueString("testStore");
-    Store regularStore = mock(Store.class);
-
-    String compressionEnabledStoreName = Utils.getUniqueString("testCompressionStore");
-    Store compressionEnabledStore = mock(Store.class);
-
-    String hybridEnabledStoreName = Utils.getUniqueString("testHybridStore");
-    Store hybridEnabledStore = mock(Store.class);
-
-    HybridStoreConfig mockHybridConfig = mock(HybridStoreConfig.class);
-    HybridStoreConfig mockHybridToBatchConfig = mock(HybridStoreConfig.class);
-
-    doReturn(regularStoreName).when(regularStore).getName();
-    doReturn(false).when(regularStore).isHybrid();
-    doReturn(CompressionStrategy.NO_OP).when(regularStore).getCompressionStrategy();
-
-    doReturn(compressionEnabledStoreName).when(compressionEnabledStore).getName();
-    doReturn(false).when(compressionEnabledStore).isHybrid();
-    doReturn(CompressionStrategy.GZIP).when(compressionEnabledStore).getCompressionStrategy();
-
-    doReturn(hybridEnabledStoreName).when(hybridEnabledStore).getName();
-    doReturn(true).when(hybridEnabledStore).isHybrid();
-    doReturn(mockHybridConfig).when(hybridEnabledStore).getHybridStoreConfig();
-    doReturn(CompressionStrategy.NO_OP).when(hybridEnabledStore).getCompressionStrategy();
-
-    doReturn(0L).when(mockHybridConfig).getRewindTimeInSeconds();
-    doReturn(0L).when(mockHybridConfig).getOffsetLagThresholdToGoOnline();
-    doReturn(0L).when(mockHybridConfig).getProducerTimestampLagThresholdToGoOnlineInSeconds();
-
-    doReturn(-1L).when(mockHybridToBatchConfig).getRewindTimeInSeconds();
-    doReturn(-1L).when(mockHybridToBatchConfig).getOffsetLagThresholdToGoOnline();
-    doReturn(-1L).when(mockHybridToBatchConfig).getProducerTimestampLagThresholdToGoOnlineInSeconds();
-
-    Optional<CompressionStrategy> noopCompressionEnabled = Optional.of(CompressionStrategy.NO_OP);
-    Optional<CompressionStrategy> gzipCompressionEnabled = Optional.of(CompressionStrategy.GZIP);
-    Optional<CompressionStrategy> newCompressionNotDefined = Optional.empty();
-
-    // Regular store can enable compression if it is not made hybrid
-    veniceAdmin.checkWhetherStoreWillHaveConflictConfigForCompressionAndHybrid(regularStore, gzipCompressionEnabled, Optional.empty());
-
-    // Regular store can enable hybrid store configs if compression is not enabled
-    veniceAdmin.checkWhetherStoreWillHaveConflictConfigForCompressionAndHybrid(regularStore, newCompressionNotDefined, Optional.of(mockHybridConfig));
-
-    // Regular store cannot enable hybrid store configs and compression at the same time
-    Assert.assertThrows(() -> veniceAdmin.checkWhetherStoreWillHaveConflictConfigForCompressionAndHybrid(regularStore, gzipCompressionEnabled, Optional.of(mockHybridConfig)));
-
-    // Compression enabled store can be made a hybrid store if the compression strategy is also updated
-    veniceAdmin.checkWhetherStoreWillHaveConflictConfigForCompressionAndHybrid(compressionEnabledStore, noopCompressionEnabled, Optional.of(mockHybridConfig));
-
-    // Compression enabled store can not be enabled as hybrid store without setting a compatible compression strategy
-    Assert.assertThrows(() -> veniceAdmin.checkWhetherStoreWillHaveConflictConfigForCompressionAndHybrid(compressionEnabledStore, newCompressionNotDefined, Optional.of(mockHybridConfig)));
-
-    // Compression cannot be enabled for a hybrid store store without setting a compatible compression strategy
-    Assert.assertThrows(() -> veniceAdmin.checkWhetherStoreWillHaveConflictConfigForCompressionAndHybrid(hybridEnabledStore, gzipCompressionEnabled, Optional.empty()));
-
-    // Compression can be enabled on a hybrid store if the store is being made batch only
-    veniceAdmin.checkWhetherStoreWillHaveConflictConfigForCompressionAndHybrid(hybridEnabledStore, gzipCompressionEnabled, Optional.of(mockHybridToBatchConfig));
-  }
-
-  @Test
   public void testNativeReplicationSourceFabric() {
     String storeName = Utils.getUniqueString("test_store_nr");
     veniceAdmin.createStore(clusterName, storeName, storeOwner, KEY_SCHEMA, VALUE_SCHEMA);

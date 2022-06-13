@@ -9,6 +9,8 @@ import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.venice.common.VeniceSystemStoreType;
+import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceMessageException;
 import com.linkedin.venice.exceptions.VeniceTimeoutException;
@@ -28,7 +30,6 @@ import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.kafka.validation.KafkaDataIntegrityValidator;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.IncrementalPushPolicy;
-import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
@@ -42,6 +43,7 @@ import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.writer.LeaderMetadataWrapper;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
+import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.Collections;
 import java.util.HashMap;
@@ -137,6 +139,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    */
   protected final Lazy<VeniceWriter<byte[], byte[], byte[]>> veniceWriter;
 
+  protected final Lazy<VeniceCompressor> compressor;
+
   protected final StorageEngineBackedCompressorFactory compressorFactory;
 
   protected final Map<Integer, String> kafkaClusterIdToUrlMap;
@@ -225,6 +229,15 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         storageMetadataService.getStoreVersionState(kafkaVersionTopic).map(svs -> svs.chunked),
         venicePartitioner,
         storeVersionPartitionCount * amplificationFactor));
+
+    this.compressor = Lazy.of(() -> {
+      byte[] dictionary = storageMetadataService.getStoreVersionCompressionDictionary(kafkaVersionTopic) == null ?
+          null : storageMetadataService.getStoreVersionCompressionDictionary(kafkaVersionTopic).array();
+      return compressorFactory.createVersionSpecificCompressorIfNotExist(
+          storageMetadataService.getStoreVersionCompressionStrategy(kafkaVersionTopic),
+          kafkaVersionTopic,
+          dictionary);
+    });
 
     this.kafkaClusterIdToUrlMap = serverConfig.getKafkaClusterIdToUrlMap();
     this.kafkaClusterUrlToIdMap = serverConfig.getKafkaClusterUrlToIdMap();
@@ -2187,6 +2200,51 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         venicePartitioner.getPartitionId(key, subPartitionCount) : partition;
   }
 
+  /**
+   * Compresses data in a bytebuffer when consuming from rt as a leader node and compression is enabled for the store
+   * version for which we're consuming data.
+   *
+   * @param partition which partition we're acting on so as to determine the PartitionConsumptionState
+   * @param data the data that we migh compress
+   * @return a bytebuffer thats either the original bytebuffer or a new one depending on if we compressed it.
+   */
+  protected ByteBuffer maybeCompressData(int partition, ByteBuffer data, PartitionConsumptionState partitionConsumptionState) {
+    // To handle delete operations
+    if (data == null) {
+      return data;
+    }
+
+    if(shouldCompressData(partitionConsumptionState)) {
+      try {
+        // We need to expand the front of the returned bytebuffer to make room for schema header insertion
+        return ByteUtils.enlargeByteBufferForIntHeader(ByteUtils.compressByteBuffer(data, compressor.get()));
+      } catch (IOException e) {
+        // throw a loud exception if something goes wrong here
+        throw new RuntimeException(
+            String.format("Failed to compress value in venice writer!  Aborting write! partition: %i, leader topic: %s, compressor: %s",
+                partition, partitionConsumptionState.getOffsetRecord().getLeaderTopic(), compressor.getClass().getName()), e);
+      }
+    }
+    return data;
+  }
+
+
+  protected boolean shouldCompressData(PartitionConsumptionState partitionConsumptionState) {
+    if (!isLeader(partitionConsumptionState)) {
+      return false; // Not leader, don't compress
+    }
+    String leaderTopic = partitionConsumptionState.getOffsetRecord().getLeaderTopic();
+    if (!Version.composeRealTimeTopic(storeName).equals(leaderTopic)) {
+      return false; // We're consuming from version topic (don't compress it)
+    }
+    CompressionStrategy compressionStrategy = storageMetadataService.getStoreVersionCompressionStrategy(kafkaVersionTopic);
+    if (compressionStrategy.equals(CompressionStrategy.NO_OP)) {
+      return false; // We're not even supposed to be compressing, don't compress
+    }
+    return true;
+  }
+
+
   protected void processMessageAndMaybeProduceToKafka(
       ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
       PartitionConsumptionState partitionConsumptionState,
@@ -2200,6 +2258,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     switch (msgType) {
       case PUT:
         Put put = (Put) kafkaValue.payloadUnion;
+        put.putValue = maybeCompressData(consumerRecord.partition(), put.putValue, partitionConsumptionState);
         ByteBuffer putValue = put.putValue;
 
         /**
@@ -2258,10 +2317,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
          *  Few Notes:
          *  1. Currently we support chunking only for messages produced on VT topic during batch part of the ingestion
          *     for hybrid stores. Chunking is NOT supported for messages produced to RT topics during streaming ingestion.
-         *     Also we dont support compression at all for hybrid store.
+         *
          *     So the assumption here is that the PUT/UPDATE messages stored in transientRecord should always be a full value
-         *     (non chunked) and non-compressed. Decoding should succeed using the the simplified API
-         *     {@link ChunkingAdapter#constructValue(int, byte[], int, boolean, ReadOnlySchemaRepository, String)}
+         *     (non chunked). Decoding should succeed using the the simplified API
+         *     {@link ChunkingAdapter#constructValue}
          *
          *  2. It's debatable if we'd like to the latest value schema or the value schema associated in the UPDATE message
          *     as the reader schema. Either one has pro and cons. The former is appealing when the schema has been devolved
@@ -2297,7 +2356,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             try {
               originalValue = GenericRecordChunkingAdapter.INSTANCE.constructValue(transientRecord.getValueSchemaId(),
                   valueSchemaId, transientRecord.getValue(), transientRecord.getValueOffset(),
-                  transientRecord.getValueLen(), serverConfig.isComputeFastAvroEnabled(), schemaRepository, storeName);
+                  transientRecord.getValueLen(), serverConfig.isComputeFastAvroEnabled(), schemaRepository, storeName,
+                  compressor.get());
             } catch (Exception e) {
               writeComputeFailureCode = StatsErrorCode.WRITE_COMPUTE_DESERIALIZATION_FAILURE.code;
               throw e;
@@ -2311,13 +2371,13 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         final byte[] updatedValueBytes;
         try {
           long writeComputeStartTimeInNS = System.nanoTime();
-          updatedValueBytes =
-              ingestionTaskWriteComputeHandler.getUpdatedValueBytes(originalValue, update.updateValue,
-                  valueSchemaId, writeComputeSchemaId);
+          // Leader nodes are the only ones which process UPDATES, so it's valid to always compress and not call 'maybeCompress'.
+          updatedValueBytes = compressor.get().compress(ingestionTaskWriteComputeHandler.getUpdatedValueBytes(originalValue,
+              update.updateValue, valueSchemaId, writeComputeSchemaId));
           storeIngestionStats.recordWriteComputeUpdateLatency(storeName, LatencyUtils.getLatencyInMS(writeComputeStartTimeInNS));
         } catch (Exception e) {
           writeComputeFailureCode = StatsErrorCode.WRITE_COMPUTE_UPDATE_FAILURE.code;
-          throw e;
+          throw new RuntimeException(e);
         }
 
         //finally produce and update the transient record map.

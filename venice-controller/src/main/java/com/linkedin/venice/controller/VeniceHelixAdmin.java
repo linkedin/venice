@@ -15,6 +15,7 @@ import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.compression.ZstdWithDictCompressor;
 import com.linkedin.venice.controller.datarecovery.DataRecoveryManager;
 import com.linkedin.venice.controller.exception.HelixClusterMaintenanceModeException;
 import com.linkedin.venice.controller.helix.SharedHelixReadOnlyZKSharedSchemaRepository;
@@ -306,6 +307,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     private final D2Client d2Client;
     private final Map<String, HelixReadWriteLiveClusterConfigRepository> clusterToLiveClusterConfigRepo;
     private final boolean usePushStatusStoreToReadServerIncrementalPushStatus;
+    private static final ByteBuffer emptyPushZstdDictionary = ByteBuffer.wrap(ZstdWithDictCompressor.buildDictionaryOnSyntheticAvroData());
 
     /**
      * Level-1 controller, it always being connected to Helix. And will create sub-controller for specific cluster when
@@ -1705,7 +1707,14 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
                     ByteBuffer compressionDictionaryBuffer = null;
                     if (compressionDictionary != null) {
-                        compressionDictionaryBuffer = ByteBuffer.wrap(EncodingUtils.base64DecodeFromString(compressionDictionary));
+                      compressionDictionaryBuffer = ByteBuffer.wrap(EncodingUtils.base64DecodeFromString(compressionDictionary));
+                    } else if (store.getCompressionStrategy().equals(CompressionStrategy.ZSTD_WITH_DICT)) {
+                      // We can't use dictionary compression with no dictionary, so we generate a basic one
+                      // TODO: It would be smarter to query it from the previous version and pass it along.  However,
+                      // the 'previous' version can mean different things in different colos, and ideally we'd want
+                      // a consistent compressed result in all colos so as to make sure we don't confuse our consistency
+                      // checking mechanisms.  So this needs some (maybe) complicated reworking.
+                      compressionDictionaryBuffer = emptyPushZstdDictionary;
                     }
 
                     Pair<String, String> sourceKafkaBootstrapServersAndZk = null;
@@ -3063,35 +3072,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
     /**
-     * This function will check whether the store update will cause the case that a store can not have the specified
-     * hybrid store and compression strategy configs.
-     *
-     * @param store The store object whose configs are being updated
-     * @param newCompressionStrategy The new compression config that will be set for the store
-     * @param newHybridStoreConfig The new hybrid store config that will be set for the store
-     */
-    protected void checkWhetherStoreWillHaveConflictConfigForCompressionAndHybrid(Store store,
-        Optional<CompressionStrategy> newCompressionStrategy,
-        Optional<HybridStoreConfig> newHybridStoreConfig) {
-        String storeName = store.getName();
-
-        final CompressionStrategy finalCompressionStrategy = newCompressionStrategy.orElse(store.getCompressionStrategy());
-        final HybridStoreConfig currentHybridStoreConfig = store.getVersion(store.getCurrentVersion())
-                .filter(Version::isUseVersionLevelHybridConfig)
-                .map(Version::getHybridStoreConfig)
-                .orElse(store.getHybridStoreConfig());
-
-        final HybridStoreConfig finalHybridStoreConfig = newHybridStoreConfig.orElse(currentHybridStoreConfig);
-        boolean finalHybridEnabled = isHybrid(finalHybridStoreConfig);
-
-        // Hybrid stores can only have NoOpCompression
-        if (finalHybridEnabled && !CompressionStrategy.NO_OP.equals(finalCompressionStrategy)) {
-            throw new VeniceException("Hybrid and compression cannot be enabled simultaneously for store: " + storeName
-                + " since it has compression strategy: " + finalCompressionStrategy.name());
-        }
-    }
-
-    /**
      * TODO: some logics are in parent controller {@link VeniceParentHelixAdmin} #updateStore and
      *       some are in the child controller here. Need to unify them in the future.
      */
@@ -3214,7 +3194,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         }
 
         checkWhetherStoreWillHaveConflictConfigForIncrementalAndHybrid(originalStore, incrementalPushEnabled, incrementalPushPolicy, newHybridStoreConfig);
-        checkWhetherStoreWillHaveConflictConfigForCompressionAndHybrid(originalStore, compressionStrategy, newHybridStoreConfig);
 
         try {
             if (owner.isPresent()) {
