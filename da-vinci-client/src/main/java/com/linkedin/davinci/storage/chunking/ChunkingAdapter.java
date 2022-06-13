@@ -3,6 +3,7 @@ package com.linkedin.davinci.storage.chunking;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.listener.response.ReadResponse;
 import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
@@ -45,7 +46,7 @@ public interface ChunkingAdapter<CHUNKS_CONTAINER, VALUE> {
   }
 
   default VALUE constructValue(int writerSchemaId, int readerSchemaId, byte[] valueOnlyBytes, int offset, int bytesLength, boolean fastAvroEnabled,
-      ReadOnlySchemaRepository schemaRepo, String storeName) {
+      ReadOnlySchemaRepository schemaRepo, String storeName, VeniceCompressor veniceCompressor) {
     throw new VeniceException("Not implemented.");
   }
 

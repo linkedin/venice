@@ -1,11 +1,16 @@
 package com.linkedin.venice.endToEnd;
 
 import com.github.benmanes.caffeine.cache.Cache;
+import com.github.luben.zstd.Zstd;
 import com.linkedin.davinci.kafka.consumer.KafkaConsumerService;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
+import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.compression.CompressorFactory;
+import com.linkedin.venice.compression.GzipCompressor;
+import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
@@ -38,10 +43,14 @@ import com.linkedin.venice.meta.IngestionMode;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.InstanceStatus;
 import com.linkedin.venice.meta.PersistenceType;
+import com.linkedin.venice.meta.QueryAction;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreStatus;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.ZKStore;
+import com.linkedin.venice.router.httpclient.PortableHttpResponse;
+import com.linkedin.venice.router.httpclient.StorageNodeClient;
+import com.linkedin.venice.router.httpclient.VeniceMetaDataRequest;
 import com.linkedin.venice.samza.SamzaExitMode;
 import com.linkedin.venice.samza.VeniceSystemFactory;
 import com.linkedin.venice.samza.VeniceSystemProducer;
@@ -69,6 +78,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
@@ -81,6 +91,7 @@ import org.apache.commons.httpclient.HttpStatus;
 import org.apache.commons.io.IOUtils;
 import org.apache.helix.HelixAdmin;
 import org.apache.helix.manager.zk.ZKHelixAdmin;
+import org.apache.http.HttpRequest;
 import org.apache.http.HttpResponse;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.impl.nio.client.CloseableHttpAsyncClient;
@@ -98,6 +109,7 @@ import org.testng.annotations.Test;
 
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.*;
 import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.HttpConstants.*;
 import static com.linkedin.venice.hadoop.VenicePushJob.*;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.*;
 import static com.linkedin.venice.kafka.TopicManager.*;
@@ -1049,8 +1061,8 @@ public class TestHybrid {
     }
   }
 
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = 180 * Time.MS_PER_SECOND)
-  public void testDuplicatedMessagesWontBePersisted(boolean isIngestionIsolationEnabled) throws Exception {
+  @Test(dataProvider = "Boolean-Compression", dataProviderClass = DataProviderUtils.class, timeOut = 180 * Time.MS_PER_SECOND)
+  public void testDuplicatedMessagesWontBePersisted(boolean isIngestionIsolationEnabled, CompressionStrategy compressionStrategy) throws Exception {
     Properties extraProperties = new Properties();
     extraProperties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(3L));
 
@@ -1074,6 +1086,7 @@ public class TestHybrid {
         ControllerResponse response = controllerClient.updateStore(storeName, new UpdateStoreQueryParams()
             .setHybridRewindSeconds(streamingRewindSeconds)
             .setHybridOffsetLagThreshold(streamingMessageLag)
+            .setCompressionStrategy(compressionStrategy)
             .setPartitionCount(1)
         );
 
@@ -1125,6 +1138,8 @@ public class TestHybrid {
         try (CloseableHttpAsyncClient storageNodeClient = HttpAsyncClients.createDefault()) {
           storageNodeClient.start();
           Base64.Encoder encoder = Base64.getUrlEncoder();
+
+          VeniceCompressor compressor = TestUtils.getVeniceCompressor(compressionStrategy, storeName, 1, venice, storageNodeClient);
           // Check both leader and follower hosts
           TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, true, () -> {
             for (VeniceServerWrapper server : venice.getVeniceServers()) {
@@ -1148,7 +1163,7 @@ public class TestHybrid {
                 byte[] body = IOUtils.toByteArray(bodyStream);
                 Assert.assertEquals(storageNodeResponse.getStatusLine().getStatusCode(), HttpStatus.SC_OK,
                     "Response did not return 200: " + new String(body));
-                Object value = stringDeserializer.deserialize(null, body);
+                Object value = stringDeserializer.deserialize(compressor.decompress(body, 0, body.length));
                 Assert.assertEquals(value.toString(), value1);
               }
 
@@ -1172,7 +1187,7 @@ public class TestHybrid {
                 byte[] body = IOUtils.toByteArray(bodyStream);
                 Assert.assertEquals(storageNodeResponse.getStatusLine().getStatusCode(), HttpStatus.SC_OK,
                     "Response did not return 200: " + new String(body));
-                Object value = stringDeserializer.deserialize(null, body);
+                Object value = stringDeserializer.deserialize(compressor.decompress(body, 0, body.length));
                 Assert.assertEquals(value.toString(), value2);
               }
             }
