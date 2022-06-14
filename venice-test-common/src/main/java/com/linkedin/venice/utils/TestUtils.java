@@ -521,6 +521,18 @@ public class TestUtils {
     });
   }
 
+  public static void verifySystemStoreInAllRegions(String regularStoreName, VeniceSystemStoreType systemStoreType,
+      ControllerClient parentControllerClient, List<ControllerClient> controllerClientList) {
+    String systemStoreName = systemStoreType.getSystemStoreName(regularStoreName);
+    TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
+      for (ControllerClient client : controllerClientList) {
+        StoreResponse response = client.getStore(systemStoreName);
+        Assert.assertFalse(response.isError());
+        Assert.assertTrue(response.getStore().getCurrentVersion() > 0);
+      }
+    });
+  }
+
   public static void verifyDCConfigNativeAndActiveRepl(ControllerClient controllerClient, String storeName, boolean enabledNR, boolean enabledAA) {
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
       StoreResponse storeResponse = controllerClient.getStore(storeName);

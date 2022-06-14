@@ -136,15 +136,16 @@ public class UserSystemStoreLifeCycleHelper {
   public static void maybeDeleteSystemStoresForUserStore(VeniceHelixAdmin admin,
       ReadWriteStoreRepository storeRepository, PushMonitorDelegator pushMonitor, String clusterName, Store userStore,
       MetaStoreWriter metaStoreWriter, Optional<PushStatusStoreRecordDeleter> pushStatusStoreRecordDeleter, Logger logger) {
-    if (userStore.isStoreMetaSystemStoreEnabled()) {
-      deleteSystemStore(admin, storeRepository, pushMonitor, clusterName,
-          VeniceSystemStoreType.META_STORE.getSystemStoreName(userStore.getName()), userStore.isMigrating(),
-          metaStoreWriter, pushStatusStoreRecordDeleter, logger);
-    }
     if (userStore.isDaVinciPushStatusStoreEnabled()) {
       deleteSystemStore(admin, storeRepository, pushMonitor, clusterName,
           DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(userStore.getName()),
           userStore.isMigrating(), metaStoreWriter, pushStatusStoreRecordDeleter, logger);
+    }
+    // We must delete meta system store at the end as deleting other system store will try to send update to meta system store as well.
+    if (userStore.isStoreMetaSystemStoreEnabled()) {
+      deleteSystemStore(admin, storeRepository, pushMonitor, clusterName,
+          VeniceSystemStoreType.META_STORE.getSystemStoreName(userStore.getName()), userStore.isMigrating(),
+          metaStoreWriter, pushStatusStoreRecordDeleter, logger);
     }
   }
 
