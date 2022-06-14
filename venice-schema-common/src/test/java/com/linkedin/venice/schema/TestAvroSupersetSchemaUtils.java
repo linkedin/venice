@@ -37,7 +37,7 @@ public class TestAvroSupersetSchemaUtils {
         Arrays.asList(schemaEntry1, schemaEntry2)
     );
 
-    final Schema expectedSupersetSchema = AvroSchemaUtils.generateSuperSetSchema(schemaEntry1.getSchema(), schemaEntry2.getSchema());
+    final Schema expectedSupersetSchema = AvroSupersetSchemaUtils.generateSuperSetSchema(schemaEntry1.getSchema(), schemaEntry2.getSchema());
     Assert.assertTrue(AvroSchemaUtils.compareSchemaIgnoreFieldOrder(expectedSupersetSchema, supersetSchemaEntry.getSchema()));
     Assert.assertEquals(supersetSchemaEntry.getId(), 2);
 
@@ -191,6 +191,20 @@ public class TestAvroSupersetSchemaUtils {
     String schemaStr2 = "{\"type\":\"record\",\"name\":\"KeyRecord\",\"fields\":[{\"name\":\"name\",\"type\":\"string\",\"doc\":\"name field\"},{\"name\":\"id2\",\"type\":\"int\"}]}";
 
     Schema s1 = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(schemaStr1);
+    Schema s2 = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(schemaStr2);
+    Assert.assertFalse(AvroSchemaUtils.compareSchemaIgnoreFieldOrder(s1,s2));
+
+    Schema s3 = AvroSupersetSchemaUtils.generateSuperSetSchema(s1, s2);
+    Assert.assertNotNull(s3.getField("id1"));
+    Assert.assertNotNull(s3.getField("id2"));
+  }
+
+  @Test
+  public void testSchemaMergeFieldsBadDefaults() {
+    String schemaStr1 = "{\"type\":\"record\",\"name\":\"KeyRecord\",\"fields\":[{\"name\":\"name\",\"type\":\"string\",\"doc\":\"name field\"},{\"name\":\"id1\",\"type\":\"float\", \"default\" : 0}]}";
+    String schemaStr2 = "{\"type\":\"record\",\"name\":\"KeyRecord\",\"fields\":[{\"name\":\"name\",\"type\":\"string\",\"doc\":\"name field\"},{\"name\":\"id2\",\"type\":\"int\"}]}";
+
+    Schema s1 = AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation(schemaStr1);
     Schema s2 = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(schemaStr2);
     Assert.assertFalse(AvroSchemaUtils.compareSchemaIgnoreFieldOrder(s1,s2));
 
