@@ -1,5 +1,9 @@
 package com.linkedin.venice.endToEnd;
 
+import com.linkedin.d2.balancer.D2Client;
+import com.linkedin.davinci.client.DaVinciClient;
+import com.linkedin.davinci.client.DaVinciConfig;
+import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
 import com.linkedin.venice.AdminTool;
 import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.client.store.ClientConfig;
@@ -20,21 +24,7 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
-
-import com.linkedin.d2.balancer.D2Client;
-import com.linkedin.davinci.client.DaVinciClient;
-import com.linkedin.davinci.client.DaVinciConfig;
-import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
-
 import io.tehuti.metrics.MetricsRepository;
-
-import org.apache.avro.Schema;
-import org.apache.avro.generic.GenericData;
-import org.apache.avro.generic.GenericRecord;
-import org.testng.annotations.AfterClass;
-import org.testng.annotations.BeforeClass;
-import org.testng.annotations.Test;
-
 import java.util.AbstractMap;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -43,6 +33,12 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.IntStream;
+import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericData;
+import org.apache.avro.generic.GenericRecord;
+import org.testng.annotations.AfterClass;
+import org.testng.annotations.BeforeClass;
+import org.testng.annotations.Test;
 
 import static com.linkedin.venice.ConfigKeys.*;
 import static org.testng.Assert.*;
@@ -112,7 +108,7 @@ public class DaVinciClusterAgnosticTest {
     zkServer.close();
   }
 
-  @Test(timeOut = 120 * Time.MS_PER_SECOND)
+  @Test(timeOut = 180 * Time.MS_PER_SECOND)
   public void testMultiClusterDaVinci() throws Exception {
     assertTrue(clusterNames.length > 1, "Insufficient clusters for this test to be meaningful");
     int initialKeyCount = 10;
@@ -134,7 +130,7 @@ public class DaVinciClusterAgnosticTest {
         // Verify the data can be ingested by classic Venice before proceeding.
         TestUtils.waitForNonDeterministicPushCompletion(response.getKafkaTopic(), parentControllerClient, 30,
             TimeUnit.SECONDS, Optional.empty());
-        setupMetaSystemStore(parentControllerClient, storeName);
+        makeSureSystemStoresAreOnline(parentControllerClient, storeName);
         multiClusterVenice.getClusters().get(cluster).refreshAllRouterMetaData();
       }
     }
@@ -164,10 +160,12 @@ public class DaVinciClusterAgnosticTest {
       final int newValue = 1000;
       try (ControllerClient parentControllerClient = new ControllerClient(clusterNames[0],
           parentController.getControllerUrl())) {
-        TestUtils.createVersionWithBatchData(parentControllerClient, stores.get(0), INT_KEY_SCHEMA, INT_VALUE_SCHEMA,
+        VersionCreationResponse versionCreationResponse = TestUtils.createVersionWithBatchData(parentControllerClient, stores.get(0), INT_KEY_SCHEMA, INT_VALUE_SCHEMA,
             IntStream.range(0, initialKeyCount).mapToObj(i -> new AbstractMap.SimpleEntry<>(i, newValue)));
+        TestUtils.waitForNonDeterministicPushCompletion(versionCreationResponse.getKafkaTopic(),
+            parentControllerClient, 60, TimeUnit.SECONDS, Optional.empty());
       }
-      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+      TestUtils.waitForNonDeterministicAssertion(120, TimeUnit.SECONDS, true, () -> {
         for (int k = 0; k < initialKeyCount; k++) {
           assertEquals(clients.get(0).get(k).get(), newValue);
         }
@@ -182,9 +180,11 @@ public class DaVinciClusterAgnosticTest {
       final int newMigratedStoreValue = 999;
       try (ControllerClient parentControllerClient = new ControllerClient(destCluster,
           parentController.getControllerUrl())) {
-        TestUtils.createVersionWithBatchData(parentControllerClient, migratedStoreName, INT_KEY_SCHEMA,
-            INT_VALUE_SCHEMA,
+        VersionCreationResponse versionCreationResponse = TestUtils.createVersionWithBatchData(parentControllerClient,
+            migratedStoreName, INT_KEY_SCHEMA, INT_VALUE_SCHEMA,
             IntStream.range(0, initialKeyCount).mapToObj(i -> new AbstractMap.SimpleEntry<>(i, newMigratedStoreValue)));
+        TestUtils.waitForNonDeterministicPushCompletion(versionCreationResponse.getKafkaTopic(),
+            parentControllerClient, 60, TimeUnit.SECONDS, Optional.empty());
       }
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
         for (int k = 0; k < initialKeyCount; k++) {
@@ -206,7 +206,7 @@ public class DaVinciClusterAgnosticTest {
             srcCluster, "--cluster-dest", destCluster, "--fabric", FABRIC};
     try (ControllerClient parentControllerClient = new ControllerClient(srcCluster,
         parentController.getControllerUrl())) {
-      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
         AdminTool.main(completeMigration);
         assertEquals(parentControllerClient.discoverCluster(storeName).getCluster(), destCluster);
       });
@@ -240,7 +240,7 @@ public class DaVinciClusterAgnosticTest {
       // Verify the data can be ingested by classic Venice before proceeding.
       TestUtils.waitForNonDeterministicPushCompletion(response.getKafkaTopic(), parentControllerClient, 30,
           TimeUnit.SECONDS, Optional.empty());
-      setupMetaSystemStore(parentControllerClient, storeName);
+      makeSureSystemStoresAreOnline(parentControllerClient, storeName);
       multiClusterVenice.getClusters().get(cluster).refreshAllRouterMetaData();
 
       VeniceProperties backendConfig =
@@ -281,13 +281,13 @@ public class DaVinciClusterAgnosticTest {
     }
   }
 
-  private void setupMetaSystemStore(ControllerClient controllerClient, String storeName) {
-    VersionCreationResponse metaSystemStoreResponse =
-        controllerClient.emptyPush(VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName),
-            String.valueOf(System.currentTimeMillis()), 10 * 1024 * 1024);
-    assertFalse(metaSystemStoreResponse.isError(),
-        "Failed to materialize meta system store for test user store: " + storeName);
-    TestUtils.waitForNonDeterministicPushCompletion(metaSystemStoreResponse.getKafkaTopic(), controllerClient,
+
+  private void makeSureSystemStoresAreOnline(ControllerClient controllerClient, String storeName) {
+    String metaSystemStoreTopic = Version.composeKafkaTopic(VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName), 1);
+    TestUtils.waitForNonDeterministicPushCompletion(metaSystemStoreTopic, controllerClient,
+        30, TimeUnit.SECONDS, Optional.empty());
+    String daVinciPushStatusStore = Version.composeKafkaTopic(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(storeName), 1);
+    TestUtils.waitForNonDeterministicPushCompletion(daVinciPushStatusStore, controllerClient,
         30, TimeUnit.SECONDS, Optional.empty());
   }
 }

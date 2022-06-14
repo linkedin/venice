@@ -87,7 +87,6 @@ public class MetaSystemStoreTest {
   @BeforeClass
   public void setUp() {
     Properties testProperties = new Properties();
-    testProperties.setProperty(CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE, String.valueOf(true));
     testProperties.put(TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS, Long.toString(TimeUnit.DAYS.toMillis(7)));
     venice = ServiceFactory.getVeniceCluster(1, 2, 1, 2, 1000000, false, false);
     controllerClient = venice.getControllerClient();
@@ -109,8 +108,9 @@ public class MetaSystemStoreTest {
   public void bootstrapMetaSystemStore() throws ExecutionException, InterruptedException {
     // Create a new regular store.
     String regularVeniceStoreName = Utils.getUniqueString("venice_store");
+    ControllerClient parentControllerClient = new ControllerClient(venice.getClusterName(), parentController.getControllerUrl());
     NewStoreResponse newStoreResponse =
-        controllerClient.createNewStore(regularVeniceStoreName, "test_owner", INT_KEY_SCHEMA, VALUE_SCHEMA_1);
+        parentControllerClient.createNewStore(regularVeniceStoreName, "test_owner", INT_KEY_SCHEMA, VALUE_SCHEMA_1);
     assertFalse(newStoreResponse.isError(),
         "New store: " + regularVeniceStoreName + " should be created successfully, but got error: "
             + newStoreResponse.getError());
@@ -121,25 +121,7 @@ public class MetaSystemStoreTest {
         "New version creation should success, but got error: " + versionCreationResponse.getError());
     TestUtils.waitForNonDeterministicPushCompletion(versionCreationResponse.getKafkaTopic(), controllerClient, 10,
         TimeUnit.SECONDS, Optional.of(LOGGER));
-    // Enabling meta system store by triggering an empty push to the corresponding meta system store
     String metaSystemStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(regularVeniceStoreName);
-    VersionCreationResponse versionCreationResponseForMetaSystemStore =
-        controllerClient.emptyPush(metaSystemStoreName, "test_meta_system_store_push_1", 10000);
-    assertFalse(versionCreationResponseForMetaSystemStore.isError(),
-        "New version creation for meta system store: " + metaSystemStoreName + " should success, but got error: "
-            + versionCreationResponseForMetaSystemStore.getError());
-    TestUtils.waitForNonDeterministicPushCompletion(versionCreationResponseForMetaSystemStore.getKafkaTopic(),
-        controllerClient, 30, TimeUnit.SECONDS, Optional.of(LOGGER));
-
-    // Do another push
-    versionCreationResponseForMetaSystemStore =
-        controllerClient.emptyPush(metaSystemStoreName, "test_meta_system_store_push_2", 10000);
-    assertFalse(versionCreationResponseForMetaSystemStore.isError(),
-        "New version creation for meta system store: " + metaSystemStoreName + " should success, but got error: "
-            + versionCreationResponseForMetaSystemStore.getError());
-    TestUtils.waitForNonDeterministicPushCompletion(versionCreationResponseForMetaSystemStore.getKafkaTopic(),
-        controllerClient, 30, TimeUnit.SECONDS, Optional.of(LOGGER));
-
     // Query meta system store
     AvroSpecificStoreClient<StoreMetaKey, StoreMetaValue> storeClient = ClientFactory.getAndStartSpecificAvroClient(
         ClientConfig.defaultSpecificClientConfig(metaSystemStoreName, StoreMetaValue.class)

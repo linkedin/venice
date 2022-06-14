@@ -10,6 +10,7 @@ import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
+import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
@@ -128,6 +129,7 @@ public class ActiveActiveReplicationForHybridTest {
     controllerProps.put(NATIVE_REPLICATION_FABRIC_ALLOWLIST, DEFAULT_PARENT_DATA_CENTER_REGION_NAME + ",dc-0");
     int parentKafkaPort = Utils.getFreePort();
     controllerProps.put(CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + DEFAULT_PARENT_DATA_CENTER_REGION_NAME, "localhost:" + parentKafkaPort);
+
     multiColoMultiClusterWrapper =
         ServiceFactory.getVeniceTwoLayerMultiColoMultiClusterWrapper(
             NUMBER_OF_CHILD_DATACENTERS,
@@ -244,7 +246,7 @@ public class ActiveActiveReplicationForHybridTest {
     }
   }
 
-  @Test
+  @Test(timeOut = TEST_TIMEOUT)
   public void testEnableNRisRequiredBeforeEnablingAA() {
     String clusterName = CLUSTER_NAMES[0];
     String storeName = Utils.getUniqueString("test-store");
@@ -622,7 +624,7 @@ public class ActiveActiveReplicationForHybridTest {
     }
   }
 
-  @Test(timeOut = TEST_TIMEOUT)
+  @Test(timeOut = TEST_TIMEOUT * 2)
   public void testAAInOneDCWithHybridAggregateMode() throws Exception {
     String clusterName = CLUSTER_NAMES[0];
     String storeName = Utils.getUniqueString("hybridAA-test-store");
@@ -637,6 +639,8 @@ public class ActiveActiveReplicationForHybridTest {
         ControllerClient dc2Client = new ControllerClient(clusterName, childDatacenters.get(2).getControllerConnectString())) {
       List<ControllerClient> dcControllerClientList = Arrays.asList(dc0Client, dc1Client, dc2Client);
       TestUtils.createAndVerifyStoreInAllRegions(storeName, parentControllerClient, dcControllerClientList);
+      TestUtils.verifySystemStoreInAllRegions(storeName, VeniceSystemStoreType.META_STORE, parentControllerClient, dcControllerClientList);
+      TestUtils.verifySystemStoreInAllRegions(storeName, VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE, parentControllerClient, dcControllerClientList);
       TestUtils.assertCommand(parentControllerClient.updateStore(storeName, new UpdateStoreQueryParams()
           .setLeaderFollowerModel(true)
           .setHybridRewindSeconds(10)

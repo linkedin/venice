@@ -9,21 +9,20 @@ import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
-import java.io.IOException;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
-public class AdminChannelWithSSL {
-  private final String clusterName = "test-cluster";
+public class AdminChannelWithSSLTest {
 
   /**
    * End-to-end test with SSL enabled
    */
-  @Test(timeOut = 60 * Time.MS_PER_SECOND)
-  public void testEnd2EndWithKafkaSSLEnabled() throws IOException {
+  @Test(timeOut = 180 * Time.MS_PER_SECOND)
+  public void testEnd2EndWithKafkaSSLEnabled() {
+    String clusterName = "test-cluster";
     try (ZkServerWrapper zkServer = ServiceFactory.getZkServer();
         KafkaBrokerWrapper kafkaBrokerWrapper = ServiceFactory.getKafkaBroker(zkServer);
         VeniceControllerWrapper childControllerWrapper =
