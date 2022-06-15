@@ -401,6 +401,7 @@ public class VenicePushJob implements AutoCloseable {
     BufferReplayPolicy validateRemoteReplayPolicy;
     boolean suppressEndOfPushMessage;
     boolean deferVersionSwap;
+    boolean extendedSchemaValidityCheckEnabled;
   }
   protected PushJobSetting pushJobSetting;
 
@@ -680,6 +681,8 @@ public class VenicePushJob implements AutoCloseable {
     if (!pushJobSettingToReturn.enablePush && !pushJobSettingToReturn.enablePBNJ) {
       throw new VeniceException("At least one of the following config properties must be true: " + ENABLE_PUSH + " or " + PBNJ_ENABLE);
     }
+
+    pushJobSettingToReturn.extendedSchemaValidityCheckEnabled = props.getBoolean(EXTENDED_SCHEMA_VALIDITY_CHECK_ENABLED, DEFAULT_EXTENDED_SCHEMA_VALIDITY_CHECK_ENABLED);
     return pushJobSettingToReturn;
   }
 
@@ -1091,13 +1094,12 @@ public class VenicePushJob implements AutoCloseable {
   }
 
   private void validateFileSchema(String fileSchemaString) {
-    final boolean extendedSchemaValidityCheckEnabled = props.getBoolean(EXTENDED_SCHEMA_VALIDITY_CHECK_ENABLED, DEFAULT_EXTENDED_SCHEMA_VALIDITY_CHECK_ENABLED);
     boolean parseSchemaFailed = false;
 
     try {
       AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(fileSchemaString);
     } catch (Exception e) {
-      if (extendedSchemaValidityCheckEnabled) {
+      if (pushJobSetting.extendedSchemaValidityCheckEnabled) {
         updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.EXTENDED_FILE_SCHEMA_VALIDATION_FAILED);
         throw new VeniceException(e);
       }
@@ -2219,6 +2221,7 @@ public class VenicePushJob implements AutoCloseable {
 
     conf.set(ZSTD_COMPRESSION_LEVEL, props.getString(ZSTD_COMPRESSION_LEVEL, String.valueOf(Zstd.maxCompressionLevel())));
     conf.set(ETL_VALUE_SCHEMA_TRANSFORMATION, pushJobSetting.etlValueSchemaTransformation.name());
+    conf.setBoolean(EXTENDED_SCHEMA_VALIDITY_CHECK_ENABLED, pushJobSetting.extendedSchemaValidityCheckEnabled);
   }
 
   protected void setupInputFormatConf(JobConf jobConf, SchemaInfo schemaInfo, String inputDirectory) {

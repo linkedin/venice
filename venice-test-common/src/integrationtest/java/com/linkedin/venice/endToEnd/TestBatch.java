@@ -181,6 +181,38 @@ public abstract class TestBatch {
     );
   }
 
+  @Test(timeOut = TEST_TIMEOUT, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testDataPushWithSchemaWithAWrongDefault(boolean extendedSchemaValidationCheckEnabled) throws Exception {
+    final int recordCnt = 100;
+    Exception pushJobException = null;
+    try {
+      testBatchStore(inputDir -> {
+        Schema recordSchema = writeSimpleAvroFileWithASchemaWithAWrongDefaultValue(inputDir, recordCnt);
+        return new Pair<>(recordSchema.getField("key").schema(), recordSchema.getField("value").schema());
+      }, properties -> {
+        properties.setProperty(KEY_FIELD_PROP, "key");
+        properties.setProperty(VALUE_FIELD_PROP, "value");
+        properties.setProperty(EXTENDED_SCHEMA_VALIDITY_CHECK_ENABLED, Boolean.toString(extendedSchemaValidationCheckEnabled));
+      }, (avroClient, vsonClient, metricsRepository) -> {
+        for (int i = 0; i < recordCnt; i++) {
+          Object valueObject = avroClient.get(Integer.toString(i)).get();
+          Assert.assertTrue(valueObject instanceof GenericRecord,
+              "The returned value must be a ''GenericRecord' for key: " + i);
+          GenericRecord value = (GenericRecord) valueObject;
+          Assert.assertEquals(value.get("id").toString(), Integer.toString(i));
+          Assert.assertEquals(Float.valueOf(value.get("score").toString()), 100.0f);
+        }
+      });
+    } catch (Exception e) {
+      pushJobException = e;
+    }
+    if (extendedSchemaValidationCheckEnabled) {
+      Assert.assertTrue(pushJobException != null && pushJobException.getMessage().contains("Invalid default"));
+    } else {
+      Assert.assertNull(pushJobException);
+    }
+  }
+
   @Test(timeOut = TEST_TIMEOUT)
   public void testCompressingRecord() throws Exception {
     H2VValidator validator = (avroClient, vsonClient, metricsRepository) -> {
