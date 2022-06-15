@@ -8,6 +8,7 @@ import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.systemstore.schemas.StoreVersion;
 import java.time.Duration;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Optional;
 
 import static java.lang.Character.*;
@@ -361,5 +362,14 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
       return false;
     }
     return pushId.startsWith(VENICE_RE_PUSH_PUSH_ID_PREFIX);
+  }
+
+  static boolean containsHybridVersion(List<Version> versions) {
+    for (Version version : versions) {
+      if (version.getHybridStoreConfig() != null) {
+        return true;
+      }
+    }
+    return false;
   }
 }

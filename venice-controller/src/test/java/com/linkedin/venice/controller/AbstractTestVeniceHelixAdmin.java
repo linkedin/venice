@@ -190,6 +190,7 @@ class AbstractTestVeniceHelixAdmin {
     properties.put(PARTICIPANT_MESSAGE_STORE_ENABLED, true);
     properties.put(TOPIC_CLEANUP_SEND_CONCURRENT_DELETES_REQUESTS, true);
     properties.put(CONTROLLER_SYSTEM_SCHEMA_CLUSTER_NAME, clusterName);
+    properties.put(CHILD_CLUSTER_ALLOWLIST, "dc-0");
     return properties;
   }
 

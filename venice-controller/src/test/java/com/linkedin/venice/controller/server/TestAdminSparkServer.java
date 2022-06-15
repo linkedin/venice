@@ -4,6 +4,7 @@ import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.LastSucceedExecutionIdResponse;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controller.Admin;
+import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controllerapi.AdminCommandExecution;
 import com.linkedin.venice.controllerapi.ControllerApiConstants;
 import com.linkedin.venice.controllerapi.ControllerClient;
@@ -872,6 +873,29 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
   public void controllerClientReturns404ForNonexistentStoreQuery() {
     StoreResponse storeResponse = controllerClient.getStore("nonexistent");
     Assert.assertTrue(storeResponse.getError().contains("Http Status 404"));
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testDeleteKafkaTopic() {
+    ControllerResponse response = controllerClient.deleteKafkaTopic("InvalidTopic");
+    Assert.assertTrue(response.isError());
+    Assert.assertTrue(response.getError().contains("invalid"));
+
+    String clusterName = cluster.getClusterName();
+    String storeName = Utils.getUniqueString("controllerClientCanDeleteKafkaTopic");
+    VeniceHelixAdmin childControllerAdmin = cluster.getRandmonVeniceController().getVeniceHelixAdmin();
+    childControllerAdmin.createStore(
+        clusterName, storeName, "test", "\"string\"", "\"string\"");
+    childControllerAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams()
+        .setHybridRewindSeconds(1000).setHybridOffsetLagThreshold(1));
+    childControllerAdmin.incrementVersionIdempotent(clusterName, storeName, "test", 1, 1);
+    String topicToDelete = Version.composeKafkaTopic(storeName, 1);
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS,() -> {
+      Assert.assertTrue(childControllerAdmin.getTopicManager().containsTopic(topicToDelete));
+      Assert.assertFalse(childControllerAdmin.isTopicTruncated(topicToDelete));
+    });
+    controllerClient.deleteKafkaTopic(topicToDelete);
+    Assert.assertTrue(childControllerAdmin.isTopicTruncated(topicToDelete));
   }
 
   private void deleteStore(String storeName) {

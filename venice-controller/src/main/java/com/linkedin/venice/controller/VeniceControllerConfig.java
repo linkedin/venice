@@ -182,14 +182,18 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     this.activeActiveRealTimeSourceFabrics = Utils.parseCommaSeparatedStringToSet(
             props.getString(ACTIVE_ACTIVE_REAL_TIME_SOURCE_FABRIC_LIST, ""));
     validateActiveActiveConfigs();
-    if (this.parent) {
 
-      // go/inclusivecode deferred(Will be replaced when clients have migrated)
-      String dataCenterAllowlist = props.getStringWithAlternative(CHILD_CLUSTER_ALLOWLIST, CHILD_CLUSTER_WHITELIST);
+    // go/inclusivecode deferred(Will be replaced when clients have migrated)
+    String dataCenterAllowlist = props.getStringWithAlternative(CHILD_CLUSTER_ALLOWLIST, CHILD_CLUSTER_WHITELIST);
+    if (dataCenterAllowlist.isEmpty()) {
+      this.childDataCenterControllerUrlMap = Collections.emptyMap();
+      this.childDataCenterControllerD2Map = Collections.emptyMap();
+    } else {
       this.childDataCenterControllerUrlMap = parseClusterMap(props, dataCenterAllowlist);
       this.childDataCenterControllerD2Map = parseClusterMap(props, dataCenterAllowlist, true);
-      this.d2ServiceName = childDataCenterControllerD2Map.isEmpty() ? null : props.getString(CHILD_CLUSTER_D2_SERVICE_NAME);
-
+    }
+    this.d2ServiceName = childDataCenterControllerD2Map.isEmpty() ? null : props.getString(CHILD_CLUSTER_D2_SERVICE_NAME);
+    if (this.parent) {
       if (childDataCenterControllerUrlMap.isEmpty() && childDataCenterControllerD2Map.isEmpty()) {
         throw new VeniceException("child controller list can not be empty");
       }
@@ -201,9 +205,6 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
       this.childDataCenterKafkaUrlMap = parseChildDataCenterKafkaUrl(props, nativeReplicationSourceFabricAllowlist);
       this.childDataCenterKafkaZkMap = parseChildDataCenterKafkaZk(props, nativeReplicationSourceFabricAllowlist);
     } else {
-      this.childDataCenterControllerUrlMap = Collections.emptyMap();
-      this.childDataCenterControllerD2Map = Collections.emptyMap();
-      this.d2ServiceName = null;
       this.parentFabrics = Collections.emptySet();
 
       String nativeReplicationSourceFabricAllowlist = props.getStringWithAlternative(NATIVE_REPLICATION_FABRIC_ALLOWLIST,

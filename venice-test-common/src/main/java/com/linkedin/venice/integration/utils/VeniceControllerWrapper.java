@@ -161,39 +161,50 @@ public class VeniceControllerWrapper extends ProcessWrapper {
           builder.put(ENABLE_TOPIC_REPLICATOR, true);
         }
 
-        if (isParent) {
-          // Parent controller needs config to route per-cluster requests such as job status
-          // This dummy parent controller wont support such requests until we make this config configurable.
-          String clusterAllowList = "";
+        String fabricAllowList = "";
+        // go/inclusivecode deferred(Reference will be removed when clients have migrated)
+        if (extraProps.containsKey(CHILD_CLUSTER_WHITELIST) || extraProps.containsKey(CHILD_CLUSTER_ALLOWLIST)) {
           // go/inclusivecode deferred(Reference will be removed when clients have migrated)
-          if (extraProps.containsKey(CHILD_CLUSTER_WHITELIST) || extraProps.containsKey(CHILD_CLUSTER_ALLOWLIST)) {
-            // go/inclusivecode deferred(Reference will be removed when clients have migrated)
-            clusterAllowList = extraProps.getStringWithAlternative(CHILD_CLUSTER_ALLOWLIST, CHILD_CLUSTER_WHITELIST);
-          }
-          for (int dataCenterIndex = 0; dataCenterIndex < childControllers.length; dataCenterIndex++) {
-            String childDataCenterName = createDataCenterNameWithIndex(dataCenterIndex);
-            if (!clusterAllowList.equals("")) {
-              clusterAllowList += ",";
+          fabricAllowList = extraProps.getStringWithAlternative(CHILD_CLUSTER_ALLOWLIST, CHILD_CLUSTER_WHITELIST);
+        }
+
+        if (isParent && (childControllers == null || childControllers.length == 0)) {
+          throw new IllegalArgumentException("Child controller list cannot be null or empty for parent controller");
+        }
+        /**
+         * Check if the Venice setup is single or multi data center. It's valid for a single data center setup to not
+         * have fabric allow list and child data center controller map for child controllers.
+         */
+        if (childControllers != null) {
+          for (int dcIndex = 0; dcIndex < childControllers.length; dcIndex++) {
+            String dcName = createDataCenterNameWithIndex(dcIndex);
+            if (!fabricAllowList.equals("")) {
+              fabricAllowList += ",";
             }
-            clusterAllowList += childDataCenterName;
-            VeniceControllerWrapper childController = childControllers[dataCenterIndex];
+            fabricAllowList += dcName;
+            VeniceControllerWrapper childController = childControllers[dcIndex];
             if (null == childController) {
-              throw new IllegalArgumentException("child controller at index " + dataCenterIndex + " is null!");
+              throw new IllegalArgumentException("child controller at index " + dcIndex + " is null!");
             }
-            builder.put(CHILD_CLUSTER_URL_PREFIX + "." + childDataCenterName, childController.getControllerUrl());
-            builder.put(CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + childDataCenterName, childController.getKafkaBootstrapServers(sslToKafka));
-            builder.put(CHILD_DATA_CENTER_KAFKA_ZK_PREFIX + "." + childDataCenterName, childController.getKafkaZkAddress());
-            logger.info("ControllerConfig: " + CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + childDataCenterName
-                + " KafkaUrl: " +  childController.getKafkaBootstrapServers(sslToKafka) + " kafkaZk: " + childController.getKafkaZkAddress());
+            builder.put(CHILD_CLUSTER_URL_PREFIX + "." + dcName, childController.getControllerUrl());
+            if (isParent) {
+              builder.put(CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + dcName, childController.getKafkaBootstrapServers(sslToKafka));
+              builder.put(CHILD_DATA_CENTER_KAFKA_ZK_PREFIX + "." + dcName, childController.getKafkaZkAddress());
+              logger.info("ControllerConfig: " + CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + dcName
+                  + " KafkaUrl: " +  childController.getKafkaBootstrapServers(sslToKafka) + " kafkaZk: " + childController.getKafkaZkAddress());
+            }
           }
-          builder.put(CHILD_CLUSTER_ALLOWLIST, clusterAllowList);
+        }
+        builder.put(CHILD_CLUSTER_ALLOWLIST, fabricAllowList);
+
+        if (isParent) {
           /**
            * In native replication, source fabric can be child fabrics as well as parent fabric;
            * and in parent fabric, there can be more than one Kafka clusters, so we might need more
            * than one parent fabric name even though logically there is only one parent fabric.
            */
           String parentDataCenterName1 = DEFAULT_PARENT_DATA_CENTER_REGION_NAME;
-          String nativeReplicationSourceFabricAllowlist = clusterAllowList + "," + parentDataCenterName1;
+          String nativeReplicationSourceFabricAllowlist = fabricAllowList + "," + parentDataCenterName1;
           builder.put(NATIVE_REPLICATION_FABRIC_ALLOWLIST, nativeReplicationSourceFabricAllowlist);
           builder.put(CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + parentDataCenterName1, sslToKafka ? kafkaBroker.getSSLAddress() : kafkaBroker.getAddress());
           builder.put(CHILD_DATA_CENTER_KAFKA_ZK_PREFIX + "." + parentDataCenterName1, kafkaBroker.getZkAddress());

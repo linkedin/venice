@@ -1752,6 +1752,10 @@ public class VeniceParentHelixAdmin implements Admin {
           .map(addToUpdatedConfigList(updatedConfigsList, VERSION))
           .orElse(AdminConsumptionTask.IGNORED_CURRENT_VERSION);
 
+      setStore.incrementalPushEnabled = incrementalPushEnabled
+          .map(addToUpdatedConfigList(updatedConfigsList, INCREMENTAL_PUSH_ENABLED))
+          .orElseGet(currStore::isIncrementalPushEnabled);
+
       hybridRewindSeconds.map(addToUpdatedConfigList(updatedConfigsList, REWIND_TIME_IN_SECONDS));
       hybridOffsetLagThreshold.map(addToUpdatedConfigList(updatedConfigsList, OFFSET_LAG_TO_GO_ONLINE));
       hybridTimeLagThreshold.map(addToUpdatedConfigList(updatedConfigsList, TIME_LAG_TO_GO_ONLINE));
@@ -1760,6 +1764,15 @@ public class VeniceParentHelixAdmin implements Admin {
       HybridStoreConfig hybridStoreConfig = VeniceHelixAdmin.mergeNewSettingsIntoOldHybridStoreConfig(
           currStore, hybridRewindSeconds, hybridOffsetLagThreshold, hybridTimeLagThreshold, hybridDataReplicationPolicy,
           hybridBufferReplayPolicy);
+      // If store is already hybrid then check to make sure the end state is valid. We do this because we allow enabling
+      // incremental push without enabling hybrid already (we will automatically convert to hybrid store with default configs).
+      if (veniceHelixAdmin.isHybrid(currStore.getHybridStoreConfig()) && !veniceHelixAdmin.isHybrid(hybridStoreConfig)
+          && setStore.incrementalPushEnabled) {
+        throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST,
+            "Cannot convert store to batch-only, incremental push enabled stores require valid hybrid configs. "
+                +"Please disable incremental push if you'd like to convert the store to batch-only",
+            ExceptionType.BAD_REQUEST);
+      }
       if (null == hybridStoreConfig) {
         setStore.hybridStoreConfig = null;
       } else {
@@ -1803,9 +1816,6 @@ public class VeniceParentHelixAdmin implements Admin {
       setStore.numVersionsToPreserve = numVersionsToPreserve
           .map(addToUpdatedConfigList(updatedConfigsList, NUM_VERSIONS_TO_PRESERVE))
           .orElseGet(currStore::getNumVersionsToPreserve);
-      setStore.incrementalPushEnabled = incrementalPushEnabled
-          .map(addToUpdatedConfigList(updatedConfigsList, INCREMENTAL_PUSH_ENABLED))
-          .orElseGet(currStore::isIncrementalPushEnabled);
       setStore.isMigrating = storeMigration
           .map(addToUpdatedConfigList(updatedConfigsList, STORE_MIGRATION))
           .orElseGet(currStore::isMigrating);

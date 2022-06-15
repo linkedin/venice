@@ -133,7 +133,8 @@ public enum ControllerRoute {
   UPDATE_KAFKA_TOPIC_RETENTION("/update_kafka_topic_retention", HttpMethod.GET, Arrays.asList(TOPIC, KAFKA_TOPIC_RETENTION_IN_MS)),
   GET_ADMIN_TOPIC_METADATA("/get_admin_topic_metadata", HttpMethod.GET, Collections.singletonList(CLUSTER), NAME),
   UPDATE_ADMIN_TOPIC_METADATA("/update_admin_topic_metadata", HttpMethod.POST, Arrays.asList(CLUSTER, EXECUTION_ID),
-      NAME, OFFSET, UPSTREAM_OFFSET);
+      NAME, OFFSET, UPSTREAM_OFFSET),
+  DELETE_KAFKA_TOPIC("/delete_kafka_topic", HttpMethod.POST, Arrays.asList(CLUSTER, TOPIC));
 
   private final String path;
   private final HttpMethod httpMethod;

@@ -301,6 +301,8 @@ public class AdminSparkServer extends AbstractVeniceService {
     httpService.get(GET_ADMIN_TOPIC_METADATA.getPath(), adminTopicMetadataRoutes.getAdminTopicMetadata(admin));
     httpService.post(UPDATE_ADMIN_TOPIC_METADATA.getPath(), adminTopicMetadataRoutes.updateAdminTopicMetadata(admin));
 
+    httpService.post(DELETE_KAFKA_TOPIC.getPath(), storesRoutes.deleteKafkaTopic(admin));
+
     httpService.awaitInitialization(); // Wait for server to be initialized
     Exception e = initFailure.get();
     if (e != null) {

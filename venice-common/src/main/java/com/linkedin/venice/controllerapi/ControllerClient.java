@@ -1045,6 +1045,12 @@ public class ControllerClient implements Closeable {
     return request(ControllerRoute.UPDATE_ADMIN_TOPIC_METADATA, params, ControllerResponse.class);
   }
 
+  public ControllerResponse deleteKafkaTopic(String topicName) {
+    QueryParams params = newParams()
+        .add(TOPIC, topicName);
+    return request(ControllerRoute.DELETE_KAFKA_TOPIC, params, ControllerResponse.class);
+  }
+
   /***
    * Add all global parameters in this method. Always use a form of this method to generate
    * a new list of NameValuePair objects for making HTTP requests.

@@ -80,7 +80,8 @@ import static org.mockito.Mockito.*;
  *implements Closeable
  * If it's hard to set cluster back, please move the tests to {@link TestVeniceHelixAdminWithIsolatedEnvironment}
  */
-public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVeniceHelixAdmin {
+public class
+TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVeniceHelixAdmin {
 
   @BeforeClass(alwaysRun = true)
   public void setUp() throws Exception {
@@ -1706,5 +1707,32 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
       Assert.assertEquals(clusterConfig.getServerKafkaFetchQuotaRecordsPerSecondForRegion(region0), region0Quota);
       Assert.assertEquals(clusterConfig.getServerKafkaFetchQuotaRecordsPerSecondForRegion(region1), region1Quota);
     });
+  }
+
+  @Test
+  public void testHybridStoreToBatchOnly() {
+    String storeName = Utils.getUniqueString("test_hybrid_to_batch");
+    veniceAdmin.createStore(clusterName, storeName, storeOwner, "\"string\"", "\"string\"");
+    veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams()
+        .setHybridOffsetLagThreshold(1)
+        .setHybridRewindSeconds(1));
+    veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1);
+    TestUtils.waitForNonDeterministicCompletion(TOTAL_TIMEOUT_FOR_SHORT_TEST_MS, TimeUnit.MILLISECONDS,
+        () -> veniceAdmin.getCurrentVersion(clusterName, storeName) == 1);
+    String rtTopic = veniceAdmin.getRealTimeTopic(clusterName, storeName);
+    Assert.assertFalse(veniceAdmin.isTopicTruncated(rtTopic));
+    veniceAdmin.updateStore(clusterName, storeName,new UpdateStoreQueryParams()
+        .setHybridOffsetLagThreshold(-1)
+        .setHybridRewindSeconds(-1)
+        .setHybridTimeLagThreshold(-1));
+    Assert.assertFalse(veniceAdmin.isTopicTruncated(rtTopic));
+    // Perform two new pushes and the RT should be deleted upon the completion of the new pushes.
+    veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1);
+    TestUtils.waitForNonDeterministicCompletion(TOTAL_TIMEOUT_FOR_SHORT_TEST_MS, TimeUnit.MILLISECONDS,
+        () -> veniceAdmin.getCurrentVersion(clusterName, storeName) == 2);
+    veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1);
+    TestUtils.waitForNonDeterministicCompletion(TOTAL_TIMEOUT_FOR_SHORT_TEST_MS, TimeUnit.MILLISECONDS,
+        () -> veniceAdmin.getCurrentVersion(clusterName, storeName) == 3);
+    Assert.assertTrue(veniceAdmin.isTopicTruncated(rtTopic));
   }
 }
