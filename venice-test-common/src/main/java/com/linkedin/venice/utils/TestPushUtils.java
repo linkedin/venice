@@ -655,6 +655,28 @@ public class TestPushUtils {
         });
   }
 
+  public static Schema writeSimpleAvroFileWithASchemaWithAWrongDefaultValue(File parentDir, int numberOfRecords) throws IOException {
+    final String schemaWithWrongDefaultValue = "{\n" + "  \"namespace\": \"example.avro\",\n"
+        + "  \"type\": \"record\",\n" + "  \"name\": \"SimpleRecord\",\n" + "  \"fields\": [\n"
+        + "     {\"name\": \"key\", \"type\": \"string\"},\n" + "     {\"name\": \"value\", \"type\": {\n"
+        + "        \"name\": \"RecordWithWrongDefault\",\n" + "        \"type\": \"record\",\n"
+        + "        \"fields\": [\n" + "         {\"name\": \"id\", \"type\": \"string\"},\n"
+        + "         {\"name\": \"score\", \"type\": \"float\", \"default\": 0}\n" + "       ]}\n" + "     }\n"
+        + "   ]\n" + "}";
+    return writeAvroFile(parentDir, "record_with_wrong_default.avro", schemaWithWrongDefaultValue,
+        (recordSchema, avroFileWriter) -> {
+          for (int i = 0; i < numberOfRecords; i++) {
+            GenericRecord simpleRecord = new GenericData.Record(recordSchema);
+            simpleRecord.put("key", Integer.toString(i));
+            GenericRecord value = new GenericData.Record(recordSchema.getField("value").schema());
+            value.put("id", Integer.toString(i));
+            value.put("score", 100.0f);
+            simpleRecord.put("value", value);
+            avroFileWriter.append(simpleRecord);
+          }
+        });
+  }
+
 
   public static Schema writeAvroFileWithManyFloatsAndCustomTotalSize(File parentDir, int numberOfRecords, int minValueSize, int maxValueSize) throws IOException {
     return writeAvroFile(parentDir, "many_floats.avro", USER_SCHEMA_WITH_A_FLOAT_ARRAY_STRING,
