@@ -201,4 +201,9 @@ public class ControllerApiConstants {
   public static final String KAFKA_TOPIC_RETENTION_IN_MS = "kafka.topic.retention.in.ms";
 
   public static final String UPSTREAM_OFFSET = "upstream_offset";
+
+  public static final String PERSONA_OWNERS = "persona_owners";
+  public static final String PERSONA_STORES = "persona_stores";
+  public static final String PERSONA_QUOTA = "persona_quota";
+
 }

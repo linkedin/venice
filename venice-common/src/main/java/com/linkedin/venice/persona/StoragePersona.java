@@ -12,4 +12,8 @@ public class StoragePersona extends Persona {
     super(name, quotaNumber, storesToEnforce, owners);
   }
 
+  public StoragePersona(StoragePersona storagePersona) {
+    super(storagePersona);
+  }
+
 }
