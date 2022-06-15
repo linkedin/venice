@@ -32,7 +32,7 @@ public class ControllerApiConstants {
   public static final String DERIVED_SCHEMA = "derived_schema";
   public static final String SCHEMA_ID = "schema_id";
   public static final String DERIVED_SCHEMA_ID = "derived_schema_id";
-  public static final String TOPIC = "topic"; // TODO remove this, everyone should use store and version instead
+  public static final String TOPIC = "topic";
   public static final String OFFSET = "offset";
   public static final String OPERATION = "operation";
   public static final String READ_OPERATION = "read";

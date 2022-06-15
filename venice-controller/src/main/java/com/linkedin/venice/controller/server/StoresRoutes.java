@@ -873,4 +873,23 @@ public class StoresRoutes extends AbstractRoute {
       }
     };
   }
+
+  public Route deleteKafkaTopic(Admin admin) {
+    return new VeniceRouteHandler<ControllerResponse>(ControllerResponse.class) {
+      @Override
+      public void internalHandle(Request request, ControllerResponse veniceResponse) {
+        if (!checkIsAllowListUser(request, veniceResponse, () -> isAllowListUser(request))) {
+          return;
+        }
+        AdminSparkServer.validateParams(request, DELETE_KAFKA_TOPIC.getParams(), admin);
+        String cluster = request.queryParams(CLUSTER);
+        String topicName = request.queryParams(TOPIC);
+        if (!Version.isRealTimeTopic(topicName) && !Version.isVersionTopicOrStreamReprocessingTopic(topicName)) {
+          throw new VeniceException("Cannot delete invalid kafka topic: " + topicName);
+        }
+        admin.truncateKafkaTopic(topicName);
+        veniceResponse.setCluster(cluster);
+      }
+    };
+  }
 }

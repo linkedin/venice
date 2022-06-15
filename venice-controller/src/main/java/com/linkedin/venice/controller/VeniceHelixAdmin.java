@@ -1153,10 +1153,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
     Map<String, ControllerClient> getControllerClientMap(String clusterName) {
-        if (!isParent()) {
-            throw new VeniceUnsupportedOperationException("getControllerClientMap");
-        }
-
         return clusterControllerClientPerColoMap.computeIfAbsent(clusterName, cn -> {
             Map<String, ControllerClient> controllerClients = new HashMap<>();
             VeniceControllerConfig veniceControllerConfig = multiClusterConfigs.getControllerConfig(clusterName);
@@ -2302,7 +2298,40 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                     pushStatusStoreDeleter.get().deletePushStatus(storeName, deletedVersion.get().getNumber(), Optional.empty(), deletedVersion.get().getPartitionCount());
                 }
             }
+            if (!store.isHybrid() && getTopicManager().containsTopic(Version.composeRealTimeTopic(storeName))) {
+              store = resources.getStoreMetadataRepository().getStore(storeName);
+              safeDeleteRTTopic(clusterName, storeName, store);
+            }
         }
+    }
+
+    private void safeDeleteRTTopic(String clusterName, String storeName, Store store) {
+      // Perform RT cleanup checks for batch only store that used to be hybrid. Check the local versions first
+      // to see if any version is still using RT and then also check other fabrics before deleting the RT. Since
+      // we perform this check everytime when a store version is deleted we can afford to do best effort
+      // approach if some fabrics are unavailable or out of sync (temporarily).
+      boolean canDeleteRT = !Version.containsHybridVersion(store.getVersions());
+      Map<String, ControllerClient> controllerClientMap = getControllerClientMap(clusterName);
+      for (Map.Entry<String, ControllerClient> controllerClientEntry : controllerClientMap.entrySet()) {
+        if (!canDeleteRT) {
+          return;
+        }
+        StoreResponse storeResponse = controllerClientEntry.getValue().getStore(storeName);
+        if (storeResponse.isError()) {
+          logger.warn("Skipping RT cleanup check for store: " + storeName + " in cluster: " + clusterName
+              + " due to unable to get store from fabric: " + controllerClientEntry.getKey() + " Error: "
+              + storeResponse.getError());
+          return;
+        }
+        canDeleteRT = !Version.containsHybridVersion(storeResponse.getStore().getVersions());
+      }
+      if (canDeleteRT) {
+        String rtTopicToDelete = Version.composeRealTimeTopic(storeName);
+        truncateKafkaTopic(rtTopicToDelete);
+        for (ControllerClient controllerClient : controllerClientMap.values()) {
+          controllerClient.deleteKafkaTopic(rtTopicToDelete);
+        }
+      }
     }
 
     @Override
@@ -3294,10 +3323,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                     if (!isHybrid(finalHybridConfig)) {
                         /**
                          * If all of the hybrid config values are negative, it indicates that the store is being set back to batch-only store.
+                         * We cannot remove the RT topic immediately because with NR and AA, existing current version is
+                         * still consuming the RT topic.
                          */
                         store.setHybridStoreConfig(null);
                         String realTimeTopic = Version.composeRealTimeTopic(storeName);
-                        truncateKafkaTopic(realTimeTopic);
                         // Also remove the Brooklin replication streams
                         if (onlineOfflineTopicReplicator.isPresent()) {
                             store.getVersions().stream().forEach(version -> {
@@ -5874,7 +5904,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         return store;
     }
 
-    private boolean isHybrid(HybridStoreConfig hybridStoreConfig) {
+    public boolean isHybrid(HybridStoreConfig hybridStoreConfig) {
         /** A store is not hybrid in the following two scenarios:
          * If hybridStoreConfig is null, it means store is not hybrid.
          * If all of the hybrid config values are negative, it indicates that the store is being set back to batch-only store.
