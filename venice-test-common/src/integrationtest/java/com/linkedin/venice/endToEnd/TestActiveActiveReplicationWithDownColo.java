@@ -3,7 +3,6 @@ package com.linkedin.venice.endToEnd;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
-import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.integration.utils.MirrorMakerWrapper;
@@ -133,7 +132,7 @@ public class TestActiveActiveReplicationWithDownColo {
         parentControllers.stream().filter(c -> c.isLeaderController(clusterName)).findAny().get();
     try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentController.getControllerUrl())) {
       parentControllerClient.createNewStore(storeName, "owner", INT_SCHEMA, STRING_SCHEMA);
-      ActiveActiveReplicationForHybridTest.updateStore(storeName, parentControllerClient, Optional.of(true), Optional.of(true), Optional.of(false), CompressionStrategy.NO_OP);
+      ActiveActiveReplicationForHybridTest.updateStore(storeName, parentControllerClient, Optional.of(true), Optional.of(true), Optional.of(false));
 
       // Empty push to create a version
       parentControllerClient.emptyPush(storeName, Utils.getUniqueString("empty-hybrid-push"), 1L);

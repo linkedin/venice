@@ -83,16 +83,6 @@ public class DataProviderUtils {
     };
   }
 
-  @DataProvider(name = "Boolean-Compression")
-  public static Object[][] booleanCompression() {
-    return allPermutationGenerator(BOOLEAN, COMPRESSION_STRATEGIES);
-  }
-
-  @DataProvider(name = "Boolean-Boolean-Compression")
-  public static Object[][] booleanBooleanCompression() {
-    return allPermutationGenerator(BOOLEAN, BOOLEAN, COMPRESSION_STRATEGIES);
-  }
-
   /**
    * Generate permutations to be fed to a DataProvider.
    * For two boolean's we'd pass in allPermutationGenerator(BOOLEAN, BOOLEAN)
