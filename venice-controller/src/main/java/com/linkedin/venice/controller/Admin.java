@@ -154,7 +154,7 @@ public interface Admin extends AutoCloseable, Closeable {
     default Version incrementVersionIdempotent(String clusterName, String storeName, String pushJobId,
         int numberOfPartitions, int replicationFactor) {
         return incrementVersionIdempotent(clusterName, storeName, pushJobId, numberOfPartitions, replicationFactor,
-            Version.PushType.BATCH, true, false, null, Optional.empty(), Optional.empty(), -1, Optional.empty(), false);
+            Version.PushType.BATCH, false, false, null, Optional.empty(), Optional.empty(), -1, Optional.empty(), false);
     }
 
     Version incrementVersionIdempotent(String clusterName, String storeName, String pushJobId, int numberOfPartitions,

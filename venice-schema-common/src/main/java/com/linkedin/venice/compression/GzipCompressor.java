@@ -1,6 +1,5 @@
 package com.linkedin.venice.compression;
 
-import com.linkedin.venice.utils.ByteUtils;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -23,11 +22,6 @@ public class GzipCompressor extends VeniceCompressor {
     gos.write(data);
     gos.close();
     return bos.toByteArray();
-  }
-
-  @Override
-  public ByteBuffer compress(ByteBuffer data) throws IOException {
-    return ByteBuffer.wrap(compress(ByteUtils.extractByteArray(data)));
   }
 
   @Override
