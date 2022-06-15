@@ -1,5 +1,6 @@
 package com.linkedin.venice.persona;
 
+import java.util.HashSet;
 import java.util.Set;
 
 /**
@@ -18,6 +19,13 @@ public class Persona {
     this.quotaNumber = quotaNumber;
     this.storesToEnforce = storesToEnforce;
     this.owners = owners;
+  }
+
+  public Persona(Persona persona) {
+    this.name = persona.getName();
+    this.quotaNumber = persona.getQuotaNumber();
+    this.storesToEnforce = new HashSet<>(persona.getStoresToEnforce());
+    this.owners = new HashSet<>(persona.getOwners());
   }
 
   public String getName() {

@@ -4,7 +4,9 @@ import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.ZkClientFactory;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.testng.Assert;
@@ -70,7 +72,7 @@ public class StoragePersonaAccessorTest {
   @Test
   public void testUpdatePersona() {
     accessor.createPersona(name, quotaNumber, storesToEnforce, owners);
-    Persona persona = accessor.getPersonaFromZk(name);
+    StoragePersona persona = accessor.getPersonaFromZk(name);
     name = "newName";
     quotaNumber = 25;
     storesToEnforce.add("newStore");
@@ -90,9 +92,45 @@ public class StoragePersonaAccessorTest {
   @Test
   public void testDeletePersona() {
     accessor.createPersona(name, quotaNumber, storesToEnforce, owners);
-    Persona persona = accessor.getPersonaFromZk(name);
+    StoragePersona persona = accessor.getPersonaFromZk(name);
     accessor.deletePersona(persona);
     Assert.assertFalse(accessor.containsPersona(name));
+  }
+
+  @Test
+  public void testGetAllPersonasFromZk() {
+    int numPersonas = 20;
+    List<StoragePersona> expected = new ArrayList<>();
+    Assert.assertEquals(accessor.getAllPersonasFromZk(), expected);
+
+    /** Test creation */
+    for (int i = 0; i < numPersonas; i++) {
+      Set<String> owners = new HashSet<String>();
+      Set<String> stores = new HashSet<String>();
+      for (int j = 0; j < numPersonas; j++) {
+        owners.add("testOwner" + i + ", " + j);
+        stores.add("testStore" + i + ", " + j);
+      }
+      StoragePersona persona = new StoragePersona("testUser" + i, i, owners, stores);
+      expected.add(persona);
+      accessor.createPersona(persona);
+    }
+    Assert.assertEqualsNoOrder(accessor.getAllPersonasFromZk().toArray(), expected.toArray());
+
+    /** Test updates */
+    for (StoragePersona p : expected) {
+      p.setQuotaNumber(1000);
+      accessor.updatePersona(p);
+    }
+    Assert.assertEqualsNoOrder(accessor.getAllPersonasFromZk().toArray(), expected.toArray());
+
+    /** Test deletion */
+    for (StoragePersona p : expected) {
+      accessor.deletePersona(p.getName());
+    }
+    expected.clear();
+    Assert.assertEquals(accessor.getAllPersonasFromZk(), expected);
+
   }
 
 }
