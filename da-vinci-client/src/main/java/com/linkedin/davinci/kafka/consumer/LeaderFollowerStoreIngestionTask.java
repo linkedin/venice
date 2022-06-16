@@ -1606,8 +1606,17 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       /**
        * partitionConsumptionState must be in a valid state and no error reported. This is made sure by calling
        * {@link shouldProcessRecord} before processing any record.
+       *
+       * ^ This is no longer true because with shared consumer the partitionConsumptionState could have been removed
+       * from unsubscribe action in the StoreIngestionTask thread. Today, when unsubscribing
+       * {@link StoreIngestionTask.waitForAllMessageToBeProcessedFromTopicPartition} only ensure the buffer queue is
+       * drained before unsubscribe. Records being processed by shared consumer may see invalid partitionConsumptionState.
        */
       PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(subPartition);
+      if (partitionConsumptionState == null) {
+        // The partition is likely unsubscribed, will skip these messages.
+        return DelegateConsumerRecordResult.SKIPPED_MESSAGE;
+      }
       produceToLocalKafka = shouldProduceToVersionTopic(partitionConsumptionState);
       //UPDATE message is only expected in LEADER which must be produced to kafka.
       MessageType msgType = MessageType.valueOf(kafkaValue);
