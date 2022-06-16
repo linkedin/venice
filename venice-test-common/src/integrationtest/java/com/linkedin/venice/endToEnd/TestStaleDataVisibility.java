@@ -1,6 +1,7 @@
 package com.linkedin.venice.endToEnd;
 
 import com.linkedin.venice.ConfigKeys;
+import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controllerapi.ClusterStaleDataAuditResponse;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.StoreHealthAuditResponse;
@@ -11,6 +12,8 @@ import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiColoMultiClusterWrapper;
 import com.linkedin.venice.meta.StoreInfo;
+import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -21,6 +24,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import org.apache.avro.Schema;
@@ -37,10 +41,9 @@ public class TestStaleDataVisibility {
   private static final Logger LOGGER = LogManager.getLogger(TestStaleDataVisibility.class);
   private static final int TEST_TIMEOUT = 360 * Time.MS_PER_SECOND;
   private static final int NUMBER_OF_CHILD_DATACENTERS = 2;
-  private static final int NUMBER_OF_CLUSTERS = 2;
+  private static final int NUMBER_OF_CLUSTERS = 1;
   private static final String[] CLUSTER_NAMES =
       IntStream.range(0, NUMBER_OF_CLUSTERS).mapToObj(i -> "venice-cluster" + i).toArray(String[]::new);
-      // ["venice-cluster0", "venice-cluster1", ...];
 
   private List<VeniceMultiClusterWrapper> childClusters;
   private List<List<VeniceControllerWrapper>> childControllers;
@@ -96,6 +99,13 @@ public class TestStaleDataVisibility {
     // create a store via parent controller url
     Properties props = defaultH2VProps(parentController.getControllerUrl(), inputDirPath, storeName);
     createStoreForJob(clusterName, recordSchema, props).close();
+    try (ControllerClient controllerClient = new ControllerClient(clusterName, parentController.getControllerUrl())) {
+      String pushStatusStoreVersionName = Version.composeKafkaTopic(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(storeName), 1);
+      String metaStoreVersionName = Version.composeKafkaTopic(VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName), 1);
+      TestUtils.waitForNonDeterministicPushCompletion(pushStatusStoreVersionName, controllerClient, 1, TimeUnit.MINUTES, Optional.empty());
+      TestUtils.waitForNonDeterministicPushCompletion(metaStoreVersionName, controllerClient, 1, TimeUnit.MINUTES, Optional.empty());
+    }
+
     try (VenicePushJob job = new VenicePushJob("Test push job", props)) {
       job.run();
     }
@@ -104,6 +114,7 @@ public class TestStaleDataVisibility {
 
       // the store should not be appearing in the stale data audit
       ClusterStaleDataAuditResponse emptyResponse = controllerClient.getClusterStaleStores(clusterName, parentController.getControllerUrl());
+      Assert.assertFalse(emptyResponse.isError());
       Assert.assertFalse(emptyResponse.getAuditMap().containsKey(storeName));
 
       // get single child controller, empty push to it
@@ -115,6 +126,7 @@ public class TestStaleDataVisibility {
 
       // store should now appear as stale
       ClusterStaleDataAuditResponse response = controllerClient.getClusterStaleStores(clusterName, parentController.getControllerUrl());
+      Assert.assertFalse(response.isError());
       Assert.assertEquals(response.getAuditMap().get(storeName).getStaleRegions().size(), 1);
       Assert.assertEquals(response.getAuditMap().get(storeName).getHealthyRegions().size(), 1);
 
