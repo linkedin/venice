@@ -352,8 +352,12 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
       this.ingestionTask = ingestionTask;
     }
 
+    private boolean hasActiveIngestionTask() {
+      return ingestionTask != null && ingestionTask.isRunning();
+    }
+
     public long getRtTopicOffsetLag() {
-      if (ingestionTask == null) {
+      if (!hasActiveIngestionTask()) {
         /**
          * Once a versioned stat is created on a host, it cannot be unregistered because a specific version doesn't
          * exist on the host; however, we can't guarantee every single store version will have a replica on the host.
@@ -373,7 +377,7 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
     }
 
     public long getNumberOfPartitionsNotReceiveSOBR() {
-      if (ingestionTask == null) {
+      if (!hasActiveIngestionTask()) {
         return INACTIVE_STORE_INGESTION_TASK.code;
       }
       return ingestionTask.getNumOfPartitionsNotReceiveSOBR();
@@ -386,7 +390,7 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
     // To prevent this metric being too noisy and align with the PreNotificationCheck of reportError, this metric should
     // only be set if the ingestion task errored after EOP is received for any of the partitions.
     public int getIngestionTaskErroredGauge() {
-      if (ingestionTask == null) {
+      if (!hasActiveIngestionTask()) {
         return 0;
       }
       boolean anyErrorReported = ingestionTask.hasAnyPartitionConsumptionState(
@@ -396,28 +400,28 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
     }
 
     public long getBatchReplicationLag() {
-      if (ingestionTask == null) {
+      if (!hasActiveIngestionTask()) {
         return 0;
       }
       return ingestionTask.getBatchReplicationLag();
     }
 
     public long getLeaderOffsetLag() {
-      if (ingestionTask == null) {
+      if (!hasActiveIngestionTask()) {
         return 0;
       }
       return ingestionTask.getLeaderOffsetLag();
     }
 
     public long getBatchLeaderOffsetLag() {
-      if (ingestionTask == null) {
+      if (!hasActiveIngestionTask()) {
         return 0;
       }
       return ingestionTask.getBatchLeaderOffsetLag();
     }
 
     public long getHybridLeaderOffsetLag() {
-      if (ingestionTask == null) {
+      if (!hasActiveIngestionTask()) {
         return 0;
       }
       return ingestionTask.getHybridLeaderOffsetLag();
@@ -431,35 +435,35 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
      * so the negative error code will not mess up the aggregation.
      */
     public long getFollowerOffsetLag() {
-      if (ingestionTask == null) {
+      if (!hasActiveIngestionTask()) {
         return 0;
       }
       return ingestionTask.getFollowerOffsetLag();
     }
 
     public long getBatchFollowerOffsetLag() {
-      if (ingestionTask == null) {
+      if (!hasActiveIngestionTask()) {
         return 0;
       }
       return ingestionTask.getBatchFollowerOffsetLag();
     }
 
     public long getHybridFollowerOffsetLag() {
-      if (ingestionTask == null) {
+      if (!hasActiveIngestionTask()) {
         return 0;
       }
       return ingestionTask.getHybridFollowerOffsetLag();
     }
 
     public long getRegionHybridOffsetLag(int regionId) {
-      if (ingestionTask == null) {
+      if (!hasActiveIngestionTask()) {
         return 0;
       }
       return ingestionTask.getRegionHybridOffsetLag(regionId);
     }
 
     public int getWriteComputeErrorCode() {
-      if (ingestionTask == null) {
+      if (!hasActiveIngestionTask()) {
         return INACTIVE_STORE_INGESTION_TASK.code;
       }
       return ingestionTask.getWriteComputeErrorCode();
@@ -469,7 +473,7 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
      * @return 1 if the leader offset lag is greater than 0 and not actively ingesting data, otherwise 0.
      */
     public double getLeaderStalledHybridIngestion() {
-      if (ingestionTask == null) {
+      if (!hasActiveIngestionTask()) {
         return 0;
       }
       if (getLeaderOffsetLag() > 0 && getLeaderBytesConsumed() == 0) {
@@ -480,7 +484,7 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
     }
 
     public double getReadyToServeWithRTLag() {
-      if (ingestionTask == null) {
+      if (!hasActiveIngestionTask()) {
         return 0;
       }
       if (ingestionTask.isReadyToServeAnnouncedWithRTLag()) {
