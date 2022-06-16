@@ -53,6 +53,7 @@ public class AggVersionedStorageIngestionStatsTest {
     doReturn(true).when(mockStoreIngestionTask).isHybridMode();
     doReturn(100L).when(mockStoreIngestionTask).getRealTimeBufferOffsetLag();
     doReturn(0L).when(mockStoreIngestionTask).getOffsetLagThreshold();
+    doReturn(true).when(mockStoreIngestionTask).isRunning();
     versionedIngestionStats.setIngestionTask(Version.composeKafkaTopic(storeName, 1), mockStoreIngestionTask);
     // Expected to see v1's records consumed on future reporter
     Assert.assertEquals(reporter.query("." + storeName + "_current--rt_topic_offset_lag.IngestionStatsGauge").value(),
