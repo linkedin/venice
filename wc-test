@@ -11,8 +11,11 @@ import subprocess
 
 CI_CONFIG = ".ciconfig"
 
-def get_config(name):
-  path = name if os.path.isfile(name) else os.path.expanduser(os.path.join('~', name))
+def get_config(path):
+  if not os.path.isfile(path):
+    path = os.path.expanduser(os.path.join('~', path))
+    if not os.path.isfile(path):
+      return {}
   with open(path) as file:
     config = json.load(file)
     return config
@@ -33,8 +36,12 @@ def get_queued_build(build_url, params):
     time.sleep(1)
 
 if __name__ == "__main__":
+  class HelpFormatter(argparse.ArgumentDefaultsHelpFormatter, argparse.RawDescriptionHelpFormatter):
+    pass
+
   parser = argparse.ArgumentParser(
-    formatter_class=argparse.RawTextHelpFormatter,
+    formatter_class=HelpFormatter,
+    argument_default=argparse.SUPPRESS,
     description=textwrap.dedent(
       """
       Test current working copy on Jenkins.
@@ -43,23 +50,25 @@ if __name__ == "__main__":
       https://jenkins.io/doc/book/system-administration/authenticating-scripted-clients
 
       Example ~/{config}:
-        {{
-          \"url\": \"https://venice-ci.stg.linkedin.com:8443\",
-          \"apiToken\": \"**********************************\"
-        }}
+      {{
+        \"url\": \"https://venice-ci.stg.linkedin.com:8443\",
+        \"apiToken\": \"**********************************\"
+      }}
       """.format(config=CI_CONFIG)))
 
-  params = get_config(CI_CONFIG)
-  parser.add_argument("-j", "--job", help="jenkins job to run", default=params.get("job", "Venice-WcTest"))
-  parser.add_argument("-b", "--baseline", help="baseline branch/tag to use for testing", default="origin/master")
+  parser.add_argument("-j", "--job", help="jenkins job to run")
+  parser.add_argument("-b", "--baseline", help="baseline branch/tag to use for testing")
   parser.add_argument("patch", nargs='?', help="diff-formatted patch to submit for testing")
-  args = parser.parse_args()
+
+  params = dict(job="Venice-WcTest", baseline="origin/master")
+  params.update(get_config(CI_CONFIG))
+  parser.set_defaults(**params)
+  params.update(vars(parser.parse_args()))
 
   if isinstance(params["url"], list):
     params["url"] = random.choice(params["url"])
-  params.update(vars(args))
 
-  if args.patch:
+  if "patch" in params:
     response = run_command(
       "curl --http1.1 -fv '{url}/job/{job}/buildWithParameters?baseline={baseline}' -u $(whoami):{apiToken} -F 'patch.diff=@{patch}'"
         .format(**params))
