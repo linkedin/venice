@@ -2,6 +2,7 @@ package com.linkedin.venice.controllerapi;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.linkedin.venice.exceptions.ErrorType;
 import com.linkedin.venice.exceptions.ExceptionType;
 import com.linkedin.venice.exceptions.VeniceException;
 
@@ -14,12 +15,11 @@ public class ControllerResponse { /* Uses Json Reflective Serializer, get withou
   private String cluster;
   private String name;
   private String error;
-  private ExceptionType exceptionType = null;
+  private ErrorType errorType = null;
 
   /**
    * Starting with Jackson 1.9, if this is the only annotation: {@link JsonIgnore}
-   * associated with a property, it will also cause cause the whole
-   * property to be ignored.
+   * associated with a property, it will also cause the whole property to be ignored.
    *
    * So we need to explicitly specify {@link JsonProperty} with {@link #getError} and {@link #setError(String)}
    *
@@ -42,8 +42,13 @@ public class ControllerResponse { /* Uses Json Reflective Serializer, get withou
     return name;
   }
 
+  public ErrorType getErrorType() {
+    return errorType;
+  }
+
+  @Deprecated
   public ExceptionType getExceptionType() {
-    return exceptionType;
+    return inferExceptionTypeFromErrorType();
   }
 
   public void setName(String name) {
@@ -62,29 +67,37 @@ public class ControllerResponse { /* Uses Json Reflective Serializer, get withou
 
   public void setError(String error, Throwable e) {
     if (e instanceof VeniceException) {
-      exceptionType = ((VeniceException) e).getExceptionType();
+      errorType = ((VeniceException) e).getErrorType();
     }
     this.error = error + "," + e.getMessage();
   }
 
   public void setError(Throwable e) {
     if (e instanceof VeniceException) {
-      exceptionType = ((VeniceException) e).getExceptionType();
+      errorType = ((VeniceException) e).getErrorType();
     }
     this.error = e.getMessage();
   }
 
+  @JsonProperty("exceptionType")
+  private ExceptionType inferExceptionTypeFromErrorType() {
+    return errorType == null ? null : errorType.getExceptionType();
+  }
+
   @JsonProperty
-  public void setExceptionType(ExceptionType exceptionType) {
-    this.exceptionType = exceptionType;
+  public void setErrorType(ErrorType errorType) {
+    this.errorType = errorType;
   }
 
   @JsonIgnore
   public String toString() {
-    return ControllerResponse.class.getSimpleName() + "(cluster: " + cluster +
-        ", name: " + name +
-        ", error: " + error +
-        ", exceptionType: " + exceptionType +
-        ")";
+    return new StringBuilder()
+        .append(ControllerResponse.class.getSimpleName())
+        .append("(cluster: ").append(cluster)
+        .append(", name: ").append(name)
+        .append(", error: ").append(error)
+        .append(", errorType: ").append(errorType)
+        .append(", exceptionType: ").append(inferExceptionTypeFromErrorType())
+        .append(")").toString();
   }
 }

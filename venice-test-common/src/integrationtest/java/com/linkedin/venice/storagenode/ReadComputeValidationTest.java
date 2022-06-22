@@ -13,7 +13,7 @@ import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
-import com.linkedin.venice.exceptions.ExceptionType;
+import com.linkedin.venice.exceptions.ErrorType;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
@@ -354,7 +354,7 @@ public class ReadComputeValidationTest {
         }
         Assert.assertNotNull(expectedException);
         Assert.assertTrue(expectedException instanceof VeniceClientException);
-        Assert.assertEquals(((VeniceClientException) expectedException).getExceptionType(), ExceptionType.GENERAL_ERROR);
+        Assert.assertEquals(((VeniceClientException) expectedException).getErrorType(), ErrorType.GENERAL_ERROR);
         Assert.assertEquals(expectedException.getMessage(), "COUNT field: member_feature isn't 'ARRAY' or 'MAP' type");
       });
     }

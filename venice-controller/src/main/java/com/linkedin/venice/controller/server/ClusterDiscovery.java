@@ -2,11 +2,8 @@ package com.linkedin.venice.controller.server;
 
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.controller.Admin;
-import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.Pair;
-import spark.Request;
 import spark.Route;
 
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
@@ -28,7 +25,7 @@ public class ClusterDiscovery {
         responseObject.setCluster(clusterToD2Pair.getFirst());
         responseObject.setD2Service(clusterToD2Pair.getSecond());
       } catch (Throwable e) {
-        responseObject.setError(e.getMessage());
+        responseObject.setError(e);
         AdminSparkServer.handleError(e, request, response);
       }
       response.type(HttpConstants.JSON);
