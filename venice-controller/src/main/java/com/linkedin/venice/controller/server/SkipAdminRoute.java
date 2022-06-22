@@ -4,6 +4,7 @@ import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controllerapi.ControllerResponse;
+import com.linkedin.venice.exceptions.ErrorType;
 import com.linkedin.venice.utils.Utils;
 import java.util.Optional;
 import org.apache.http.HttpStatus;
@@ -26,6 +27,7 @@ public class SkipAdminRoute extends AbstractRoute {
         if (!isAllowListUser(request)) {
           response.status(HttpStatus.SC_FORBIDDEN);
           responseObject.setError("Only admin users are allowed to run " + request.url());
+          responseObject.setErrorType(ErrorType.BAD_REQUEST);
           return AdminSparkServer.mapper.writeValueAsString(responseObject);
         }
         AdminSparkServer.validateParams(request, SKIP_ADMIN.getParams(), admin);
@@ -34,7 +36,7 @@ public class SkipAdminRoute extends AbstractRoute {
         boolean skipDIV = Utils.parseBooleanFromString(request.queryParams(SKIP_DIV), SKIP_DIV);
         admin.skipAdminMessage(responseObject.getCluster(), offset, skipDIV);
       } catch (Throwable e) {
-        responseObject.setError(e.getMessage());
+        responseObject.setError(e);
         AdminSparkServer.handleError(e, request, response);
       }
       return AdminSparkServer.mapper.writeValueAsString(responseObject);

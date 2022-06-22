@@ -12,6 +12,8 @@ import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
+import com.linkedin.venice.exceptions.ErrorType;
+import com.linkedin.venice.exceptions.ExceptionType;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.integration.utils.MirrorMakerWrapper;
@@ -258,6 +260,31 @@ public class TestMultiDataCenterPush {
     }
   }
 
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testControllerBlocksConcurrentBatchPush() {
+    String clusterName = CLUSTER_NAMES[0];
+    String storeName = Utils.getUniqueString("blocksConcurrentBatchPush");
+    String pushId1 = Utils.getUniqueString(storeName + "_push");
+    String pushId2 = Utils.getUniqueString(storeName + "_push");
+    String parentControllerUrl = parentControllers.get(0).getControllerUrl();
+
+    // Create store first
+    ControllerClient controllerClient = new ControllerClient(clusterName, parentControllerUrl);
+
+    controllerClient.createNewStore(storeName, "test", "\"string\"", "\"string\"");
+
+    VersionCreationResponse vcr1 =
+        controllerClient.requestTopicForWrites(storeName, 1L, Version.PushType.BATCH, pushId1, false, true, false,
+            Optional.empty(), Optional.empty(), Optional.empty(), false, -1);
+    Assert.assertFalse(vcr1.isError());
+
+    VersionCreationResponse vcr2 =
+        controllerClient.requestTopicForWrites(storeName, 1L, Version.PushType.BATCH, pushId2, false, true, false,
+            Optional.empty(), Optional.empty(), Optional.empty(), false, -1);
+    Assert.assertTrue(vcr2.isError());
+    Assert.assertEquals(vcr2.getErrorType(), ErrorType.CONCURRENT_BATCH_PUSH);
+    Assert.assertEquals(vcr2.getExceptionType(), ExceptionType.BAD_REQUEST);
+  }
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testMultiDataCenterIncrementalPush() throws Exception {

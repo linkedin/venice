@@ -2,7 +2,7 @@ package com.linkedin.venice.utils;
 
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.exceptions.ConfigurationException;
-import com.linkedin.venice.exceptions.ExceptionType;
+import com.linkedin.venice.exceptions.ErrorType;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.helix.Replica;
@@ -17,16 +17,6 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
-import java.time.Duration;
-import org.apache.avro.Schema;
-import org.apache.commons.io.FileUtils;
-import org.apache.commons.io.IOUtils;
-import org.apache.commons.lang.StringUtils;
-import org.apache.http.HttpStatus;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
 import java.io.Closeable;
 import java.io.File;
 import java.io.FileInputStream;
@@ -40,6 +30,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.text.DecimalFormat;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -56,7 +47,16 @@ import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
+import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
+import org.apache.avro.Schema;
+import org.apache.commons.io.FileUtils;
+import org.apache.commons.io.IOUtils;
+import org.apache.commons.lang.StringUtils;
 import org.apache.commons.lang.Validate;
+import org.apache.http.HttpStatus;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import static com.linkedin.venice.HttpConstants.*;
 
@@ -278,7 +278,7 @@ public class Utils {
     try {
       return Integer.parseInt(value);
     } catch (NumberFormatException e) {
-      throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, fieldName + " must be an integer, but value: " + value, e, ExceptionType.BAD_REQUEST);
+      throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, fieldName + " must be an integer, but value: " + value, e, ErrorType.BAD_REQUEST);
     }
   }
 
@@ -286,7 +286,7 @@ public class Utils {
     try {
       return Long.parseLong(value);
     } catch (NumberFormatException e) {
-      throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, fieldName + " must be a long, but value: " + value, e, ExceptionType.BAD_REQUEST);
+      throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, fieldName + " must be a long, but value: " + value, e, ErrorType.BAD_REQUEST);
     }
   }
 
@@ -298,7 +298,7 @@ public class Utils {
     if (value.equalsIgnoreCase("true") || value.equalsIgnoreCase("false")) {
       return Boolean.valueOf(value);
     } else {
-      throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, fieldName + " must be a boolean, but value: " + value, ExceptionType.BAD_REQUEST);
+      throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, fieldName + " must be a boolean, but value: " + value, ErrorType.BAD_REQUEST);
     }
   }
 
@@ -850,9 +850,9 @@ public class Utils {
         sparkRequestParams.values().stream().anyMatch(strings -> strings.length > 1);
 
     if (anyParamContainsMoreThanOneValue) {
-      String errMsg = "Array parameters are not supported. Provided request parameters: " + sparkRequestParams;
-      response.setError(errMsg);
-      throw new VeniceException(errMsg);
+      VeniceException e = new VeniceException("Array parameters are not supported. Provided request parameters: " + sparkRequestParams, ErrorType.BAD_REQUEST);
+      response.setError(e);
+      throw e;
     }
 
     Map<String, String> params = sparkRequestParams.entrySet().stream()

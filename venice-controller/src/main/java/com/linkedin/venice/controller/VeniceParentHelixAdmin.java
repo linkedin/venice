@@ -77,8 +77,9 @@ import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateClusterConfigQueryParams;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionResponse;
+import com.linkedin.venice.exceptions.ConcurrentBatchPushException;
 import com.linkedin.venice.exceptions.ConfigurationException;
-import com.linkedin.venice.exceptions.ExceptionType;
+import com.linkedin.venice.exceptions.ErrorType;
 import com.linkedin.venice.exceptions.PartitionerSchemaMismatchException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
@@ -1144,7 +1145,7 @@ public class VeniceParentHelixAdmin implements Admin {
             + "incremental push with push id: " + pushJobId + " with incremental push policy: " +
             INCREMENTAL_PUSH_SAME_AS_REAL_TIME + ". Letting the push continue for store " + storeName);
       } else {
-        VeniceException e = new VeniceException("Unable to start the push with pushJobId " + pushJobId + " for store " + storeName
+        VeniceException e = new ConcurrentBatchPushException("Unable to start the push with pushJobId " + pushJobId + " for store " + storeName
             + ". An ongoing push with pushJobId " + existingPushJobId + " and topic " + currentPushTopic.get()
             + " is found and it must be terminated before another push can be started.");
         e.setStackTrace(EMPTY_STACK_TRACE);
@@ -1654,12 +1655,12 @@ public class VeniceParentHelixAdmin implements Admin {
         if (partitionCount.isPresent() && partitionCount.get() != currStore.getPartitionCount()){
           String errorMessage = errorMessagePrefix + "Cannot change partition count for hybrid stores";
           logger.error(errorMessage);
-          throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, errorMessage, ExceptionType.BAD_REQUEST);
+          throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, errorMessage, ErrorType.BAD_REQUEST);
         }
         if (partitionerClass.isPresent() || partitionerParams.isPresent()) {
           String errorMessage = errorMessagePrefix + "Cannot change partitioner class and parameters for hybrid stores";
           logger.error(errorMessage);
-          throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, errorMessage, ExceptionType.BAD_REQUEST);
+          throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, errorMessage, ErrorType.BAD_REQUEST);
         }
       }
 
@@ -1670,13 +1671,13 @@ public class VeniceParentHelixAdmin implements Admin {
           String errorMessage = errorMessagePrefix + "Partition count: " + partitionCount + " should be less than max: "
               + maxPartitionNum;
           logger.error(errorMessage);
-          throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, errorMessage, ExceptionType.INVALID_CONFIG);
+          throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, errorMessage, ErrorType.INVALID_CONFIG);
         }
         if (setStore.partitionNum < 0) {
           String errorMessage = errorMessagePrefix + "Partition count: " + partitionCount + " should NOT be negative";
           logger.error(errorMessage);
           throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, "Partition count: "
-              + partitionCount + " should NOT be negative", ExceptionType.INVALID_CONFIG);
+              + partitionCount + " should NOT be negative", ErrorType.INVALID_CONFIG);
         }
         updatedConfigsList.add(PARTITION_COUNT);
       } else {
@@ -1724,12 +1725,12 @@ public class VeniceParentHelixAdmin implements Admin {
         } catch (PartitionerSchemaMismatchException e) {
           String errorMessage = errorMessagePrefix + e.getMessage();
           logger.error(errorMessage);
-          throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, errorMessage, ExceptionType.INVALID_SCHEMA);
+          throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, errorMessage, ErrorType.INVALID_SCHEMA);
         } catch (Exception e) {
           String errorMessage = errorMessagePrefix + "Partitioner Configs invalid, please verify that partitioner "
               + "configs like classpath and parameters are correct!";
           logger.error(errorMessage);
-          throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, errorMessage, ExceptionType.INVALID_CONFIG);
+          throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, errorMessage, ErrorType.INVALID_CONFIG);
         }
         setStore.partitionerConfig = partitionerConfigRecord;
       }
@@ -1771,7 +1772,7 @@ public class VeniceParentHelixAdmin implements Admin {
         throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST,
             "Cannot convert store to batch-only, incremental push enabled stores require valid hybrid configs. "
                 +"Please disable incremental push if you'd like to convert the store to batch-only",
-            ExceptionType.BAD_REQUEST);
+            ErrorType.BAD_REQUEST);
       }
       if (null == hybridStoreConfig) {
         setStore.hybridStoreConfig = null;
@@ -1964,7 +1965,7 @@ public class VeniceParentHelixAdmin implements Admin {
     final boolean isLfModelDependencyCheckDisabled =
         getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName).getConfig().isLfModelDependencyCheckDisabled();
     if(!isLeaderFollowerModelEnabled && !isLfModelDependencyCheckDisabled) {
-      throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, "Native Replication cannot be enabled for store " + store.getName() + " since it's not on L/F state model", ExceptionType.INVALID_CONFIG);
+      throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, "Native Replication cannot be enabled for store " + store.getName() + " since it's not on L/F state model", ErrorType.INVALID_CONFIG);
     }
   }
 
@@ -1983,7 +1984,7 @@ public class VeniceParentHelixAdmin implements Admin {
 
     if (!nativeReplicationEnabled) {
       throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, "Active/Active Replication cannot be enabled for store "
-          + store.getName() + " since Native Replication is not enabled on it.", ExceptionType.INVALID_CONFIG);
+          + store.getName() + " since Native Replication is not enabled on it.", ErrorType.INVALID_CONFIG);
     }
   }
 

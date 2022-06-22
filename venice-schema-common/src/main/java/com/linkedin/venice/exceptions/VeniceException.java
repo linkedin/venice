@@ -8,7 +8,7 @@ import org.apache.http.HttpStatus;
  */
 public class VeniceException extends RuntimeException {
   private static final long serialVersionUID = 1L;
-  protected ExceptionType exceptionType = ExceptionType.GENERAL_ERROR;
+  protected ErrorType errorType = ErrorType.GENERAL_ERROR;
 
   public VeniceException() {
     super();
@@ -16,6 +16,11 @@ public class VeniceException extends RuntimeException {
 
   public VeniceException(String s) {
     super(s);
+  }
+
+  public VeniceException(String s, ErrorType errorType) {
+    super(s);
+    this.errorType = errorType;
   }
 
   public VeniceException(Throwable t) {
@@ -26,9 +31,9 @@ public class VeniceException extends RuntimeException {
     super(s, t);
   }
 
-  public VeniceException(String s, Throwable t, ExceptionType exceptionType) {
+  public VeniceException(String s, Throwable t, ErrorType errorType) {
     super(s, t);
-    this.exceptionType = exceptionType;
+    this.errorType = errorType;
   }
 
   /**
@@ -41,10 +46,10 @@ public class VeniceException extends RuntimeException {
   }
 
   /**
-   * Returns the exceptionType.  Extenders of this class should fill in the exceptionType member
+   * Returns the errorType.  Extenders of this class should fill in the errorType member
    * @return
    */
-  public final ExceptionType getExceptionType() {
-    return exceptionType;
+  public final ErrorType getErrorType() {
+    return errorType;
   }
 }

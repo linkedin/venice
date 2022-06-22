@@ -6,6 +6,7 @@ import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.AdminTopicMetadataAccessor;
 import com.linkedin.venice.controllerapi.AdminTopicMetadataResponse;
 import com.linkedin.venice.controllerapi.ControllerResponse;
+import com.linkedin.venice.exceptions.ErrorType;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.Pair;
 import java.util.Map;
@@ -44,7 +45,7 @@ public class AdminTopicMetadataRoutes extends AbstractRoute {
           responseObject.setUpstreamOffset(offsets.getSecond());
         }
       } catch (Throwable e) {
-        responseObject.setError(e.getMessage());
+        responseObject.setError(e);
         AdminSparkServer.handleError(new VeniceException(e), request, response);
       }
       return AdminSparkServer.mapper.writeValueAsString(responseObject);
@@ -59,6 +60,7 @@ public class AdminTopicMetadataRoutes extends AbstractRoute {
         if (!isAllowListUser(request)) {
           response.status(HttpStatus.SC_FORBIDDEN);
           responseObject.setError("Only admin users are allowed to run " + request.url());
+          responseObject.setErrorType(ErrorType.BAD_REQUEST);
           return AdminSparkServer.mapper.writeValueAsString(responseObject);
         }
 
@@ -84,7 +86,7 @@ public class AdminTopicMetadataRoutes extends AbstractRoute {
 
         admin.updateAdminTopicMetadata(clusterName, executionId, storeName, offset, upstreamOffset);
       } catch (Throwable e) {
-        responseObject.setError(e.getMessage());
+        responseObject.setError(e);
         AdminSparkServer.handleError(new VeniceException(e), request, response);
       }
       return AdminSparkServer.mapper.writeValueAsString(responseObject);
