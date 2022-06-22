@@ -6,7 +6,7 @@ import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponseV2;
 import com.linkedin.venice.controllerapi.LeaderControllerResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
-import com.linkedin.venice.exceptions.ErrorType;
+import com.linkedin.venice.exceptions.ExceptionType;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoHelixResourceException;
 import com.linkedin.venice.helix.HelixHybridStoreQuotaRepository;
@@ -272,7 +272,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
     }
     responseObject.setError(errorMsg);
     if (status.equals(NOT_FOUND)) {
-      responseObject.setErrorType(ErrorType.STORE_NOT_FOUND);
+      responseObject.setExceptionType(ExceptionType.STORE_NOT_FOUND);
     }
     setupResponseAndFlush(status, mapper.writeValueAsBytes(responseObject), true, ctx);
   }

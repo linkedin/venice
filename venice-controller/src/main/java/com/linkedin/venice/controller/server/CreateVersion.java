@@ -6,7 +6,7 @@ import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.controllerapi.VersionResponse;
-import com.linkedin.venice.exceptions.ErrorType;
+import com.linkedin.venice.exceptions.ExceptionType;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
@@ -17,10 +17,13 @@ import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.Utils;
-import com.linkedin.venice.utils.lazy.Lazy;
+import com.linkedin.venice.writer.VeniceWriter;
 import java.security.cert.X509Certificate;
+import java.util.Arrays;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import org.apache.http.HttpStatus;
@@ -132,7 +135,7 @@ public class CreateVersion extends AbstractRoute {
         if (!store.isLeaderFollowerModelEnabled()
             && store.getPartitionerConfig() != null && store.getPartitionerConfig().getAmplificationFactor() != 1) {
           throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, "amplificationFactor can only be specified "
-              + "when leaderFollower enabled", ErrorType.BAD_REQUEST);
+              + "when leaderFollower enabled", ExceptionType.BAD_REQUEST);
         }
 
         String pushTypeString = request.queryParams(PUSH_TYPE);
@@ -140,7 +143,7 @@ public class CreateVersion extends AbstractRoute {
         try {
           pushType = PushType.valueOf(pushTypeString);
         } catch (RuntimeException e){
-          throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, pushTypeString + " is an invalid " + PUSH_TYPE, e, ErrorType.BAD_REQUEST);
+          throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, pushTypeString + " is an invalid " + PUSH_TYPE, e, ExceptionType.BAD_REQUEST);
         }
         validatePushType(pushType, store);
 
@@ -373,7 +376,7 @@ public class CreateVersion extends AbstractRoute {
             throw new VeniceException(pushTypeString + " is an unrecognized " + PUSH_TYPE);
         }
       } catch (Throwable e) {
-        responseObject.setError(e);
+        responseObject.setError(e.getMessage());
         AdminSparkServer.handleError(e, request, response);
       }
 
@@ -384,16 +387,16 @@ public class CreateVersion extends AbstractRoute {
   private void validatePushType(PushType pushType, Store store) {
     if (pushType.equals(PushType.STREAM) && !store.isHybrid()){
       throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, "requesting topic for streaming writes to store "
-          + store.getName() + " which is not configured to be a hybrid store", ErrorType.BAD_REQUEST);
+          + store.getName() + " which is not configured to be a hybrid store", ExceptionType.BAD_REQUEST);
     }
     if (pushType.equals(PushType.STREAM) && store.getHybridStoreConfig().getDataReplicationPolicy().equals(DataReplicationPolicy.NONE)) {
       throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, "requesting topic for streaming writes to store " +
           store.getName() + " which is configured to have a hybrid data replication policy " +
-          store.getHybridStoreConfig().getDataReplicationPolicy(), ErrorType.BAD_REQUEST);
+          store.getHybridStoreConfig().getDataReplicationPolicy(), ExceptionType.BAD_REQUEST);
     }
     if (pushType.isIncremental() && !store.isIncrementalPushEnabled()) {
       throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, "requesting topic for incremental push to store " +
-          store.getName() + " which does not have incremental push enabled.", ErrorType.BAD_REQUEST);
+          store.getName() + " which does not have incremental push enabled.", ExceptionType.BAD_REQUEST);
     }
   }
 
@@ -422,7 +425,7 @@ public class CreateVersion extends AbstractRoute {
           pushType = PushType.valueOf(request.queryParams(PUSH_TYPE));
         } catch (RuntimeException parseException) {
           throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, request.queryParams(PUSH_TYPE) + " is an invalid "
-              + PUSH_TYPE, parseException, ErrorType.BAD_REQUEST);
+              + PUSH_TYPE, parseException, ExceptionType.BAD_REQUEST);
         }
         String remoteKafkaBootstrapServers = null;
         if (request.queryParams().contains(REMOTE_KAFKA_BOOTSTRAP_SERVERS)) {
@@ -450,7 +453,7 @@ public class CreateVersion extends AbstractRoute {
         responseObject.setName(storeName);
         responseObject.setVersion(versionNumber);
       } catch (Throwable e) {
-        responseObject.setError(e);
+        responseObject.setError(e.getMessage());
         AdminSparkServer.handleError(e, request, response);
       }
       return AdminSparkServer.mapper.writeValueAsString(responseObject);
@@ -478,7 +481,7 @@ public class CreateVersion extends AbstractRoute {
         responseObject.setName(storeName);
         // TODO No-op, can be removed once the corresponding H2V plugin version is deployed.
       } catch (Throwable e) {
-        responseObject.setError(e);
+        responseObject.setError(e.getMessage());
         AdminSparkServer.handleError(e, request, response);
       }
       return AdminSparkServer.mapper.writeValueAsString(responseObject);
@@ -511,7 +514,7 @@ public class CreateVersion extends AbstractRoute {
         admin.writeEndOfPush(clusterName, storeName, versionNumber, false);
 
       } catch (Throwable e) {
-        responseObject.setError(e);
+        responseObject.setError(e.getMessage());
         AdminSparkServer.handleError(e, request, response);
       }
       return AdminSparkServer.mapper.writeValueAsString(responseObject);
@@ -529,7 +532,6 @@ public class CreateVersion extends AbstractRoute {
         if (!isAllowListUser(request)) {
           response.status(HttpStatus.SC_FORBIDDEN);
           responseObject.setError("Only admin users are allowed to run " + request.url());
-          responseObject.setErrorType(ErrorType.BAD_REQUEST);
           return AdminSparkServer.mapper.writeValueAsString(responseObject);
         }
         AdminSparkServer.validateParams(request, EMPTY_PUSH.getParams(), admin);
@@ -566,7 +568,7 @@ public class CreateVersion extends AbstractRoute {
           LOGGER.warn("Cleaning up failed Empty push of " + version.kafkaTopicName());
           admin.killOfflinePush(clusterName, version.kafkaTopicName(), true);
         }
-        responseObject.setError(e);
+        responseObject.setError(e.getMessage());
         AdminSparkServer.handleError(e, request, response);
       }
       return AdminSparkServer.mapper.writeValueAsString(responseObject);

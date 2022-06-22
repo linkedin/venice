@@ -3,7 +3,6 @@ package com.linkedin.venice.controller.server;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
-import com.linkedin.venice.exceptions.ErrorType;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.utils.ExceptionUtils;
 import java.util.function.BooleanSupplier;
@@ -30,12 +29,12 @@ public abstract class VeniceRouteHandler<T extends ControllerResponse> implement
 
   @Override
   public Object handle(Request request, Response response) throws Exception {
-    T veniceResponse = responseType.getDeclaredConstructor().newInstance();
+    T veniceResponse = responseType.newInstance();
     try {
       internalHandle(request, veniceResponse);
     } catch (Throwable e) {
        if (e.getMessage() != null) {
-        veniceResponse.setError(e);
+        veniceResponse.setError(e.getMessage());
       } else {
         veniceResponse.setError(ExceptionUtils.stackTraceToString(e));
       }
@@ -57,7 +56,6 @@ public abstract class VeniceRouteHandler<T extends ControllerResponse> implement
   protected boolean checkIsAllowListUser(Request request, ControllerResponse veniceResponse, BooleanSupplier isAllowListUser) {
     if (!isAllowListUser.getAsBoolean()) {
       veniceResponse.setError(ACL_CHECK_FAILURE_WARN_MESSAGE_PREFIX + request.url());
-      veniceResponse.setErrorType(ErrorType.BAD_REQUEST);
       return false;
     }
     return true;

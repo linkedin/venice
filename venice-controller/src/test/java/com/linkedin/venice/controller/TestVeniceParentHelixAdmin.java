@@ -25,7 +25,7 @@ import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.ConfigurationException;
-import com.linkedin.venice.exceptions.ErrorType;
+import com.linkedin.venice.exceptions.ExceptionType;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
@@ -1515,7 +1515,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
       Assert.assertTrue(e.getClass().isAssignableFrom(VeniceHttpException.class));
       VeniceHttpException veniceHttpException = (VeniceHttpException) e;
       Assert.assertEquals(veniceHttpException.getHttpStatusCode(), HttpStatus.SC_BAD_REQUEST);
-      Assert.assertEquals(veniceHttpException.getErrorType(), ErrorType.INVALID_SCHEMA);
+      Assert.assertEquals(veniceHttpException.getExceptionType(), ExceptionType.INVALID_SCHEMA);
     }
   }
 

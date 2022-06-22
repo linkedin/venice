@@ -1,11 +1,7 @@
 package com.linkedin.venice.controller.server;
 
 import com.linkedin.venice.controllerapi.ControllerResponse;
-import com.linkedin.venice.exceptions.ErrorType;
-import com.linkedin.venice.exceptions.ExceptionType;
-import com.linkedin.venice.utils.ObjectMapperFactory;
 import org.apache.commons.httpclient.HttpStatus;
-import org.testng.Assert;
 import org.testng.annotations.Test;
 import spark.Request;
 import spark.Response;
@@ -21,27 +17,28 @@ public class TestVeniceRouteHandler {
     Route userAllowedRoute = new VeniceRouteHandler<ControllerResponse>(ControllerResponse.class) {
       @Override
       public void internalHandle(Request request, ControllerResponse veniceResponse) {
-        checkIsAllowListUser(request, veniceResponse, () -> true);
+        if (!checkIsAllowListUser(request, veniceResponse, () -> true)) {
+          return;
+        }
       }
     };
 
     Route userNotAllowedRoute = new VeniceRouteHandler<ControllerResponse>(ControllerResponse.class) {
       @Override
       public void internalHandle(Request request, ControllerResponse veniceResponse) {
-        checkIsAllowListUser(request, veniceResponse, () -> false);
+        if (!checkIsAllowListUser(request, veniceResponse, () -> false)) {
+          return;
+        }
       }
     };
 
     Request request = mock(Request.class);
     Response response = mock(Response.class);
 
-    userAllowedRoute.handle(request, response).toString();
+    userAllowedRoute.handle(request, response);
     verify(response, never()).status(HttpStatus.SC_FORBIDDEN);
 
-    String veniceResponseStr = userNotAllowedRoute.handle(request, response).toString();
-    ControllerResponse veniceResponse = ObjectMapperFactory.getInstance().readValue(veniceResponseStr, ControllerResponse.class);
+    userNotAllowedRoute.handle(request, response);
     verify(response).status(HttpStatus.SC_FORBIDDEN);
-    Assert.assertEquals(veniceResponse.getErrorType(), ErrorType.BAD_REQUEST);
-    Assert.assertEquals(veniceResponse.getExceptionType(), ExceptionType.BAD_REQUEST);
   }
 }

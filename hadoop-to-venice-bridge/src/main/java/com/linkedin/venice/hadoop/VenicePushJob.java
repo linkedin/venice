@@ -13,7 +13,6 @@ import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.etl.ETLValueSchemaTransformation;
-import com.linkedin.venice.exceptions.ErrorType;
 import com.linkedin.venice.exceptions.TopicAuthorizationVeniceException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.heartbeat.DefaultPushJobHeartbeatSenderFactory;
@@ -467,8 +466,7 @@ public class VenicePushJob implements AutoCloseable {
     DUP_KEY_WITH_DIFF_VALUE(-3),
     FILE_SCHEMA_VALIDATION_FAILED(-4),
     EXTENDED_FILE_SCHEMA_VALIDATION_FAILED(-5),
-    RECORD_TOO_LARGE_FAILED(-6),
-    CONCURRENT_BATCH_PUSH(-7);
+    RECORD_TOO_LARGE_FAILED(-6);
 
     private final int value;
 
@@ -1096,24 +1094,24 @@ public class VenicePushJob implements AutoCloseable {
   }
 
   private void validateFileSchema(String fileSchemaString) {
+    boolean parseSchemaFailed = false;
+
     try {
       AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(fileSchemaString);
     } catch (Exception e) {
       if (pushJobSetting.extendedSchemaValidityCheckEnabled) {
-        logger.error("The schema of the input data failed strict Avro schema validation. Verify if the schema is a valid"
-            + " Avro schema.");
         updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.EXTENDED_FILE_SCHEMA_VALIDATION_FAILED);
         throw new VeniceException(e);
       }
+      parseSchemaFailed = true;
+    }
 
-      logger.info("The schema of the input data failed strict Avro schema validation. Trying loose schema validation.");
+    if (parseSchemaFailed) {
       try {
         AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation(fileSchemaString);
-      } catch (Exception looseValidationException) {
-        logger.error("The schema of the input data failed loose Avro schema validation. Verify if the schema is a valid"
-            + " Avro schema.");
+      } catch (Exception e) {
         updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.FILE_SCHEMA_VALIDATION_FAILED);
-        throw new VeniceException(looseValidationException);
+        throw new VeniceException(e);
       }
     }
   }
@@ -1776,10 +1774,6 @@ public class VenicePushJob implements AutoCloseable {
             setting.deferVersionSwap)
     );
     if (versionCreationResponse.isError()) {
-      if (ErrorType.CONCURRENT_BATCH_PUSH.equals(versionCreationResponse.getErrorType())) {
-        logger.error("Unable to run this job since another batch push is running. See the error message for details.");
-        updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.CONCURRENT_BATCH_PUSH);
-      }
       throw new VeniceException("Failed to create new store version with urls: " + setting.veniceControllerUrl
           + ", error: " + versionCreationResponse.getError());
     } else if (versionCreationResponse.getVersion() == 0) {

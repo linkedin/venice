@@ -349,7 +349,7 @@ public class StoresRoutes extends AbstractRoute {
           clusterDiscovered = admin.discoverCluster(storeName).getFirst();
           veniceResponse.setCluster(clusterDiscovered);
         } catch (Throwable e) {
-          veniceResponse.setError(e);
+          veniceResponse.setError(e.getMessage());
         }
       }
     };
