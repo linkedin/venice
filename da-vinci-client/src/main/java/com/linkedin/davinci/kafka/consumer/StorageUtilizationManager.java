@@ -119,7 +119,7 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
     this.resumePartition = resumePartition;
     setStoreQuota(store);
     Optional<Version> version = store.getVersion(storeVersion);
-    checkVersionIsOnline(version);
+    versionIsOnline = isVersionOnline(version) || versionIsOnline;
   }
 
   @Override
@@ -163,7 +163,7 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
     }
     int storeVersion = Version.parseVersionFromKafkaTopicName(versionTopic);
     Optional<Version> version = store.getVersion(storeVersion);
-    checkVersionIsOnline(version);
+    versionIsOnline = isVersionOnline(version) || versionIsOnline;
     if (this.storeQuotaInBytes != store.getStorageQuotaInByte() || !store.isHybridStoreDiskQuotaEnabled()) {
       logger.info("Store: " + this.storeName + " changed, updated quota from " + this.storeQuotaInBytes
           + " to " + store.getStorageQuotaInByte() + " and store quota is " + (store.isHybridStoreDiskQuotaEnabled() ? "": "not ")
@@ -315,13 +315,15 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
     });
   }
 
-  private void checkVersionIsOnline(Optional<Version> version) {
-    if (!version.isPresent()) {
-      int storeVersion = Version.parseVersionFromKafkaTopicName(versionTopic);
-      throw new VeniceException("Version: " + storeVersion + " doesn't exist in store: " + storeName);
-    } else if (version.get().getStatus().equals(VersionStatus.ONLINE)) {
-      versionIsOnline = true;
+  private boolean isVersionOnline(Optional<Version> version) {
+    if (version.isPresent() && version.get().getStatus().equals(VersionStatus.ONLINE)) {
+      return true;
     }
+    if (!version.isPresent()) {
+      logger.debug("Version: {}  doesn't exist in the store: {}", Version.parseVersionFromKafkaTopicName(versionTopic),
+          storeName);
+    }
+    return false;
   }
 
   /**
