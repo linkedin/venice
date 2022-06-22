@@ -11,6 +11,7 @@ import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.exceptions.VeniceNoClusterException;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.meta.Store;
@@ -232,23 +233,38 @@ public class VeniceClusterWrapper extends ProcessWrapper {
           if (!veniceClusterWrapper.getVeniceControllers().isEmpty()) {
             final VeniceClusterWrapper finalClusterWrapper = veniceClusterWrapper;
             TestUtils.waitForNonDeterministicAssertion(2, TimeUnit.MINUTES, true, () -> {
-              for (AvroProtocolDefinition avroProtocolDefinition : CLUSTER_LEADER_INITIALIZATION_ROUTINES) {
-                Store store = finalClusterWrapper.getLeaderVeniceController().getVeniceAdmin().getStore(clusterName,
-                    avroProtocolDefinition.getSystemStoreName());
-                Assert.assertNotNull(store, "Store: " + avroProtocolDefinition.getSystemStoreName()
-                    + " should be initialized by " + ClusterLeaderInitializationRoutine.class.getSimpleName());
-                if (hybridRequiredSystemStoresSet.contains(avroProtocolDefinition)) {
-                  // Check against the HelixReadOnlyZKSharedSystemStoreRepository instead of the
-                  // ReadWriteStoreRepository because of the way we implemented getStore for meta system stores in
-                  // HelixReadOnlyStoreRepositoryAdapter.
-                  Store readOnlyStore = finalClusterWrapper.getLeaderVeniceController().getVeniceAdmin()
-                      .getReadOnlyZKSharedSystemStoreRepository().getStore(avroProtocolDefinition.getSystemStoreName());
-                  Assert.assertNotNull(readOnlyStore, "Store: " + avroProtocolDefinition.getSystemStoreName()
-                      + "should be initialized by " + ClusterLeaderInitializationRoutine.class.getSimpleName());
-                  Assert.assertTrue(readOnlyStore.isHybrid(), "Store: " + avroProtocolDefinition.getSystemStoreName()
-                      + " should be configured to hybrid by " + ClusterLeaderInitializationRoutine.class.getSimpleName()
-                      +  ". Store is hybrid in write repo: " + store.isHybrid());
+              try {
+                for (AvroProtocolDefinition avroProtocolDefinition : CLUSTER_LEADER_INITIALIZATION_ROUTINES) {
+                  Store store = finalClusterWrapper.getLeaderVeniceController()
+                      .getVeniceAdmin()
+                      .getStore(clusterName, avroProtocolDefinition.getSystemStoreName());
+                  Assert.assertNotNull(store,
+                      "Store: " + avroProtocolDefinition.getSystemStoreName() + " should be initialized by "
+                          + ClusterLeaderInitializationRoutine.class.getSimpleName());
+                  if (hybridRequiredSystemStoresSet.contains(avroProtocolDefinition)) {
+                    // Check against the HelixReadOnlyZKSharedSystemStoreRepository instead of the
+                    // ReadWriteStoreRepository because of the way we implemented getStore for meta system stores in
+                    // HelixReadOnlyStoreRepositoryAdapter.
+                    Store readOnlyStore = finalClusterWrapper.getLeaderVeniceController()
+                        .getVeniceAdmin()
+                        .getReadOnlyZKSharedSystemStoreRepository()
+                        .getStore(avroProtocolDefinition.getSystemStoreName());
+                    Assert.assertNotNull(readOnlyStore,
+                        "Store: " + avroProtocolDefinition.getSystemStoreName() + "should be initialized by "
+                            + ClusterLeaderInitializationRoutine.class.getSimpleName());
+                    Assert.assertTrue(readOnlyStore.isHybrid(),
+                        "Store: " + avroProtocolDefinition.getSystemStoreName() + " should be configured to hybrid by "
+                            + ClusterLeaderInitializationRoutine.class.getSimpleName()
+                            + ". Store is hybrid in write repo: " + store.isHybrid());
+                  }
                 }
+              } catch (VeniceNoClusterException e) {
+                /**
+                 * This is possible if the async cluster resource initialization is not fully complete yet. i.e.
+                 * {@link com.linkedin.venice.controller.VeniceHelixAdmin}#getHelixVeniceClusterResources(clusterName)
+                 * will throw VeniceNoClusterException in VeniceHelixAdmin#throwClusterNotInitialized.
+                 */
+                Assert.fail("Cluster: " + clusterName + " is not initialized yet");
               }
             });
           }

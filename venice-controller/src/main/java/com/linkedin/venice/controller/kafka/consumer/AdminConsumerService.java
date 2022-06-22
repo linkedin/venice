@@ -89,10 +89,14 @@ public class AdminConsumerService extends AbstractVeniceService {
 
   @Override
   public void stopInner() throws Exception {
-    consumerTask.close();
-    consumerThread.join(WAITING_TIME_FOR_STOP_IN_MS);
-    if (consumerThread.isAlive()) {
-      consumerThread.interrupt();
+    if (consumerTask != null) {
+      consumerTask.close();
+    }
+    if (consumerThread != null) {
+      consumerThread.join(WAITING_TIME_FOR_STOP_IN_MS);
+      if (consumerThread.isAlive()) {
+        consumerThread.interrupt();
+      }
     }
   }
 

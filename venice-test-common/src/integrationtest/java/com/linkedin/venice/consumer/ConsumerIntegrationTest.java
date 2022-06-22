@@ -141,7 +141,7 @@ public class ConsumerIntegrationTest {
   public void testSetUp() {
     store = Utils.getUniqueString("consumer_integ_test");
     version = 1;
-    topicName = Version.composeKafkaTopic(store, version);
+    topicName = Version.composeRealTimeTopic(store);
     cluster.getNewStore(store);
     long streamingRewindSeconds = 25L;
     long streamingMessageLag = 2L;
