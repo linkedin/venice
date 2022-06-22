@@ -4,11 +4,11 @@ import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controllerapi.ChildAwareResponse;
-import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.LeaderControllerResponse;
-import com.linkedin.venice.exceptions.ErrorType;
+import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.utils.Utils;
+import java.util.Map;
 import java.util.Optional;
 import org.apache.http.HttpStatus;
 import spark.Request;
@@ -93,7 +93,6 @@ public class ControllerRoutes extends AbstractRoute {
       if (!isAllowListUser(request)) {
         response.status(HttpStatus.SC_FORBIDDEN);
         responseObject.setError("Only admin users are allowed to run " + request.url());
-        responseObject.setErrorType(ErrorType.BAD_REQUEST);
         return AdminSparkServer.mapper.writeValueAsString(responseObject);
       }
       try {

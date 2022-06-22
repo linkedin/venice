@@ -11,6 +11,6 @@ public class SchemaIncompatibilityException extends VeniceException {
   public SchemaIncompatibilityException(SchemaEntry sourceSchema, SchemaEntry targetSchema) {
     super("New schema is not fully compatible with the previous schema.\nOld schema: " + sourceSchema.toString(true) +
         "\nNew schema: " + targetSchema.toString(true));
-    super.errorType = ErrorType.INVALID_SCHEMA;
+    super.exceptionType = ExceptionType.INVALID_SCHEMA;
   }
 }

@@ -6,23 +6,23 @@ import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controllerapi.ControllerApiConstants;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
-import com.linkedin.venice.exceptions.ErrorType;
 import com.linkedin.venice.exceptions.InvalidVeniceSchemaException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
-import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.Utils;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
 import org.apache.http.HttpStatus;
 import spark.Route;
+
+import java.util.Collection;
 
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
 import static com.linkedin.venice.controllerapi.ControllerRoute.*;
@@ -51,7 +51,7 @@ public class SchemaRoutes extends AbstractRoute {
         responseObject.setId(keySchemaEntry.getId());
         responseObject.setSchemaStr(keySchemaEntry.getSchema().toString());
       } catch (Throwable e) {
-        responseObject.setError(e);
+        responseObject.setError(e.getMessage());
         AdminSparkServer.handleError(new VeniceException(e), request, response);
       }
       return AdminSparkServer.mapper.writeValueAsString(responseObject);
@@ -112,7 +112,6 @@ public class SchemaRoutes extends AbstractRoute {
         if (!isAllowListUser(request)) {
           response.status(HttpStatus.SC_FORBIDDEN);
           responseObject.setError("Only admin users are allowed to run " + request.url());
-          responseObject.setErrorType(ErrorType.BAD_REQUEST);
           return AdminSparkServer.mapper.writeValueAsString(responseObject);
         }
         AdminSparkServer.validateParams(request, ADD_DERIVED_SCHEMA.getParams(), admin);
@@ -144,7 +143,7 @@ public class SchemaRoutes extends AbstractRoute {
         responseObject.setDerivedSchemaId(derivedSchemaEntry.getId());
         responseObject.setSchemaStr(derivedSchemaEntry.getSchema().toString());
       } catch (Throwable e) {
-        responseObject.setError(e);
+        responseObject.setError(e.getMessage());
         AdminSparkServer.handleError(new VeniceException(e), request, response);
       }
       return AdminSparkServer.mapper.writeValueAsString(responseObject);
@@ -172,7 +171,7 @@ public class SchemaRoutes extends AbstractRoute {
         responseObject.setId(valueSchemaEntry.getId());
         responseObject.setSchemaStr(valueSchemaEntry.getSchema().toString());
       } catch (Throwable e) {
-        responseObject.setError(e);
+        responseObject.setError(e.getMessage());
         AdminSparkServer.handleError(new VeniceException(e), request, response);
       }
       return AdminSparkServer.mapper.writeValueAsString(responseObject);
@@ -204,7 +203,7 @@ public class SchemaRoutes extends AbstractRoute {
 
         responseObject.setId(valueSchemaId);
       } catch (Throwable e) {
-        responseObject.setError(e);
+        responseObject.setError(e.getMessage());
         AdminSparkServer.handleError(new VeniceException(e), request, response);
       }
       return AdminSparkServer.mapper.writeValueAsString(responseObject);
@@ -242,7 +241,7 @@ public class SchemaRoutes extends AbstractRoute {
 
 
       } catch (Throwable e) {
-        responseObject.setError(e);
+        responseObject.setError(e.getMessage());
         AdminSparkServer.handleError(new VeniceException(e), request, response);
       }
       return AdminSparkServer.mapper.writeValueAsString(responseObject);
@@ -279,7 +278,7 @@ public class SchemaRoutes extends AbstractRoute {
         responseObject.setSuperSetSchemaId(store.getLatestSuperSetValueSchemaId());
         responseObject.setSchemas(schemas);
       } catch (Throwable e) {
-        responseObject.setError(e);
+        responseObject.setError(e.getMessage());
         AdminSparkServer.handleError(new VeniceException(e), request, response);
       }
       return AdminSparkServer.mapper.writeValueAsString(responseObject);
@@ -320,7 +319,7 @@ public class SchemaRoutes extends AbstractRoute {
 
         responseObject.setSchemas(schemaArray);
       } catch (Throwable e) {
-        responseObject.setError(e);
+        responseObject.setError(e.getMessage());
         AdminSparkServer.handleError(new VeniceException(e), request, response);
       }
       return AdminSparkServer.mapper.writeValueAsString(responseObject);
@@ -336,7 +335,6 @@ public class SchemaRoutes extends AbstractRoute {
         if (!isAllowListUser(request)) {
           response.status(HttpStatus.SC_FORBIDDEN);
           responseObject.setError("Only admin users are allowed to run " + request.url());
-          responseObject.setErrorType(ErrorType.BAD_REQUEST);
           return AdminSparkServer.mapper.writeValueAsString(responseObject);
         }
 
@@ -359,7 +357,7 @@ public class SchemaRoutes extends AbstractRoute {
         responseObject.setDerivedSchemaId(derivedSchemaId);
         responseObject.setSchemaStr(removedDerivedSchemaEntry.getSchema().toString());
       } catch (Throwable e) {
-        responseObject.setError(e);
+        responseObject.setError(e.getMessage());
         AdminSparkServer.handleError(new VeniceException(e), request, response);
       }
 
@@ -390,7 +388,7 @@ public class SchemaRoutes extends AbstractRoute {
         }
         responseObject.setSchemas(schemas);
       } catch (Throwable e) {
-        responseObject.setError(e);
+        responseObject.setError(e.getMessage());
         AdminSparkServer.handleError(new VeniceException(e), request, response);
       }
       return AdminSparkServer.mapper.writeValueAsString(responseObject);

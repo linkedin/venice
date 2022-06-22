@@ -8,16 +8,16 @@ public class ConfigurationException extends VeniceException {
 
   public ConfigurationException(String message) {
     super(message);
-    super.errorType = ErrorType.INVALID_CONFIG;
+    super.exceptionType = ExceptionType.INVALID_CONFIG;
   }
 
   public ConfigurationException(Exception cause) {
     super(cause);
-    super.errorType = ErrorType.INVALID_CONFIG;
+    super.exceptionType = ExceptionType.INVALID_CONFIG;
   }
 
   public ConfigurationException(String message, Exception cause) {
     super(message, cause);
-    super.errorType = ErrorType.INVALID_CONFIG;
+    super.exceptionType = ExceptionType.INVALID_CONFIG;
   }
 }

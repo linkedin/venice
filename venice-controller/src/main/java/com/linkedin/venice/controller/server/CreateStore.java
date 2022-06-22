@@ -64,7 +64,7 @@ public class CreateStore extends AbstractRoute {
         responseObject.setName(storeName);
         admin.updateAclForStore(cluster, storeName, accessPermissions);
       } catch (Throwable e) {
-        responseObject.setError(e);
+        responseObject.setError(e.getMessage());
         AdminSparkServer.handleError(e, request, response);
       }
       return AdminSparkServer.mapper.writeValueAsString(responseObject);
@@ -86,7 +86,7 @@ public class CreateStore extends AbstractRoute {
         String accessPerm = admin.getAclForStore(cluster, storeName);
         responseObject.setAccessPermissions(accessPerm);
       } catch (Throwable e) {
-        responseObject.setError(e);
+        responseObject.setError(e.getMessage());
         AdminSparkServer.handleError(e, request, response);
       }
       return AdminSparkServer.mapper.writeValueAsString(responseObject);
@@ -106,7 +106,7 @@ public class CreateStore extends AbstractRoute {
         responseObject.setName(storeName);
         admin.deleteAclForStore(cluster, storeName);
       } catch (Throwable e) {
-        responseObject.setError(e);
+        responseObject.setError(e.getMessage());
         AdminSparkServer.handleError(e, request, response);
       }
       return AdminSparkServer.mapper.writeValueAsString(responseObject);
@@ -125,7 +125,7 @@ public class CreateStore extends AbstractRoute {
         controllerResponse.setName(storeName);
         admin.checkResourceCleanupBeforeStoreCreation(cluster, storeName);
       } catch (Throwable e) {
-        controllerResponse.setError(e);
+        controllerResponse.setError(e.getMessage());
         AdminSparkServer.handleError(e, request, response);
       }
       return AdminSparkServer.mapper.writeValueAsString(controllerResponse);

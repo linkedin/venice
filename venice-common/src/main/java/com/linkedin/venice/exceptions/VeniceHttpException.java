@@ -5,43 +5,43 @@ public class VeniceHttpException extends VeniceException {
 
   public VeniceHttpException(int statusCode) {
     super();
-    super.errorType = ErrorType.CONNECTION_ERROR;
+    super.exceptionType = ExceptionType.CONNECTION_ERROR;
     this.statusCode = statusCode;
   }
 
   public VeniceHttpException(int statusCode, String message) {
     super(message);
-    super.errorType = ErrorType.CONNECTION_ERROR;
+    super.exceptionType = ExceptionType.CONNECTION_ERROR;
     this.statusCode = statusCode;
   }
 
-  public VeniceHttpException(int statusCode, String message, ErrorType type) {
+  public VeniceHttpException(int statusCode, String message, ExceptionType type) {
     super(message);
-    super.errorType = type;
+    super.exceptionType = type;
     this.statusCode = statusCode;
   }
 
   public VeniceHttpException(int statusCode, Throwable cause) {
     super(cause);
-    super.errorType = ErrorType.CONNECTION_ERROR;
+    super.exceptionType = ExceptionType.CONNECTION_ERROR;
     this.statusCode = statusCode;
   }
 
-  public VeniceHttpException(int statusCode, Throwable cause, ErrorType type) {
+  public VeniceHttpException(int statusCode, Throwable cause, ExceptionType type) {
     super(cause);
-    super.errorType = type;
+    super.exceptionType = type;
     this.statusCode = statusCode;
   }
 
-  public VeniceHttpException(int statusCode, String message, Throwable cause, ErrorType type) {
+  public VeniceHttpException(int statusCode, String message, Throwable cause, ExceptionType exceptionType) {
     super(message, cause);
-    super.errorType = type;
+    super.exceptionType = exceptionType;
     this.statusCode = statusCode;
   }
 
   public VeniceHttpException(int statusCode, String message, Throwable cause) {
     super(message, cause);
-    super.errorType = ErrorType.CONNECTION_ERROR;
+    super.exceptionType = ExceptionType.CONNECTION_ERROR;
     this.statusCode = statusCode;
   }
 
@@ -52,11 +52,6 @@ public class VeniceHttpException extends VeniceException {
 
   @Override
   public String getMessage() {
-    return new StringBuilder()
-        .append("Http Status ")
-        .append(getHttpStatusCode())
-        .append(" - ")
-        .append(super.getMessage())
-        .toString();
+    return "Http Status " + getHttpStatusCode() + " - " + super.getMessage();
   }
 }
