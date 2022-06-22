@@ -141,10 +141,10 @@ public abstract class AbstractPartitionStateModel extends StateModel {
   public void onBecomeDroppedFromError(Message message, NotificationContext context) {
     executeStateTransition(message, context, ()-> {
       try {
-        stopConsumptionAndDropPartitionOnError();
-      } catch (Throwable e) {
-        // Catch throwable here to ensure state transition is completed to avoid enter into the infinite loop error->dropped->error->....
-        logger.error("Met error during the  transition.", e);
+        removePartitionFromStoreGracefully();
+      } catch (Exception e) {
+        // Catch exception here to ensure state transition can complete ana avoid error->dropped->error->... loop
+        logger.error("Encountered exception during the transition from ERROR to DROPPED.", e);
       }
     });
   }
@@ -314,10 +314,6 @@ public abstract class AbstractPartitionStateModel extends StateModel {
 
   protected void stopConsumption() {
     ingestionBackend.stopConsumption(storeConfig, partition);
-  }
-
-  protected void stopConsumptionAndDropPartitionOnError() {
-    ingestionBackend.dropStoragePartitionGracefully(storeConfig, partition, 30);
   }
 
   protected VeniceIngestionBackend getIngestionBackend() {
