@@ -211,6 +211,7 @@ public class VeniceParentHelixAdmin implements Admin {
   private final byte[] emptyKeyByteArr = new byte[0];
   private final AdminOperationSerializer adminOperationSerializer = new AdminOperationSerializer();
   private final VeniceControllerMultiClusterConfig multiClusterConfigs;
+  private final Map<String, Map<String, Lock>> perStoreAdminLocks = new ConcurrentHashMap<>();
   private final Map<String, Lock> perClusterAdminLocks = new ConcurrentHashMap<>();
   private final Map<String, AdminCommandExecutionTracker> adminCommandExecutionTrackers;
   private final Set<String> executionIdValidatedClusters = new HashSet<>();
@@ -298,6 +299,7 @@ public class VeniceParentHelixAdmin implements Admin {
       adminCommandExecutionTrackers.put(cluster,
           new AdminCommandExecutionTracker(config.getClusterName(), getVeniceHelixAdmin().getExecutionIdAccessor(),
               getVeniceHelixAdmin().getControllerClientMap(config.getClusterName())));
+      perStoreAdminLocks.put(cluster, new ConcurrentHashMap<>());
       perClusterAdminLocks.put(cluster, new ReentrantLock());
     }
     this.pushStrategyZKAccessor = new MigrationPushStrategyZKAccessor(getVeniceHelixAdmin().getZkClient(),
@@ -523,39 +525,48 @@ public class VeniceParentHelixAdmin implements Admin {
     if (!veniceWriterMap.containsKey(clusterName)) {
       throw new VeniceException("Cluster: " + clusterName + " is not started yet!");
     }
+    acquireAdminMessageExecutionIdLock(clusterName);
+    try {
+      checkAndRepairCorruptedExecutionId(clusterName);
+      try (AutoCloseableLock ignore = veniceHelixAdmin.getHelixVeniceClusterResources(clusterName)
+          .getClusterLockManager()
+          .createClusterReadLock()) {
+        // Obtain the cluster level read lock so during a graceful shutdown or leadership handover there will be no
+        // execution id gap (execution id is generated but the message is not sent).
+        AdminCommandExecutionTracker adminCommandExecutionTracker = adminCommandExecutionTrackers.get(clusterName);
+        AdminCommandExecution execution = adminCommandExecutionTracker.createExecution(AdminMessageType.valueOf(message).name());
+        message.executionId = execution.getExecutionId();
+        VeniceWriter<byte[], byte[], byte[]> veniceWriter = veniceWriterMap.get(clusterName);
+        byte[] serializedValue = adminOperationSerializer.serialize(message);
+        try {
+          Future<RecordMetadata> future = veniceWriter.put(emptyKeyByteArr, serializedValue, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+          RecordMetadata meta = future.get();
+
+          logger.info("Sent message: " + message + " to kafka, offset: " + meta.offset());
+        } catch (Exception e) {
+          throw new VeniceException("Got exception during sending message to Kafka -- " + e.getMessage(), e);
+        }
+        // TODO Remove the admin command execution tracking code since no one is using it (might not even be working).
+        adminCommandExecutionTracker.startTrackingExecution(execution);
+      }
+    } finally {
+      releaseAdminMessageExecutionIdLock(clusterName);
+    }
+    waitingMessageToBeConsumed(clusterName, storeName, message.executionId);
+  }
+
+  private void checkAndRepairCorruptedExecutionId(String clusterName) {
     if (!executionIdValidatedClusters.contains(clusterName)) {
       ExecutionIdAccessor executionIdAccessor = getVeniceHelixAdmin().getExecutionIdAccessor();
       long lastGeneratedExecutionId = executionIdAccessor.getLastGeneratedExecutionId(clusterName);
-      long lastConsumedExecutionId =
-          AdminTopicMetadataAccessor.getExecutionId(adminTopicMetadataAccessor.getMetadata(clusterName));
+      long lastConsumedExecutionId = AdminTopicMetadataAccessor.getExecutionId(adminTopicMetadataAccessor.getMetadata(clusterName));
       if (lastGeneratedExecutionId < lastConsumedExecutionId) {
         // Invalid state, resetting the last generated execution id to last consumed execution id.
-        logger.warn("Invalid executionId state detected, last generated execution id: " + lastGeneratedExecutionId
-            + ", last consumed execution id: " + lastConsumedExecutionId
+        logger.warn("Invalid executionId state detected, last generated execution id: " + lastGeneratedExecutionId + ", last consumed execution id: " + lastConsumedExecutionId
             + ". Resetting last generated execution id to: " + lastConsumedExecutionId);
         executionIdAccessor.updateLastGeneratedExecutionId(clusterName, lastConsumedExecutionId);
       }
       executionIdValidatedClusters.add(clusterName);
-    }
-    try (AutoCloseableLock ignore = veniceHelixAdmin.getHelixVeniceClusterResources(clusterName)
-        .getClusterLockManager().createClusterReadLock()) {
-      // Obtain the cluster level read lock so during a graceful shutdown or leadership handover there will be no
-      // execution id gap (execution id is generated but the message is not sent).
-      AdminCommandExecutionTracker adminCommandExecutionTracker = adminCommandExecutionTrackers.get(clusterName);
-      AdminCommandExecution execution = adminCommandExecutionTracker.createExecution(AdminMessageType.valueOf(message).name());
-      message.executionId = execution.getExecutionId();
-      VeniceWriter<byte[], byte[], byte[]> veniceWriter = veniceWriterMap.get(clusterName);
-      byte[] serializedValue = adminOperationSerializer.serialize(message);
-      try {
-        Future<RecordMetadata> future = veniceWriter.put(emptyKeyByteArr, serializedValue, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
-        RecordMetadata meta = future.get();
-
-        logger.info("Sent message: " + message + " to kafka, offset: " + meta.offset());
-        waitingMessageToBeConsumed(clusterName, storeName, message.executionId);
-        adminCommandExecutionTracker.startTrackingExecution(execution);
-      } catch (Exception e) {
-        throw new VeniceException("Got exception during sending message to Kafka -- " + e.getMessage(), e);
-      }
     }
   }
 
@@ -584,31 +595,77 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   /**
-   * Acquire the cluster level lock used to ensure admin messages in the admin topic (per cluster) have the correct order.
-   * This lock is needed only when generating and writing admin messages.
+   * Acquire the cluster level lock used to ensure no duplicate admin message execution id is generated and admin
+   * messages are written to the admin topic in the correct order (with incrementing execution id).
+   * This lock is held when generating the new execution and writing the admin message with the new execution id to the
+   * admin topic.
    */
-  protected void acquireAdminMessageLock(String clusterName, String storeName) {
+  protected void acquireAdminMessageExecutionIdLock(String clusterName) {
     try {
-      if (storeName != null) {
-        // First check whether an exception already exist in the admin channel for the given store
-        Exception lastException = getVeniceHelixAdmin().getLastExceptionForStore(clusterName, storeName);
-        if (lastException != null) {
-          throw new VeniceException(
-              "Unable to start new admin operations for store: " + storeName + " in cluster: " + clusterName + " due to existing exception: " + lastException.getMessage(), lastException);
-        }
+      if (clusterName == null) {
+        throw new VeniceException("Cannot acquire admin message execution id lock with a null cluster name");
       }
       boolean acquired = perClusterAdminLocks.get(clusterName).tryLock(waitingTimeForConsumptionMs, TimeUnit.MILLISECONDS);
       if (!acquired) {
-        throw new VeniceException("Failed to acquire lock after waiting for " + waitingTimeForConsumptionMs
-            + "ms. Another ongoing admin operation might be holding up the lock");
+        throw new VeniceException("Failed to acquire cluster level admin message execution id lock after waiting for "
+            + waitingTimeForConsumptionMs
+            + "ms. Another ongoing admin operation might be holding up the lock for cluster:" + clusterName);
       }
     } catch (InterruptedException e) {
       throw new VeniceException("Got interrupted during acquiring lock", e);
     }
   }
 
-  protected void releaseAdminMessageLock(String clusterName) {
+  protected void releaseAdminMessageExecutionIdLock(String clusterName) {
+    if (clusterName == null) {
+      throw new VeniceException("Cannot release admin message execution id lock with null cluster name");
+    }
     perClusterAdminLocks.get(clusterName).unlock();
+  }
+
+  /**
+   * Acquire the store level lock used to ensure no other admin operation is performed on the same store while the
+   * ongoing admin operation is being performed.
+   * This lock is held when generating, writing and processing the admin messages for the given store.
+   */
+  protected void acquireAdminMessageLock(String clusterName, String storeName) {
+    try {
+      if (clusterName == null) {
+        throw new VeniceException("Cannot acquire admin message lock with a null cluster name");
+      }
+      if (storeName == null) {
+        throw new VeniceException("Cannot acquire admin message lock with a null name");
+      }
+      // First check whether an exception already exist in the admin channel for the given store
+      Exception lastException = getVeniceHelixAdmin().getLastExceptionForStore(clusterName, storeName);
+      if (lastException != null) {
+        throw new VeniceException(
+            "Unable to start new admin operations for store: " + storeName + " in cluster: " + clusterName
+                + " due to existing exception: " + lastException.getMessage(), lastException);
+      }
+      Lock storeAdminLock = perStoreAdminLocks.get(clusterName).computeIfAbsent(storeName, k -> new ReentrantLock());
+      boolean acquired = storeAdminLock.tryLock(waitingTimeForConsumptionMs, TimeUnit.MILLISECONDS);
+      if (!acquired) {
+        throw new VeniceException("Failed to acquire store level admin message lock after waiting for "
+            + waitingTimeForConsumptionMs
+            + "ms. Another ongoing admin operation might be holding up the lock for store:" + storeName);
+      }
+    } catch (InterruptedException e) {
+      throw new VeniceException("Got interrupted during acquiring lock", e);
+    }
+  }
+
+  protected void releaseAdminMessageLock(String clusterName, String storeName) {
+    if (clusterName == null) {
+      throw new VeniceException("Cannot release admin message lock with null cluster name");
+    }
+    if (storeName == null) {
+      throw new VeniceException("Cannot release admin message lock with null store name");
+    }
+    Lock storeAdminMessageLock = perStoreAdminLocks.get(clusterName).get(storeName);
+    if (storeAdminMessageLock != null) {
+      storeAdminMessageLock.unlock();
+    }
   }
 
   @Override
@@ -649,7 +706,7 @@ public class VeniceParentHelixAdmin implements Admin {
       }
 
     } finally {
-      releaseAdminMessageLock(clusterName);
+      releaseAdminMessageLock(clusterName, storeName);
     }
   }
 
@@ -743,7 +800,7 @@ public class VeniceParentHelixAdmin implements Admin {
         logger.warn("Store object for " + storeName + " is missing! Skipping acl deletion!");
       }
     } finally {
-      releaseAdminMessageLock(clusterName);
+      releaseAdminMessageLock(clusterName, storeName);
     }
   }
 
@@ -762,7 +819,7 @@ public class VeniceParentHelixAdmin implements Admin {
     try {
       sendAddVersionAdminMessage(clusterName, storeName, pushJobId, version, numberOfPartitions, pushType);
     } finally {
-      releaseAdminMessageLock(clusterName);
+      releaseAdminMessageLock(clusterName, storeName);
     }
   }
 
@@ -1193,7 +1250,7 @@ public class VeniceParentHelixAdmin implements Admin {
       try {
         sendAddVersionAdminMessage(clusterName, storeName, pushJobId, newVersion, numberOfPartitions, pushType);
       } finally {
-        releaseAdminMessageLock(clusterName);
+        releaseAdminMessageLock(clusterName, storeName);
       }
       getSystemStoreLifeCycleHelper().maybeCreateSystemStoreWildcardAcl(storeName);
     }
@@ -1384,7 +1441,7 @@ public class VeniceParentHelixAdmin implements Admin {
       sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
       return Collections.emptyList();
     } finally {
-      releaseAdminMessageLock(clusterName);
+      releaseAdminMessageLock(clusterName, storeName);
     }
   }
 
@@ -1404,7 +1461,7 @@ public class VeniceParentHelixAdmin implements Admin {
 
       sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
     } finally {
-      releaseAdminMessageLock(clusterName);
+      releaseAdminMessageLock(clusterName, storeName);
     }
   }
 
@@ -1463,7 +1520,7 @@ public class VeniceParentHelixAdmin implements Admin {
 
       sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
     } finally {
-      releaseAdminMessageLock(clusterName);
+      releaseAdminMessageLock(clusterName, storeName);
     }
   }
 
@@ -1493,7 +1550,7 @@ public class VeniceParentHelixAdmin implements Admin {
 
       sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
     } finally {
-      releaseAdminMessageLock(clusterName);
+      releaseAdminMessageLock(clusterName, storeName);
     }
   }
 
@@ -1521,7 +1578,7 @@ public class VeniceParentHelixAdmin implements Admin {
 
       sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
     } finally {
-      releaseAdminMessageLock(clusterName);
+      releaseAdminMessageLock(clusterName, storeName);
     }
   }
 
@@ -1549,7 +1606,7 @@ public class VeniceParentHelixAdmin implements Admin {
 
       sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
     } finally {
-      releaseAdminMessageLock(clusterName);
+      releaseAdminMessageLock(clusterName, storeName);
     }
   }
 
@@ -1928,7 +1985,7 @@ public class VeniceParentHelixAdmin implements Admin {
         updateReplicationMetadataSchemaForAllValueSchema(clusterName, storeName);
       }
     } finally {
-      releaseAdminMessageLock(clusterName);
+      releaseAdminMessageLock(clusterName, storeName);
     }
   }
 
@@ -2092,7 +2149,7 @@ public class VeniceParentHelixAdmin implements Admin {
 
       return schemaEntry;
     } finally {
-      releaseAdminMessageLock(clusterName);
+      releaseAdminMessageLock(clusterName, storeName);
     }
   }
 
@@ -2240,7 +2297,7 @@ public class VeniceParentHelixAdmin implements Admin {
 
       return new DerivedSchemaEntry(valueSchemaId, newDerivedSchemaId, derivedSchemaStr);
     } finally {
-      releaseAdminMessageLock(clusterName);
+      releaseAdminMessageLock(clusterName, storeName);
     }
   }
 
@@ -2316,7 +2373,7 @@ public class VeniceParentHelixAdmin implements Admin {
       logger.error("Error when adding replication metadata schema for " + storeName + ", value schema id " + valueSchemaId, e);
       throw e;
     } finally {
-      releaseAdminMessageLock(clusterName);
+      releaseAdminMessageLock(clusterName, storeName);
     }
   }
 
@@ -2726,7 +2783,7 @@ public class VeniceParentHelixAdmin implements Admin {
 
       sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
     } finally {
-      releaseAdminMessageLock(clusterName);
+      releaseAdminMessageLock(clusterName, storeName);
     }
   }
 
@@ -3213,70 +3270,52 @@ public class VeniceParentHelixAdmin implements Admin {
   @Override
   public void configureNativeReplication(String clusterName, VeniceUserStoreType storeType, Optional<String> storeName,
       boolean enableNativeReplicationForCluster, Optional<String> newSourceRegion, Optional<String> regionsFilter) {
-    acquireAdminMessageLock(clusterName, null);
+    ConfigureNativeReplicationForCluster migrateClusterToNativeReplication
+        = (ConfigureNativeReplicationForCluster) AdminMessageType.CONFIGURE_NATIVE_REPLICATION_FOR_CLUSTER.getNewInstance();
+    migrateClusterToNativeReplication.clusterName = clusterName;
+    migrateClusterToNativeReplication.storeType = storeType.toString();
+    migrateClusterToNativeReplication.enabled = enableNativeReplicationForCluster;
+    migrateClusterToNativeReplication.nativeReplicationSourceRegion = newSourceRegion.orElse(null);
+    migrateClusterToNativeReplication.regionsFilter = regionsFilter.orElse(null);
 
-    try {
-      ConfigureNativeReplicationForCluster migrateClusterToNativeReplication
-          = (ConfigureNativeReplicationForCluster) AdminMessageType.CONFIGURE_NATIVE_REPLICATION_FOR_CLUSTER.getNewInstance();
-      migrateClusterToNativeReplication.clusterName = clusterName;
-      migrateClusterToNativeReplication.storeType = storeType.toString();
-      migrateClusterToNativeReplication.enabled = enableNativeReplicationForCluster;
-      migrateClusterToNativeReplication.nativeReplicationSourceRegion = newSourceRegion.orElse(null);
-      migrateClusterToNativeReplication.regionsFilter = regionsFilter.orElse(null);
-
-      AdminOperation message = new AdminOperation();
-      message.operationType = AdminMessageType.CONFIGURE_NATIVE_REPLICATION_FOR_CLUSTER.getValue();
-      message.payloadUnion = migrateClusterToNativeReplication;
-      sendAdminMessageAndWaitForConsumed(clusterName, null, message);
-    } finally {
-      releaseAdminMessageLock(clusterName);
-    }
+    AdminOperation message = new AdminOperation();
+    message.operationType = AdminMessageType.CONFIGURE_NATIVE_REPLICATION_FOR_CLUSTER.getValue();
+    message.payloadUnion = migrateClusterToNativeReplication;
+    sendAdminMessageAndWaitForConsumed(clusterName, null, message);
   }
 
   @Override
   public void configureActiveActiveReplication(String clusterName, VeniceUserStoreType storeType, Optional<String> storeName,
       boolean enableNativeReplicationForCluster, Optional<String> regionsFilter) {
-    acquireAdminMessageLock(clusterName, null);
+    ConfigureActiveActiveReplicationForCluster migrateClusterToActiveActiveReplication
+        = (ConfigureActiveActiveReplicationForCluster) AdminMessageType.CONFIGURE_ACTIVE_ACTIVE_REPLICATION_FOR_CLUSTER.getNewInstance();
+    migrateClusterToActiveActiveReplication.clusterName = clusterName;
+    migrateClusterToActiveActiveReplication.storeType = storeType.toString();
+    migrateClusterToActiveActiveReplication.enabled = enableNativeReplicationForCluster;
+    migrateClusterToActiveActiveReplication.regionsFilter = regionsFilter.orElse(null);
 
-    try {
-      ConfigureActiveActiveReplicationForCluster migrateClusterToActiveActiveReplication
-          = (ConfigureActiveActiveReplicationForCluster) AdminMessageType.CONFIGURE_ACTIVE_ACTIVE_REPLICATION_FOR_CLUSTER.getNewInstance();
-      migrateClusterToActiveActiveReplication.clusterName = clusterName;
-      migrateClusterToActiveActiveReplication.storeType = storeType.toString();
-      migrateClusterToActiveActiveReplication.enabled = enableNativeReplicationForCluster;
-      migrateClusterToActiveActiveReplication.regionsFilter = regionsFilter.orElse(null);
-
-      AdminOperation message = new AdminOperation();
-      message.operationType = AdminMessageType.CONFIGURE_ACTIVE_ACTIVE_REPLICATION_FOR_CLUSTER.getValue();
-      message.payloadUnion = migrateClusterToActiveActiveReplication;
-      sendAdminMessageAndWaitForConsumed(clusterName, null, message);
-    } finally {
-      releaseAdminMessageLock(clusterName);
-    }
+    AdminOperation message = new AdminOperation();
+    message.operationType = AdminMessageType.CONFIGURE_ACTIVE_ACTIVE_REPLICATION_FOR_CLUSTER.getValue();
+    message.payloadUnion = migrateClusterToActiveActiveReplication;
+    sendAdminMessageAndWaitForConsumed(clusterName, null, message);
   }
 
   @Override
   public void configureIncrementalPushForCluster(String clusterName, Optional<String> storeName,
       IncrementalPushPolicy incrementalPushPolicyToApply, Optional<IncrementalPushPolicy> incrementalPushPolicyToFilter,
       Optional<String> regionsFilter) {
-    acquireAdminMessageLock(clusterName, null);
+    ConfigureIncrementalPushForCluster incrementalPushBatchUpdateMessage
+        = (ConfigureIncrementalPushForCluster) AdminMessageType.CONFIGURE_INCREMENTAL_PUSH_FOR_CLUSTER.getNewInstance();
+    incrementalPushBatchUpdateMessage.clusterName = clusterName;
+    incrementalPushBatchUpdateMessage.incrementalPushPolicyToApply = incrementalPushPolicyToApply.getValue();
+    incrementalPushBatchUpdateMessage.incrementalPushPolicyToFilter =
+        incrementalPushPolicyToFilter.isPresent() ? incrementalPushPolicyToFilter.get().getValue() : -1;
+    incrementalPushBatchUpdateMessage.regionsFilter = regionsFilter.orElse(null);
 
-    try {
-      ConfigureIncrementalPushForCluster incrementalPushBatchUpdateMessage
-          = (ConfigureIncrementalPushForCluster) AdminMessageType.CONFIGURE_INCREMENTAL_PUSH_FOR_CLUSTER.getNewInstance();
-      incrementalPushBatchUpdateMessage.clusterName = clusterName;
-      incrementalPushBatchUpdateMessage.incrementalPushPolicyToApply = incrementalPushPolicyToApply.getValue();
-      incrementalPushBatchUpdateMessage.incrementalPushPolicyToFilter =
-          incrementalPushPolicyToFilter.isPresent() ? incrementalPushPolicyToFilter.get().getValue() : -1;
-      incrementalPushBatchUpdateMessage.regionsFilter = regionsFilter.orElse(null);
-
-      AdminOperation message = new AdminOperation();
-      message.operationType = AdminMessageType.CONFIGURE_INCREMENTAL_PUSH_FOR_CLUSTER.getValue();
-      message.payloadUnion = incrementalPushBatchUpdateMessage;
-      sendAdminMessageAndWaitForConsumed(clusterName, null, message);
-    } finally {
-      releaseAdminMessageLock(clusterName);
-    }
+    AdminOperation message = new AdminOperation();
+    message.operationType = AdminMessageType.CONFIGURE_INCREMENTAL_PUSH_FOR_CLUSTER.getValue();
+    message.payloadUnion = incrementalPushBatchUpdateMessage;
+    sendAdminMessageAndWaitForConsumed(clusterName, null, message);
   }
 
   /**
@@ -3612,7 +3651,7 @@ public class VeniceParentHelixAdmin implements Admin {
         throw new VeniceException("Error when getting store " + storeName + " metadata from source fabric " + srcFabric
             + " Exception: " + e.getMessage());
       } finally {
-        releaseAdminMessageLock(clusterName);
+        releaseAdminMessageLock(clusterName, storeName);
       }
 
       // sort schemas with sorted value schemas first, and then sorted derived schemas.
