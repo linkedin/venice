@@ -1847,5 +1847,27 @@ public class ConfigKeys {
    * False: use zookeeper store
    */
   public static final String USE_PUSH_STATUS_STORE_FOR_INCREMENTAL_PUSH = "controller.server.incremental.push.use.push.status.store";
+
+  /**
+   * A config to control whether VeniceServer will optimize the database for the backup version to
+   * free up memory resources occupied.
+   * TODO: explore to apply this feature to DVC as well.
+   * This feature should be very useful for RocksDB plaintable to unload the mmapped memory and it will be useful for
+   * RocksDB block-based format as well to evict the unused index/filters from the shared block cache.
+   */
+  public static final String SERVER_OPTIMIZE_DATABASE_FOR_BACKUP_VERSION_ENABLED = "server.optimize.database.for.backup.version.enabled";
+
+  /**
+   * A config to control the no read threshold when the database optimization should kick in.
+   */
+  public static final String SERVER_OPTIMIZE_DATABASE_FOR_BACKUP_VERSION_NO_READ_THRESHOLD_SECONDS =
+      "server.optimize.database.for.backup.version.no.read.threshold.seconds";
+
+  /**
+   * Schedule interval for database optimization service.
+   */
+  public static final String SERVER_OPTIMIZE_DATABASE_SERVICE_SCHEDULE_INTERNAL_SECONDS =
+      "server.optimize.database.service.schedule.internal.seconds";
+
 }
 

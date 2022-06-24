@@ -95,6 +95,11 @@ public abstract class AbstractStoragePartition {
   public abstract void close();
 
   /**
+   * Reopen the database.
+   */
+  public void reopen() {}
+
+  /**
    * Check whether current storage partition verifyConfig the given partition config
    * @param storagePartitionConfig
    * @return

@@ -100,7 +100,7 @@ public class StorageReadRequestsHandlerTest {
       StorageReadRequestsHandler
           testHandler = new StorageReadRequestsHandler(threadPoolExecutor, threadPoolExecutor, testRepository, metadataRepo, schemaRepo,
           mockMetadataRetriever, null, false, false, 10, serverConfig,
-          mock(StorageEngineBackedCompressorFactory.class));
+          mock(StorageEngineBackedCompressorFactory.class), Optional.empty());
       testHandler.channelRead(mockCtx, testRequest);
 
       waitUntilStorageExecutionHandlerRespond(outputArray);
@@ -137,7 +137,7 @@ public class StorageReadRequestsHandlerTest {
       StorageReadRequestsHandler
           testHandler = new StorageReadRequestsHandler(threadPoolExecutor, threadPoolExecutor, testRepository, metadataRepo, schemaRepo,
           mockMetadataRetriever, healthCheckService, false, false, 10, serverConfig,
-          mock(StorageEngineBackedCompressorFactory.class));
+          mock(StorageEngineBackedCompressorFactory.class), Optional.empty());
 
       ChannelHandlerContext mockCtx = mock(ChannelHandlerContext.class);
       doReturn(new UnpooledByteBufAllocator(true)).when(mockCtx).alloc();
@@ -232,7 +232,7 @@ public class StorageReadRequestsHandlerTest {
       //Actual test
       StorageReadRequestsHandler
           testHandler = new StorageReadRequestsHandler(threadPoolExecutor, threadPoolExecutor, testRepository, metadataRepo, schemaRepo,
-          mockMetadataRetriever, null, false, false, 10, serverConfig, mock(StorageEngineBackedCompressorFactory.class));
+          mockMetadataRetriever, null, false, false, 10, serverConfig, mock(StorageEngineBackedCompressorFactory.class), Optional.empty());
       testHandler.channelRead(mockCtx, testRequest);
 
       waitUntilStorageExecutionHandlerRespond(outputArray);
@@ -293,7 +293,7 @@ public class StorageReadRequestsHandlerTest {
       //Actual test
       StorageReadRequestsHandler testHandler = new StorageReadRequestsHandler(threadPoolExecutor, threadPoolExecutor, mock(StorageEngineRepository.class),
           mock(ReadOnlyStoreRepository.class), mock(ReadOnlySchemaRepository.class), mockMetadataRetriever, null, false, false,
-          10, serverConfig, mock(StorageEngineBackedCompressorFactory.class));
+          10, serverConfig, mock(StorageEngineBackedCompressorFactory.class), Optional.empty());
       testHandler.channelRead(mockCtx, testRequest);
 
       waitUntilStorageExecutionHandlerRespond(outputArray);

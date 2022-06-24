@@ -23,7 +23,9 @@ import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.acl.StaticAccessController;
+import com.linkedin.venice.cleaner.BackupVersionOptimizationService;
 import com.linkedin.venice.cleaner.LeakedResourceCleaner;
+import com.linkedin.venice.cleaner.ResourceReadUsageTracker;
 import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
@@ -49,6 +51,7 @@ import com.linkedin.venice.serialization.avro.SchemaPresenceChecker;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.stats.AggRocksDBStats;
+import com.linkedin.venice.stats.BackupVersionOptimizationServiceStats;
 import com.linkedin.venice.stats.DiskHealthStats;
 import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.stats.VeniceJVMStats;
@@ -292,6 +295,20 @@ public class VeniceServer {
       return routingData;
     });
 
+    final Optional<ResourceReadUsageTracker> resourceReadUsageTracker;
+    if (serverConfig.isOptimizeDatabaseForBackupVersionEnabled()) {
+      BackupVersionOptimizationService backupVersionOptimizationService = new BackupVersionOptimizationService(
+          metadataRepo,
+          storageService.getStorageEngineRepository(),
+          serverConfig.getOptimizeDatabaseForBackupVersionNoReadThresholdMS(),
+          serverConfig.getOptimizeDatabaseServiceScheduleIntervalSeconds(),
+          new BackupVersionOptimizationServiceStats(metricsRepository, "BackupVersionOptimizationService")
+      );
+      services.add(backupVersionOptimizationService);
+      resourceReadUsageTracker = Optional.of(backupVersionOptimizationService);
+    } else {
+      resourceReadUsageTracker = Optional.empty();
+    }
     /**
      * Fast schema lookup implementation for read compute path.
      */
@@ -299,9 +316,20 @@ public class VeniceServer {
     services.add(storeValueSchemasCacheService);
 
     // create and add ListenerServer for handling GET requests
-    ListenerService listenerService = createListenerService(storageService.getStorageEngineRepository(), metadataRepo, storeValueSchemasCacheService,
-        routingRepositoryFuture, kafkaStoreIngestionService, serverConfig, metricsRepository, sslFactory,
-        routerAccessController, storeAccessController, diskHealthCheckService, compressorFactory);
+    ListenerService listenerService = createListenerService(
+        storageService.getStorageEngineRepository(),
+        metadataRepo,
+        storeValueSchemasCacheService,
+        routingRepositoryFuture,
+        kafkaStoreIngestionService,
+        serverConfig,
+        metricsRepository,
+        sslFactory,
+        routerAccessController,
+        storeAccessController,
+        diskHealthCheckService,
+        compressorFactory,
+        resourceReadUsageTracker);
     services.add(listenerService);
 
     /**
@@ -516,10 +544,22 @@ public class VeniceServer {
       Optional<StaticAccessController> routerAccessController,
       Optional<DynamicAccessController> storeAccessController,
       DiskHealthCheckService diskHealthService,
-      StorageEngineBackedCompressorFactory compressorFactory) {
+      StorageEngineBackedCompressorFactory compressorFactory,
+      Optional<ResourceReadUsageTracker> resourceReadUsageTracker) {
     return new ListenerService(
-        storageEngineRepository, storeMetadataRepository, schemaRepository, routingRepository, metadataRetriever, serverConfig,
-        metricsRepository, sslFactory, routerAccessController, storeAccessController, diskHealthService, compressorFactory);
+        storageEngineRepository,
+        storeMetadataRepository,
+        schemaRepository,
+        routingRepository,
+        metadataRetriever,
+        serverConfig,
+        metricsRepository,
+        sslFactory,
+        routerAccessController,
+        storeAccessController,
+        diskHealthService,
+        compressorFactory,
+        resourceReadUsageTracker);
   }
 
   public static void main(String args[]) throws Exception {
