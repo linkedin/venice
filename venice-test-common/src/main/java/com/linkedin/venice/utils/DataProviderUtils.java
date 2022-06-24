@@ -85,9 +85,17 @@ public class DataProviderUtils {
 
   @DataProvider(name = "Amplification-Factor")
   public static Object[][] amplificationFactor() {
-    return new Object[][] {
-        {1}, {3}
-    };
+    return new Object[][]{{1}, {3}};
+  }
+
+  @DataProvider(name = "Boolean-Compression")
+  public static Object[][] booleanCompression() {
+    return allPermutationGenerator(BOOLEAN, COMPRESSION_STRATEGIES);
+  }
+
+  @DataProvider(name = "Boolean-Boolean-Compression")
+  public static Object[][] booleanBooleanCompression() {
+    return allPermutationGenerator(BOOLEAN, BOOLEAN, COMPRESSION_STRATEGIES);
   }
 
   /**

@@ -3,6 +3,7 @@ package com.linkedin.venice.endToEnd;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
+import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
@@ -36,6 +37,7 @@ import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.hadoop.VenicePushJob.*;
 import static com.linkedin.venice.utils.TestPushUtils.*;
 import static org.testng.Assert.*;
 
@@ -69,8 +71,8 @@ public class TestWriteCompute {
     veniceClusterWrapper.close();
   }
 
-  @Test(timeOut = 120 * Time.MS_PER_SECOND, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testWriteComputeWithHybridLeaderFollowerLargeRecord(boolean writeComputeFromCache) throws Exception {
+  @Test(timeOut = 120 * Time.MS_PER_SECOND, dataProvider = "Boolean-Compression", dataProviderClass = DataProviderUtils.class)
+  public void testWriteComputeWithHybridLeaderFollowerLargeRecord(boolean writeComputeFromCache, CompressionStrategy compressionStrategy) throws Exception {
     SystemProducer veniceProducer = null;
 
     try {
@@ -93,6 +95,7 @@ public class TestWriteCompute {
             .setHybridOffsetLagThreshold(streamingMessageLag)
             .setLeaderFollowerModel(true)
             .setChunkingEnabled(true)
+            .setCompressionStrategy(compressionStrategy)
             .setWriteComputationEnabled(true));
 
         Assert.assertFalse(response.isError());
