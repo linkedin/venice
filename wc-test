@@ -86,7 +86,7 @@ if __name__ == "__main__":
 
     revision = '#' + run_command("git rev-parse --short HEAD")
     response = run_command(
-      "git diff --patch --find-renames --compact-summary {baseline} |".format(**params) + template.format("-;filename=" + revision))
+      "git diff --patch --find-renames --compact-summary {baseline} |".format(**params) + template.format(shlex.quote("-;filename=" + revision)))
 
     print("Submitted working copy {name} for testing:".format(name=revision))
     print(changes)
