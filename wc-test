@@ -4,10 +4,12 @@ import os
 import re
 import json
 import time
+import shlex
 import random
 import argparse
 import textwrap
 import subprocess
+import urllib.parse
 
 CI_CONFIG = ".ciconfig"
 
@@ -58,9 +60,10 @@ if __name__ == "__main__":
 
   parser.add_argument("-j", "--job", help="jenkins job to run")
   parser.add_argument("-b", "--baseline", help="baseline branch/tag to use for testing")
+  parser.add_argument("-m", "--message", help="optional description of the changes")
   parser.add_argument("patch", nargs='?', help="diff-formatted patch to submit for testing")
 
-  params = dict(job="Venice-WcTest", baseline="origin/master")
+  params = dict(job="Venice-WcTest", baseline="origin/master", message="")
   params.update(get_config(CI_CONFIG))
   parser.set_defaults(**params)
   params.update(vars(parser.parse_args()))
@@ -68,10 +71,14 @@ if __name__ == "__main__":
   if isinstance(params["url"], list):
     params["url"] = random.choice(params["url"])
 
+  if "patch" not in params and not params["message"]:
+    params["message"] = run_command("git log --format=%s -1 HEAD")
+
+  template = "curl --http1.1 -fv '{url}/job/{job}/buildWithParameters?{params}' -u $(whoami):{apiToken} -F patch.diff=@{{0}}" \
+    .format(**params, params=urllib.parse.urlencode(dict(baseline=params["baseline"], message=params["message"])))
+
   if "patch" in params:
-    response = run_command(
-      "curl --http1.1 -fv '{url}/job/{job}/buildWithParameters?baseline={baseline}' -u $(whoami):{apiToken} -F 'patch.diff=@{patch}'"
-        .format(**params))
+    response = run_command(template.format(shlex.quote(params["patch"])))
   else:
     changes = run_command("git diff --find-renames --compact-summary {baseline}".format(**params))
     if not changes:
@@ -79,9 +86,7 @@ if __name__ == "__main__":
 
     revision = '#' + run_command("git rev-parse --short HEAD")
     response = run_command(
-        "git diff --patch --find-renames --compact-summary {baseline} |"
-        "curl --http1.1 -fv '{url}/job/{job}/buildWithParameters?baseline={baseline}' -u $(whoami):{apiToken} -F 'patch.diff=@-;filename={name}'"
-          .format(**params, name=revision))
+      "git diff --patch --find-renames --compact-summary {baseline} |".format(**params) + template.format("-;filename=" + revision))
 
     print("Submitted working copy {name} for testing:".format(name=revision))
     print(changes)
