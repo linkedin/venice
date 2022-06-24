@@ -15,6 +15,7 @@ import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.davinci.store.rocksdb.RocksDBComputeAccessMode;
 import com.linkedin.venice.VeniceConstants;
+import com.linkedin.venice.cleaner.ResourceReadUsageTracker;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compute.ComputeOperationUtils;
 import com.linkedin.venice.compute.ComputeRequestWrapper;
@@ -120,6 +121,7 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
   private final Map<String, VenicePartitioner> resourceToPartitionerMap = new VeniceConcurrentHashMap<>();
   private final Map<String, PartitionerConfig> resourceToPartitionConfigMap = new VeniceConcurrentHashMap<>();
   private final StorageEngineBackedCompressorFactory compressorFactory;
+  private final Optional<ResourceReadUsageTracker> resourceReadUsageTracker;
 
   private static class StorageExecReusableObjects extends AvroSerializer.AvroSerializerReusableObjects {
     // reuse buffer for rocksDB value object
@@ -144,13 +146,16 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
   private final ThreadLocal<StorageExecReusableObjects> threadLocalReusableObjects = ThreadLocal.withInitial(
       StorageExecReusableObjects::new);
 
-  public StorageReadRequestsHandler(ThreadPoolExecutor executor, ThreadPoolExecutor computeExecutor,
-                                  StorageEngineRepository storageEngineRepository,
-                                  ReadOnlyStoreRepository metadataStoreRepository,
-                                  ReadOnlySchemaRepository schemaRepository,
-                                  MetadataRetriever metadataRetriever, DiskHealthCheckService healthCheckService,
-                                  boolean fastAvroEnabled, boolean parallelBatchGetEnabled, int parallelBatchGetChunkSize,
-                                  VeniceServerConfig serverConfig, StorageEngineBackedCompressorFactory compressorFactory) {
+  public StorageReadRequestsHandler(
+      ThreadPoolExecutor executor,
+      ThreadPoolExecutor computeExecutor,
+      StorageEngineRepository storageEngineRepository,
+      ReadOnlyStoreRepository metadataStoreRepository,
+      ReadOnlySchemaRepository schemaRepository,
+      MetadataRetriever metadataRetriever, DiskHealthCheckService healthCheckService,
+      boolean fastAvroEnabled, boolean parallelBatchGetEnabled, int parallelBatchGetChunkSize,
+      VeniceServerConfig serverConfig, StorageEngineBackedCompressorFactory compressorFactory,
+      Optional<ResourceReadUsageTracker> resourceReadUsageTracker) {
     this.executor = executor;
     this.computeExecutor = computeExecutor;
     this.storageEngineRepository = storageEngineRepository;
@@ -166,6 +171,7 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
     this.rocksDBComputeAccessMode = serverConfig.getRocksDBServerConfig().getServerStorageOperation();
     this.serverConfig = serverConfig;
     this.compressorFactory = compressorFactory;
+    this.resourceReadUsageTracker = resourceReadUsageTracker;
   }
 
   @Override
@@ -193,6 +199,7 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
 
     if (message instanceof RouterRequest) {
       RouterRequest request = (RouterRequest) message;
+      resourceReadUsageTracker.ifPresent(tracker -> tracker.recordReadUsage(request.getResourceName()));
       // Check before putting the request to the intermediate queue
       if (request.shouldRequestBeTerminatedEarly()) {
         // Try to make the response short

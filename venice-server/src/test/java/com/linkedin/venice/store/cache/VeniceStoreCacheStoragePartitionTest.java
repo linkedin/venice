@@ -1,4 +1,4 @@
-package com.com.linkedin.venice.store.cache;
+package com.linkedin.venice.store.cache;
 
 import com.linkedin.davinci.store.cache.VeniceStoreCacheStoragePartition;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;

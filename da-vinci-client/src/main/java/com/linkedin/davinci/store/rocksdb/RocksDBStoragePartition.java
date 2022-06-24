@@ -580,7 +580,8 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
     try {
       long startTimeInMs = System.currentTimeMillis();
       rocksDB.cancelAllBackgroundWork(true);
-      LOGGER.info("RocksDB background task cancellation for store: " + storeName + ", partition " + partitionId + " took " + LatencyUtils.getElapsedTimeInMs(startTimeInMs) + " ms.");
+      LOGGER.info("RocksDB background task cancellation for store: {}, partition {} took {} ms.", storeName,
+          partitionId, LatencyUtils.getElapsedTimeInMs(startTimeInMs));
       rocksDB.close();
     } finally {
       isClosed = true;
@@ -597,6 +598,36 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
       writeOptions.close();
     }
     LOGGER.info("RocksDB for store: " + storeName + ", partition: " + partitionId + " was closed");
+  }
+
+  /**
+   * Reopen the underlying RocksDB database, and this operation will unload the data cached in memory.
+   */
+  @Override
+  public synchronized void reopen() {
+    if (isClosed) {
+      LOGGER.info("RocksDB is already closed for store: {}, partition: {}, won't reopen it", storeName, partitionId);
+      return;
+    }
+    readCloseRWLock.writeLock().lock();
+    try {
+      long startTimeInMs = System.currentTimeMillis();
+      rocksDB.cancelAllBackgroundWork(true);
+      LOGGER.info("RocksDB background task cancellation for store: {}, partition {} took {} ms.", storeName,
+          partitionId, LatencyUtils.getElapsedTimeInMs(startTimeInMs));
+      rocksDB.close();
+
+      if (this.readOnly) {
+        this.rocksDB = rocksDBThrottler.openReadOnly(options, fullPathForPartitionDB, columnFamilyDescriptors, columnFamilyHandleList);
+      } else {
+        this.rocksDB = rocksDBThrottler.open(options, fullPathForPartitionDB, columnFamilyDescriptors, columnFamilyHandleList);
+      }
+      LOGGER.info("Reopened RocksDB for store: {}, partition: {}", storeName, partitionId);
+    } catch (Exception e) {
+      throw new VeniceException("Failed to reopen RocksDB for store: " + storeName + " partition: " + partitionId);
+    } finally {
+      readCloseRWLock.writeLock().unlock();
+    }
   }
 
   private void registerDBStats() {

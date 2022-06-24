@@ -280,6 +280,11 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   private final int remoteIngestionRepairSleepInterval;
 
+  private final boolean optimizeDatabaseForBackupVersionEnabled;
+  private final long optimizeDatabaseForBackupVersionNoReadThresholdMS;
+  private final long optimizeDatabaseServiceScheduleIntervalSeconds;
+
+
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     this(serverProperties, Optional.empty());
   }
@@ -466,6 +471,11 @@ public class VeniceServerConfig extends VeniceClusterConfig {
      * 2. Reduce checkpoint threshold
      */
     serverIngestionCheckpointDuringGracefulShutdownEnabled = serverProperties.getBoolean(SERVER_INGESTION_CHECKPOINT_DURING_GRACEFUL_SHUTDOWN_ENABLED, true);
+    optimizeDatabaseForBackupVersionEnabled = serverProperties.getBoolean(SERVER_OPTIMIZE_DATABASE_FOR_BACKUP_VERSION_ENABLED, false);
+    optimizeDatabaseForBackupVersionNoReadThresholdMS = serverProperties.getLong(
+        SERVER_OPTIMIZE_DATABASE_FOR_BACKUP_VERSION_NO_READ_THRESHOLD_SECONDS, TimeUnit.MINUTES.toMillis(3)); // default 3 mins
+    optimizeDatabaseServiceScheduleIntervalSeconds = serverProperties.getLong(
+        SERVER_OPTIMIZE_DATABASE_SERVICE_SCHEDULE_INTERNAL_SECONDS, TimeUnit.MINUTES.toSeconds(1)); // default 1 min
   }
 
   public int getListenerPort() {
@@ -868,5 +878,17 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public int getRemoteIngestionRepairSleepInterval() {
     return remoteIngestionRepairSleepInterval;
+  }
+
+  public boolean isOptimizeDatabaseForBackupVersionEnabled() {
+    return optimizeDatabaseForBackupVersionEnabled;
+  }
+
+  public long getOptimizeDatabaseForBackupVersionNoReadThresholdMS() {
+    return optimizeDatabaseForBackupVersionNoReadThresholdMS;
+  }
+
+  public long getOptimizeDatabaseServiceScheduleIntervalSeconds() {
+    return optimizeDatabaseServiceScheduleIntervalSeconds;
   }
 }

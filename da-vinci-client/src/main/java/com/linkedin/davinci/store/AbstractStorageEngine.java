@@ -12,6 +12,7 @@ import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.SparseConcurrentList;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.Closeable;
 import java.nio.ByteBuffer;
 import java.util.Collections;
@@ -188,6 +189,18 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     } finally {
       rwLockForStoragePartitionAdjustment.writeLock().unlock();
     }
+  }
+
+  /**
+   * Reopen the underlying database.
+   */
+  public void reopenStoragePartition(int partitionId) {
+    if (!containsPartition(partitionId)) {
+      logger.warn("Partition " + storeName + "_" + partitionId + " doesn't exist.");
+      return;
+    }
+    AbstractStoragePartition storagePartition = getPartitionOrThrow(partitionId);
+    storagePartition.reopen();
   }
 
   public void addStoragePartition(int partitionId) {

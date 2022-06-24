@@ -9,6 +9,7 @@ import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.acl.StaticAccessController;
+import com.linkedin.venice.cleaner.ResourceReadUsageTracker;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.listener.ListenerService;
@@ -58,11 +59,23 @@ public class TestVeniceServer extends VeniceServer {
       Optional<StaticAccessController> routerAccessController,
       Optional<DynamicAccessController> storeAccessController,
       DiskHealthCheckService diskHealthService,
-      StorageEngineBackedCompressorFactory compressorFactory) {
+      StorageEngineBackedCompressorFactory compressorFactory,
+      Optional<ResourceReadUsageTracker> resourceReadUsageTracker) {
 
     return new ListenerService(
-        storageEngineRepository, storeMetadataRepository, schemaRepository, routingRepository, metadataRetriever, serverConfig,
-        metricsRepository, sslFactory, routerAccessController, storeAccessController, diskHealthService, compressorFactory) {
+        storageEngineRepository,
+        storeMetadataRepository,
+        schemaRepository,
+        routingRepository,
+        metadataRetriever,
+        serverConfig,
+        metricsRepository,
+        sslFactory,
+        routerAccessController,
+        storeAccessController,
+        diskHealthService,
+        compressorFactory,
+        resourceReadUsageTracker) {
 
       @Override
       protected StorageReadRequestsHandler createRequestHandler(
@@ -76,11 +89,23 @@ public class TestVeniceServer extends VeniceServer {
           boolean fastAvroEnabled,
           boolean parallelBatchGetEnabled,
           int parallelBatchGetChunkSize,
-          StorageEngineBackedCompressorFactory compressorFactory) {
+          StorageEngineBackedCompressorFactory compressorFactory,
+          Optional<ResourceReadUsageTracker> resourceReadUsageTracker) {
 
         return new StorageReadRequestsHandler(
-            executor, computeExecutor, storageEngineRepository, metadataRepository, schemaRepository, metadataRetriever, diskHealthService,
-            fastAvroEnabled, parallelBatchGetEnabled, parallelBatchGetChunkSize, serverConfig, compressorFactory) {
+            executor,
+            computeExecutor,
+            storageEngineRepository,
+            metadataRepository,
+            schemaRepository,
+            metadataRetriever,
+            diskHealthService,
+            fastAvroEnabled,
+            parallelBatchGetEnabled,
+            parallelBatchGetChunkSize,
+            serverConfig,
+            compressorFactory,
+            resourceReadUsageTracker) {
           @Override
           public void channelRead(ChannelHandlerContext context, Object message) throws Exception {
             RequestHandler handler = requestHandler.get();
