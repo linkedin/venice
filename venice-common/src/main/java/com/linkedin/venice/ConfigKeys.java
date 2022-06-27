@@ -1283,11 +1283,6 @@ public class ConfigKeys {
   public static final String HELIX_REBALANCE_ALG = "helix.rebalance.alg";
 
   /**
-   * Whether to establish SSL connection to Brooklin.
-   */
-  public static final String BROOKLIN_SSL_ENABLED  = "brooklin.ssl.enabled";
-
-  /**
    * What replication factor should the admin topics have, upon creation.
    */
   public static final String ADMIN_TOPIC_REPLICATION_FACTOR = "admin.topic.replication.factor";

@@ -474,9 +474,6 @@ public class TestHybrid {
             .setChunkingEnabled(true)
         );
 
-        // Note: Testing chunking only for L/F since RT can only contain non-chunked records but Brooklin will copy
-        // them to VT as-is.
-
         TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, true, () -> {
           Assert.assertFalse(admin.getStore(clusterName, storeName).containsVersion(1));
           Assert.assertEquals(admin.getStore(clusterName, storeName).getCurrentVersion(), 0);
