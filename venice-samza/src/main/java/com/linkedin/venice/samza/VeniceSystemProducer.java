@@ -26,6 +26,7 @@ import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.SchemaPresenceChecker;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
+import com.linkedin.venice.utils.BoundedHashMap;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.SystemTime;
@@ -100,6 +101,9 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
 
   // Mutable, lazily initialized, state
   private Schema keySchema;
+  private String canonicalKeySchemaStr;
+  // To avoid the excessive usage of the cache in case each message is using a unique key schema
+  private Map<Schema, String> canonicalSchemaStrCache = new BoundedHashMap<>(10, true);
   private final VeniceConcurrentHashMap<Schema, Pair<Integer, Integer>> valueSchemaIds = new VeniceConcurrentHashMap<>();
 
   /**
@@ -281,6 +285,7 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
     );
     LOGGER.info("Got [store: " + this.storeName + "] SchemaResponse for key schema: " + keySchemaResponse);
     this.keySchema = parseSchemaFromJSONStrictValidation(keySchemaResponse.getSchemaStr());
+    this.canonicalKeySchemaStr = AvroCompatibilityHelper.toParsingForm(this.keySchema);
 
     MultiSchemaResponse valueSchemaResponse = (MultiSchemaResponse)controllerRequestWithRetry(
         () -> this.controllerClient.getAllValueAndDerivedSchema(this.storeName)
@@ -430,18 +435,12 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
 
   protected CompletableFuture<Void> send(Object keyObject, Object valueObject) {
     Schema keyObjectSchema = getSchemaFromObject(keyObject);
+    String canonicalSchemaStr = canonicalSchemaStrCache.computeIfAbsent(keyObjectSchema,
+        k -> AvroCompatibilityHelper.toParsingForm(keyObjectSchema));
 
-    if (!keySchema.equals(keyObjectSchema)) {
-      String serializedObject;
-      if (keyObject instanceof byte[]){
-        serializedObject = new String((byte[]) keyObject);
-      } else if (keyObject instanceof ByteBuffer){
-        serializedObject = new String(((ByteBuffer) keyObject).array());
-      } else {
-        serializedObject = keyObject.toString();
-      }
-      throw new SamzaException("Cannot write record to Venice store " + storeName + ", key object has schema " + keyObjectSchema
-          + " which does not match Venice key schema " + keySchema + ".  Key object: " + serializedObject);
+    if (!canonicalKeySchemaStr.equals(canonicalSchemaStr)) {
+      throw new SamzaException("Cannot write record to Venice store " + storeName + ", key object has schema " + canonicalSchemaStr
+          + " which does not match Venice key schema " + canonicalKeySchemaStr + ".");
     }
 
     byte[] key = serializeObject(topicName, keyObject);
