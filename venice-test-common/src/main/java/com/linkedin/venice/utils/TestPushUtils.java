@@ -943,26 +943,6 @@ public class TestPushUtils {
     return props;
   }
 
-  public static Properties multiClusterH2VProps(VeniceMultiClusterWrapper veniceMultiClusterWrapper, String clusterName, String inputDirPath, String storeName) {
-    Properties props = new Properties();
-    // Let h2v talk to multiple controllers.
-    props.put(VENICE_URL_PROP, veniceMultiClusterWrapper.getControllerConnectString());
-    props.put(KAFKA_URL_PROP, veniceMultiClusterWrapper.getKafkaBrokerWrapper().getAddress());
-    props.put(VENICE_CLUSTER_NAME_PROP, clusterName);
-    props.put(VENICE_STORE_NAME_PROP, storeName);
-    props.put(INPUT_PATH_PROP, inputDirPath);
-    props.put(KEY_FIELD_PROP, "id");
-    props.put(VALUE_FIELD_PROP, "name");
-    props.put(VeniceWriter.CLOSE_TIMEOUT_MS, 500);
-    props.setProperty(SSL_KEY_STORE_PROPERTY_NAME, "test");
-    props.setProperty(SSL_TRUST_STORE_PROPERTY_NAME,"test");
-    props.setProperty(SSL_KEY_STORE_PASSWORD_PROPERTY_NAME,"test");
-    props.setProperty(SSL_KEY_PASSWORD_PROPERTY_NAME,"test");
-    props.setProperty(CONTROLLER_REQUEST_RETRY_ATTEMPTS, "5");
-
-    return props;
-  }
-
   public static ControllerClient createStoreForJob(VeniceClusterWrapper veniceCluster, Schema recordSchema, Properties props) {
     return createStoreForJob(veniceCluster.getClusterName(), recordSchema, props);
   }

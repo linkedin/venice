@@ -225,7 +225,7 @@ public class TestActiveActiveReplicationForIncPush {
         Optional<Version> version =
             childDataCenter.getRandomController().getVeniceAdmin().getStore(clusterName, storeName).getVersion(1);
       }
-      TestPushJobWithNativeReplicationFromCorpNative.verifyIncrementalPushData(childDatacenters, clusterName, storeName, 150, 2);
+      NativeReplicationTestUtils.verifyIncrementalPushData(childDatacenters, clusterName, storeName, 150, 2);
 
 
       //Phase 2 and Phase 3 rollout of A/A combined together.
@@ -250,14 +250,14 @@ public class TestActiveActiveReplicationForIncPush {
         Optional<Version> version =
             childDataCenter.getRandomController().getVeniceAdmin().getStore(clusterName, storeName).getVersion(2);
       }
-      TestPushJobWithNativeReplicationFromCorpNative.verifyIncrementalPushData(childDatacenters, clusterName, storeName, 150, 2);
+      NativeReplicationTestUtils.verifyIncrementalPushData(childDatacenters, clusterName, storeName, 150, 2);
 
       //Run another inc push with a different source fabric preference taking effect.
       try (VenicePushJob job = new VenicePushJob("Test push job incremental with NR + A/A from dc-1", propsInc2)) {
         job.run();
         Assert.assertEquals(job.getKafkaUrl(), childDatacenters.get(1).getKafkaBrokerWrapper().getAddress());
       }
-      TestPushJobWithNativeReplicationFromCorpNative.verifyIncrementalPushData(childDatacenters, clusterName, storeName, 200, 3);
+      NativeReplicationTestUtils.verifyIncrementalPushData(childDatacenters, clusterName, storeName, 200, 3);
     } finally {
       ControllerResponse deleteStoreResponse = parentControllerClient.disableAndDeleteStore(storeName);
       Assert.assertFalse(deleteStoreResponse.isError(),

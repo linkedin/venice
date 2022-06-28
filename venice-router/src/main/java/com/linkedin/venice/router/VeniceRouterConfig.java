@@ -151,7 +151,7 @@ public class VeniceRouterConfig {
     heartbeatTimeoutMs = props.getDouble(HEARTBEAT_TIMEOUT, TimeUnit.MINUTES.toMillis(1)); // 1 minute
     heartbeatCycleMs = props.getLong(HEARTBEAT_CYCLE, TimeUnit.SECONDS.toMillis(5)); // 5 seconds
     sslToStorageNodes = props.getBoolean(SSL_TO_STORAGE_NODES, false); // disable ssl on path to stroage node by default.
-    maxReadCapacityCu = props.getLong(MAX_READ_CAPCITY, 100000); //100000 CU
+    maxReadCapacityCu = props.getLong(MAX_READ_CAPACITY, 100000); //100000 CU
     longTailRetryForSingleGetThresholdMs = props.getInt(ROUTER_LONG_TAIL_RETRY_FOR_SINGLE_GET_THRESHOLD_MS, 15); //15 ms
     longTailRetryForBatchGetThresholdMs = parseRetryThresholdForBatchGet(
         props.getString(ROUTER_LONG_TAIL_RETRY_FOR_BATCH_GET_THRESHOLD_MS, "1-5:15,6-20:30,21-150:50,151-500:100,501-:500"));
