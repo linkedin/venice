@@ -1,7 +1,6 @@
 package com.linkedin.venice;
 
 import com.linkedin.venice.writer.ApacheKafkaProducer;
-
 import org.apache.kafka.clients.producer.ProducerConfig;
 
 public class ConfigKeys {
@@ -712,7 +711,7 @@ public class ConfigKeys {
   public static final String CLIENT_TIMEOUT = "client.timeout";
   public static final String HEARTBEAT_TIMEOUT =  "heartbeat.timeout";
   public static final String HEARTBEAT_CYCLE =  "heartbeat.cycle";
-  public static final String MAX_READ_CAPCITY = "max.read.capacity";
+  public static final String MAX_READ_CAPACITY = "max.read.capacity";
   public static final String SSL_TO_STORAGE_NODES = "sslToStorageNodes";
   /**
    * After this amount of time, DDS Router will retry once for the slow storage node request.

@@ -71,7 +71,7 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
           .put(ROUTER_MAX_OUTGOING_CONNECTION, 10)
           // To speed up test
           .put(ROUTER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS, 0)
-          .put(MAX_READ_CAPCITY, DEFAULT_PER_ROUTER_READ_QUOTA)
+          .put(MAX_READ_CAPACITY, DEFAULT_PER_ROUTER_READ_QUOTA)
           .put(SYSTEM_SCHEMA_CLUSTER_NAME, clusterName)
           .put(properties);
 
