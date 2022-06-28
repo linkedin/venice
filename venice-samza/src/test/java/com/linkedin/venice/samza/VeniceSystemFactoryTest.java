@@ -194,6 +194,16 @@ public class VeniceSystemFactoryTest {
 
   @DataProvider(name = "testSerializationCastParams")
   public static Object[][] testSerializationCastParams() {
+    String complexSchema = "{\n" + "  \"type\": \"record\",\n" + "  \"name\": \"SomeRecord\",\n" + "  \"fields\": [\n"
+        + "     {\"name\": \"int_field\", \"type\": \"int\"}\n" + "   ]\n" + "}";
+    String complexSchemaWithExtraProperty = "{\n" + "  \"type\": \"record\",\n" + "  \"name\": \"SomeRecord\",\n"
+        + "  \"fields\": [\n" + "     {\"name\": \"int_field\", \"type\": \"int\", \"java\": \"abc\"}\n" + "   ]\n"
+        + "}";
+    GenericRecord complexKeyRecord = new GenericData.Record(Schema.parse(complexSchemaWithExtraProperty));
+    complexKeyRecord.put("int_field", 100);
+    // Value record comparison will compare the associated schema by default, so we will use the schema without extra property here.
+    GenericRecord complexValueRecord = new GenericData.Record(Schema.parse(complexSchema));
+    complexValueRecord.put("int_field", 200);
     return new Object[][]{
         {
           new byte[]{0x3, 0x4, 0x5}, ByteBuffer.wrap(new byte[]{0x3, 0x4, 0x5}),
@@ -204,6 +214,9 @@ public class VeniceSystemFactoryTest {
           "three", "three",
           "four", new Utf8("four"),
           "\"string\""
+        },
+        {
+            complexKeyRecord, complexKeyRecord, complexValueRecord, complexValueRecord, complexSchema
         },
     };
   }
