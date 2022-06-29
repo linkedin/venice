@@ -1226,7 +1226,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
           sendMessage(this::getControlMessageKey, MessageType.CONTROL_MESSAGE, controlMessage, isEndOfSegment, partition, callback, updateCheckSum, leaderMetadataWrapper, Optional.empty()).get();
           return;
         } catch (InterruptedException | ExecutionException e) {
-          if (e.getMessage().contains(Errors.UNKNOWN_TOPIC_OR_PARTITION.message())) {
+          if (e.getMessage() != null && e.getMessage().contains(Errors.UNKNOWN_TOPIC_OR_PARTITION.message())) {
             /**
              * Not a super clean way to match the exception, but unfortunately, since it is wrapped inside of an
              * {@link ExecutionException}, there may be no other way.
