@@ -190,6 +190,13 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
   protected VeniceWriter<byte[], byte[], byte[]> getVeniceWriter(VersionCreationResponse store) {
     Properties veniceWriterProperties = new Properties();
     veniceWriterProperties.put(KAFKA_BOOTSTRAP_SERVERS, store.getKafkaBootstrapServers());
+    return getVeniceWriter(store, veniceWriterProperties);
+  }
+
+  /**
+   * Please don't remove this method since it is still being used by LinkedIn internally.
+   */
+  protected VeniceWriter<byte[], byte[],byte[]> getVeniceWriter(VersionCreationResponse store, Properties veniceWriterProperties) {
     int amplificationFactor = store.getAmplificationFactor();
     Optional<Integer> partitionCount = pushType.isBatchOrStreamReprocessing()
         ? Optional.of(store.getPartitions() * amplificationFactor)
