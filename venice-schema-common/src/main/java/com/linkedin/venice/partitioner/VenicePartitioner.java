@@ -4,6 +4,7 @@ import com.linkedin.venice.exceptions.PartitionerSchemaMismatchException;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.nio.ByteBuffer;
 import java.util.Properties;
+import javax.annotation.Nonnull;
 import org.apache.avro.Schema;
 
 
@@ -28,7 +29,9 @@ public abstract class VenicePartitioner {
 
     public VenicePartitioner(VeniceProperties props, Schema schema) {
         this.props = props;
-        checkSchema(schema);
+        if (schema != null) {
+            checkSchema(schema);
+        }
     }
 
     /**
@@ -58,11 +61,11 @@ public abstract class VenicePartitioner {
     /**
      * Implementors of this class can optionally provide an implementation of this function,
      * which can perform validation of schemas to be certain that they are compatible with the
-     *  partitioner implementation.
+     * partitioner implementation.
      *
-     * @param keySchema the schema do be validated.  Can be null
+     * @param keySchema the schema to be validated
      * @throws PartitionerSchemaMismatchException should the provided schema not match the partitioner (with a message that explains why).
      */
-    protected void checkSchema(Schema keySchema) throws PartitionerSchemaMismatchException {
+    protected void checkSchema(@Nonnull Schema keySchema) throws PartitionerSchemaMismatchException {
     }
 }
