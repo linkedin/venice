@@ -579,10 +579,9 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
     readCloseRWLock.writeLock().lock();
     try {
       long startTimeInMs = System.currentTimeMillis();
-      rocksDB.cancelAllBackgroundWork(true);
-      LOGGER.info("RocksDB background task cancellation for store: {}, partition {} took {} ms.", storeName,
-          partitionId, LatencyUtils.getElapsedTimeInMs(startTimeInMs));
       rocksDB.close();
+      LOGGER.info("RocksDB close for store: {}, partition {} took {} ms.", storeName,
+          partitionId, LatencyUtils.getElapsedTimeInMs(startTimeInMs));
     } finally {
       isClosed = true;
       readCloseRWLock.writeLock().unlock();
@@ -612,10 +611,9 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
     readCloseRWLock.writeLock().lock();
     try {
       long startTimeInMs = System.currentTimeMillis();
-      rocksDB.cancelAllBackgroundWork(true);
-      LOGGER.info("RocksDB background task cancellation for store: {}, partition {} took {} ms.", storeName,
-          partitionId, LatencyUtils.getElapsedTimeInMs(startTimeInMs));
       rocksDB.close();
+      LOGGER.info("RocksDB close for store: {}, partition {} took {} ms.", storeName,
+          partitionId, LatencyUtils.getElapsedTimeInMs(startTimeInMs));
 
       if (this.readOnly) {
         this.rocksDB = rocksDBThrottler.openReadOnly(options, fullPathForPartitionDB, columnFamilyDescriptors, columnFamilyHandleList);

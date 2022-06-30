@@ -10,11 +10,13 @@ import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
+import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.SparseConcurrentList;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.Closeable;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -325,7 +327,12 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
 
   @Override
   public synchronized void close() throws VeniceException {
-    partitionList.forEach(Partition::close);
+    long startTime = System.currentTimeMillis();
+    List<Partition> tmpList = new ArrayList<>();
+    // SparseConcurrentList does not support parallelStream, copy to a tmp list.
+    partitionList.forEach(p -> tmpList.add(p));
+    tmpList.parallelStream().forEach(Partition::close);
+    logger.info("Closing {} rockDB partitions of store {} took {} ms", partitionList.size(), storeName, LatencyUtils.getElapsedTimeInMs(startTime));
     partitionList.clear();
     closeMetadataPartition();
   }
