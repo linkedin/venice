@@ -14,6 +14,7 @@ public class VeniceConcurrentHashMap<K, V> extends ConcurrentHashMap<K, V> {
   }
 
   /**
+   * TODO: Remove this class once the code has completely migrated to JDK11+
    * The native `computeIfAbsent` function implemented in Java could have contention when
    * the value already exists {@link ConcurrentHashMap#computeIfAbsent(Object, Function)};
    * the contention could become very bad when lots of threads are trying to "computeIfAbsent"
