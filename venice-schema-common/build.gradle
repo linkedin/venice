@@ -23,6 +23,8 @@ dependencies {
   api libraries.commonsLang
   api libraries.httpClient //d2Client brings in an old version of httpClient
   api libraries.httpClient5
+  api libraries.httpCore5
+  api libraries.httpCore5H2
   api libraries.httpCore  //d2Client brings in an old version of httpCore
   api libraries.jacksonDatabind
   api libraries.jacksonAnnotations

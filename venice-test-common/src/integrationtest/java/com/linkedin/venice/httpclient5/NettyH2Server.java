@@ -105,7 +105,7 @@ public class NettyH2Server {
                 logger.info("Received ALPN request");
                 Http2Settings settings = new Http2Settings().maxConcurrentStreams(100)
                     .maxFrameSize(8 * 1024 * 1024)
-                    .initialWindowSize(64 * 1024 - 1)
+                    .initialWindowSize(8 * 1024 * 1024)
                     .headerTableSize(4096)
                     .maxHeaderListSize(8192);
                 ctx.pipeline().addLast(
