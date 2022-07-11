@@ -28,7 +28,6 @@ import org.apache.hc.core5.http.ContentType;
 import org.apache.hc.core5.http.Header;
 import org.apache.hc.core5.http.Method;
 import org.apache.hc.core5.io.CloseMode;
-import org.apache.hc.core5.util.Timeout;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -58,7 +57,6 @@ public class HttpClient5StorageNodeClient implements StorageNodeClient {
               .setSslContext(sslFactory.get().getSSLContext())
               .setIoThreadCount(ioThreadCountPerClient)
               .setRequestTimeOutInMilliseconds(routerConfig.getSocketTimeout())
-              .setConnectTimeOutInMilliseconds(routerConfig.getConnectionTimeout())
               .setSkipCipherCheck(routerConfig.isHttpClient5SkipCipherCheck())
               .buildAndStart());
     }
@@ -151,7 +149,6 @@ public class HttpClient5StorageNodeClient implements StorageNodeClient {
         .setUri(uri);
     if (request.hasTimeout()) {
       simpleRequestBuilder.setRequestConfig(RequestConfig.custom()
-          .setConnectionRequestTimeout(request.getTimeout(), TimeUnit.MILLISECONDS)
           .setResponseTimeout(request.getTimeout(), TimeUnit.MILLISECONDS)
           .build());
     }

@@ -33,7 +33,11 @@ public class HttpClient5Utils {
   public static class HttpClient5Builder {
     private SSLContext sslContext;
     private long requestTimeOutInMilliseconds = TimeUnit.SECONDS.toMillis(1); // 1s by default
-    private long connectTimeOutInMilliseconds = TimeUnit.SECONDS.toMicros(3); // 3s by default
+    /**
+     * We need to use a high connect timeout to avoid reconnect issue, which might result in confusing logging and unhealthy requests.
+     * For now, we remove the functions updating the connect timeout to avoid mistakes.
+     */
+    private final Timeout CONNECT_TIMEOUT_IN_MILLISECONDS = Timeout.ofMilliseconds(TimeUnit.MINUTES.toMillis(1)); // 1m by default
     private int ioThreadCount = 48;
     private boolean skipCipherCheck = false;
 
@@ -44,11 +48,6 @@ public class HttpClient5Utils {
 
     public HttpClient5Builder setRequestTimeOutInMilliseconds(int requestTimeOutInMilliseconds) {
       this.requestTimeOutInMilliseconds = requestTimeOutInMilliseconds;
-      return this;
-    }
-
-    public HttpClient5Builder setConnectTimeOutInMilliseconds(int connectTimeOutInMilliseconds) {
-      this.connectTimeOutInMilliseconds = connectTimeOutInMilliseconds;
       return this;
     }
 
@@ -87,8 +86,8 @@ public class HttpClient5Utils {
           .setIOReactorConfig(ioReactorConfig)
           .setDefaultRequestConfig(RequestConfig.custom()
               .setResponseTimeout(Timeout.ofMilliseconds(requestTimeOutInMilliseconds))
-              .setConnectionRequestTimeout(Timeout.ofMilliseconds(requestTimeOutInMilliseconds))
-              .setConnectTimeout(Timeout.ofMilliseconds(connectTimeOutInMilliseconds))
+              .setConnectionRequestTimeout(CONNECT_TIMEOUT_IN_MILLISECONDS)
+              .setConnectTimeout(CONNECT_TIMEOUT_IN_MILLISECONDS)
               .build())
           .build();
 

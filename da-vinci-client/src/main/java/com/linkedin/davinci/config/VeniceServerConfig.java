@@ -429,18 +429,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     http2InboundEnabled = serverProperties.getBoolean(SERVER_HTTP2_INBOUND_ENABLED, false);
     http2MaxConcurrentStreams = serverProperties.getInt(SERVER_HTTP2_MAX_CONCURRENT_STREAMS, 100);
     http2MaxFrameSize = serverProperties.getInt(SERVER_HTTP2_MAX_FRAME_SIZE, 8 * 1024 * 1024);
-    /**
-     * This is the limit of httpclient5 http/2 API implementation:
-     * https://hc.apache.org/httpcomponents-client-5.1.x/migration-guide/migration-to-async-http2.html
-     *
-     * If httpclient5 lib changes the limit in the future, we could adjust this constraint accordingly.
-     */
-    final int MAX_ALLOWED_HTTP2_INITIAL_WINDOW_SIZE = 64 * 1024 - 1;
-    http2InitialWindowSize = serverProperties.getInt(SERVER_HTTP2_INITIAL_WINDOW_SIZE, MAX_ALLOWED_HTTP2_INITIAL_WINDOW_SIZE);
-    if (http2InitialWindowSize > MAX_ALLOWED_HTTP2_INITIAL_WINDOW_SIZE) {
-      throw new VeniceException("The max allowed http2 initial window size is: " + MAX_ALLOWED_HTTP2_INITIAL_WINDOW_SIZE +
-          ", but the config for " + SERVER_HTTP2_INITIAL_WINDOW_SIZE + " is: " + http2InitialWindowSize);
-    }
+    http2InitialWindowSize = serverProperties.getInt(SERVER_HTTP2_INITIAL_WINDOW_SIZE, 8 * 1024 * 1024);
     http2HeaderTableSize = serverProperties.getInt(SERVER_HTTP2_HEADER_TABLE_SIZE, 4096);
     http2MaxHeaderListSize = serverProperties.getInt(SERVER_HTTP2_MAX_HEADER_LIST_SIZE, 8192);
 
