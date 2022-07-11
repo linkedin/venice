@@ -1,9 +1,16 @@
 package com.linkedin.venice;
 
 import com.linkedin.venice.utils.Time;
+import org.apache.kafka.common.config.SslConfigs;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+import org.conscrypt.Conscrypt;
+
+import java.util.function.Supplier;
 
 
 public class ConfigConstants {
+  private static final Logger logger = LogManager.getLogger(ConfigConstants.class);
   /**
    * Start of controller config default value
    */
@@ -29,7 +36,15 @@ public class ConfigConstants {
    * BoringSSL is the c implementation of OpenSSL, and conscrypt add a java wrapper around BoringSSL.
    * The default BoringSslContextProvider mainly relies on conscrypt.
    */
-  public static final String DEFAULT_KAFKA_SSL_CONTEXT_PROVIDER_CLASS_NAME = "org.apache.kafka.common.security.ssl.BoringSslContextProvider";
+  public static final String DEFAULT_KAFKA_SSL_CONTEXT_PROVIDER_CLASS_NAME = ((Supplier<String>) () -> {
+    try {
+      Conscrypt.checkAvailability();
+      return "org.apache.kafka.common.security.ssl.BoringSslContextProvider";
+    } catch (UnsatisfiedLinkError e) {
+      logger.warn("Conscrypt is not available, falling back to " + SslConfigs.DEFAULT_SSL_CONTEXT_PROVIDER_CLASS, e);
+      return SslConfigs.DEFAULT_SSL_CONTEXT_PROVIDER_CLASS;
+    }
+  }).get();
 
   /**
    * Default Kafka batch size and linger time for better producer performance during ingestion.
