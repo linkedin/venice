@@ -872,18 +872,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
 
     if (isLagAcceptable) {
-      if (hybridStoreConfig.isPresent() && amplificationFactor != 1) {
-        // mark all sub-partitions in this user-partition to avoid duplicate calculations
-        for (int subPartition : PartitionUtils
-            .getSubPartitions(partitionConsumptionState.getUserPartition(), amplificationFactor)) {
-          if (partitionConsumptionStateMap.containsKey(subPartition)
-              && partitionConsumptionStateMap.get(subPartition).isEndOfPushReceived()) {
-            partitionConsumptionStateMap.get(subPartition).lagHasCaughtUp();
-          }
-        }
-      } else {
-        partitionConsumptionState.lagHasCaughtUp();
-      }
+      amplificationAdapter.lagHasCaughtUp(partitionConsumptionState.getUserPartition());
     }
 
     return isLagAcceptable;
@@ -916,7 +905,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * Check if the ingestion progress has reached to the end of the version topic. This is currently only
    * used {@link LeaderFollowerStoreIngestionTask}.
    */
-  protected abstract void reportIfCatchUpBaseTopicOffset(PartitionConsumptionState partitionConsumptionState);
+  protected abstract void reportIfCatchUpVersionTopicOffset(PartitionConsumptionState partitionConsumptionState);
 
   /**
    * This function will produce a pair of consumer record and a it's derived produced record to the writer buffers maintained by {@link StoreBufferService}.
@@ -1783,7 +1772,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
         long consumptionStatePrepTimeStart = System.currentTimeMillis();
         checkConsumptionStateWhenStart(offsetRecord, newPartitionConsumptionState);
-        reportIfCatchUpBaseTopicOffset(newPartitionConsumptionState);
+        reportIfCatchUpVersionTopicOffset(newPartitionConsumptionState);
         versionedStorageIngestionStats.recordSubscribePrepLatency(storeName, versionNumber,
             LatencyUtils.getElapsedTimeInMs(consumptionStatePrepTimeStart));
         /**
@@ -2113,7 +2102,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       partitionConsumptionState.resetProcessedRecordSize();
     }
 
-    reportIfCatchUpBaseTopicOffset(partitionConsumptionState);
+    reportIfCatchUpVersionTopicOffset(partitionConsumptionState);
 
     partitionConsumptionState.incrementProcessedRecordSizeSinceLastSync(recordSize);
     long syncBytesInterval = partitionConsumptionState.isDeferredWrite() ? databaseSyncBytesIntervalForDeferredWriteMode

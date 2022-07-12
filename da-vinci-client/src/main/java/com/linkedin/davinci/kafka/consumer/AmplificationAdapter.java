@@ -93,4 +93,12 @@ class AmplificationAdapter {
     int leaderSubPartition = PartitionUtils.getLeaderSubPartition(userPartition, amplificationFactor);
     return subPartition == leaderSubPartition;
   }
+
+  public void lagHasCaughtUp(final int partition) {
+    for (int subPartition : PartitionUtils.getSubPartitions(partition, amplificationFactor)) {
+      if (partitionConsumptionStateMap.containsKey(subPartition)) {
+        partitionConsumptionStateMap.get(subPartition).lagHasCaughtUp();
+      }
+    }
+  }
 }

@@ -122,9 +122,9 @@ public class ReportStatusAdapter {
         () -> notificationDispatcher.reportTopicSwitchReceived(partitionConsumptionState));
   }
 
-  public void reportCatchUpBaseTopicOffsetLag(PartitionConsumptionState partitionConsumptionState) {
+  public void reportCatchUpVersionTopicOffsetLag(PartitionConsumptionState partitionConsumptionState) {
     report(partitionConsumptionState, SubPartitionStatus.CATCH_UP_BASE_TOPIC_OFFSET_LAG,
-        () -> notificationDispatcher.reportCatchUpBaseTopicOffsetLag(partitionConsumptionState));
+        () -> notificationDispatcher.reportCatchUpVersionTopicOffsetLag(partitionConsumptionState));
   }
 
   public void reportCompleted(PartitionConsumptionState partitionConsumptionState) {

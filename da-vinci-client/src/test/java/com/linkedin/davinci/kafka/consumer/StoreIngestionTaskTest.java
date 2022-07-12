@@ -1049,8 +1049,8 @@ public class StoreIngestionTaskTest {
           fooLastOffset + 1);
       verify(mockPartitionStatusNotifier, timeout(TEST_TIMEOUT_MS).atLeastOnce()).completed(topic, PARTITION_BAR,
           barLastOffset  + 1);
-      verify(mockLeaderFollowerStateModelNotifier, timeout(TEST_TIMEOUT_MS).atLeastOnce()).catchUpBaseTopicOffsetLag(topic, PARTITION_FOO);
-      verify(mockLeaderFollowerStateModelNotifier, timeout(TEST_TIMEOUT_MS).atLeastOnce()).catchUpBaseTopicOffsetLag(topic, PARTITION_BAR);
+      verify(mockLeaderFollowerStateModelNotifier, timeout(TEST_TIMEOUT_MS).atLeastOnce()).catchUpVersionTopicOffsetLag(topic, PARTITION_FOO);
+      verify(mockLeaderFollowerStateModelNotifier, timeout(TEST_TIMEOUT_MS).atLeastOnce()).catchUpVersionTopicOffsetLag(topic, PARTITION_BAR);
       verify(mockLeaderFollowerStateModelNotifier, timeout(TEST_TIMEOUT_MS).atLeastOnce()).completed(topic, PARTITION_FOO,
           fooLastOffset + 1);
       verify(mockLeaderFollowerStateModelNotifier, timeout(TEST_TIMEOUT_MS).atLeastOnce()).completed(topic, PARTITION_BAR,

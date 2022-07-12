@@ -61,7 +61,7 @@ public class LogNotifier implements VeniceNotifier {
   }
 
   @Override
-  public void catchUpBaseTopicOffsetLag(String kafkaTopic, int partitionId) {
+  public void catchUpVersionTopicOffsetLag(String kafkaTopic, int partitionId) {
     logger.info(logMessage("Received CATCH_UP_BASE_TOPIC_OFFSET_LAG",
         kafkaTopic, partitionId, null, ""));
   }
