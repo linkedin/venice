@@ -97,10 +97,10 @@ class IngestionNotificationDispatcher {
     report(pcs, ExecutionStatus.STARTED, notifier -> notifier.restarted(topic, pcs.getUserPartition(), pcs.getLatestProcessedLocalVersionTopicOffset()));
   }
 
-  void reportCatchUpBaseTopicOffsetLag(PartitionConsumptionState pcs) {
+  void reportCatchUpVersionTopicOffsetLag(PartitionConsumptionState pcs) {
     report(pcs, ExecutionStatus.CATCH_UP_BASE_TOPIC_OFFSET_LAG,
         notifier -> {
-          notifier.catchUpBaseTopicOffsetLag(topic, pcs.getUserPartition());
+          notifier.catchUpVersionTopicOffsetLag(topic, pcs.getUserPartition());
           pcs.releaseLatch();
         });
   }
@@ -108,7 +108,7 @@ class IngestionNotificationDispatcher {
   /**
    * @param forceCompletion a flag that forces the completion announcement even there are still
    *                        offset lags. It's only used in
-   *                        {@link LeaderFollowerStoreIngestionTask#reportIfCatchUpBaseTopicOffset(PartitionConsumptionState)}
+   *                        {@link LeaderFollowerStoreIngestionTask#reportIfCatchUpVersionTopicOffset(PartitionConsumptionState)}
    *                        when we need a leader to continue replication. Check out the method above
    *                        for more details.
    */

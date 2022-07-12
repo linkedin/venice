@@ -1402,17 +1402,17 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   }
 
   @Override
-  protected void reportIfCatchUpBaseTopicOffset(PartitionConsumptionState pcs) {
+  protected void reportIfCatchUpVersionTopicOffset(PartitionConsumptionState pcs) {
     int partition = pcs.getPartition();
 
     if (pcs.isEndOfPushReceived() && !pcs.isLatchReleased()) {
       if (cachedKafkaMetadataGetter.getOffset(getTopicManager(localKafkaServer), kafkaVersionTopic, partition) - 1 <= pcs.getLatestProcessedLocalVersionTopicOffset()) {
-        reportStatusAdapter.reportCatchUpBaseTopicOffsetLag(pcs);
+        reportStatusAdapter.reportCatchUpVersionTopicOffsetLag(pcs);
 
         /**
          * Relax to report completion
          *
-         * There is a safe guard latch that is optionally replaced during Offline to Follower
+         * There is a safeguard latch that is optionally replaced during Offline to Follower
          * state transition in order to prevent "over-rebalancing". However, there is
          * still an edge case that could make Venice lose all of the Online SNs.
          *
@@ -1431,6 +1431,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
          * the rebalance.
          */
         if (isCurrentVersion.getAsBoolean()) {
+          amplificationAdapter.lagHasCaughtUp(pcs.getUserPartition());
           reportStatusAdapter.reportCompleted(pcs, true);
         }
       }
