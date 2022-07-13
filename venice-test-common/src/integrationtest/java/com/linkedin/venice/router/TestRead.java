@@ -82,7 +82,7 @@ public abstract class TestRead {
   private String storeVersionName;
   private int valueSchemaId;
   private String storeName;
-  private String readDisabledStoreName = Utils.getUniqueString("read_disabled_store");
+  private final String readDisabledStoreName = Utils.getUniqueString("read_disabled_store");
 
   private String routerAddr;
   private VeniceKafkaSerializer keySerializer;
@@ -199,6 +199,11 @@ public abstract class TestRead {
       if (updateStoreResponse.isError()) {
         throw new VeniceException("Failed to update store: " + readDisabledStoreName + " with error: " + updateStoreResponse.getError());
       }
+
+      // Force router refresh metadata to reflect config update.
+      for (VeniceRouterWrapper r : getVeniceCluster().getVeniceRouters()) {
+        r.refresh();
+      }
     });
   }
 
@@ -314,18 +319,18 @@ public abstract class TestRead {
           "Max connection count must be positive");
       Assert.assertTrue(getMaxRouterMetricValue(".connection_pool--connection_lease_request_latency.Max") > 0,
           "Connection lease max latency should be positive");
-      Assert.assertTrue(getAggregateRouterMetricValue(".connection_pool--total_active_connection_count.LambdaStat") == 0,
+      assertEquals(getAggregateRouterMetricValue(".connection_pool--total_active_connection_count.LambdaStat"), 0,
           "Active connection count should be 0 since test queries are finished");
-      Assert.assertTrue(getAggregateRouterMetricValue(".connection_pool--total_pending_connection_request_count.LambdaStat") == 0,
-          "Pending connection request count should be 0 since test queries are finished");
+      assertEquals(getAggregateRouterMetricValue(".connection_pool--total_pending_connection_request_count.LambdaStat"),
+          0, "Pending connection request count should be 0 since test queries are finished");
       Assert.assertTrue(getAggregateRouterMetricValue(".connection_pool--total_idle_connection_count.LambdaStat") > 0,
           "There should be some idle connections since test queries are finished");
 
       Assert.assertTrue(getAggregateRouterMetricValue(".localhost--max_connection_count.Gauge") > 0,
           "Max connection count must be positive");
-      Assert.assertTrue(getAggregateRouterMetricValue(".localhost--active_connection_count.Gauge") == 0,
+      assertEquals(getAggregateRouterMetricValue(".localhost--active_connection_count.Gauge"), 0,
           "Active connection count should be 0 since test queries are finished");
-      Assert.assertTrue(getAggregateRouterMetricValue(".localhost--pending_connection_request_count.Gauge") == 0,
+      assertEquals(getAggregateRouterMetricValue(".localhost--pending_connection_request_count.Gauge"), 0,
           "Pending connection request count should be 0 since test queries are finished");
       Assert.assertTrue(getAggregateRouterMetricValue(".localhost--idle_connection_count.Gauge") > 0,
           "There should be some idle connections since test queries are finished");
@@ -377,7 +382,7 @@ public abstract class TestRead {
     } catch (Exception e) {
     }
     // Bump up store-level max key count in batch-get request
-    updateStore(10000l, MAX_KEY_LIMIT + 1);
+    updateStore(10000L, MAX_KEY_LIMIT + 1);
 
     // It will take some time to let Router receive the store update.
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
@@ -396,7 +401,7 @@ public abstract class TestRead {
     double throttledRequestLatencyForSingleGet = getAggregateRouterMetricValue(".total--throttled_request_latency.Max");
     Assert.assertEquals(throttledRequestLatencyForSingleGet, 0.0, "There should be no single get throttled request latency yet!");
 
-    updateStore(1l, MAX_KEY_LIMIT);
+    updateStore(1L, MAX_KEY_LIMIT);
     int quotaExceptionsCount = 0;
     int numberOfRequests = 100;
     long startTime = System.currentTimeMillis();
@@ -565,19 +570,15 @@ public abstract class TestRead {
     if (!isTestEnabled()) {
       return;
     }
-    // Send request to a read-disabled store
-    AvroGenericStoreClient<String, GenericRecord> storeClient = ClientFactory.getAndStartGenericAvroClient(
+    try (AvroGenericStoreClient<String, GenericRecord> storeClient = ClientFactory.getAndStartGenericAvroClient(
         ClientConfig.defaultGenericClientConfig(readDisabledStoreName)
             .setVeniceURL(routerAddr)
-            .setSslEngineComponentFactory(SslUtils.getLocalSslFactory())
-    );
-    try {
+            .setSslEngineComponentFactory(SslUtils.getLocalSslFactory()))) {
+      // Send request to a read-disabled store
       storeClient.get("test").get();
       fail("An exception should be thrown when accessing a read-disabled store");
     } catch (Exception e) {
       // Expected
-    } finally {
-      storeClient.close();
     }
     // Verify router metrics
     VeniceRouterWrapper routerWrapper = veniceCluster.getRandomVeniceRouter();
