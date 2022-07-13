@@ -237,4 +237,20 @@ public class EventThrottler {
     rateSensor.add(THROTTLER_NAME + ".rate", rate, rateConfig);
     this.configuredMaxRatePerSecond = maxRatePerSecond;
   }
+
+  protected io.tehuti.utils.Time getTime() {
+    return time;
+  }
+
+  protected MetricConfig getRateConfig() {
+    return rateConfig;
+  }
+
+  protected long getConfiguredMaxRatePerSecond() {
+    return configuredMaxRatePerSecond;
+  }
+
+  protected boolean isCheckQuotaBeforeRecording() {
+    return checkQuotaBeforeRecording;
+  }
 }
