@@ -23,11 +23,9 @@ public class StoragePersonaStoreDataListenerTest {
   private ZkServerWrapper zk;
   private final HelixAdapterSerializer adapter = new HelixAdapterSerializer();
   private final String testClusterName = "testClusterName";
-  int index;
 
   @BeforeMethod
   public void setUp() {
-    index = 0;
     zk = ServiceFactory.getZkServer();
     zkClient = ZkClientFactory.newZkClient(zk.getAddress());
     storeRepository = new HelixReadWriteStoreRepository(zkClient, adapter, testClusterName,

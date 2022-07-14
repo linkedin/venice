@@ -10,6 +10,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.http.NameValuePair;
@@ -77,6 +78,29 @@ public class QueryParams {
     }
   }
 
+  public QueryParams putStringSet(String name, Set<String> value) {
+    try {
+      return add(
+          name,
+          mapper.writeValueAsString(value)
+      );
+    } catch (JsonProcessingException e) {
+      throw new VeniceException(e);
+    }
+  }
+
+  public Optional<Set<String>> getStringSet(String name) {
+    if (!params.containsKey(name)) {
+      return Optional.empty();
+    } else {
+      try {
+        return Optional.of(mapper.readValue(params.get(name), Set.class));
+      } catch (IOException e) {
+        throw new VeniceException(e);
+      }
+    }
+  }
+
   public Optional<Map<String, String>> getStringMap(String name) {
     if (!params.containsKey(name)) {
       return Optional.empty();
@@ -88,6 +112,15 @@ public class QueryParams {
       }
     }
   }
+
+  public Optional<String> getString(String name) {
+    return Optional.ofNullable(params.get(name));
+  }
+
+  public Optional<Long> getLong(String name) {
+    return Optional.ofNullable(params.get(name)).map(Long::valueOf);
+  }
+
 
   @Override
   public String toString() {

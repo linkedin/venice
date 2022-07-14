@@ -16,6 +16,7 @@ import com.linkedin.venice.helix.HelixReadWriteStoreRepository;
 import com.linkedin.venice.helix.HelixReadWriteStoreRepositoryAdapter;
 import com.linkedin.venice.helix.HelixStatusMessageChannel;
 import com.linkedin.venice.helix.SafeHelixManager;
+import com.linkedin.venice.helix.StoragePersonaRepository;
 import com.linkedin.venice.helix.VeniceOfflinePushMonitorAccessor;
 import com.linkedin.venice.helix.ZkRoutersClusterManager;
 import com.linkedin.venice.helix.ZkStoreConfigAccessor;
@@ -71,6 +72,7 @@ public class HelixVeniceClusterResources implements VeniceResource {
   private final ZkStoreConfigAccessor storeConfigAccessor;
   private final Optional<DynamicAccessController> accessController;
   private final ExecutorService errorPartitionResetExecutorService = Executors.newSingleThreadExecutor();
+  private final StoragePersonaRepository storagePersonaRepository;
 
   private ErrorPartitionResetTask errorPartitionResetTask = null;
   private final Optional<MetaStoreWriter> metaStoreWriter;
@@ -159,6 +161,7 @@ public class HelixVeniceClusterResources implements VeniceResource {
           config.getErrorPartitionProcessingCycleDelay());
     }
     veniceAdminStats = new VeniceAdminStats(metricsRepository, "venice-admin-" + clusterName);
+    this.storagePersonaRepository = new StoragePersonaRepository(clusterName, this.storeMetadataRepository, adapterSerializer, zkClient);
   }
 
   private List<String> getActiveActiveRealTimeSourceKafkaURLs(VeniceControllerConfig config) {
@@ -328,6 +331,8 @@ public class HelixVeniceClusterResources implements VeniceResource {
   public VeniceAdminStats getVeniceAdminStats() {
     return veniceAdminStats;
   }
+
+  public StoragePersonaRepository getStoragePersonaRepository() { return storagePersonaRepository; }
 
   /**
    * Lock the resource for shutdown operation(leadership handle over and controller shutdown). Once

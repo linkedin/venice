@@ -29,6 +29,7 @@ import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
 import com.linkedin.venice.controller.kafka.protocol.admin.ConfigureActiveActiveReplicationForCluster;
 import com.linkedin.venice.controller.kafka.protocol.admin.ConfigureIncrementalPushForCluster;
 import com.linkedin.venice.controller.kafka.protocol.admin.ConfigureNativeReplicationForCluster;
+import com.linkedin.venice.controller.kafka.protocol.admin.CreateStoragePersona;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteAllVersions;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteOldVersion;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteStore;
@@ -90,6 +91,7 @@ import com.linkedin.venice.helix.HelixReadOnlyZKSharedSchemaRepository;
 import com.linkedin.venice.helix.HelixReadOnlyZKSharedSystemStoreRepository;
 import com.linkedin.venice.helix.ParentHelixOfflinePushAccessor;
 import com.linkedin.venice.helix.Replica;
+import com.linkedin.venice.helix.StoragePersonaRepository;
 import com.linkedin.venice.helix.ZkStoreConfigAccessor;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.meta.BackupStrategy;
@@ -110,6 +112,7 @@ import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
+import com.linkedin.venice.persona.StoragePersona;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreRecordDeleter;
 import com.linkedin.venice.schema.AvroSchemaParseUtils;
@@ -176,6 +179,7 @@ import org.apache.http.HttpStatus;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import scala.Char;
 
 import static com.linkedin.venice.controller.VeniceHelixAdmin.*;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
@@ -3826,4 +3830,34 @@ public class VeniceParentHelixAdmin implements Admin {
     }
     return value;
   }
+
+  @Override
+  public void createStoragePersona(String clusterName, String name, long quotaNumber, Set<String> storesToEnforce, Set<String> owners) {
+      getVeniceHelixAdmin().checkControllerLeadershipFor(clusterName);
+
+      CreateStoragePersona createStoragePersona = (CreateStoragePersona) AdminMessageType.CREATE_STORAGE_PERSONA.getNewInstance();
+      createStoragePersona.setClusterName(clusterName);
+      createStoragePersona.setName(name);
+      createStoragePersona.setQuotaNumber(quotaNumber);
+      createStoragePersona.setStoresToEnforce(new ArrayList<>(storesToEnforce));
+      createStoragePersona.setOwners(new ArrayList<>(owners));
+
+      AdminOperation message = new AdminOperation();
+      message.operationType = AdminMessageType.CREATE_STORAGE_PERSONA.getValue();
+      message.payloadUnion = createStoragePersona;
+
+      StoragePersonaRepository repository = getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName).getStoragePersonaRepository();
+      if (repository.hasPersona(name)) {
+        throw new VeniceException("Persona with name " + name + " already exists");
+      }
+      repository.validatePersona(name, quotaNumber, storesToEnforce, owners);
+      sendAdminMessageAndWaitForConsumed(clusterName, null, message);
+  }
+
+  @Override
+  public StoragePersona getStoragePersona(String clusterName, String name) {
+    logger.info("Get Storage Persona reached in Parent Controller");
+    return getVeniceHelixAdmin().getStoragePersona(clusterName, name);
+  }
+
 }

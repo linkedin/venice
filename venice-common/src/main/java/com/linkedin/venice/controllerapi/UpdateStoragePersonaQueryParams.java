@@ -1,11 +1,9 @@
 package com.linkedin.venice.controllerapi;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.persona.StoragePersona;
 import com.linkedin.venice.utils.ObjectMapperFactory;
-import java.io.IOException;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
@@ -16,6 +14,8 @@ public class UpdateStoragePersonaQueryParams extends QueryParams {
 
   private static final ObjectMapper mapper = ObjectMapperFactory.getInstance();
 
+  public UpdateStoragePersonaQueryParams(Map<String, String> initialParams) { super(initialParams); }
+
   public UpdateStoragePersonaQueryParams() {
     super();
   }
@@ -24,8 +24,16 @@ public class UpdateStoragePersonaQueryParams extends QueryParams {
     return getStringSet(PERSONA_OWNERS);
   }
 
+  public UpdateStoragePersonaQueryParams setName(String name) {
+    return (UpdateStoragePersonaQueryParams) add(NAME, name);
+  }
+
+  public Optional<String> getName() {
+    return getString(NAME);
+  }
+
   public UpdateStoragePersonaQueryParams setOwners(Set<String> owners) {
-    return putStringSet(PERSONA_OWNERS, owners);
+    return (UpdateStoragePersonaQueryParams) putStringSet(PERSONA_OWNERS, owners);
   }
 
   public Optional<Set<String>> getStoresToEnforce() {
@@ -33,7 +41,7 @@ public class UpdateStoragePersonaQueryParams extends QueryParams {
   }
 
   public UpdateStoragePersonaQueryParams setStoresToEnforce(Set<String> stores) {
-    return putStringSet(PERSONA_STORES, stores);
+    return (UpdateStoragePersonaQueryParams) putStringSet(PERSONA_STORES, stores);
   }
 
   public Optional<Long> getQuota() {
@@ -48,33 +56,6 @@ public class UpdateStoragePersonaQueryParams extends QueryParams {
     getOwners().ifPresent(persona::setOwners);
     getStoresToEnforce().ifPresent(persona::setStoresToEnforce);
     getQuota().ifPresent(persona::setQuotaNumber);
-  }
-
-  private Optional<Long> getLong(String name) {
-    return Optional.ofNullable(params.get(name)).map(Long::valueOf);
-  }
-
-  private Optional<Set<String>> getStringSet(String name) {
-    if (!params.containsKey(name)) {
-      return Optional.empty();
-    } else {
-      try {
-        return Optional.of(mapper.readValue(params.get(name), Set.class));
-      } catch (IOException e) {
-        throw new VeniceException(e);
-      }
-    }
-  }
-
-  private UpdateStoragePersonaQueryParams putStringSet(String name, Set<String> value) {
-    try {
-      return (UpdateStoragePersonaQueryParams) add(
-          name,
-          mapper.writeValueAsString(value)
-      );
-    } catch (JsonProcessingException e) {
-      throw new VeniceException(e);
-    }
   }
 
   private UpdateStoragePersonaQueryParams putLong(String name, long value) {

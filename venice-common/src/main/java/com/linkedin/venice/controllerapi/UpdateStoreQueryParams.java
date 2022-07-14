@@ -520,10 +520,6 @@ public class UpdateStoreQueryParams extends QueryParams {
     return (UpdateStoreQueryParams) add(name, value);
   }
 
-  private Optional<Long> getLong(String name) {
-    return Optional.ofNullable(params.get(name)).map(Long::valueOf);
-  }
-
   private UpdateStoreQueryParams putBoolean(String name, boolean value) {
     return (UpdateStoreQueryParams) add(name, value);
   }
@@ -534,10 +530,6 @@ public class UpdateStoreQueryParams extends QueryParams {
 
   private UpdateStoreQueryParams putString(String name, String value) {
     return (UpdateStoreQueryParams) add(name, value);
-  }
-
-  private Optional<String> getString(String name) {
-    return Optional.ofNullable(params.get(name));
   }
 
   private UpdateStoreQueryParams putStringList(String name, List<String> value) {

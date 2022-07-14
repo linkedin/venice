@@ -112,6 +112,8 @@ public class AdminConsumptionTask implements Runnable, Closeable {
   private static final int MAX_DUPLICATE_MESSAGE_LOGS = 20;
   private static final long CONSUMPTION_LAG_UPDATE_INTERVAL_IN_MS = TimeUnit.MINUTES.toMillis(5);
   public static int IGNORED_CURRENT_VERSION = -1;
+  private static final String STORAGE_PERSONA_MAP_KEY = "STORAGE_PERSONA"; /** Used by the storage persona in the admin operations map */
+
 
   private final Logger logger;
 
@@ -616,17 +618,18 @@ public class AdminConsumptionTask implements Runnable, Closeable {
             adminOperationWrapper.getDelegateTimestamp() - adminOperationWrapper.getLocalBrokerTimestamp()));
       }
     } else {
-      String storeName = extractStoreName(adminOperation);
-      storeAdminOperationsMapWithOffset.putIfAbsent(storeName, new LinkedList<>());
       long producerTimestamp = kafkaValue.producerMetadata.messageTimestamp;
       long brokerTimestamp = record.timestamp();
       AdminOperationWrapper adminOperationWrapper = new AdminOperationWrapper(adminOperation, record.offset(),
           producerTimestamp, brokerTimestamp, System.currentTimeMillis());
-      storeAdminOperationsMapWithOffset.get(storeName).add(adminOperationWrapper);
       stats.recordAdminMessageMMLatency(Math.max(0,
           adminOperationWrapper.getLocalBrokerTimestamp() - adminOperationWrapper.getProducerTimestamp()));
       stats.recordAdminMessageDelegateLatency(Math.max(0,
           adminOperationWrapper.getDelegateTimestamp() - adminOperationWrapper.getLocalBrokerTimestamp()));
+      String storeName = extractStoreName(adminOperation);
+      storeAdminOperationsMapWithOffset.putIfAbsent(storeName, new LinkedList<>());
+      storeAdminOperationsMapWithOffset.get(storeName).add(adminOperationWrapper);
+
     }
     return executionId;
   }
@@ -688,6 +691,8 @@ public class AdminConsumptionTask implements Runnable, Closeable {
   private String extractStoreName(AdminOperation adminOperation) {
     String storeName;
     switch (AdminMessageType.valueOf(adminOperation)) {
+      case CREATE_STORAGE_PERSONA:
+        return STORAGE_PERSONA_MAP_KEY;
       case KILL_OFFLINE_PUSH_JOB:
         KillOfflinePushJob message = (KillOfflinePushJob) adminOperation.payloadUnion;
         storeName = Version.parseStoreFromKafkaTopicName(message.kafkaTopic.toString());

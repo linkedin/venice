@@ -23,6 +23,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.RoutersClusterConfig;
 import com.linkedin.venice.meta.VeniceUserStoreType;
+import com.linkedin.venice.persona.StoragePersona;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.schema.rmd.ReplicationMetadataSchemaEntry;
@@ -741,4 +742,9 @@ public interface Admin extends AutoCloseable, Closeable {
 
     void updateAdminTopicMetadata(String clusterName, long executionId, Optional<String> storeName,
         Optional<Long> offset, Optional<Long> upstreamOffset);
+
+    void createStoragePersona(String clusterName, String name, long quotaNumber, Set<String> storesToEnforce, Set<String> owners);
+
+    StoragePersona getStoragePersona(String clusterName, String name);
+
 }

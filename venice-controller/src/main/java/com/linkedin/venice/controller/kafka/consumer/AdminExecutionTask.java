@@ -11,6 +11,7 @@ import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
 import com.linkedin.venice.controller.kafka.protocol.admin.ConfigureActiveActiveReplicationForCluster;
 import com.linkedin.venice.controller.kafka.protocol.admin.ConfigureIncrementalPushForCluster;
 import com.linkedin.venice.controller.kafka.protocol.admin.ConfigureNativeReplicationForCluster;
+import com.linkedin.venice.controller.kafka.protocol.admin.CreateStoragePersona;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteAllVersions;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteOldVersion;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteStore;
@@ -46,10 +47,13 @@ import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.utils.CollectionUtils;
+import java.util.HashSet;
 import java.util.Optional;
 import java.util.Queue;
+import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 import org.apache.logging.log4j.Logger;
 
 import static com.linkedin.venice.controller.kafka.consumer.AdminConsumptionTask.*;
@@ -232,6 +236,9 @@ public class AdminExecutionTask implements Callable<Void> {
           break;
         case PUSH_STATUS_SYSTEM_STORE_AUTO_CREATION_VALIDATION:
           handlePushStatusSystemStoreCreationValidation((PushStatusSystemStoreAutoCreationValidation) adminOperation.payloadUnion);
+          break;
+        case CREATE_STORAGE_PERSONA:
+          handleCreateStoragePersona((CreateStoragePersona) adminOperation.payloadUnion);
           break;
         default:
           throw new VeniceException("Unknown admin operation type: " + adminOperation.operationType);
@@ -637,4 +644,14 @@ public class AdminExecutionTask implements Callable<Void> {
     String storeName = message.storeName.toString();
     admin.validateAndMaybeRetrySystemStoreAutoCreation(clusterName, storeName, VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE);
   }
+
+  private void handleCreateStoragePersona(CreateStoragePersona message) {
+    String clusterName = message.getClusterName().toString();
+    String personaName = message.getName().toString();
+    long quotaNumber = message.getQuotaNumber();
+    Set<String> storesToEnforce = message.getStoresToEnforce().stream().map(s -> s.toString()).collect(Collectors.toSet());
+    Set<String> owners = message.getOwners().stream().map(s -> s.toString()).collect(Collectors.toSet());
+    admin.createStoragePersona(clusterName, personaName, quotaNumber, storesToEnforce, owners);
+  }
+
 }

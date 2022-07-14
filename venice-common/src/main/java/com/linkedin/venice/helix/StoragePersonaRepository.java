@@ -11,9 +11,7 @@ import com.linkedin.venice.persona.StoragePersonaAccessor;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import com.linkedin.venice.utils.locks.AutoCloseableSingleLock;
-import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -98,10 +96,6 @@ public class StoragePersonaRepository {
 
   private void addPersona(StoragePersona persona) {
     try (AutoCloseableLock ignore = AutoCloseableSingleLock.of(personaLock)) {
-      if (hasPersona(persona.getName())) {
-        throw new VeniceException("Persona with name " + persona.getName() + " already exists");
-      }
-      checkLegalOrError(persona);
       storagePersonaAccessor.createPersona(persona);
       cachePersona(persona);
     }
@@ -130,7 +124,7 @@ public class StoragePersonaRepository {
   private void updatePersona(StoragePersona persona) {
     try (AutoCloseableLock ignore = AutoCloseableSingleLock.of(personaLock)) {
       StoragePersona oldPersona = getPersona(persona.getName());
-      checkLegalOrError(persona);
+      validatePersona(persona);
       if (oldPersona == null) {
         throw new VeniceException("Update failed: persona with name " + persona.getName() + " does not exist in this cluster");
       }
@@ -199,7 +193,11 @@ public class StoragePersonaRepository {
     return !persona.getOwners().isEmpty();
   }
 
-  private void checkLegalOrError(StoragePersona persona) {
+  public void validatePersona(String personaName, long quota, Set<String> storesToEnforce, Set<String> owners) {
+    validatePersona(new StoragePersona(personaName, quota, storesToEnforce, owners));
+  }
+
+  public void validatePersona(StoragePersona persona) {
     if (!isStoreSetValid(persona)) {
       throw new VeniceException("Invalid store(s) provided: not all stores exist within the cluster, "
           + "one store is already managed by a persona, one store is a system store");
