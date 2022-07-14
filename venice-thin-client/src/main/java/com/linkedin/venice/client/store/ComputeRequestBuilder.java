@@ -94,8 +94,9 @@ public interface ComputeRequestBuilder<K> {
   void streamingExecute(Set<K> keys, StreamingCallback<K, GenericRecord> callback) throws VeniceClientException;
 
   /**
-   * Streaming interface that sends compute request to Venice, which will be executed on keys satisfying the
-   * given predicate. This can be used to execute partial key lookups.
+   * Streaming interface that sends compute request to Venice, which will be executed on values whose keys satisfy
+   * the given predicate. This can be used to execute partial key lookups. If predicate is null, the compute request
+   * will be executed on all values.
    * You can find more info in {@link StreamingCallback}.
    *
    * This experimental feature is subject to backwards-incompatible changes in the future.

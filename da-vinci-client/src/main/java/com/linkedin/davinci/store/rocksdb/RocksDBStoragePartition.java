@@ -421,8 +421,8 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
   }
 
   @Override
-  public void getByKeyPrefix(byte[] keyPrefix, BytesStreamingCallback callback){
-    if (rocksDBServerConfig.isRocksDBPlainTableFormatEnabled()){
+  public void getByKeyPrefix(byte[] keyPrefix, BytesStreamingCallback callback) {
+    if (keyPrefix != null && rocksDBServerConfig.isRocksDBPlainTableFormatEnabled()) {
       throw new VeniceException("Get by key prefix is not supported with RocksDB PlainTable Format.");
     }
 
@@ -430,10 +430,16 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
     try {
       makeSureRocksDBIsStillOpen();
 
-      try (RocksIterator iterator = rocksDB.newIterator(new ReadOptions()
-          .setIterateUpperBound(getPrefixIterationUpperBound(keyPrefix)))) {
-        for (iterator.seek(keyPrefix); iterator.isValid(); iterator.next()){
+      try (ReadOptions readOptions = getReadOptionsForIteration(keyPrefix);
+          RocksIterator iterator = rocksDB.newIterator(readOptions)) {
+        if (keyPrefix == null) {
+          iterator.seekToFirst();
+        } else {
+          iterator.seek(keyPrefix);
+        }
+        while (iterator.isValid()) {
           callback.onRecordReceived(iterator.key(), iterator.value());
+          iterator.next();
         }
       }
     } finally {
@@ -447,6 +453,14 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
       return true;
     }
     return rocksDBSstFileWritter.validateBatchIngestion();
+  }
+
+  private ReadOptions getReadOptionsForIteration(byte[] keyPrefix) {
+    if (keyPrefix == null) {
+      return new ReadOptions();
+    } else {
+      return new ReadOptions().setIterateUpperBound(getPrefixIterationUpperBound(keyPrefix));
+    }
   }
 
   private Slice getPrefixIterationUpperBound(byte[] prefix){
