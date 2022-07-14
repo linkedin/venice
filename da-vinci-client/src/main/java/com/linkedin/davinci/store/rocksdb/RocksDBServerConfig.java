@@ -281,7 +281,8 @@ public class RocksDBServerConfig {
     this.rocksDBBlockCacheCompressedSizeInBytes = props.getSizeInBytes(ROCKSDB_BLOCK_CACHE_COMPRESSED_SIZE_IN_BYTES, 0L); // disable compressed cache
 
     this.rocksDBBlockCacheImplementation = RocksDBBlockCacheImplementations.valueOf(props.getString(ROCKSDB_BLOCK_CACHE_IMPLEMENTATION, RocksDBBlockCacheImplementations.LRU.toString()));
-    this.rocksDBBlockCacheStrictCapacityLimit = props.getBoolean(ROCKSDB_BLOCK_CACHE_STRICT_CAPACITY_LIMIT, true); // make sure indexes stay within cache size limits.
+    // settting the following to false, trying to mitigate `Caused by: org.rocksdb.RocksDBException: Insert failed due to LRU cache being full.` exception
+    this.rocksDBBlockCacheStrictCapacityLimit = props.getBoolean(ROCKSDB_BLOCK_CACHE_STRICT_CAPACITY_LIMIT, false);
     this.rocksDBSetCacheIndexAndFilterBlocks = props.getBoolean(ROCKSDB_SET_CACHE_INDEX_AND_FILTER_BLOCKS, true);
     this.rocksDBBlockCacheShardBits = props.getInt(ROCKSDB_BLOCK_CACHE_SHARD_BITS, 4); // 16 shards
     // TODO : add and tune high_pri_pool_ratio to make sure most indexes stay in memory.
