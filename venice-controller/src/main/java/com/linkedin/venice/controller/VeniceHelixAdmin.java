@@ -61,6 +61,7 @@ import com.linkedin.venice.helix.HelixStoreGraveyard;
 import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.helix.ResourceAssignment;
 import com.linkedin.venice.helix.SafeHelixManager;
+import com.linkedin.venice.helix.StoragePersonaRepository;
 import com.linkedin.venice.helix.VeniceOfflinePushMonitorAccessor;
 import com.linkedin.venice.helix.ZkClientFactory;
 import com.linkedin.venice.helix.ZkRoutersClusterManager;
@@ -110,6 +111,7 @@ import com.linkedin.venice.participant.protocol.KillPushJob;
 import com.linkedin.venice.participant.protocol.ParticipantMessageKey;
 import com.linkedin.venice.participant.protocol.ParticipantMessageValue;
 import com.linkedin.venice.participant.protocol.enums.ParticipantMessageType;
+import com.linkedin.venice.persona.StoragePersona;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.KillOfflinePushMessage;
 import com.linkedin.venice.pushmonitor.OfflinePushStatus;
@@ -6180,4 +6182,25 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         return getStoreGraveyard().getLargestUsedVersionNumber(storeName);
       }
     }
+
+    @Override
+    public void createStoragePersona(String clusterName, String name, long quotaNumber, Set<String> storesToEnforce, Set<String> owners) {
+      checkControllerLeadershipFor(clusterName);
+      HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
+      try {
+        StoragePersonaRepository repository = resources.getStoragePersonaRepository();
+        logger.info("Create Storage Persona reached in child controller");
+        repository.addPersona(name, quotaNumber, storesToEnforce, owners);
+      } catch (Exception e) {
+        logger.error("Failed to execute CreateStoragePersonaOperation.", e);
+        throw e;
+      }
+    }
+
+  @Override
+  public StoragePersona getStoragePersona(String clusterName, String name) {
+    checkControllerLeadershipFor(clusterName);
+    StoragePersonaRepository repository = getHelixVeniceClusterResources(clusterName).getStoragePersonaRepository();
+    return repository.getPersona(name);
+  }
 }

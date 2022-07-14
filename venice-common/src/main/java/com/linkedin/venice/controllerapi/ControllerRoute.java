@@ -134,7 +134,9 @@ public enum ControllerRoute {
   GET_ADMIN_TOPIC_METADATA("/get_admin_topic_metadata", HttpMethod.GET, Collections.singletonList(CLUSTER), NAME),
   UPDATE_ADMIN_TOPIC_METADATA("/update_admin_topic_metadata", HttpMethod.POST, Arrays.asList(CLUSTER, EXECUTION_ID),
       NAME, OFFSET, UPSTREAM_OFFSET),
-  DELETE_KAFKA_TOPIC("/delete_kafka_topic", HttpMethod.POST, Arrays.asList(CLUSTER, TOPIC));
+  DELETE_KAFKA_TOPIC("/delete_kafka_topic", HttpMethod.POST, Arrays.asList(CLUSTER, TOPIC)),
+  CREATE_STORAGE_PERSONA("/create_storage_persona", HttpMethod.POST, Arrays.asList(CLUSTER, NAME, PERSONA_QUOTA, PERSONA_STORES, PERSONA_OWNERS)),
+  GET_STORAGE_PERSONA("/get_storage_persona", HttpMethod.GET, Arrays.asList(CLUSTER, NAME));
 
   private final String path;
   private final HttpMethod httpMethod;

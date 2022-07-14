@@ -24,6 +24,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -1049,6 +1050,21 @@ public class ControllerClient implements Closeable {
     QueryParams params = newParams()
         .add(TOPIC, topicName);
     return request(ControllerRoute.DELETE_KAFKA_TOPIC, params, ControllerResponse.class);
+  }
+
+  public ControllerResponse createStoragePersona(String name, long quota, Set<String> storesToEnforce, Set<String> owners) {
+    QueryParams params = newParams()
+        .add(NAME, name)
+        .add(PERSONA_QUOTA, quota)
+        .putStringSet(PERSONA_STORES, storesToEnforce)
+        .putStringSet(PERSONA_OWNERS, owners);
+    return request(ControllerRoute.CREATE_STORAGE_PERSONA, params, ControllerResponse.class);
+  }
+
+  public StoragePersonaResponse getStoragePersona(String name) {
+    QueryParams params = newParams()
+        .add(NAME, name);
+    return request(ControllerRoute.GET_STORAGE_PERSONA, params, StoragePersonaResponse.class);
   }
 
   /***
