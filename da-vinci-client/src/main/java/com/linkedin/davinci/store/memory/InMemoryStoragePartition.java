@@ -75,8 +75,8 @@ public class InMemoryStoragePartition extends AbstractStoragePartition {
 
   @Override
   public void getByKeyPrefix(byte[] keyPrefix, BytesStreamingCallback callback) {
-    for (Map.Entry<ByteArray, ByteArray> entry : partitionDb.entrySet()){
-      if (entry.getKey().startsWith(keyPrefix)){
+    for (Map.Entry<ByteArray, ByteArray> entry : partitionDb.entrySet()) {
+      if (keyPrefix == null || entry.getKey().startsWith(keyPrefix)) {
         callback.onRecordReceived(entry.getKey().get(), entry.getValue().get());
       }
     }

@@ -74,7 +74,7 @@ public class AvroComputeRequestBuilderV4<K> extends AvroComputeRequestBuilderV3<
 
   private byte[] extractKeyPrefixBytesFromPredicate(Predicate requiredPrefixFields, Schema keySchema) {
     if (null == requiredPrefixFields) {
-      throw new VeniceClientException("Filtering predicate cannot be null");
+      return null;
     }
 
     if (null == keySchema) {

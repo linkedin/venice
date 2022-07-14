@@ -65,8 +65,8 @@ public abstract class AbstractStoragePartition {
   public abstract byte[] get(ByteBuffer key, boolean skipCache);
 
   /**
-   * Populate provided callback with all key-value pairs from the partition database where the keys have
-   * the provided prefix
+   * Populate provided callback with key-value pairs from the partition database where the keys have provided prefix.
+   * If prefix is null, callback will be populated will all key-value pairs from the partition database.
    * @param keyPrefix
    * @param callback
    */

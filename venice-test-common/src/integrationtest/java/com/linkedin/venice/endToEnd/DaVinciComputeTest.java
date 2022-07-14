@@ -628,7 +628,7 @@ public class DaVinciComputeTest {
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testPartialKeyLookupWithRocksDBPlainTable() throws ExecutionException, InterruptedException {
-    final String storeName = Utils.getUniqueString( "store");
+    final String storeName = Utils.getUniqueString("store");
     cluster.useControllerClient(client -> {
       TestUtils.assertCommand(
           client.createNewStore(storeName, getClass().getName(), KEY_SCHEMA_PARTIAL_KEY_LOOKUP, VALUE_SCHEMA_FOR_COMPUTE));
@@ -685,6 +685,25 @@ public class DaVinciComputeTest {
             }
           });
       Assert.assertTrue(completed[0]);
+
+      CountDownLatch computeLatch = new CountDownLatch(1);
+      AtomicInteger recordCount = new AtomicInteger(0);
+      client.compute()
+          .project("id", "name", "companiesEmbedding", "member_feature")
+          .executeWithFilter(null, new StreamingCallback<GenericRecord, GenericRecord>() {
+            @Override
+            public void onRecordReceived(GenericRecord key, GenericRecord value) {
+              recordCount.incrementAndGet();
+            }
+
+            @Override
+            public void onCompletion(Optional<Exception> exception) {
+              computeLatch.countDown();
+              exception.ifPresent(e -> Assert.fail("Exception: " + e + " is not expected"));
+            }
+          });
+      computeLatch.await();
+      Assert.assertEquals(recordCount.get(), numRecords, "Should receive all key-value pairs");
     }
   }
 
