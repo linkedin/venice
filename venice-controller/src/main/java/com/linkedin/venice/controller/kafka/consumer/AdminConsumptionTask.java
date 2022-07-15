@@ -470,8 +470,14 @@ public class AdminConsumptionTask implements Runnable, Closeable {
             pendingAdminMessagesCount += perStorePendingMessagesCount;
             storesWithPendingAdminMessagesCount += perStorePendingMessagesCount > 0 ? 1 : 0;
             if (e instanceof CancellationException) {
-              if (lastSucceededExecutionIdMap.get(storeName).equals(newLastSucceededExecutionIdMap.get(storeName)) &&
-                  perStorePendingMessagesCount > 0) {
+              long lastSucceededId = lastSucceededExecutionIdMap.getOrDefault(storeName, -1L);
+              long newLastSucceededId = newLastSucceededExecutionIdMap.getOrDefault(storeName, -1L);
+
+              if (lastSucceededId == -1) {
+                logger.error("Could not find last successful execution ID for store " + storeName);
+              }
+
+              if (lastSucceededId == newLastSucceededId && perStorePendingMessagesCount > 0) {
                 // only mark the store problematic if no progress is made and there are still message(s) in the queue.
                 errorInfo.exception =
                     new VeniceException("Could not finish processing admin message for store " + storeName + " in time");
