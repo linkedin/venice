@@ -1,9 +1,10 @@
 package com.linkedin.davinci.stats;
 
+import com.linkedin.davinci.store.rocksdb.RocksDBStoragePartition;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.stats.AbstractVeniceStats;
 import com.linkedin.venice.stats.Gauge;
 import io.tehuti.metrics.MetricsRepository;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
@@ -16,9 +17,6 @@ import java.util.stream.Collectors;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.rocksdb.MemoryUsageType;
-import org.rocksdb.MemoryUtil;
-import org.rocksdb.RocksDB;
-import org.rocksdb.RocksDBException;
 
 
 /**
@@ -82,7 +80,7 @@ public class RocksDBMemoryStats extends AbstractVeniceStats {
           MemoryUsageType.kTableReadersTotal,
           MemoryUsageType.kCacheTotal)));
 
-  private Map<String, RocksDB> hostedRocksDBPartitions = new ConcurrentHashMap<>();
+  private Map<String, RocksDBStoragePartition> hostedRocksDBPartitions = new ConcurrentHashMap<>();
 
   private Map<String, MemoryInfo> storeMemoryInfos = new ConcurrentHashMap<>();
 
@@ -97,10 +95,10 @@ public class RocksDBMemoryStats extends AbstractVeniceStats {
         Long total = 0L;
         // Lock down the list of RocksDB interfaces while the collection is ongoing
         synchronized (hostedRocksDBPartitions) {
-          for(RocksDB dbPartition : hostedRocksDBPartitions.values()) {
+          for(RocksDBStoragePartition dbPartition : hostedRocksDBPartitions.values()) {
             try {
-              total += dbPartition.getLongProperty(metric);
-            } catch (RocksDBException e) {
+              total += dbPartition.getRocksDBStatValue(metric);
+            } catch (VeniceException e) {
               logger.warn(String.format("Could not get rocksDB metric %s with error:", metric), e);
               continue;
             }
@@ -115,7 +113,7 @@ public class RocksDBMemoryStats extends AbstractVeniceStats {
     }
   }
 
-  public void registerPartition(String partitionName, RocksDB rocksDBPartition) {
+  public void registerPartition(String partitionName, RocksDBStoragePartition rocksDBPartition) {
     hostedRocksDBPartitions.put(partitionName, rocksDBPartition);
   }
 
@@ -170,19 +168,20 @@ public class RocksDBMemoryStats extends AbstractVeniceStats {
     // does not provide api to query memory used by a RocksDB in the block cache
     // when the block cache is shared by multiple RocksDB instances
     private long getTotalMemoryUsageInBytes() {
-      List<RocksDB> dbs = new ArrayList<>();
-      for (Map.Entry<String, RocksDB> entry : hostedRocksDBPartitions.entrySet()) {
-        if (entry.getKey().startsWith(storeName)) {
-          dbs.add(entry.getValue());
-        }
-      }
-      Map<MemoryUsageType, Long> memoryUsages = MemoryUtil.getApproximateMemoryUsageByType(dbs, null);
       long total = 0;
-      for (Map.Entry<MemoryUsageType, Long> entry : memoryUsages.entrySet()) {
-        if (MEMORY_USAGE_TYPES.contains(entry.getKey())) {
-          total += entry.getValue();
+
+      for (Map.Entry<String, RocksDBStoragePartition> entry : hostedRocksDBPartitions.entrySet()) {
+        if (! entry.getKey().startsWith(storeName)) {
+          continue;
+        }
+        Map<MemoryUsageType, Long> memoryUsages = entry.getValue().getApproximateMemoryUsageByType(null);
+        for (Map.Entry<MemoryUsageType, Long> memoryUsageEntry : memoryUsages.entrySet()) {
+          if (MEMORY_USAGE_TYPES.contains(memoryUsageEntry.getKey())) {
+            total += memoryUsageEntry.getValue();
+          }
         }
       }
+
       return total;
     }
 
