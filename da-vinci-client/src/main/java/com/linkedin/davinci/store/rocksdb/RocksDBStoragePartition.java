@@ -15,6 +15,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Supplier;
@@ -22,11 +23,14 @@ import org.apache.commons.io.FileUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.rocksdb.BlockBasedTableConfig;
+import org.rocksdb.Cache;
 import org.rocksdb.ColumnFamilyDescriptor;
 import org.rocksdb.ColumnFamilyHandle;
 import org.rocksdb.ColumnFamilyOptions;
 import org.rocksdb.EnvOptions;
 import org.rocksdb.FlushOptions;
+import org.rocksdb.MemoryUsageType;
+import org.rocksdb.MemoryUtil;
 import org.rocksdb.Options;
 import org.rocksdb.PlainTableConfig;
 import org.rocksdb.ReadOptions;
@@ -50,7 +54,7 @@ import static com.linkedin.davinci.store.AbstractStorageEngine.*;
  * If the ingestion is unsorted, this class is using the regular RocksDB interface to support update
  * operations.
  */
-class RocksDBStoragePartition extends AbstractStoragePartition {
+public class RocksDBStoragePartition extends AbstractStoragePartition {
   private static final Logger LOGGER = LogManager.getLogger(RocksDBStoragePartition.class);
   protected static final ReadOptions readOptionsToSkipCache = new ReadOptions().setFillCache(false);
   protected static final ReadOptions readOptionsDefault = new ReadOptions();
@@ -604,10 +608,6 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
    */
   @Override
   public synchronized void reopen() {
-    if (isClosed) {
-      LOGGER.info("RocksDB is already closed for store: {}, partition: {}, won't reopen it", storeName, partitionId);
-      return;
-    }
     readCloseRWLock.writeLock().lock();
     try {
       long startTimeInMs = System.currentTimeMillis();
@@ -630,13 +630,36 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
 
   private void registerDBStats() {
     if(rocksDBMemoryStats != null) {
-      rocksDBMemoryStats.registerPartition(RocksDBUtils.getPartitionDbName(storeName, partitionId), rocksDB);
+      rocksDBMemoryStats.registerPartition(RocksDBUtils.getPartitionDbName(storeName, partitionId), this);
     }
   }
 
   private void deRegisterDBStats() {
     if(rocksDBMemoryStats != null) {
       rocksDBMemoryStats.deregisterPartition(RocksDBUtils.getPartitionDbName(storeName, partitionId));
+    }
+  }
+
+  public long getRocksDBStatValue(String statName) {
+    readCloseRWLock.readLock().lock();
+    try {
+      makeSureRocksDBIsStillOpen();
+      return rocksDB.getLongProperty(statName);
+    } catch (RocksDBException e) {
+      throw new VeniceException("Failed to get property value from store: " + storeName +
+          ", partition id: " + partitionId + " for property: " + statName, e);
+    } finally {
+      readCloseRWLock.readLock().unlock();
+    }
+  }
+
+  public Map<MemoryUsageType, Long> getApproximateMemoryUsageByType(final Set<Cache> caches) {
+    readCloseRWLock.readLock().lock();
+    try {
+      makeSureRocksDBIsStillOpen();
+      return MemoryUtil.getApproximateMemoryUsageByType(Arrays.asList(rocksDB), caches);
+    } finally {
+      readCloseRWLock.readLock().unlock();
     }
   }
 
