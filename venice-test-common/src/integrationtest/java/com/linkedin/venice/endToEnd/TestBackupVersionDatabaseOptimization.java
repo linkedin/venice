@@ -118,10 +118,18 @@ public class TestBackupVersionDatabaseOptimization {
       VeniceServerWrapper serverWrapper = venice.getVeniceServers().get(0);
       MetricsRepository metricsRepository = serverWrapper.getMetricsRepository();
       Metric optimizationMetric = metricsRepository.getMetric(".BackupVersionOptimizationService--backup_version_database_optimization.OccurrenceRate");
+      Metric rocksdbMetric = metricsRepository.getMetric(".RocksDBMemoryStats--rocksdb.num-immutable-mem-table.Gauge");
+
       // N.B.: The optimization is performed by a periodic background task, so it cannot be expected to have already
       // completed as soon as we get here.
-      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () ->
-        assertTrue(optimizationMetric.value() > 0, "Backup version database optimization should happen")
+      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
+            assertTrue(optimizationMetric.value() > 0, "Backup version database optimization should happen");
+        /**
+         * This assertion is used to make sure {@link com.linkedin.davinci.stats.RocksDBMemoryStats} won't crash after
+         * reopening the backup version.
+         */
+        rocksdbMetric.value();
+          }
       );
     }
   }
