@@ -41,6 +41,7 @@ import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -200,12 +201,12 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    *                 new data are "duplicated" because they are using stale producer metadata (e.g. segment number 0
    *                 and sequence number 0)
    */
-  private final Map<Integer, Segment> segmentsMap = new HashMap<>();
+  private final Map<Integer, Segment> segmentsMap = new VeniceConcurrentHashMap<>();
   /**
    * Map of partition to its segment creation time in milliseconds.
    * -1: the current segment is ended
    */
-  private final Map<Integer, Long> segmentsCreationTimeMap = new HashMap<>();
+  private final long[] segmentsCreationTimeArray;
   private final KeyWithChunkingSuffixSerializer keyWithChunkingSuffixSerializer = new KeyWithChunkingSuffixSerializer();
   private final ChunkedValueManifestSerializer chunkedValueManifestSerializer = new ChunkedValueManifestSerializer(true);
   private final Map<CharSequence, CharSequence> defaultDebugInfo;
@@ -289,10 +290,12 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       } else {
         this.numberOfPartitions = producer.getNumberOfPartitions(topicName, 30, TimeUnit.SECONDS);
       }
+      this.segmentsCreationTimeArray = new long[this.numberOfPartitions];
       // Prepare locks for all partitions instead of using map to avoid the searching and creation cost during ingestion.
       this.partitionLocks = new Object[numberOfPartitions];
       for (int i=0; i < numberOfPartitions; i++) {
         partitionLocks[i] = new Object();
+        segmentsCreationTimeArray[i] = -1L;
       }
       this.producerGUID = GuidUtils.getGUID(props);
       this.logger = LogManager.getLogger(VeniceWriter.class.getSimpleName() + " [" + GuidUtils.getHexFromGuid(producerGUID) + "]");
@@ -875,7 +878,6 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     };
     return sendMessage(keyProvider, kafkaMessageEnvelopeProvider, partition, callback, updateDIV);
   }
-
   /**
    * This is (and should remain!) the only function in the class which writes to Kafka. The synchronized locking
    * is important, in that it ensures that DIV-related operations are performed atomically with the write to Kafka,
@@ -910,7 +912,11 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       KafkaMessageEnvelope kafkaValue = valueProvider.getKafkaMessageEnvelope();
       KafkaKey key = keyProvider.getKey(kafkaValue.producerMetadata);
       if (updateDIV) {
-        segmentsMap.get(partition).addToCheckSum(key, kafkaValue);
+        Segment segment = segmentsMap.get(partition);
+        if (segment == null) {
+          throw new VeniceException("segmentMap does not contain partition " + partition + " for topic " + topicName);
+        }
+        segment.addToCheckSum(key, kafkaValue);
       }
       Callback messageCallback = callback;
       if (null == callback) {
@@ -1375,10 +1381,10 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       //timed out. The segment won't be closed if the ongoing message itself is
       //a "end_of_segment" message.
       if (!sendEndOfSegment) {
-        long currentSegmentCreationTime = segmentsCreationTimeMap.get(partition);
+        long currentSegmentCreationTime = segmentsCreationTimeArray[partition];
         if (currentSegmentCreationTime != -1
             && LatencyUtils.getElapsedTimeInMs(currentSegmentCreationTime) > maxElapsedTimeForSegmentInMs) {
-          segmentsCreationTimeMap.put(partition, -1L);
+          segmentsCreationTimeArray[partition] = -1L;
           endSegment(partition, true);
           currentSegment = startSegment(partition);
         }
@@ -1411,7 +1417,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         currentSegment = new Segment(partition, newSegmentNumber, checkSumType);
         segmentsMap.put(partition, currentSegment);
       }
-      segmentsCreationTimeMap.put(partition, time.getMilliseconds());
+      segmentsCreationTimeArray[partition] =  time.getMilliseconds();
       if (!currentSegment.isStarted()) {
         sendStartOfSegment(partition, null);
         currentSegment.start();
