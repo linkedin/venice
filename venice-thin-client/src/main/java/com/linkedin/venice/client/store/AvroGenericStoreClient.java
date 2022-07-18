@@ -3,6 +3,7 @@ package com.linkedin.venice.client.store;
 import com.linkedin.venice.annotation.Experimental;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 
+import com.linkedin.venice.client.schema.StoreSchemaFetcher;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
 import com.linkedin.venice.client.store.streaming.VeniceResponseMap;
 import java.io.Closeable;
@@ -110,16 +111,19 @@ public interface AvroGenericStoreClient<K, V> extends Closeable {
 
   /**
    * Get key schema.
-   * @return
+   * @deprecated This method is considered deprecated. Please use {@link StoreSchemaFetcher#getKeySchema()} to fetch
+   * key schema instead.
    */
+  @Deprecated
   Schema getKeySchema();
 
   /**
    * Get the latest value schema known in current store client.
    * This function doesn't guarantee it will return the latest schema if you add a new value schema
    * when current store client is running.
-   *
-   * @return
+   * @deprecated This method is considered deprecated. Please use {@link StoreSchemaFetcher#getLatestValueSchema()} to fetch
+   * latest value schema instead.
    */
+  @Deprecated
   Schema getLatestValueSchema();
 }
